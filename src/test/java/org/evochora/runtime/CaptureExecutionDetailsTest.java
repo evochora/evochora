@@ -80,4 +80,40 @@ class CaptureExecutionDetailsTest {
         simulation.tick();
         assertThat(organism.getLastInstructionExecution()).isNotNull();
     }
+
+    /**
+     * Builds an instruction whose execution throws, driving the VM through its
+     * runtime-error path (failure booking, penalty, possible death).
+     */
+    private Instruction throwingInstruction() {
+        int nopOpcode = Instruction.getInstructionIdByName("NOP");
+        return new org.evochora.runtime.isa.instructions.NopInstruction(organism, nopOpcode) {
+            @Override
+            public void execute(org.evochora.runtime.internal.services.ExecutionContext context) {
+                throw new IllegalStateException("test-induced VM failure");
+            }
+        };
+    }
+
+    @Test
+    void executionRecordIsPresentAfterVmRuntimeError() {
+        new VirtualMachine(simulation).execute(throwingInstruction());
+
+        Organism.InstructionExecutionData record = organism.getLastInstructionExecution();
+        assertThat(organism.isInstructionFailed()).isTrue();
+        assertThat(record).isNotNull();
+        assertThat(record.opcodeId()).isEqualTo(Instruction.getInstructionIdByName("NOP"));
+        // Base energy (1) was charged before the throw, the error penalty (10) after it.
+        assertThat(record.energyCost()).isEqualTo(11);
+    }
+
+    @Test
+    void executionRecordIsPresentWhenVmRuntimeErrorKills() {
+        organism.takeEr(organism.getEr() - 5);
+
+        new VirtualMachine(simulation).execute(throwingInstruction());
+
+        assertThat(organism.isDead()).isTrue();
+        assertThat(organism.getLastInstructionExecution()).isNotNull();
+    }
 }

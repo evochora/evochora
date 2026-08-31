@@ -105,27 +105,28 @@ public class VirtualMachine {
             return;
         }
 
-        try {
-            // A conflict loser is booked as a failure but not executed; it leaves no execution
-            // record, so the argument and register capture below is skipped for it.
-            boolean lostConflict = instruction.getConflictStatus() == Instruction.ConflictResolutionStatus.LOST_PRIORITY;
+        // A conflict loser is booked as a failure but not executed; it leaves no execution
+        // record, so the argument and register capture below is skipped for it.
+        boolean lostConflict = instruction.getConflictStatus() == Instruction.ConflictResolutionStatus.LOST_PRIORITY;
 
-            // Track energy and entropy before execution to calculate total changes
-            int energyBefore = organism.getEr();
-            int entropyBefore = organism.getSr();
-            
+        // Track energy and entropy before execution to calculate total changes
+        int energyBefore = organism.getEr();
+        int entropyBefore = organism.getSr();
+
+        // The execution record is consumed only by observers of sampled ticks; the
+        // capture flag spares all other ticks the boxed register map per instruction.
+        boolean captureDetails = !lostConflict && this.simulation.isCaptureExecutionDetails();
+
+        int[] rawArgs = null;
+        Map<Integer, Object> registerValuesBefore = null;
+
+        try {
             // --- Thermodynamic Logic Start ---
 
             // 1. Resolve operands (idempotent - can be called multiple times safely)
             // Note: resolveOperands only PEEKs stack values, actual POPs happen in commitStackReads()
             List<Instruction.Operand> resolvedOperands = instruction.resolveOperands(this.environment);
 
-            // The execution record is consumed only by observers of sampled ticks; the
-            // capture flag spares all other ticks the boxed register map per instruction.
-            boolean captureDetails = !lostConflict && this.simulation.isCaptureExecutionDetails();
-
-            int[] rawArgs = null;
-            Map<Integer, Object> registerValuesBefore = null;
             if (captureDetails) {
                 // Shares the array resolveOperands filled: an instruction's argument
                 // cells are read once, and every consumer works from that one read.
@@ -224,10 +225,22 @@ public class VirtualMachine {
         } catch (Exception e) {
             // Global Catch-All to prevent simulation crash
             organism.instructionFailed("VM Runtime Error: " + e);
-            
+
             // Apply penalty
             int penalty = this.simulation.getOrganismConfig().getInt("error-penalty-cost");
             organism.takeEr(penalty);
+
+            // A throwing instruction still leaves an execution record: what ran and what it
+            // cost (penalty included) stays observable, even if the organism dies of it.
+            if (captureDetails) {
+                organism.setLastInstructionExecution(new Organism.InstructionExecutionData(
+                    instruction.getFullOpcodeId(),
+                    rawArgs,
+                    energyBefore - organism.getEr(),
+                    organism.getSr() - entropyBefore,
+                    registerValuesBefore
+                ));
+            }
 
             if (organism.getEr() <= 0) {
                 organism.kill("Ran out of energy");
