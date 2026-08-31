@@ -81,7 +81,10 @@ public abstract class AbstractDatabaseWrapper extends org.evochora.datapipeline.
      * Acquires connection lazily on first call and caches it.
      * Sets schema if runId was previously set via setSimulationRun().
      * <p>
-     * Thread-safe for single-threaded indexer use.
+     * A wrapper belongs to the one service thread it was bound to, and the cached connection may
+     * only be used from that thread: neither it nor the cached run id is guarded, and a JDBC
+     * connection is not meant for concurrent use either. Metrics and health may be read from
+     * another thread, because those paths do not touch this state.
      *
      * @return Database connection (with schema set if cachedRunId is not null)
      * @throws RuntimeException if connection acquisition fails
