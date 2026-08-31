@@ -6,9 +6,11 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import java.io.ByteArrayOutputStream;
@@ -289,13 +291,18 @@ class RowPerChunkStrategyTest {
 
         PendingChunkRead pending = strategy.prepareChunkRead(mockConnection, chunk.getFirstTick());
 
-        // Every further use of the connection now fails, as a closed one would
+        // Every further use of the connection now fails, as a closed one would. Without this a
+        // call would get Mockito's default answer and fail somewhere further along, if at all
         when(mockConnection.prepareStatement(anyString()))
                 .thenThrow(new SQLException("connection is gone"));
         when(mockConnection.getSchema()).thenThrow(new SQLException("connection is gone"));
+        clearInvocations(mockConnection);
 
         TickDataChunk readback = pending.read();
 
+        // Not "these two methods were not called" but "the connection was not touched" - which is
+        // what the caller relies on when it hands the connection back before reading
+        verifyNoInteractions(mockConnection);
         assertEquals(chunk.getFirstTick(), readback.getFirstTick());
         assertEquals(chunk.getTickCount(), readback.getTickCount());
     }
