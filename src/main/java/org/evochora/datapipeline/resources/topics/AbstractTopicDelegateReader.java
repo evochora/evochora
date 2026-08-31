@@ -75,10 +75,14 @@ public abstract class AbstractTopicDelegateReader<P extends AbstractTopicResourc
                 parent.getResourceName()));
         }
         
-        // Initialize throughput metric with configurable window
-        int metricsWindow = parent.getOptions().hasPath("metricsWindowSeconds")
-            ? parent.getOptions().getInt("metricsWindowSeconds")
-            : 30;  // Default: 30 seconds
+        // Configuration hierarchy: URI parameter > resource option > default, as for the other
+        // monitored wrappers. Allows a per-service override:
+        // input = "topic-read:tick-topic?metricsWindowSeconds=10"
+        int metricsWindow = context.parameters().containsKey("metricsWindowSeconds")
+            ? Integer.parseInt(context.parameters().get("metricsWindowSeconds"))
+            : (parent.getOptions().hasPath("metricsWindowSeconds")
+                ? parent.getOptions().getInt("metricsWindowSeconds")
+                : 30);
         this.readThroughput = new SlidingWindowCounter(metricsWindow);
     }
     
