@@ -57,7 +57,7 @@ public abstract class AbstractTopicDelegateWriter<P extends AbstractTopicResourc
         // Initialize throughput metric with configurable window
         int metricsWindow = parent.getOptions().hasPath("metricsWindowSeconds")
             ? parent.getOptions().getInt("metricsWindowSeconds")
-            : 60;  // Default: 60 seconds
+            : 30;  // Default: 30 seconds
         this.writeThroughput = new SlidingWindowCounter(metricsWindow);
     }
     
@@ -88,7 +88,7 @@ public abstract class AbstractTopicDelegateWriter<P extends AbstractTopicResourc
         
         // Delegate-level metrics (tracked by abstract class)
         metrics.put("delegate_messages_sent", messagesSent.get());
-        metrics.put("delegate_write_throughput_per_sec", writeThroughput.getWindowSum());
+        metrics.put("delegate_write_throughput_per_sec", writeThroughput.getRate());
     }
     
     /**

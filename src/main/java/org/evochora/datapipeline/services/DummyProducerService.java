@@ -22,7 +22,7 @@ import com.typesafe.config.Config;
  *   <li><b>intervalMs</b>: Milliseconds between messages (default: 1000).</li>
  *   <li><b>messagePrefix</b>: Prefix for the message content (default: "Message").</li>
  *   <li><b>maxMessages</b>: Maximum messages to send, -1 for unlimited (default: -1).</li>
- *   <li><b>metricsWindowSeconds</b>: Time window in seconds for throughput calculation (default: 5).</li>
+ *   <li><b>metricsWindowSeconds</b>: Time window in seconds for throughput calculation (default: 30).</li>
  * </ul>
  */
 public class DummyProducerService extends AbstractService {
@@ -43,7 +43,7 @@ public class DummyProducerService extends AbstractService {
         this.intervalMs = options.hasPath("intervalMs") ? options.getLong("intervalMs") : 1000L;
         this.messagePrefix = options.hasPath("messagePrefix") ? options.getString("messagePrefix") : "Message";
         this.maxMessages = options.hasPath("maxMessages") ? options.getLong("maxMessages") : -1L;
-        this.metricsWindowSeconds = options.hasPath("metricsWindowSeconds") ? options.getInt("metricsWindowSeconds") : 5;
+        this.metricsWindowSeconds = options.hasPath("metricsWindowSeconds") ? options.getInt("metricsWindowSeconds") : 30;
         this.throughputCounter = new SlidingWindowCounter(metricsWindowSeconds);
 
         @SuppressWarnings("unchecked")

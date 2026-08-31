@@ -335,9 +335,9 @@ public class PreExpandedHammingStrategy implements ILabelMatchingStrategy {
      */
     /**
      * Toroidal Manhattan distance between the caller's coordinates and a label's flat
-     * index, computed dimension-wise from the index and the world's strides without
-     * materializing a coordinate array. Yields the same value as
-     * {@link #toroidalManhattanDistance(int[], int[], int[])} over the decoded coordinate.
+     * index. The label's coordinate is decoded dimension-wise from the index and the
+     * world's strides without materializing a coordinate array, and each per-dimension
+     * difference wraps around the world, taking the shorter way around the torus.
      */
     private static int toroidalManhattanDistanceToFlat(int[] caller, int flatIndex, EnvironmentProperties props) {
         int distance = 0;
@@ -348,16 +348,6 @@ public class PreExpandedHammingStrategy implements ILabelMatchingStrategy {
             remaining -= labelCoord * stride;
             int diff = Math.abs(caller[i] - labelCoord);
             distance += Math.min(diff, props.getDimensionSize(i) - diff);
-        }
-        return distance;
-    }
-
-    private static int toroidalManhattanDistance(int[] a, int[] b, int[] shape) {
-        int distance = 0;
-        for (int i = 0; i < a.length; i++) {
-            int diff = Math.abs(a[i] - b[i]);
-            int wrapDiff = shape[i] - diff;
-            distance += Math.min(diff, wrapDiff);
         }
         return distance;
     }

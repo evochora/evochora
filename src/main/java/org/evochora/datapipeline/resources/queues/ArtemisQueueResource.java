@@ -151,7 +151,7 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
      *                  <li>{@code maxSizeBytes} - Maximum address size in bytes before BLOCK (default: 1 GB)</li>
      *                  <li>{@code producerWindowSize} - Producer credit window in bytes (default: 0 = Artemis default 64 KB)</li>
      *                  <li>{@code coalescingDelayMs} - Delay for batch coalescing (default: 0)</li>
-     *                  <li>{@code metricsWindowSeconds} - Throughput calculation window (default: 5)</li>
+     *                  <li>{@code metricsWindowSeconds} - Throughput calculation window (default: 30)</li>
      *                  <li>{@code estimatedBytesPerItem} - Override for memory estimation (default: 0 = auto)</li>
      *                </ul>
      */
@@ -160,7 +160,7 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
         Config defaults = ConfigFactory.parseMap(Map.of(
             "maxSizeBytes", 1073741824L, // 1 GB — off-heap journal storage, not Java heap
             "coalescingDelayMs", 0,
-            "metricsWindowSeconds", 5
+            "metricsWindowSeconds", 30
         ));
         Config finalConfig = options.withFallback(defaults);
 

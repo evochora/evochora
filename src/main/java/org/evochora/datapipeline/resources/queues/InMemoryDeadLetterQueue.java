@@ -56,7 +56,7 @@ public class InMemoryDeadLetterQueue<T> extends AbstractResource implements IDea
      *                <ul>
      *                  <li>capacity: Maximum number of messages (default: 10000)</li>
      *                  <li>primaryQueueName: Name of the primary queue this DLQ serves (optional)</li>
-     *                  <li>metricsWindowSeconds: Window for metrics calculation (default: 5)</li>
+     *                  <li>metricsWindowSeconds: Window for metrics calculation (default: 30)</li>
      *                </ul>
      */
     public InMemoryDeadLetterQueue(String name, Config options) {
@@ -64,7 +64,7 @@ public class InMemoryDeadLetterQueue<T> extends AbstractResource implements IDea
 
         Config defaults = ConfigFactory.parseMap(Map.of(
                 "capacity", 10000,
-                "metricsWindowSeconds", 5
+                "metricsWindowSeconds", 30
         ));
         Config finalConfig = options.withFallback(defaults);
 

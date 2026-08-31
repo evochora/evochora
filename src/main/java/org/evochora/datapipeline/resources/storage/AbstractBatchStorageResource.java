@@ -139,7 +139,7 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
         // Parse metrics window configuration (default: 5 seconds)
         this.metricsWindowSeconds = options.hasPath("metricsWindowSeconds")
             ? options.getInt("metricsWindowSeconds")
-            : 5;
+            : 30;
 
         // Initialize performance metrics trackers
         this.writeOpsCounter = new SlidingWindowCounter(metricsWindowSeconds);

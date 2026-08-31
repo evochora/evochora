@@ -88,7 +88,7 @@ public abstract class AbstractTopicResource<T extends Message, ACK> extends Abst
         // Initialize throughput metrics with configurable window
         int metricsWindow = options.hasPath("metricsWindowSeconds")
             ? options.getInt("metricsWindowSeconds")
-            : 60;  // Default: 60 seconds
+            : 30;  // Default: 30 seconds
         this.writeThroughput = new SlidingWindowCounter(metricsWindow);
         this.readThroughput = new SlidingWindowCounter(metricsWindow);
     }
@@ -201,8 +201,8 @@ public abstract class AbstractTopicResource<T extends Message, ACK> extends Abst
         metrics.put("messages_published", messagesPublished.get());
         metrics.put("messages_received", messagesReceived.get());
         metrics.put("messages_acknowledged", messagesAcknowledged.get());
-        metrics.put("write_throughput_per_sec", writeThroughput.getWindowSum());
-        metrics.put("read_throughput_per_sec", readThroughput.getWindowSum());
+        metrics.put("write_throughput_per_sec", writeThroughput.getRate());
+        metrics.put("read_throughput_per_sec", readThroughput.getRate());
     }
     
     /**
