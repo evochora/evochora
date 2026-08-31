@@ -129,18 +129,9 @@ public class PokeThermodynamicPolicy implements IThermodynamicPolicy {
             return 0;
         }
         
-        // Check if target is already occupied (this happens during execution, but we check here via targetInfo)
-        // Exception: PPK instructions (PPKR, PPKI, PPKS) first execute PEEK which clears the cell,
-        // so POKE will always succeed - we should charge the cost even if target appears occupied.
-        String instructionName = context.instruction().getName();
-        boolean isPPK = "PPKR".equals(instructionName) || "PPKI".equals(instructionName) || "PPKS".equals(instructionName);
-        
-        if (!isPPK && context.targetInfo().isPresent()) {
-            var target = context.targetInfo().get();
-            if (!target.molecule().isEmpty()) {
-                // Target is occupied, POKE will fail - no cost
-                return 0;
-            }
+        if (!writeCharged(context)) {
+            // Target is occupied, POKE will fail - no cost
+            return 0;
         }
 
         Molecule toWrite = getMoleculeToWrite(context.resolvedOperands());
@@ -170,6 +161,11 @@ public class PokeThermodynamicPolicy implements IThermodynamicPolicy {
             return 0;
         }
 
+        if (!writeCharged(context)) {
+            // Target is occupied, POKE will fail - a failed write dissipates nothing either
+            return 0;
+        }
+
         Molecule toWrite = getMoleculeToWrite(context.resolvedOperands());
         if (toWrite != null) {
             Rule rule = typeRules.get(toWrite.type());
@@ -189,6 +185,21 @@ public class PokeThermodynamicPolicy implements IThermodynamicPolicy {
         return 0;
     }
     
+    /**
+     * Reports whether write costs are charged: PPK instructions always pay (their PEEK
+     * clears the cell first), any other write pays only when the target cell is empty,
+     * because a write onto an occupied cell fails in execution and a failed instruction
+     * carries no write thermodynamics - neither energy nor entropy.
+     */
+    private boolean writeCharged(ThermodynamicContext context) {
+        String instructionName = context.instruction().getName();
+        boolean isPPK = "PPKR".equals(instructionName) || "PPKI".equals(instructionName) || "PPKS".equals(instructionName);
+        if (isPPK) {
+            return true;
+        }
+        return context.targetInfo().isEmpty() || context.targetInfo().get().molecule().isEmpty();
+    }
+
     private Molecule getMoleculeToWrite(List<Operand> operands) {
         if (operands != null && !operands.isEmpty()) {
             // For POKE/POKI/POKS, the value to write is always the first operand.
