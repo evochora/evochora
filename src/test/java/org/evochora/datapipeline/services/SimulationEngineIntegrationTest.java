@@ -289,6 +289,79 @@ class SimulationEngineIntegrationTest {
     }
 
     @Test
+    void engine_collectsRegisterValuesOnSampledTicks() throws InterruptedException, IOException {
+        // A failure-free endless loop of register instructions: the organism survives the
+        // whole run (simple.evo dies of repeated POKI penalties around tick 20), and almost
+        // every sampled tick's last instruction carries register arguments.
+        Path loopProgram = tempDir.resolve("register_loop.evo");
+        Files.writeString(loopProgram, """
+                START:
+                  SETI %DR0 DATA:1
+                  ADDI %DR0 DATA:1
+                  JMPI START
+                """);
+        Config sampledConfig = baseConfig
+                .withValue("samplingInterval", ConfigValueFactory.fromAnyRef(10))
+                .withValue("pauseTicks", ConfigValueFactory.fromAnyRef(List.of(100L)))
+                .withValue("organisms", ConfigValueFactory.fromAnyRef(List.of(Map.of(
+                        "program", loopProgram.toString(),
+                        "initialEnergy", 10000,
+                        "placement", Map.of("positions", List.of(5, 5))
+                ))));
+
+        SimulationEngine engine = new SimulationEngine("test-engine", sampledConfig, resources);
+
+        engine.start();
+        await().atMost(10, TimeUnit.SECONDS)
+                .untilAsserted(() -> assertEquals(AbstractService.State.PAUSED, engine.getCurrentState()));
+
+        // The engine enables execution-detail capture exactly for the ticks it samples.
+        // The test program executes register instructions on almost every tick, so with
+        // correct wiring the sampled states carry register values; a wiring regression
+        // (flag never set, or set for the wrong tick) yields zero such samples, because
+        // register values are collected only while the flag is on.
+        // counters[0]: sampled states with an organism; counters[1]: those whose organism
+        // carries register values.
+        int[] counters = new int[2];
+        while (true) {
+            try (StreamingBatch<TickDataChunk> batch = tickDataQueue.receiveBatch(100, 100, TimeUnit.MILLISECONDS)) {
+                if (batch.size() == 0) {
+                    break;
+                }
+                for (TickDataChunk chunk : batch) {
+                    if (chunk.hasSnapshot()) {
+                        countSampledState(chunk.getSnapshot().getTickNumber(),
+                                chunk.getSnapshot().getOrganismsList(), counters);
+                    }
+                    for (org.evochora.datapipeline.api.contracts.TickDelta delta : chunk.getDeltasList()) {
+                        countSampledState(delta.getTickNumber(), delta.getOrganismsList(), counters);
+                    }
+                }
+                batch.commit();
+            }
+        }
+        engine.stop();
+        assertEquals(11, counters[0], "ticks 0-100 with interval 10 yield 11 sampled states");
+        assertTrue(counters[1] > 0,
+                "sampled states must carry register values when the capture flag is wired to the sampled ticks");
+    }
+
+    private static void countSampledState(long tickNumber, List<OrganismState> organisms, int[] counters) {
+        if (organisms.isEmpty()) {
+            return;
+        }
+        OrganismState organism = organisms.get(0);
+        counters[0]++;
+        if (tickNumber > 0) {
+            assertTrue(organism.hasInstructionOpcodeId(),
+                    "every sampled state carries the executed instruction");
+        }
+        if (organism.getInstructionRegisterValuesBeforeCount() > 0) {
+            counters[1]++;
+        }
+    }
+
+    @Test
     void engine_shouldNotSampleWithLargeSamplingInterval() {
         Config sampledConfig = baseConfig
                 .withValue("samplingInterval", ConfigValueFactory.fromAnyRef(100))
