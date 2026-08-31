@@ -68,6 +68,8 @@ public abstract class AbstractService implements IService, IMonitorable {
      * Maximum number of errors to keep in memory. When exceeded, oldest errors are removed.
      * This prevents OOM in long-running services with frequent errors.
      * Subclasses can override this value if needed.
+     *
+     * @return Maximum error count.
      */
     protected int getMaxErrors() {
         return 10000;
@@ -442,7 +444,7 @@ public abstract class AbstractService implements IService, IMonitorable {
     /**
      * Gets a single required resource for a given port, ensuring it matches the expected type.
      * <p>
-     * <strong>Type Safety:</strong> While this method accepts any Class<T>, it is intended for
+     * <strong>Type Safety:</strong> While this method accepts any Class{@code <T>}, it is intended for
      * resource and capability interfaces. The runtime cast ensures type safety. Typically used
      * with IResource implementations or capability interfaces (e.g., IMetadataReader).
      *
@@ -495,7 +497,7 @@ public abstract class AbstractService implements IService, IMonitorable {
     /**
      * Gets a single optional resource for a given port, ensuring it matches the expected type.
      * <p>
-     * <strong>Type Safety:</strong> While this method accepts any Class<T>, it is intended for
+     * <strong>Type Safety:</strong> While this method accepts any Class{@code <T>}, it is intended for
      * resource and capability interfaces. The runtime cast ensures type safety. Typically used
      * with IResource implementations or capability interfaces (e.g., IMetadataReader).
      *

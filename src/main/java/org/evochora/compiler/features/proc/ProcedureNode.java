@@ -31,6 +31,9 @@ public record ProcedureNode(
 
     /**
      * A single parameter declaration with its name and source location.
+     *
+     * @param name Parameter name.
+     * @param sourceInfo Source location of parameter declaration.
      */
     public record ParamDecl(String name, SourceInfo sourceInfo) {}
 

@@ -1242,7 +1242,7 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
      * <ul>
      *   <li>storage-write - Returns a {@link MonitoredBatchStorageWriter} that tracks write metrics</li>
      *   <li>storage-read - Returns a {@link MonitoredBatchStorageReader} that tracks read metrics</li>
-     *   <li>storage-readwrite - Returns a {@link MonitoredBatchStorageReadWriter} for services needing both
+     *   <li>storage-readwrite - Returns a {@code MonitoredBatchStorageReadWriter} for services needing both
      *       read and write access (e.g., SimulationEngine in resume mode)</li>
      *   <li>analytics-write - Returns a {@link MonitoredAnalyticsStorageWriter} for analytics data</li>
      * </ul>
@@ -1536,7 +1536,7 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
      * <p>
      * Used for metrics tracking during streaming writes without requiring
      * the compressed data to be buffered in memory. Subclasses should use
-     * this in their {@link #writeAtomicStreaming} implementations.
+     * this in their {@code writeAtomicStreaming} implementations.
      * <p>
      * <strong>Usage Example:</strong>
      * <pre>

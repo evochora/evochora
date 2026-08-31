@@ -13,10 +13,10 @@ import java.util.Map;
  * any errors, and the status of all its resource connections.
  *
  * @param state    The current state of the service (e.g., RUNNING, PAUSED).
- * @param healthy  Whether the service reports itself as healthy (from {@link IService#isHealthy()}).
+ * @param healthy  Whether the service reports itself as healthy (from {@link org.evochora.datapipeline.api.resources.IMonitorable#isHealthy()}).
  * @param metrics  A map of metrics for the service.
  * @param errors   A list of operational errors reported by the service.
- * @param resourceBindings A list of {@link ResourceBinding} objects, one for each of the
+ * @param resourceBindings A list of {@link org.evochora.datapipeline.api.services.ResourceBinding} objects, one for each of the
  *                 service's resource connections.
  */
 public record ServiceStatus(

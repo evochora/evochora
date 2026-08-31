@@ -47,6 +47,12 @@ import com.typesafe.config.Config;
  */
 public abstract class AbstractAnalyticsPlugin implements IAnalyticsPlugin {
     
+    /**
+     * Protected default constructor for subclass initialization.
+     */
+    protected AbstractAnalyticsPlugin() {
+    }
+
     /** Plugin configuration from HOCON. */
     protected Config config;
     

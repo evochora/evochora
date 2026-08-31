@@ -38,6 +38,10 @@ public abstract class Instruction {
 
     /**
      * A public record describing the properties of a registered instruction.
+     *
+     * @param opcodeId The full opcode ID of the instruction.
+     * @param name The name of the instruction.
+     * @param family The instruction family class.
      */
     public record InstructionInfo(int opcodeId, String name, Class<? extends Instruction> family) {}
 

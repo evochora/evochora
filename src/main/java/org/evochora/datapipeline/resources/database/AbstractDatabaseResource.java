@@ -267,7 +267,7 @@ public abstract class AbstractDatabaseResource extends AbstractResource
     /**
      * Checks if metadata exists in the database.
      * <p>
-     * <strong>Capability:</strong> {@link org.evochora.datapipeline.api.resources.database.IMetadataReader#hasMetadata(String)}
+     * <strong>Capability:</strong> {@link IMetadataWriter#hasMetadata(String)}
      * <p>
      * Non-blocking check used for polling scenarios.
      *
@@ -282,7 +282,7 @@ public abstract class AbstractDatabaseResource extends AbstractResource
     /**
      * Retrieves the simulation run ID from metadata in the current schema.
      * <p>
-     * <strong>Capability:</strong> {@link org.evochora.datapipeline.api.resources.database.IMetadataReader#getRunIdInCurrentSchema()}
+     * <strong>Capability:</strong> {@link org.evochora.datapipeline.api.resources.database.IResourceSchemaAwareMetadataReader#getRunIdInCurrentSchema()}
      * <p>
      * This method reads the run-id from the metadata table without requiring
      * the run-id as a parameter. Used for run-id discovery scenarios where

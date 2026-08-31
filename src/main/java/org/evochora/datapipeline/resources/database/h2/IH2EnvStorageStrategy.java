@@ -1,6 +1,7 @@
 package org.evochora.datapipeline.resources.database.h2;
 
 import java.sql.Connection;
+import java.sql.PreparedStatement;
 import java.sql.SQLException;
 
 import org.evochora.datapipeline.api.resources.database.PendingChunkRead;

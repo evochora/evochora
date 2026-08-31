@@ -22,6 +22,9 @@ import org.evochora.datapipeline.api.resources.IResource;
  *   <li>Clean tests: No mock extensions needed</li>
  *   <li>Explicit contracts: Clear what capabilities are available</li>
  * </ul>
+ *
+ * @param <T> The message type read from the topic.
+ * @param <K> The acknowledgment key type.
  */
 public interface IResourceTopicReader<T extends Message, K> extends ITopicReader<T, K> {
     // Combination interface - inherits all methods from the two base interfaces

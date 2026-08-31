@@ -29,10 +29,8 @@ import java.util.concurrent.atomic.AtomicLong;
  *   <li>In-process deployment mode</li>
  *   <li>Single-instance applications</li>
  * </ul>
- * </p>
- *
  * <p>For distributed/cloud deployments, use a cloud-native DLQ implementation
- * (e.g., SQS-backed DLQ for AWS deployments).</p>
+ * (e.g., SQS-backed DLQ for AWS deployments).
  *
  * @param <T> The type of the original message contained in the DeadLetterMessage.
  */

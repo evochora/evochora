@@ -16,7 +16,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * Test service that reads and validates TickDataChunk batches from storage using the chunk batch API.
  * Used for integration testing of storage resources.
  * 
- * <h3>Configuration Options:</h3>
+ * <h2>Configuration Options:</h2>
  * <ul>
  *   <li><b>keyPrefix</b>: Prefix for filtering files (default: "test").</li>
  *   <li><b>intervalMs</b>: Milliseconds between polling cycles (default: 1000).</li>

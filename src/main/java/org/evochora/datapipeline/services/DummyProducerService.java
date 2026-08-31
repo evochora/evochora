@@ -17,7 +17,7 @@ import com.typesafe.config.Config;
  * A dummy producer service that sends Protobuf messages to an output queue.
  * It serves as a test service and a reference implementation.
  *
- * <h3>Configuration Options:</h3>
+ * <h2>Configuration Options:</h2>
  * <ul>
  *   <li><b>intervalMs</b>: Milliseconds between messages (default: 1000).</li>
  *   <li><b>messagePrefix</b>: Prefix for the message content (default: "Message").</li>

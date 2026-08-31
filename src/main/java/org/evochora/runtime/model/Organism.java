@@ -47,6 +47,7 @@ public class Organism {
      * @param opcodeId The opcode ID of the executed instruction.
      * @param rawArguments The raw argument values from the environment.
      * @param energyCost The total energy cost for executing this instruction.
+     * @param entropyDelta Change in entropy during execution.
      * @param registerValuesBefore Register values before instruction execution (for annotation display).
      *                             Maps register ID to register value (only for registers used as arguments).
      *                             {@code null} means the values were not collected: they are gathered

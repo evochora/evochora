@@ -3,13 +3,14 @@ package org.evochora.compiler.internal;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.stream.Collectors;
+import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.model.EnvironmentProperties;
 
 /**
  * Utility class for bidirectional conversion between int[] coordinates
  * and linearized Integer keys for Jackson serialization.
  * 
- * <h3>Usage</h3>
+ * <h2>Usage</h2>
  * <pre>{@code
  * // 2D world with shape [100, 100] and toroidal=true
  * EnvironmentProperties envProps = new EnvironmentProperties(new int[]{100, 100}, true);
@@ -20,7 +21,7 @@ import org.evochora.runtime.model.EnvironmentProperties;
  * int flatIndex = converter.linearizeCoordinate(coord); // = 5*100 + 10 = 510
  * }</pre>
  * 
- * <h3>Performance Characteristics</h3>
+ * <h2>Performance Characteristics</h2>
  * <ul>
  *   <li><strong>2D (100x100)</strong>: ~7.9 ms for 100 entries</li>
  *   <li><strong>3D (50x50x50)</strong>: ~1.4 ms for 1000 entries</li>
@@ -28,7 +29,7 @@ import org.evochora.runtime.model.EnvironmentProperties;
  *   <li><strong>Memory Overhead</strong>: ~544 KB for 10000 entries</li>
  * </ul>
  * 
- * <h3>Stride Calculation</h3>
+ * <h2>Stride Calculation</h2>
  * The strides come from {@link EnvironmentProperties}, so a linearized artifact uses the same
  * row-major convention as the running environment: the last dimension has stride 1. For a world
  * shape [W, H, D] that gives:

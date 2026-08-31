@@ -13,7 +13,7 @@ import java.util.Map;
  * This class reads logging settings from the configuration and applies them
  * to the Logback logging framework at runtime.
  * 
- * <h3>Configuration Structure:</h3>
+ * <h2>Configuration Structure:</h2>
  * <pre>
  * logging {
  *   format = "PLAIN"  # Can be "PLAIN" or "JSON". Defaults to JSON

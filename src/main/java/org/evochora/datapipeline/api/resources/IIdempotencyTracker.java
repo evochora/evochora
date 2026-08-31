@@ -13,7 +13,6 @@ package org.evochora.datapipeline.api.resources;
  *   <li>In-process mode: Can use in-memory data structures (with TTL-based cleanup)</li>
  *   <li>Cloud mode: Can use distributed caches like Redis, DynamoDB, or Memcached</li>
  * </ul>
- * </p>
  *
  * @param <K> The type of the idempotency key (typically String, Long, or UUID).
  */

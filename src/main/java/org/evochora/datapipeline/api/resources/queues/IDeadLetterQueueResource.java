@@ -23,7 +23,6 @@ import org.evochora.datapipeline.api.contracts.SystemContracts;
  *   <li>In-process mode: Can be backed by in-memory queues or local files</li>
  *   <li>Cloud mode: Can be backed by managed services like AWS SQS DLQ, Azure Service Bus DLQ, etc.</li>
  * </ul>
- * </p>
  *
  * @param <T> The type of original message elements this DLQ handles (used for type safety in service code).
  */

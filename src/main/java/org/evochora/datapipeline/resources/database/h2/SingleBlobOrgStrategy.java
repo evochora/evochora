@@ -125,7 +125,7 @@ public class SingleBlobOrgStrategy extends AbstractH2OrgStorageStrategy {
      * <p>
      * Serializes all organisms of the tick into a single compressed BLOB via
      * {@link #serializeOrganisms(TickData)}. Organism metadata deduplication is
-     * handled by {@link AbstractH2OrgStorageStrategy#addOrganismMetadataBatch(TickData)}.
+     * handled by {@link AbstractH2OrgStorageStrategy#addOrganismMetadataBatch(AbstractH2OrgStorageStrategy.StreamingSession, TickData)}.
      */
     @Override
     public void addOrganismTick(Connection conn, TickData tick) throws SQLException {

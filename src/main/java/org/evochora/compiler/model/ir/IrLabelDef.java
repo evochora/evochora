@@ -4,6 +4,9 @@ import org.evochora.compiler.api.SourceInfo;
 
 /**
  * Label definition in the IR stream.
+ *
+ * @param name Label name.
+ * @param source Source info location.
  */
 public record IrLabelDef(String name, SourceInfo source) implements IrItem {}
 

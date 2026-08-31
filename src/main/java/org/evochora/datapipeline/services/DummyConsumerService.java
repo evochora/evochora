@@ -24,7 +24,7 @@ import com.typesafe.config.Config;
  * optional idempotency guarantees and dead letter queue support.
  * It serves as a test service and a reference implementation for production-ready message processing.
  *
- * <h3>Configuration Options:</h3>
+ * <h2>Configuration Options:</h2>
  * <ul>
  *   <li><b>processingDelayMs</b>: Artificial delay per message in milliseconds (default: 0).</li>
  *   <li><b>logReceivedMessages</b>: Whether to log received messages at DEBUG level (default: false).</li>
@@ -33,7 +33,7 @@ import com.typesafe.config.Config;
  *   <li><b>maxRetries</b>: Maximum processing attempts before sending to DLQ (default: 3).</li>
  * </ul>
  *
- * <h3>Resources:</h3>
+ * <h2>Resources:</h2>
  * <ul>
  *   <li><b>input</b>: IInputQueueResource&lt;T&gt; - Required input queue</li>
  *   <li><b>idempotencyTracker</b>: IIdempotencyTracker&lt;Integer&gt; - Optional idempotency tracker</li>

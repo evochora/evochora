@@ -23,7 +23,7 @@ import java.util.Map;
  * @param registerAliasMap A map from register alias names (e.g., "%MY_REG") to their physical register index.
  * @param procNameToParamNames A map from procedure names to a list of their parameter information (name and type).
  * @param tokenMap A map from SourceInfo to TokenInfo for deterministic token classification.
- * @param tokenLookup A map from fileName to lineNumber to columnNumber to List<TokenInfo> for efficient file-line-column-based lookup.
+ * @param tokenLookup A map from fileName to lineNumber to columnNumber to {@code List<TokenInfo>} for efficient file-line-column-based lookup.
  * @param sourceLineToInstructions A map from source line identifier (fileName:lineNumber) to a list of machine instructions
  *                                 that were generated from that source line, sorted by linear address.
  * @param labelValueToName A map from label hash value to label name (for reverse lookup in visualizer).
@@ -78,7 +78,7 @@ public record ProgramArtifact(
      * <p>This method linearizes all maps with int[] keys to Integer keys
      * to enable Jackson serialization. The original data remains unchanged.</p>
      * 
-     * <h3>Usage</h3>
+     * <p><b>Usage:</b></p>
      * <pre>{@code
      * ProgramArtifact artifact = ...;
      * EnvironmentProperties envProps = new EnvironmentProperties(new int[]{100, 100}, true);
@@ -88,10 +88,10 @@ public record ProgramArtifact(
      * String json = objectMapper.writeValueAsString(linearized);
      * }</pre>
      * 
-     * <h3>Linearized Fields</h3>
+     * <p><b>Linearized Fields:</b></p>
      * <ul>
-     *   <li><strong>machineCodeLayout</strong>: Map<int[], Integer> → Map<Integer, Integer></li>
-     *   <li><strong>initialWorldObjects</strong>: Map<int[], PlacedMolecule> → Map<Integer, PlacedMolecule></li>
+     *   <li><strong>machineCodeLayout</strong>: {@code Map<int[], Integer>} &rarr; {@code Map<Integer, Integer>}</li>
+     *   <li><strong>initialWorldObjects</strong>: {@code Map<int[], PlacedMolecule>} &rarr; {@code Map<Integer, PlacedMolecule>}</li>
      * </ul>
      * 
      * @param envProps The environment properties containing world shape and toroidal information

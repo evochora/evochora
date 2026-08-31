@@ -164,7 +164,7 @@ public class RowPerOrganismStrategy extends AbstractH2OrgStorageStrategy {
      * Writes one row per organism per tick with extracted columns (energy, ip, dv,
      * data_pointers) and a compressed {@code runtime_state_blob} containing registers,
      * stacks, and instruction data. Organism metadata deduplication is handled by
-     * {@link AbstractH2OrgStorageStrategy#addOrganismMetadataBatch(TickData)}.
+     * {@link AbstractH2OrgStorageStrategy#addOrganismMetadataBatch(AbstractH2OrgStorageStrategy.StreamingSession, TickData)}.
      */
     @Override
     public void addOrganismTick(Connection conn, TickData tick) throws SQLException {

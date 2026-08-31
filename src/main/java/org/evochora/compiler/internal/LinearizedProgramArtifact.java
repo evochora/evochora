@@ -14,11 +14,11 @@ import java.util.Map;
  * Jackson-compatible version of ProgramArtifact with Integer keys for maps
  * that originally had int[] keys.
  * 
- * <h3>Purpose</h3>
+ * <h2>Purpose</h2>
  * This class solves the Jackson serialization problem with int[] map keys
  * by converting them to linearized Integer keys.
  * 
- * <h3>Usage</h3>
+ * <h2>Usage</h2>
  * <pre>{@code
  * // Convert ProgramArtifact to LinearizedProgramArtifact
  * ProgramArtifact original = ...;
@@ -33,27 +33,43 @@ import java.util.Map;
  * never read back. A stored artifact is restored from the protobuf representation in
  * {@code metadata_contracts.proto} instead, which covers every field of the record.</p>
  * 
- * <h3>Linearized Fields</h3>
- * Only the following fields are linearized (int[] → Integer):
+ * <h2>Linearized Fields</h2>
+ * Only the following fields are linearized (int[] &rarr; Integer):
  * <ul>
- *   <li><strong>machineCodeLayout</strong>: Map<int[], Integer> → Map<Integer, Integer></li>
- *   <li><strong>initialWorldObjects</strong>: Map<int[], PlacedMolecule> → Map<Integer, PlacedMolecule></li>
+ *   <li><strong>machineCodeLayout</strong>: {@code Map<int[], Integer>} &rarr; {@code Map<Integer, Integer>}</li>
+ *   <li><strong>initialWorldObjects</strong>: {@code Map<int[], PlacedMolecule>} &rarr; {@code Map<Integer, PlacedMolecule>}</li>
  * </ul>
  * 
- * <h3>Unchanged Fields</h3>
+ * <h2>Unchanged Fields</h2>
  * All other fields remain unchanged:
  * <ul>
- *   <li><strong>sourceMap</strong>: Map<Integer, SourceInfo> (unchanged)</li>
- *   <li><strong>callSiteBindings</strong>: Map<Integer, Map<Integer, Integer>> (unchanged)</li>
- *   <li><strong>relativeCoordToLinearAddress</strong>: Map<String, Integer> (unchanged)</li>
- *   <li><strong>linearAddressToCoord</strong>: Map<Integer, int[]> (unchanged)</li>
- *   <li><strong>registerAliasMap</strong>: Map<String, Integer> (unchanged)</li>
- *   <li><strong>procNameToParamNames</strong>: Map<String, List<ParamInfo>> (unchanged)</li>
- *   <li><strong>tokenMap</strong>: Map<SerializableSourceInfo, TokenInfo> (unchanged)</li>
- *   <li><strong>tokenLookup</strong>: Map<String, Map<Integer, Map<Integer, List<TokenInfo>>> (unchanged)</li>
- *   <li><strong>sourceLineToInstructions</strong>: Map<String, List<MachineInstructionInfo>> (unchanged)</li>
+ *   <li><strong>sourceMap</strong>: {@code Map<Integer, SerializableSourceInfo>} (unchanged)</li>
+ *   <li><strong>callSiteBindings</strong>: {@code Map<Integer, Map<Integer, Integer>>} (unchanged)</li>
+ *   <li><strong>relativeCoordToLinearAddress</strong>: {@code Map<String, Integer>} (unchanged)</li>
+ *   <li><strong>linearAddressToCoord</strong>: {@code Map<Integer, int[]>} (unchanged)</li>
+ *   <li><strong>registerAliasMap</strong>: {@code Map<String, Integer>} (unchanged)</li>
+ *   <li><strong>procNameToParamNames</strong>: {@code Map<String, List<ParamInfo>>} (unchanged)</li>
+ *   <li><strong>tokenMap</strong>: {@code Map<SerializableSourceInfo, TokenInfo>} (unchanged)</li>
+ *   <li><strong>tokenLookup</strong>: {@code Map<String, Map<Integer, Map<Integer, List<TokenInfo>>>>} (unchanged)</li>
+ *   <li><strong>sourceLineToInstructions</strong>: {@code Map<String, List<MachineInstructionInfo>>} (unchanged)</li>
  * </ul>
  * 
+ * @param programId Unique identifier for the compiled program.
+ * @param sources Map of source file names to their lines of code.
+ * @param machineCodeLayout Map from linearized coordinates to molecule values.
+ * @param initialWorldObjects Map from linearized coordinates to placed molecules.
+ * @param sourceMap Map from linear address to serializable source info.
+ * @param callSiteBindings Map from linear address of CALL to target coordinates.
+ * @param relativeCoordToLinearAddress Map from relative coordinate string to linear address.
+ * @param linearAddressToCoord Map from linear address to relative coordinate array.
+ * @param registerAliasMap Map from register alias names to physical register indices.
+ * @param procNameToParamNames Map from procedure names to parameter info lists.
+ * @param tokenMap Map from serializable source info to token info.
+ * @param tokenLookup Map from file/line/col to token info list.
+ * @param sourceLineToInstructions Map from source line to machine instruction info list.
+ * @param labelValueToName Map from label hash value to label name.
+ * @param labelNameToValue Map from label name to label hash value.
+ * @param envProps Environment properties used for linearization.
  * @see CoordinateConverter
  * @see ProgramArtifact
  * @since 1.0

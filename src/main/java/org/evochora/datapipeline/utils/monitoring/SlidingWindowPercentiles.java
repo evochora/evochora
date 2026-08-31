@@ -51,7 +51,7 @@ public class SlidingWindowPercentiles {
      * Creates a new SlidingWindowPercentiles tracker with default latency buckets.
      *
      * @param windowSeconds The size of the sliding window in seconds (typically 5)
-     * @throws IllegalArgumentException if windowSeconds <= 0
+     * @throws IllegalArgumentException if windowSeconds &lt;= 0
      */
     public SlidingWindowPercentiles(int windowSeconds) {
         if (windowSeconds <= 0) {
