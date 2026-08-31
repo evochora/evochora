@@ -428,6 +428,25 @@ void send(T message) throws InterruptedException;
 
 ## CI & PR Expectations
 
-- CI: GitHub Actions that run `./gradlew build` on Ubuntu & Windows.
-- PR must include: summary, changelog, follow-up suggestions, green CI.
-- Branch naming: `jules/<short-purpose>`.
+- CI: GitHub Actions that run `./gradlew build` on Ubuntu & Windows (includes the PMD gate).
+- PR must include: a summary of what changed and why, the verification that was performed, green CI.
+- Branch naming: short and purpose-describing, e.g. `feature/<topic>`.
+
+### Pull Request Workflow
+
+1. Git operations (branch, commit, push, PR) are performed by the agent — each one only
+   with the maintainer's explicit go-ahead.
+2. Before every push: fetch and merge `origin/main` (parallel sessions work on this
+   repository); when new commits arrived, merge and test first — never push unmerged.
+3. Before every push: run `./gradlew check`, not just `test` — the CI has a PMD gate.
+4. After every push: wait for CI **and** for all configured automated reviews before
+   anything else happens.
+5. Capture every review finding completely — suggestions included —, verify each one
+   against the code yourself (reviews can contradict each other), and walk them through
+   with the maintainer one point per message, each with a recommendation.
+6. Apply the agreed changes, push again — the round starts over, until a round ends with
+   no open points.
+7. Small findings are fixed on the branch, never deferred to other PRs.
+8. PR scope: rather larger, related fixes bundled; whether a change goes through a PR or
+   is pushed directly is the maintainer's call, based on risk and a look at the diff.
+9. Merging happens only after the maintainer's approval.
