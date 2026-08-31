@@ -47,7 +47,43 @@ committed state, for example via `git archive <commit> | tar -x -C <dir>`. Never
 working directory that contains uncommitted changes, and never mix a jar built from one tree
 with a comparison run from another.
 
-## Required conditions
+## The dedicated benchmark host
+
+The standard environment for benchmark runs is the project's dedicated benchmark host, driven by
+
+```bash
+tools/bench-server/run-benchmark.sh <jmh-jar> <local-result.json>
+```
+
+The host provides by construction what the conditions below demand from a developer machine:
+dedicated fixed-clock CPU cores (no turbo, no thermal drift), zero steal time, no swap, and no
+competing workload. The script refuses to measure when the host shows load or CPU steal, uploads
+the jar under a unique name, runs it in a throw-away container from a digest-pinned JRE image,
+fetches the JSON result, and removes everything it created from the host — also when the run
+fails. The ssh target comes from `BENCH_SSH`, the JMH selector and parameters from
+`BENCH_JMH_ARGS`; both sides of a comparison must use the same host, the same image digest, and
+the same parameters.
+
+For a measurement that a decision rests on, use the decision profile:
+
+```bash
+BENCH_JMH_ARGS="SimulationBenchmark.tick -p parallelism=4 -f 3 -wi 3 -i 8 -jvmArgsAppend -Xms8g" \
+    tools/bench-server/run-benchmark.sh <jmh-jar> <local-result.json>
+```
+
+Three forks of eight three-second iterations (~13 minutes for the full sweep) bring the 99.9 %
+confidence interval down to roughly 1.5–3.5 % of the score, and the fixed pre-sized heap removes
+heap-resizing noise; the class defaults (two forks, five iterations, ~5 minutes) are for quick
+looks, not for verdicts. During a run the script pauses the host's periodic maintenance timers
+and restarts them afterwards. If a single iteration collapses in an otherwise flat fork, some
+co-tenant still interfered: re-measure that combination instead of accepting the widened error.
+
+The host's CPU architecture (currently ARM Neoverse-N1) differs from typical development
+machines. Relative comparisons of algorithmic changes carry over; for changes whose effect
+depends on the microarchitecture — memory layout, false sharing, thread scheduling — confirm the
+verdict on the target machine under the conditions below before relying on it.
+
+## Required conditions (when measuring on a developer machine)
 
 The simulation saturates its execution threads (main thread and workers) for the whole run. On most modern CPUs, and on
 every laptop, this triggers turbo-boost and thermal-throttling behavior: the first seconds run
@@ -95,7 +131,9 @@ parallelism levels and to restrict a run to a single program or population
 the `@Param` values cannot be overridden that way.
 
 The class defaults are two forks, two warmup iterations of three seconds, and five measurement
-iterations of three seconds. Keep them for comparisons; a single fork is not a measurement.
+iterations of three seconds. They are the quick-look configuration; a comparison that decides
+about a change uses the decision profile described for the benchmark host above. A single fork
+is not a measurement.
 
 While the benchmark runs, observe CPU frequency and temperature (on Linux:
 `/sys/devices/system/cpu/cpu*/cpufreq/scaling_cur_freq` and
