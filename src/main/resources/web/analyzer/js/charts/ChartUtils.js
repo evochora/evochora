@@ -122,12 +122,17 @@ export function axisTicks(format) {
  * shortens them to "7.7M"; a tooltip describes one point and can be exact - but seven digits in a
  * row cannot be read, so they are grouped.
  *
+ * A label that is not a number is passed through as it stands: an x axis of categories has no
+ * tick to name.
+ *
  * @param {Array<{label: string}>} items - The hovered items, as Chart.js passes them
  * @returns {string} The title line
  */
 export function tooltipTitle(items) {
-    const tick = Number(items[0].label);
-    return 'Tick ' + (Number.isFinite(tick) ? tick.toLocaleString('en-US') : items[0].label);
+    const label = items[0].label;
+    const tick = Number(label);
+    // A chart whose x axis carries categories rather than ticks has nothing to call a tick here
+    return Number.isFinite(tick) && label !== '' ? 'Tick ' + tick.toLocaleString('en-US') : label;
 }
 
 /**

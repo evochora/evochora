@@ -74,6 +74,8 @@ export function render(canvas, data, config) {
                         borderColor: '#333',
                         borderWidth: 1,
                         callbacks: {
+                            // Only a tick axis has a tick to name; a category label speaks for
+                            // itself, and tooltipTitle passes it through
                             title: tooltipTitle,
                             // Counts, as the axis below states them
                             label: context => {

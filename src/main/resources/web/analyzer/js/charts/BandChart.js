@@ -166,8 +166,11 @@ export function render(canvas, data, config) {
                             title: tooltipTitle,
                             label: context => {
                                 const name = context.dataset.label || '';
+                                // The second axis carries its own quantity, and its own format
+                                const format = context.dataset.yAxisID === 'y2'
+                                    ? config.y2Format : config.yFormat;
                                 return (name ? name + ': ' : '')
-                                    + tooltipValue(context.parsed.y, config.yFormat);
+                                    + tooltipValue(context.parsed.y, format);
                             },
                             // Hide tooltips for boundary lines
                             filter: item => !item.dataset.label.startsWith('_')
