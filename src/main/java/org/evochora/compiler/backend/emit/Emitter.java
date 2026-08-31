@@ -45,6 +45,9 @@ public class Emitter {
      * @param isa The instruction set architecture for opcode and register resolution.
      * @param contributorRegistry Registry of emission contributors for extracting metadata from IR.
      * @param sources A map of source file names to their content.
+     * @param tokenMap Token classification per source position, copied into the artifact unchanged.
+     * @param tokenLookup The same token classification indexed by file name, line and column,
+     *                    copied into the artifact unchanged.
      * @return The final, compiled {@link ProgramArtifact}.
      * @throws CompilationException if an error occurs during emission.
      */

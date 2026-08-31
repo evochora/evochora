@@ -21,6 +21,9 @@ public final class EmissionContributorRegistry {
     }
 
     /**
+     * Returns the contributors in registration order; the emitter invokes them in that
+     * order for every IR item.
+     *
      * @return The list of registered contributors.
      */
     public List<IEmissionContributor> contributors() {
