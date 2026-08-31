@@ -18,6 +18,13 @@ public class ScopeTracker {
 
     private final SymbolTable symbolTable;
 
+    /**
+     * Creates a tracker over the given symbol table. The table is shared, not copied:
+     * every scope change made through this tracker is visible to all other users of
+     * the same table.
+     *
+     * @param symbolTable the symbol table whose current scope is moved
+     */
     public ScopeTracker(SymbolTable symbolTable) {
         this.symbolTable = symbolTable;
     }

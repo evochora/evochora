@@ -13,6 +13,8 @@ import java.util.Objects;
 public record ParameterBinding(String targetRegister) implements AstNode, IParameterBinding {
 
     /**
+     * Rejects a missing target register, since a binding without one cannot be resolved.
+     *
      * @throws NullPointerException if {@code targetRegister} is null
      */
     public ParameterBinding {

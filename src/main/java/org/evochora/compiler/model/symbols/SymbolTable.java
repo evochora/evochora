@@ -41,6 +41,12 @@ public class SymbolTable {
             this.name = name;
         }
 
+        /**
+         * Returns this scope's display name, used for annotations and debug output.
+         * Names are not unique and carry no identity — scopes are compared by reference.
+         *
+         * @return the scope name, e.g. "global" or the qualified procedure name "MAIN.INIT"
+         */
         public String name() {
             return name;
         }
@@ -122,6 +128,10 @@ public class SymbolTable {
 
     /**
      * Gets the current module alias chain.
+     *
+     * @return the alias chain set by the last {@link #setCurrentModule(String)} call;
+     *         the empty string for a root module compiled without a prefix, and
+     *         {@code null} before any module has been set
      */
     public String getCurrentAliasChain() {
         return currentAliasChain;
@@ -129,6 +139,9 @@ public class SymbolTable {
 
     /**
      * Gets the module scope for the given alias chain, or empty if not registered.
+     *
+     * @param aliasChain the alias chain identifying the module placement
+     * @return the module scope, or empty if nothing is registered under that chain
      */
     public Optional<ModuleScope> getModuleScope(String aliasChain) {
         return Optional.ofNullable(modules.get(aliasChain));
@@ -136,6 +149,9 @@ public class SymbolTable {
 
     /**
      * Gets the module scope map (for multi-module iteration).
+     *
+     * @return an unmodifiable map from alias chain to module scope; the scopes it
+     *         contains become immutable only once the table is frozen
      */
     public Map<String, ModuleScope> getModules() {
         return Collections.unmodifiableMap(modules);
@@ -198,6 +214,9 @@ public class SymbolTable {
 
     /**
      * Associates an AST node with its scope. Called by ProcedureSymbolCollector during pass 1.
+     *
+     * @param node the AST node that opens the scope, used as the lookup key
+     * @param scope the scope traversal should enter when it reaches that node
      */
     public void registerNodeScope(AstNode node, Scope scope) {
         guardFrozen();
@@ -206,6 +225,9 @@ public class SymbolTable {
 
     /**
      * Returns the scope associated with the given AST node, or null if none.
+     *
+     * @param node the AST node to look up
+     * @return the scope registered for the node, or {@code null} if it opens none
      */
     public Scope getNodeScope(AstNode node) {
         return nodeScopeMap.get(node);

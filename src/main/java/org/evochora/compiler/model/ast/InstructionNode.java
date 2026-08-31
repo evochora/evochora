@@ -18,6 +18,10 @@ public record InstructionNode(
         SourceInfo sourceInfo
 ) implements AstNode, ISourceLocatable {
 
+    /**
+     * Normalizes a {@code null} argument list to an empty list, so {@link #arguments()}
+     * and {@link #getChildren()} never yield {@code null}.
+     */
     public InstructionNode {
         Objects.requireNonNull(arguments, "arguments");
     }
