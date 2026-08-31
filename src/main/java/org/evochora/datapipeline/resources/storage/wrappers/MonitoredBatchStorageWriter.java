@@ -37,9 +37,11 @@ public class MonitoredBatchStorageWriter implements IBatchStorageWrite, IWrapped
     private final AtomicLong bytesWritten = new AtomicLong(0);
     private final AtomicLong writeErrors = new AtomicLong(0);
     private final AtomicLong messagesWritten = new AtomicLong(0);
+    private final AtomicLong chunksWritten = new AtomicLong(0);
 
     // Performance metrics (sliding window using unified utils)
     private final SlidingWindowCounter batchesCounter;
+    private final SlidingWindowCounter chunksCounter;
     private final SlidingWindowCounter bytesCounter;
     private final SlidingWindowPercentiles latencyTracker;
 
@@ -51,6 +53,7 @@ public class MonitoredBatchStorageWriter implements IBatchStorageWrite, IWrapped
         int windowSeconds = Integer.parseInt(context.parameters().getOrDefault("metricsWindowSeconds", "30"));
         
         this.batchesCounter = new SlidingWindowCounter(windowSeconds);
+        this.chunksCounter = new SlidingWindowCounter(windowSeconds);
         this.bytesCounter = new SlidingWindowCounter(windowSeconds);
         this.latencyTracker = new SlidingWindowPercentiles(windowSeconds);
     }
@@ -58,9 +61,15 @@ public class MonitoredBatchStorageWriter implements IBatchStorageWrite, IWrapped
     /**
      * Records a write operation for performance tracking.
      * This is an O(1) operation using unified monitoring utils.
+     *
+     * @param chunkCount   chunks contained in this write, zero when a single message was written
+     * @param bytes        compressed bytes written
+     * @param latencyNanos duration of the write
      */
-    private void recordWrite(int batchSize, long bytes, long latencyNanos) {
+    private void recordWrite(int chunkCount, long bytes, long latencyNanos) {
         batchesCounter.recordCount();
+        chunksWritten.addAndGet(chunkCount);
+        chunksCounter.recordSum(chunkCount);
         bytesCounter.recordSum(bytes);
         latencyTracker.record(latencyNanos);
     }
@@ -76,9 +85,9 @@ public class MonitoredBatchStorageWriter implements IBatchStorageWrite, IWrapped
             long bytes = message.getSerializedSize();
             bytesWritten.addAndGet(bytes);
 
-            // Record performance metrics (count as 1 message batch)
+            // One write operation, but no chunks: this path writes a single message
             long latencyNanos = System.nanoTime() - startNanos;
-            recordWrite(1, bytes, latencyNanos);
+            recordWrite(0, bytes, latencyNanos);
 
             return path;
         } catch (IOException e) {
@@ -132,7 +141,10 @@ public class MonitoredBatchStorageWriter implements IBatchStorageWrite, IWrapped
      *   <li>{@code messages_written}: cumulative single-message write count</li>
      *   <li>{@code bytes_written}: cumulative compressed bytes written to storage</li>
      *   <li>{@code write_errors}: cumulative write error count</li>
+     *   <li>{@code chunks_written}: cumulative chunks written, counting the chunks inside each
+     *       batch rather than the batches themselves</li>
      *   <li>{@code batches_per_sec}: sliding window batch write rate</li>
+     *   <li>{@code chunks_per_sec}: sliding window chunk write rate</li>
      *   <li>{@code bytes_per_sec}: sliding window compressed byte throughput</li>
      *   <li>{@code avg_write_latency_ms}: sliding window average write latency in milliseconds</li>
      * </ul>
@@ -144,7 +156,9 @@ public class MonitoredBatchStorageWriter implements IBatchStorageWrite, IWrapped
             "messages_written", messagesWritten.get(),
             "bytes_written", bytesWritten.get(),
             "write_errors", writeErrors.get(),
+            "chunks_written", chunksWritten.get(),
             "batches_per_sec", batchesCounter.getRate(),
+            "chunks_per_sec", chunksCounter.getRate(),
             "bytes_per_sec", bytesCounter.getRate(),
             "avg_write_latency_ms", latencyTracker.getAverage() / 1_000_000.0  // Convert nanos to ms
         );
