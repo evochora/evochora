@@ -52,7 +52,7 @@ public class MonitoredBatchStorageReader implements IResourceBatchStorageRead, I
         this.delegate = delegate;
         this.context = context;
         
-        // Configuration hierarchy: Context parameter > Resource option > Default (5)
+        // Configuration hierarchy: Context parameter > Resource option > Default (30)
         int windowSeconds = Integer.parseInt(context.parameters().getOrDefault("metricsWindowSeconds", "30"));
         
         this.readsCounter = new SlidingWindowCounter(windowSeconds);

@@ -136,7 +136,7 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
             }
         }
 
-        // Parse metrics window configuration (default: 5 seconds)
+        // Parse metrics window configuration (default: 30 seconds)
         this.metricsWindowSeconds = options.hasPath("metricsWindowSeconds")
             ? options.getInt("metricsWindowSeconds")
             : 30;
