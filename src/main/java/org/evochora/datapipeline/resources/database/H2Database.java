@@ -77,7 +77,7 @@ public class H2Database extends AbstractDatabaseResource
      *                log output
      * @param options resource configuration; read here are {@code username} (default {@code sa}),
      *                {@code password} (default empty), {@code maxPoolSize} (default 10),
-     *                {@code minIdle} (default 2), {@code metricsWindowSeconds} (default 5),
+     *                {@code minIdle} (default 2), {@code metricsWindowSeconds} (default 30),
      *                {@code readerConnectionWarningThresholdMs} (default 30000),
      *                {@code metadataCacheSize} (default 100) and the storage strategy sections
      * @throws RuntimeException if the database cannot be reached or the connection pool cannot be

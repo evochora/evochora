@@ -56,7 +56,7 @@ public class MonitoredBatchStorageReader implements IResourceBatchStorageRead, I
      *
      * @param delegate the reader every call is forwarded to
      * @param context  the binding context; its {@code metricsWindowSeconds} parameter sizes the
-     *                 sliding metric windows (default 5)
+     *                 sliding metric windows (default 30)
      * @throws NumberFormatException if the {@code metricsWindowSeconds} parameter is not an integer
      */
     public MonitoredBatchStorageReader(IResourceBatchStorageRead delegate, ResourceContext context) {

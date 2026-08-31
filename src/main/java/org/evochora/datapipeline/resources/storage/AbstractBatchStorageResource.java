@@ -93,7 +93,7 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
     protected final ICompressionCodec codec;
     /**
      * Length in seconds of the sliding window behind the throughput and latency metrics
-     * ({@code metricsWindowSeconds}, default 5).
+     * ({@code metricsWindowSeconds}, default 30).
      */
     protected final int metricsWindowSeconds;
 
@@ -141,7 +141,7 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
      * @param name    resource name from the configuration
      * @param options resource configuration; read here are the compression settings,
      *                {@code folderStructure.levels} (default {@code [100000000, 100000]}) and
-     *                {@code metricsWindowSeconds} (default 5)
+     *                {@code metricsWindowSeconds} (default 30)
      * @throws IllegalArgumentException if {@code folderStructure.levels} is present but empty, or
      *                                  contains a level that is not positive
      * @throws IllegalStateException    if the compression codec cannot be created or validated

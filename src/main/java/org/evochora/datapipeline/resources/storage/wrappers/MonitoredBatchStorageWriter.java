@@ -53,7 +53,7 @@ public class MonitoredBatchStorageWriter implements IBatchStorageWrite, IWrapped
      *
      * @param delegate the writer every call is forwarded to
      * @param context  the binding context; its {@code metricsWindowSeconds} parameter sizes the
-     *                 sliding metric windows (default 5)
+     *                 sliding metric windows (default 30)
      * @throws NumberFormatException if the {@code metricsWindowSeconds} parameter is not an integer
      */
     public MonitoredBatchStorageWriter(IBatchStorageWrite delegate, ResourceContext context) {
