@@ -8,9 +8,6 @@ import org.evochora.compiler.model.ast.IModuleContextBoundary;
  * This is an internal directive injected by the preprocessor.
  */
 public class PopCtxNode implements AstNode, IModuleContextBoundary {
-    public PopCtxNode() {
-    }
-
     @Override
     public boolean isPush() {
         return false;

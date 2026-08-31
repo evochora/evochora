@@ -7,4 +7,5 @@
     <rule ref="category/java/codestyle.xml/UnnecessaryImport"/>
     <rule ref="category/java/bestpractices.xml/UnusedPrivateMethod"/>
     <rule ref="category/java/bestpractices.xml/UnusedPrivateField"/>
+    <rule ref="category/java/codestyle.xml/UnnecessaryConstructor"/>
 </ruleset>
