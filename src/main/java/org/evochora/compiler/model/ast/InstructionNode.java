@@ -19,8 +19,10 @@ public record InstructionNode(
 ) implements AstNode, ISourceLocatable {
 
     /**
-     * Normalizes a {@code null} argument list to an empty list, so {@link #arguments()}
-     * and {@link #getChildren()} never yield {@code null}.
+     * Rejects a missing argument list, so that {@link #arguments()} and {@link #getChildren()}
+     * never yield {@code null}. An instruction without arguments carries an empty list.
+     *
+     * @throws NullPointerException if {@code arguments} is null
      */
     public InstructionNode {
         Objects.requireNonNull(arguments, "arguments");
