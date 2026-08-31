@@ -95,6 +95,9 @@ public abstract class Instruction {
     private static String[] NAMES_ARRAY = new String[0];
     private static InstructionSignature[] SIGNATURES_ARRAY = new InstructionSignature[0];
 
+    /** Shared empty array for instructions whose opcode carries no arguments. */
+    private static final int[] EMPTY_RAW_ARGUMENTS = new int[0];
+
     /**
      * Whether {@link #init()} has registered the instruction set.
      * <p>
@@ -208,40 +211,23 @@ public abstract class Instruction {
                 ? OPERAND_SOURCES_ARRAY[fullOpcodeId]
                 : OPERAND_SOURCES.get(fullOpcodeId);
         if (sources == null) {
+            this.rawArguments = EMPTY_RAW_ARGUMENTS;
             this.cachedOperands = List.of();
             return this.cachedOperands;
         }
 
+        // The argument cells are fetched here, once per instruction. Operand resolution
+        // below and the execution record both work from this array; nothing else reads the
+        // code stream on their behalf.
+        this.rawArguments = organism.getRawArgumentsFromEnvironment(getLength(environment), environment);
+
         List<Operand> resolved = new ArrayList<>(sources.size());
-        org.evochora.runtime.model.EnvironmentProperties props = environment.properties;
-        int dims = props.getDimensions();
-
-        // Setup flat-index tracking (DV is a unit vector: exactly one component is ±1)
-        int[] ipBefore = organism.getIpBeforeFetch();
-        int[] dvBefore = organism.getDvBeforeFetch();
-        int dim = 0;
-        int sign = 1;
-        for (int i = 0; i < dvBefore.length; i++) {
-            if (dvBefore[i] != 0) {
-                dim = i;
-                sign = dvBefore[i];
-                break;
-            }
-        }
-        int dimStride = props.getStride(dim);
-        int dimSize = props.getDimensionSize(dim);
-        boolean isToroidal = props.isToroidal();
-        int dimPos = ipBefore[dim];
-
-        int flatIp = 0;
-        for (int i = 0; i < ipBefore.length; i++) {
-            flatIp += ipBefore[i] * props.getStride(i);
-        }
-        int baseFlatIp = flatIp - dimPos * dimStride;
+        int dims = environment.properties.getDimensions();
 
         // For STACK operands: use iterator to peek without popping
         Iterator<Object> stackIterator = organism.getDataStack().iterator();
 
+        int slot = 0;
         for (OperandSource source : sources) {
             if (source == OperandSource.STACK) {
                 // PEEK via iterator - no side effects!
@@ -255,15 +241,8 @@ public abstract class Instruction {
                 continue;
             }
 
-            // Advance one step along DV
-            dimPos += sign;
-            if (isToroidal) {
-                if (dimPos < 0) dimPos = dimSize - 1;
-                else if (dimPos >= dimSize) dimPos = 0;
-            }
-            int rawMol = (dimPos >= 0 && dimPos < dimSize)
-                    ? environment.getMoleculeInt(baseFlatIp + dimPos * dimStride)
-                    : 0;
+            // Every remaining source occupies one argument slot; VECTOR takes one per dimension.
+            int rawMol = this.rawArguments[slot++];
 
             switch (source) {
                 case REGISTER -> {
@@ -281,15 +260,7 @@ public abstract class Instruction {
                     int[] vec = new int[dims];
                     vec[0] = Molecule.extractSignedValue(rawMol);
                     for (int d = 1; d < dims; d++) {
-                        dimPos += sign;
-                        if (isToroidal) {
-                            if (dimPos < 0) dimPos = dimSize - 1;
-                            else if (dimPos >= dimSize) dimPos = 0;
-                        }
-                        rawMol = (dimPos >= 0 && dimPos < dimSize)
-                                ? environment.getMoleculeInt(baseFlatIp + dimPos * dimStride)
-                                : 0;
-                        vec[d] = Molecule.extractSignedValue(rawMol);
+                        vec[d] = Molecule.extractSignedValue(this.rawArguments[slot++]);
                     }
                     resolved.add(new Operand(vec, -1));
                 }
@@ -318,6 +289,25 @@ public abstract class Instruction {
         for (int i = 0; i < this.stackPeekCount; i++) {
             organism.getDataStack().pop();
         }
+    }
+
+    /**
+     * Returns the raw molecule values of this instruction's argument slots, in the order they
+     * occupy the code stream.
+     * <p>
+     * The array is filled by {@link #resolveOperands(Environment)} and must not be modified: it is
+     * the same array the operand resolution read from, and it is handed on to the execution record
+     * without a copy.
+     *
+     * @return the argument slots, empty for an instruction without arguments
+     * @throws IllegalStateException if the operands of this instruction have not been resolved yet
+     */
+    public int[] getRawArguments() {
+        if (this.rawArguments == null) {
+            throw new IllegalStateException(
+                    "Raw arguments requested before resolveOperands() ran for opcode " + fullOpcodeId);
+        }
+        return this.rawArguments;
     }
 
     // ========== Fuzzy Jump Helper Methods ==========
@@ -783,6 +773,9 @@ public abstract class Instruction {
     
     /** Cached operands - resolved once, returned on subsequent calls (idempotent). */
     private List<Operand> cachedOperands = null;
+
+    /** Argument slots as read from the environment, filled by {@link #resolveOperands(Environment)}. */
+    private int[] rawArguments = null;
 
     /** Number of stack values that were peeked during resolveOperands() and need to be popped in commitStackReads(). */
     private int stackPeekCount = 0;
