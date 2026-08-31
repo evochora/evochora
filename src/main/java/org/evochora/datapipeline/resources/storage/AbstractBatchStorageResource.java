@@ -575,6 +575,10 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
             if (tag == 0) break;
 
             int fieldNumber = WireFormat.getTagFieldNumber(tag);
+            // A field above the tick number means the tick number is behind us - read, or absent
+            // because it holds the default. Which tick this is decides below whether its payload
+            // is built, and the format allows fields in any order: without this, bytes that carry
+            // the organisms first would have that decision made about tick 0.
             if (fieldNumber > TickData.TICK_NUMBER_FIELD_NUMBER) {
                 tickKnown = true;
             }
@@ -689,6 +693,10 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
             if (tag == 0) break;
 
             int fieldNumber = WireFormat.getTagFieldNumber(tag);
+            // A field above the tick number means the tick number is behind us - read, or absent
+            // because it holds the default. Which tick this is decides below whether its payload
+            // is built, and the format allows fields in any order: without this, bytes that carry
+            // the organisms first would have that decision made about tick 0.
             if (fieldNumber > TickDelta.TICK_NUMBER_FIELD_NUMBER) {
                 tickKnown = true;
             }
