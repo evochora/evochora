@@ -24,6 +24,8 @@ import com.google.protobuf.Message;
  * for efficient session reuse. Each send borrows a pooled session, creates a producer,
  * sends, then returns the session to the pool. This avoids TCP round-trips for session
  * creation while maintaining thread safety (JMS sessions are not thread-safe).
+ *
+ * @param <T> The message type (must be a Protobuf {@link Message}).
  */
 public class ArtemisTopicWriterDelegate<T extends Message> extends AbstractTopicDelegateWriter<ArtemisTopicResource<T>, T> {
 
@@ -32,6 +34,15 @@ public class ArtemisTopicWriterDelegate<T extends Message> extends AbstractTopic
     // Session pool shared with other writer delegates via the parent resource
     private final ConnectionFactory writerPool;
 
+    /**
+     * Creates a writer bound to the given topic resource and takes the shared session pool from it.
+     * <p>
+     * No JMS connection is opened here; every send borrows one from the pool and returns it, so the
+     * writer holds no broker resources between sends.
+     *
+     * @param parent the Artemis topic resource that owns the session pool and the topic name
+     * @param context the binding context (service name, usage type, parameters)
+     */
     public ArtemisTopicWriterDelegate(ArtemisTopicResource<T> parent, ResourceContext context) {
         super(parent, context);
         this.writerPool = parent.getWriterPool();

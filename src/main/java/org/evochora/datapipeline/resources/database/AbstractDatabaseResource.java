@@ -38,14 +38,27 @@ public abstract class AbstractDatabaseResource extends AbstractResource
 
     private static final Logger log = LoggerFactory.getLogger(AbstractDatabaseResource.class);
 
+    /** Statements executed against this database, reported as the {@code queries_executed} metric; subclasses increment it. */
     protected final AtomicLong queriesExecuted = new AtomicLong(0);
+    /** Rows written to this database, reported as the {@code rows_inserted} metric; subclasses increment it. */
     protected final AtomicLong rowsInserted = new AtomicLong(0);
+    /** Counter reported as the {@code write_errors} metric; incrementing it is left to subclasses. */
     protected final AtomicLong writeErrors = new AtomicLong(0);
+    /** Counter reported as the {@code read_errors} metric; incrementing it is left to subclasses. */
     protected final AtomicLong readErrors = new AtomicLong(0);
     
     // Track all active wrappers for proper cleanup during shutdown
     private final List<AutoCloseable> activeWrappers = Collections.synchronizedList(new ArrayList<>());
 
+    /**
+     * Initialises the state shared by all database resources.
+     * <p>
+     * No connection and no connection pool are opened here; a subclass establishes them in its own
+     * constructor.
+     *
+     * @param name    resource name from the configuration
+     * @param options resource configuration
+     */
     protected AbstractDatabaseResource(String name, Config options) {
         super(name, options);
     }
@@ -140,10 +153,41 @@ public abstract class AbstractDatabaseResource extends AbstractResource
      */
     protected abstract void closeConnection(Object connection) throws Exception;
 
+    /**
+     * Writes the metadata of a simulation run into the schema currently set on the connection,
+     * creating the metadata table if it does not exist yet.
+     * <p>
+     * <strong>Transaction Handling:</strong> Must commit on success and roll back before
+     * re-throwing, so that the connection goes back to the pool without an open transaction.
+     *
+     * @param connection Database connection (from {@link #acquireDedicatedConnection()})
+     * @param metadata Metadata of the run to store
+     * @throws Exception if the metadata cannot be written
+     */
     protected abstract void doInsertMetadata(Object connection, SimulationMetadata metadata) throws Exception;
 
+    /**
+     * Makes the schema holding the given run's data the current schema of this connection.
+     * <p>
+     * The selection belongs to the connection, not to the resource: every connection has to be
+     * switched separately, and a connection re-acquired from the pool has to be switched again.
+     *
+     * @param connection Database connection (from {@link #acquireDedicatedConnection()})
+     * @param runId Simulation run whose schema becomes current
+     * @throws Exception if the schema cannot be selected
+     */
     protected abstract void doSetSchema(Object connection, String runId) throws Exception;
 
+    /**
+     * Creates the schema for the given run unless it already exists, without making it current.
+     * <p>
+     * Callers invoke this before {@link #doSetSchema(Object, String)}. Implementations are
+     * idempotent, so several writers may set up the same run concurrently.
+     *
+     * @param connection Database connection (from {@link #acquireDedicatedConnection()})
+     * @param runId Simulation run to create the schema for
+     * @throws Exception if the schema cannot be created
+     */
     protected abstract void doCreateSchema(Object connection, String runId) throws Exception;
 
     // ========================================================================
