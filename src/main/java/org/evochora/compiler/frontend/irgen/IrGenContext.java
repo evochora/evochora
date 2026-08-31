@@ -74,12 +74,22 @@ public final class IrGenContext {
 	}
 
 	/**
+	 * Gives converters access to error reporting, so a rejected construct is recorded as a
+	 * diagnostic instead of aborting IR generation.
+	 *
 	 * @return The diagnostics engine.
 	 */
 	public DiagnosticsEngine diagnostics() {
 		return diagnostics;
 	}
 
+	/**
+	 * Determines the source location to attach to IR emitted for a node.
+	 *
+	 * @param node The AST node whose origin is wanted.
+	 * @return The node's own source info, or a placeholder naming file {@code "unknown"} at
+	 *         line and column {@code -1} for node types that carry no location.
+	 */
 	public SourceInfo sourceOf(AstNode node) {
 		if (node instanceof ISourceLocatable locatable) {
 			return locatable.sourceInfo();
@@ -99,6 +109,8 @@ public final class IrGenContext {
 
 	/**
 	 * Pushes an alias chain when entering an imported module.
+	 * @param aliasChain The chain of the module being entered. Null pushes a copy of the
+	 *                   current chain, so the qualification in effect does not change.
 	 */
 	public void pushAliasChain(String aliasChain) {
 		aliasChainStack.push(aliasChain != null ? aliasChain : currentAliasChain());
@@ -115,6 +127,8 @@ public final class IrGenContext {
 
 	/**
 	 * Returns the current alias chain.
+	 * @return The chain used to qualify names of the module currently being converted. Never
+	 *         null; it is the empty string when the context was built without a root chain.
 	 */
 	public String currentAliasChain() {
 		return aliasChainStack.peek();

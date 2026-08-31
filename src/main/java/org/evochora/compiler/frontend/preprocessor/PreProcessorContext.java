@@ -21,6 +21,10 @@ public class PreProcessorContext {
     private final Map<String, IPreProcessorHandler> dynamicHandlers = new HashMap<>();
 
     /**
+     * Creates a context carrying the token streams that were pre-lexed for the files found
+     * during dependency scanning. Null arguments are tolerated: a null alias chain becomes
+     * the empty chain, null maps become empty maps.
+     *
      * @param rootAliasChain The alias chain for the compilation root module.
      * @param moduleTokens   Pre-lexed .IMPORT module tokens keyed by resolved absolute path.
      * @param sourceTokens   Pre-lexed .SOURCE file tokens keyed by resolved absolute path.
@@ -31,12 +35,19 @@ public class PreProcessorContext {
         this.sourceTokens = sourceTokens != null ? sourceTokens : Map.of();
     }
 
+    /**
+     * Creates a context for preprocessing a single file: empty root alias chain, no pre-lexed
+     * module or source tokens.
+     */
     public PreProcessorContext() {
         this("", Map.of(), Map.of());
     }
 
     /**
      * Returns the pre-lexed .IMPORT module tokens keyed by resolved absolute path.
+     *
+     * @return The map passed to the constructor, returned as given rather than copied; empty
+     *         for a context created without modules.
      */
     public Map<String, List<Token>> moduleTokens() {
         return moduleTokens;
@@ -44,6 +55,9 @@ public class PreProcessorContext {
 
     /**
      * Returns the pre-lexed .SOURCE file tokens keyed by resolved absolute path.
+     *
+     * @return The map passed to the constructor, returned as given rather than copied; empty
+     *         for a context created without .SOURCE files.
      */
     public Map<String, List<Token>> sourceTokens() {
         return sourceTokens;
@@ -51,6 +65,9 @@ public class PreProcessorContext {
 
     /**
      * Returns the current import alias chain (e.g., "PRED.MATH").
+     *
+     * @return The chain of the module currently being preprocessed, which is the root chain
+     *         while no module has been entered. Never null; the root chain may be empty.
      */
     public String currentAliasChain() {
         return aliasChainStack.peek();

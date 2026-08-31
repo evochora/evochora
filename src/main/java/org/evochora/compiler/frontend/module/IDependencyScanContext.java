@@ -63,11 +63,14 @@ public interface IDependencyScanContext {
 
     /**
      * Returns the path of the file currently being scanned.
+     * @return The path as it was resolved; errors reported through {@link #reportError}
+     *         are attributed to this file.
      */
     String sourcePath();
 
     /**
      * Returns the current line number (1-based).
+     * @return The number of the line the handler was invoked for, counted from one.
      */
     int lineNumber();
 }

@@ -31,6 +31,19 @@ public final class DependencyScanner {
     private final Map<String, String> sourceContents = new LinkedHashMap<>();
     private boolean used;
 
+    /**
+     * Creates a scanner whose entire directive knowledge comes from the supplied handlers.
+     * Each non-empty source line is offered to the handlers in list order and the first
+     * one whose pattern matches consumes it, so the order of the list decides precedence.
+     * The scanner keeps the modules and source contents it discovers, so a single instance
+     * is meant for one {@link #scan(String, String)} call.
+     *
+     * @param diagnostics Collects errors for unresolvable paths, circular imports and
+     *                    directives used where they are not allowed.
+     * @param resolver    Resolves directive paths, including the {@code PREFIX:path} form,
+     *                    relative to the file the directive appears in.
+     * @param handlers    Scan handlers, kept by reference and tried in list order.
+     */
     public DependencyScanner(DiagnosticsEngine diagnostics, SourceRootResolver resolver, List<IDependencyScanHandler> handlers) {
         this.diagnostics = diagnostics;
         this.resolver = resolver;
@@ -40,6 +53,13 @@ public final class DependencyScanner {
     /**
      * Scans the main file and all its transitive dependencies, building a dependency graph.
      *
+     * @param mainContent The full source text of the main file; it is used as given and
+     *                    never re-read from disk.
+     * @param mainPath    Path identifying the main module, also used as the file location
+     *                    of errors reported while scanning it.
+     * @return A graph containing the main module and every transitively reachable module,
+     *         ordered so that dependencies precede their dependents. An empty graph is
+     *         returned if scanning reported any error.
      * @throws IllegalStateException if this scanner has already been used
      */
     public DependencyGraph scan(String mainContent, String mainPath) {
@@ -64,6 +84,9 @@ public final class DependencyScanner {
 
     /**
      * Returns all .SOURCE file contents collected during scanning, keyed by resolved path.
+     *
+     * @return An unmodifiable view of the collected contents, backed by the scanner's own
+     *         map and therefore reflecting anything scanned afterwards.
      */
     public Map<String, String> sourceContents() {
         return Collections.unmodifiableMap(sourceContents);
