@@ -774,8 +774,9 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
     private DeltaCodec.Decoder createDecoder() {
         SimulationMetadata metadata = getMetadata();
         if (metadata == null || metadata.getResolvedConfigJson().isEmpty()) {
-            log.debug("No environment metadata available, using minimal Decoder");
-            return new DeltaCodec.Decoder(1);
+            throw new IllegalStateException(
+                "Cannot decode environment data: the run metadata carries no resolved configuration, "
+                + "so the environment shape is unknown. Every run written by SimulationEngine has one.");
         }
         long totalCellsLong = 1L;
         for (int dim : MetadataConfigHelper.getEnvironmentShape(metadata)) {
