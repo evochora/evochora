@@ -771,10 +771,10 @@ public class Organism {
                     }
                 }
             }
-            // Checked outside the block above as well: with no pointers supplied, any index other
-            // than the untouched default cannot reference one. The lower bound of one stands for
-            // that default — an organism restored without pointers still has index 0 pointing at
-            // the first of the ones it will be given.
+            // Checked outside the block above, because an organism may be restored without data
+            // pointers at all: nothing fills them in later, so it then holds none and must not be
+            // asked for one. The lower bound of one admits that state with the index left at its
+            // default; every other index is rejected.
             if (activeDpIndex < 0 || activeDpIndex >= Math.max(dps.size(), 1)) {
                 throw new InvalidRestoreState("Active data pointer index " + activeDpIndex
                         + " lies outside the " + dps.size() + " data pointers");
