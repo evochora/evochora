@@ -58,6 +58,37 @@ class VideoRenderEngineOptionValidationTest {
     }
 
     @Test
+    void unknownOverlayNameIsRejectedInsteadOfBeingSkipped() throws Exception {
+        VideoRenderOptions options = new VideoRenderOptions();
+        options.samplingInterval = 1;
+        options.overlayNames = java.util.List.of("info", "typo");
+
+        String error = executeAndCaptureError(options);
+        assertThat(error).contains("typo").contains("--overlay");
+    }
+
+    @Test
+    void everyDocumentedOverlayNameResolves() throws Exception {
+        for (String name : java.util.List.of("info", "diversity", "graph", "logo")) {
+            VideoRenderOptions options = new VideoRenderOptions();
+            options.samplingInterval = 1;
+            options.overlayNames = java.util.List.of(name);
+
+            java.io.PrintStream originalErr = System.err;
+            ByteArrayOutputStream captured = new ByteArrayOutputStream();
+            System.setErr(new PrintStream(captured));
+            try {
+                new VideoRenderEngine(options, null).execute();
+            } catch (Exception expected) {
+                // getting past validation is what this asserts
+            } finally {
+                System.setErr(originalErr);
+            }
+            assertThat(captured.toString()).as("overlay %s", name).doesNotContain("Unknown overlay");
+        }
+    }
+
+    @Test
     void startTickEqualToEndTickIsAccepted() throws Exception {
         VideoRenderOptions options = new VideoRenderOptions();
         options.samplingInterval = 1;

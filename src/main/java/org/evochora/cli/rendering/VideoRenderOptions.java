@@ -55,7 +55,7 @@ public class VideoRenderOptions {
     public int threadCount;
 
     @Option(names = "--overlay",
-            description = "Overlays to apply (comma-separated): info",
+            description = "Overlays to apply (comma-separated): info, diversity, graph, logo",
             split = ",")
     public List<String> overlayNames;
 }

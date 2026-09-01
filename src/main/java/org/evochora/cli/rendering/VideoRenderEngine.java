@@ -598,7 +598,42 @@ public class VideoRenderEngine {
                     + options.endTick + ")");
             return false;
         }
+        if (options.overlayNames != null) {
+            for (String name : options.overlayNames) {
+                if (!overlayClassExists(name)) {
+                    System.err.println("Unknown overlay '" + name + "' for --overlay; see --help for the names available");
+                    return false;
+                }
+            }
+        }
         return true;
+    }
+
+    /**
+     * Reports whether an overlay name resolves to a renderer class.
+     *
+     * @param name the name as given on the command line
+     * @return {@code true} if a renderer exists for it
+     */
+    private boolean overlayClassExists(String name) {
+        try {
+            Class.forName(overlayClassName(name));
+            return true;
+        } catch (ClassNotFoundException e) {
+            return false;
+        }
+    }
+
+    /**
+     * Maps an overlay name to the class implementing it.
+     *
+     * @param name the name as given on the command line
+     * @return the fully qualified renderer class name
+     */
+    private static String overlayClassName(String name) {
+        return "org.evochora.cli.rendering.overlay."
+            + name.substring(0, 1).toUpperCase() + name.substring(1).toLowerCase()
+            + "OverlayRenderer";
     }
 
     private Config loadConfig() {
@@ -669,14 +704,13 @@ public class VideoRenderEngine {
         if (names == null || names.isEmpty()) return overlays;
 
         for (String name : names) {
-            String className = "org.evochora.cli.rendering.overlay."
-                + name.substring(0, 1).toUpperCase() + name.substring(1).toLowerCase()
-                + "OverlayRenderer";
             try {
-                Class<?> clazz = Class.forName(className);
+                Class<?> clazz = Class.forName(overlayClassName(name));
                 overlays.add((IOverlayRenderer) clazz.getDeclaredConstructor().newInstance());
-            } catch (Exception e) {
-                System.err.println("Warning: Failed to load overlay '" + name + "': " + e.getMessage());
+            } catch (ReflectiveOperationException e) {
+                // The name was checked before rendering started, so this is a fault in the renderer
+                // itself rather than a mistyped option.
+                throw new IllegalStateException("Overlay '" + name + "' could not be instantiated", e);
             }
         }
         return overlays;
