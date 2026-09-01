@@ -31,14 +31,19 @@ public final class Linker {
     }
 
     /**
-     * Links the given IR program, resolving symbolic references.
-     * @param program The IR program to link.
-     * @param layout The layout result, providing coordinate and address mappings.
+     * Links the items the layout placed, resolving symbolic references.
+     * <p>
+     * The items come from the layout, which carries each one together with the address it was
+     * given. Taking the program as well would offer a second source for the same items, and
+     * nothing would stop the two from describing different programs.
+     *
+     * @param layout The placed items with their addresses, and the coordinate mappings.
      * @param context The linking context, which will be populated with call site bindings.
+     * @param programName The name carried over to the linked program.
      * @return The linked IR program.
      * @throws CompilationException if an error occurs during linking.
      */
-    public IrProgram link(IrProgram program, LayoutResult layout, LinkingContext context) throws CompilationException {
+    public IrProgram link(LayoutResult layout, LinkingContext context, String programName) throws CompilationException {
         List<IrItem> out = new ArrayList<>();
 
         for (PlacedItem placed : layout.placedItems()) {
@@ -61,6 +66,6 @@ public final class Linker {
                 out.add(item);
             }
         }
-        return new IrProgram(program.programName(), out);
+        return new IrProgram(programName, out);
     }
 }
