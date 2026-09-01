@@ -152,62 +152,188 @@ public class FeatureRegistry implements IFeatureRegistrationContext {
 
 	// --- Getter methods (read side, used by Compiler) ---
 
+	/**
+	 * Returns the Phase 0 dependency scan handlers in registration order. The dependency scanner
+	 * offers every source line to them in this order and the first handler whose pattern matches
+	 * consumes the line, so registration order decides precedence between overlapping patterns.
+	 * Repeated registration is not rejected here: a feature may contribute several handlers on purpose.
+	 *
+	 * @return An unmodifiable view of the live list, so handlers registered afterwards also become
+	 *         visible through a view handed out earlier.
+	 */
 	public List<IDependencyScanHandler> dependencyScanHandlers() {
 		return Collections.unmodifiableList(dependencyScanHandlers);
 	}
 
+	/**
+	 * Returns the Phase 4 handlers that set up module relationships, keyed by the
+	 * {@link IDependencyInfo} subclass each one processes. Every handler's own type parameter equals
+	 * its key, but the map type cannot express that link, so a caller invoking a handler has to
+	 * restore it with an unchecked cast. A second registration for the same dependency type is
+	 * rejected when it happens.
+	 *
+	 * @return An unmodifiable view of the live map.
+	 */
 	public Map<Class<? extends IDependencyInfo>, IDependencySetupHandler<?>> dependencySetupHandlers() {
 		return Collections.unmodifiableMap(dependencySetupHandlers);
 	}
 
+	/**
+	 * Returns the statically registered Phase 2 preprocessor handlers, keyed by the upper-cased token
+	 * text that triggers them. Handlers that a running preprocessor adds for itself — macro expansion,
+	 * for instance — are held by
+	 * {@link org.evochora.compiler.frontend.preprocessor.PreProcessorContext#registerDynamicHandler}
+	 * and never appear here. A second registration under the same name, compared case-insensitively,
+	 * is rejected when it happens.
+	 *
+	 * @return An unmodifiable view of the live map.
+	 */
 	public Map<String, IPreProcessorHandler> preprocessorHandlers() {
 		return Collections.unmodifiableMap(preprocessorHandlers);
 	}
 
+	/**
+	 * Returns the Phase 3 statement handlers, keyed by the upper-cased keyword that selects them.
+	 * A keyword without an entry here is parsed by {@link #defaultParserStatementHandler()}.
+	 * A second registration for the same keyword, compared case-insensitively, is rejected when it
+	 * happens.
+	 *
+	 * @return An unmodifiable view of the live map.
+	 */
 	public Map<String, IParserStatementHandler> parserStatementHandlers() {
 		return Collections.unmodifiableMap(parserStatementHandlers);
 	}
 
+	/**
+	 * Returns the Phase 3 fallback handler, which parses every statement whose keyword no entry of
+	 * {@link #parserStatementHandlers()} claims. At most one may exist; a second registration is
+	 * rejected when it happens.
+	 *
+	 * @return The registered fallback handler, or {@code null} if no feature registered one, in which
+	 *         case the parser is left without a fallback.
+	 */
 	public IParserStatementHandler defaultParserStatementHandler() {
 		return defaultParserStatementHandler;
 	}
 
+	/**
+	 * Returns the collectors of the first Phase 4 pass, which extract symbols from AST nodes, keyed by
+	 * node class. Lookup is by the node's exact class: no walk up the class hierarchy and no fallback,
+	 * so a node class without its own entry contributes no symbols. A second registration for the same
+	 * node class is rejected when it happens.
+	 *
+	 * @return An unmodifiable view of the live map.
+	 */
 	public Map<Class<? extends AstNode>, ISymbolCollector> symbolCollectors() {
 		return Collections.unmodifiableMap(symbolCollectors);
 	}
 
+	/**
+	 * Returns the handlers of the second Phase 4 pass, which validate AST nodes against the symbol
+	 * table filled by the first pass, keyed by node class. Lookup is by the node's exact class: no
+	 * walk up the class hierarchy and no fallback, so a node class without its own entry is not
+	 * validated. A second registration for the same node class is rejected when it happens.
+	 *
+	 * @return An unmodifiable view of the live map.
+	 */
 	public Map<Class<? extends AstNode>, IAnalysisHandler> analysisHandlers() {
 		return Collections.unmodifiableMap(analysisHandlers);
 	}
 
+	/**
+	 * Returns the Phase 5 contributors that add debugger token map entries, keyed by AST node class.
+	 * Lookup is by the node's exact class with no fallback, so a node class without its own entry
+	 * produces no token map entries. A second registration for the same node class is rejected when
+	 * it happens.
+	 *
+	 * @return An unmodifiable view of the live map.
+	 */
 	public Map<Class<? extends AstNode>, ITokenMapContributor> tokenMapContributors() {
 		return Collections.unmodifiableMap(tokenMapContributors);
 	}
 
+	/**
+	 * Returns the Phase 6 handlers that collect node replacements and constants, keyed by AST node
+	 * class. Lookup is by the node's exact class with no fallback, so a node class without its own
+	 * entry passes through post-processing unchanged. A second registration for the same node class
+	 * is rejected when it happens.
+	 *
+	 * @return An unmodifiable view of the live map.
+	 */
 	public Map<Class<? extends AstNode>, IPostProcessHandler> postProcessHandlers() {
 		return Collections.unmodifiableMap(postProcessHandlers);
 	}
 
+	/**
+	 * Returns the Phase 7 converters from AST to IR, keyed by AST node class. Unlike the earlier
+	 * per-node registries, resolution walks the node's class hierarchy and the AST interfaces it
+	 * implements, and ends at the IR generator's default converter, so an entry registered for a base
+	 * class also serves its subclasses. Every converter's own type parameter equals its key, which the
+	 * map type cannot express. A second registration for the same node class is rejected when it happens.
+	 *
+	 * @return An unmodifiable view of the live map.
+	 */
 	public Map<Class<? extends AstNode>, IAstNodeToIrConverter<?>> irConverters() {
 		return Collections.unmodifiableMap(irConverters);
 	}
 
+	/**
+	 * Returns the Phase 8 rules that rewrite the IR item list, in registration order. Each rule is
+	 * applied to the whole item list and its result is the input of the next one, so registration
+	 * order determines what a later rule sees. Repeated registration is not rejected here.
+	 *
+	 * @return An unmodifiable view of the live list.
+	 */
 	public List<IEmissionRule> emissionRules() {
 		return Collections.unmodifiableList(emissionRules);
 	}
 
+	/**
+	 * Returns the Phase 9 handlers that process IR directives while addresses are assigned, keyed by
+	 * the lower-cased {@code "namespace:name"} of the directive. A directive without a handler is
+	 * skipped by the layout engine rather than reported, because not every directive needs
+	 * layout-phase work. A second registration for the same namespace and name, compared
+	 * case-insensitively, is rejected when it happens.
+	 *
+	 * @return An unmodifiable view of the live map.
+	 */
 	public Map<String, ILayoutDirectiveHandler> layoutHandlers() {
 		return Collections.unmodifiableMap(layoutHandlers);
 	}
 
+	/**
+	 * Returns the Phase 10 rules that transform instructions during linking, in registration order.
+	 * Each instruction passes through all rules in this order and every rule receives the instruction
+	 * the previous one returned, so registration order determines what a later rule sees. Repeated
+	 * registration is not rejected here.
+	 *
+	 * @return An unmodifiable view of the live list.
+	 */
 	public List<ILinkingRule> linkingRules() {
 		return Collections.unmodifiableList(linkingRules);
 	}
 
+	/**
+	 * Returns the Phase 10 handlers that process IR directives while cross-references are resolved,
+	 * keyed by the lower-cased {@code "namespace:name"} of the directive. A directive without a
+	 * handler is skipped by the linker rather than reported, because not every directive needs
+	 * linking-phase work. A second registration for the same namespace and name, compared
+	 * case-insensitively, is rejected when it happens.
+	 *
+	 * @return An unmodifiable view of the live map.
+	 */
 	public Map<String, ILinkingDirectiveHandler> linkingDirectiveHandlers() {
 		return Collections.unmodifiableMap(linkingDirectiveHandlers);
 	}
 
+	/**
+	 * Returns the Phase 11 contributors that collect feature metadata for the program artifact, in
+	 * registration order. Every contributor is offered every IR item, so they observe rather than
+	 * claim items and no contributor can keep another from seeing an item. Repeated registration is
+	 * not rejected here.
+	 *
+	 * @return An unmodifiable view of the live list.
+	 */
 	public List<IEmissionContributor> emissionContributors() {
 		return Collections.unmodifiableList(emissionContributors);
 	}

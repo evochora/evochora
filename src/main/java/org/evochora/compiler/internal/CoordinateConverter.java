@@ -47,6 +47,15 @@ import org.evochora.runtime.model.EnvironmentProperties;
 public class CoordinateConverter {
     private final EnvironmentProperties envProps;
     
+    /**
+     * Creates a converter for one world geometry. The world shape of the given properties supplies the
+     * strides of every conversion, so a converter fits only artifacts laid out in a world of that
+     * shape, and the toroidal flag decides whether out-of-range coordinates are wrapped or rejected.
+     * The properties are kept by reference and not copied.
+     *
+     * @param envProps The environment properties providing world shape and toroidal flag.
+     * @throws IllegalArgumentException if {@code envProps} is null.
+     */
     public CoordinateConverter(EnvironmentProperties envProps) {
         if (envProps == null) {
             throw new IllegalArgumentException("EnvironmentProperties must not be null");

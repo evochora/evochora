@@ -18,6 +18,10 @@ public record TokenInfo(
 ) {
     /**
      * Compatibility constructor for tokens that do not require a qualified name.
+     *
+     * @param tokenText The literal text of the token as it appears in source.
+     * @param tokenType The semantic classification of the token.
+     * @param scope The scope in which this token is defined.
      */
     public TokenInfo(String tokenText, TokenKind tokenType, String scope) {
         this(tokenText, tokenType, scope, null);

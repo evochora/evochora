@@ -28,6 +28,11 @@ public record CallNode(
         SourceInfo sourceInfo
 ) implements AstNode, ISourceLocatable {
 
+    /**
+     * Canonical constructor that normalizes the four argument lists: a {@code null} list is replaced
+     * by an empty one, so the components are never {@code null} and callers may iterate them without
+     * a check. {@code procedureName} is not normalized and stays {@code null} if it was passed as such.
+     */
     public CallNode {
         if (refArguments == null) refArguments = Collections.emptyList();
         if (valArguments == null) valArguments = Collections.emptyList();

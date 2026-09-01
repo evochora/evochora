@@ -21,6 +21,10 @@ public final class IrCallInstruction extends IrInstruction {
     private final List<IrOperand> lvalOperands;
 
     /**
+     * Creates a call that carries its parameter passing lists next to the ordinary operands. The four
+     * parameter lists are stored as unmodifiable views of the given lists, which are not copied, and
+     * none of them may be null; pass an empty list for a parameter kind the call does not use.
+     *
      * @param opcode       The instruction opcode (always "CALL").
      * @param operands     The main operands (procedure name).
      * @param refOperands  The REF parameter operands (scalar by reference).
@@ -28,6 +32,7 @@ public final class IrCallInstruction extends IrInstruction {
      * @param lrefOperands The LREF parameter operands (location by reference).
      * @param lvalOperands The LVAL parameter operands (location by value).
      * @param source       The source location.
+     * @throws NullPointerException if one of the four parameter operand lists is null.
      */
     public IrCallInstruction(
             String opcode,
@@ -60,16 +65,40 @@ public final class IrCallInstruction extends IrInstruction {
                 refOperands, valOperands, lrefOperands, lvalOperands, source());
     }
 
-    /** Scalar reference parameter operands. */
+    /**
+     * Scalar reference parameter operands.
+     *
+     * @return An unmodifiable view of the operands passed with REF, in the order written at the call
+     *         site, which is the order in which they bind to the procedure's formal scalar reference
+     *         parameters. Empty if the call passes none of this kind.
+     */
     public List<IrOperand> refOperands() { return refOperands; }
 
-    /** Scalar value parameter operands. */
+    /**
+     * Scalar value parameter operands.
+     *
+     * @return An unmodifiable view of the operands passed with VAL, in the order written at the call
+     *         site, which is the order in which they bind to the procedure's formal scalar value
+     *         parameters. Empty if the call passes none of this kind.
+     */
     public List<IrOperand> valOperands() { return valOperands; }
 
-    /** Location reference parameter operands. */
+    /**
+     * Location reference parameter operands.
+     *
+     * @return An unmodifiable view of the operands passed with LREF, in the order written at the call
+     *         site, which is the order in which they bind to the procedure's formal location reference
+     *         parameters. Empty if the call passes none of this kind.
+     */
     public List<IrOperand> lrefOperands() { return lrefOperands; }
 
-    /** Location value parameter operands. */
+    /**
+     * Location value parameter operands.
+     *
+     * @return An unmodifiable view of the operands passed with LVAL, in the order written at the call
+     *         site, which is the order in which they bind to the procedure's formal location value
+     *         parameters. Empty if the call passes none of this kind.
+     */
     public List<IrOperand> lvalOperands() { return lvalOperands; }
 
     @Override

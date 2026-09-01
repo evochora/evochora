@@ -48,6 +48,16 @@ public record ProgramArtifact(
         Map<Integer, String> labelValueToName,
         Map<String, Integer> labelNameToValue
 ) {
+    /**
+     * Canonical constructor that makes the artifact immutable by wrapping every map component in an
+     * unmodifiable view. {@code sources}, {@code procNameToParamNames}, {@code tokenMap},
+     * {@code tokenLookup}, {@code sourceLineToInstructions}, {@code labelValueToName} and
+     * {@code labelNameToValue} accept null and become empty maps; every other map component must be
+     * non-null. Wrapping does not copy, so a caller that keeps a reference to a map it passed in can
+     * still change what the artifact exposes.
+     *
+     * @throws NullPointerException if one of the map components without null handling is null.
+     */
     public ProgramArtifact {
         sources = sources != null ? Collections.unmodifiableMap(sources) : Collections.emptyMap();
         machineCodeLayout = Collections.unmodifiableMap(machineCodeLayout);

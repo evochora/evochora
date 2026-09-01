@@ -23,6 +23,9 @@ public final class SourceRootResolver {
     private final Path workingDirectory;
 
     /**
+     * Creates a resolver for one set of source roots. Both arguments are kept by reference and the
+     * resolver holds no other state, so a single instance can resolve any number of paths.
+     *
      * @param sourceRoots      The configured source roots.
      * @param workingDirectory Base directory for resolving relative source root paths.
      */
@@ -68,6 +71,8 @@ public final class SourceRootResolver {
      * @param sourceFilePath The file containing the directive (unused for resolution,
      *                       retained for HTTP relative resolution).
      * @return The resolved absolute path.
+     * @throws UnknownPrefixException if the path names a prefix for which no source root is
+     *                                configured, or if it is unprefixed and no default root exists.
      */
     public String resolve(String directivePath, String sourceFilePath) throws UnknownPrefixException {
         if (SourceLoader.isHttpUrl(directivePath)) {
@@ -119,6 +124,11 @@ public final class SourceRootResolver {
      * Thrown when a directive path references a prefix with no matching source root.
      */
     public static class UnknownPrefixException extends Exception {
+        /**
+         * Creates the exception carrying the text that the compiler surfaces as the compilation error.
+         *
+         * @param message Names the prefix that could not be resolved and the roots that are configured.
+         */
         public UnknownPrefixException(String message) {
             super(message);
         }

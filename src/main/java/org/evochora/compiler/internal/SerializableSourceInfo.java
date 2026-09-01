@@ -15,6 +15,9 @@ public record SerializableSourceInfo(String fileName, int lineNumber, int column
     
     /**
      * Creates a SerializableSourceInfo from a regular SourceInfo.
+     *
+     * @param sourceInfo The compiler-side source location to copy; must not be null.
+     * @return A record holding the same file name, line number and column number.
      */
     public static SerializableSourceInfo from(org.evochora.compiler.api.SourceInfo sourceInfo) {
         return new SerializableSourceInfo(

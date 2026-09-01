@@ -94,6 +94,12 @@ public record LinearizedProgramArtifact(
         EnvironmentProperties envProps
 ) {
     
+    /**
+     * Canonical constructor that makes the artifact immutable and free of nulls: every map component
+     * is wrapped in an unmodifiable view, a null map becomes an empty map, and null environment
+     * properties become a zero-dimensional, non-toroidal environment. Wrapping does not copy, so a
+     * caller that keeps a reference to a map it passed in can still change what the artifact exposes.
+     */
     public LinearizedProgramArtifact {
         sources = sources != null ? Collections.unmodifiableMap(sources) : Collections.emptyMap();
         machineCodeLayout = machineCodeLayout != null ? Collections.unmodifiableMap(machineCodeLayout) : Collections.emptyMap();
