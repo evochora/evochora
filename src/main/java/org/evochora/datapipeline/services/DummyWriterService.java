@@ -52,7 +52,7 @@ public class DummyWriterService extends AbstractService {
         while (!isStopRequested() && !Thread.currentThread().isInterrupted()) {
             checkPause();
 
-            if (maxWrites > 0 && writeCount >= maxWrites) {
+            if (maxWrites != -1 && writeCount >= maxWrites) {
                 log.info("Reached maxWrites ({}), stopping", maxWrites);
                 break;
             }
