@@ -157,11 +157,61 @@ class ImportAnalysisHandlerTest {
         assertErrorContaining("EXTRA", "no USING clause provides it");
     }
 
+    @Test
+    @Tag("unit")
+    void anExportMarkerTheScanAndTheParserReadDifferentlyIsReported() {
+        // The scan recorded an exported import, the parser saw none on the same line.
+        ModuleScope mainScope = symbolTable.getModuleScope(MAIN_CHAIN).orElseThrow();
+        mainScope.importExported().put("D", true);
+
+        ImportNode node = importNode("dep.evo", "D", List.of(), false);
+
+        handler.analyze(node, symbolTable, diagnostics);
+
+        assertErrorContaining("D", "disagree on whether import");
+    }
+
+    @Test
+    @Tag("unit")
+    void anExportMarkerBothReadTheSameWayPassesValidation() {
+        ModuleScope mainScope = symbolTable.getModuleScope(MAIN_CHAIN).orElseThrow();
+        mainScope.importExported().put("D", true);
+
+        ImportNode node = importNode("dep.evo", "D", List.of(), true);
+
+        handler.analyze(node, symbolTable, diagnostics);
+
+        assertNoErrors();
+    }
+
+    @Test
+    @Tag("unit")
+    void aContradictingImportIsNotValidatedAnyFurther() {
+        // The USING clause below is invalid as well, but analysis stops at the contradiction
+        // rather than adding a second, unrelated complaint about a state known to be broken.
+        ModuleScope mainScope = symbolTable.getModuleScope(MAIN_CHAIN).orElseThrow();
+        mainScope.importExported().put("LIB", true);
+
+        ImportNode node = importNode("lib.evo", "LIB", List.of(
+                usingClause("UNKNOWN", "DEP")
+        ), false);
+
+        handler.analyze(node, symbolTable, diagnostics);
+
+        assertThat(diagnostics.getDiagnostics()).hasSize(1);
+        assertErrorContaining("LIB", "disagree on whether import");
+    }
+
     // --- Helper methods ---
 
     private ImportNode importNode(String path, String alias, List<ImportNode.UsingClause> usings) {
+        return importNode(path, alias, usings, false);
+    }
+
+    private ImportNode importNode(String path, String alias, List<ImportNode.UsingClause> usings,
+                                  boolean exported) {
         SourceInfo sourceInfo = new SourceInfo(MAIN_FILE, 1, 20);
-        return new ImportNode(path, alias, usings, false, sourceInfo);
+        return new ImportNode(path, alias, usings, exported, sourceInfo);
     }
 
     private ImportNode.UsingClause usingClause(String sourceAlias, String targetAlias) {

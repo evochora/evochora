@@ -614,7 +614,7 @@ Both syntaxes produce identical results—the shorthand is transformed into `.RE
 
 The module system allows splitting programs across multiple files. Three directives work together to manage module dependencies:
 
-* **`.IMPORT`** — imports a module: establishes a dependency and inlines the module's code.
+* **`.IMPORT`** — imports a module: establishes a dependency and inlines the module's code; with the `EXPORT` prefix it also passes that import on to its own importers.
 * **`.REQUIRE`** — declares an unsatisfied dependency that must be provided by the importer via a `USING` clause.
 * **`.SOURCE`** — includes raw source text (macros, constants) without creating a module relationship.
 
