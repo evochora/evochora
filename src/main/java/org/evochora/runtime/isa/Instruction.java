@@ -31,8 +31,7 @@ import static org.evochora.runtime.isa.Family.*;
 
 /**
  * The abstract base class for all instructions in the Evochora VM.
- * This class is now free from legacy compiler dependencies and focuses
- * exclusively on runtime logic.
+ * It carries runtime logic only and knows nothing of the compiler.
  */
 public abstract class Instruction {
 
@@ -159,7 +158,8 @@ public abstract class Instruction {
     private static String[] NAMES_ARRAY = new String[0];
     private static InstructionSignature[] SIGNATURES_ARRAY = new InstructionSignature[0];
 
-    /** Shared empty array for instructions whose opcode carries no arguments. */
+    /** Shared empty array used when an opcode has no registration at all; an instruction that is
+     *  registered with no operand sources takes the regular path and gets its own empty list. */
     private static final int[] EMPTY_RAW_ARGUMENTS = new int[0];
 
     /**
