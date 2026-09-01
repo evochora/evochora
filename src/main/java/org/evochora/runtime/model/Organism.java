@@ -1621,6 +1621,12 @@ public class Organism {
      * onto this very deque and a return pops from it. The head is the innermost procedure, and an
      * empty stack means execution is at main level. As with the data stack, the depth limit
      * {@link Config#CALL_STACK_MAX_DEPTH} is the caller's to check.
+     * <p>
+     * A call also sets {@link #setCurrentProcLabelHash(int)} from the same label hash it puts in
+     * the frame, and a return moves both back together. Pushing onto this deque directly bypasses
+     * that: the hash then belongs to no frame, and the next return files the running procedure's
+     * persistent registers under another procedure's name. Whoever pushes here keeps the two in
+     * step themselves.
      *
      * @return A reference to the Call Stack (CS).
      */
