@@ -144,7 +144,12 @@ public class ServiceManager implements IMonitorable {
                     }
                 }
             } catch (Exception e) {
-                log.debug("Skipping init block scan for resource '{}': {}", resourceName, e.getMessage());
+                // The failure can come from the resource definition itself or from the init block
+                // inside it, so the message claims neither. What matters is the consequence: an
+                // initializer that is not registered here never runs, and it runs for a reason —
+                // to configure something before the class that reads it is loaded.
+                log.error("Resource '{}' could not be examined for an init block: {}. If it declares an initializer, that initializer will not run.",
+                        resourceName, e.getMessage());
             }
         }
 
@@ -684,13 +689,6 @@ public class ServiceManager implements IMonitorable {
             // Re-throw other runtime exceptions
             log.error("Failed to create and start a new instance for service '{}'.", name, e);
             throw e;
-        } catch (Exception e) {
-            log.error("Failed to create and start a new instance for service '{}'.", name, e);
-            // Clean up maps in case of a startup failure.
-            clearSimulationSourceIfMatch(services.get(name));
-            services.remove(name);
-            serviceResourceBindings.remove(name);
-            activeWrappedResources.remove(name);
         }
     }
 

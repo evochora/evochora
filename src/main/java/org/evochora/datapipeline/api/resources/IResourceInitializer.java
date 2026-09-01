@@ -35,8 +35,6 @@ import com.typesafe.config.Config;
  * <p>
  * <strong>Thread Safety:</strong> Initializers are called sequentially from the main thread
  * during ServiceManager construction. They do not need to be thread-safe.
- *
- * @see org.evochora.datapipeline.resources.database.H2Initializer
  */
 public interface IResourceInitializer {
 
