@@ -27,9 +27,33 @@ import com.typesafe.config.Config;
  */
 public abstract class AbstractService implements IService, IMonitorable {
 
+    /**
+     * Logger bound to the concrete subclass rather than to this base class, so that log output
+     * identifies the service implementation that produced it.
+     */
     protected final Logger log = LoggerFactory.getLogger(this.getClass());
+
+    /**
+     * The configured instance name of this service. It is used as the name of the service
+     * thread and appears in the messages of the exceptions thrown on illegal lifecycle
+     * transitions, so several instances of the same service class can be told apart by it.
+     */
     protected final String serviceName;
+
+    /**
+     * The configuration block belonging to this service instance, fixed for its lifetime.
+     * This class reads only {@code shutdownTimeout} from it; every other key is interpreted
+     * by the subclass.
+     */
     protected final Config options;
+
+    /**
+     * The resources wired to this service, keyed by port name. A port maps to a list because
+     * it may carry more than one resource; the arity a service expects is enforced by
+     * {@link #getRequiredResource(String, Class)}, {@link #getOptionalResource(String, Class)}
+     * and {@link #getResources(String, Class)}, which subclasses should use instead of reading
+     * the map directly. The map is taken as given at construction and never modified here.
+     */
     protected final Map<String, List<IResource>> resources;
     private final AtomicReference<State> currentState = new AtomicReference<>(State.STOPPED);
     private final Object pauseLock = new Object();

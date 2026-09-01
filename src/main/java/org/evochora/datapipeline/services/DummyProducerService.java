@@ -38,6 +38,17 @@ public class DummyProducerService extends AbstractService {
     private final AtomicLong messagesSent = new AtomicLong(0);
     private final SlidingWindowCounter throughputCounter;
 
+    /**
+     * Constructs the producer, reads its configuration and resolves the output queue.
+     *
+     * @param name      The name of the service instance.
+     * @param options   The configuration for this service; the supported keys and their defaults
+     *                  are listed in the class documentation.
+     * @param resources A map of resource ports to lists of resources; the {@code output} port is
+     *                  required.
+     * @throws IllegalStateException if the {@code output} port is missing, carries more than one
+     *                               resource, or carries a resource of the wrong type.
+     */
     public DummyProducerService(String name, Config options, Map<String, List<IResource>> resources) {
         super(name, options, resources);
         this.intervalMs = options.hasPath("intervalMs") ? options.getLong("intervalMs") : 1000L;

@@ -62,6 +62,22 @@ public class DummyConsumerService<T> extends AbstractService {
     private final SlidingWindowCounter throughputCounter;
     private final Map<Integer, RetryInfo> retryTracker = new HashMap<>();
 
+    /**
+     * Constructs the consumer, reads its configuration and resolves its queue resources.
+     * <p>
+     * The idempotency tracker and the dead letter queue are optional. Without a tracker no
+     * duplicate detection takes place; without a dead letter queue a message that exhausts its
+     * retries is lost and only reported through a warning and a recorded operational error.
+     *
+     * @param name      The name of the service instance.
+     * @param options   The configuration for this service; the supported keys and their defaults
+     *                  are listed in the class documentation.
+     * @param resources A map of resource ports to lists of resources; the {@code input} port is
+     *                  required, {@code idempotencyTracker} and {@code dlq} are optional.
+     * @throws IllegalStateException if the {@code input} port is missing, or if any of the three
+     *                               ports carries more than one resource or a resource of the
+     *                               wrong type.
+     */
     public DummyConsumerService(String name, Config options, Map<String, List<IResource>> resources) {
         super(name, options, resources);
         this.processingDelayMs = options.hasPath("processingDelayMs") ? options.getLong("processingDelayMs") : 0L;
