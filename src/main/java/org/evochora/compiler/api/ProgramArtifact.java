@@ -103,28 +103,5 @@ public record ProgramArtifact(
     public LinearizedProgramArtifact toLinearized(EnvironmentProperties envProps) {
         return LinearizedProgramArtifact.from(this, envProps);
     }
-    
-    /**
-     * Converts a LinearizedProgramArtifact back to a ProgramArtifact.
-     * 
-     * <p>This method restores the original structure with int[] keys
-     * after a LinearizedProgramArtifact has been deserialized.</p>
-     * 
-     * <h3>Usage</h3>
-     * <pre>{@code
-     * // After Jackson deserialization
-     * LinearizedProgramArtifact linearized = objectMapper.readValue(json, LinearizedProgramArtifact.class);
-     * 
-     * // Back to ProgramArtifact
-     * ProgramArtifact artifact = ProgramArtifact.fromLinearized(linearized);
-     * }</pre>
-     * 
-     * @param linearized The LinearizedProgramArtifact to convert
-     * @return A ProgramArtifact with the original structure
-     * @throws IllegalArgumentException if linearized is null
-     * @see LinearizedProgramArtifact#toProgramArtifact()
-     */
-    public static ProgramArtifact fromLinearized(LinearizedProgramArtifact linearized) {
-        return linearized.toProgramArtifact();
-    }
+
 }

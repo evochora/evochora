@@ -27,13 +27,11 @@ import java.util.Map;
  * 
  * // Jackson serialization
  * String json = objectMapper.writeValueAsString(linearized);
- * 
- * // Jackson deserialization
- * LinearizedProgramArtifact restored = objectMapper.readValue(json, LinearizedProgramArtifact.class);
- * 
- * // Back to ProgramArtifact
- * ProgramArtifact artifact = restored.toProgramArtifact();
  * }</pre>
+ * 
+ * <p>This is a write-only representation: it turns an artifact into JSON for inspection and is
+ * never read back. A stored artifact is restored from the protobuf representation in
+ * {@code metadata_contracts.proto} instead, which covers every field of the record.</p>
  * 
  * <h3>Linearized Fields</h3>
  * Only the following fields are linearized (int[] → Integer):
@@ -54,14 +52,6 @@ import java.util.Map;
  *   <li><strong>tokenMap</strong>: Map<SerializableSourceInfo, TokenInfo> (unchanged)</li>
  *   <li><strong>tokenLookup</strong>: Map<String, Map<Integer, Map<Integer, List<TokenInfo>>> (unchanged)</li>
  *   <li><strong>sourceLineToInstructions</strong>: Map<String, List<MachineInstructionInfo>> (unchanged)</li>
- * </ul>
- * 
- * <h3>Performance</h3>
- * Conversion only occurs when needed:
- * <ul>
- *   <li><strong>Serialization</strong>: ProgramArtifact → LinearizedProgramArtifact</li>
- *   <li><strong>Deserialization</strong>: LinearizedProgramArtifact → ProgramArtifact</li>
- *   <li><strong>Runtime</strong>: No conversion required</li>
  * </ul>
  * 
  * @see CoordinateConverter
@@ -135,49 +125,12 @@ public record LinearizedProgramArtifact(
     }
     
     /**
-     * Converts this LinearizedProgramArtifact back to a ProgramArtifact.
-     * @return A new ProgramArtifact.
-     */
-    public ProgramArtifact toProgramArtifact() {
-        CoordinateConverter converter = new CoordinateConverter(envProps);
-        
-        return new ProgramArtifact(
-                programId,
-                sources,
-                converter.delinearizeMap(machineCodeLayout()),
-                converter.delinearizeMap(initialWorldObjects()),
-                convertSourceMapBack(sourceMap),
-                callSiteBindings(),
-                relativeCoordToLinearAddress(),
-                linearAddressToCoord(),
-                registerAliasMap(),
-                procNameToParamNames,
-                convertTokenMapBack(tokenMap),
-                tokenLookup,
-                sourceLineToInstructions,
-                labelValueToName,
-                labelNameToValue
-        );
-    }
-    
-    /**
      * Converts a Map<Integer, SourceInfo> to Map<Integer, SerializableSourceInfo>
      */
     private static Map<Integer, SerializableSourceInfo> convertSourceMap(Map<Integer, org.evochora.compiler.api.SourceInfo> sourceMap) {
         Map<Integer, SerializableSourceInfo> result = new HashMap<>();
         for (Map.Entry<Integer, org.evochora.compiler.api.SourceInfo> entry : sourceMap.entrySet()) {
             result.put(entry.getKey(), SerializableSourceInfo.from(entry.getValue()));
-        }
-        return result;
-    }
-    
-    /**
-     * Converts a Map<Integer, SerializableSourceInfo> back to Map<Integer, SourceInfo>
-     */
-    private static Map<Integer, org.evochora.compiler.api.SourceInfo> convertSourceMapBack(Map<Integer, SerializableSourceInfo> sourceMap) {
-        Map<Integer, org.evochora.compiler.api.SourceInfo> result = new HashMap<>();
-        for (Map.Entry<Integer, SerializableSourceInfo> entry : sourceMap.entrySet()) {
-            result.put(entry.getKey(), entry.getValue().toSourceInfo());
         }
         return result;
     }
@@ -192,15 +145,5 @@ public record LinearizedProgramArtifact(
         }
         return result;
     }
-    
-    /**
-     * Converts a Map<SerializableSourceInfo, TokenInfo> back to Map<SourceInfo, TokenInfo>
-     */
-    private static Map<org.evochora.compiler.api.SourceInfo, TokenInfo> convertTokenMapBack(Map<SerializableSourceInfo, TokenInfo> tokenMap) {
-        Map<org.evochora.compiler.api.SourceInfo, TokenInfo> result = new HashMap<>();
-        for (Map.Entry<SerializableSourceInfo, TokenInfo> entry : tokenMap.entrySet()) {
-            result.put(entry.getKey().toSourceInfo(), entry.getValue());
-        }
-        return result;
-    }
+
 }

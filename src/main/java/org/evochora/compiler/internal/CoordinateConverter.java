@@ -17,10 +17,7 @@ import org.evochora.runtime.model.EnvironmentProperties;
  * 
  * // Coordinate [5, 10] to linearized index
  * int[] coord = {5, 10};
- * int flatIndex = converter.linearizeCoordinate(coord); // = 5 + 10*100 = 1005
- * 
- * // Back to coordinate
- * int[] restored = converter.delinearizeCoordinate(1005); // = [5, 10]
+ * int flatIndex = converter.linearizeCoordinate(coord); // = 5*100 + 10 = 510
  * }</pre>
  * 
  * <h3>Performance Characteristics</h3>
@@ -32,17 +29,19 @@ import org.evochora.runtime.model.EnvironmentProperties;
  * </ul>
  * 
  * <h3>Stride Calculation</h3>
- * For a world shape [W, H, D], strides are calculated as follows:
+ * The strides come from {@link EnvironmentProperties}, so a linearized artifact uses the same
+ * row-major convention as the running environment: the last dimension has stride 1. For a world
+ * shape [W, H, D] that gives:
  * <ul>
- *   <li>Stride[0] = 1</li>
- *   <li>Stride[1] = W</li>
- *   <li>Stride[2] = W * H</li>
+ *   <li>Stride[0] = H * D</li>
+ *   <li>Stride[1] = D</li>
+ *   <li>Stride[2] = 1</li>
  * </ul>
  * 
- * Linearization follows the formula: {@code coord[0] + coord[1]*stride[1] + coord[2]*stride[2] + ...}
+ * Linearization follows the formula: {@code coord[0]*stride[0] + coord[1]*stride[1] + coord[2]}
  * 
  * @see LinearizedProgramArtifact
- * @see ProgramArtifact#toLinearized(int[])
+ * @see org.evochora.compiler.api.ProgramArtifact#toLinearized(org.evochora.runtime.model.EnvironmentProperties)
  * @since 1.0
  */
 public class CoordinateConverter {
@@ -115,22 +114,6 @@ public class CoordinateConverter {
     }
     
     /**
-     * Converts a map with Integer keys back to a map with int[] keys (delinearization).
-     * @param original The original map with Integer keys.
-     * @return A new map with int[] keys.
-     * @param <V> The value type of the map.
-     */
-    public <V> Map<int[], V> delinearizeMap(Map<Integer, V> original) {
-        if (original == null) return Map.of();
-        
-        return original.entrySet().stream()
-            .collect(Collectors.toMap(
-                entry -> delinearizeCoordinate(entry.getKey()),
-                Map.Entry::getValue
-            ));
-    }
-    
-    /**
      * Linearizes a coordinate to a flat integer index.
      * @param coord The coordinate to linearize.
      * @return The flat integer index.
@@ -143,13 +126,7 @@ public class CoordinateConverter {
         // Koordinaten normalisieren, falls toroidal
         int[] normalizedCoord = normalizeCoordinate(coord);
 
-        int flatIndex = 0;
-        int stride = 1;
-        for (int i = 0; i < normalizedCoord.length; i++) {
-            flatIndex += normalizedCoord[i] * stride;
-            stride *= envProps.getWorldShape()[i];
-        }
-        return flatIndex;
+        return envProps.toFlatIndex(normalizedCoord);
     }
     
     /**
@@ -168,28 +145,4 @@ public class CoordinateConverter {
         return normalized;
     }
 
-    /**
-     * Delinearizes a flat integer index back to a coordinate.
-     * @param flatIndex The flat integer index to delinearize.
-     * @return The coordinate.
-     */
-    private int[] delinearizeCoordinate(int flatIndex) {
-        int[] coord = new int[envProps.getWorldShape().length];
-        int remaining = flatIndex;
-        
-        for (int i = envProps.getWorldShape().length - 1; i >= 0; i--) {
-            coord[i] = remaining % envProps.getWorldShape()[i];
-            remaining /= envProps.getWorldShape()[i];
-        }
-        
-        return coord;
-    }
-    
-    /**
-     * Returns the environment properties.
-     * @return the EnvironmentProperties
-     */
-    public EnvironmentProperties getEnvironmentProperties() {
-        return envProps;
-    }
 }
