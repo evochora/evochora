@@ -132,6 +132,8 @@ class OrganismRestoreBuilderTest {
             .dataStack(dataStack)
             .locationStack(locationStack)
             .callStack(callStack)
+            // Matches the frame's label hash: a call sets both from the same value
+            .currentProcLabelHash(0)
             .dead(true)
             .failed(true, "Test failure")
             .build(simulation);
@@ -589,5 +591,6 @@ class OrganismRestoreBuilderTest {
         assertThat(restored.readOperand(RegisterBank.FLR.base)).isEqualTo(original.readOperand(RegisterBank.FLR.base));
         assertThat(restored.readOperand(RegisterBank.SDR.base)).isEqualTo(original.readOperand(RegisterBank.SDR.base));
         assertThat(restored.readOperand(RegisterBank.SLR.base)).isEqualTo(original.readOperand(RegisterBank.SLR.base));
+        assertThat(restored.getCurrentProcLabelHash()).isEqualTo(original.getCurrentProcLabelHash());
     }
 }
