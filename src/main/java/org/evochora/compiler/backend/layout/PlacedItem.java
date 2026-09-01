@@ -10,8 +10,9 @@ import org.evochora.compiler.model.ir.IrItem;
  * cells every kind of item occupies — a rule that would then exist twice and could drift apart.
  *
  * @param item The item as it entered the layout phase.
- * @param linearAddress The address of the item's first cell. Items that occupy no cell — a
- *                      directive, for instance — carry the address the layout stood at when it
- *                      reached them.
+ * @param linearAddress The address of the item's first cell. An item that occupies no cell — a
+ *                      directive, for instance — carries the address of the next cell to be
+ *                      filled; directives move the position and direction within the world, never
+ *                      the linear address, so that value is the same before and after one runs.
  */
 public record PlacedItem(IrItem item, int linearAddress) {}
