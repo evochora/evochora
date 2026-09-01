@@ -47,13 +47,64 @@ public abstract class Instruction {
 
     private static List<InstructionInfo> INSTRUCTION_INFO_CACHE = null;
 
+    /**
+     * The organism this instruction was planned for. An instruction object belongs to one organism
+     * and to a single tick: it is created when that organism's next instruction is planned and is
+     * used for that tick only, which is what makes the per-instance caches for operands, argument
+     * slots and length safe.
+     */
     protected final Organism organism;
+    /**
+     * The opcode ID this instance was created for: an ID composed by {@link OpcodeId} from family,
+     * operation and variant, combined with {@link Config#TYPE_CODE}. It is the key the instruction
+     * is registered under and the index into the array registries, so every lookup range-checks it
+     * first — an organism can execute an arbitrary value read from the environment, and a value
+     * outside the registered range must fall back rather than fail.
+     */
     protected final int fullOpcodeId;
 
     /**
      * Defines the possible sources for an instruction's operands.
      */
-    public enum OperandSource { REGISTER, IMMEDIATE, STACK, VECTOR, LABEL, LOCATION_REGISTER }
+    public enum OperandSource {
+        /**
+         * One argument slot holding a register ID. The operand carries the register's current value
+         * and, as its raw source ID, the register ID itself, so an instruction can write its result
+         * back to the register it read.
+         */
+        REGISTER,
+        /**
+         * One argument slot taken literally. The operand carries the whole molecule — type bits
+         * included, not just the value part — and no raw source ID.
+         */
+        IMMEDIATE,
+        /**
+         * A value taken from the organism's data stack, topmost first. Occupies no argument slot,
+         * so it does not lengthen the instruction, and carries no raw source ID. Operand resolution
+         * only peeks; the matching pops happen later, and only for an instruction that is really
+         * executed. If the stack holds fewer values than the instruction consumes, resolution
+         * yields no operands at all rather than a short list.
+         */
+        STACK,
+        /**
+         * One argument slot per environment dimension, holding the signed vector components in axis
+         * order. The operand carries them as an {@code int} array of that length and no raw source
+         * ID. This is the source that makes an instruction's length depend on the environment.
+         */
+        VECTOR,
+        /**
+         * One argument slot holding a label hash. The operand carries the slot reduced to its
+         * 20-bit value part by {@link Config#VALUE_MASK}, which is the hash a fuzzy jump matches
+         * against the label index; it has no raw source ID.
+         */
+        LABEL,
+        /**
+         * One argument slot holding a location register ID. Resolution reads no value from the
+         * register: the operand carries {@code null} and identifies the register through its raw
+         * source ID alone, leaving the instruction to read or write the coordinate vector itself.
+         */
+        LOCATION_REGISTER
+    }
 
     /**
      * Factory for creating instruction instances without reflection.
@@ -83,6 +134,15 @@ public abstract class Instruction {
     private static final Map<String, Integer> NAME_TO_ID = new HashMap<>();
     private static final Map<Integer, String> ID_TO_NAME = new HashMap<>();
     private static final Map<Integer, InstructionFactory> REGISTERED_PLANNERS_BY_ID = new HashMap<>();
+    /**
+     * The operand sources of every registered instruction, keyed by full opcode ID. The order of a
+     * list is the order in which the operands are taken, and it is what determines how many
+     * argument slots an instruction occupies in the code stream.
+     * <p>
+     * Written only while the instruction set is being registered. Afterwards it serves cold-path
+     * introspection; operand resolution reads the array registry built from it and reaches this map
+     * only for an opcode ID outside that array's range.
+     */
     protected static final Map<Integer, List<OperandSource>> OPERAND_SOURCES = new HashMap<>();
     private static final Map<Integer, InstructionSignature> SIGNATURES_BY_ID = new HashMap<>();
     private static final Map<Integer, Boolean> PARALLEL_EXECUTE_SAFE_MAP = new HashMap<>();
@@ -622,6 +682,18 @@ public abstract class Instruction {
     /** Cached instruction length (-1 = not yet computed). */
     private int cachedLength = -1;
 
+    /**
+     * Returns how many slots this instruction occupies in the code stream, the opcode slot
+     * included.
+     * <p>
+     * The length depends on the environment because a VECTOR operand takes one argument slot per
+     * dimension; every other operand takes exactly one slot, and a stack operand takes none. The
+     * result is cached per instruction object, so the environment of the first call fixes the
+     * length for that object's lifetime.
+     *
+     * @param env the environment whose dimensionality the length is computed for
+     * @return the number of slots the instruction occupies, at least one
+     */
     public int getLength(Environment env) {
         if (cachedLength == -1) {
             cachedLength = getInstructionLengthById(this.fullOpcodeId, env);
@@ -777,8 +849,37 @@ public abstract class Instruction {
      * for any {@code LOST} status.
      */
     public enum ConflictResolutionStatus {
-        NOT_APPLICABLE, WON_EXECUTION, LOST_TARGET_OCCUPIED, LOST_PRIORITY
+        /**
+         * The instruction never contended with another for a cell. The starting value of every
+         * planned instruction, and the final one for everything that writes nowhere contested.
+         * Charged like a win, and it lets a write instruction execute unhindered.
+         */
+        NOT_APPLICABLE,
+        /**
+         * The instruction claimed a contested cell against every other contender for it and is
+         * executed normally.
+         */
+        WON_EXECUTION,
+        /**
+         * The instruction claimed the contested cell but found it occupied when it came to write,
+         * so no write happened. Set during execution, and only on an instruction that took part in
+         * conflict resolution at all.
+         */
+        LOST_TARGET_OCCUPIED,
+        /**
+         * Another contender for the same cell had priority. Set before execution: the instruction
+         * is still handed to the virtual machine, which books the loss as a failed instruction
+         * without executing it and leaves the instruction pointer in place, so the organism arrives
+         * at the same instruction again in the next tick.
+         */
+        LOST_PRIORITY
     }
+    /**
+     * How conflict resolution ended for this instruction. Starts at
+     * {@link ConflictResolutionStatus#NOT_APPLICABLE}; conflict resolution sets it for every
+     * instruction that contends with another for the same target cell, and a write instruction can
+     * set it again while executing when it finds that cell occupied.
+     */
     protected ConflictResolutionStatus conflictStatus = ConflictResolutionStatus.NOT_APPLICABLE;
     
     /** Cached operands - resolved once, returned on subsequent calls (idempotent). */
