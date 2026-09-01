@@ -6,6 +6,7 @@ import com.typesafe.config.ConfigFactory;
 import org.evochora.datapipeline.api.contracts.MetadataInfo;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.storage.IResourceBatchStorageRead;
+import org.evochora.datapipeline.api.resources.topics.IResourceTopicReader;
 import org.evochora.datapipeline.api.services.IService;
 import org.evochora.junit.extensions.logging.AllowLog;
 import org.evochora.junit.extensions.logging.LogLevel;
@@ -35,11 +36,14 @@ import static org.mockito.Mockito.when;
 @Tag("unit")
 @ExtendWith(MockitoExtension.class)
 @ExtendWith(LogWatchExtension.class)
-@AllowLog(level = LogLevel.WARN, messagePattern = ".*initialized WITHOUT topic.*")
 class AbstractIndexerTest {
 
     @Mock
     private IResourceBatchStorageRead mockStorage;
+
+    // Required by AbstractIndexer, but never reached: these tests stop before the topic loop.
+    @Mock
+    private IResourceTopicReader<MetadataInfo, ?> mockTopic;
 
     private Map<String, List<IResource>> resources;
 
@@ -60,7 +64,8 @@ class AbstractIndexerTest {
     @BeforeEach
     void setUp() {
         resources = Map.of(
-            "storage", List.of(mockStorage)
+            "storage", List.of(mockStorage),
+            "topic", List.of(mockTopic)
         );
     }
 
