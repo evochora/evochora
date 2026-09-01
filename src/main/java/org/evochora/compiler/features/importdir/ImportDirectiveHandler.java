@@ -24,6 +24,9 @@ public class ImportDirectiveHandler implements IParserStatementHandler {
 
     @Override
     public AstNode parse(ParsingContext context) {
+        // The dependency scanner describes this directive's syntax a second time, as a regular
+        // expression, and decides from it which modules are loaded at all. A form accepted here
+        // but not there reaches the parser with its module missing.
         boolean exported = context.isExported();
         context.advance(); // consume .IMPORT
 

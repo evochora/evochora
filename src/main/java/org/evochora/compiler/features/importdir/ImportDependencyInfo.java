@@ -11,12 +11,14 @@ import java.util.List;
  * @param alias The local alias for the imported module.
  * @param usings The USING clauses on this import.
  * @param resolvedPath The resolved absolute path of the imported module.
+ * @param exported Whether the importing module passes this import on to its own importers.
  */
 public record ImportDependencyInfo(
         String path,
         String alias,
         List<UsingDecl> usings,
-        String resolvedPath
+        String resolvedPath,
+        boolean exported
 ) implements IDependencyInfo {
 
     @Override public String directiveName() { return ".IMPORT"; }

@@ -614,16 +614,17 @@ Both syntaxes produce identical results—the shorthand is transformed into `.RE
 
 The module system allows splitting programs across multiple files. Three directives work together to manage module dependencies:
 
-* **`.IMPORT`** — imports a module: establishes a dependency and inlines the module's code.
+* **`.IMPORT`** — imports a module: establishes a dependency and inlines the module's code; with the `EXPORT` prefix it also passes that import on to its own importers.
 * **`.REQUIRE`** — declares an unsatisfied dependency that must be provided by the importer via a `USING` clause.
 * **`.SOURCE`** — includes raw source text (macros, constants) without creating a module relationship.
 
 #### `.IMPORT`
 
-* **Syntax**: `.IMPORT "<path>" AS <Alias> [USING <source> AS <target>]*`
+* **Syntax**: `[EXPORT] .IMPORT "<path>" AS <Alias> [USING <source> AS <target>]*`
 * **Effect**: Declares a dependency on the module at `<path>`, assigns it the local alias `<Alias>`, and inlines the module's code at this location. Exported labels and procedures in the imported module become accessible as `<Alias>.<Name>`.
+* **`EXPORT` prefix**: Passes the import on to modules that import this one, which then reach it as `<ThisAlias>.<Alias>.<Name>` without inlining the code a second time. Each level decides for its own import: a level without the prefix ends the chain there.
 * **USING clauses**: Provide compile-time dependency injection. Each `USING` clause wires a module from the current scope (identified by `<source>` alias) into the imported module to satisfy one of its `.REQUIRE` declarations (identified by `<target>` alias).
-    - `<source>` must be a known import alias in the current module.
+    - `<source>` names a module the current one has: either one it imported itself, or one it received through a `USING` clause on its own `.REQUIRE`. The second case lets a module hand a dependency further down without choosing it, so the decision stays with the outermost caller.
     - `<target>` must match a `.REQUIRE` alias in the imported module.
     - Every `.REQUIRE` in the imported module must be satisfied by a `USING` clause.
 
@@ -772,7 +773,7 @@ Complete, compilable example programs are provided in [`assembly/examples/`](../
 |---|---|
 | [`simple.evo`](../assembly/examples/simple.evo) | Basic syntax: register aliases, `.DEFINE`, `.PROC`, labels, loops |
 | [`complex.evo`](../assembly/examples/complex.evo) | Advanced features: `.PLACE`, `.MACRO`, `.REPEAT`, `.SOURCE`, multiple `.ORG` regions |
-| [`modules.evo`](../assembly/examples/modules.evo) | Module system: `.IMPORT`, `.REQUIRE`, `USING`, `.SOURCE` for shared constants, `EXPORT` |
+| [`modules.evo`](../assembly/examples/modules.evo) | Module system: `.IMPORT`, `EXPORT .IMPORT`, `.REQUIRE`, `USING`, `.SOURCE` for shared constants, `EXPORT` |
 
 The module example consists of multiple files:
 
@@ -781,6 +782,7 @@ The module example consists of multiple files:
 | [`modules/constants.evo`](../assembly/examples/modules/constants.evo) | Shared constants loaded via `.SOURCE` |
 | [`modules/math.evo`](../assembly/examples/modules/math.evo) | Standalone math utilities (no dependencies) |
 | [`modules/movement.evo`](../assembly/examples/modules/movement.evo) | Movement procedures, depends on math via `.REQUIRE` |
+| [`modules/navigation.evo`](../assembly/examples/modules/navigation.evo) | Passes a required math module down to movement and its own import of movement back up via `EXPORT .IMPORT` |
 
 To compile the examples using the CLI:
 

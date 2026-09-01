@@ -11,6 +11,8 @@ import org.evochora.compiler.model.ModuleContextTracker;
 import org.evochora.compiler.model.symbols.SymbolTable;
 
 import java.util.HashMap;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -125,12 +127,15 @@ public class SemanticAnalyzer {
     private void setupModuleRelationships(DependencyGraph graph, String mainFilePath, String rootAliasChain) {
         List<ModuleDescriptor> topoOrder = graph.topologicalOrder();
 
-        // Pass 1: Compute alias chains (reverse topological — root first, then dependencies).
+        // Dependencies come first in the topological order; two of the steps below need the
+        // opposite, each for its own reason, and both mean the same sequence.
+        List<ModuleDescriptor> fromRoot = new ArrayList<>(topoOrder);
+        Collections.reverse(fromRoot);
+
+        // Step 1: Compute alias chains (root first, then dependencies).
         Map<String, String> pathToAliasChain = new HashMap<>();
         pathToAliasChain.put(mainFilePath, rootAliasChain);
 
-        List<ModuleDescriptor> fromRoot = new java.util.ArrayList<>(topoOrder);
-        java.util.Collections.reverse(fromRoot);
         for (ModuleDescriptor module : fromRoot) {
             String modulePath = module.sourcePath();
             String moduleAliasChain = pathToAliasChain.get(modulePath);
@@ -147,7 +152,7 @@ public class SemanticAnalyzer {
             }
         }
 
-        // Pass 2: Register all modules, then dispatch relationship registration.
+        // Step 2: Register all modules, then dispatch relationship registration.
         for (ModuleDescriptor module : topoOrder) {
             String modulePath = module.sourcePath();
             String moduleAliasChain = pathToAliasChain.getOrDefault(modulePath,
@@ -164,8 +169,13 @@ public class SemanticAnalyzer {
             }
         }
 
-        // Pass 3: Resolve cross-module bindings (USING etc.).
-        for (ModuleDescriptor module : topoOrder) {
+        // Step 3: Resolve cross-module bindings (USING etc.).
+        //
+        // Walked from the outermost module inwards: a module may hand on a dependency it was given
+        // itself, and it can only do that once it has been given it. The walk is finite because the
+        // module graph is acyclic - a cycle among modules is reported during scanning and never
+        // reaches this point.
+        for (ModuleDescriptor module : fromRoot) {
             ModuleSetupContext ctx = new ModuleSetupContext(symbolTable, diagnostics, pathToAliasChain, module.sourcePath());
             for (IDependencyInfo dep : module.dependencies()) {
                 IDependencySetupHandler<IDependencyInfo> handler = setupRegistry.resolve(dep.getClass());

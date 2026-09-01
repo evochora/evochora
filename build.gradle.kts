@@ -223,6 +223,10 @@ tasks.withType<Tar> {
 
 tasks.test {
     useJUnitPlatform()
+    // The assembly programs are compiled by a test, so a change to one has to invalidate the
+    // task. Gradle decides that per task, not per test class: touching a program reruns the
+    // suite, which is the price for the examples and the primordial staying compilable.
+    inputs.dir("assembly").withPropertyName("assemblyPrograms")
     maxHeapSize = "2g" // Increase heap size for tests
     jvmArgs("-Duser.language=en", "-Duser.country=US")
     jvmArgs("-XX:+EnableDynamicAgentLoading")

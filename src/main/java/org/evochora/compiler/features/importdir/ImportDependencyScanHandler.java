@@ -16,8 +16,11 @@ import java.util.regex.Pattern;
  */
 public class ImportDependencyScanHandler implements IDependencyScanHandler {
 
+    // The same syntax is described a second time by the parser handler for this directive.
+    // Whatever changes here has to change there as well: a form this pattern does not match is
+    // never scanned, so the module is never loaded, and the parser never gets to see it.
     private static final Pattern IMPORT_PATTERN = Pattern.compile(
-            "(?i)^\\.IMPORT\\s+\"([^\"]+)\"\\s+AS\\s+(\\w+)((?:\\s+USING\\s+\\w+\\s+AS\\s+\\w+)*)\\s*$");
+            "(?i)^(EXPORT\\s+)?\\.IMPORT\\s+\"([^\"]+)\"\\s+AS\\s+(\\w+)((?:\\s+USING\\s+\\w+\\s+AS\\s+\\w+)*)\\s*$");
     private static final Pattern USING_PATTERN = Pattern.compile(
             "(?i)USING\\s+(\\w+)\\s+AS\\s+(\\w+)");
 
@@ -28,9 +31,10 @@ public class ImportDependencyScanHandler implements IDependencyScanHandler {
 
     @Override
     public void handleMatch(Matcher matcher, IDependencyScanContext ctx) {
-        String path = matcher.group(1);
-        String alias = matcher.group(2);
-        String usingsPart = matcher.group(3);
+        boolean exported = matcher.group(1) != null;
+        String path = matcher.group(2);
+        String alias = matcher.group(3);
+        String usingsPart = matcher.group(4);
 
         List<ImportDependencyInfo.UsingDecl> usings = new ArrayList<>();
         if (usingsPart != null && !usingsPart.isBlank()) {
@@ -48,7 +52,7 @@ public class ImportDependencyScanHandler implements IDependencyScanHandler {
             return;
         }
 
-        ctx.addDependency(new ImportDependencyInfo(path, alias, usings, resolvedPath));
+        ctx.addDependency(new ImportDependencyInfo(path, alias, usings, resolvedPath, exported));
 
         try {
             String content = ctx.loadContent(resolvedPath);
