@@ -78,6 +78,21 @@ public class IrInstruction implements IrItem {
     }
 
     /**
+     * Returns an instruction of the same kind carrying the given main operands.
+     * <p>
+     * Rewriting an operand must not change what an instruction is. Building a plain
+     * {@link IrInstruction} instead would drop whatever a subtype carries beyond the main
+     * operands, and it would do so silently: the result still compiles and still executes, but a
+     * later pass looking for that subtype no longer finds it.
+     *
+     * @param newOperands the main operands of the returned instruction
+     * @return an instruction of this instruction's kind with those operands
+     */
+    public IrInstruction withOperands(final List<IrOperand> newOperands) {
+        return new IrInstruction(opcode(), newOperands, source(), synthetic());
+    }
+
+    /**
      * Returns whether this instruction is synthetic (compiler-generated).
      */
     public boolean synthetic() {

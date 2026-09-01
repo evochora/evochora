@@ -44,6 +44,19 @@ public final class IrCallInstruction extends IrInstruction {
         this.lvalOperands = Collections.unmodifiableList(lvalOperands);
     }
 
+    /**
+     * Keeps the parameter lists when the main operands are rewritten.
+     * <p>
+     * The procedure name of a call is resolved to a label reference during linking, which replaces
+     * the main operands. Without this, the call would come out of that step as a plain instruction
+     * and the REF/VAL/LREF/LVAL lists would be gone - along with everything that reads them.
+     */
+    @Override
+    public IrCallInstruction withOperands(final List<IrOperand> newOperands) {
+        return new IrCallInstruction(opcode(), newOperands,
+                refOperands, valOperands, lrefOperands, lvalOperands, source());
+    }
+
     /** Scalar reference parameter operands. */
     public List<IrOperand> refOperands() { return refOperands; }
 
