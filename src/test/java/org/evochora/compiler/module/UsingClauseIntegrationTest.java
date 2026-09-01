@@ -117,7 +117,7 @@ class UsingClauseIntegrationTest {
         DiagnosticsEngine diagnostics = compileThroughSemantics(mainSource, mainPath);
 
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertErrorContaining(diagnostics, "UNKNOWN", "not a known import alias");
+        assertErrorContaining(diagnostics, "UNKNOWN", "neither an import nor a requirement");
     }
 
     @Test

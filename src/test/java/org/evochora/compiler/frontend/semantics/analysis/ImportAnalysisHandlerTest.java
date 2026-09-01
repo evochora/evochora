@@ -83,14 +83,14 @@ class ImportAnalysisHandlerTest {
     @Tag("unit")
     void unknownSourceAliasReportsError() {
         // .IMPORT "lib.evo" AS LIB USING UNKNOWN AS DEP
-        // "UNKNOWN" is not a known import alias in main
+        // "UNKNOWN" is neither imported nor required by main
         ImportNode node = importNode("lib.evo", "LIB", List.of(
                 usingClause("UNKNOWN", "DEP")
         ));
 
         handler.analyze(node, symbolTable, diagnostics);
 
-        assertErrorContaining("UNKNOWN", "not a known import alias");
+        assertErrorContaining("UNKNOWN", "neither an import nor a requirement");
     }
 
     @Test

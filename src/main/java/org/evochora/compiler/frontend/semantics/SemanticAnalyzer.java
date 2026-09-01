@@ -11,6 +11,8 @@ import org.evochora.compiler.model.ModuleContextTracker;
 import org.evochora.compiler.model.symbols.SymbolTable;
 
 import java.util.HashMap;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -165,7 +167,14 @@ public class SemanticAnalyzer {
         }
 
         // Pass 3: Resolve cross-module bindings (USING etc.).
-        for (ModuleDescriptor module : topoOrder) {
+        //
+        // Walked from the outermost module inwards, the reverse of the dependency order: a module
+        // may hand on a dependency it was given itself, and it can only do that once it has been
+        // given it. The order is finite because the module graph is acyclic - a cycle among
+        // modules is reported during scanning and never reaches this point.
+        List<ModuleDescriptor> outermostFirst = new ArrayList<>(topoOrder);
+        Collections.reverse(outermostFirst);
+        for (ModuleDescriptor module : outermostFirst) {
             ModuleSetupContext ctx = new ModuleSetupContext(symbolTable, diagnostics, pathToAliasChain, module.sourcePath());
             for (IDependencyInfo dep : module.dependencies()) {
                 IDependencySetupHandler<IDependencyInfo> handler = setupRegistry.resolve(dep.getClass());

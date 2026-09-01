@@ -48,11 +48,14 @@ public class ImportAnalysisHandler implements IAnalysisHandler {
             String sourceAlias = using.sourceAlias().toUpperCase();
             String targetAlias = using.targetAlias().toUpperCase();
 
-            // USING source must be a known import alias in the current module
-            if (!currentModScope.imports().containsKey(sourceAlias)) {
+            // A USING source is either a module this one imported, or one it was given itself:
+            // a requirement received from above can be handed on, so that the choice of what
+            // finally arrives stays with the outermost caller.
+            if (!currentModScope.imports().containsKey(sourceAlias)
+                    && !currentModScope.usingBindings().containsKey(sourceAlias)) {
                 diagnostics.reportError(
                         "USING source '" + using.sourceAlias()
-                                + "' is not a known import alias in the current module.",
+                                + "' is neither an import nor a requirement of the current module.",
                         using.sourceSourceInfo().fileName(),
                         using.sourceSourceInfo().lineNumber());
             }
