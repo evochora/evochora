@@ -54,6 +54,8 @@ public class VideoRenderEngine {
      * @return Exit code (0 for success, non-zero for failure).
      */
     public Integer execute() throws Exception {
+        if (!optionsAreValid()) return 1;
+
         // Load configuration
         Config config = loadConfig();
         if (config == null) return 1;
@@ -575,6 +577,29 @@ public class VideoRenderEngine {
     // ─────────────────────────────────────────────────────────────────────────────
     // Initialization helpers
     // ─────────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Checks the options that would otherwise fail late or silently.
+     * <p>
+     * A sampling interval below one divides by zero while computing the next sample tick, and a
+     * start tick beyond the end tick yields no frames at all, which would leave an empty video
+     * behind and still report success.
+     *
+     * @return {@code true} if rendering can proceed; otherwise a message has been written to
+     *         standard error
+     */
+    private boolean optionsAreValid() {
+        if (options.samplingInterval < 1) {
+            System.err.println("--sampling-interval must be 1 or greater, got " + options.samplingInterval);
+            return false;
+        }
+        if (options.startTick != null && options.endTick != null && options.startTick > options.endTick) {
+            System.err.println("--start-tick (" + options.startTick + ") must not be greater than --end-tick ("
+                    + options.endTick + ")");
+            return false;
+        }
+        return true;
+    }
 
     private Config loadConfig() {
         try {
