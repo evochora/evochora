@@ -133,9 +133,9 @@ public class OrganismIndexer<ACK> extends AbstractBatchIndexer<ACK> implements I
     @Override
     protected void logStarted() {
         log.info("OrganismIndexer started: metadata=[pollInterval={}ms, maxPollDuration={}ms], topicPollTimeout={}ms",
-                indexerOptions.hasPath("metadataPollIntervalMs") ? indexerOptions.getInt("metadataPollIntervalMs") : "default",
-                indexerOptions.hasPath("metadataMaxPollDurationMs") ? indexerOptions.getInt("metadataMaxPollDurationMs") : "default",
-                indexerOptions.hasPath("topicPollTimeoutMs") ? indexerOptions.getInt("topicPollTimeoutMs") : 5000);
+                options.hasPath("metadataPollIntervalMs") ? options.getInt("metadataPollIntervalMs") : "default",
+                options.hasPath("metadataMaxPollDurationMs") ? options.getInt("metadataMaxPollDurationMs") : "default",
+                options.hasPath("topicPollTimeoutMs") ? options.getInt("topicPollTimeoutMs") : 5000);
     }
 
     // ==================== IMemoryEstimatable ====================

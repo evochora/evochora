@@ -35,7 +35,6 @@ public abstract class AbstractIndexer<T extends Message, ACK> extends AbstractSe
 
     protected final IResourceBatchStorageRead storage;
     protected final IResourceTopicReader<T, ACK> topic;
-    protected final Config indexerOptions;
 
     private final String configuredRunId;
     private final int pollIntervalMs;
@@ -54,7 +53,6 @@ public abstract class AbstractIndexer<T extends Message, ACK> extends AbstractSe
         IResourceTopicReader<T, ACK> topicReader = (IResourceTopicReader<T, ACK>) getRequiredResource("topic", IResourceTopicReader.class);
         this.topic = topicReader;
         
-        this.indexerOptions = options;
         this.configuredRunId = options.hasPath("runId") ? options.getString("runId") : null;
         this.pollIntervalMs = options.hasPath("pollIntervalMs") ? options.getInt("pollIntervalMs") : 1000;
         this.maxPollDurationMs = options.hasPath("maxPollDurationMs") ? options.getInt("maxPollDurationMs") : 300000;

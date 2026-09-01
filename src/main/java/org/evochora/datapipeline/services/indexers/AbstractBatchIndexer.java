@@ -221,16 +221,16 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
         // REQUIRED component - exception if resource missing
         if (required.contains(ComponentType.METADATA)) {
             IResourceSchemaAwareMetadataReader metadataReader = getRequiredResource("metadata", IResourceSchemaAwareMetadataReader.class);
-            int pollIntervalMs = indexerOptions.getInt("metadataPollIntervalMs");
-            int maxPollDurationMs = indexerOptions.getInt("metadataMaxPollDurationMs");
+            int pollIntervalMs = options.getInt("metadataPollIntervalMs");
+            int maxPollDurationMs = options.getInt("metadataMaxPollDurationMs");
             builder.withMetadata(new MetadataReadingComponent(
                 metadataReader, pollIntervalMs, maxPollDurationMs));
         }
         // OPTIONAL metadata component - graceful skip if resource missing
         else if (optional.contains(ComponentType.METADATA)) {
             getOptionalResource("metadata", IResourceSchemaAwareMetadataReader.class).ifPresent(metadataReader -> {
-                int pollIntervalMs = indexerOptions.getInt("metadataPollIntervalMs");
-                int maxPollDurationMs = indexerOptions.getInt("metadataMaxPollDurationMs");
+                int pollIntervalMs = options.getInt("metadataPollIntervalMs");
+                int maxPollDurationMs = options.getInt("metadataMaxPollDurationMs");
                 builder.withMetadata(new MetadataReadingComponent(
                     metadataReader, pollIntervalMs, maxPollDurationMs));
             });
@@ -261,8 +261,8 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
             IRetryTracker retryTracker = getRequiredResource("retryTracker", IRetryTracker.class);
             @SuppressWarnings("unchecked")
             IDeadLetterQueueResource<BatchInfo> dlq = (IDeadLetterQueueResource<BatchInfo>) getRequiredResource("dlq", IDeadLetterQueueResource.class);
-            int maxRetries = indexerOptions.hasPath("maxRetries")
-                ? indexerOptions.getInt("maxRetries")
+            int maxRetries = options.hasPath("maxRetries")
+                ? options.getInt("maxRetries")
                 : 3;  // Default: 3 retries
             builder.withDlq(new DlqComponent<>(retryTracker, dlq, maxRetries, this.serviceName));
         }
@@ -274,8 +274,8 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
             if (retryTrackerOpt.isPresent() && dlqOpt.isPresent()) {
                 @SuppressWarnings("unchecked")
                 IDeadLetterQueueResource<BatchInfo> dlq = (IDeadLetterQueueResource<BatchInfo>) dlqOpt.get();
-                int maxRetries = indexerOptions.hasPath("maxRetries")
-                    ? indexerOptions.getInt("maxRetries")
+                int maxRetries = options.hasPath("maxRetries")
+                    ? options.getInt("maxRetries")
                     : 3;  // Default: 3 retries
                 builder.withDlq(new DlqComponent<>(
                     retryTrackerOpt.get(),
