@@ -38,7 +38,7 @@ public class DummyWriterService extends AbstractService {
         super(name, options, resources);
         this.storage = getRequiredResource("storage", IBatchStorageWrite.class);
         this.intervalMs = options.hasPath("intervalMs") ? options.getInt("intervalMs") : 1000;
-        this.chunksPerWrite = options.hasPath("messagesPerWrite") ? options.getInt("messagesPerWrite") : 10;
+        this.chunksPerWrite = options.hasPath("chunksPerWrite") ? options.getInt("chunksPerWrite") : 10;
         this.ticksPerChunk = options.hasPath("ticksPerChunk") ? options.getInt("ticksPerChunk") : 10;
         this.maxWrites = options.hasPath("maxWrites") ? options.getInt("maxWrites") : -1;
         this.keyPrefix = options.hasPath("keyPrefix") ? options.getString("keyPrefix") : "test";

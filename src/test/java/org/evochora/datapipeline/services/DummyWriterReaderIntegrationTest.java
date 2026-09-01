@@ -62,7 +62,7 @@ class DummyWriterReaderIntegrationTest {
                   resources { storage = "storage-write:storage-main" }
                   options {
                     intervalMs = 1
-                    messagesPerWrite = %d
+                    chunksPerWrite = %d
                     ticksPerChunk = 10
                     maxWrites = %d
                     keyPrefix = "integration_test"
