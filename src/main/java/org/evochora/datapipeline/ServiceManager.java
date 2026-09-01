@@ -457,10 +457,39 @@ public class ServiceManager implements IMonitorable {
         applyToAllServices(this::resumeService, new ArrayList<>(services.keySet()));
     }
 
+    /**
+     * Stops every service that is running or paused and starts that same set again.
+     * <p>
+     * The set is taken before the stop and holds every registered service in one of those states,
+     * not only the ones the startup sequence names, so a service switched on outside the sequence
+     * comes back as well. Services the sequence names are started in its order; the rest follow.
+     * <p>
+     * Every service that comes back is a new instance with newly bound resources, because a start
+     * discards the stopped one — a service that was paused therefore returns running. The resources
+     * themselves are neither closed nor reopened.
+     */
     public void restartAll() {
         log.info("Restarting all services...");
+        // Taken before the stop, because stopping is what makes this information unavailable.
+        // Starting the startup sequence instead would drop every service that was switched on
+        // outside it, and drop it silently: the stop reaches every running service, the sequence
+        // does not. Services named in the sequence keep its order; the rest follow.
+        List<String> running = services.entrySet().stream()
+                .filter(e -> {
+                    IService.State state = e.getValue().getCurrentState();
+                    return state == IService.State.RUNNING || state == IService.State.PAUSED;
+                })
+                .map(Map.Entry::getKey)
+                .collect(Collectors.toList());
+        List<String> toRestart = startupSequence.stream()
+                .filter(running::contains)
+                .collect(Collectors.toCollection(ArrayList::new));
+        running.stream().filter(name -> !toRestart.contains(name)).forEach(toRestart::add);
+
         stopAll();
-        startAll();
+
+        log.info("\u001B[34m========== Starting Services ==========\u001B[0m");
+        applyToAllServices(this::startService, toRestart);
     }
 
     /**

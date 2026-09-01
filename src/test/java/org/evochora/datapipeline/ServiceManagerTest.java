@@ -144,6 +144,84 @@ public class ServiceManagerTest {
         await().atMost(1, TimeUnit.SECONDS).until(() -> sm.getServiceStatus("consumer").state() == IService.State.STOPPED);
     }
 
+    /**
+     * Configuration with a service that is defined but left out of the startup sequence, which is
+     * what an operator gets when a service is switched on for one run only.
+     */
+    private Config createConfigWithServiceOutsideStartupSequence() {
+        return ConfigFactory.parseString("""
+            pipeline {
+              autoStart = false
+              startupSequence = ["consumer", "producer"]
+              resources {
+                "test-queue" {
+                  className = "org.evochora.datapipeline.resources.queues.InMemoryBlockingQueue"
+                  options { capacity = 100 }
+                }
+                "consumer-dlq" {
+                  className = "org.evochora.datapipeline.resources.queues.InMemoryDeadLetterQueue"
+                  options { capacity = 50, primaryQueueName = "test-queue" }
+                }
+                "consumer-idempotency-tracker" {
+                  className = "org.evochora.datapipeline.resources.idempotency.InMemoryIdempotencyTracker"
+                  options { ttlSeconds = 3600, cleanupThresholdMessages = 100, cleanupIntervalSeconds = 60 }
+                }
+              }
+              services {
+                producer {
+                  className = "org.evochora.datapipeline.services.DummyProducerService"
+                  resources { output = "queue-out:test-queue?window=5" }
+                  options { intervalMs = 10, maxMessages = -1 }
+                }
+                consumer {
+                  className = "org.evochora.datapipeline.services.DummyConsumerService"
+                  resources {
+                    input = "queue-in:test-queue"
+                    idempotencyTracker = "tracker:consumer-idempotency-tracker"
+                    dlq = "queue-out:consumer-dlq"
+                  }
+                  options { maxMessages = -1 }
+                }
+                "extra-producer" {
+                  className = "org.evochora.datapipeline.services.DummyProducerService"
+                  resources { output = "queue-out:test-queue?window=5" }
+                  options { intervalMs = 10, maxMessages = -1 }
+                }
+              }
+            }
+        """);
+    }
+
+    /**
+     * A restart has to give back what it took. Stopping reaches every running service, so starting
+     * has to reach them as well and not just the startup sequence, or a service switched on for the
+     * current run disappears without anything saying so.
+     */
+    @Test
+    @AllowLog(level = LogLevel.WARN, messagePattern = ".*")
+    void restartAllStartsTheServicesThatWereRunning_notOnlyTheStartupSequence() {
+        ServiceManager sm = new ServiceManager(createConfigWithServiceOutsideStartupSequence());
+
+        sm.startAll();
+        sm.startService("extra-producer");
+        await().atMost(2, TimeUnit.SECONDS).untilAsserted(() -> {
+            assertEquals(IService.State.RUNNING, sm.getServiceStatus("producer").state());
+            assertEquals(IService.State.RUNNING, sm.getServiceStatus("consumer").state());
+            assertEquals(IService.State.RUNNING, sm.getServiceStatus("extra-producer").state());
+        });
+
+        sm.restartAll();
+
+        await().atMost(2, TimeUnit.SECONDS).untilAsserted(() -> {
+            assertEquals(IService.State.RUNNING, sm.getServiceStatus("producer").state());
+            assertEquals(IService.State.RUNNING, sm.getServiceStatus("consumer").state());
+            assertEquals(IService.State.RUNNING, sm.getServiceStatus("extra-producer").state(),
+                    "a service started outside the startup sequence must come back too");
+        });
+
+        sm.stopAll();
+    }
+
     @Test
     @AllowLog(level = LogLevel.WARN, messagePattern = ".*")
     void testStatusAndMetrics() {
