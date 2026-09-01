@@ -155,10 +155,26 @@ public class Simulation {
         return sim;
     }
 
+    /**
+     * Returns the manager that decides the energy cost and entropy change of every executed
+     * instruction. It is the instance handed to the constructor and is never replaced, so the
+     * thermodynamic rules of a run are fixed when the simulation is created.
+     *
+     * @return the policy manager of this simulation
+     */
     public ThermodynamicPolicyManager getPolicyManager() {
         return policyManager;
     }
 
+    /**
+     * Returns the organism section of the runtime configuration, from which organisms and the
+     * virtual machine take their limits and costs, among them {@code max-energy},
+     * {@code max-entropy} and {@code error-penalty-cost}. Values are read on demand, so a
+     * configuration lacking a required key fails at the moment that key is first needed rather
+     * than when the simulation is built.
+     *
+     * @return the organism configuration handed to the constructor
+     */
     public Config getOrganismConfig() {
         return organismConfig;
     }

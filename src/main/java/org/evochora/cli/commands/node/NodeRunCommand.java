@@ -9,6 +9,15 @@ import java.util.concurrent.Callable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * The {@code node run} subcommand: starts an Evochora node from the configuration of the
+ * invocation and runs it in the foreground. The command has no options of its own; everything the
+ * node needs comes from the configuration file selected by the root command.
+ * <p>
+ * Starting the node registers a JVM shutdown hook that stops the node's processes, after which the
+ * command blocks its own thread for the lifetime of the node. It returns exit code 0 when that
+ * thread is interrupted.
+ */
 @Command(
     name = "run",
     description = "Starts the Evochora Node server in foreground mode"

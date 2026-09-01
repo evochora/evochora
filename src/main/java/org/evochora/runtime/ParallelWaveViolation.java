@@ -11,6 +11,9 @@ package org.evochora.runtime;
 public final class ParallelWaveViolation extends IllegalStateException {
 
     /**
+     * Creates a violation. It is thrown at the point where the reserved facility was used, so that
+     * the stack trace names the offending code and not the tick loop that lets the exception pass.
+     *
      * @param message describes the facility that was used and what to use instead
      */
     public ParallelWaveViolation(String message) {
