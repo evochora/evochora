@@ -6,8 +6,8 @@ import java.util.stream.Collectors;
 import org.evochora.runtime.model.EnvironmentProperties;
 
 /**
- * Utility class for bidirectional conversion between int[] coordinates
- * and linearized Integer keys for Jackson serialization.
+ * Utility class for converting int[] coordinates into the linearized Integer keys that Jackson
+ * can write, because a JSON object key must be a string and an array is not one.
  * 
  * <h2>Usage</h2>
  * <pre>{@code
