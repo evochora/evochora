@@ -64,7 +64,7 @@ public class LabelRefLinkingRule implements ILinkingRule {
                 }
             }
         }
-        return rewritten != null ? new IrInstruction(instruction.opcode(), rewritten, instruction.source()) : instruction;
+        return rewritten != null ? instruction.withOperands(rewritten) : instruction;
     }
 
     private String qualifyName(String localName, LinkingContext context) {

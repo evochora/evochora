@@ -19,7 +19,7 @@ class LinkingContextFreezeTest {
     void setUp() {
         context = new LinkingContext(null, null);
         context.pushAliasChain("ROOT");
-        context.nextAddress();
+        context.setCurrentAddress(1);
         context.callSiteBindings().put(0, new HashMap<>(Map.of(1024, 1, 1025, 2)));
         context.freeze();
     }
@@ -39,8 +39,8 @@ class LinkingContextFreezeTest {
     }
 
     @Test
-    void nextAddress_throwsAfterFreeze() {
-        assertThatThrownBy(() -> context.nextAddress())
+    void setCurrentAddress_throwsAfterFreeze() {
+        assertThatThrownBy(() -> context.setCurrentAddress(1))
                 .isInstanceOf(IllegalStateException.class);
     }
 

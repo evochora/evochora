@@ -53,7 +53,8 @@ class LabelRefLinkingRuleTest {
                 Map.of("5|5", 10),
                 Map.of("TEST.FOO", 10),
                 Collections.emptyMap(),
-                Collections.emptyMap()
+                Collections.emptyMap(),
+                Collections.emptyList()
         );
 
         // And: An instruction with IrLabelRef("FOO") from "test.s"
@@ -92,7 +93,8 @@ class LabelRefLinkingRuleTest {
                     Map.of("0|0", 0),
                     Map.of(qualifiedName, 0),
                     Collections.emptyMap(),
-                    Collections.emptyMap()
+                    Collections.emptyMap(),
+                    Collections.emptyList()
             );
 
             IrInstruction input = new IrInstruction(
@@ -127,7 +129,8 @@ class LabelRefLinkingRuleTest {
                 Collections.emptyMap(),
                 Collections.emptyMap(),
                 Collections.emptyMap(),
-                Collections.emptyMap()
+                Collections.emptyMap(),
+                Collections.emptyList()
         );
 
         // Given: An instruction without IrLabelRef
@@ -152,7 +155,8 @@ class LabelRefLinkingRuleTest {
                 Collections.emptyMap(),
                 Map.of("TEST.OTHER_LABEL", 5), // Different label
                 Collections.emptyMap(),
-                Collections.emptyMap()
+                Collections.emptyMap(),
+                Collections.emptyList()
         );
 
         IrInstruction input = new IrInstruction(
@@ -198,7 +202,8 @@ class LabelRefLinkingRuleTest {
                 Map.of("5|5", 10),
                 Map.of("LIB.TARGET", 10),
                 Collections.emptyMap(),
-                Collections.emptyMap()
+                Collections.emptyMap(),
+                Collections.emptyList()
         );
 
         // And: An instruction referencing "LIB.TARGET" from main.s
@@ -251,7 +256,8 @@ class LabelRefLinkingRuleTest {
                 Map.of("5|5", 10),
                 Map.of("PRIVATE", 10),
                 Collections.emptyMap(),
-                Collections.emptyMap()
+                Collections.emptyMap(),
+                Collections.emptyList()
         );
 
         // Instruction referencing "LIB.PRIVATE" from main.s

@@ -45,7 +45,7 @@ public final class LinkingContext {
 
     /**
      * Freezes the context, preventing further modifications.
-     * After freeze: pushAliasChain/popAliasChain/nextAddress throw,
+     * After freeze: pushAliasChain/popAliasChain/setCurrentAddress throw,
      * callSiteBindings returns unmodifiable view.
      */
     public void freeze() {
@@ -62,12 +62,14 @@ public final class LinkingContext {
     }
 
     /**
-     * @return The next linear address and increments the cursor.
+     * Sets the address of the item being linked, as assigned by the layout phase.
+     *
+     * @param linearAddress The address of the item's first cell.
      */
-    public int nextAddress() { guardFrozen(); return linearAddressCursor++; }
+    public void setCurrentAddress(final int linearAddress) { guardFrozen(); this.linearAddressCursor = linearAddress; }
 
     /**
-     * @return The current linear address.
+     * @return The linear address of the item currently being linked.
      */
     public int currentAddress() { return linearAddressCursor; }
 

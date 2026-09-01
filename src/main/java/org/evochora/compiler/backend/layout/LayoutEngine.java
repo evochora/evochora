@@ -10,7 +10,9 @@ import org.evochora.compiler.model.ir.IrProgram;
 import org.evochora.compiler.isa.IInstructionSet;
 import org.evochora.runtime.model.EnvironmentProperties;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -32,9 +34,12 @@ public final class LayoutEngine {
         LayoutContext ctx = new LayoutContext(envProps);
 
         Map<String, Integer> labelToAddress = new HashMap<>();
+        List<PlacedItem> placedItems = new ArrayList<>(program.items().size());
 
         for (IrItem item : program.items()) {
             SourceInfo src = item.source();
+            // Recorded before the item is placed, so it names the item's first cell.
+            placedItems.add(new PlacedItem(item, ctx.linearAddress()));
 
             if (item instanceof IrDirective dir) {
                 registry.resolve(dir).handle(dir, ctx);
@@ -69,6 +74,7 @@ public final class LayoutEngine {
             }
         }
 
-        return new LayoutResult(ctx.linearToCoord(), ctx.coordToLinear(), labelToAddress, ctx.sourceMap(), ctx.initialWorldObjects());
+        return new LayoutResult(ctx.linearToCoord(), ctx.coordToLinear(), labelToAddress, ctx.sourceMap(),
+                ctx.initialWorldObjects(), List.copyOf(placedItems));
     }
 }
