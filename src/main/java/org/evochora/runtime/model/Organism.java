@@ -196,8 +196,10 @@ public class Organism {
      * Entry point for restoring an organism from serialized state.
      * <p>
      * This is used during simulation resume to reconstruct organisms from
-     * persisted checkpoint data. Required fields (id, birthTick) are passed here;
-     * optional fields are set via builder methods.
+     * persisted checkpoint data. The two values without a meaningful default are passed here;
+     * the rest is supplied through the builder. Three of those are required as well — the
+     * instruction pointer, the direction vector and the initial position — and
+     * {@link RestoreBuilder#build(Simulation)} rejects state that is missing them.
      *
      * @param id Unique organism identifier
      * @param birthTick Tick when organism was created
