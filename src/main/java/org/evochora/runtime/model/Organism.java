@@ -1630,8 +1630,15 @@ public class Organism {
 
     /**
      * Gets a reference to the Location Stack (LS).
+     * <p>
+     * It holds vectors of one component per world dimension, the head being the top. Whether a
+     * value stands for an absolute position or for a relative displacement is decided by the
+     * program alone: the instructions move these vectors between the stack, the location
+     * registers, the data stack and the data pointers without distinguishing the two, and
+     * {@link #setActiveDp(int[])} accepts whatever it is given.
      *
-     * @return The location stack.
+     * @return the live stack, not a copy; its depth is bounded by
+     *         {@link org.evochora.runtime.Config#LOCATION_STACK_MAX_DEPTH}
      */
     public Deque<int[]> getLocationStack() {
         return this.locationStack;
