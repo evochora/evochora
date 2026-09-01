@@ -4,7 +4,7 @@ import org.evochora.compiler.frontend.module.IDependencyInfo;
 
 /**
  * Handler for setting up module relationships from dependency data.
- * Called during Phase 4 (before AST walk) in three passes:
+ * Called during Phase 4 (before AST walk) in three steps:
  * <ol>
  *   <li>registerScope — compute alias chains (reverse topological order)</li>
  *   <li>registerRelationships — register relationships in module scopes (after all modules registered)</li>
@@ -32,7 +32,7 @@ public interface IDependencySetupHandler<T extends IDependencyInfo> {
      * <p>
      * Called in reverse topological order (root first), after all relationships are registered.
      * A module may hand on a dependency it was given itself, and can only do so once the module
-     * above it has bound that dependency — which happens in this same pass.
+     * above it has bound that dependency — which happens in this same step.
      */
     default void resolveBindings(T dependency, ModuleSetupContext ctx) {}
 }

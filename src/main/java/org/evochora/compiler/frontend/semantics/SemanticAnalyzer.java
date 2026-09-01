@@ -127,7 +127,7 @@ public class SemanticAnalyzer {
     private void setupModuleRelationships(DependencyGraph graph, String mainFilePath, String rootAliasChain) {
         List<ModuleDescriptor> topoOrder = graph.topologicalOrder();
 
-        // Dependencies come first in the topological order; two of the passes below need the
+        // Dependencies come first in the topological order; two of the steps below need the
         // opposite, each for its own reason, and both mean the same sequence.
         List<ModuleDescriptor> fromRoot = new ArrayList<>(topoOrder);
         Collections.reverse(fromRoot);
