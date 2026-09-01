@@ -62,6 +62,17 @@ public class Simulation {
     private int[] scalingMaxThreads = {};
     private int nextOrganismId = 1;
     private int organismsSinceYield = 0;
+
+    /**
+     * When set, the virtual machine collects each executed instruction's pre-execution
+     * register values into its execution record. Only this map hangs on the flag — the
+     * record itself (opcode, raw arguments, energy cost, entropy delta) is kept on every
+     * tick. The map exists solely for observers of sampled ticks (state serialization
+     * reads it, nothing else does); on every other tick it would cost a map of boxed
+     * register values per instruction for nothing. Defaults to on, so callers that never
+     * sample keep the full annotation.
+     */
+    private boolean captureExecutionDetails = true;
     private final LongOpenHashSet allGenomesEverSeen = new LongOpenHashSet();
     private IRandomProvider randomProvider;
 
@@ -189,6 +200,32 @@ public class Simulation {
      */
     public long getTickSeed() {
         return this.tickSeed;
+    }
+
+    /**
+     * Chooses whether the next ticks collect each instruction's pre-execution register
+     * values into its execution record. The record itself (opcode, raw arguments, costs)
+     * is kept regardless of this flag. Samplers enable this for the tick they are about
+     * to capture and disable it otherwise.
+     * <p>
+     * Must be called between ticks, never while a tick runs: the flag is read from
+     * every thread of the parallel wave. It is deliberately not volatile — visibility
+     * comes from the happens-before edge of handing the tick's work to the worker pool,
+     * the same pattern the class's other plain mutable fields rely on.
+     *
+     * @param capture whether execution records carry pre-execution register values
+     */
+    public void setCaptureExecutionDetails(boolean capture) {
+        this.captureExecutionDetails = capture;
+    }
+
+    /**
+     * Reports whether execution records currently carry pre-execution register values.
+     *
+     * @return {@code true} when register values are collected
+     */
+    public boolean isCaptureExecutionDetails() {
+        return this.captureExecutionDetails;
     }
 
     /**

@@ -34,8 +34,10 @@ LOOP:
   LTI %COUNTER MAX_COUNT
   JMPI LOOP
   
-  # Place result in world
+  # Place result in world, then take it back so the cell is empty again for the
+  # next round: the program stays failure-free no matter how long it runs.
   POKI %RESULT 1|0
-  
+  PEKI %TEMP 1|0
+
   # End program
   JMPI START

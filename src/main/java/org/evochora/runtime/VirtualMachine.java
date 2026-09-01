@@ -105,27 +105,41 @@ public class VirtualMachine {
             return;
         }
 
-        try {
-            // A conflict loser is booked as a failure but not executed; it leaves no execution
-            // record, so the argument and register capture below is skipped for it.
-            boolean lostConflict = instruction.getConflictStatus() == Instruction.ConflictResolutionStatus.LOST_PRIORITY;
+        // A conflict loser is booked as a failure but not executed; it leaves no execution
+        // record, so the argument and register capture below is skipped for it.
+        boolean lostConflict = instruction.getConflictStatus() == Instruction.ConflictResolutionStatus.LOST_PRIORITY;
 
-            // Track energy and entropy before execution to calculate total changes
-            int energyBefore = organism.getEr();
-            int entropyBefore = organism.getSr();
-            
+        // Track energy and entropy before execution to calculate total changes
+        int energyBefore = organism.getEr();
+        int entropyBefore = organism.getSr();
+
+        // The register map is consumed only by observers of sampled ticks; the capture
+        // flag spares all other ticks its per-instruction boxing (signature lookup,
+        // register reads, boxed map). The rest of the record is kept every tick, so an
+        // organism dying between two samples still shows the instruction it died of —
+        // deliberately without its register values, which were not collected on that
+        // tick. This gap could be closed without per-tick boxing by copying the argument
+        // register values into a reusable per-organism buffer on every tick and building
+        // the map only on sampled ticks and on death, at the price of the per-tick
+        // signature lookup, register reads and copies.
+        boolean captureRegisterValues = !lostConflict && this.simulation.isCaptureExecutionDetails();
+
+        int[] rawArgs = null;
+        Map<Integer, Object> registerValuesBefore = null;
+
+        try {
             // --- Thermodynamic Logic Start ---
 
             // 1. Resolve operands (idempotent - can be called multiple times safely)
             // Note: resolveOperands only PEEKs stack values, actual POPs happen in commitStackReads()
             List<Instruction.Operand> resolvedOperands = instruction.resolveOperands(this.environment);
 
-            int[] rawArgs = null;
-            Map<Integer, Object> registerValuesBefore = null;
             if (!lostConflict) {
                 // Shares the array resolveOperands filled: an instruction's argument
                 // cells are read once, and every consumer works from that one read.
                 rawArgs = instruction.getRawArguments();
+            }
+            if (captureRegisterValues) {
                 // Collect register values BEFORE execution (for annotation display)
                 registerValuesBefore = collectRegisterValues(organism, instruction.getFullOpcodeId(), rawArgs);
             }
@@ -220,10 +234,22 @@ public class VirtualMachine {
         } catch (Exception e) {
             // Global Catch-All to prevent simulation crash
             organism.instructionFailed("VM Runtime Error: " + e);
-            
+
             // Apply penalty
             int penalty = this.simulation.getOrganismConfig().getInt("error-penalty-cost");
             organism.takeEr(penalty);
+
+            // A throwing instruction still leaves an execution record: what ran and what it
+            // cost (penalty included) stays observable, even if the organism dies of it.
+            if (!lostConflict) {
+                organism.setLastInstructionExecution(new Organism.InstructionExecutionData(
+                    instruction.getFullOpcodeId(),
+                    rawArgs,
+                    energyBefore - organism.getEr(),
+                    organism.getSr() - entropyBefore,
+                    registerValuesBefore
+                ));
+            }
 
             if (organism.getEr() <= 0) {
                 organism.kill("Ran out of energy");

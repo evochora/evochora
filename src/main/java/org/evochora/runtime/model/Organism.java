@@ -49,7 +49,10 @@ public class Organism {
      * @param energyCost The total energy cost for executing this instruction.
      * @param registerValuesBefore Register values before instruction execution (for annotation display).
      *                             Maps register ID to register value (only for registers used as arguments).
-     *                             Can be empty but never null.
+     *                             {@code null} means the values were not collected: they are gathered
+     *                             only on sampled ticks, so the frozen record of an organism that died
+     *                             between two samples carries none. An empty map means the values were
+     *                             collected but the instruction had no register arguments.
      */
     public record InstructionExecutionData(
         int opcodeId,

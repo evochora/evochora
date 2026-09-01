@@ -540,6 +540,9 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                     && !isStopRequested() && !Thread.currentThread().isInterrupted()) {
                 checkPause();
 
+                // Per-instruction execution details are only consumed when the tick that is
+                // about to run gets sampled afterwards; all other ticks skip the capture.
+                simulation.setCaptureExecutionDetails((currentTick.get() + 1) % samplingInterval == 0);
                 simulation.tick();
                 long tick = currentTick.incrementAndGet();
 

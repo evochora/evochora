@@ -254,6 +254,12 @@ public abstract class Instruction {
                 }
                 case LOCATION_REGISTER -> {
                     int regId = Molecule.extractSignedValue(rawMol);
+                    // Probes the id exactly like the REGISTER branch: an invalid id marks the
+                    // instruction failed during planning, so later readers of register values
+                    // (the instruction body, observers) find the failure already recorded and
+                    // never produce it themselves. The operand carries only the id, because
+                    // location registers are read and written by the instruction itself.
+                    organism.readOperand(regId);
                     resolved.add(new Operand(null, regId));
                 }
                 case VECTOR -> {
