@@ -307,7 +307,11 @@ public class SymbolTable {
 
     /**
      * Recursively resolves multi-level qualified names (e.g., "A.B.C.LABEL").
-     * At each level, checks that the import is EXPORT-visible before descending.
+     * <p>
+     * Every step but the last leads through an import the module marked with EXPORT. A module's
+     * requirements are deliberately not steps: a requirement is satisfied by the importer, who
+     * therefore already has a name for that module and does not reach it through the module it
+     * handed it to.
      */
     private Optional<ResolvedSymbol> resolveMultiLevel(String currentChain, String remainder) {
         int dot = remainder.indexOf('.');
@@ -331,9 +335,6 @@ public class SymbolTable {
         if (modScope == null) return Optional.empty();
 
         String nextChain = modScope.imports().get(nextAlias);
-        if (nextChain == null) {
-            nextChain = modScope.usingBindings().get(nextAlias);
-        }
         if (nextChain == null) return Optional.empty();
 
         Boolean exp = modScope.importExported().get(nextAlias);
