@@ -42,6 +42,19 @@ public class ImportAnalysisHandler implements IAnalysisHandler {
             return;
         }
 
+        // The EXPORT prefix is read twice from the same line: once by the dependency scanner,
+        // whose result decides what the module actually re-exports, and once by the parser, whose
+        // result reaches here on the node. Two descriptions of one syntax can drift apart, and a
+        // drift would silently change which symbols a module passes on, so it is an error here.
+        Boolean scannedAsExported = currentModScope.importExported().get(alias);
+        if (scannedAsExported != null && scannedAsExported != importNode.exported()) {
+            diagnostics.reportError(
+                    "Internal error: the dependency scan and the parser disagree on whether import '"
+                            + importNode.alias() + "' is exported.",
+                    importNode.sourceInfo().fileName(),
+                    importNode.sourceInfo().lineNumber());
+        }
+
         ModuleScope importedModScope = symbolTable.getModuleScope(importedAliasChain).orElse(null);
 
         for (ImportNode.UsingClause using : importNode.usings()) {
