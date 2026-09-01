@@ -670,15 +670,6 @@ public abstract class Instruction {
 
     // --- Static Getters for Runtime Information ---
 
-    /**
-     * Gets the length of the instruction in the given environment.
-     * <p>
-     * Instruction length depends on the environment's dimensionality because
-     * VECTOR and LABEL operands have one component per dimension.
-     *
-     * @param env The environment (required for dimension-dependent length calculation).
-     * @return The length of the instruction in memory slots.
-     */
     /** Cached instruction length (-1 = not yet computed). */
     private int cachedLength = -1;
 
