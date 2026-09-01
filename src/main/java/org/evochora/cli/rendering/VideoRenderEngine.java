@@ -89,8 +89,8 @@ public class VideoRenderEngine {
         long totalFrames = calculateTotalFrames(scanResult, effectiveStartTick, effectiveEndTick);
 
         // Resolve output file and format
-        File outputFile = resolveOutputFile();
-        String format = resolveFormat(outputFile);
+        String format = options.format.toLowerCase();
+        File outputFile = resolveOutputFile(format);
 
         // Start ffmpeg
         Process ffmpeg = startFfmpeg(outputFile, format);
@@ -802,25 +802,40 @@ public class VideoRenderEngine {
     // FFmpeg management
     // ─────────────────────────────────────────────────────────────────────────────
 
-    private File resolveOutputFile() {
+    private File resolveOutputFile(String format) {
         File file = options.outputFile;
         String path = file.getPath();
 
         if (path.startsWith("~/") || path.equals("~")) {
             path = path.replaceFirst("^~", System.getProperty("user.home"));
-            return new File(path);
+            file = new File(path);
+        } else if (!file.isAbsolute()) {
+            file = file.getAbsoluteFile();
         }
-        return file.isAbsolute() ? file : file.getAbsoluteFile();
+        return withExtension(file, format);
     }
 
-    private String resolveFormat(File outputFile) {
-        String path = outputFile.getAbsolutePath().toLowerCase();
-        String format = options.format.toLowerCase();
+    /**
+     * Gives the output file the extension belonging to the chosen format.
+     * <p>
+     * A name already ending in that extension is left alone. One ending in a different video
+     * extension has it replaced, so that changing only {@code --format} does not produce a name
+     * carrying two of them. Any other name, and one without an extension, gets it appended.
+     *
+     * @param file   the output file as given on the command line, path already resolved
+     * @param format the format the video is written in, lower case
+     * @return the file the video is written to
+     */
+    static File withExtension(File file, String format) {
+        String name = file.getName();
+        int lastDot = name.lastIndexOf('.');
+        String extension = lastDot > 0 ? name.substring(lastDot + 1).toLowerCase() : "";
 
-        int lastDot = path.lastIndexOf('.');
-        String ext = lastDot > 0 ? path.substring(lastDot + 1) : "";
-
-        return ext.equals(format) ? ext : format;
+        if (extension.equals(format)) {
+            return file;
+        }
+        String stem = SUPPORTED_FORMATS.contains(extension) ? name.substring(0, lastDot) : name;
+        return new File(file.getParentFile(), stem + "." + format);
     }
 
     private Process startFfmpeg(File outputFile, String format) {
