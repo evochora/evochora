@@ -445,6 +445,9 @@ public class ServiceManager implements IMonitorable {
      */
     public void stopAll() {
         log.info("\u001B[34m========== Stopping Services ==========\u001B[0m");
+        // Reversed only to decide which stop is triggered first. The stops themselves run at the
+        // same time (see below), so this order does not sequence them: a service later in the list
+        // may well finish stopping before one earlier in it.
         List<String> toStop = new ArrayList<>(startupSequence);
         Collections.reverse(toStop);
         services.keySet().stream().filter(s -> !toStop.contains(s)).forEach(toStop::add);
