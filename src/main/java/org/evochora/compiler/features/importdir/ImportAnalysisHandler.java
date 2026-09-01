@@ -53,6 +53,7 @@ public class ImportAnalysisHandler implements IAnalysisHandler {
                             + importNode.alias() + "' is exported.",
                     importNode.sourceInfo().fileName(),
                     importNode.sourceInfo().lineNumber());
+            return;
         }
 
         ModuleScope importedModScope = symbolTable.getModuleScope(importedAliasChain).orElse(null);
