@@ -1,0 +1,26 @@
+# Navigation module.
+#
+# Shows both directions in which modules are wired together, and that neither is
+# limited to a single level.
+#
+#   Downwards, with .REQUIRE and USING — movement names its dependency and leaves the
+#   choice to whoever imports it. This module makes the same choice its own importer's
+#   business: it requires math rather than importing one, and hands on what it was
+#   given. Only the outermost file decides which math module finally arrives.
+#
+#   Upwards, with EXPORT — our import of movement carries the prefix, so whoever
+#   imports us reaches it as NAV.MOVE.NAME. Its code is placed here, once, and named
+#   from above.
+#
+# Without the prefix the import would stay private: an importer could call NAV.PATROL,
+# but not NAV.MOVE.NORTH.
+
+.REQUIRE "math.evo" AS MATH
+EXPORT .IMPORT "modules/movement.evo" AS MOVE USING MATH AS MATH
+
+# Move one step north and one step east.
+EXPORT .PROC PATROL REF X REF Y
+  CALL MOVE.NORTH REF Y
+  CALL MOVE.EAST REF X
+  RET
+.ENDP

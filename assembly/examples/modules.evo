@@ -1,17 +1,31 @@
 # Evochora Module System Example
-# Demonstrates .IMPORT, .REQUIRE, USING, .SOURCE, and EXPORT.
+# Demonstrates .IMPORT, EXPORT .IMPORT, .REQUIRE, USING, .SOURCE, and EXPORT.
 #
 # File structure:
 #   modules.evo              (this file — entry point)
 #   modules/constants.evo    (shared constants, loaded via .SOURCE)
 #   modules/math.evo         (standalone math utilities)
 #   modules/movement.evo     (movement, depends on math via .REQUIRE)
+#   modules/navigation.evo   (imports movement and passes it on via EXPORT .IMPORT)
+#
+# A module is wired to another one in one of two directions:
+#
+#   Downwards — the importer decides. A module names what it needs with .REQUIRE and
+#   whoever imports it satisfies that with USING. Both movement and navigation leave
+#   the choice open that way, so the decision made here reaches all the way down: this
+#   file names MATH once, navigation hands it on, and movement receives it.
+#
+#   Upwards — the imported module decides. It marks its own import with EXPORT, and its
+#   importer may then use it without placing that code a second time. That is how
+#   movement reaches this file, as NAV.MOVE.
 
-# Import the standalone math module
+# Import the standalone math module — its code is placed here
 .IMPORT "modules/math.evo" AS MATH
 
-# Import the movement module, wiring our MATH import to satisfy its .REQUIRE
-.IMPORT "modules/movement.evo" AS MOVE USING MATH AS MATH
+# Import navigation and give it the math module. Navigation hands it on to movement,
+# which required one without choosing it. Navigation also passes its own import of
+# movement back up, so we reach it as NAV.MOVE without placing that code again.
+.IMPORT "modules/navigation.evo" AS NAV USING MATH AS MATH
 
 # Load shared constants for direct use in this file
 .SOURCE "modules/constants.evo"
@@ -39,8 +53,12 @@ MAIN_LOOP:
   LTI %ENERGY MOVE_COST
   JMPI MAIN_LOOP
 
-  # Move north
-  CALL MOVE.NORTH REF %POS_Y
+  # Move north through the passed-on import: movement's code lives inside navigation,
+  # this file only names it
+  CALL NAV.MOVE.NORTH REF %POS_Y
+
+  # And a procedure of navigation itself
+  CALL NAV.PATROL REF %POS_X REF %POS_Y
 
   # Consume movement cost
   SUBI %ENERGY MOVE_COST

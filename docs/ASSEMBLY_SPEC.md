@@ -620,8 +620,9 @@ The module system allows splitting programs across multiple files. Three directi
 
 #### `.IMPORT`
 
-* **Syntax**: `.IMPORT "<path>" AS <Alias> [USING <source> AS <target>]*`
+* **Syntax**: `[EXPORT] .IMPORT "<path>" AS <Alias> [USING <source> AS <target>]*`
 * **Effect**: Declares a dependency on the module at `<path>`, assigns it the local alias `<Alias>`, and inlines the module's code at this location. Exported labels and procedures in the imported module become accessible as `<Alias>.<Name>`.
+* **`EXPORT` prefix**: Passes the import on to modules that import this one, which then reach it as `<ThisAlias>.<Alias>.<Name>` without inlining the code a second time. Each level decides for its own import: a level without the prefix ends the chain there.
 * **USING clauses**: Provide compile-time dependency injection. Each `USING` clause wires a module from the current scope (identified by `<source>` alias) into the imported module to satisfy one of its `.REQUIRE` declarations (identified by `<target>` alias).
     - `<source>` must be a known import alias in the current module.
     - `<target>` must match a `.REQUIRE` alias in the imported module.
@@ -772,7 +773,7 @@ Complete, compilable example programs are provided in [`assembly/examples/`](../
 |---|---|
 | [`simple.evo`](../assembly/examples/simple.evo) | Basic syntax: register aliases, `.DEFINE`, `.PROC`, labels, loops |
 | [`complex.evo`](../assembly/examples/complex.evo) | Advanced features: `.PLACE`, `.MACRO`, `.REPEAT`, `.SOURCE`, multiple `.ORG` regions |
-| [`modules.evo`](../assembly/examples/modules.evo) | Module system: `.IMPORT`, `.REQUIRE`, `USING`, `.SOURCE` for shared constants, `EXPORT` |
+| [`modules.evo`](../assembly/examples/modules.evo) | Module system: `.IMPORT`, `EXPORT .IMPORT`, `.REQUIRE`, `USING`, `.SOURCE` for shared constants, `EXPORT` |
 
 The module example consists of multiple files:
 
