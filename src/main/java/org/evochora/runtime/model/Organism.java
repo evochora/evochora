@@ -148,7 +148,10 @@ public class Organism {
             this.dps.add(Arrays.copyOf(startIp, startIp.length));
         }
         
-        // Load limits and constants from simulation config (required, no fallback)
+        // Load limits and constants from simulation config. max-energy and max-entropy are
+        // required and fail without a value. max-skips-per-tick is the one exception: it
+        // defaults, so that a test can build an organism configuration without it. Every
+        // deployment gets the value from reference.conf, so the default never applies in a run.
         com.typesafe.config.Config orgConfig = simulation.getOrganismConfig();
         this.maxEnergy = orgConfig.getInt("max-energy");
         this.maxEntropy = orgConfig.getInt("max-entropy");
@@ -273,7 +276,10 @@ public class Organism {
 
         // Derived fields from simulation
         this.simulation = simulation;
-        // Load limits and constants from simulation config
+        // Load limits and constants from simulation config. max-energy and max-entropy are
+        // required and fail without a value. max-skips-per-tick is the one exception: it
+        // defaults, so that a test can build an organism configuration without it. Every
+        // deployment gets the value from reference.conf, so the default never applies in a run.
         com.typesafe.config.Config orgConfig = simulation.getOrganismConfig();
         this.maxEnergy = orgConfig.getInt("max-energy");
         this.maxEntropy = orgConfig.getInt("max-entropy");
