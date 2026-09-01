@@ -317,7 +317,7 @@ public class Compiler implements ICompiler {
         Linker linker = new Linker(linkingRegistry, linkingDirRegistry);
         LinkingContext linkContext = new LinkingContext(symbolTable, isa);
         linkContext.pushAliasChain(rootAliasChain);
-        IrProgram linkedIr = linker.link(rewrittenIr, layout, linkContext, envProps);
+        IrProgram linkedIr = linker.link(rewrittenIr, layout, linkContext);
         linkContext.freeze();
 
         // Phase 11: Emission (generate final binary)

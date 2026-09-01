@@ -7,8 +7,6 @@ import org.evochora.compiler.model.ir.IrDirective;
 import org.evochora.compiler.model.ir.IrInstruction;
 import org.evochora.compiler.model.ir.IrItem;
 import org.evochora.compiler.model.ir.IrProgram;
-import org.evochora.compiler.isa.IInstructionSet;
-import org.evochora.runtime.model.EnvironmentProperties;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -37,11 +35,10 @@ public final class Linker {
      * @param program The IR program to link.
      * @param layout The layout result, providing coordinate and address mappings.
      * @param context The linking context, which will be populated with call site bindings.
-     * @param envProps The environment properties, providing context like world dimensions. Can be null.
      * @return The linked IR program.
      * @throws CompilationException if an error occurs during linking.
      */
-    public IrProgram link(IrProgram program, LayoutResult layout, LinkingContext context, EnvironmentProperties envProps) throws CompilationException {
+    public IrProgram link(IrProgram program, LayoutResult layout, LinkingContext context) throws CompilationException {
         List<IrItem> out = new ArrayList<>();
 
         for (PlacedItem placed : layout.placedItems()) {

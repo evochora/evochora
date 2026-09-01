@@ -50,6 +50,9 @@ public final class IrCallInstruction extends IrInstruction {
      * The procedure name of a call is resolved to a label reference during linking, which replaces
      * the main operands. Without this, the call would come out of that step as a plain instruction
      * and the REF/VAL/LREF/LVAL lists would be gone - along with everything that reads them.
+     *
+     * @param newOperands The main operands of the returned call.
+     * @return A call with those main operands and this call's parameter lists.
      */
     @Override
     public IrCallInstruction withOperands(final List<IrOperand> newOperands) {
