@@ -223,7 +223,10 @@ public class VirtualMachine {
                 return;
             }
 
-            if (organism.getSr() >= organism.getMaxEntropy()) {
+            // Strictly greater: max-entropy is a limit the organism may reach and still live,
+            // as the assembly specification and the overview both describe it. Energy is the
+            // other way round — zero is already fatal.
+            if (organism.getSr() > organism.getMaxEntropy()) {
                 organism.kill("Entropy limit exceeded");
                 return;
             }
