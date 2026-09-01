@@ -11,7 +11,7 @@ import org.evochora.compiler.model.symbols.SymbolTable;
  *
  * <p>Validates USING clauses:
  * <ul>
- *   <li>Each USING source must be a known import alias in the current module.</li>
+ *   <li>Each USING source must be an import of the current module, or a requirement it received itself.</li>
  *   <li>Each USING target must correspond to a {@code .REQUIRE} declaration in the imported module.</li>
  *   <li>All {@code .REQUIRE} declarations in the imported module must be satisfied by USING clauses.</li>
  * </ul>

@@ -132,7 +132,7 @@ public class SemanticAnalyzer {
         List<ModuleDescriptor> fromRoot = new ArrayList<>(topoOrder);
         Collections.reverse(fromRoot);
 
-        // Pass 1: Compute alias chains (root first, then dependencies).
+        // Step 1: Compute alias chains (root first, then dependencies).
         Map<String, String> pathToAliasChain = new HashMap<>();
         pathToAliasChain.put(mainFilePath, rootAliasChain);
 
@@ -152,7 +152,7 @@ public class SemanticAnalyzer {
             }
         }
 
-        // Pass 2: Register all modules, then dispatch relationship registration.
+        // Step 2: Register all modules, then dispatch relationship registration.
         for (ModuleDescriptor module : topoOrder) {
             String modulePath = module.sourcePath();
             String moduleAliasChain = pathToAliasChain.getOrDefault(modulePath,
@@ -169,7 +169,7 @@ public class SemanticAnalyzer {
             }
         }
 
-        // Pass 3: Resolve cross-module bindings (USING etc.).
+        // Step 3: Resolve cross-module bindings (USING etc.).
         //
         // Walked from the outermost module inwards: a module may hand on a dependency it was given
         // itself, and it can only do that once it has been given it. The walk is finite because the

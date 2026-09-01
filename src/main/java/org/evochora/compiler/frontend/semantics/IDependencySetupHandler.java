@@ -16,19 +16,19 @@ import org.evochora.compiler.frontend.module.IDependencyInfo;
 public interface IDependencySetupHandler<T extends IDependencyInfo> {
 
     /**
-     * Pass 1: Compute alias chains for this dependency.
+     * Step 1: Compute alias chains for this dependency.
      * Called in reverse topological order (root first).
      */
     void registerScope(T dependency, ModuleSetupContext ctx);
 
     /**
-     * Pass 2: Register relationships in module scopes.
+     * Step 2: Register relationships in module scopes.
      * Called in topological order after all modules are registered in the symbol table.
      */
     default void registerRelationships(T dependency, ModuleSetupContext ctx) {}
 
     /**
-     * Pass 3: Resolve cross-module bindings (e.g., USING).
+     * Step 3: Resolve cross-module bindings (e.g., USING).
      * <p>
      * Called in reverse topological order (root first), after all relationships are registered.
      * A module may hand on a dependency it was given itself, and can only do so once the module
