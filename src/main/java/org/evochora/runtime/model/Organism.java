@@ -302,6 +302,8 @@ public class Organism {
      */
     public static class InvalidRestoreState extends IllegalStateException {
         /**
+         * Creates the exception for one concrete mismatch between the restored state and this build.
+         *
          * @param message what about the state does not fit this build
          */
         public InvalidRestoreState(String message) {
@@ -309,6 +311,22 @@ public class Organism {
         }
     }
 
+    /**
+     * Collects the state of an organism that is being reconstructed rather than born.
+     * <p>
+     * Obtained from {@link Organism#restore(int, long)}, which takes the two values that have no
+     * meaningful default. Every other value keeps a default until a setter supplies it, and each
+     * setter returns this builder so the calls can be chained. The instruction pointer, the
+     * direction vector and the initial position have no usable default: {@link #build(Simulation)}
+     * rejects state in which they are missing, along with any value that does not fit this build's
+     * register banks, data pointer count, coordinate dimension or stack limits.
+     * <p>
+     * Arrays, lists and deques handed to the setters are held by reference until the build. The
+     * build copies the coordinate arrays — instruction pointer, direction vector, data pointers,
+     * initial position — and the containers of the stacks, the register array and the persistent
+     * register store. It does not copy the objects those containers hold: stacked location values,
+     * procedure frames and persistent register snapshots remain shared with the caller.
+     */
     public static class RestoreBuilder {
         // Required fields (set in constructor)
         private final int id;
@@ -347,85 +365,189 @@ public class Organism {
             this.birthTick = birthTick;
         }
 
-        /** Sets the parent organism ID. */
+        /**
+         * Sets the parent organism ID.
+         *
+         * @param parentId the ID of the organism this one was forked from, or {@code null} for a
+         *                 founding organism, which is the default
+         * @return this builder
+         */
         public RestoreBuilder parentId(Integer parentId) {
             this.parentId = parentId;
             return this;
         }
 
-        /** Sets the program ID. */
+        /**
+         * Sets the program ID.
+         *
+         * @param programId identifier of the compiled program the organism runs, which a child
+         *                  inherits unchanged from its parent; the empty string, the default,
+         *                  means no program is associated
+         * @return this builder
+         */
         public RestoreBuilder programId(String programId) {
             this.programId = programId;
             return this;
         }
 
-        /** Sets the instruction pointer coordinates. */
+        /**
+         * Sets the instruction pointer coordinates.
+         * <p>
+         * The IP is an absolute position in the environment, and its length fixes the coordinate
+         * dimension every other position of the restored organism is checked against. It must be
+         * set: {@link #build} rejects a missing or empty IP.
+         *
+         * @param ip the absolute coordinate of the instruction pointer, one component per
+         *           environment dimension
+         * @return this builder
+         */
         public RestoreBuilder ip(int[] ip) {
             this.ip = ip;
             return this;
         }
 
-        /** Sets the direction vector. */
+        /**
+         * Sets the direction vector.
+         * <p>
+         * The DV must be set, and must have as many components as the IP. The runtime relies on it
+         * being a unit vector — exactly one component ±1, the rest 0 — when it advances the IP.
+         *
+         * @param dv the direction along which the instruction pointer advances
+         * @return this builder
+         */
         public RestoreBuilder dv(int[] dv) {
             this.dv = dv;
             return this;
         }
 
-        /** Sets the energy register value. */
+        /**
+         * Sets the energy register value.
+         *
+         * @param er the energy the organism holds; a living organism restored with a value at or
+         *           below zero is killed on its first tick, and {@link #build} logs a warning for a
+         *           negative one. No upper bound is enforced during restore
+         * @return this builder
+         */
         public RestoreBuilder energy(int er) {
             this.er = er;
             return this;
         }
 
-        /** Sets the entropy register value. */
+        /**
+         * Sets the entropy register value.
+         *
+         * @param sr the accumulated entropy, never negative in a state a running organism can
+         *           reach — {@link #build} logs a warning for a negative one. An organism restored
+         *           at or above the configured maximum entropy is killed on its next tick
+         * @return this builder
+         */
         public RestoreBuilder entropy(int sr) {
             this.sr = sr;
             return this;
         }
 
-        /** Sets the molecule marker register value. */
+        /**
+         * Sets the molecule marker register value.
+         *
+         * @param mr the marker stamped into every molecule the organism writes into the
+         *           environment; only the low {@value Config#MARKER_BITS} bits carry meaning, and
+         *           unlike {@link Organism#setMr(int)} the builder stores the value unmasked
+         * @return this builder
+         */
         public RestoreBuilder marker(int mr) {
             this.mr = mr;
             return this;
         }
 
-        /** Sets the original initial position (birth position) of the organism. */
+        /**
+         * Sets the original initial position (birth position) of the organism.
+         * <p>
+         * This is the position the organism falls back to when its instruction pointer stalls with
+         * an empty call stack, so it must carry the recorded birth position rather than the
+         * organism's current one. It must be set: {@link #build} rejects a missing or empty value.
+         *
+         * @param initialPosition the absolute coordinate at which the organism was born, with as
+         *                        many components as the IP
+         * @return this builder
+         */
         public RestoreBuilder initialPosition(int[] initialPosition) {
             this.initialPosition = initialPosition;
             return this;
         }
 
-        /** Sets the genome hash. */
+        /**
+         * Sets the genome hash.
+         *
+         * @param genomeHash the hash over the organism's code as it was computed at birth, or 0,
+         *                   the default, when none was recorded
+         * @return this builder
+         */
         public RestoreBuilder genomeHash(long genomeHash) {
             this.genomeHash = genomeHash;
             return this;
         }
 
-        /** Sets the tick when the organism died (-1 if alive). */
+        /**
+         * Sets the tick when the organism died (-1 if alive).
+         *
+         * @param deathTick the simulation tick at which the organism died, or -1, the default, for
+         *                  one that is still alive. Setting it does not by itself mark the organism
+         *                  dead — see {@link #dead(boolean)}
+         * @return this builder
+         */
         public RestoreBuilder deathTick(long deathTick) {
             this.deathTick = deathTick;
             return this;
         }
 
-        /** Sets the number of replications between a founding organism and this one. */
+        /**
+         * Sets the number of replications between a founding organism and this one.
+         *
+         * @param generation the generation counter, 0 for a founding organism. It cannot be derived
+         *                   after the fact, because the parent may be long gone
+         * @return this builder
+         */
         public RestoreBuilder generation(int generation) {
             this.generation = generation;
             return this;
         }
 
-        /** Sets the genome hash the parent had when this organism was created. */
+        /**
+         * Sets the genome hash the parent had when this organism was created.
+         *
+         * @param parentGenomeHash the parent's genome hash at this organism's birth, 0 for a
+         *                         founding organism. Like the generation it is recorded rather than
+         *                         derived, because the parent's genome is unobservable once the
+         *                         parent is gone
+         * @return this builder
+         */
         public RestoreBuilder parentGenomeHash(long parentGenomeHash) {
             this.parentGenomeHash = parentGenomeHash;
             return this;
         }
 
-        /** Sets all data pointer coordinates. */
+        /**
+         * Sets all data pointer coordinates.
+         *
+         * @param dps the absolute coordinates of the data pointers in index order, each with as
+         *            many components as the IP. {@link #build} accepts either exactly
+         *            {@link Config#NUM_DATA_POINTERS} entries or the empty default, and rejects any
+         *            other count
+         * @return this builder
+         */
         public RestoreBuilder dataPointers(List<int[]> dps) {
             this.dps = dps;
             return this;
         }
 
-        /** Sets the active data pointer index. */
+        /**
+         * Sets the active data pointer index.
+         *
+         * @param idx the index of the data pointer that instructions addressing "the" DP read and
+         *            write; must address one of the supplied data pointers, or {@link #build}
+         *            rejects it
+         * @return this builder
+         */
         public RestoreBuilder activeDpIndex(int idx) {
             this.activeDpIndex = idx;
             return this;
@@ -433,68 +555,149 @@ public class Organism {
 
         /**
          * Sets all register values from a flat array in RegisterBank slot order.
+         *
+         * @param regs one entry per register slot: an {@code Integer} for a data bank, an
+         *             {@code int[]} for a location bank. The array must hold exactly
+         *             {@link RegisterBank#TOTAL_REGISTER_COUNT} entries or {@link #build} rejects
+         *             it; a {@code null} entry is filled with the bank's default at build time
+         * @return this builder
          */
         public RestoreBuilder registers(Object[] regs) {
             this.flatRegisters = regs;
             return this;
         }
 
-        /** Sets the data stack contents. */
+        /**
+         * Sets the data stack contents.
+         *
+         * @param stack the stacked values, the deque's head being the top of the stack. A stack
+         *              deeper than {@link Config#DS_MAX_DEPTH} is rejected by {@link #build}
+         * @return this builder
+         */
         public RestoreBuilder dataStack(Deque<Object> stack) {
             this.dataStack = stack;
             return this;
         }
 
-        /** Sets the location stack contents; a stack deeper than the limit is rejected by {@link #build}. */
+        /**
+         * Sets the location stack contents; a stack deeper than the limit is rejected by {@link #build}.
+         *
+         * @param stack the stacked coordinate values, the deque's head being the top of the stack.
+         *              The limit is {@link Config#LOCATION_STACK_MAX_DEPTH}
+         * @return this builder
+         */
         public RestoreBuilder locationStack(Deque<int[]> stack) {
             this.locationStack = stack;
             return this;
         }
 
-        /** Sets the call stack contents. */
+        /**
+         * Sets the call stack contents.
+         *
+         * @param stack the frames of the procedures the organism is inside, the deque's head being
+         *              the innermost one. A stack deeper than {@link Config#CALL_STACK_MAX_DEPTH}
+         *              is rejected by {@link #build}
+         * @return this builder
+         */
         public RestoreBuilder callStack(Deque<ProcFrame> stack) {
             this.callStack = stack;
             return this;
         }
 
-        /** Sets whether the organism is dead. */
+        /**
+         * Sets whether the organism is dead.
+         *
+         * @param isDead {@code true} to restore an organism that has already died, which is what
+         *               suppresses {@link #build}'s warning about non-positive energy
+         * @return this builder
+         */
         public RestoreBuilder dead(boolean isDead) {
             this.isDead = isDead;
             return this;
         }
 
-        /** Sets the instruction failure state. */
+        /**
+         * Sets the instruction failure state.
+         *
+         * @param failed whether the organism's most recently executed instruction failed. The
+         *               conditionals that branch on a failure read it in the tick after the one it
+         *               was recorded in
+         * @param reason the human-readable reason of that failure, or {@code null} when nothing
+         *               failed
+         * @return this builder
+         */
         public RestoreBuilder failed(boolean failed, String reason) {
             this.instructionFailed = failed;
             this.failureReason = reason;
             return this;
         }
 
-        /** Sets the call stack at the time of failure. */
+        /**
+         * Sets the call stack at the time of failure.
+         *
+         * @param stack the frames captured when the failure was recorded, or {@code null} — the
+         *              default — when no failure was recorded or the call stack was empty at the
+         *              time. It is diagnostic only and never becomes the organism's live call stack
+         * @return this builder
+         */
         public RestoreBuilder failureCallStack(Deque<ProcFrame> stack) {
             this.failureCallStack = stack;
             return this;
         }
 
-        /** Sets the per-procedure persistent register backing store. */
+        /**
+         * Sets the per-procedure persistent register backing store.
+         *
+         * @param state the parked PERSISTENT register snapshots keyed by procedure label hash, with
+         *              {@link Organism#MAIN_LEVEL_LABEL_HASH} for the main level; each value holds
+         *              {@link RegisterBank#PERSISTENT_SNAPSHOT_SIZE} entries. Left {@code null},
+         *              the default, {@link #build} seeds the store with a main-level snapshot of
+         *              the restored registers instead
+         * @return this builder
+         */
         public RestoreBuilder persistentRegisterState(Map<Integer, Object[]> state) {
             this.persistentRegisterState = state;
             return this;
         }
 
-        /** Sets the labelHash of the currently active procedure for persistent state. */
+        /**
+         * Sets the labelHash of the currently active procedure for persistent state.
+         *
+         * @param labelHash the label hash of the procedure whose PERSISTENT registers are the ones
+         *                  held in the register array, or {@link Organism#MAIN_LEVEL_LABEL_HASH} —
+         *                  the default — when execution is at main level. It has to agree with the
+         *                  innermost frame of the restored call stack, since the next return parks
+         *                  the live registers under this key
+         * @return this builder
+         */
         public RestoreBuilder currentProcLabelHash(int labelHash) {
             this.currentProcLabelHash = labelHash;
             return this;
         }
 
-        /** Sets whether any STACK_SAVED register has been written. */
+        /**
+         * Sets whether any STACK_SAVED register has been written.
+         *
+         * @param dirty {@code true} if the organism has written a STACK_SAVED register at some
+         *              point in its life. While it is {@code false} a call takes no snapshot of
+         *              those registers, so restoring {@code false} for an organism that did write
+         *              would change how its next call and return behave
+         * @return this builder
+         */
         public RestoreBuilder stackSavedDirty(boolean dirty) {
             this.stackSavedDirty = dirty;
             return this;
         }
 
-        /** Sets whether any PERSISTENT register has been written. */
+        /**
+         * Sets whether any PERSISTENT register has been written.
+         *
+         * @param dirty {@code true} if the organism has written a PERSISTENT register at some point
+         *              in its life. While it is {@code false} calls and returns leave the
+         *              per-procedure store untouched, so restoring {@code false} for an organism
+         *              that did write would change how its next call and return behave
+         * @return this builder
+         */
         public RestoreBuilder persistentDirty(boolean dirty) {
             this.persistentDirty = dirty;
             return this;
@@ -1105,7 +1308,23 @@ public class Organism {
         this.sr = Math.max(0, this.sr - amount); 
     }
     
+    /**
+     * The ceiling {@link #addEr(int)} clamps the Energy Register to. Energy offered beyond it is
+     * not stored, so a caller that moves energy out of the environment has to take only the
+     * difference to the current {@link #getEr()}.
+     *
+     * @return the maximum energy this organism can hold, read from the organism configuration when
+     *         the organism was created and unchanged for its lifetime.
+     */
     public int getMaxEnergy() { return maxEnergy; }
+    /**
+     * The entropy level at which the organism is killed: the VirtualMachine ends the life of an
+     * organism whose Entropy Register reaches or exceeds this value at the end of a tick. Unlike
+     * the energy ceiling, nothing clamps the register to it.
+     *
+     * @return the entropy limit, read from the organism configuration when the organism was created
+     *         and unchanged for its lifetime.
+     */
     public int getMaxEntropy() { return maxEntropy; }
 
     /**
@@ -1115,9 +1334,21 @@ public class Organism {
      */
     public void setSkipIpAdvance(boolean skip) { this.skipIpAdvance = skip; }
 
-    /** @return The unique ID of the organism. */
+    /**
+     * Taken from a counter the simulation raises for every organism it creates, so the value is
+     * unique for the whole run and is not reused after the organism dies. Cells in the environment
+     * carry it as their owner, which is what {@link #isCellAccessible(int)} compares against.
+     *
+     * @return The unique ID of the organism.
+     */
     public int getId() { return id; }
-    /** @return The ID of the parent organism, or {@code null} if it has no parent. */
+    /**
+     * Names the organism this one was forked from. It is a plain number, not a reference: the
+     * parent may have died and been removed long before this organism is looked at, which is why
+     * the facts inherited from it are copied at birth rather than read back later.
+     *
+     * @return The ID of the parent organism, or {@code null} if it has no parent.
+     */
     public Integer getParentId() { return parentId; }
     /** Sets the ID of the parent organism.
      * @param parentId The parent ID.
@@ -1139,7 +1370,13 @@ public class Organism {
         return ownerId == this.id;
     }
 
-    /** @return The simulation tick number at which the organism was born. */
+    /**
+     * Together with {@link #getDeathTick()} this bounds the organism's lifespan in ticks. An
+     * organism reconstructed from a checkpoint keeps its original birth tick, so the value does not
+     * say when it entered the current process.
+     *
+     * @return The simulation tick number at which the organism was born.
+     */
     public long getBirthTick() { return birthTick; }
     /** Sets the birth tick of the organism.
      * @param birthTick The birth tick.
@@ -1147,7 +1384,14 @@ public class Organism {
     public void setBirthTick(long birthTick) { 
         this.birthTick = birthTick;
     }
-    /** @return The program ID associated with this organism. */
+    /**
+     * Names the compiled program the organism was seeded with. A child takes the value over from
+     * its parent unchanged, so it identifies the program a lineage descends from and not the code
+     * the organism carries at the moment — mutation leaves it alone. It is the empty string for an
+     * organism that was never associated with a program.
+     *
+     * @return The program ID associated with this organism.
+     */
     public String getProgramId() { return programId; }
     /** Sets the program ID for this organism.
      * @param programId The program ID.
@@ -1155,23 +1399,71 @@ public class Organism {
     public void setProgramId(String programId) { 
         this.programId = programId;
     }
-    /** @return A copy of the current Instruction Pointer (IP) coordinate. */
+    /**
+     * The absolute position of the molecule the organism will execute next. It moves within a tick:
+     * an instruction that jumps writes it, and the VirtualMachine advances it past the executed
+     * instruction afterwards unless {@link #shouldSkipIpAdvance()} says otherwise. Because a copy
+     * is handed out, writing into the returned array does not move the pointer — use
+     * {@link #setIp(int[])}.
+     *
+     * @return A copy of the current Instruction Pointer (IP) coordinate.
+     */
     public int[] getIp() { return Arrays.copyOf(ip, ip.length); }
-    /** @return A copy of the IP coordinate as it was at the beginning of the tick. */
+    /**
+     * The absolute position the currently executing instruction was read from.
+     * {@link #resetTickState()} refreshes it from the IP before each instruction, so an instruction
+     * can still find its own opcode and arguments after it has moved the IP.
+     *
+     * @return A copy of the IP coordinate as it was at the beginning of the tick.
+     */
     public int[] getIpBeforeFetch() { return Arrays.copyOf(ipBeforeFetch, ipBeforeFetch.length); }
-    /** @return A copy of the DV as it was at the beginning of the tick. */
+    /**
+     * The direction that was in force when the current instruction was read. Argument fetching, IP
+     * advancing and NOP skipping all follow this vector rather than the live DV, so an instruction
+     * that turns the organism still reads its own arguments along the direction from before the
+     * turn.
+     *
+     * @return A copy of the DV as it was at the beginning of the tick.
+     */
     public int[] getDvBeforeFetch() { return Arrays.copyOf(dvBeforeFetch, dvBeforeFetch.length); }
-    /** @return The instruction execution data from the last executed instruction, or null if no instruction was executed. */
+    /**
+     * What the organism executed in the current tick, recorded for observers and not read back by
+     * execution. {@link #resetTickState()} clears it before each instruction, and it stays unset
+     * for an instruction that lost a write conflict against another organism.
+     *
+     * @return The instruction execution data from the last executed instruction, or null if no instruction was executed.
+     */
     public InstructionExecutionData getLastInstructionExecution() { return lastInstructionExecution; }
     /** Sets the instruction execution data for the last executed instruction.
      * @param data The instruction execution data to store.
      */
     public void setLastInstructionExecution(InstructionExecutionData data) { this.lastInstructionExecution = data; }
-    /** @return The current energy level (ER). */
+    /**
+     * The energy the organism has left. Executing instructions costs energy and interacting with
+     * the environment gains it; an organism whose energy has fallen to zero or below at the end of
+     * a tick is killed. {@link #addEr(int)} clamps against {@link #getMaxEnergy()}, while
+     * {@link #takeEr(int)} does not clamp, so the value can be seen negative within a tick.
+     *
+     * @return The current energy level (ER).
+     */
     public int getEr() { return er; }
-    /** @return The current entropy level (SR). */
+    /**
+     * The disorder the organism has accumulated. It is never negative, because both
+     * {@link #addSr(int)} and {@link #takeSr(int)} clamp at zero, and reaching
+     * {@link #getMaxEntropy()} kills the organism at the end of the tick.
+     *
+     * @return The current entropy level (SR).
+     */
     public int getSr() { return sr; }
-    /** @return The current molecule marker (MR). */
+    /**
+     * The marker the organism stamps into every molecule it writes into the environment; erasing a
+     * cell writes marker 0 instead of this value. A fork hands the child exactly those cells of the
+     * parent that carry the parent's marker at that moment, so the marker is how a replicating
+     * organism keeps the copy it is building apart from its own body. It occupies
+     * {@value Config#MARKER_BITS} bits, hence the range 0 to {@value Config#MARKER_VALUE_MASK}.
+     *
+     * @return The current molecule marker (MR).
+     */
     public int getMr() { return mr; }
 
     /**
@@ -1182,7 +1474,13 @@ public class Organism {
         this.mr = value & Config.MARKER_VALUE_MASK;
     }
 
-    /** @return The genome hash computed at birth, or 0L if not set. */
+    /**
+     * Identifies the code the organism was born with, so that observers can group organisms sharing
+     * a genome without comparing their cells. It is computed once, over the cells the organism owns
+     * at birth, and is not recomputed as that code is later mutated in place.
+     *
+     * @return The genome hash computed at birth, or 0L if not set.
+     */
     public long getGenomeHash() { return genomeHash; }
 
     /**
@@ -1193,7 +1491,13 @@ public class Organism {
         this.genomeHash = hash;
     }
 
-    /** @return The tick when this organism died, or -1L if still alive. */
+    /**
+     * Places the organism's death in time, recorded by {@link #kill(String)} from the simulation's
+     * current tick. It is the counterpart of {@link #getBirthTick()} and stays at its sentinel for
+     * as long as the organism lives.
+     *
+     * @return The tick when this organism died, or -1L if still alive.
+     */
     public long getDeathTick() { return deathTick; }
 
     /**
@@ -1227,28 +1531,91 @@ public class Organism {
         this.parentGenomeHash = parent.getGenomeHash();
     }
 
-    /** @return A copy of the flat register array in RegisterBank slot order. */
+    /**
+     * All registers of every bank in one array, addressed by slot rather than by register ID; a
+     * data bank's slot holds an {@code Integer}, a location bank's an {@code int[]}. The array is a
+     * copy, so replacing an entry leaves the organism unchanged, but the values in it are the
+     * organism's own: the coordinate array of a location register must not be written into.
+     *
+     * @return A copy of the flat register array in RegisterBank slot order.
+     */
     public Object[] getRegisters() { return Arrays.copyOf(registers, registers.length); }
 
-    /** @return true if the organism is dead, false otherwise. */
+    /**
+     * A dead organism is no longer executed, and it stays dead: nothing in the runtime clears this
+     * again. It may still be observed for a while before the simulation removes it.
+     *
+     * @return true if the organism is dead, false otherwise.
+     */
     public boolean isDead() { return isDead; }
-    /** @return true if the current instruction has failed. */
+    /**
+     * Whether anything has reported a failure for the instruction being executed in this tick.
+     * {@link #resetTickState()} clears the flag before each instruction, and the first failure
+     * within a tick is the one that is kept: a later report neither changes the flag nor overwrites
+     * {@link #getFailureReason()}.
+     *
+     * @return true if the current instruction has failed.
+     */
     public boolean isInstructionFailed() { return instructionFailed; }
-    /** @return true if the previous tick's instruction failed. Used by IFER/INER conditionals. */
+    /**
+     * Carries over the failure flag of the preceding tick, which {@link #resetTickState()} copies
+     * across just before it clears the current one. An instruction cannot observe its own outcome,
+     * so a conditional that branches on a failure necessarily reacts to the tick before it.
+     *
+     * @return true if the previous tick's instruction failed. Used by IFER/INER conditionals.
+     */
     public boolean wasPreviousInstructionFailed() { return previousInstructionFailed; }
-    /** @return The reason for the last instruction failure. */
+    /**
+     * Human-readable text describing why the instruction failed, meant for diagnostics and never
+     * readable by the organism itself. It belongs to the same tick as
+     * {@link #isInstructionFailed()}: {@link #resetTickState()} clears it, and it is {@code null}
+     * while nothing has failed.
+     *
+     * @return The reason for the last instruction failure.
+     */
     public String getFailureReason() { return failureReason; }
-    /** @return A copy of the current Direction Vector (DV). */
+    /**
+     * The direction the instruction pointer travels in: a unit vector, exactly one component ±1 and
+     * the rest 0, with one component per environment dimension. Because a copy is handed out,
+     * writing into the returned array does not turn the organism — use {@link #setDv(int[])}.
+     *
+     * @return A copy of the current Direction Vector (DV).
+     */
     public int[] getDv() { return Arrays.copyOf(dv, dv.length); }
-    /** @return The simulation instance. */
+    /**
+     * The simulation this organism lives in, and its route to the environment, the current tick and
+     * the organism configuration. It is fixed at creation and never {@code null}.
+     *
+     * @return The simulation instance.
+     */
     public Simulation getSimulation() { return simulation; }
-    /** @return A copy of the organism's initial starting position. */
+    /**
+     * The absolute coordinate the organism was born at. It is fixed for the organism's whole life,
+     * and it is where the instruction pointer is sent when execution stalls with an empty call
+     * stack, which makes it the anchor of the organism's own code region.
+     *
+     * @return A copy of the organism's initial starting position.
+     */
     public int[] getInitialPosition() { return Arrays.copyOf(this.initialPosition, this.initialPosition.length); }
-    /** @return A reference to the Data Stack (DS). */
+    /**
+     * The organism's general-purpose stack, handed out live rather than copied so that instructions
+     * push and pop on it directly. The deque's head is the top of the stack. It does not enforce a
+     * depth of its own: a caller that pushes has to check {@link Config#DS_MAX_DEPTH} first, the
+     * limit that also bounds a restored stack.
+     *
+     * @return A reference to the Data Stack (DS).
+     */
     public Deque<Object> getDataStack() { 
         return this.dataStack;
     }
-    /** @return A reference to the Call Stack (CS). */
+    /**
+     * The frames of the procedures the organism is currently inside, handed out live: a call pushes
+     * onto this very deque and a return pops from it. The head is the innermost procedure, and an
+     * empty stack means execution is at main level. As with the data stack, the depth limit
+     * {@link Config#CALL_STACK_MAX_DEPTH} is the caller's to check.
+     *
+     * @return A reference to the Call Stack (CS).
+     */
     public Deque<ProcFrame> getCallStack() { 
         return this.callStack;
     }
@@ -1386,6 +1753,10 @@ public class Organism {
     /**
      * Creates a compact snapshot of all STACK_SAVED register values for a ProcFrame.
      * The layout follows RegisterBank enum declaration order.
+     *
+     * @return a new array of {@link RegisterBank#STACK_SAVED_SNAPSHOT_SIZE} entries. It holds the
+     *         register values themselves rather than copies of them, so the coordinate array of a
+     *         location register is shared with the register and must not be written into
      */
     public Object[] snapshotStackSavedRegisters() {
         List<RegisterBank> banks = RegisterBank.allSavedOnCall();
@@ -1401,6 +1772,13 @@ public class Organism {
     /**
      * Restores all STACK_SAVED register values from a compact ProcFrame snapshot.
      * The layout must match the one created by {@link #snapshotStackSavedRegisters()}.
+     * <p>
+     * The snapshot is written over the registers wholesale; values a callee left in them are lost.
+     *
+     * @param snapshot the values to write back, in slot order across the STACK_SAVED banks
+     * @throws IllegalArgumentException if {@code snapshot} is {@code null} or does not hold exactly
+     *         {@link RegisterBank#STACK_SAVED_SNAPSHOT_SIZE} entries, which means it was produced
+     *         under a different register layout
      */
     public void restoreStackSavedRegisters(Object[] snapshot) {
         if (snapshot == null || snapshot.length != RegisterBank.STACK_SAVED_SNAPSHOT_SIZE) {
@@ -1432,6 +1810,10 @@ public class Organism {
     /**
      * Creates a compact snapshot of all PERSISTENT register values.
      * The layout follows RegisterBank enum declaration order.
+     *
+     * @return a new array of {@link RegisterBank#PERSISTENT_SNAPSHOT_SIZE} entries. It holds the
+     *         register values themselves rather than copies of them, so the coordinate array of a
+     *         location register is shared with the register and must not be written into
      */
     public Object[] snapshotPersistentRegisters() {
         List<RegisterBank> banks = RegisterBank.allPersistent();
@@ -1447,6 +1829,14 @@ public class Organism {
     /**
      * Restores all PERSISTENT register values from a compact snapshot.
      * The layout must match the one created by {@link #snapshotPersistentRegisters()}.
+     * <p>
+     * The snapshot is written over the registers wholesale; whatever they held before is lost, so a
+     * caller leaving one procedure for another has to park the outgoing values first.
+     *
+     * @param snapshot the values to write back, in slot order across the PERSISTENT banks
+     * @throws IllegalArgumentException if {@code snapshot} is {@code null} or does not hold exactly
+     *         {@link RegisterBank#PERSISTENT_SNAPSHOT_SIZE} entries, which means it was produced
+     *         under a different register layout
      */
     public void restorePersistentRegisters(Object[] snapshot) {
         if (snapshot == null || snapshot.length != RegisterBank.PERSISTENT_SNAPSHOT_SIZE) {
@@ -1474,25 +1864,68 @@ public class Organism {
         }
     }
 
-    /** Returns the per-procedure persistent register backing store. */
+    /**
+     * Returns the per-procedure persistent register backing store.
+     *
+     * @return the live map, keyed by procedure label hash with {@link #MAIN_LEVEL_LABEL_HASH} for
+     *         the main level and each value a snapshot of
+     *         {@link RegisterBank#PERSISTENT_SNAPSHOT_SIZE} entries. It is the organism's own map,
+     *         so putting into it changes the organism. It holds the values of the procedures that
+     *         are <em>not</em> currently executing; those of the active procedure live in the
+     *         registers themselves and are parked here only on a call or a return
+     */
     public Map<Integer, Object[]> getPersistentRegisterState() { return persistentRegisterState; }
 
-    /** Replaces the persistent register backing store (used during restore). */
+    /**
+     * Replaces the persistent register backing store (used during restore).
+     *
+     * @param state the entries to hold, replacing everything the store held before. The entries are
+     *              copied into the organism's own map, but the snapshot arrays are not, so they
+     *              stay shared with the caller's map
+     */
     public void setPersistentRegisterState(Map<Integer, Object[]> state) {
         this.persistentRegisterState.clear();
         this.persistentRegisterState.putAll(state);
     }
 
-    /** Returns the labelHash of the currently active procedure for persistent state. */
+    /**
+     * Returns the labelHash of the currently active procedure for persistent state.
+     *
+     * @return the key under which the PERSISTENT registers currently held in the register array
+     *         will be parked on the next call or return, or {@link #MAIN_LEVEL_LABEL_HASH} while
+     *         execution is at main level. It tracks the innermost frame of the call stack whether
+     *         or not any persistent register has ever been written
+     */
     public int getCurrentProcLabelHash() { return currentProcLabelHash; }
 
-    /** Sets the labelHash of the currently active procedure for persistent state. */
+    /**
+     * Sets the labelHash of the currently active procedure for persistent state.
+     *
+     * @param labelHash the procedure being entered or returned to, or
+     *                  {@link #MAIN_LEVEL_LABEL_HASH} for the main level. It has to be set in step
+     *                  with the call stack, because the next call or return parks the live
+     *                  PERSISTENT registers under whatever key it finds here
+     */
     public void setCurrentProcLabelHash(int labelHash) { this.currentProcLabelHash = labelHash; }
 
-    /** Returns whether any STACK_SAVED register has been written during this organism's lifetime. */
+    /**
+     * Returns whether any STACK_SAVED register has been written during this organism's lifetime.
+     *
+     * @return {@code true} once such a write has happened; the flag is never cleared again. While
+     *         it is {@code false}, a call stores no register snapshot in its frame and a return
+     *         restores none, which is what spares an organism that uses no STACK_SAVED register the
+     *         cost of saving them
+     */
     public boolean isStackSavedDirty() { return stackSavedDirty; }
 
-    /** Returns whether any PERSISTENT register has been written during this organism's lifetime. */
+    /**
+     * Returns whether any PERSISTENT register has been written during this organism's lifetime.
+     *
+     * @return {@code true} once such a write has happened; the flag is never cleared again. While
+     *         it is {@code false}, calls and returns leave the per-procedure store untouched, which
+     *         is what spares an organism that uses no PERSISTENT register the cost of maintaining
+     *         it
+     */
     public boolean isPersistentDirty() { return persistentDirty; }
 
 }
