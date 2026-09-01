@@ -15,13 +15,14 @@ import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Verifies that a call with parameters produces a binding, and that its key names the cell
- * holding that call.
+ * Verifies that the keys of {@code callSiteBindings} name the cell that holds the CALL they
+ * belong to.
  * <p>
- * The binding is collected from the call's REF/VAL operand lists, which only exist on the call's
- * own IR type. Anything that rebuilds the instruction as a plain one during linking drops those
- * lists, and the binding is then never collected - silently, because the result still compiles
- * and still runs.
+ * The key is a linear address, and the artifact carries a second mapping from linear addresses to
+ * coordinates. Following a key through that mapping has to arrive at a CALL opcode, which requires
+ * both sides to count addresses the same way. A label makes any disagreement visible: it occupies
+ * a cell in the emitted program, so a count that covers only instructions falls behind at the
+ * first one.
  */
 public class CallSiteBindingAddressTest {
 
@@ -42,6 +43,56 @@ public class CallSiteBindingAddressTest {
                 "  ADDI A DATA:1",
                 "  RET",
                 ".ENDP")));
+    }
+
+    @Test
+    @Tag("unit")
+    void bindingKeyNamesTheCallWithAPrecedingLabel() throws Exception {
+        assertBindingKeysPointAtCalls(compile(String.join("\n",
+                "SETI %DR0 DATA:29",
+                "LOOP:",
+                "CALL INC REF %DR0",
+                "WAIT",
+                ".ORG 0|1",
+                "EXPORT .PROC INC REF A",
+                "  ADDI A DATA:1",
+                "  RET",
+                ".ENDP")));
+    }
+
+    @Test
+    @Tag("unit")
+    void bindingKeysNameTheirCallsAcrossLabelsVectorsAndSeveralCalls() throws Exception {
+        // Several labels, a vector operand and two calls: every kind of item that occupies a
+        // different number of cells stands between the calls, so an address counted along the way
+        // would drift by a different amount at each of them.
+        ProgramArtifact artifact = compile(String.join("\n",
+                "SETI %DR0 DATA:1",
+                "START:",
+                "SETV %DR1 1|0",
+                "MIDDLE:",
+                "CALL INC REF %DR0",
+                "AGAIN:",
+                "SETV %DR2 0|1",
+                "CALL INC REF %DR1",
+                "WAIT",
+                ".ORG 0|1",
+                "EXPORT .PROC INC REF A",
+                "  ADDI A DATA:1",
+                "  RET",
+                ".ENDP"));
+
+        int callOpcode = Instruction.getInstructionIdByName("CALL");
+        assertThat(artifact.callSiteBindings()).as("both calls carry bindings").hasSize(2);
+
+        for (Map.Entry<Integer, Map<Integer, Integer>> binding : artifact.callSiteBindings().entrySet()) {
+            int linearAddress = binding.getKey();
+            int[] coord = artifact.linearAddressToCoord().get(linearAddress);
+            assertThat(coord).as("address %d is known", linearAddress).isNotNull();
+            assertThat(Molecule.fromInt(machineCodeAt(artifact, coord)).toScalarValue())
+                    .as("address %d holds a CALL", linearAddress)
+                    .isEqualTo(callOpcode);
+        }
     }
 
     private static ProgramArtifact compile(String source) throws Exception {

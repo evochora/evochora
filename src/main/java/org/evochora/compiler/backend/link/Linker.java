@@ -2,6 +2,7 @@ package org.evochora.compiler.backend.link;
 
 import org.evochora.compiler.api.CompilationException;
 import org.evochora.compiler.backend.layout.LayoutResult;
+import org.evochora.compiler.backend.layout.PlacedItem;
 import org.evochora.compiler.model.ir.IrDirective;
 import org.evochora.compiler.model.ir.IrInstruction;
 import org.evochora.compiler.model.ir.IrItem;
@@ -42,37 +43,23 @@ public final class Linker {
      */
     public IrProgram link(IrProgram program, LayoutResult layout, LinkingContext context, EnvironmentProperties envProps) throws CompilationException {
         List<IrItem> out = new ArrayList<>();
-        IInstructionSet isa = context.isa();
 
-        for (IrItem item : program.items()) {
+        for (PlacedItem placed : layout.placedItems()) {
+            IrItem item = placed.item();
+
             if (item instanceof IrDirective dir) {
                 directiveRegistry.resolve(dir).handle(dir, context);
             }
 
             if (item instanceof IrInstruction ins) {
+                // The address comes from the layout, which assigned it. Counting along here would
+                // mean deciding a second time how many cells each item occupies.
+                context.setCurrentAddress(placed.linearAddress());
+
                 for (ILinkingRule rule : registry.rules()) {
                     ins = rule.apply(ins, context, layout);
                 }
                 out.add(ins);
-
-                context.nextAddress();
-
-                final IrInstruction linked = ins;
-                int opcodeId = isa.getInstructionIdByName(linked.opcode())
-                        .orElseThrow(() -> new CompilationException("Unknown instruction '" + linked.opcode() + "'.", linked.source()));
-                IInstructionSet.Signature sig = isa.getSignatureById(opcodeId)
-                        .orElseThrow(() -> new CompilationException("No ISA signature for instruction '" + linked.opcode() + "'.", linked.source()));
-                for (IInstructionSet.ArgKind kind : sig.argumentTypes()) {
-                    if (kind == IInstructionSet.ArgKind.VECTOR) {
-                        if (envProps == null || envProps.getWorldShape() == null || envProps.getWorldShape().length == 0) {
-                            throw new CompilationException("Instruction " + ins.opcode() + " requires vector arguments, which need a world context, but no environment properties were provided.", ins.source());
-                        }
-                        int worldDimensions = envProps.getWorldShape().length;
-                        for (int k = 0; k < worldDimensions; k++) context.nextAddress();
-                    } else {
-                        context.nextAddress();
-                    }
-                }
             } else {
                 out.add(item);
             }

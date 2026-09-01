@@ -42,7 +42,8 @@ class CallSiteBindingRuleTest {
         context = new LinkingContext(null, stubIsa);
         layout = new LayoutResult(
                 Collections.emptyMap(), Collections.emptyMap(),
-                Collections.emptyMap(), Collections.emptyMap(), Collections.emptyMap()
+                Collections.emptyMap(), Collections.emptyMap(), Collections.emptyMap(),
+                Collections.emptyList()
         );
         dummySource = new SourceInfo("test.s", 1, 0);
     }
@@ -141,8 +142,7 @@ class CallSiteBindingRuleTest {
 
     @Test
     void bindsAtCurrentAddress() {
-        context.nextAddress(); // advance to address 1
-        context.nextAddress(); // advance to address 2
+        context.setCurrentAddress(2); // the layout put this call at address 2
 
         IrInstruction call = new IrCallInstruction(
                 "CALL",
