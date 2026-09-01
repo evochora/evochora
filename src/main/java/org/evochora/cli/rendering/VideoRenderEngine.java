@@ -43,6 +43,14 @@ public class VideoRenderEngine {
     private final VideoRenderOptions options;
     private final IVideoFrameRenderer frameRenderer;
 
+    /**
+     * Container formats this command writes. mp4 and webm select their own encoder arguments;
+     * the others are written with the default encoder and ffmpeg derives the container from the
+     * output file name.
+     */
+    private static final java.util.Set<String> SUPPORTED_FORMATS =
+            java.util.Set.of("mkv", "mp4", "avi", "mov", "webm");
+
     public VideoRenderEngine(VideoRenderOptions options, IVideoFrameRenderer frameRenderer) {
         this.options = options;
         this.frameRenderer = frameRenderer;
@@ -596,6 +604,11 @@ public class VideoRenderEngine {
         if (options.startTick != null && options.endTick != null && options.startTick > options.endTick) {
             System.err.println("--start-tick (" + options.startTick + ") must not be greater than --end-tick ("
                     + options.endTick + ")");
+            return false;
+        }
+        if (!SUPPORTED_FORMATS.contains(options.format.toLowerCase())) {
+            System.err.println("Unknown format '" + options.format + "' for --format; supported: "
+                    + String.join(", ", SUPPORTED_FORMATS));
             return false;
         }
         if (options.overlayNames != null) {
