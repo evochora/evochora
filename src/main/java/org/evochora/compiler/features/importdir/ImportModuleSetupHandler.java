@@ -29,6 +29,10 @@ public class ImportModuleSetupHandler implements IDependencySetupHandler<ImportD
         ModuleScope modScope = ctx.getModuleScope(ctx.currentAliasChain());
         if (modScope != null) {
             modScope.imports().put(importAlias, importedAliasChain);
+            // Whether a name may reach through this import from outside. Resolution walks the
+            // chain segment by segment and asks at every step, so a module that keeps its import
+            // to itself ends the chain there.
+            modScope.importExported().put(importAlias, dep.exported());
         }
     }
 
@@ -42,7 +46,12 @@ public class ImportModuleSetupHandler implements IDependencySetupHandler<ImportD
             String sourceAlias = using.sourceAlias().toUpperCase();
             ModuleScope importerScope = ctx.getModuleScope(ctx.currentAliasChain());
             if (importerScope == null) continue;
+            // Either a module this one imported, or one it received itself - the latter is what
+            // lets a requirement travel further down than the module that first accepted it.
             String sourceAliasChain = importerScope.imports().get(sourceAlias);
+            if (sourceAliasChain == null) {
+                sourceAliasChain = importerScope.usingBindings().get(sourceAlias);
+            }
             if (sourceAliasChain != null) {
                 importedModScope.usingBindings().put(using.targetAlias().toUpperCase(), sourceAliasChain);
             }
