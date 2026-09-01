@@ -86,24 +86,64 @@ public class SimulationRestorer {
     /**
      * Bundles a tick plugin with its configuration.
      * Used for extracting plugin state during simulation.
+     * <p>
+     * A plugin class that implements several of the plugin interfaces is instantiated once and
+     * bundled once per interface it implements, so the same instance appears in several of these
+     * bundles, each time with the same configuration.
+     *
+     * @param plugin the plugin instance created from the checkpoint's configuration, with the
+     *               state stored for its class already loaded into it
+     * @param config the {@code options} block the instance was constructed with, taken from the
+     *               plugin's entry in the configuration the checkpoint carries; empty if that entry
+     *               declares no options
      */
     public record PluginWithConfig(ITickPlugin plugin, Config config) {}
 
     /**
      * Bundles an instruction interceptor with its configuration.
      * Used for extracting plugin state during simulation.
+     * <p>
+     * A plugin class that implements several of the plugin interfaces is instantiated once and
+     * bundled once per interface it implements, so the same instance appears in several of these
+     * bundles, each time with the same configuration.
+     *
+     * @param interceptor the plugin instance created from the checkpoint's configuration, with
+     *                    the state stored for its class already loaded into it
+     * @param config      the {@code options} block the instance was constructed with, taken from
+     *                    the plugin's entry in the configuration the checkpoint carries; empty if
+     *                    that entry declares no options
      */
     public record InterceptorWithConfig(IInstructionInterceptor interceptor, Config config) {}
 
     /**
      * Bundles a death handler with its configuration.
      * Used for extracting plugin state during simulation.
+     * <p>
+     * A plugin class that implements several of the plugin interfaces is instantiated once and
+     * bundled once per interface it implements, so the same instance appears in several of these
+     * bundles, each time with the same configuration.
+     *
+     * @param handler the plugin instance created from the checkpoint's configuration, with the
+     *                state stored for its class already loaded into it
+     * @param config  the {@code options} block the instance was constructed with, taken from the
+     *                plugin's entry in the configuration the checkpoint carries; empty if that
+     *                entry declares no options
      */
     public record DeathHandlerWithConfig(IDeathHandler handler, Config config) {}
 
     /**
      * Bundles a birth handler with its configuration.
      * Used for extracting plugin state during simulation.
+     * <p>
+     * A plugin class that implements several of the plugin interfaces is instantiated once and
+     * bundled once per interface it implements, so the same instance appears in several of these
+     * bundles, each time with the same configuration.
+     *
+     * @param handler the plugin instance created from the checkpoint's configuration, with the
+     *                state stored for its class already loaded into it
+     * @param config  the {@code options} block the instance was constructed with, taken from the
+     *                plugin's entry in the configuration the checkpoint carries; empty if that
+     *                entry declares no options
      */
     public record BirthHandlerWithConfig(IBirthHandler handler, Config config) {}
 

@@ -541,6 +541,23 @@ public final class DeltaCodec {
             return state;
         }
 
+        /**
+         * Reconstructs a single tick of a chunk, its cells included in the returned
+         * {@link TickData}.
+         * <p>
+         * The decoder holds on to the cells of the tick it reconstructed last. A tick that lies
+         * later in the same chunk is built on top of them; a tick that lies earlier, or one from
+         * another chunk, makes the decoder lay the chunk's snapshot down again and work forward
+         * from there. Either way an accumulated delta on the path is taken as a shortcut over the
+         * incremental deltas it spans. The chunk's snapshot tick is handed back as it stands, since
+         * it already carries its cells.
+         *
+         * @param chunk      the chunk holding the tick
+         * @param targetTick the tick to reconstruct
+         * @return the tick's data with its cell columns filled in
+         * @throws ChunkCorruptedException if the chunk is corrupt, does not hold the tick, or holds
+         *         a delta on the path that was read without its cells
+         */
         public TickData decompressTick(TickDataChunk chunk, long targetTick)
                 throws ChunkCorruptedException {
             return decompressTick(chunk, targetTick, true);

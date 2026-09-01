@@ -204,6 +204,21 @@ public class MutableCellState implements ICellStateSource {
         }
     }
 
+    /**
+     * Packs the occupied cells into a {@link CellDataColumns} message.
+     * <p>
+     * A cell counts as occupied if it holds molecule data, an owner, or both; empty cells are left
+     * out, so the message grows with the occupancy and not with the size of the grid. The three
+     * lists of the message are parallel and ordered by ascending flat index.
+     * <p>
+     * The whole grid is walked on every call and a fresh message is built from it, while the state
+     * itself is left unchanged. The walk yields the CPU every 100,000 cells so that a large
+     * environment does not monopolise its thread. Callers that only read the cells should use
+     * {@link #forEachOccupiedCell(ICellStateSource.CellVisitor)}, which walks the same grid without
+     * building the message.
+     *
+     * @return the occupied cells as columns; empty if no cell is occupied
+     */
     public CellDataColumns toCellDataColumns() {
         CellDataColumns.Builder builder = CellDataColumns.newBuilder();
         for (int i = 0; i < totalCells; i++) {
