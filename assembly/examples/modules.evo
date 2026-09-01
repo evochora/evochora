@@ -12,20 +12,22 @@
 #
 #   Downwards — the importer decides. A module names what it needs with .REQUIRE and
 #   whoever imports it satisfies that with USING. Both movement and navigation leave
-#   the choice open that way, so the decision made here reaches all the way down: this
-#   file names MATH once, navigation hands it on, and movement receives it.
+#   the choice open that way, so the decision made here reaches all the way down. Each
+#   level uses its own name for the same module: MATHLIB here, ARITH inside navigation,
+#   CALC inside movement — and each USING clause says which name means which.
 #
 #   Upwards — the imported module decides. It marks its own import with EXPORT, and its
 #   importer may then use it without placing that code a second time. That is how
 #   movement reaches this file, as NAV.MOVE.
 
 # Import the standalone math module — its code is placed here
-.IMPORT "modules/math.evo" AS MATH
+.IMPORT "modules/math.evo" AS MATHLIB
 
-# Import navigation and give it the math module. Navigation hands it on to movement,
-# which required one without choosing it. Navigation also passes its own import of
-# movement back up, so we reach it as NAV.MOVE without placing that code again.
-.IMPORT "modules/navigation.evo" AS NAV USING MATH AS MATH
+# Import navigation and give it our math module: what we call MATHLIB is what navigation
+# asked for as ARITH. Navigation hands it on to movement under yet another name, and
+# passes its own import of movement back up, so we reach it as NAV.MOVE without placing
+# that code again.
+.IMPORT "modules/navigation.evo" AS NAV USING MATHLIB AS ARITH
 
 # Load shared constants for direct use in this file
 .SOURCE "modules/constants.evo"
@@ -47,7 +49,7 @@ START:
 
 MAIN_LOOP:
   # Gain some energy each tick (clamped to MAX_ENERGY)
-  CALL MATH.ADD_CLAMPED REF %ENERGY VAL DATA:3 MAX_ENERGY
+  CALL MATHLIB.ADD_CLAMPED REF %ENERGY VAL DATA:3 MAX_ENERGY
 
   # Only move if we have enough energy
   LTI %ENERGY MOVE_COST
