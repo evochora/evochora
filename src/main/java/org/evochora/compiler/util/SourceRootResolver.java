@@ -9,7 +9,7 @@ import java.util.regex.Pattern;
 
 /**
  * Resolves directive paths ({@code .IMPORT}, {@code .SOURCE}) against configured source roots.
- * Replaces the previous parent-file-relative resolution with source-root-relative resolution.
+ * A path is therefore read relative to a root, never relative to the file that names it.
  *
  * <p>Supports an optional PREFIX:path syntax where PREFIX identifies a named source root
  * (e.g., {@code PRED:main.evo} resolves against the source root with prefix "PRED").</p>
