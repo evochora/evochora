@@ -115,7 +115,7 @@ public class GeneDeletionPlugin implements IBirthHandler {
         hashCounts.clear();
 
         // Canonical (index) order: the choice below must not depend on write history
-        env.forEachCellOwnedByInIndexOrder(childId, (int flatIndex) -> {
+        env.forEachCellOwnedByInCanonicalOrder(childId, (int flatIndex) -> {
             int moleculeInt = env.getMoleculeInt(flatIndex);
             if ((moleculeInt & Config.TYPE_MASK) == Config.TYPE_LABEL) {
                 int hash = moleculeInt & Config.VALUE_MASK;

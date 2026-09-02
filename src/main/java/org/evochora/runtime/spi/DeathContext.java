@@ -1,6 +1,5 @@
 package org.evochora.runtime.spi;
 
-import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 
@@ -37,7 +36,7 @@ import org.evochora.runtime.model.Molecule;
 public class DeathContext {
 
     private Environment environment;
-    private IntOpenHashSet ownedCells;
+    private int organismId;
     private boolean initialized = false;
     private int currentFlatIndex = -1;
 
@@ -52,13 +51,16 @@ public class DeathContext {
      */
     public void reset(Environment environment, int organismId) {
         this.environment = environment;
-        this.ownedCells = environment.getCellsOwnedBy(organismId);
+        this.organismId = organismId;
         this.initialized = true;
         this.currentFlatIndex = -1;
     }
 
     /**
-     * Iterates over all cells owned by the dying organism.
+     * Iterates over all cells owned by the dying organism, in ascending order of their canonical
+     * index: an order determined by the cells' coordinates alone, so that a handler that draws
+     * randomness per cell behaves the same in a live run, after a resume and under any memory
+     * layout of the grid.
      * <p>
      * Within the callback, {@link #getMolecule()} and {@link #setMolecule(Molecule)}
      * can be used to read/modify the current cell.
@@ -74,10 +76,7 @@ public class DeathContext {
         if (!initialized) {
             throw new IllegalStateException("DeathContext not initialized - reset() must be called first");
         }
-        if (ownedCells == null) {
-            return; // Organism had no cells - valid state
-        }
-        ownedCells.forEach(flatIndex -> {
+        environment.forEachCellOwnedByInCanonicalOrder(organismId, flatIndex -> {
             currentFlatIndex = flatIndex;
             action.run();
         });

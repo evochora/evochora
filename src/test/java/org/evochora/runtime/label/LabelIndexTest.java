@@ -51,7 +51,7 @@ class LabelIndexTest {
 
         // Simulate setMolecule with a LABEL
         int moleculeInt = Config.TYPE_LABEL | labelValue;
-        labelIndex.onMoleculeSet(flatIndex, 0, moleculeInt, owner);
+        labelIndex.onMoleculeSet(flatIndex, flatIndex, 0, moleculeInt, owner);
 
         // Find the label
         int result = labelIndex.findTarget(labelValue, owner, callerCoords, environment, random);
@@ -65,13 +65,13 @@ class LabelIndexTest {
         int owner = 1;
 
         int moleculeInt = Config.TYPE_LABEL | labelValue;
-        labelIndex.onMoleculeSet(flatIndex, 0, moleculeInt, owner);
+        labelIndex.onMoleculeSet(flatIndex, flatIndex, 0, moleculeInt, owner);
 
         // Verify it exists
         assertThat(labelIndex.findTarget(labelValue, owner, callerCoords, environment, random)).isEqualTo(flatIndex);
 
         // Remove it (simulate clearing the cell)
-        labelIndex.onMoleculeSet(flatIndex, moleculeInt, 0, owner);
+        labelIndex.onMoleculeSet(flatIndex, flatIndex, moleculeInt, 0, owner);
 
         // Should no longer be found
         assertThat(labelIndex.findTarget(labelValue, owner, callerCoords, environment, random)).isEqualTo(-1);
@@ -89,11 +89,11 @@ class LabelIndexTest {
         int newMolecule = Config.TYPE_LABEL | newValue;
 
         // Add first label
-        labelIndex.onMoleculeSet(flatIndex, 0, oldMolecule, owner);
+        labelIndex.onMoleculeSet(flatIndex, flatIndex, 0, oldMolecule, owner);
         assertThat(labelIndex.findTarget(oldValue, owner, callerCoords, environment, random)).isEqualTo(flatIndex);
 
         // Replace with new label
-        labelIndex.onMoleculeSet(flatIndex, oldMolecule, newMolecule, owner);
+        labelIndex.onMoleculeSet(flatIndex, flatIndex, oldMolecule, newMolecule, owner);
 
         // Old value should not be found
         assertThat(labelIndex.findTarget(oldValue, owner, callerCoords, environment, random)).isEqualTo(-1);
@@ -109,7 +109,7 @@ class LabelIndexTest {
         int newOwner = 2;
 
         int moleculeInt = Config.TYPE_LABEL | labelValue;
-        labelIndex.onMoleculeSet(flatIndex, 0, moleculeInt, oldOwner);
+        labelIndex.onMoleculeSet(flatIndex, flatIndex, 0, moleculeInt, oldOwner);
 
         // Old owner can find it as "own"
         int result1 = labelIndex.findTarget(labelValue, oldOwner, callerCoords, environment, random);
@@ -129,7 +129,7 @@ class LabelIndexTest {
         int dataMolecule = Config.TYPE_DATA | 12345;
         int flatIndex = 100;
 
-        labelIndex.onMoleculeSet(flatIndex, 0, dataMolecule, 1);
+        labelIndex.onMoleculeSet(flatIndex, flatIndex, 0, dataMolecule, 1);
 
         // Should not be found
         assertThat(labelIndex.findTarget(12345, 1, callerCoords, environment, random)).isEqualTo(-1);
@@ -142,7 +142,7 @@ class LabelIndexTest {
         int owner = 1;
 
         int moleculeInt = Config.TYPE_LABEL | labelValue;
-        labelIndex.onMoleculeSet(flatIndex, 0, moleculeInt, owner);
+        labelIndex.onMoleculeSet(flatIndex, flatIndex, 0, moleculeInt, owner);
 
         var candidates = labelIndex.getCandidates(labelValue);
         assertThat(candidates).hasSize(1);

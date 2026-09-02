@@ -226,7 +226,7 @@ public class Environment implements IEnvironmentReader {
 
             // Update label index for fuzzy jump matching
             int owner = this.ownerGrid[index];
-            labelIndex.onMoleculeSet(index, oldMoleculeInt, newMoleculeInt, owner);
+            labelIndex.onMoleculeSet(index, toCanonicalIndex(index), oldMoleculeInt, newMoleculeInt, owner);
 
             // Update sparse cell tracking if enabled
             updateOccupiedIndices(index);
@@ -258,7 +258,7 @@ public class Environment implements IEnvironmentReader {
             this.ownerGrid[index] = ownerId;
 
             // Update label index for fuzzy jump matching
-            labelIndex.onMoleculeSet(index, oldMoleculeInt, newMoleculeInt, ownerId);
+            labelIndex.onMoleculeSet(index, toCanonicalIndex(index), oldMoleculeInt, newMoleculeInt, ownerId);
 
             // Update sparse cell tracking if enabled
             updateOccupiedIndices(index);
@@ -489,28 +489,59 @@ public class Environment implements IEnvironmentReader {
 
     /**
      * Hands the flat indices of all cells owned by {@code ownerId} to {@code consumer} in
-     * ascending index order — an order determined by the grid's content alone.
+     * ascending order of their canonical index — an order determined by the cells' coordinates
+     * alone, independent of write history and of how the grid is laid out in memory.
      * <p>
      * {@link #getCellsOwnedBy} iterates in hash order, which depends on the history of writes and
      * therefore differs between a live organism and the same organism rebuilt from a snapshot. Any
      * decision that iterates an owner's cells and draws randomness on the way (the mutation
-     * operators at birth) must use this method, or a resumed run diverges from its uninterrupted
-     * twin at the first birth. The cost is one sort of the owner's cell count per call, which is
-     * why it is meant for per-birth work, not for the per-tick path.
+     * operators at birth, the death handlers) must use this method, or a resumed run diverges from
+     * its uninterrupted twin at the first birth. The cost is one sort of the owner's cell count per
+     * call, which is why it is meant for per-birth and per-death work, not for the per-tick path.
      *
      * @param ownerId the owner whose cells to visit
-     * @param consumer receives each flat index in ascending order
+     * @param consumer receives each flat index, in ascending canonical order
      */
-    public void forEachCellOwnedByInIndexOrder(int ownerId, IntConsumer consumer) {
+    public void forEachCellOwnedByInCanonicalOrder(int ownerId, IntConsumer consumer) {
         IntOpenHashSet owned = cellsByOwner.get(ownerId);
         if (owned == null || owned.isEmpty()) {
             return;
         }
         int[] indices = owned.toIntArray();
-        Arrays.sort(indices);
-        for (int index : indices) {
-            consumer.accept(index);
+        long[] keyed = new long[indices.length];
+        for (int i = 0; i < indices.length; i++) {
+            keyed[i] = ((long) toCanonicalIndex(indices[i]) << 32) | (indices[i] & 0xFFFFFFFFL);
         }
+        Arrays.sort(keyed);
+        for (long key : keyed) {
+            consumer.accept((int) key);
+        }
+    }
+
+    /**
+     * Converts a flat index of this environment into the canonical index of the same cell: the
+     * row-major numbering of {@link EnvironmentProperties}, which is a pure function of the
+     * coordinate and the numbering in which cells are persisted. Every order that may influence a
+     * simulation result is defined over canonical indices, so that results do not depend on how
+     * the grid is laid out in memory. The grid is currently stored in exactly that row-major order,
+     * so both numberings coincide.
+     *
+     * @param flatIndex a flat index of this environment
+     * @return the canonical index of the same cell
+     */
+    public int toCanonicalIndex(int flatIndex) {
+        return flatIndex;
+    }
+
+    /**
+     * Converts a canonical index (see {@link #toCanonicalIndex}) into the flat index of the same
+     * cell in this environment.
+     *
+     * @param canonicalIndex the canonical index of a cell
+     * @return the flat index of that cell in this environment
+     */
+    public int fromCanonicalIndex(int canonicalIndex) {
+        return canonicalIndex;
     }
 
     /**
@@ -561,7 +592,7 @@ public class Environment implements IEnvironmentReader {
 
         // Update label index for fuzzy jump matching
         int owner = this.ownerGrid[flatIndex];
-        labelIndex.onMoleculeSet(flatIndex, oldMoleculeInt, newMoleculeInt, owner);
+        labelIndex.onMoleculeSet(flatIndex, toCanonicalIndex(flatIndex), oldMoleculeInt, newMoleculeInt, owner);
 
         // Update sparse cell tracking if enabled
         updateOccupiedIndices(flatIndex);
@@ -706,7 +737,7 @@ public class Environment implements IEnvironmentReader {
             // Update ownership index: remove from owner's set
             owned.remove(flatIndex);
             // Update label index: molecule removed
-            labelIndex.onMoleculeSet(flatIndex, oldMoleculeInt, 0, 0);
+            labelIndex.onMoleculeSet(flatIndex, toCanonicalIndex(flatIndex), oldMoleculeInt, 0, 0);
             // Update sparse cell tracking if enabled
             occupiedIndices.clear(flatIndex);
         }

@@ -354,15 +354,16 @@ public class PreExpandedHammingStrategy implements ILabelMatchingStrategy {
 
     @Override
     public void addLabel(int labelValue, LabelEntry entry) {
-        // Entries of one value are kept ordered by flat index, so that candidate order — and with
-        // it the stochastic selection — depends on the environment's content alone, never on the
-        // order in which labels were placed (a resumed run rebuilds the index from a snapshot).
+        // Entries of one value are kept ordered by canonical index, so that candidate order — and
+        // with it the stochastic selection — depends on the labels' coordinates alone: never on the
+        // order in which labels were placed (a resumed run rebuilds the index from a snapshot) and
+        // never on how the grid is laid out in memory.
         List<LabelEntry> entries = valueToLabels.computeIfAbsent(labelValue, k -> new ArrayList<>());
         int low = 0;
         int high = entries.size();
         while (low < high) {
             int mid = (low + high) >>> 1;
-            if (entries.get(mid).flatIndex() < entry.flatIndex()) {
+            if (entries.get(mid).canonicalIndex() < entry.canonicalIndex()) {
                 low = mid + 1;
             } else {
                 high = mid;
@@ -391,7 +392,7 @@ public class PreExpandedHammingStrategy implements ILabelMatchingStrategy {
             for (int i = 0; i < list.size(); i++) {
                 if (list.get(i).flatIndex() == flatIndex) {
                     LabelEntry old = list.get(i);
-                    list.set(i, new LabelEntry(flatIndex, newOwner, old.marker()));
+                    list.set(i, new LabelEntry(flatIndex, old.canonicalIndex(), newOwner, old.marker()));
                     return;
                 }
             }
@@ -405,7 +406,7 @@ public class PreExpandedHammingStrategy implements ILabelMatchingStrategy {
             for (int i = 0; i < list.size(); i++) {
                 if (list.get(i).flatIndex() == flatIndex) {
                     LabelEntry old = list.get(i);
-                    list.set(i, new LabelEntry(flatIndex, old.owner(), newMarker));
+                    list.set(i, new LabelEntry(flatIndex, old.canonicalIndex(), old.owner(), newMarker));
                     return;
                 }
             }

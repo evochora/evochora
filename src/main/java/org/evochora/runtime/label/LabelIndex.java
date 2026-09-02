@@ -22,7 +22,7 @@ import java.util.Collection;
  * LabelIndex index = new LabelIndex();
  *
  * // Called by Environment.setMolecule() when a LABEL is placed
- * index.onMoleculeSet(flatIndex, oldMolecule, newMolecule, owner);
+ * index.onMoleculeSet(flatIndex, canonicalIndex, oldMolecule, newMolecule, owner);
  *
  * // Called by ControlFlowInstruction to find jump target
  * int targetIndex = index.findTarget(labelValue, codeOwner, callerCoords, environment, organism.getRandom());
@@ -85,7 +85,7 @@ public class LabelIndex {
      * @param newMoleculeInt The new molecule's packed integer value
      * @param owner The owner ID of the cell
      */
-    public void onMoleculeSet(int flatIndex, int oldMoleculeInt, int newMoleculeInt, int owner) {
+    public void onMoleculeSet(int flatIndex, int canonicalIndex, int oldMoleculeInt, int newMoleculeInt, int owner) {
         int oldType = oldMoleculeInt & Config.TYPE_MASK;
         int newType = newMoleculeInt & Config.TYPE_MASK;
 
@@ -100,7 +100,7 @@ public class LabelIndex {
             int newValue = newMoleculeInt & Config.VALUE_MASK;
             // Use unsigned shift (>>>) to avoid sign-extension when bit 31 is set (marker >= 8)
             int marker = (newMoleculeInt & Config.MARKER_MASK) >>> Config.MARKER_SHIFT;
-            LabelEntry entry = new LabelEntry(flatIndex, owner, marker);
+            LabelEntry entry = new LabelEntry(flatIndex, canonicalIndex, owner, marker);
             strategy.addLabel(newValue, entry);
         }
     }

@@ -32,9 +32,9 @@ class EnvironmentIndexConsistencyTest {
         Environment permuted = fill(positions);
 
         List<Integer> expected = new ArrayList<>();
-        ascending.forEachCellOwnedByInIndexOrder(1, expected::add);
+        ascending.forEachCellOwnedByInCanonicalOrder(1, expected::add);
         List<Integer> actual = new ArrayList<>();
-        permuted.forEachCellOwnedByInIndexOrder(1, actual::add);
+        permuted.forEachCellOwnedByInCanonicalOrder(1, actual::add);
 
         assertThat(expected).hasSize(900).isSorted();
         assertThat(actual).isEqualTo(expected);

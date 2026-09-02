@@ -201,7 +201,7 @@ public class GeneDuplicationPlugin implements IBirthHandler {
         final int dvDimFinal = dvDim;
 
         // Canonical (index) order: the reservoir choice below must not depend on write history
-        env.forEachCellOwnedByInIndexOrder(childId, (int flatIndex) -> {
+        env.forEachCellOwnedByInCanonicalOrder(childId, (int flatIndex) -> {
             env.properties.flatIndexToCoordinates(flatIndex, coordBuffer);
 
             int perpKey = computePerpKey(coordBuffer, dvDimFinal);

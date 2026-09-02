@@ -128,7 +128,7 @@ authors; three of the project's own plugins violated it silently.
 
 ### Layout independence
 
-The experiment changed trajectories because five decisions consume randomness or break ties in
+The experiment changed trajectories because four decisions consume randomness or break ties in
 index order. Each of them is redefined over the persisted index, which depends only on the
 coordinate. None of them is on the per-instruction path, so the redefinition costs nothing
 measurable.
@@ -138,8 +138,12 @@ measurable.
 | `Environment.forEachCellOwnedByInIndexOrder` — the order in which mutation operators visit a child's cells and draw randomness | ascending internal index | ascending persisted index |
 | Label index candidate lists — order of weighted reservoir sampling; tie-break for equal score and owner | sorted by internal index | sorted by persisted index |
 | `SeedEnergyCreator` — the cell a random number selects | `nextInt(totalCells)` as internal index | as persisted index, converted |
-| `GeneInsertionPlugin` — the gap chosen among equally large gaps | first found in scan order | the one with the smallest persisted index |
 | `DeathContext` — the order death handlers visit a dying organism's cells | hash-set order of internal indices | ascending persisted index |
+
+The gap search of `GeneInsertionPlugin` needs no change: it sorts the coordinates of owned cells
+along the direction vector and breaks ties on those coordinates, so it is layout-independent
+already. Its only order dependence is the visiting order of the child's cells, the first row of
+the table.
 
 `DeathContext` is included although today's only death handler is order-independent: hash-set
 order also differs between a live environment and one rebuilt from a snapshot, so the current
