@@ -417,6 +417,9 @@ tasks.named("build") {
 pmd {
     toolVersion = "7.26.0"
     threads = 4
+    // On by default, stated here because the CI workflow restores and saves the resulting
+    // build/tmp/pmd*/incremental.cache between runs; without it that step would cache nothing.
+    incrementalAnalysis = true
     isConsoleOutput = true
     ruleSetFiles = files("gradle/pmd/ruleset.xml")
     ruleSets = listOf()
