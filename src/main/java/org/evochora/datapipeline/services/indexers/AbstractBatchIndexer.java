@@ -38,8 +38,9 @@ import com.typesafe.config.Config;
  * </ul>
  * <p>
  * <strong>Streaming Processing:</strong> Chunks are processed one at a time via
- * {@link #processChunk}. Commits are triggered every {@code insertBatchSize} chunks
- * or on timeout. Each parsed chunk is GC-eligible immediately after {@code processChunk}
+ * {@link #processChunk}. Commits are triggered every {@code insertBatchSize} chunks, or as
+ * soon as the oldest uncommitted chunk has waited {@code flushTimeoutMs}, whichever comes
+ * first. Each parsed chunk is GC-eligible immediately after {@code processChunk}
  * returns. Peak heap usage is O(chunkSize), not O(n &times; chunkSize).
  * <p>
  * <strong>Component System:</strong> Subclasses declare which components to use via
@@ -70,7 +71,6 @@ import com.typesafe.config.Config;
 public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInfo, ACK> {
 
     private final BatchIndexerComponents components;
-    private final int topicPollTimeoutMs;
 
     // Metrics (shared by all batch indexers)
     private final AtomicLong batchesProcessed = new AtomicLong(0);
@@ -83,7 +83,7 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
     private final int streamingInsertBatchSize;
     private final long streamingFlushTimeoutMs;
     private int streamingUncommittedChunks;
-    private long streamingLastCommitTime;
+    private long streamingOldestPendingSinceMs;  // Wall-clock time the oldest uncommitted chunk was processed
 
     /**
      * Creates a new batch indexer.
@@ -109,8 +109,6 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
         this.streamingFlushTimeoutMs = options.hasPath("flushTimeoutMs")
             ? options.getLong("flushTimeoutMs") : 5000L;
         this.streamingTracker = new StreamingAckTracker<>();
-        this.streamingLastCommitTime = System.currentTimeMillis();
-        this.topicPollTimeoutMs = (int) this.streamingFlushTimeoutMs;
     }
 
     /**
@@ -314,27 +312,23 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
             // Step 3: Topic loop
             // Check both isStopRequested() (graceful) and isInterrupted() (forced)
             while (!isStopRequested() && !Thread.currentThread().isInterrupted()) {
-                TopicMessage<BatchInfo, ACK> msg = topic.poll(topicPollTimeoutMs, TimeUnit.MILLISECONDS);
-
-                if (msg == null) {
-                    // Timeout-based commit
-                    if (streamingUncommittedChunks > 0
-                        && (System.currentTimeMillis() - streamingLastCommitTime) >= streamingFlushTimeoutMs) {
-                        try {
-                            streamingCommitAndAck();
-                        } catch (Exception e) {
-                            log.warn("Streaming commit failed (uncommitted chunks discarded, will be reprocessed on redelivery): {}", e.getMessage());
-                            recordError("STREAMING_COMMIT_FAILED", "Streaming commit failed",
-                                "Error: " + e.getClass().getSimpleName() + ": " + e.getMessage());
-                            streamingTracker.clear();
-                            streamingUncommittedChunks = 0;
-                            streamingLastCommitTime = System.currentTimeMillis();
-                        }
+                // Without pending chunks the poll only needs to wake up to re-check the stop flag.
+                // With pending chunks it may block no longer than the oldest one is allowed to wait.
+                long pollTimeoutMs = streamingFlushTimeoutMs;
+                if (streamingUncommittedChunks > 0) {
+                    long remainingMs = streamingFlushTimeoutMs
+                        - (System.currentTimeMillis() - streamingOldestPendingSinceMs);
+                    if (remainingMs <= 0) {
+                        commitPendingChunksOnTimeout();
+                        continue;
                     }
-                    continue;
+                    pollTimeoutMs = remainingMs;
                 }
 
-                processBatchMessage(msg);
+                TopicMessage<BatchInfo, ACK> msg = topic.poll(pollTimeoutMs, TimeUnit.MILLISECONDS);
+                if (msg != null) {
+                    processBatchMessage(msg);
+                }
             }
         } finally {
             // Final commit of remaining data (always executed, even on interrupt!)
@@ -358,6 +352,24 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
                 log.warn("Error during indexer shutdown cleanup: {}", e.getMessage());
                 log.debug("Shutdown cleanup error details:", e);
             }
+        }
+    }
+
+    /**
+     * Commits the pending chunks because the oldest of them has reached {@code flushTimeoutMs}.
+     * <p>
+     * A failed commit discards the pending chunks. Their batches stay unacknowledged, so the
+     * topic redelivers them after the claim timeout and they are processed again.
+     */
+    private void commitPendingChunksOnTimeout() {
+        try {
+            streamingCommitAndAck();
+        } catch (Exception e) {
+            log.warn("Streaming commit failed (uncommitted chunks discarded, will be reprocessed on redelivery): {}", e.getMessage());
+            recordError("STREAMING_COMMIT_FAILED", "Streaming commit failed",
+                "Error: " + e.getClass().getSimpleName() + ": " + e.getMessage());
+            streamingTracker.clear();
+            streamingUncommittedChunks = 0;
         }
     }
 
@@ -551,6 +563,9 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
      */
     protected final void onChunkStreamed(String batchId, int tickCount) throws Exception {
         streamingTracker.onChunkProcessed(batchId, tickCount);
+        if (streamingUncommittedChunks == 0) {
+            streamingOldestPendingSinceMs = System.currentTimeMillis();
+        }
         streamingUncommittedChunks++;
 
         if (streamingUncommittedChunks >= streamingInsertBatchSize) {
@@ -563,9 +578,9 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
     /**
      * Commits processed chunks and acknowledges completed batches.
      * <p>
-     * Called when the uncommitted chunk count reaches {@code insertBatchSize}, on poll
-     * timeout, or during shutdown. After committing, drains all fully completed batches
-     * from the tracker and ACKs their topic messages.
+     * Called when the uncommitted chunk count reaches {@code insertBatchSize}, when the oldest
+     * uncommitted chunk has waited {@code flushTimeoutMs}, or during shutdown. After committing,
+     * drains all fully completed batches from the tracker and ACKs their topic messages.
      *
      * @throws Exception if commit or ACK fails
      */
@@ -578,7 +593,6 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
             ackCompletedBatches();
 
             streamingUncommittedChunks = 0;
-            streamingLastCommitTime = System.currentTimeMillis();
         } finally {
             setShutdownPhase(ShutdownPhase.WAITING);
         }

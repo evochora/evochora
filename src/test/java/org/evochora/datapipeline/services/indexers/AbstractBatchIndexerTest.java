@@ -2,6 +2,7 @@ package org.evochora.datapipeline.services.indexers;
 
 import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
@@ -65,6 +66,7 @@ class AbstractBatchIndexerTest {
     private StreamingTestBatchIndexer streamingIndexer;
     private List<TickDataChunk> streamingProcessedChunks;
     private AtomicInteger streamingCommitCount;
+    private AtomicInteger streamingChunksAtFirstCommit;
     private Map<StoragePath, List<TickDataChunk>> storedChunks;
 
     @BeforeEach
@@ -79,6 +81,7 @@ class AbstractBatchIndexerTest {
 
         streamingProcessedChunks = Collections.synchronizedList(new ArrayList<>());
         streamingCommitCount = new AtomicInteger(0);
+        streamingChunksAtFirstCommit = new AtomicInteger(-1);
         storedChunks = new HashMap<>();
 
         // All tests use configured runIds — stub storage validation to pass
@@ -340,6 +343,42 @@ class AbstractBatchIndexerTest {
     }
 
     @Test
+    void testStreamingTimeoutCommitBoundsPendingChunkAgeUnderSparseStream() throws Exception {
+        // Given: one-chunk batches arriving every 50ms, insertBatchSize=100 (never reached),
+        // flushTimeoutMs=300. The topic is never silent for 300ms while the stream flows.
+        String runId = "test-run-s10";
+        SimulationMetadata metadata = createTestMetadata(runId);
+        int streamLength = 20;
+        List<TopicMessage<BatchInfo, String>> messages = new ArrayList<>();
+        for (int i = 0; i < streamLength; i++) {
+            BatchInfo batchInfo = createBatchInfo(runId, "batch_s10_" + i + ".pb", i, i);
+            storedChunks.put(StoragePath.of(batchInfo.getStoragePath()), createTestChunks(runId, i, 1));
+            messages.add(new TopicMessage<>(batchInfo, System.currentTimeMillis(),
+                "msg-s10-" + i, "test-consumer", "ack-s10-" + i));
+        }
+        AtomicInteger polls = new AtomicInteger(0);
+        lenient().when(mockMetadataReader.getMetadata(runId)).thenReturn(metadata);
+        when(mockTopic.poll(anyLong(), any(TimeUnit.class))).thenAnswer(invocation -> {
+            Thread.sleep(50);
+            int index = polls.getAndIncrement();
+            return index < streamLength ? messages.get(index) : null;
+        });
+
+        // When
+        streamingIndexer = createStreamingIndexer(runId, 100, 300);
+        streamingIndexer.start();
+
+        // Then: the first commit happens while the stream is still flowing, because the
+        // oldest pending chunk reaches the flush timeout long before the stream ends
+        await().atMost(5, TimeUnit.SECONDS)
+            .until(() -> streamingCommitCount.get() >= 1);
+        int chunksAtFirstCommit = streamingChunksAtFirstCommit.get();
+        assertTrue(chunksAtFirstCommit < streamLength,
+            "First commit must not wait for the stream to end (chunks at first commit: "
+                + chunksAtFirstCommit + " of " + streamLength + ")");
+    }
+
+    @Test
     void testStreamingMetricsTracking() throws Exception {
         // Given: 2 batches × 3 chunks each, insertBatchSize=3
         String runId = "test-run-s08";
@@ -558,7 +597,9 @@ class AbstractBatchIndexerTest {
             if (throwOnCommit) {
                 throw new RuntimeException("Simulated commit error");
             }
-            streamingCommitCount.incrementAndGet();
+            if (streamingCommitCount.incrementAndGet() == 1) {
+                streamingChunksAtFirstCommit.set(streamingProcessedChunks.size());
+            }
         }
     }
 
