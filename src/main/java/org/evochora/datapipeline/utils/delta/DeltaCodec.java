@@ -16,6 +16,7 @@ import org.evochora.runtime.model.EnvironmentProperties;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.BitSet;
 import java.util.List;
 import java.util.Optional;
@@ -109,6 +110,10 @@ public final class DeltaCodec {
 
         // Reusable builder to avoid repeated allocations
         private final CellDataColumns.Builder cellColumnsBuilder = CellDataColumns.newBuilder();
+        // Reusable buffers for ordering the cells of one capture by canonical index; grow-only
+        private int[] collected = new int[0];
+        private int collectedCount = 0;
+        private long[] sortKeys = new long[0];
         
         /**
          * Creates a new Encoder for a new simulation.
@@ -313,39 +318,64 @@ public final class DeltaCodec {
         }
         
         /**
-         * Serializes every occupied cell. The environment iterates in its own index order and hands
-         * out its own indices; the columns carry the canonical row-major index of
-         * {@link EnvironmentProperties}, the numbering every reader of persisted tick data expects.
+         * Serializes every occupied cell, in ascending canonical index order.
+         * <p>
+         * The environment hands out its own indices in its own order; the columns carry the
+         * canonical row-major index of {@link EnvironmentProperties}, the numbering every reader of
+         * persisted tick data expects, and list the cells in that numbering's order. The persisted
+         * bytes therefore do not depend on how the environment lays out its grid in memory.
          */
         private CellDataColumns extractAllCells(Environment env) {
-            cellColumnsBuilder.clear();
-
-            env.forEachOccupiedIndex(flatIndex -> {
-                cellColumnsBuilder.addFlatIndices(env.toCanonicalIndex(flatIndex));
-                cellColumnsBuilder.addMoleculeData(env.getMoleculeInt(flatIndex));
-                cellColumnsBuilder.addOwnerIds(env.getOwnerIdByIndex(flatIndex));
-            });
-
-            return cellColumnsBuilder.build();
+            collectedCount = 0;
+            env.forEachOccupiedIndex(this::collect);
+            return buildSortedByCanonicalIndex(env);
         }
 
         /**
-         * Serializes the cells whose environment indices are set in {@code changedIndices}, under
-         * their canonical row-major index as in {@link #extractAllCells}.
+         * Serializes the cells whose environment indices are set in {@code changedIndices}, in
+         * ascending canonical index order as in {@link #extractAllCells}.
          */
         private CellDataColumns extractCellsFromBitSet(Environment env, BitSet changedIndices) {
-            cellColumnsBuilder.clear();
-
-            // Iterate over set bits
+            collectedCount = 0;
             for (int flatIndex = changedIndices.nextSetBit(0);
                  flatIndex >= 0;
                  flatIndex = changedIndices.nextSetBit(flatIndex + 1)) {
+                collect(flatIndex);
+            }
+            return buildSortedByCanonicalIndex(env);
+        }
 
-                cellColumnsBuilder.addFlatIndices(env.toCanonicalIndex(flatIndex));
+        /** Appends an environment index to the collection buffer, growing it when full. */
+        private void collect(int flatIndex) {
+            if (collectedCount == collected.length) {
+                collected = Arrays.copyOf(collected, Math.max(1024, collected.length * 2));
+            }
+            collected[collectedCount++] = flatIndex;
+        }
+
+        /**
+         * Emits the collected cells sorted by canonical index. Each cell is keyed by its canonical
+         * index in the upper 32 bits and its environment index in the lower 32, so one sort of the
+         * keys orders the cells and keeps the index needed to read each cell's data.
+         */
+        private CellDataColumns buildSortedByCanonicalIndex(Environment env) {
+            if (sortKeys.length < collectedCount) {
+                sortKeys = new long[Math.max(collectedCount, sortKeys.length * 2)];
+            }
+            for (int i = 0; i < collectedCount; i++) {
+                int flatIndex = collected[i];
+                sortKeys[i] = ((long) env.toCanonicalIndex(flatIndex) << 32) | (flatIndex & 0xFFFFFFFFL);
+            }
+            Arrays.sort(sortKeys, 0, collectedCount);
+
+            cellColumnsBuilder.clear();
+            for (int i = 0; i < collectedCount; i++) {
+                long key = sortKeys[i];
+                int flatIndex = (int) key;
+                cellColumnsBuilder.addFlatIndices((int) (key >>> 32));
                 cellColumnsBuilder.addMoleculeData(env.getMoleculeInt(flatIndex));
                 cellColumnsBuilder.addOwnerIds(env.getOwnerIdByIndex(flatIndex));
             }
-
             return cellColumnsBuilder.build();
         }
     }

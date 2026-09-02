@@ -214,6 +214,40 @@ class DeltaCodecEncoderTest {
         assertEquals(tiled.properties.toFlatIndex(deltaCell), deltaCells.getFlatIndices(0));
     }
 
+    @Test
+    void captureTick_listsCellsInAscendingCanonicalOrderWhateverTheLayout() {
+        // Two environments with different memory layouts must persist the same world as the same
+        // bytes: the cells appear under their canonical index, in ascending canonical order.
+        Environment rowMajor = new Environment(new EnvironmentProperties(new int[]{64, 64}, false),
+                new PreExpandedHammingStrategy(), 1);
+        Environment tiled = new Environment(new EnvironmentProperties(new int[]{64, 64}, false),
+                new PreExpandedHammingStrategy(), 32);
+        int[][] cells = {{40, 1}, {1, 40}, {33, 33}, {0, 0}, {63, 63}, {2, 0}};
+        for (int[] cell : cells) {
+            rowMajor.setMolecule(Molecule.fromInt(100 + cell[0]), cell);
+            tiled.setMolecule(Molecule.fromInt(100 + cell[0]), cell);
+        }
+        DeltaCodec.Encoder rowMajorEncoder = new DeltaCodec.Encoder(RUN_ID, rowMajor.getTotalCells(), 2, 10, 1);
+        DeltaCodec.Encoder tiledEncoder = new DeltaCodec.Encoder(RUN_ID, tiled.getTotalCells(), 2, 10, 1);
+        captureTick(rowMajorEncoder, rowMajor, 0);
+        captureTick(tiledEncoder, tiled, 0);
+        for (int[] cell : new int[][]{{50, 5}, {5, 50}}) {
+            rowMajor.setMolecule(Molecule.fromInt(7), cell);
+            tiled.setMolecule(Molecule.fromInt(7), cell);
+        }
+        captureTick(rowMajorEncoder, rowMajor, 1);
+        captureTick(tiledEncoder, tiled, 1);
+
+        TickDataChunk expected = rowMajorEncoder.flushPartialChunk().get();
+        TickDataChunk actual = tiledEncoder.flushPartialChunk().get();
+        var snapshot = actual.getSnapshot().getCellColumns();
+        for (int i = 1; i < snapshot.getFlatIndicesCount(); i++) {
+            assertTrue(snapshot.getFlatIndices(i - 1) < snapshot.getFlatIndices(i), "ascending canonical order");
+        }
+        assertEquals(expected.getSnapshot().getCellColumns(), snapshot);
+        assertEquals(expected.getDeltas(0).getChangedCells(), actual.getDeltas(0).getChangedCells());
+    }
+
     // ========================================================================
     // Flush Partial Chunk
     // ========================================================================
