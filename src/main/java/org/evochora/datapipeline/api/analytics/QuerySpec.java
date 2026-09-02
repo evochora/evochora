@@ -255,6 +255,12 @@ public class QuerySpec {
          * <p>
          * The expression can reference base columns and other computed columns
          * defined before this one.
+         * <p>
+         * The text is placed into the generated query as it stands, without parsing or escaping.
+         * That is the point of this column type: a plugin decides for itself what to compute, and
+         * a plugin already runs code of its own, so nothing is gained by restricting what it may
+         * ask the database for. The expression is not a place for values that come from outside
+         * the plugin.
          *
          * @param sqlExpression SQL expression (e.g., "col1 + col2", window functions)
          * @return ComputedColumn for expression
