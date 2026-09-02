@@ -32,7 +32,7 @@ import java.util.Arrays;
  * <p>
  * Thread safety: immutable, safe for concurrent use.
  */
-public final class GridLayout {
+final class GridLayout {
 
     private final EnvironmentProperties properties;
     private final int[] shape;
@@ -62,7 +62,7 @@ public final class GridLayout {
      *                                  cells than an {@code int} can index, or if the world holds
      *                                  more cells than an {@code int} can index
      */
-    public GridLayout(EnvironmentProperties properties, int tileSide) {
+    GridLayout(EnvironmentProperties properties, int tileSide) {
         if (tileSide < 1 || Integer.bitCount(tileSide) != 1) {
             throw new IllegalArgumentException("Tile side must be a power of two, got " + tileSide);
         }
@@ -110,21 +110,21 @@ public final class GridLayout {
     /**
      * @return cells per tile along each dimension
      */
-    public int tileSide() {
+    int tileSide() {
         return tileSide;
     }
 
     /**
      * @return the number of cells in the world, the product of all dimension sizes
      */
-    public int totalCells() {
+    int totalCells() {
         return totalCells;
     }
 
     /**
      * @return the number of dimensions
      */
-    public int dimensions() {
+    int dimensions() {
         return dimensions;
     }
 
@@ -135,7 +135,7 @@ public final class GridLayout {
      *              takes place
      * @return the internal index of that cell
      */
-    public int index(int[] coord) {
+    int index(int[] coord) {
         int tile = 0;
         int offset = 0;
         for (int i = 0; i < dimensions; i++) {
@@ -152,7 +152,7 @@ public final class GridLayout {
      * @param index the internal index
      * @param out   receives the coordinate; one entry per dimension
      */
-    public void coordinate(int index, int[] out) {
+    void coordinate(int index, int[] out) {
         int tile = index >>> cellsPerTileShift;
         int offset = index & ((1 << cellsPerTileShift) - 1);
         for (int i = 0; i < dimensions; i++) {
@@ -174,7 +174,7 @@ public final class GridLayout {
      * @return the internal index of the neighbouring cell, or {@code -1} if the step leaves a
      *         bounded world
      */
-    public int step(int index, int dim, int sign) {
+    int step(int index, int dim, int sign) {
         int unit = 1 << (tileShift * dim);
         int offset = (index >>> (tileShift * dim)) & tileMask;
         if (sign > 0) {
@@ -212,7 +212,7 @@ public final class GridLayout {
      * @param index the internal index
      * @return the persisted index of the same cell
      */
-    public int canonical(int index) {
+    int canonical(int index) {
         int tile = index >>> cellsPerTileShift;
         int offset = index & ((1 << cellsPerTileShift) - 1);
         int canonical = 0;
@@ -234,7 +234,7 @@ public final class GridLayout {
      * @param index the internal index of the cell to measure to
      * @return the distance
      */
-    public int distance(int[] coord, int index) {
+    int distance(int[] coord, int index) {
         int tile = index >>> cellsPerTileShift;
         int offset = index & ((1 << cellsPerTileShift) - 1);
         int distance = 0;

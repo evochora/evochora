@@ -39,7 +39,7 @@ import java.util.Random;
  * <strong>NOP Area Search:</strong> Groups owned cells by scan line (perpendicular to DV),
  * tracks the DV extent per scan line, and walks between minDv and maxDv checking for empty
  * cells ({@code moleculeInt == 0}). This correctly handles the fact that empty cells have
- * no owner and thus never appear in {@code getCellsOwnedBy()}. A qualifying run is selected
+ * no owner and thus never appear among the owned cells. A qualifying run is selected
  * uniformly at random via reservoir sampling across all scan lines.
  * <p>
  * <strong>Performance:</strong> Near-zero allocation after warmup. Reusable coordinate buffers,

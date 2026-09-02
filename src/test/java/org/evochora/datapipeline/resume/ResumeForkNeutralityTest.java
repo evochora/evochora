@@ -176,16 +176,11 @@ class ResumeForkNeutralityTest {
                 .orElseThrow(() -> new AssertionError("the parent did not reproduce"));
     }
 
-    /** The child's cells as sorted text, so two runs can be compared and differences read off. */
+    /** The child's cells as text in canonical order, so two runs can be compared and differences read off. */
     private static List<String> cellsOf(Environment environment, int organismId) {
         List<String> cells = new ArrayList<>();
-        int totalCells = environment.getTotalCells();
-        for (int index = 0; index < totalCells; index++) {
-            int[] coord = environment.getCoordinateFromIndex(index);
-            if (environment.getOwnerId(coord) == organismId) {
-                cells.add(index + ":" + environment.getMolecule(coord).toInt());
-            }
-        }
+        environment.visitCellsOwnedBy(organismId, cell ->
+                cells.add(environment.getProperties().toFlatIndex(cell.coordinate()) + ":" + cell.moleculeInt()));
         return cells;
     }
 }

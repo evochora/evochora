@@ -245,7 +245,9 @@ class SimulationRestorerTest {
         ResumeCheckpoint checkpoint = new ResumeCheckpoint(metadata, snapshot);
         SimulationRestorer.RestoredState state = SimulationRestorer.restore(checkpoint, randomProvider, 1);
 
-        assertThat(state.simulation().getEnvironment().getChangedIndices().cardinality())
+        int[] changed = {0};
+        state.simulation().getEnvironment().forEachCellChangedSinceLastSample((index, molecule, owner) -> changed[0]++);
+        assertThat(changed[0])
             .as("a restored cell is state, not a change to it")
             .isZero();
     }

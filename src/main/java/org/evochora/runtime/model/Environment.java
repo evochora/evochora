@@ -589,7 +589,7 @@ public class Environment implements IEnvironmentReader {
      *
      * @param consumer Callback invoked with the flat index of each occupied cell
      */
-    public void forEachOccupiedIndex(IntConsumer consumer) {
+    void forEachOccupiedIndex(IntConsumer consumer) {
         for (int i = occupiedIndices.nextSetBit(0); i >= 0; i = occupiedIndices.nextSetBit(i + 1)) {
             consumer.accept(i);
         }
@@ -601,7 +601,7 @@ public class Environment implements IEnvironmentReader {
      * @param flatIndex The flat index to convert
      * @return A new coordinate array
      */
-    public int[] getCoordinateFromIndex(int flatIndex) {
+    int[] getCoordinateFromIndex(int flatIndex) {
         int[] coord = new int[shape.length];
         layout.coordinate(flatIndex, coord);
         return coord;
@@ -613,7 +613,7 @@ public class Environment implements IEnvironmentReader {
      * @param flatIndex The flat index to convert
      * @param outCoord Receives the coordinate; one entry per dimension
      */
-    public void getCoordinateFromIndex(int flatIndex, int[] outCoord) {
+    void getCoordinateFromIndex(int flatIndex, int[] outCoord) {
         layout.coordinate(flatIndex, outCoord);
     }
 
@@ -625,7 +625,7 @@ public class Environment implements IEnvironmentReader {
      * @param coord The coordinate, one in-range entry per dimension
      * @return The flat index of that cell
      */
-    public int getIndexFromCoordinate(int[] coord) {
+    int getIndexFromCoordinate(int[] coord) {
         return layout.index(coord);
     }
 
@@ -639,7 +639,7 @@ public class Environment implements IEnvironmentReader {
      * @return The flat index of the neighbouring cell, or {@code -1} if the step leaves a bounded
      *         world
      */
-    public int stepIndex(int flatIndex, int dim, int sign) {
+    int stepIndex(int flatIndex, int dim, int sign) {
         return layout.step(flatIndex, dim, sign);
     }
 
@@ -651,7 +651,7 @@ public class Environment implements IEnvironmentReader {
      * @param flatIndex The flat index of the cell to measure to
      * @return The distance
      */
-    public int toroidalManhattanDistance(int[] coord, int flatIndex) {
+    int toroidalManhattanDistance(int[] coord, int flatIndex) {
         return layout.distance(coord, flatIndex);
     }
 
@@ -662,7 +662,7 @@ public class Environment implements IEnvironmentReader {
      * @param flatIndex The flat index
      * @return The packed molecule integer
      */
-    public int getMoleculeInt(int flatIndex) {
+    int getMoleculeInt(int flatIndex) {
         return this.grid[flatIndex];
     }
 
@@ -673,7 +673,7 @@ public class Environment implements IEnvironmentReader {
      * @param flatIndex The flat index
      * @return The owner ID
      */
-    public int getOwnerIdByIndex(int flatIndex) {
+    int getOwnerIdByIndex(int flatIndex) {
         return this.ownerGrid[flatIndex];
     }
 
@@ -692,7 +692,7 @@ public class Environment implements IEnvironmentReader {
      * @param ownerId the owner whose cells to visit
      * @param consumer receives each flat index, in ascending canonical order
      */
-    public void forEachCellOwnedByInCanonicalOrder(int ownerId, IntConsumer consumer) {
+    void forEachCellOwnedByInCanonicalOrder(int ownerId, IntConsumer consumer) {
         for (int index : ownedIndicesInCanonicalOrder(ownerId)) {
             consumer.accept(index);
         }
@@ -726,7 +726,7 @@ public class Environment implements IEnvironmentReader {
      * @param flatIndex a flat index of this environment
      * @return the canonical index of the same cell
      */
-    public int toCanonicalIndex(int flatIndex) {
+    int toCanonicalIndex(int flatIndex) {
         return layout.canonical(flatIndex);
     }
 
@@ -738,7 +738,7 @@ public class Environment implements IEnvironmentReader {
      * @param canonicalIndex the canonical index of a cell
      * @return the flat index of that cell in this environment
      */
-    public int fromCanonicalIndex(int canonicalIndex) {
+    int fromCanonicalIndex(int canonicalIndex) {
         return layout.index(properties.flatIndexToCoordinates(canonicalIndex));
     }
 
@@ -752,7 +752,7 @@ public class Environment implements IEnvironmentReader {
      * @param ownerId The organism ID
      * @return The set of flat indices, or null if the organism owns no cells
      */
-    public it.unimi.dsi.fastutil.ints.IntOpenHashSet getCellsOwnedBy(int ownerId) {
+    it.unimi.dsi.fastutil.ints.IntOpenHashSet getCellsOwnedBy(int ownerId) {
         return cellsByOwner.get(ownerId);
     }
 
@@ -765,7 +765,7 @@ public class Environment implements IEnvironmentReader {
      * @param flatIndex The flat index
      * @return The molecule at the specified index
      */
-    public Molecule getMoleculeByIndex(int flatIndex) {
+    Molecule getMoleculeByIndex(int flatIndex) {
         return Molecule.fromInt(this.grid[flatIndex]);
     }
 
@@ -779,7 +779,7 @@ public class Environment implements IEnvironmentReader {
      * @param flatIndex The flat index
      * @param molecule The molecule to set
      */
-    public void setMoleculeByIndex(int flatIndex, Molecule molecule) {
+    void setMoleculeByIndex(int flatIndex, Molecule molecule) {
         assert outsideParallelWave();
         int oldMoleculeInt = this.grid[flatIndex];
         int newMoleculeInt = molecule.toInt();
@@ -963,7 +963,7 @@ public class Environment implements IEnvironmentReader {
      *
      * @return BitSet where set bits indicate changed cell indices
      */
-    public BitSet getChangedIndices() {
+    BitSet getChangedIndices() {
         return changedSinceLastSample;
     }
 

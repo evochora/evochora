@@ -412,13 +412,13 @@ class DeltaCodecEncoderTest {
         
         // Make a change
         env.setMolecule(Molecule.fromInt(100), new int[]{5, 5});
-        assertEquals(1, env.getChangedIndices().cardinality());
+        assertEquals(1, changedSinceLastSample());
         
         // Capture tick - should reset
         captureTick(encoder, 0);
         
         // Change tracking should be reset
-        assertEquals(0, env.getChangedIndices().cardinality());
+        assertEquals(0, changedSinceLastSample());
     }
     
     // ========================================================================
@@ -427,6 +427,12 @@ class DeltaCodecEncoderTest {
     
     private Optional<TickDataChunk> captureTick(DeltaCodec.Encoder encoder, long tick) {
         return captureTick(encoder, env, tick);
+    }
+
+    private int changedSinceLastSample() {
+        int[] count = {0};
+        env.forEachCellChangedSinceLastSample((index, molecule, owner) -> count[0]++);
+        return count[0];
     }
 
     private Optional<TickDataChunk> captureTick(DeltaCodec.Encoder encoder, Environment environment, long tick) {

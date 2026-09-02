@@ -367,15 +367,8 @@ final class ResumeNeutralityHarness {
      */
     static String describe(Environment environment) {
         StringBuilder line = new StringBuilder(256).append("world=");
-        int totalCells = environment.getTotalCells();
-        for (int canonical = 0; canonical < totalCells; canonical++) {
-            int index = environment.fromCanonicalIndex(canonical);
-            int molecule = environment.getMoleculeInt(index);
-            int owner = environment.getOwnerIdByIndex(index);
-            if (molecule != 0 || owner != 0) {
-                line.append(canonical).append(':').append(molecule).append('/').append(owner).append(' ');
-            }
-        }
+        environment.forEachOccupiedCellInCanonicalOrder((canonical, molecule, owner) ->
+                line.append(canonical).append(':').append(molecule).append('/').append(owner).append(' '));
         return line.toString();
     }
 
