@@ -417,15 +417,20 @@ tasks.withType<Javadoc>().configureEach {
     (options as StandardJavadocDocletOptions).addStringOption("Xmaxwarns", "10000")
 
     val unexpected = mutableListOf<String>()
+    // Held in a variable so it can be taken off again: a task that runs twice in one build
+    // would otherwise leave a second listener behind and count every warning twice.
+    val warningCollector = org.gradle.api.logging.StandardOutputListener { message ->
+        message.lineSequence()
+            .filter { it.contains(": warning:") }
+            .filterNot { it.contains("use of default constructor") }
+            .forEach { unexpected.add(it.trim()) }
+    }
     doFirst {
-        logging.addStandardErrorListener { message ->
-            message.lineSequence()
-                .filter { it.contains(": warning:") }
-                .filterNot { it.contains("use of default constructor") }
-                .forEach { unexpected.add(it.trim()) }
-        }
+        unexpected.clear()
+        logging.addStandardErrorListener(warningCollector)
     }
     doLast {
+        logging.removeStandardErrorListener(warningCollector)
         if (unexpected.isNotEmpty()) {
             throw GradleException(
                 "javadoc reported ${unexpected.size} warning(s) other than the implicit constructor:\n"
