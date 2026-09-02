@@ -165,8 +165,7 @@ class SimulationControllerIntegrationTest {
             runId = "%s"
             metadataPollIntervalMs = 100
             metadataMaxPollDurationMs = 5000
-            topicPollTimeoutMs = 2000
-            insertBatchSize = 100
+            insertBatchSize = 1
             flushTimeoutMs = 1000
             """.formatted(runId));
 

@@ -159,7 +159,7 @@ class MetadataIndexerIntegrationTest {
         ResourceContext topicReaderContext = new ResourceContext("test-indexer", "topic", "topic-read", "metadata-topic", Map.of("consumerGroup", "metadata"));
         IResource wrappedTopic = testTopic.getWrappedResource(topicReaderContext);
 
-        Config indexerConfig = ConfigFactory.empty();
+        Config indexerConfig = ConfigFactory.parseString("pollIntervalMs = 50");
         Map<String, List<IResource>> resources = Map.of(
             "storage", List.of(testStorage), 
             "database", List.of(wrappedDatabase),

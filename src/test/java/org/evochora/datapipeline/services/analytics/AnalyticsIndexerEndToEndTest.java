@@ -141,7 +141,7 @@ class AnalyticsIndexerEndToEndTest {
         StoragePath key = writeChunkBatch(runId, batch, 0, 9);
 
         // Create AnalyticsIndexer
-        indexer = createAnalyticsIndexer("test-indexer", runId);
+        indexer = createAnalyticsIndexer("test-indexer", runId, 10);
         indexer.start();
 
         // Wait for indexer to be ready
@@ -189,7 +189,7 @@ class AnalyticsIndexerEndToEndTest {
         StoragePath key3 = writeChunkBatch(runId, batch3, 50, 74);
 
         // Create AnalyticsIndexer
-        indexer = createAnalyticsIndexer("test-indexer", runId);
+        indexer = createAnalyticsIndexer("test-indexer", runId, 25);
         indexer.start();
 
         await().atMost(5, TimeUnit.SECONDS)
@@ -241,7 +241,7 @@ class AnalyticsIndexerEndToEndTest {
         StoragePath key = writeChunkBatch(runId, batch, 0, 4);
 
         // Create and start AnalyticsIndexer
-        indexer = createAnalyticsIndexer("test-indexer", runId);
+        indexer = createAnalyticsIndexer("test-indexer", runId, 5);
         indexer.start();
 
         await().atMost(5, TimeUnit.SECONDS)
@@ -281,7 +281,7 @@ class AnalyticsIndexerEndToEndTest {
         StoragePath key = writeChunkBatch(runId, batch, 0, 9);
 
         // Create AnalyticsIndexer with folder structure
-        indexer = createAnalyticsIndexer("test-indexer", runId);
+        indexer = createAnalyticsIndexer("test-indexer", runId, 10);
         indexer.start();
 
         await().atMost(5, TimeUnit.SECONDS)
@@ -315,7 +315,7 @@ class AnalyticsIndexerEndToEndTest {
         StoragePath key = writeChunkBatch(runId, batch, 0, 99);
 
         // Create AnalyticsIndexer with 2 LOD levels
-        indexer = createAnalyticsIndexerWithLodLevels("test-indexer", runId, 2);
+        indexer = createAnalyticsIndexerWithLodLevels("test-indexer", runId, 2, 100);
         indexer.start();
 
         await().atMost(5, TimeUnit.SECONDS)
@@ -364,7 +364,7 @@ class AnalyticsIndexerEndToEndTest {
         StoragePath key2 = writeChunkBatch(runId, batch2, 10, 19);
 
         // Create and start AnalyticsIndexer
-        indexer = createAnalyticsIndexer("test-indexer", runId);
+        indexer = createAnalyticsIndexer("test-indexer", runId, 10);
         indexer.start();
 
         await().atMost(5, TimeUnit.SECONDS)
@@ -498,12 +498,12 @@ class AnalyticsIndexerEndToEndTest {
     }
 
 
-    private AnalyticsIndexer<?> createAnalyticsIndexer(String name, String runId) {
+    private AnalyticsIndexer<?> createAnalyticsIndexer(String name, String runId, int insertBatchSize) {
         Config config = ConfigFactory.parseString("""
             runId = "%s"
             metadataPollIntervalMs = 100
             metadataMaxPollDurationMs = 10000
-            insertBatchSize = 25
+            insertBatchSize = %d
             flushTimeoutMs = 500
             tempDirectory = "%s"
             folderStructure {
@@ -520,7 +520,7 @@ class AnalyticsIndexerEndToEndTest {
                     }
                 }
             ]
-            """.formatted(runId, tempAnalyticsDir.toAbsolutePath().toString().replace("\\", "/")));
+            """.formatted(runId, insertBatchSize, tempAnalyticsDir.toAbsolutePath().toString().replace("\\", "/")));
 
         // Wrap database resource with db-meta-read usage type
         ResourceContext dbContext = new ResourceContext(
@@ -562,12 +562,12 @@ class AnalyticsIndexerEndToEndTest {
         return new AnalyticsIndexer<>(name, config, resources);
     }
 
-    private AnalyticsIndexer<?> createAnalyticsIndexerWithLodLevels(String name, String runId, int lodLevels) {
+    private AnalyticsIndexer<?> createAnalyticsIndexerWithLodLevels(String name, String runId, int lodLevels, int insertBatchSize) {
         Config config = ConfigFactory.parseString("""
             runId = "%s"
             metadataPollIntervalMs = 100
             metadataMaxPollDurationMs = 10000
-            insertBatchSize = 1000
+            insertBatchSize = %d
             flushTimeoutMs = 500
             tempDirectory = "%s"
             folderStructure {
@@ -584,7 +584,7 @@ class AnalyticsIndexerEndToEndTest {
                     }
                 }
             ]
-            """.formatted(runId, tempAnalyticsDir.toAbsolutePath().toString().replace("\\", "/"), lodLevels));
+            """.formatted(runId, insertBatchSize, tempAnalyticsDir.toAbsolutePath().toString().replace("\\", "/"), lodLevels));
 
         // Same resource wiring as createAnalyticsIndexer
         ResourceContext dbContext = new ResourceContext(
