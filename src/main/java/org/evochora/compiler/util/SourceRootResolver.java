@@ -45,8 +45,8 @@ public final class SourceRootResolver {
     /**
      * Parses a directive path into optional prefix and file path.
      * HTTP URLs pass through without prefix extraction.
-     * Prefixes must match {@code [A-Z][A-Z0-9_]*} to avoid collision with
-     * Windows drive letters (e.g., {@code C:\}).
+     * Prefixes must match {@code [A-Z][A-Z0-9_]+}, so at least two characters. The second one is
+     * what keeps a Windows drive letter such as {@code C:\} from being read as a prefix.
      *
      * @param directivePath The raw path from a directive (e.g., "PRED:lib/move.evo").
      * @return The parsed prefix and file path.
