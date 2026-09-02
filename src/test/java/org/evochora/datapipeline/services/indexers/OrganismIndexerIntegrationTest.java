@@ -96,7 +96,7 @@ class OrganismIndexerIntegrationTest {
                 "username = \"sa\"\n" +
                 "password = \"\"\n" +
                 "claimTimeout = 300\n" +
-            "pollIntervalMs = 10"
+                "pollIntervalMs = 10"
         );
         testBatchTopic = new H2TopicResource<>("batch-topic", topicConfig);
     }
