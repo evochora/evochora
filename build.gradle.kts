@@ -396,6 +396,7 @@ tasks.named("build") {
 // nothing else in this build would ever report it.
 pmd {
     toolVersion = "7.26.0"
+    threads = 4
     isConsoleOutput = true
     ruleSetFiles = files("gradle/pmd/ruleset.xml")
     ruleSets = listOf()
