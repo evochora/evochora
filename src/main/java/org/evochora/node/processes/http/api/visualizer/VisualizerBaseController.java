@@ -58,8 +58,11 @@ public abstract class VisualizerBaseController extends AbstractController {
      * <ul>
      *   <li>IllegalArgumentException → 400 Bad Request</li>
      *   <li>NoRunIdException → 404 Not Found</li>
+     *   <li>TickNotFoundException → 404 Not Found</li>
+     *   <li>OrganismNotFoundException → 404 Not Found</li>
      *   <li>PoolExhaustionException → 429 Too Many Requests</li>
-     *   <li>SQLException → 500 Internal Server Error</li>
+     *   <li>SQLException → 404 Not Found if the code says the run is not there,
+     *       500 Internal Server Error otherwise</li>
      *   <li>Exception → 500 Internal Server Error</li>
      * </ul>
      *
@@ -87,9 +90,9 @@ public abstract class VisualizerBaseController extends AbstractController {
             ctx.status(HttpStatus.TOO_MANY_REQUESTS).json(createErrorBody(HttpStatus.TOO_MANY_REQUESTS, "Server is under heavy load, please try again later"));
         });
         app.exception(SQLException.class, (e, ctx) -> {
-            // H2 error codes: 42102 = Table not found, 42104 = Schema not found
-            // These indicate client requested data that doesn't exist (404, not 500)
-            if (e.getErrorCode() == 42102 || e.getErrorCode() == 42104) {
+            // Which codes mean "the requested run is not there" is decided in one place, so that
+            // this net answers the same way as the endpoints that catch the exception themselves.
+            if (isSchemaNotFound(e)) {
                 LOGGER.debug("Table/schema not found for request {}: {}", ctx.path(), e.getMessage());
                 ctx.status(HttpStatus.NOT_FOUND).json(createErrorBody(HttpStatus.NOT_FOUND, 
                     "Requested data not available. The simulation may have been created with a different schema version."));
