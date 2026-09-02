@@ -421,9 +421,12 @@ tasks.withType<Javadoc>().configureEach {
     // Without this the default cap of 100 would hide real warnings behind the constructor ones.
     (options as StandardJavadocDocletOptions).addStringOption("Xmaxwarns", "10000")
 
-    val unexpected = mutableListOf<String>()
-    // Held in a variable so it can be taken off again: a task that runs twice in one build
-    // would otherwise leave a second listener behind and count every warning twice.
+    // A set, and emptied before each run, so that the outcome does not depend on how many
+    // listeners are attached: doLast does not run when the task itself throws, which is exactly
+    // what a real doclint error does, and the listener registered below then stays behind. A
+    // leftover listener sees the same lines as the first one, so with a set it changes nothing.
+    val unexpected = linkedSetOf<String>()
+    // Held in a variable so it can be taken off again on the ordinary path.
     val warningCollector = org.gradle.api.logging.StandardOutputListener { message ->
         message.lineSequence()
             .filter { it.contains(": warning:") }
