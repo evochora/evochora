@@ -75,7 +75,7 @@ public class CoordinateConverter {
                 int[] existingCoord = linearizedCoords.get(linearized);
                 collisionCoords.put(linearized, existingCoord);
                 // Keep the colliding coordinate as well, offset so both survive in one map
-                collisionCoords.put(linearized + 1000000, coord); // Offset um beide zu speichern
+                collisionCoords.put(linearized + 1000000, coord); // offset, so both fit in one map
             } else {
                 linearizedCoords.put(linearized, coord);
             }
