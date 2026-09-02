@@ -66,3 +66,6 @@ local.conf
 # Jupyter notebook checkpoints
 .ipynb_checkpoints/
 __pycache__/
+
+# Personal Claude Code instructions of the maintainer
+CLAUDE.local.md
