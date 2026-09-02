@@ -446,7 +446,8 @@ public class Organism {
          *
          * @param sr the accumulated entropy, never negative in a state a running organism can
          *           reach — {@link #build} logs a warning for a negative one. An organism restored
-         *           at or above the configured maximum entropy is killed on its next tick
+         *           above the configured maximum entropy is killed on its next tick; one restored
+         *           exactly at it lives
          * @return this builder
          */
         public RestoreBuilder entropy(int sr) {
@@ -1326,9 +1327,10 @@ public class Organism {
      */
     public int getMaxEnergy() { return maxEnergy; }
     /**
-     * The entropy level at which the organism is killed: the VirtualMachine ends the life of an
-     * organism whose Entropy Register reaches or exceeds this value at the end of a tick. Unlike
-     * the energy ceiling, nothing clamps the register to it.
+     * The entropy limit the organism may reach but not pass: the VirtualMachine ends the life of
+     * an organism whose Entropy Register stands strictly above this value at the end of a tick, so
+     * an organism sitting exactly on the limit lives. Unlike the energy ceiling, nothing clamps the
+     * register to it.
      *
      * @return the entropy limit, read from the organism configuration when the organism was created
      *         and unchanged for its lifetime.
@@ -1457,8 +1459,8 @@ public class Organism {
     public int getEr() { return er; }
     /**
      * The disorder the organism has accumulated. It is never negative, because both
-     * {@link #addSr(int)} and {@link #takeSr(int)} clamp at zero, and reaching
-     * {@link #getMaxEntropy()} kills the organism at the end of the tick.
+     * {@link #addSr(int)} and {@link #takeSr(int)} clamp at zero, and passing
+     * {@link #getMaxEntropy()} kills the organism at the end of the tick — reaching it does not.
      *
      * @return The current entropy level (SR).
      */
