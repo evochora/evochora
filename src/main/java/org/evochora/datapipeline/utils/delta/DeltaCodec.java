@@ -463,8 +463,11 @@ public final class DeltaCodec {
          * This reconstructs the complete environment state for each tick by applying
          * deltas sequentially to the snapshot.
          * <p>
-         * <strong>Note:</strong> This method resets decoder state. For incremental
-         * processing of selected ticks, use {@link #decompressTick} instead.
+         * <strong>State afterwards:</strong> the decoder stands on the last tick of the chunk,
+         * not on a cleared state. A later call need not account for that: it compares its target
+         * against the tick the decoder stands on and lays the snapshot down again where it cannot
+         * work forward. For incremental processing of selected ticks, use {@link #decompressTick}
+         * instead, which reconstructs one tick without building every other one.
          *
          * @param chunk the chunk to decompress
          * @return list of fully reconstructed TickData, one per tick in the chunk
