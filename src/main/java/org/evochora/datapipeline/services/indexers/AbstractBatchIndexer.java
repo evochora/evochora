@@ -38,9 +38,10 @@ import com.typesafe.config.Config;
  * </ul>
  * <p>
  * <strong>Streaming Processing:</strong> Chunks are processed one at a time via
- * {@link #processChunk}. Commits are triggered every {@code insertBatchSize} chunks, or as
- * soon as the oldest uncommitted chunk has waited {@code flushTimeoutMs}, whichever comes
- * first. Each parsed chunk is GC-eligible immediately after {@code processChunk}
+ * {@link #processChunk}. Commits are triggered every {@code insertBatchSize} chunks, or once
+ * the oldest uncommitted chunk has waited {@code flushTimeoutMs}. That age is checked before
+ * every poll, so a batch that is already being processed finishes first. Each parsed chunk
+ * is GC-eligible immediately after {@code processChunk}
  * returns. Peak heap usage is O(chunkSize), not O(n &times; chunkSize).
  * <p>
  * <strong>Component System:</strong> Subclasses declare which components to use via
