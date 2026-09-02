@@ -413,6 +413,11 @@ tasks.withType<Javadoc>().configureEach {
     // Generated protobuf sources, excluded for the same reason as above.
     exclude("org/evochora/datapipeline/api/contracts/**")
 
+    // The one warning that is let through is recognised by its text, because doclint offers no
+    // way to name a single warning: a future JDK could word it differently, and then this filter
+    // stops matching. It fails loudly if that happens — the build starts reporting warnings it
+    // used to pass — so the wording is worth checking first when that day comes.
+    //
     // Without this the default cap of 100 would hide real warnings behind the constructor ones.
     (options as StandardJavadocDocletOptions).addStringOption("Xmaxwarns", "10000")
 
