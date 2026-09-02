@@ -15,8 +15,39 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      # Which commit the image was built from is recorded in the image itself: the build
+      # workflow writes org.opencontainers.image.revision into its labels. Reading it here
+      # means the configuration deployed alongside an image always comes from the same
+      # commit as the image, whatever branch this workflow was started from. Without it,
+      # deploying an older image from main would pair old code with today's configuration.
+      #
+      # The labels live apart from the layers, so this reads a few kilobytes, not the image.
+      - name: Resolve the commit the image was built from
+        id: image
+        run: |
+          set -euo pipefail
+          REF="ghcr.io/${{ github.repository }}:${{ github.event.inputs.tag }}"
+          echo "Inspecting $REF"
+          # A multi-architecture image carries one label set per architecture. They should all
+          # name the same commit; if they ever disagree, there is no single configuration that
+          # belongs to this image, and guessing would be worse than stopping.
+          REVISIONS=$(docker buildx imagetools inspect "$REF" --format '{{json .Image}}' \
+            | jq -r '.. | objects | ."org.opencontainers.image.revision"? // empty' \
+            | sort -u)
+          COUNT=$(printf '%s\n' "$REVISIONS" | grep -c . || true)
+          if [ "$COUNT" -ne 1 ]; then
+            echo "::error::Cannot tell which commit $REF was built from: found $COUNT distinct" \
+                 "revision labels [$REVISIONS]. Expected exactly one. Deploy aborted."
+            exit 1
+          fi
+          REVISION="$REVISIONS"
+          echo "Image was built from commit $REVISION"
+          echo "revision=$REVISION" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout that commit
         uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.image.outputs.revision }}
 
       - name: Install SSH key and add known_hosts
         uses: shimataro/ssh-key-action@v2
@@ -25,6 +56,13 @@ jobs:
           # The action will automatically run ssh-keyscan for this host
           known_hosts: ${{ secrets.SSH_HOST }}
 
+      # Copied from the commit checked out above, so they match the image being deployed.
+      #
+      # config/local.conf is deliberately NOT among them. It is the demo server's own file,
+      # maintained by hand, and it decides whether the node resumes a stored run and writes
+      # into its data. Overwriting it with a repository copy could set a container loose on
+      # data it must only read. The same goes for docker-compose.override.yml, which is what
+      # makes local.conf take effect. Do not add either to this list.
       - name: Copy configuration to server
         run: |
           # Copy the main configuration files to the server.
