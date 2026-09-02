@@ -130,14 +130,11 @@ public class GenomeDiversityPlugin extends AbstractAnalyticsPlugin {
             entry.dataSources.put(lodName, metricId + "/" + lodName + "/**/*.parquet");
         }
 
-        entry.visualization = new VisualizationHint();
-        entry.visualization.type = "line-chart";
-        entry.visualization.config = new HashMap<>();
-        entry.visualization.config.put("x", "tick");
-        entry.visualization.config.put("y", List.of("shannon_index", "dominant_share"));
-        entry.visualization.config.put("yFormat", "decimal");
-        entry.visualization.config.put("y2", List.of("total_genomes", "active_genomes"));
-        entry.visualization.config.put("y2Format", "integer");
+        entry.visualization = VisualizationHint.chart("line-chart", "tick")
+            .with("y", List.of("shannon_index", "dominant_share"))
+            .with("yFormat", "decimal")
+            .with("y2", List.of("total_genomes", "active_genomes"))
+            .with("y2Format", "integer");
 
         return entry;
     }

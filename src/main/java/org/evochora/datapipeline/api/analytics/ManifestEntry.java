@@ -35,7 +35,7 @@ public class ManifestEntry {
      */
     public String storageMetricId;
     
-    /** Human-readable name (e.g., "Birth & Death Rates") */
+    /** Human-readable name (e.g., "Birth &amp; Death Rates") */
     public String name;
     
     /** Description of what this metric shows */

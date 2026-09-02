@@ -17,6 +17,14 @@ public class DirectOutputQueueWrapper<T> implements IOutputQueueResource<T>, IWr
 
     private final IOutputQueueResource<T> delegate;
 
+    /**
+     * Wraps the given queue, forwarding every call unchanged.
+     * <p>
+     * The wrapper does not own the delegate and holds no state of its own, so several wrappers may
+     * share one queue and discarding a wrapper leaves the queue usable.
+     *
+     * @param delegate the queue every call is forwarded to
+     */
     public DirectOutputQueueWrapper(IOutputQueueResource<T> delegate) {
         this.delegate = delegate;
     }

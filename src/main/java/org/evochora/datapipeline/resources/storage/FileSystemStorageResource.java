@@ -30,12 +30,34 @@ import org.slf4j.LoggerFactory;
 
 import com.typesafe.config.Config;
 
+/**
+ * Batch storage backed by a directory tree on a local filesystem.
+ * <p>
+ * Files live below one absolute root directory, in the hierarchical layout that
+ * {@link AbstractBatchStorageResource} derives from tick numbers. Every write, whether a batch or
+ * an analytics artifact, goes to a temporary file that is moved into place atomically once it is
+ * complete, so a reader never sees a half-written file under a final name: a write that fails or is
+ * abandoned leaves only a {@code .tmp} file, which the listings skip.
+ */
 public class FileSystemStorageResource extends AbstractBatchStorageResource
         implements IAnalyticsStorageWrite, IAnalyticsStorageRead {
 
     private static final Logger log = LoggerFactory.getLogger(FileSystemStorageResource.class);
     private final File rootDirectory;
 
+    /**
+     * Opens the storage under the configured root directory, creating the directory if it is
+     * missing.
+     * <p>
+     * The root is validated eagerly, so an unmounted or read-only location fails the resource
+     * instead of the first write.
+     *
+     * @param name    resource name from the configuration
+     * @param options resource configuration; requires {@code rootDirectory} as an absolute path,
+     *                on top of the options read by the base class
+     * @throws IllegalArgumentException if {@code rootDirectory} is missing, is not absolute, cannot
+     *                                  be created, or is not writable
+     */
     public FileSystemStorageResource(String name, Config options) {
         super(name, options);
         if (!options.hasPath("rootDirectory")) {

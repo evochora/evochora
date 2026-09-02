@@ -53,6 +53,11 @@ public final class SourceLoader {
 
     /**
      * Checks whether the given path string represents an HTTP or HTTPS URL.
+     * Callers use the answer to decide between remote loading and filesystem resolution.
+     *
+     * @param path The path or URL to test; {@code null} is accepted and answered with {@code false}.
+     * @return {@code true} if the string begins with {@code http://} or {@code https://}. The check is
+     *         a case-sensitive prefix test and says nothing about whether the URL is well-formed.
      */
     public static boolean isHttpUrl(String path) {
         return path != null && (path.startsWith("http://") || path.startsWith("https://"));

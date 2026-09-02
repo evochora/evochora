@@ -67,6 +67,41 @@ import com.google.protobuf.ByteString;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigRenderOptions;
 
+/**
+ * Runs a simulation and publishes its sampled state to the data pipeline.
+ * <p>
+ * The service thread advances the {@link Simulation} tick by tick. Every
+ * {@code samplingInterval} ticks the environment, the organism states, the tick plugin states
+ * and the state of the random provider are handed to a {@link DeltaCodec.Encoder}; each time
+ * the encoder completes a chunk, that chunk is put on the {@code tickData} output queue.
+ * Partial chunks are never published: data the encoder still holds when the service stops is
+ * discarded and produced again when the run is resumed, which keeps chunk boundaries identical
+ * across a resume.
+ * <p>
+ * <strong>Run modes:</strong> for a fresh run the configured programs are compiled, the initial
+ * organisms are placed, a run ID is generated, and a {@link SimulationMetadata} message is
+ * published once to the {@code metadataOutput} queue before the tick loop starts. With
+ * {@code resume.enabled} the simulation is restored from the latest checkpoint of an existing
+ * run instead; the seed and the sampling, delta, snapshot and chunk intervals then come from
+ * that run's metadata rather than from the current configuration, and no metadata message is
+ * sent because it already exists.
+ * <p>
+ * <strong>Threading:</strong> the simulation, the chunk encoder and the organism serializer are
+ * owned by the service thread and are not thread-safe. Metrics are requested from a monitoring
+ * thread, which is why the tick and message counters are atomic and why the organism list is
+ * copied before it is inspected for metrics.
+ * <p>
+ * <strong>Auto-pause:</strong> after a tick listed under {@code pauseTicks} the service puts
+ * itself into the paused state, so a run can be inspected and later continued through the
+ * normal service lifecycle.
+ * <p>
+ * <strong>Resources:</strong>
+ * <ul>
+ *   <li>{@code tickData} - Required: output queue for the encoded tick data chunks</li>
+ *   <li>{@code metadataOutput} - Required: output queue for the run metadata</li>
+ *   <li>{@code resumeStorage} - Required in resume mode: storage the checkpoint is read from</li>
+ * </ul>
+ */
 public class SimulationEngine extends AbstractService implements IMemoryEstimatable, ISimulationSource {
 
     private final IOutputQueueResource<TickDataChunk> tickDataOutput;
@@ -141,6 +176,35 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         TickData resumeSnapshot
     ) {}
 
+    /**
+     * Constructs the engine and brings the simulation into the state the run starts from.
+     * <p>
+     * All initialization happens here: the instruction set is initialized, the output queues are
+     * resolved, and depending on {@code resume.enabled} either a new simulation is built
+     * (programs compiled, environment created, plugins instantiated, initial organisms placed,
+     * run ID generated) or the state of an existing run is restored from its latest checkpoint.
+     * Sampling, delta, snapshot and chunk intervals are taken from the current configuration for
+     * a new run and from the original run's metadata for a resume, so a resumed run keeps
+     * producing the same chunk layout.
+     * <p>
+     * When the constructor returns the engine is fully initialized, but nothing has been
+     * simulated and no message has been published; that happens once the service is started.
+     *
+     * @param name      The name of the service instance.
+     * @param options   The configuration for this service.
+     * @param resources A map of resource ports to lists of resources; {@code tickData} and
+     *                  {@code metadataOutput} are required, {@code resumeStorage} additionally
+     *                  in resume mode.
+     * @throws IllegalStateException if a required resource port is missing or carries a resource
+     *                               of the wrong type, or if the configured environment has more
+     *                               cells than an {@code int} can address.
+     * @throws IllegalArgumentException if the configuration is invalid, for example no configured
+     *                                  organism, an unknown environment topology, a shape
+     *                                  component below one, a placement whose coordinate count
+     *                                  does not match the world, a program that cannot be read or
+     *                                  compiled, a missing {@code resume.runId}, or a checkpoint
+     *                                  that cannot be loaded.
+     */
     public SimulationEngine(String name, Config options, Map<String, List<IResource>> resources) {
         super(name, options, resources);
 

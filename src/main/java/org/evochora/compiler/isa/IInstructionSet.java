@@ -51,11 +51,15 @@ public interface IInstructionSet {
 	 */
 	interface Signature {
 		/**
+		 * Describes the operands the instruction expects, in the order they follow the opcode.
+		 *
 		 * @return The list of argument types for the instruction.
 		 */
 		List<ArgKind> argumentTypes();
 
 		/**
+		 * Reports how many operands the instruction expects, counted from {@link #argumentTypes()}.
+		 *
 		 * @return The number of arguments for the instruction.
 		 */
 		default int getArity() { return argumentTypes().size(); }

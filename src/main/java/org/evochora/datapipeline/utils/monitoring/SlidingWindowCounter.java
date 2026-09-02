@@ -46,7 +46,6 @@ import java.util.concurrent.atomic.AtomicLong;
  * double avgHeap = heapCounter.getWindowAverage();  // Avg over last 60 seconds
  * </pre>
  *
- * @see RateBucket (replaced by this class)
  */
 public class SlidingWindowCounter {
 
@@ -100,7 +99,7 @@ public class SlidingWindowCounter {
      * Creates a new SlidingWindowCounter with the specified window size.
      *
      * @param windowSeconds The size of the sliding window in seconds (typically 5)
-     * @throws IllegalArgumentException if windowSeconds <= 0
+     * @throws IllegalArgumentException if windowSeconds &lt;= 0
      */
     public SlidingWindowCounter(int windowSeconds) {
         if (windowSeconds <= 0) {

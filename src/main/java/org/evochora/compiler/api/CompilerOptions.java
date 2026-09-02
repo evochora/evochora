@@ -11,6 +11,9 @@ public record CompilerOptions(List<SourceRoot> sourceRoots) {
 
     /**
      * Creates default compiler options with a single unprefixed root at ".".
+     *
+     * @return Options whose only source root is the unprefixed path {@code "."}, so every module path
+     *         is resolved relative to the working directory and no {@code PREFIX:path} form is available.
      */
     public static CompilerOptions defaults() {
         return new CompilerOptions(List.of(new SourceRoot(".", null)));

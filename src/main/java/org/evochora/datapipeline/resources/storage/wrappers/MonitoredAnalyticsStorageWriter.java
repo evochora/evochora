@@ -34,6 +34,17 @@ public class MonitoredAnalyticsStorageWriter extends AbstractResource implements
     private final SlidingWindowCounter writeThroughput;
     private final SlidingWindowPercentiles writeLatency;
 
+    /**
+     * Wraps the analytics-writing side of a storage resource for one service binding.
+     * <p>
+     * The wrapper only measures; it opens nothing, owns no stream, and never closes the storage
+     * underneath.
+     *
+     * @param resource the storage resource, which has to implement {@link IAnalyticsStorageWrite}
+     *                 as well
+     * @param context  the binding context; its usage type is appended to the resource name
+     * @throws ClassCastException if the resource does not implement {@link IAnalyticsStorageWrite}
+     */
     public MonitoredAnalyticsStorageWriter(AbstractBatchStorageResource resource, ResourceContext context) {
         super(resource.getResourceName() + "-" + context.usageType(), resource.getOptions());
         this.resource = resource;
@@ -129,7 +140,6 @@ public class MonitoredAnalyticsStorageWriter extends AbstractResource implements
         return resource.getUsageState(usageType);
     }
     
-    // Removed getContext() as it is not part of IWrappedResource interface
     
     @Override
     protected void addCustomMetrics(Map<String, Number> metrics) {

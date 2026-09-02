@@ -12,15 +12,15 @@ import org.evochora.compiler.model.ast.AstNode;
  */
 public class DefineDirectiveHandler implements IParserStatementHandler {
 
+    @Override
+    public boolean supportsExport() { return true; }
+
     /**
      * Parses a <code>.DEFINE</code> directive.
      * The syntax is <code>.DEFINE &lt;name&gt; &lt;value&gt;</code>.
      * @param context The parsing context.
      * @return A {@link DefineNode} representing the constant definition.
      */
-    @Override
-    public boolean supportsExport() { return true; }
-
     @Override
     public AstNode parse(ParsingContext context) {
         context.advance(); // consume .DEFINE

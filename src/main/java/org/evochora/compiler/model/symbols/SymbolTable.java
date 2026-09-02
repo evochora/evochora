@@ -20,8 +20,8 @@ import java.util.Optional;
  * by file path, allowing the same physical file to appear as distinct placements with
  * independent symbol namespaces.</p>
  *
- * <p>For single-file compilations, the table operates with a default module and behaves
- * identically to the pre-module-system version.</p>
+ * <p>For single-file compilations, the table operates with a single default module, so a
+ * caller that never imports anything need not name a module at all.</p>
  */
 public class SymbolTable {
 
@@ -41,6 +41,12 @@ public class SymbolTable {
             this.name = name;
         }
 
+        /**
+         * Returns this scope's display name, used for annotations and debug output.
+         * Names are not unique and carry no identity — scopes are compared by reference.
+         *
+         * @return the scope name, e.g. "global" or the qualified procedure name "MAIN.INIT"
+         */
         public String name() {
             return name;
         }
@@ -81,8 +87,12 @@ public class SymbolTable {
 
     /**
      * Freezes the symbol table, preventing structural modifications (define, registerModule,
-     * enterScope, registerNodeScope). Cursor operations (setCurrentModule, setCurrentScope,
-     * leaveScope, resetScope) and all reads remain allowed.
+     * enterScope, registerNodeScope). Cursor operations (setCurrentScope, leaveScope,
+     * resetScope) and all reads remain allowed.
+     * <p>
+     * {@link #setCurrentModule(String)} remains allowed only for modules that are already
+     * registered. Switching to an unknown alias chain has to create a scope for it and
+     * therefore fails on a frozen table.
      */
     public void freeze() {
         this.frozen = true;
@@ -110,6 +120,10 @@ public class SymbolTable {
     /**
      * Sets the current module context. All subsequent define/resolve operations
      * operate within this module.
+     * <p>
+     * An alias chain that is not registered yet is registered on the spot, with the alias
+     * chain itself standing in for the source path. Since symbols are keyed by that source
+     * path, such a module keys its symbols by alias chain rather than by file.
      * @param aliasChain The alias chain of the module to set as current.
      */
     public void setCurrentModule(String aliasChain) {
@@ -122,6 +136,10 @@ public class SymbolTable {
 
     /**
      * Gets the current module alias chain.
+     *
+     * @return the alias chain set by the last {@link #setCurrentModule(String)} call;
+     *         the empty string for a root module compiled without a prefix, and
+     *         {@code null} before any module has been set
      */
     public String getCurrentAliasChain() {
         return currentAliasChain;
@@ -129,6 +147,9 @@ public class SymbolTable {
 
     /**
      * Gets the module scope for the given alias chain, or empty if not registered.
+     *
+     * @param aliasChain the alias chain identifying the module placement
+     * @return the module scope, or empty if nothing is registered under that chain
      */
     public Optional<ModuleScope> getModuleScope(String aliasChain) {
         return Optional.ofNullable(modules.get(aliasChain));
@@ -136,6 +157,9 @@ public class SymbolTable {
 
     /**
      * Gets the module scope map (for multi-module iteration).
+     *
+     * @return an unmodifiable map from alias chain to module scope; the scopes it
+     *         contains become immutable only once the table is frozen
      */
     public Map<String, ModuleScope> getModules() {
         return Collections.unmodifiableMap(modules);
@@ -197,7 +221,11 @@ public class SymbolTable {
     }
 
     /**
-     * Associates an AST node with its scope. Called by ProcedureSymbolCollector during pass 1.
+     * Associates an AST node with its scope. Called by ProcedureSymbolCollector as it walks
+     * the AST and discovers the procedures that open a scope.
+     *
+     * @param node the AST node that opens the scope, used as the lookup key by identity
+     * @param scope the scope traversal should enter when it reaches that node
      */
     public void registerNodeScope(AstNode node, Scope scope) {
         guardFrozen();
@@ -206,6 +234,12 @@ public class SymbolTable {
 
     /**
      * Returns the scope associated with the given AST node, or null if none.
+     * <p>
+     * Nodes are matched by identity, so this has to be the very instance that was registered.
+     * A node rebuilt from the same values, as tree rewriting produces, does not find it.
+     *
+     * @param node the AST node to look up
+     * @return the scope registered for the node, or {@code null} if it opens none
      */
     public Scope getNodeScope(AstNode node) {
         return nodeScopeMap.get(node);

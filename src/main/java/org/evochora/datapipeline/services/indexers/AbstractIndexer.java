@@ -33,7 +33,13 @@ import com.typesafe.config.Config;
  */
 public abstract class AbstractIndexer<T extends Message, ACK> extends AbstractService {
 
+    /** Storage the run's data files are read from; bound for the lifetime of the service. */
     protected final IResourceBatchStorageRead storage;
+
+    /**
+     * Topic the indexer waits on for notifications that new data has arrived. Required, so an
+     * indexer without one fails at construction rather than when it first waits.
+     */
     protected final IResourceTopicReader<T, ACK> topic;
 
     private final String configuredRunId;
@@ -41,10 +47,28 @@ public abstract class AbstractIndexer<T extends Message, ACK> extends AbstractSe
     private final int maxPollDurationMs;
     private final Instant indexerStartTime;
 
+    /**
+     * Returns the instant this indexer was constructed, which bounds run discovery from below so
+     * that runs already present when the service started are ignored.
+     *
+     * @return the construction time of this indexer
+     */
     protected Instant getIndexerStartTime() {
         return indexerStartTime;
     }
 
+    /**
+     * Binds the indexer to its storage and topic and reads the options governing run discovery.
+     * <p>
+     * Neither resource is contacted here: discovery and indexing begin when the service thread
+     * runs.
+     *
+     * @param name      resource name from the configuration
+     * @param options   configuration of this indexer; read here are {@code runId} (a fixed run
+     *                  instead of discovery), {@code pollIntervalMs} (default 1000) and
+     *                  {@code maxPollDurationMs} (default 300000)
+     * @param resources the bound resources; {@code storage} and {@code topic} are required
+     */
     protected AbstractIndexer(String name, Config options, Map<String, List<IResource>> resources) {
         super(name, options, resources);
         this.storage = getRequiredResource("storage", IResourceBatchStorageRead.class);
@@ -59,6 +83,18 @@ public abstract class AbstractIndexer<T extends Message, ACK> extends AbstractSe
         this.indexerStartTime = Instant.now();
     }
 
+    /**
+     * Determines which simulation run this indexer works on.
+     * <p>
+     * A configured run id is taken as given; it is checked against storage, and a run that storage
+     * reports as absent is rejected. Should storage be unreachable at that moment, the check is
+     * skipped and the configured id used unverified. Without a configured id, storage is polled
+     * until a run started after {@link #getIndexerStartTime()} appears.
+     *
+     * @return the run id to index
+     * @throws InterruptedException if the wait is interrupted
+     * @throws TimeoutException     if no run appears within {@code maxPollDurationMs}
+     */
     protected String discoverRunId() throws InterruptedException, TimeoutException {
         String runId = null;
         
@@ -147,6 +183,12 @@ public abstract class AbstractIndexer<T extends Message, ACK> extends AbstractSe
         }
     }
 
+    /**
+     * Indexes the given run. Called once; returning from it ends the service thread.
+     *
+     * @param runId the run discovered for this indexer
+     * @throws Exception if indexing fails, which puts the service into its error state
+     */
     protected abstract void indexRun(String runId) throws Exception;
 
     @Override

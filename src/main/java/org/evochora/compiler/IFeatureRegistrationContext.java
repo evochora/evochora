@@ -45,6 +45,8 @@ public interface IFeatureRegistrationContext {
 	 *
 	 * @param type    The IDependencyInfo subclass this handler processes.
 	 * @param handler The handler that sets up module relationships for this dependency type.
+	 * @param <T>     The dependency information type produced in Phase 0 that this handler consumes;
+	 *                it ties the handler to the class object passed as {@code type}.
 	 */
 	<T extends IDependencyInfo> void dependencySetupHandler(Class<T> type, IDependencySetupHandler<T> handler);
 

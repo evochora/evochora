@@ -64,7 +64,7 @@ public interface IH2EnvStorageStrategy {
      * adds the tick-range entry to the JDBC batch.
      * <p>
      * This method is part of a stateful write session: the first call lazily initializes
-     * a {@link PreparedStatement} and schema directory. Subsequent calls reuse these.
+     * a {@link java.sql.PreparedStatement} and schema directory. Subsequent calls reuse these.
      * The statement is kept open across calls for batch efficiency.
      * <p>
      * <strong>Transaction Management:</strong> This method does NOT commit or close

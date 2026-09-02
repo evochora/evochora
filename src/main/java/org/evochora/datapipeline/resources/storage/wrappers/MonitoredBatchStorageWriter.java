@@ -45,6 +45,17 @@ public class MonitoredBatchStorageWriter implements IBatchStorageWrite, IWrapped
     private final SlidingWindowCounter bytesCounter;
     private final SlidingWindowPercentiles latencyTracker;
 
+    /**
+     * Wraps a batch storage writer for one service binding.
+     * <p>
+     * The wrapper counts and times the calls it forwards; it holds no I/O resources and never
+     * closes the delegate.
+     *
+     * @param delegate the writer every call is forwarded to
+     * @param context  the binding context; its {@code metricsWindowSeconds} parameter sizes the
+     *                 sliding metric windows (default 30)
+     * @throws NumberFormatException if the {@code metricsWindowSeconds} parameter is not an integer
+     */
     public MonitoredBatchStorageWriter(IBatchStorageWrite delegate, ResourceContext context) {
         this.delegate = delegate;
         this.context = context;
@@ -122,6 +133,14 @@ public class MonitoredBatchStorageWriter implements IBatchStorageWrite, IWrapped
         return delegate.getResourceName() + ":" + context.serviceName();
     }
 
+    /**
+     * Returns the binding this wrapper was created for.
+     * <p>
+     * The context names the service and usage type this instance measures for, and carries the URI
+     * parameters the metric windows were sized from.
+     *
+     * @return the binding context, never null
+     */
     public ResourceContext getContext() {
         return context;
     }

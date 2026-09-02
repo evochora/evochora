@@ -38,7 +38,9 @@ import java.util.Map;
  */
 public abstract class AbstractTopicDelegate<P extends AbstractTopicResource<?, ?>> extends AbstractResource implements IWrappedResource, ISimulationRunAwareTopic, AutoCloseable {
     
+    /** Topic resource this delegate belongs to; it owns the transport and the aggregate counters this delegate contributes to. */
     protected final P parent;
+    /** Consumer group taken from the binding's {@code consumerGroup} parameter; null for writer delegates, which do not use one. */
     protected final String consumerGroup;  // Only used by readers
     
     /**
@@ -102,6 +104,14 @@ public abstract class AbstractTopicDelegate<P extends AbstractTopicResource<?, ?
         // Default: no-op (subclasses override as needed)
     }
     
+    /**
+     * Returns the topic resource this delegate was created from.
+     * <p>
+     * The delegate does not own the parent: closing the delegate leaves the topic resource and the
+     * other delegates bound to it untouched.
+     *
+     * @return the parent topic resource, never null
+     */
     public final AbstractResource getWrappedResource() {
         return parent;
     }

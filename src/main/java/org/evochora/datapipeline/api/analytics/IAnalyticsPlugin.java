@@ -279,19 +279,6 @@ public interface IAnalyticsPlugin extends IMemoryEstimatable {
     }
     
     /**
-     * Returns the visualization specification for the frontend.
-     * <p>
-     * Defines how the data should be rendered (chart type, axes, styling).
-     * <p>
-     * Default implementation returns a simple line chart with tick on X axis.
-     *
-     * @return Visualizer specification
-     */
-    default VisualizerSpec getVisualizerSpec() {
-        return VisualizerSpec.lineChart("tick");
-    }
-
-    /**
      * Indicates whether this plugin requires access to environment (cell) data.
      * <p>
      * Plugins that return {@code false} (the default) only need organism data, which

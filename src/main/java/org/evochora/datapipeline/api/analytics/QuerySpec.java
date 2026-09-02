@@ -255,6 +255,12 @@ public class QuerySpec {
          * <p>
          * The expression can reference base columns and other computed columns
          * defined before this one.
+         * <p>
+         * The text is placed into the generated query as it stands, without parsing or escaping.
+         * That is the point of this column type: a plugin decides for itself what to compute, and
+         * a plugin already runs code of its own, so nothing is gained by restricting what it may
+         * ask the database for. The expression is not a place for values that come from outside
+         * the plugin.
          *
          * @param sqlExpression SQL expression (e.g., "col1 + col2", window functions)
          * @return ComputedColumn for expression
@@ -270,18 +276,42 @@ public class QuerySpec {
             return new ComputedColumn(name, this.type, this.sourceColumn, this.expression);
         }
 
+        /**
+         * Returns the alias this column is selected under. The factory methods leave it unset;
+         * the builder assigns it when the column is added to a spec.
+         *
+         * @return Output column name, or {@code null} while the column is not yet part of a spec
+         */
         public String getName() {
             return name;
         }
 
+        /**
+         * Returns which of the three computation forms this column uses, and thereby which of
+         * {@link #getSourceColumn()} and {@link #getExpression()} carries its input.
+         *
+         * @return The computation type, never {@code null}
+         */
         public Type getType() {
             return type;
         }
 
+        /**
+         * Returns the column the window function reads from.
+         *
+         * @return Source column name for {@link Type#DELTA} and {@link Type#LAG},
+         *         {@code null} for {@link Type#EXPRESSION}
+         */
         public String getSourceColumn() {
             return sourceColumn;
         }
 
+        /**
+         * Returns the raw SQL this column is built from. It is inserted into the generated query
+         * unchanged, so it is only ever as trustworthy as the plugin that supplied it.
+         *
+         * @return SQL expression for {@link Type#EXPRESSION}, {@code null} for the other types
+         */
         public String getExpression() {
             return expression;
         }

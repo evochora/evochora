@@ -463,8 +463,11 @@ public final class DeltaCodec {
          * This reconstructs the complete environment state for each tick by applying
          * deltas sequentially to the snapshot.
          * <p>
-         * <strong>Note:</strong> This method resets decoder state. For incremental
-         * processing of selected ticks, use {@link #decompressTick} instead.
+         * <strong>State afterwards:</strong> the decoder stands on the last tick of the chunk,
+         * not on a cleared state. A later call need not account for that: it compares its target
+         * against the tick the decoder stands on and lays the snapshot down again where it cannot
+         * work forward. For incremental processing of selected ticks, use {@link #decompressTick}
+         * instead, which reconstructs one tick without building every other one.
          *
          * @param chunk the chunk to decompress
          * @return list of fully reconstructed TickData, one per tick in the chunk
@@ -541,6 +544,23 @@ public final class DeltaCodec {
             return state;
         }
 
+        /**
+         * Reconstructs a single tick of a chunk, its cells included in the returned
+         * {@link TickData}.
+         * <p>
+         * The decoder holds on to the cells of the tick it reconstructed last. A tick that lies
+         * later in the same chunk is built on top of them; a tick that lies earlier, or one from
+         * another chunk, makes the decoder lay the chunk's snapshot down again and work forward
+         * from there. Either way an accumulated delta on the path is taken as a shortcut over the
+         * incremental deltas it spans. The chunk's snapshot tick is handed back as it stands, since
+         * it already carries its cells.
+         *
+         * @param chunk      the chunk holding the tick
+         * @param targetTick the tick to reconstruct
+         * @return the tick's data with its cell columns filled in
+         * @throws ChunkCorruptedException if the chunk is corrupt, does not hold the tick, or holds
+         *         a delta on the path that was read without its cells
+         */
         public TickData decompressTick(TickDataChunk chunk, long targetTick)
                 throws ChunkCorruptedException {
             return decompressTick(chunk, targetTick, true);

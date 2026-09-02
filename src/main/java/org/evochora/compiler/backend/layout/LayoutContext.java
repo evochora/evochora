@@ -12,6 +12,18 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+/**
+ * Mutable state of the layout pass: the write cursor that walks the n-dimensional grid and the
+ * address mappings that accumulate while items are placed.
+ *
+ * <p>All coordinates held here are relative to the program origin, never absolute world
+ * coordinates. Linear addresses count placed cells in placement order starting at zero, and a
+ * label occupies a cell just like an opcode or an operand.</p>
+ *
+ * <p>The cursor is created lazily on first use, because its dimensionality is taken from the
+ * world shape. A program that places nothing can therefore be laid out without environment
+ * properties, while the first placement without them fails.</p>
+ */
 public final class LayoutContext {
 
     private final EnvironmentProperties envProps;
@@ -29,6 +41,13 @@ public final class LayoutContext {
     private final Map<int[], PlacedMolecule> initialWorldObjects = new HashMap<>();
     private int linearAddress = 0;
 
+    /**
+     * Creates a layout context for the given environment.
+     *
+     * @param envProps The environment properties supplying the world shape, whose length fixes
+     *                 the dimensionality of every layout vector. May be null; such a context is
+     *                 usable only for programs that place nothing.
+     */
     public LayoutContext(EnvironmentProperties envProps) {
         this.envProps = envProps;
     }
@@ -49,54 +68,136 @@ public final class LayoutContext {
         this.isInitialized = true;
     }
 
+    /**
+     * Returns the environment this layout is being built for. Directive handlers read the world
+     * shape through it, for example to expand a wildcard into one coordinate per cell along an axis.
+     *
+     * @return the environment properties, or {@code null} if none were supplied
+     */
     public EnvironmentProperties getEnvProps() {
         return envProps;
     }
 
+    /**
+     * Returns the write cursor: the relative coordinate the next placed cell will occupy.
+     *
+     * @return the context's own cursor array, not a copy
+     * @throws CompilationException if the cursor still has to be created and no world shape is
+     *         available.
+     */
     public int[] currentPos() throws CompilationException {
         initialize();
         return currentPos;
     }
 
+    /**
+     * Moves the write cursor. The array is stored by reference, so a caller that keeps mutating
+     * its own array must pass a copy.
+     *
+     * @param p The new cursor coordinate, relative to the program origin.
+     * @throws CompilationException if the cursor still has to be created and no world shape is
+     *         available.
+     */
     public void setCurrentPos(int[] p) throws CompilationException {
         initialize();
         this.currentPos = p;
     }
 
+    /**
+     * Returns the direction vector added to the cursor after every placed cell. It starts as a
+     * single step along the first axis and is changed by direction directives.
+     *
+     * @return the context's own direction array, not a copy
+     * @throws CompilationException if the cursor still has to be created and no world shape is
+     *         available.
+     */
     public int[] currentDv() throws CompilationException {
         initialize();
         return currentDv;
     }
 
+    /**
+     * Sets the direction in which the cursor advances after every placed cell. The array is
+     * stored by reference.
+     *
+     * @param dv The new direction vector.
+     * @throws CompilationException if the cursor still has to be created and no world shape is
+     *         available.
+     */
     public void setCurrentDv(int[] dv) throws CompilationException {
         initialize();
         this.currentDv = dv;
     }
 
+    /**
+     * Returns the position that origin directives are resolved against: the cursor position at
+     * which the innermost enclosing context was entered, and the zero vector outside any such
+     * context.
+     *
+     * @return the context's own base position array, not a copy
+     * @throws CompilationException if the cursor still has to be created and no world shape is
+     *         available.
+     */
     public int[] basePos() throws CompilationException {
         initialize();
         return basePos;
     }
 
+    /**
+     * Sets the position that origin directives are resolved against. The array is stored by
+     * reference.
+     *
+     * @param p The new base position, relative to the program origin.
+     * @throws CompilationException if the cursor still has to be created and no world shape is
+     *         available.
+     */
     public void setBasePos(int[] p) throws CompilationException {
         initialize();
         this.basePos = p;
     }
 
+    /**
+     * Returns the position most recently established by an origin directive, recorded alongside
+     * the cursor move that directive caused.
+     *
+     * @return the context's own anchor array, not a copy
+     * @throws CompilationException if the cursor still has to be created and no world shape is
+     *         available.
+     */
     public int[] anchorPos() throws CompilationException {
         initialize();
         return anchorPos;
     }
 
+    /**
+     * Records the position established by an origin directive. The array is stored by reference.
+     *
+     * @param p The anchor position, relative to the program origin.
+     * @throws CompilationException if the cursor still has to be created and no world shape is
+     *         available.
+     */
     public void setAnchorPos(int[] p) throws CompilationException {
         initialize();
         this.anchorPos = p;
     }
 
+    /**
+     * Returns the stack of saved base positions. Context directives push the current base position
+     * before entering a nested context and pop it again on leaving, so handlers manipulate it
+     * directly.
+     *
+     * @return the live stack, not a copy
+     */
     public Deque<int[]> basePosStack() {
         return basePosStack;
     }
 
+    /**
+     * Returns the stack of saved direction vectors, pushed and popped by the same context
+     * directives that use the base position stack.
+     *
+     * @return the live stack, not a copy
+     */
     public Deque<int[]> dvStack() {
         return dvStack;
     }
@@ -105,11 +206,27 @@ public final class LayoutContext {
         return Arrays.stream(coord).mapToObj(String::valueOf).collect(Collectors.joining("|"));
     }
 
+    /**
+     * Places an instruction opcode at the cursor: the cell receives the next linear address and
+     * the cursor advances by the current direction vector.
+     *
+     * @param src The source information recorded for the placed cell; may be null.
+     * @throws CompilationException if the coordinate is already occupied, or if the cursor still
+     *         has to be created and no world shape is available.
+     */
     public void placeOpcode(SourceInfo src) throws CompilationException {
         initialize();
         placeAtCurrent(src);
     }
 
+    /**
+     * Places a single operand cell at the cursor, with the same address assignment and cursor
+     * advance as an opcode. A multi-component operand is placed one component per call.
+     *
+     * @param src The source information recorded for the placed cell; may be null.
+     * @throws CompilationException if the coordinate is already occupied, or if the cursor still
+     *         has to be created and no world shape is available.
+     */
     public void placeOperand(SourceInfo src) throws CompilationException {
         initialize();
         placeAtCurrent(src);
@@ -117,7 +234,7 @@ public final class LayoutContext {
 
     /**
      * Places a label at the current position.
-     * Labels now occupy space in the grid (like Tierra/Avida templates).
+     * Labels occupy space in the grid, like Tierra and Avida templates do.
      *
      * @param src The source information for error reporting.
      * @throws CompilationException if the position is already occupied.
@@ -148,22 +265,53 @@ public final class LayoutContext {
         currentPos = Nd.add(currentPos, currentDv);
     }
 
+    /**
+     * Returns the mapping from linear address to the relative coordinate of that cell, filled as
+     * items are placed. Each coordinate is a copy taken at placement time, so it is unaffected by
+     * later cursor moves.
+     *
+     * @return the live map, not a copy
+     */
     public Map<Integer, int[]> linearToCoord() {
         return linearToCoord;
     }
 
+    /**
+     * Returns the inverse of the address mapping. Its keys are coordinates rendered as their
+     * components joined by '|', because an {@code int[]} key would be compared by identity.
+     *
+     * @return the live map, not a copy
+     */
     public Map<String, Integer> coordToLinear() {
         return coordToLinear;
     }
 
+    /**
+     * Returns the mapping from linear address to the source information of the item placed there.
+     *
+     * @return the live map, not a copy; a value is {@code null} where the placing item carried no
+     *         source information
+     */
     public Map<Integer, SourceInfo> sourceMap() {
         return sourceMap;
     }
 
+    /**
+     * Returns the molecules to be written into the world before execution, keyed by relative
+     * coordinate. Placement directive handlers fill it directly; these cells are not placed
+     * through the cursor and therefore have no linear address.
+     *
+     * @return the live map, not a copy
+     */
     public Map<int[], PlacedMolecule> initialWorldObjects() {
         return initialWorldObjects;
     }
 
+    /**
+     * Returns the number of cells placed so far.
+     *
+     * @return that count, which is also the linear address the next placed cell will receive
+     */
     public int linearAddress() {
         return linearAddress;
     }

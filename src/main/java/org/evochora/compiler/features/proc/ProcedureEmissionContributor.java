@@ -17,7 +17,7 @@ import java.util.List;
  *
  * <p>The {@code proc_enter} directive is emitted by {@code ProcedureNodeConverter}
  * in Phase 7 with the module-qualified procedure name and parameter lists. This
- * contributor reads that data so the {@link Emitter} can include it in the
+ * contributor reads that data so the {@link org.evochora.compiler.backend.emit.Emitter} can include it in the
  * {@link org.evochora.compiler.api.ProgramArtifact} without any side-channel
  * from the Compiler.</p>
  */

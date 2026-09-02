@@ -532,7 +532,7 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
     /**
      * Reads chunks from storage and processes them one at a time.
      * <p>
-     * Default implementation uses {@link #forEachChunk} with the configured
+     * Default implementation uses {@link org.evochora.datapipeline.api.resources.storage.IBatchStorageRead#forEachChunk} with the configured
      * {@link #getChunkFieldFilter()}, calling {@link #processChunk} per chunk
      * and {@link #onChunkStreamed} for tracker/commit bookkeeping.
      * <p>

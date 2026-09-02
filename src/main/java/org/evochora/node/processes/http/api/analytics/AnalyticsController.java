@@ -212,6 +212,11 @@ public class AnalyticsController implements IController {
 
     /**
      * DTO for run information.
+     *
+     * @param runId identifier of the run in the form {@code YYYYMMdd-HHmmssSS-UUID}
+     * @param startTime start of the run in milliseconds since the epoch, taken from the timestamp
+     *                  at the front of {@code runId} and interpreted in the default time zone of
+     *                  the JVM; {@code null} if the identifier carries no parsable timestamp
      */
     public record RunInfo(String runId, Long startTime) {}
 

@@ -24,7 +24,7 @@ import com.typesafe.config.Config;
  * optional idempotency guarantees and dead letter queue support.
  * It serves as a test service and a reference implementation for production-ready message processing.
  *
- * <h3>Configuration Options:</h3>
+ * <h2>Configuration Options:</h2>
  * <ul>
  *   <li><b>processingDelayMs</b>: Artificial delay per message in milliseconds (default: 0).</li>
  *   <li><b>logReceivedMessages</b>: Whether to log received messages at DEBUG level (default: false).</li>
@@ -33,7 +33,7 @@ import com.typesafe.config.Config;
  *   <li><b>maxRetries</b>: Maximum processing attempts before sending to DLQ (default: 3).</li>
  * </ul>
  *
- * <h3>Resources:</h3>
+ * <h2>Resources:</h2>
  * <ul>
  *   <li><b>input</b>: IInputQueueResource&lt;T&gt; - Required input queue</li>
  *   <li><b>idempotencyTracker</b>: IIdempotencyTracker&lt;Integer&gt; - Optional idempotency tracker</li>
@@ -62,6 +62,22 @@ public class DummyConsumerService<T> extends AbstractService {
     private final SlidingWindowCounter throughputCounter;
     private final Map<Integer, RetryInfo> retryTracker = new HashMap<>();
 
+    /**
+     * Constructs the consumer, reads its configuration and resolves its queue resources.
+     * <p>
+     * The idempotency tracker and the dead letter queue are optional. Without a tracker no
+     * duplicate detection takes place; without a dead letter queue a message that exhausts its
+     * retries is lost and only reported through a warning and a recorded operational error.
+     *
+     * @param name      The name of the service instance.
+     * @param options   The configuration for this service; the supported keys and their defaults
+     *                  are listed in the class documentation.
+     * @param resources A map of resource ports to lists of resources; the {@code input} port is
+     *                  required, {@code idempotencyTracker} and {@code dlq} are optional.
+     * @throws IllegalStateException if the {@code input} port is missing, or if any of the three
+     *                               ports carries more than one resource or a resource of the
+     *                               wrong type.
+     */
     public DummyConsumerService(String name, Config options, Map<String, List<IResource>> resources) {
         super(name, options, resources);
         this.processingDelayMs = options.hasPath("processingDelayMs") ? options.getLong("processingDelayMs") : 0L;

@@ -22,6 +22,30 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.Callable;
 
+/**
+ * The {@code compile} subcommand: translates one assembly source file and writes the resulting
+ * program artifact in its linearized form as pretty-printed JSON to the command's standard output.
+ * A successful run returns exit code 0; a compilation or I/O failure prints its message to the
+ * command's error stream and returns exit code 1.
+ * <p>
+ * The options mean:
+ * <ul>
+ *   <li>{@code -f}/{@code --file} (required) — the source file to compile, either a path or the
+ *       {@code PREFIX:path} form referring to a named source root.</li>
+ *   <li>{@code -e}/{@code --env} — the environment the artifact is laid out for, written as the
+ *       shape and an optional topology, for example {@code 1000x1000:toroidal}. The shape is a
+ *       list of extents in cells, one per dimension, separated by {@code x}. The environment is
+ *       toroidal only when the text after the colon is {@code toroidal}, ignoring case; any other
+ *       topology, and a shape given without one, yield a non-toroidal environment. If the option
+ *       is omitted entirely, a toroidal environment of 1000 by 1000 cells is assumed.</li>
+ *   <li>{@code --source-root} — any number of roots against which the source file and its imported
+ *       modules are resolved, each written as a plain path or as {@code path:PREFIX} to give the
+ *       root a name. A trailing segment counts as a prefix only if it starts with an uppercase
+ *       letter and is at least two characters of {@code A-Z}, {@code 0-9} and underscore, so that
+ *       a Windows drive letter remains part of the path. Without the option, paths are resolved
+ *       relative to the working directory and no prefix is defined.</li>
+ * </ul>
+ */
 @Command(
     name = "compile",
     description = "Compiles an assembly source file to a ProgramArtifact JSON"

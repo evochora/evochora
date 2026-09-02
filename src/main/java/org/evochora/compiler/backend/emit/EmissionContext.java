@@ -30,6 +30,10 @@ public final class EmissionContext {
 
     /**
      * Returns the accumulated procedure parameter metadata.
+     *
+     * @return The context's own live map from module-qualified procedure name to that
+     *         procedure's parameter list; not a copy, and empty until a contributor has
+     *         registered a procedure.
      */
     public Map<String, List<ParamInfo>> procNameToParamNames() {
         return procNameToParamNames;
@@ -47,6 +51,9 @@ public final class EmissionContext {
 
     /**
      * Returns the accumulated register alias metadata.
+     *
+     * @return The context's own live map from module-qualified alias name to physical
+     *         register ID; not a copy, and empty until a contributor has registered an alias.
      */
     public Map<String, Integer> registerAliasMap() {
         return registerAliasMap;

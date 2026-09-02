@@ -8,7 +8,7 @@ import org.evochora.datapipeline.api.analytics.AbstractAnalyticsPlugin;
 import org.evochora.datapipeline.api.analytics.ColumnType;
 import org.evochora.datapipeline.api.analytics.ManifestEntry;
 import org.evochora.datapipeline.api.analytics.ParquetSchema;
-import org.evochora.datapipeline.api.analytics.VisualizerSpec;
+import org.evochora.datapipeline.api.analytics.VisualizationHint;
 import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.TickData;
 
@@ -121,22 +121,6 @@ public class VitalStatsPlugin extends AbstractAnalyticsPlugin {
             """.formatted(TARGET_BUCKETS);
     }
 
-    /**
-     * Defines how the data should be visualized in the frontend.
-     */
-    @Override
-    public VisualizerSpec getVisualizerSpec() {
-        return VisualizerSpec.builder()
-            .chartType("bar-chart")
-            .xAxis("tick")
-            .yAxis("births", "deaths")
-            .option("colors", java.util.Map.of(
-                "births", "#4ade80",  // Green for births
-                "deaths", "#f87171"   // Red for deaths
-            ))
-            .build();
-    }
-
     @Override
     public ManifestEntry getManifestEntry() {
         ManifestEntry entry = new ManifestEntry();
@@ -158,8 +142,12 @@ public class VitalStatsPlugin extends AbstractAnalyticsPlugin {
         entry.outputColumns = List.of("tick", "births", "deaths");
         
         // Visualization
-        entry.visualization = getVisualizerSpec().toVisualizationHint();
-        entry.customVisualizerPath = getVisualizerSpec().getCustomVisualizerPath();
+        entry.visualization = VisualizationHint.chart("bar-chart", "tick")
+            .with("y", List.of("births", "deaths"))
+            .with("colors", java.util.Map.of(
+                "births", "#4ade80",  // Green for births
+                "deaths", "#f87171"   // Red for deaths
+            ));
 
         return entry;
     }

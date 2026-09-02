@@ -50,6 +50,9 @@ public final class Nd {
 	}
 
 	/**
+	 * Reports how many axes a layout vector spans, which for a well-formed coordinate is
+	 * the number of world dimensions.
+	 *
 	 * @param v The vector.
 	 * @return The number of dimensions of the vector.
 	 */

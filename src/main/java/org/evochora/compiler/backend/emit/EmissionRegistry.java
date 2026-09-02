@@ -1,6 +1,7 @@
 package org.evochora.compiler.backend.emit;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -23,7 +24,10 @@ public final class EmissionRegistry {
 	public void registerAll(List<IEmissionRule> rules) { this.rules.addAll(rules); }
 
 	/**
+	 * Returns the rules in registration order. Each rule rewrites the whole IR item list
+	 * in turn, so a later rule operates on the output of the earlier ones.
+	 *
 	 * @return The list of registered emission rules.
 	 */
-	public List<IEmissionRule> rules() { return rules; }
+	public List<IEmissionRule> rules() { return Collections.unmodifiableList(rules); }
 }

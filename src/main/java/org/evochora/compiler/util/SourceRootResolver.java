@@ -9,7 +9,7 @@ import java.util.regex.Pattern;
 
 /**
  * Resolves directive paths ({@code .IMPORT}, {@code .SOURCE}) against configured source roots.
- * Replaces the previous parent-file-relative resolution with source-root-relative resolution.
+ * A path is therefore read relative to a root, never relative to the file that names it.
  *
  * <p>Supports an optional PREFIX:path syntax where PREFIX identifies a named source root
  * (e.g., {@code PRED:main.evo} resolves against the source root with prefix "PRED").</p>
@@ -23,6 +23,9 @@ public final class SourceRootResolver {
     private final Path workingDirectory;
 
     /**
+     * Creates a resolver for one set of source roots. Both arguments are kept by reference and the
+     * resolver holds no other state, so a single instance can resolve any number of paths.
+     *
      * @param sourceRoots      The configured source roots.
      * @param workingDirectory Base directory for resolving relative source root paths.
      */
@@ -42,8 +45,8 @@ public final class SourceRootResolver {
     /**
      * Parses a directive path into optional prefix and file path.
      * HTTP URLs pass through without prefix extraction.
-     * Prefixes must match {@code [A-Z][A-Z0-9_]*} to avoid collision with
-     * Windows drive letters (e.g., {@code C:\}).
+     * Prefixes must match {@code [A-Z][A-Z0-9_]+}, so at least two characters. The second one is
+     * what keeps a Windows drive letter such as {@code C:\} from being read as a prefix.
      *
      * @param directivePath The raw path from a directive (e.g., "PRED:lib/move.evo").
      * @return The parsed prefix and file path.
@@ -68,6 +71,8 @@ public final class SourceRootResolver {
      * @param sourceFilePath The file containing the directive (unused for resolution,
      *                       retained for HTTP relative resolution).
      * @return The resolved absolute path.
+     * @throws UnknownPrefixException if the path names a prefix for which no source root is
+     *                                configured, or if it is unprefixed and no default root exists.
      */
     public String resolve(String directivePath, String sourceFilePath) throws UnknownPrefixException {
         if (SourceLoader.isHttpUrl(directivePath)) {
@@ -119,6 +124,11 @@ public final class SourceRootResolver {
      * Thrown when a directive path references a prefix with no matching source root.
      */
     public static class UnknownPrefixException extends Exception {
+        /**
+         * Creates the exception carrying the text that the compiler surfaces as the compilation error.
+         *
+         * @param message Names the prefix that could not be resolved and the roots that are configured.
+         */
         public UnknownPrefixException(String message) {
             super(message);
         }

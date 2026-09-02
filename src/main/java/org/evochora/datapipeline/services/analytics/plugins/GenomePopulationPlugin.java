@@ -166,13 +166,10 @@ public class GenomePopulationPlugin extends AbstractAnalyticsPlugin {
         entry.companionQuery = "SELECT genome_hash::VARCHAR AS genome_hash, "
             + "parent_genome_hash::VARCHAR AS parent_genome_hash, first_birth_tick FROM {table}";
 
-        entry.visualization = new VisualizationHint();
-        entry.visualization.type = "clade-area-chart";
-        entry.visualization.config = new HashMap<>();
-        entry.visualization.config.put("x", "tick");
-        entry.visualization.config.put("groupBy", "genome_hash");
-        entry.visualization.config.put("y", "count");
-        entry.visualization.config.put("yFormat", "percent");
+        entry.visualization = VisualizationHint.chart("clade-area-chart", "tick")
+            .with("groupBy", "genome_hash")
+            .with("y", "count")
+            .with("yFormat", "percent");
 
         return entry;
     }

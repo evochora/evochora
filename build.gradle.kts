@@ -427,3 +427,54 @@ tasks.withType<Pmd>().configureEach {
     // Generated protobuf sources: nobody edits them, and the generator will not follow these rules.
     exclude("**/org/evochora/datapipeline/api/contracts/**")
 }
+
+// Javadoc that no longer resolves — a link to a method that was renamed, markup that does not
+// parse — compiles without complaint and is only noticed by whoever reads the generated
+// documentation. Running the task as part of check turns it into a build failure instead.
+//
+// Warnings need a second step. doclint cannot switch off a single category: "-missing" would
+// take every absent comment, tag and description with it. The one warning that cannot be
+// answered is the implicit constructor of a public class, which has no place to carry a
+// comment. So the warnings are read as they appear and anything else fails the task.
+tasks.withType<Javadoc>().configureEach {
+    // Generated protobuf sources, excluded for the same reason as above, and written the same way.
+    exclude("**/org/evochora/datapipeline/api/contracts/**")
+
+    // The one warning that is let through is recognised by its text, because doclint offers no
+    // way to name a single warning: a future JDK could word it differently, and then this filter
+    // stops matching. It fails loudly if that happens — the build starts reporting warnings it
+    // used to pass — so the wording is worth checking first when that day comes.
+    //
+    // Without this the default cap of 100 would hide real warnings behind the constructor ones.
+    (options as StandardJavadocDocletOptions).addStringOption("Xmaxwarns", "10000")
+
+    // A set, and emptied before each run, so that the outcome does not depend on how many
+    // listeners are attached: doLast does not run when the task itself throws, which is exactly
+    // what a real doclint error does, and the listener registered below then stays behind. A
+    // leftover listener sees the same lines as the first one, so with a set it changes nothing.
+    val unexpected = linkedSetOf<String>()
+    // Held in a variable so it can be taken off again on the ordinary path.
+    val warningCollector = org.gradle.api.logging.StandardOutputListener { message ->
+        message.lineSequence()
+            .filter { it.contains(": warning:") }
+            .filterNot { it.contains("use of default constructor") }
+            .forEach { unexpected.add(it.trim()) }
+    }
+    doFirst {
+        unexpected.clear()
+        logging.addStandardErrorListener(warningCollector)
+    }
+    doLast {
+        logging.removeStandardErrorListener(warningCollector)
+        if (unexpected.isNotEmpty()) {
+            throw GradleException(
+                "javadoc reported ${unexpected.size} warning(s) other than the implicit constructor:\n"
+                    + unexpected.joinToString("\n").take(4000)
+            )
+        }
+    }
+}
+
+tasks.named("check") {
+    dependsOn(tasks.named("javadoc"))
+}

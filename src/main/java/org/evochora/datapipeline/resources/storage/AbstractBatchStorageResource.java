@@ -78,20 +78,49 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
     private static final Logger log = LoggerFactory.getLogger(AbstractBatchStorageResource.class);
 
     // Configuration
+    /**
+     * Tick counts per directory level, outermost first. The folder of a batch is derived from its
+     * first tick by dividing by each level in turn and formatting every quotient as three digits.
+     * Never empty and all entries positive; defaults to 100,000,000 and 100,000 when
+     * {@code folderStructure.levels} is absent from the configuration.
+     */
     protected final List<Long> folderLevels;
+    /**
+     * Compression applied to every batch file this resource writes and expected on every file it
+     * reads; it also supplies the file extension. Created and validated during construction, so an
+     * unusable codec fails the resource rather than the first write.
+     */
     protected final ICompressionCodec codec;
+    /**
+     * Length in seconds of the sliding window behind the throughput and latency metrics
+     * ({@code metricsWindowSeconds}, default 30).
+     */
     protected final int metricsWindowSeconds;
 
     // Base metrics tracking (all storage implementations)
+    /** Completed write operations since construction, reported as the {@code write_operations} metric. */
     protected final java.util.concurrent.atomic.AtomicLong writeOperations = new java.util.concurrent.atomic.AtomicLong(0);
+    /** Completed read operations since construction, reported as the {@code read_operations} metric. */
     protected final java.util.concurrent.atomic.AtomicLong readOperations = new java.util.concurrent.atomic.AtomicLong(0);
+    /** Compressed bytes handed to the storage backend, reported as the {@code bytes_written} metric. */
     protected final java.util.concurrent.atomic.AtomicLong bytesWritten = new java.util.concurrent.atomic.AtomicLong(0);
+    /** Compressed bytes taken from the storage backend, reported as the {@code bytes_read} metric. */
     protected final java.util.concurrent.atomic.AtomicLong bytesRead = new java.util.concurrent.atomic.AtomicLong(0);
+    /** Counter reported as the {@code write_errors} metric and reset by {@link #clearErrors()}; incrementing it is left to subclasses. */
     protected final java.util.concurrent.atomic.AtomicLong writeErrors = new java.util.concurrent.atomic.AtomicLong(0);
+    /** Counter reported as the {@code read_errors} metric and reset by {@link #clearErrors()}; incrementing it is left to subclasses. */
     protected final java.util.concurrent.atomic.AtomicLong readErrors = new java.util.concurrent.atomic.AtomicLong(0);
 
     // Batch size tracking metrics (O(1) operations only, helps diagnose memory issues)
+    /**
+     * Compressed size in whole megabytes of the batch read most recently, reported as the
+     * {@code last_read_batch_size_mb} metric. Anything below one megabyte truncates to zero.
+     */
     protected final java.util.concurrent.atomic.AtomicLong lastReadBatchSizeMB = new java.util.concurrent.atomic.AtomicLong(0);
+    /**
+     * Largest compressed batch size in whole megabytes observed since construction, reported as the
+     * {@code max_read_batch_size_mb} metric. It never decreases.
+     */
     protected final java.util.concurrent.atomic.AtomicLong maxReadBatchSizeMB = new java.util.concurrent.atomic.AtomicLong(0);
 
     // Performance metrics (sliding window using unified utils)
@@ -102,6 +131,21 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
     private final SlidingWindowCounter readBytesCounter;
     private final SlidingWindowPercentiles readLatencyTracker;
 
+    /**
+     * Reads the configuration shared by all batch storage backends and prepares the metric trackers.
+     * <p>
+     * The compression codec is created and validated here, so a codec that cannot run in this
+     * environment fails construction instead of the first write. No storage is opened or touched;
+     * that is left to the subclass.
+     *
+     * @param name    resource name from the configuration
+     * @param options resource configuration; read here are the compression settings,
+     *                {@code folderStructure.levels} (default {@code [100000000, 100000]}) and
+     *                {@code metricsWindowSeconds} (default 30)
+     * @throws IllegalArgumentException if {@code folderStructure.levels} is present but empty, or
+     *                                  contains a level that is not positive
+     * @throws IllegalStateException    if the compression codec cannot be created or validated
+     */
     protected AbstractBatchStorageResource(String name, Config options) {
         super(name, options);
 
@@ -1242,8 +1286,6 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
      * <ul>
      *   <li>storage-write - Returns a {@link MonitoredBatchStorageWriter} that tracks write metrics</li>
      *   <li>storage-read - Returns a {@link MonitoredBatchStorageReader} that tracks read metrics</li>
-     *   <li>storage-readwrite - Returns a {@link MonitoredBatchStorageReadWriter} for services needing both
-     *       read and write access (e.g., SimulationEngine in resume mode)</li>
      *   <li>analytics-write - Returns a {@link MonitoredAnalyticsStorageWriter} for analytics data</li>
      * </ul>
      *
@@ -1455,17 +1497,17 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
     /**
      * Records a write operation for performance tracking.
      * This is an O(1) operation using unified monitoring utils.
-     * Updates both legacy counters (writeOperations) and new sliding window metrics.
+     * Updates the cumulative write counters and the sliding-window metrics.
      *
      * @param bytes Number of bytes written
      * @param latencyNanos Write latency in nanoseconds
      */
     private void recordWrite(long bytes, long latencyNanos) {
-        // Legacy counters (for backward compatibility)
+        // Cumulative counters
         writeOperations.incrementAndGet();
         bytesWritten.addAndGet(bytes);
         
-        // New sliding window metrics
+        // Sliding-window metrics
         writeOpsCounter.recordCount();
         writeBytesCounter.recordSum(bytes);
         writeLatencyTracker.record(latencyNanos);
@@ -1474,17 +1516,17 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
     /**
      * Records a read operation for performance tracking.
      * This is an O(1) operation using unified monitoring utils.
-     * Updates both legacy counters (readOperations) and new sliding window metrics.
+     * Updates the cumulative read counters and the sliding-window metrics.
      *
      * @param bytes Number of bytes read
      * @param latencyNanos Read latency in nanoseconds
      */
     private void recordRead(long bytes, long latencyNanos) {
-        // Legacy counters (for backward compatibility)
+        // Cumulative counters
         readOperations.incrementAndGet();
         bytesRead.addAndGet(bytes);
         
-        // New sliding window metrics
+        // Sliding-window metrics
         readOpsCounter.recordCount();
         readBytesCounter.recordSum(bytes);
         readLatencyTracker.record(latencyNanos);
@@ -1536,7 +1578,8 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
      * <p>
      * Used for metrics tracking during streaming writes without requiring
      * the compressed data to be buffered in memory. Subclasses should use
-     * this in their {@link #writeAtomicStreaming} implementations.
+     * this in their {@link #writeChunksToTempFile(String, Iterable, ICompressionCodec)}
+     * implementations.
      * <p>
      * <strong>Usage Example:</strong>
      * <pre>

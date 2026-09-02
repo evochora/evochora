@@ -11,6 +11,9 @@ public record SourceRoot(String path, String prefix) {
 
     /**
      * Returns whether this is the default (unprefixed) root.
+     *
+     * @return {@code true} if the prefix is {@code null} or empty — both forms mean the same thing —
+     *         so this root is the one used for paths written without a {@code PREFIX:} qualifier.
      */
     public boolean isDefault() {
         return prefix == null || prefix.isEmpty();

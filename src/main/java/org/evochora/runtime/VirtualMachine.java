@@ -357,14 +357,14 @@ public class VirtualMachine {
 
                     argIndex++;
                 }
-            } else if (argType == InstructionArgumentType.VECTOR ||
-                       argType == InstructionArgumentType.LABEL) {
-                // VECTOR/LABEL are encoded as multiple arguments in rawArgs (one per dimension)
-                // Skip over all dimension slots to maintain correct argIndex for subsequent arguments
+            } else if (argType == InstructionArgumentType.VECTOR) {
+                // A vector is the one argument spread over several slots, one per dimension.
+                // Skipping all of them keeps the index right for whatever follows.
                 int dims = this.environment.properties.getDimensions();
                 argIndex += dims;
             } else {
-                // IMMEDIATE, LITERAL - no register arguments
+                // IMMEDIATE, LITERAL, LABEL - one slot, and no register to read. A label is a
+                // hash and therefore a single molecule, like any other non-vector argument.
                 argIndex++;
             }
         }

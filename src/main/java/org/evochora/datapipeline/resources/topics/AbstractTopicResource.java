@@ -64,16 +64,25 @@ public abstract class AbstractTopicResource<T extends Message, ACK> extends Abst
     private static final Logger log = LoggerFactory.getLogger(AbstractTopicResource.class);
     
     // Delegate lifecycle management
+    /**
+     * Delegates created from this resource, closed one after another when this resource is closed.
+     * A concurrent set, because delegates may be created from several service threads.
+     */
     protected final Set<AutoCloseable> activeDelegates = ConcurrentHashMap.newKeySet();
     
     // Simulation run awareness
     private volatile String simulationRunId = null;
     
     // Aggregate metrics (across ALL delegates/services)
+    /** Messages published across all writer delegates, reported as the {@code messages_published} metric. */
     protected final AtomicLong messagesPublished = new AtomicLong(0);
+    /** Messages claimed across all reader delegates, reported as the {@code messages_received} metric. */
     protected final AtomicLong messagesReceived = new AtomicLong(0);
+    /** Messages acknowledged across all reader delegates, reported as the {@code messages_acknowledged} metric. */
     protected final AtomicLong messagesAcknowledged = new AtomicLong(0);
+    /** Sliding-window counter of publications; the {@code write_throughput_per_sec} metric reports its rate. The window is {@code metricsWindowSeconds} seconds, default 30. */
     protected final SlidingWindowCounter writeThroughput;
+    /** Sliding-window counter of claims; the {@code read_throughput_per_sec} metric reports its rate. The window is {@code metricsWindowSeconds} seconds, default 30. */
     protected final SlidingWindowCounter readThroughput;
     
     /**

@@ -51,6 +51,18 @@ public class VideoRenderEngine {
     private static final java.util.Set<String> SUPPORTED_FORMATS =
             java.util.Set.of("mkv", "mp4", "avi", "mov", "webm");
 
+    /**
+     * Creates an engine bound to one set of command line options and one frame renderer.
+     * <p>
+     * Both references are stored as given; no configuration, storage or ffmpeg process is
+     * touched until {@link #execute()} is called.
+     *
+     * @param options       the video rendering options that control tick range, sampling,
+     *                      output file and encoder settings.
+     * @param frameRenderer the renderer producing the pixel data of each frame; when more than
+     *                      one thread is configured, the engine derives one instance per thread
+     *                      from it.
+     */
     public VideoRenderEngine(VideoRenderOptions options, IVideoFrameRenderer frameRenderer) {
         this.options = options;
         this.frameRenderer = frameRenderer;
@@ -60,6 +72,13 @@ public class VideoRenderEngine {
      * Executes the video rendering pipeline.
      *
      * @return Exit code (0 for success, non-zero for failure).
+     * @throws Exception if reading the recorded ticks, writing frames to ffmpeg or waiting for
+     *                   the ffmpeg process fails, in particular when ffmpeg terminates while
+     *                   frames are still being written. Conditions detected before encoding
+     *                   starts, such as a missing configuration, an unknown storage resource,
+     *                   a run without metadata or an ffmpeg binary that cannot be launched, are
+     *                   reported on standard error and signalled through the return value
+     *                   instead.
      */
     public Integer execute() throws Exception {
         if (!optionsAreValid()) return 1;

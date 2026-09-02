@@ -26,6 +26,8 @@ public final class LayoutEngine {
      * @param program The IR program to lay out.
      * @param isa The instruction set for determining operand sizes.
      * @param envProps The environment properties, providing context like world dimensions. Can be null.
+     * @param registry The handlers for layout-relevant IR directives; a directive without a
+     *                 registered handler is passed to the registry's default handler.
      * @return The result of the layout process.
      * @throws CompilationException if address conflicts are detected during layout.
      */

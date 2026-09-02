@@ -44,6 +44,8 @@ public class SemanticAnalyzer {
      * @param mainFilePath   The absolute path of the main source file. Null when graph is null.
      * @param rootAliasChain The alias chain for the root module (e.g., "MAIN"). Null when graph is null.
      * @param registry       The pre-built analysis handler registry.
+     * @param setupRegistry  The registry of handlers that turn the graph's dependency data
+     *                       into module relationships in the symbol table.
      */
     public SemanticAnalyzer(DiagnosticsEngine diagnostics, SymbolTable symbolTable,
                             DependencyGraph graph, String mainFilePath,

@@ -16,6 +16,13 @@ public class PushCtxNode implements AstNode, IModuleContextBoundary {
     private final String targetPath;
     private final String aliasChain;
 
+    /**
+     * Creates a boundary for a module placement.
+     *
+     * @param targetPath The absolute path of the module being entered, or null for .SOURCE contexts.
+     * @param aliasChain The import alias chain the traversal switches to (e.g., "PRED.MATH"), or null
+     *                   to keep the enclosing module context.
+     */
     public PushCtxNode(String targetPath, String aliasChain) {
         this.targetPath = targetPath;
         this.aliasChain = aliasChain;
@@ -23,6 +30,9 @@ public class PushCtxNode implements AstNode, IModuleContextBoundary {
 
     /**
      * Returns the absolute path of the module being entered, or null for .SOURCE contexts.
+     *
+     * @return The absolute path of the entered module, or {@code null} where no separate module is
+     *         entered, as for .SOURCE text inclusions.
      */
     public String targetPath() {
         return targetPath;

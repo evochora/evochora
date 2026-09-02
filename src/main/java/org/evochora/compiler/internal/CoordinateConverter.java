@@ -6,10 +6,10 @@ import java.util.stream.Collectors;
 import org.evochora.runtime.model.EnvironmentProperties;
 
 /**
- * Utility class for bidirectional conversion between int[] coordinates
- * and linearized Integer keys for Jackson serialization.
+ * Utility class for converting int[] coordinates into the linearized Integer keys that Jackson
+ * can write, because a JSON object key must be a string and an array is not one.
  * 
- * <h3>Usage</h3>
+ * <h2>Usage</h2>
  * <pre>{@code
  * // 2D world with shape [100, 100] and toroidal=true
  * EnvironmentProperties envProps = new EnvironmentProperties(new int[]{100, 100}, true);
@@ -20,15 +20,7 @@ import org.evochora.runtime.model.EnvironmentProperties;
  * int flatIndex = converter.linearizeCoordinate(coord); // = 5*100 + 10 = 510
  * }</pre>
  * 
- * <h3>Performance Characteristics</h3>
- * <ul>
- *   <li><strong>2D (100x100)</strong>: ~7.9 ms for 100 entries</li>
- *   <li><strong>3D (50x50x50)</strong>: ~1.4 ms for 1000 entries</li>
- *   <li><strong>4D (25x25x25x25)</strong>: ~6.8 ms for 10000 entries</li>
- *   <li><strong>Memory Overhead</strong>: ~544 KB for 10000 entries</li>
- * </ul>
- * 
- * <h3>Stride Calculation</h3>
+ * <h2>Stride Calculation</h2>
  * The strides come from {@link EnvironmentProperties}, so a linearized artifact uses the same
  * row-major convention as the running environment: the last dimension has stride 1. For a world
  * shape [W, H, D] that gives:
@@ -47,6 +39,15 @@ import org.evochora.runtime.model.EnvironmentProperties;
 public class CoordinateConverter {
     private final EnvironmentProperties envProps;
     
+    /**
+     * Creates a converter for one world geometry. The world shape of the given properties supplies the
+     * strides of every conversion, so a converter fits only artifacts laid out in a world of that
+     * shape, and the toroidal flag decides whether out-of-range coordinates are wrapped or rejected.
+     * The properties are kept by reference and not copied.
+     *
+     * @param envProps The environment properties providing world shape and toroidal flag.
+     * @throws IllegalArgumentException if {@code envProps} is null.
+     */
     public CoordinateConverter(EnvironmentProperties envProps) {
         if (envProps == null) {
             throw new IllegalArgumentException("EnvironmentProperties must not be null");
@@ -63,7 +64,7 @@ public class CoordinateConverter {
     public <V> Map<Integer, V> linearizeMap(Map<int[], V> original) {
         if (original == null) return Map.of();
         
-        // Prüfe auf Koordinatenkollisionen und sammle Informationen für Fehlermeldung
+        // Collect the coordinates per flat index first, so that a collision can name both.
         Map<Integer, int[]> linearizedCoords = new HashMap<>();
         Map<Integer, int[]> collisionCoords = new HashMap<>();
         
@@ -73,14 +74,14 @@ public class CoordinateConverter {
             if (linearizedCoords.containsKey(linearized)) {
                 int[] existingCoord = linearizedCoords.get(linearized);
                 collisionCoords.put(linearized, existingCoord);
-                // Füge die kollidierende Koordinate hinzu
-                collisionCoords.put(linearized + 1000000, coord); // Offset um beide zu speichern
+                // Keep the colliding coordinate as well, offset so both survive in one map
+                collisionCoords.put(linearized + 1000000, coord); // offset, so both fit in one map
             } else {
                 linearizedCoords.put(linearized, coord);
             }
         }
         
-        // Wenn Kollisionen gefunden wurden, werfe eine aussagekräftige Exception
+        // Report every collision at once, naming the index and both coordinates
         if (!collisionCoords.isEmpty()) {
             StringBuilder errorMsg = new StringBuilder();
             errorMsg.append("Coordinate collision detected during linearization. ");
@@ -90,7 +91,7 @@ public class CoordinateConverter {
             
             boolean first = true;
             for (Map.Entry<Integer, int[]> entry : collisionCoords.entrySet()) {
-                if (entry.getKey() < 1000000) { // Nur die ursprünglichen Kollisionen
+                if (entry.getKey() < 1000000) { // the first coordinate of each pair
                     if (!first) errorMsg.append(", ");
                     int linearized = entry.getKey();
                     int[] coord1 = entry.getValue();
@@ -123,7 +124,7 @@ public class CoordinateConverter {
             throw new IllegalArgumentException("Coordinate dimensions must match world shape");
         }
         
-        // Koordinaten normalisieren, falls toroidal
+        // Wrap into the world first where the environment is toroidal
         int[] normalizedCoord = normalizeCoordinate(coord);
 
         return envProps.toFlatIndex(normalizedCoord);
@@ -135,7 +136,7 @@ public class CoordinateConverter {
      */
     private int[] normalizeCoordinate(int[] coord) {
         if (!envProps.isToroidal()) {
-            return coord; // Keine Normalisierung bei nicht-toroidalen Welten
+            return coord; // a non-toroidal world does not wrap
         }
 
         int[] normalized = new int[coord.length];

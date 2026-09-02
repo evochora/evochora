@@ -64,10 +64,22 @@ public class IrInstruction implements IrItem {
         return new IrInstruction(opcode, operands, source, true);
     }
 
+    /**
+     * Returns the instruction mnemonic. Backend phases look this name up in the ISA,
+     * so an opcode without an ISA entry fails compilation at layout or emit time.
+     *
+     * @return the opcode mnemonic
+     */
     public String opcode() {
         return opcode;
     }
 
+    /**
+     * Returns this instruction's operands, positionally matched against the ISA
+     * signature of the opcode.
+     *
+     * @return an unmodifiable list of operands
+     */
     public List<IrOperand> operands() {
         return operands;
     }
@@ -94,6 +106,10 @@ public class IrInstruction implements IrItem {
 
     /**
      * Returns whether this instruction is synthetic (compiler-generated).
+     *
+     * @return {@code true} if the compiler generated this instruction; the flag is
+     *         carried into debug information so generated code can be told apart
+     *         from code written in the source
      */
     public boolean synthetic() {
         return synthetic;

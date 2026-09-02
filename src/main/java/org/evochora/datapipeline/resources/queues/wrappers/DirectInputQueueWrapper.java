@@ -17,6 +17,14 @@ public class DirectInputQueueWrapper<T> implements IInputQueueResource<T>, IWrap
 
     private final IInputQueueResource<T> delegate;
 
+    /**
+     * Wraps the given queue, forwarding every call unchanged.
+     * <p>
+     * The wrapper does not own the delegate and holds no state of its own, so several wrappers may
+     * share one queue and discarding a wrapper leaves the queue usable.
+     *
+     * @param delegate the queue every call is forwarded to
+     */
     public DirectInputQueueWrapper(IInputQueueResource<T> delegate) {
         this.delegate = delegate;
     }
