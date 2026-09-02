@@ -132,6 +132,11 @@ There is a central document for AI agent guidelines that defines architectural p
 - **Avoid without explicit request**: Core configuration changes, architectural modifications, breaking changes
 - **Code quality**: Prefer minimal diffs, write comprehensive tests, maintain existing code style
 - **Communication**: Explain reasoning for changes, ask when uncertain about architectural decisions
+- **Verify before claiming**: read the code before answering about its behaviour; re-check remembered facts and subagent results against the code; a claim about dependency direction, dead code or consumers is backed by a grep, never by the diff alone
+- **Verify the goal**: a change is done when the stated goal is demonstrably achieved in the code paths, not when the build is green
+- **Complete the check first**: a finding, analysis or recommendation is presented with its check complete — never with "still to verify" attached
+- **Observation before interpretation**: state what the data shows, then what it might mean, then what would falsify that reading; a correlation is reported as a correlation, with the reverse direction and confounders considered before naming a cause
+- **Scientific claims**: a statement about the simulation's behaviour is either verified or marked as an assumption; scientific terms only where their meaning and applicability are understood
 
 # Architectural Principles
 
