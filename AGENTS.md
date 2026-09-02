@@ -453,21 +453,17 @@ void send(T message) throws InterruptedException;
 
 ### Pull Request Workflow
 
-1. Git operations (branch, commit, push, PR) are performed by the agent — each one only
-   with the maintainer's explicit go-ahead.
-2. Before every push: fetch and merge `origin/main` (parallel sessions work on this
-   repository); when new commits arrived, merge and test first — never push unmerged.
-3. Before every push: run `./gradlew check`, not just `test` — the CI has a PMD gate.
-4. After every push: wait for CI **and** for all configured automated reviews before
+1. Before every push: fetch and merge `origin/main` (parallel work happens on this repository);
+   when new commits arrived, merge and test first — never push unmerged.
+2. Before every push: run `./gradlew check`, not just `test` — the CI has a PMD gate.
+3. After every push: wait for CI **and** for all configured automated reviews before
    anything else happens.
-5. Capture every review finding completely — suggestions included —, verify each one
-   against the code yourself (reviews can contradict each other), and walk them through
-   with the maintainer one point per message, each with a recommendation.
-6. Apply the agreed changes, push again — the round starts over, until a round ends with
+4. Verify every review finding against the code yourself (reviews can contradict each other)
+   and settle each one with the maintainer before applying it.
+5. Apply the agreed changes, push again — the round starts over, until a round ends with
    no open points.
-7. Small findings — from a review or noticed in passing — are fixed on the branch in their own
+6. Small findings — from a review or noticed in passing — are fixed on the branch in their own
    commit, never deferred to other PRs. Only a finding with real scope or risk is raised for a
    decision instead.
-8. PR scope: rather larger, related fixes bundled; whether a change goes through a PR or
-   is pushed directly is the maintainer's call, based on risk and a look at the diff.
-9. Merging happens only after the maintainer's approval.
+7. Whether a change goes through a PR or is pushed directly is the maintainer's call.
+8. Merging happens only after the maintainer's approval.
