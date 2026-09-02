@@ -17,10 +17,18 @@ import java.util.Map;
  * reaches the frontend through the JSON, so the map preserves insertion order.
  */
 public class VisualizationHint {
+
+    /**
+     * The chart type, as registered in the frontend's chart registry.
+     */
     public String type;
 
-    // Generic configuration map for the widget
-    // e.g. { "x": "tick", "y": "count", "color": "blue" }
+    /**
+     * The options the chart of this type reads, {@code x} and {@code y} among them.
+     * <p>
+     * Iteration order reaches the frontend through the JSON, so entries appear in the order they
+     * were added.
+     */
     public Map<String, Object> config;
 
     /**
