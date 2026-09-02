@@ -16,14 +16,6 @@ public class PushCtxNode implements AstNode, IModuleContextBoundary {
     private final String targetPath;
     private final String aliasChain;
 
-    public PushCtxNode() {
-        this(null, null);
-    }
-
-    public PushCtxNode(String targetPath) {
-        this(targetPath, null);
-    }
-
     public PushCtxNode(String targetPath, String aliasChain) {
         this.targetPath = targetPath;
         this.aliasChain = aliasChain;

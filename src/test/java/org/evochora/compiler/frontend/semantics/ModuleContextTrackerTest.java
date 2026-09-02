@@ -95,12 +95,6 @@ class ModuleContextTrackerTest {
     }
 
     @Test
-    void pushCtxWithNoArgConstructor_keepsCurrentModule() {
-        tracker.handleNode(new PushCtxNode());
-        assertThat(symbolTable.getCurrentAliasChain()).isEqualTo(MAIN);
-    }
-
-    @Test
     void popCtxOnEmptyStack_noException() {
         // Should not throw even without a prior push
         tracker.handleNode(new PopCtxNode());
