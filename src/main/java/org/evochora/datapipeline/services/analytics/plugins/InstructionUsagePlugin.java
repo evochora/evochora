@@ -189,7 +189,7 @@ public class InstructionUsagePlugin extends AbstractAnalyticsPlugin {
         entry.visualization = VisualizationHint.chart("stacked-bar-chart", "tick")
             .with("y", FAMILY_NAMES)
             .with("yAxisMode", "percent")
-            // Secondary Y-axis for failure rate (line overlay)
+            // A stacked bar chart reads y2 as one column name, not as a list.
             .with("y2", "failure_rate")
             .with("y2Label", "Failure Rate")
             .with("y2PeakTick", "failure_rate_peak_tick");

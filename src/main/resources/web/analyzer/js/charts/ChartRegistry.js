@@ -13,6 +13,10 @@
     /**
  * Registers a chart class constructor.
      * 
+     * Callers pass the type name as a quoted literal: AnalyticsChartTypesTest reads these calls
+     * out of this directory to hold every analytics plugin against the types that exist. A name
+     * built at runtime is invisible to it, and the plugin asking for that type fails the test.
+     * 
      * @param {string} typeName - Chart type identifier (e.g. "line-chart")
  * @param {Function} chartClass - The chart class constructor.
      */
