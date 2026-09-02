@@ -52,7 +52,7 @@ class DeltaCodecRoundTripTest {
         env.setMolecule(Molecule.fromInt(300), new int[]{9, 9});
         
         // Encode
-        DeltaCodec.Encoder encoder = new DeltaCodec.Encoder(RUN_ID, TOTAL_CELLS, 1, 1, 1);
+        DeltaCodec.Encoder encoder = new DeltaCodec.Encoder(RUN_ID, 1, 1, 1);
         Optional<TickDataChunk> chunk = captureTick(encoder, 0);
         assertTrue(chunk.isPresent());
         
@@ -71,7 +71,7 @@ class DeltaCodecRoundTripTest {
     @Test
     void roundTrip_multiTickChunk_preservesAllTicks() throws ChunkCorruptedException {
         // Create encoder with small chunk size: 4 ticks per chunk
-        DeltaCodec.Encoder encoder = new DeltaCodec.Encoder(RUN_ID, TOTAL_CELLS, 2, 2, 1);
+        DeltaCodec.Encoder encoder = new DeltaCodec.Encoder(RUN_ID, 2, 2, 1);
         
         // Tick 0: snapshot with cell 0
         env.setMolecule(Molecule.fromInt(10), new int[]{0, 0});
@@ -117,7 +117,7 @@ class DeltaCodecRoundTripTest {
     @Test
     void roundTrip_decompressSingleTick_matchesFullDecompression() throws ChunkCorruptedException {
         // Create chunk with 4 ticks
-        DeltaCodec.Encoder encoder = new DeltaCodec.Encoder(RUN_ID, TOTAL_CELLS, 2, 2, 1);
+        DeltaCodec.Encoder encoder = new DeltaCodec.Encoder(RUN_ID, 2, 2, 1);
         
         env.setMolecule(Molecule.fromInt(10), new int[]{0, 0});
         captureTick(encoder, 0);
@@ -147,7 +147,7 @@ class DeltaCodecRoundTripTest {
     @Test
     void roundTrip_cellRemoval_handledCorrectly() throws ChunkCorruptedException {
         // Create chunk with cell removal
-        DeltaCodec.Encoder encoder = new DeltaCodec.Encoder(RUN_ID, TOTAL_CELLS, 1, 2, 1);
+        DeltaCodec.Encoder encoder = new DeltaCodec.Encoder(RUN_ID, 1, 2, 1);
         
         // Tick 0: cells 0, 1, 2
         env.setMolecule(Molecule.fromInt(10), new int[]{0, 0});
@@ -174,7 +174,7 @@ class DeltaCodecRoundTripTest {
     
     @Test
     void roundTrip_preservesOrganismStates() throws ChunkCorruptedException {
-        DeltaCodec.Encoder encoder = new DeltaCodec.Encoder(RUN_ID, TOTAL_CELLS, 1, 2, 1);
+        DeltaCodec.Encoder encoder = new DeltaCodec.Encoder(RUN_ID, 1, 2, 1);
         
         // Tick 0: 1 organism
         env.setMolecule(Molecule.fromInt(10), new int[]{0, 0});
@@ -220,7 +220,7 @@ class DeltaCodecRoundTripTest {
     
     @Test
     void roundTrip_partialChunk_preservesAllData() throws ChunkCorruptedException {
-        DeltaCodec.Encoder encoder = new DeltaCodec.Encoder(RUN_ID, TOTAL_CELLS, 2, 10, 1);
+        DeltaCodec.Encoder encoder = new DeltaCodec.Encoder(RUN_ID, 2, 10, 1);
         
         // Capture only 2 ticks (not a full chunk)
         env.setMolecule(Molecule.fromInt(10), new int[]{0, 0});
@@ -251,7 +251,7 @@ class DeltaCodecRoundTripTest {
     void roundTrip_accumulatedDeltaOptimization_worksCorrectly() throws ChunkCorruptedException {
         // Create encoder with accumulated delta interval = 2
         // Accumulated deltas at ticks 2, 4, 6, ...
-        DeltaCodec.Encoder encoder = new DeltaCodec.Encoder(RUN_ID, TOTAL_CELLS, 2, 4, 1);
+        DeltaCodec.Encoder encoder = new DeltaCodec.Encoder(RUN_ID, 2, 4, 1);
         
         // Build up several ticks
         env.setMolecule(Molecule.fromInt(10), new int[]{0, 0});

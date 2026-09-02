@@ -303,22 +303,14 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
     }
 
     private DeltaCodec.Encoder createChunkEncoder(TickData resumeSnapshot) {
-        long totalCellsLong = this.simulation.getEnvironment().getTotalCells();
-        if (totalCellsLong > Integer.MAX_VALUE) {
-            throw new IllegalStateException(
-                "World too large for simulation: " + totalCellsLong + " cells exceeds Integer.MAX_VALUE. " +
-                "Reduce environment dimensions.");
-        }
-        int totalCells = (int) totalCellsLong;
-
         if (resumeSnapshot != null) {
             log.debug("Creating encoder with checkpoint snapshot at tick {}", resumeSnapshot.getTickNumber());
             return DeltaCodec.Encoder.forResume(
-                resumeSnapshot, this.runId, totalCells,
+                resumeSnapshot, this.runId,
                 this.accumulatedDeltaInterval, this.snapshotInterval, this.chunkInterval);
         }
         return new DeltaCodec.Encoder(
-            this.runId, totalCells,
+            this.runId,
             this.accumulatedDeltaInterval, this.snapshotInterval, this.chunkInterval);
     }
 

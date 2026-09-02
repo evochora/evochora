@@ -237,8 +237,7 @@ final class ResumeNeutralityHarness {
         // The engine labels the state after simulation tick T with T, while the simulation's own
         // counter already stands at T + 1 at that point; the snapshot must carry the engine's label.
         long snapshotTick = live.getCurrentTick() - 1;
-        DeltaCodec.Encoder encoder = new DeltaCodec.Encoder(
-                "resume-test", (int) live.getEnvironment().getTotalCells(), 1, 1, 1);
+        DeltaCodec.Encoder encoder = new DeltaCodec.Encoder("resume-test", 1, 1, 1);
         Optional<TickDataChunk> chunk = encoder.captureTick(
                 snapshotTick, live.getEnvironment(), states,
                 live.getTotalOrganismsCreatedCount(), live.getTotalUniqueGenomesCount(),

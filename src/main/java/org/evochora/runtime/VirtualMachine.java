@@ -58,7 +58,7 @@ public class VirtualMachine {
         organism.resetTickState();
 
         // Flat-index molecule lookup to avoid coordinate-based getNormalizedCoordinate
-        int rawMol = this.environment.getMoleculeInt(this.environment.getIndexFromCoordinate(organism.getIp()));
+        int rawMol = this.environment.getMoleculeIntAt(organism.getIp());
 
         Instruction instruction;
 
@@ -279,7 +279,7 @@ public class VirtualMachine {
             return null;
         }
 
-        int rawMol = this.environment.getMoleculeInt(this.environment.getIndexFromCoordinate(organism.getIp()));
+        int rawMol = this.environment.getMoleculeIntAt(organism.getIp());
         if (rawMol == 0) {
             return null;
         }

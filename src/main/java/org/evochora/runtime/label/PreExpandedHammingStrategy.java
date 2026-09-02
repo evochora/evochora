@@ -3,6 +3,7 @@ package org.evochora.runtime.label;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.model.Environment;
+import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.runtime.model.OrganismRandom;
 
 import java.util.ArrayList;
@@ -193,8 +194,10 @@ public class PreExpandedHammingStrategy implements ILabelMatchingStrategy {
     @Override
     public int findTarget(int searchValue, int codeOwner, int[] callerCoords, Environment environment,
                           OrganismRandom random) {
+        EnvironmentProperties props = environment.properties;
+
         int bestScore = Integer.MAX_VALUE;
-        int bestFlatIndex = -1;
+        int bestCanonicalIndex = -1;
         int bestOwner = Integer.MAX_VALUE;
 
         // === Stage 0: Exact match (hamming = 0) ===
@@ -211,7 +214,7 @@ public class PreExpandedHammingStrategy implements ILabelMatchingStrategy {
 
             for (int i = 0; i < exactList.size(); i++) {
                 LabelEntry entry = exactList.get(i);
-                int distance = environment.toroidalManhattanDistance(callerCoords, entry.flatIndex());
+                int distance = toroidalManhattanDistanceToCanonical(callerCoords, entry.canonicalIndex(), props);
 
                 if (!entry.isForeign(codeOwner)) {
                     if (selectionSpread > 0) {
@@ -219,13 +222,13 @@ public class PreExpandedHammingStrategy implements ILabelMatchingStrategy {
                         if (weight < 1) weight = 1;
                         totalWeight += weight;
                         if (random.nextLong(totalWeight) < weight) {
-                            bestOwnExactIndex = entry.flatIndex();
+                            bestOwnExactIndex = entry.canonicalIndex();
                         }
                     } else {
                         if (distance < bestOwnExactDistance ||
                             (distance == bestOwnExactDistance && entry.owner() < bestOwnExactOwner)) {
                             bestOwnExactDistance = distance;
-                            bestOwnExactIndex = entry.flatIndex();
+                            bestOwnExactIndex = entry.canonicalIndex();
                             bestOwnExactOwner = entry.owner();
                         }
                     }
@@ -235,7 +238,7 @@ public class PreExpandedHammingStrategy implements ILabelMatchingStrategy {
                 int score = distance + (entry.isForeign(codeOwner) ? foreignPenalty : 0);
                 if (score < bestScore || (score == bestScore && entry.owner() < bestOwner)) {
                     bestScore = score;
-                    bestFlatIndex = entry.flatIndex();
+                    bestCanonicalIndex = entry.canonicalIndex();
                     bestOwner = entry.owner();
                 }
             }
@@ -257,11 +260,11 @@ public class PreExpandedHammingStrategy implements ILabelMatchingStrategy {
                 if (bucket != null) {
                     for (int i = 0; i < bucket.size(); i++) {
                         LabelEntry entry = bucket.get(i);
-                        int distance = environment.toroidalManhattanDistance(callerCoords, entry.flatIndex());
+                        int distance = toroidalManhattanDistanceToCanonical(callerCoords, entry.canonicalIndex(), props);
                         int score = stageBaseScore + distance + (entry.isForeign(codeOwner) ? foreignPenalty : 0);
                         if (score < bestScore || (score == bestScore && entry.owner() < bestOwner)) {
                             bestScore = score;
-                            bestFlatIndex = entry.flatIndex();
+                            bestCanonicalIndex = entry.canonicalIndex();
                             bestOwner = entry.owner();
                         }
                     }
@@ -281,11 +284,11 @@ public class PreExpandedHammingStrategy implements ILabelMatchingStrategy {
                 if (bucket != null) {
                     for (int i = 0; i < bucket.size(); i++) {
                         LabelEntry entry = bucket.get(i);
-                        int distance = environment.toroidalManhattanDistance(callerCoords, entry.flatIndex());
+                        int distance = toroidalManhattanDistanceToCanonical(callerCoords, entry.canonicalIndex(), props);
                         int score = stageBaseScore + distance + (entry.isForeign(codeOwner) ? foreignPenalty : 0);
                         if (score < bestScore || (score == bestScore && entry.owner() < bestOwner)) {
                             bestScore = score;
-                            bestFlatIndex = entry.flatIndex();
+                            bestCanonicalIndex = entry.canonicalIndex();
                             bestOwner = entry.owner();
                         }
                     }
@@ -305,11 +308,11 @@ public class PreExpandedHammingStrategy implements ILabelMatchingStrategy {
                 if (bucket != null) {
                     for (int i = 0; i < bucket.size(); i++) {
                         LabelEntry entry = bucket.get(i);
-                        int distance = environment.toroidalManhattanDistance(callerCoords, entry.flatIndex());
+                        int distance = toroidalManhattanDistanceToCanonical(callerCoords, entry.canonicalIndex(), props);
                         int score = stageBaseScore + distance + (entry.isForeign(codeOwner) ? foreignPenalty : 0);
                         if (score < bestScore || (score == bestScore && entry.owner() < bestOwner)) {
                             bestScore = score;
-                            bestFlatIndex = entry.flatIndex();
+                            bestCanonicalIndex = entry.canonicalIndex();
                             bestOwner = entry.owner();
                         }
                     }
@@ -317,7 +320,26 @@ public class PreExpandedHammingStrategy implements ILabelMatchingStrategy {
             }
         }
 
-        return bestFlatIndex;
+        return bestCanonicalIndex;
+    }
+
+    /**
+     * Toroidal Manhattan distance between the caller's coordinates and the cell at a canonical
+     * index. The cell's coordinate is decoded dimension-wise from the index and the world's
+     * row-major strides without materializing a coordinate array, and each per-dimension
+     * difference takes the shorter way around the torus.
+     */
+    private static int toroidalManhattanDistanceToCanonical(int[] caller, int canonicalIndex, EnvironmentProperties props) {
+        int distance = 0;
+        int remaining = canonicalIndex;
+        for (int i = 0; i < caller.length; i++) {
+            int stride = props.getStride(i);
+            int labelCoord = remaining / stride;
+            remaining -= labelCoord * stride;
+            int diff = Math.abs(caller[i] - labelCoord);
+            distance += Math.min(diff, props.getDimensionSize(i) - diff);
+        }
+        return distance;
     }
 
     @Override
@@ -342,10 +364,10 @@ public class PreExpandedHammingStrategy implements ILabelMatchingStrategy {
     }
 
     @Override
-    public void removeLabel(int labelValue, int flatIndex) {
+    public void removeLabel(int labelValue, int canonicalIndex) {
         List<LabelEntry> list = valueToLabels.get(labelValue);
         if (list != null) {
-            list.removeIf(e -> e.flatIndex() == flatIndex);
+            list.removeIf(e -> e.canonicalIndex() == canonicalIndex);
             if (list.isEmpty()) {
                 valueToLabels.remove(labelValue);
                 occupiedValues.clear(labelValue);
@@ -354,13 +376,13 @@ public class PreExpandedHammingStrategy implements ILabelMatchingStrategy {
     }
 
     @Override
-    public void updateOwner(int labelValue, int flatIndex, int newOwner) {
+    public void updateOwner(int labelValue, int canonicalIndex, int newOwner) {
         List<LabelEntry> list = valueToLabels.get(labelValue);
         if (list != null) {
             for (int i = 0; i < list.size(); i++) {
-                if (list.get(i).flatIndex() == flatIndex) {
+                if (list.get(i).canonicalIndex() == canonicalIndex) {
                     LabelEntry old = list.get(i);
-                    list.set(i, new LabelEntry(flatIndex, old.canonicalIndex(), newOwner, old.marker()));
+                    list.set(i, new LabelEntry(canonicalIndex, newOwner, old.marker()));
                     return;
                 }
             }
@@ -368,13 +390,13 @@ public class PreExpandedHammingStrategy implements ILabelMatchingStrategy {
     }
 
     @Override
-    public void updateMarker(int labelValue, int flatIndex, int newMarker) {
+    public void updateMarker(int labelValue, int canonicalIndex, int newMarker) {
         List<LabelEntry> list = valueToLabels.get(labelValue);
         if (list != null) {
             for (int i = 0; i < list.size(); i++) {
-                if (list.get(i).flatIndex() == flatIndex) {
+                if (list.get(i).canonicalIndex() == canonicalIndex) {
                     LabelEntry old = list.get(i);
-                    list.set(i, new LabelEntry(flatIndex, old.canonicalIndex(), old.owner(), newMarker));
+                    list.set(i, new LabelEntry(canonicalIndex, old.owner(), newMarker));
                     return;
                 }
             }

@@ -105,27 +105,21 @@ public final class DeltaCodec {
         // State
         private TickData currentSnapshot;
         private final List<DeltaCapture> currentDeltas = new ArrayList<>();
-        private final BitSet accumulatedSinceSnapshot;
         private int samplesSinceSnapshot = 0;
 
         // Reusable builder to avoid repeated allocations
         private final CellDataColumns.Builder cellColumnsBuilder = CellDataColumns.newBuilder();
-        // Reusable buffers for ordering the cells of one capture by canonical index; grow-only
-        private int[] collected = new int[0];
-        private int collectedCount = 0;
-        private long[] sortKeys = new long[0];
         
         /**
          * Creates a new Encoder for a new simulation.
          *
          * @param runId simulation run ID for chunk metadata
-         * @param totalCells total cells in environment (for BitSet allocation)
          * @param accumulatedDeltaInterval samples between accumulated deltas (must be >= 1)
          * @param snapshotInterval accumulated deltas between snapshots (must be >= 1)
          * @param chunkInterval snapshots per chunk (must be >= 1)
          * @throws IllegalArgumentException if any interval is less than 1
          */
-        public Encoder(String runId, int totalCells,
+        public Encoder(String runId,
                        int accumulatedDeltaInterval, int snapshotInterval, int chunkInterval) {
             if (accumulatedDeltaInterval < 1) {
                 throw new IllegalArgumentException("accumulatedDeltaInterval must be >= 1, got: " + accumulatedDeltaInterval);
@@ -142,8 +136,6 @@ public final class DeltaCodec {
 
             this.samplesPerSnapshot = accumulatedDeltaInterval * snapshotInterval;
             this.samplesPerChunk = samplesPerSnapshot * chunkInterval;
-
-            this.accumulatedSinceSnapshot = new BitSet(totalCells);
         }
 
         /**
@@ -154,19 +146,18 @@ public final class DeltaCodec {
          *
          * @param resumeSnapshot checkpoint snapshot (must not be null)
          * @param runId simulation run ID for chunk metadata
-         * @param totalCells total cells in environment (for BitSet allocation)
          * @param accumulatedDeltaInterval samples between accumulated deltas (must be >= 1)
          * @param snapshotInterval accumulated deltas between snapshots (must be >= 1)
          * @param chunkInterval snapshots per chunk (must be >= 1)
          * @return encoder initialized with the checkpoint snapshot
          * @throws IllegalArgumentException if resumeSnapshot is null or any interval is less than 1
          */
-        public static Encoder forResume(TickData resumeSnapshot, String runId, int totalCells,
+        public static Encoder forResume(TickData resumeSnapshot, String runId,
                                         int accumulatedDeltaInterval, int snapshotInterval, int chunkInterval) {
             if (resumeSnapshot == null) {
                 throw new IllegalArgumentException("resumeSnapshot cannot be null");
             }
-            Encoder encoder = new Encoder(runId, totalCells, accumulatedDeltaInterval, snapshotInterval, chunkInterval);
+            Encoder encoder = new Encoder(runId, accumulatedDeltaInterval, snapshotInterval, chunkInterval);
             encoder.currentSnapshot = resumeSnapshot;
             encoder.samplesSinceSnapshot = 1;  // Snapshot counts as sample 0, next tick is sample 1
             return encoder;
@@ -199,12 +190,6 @@ public final class DeltaCodec {
                 ByteString rngState,
                 List<PluginState> pluginStates) {
 
-            // Get changes since last sample
-            BitSet changedSinceLastSample = env.getChangedIndices();
-
-            // Accumulate changes for accumulated deltas
-            accumulatedSinceSnapshot.or(changedSinceLastSample);
-
             // Determine tick type
             boolean isSnapshot = (samplesSinceSnapshot == 0);
             boolean isAccumulated = !isSnapshot && (samplesSinceSnapshot % accumulatedDeltaInterval == 0);
@@ -230,12 +215,12 @@ public final class DeltaCodec {
                 }
                 currentSnapshot = snapshotBuilder.build();
 
-                accumulatedSinceSnapshot.clear();
+                env.markSnapshotTaken();
             } else if (isAccumulated) {
                 // Accumulated delta - all changes since last snapshot
                 // Note: RNG state and plugin states are only stored in snapshots (not accumulated deltas)
                 // since resume always happens from snapshot (chunk start)
-                CellDataColumns changedCells = extractCellsFromBitSet(env, accumulatedSinceSnapshot);
+                CellDataColumns changedCells = extractCellsChangedSinceSnapshot(env);
                 DeltaCapture delta = captureDelta(
                         tick, captureTimeMs, DeltaType.ACCUMULATED,
                         changedCells, organisms, totalOrganismsCreated,
@@ -244,7 +229,7 @@ public final class DeltaCodec {
                 currentDeltas.add(delta);
             } else {
                 // Incremental delta - only changes since last sample
-                CellDataColumns changedCells = extractCellsFromBitSet(env, changedSinceLastSample);
+                CellDataColumns changedCells = extractCellsChangedSinceSample(env);
                 DeltaCapture delta = captureDelta(
                         tick, captureTimeMs, DeltaType.INCREMENTAL,
                         changedCells, organisms, totalOrganismsCreated,
@@ -255,8 +240,8 @@ public final class DeltaCodec {
             
             samplesSinceSnapshot++;
 
-            // Reset change tracking for next sample
-            env.resetChangeTracking();
+            // Changes recorded so far belong to this sample
+            env.markSampleTaken();
 
             // Check if chunk is complete
             // Note: chunkInterval is a multiplier for chunk size, not "snapshots per chunk"
@@ -312,71 +297,39 @@ public final class DeltaCodec {
             currentSnapshot = null;
             currentDeltas.clear();
             samplesSinceSnapshot = 0;
-            // Note: accumulatedSinceSnapshot is cleared when new snapshot is taken
             
             return chunk;
         }
         
         /**
-         * Serializes every occupied cell, in ascending canonical index order.
-         * <p>
-         * The environment hands out its own indices in its own order; the columns carry the
-         * canonical row-major index of {@link EnvironmentProperties}, the numbering every reader of
-         * persisted tick data expects, and list the cells in that numbering's order. The persisted
-         * bytes therefore do not depend on how the environment lays out its grid in memory.
+         * Serializes every occupied cell. The environment hands the cells out under their canonical
+         * row-major index, in ascending order, so the columns do not depend on how the environment
+         * lays out its grid in memory.
          */
         private CellDataColumns extractAllCells(Environment env) {
-            collectedCount = 0;
-            env.forEachOccupiedIndex(this::collect);
-            return buildSortedByCanonicalIndex(env);
-        }
-
-        /**
-         * Serializes the cells whose environment indices are set in {@code changedIndices}, in
-         * ascending canonical index order as in {@link #extractAllCells}.
-         */
-        private CellDataColumns extractCellsFromBitSet(Environment env, BitSet changedIndices) {
-            collectedCount = 0;
-            for (int flatIndex = changedIndices.nextSetBit(0);
-                 flatIndex >= 0;
-                 flatIndex = changedIndices.nextSetBit(flatIndex + 1)) {
-                collect(flatIndex);
-            }
-            return buildSortedByCanonicalIndex(env);
-        }
-
-        /** Appends an environment index to the collection buffer, growing it when full. */
-        private void collect(int flatIndex) {
-            if (collectedCount == collected.length) {
-                collected = Arrays.copyOf(collected, Math.max(1024, collected.length * 2));
-            }
-            collected[collectedCount++] = flatIndex;
-        }
-
-        /**
-         * Emits the collected cells sorted by canonical index. Each cell is keyed by its canonical
-         * index in the upper 32 bits and its environment index in the lower 32, so one sort of the
-         * keys orders the cells and keeps the index needed to read each cell's data.
-         */
-        private CellDataColumns buildSortedByCanonicalIndex(Environment env) {
-            if (sortKeys.length < collectedCount) {
-                sortKeys = new long[Math.max(collectedCount, sortKeys.length * 2)];
-            }
-            for (int i = 0; i < collectedCount; i++) {
-                int flatIndex = collected[i];
-                sortKeys[i] = ((long) env.toCanonicalIndex(flatIndex) << 32) | (flatIndex & 0xFFFFFFFFL);
-            }
-            Arrays.sort(sortKeys, 0, collectedCount);
-
             cellColumnsBuilder.clear();
-            for (int i = 0; i < collectedCount; i++) {
-                long key = sortKeys[i];
-                int flatIndex = (int) key;
-                cellColumnsBuilder.addFlatIndices((int) (key >>> 32));
-                cellColumnsBuilder.addMoleculeData(env.getMoleculeInt(flatIndex));
-                cellColumnsBuilder.addOwnerIds(env.getOwnerIdByIndex(flatIndex));
-            }
+            env.forEachOccupiedCellInCanonicalOrder(this::addCell);
             return cellColumnsBuilder.build();
+        }
+
+        /** Serializes the cells changed since the last sample, as in {@link #extractAllCells}. */
+        private CellDataColumns extractCellsChangedSinceSample(Environment env) {
+            cellColumnsBuilder.clear();
+            env.forEachCellChangedSinceLastSample(this::addCell);
+            return cellColumnsBuilder.build();
+        }
+
+        /** Serializes the cells changed since the last snapshot, as in {@link #extractAllCells}. */
+        private CellDataColumns extractCellsChangedSinceSnapshot(Environment env) {
+            cellColumnsBuilder.clear();
+            env.forEachCellChangedSinceLastSnapshot(this::addCell);
+            return cellColumnsBuilder.build();
+        }
+
+        private void addCell(int canonicalIndex, int moleculeInt, int ownerId) {
+            cellColumnsBuilder.addFlatIndices(canonicalIndex);
+            cellColumnsBuilder.addMoleculeData(moleculeInt);
+            cellColumnsBuilder.addOwnerIds(ownerId);
         }
     }
     

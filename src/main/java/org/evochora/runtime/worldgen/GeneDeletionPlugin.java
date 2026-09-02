@@ -4,7 +4,6 @@ import java.util.Arrays;
 
 import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
-import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
@@ -47,7 +46,7 @@ public class GeneDeletionPlugin implements IBirthHandler {
     private final double countExponent;
 
     // Reusable collections (cleared before each use)
-    private final IntArrayList labelFlatIndices = new IntArrayList();
+    private final IntArrayList labelCanonicalIndices = new IntArrayList();
     private final IntArrayList labelHashes = new IntArrayList();
     private final Int2IntOpenHashMap hashCounts = new Int2IntOpenHashMap();
 
@@ -103,29 +102,28 @@ public class GeneDeletionPlugin implements IBirthHandler {
      */
     void delete(Organism child, Environment env) {
         int childId = child.getId();
-        IntOpenHashSet owned = env.getCellsOwnedBy(childId);
-        if (owned == null || owned.isEmpty()) {
+        if (env.countCellsOwnedBy(childId) == 0) {
             LOG.debug("tick={} Organism {} gene deletion: no owned cells", child.getBirthTick(), childId);
             return;
         }
 
         // --- Phase 1: Collect all labels and count hash frequencies ---
-        labelFlatIndices.clear();
+        labelCanonicalIndices.clear();
         labelHashes.clear();
         hashCounts.clear();
 
         // Canonical (index) order: the choice below must not depend on write history
-        env.forEachCellOwnedByInCanonicalOrder(childId, (int flatIndex) -> {
-            int moleculeInt = env.getMoleculeInt(flatIndex);
+        env.visitCellsOwnedBy(childId, cell -> {
+            int moleculeInt = cell.moleculeInt();
             if ((moleculeInt & Config.TYPE_MASK) == Config.TYPE_LABEL) {
                 int hash = moleculeInt & Config.VALUE_MASK;
-                labelFlatIndices.add(flatIndex);
+                labelCanonicalIndices.add(env.properties.toFlatIndex(cell.coordinate()));
                 labelHashes.add(hash);
                 hashCounts.addTo(hash, 1);
             }
         });
 
-        if (labelFlatIndices.isEmpty()) {
+        if (labelCanonicalIndices.isEmpty()) {
             LOG.debug("tick={} Organism {} selected for deletion but has no labels", child.getBirthTick(), childId);
             return;
         }
@@ -134,7 +132,7 @@ public class GeneDeletionPlugin implements IBirthHandler {
         double totalWeight = 0.0;
         int selectedIdx = 0;
 
-        for (int i = 0; i < labelFlatIndices.size(); i++) {
+        for (int i = 0; i < labelCanonicalIndices.size(); i++) {
             int hash = labelHashes.getInt(i);
             double weight = Math.pow(hashCounts.get(hash), countExponent);
             totalWeight += weight;
@@ -144,8 +142,8 @@ public class GeneDeletionPlugin implements IBirthHandler {
         }
 
         // --- Phase 3: Walk & Delete ---
-        int selectedFlatIndex = labelFlatIndices.getInt(selectedIdx);
-        int[] pos = env.getCoordinateFromIndex(selectedFlatIndex);
+        int selectedCanonicalIndex = labelCanonicalIndices.getInt(selectedIdx);
+        int[] pos = env.properties.flatIndexToCoordinates(selectedCanonicalIndex);
         int[] dv = child.getDv();
 
         // Find DV dimension for safety limit
@@ -193,7 +191,7 @@ public class GeneDeletionPlugin implements IBirthHandler {
         }
 
         if (LOG.isDebugEnabled()) {
-            int[] labelPos = env.getCoordinateFromIndex(selectedFlatIndex);
+            int[] labelPos = env.properties.flatIndexToCoordinates(selectedCanonicalIndex);
             LOG.debug("tick={} Organism {} gene deletion: removed {} molecules from label hash {} at {}",
                     child.getBirthTick(), childId, deletedCount, labelHashes.getInt(selectedIdx), Arrays.toString(labelPos));
         }

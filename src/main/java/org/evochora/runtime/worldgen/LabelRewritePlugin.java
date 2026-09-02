@@ -1,7 +1,6 @@
 package org.evochora.runtime.worldgen;
 
 import java.util.Random;
-import java.util.function.IntConsumer;
 
 import org.evochora.runtime.Config;
 import org.evochora.runtime.model.Environment;
@@ -13,7 +12,6 @@ import org.evochora.runtime.spi.IRandomProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
 
 /**
  * Birth handler that gives each newborn organism a unique label namespace by XOR-rewriting
@@ -86,8 +84,7 @@ public class LabelRewritePlugin implements IBirthHandler {
      */
     @Override
     public void onBirth(Organism child, Environment environment) {
-        IntOpenHashSet owned = environment.getCellsOwnedBy(child.getId());
-        if (owned == null || owned.isEmpty()) {
+        if (environment.countCellsOwnedBy(child.getId()) == 0) {
             LOG.debug("tick={} Organism {} label rewrite: no owned cells", child.getBirthTick(), child.getId());
             return;
         }
@@ -95,15 +92,15 @@ public class LabelRewritePlugin implements IBirthHandler {
         int mask = random.nextInt(LABEL_HASH_MASK) + 1; // [1, 0x7FFFF], never zero
         final int[] rewriteCount = {0};
 
-        owned.forEach((IntConsumer) flatIndex -> {
-            int moleculeInt = environment.getMoleculeInt(flatIndex);
+        environment.visitCellsOwnedBy(child.getId(), cell -> {
+            int moleculeInt = cell.moleculeInt();
             int type = moleculeInt & Config.TYPE_MASK;
 
             if (type == Config.TYPE_LABEL || type == Config.TYPE_LABELREF) {
                 int oldValue = moleculeInt & Config.VALUE_MASK;
                 int newValue = oldValue ^ mask;
                 int marker = (moleculeInt & Config.MARKER_MASK) >>> Config.MARKER_SHIFT;
-                environment.setMoleculeByIndex(flatIndex, new Molecule(type, newValue, marker));
+                cell.setMolecule(new Molecule(type, newValue, marker));
                 rewriteCount[0]++;
             }
         });

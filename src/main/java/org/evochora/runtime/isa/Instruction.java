@@ -413,17 +413,17 @@ public abstract class Instruction {
      */
     protected int[] resolveLabelTarget(int labelHash, int[] callerCoords,
                                        Organism organism, Environment environment) {
-        int targetFlatIndex = environment.getLabelIndex().findTarget(
+        int targetCanonicalIndex = environment.getLabelIndex().findTarget(
                 labelHash,
                 organism.getId(),
                 callerCoords,
                 environment,
                 organism.getRandom()
         );
-        if (targetFlatIndex < 0) {
+        if (targetCanonicalIndex < 0) {
             return null;
         }
-        return environment.getCoordinateFromIndex(targetFlatIndex);
+        return environment.getProperties().flatIndexToCoordinates(targetCanonicalIndex);
     }
 
     /**

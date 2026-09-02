@@ -39,7 +39,7 @@ public interface ILabelMatchingStrategy {
      *               randomness a strategy may use, so that a stochastic choice depends on the
      *               calling organism alone and never on which thread performs the lookup.
      *               Must not be null.
-     * @return The flat index of the best matching label, or -1 if no match found
+     * @return The canonical index of the best matching label, or -1 if no match found
      */
     int findTarget(int searchValue, int codeOwner, int[] callerCoords, Environment environment,
                    OrganismRandom random);
@@ -60,9 +60,9 @@ public interface ILabelMatchingStrategy {
      * Removes a label entry from the index.
      *
      * @param labelValue The label's value (20-bit hash)
-     * @param flatIndex The flat index of the label to remove
+     * @param canonicalIndex The canonical index of the label to remove
      */
-    void removeLabel(int labelValue, int flatIndex);
+    void removeLabel(int labelValue, int canonicalIndex);
 
     /**
      * Updates the owner of a label entry.
@@ -70,10 +70,10 @@ public interface ILabelMatchingStrategy {
      * Called when ownership is transferred (e.g., during FORK).
      *
      * @param labelValue The label's value (20-bit hash)
-     * @param flatIndex The flat index of the label
+     * @param canonicalIndex The canonical index of the label
      * @param newOwner The new owner ID
      */
-    void updateOwner(int labelValue, int flatIndex, int newOwner);
+    void updateOwner(int labelValue, int canonicalIndex, int newOwner);
 
     /**
      * Updates the marker of a label entry.
@@ -81,10 +81,10 @@ public interface ILabelMatchingStrategy {
      * Called when the marker changes (e.g., set during copy, cleared after FORK).
      *
      * @param labelValue The label's value (20-bit hash)
-     * @param flatIndex The flat index of the label
+     * @param canonicalIndex The canonical index of the label
      * @param newMarker The new marker value
      */
-    void updateMarker(int labelValue, int flatIndex, int newMarker);
+    void updateMarker(int labelValue, int canonicalIndex, int newMarker);
 
     /**
      * Gets all labels that match the search value within tolerance.

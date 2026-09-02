@@ -1,7 +1,6 @@
 package org.evochora.runtime.worldgen;
 
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
-import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.isa.Instruction.OperandSource;
@@ -173,7 +172,7 @@ public class GeneInsertionPlugin implements IBirthHandler {
         /** Maximum DV-dimension coordinate on this scan line. */
         int maxDv;
         /** Any flat index on this scan line, for coordinate reconstruction. */
-        int sampleFlatIndex;
+        int sampleCanonicalIndex;
         /** Number of owned cells on this scan line. */
         int count;
         /** Start of the shortest arc containing all owned cells (inclusive). */
@@ -185,12 +184,12 @@ public class GeneInsertionPlugin implements IBirthHandler {
          * Resets this info for a new scan line.
          *
          * @param dvCoord The DV-dimension coordinate of the first cell seen.
-         * @param flatIndex The flat index of the first cell seen.
+         * @param canonicalIndex The canonical index of the first cell seen.
          */
-        void reset(int dvCoord, int flatIndex) {
+        void reset(int dvCoord, int canonicalIndex) {
             this.minDv = dvCoord;
             this.maxDv = dvCoord;
-            this.sampleFlatIndex = flatIndex;
+            this.sampleCanonicalIndex = canonicalIndex;
             this.count = 1;
         }
 
@@ -401,8 +400,7 @@ public class GeneInsertionPlugin implements IBirthHandler {
      */
     void mutate(Organism child, Environment env) {
         int childId = child.getId();
-        IntOpenHashSet owned = env.getCellsOwnedBy(childId);
-        if (owned == null || owned.isEmpty()) {
+        if (env.countCellsOwnedBy(childId) == 0) {
             LOG.debug("tick={} Organism {} gene insertion: no owned cells", child.getBirthTick(), childId);
             return;
         }
@@ -419,7 +417,7 @@ public class GeneInsertionPlugin implements IBirthHandler {
         ensureBuffers(dims);
         computePerpStrides(shape, dims, dvDim);
         buildScanLines(childId, env, dvDim);
-        resolveWalkRanges(owned, env, dvDim, shape[dvDim]);
+        resolveWalkRanges(childId, env, dvDim, shape[dvDim]);
 
         MutationEntry entry = selectEntry();
         chainBuffer.clear();
@@ -448,7 +446,7 @@ public class GeneInsertionPlugin implements IBirthHandler {
         }
         placeChain(env, childId, dvDim, dvStep, shape[dvDim]);
         if (LOG.isDebugEnabled()) {
-            env.getCoordinateFromIndex(selectedNopScanLine.sampleFlatIndex, coordBuffer);
+            env.properties.flatIndexToCoordinates(selectedNopScanLine.sampleCanonicalIndex, coordBuffer);
             coordBuffer[dvDim] = selectedNopDvStart;
             LOG.debug("tick={} Organism {} gene insertion: placed {} molecules at {}",
                     child.getBirthTick(), childId, chainBuffer.size(), Arrays.toString(coordBuffer));
@@ -622,8 +620,8 @@ public class GeneInsertionPlugin implements IBirthHandler {
         final int dvDimFinal = dvDim;
 
         // Canonical (index) order: the choice below must not depend on write history
-        env.forEachCellOwnedByInCanonicalOrder(childId, (int flatIndex) -> {
-            env.getCoordinateFromIndex(flatIndex, coordBuffer);
+        env.visitCellsOwnedBy(childId, cell -> {
+            System.arraycopy(cell.coordinate(), 0, coordBuffer, 0, coordBuffer.length);
 
             int perpKey = computePerpKey(coordBuffer, dvDimFinal);
             int dvCoord = coordBuffer[dvDimFinal];
@@ -631,14 +629,14 @@ public class GeneInsertionPlugin implements IBirthHandler {
             ScanLineInfo line = scanLineMap.get(perpKey);
             if (line == null) {
                 line = acquireFromPool();
-                line.reset(dvCoord, flatIndex);
+                line.reset(dvCoord, env.properties.toFlatIndex(coordBuffer));
                 scanLineMap.put(perpKey, line);
             } else {
                 line.update(dvCoord);
             }
 
             // Concurrent reservoir sampling for label hashes
-            int moleculeInt = env.getMoleculeInt(flatIndex);
+            int moleculeInt = cell.moleculeInt();
             if ((moleculeInt & Config.TYPE_MASK) == Config.TYPE_LABEL) {
                 reservoirLabelCount++;
                 if (random.nextInt(reservoirLabelCount) == 0) {
@@ -662,7 +660,7 @@ public class GeneInsertionPlugin implements IBirthHandler {
      * @param dvDim The DV dimension index.
      * @param shapeDvDim The environment size along the DV dimension.
      */
-    private void resolveWalkRanges(IntOpenHashSet owned, Environment env, int dvDim, int shapeDvDim) {
+    private void resolveWalkRanges(int childId, Environment env, int dvDim, int shapeDvDim) {
         boolean anyWrapping = false;
         for (ScanLineInfo line : scanLineMap.values()) {
             line.walkStart = line.minDv;
@@ -688,8 +686,8 @@ public class GeneInsertionPlugin implements IBirthHandler {
             final int targetPK = perpKey;
             final int[] idx = {0};
 
-            owned.forEach((int flatIndex) -> {
-                env.getCoordinateFromIndex(flatIndex, coordBuffer);
+            env.visitCellsOwnedBy(childId, cell -> {
+                System.arraycopy(cell.coordinate(), 0, coordBuffer, 0, coordBuffer.length);
                 if (computePerpKey(coordBuffer, dvDimF) == targetPK) {
                     dvCoordCollector[idx[0]++] = coordBuffer[dvDimF];
                 }
@@ -750,7 +748,7 @@ public class GeneInsertionPlugin implements IBirthHandler {
         nopCandidateCount = 0;
 
         for (ScanLineInfo line : scanLineMap.values()) {
-            env.getCoordinateFromIndex(line.sampleFlatIndex, coordBuffer);
+            env.properties.flatIndexToCoordinates(line.sampleCanonicalIndex, coordBuffer);
 
             int arcLength = (line.walkEnd >= line.walkStart)
                     ? line.walkEnd - line.walkStart + 1
@@ -762,8 +760,7 @@ public class GeneInsertionPlugin implements IBirthHandler {
 
             for (int step = 0; step < arcLength; step++) {
                 coordBuffer[dvDim] = dvPos;
-                int flatIdx = env.getIndexFromCoordinate(coordBuffer);
-                int moleculeInt = env.getMoleculeInt(flatIdx);
+                int moleculeInt = env.getMoleculeIntAt(coordBuffer);
 
                 if (moleculeInt == 0) {
                     if (nopRunStart == -1) {
@@ -810,7 +807,7 @@ public class GeneInsertionPlugin implements IBirthHandler {
      * @param shapeDvDim The environment size along the DV dimension.
      */
     private void placeChain(Environment env, int childId, int dvDim, int dvStep, int shapeDvDim) {
-        env.getCoordinateFromIndex(selectedNopScanLine.sampleFlatIndex, walkPos);
+        env.properties.flatIndexToCoordinates(selectedNopScanLine.sampleCanonicalIndex, walkPos);
         walkPos[dvDim] = selectedNopDvStart;
 
         for (Molecule mol : chainBuffer) {

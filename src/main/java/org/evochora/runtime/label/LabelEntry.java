@@ -5,22 +5,21 @@ package org.evochora.runtime.label;
  * <p>
  * A label entry contains all information needed for fuzzy jump matching:
  * <ul>
- *   <li>{@code flatIndex}: The flat grid index where the label is located</li>
- *   <li>{@code canonicalIndex}: The canonical (persisted, row-major) index of the same cell; the
- *       index candidate lists are ordered by, so that candidate order does not depend on the
- *       grid's memory layout</li>
+ *   <li>{@code canonicalIndex}: The canonical (persisted, row-major) index of the cell holding
+ *       the label, a pure function of its coordinate; candidate lists are ordered by it, so that
+ *       candidate order does not depend on the grid's memory layout</li>
  *   <li>{@code owner}: The owner ID of the cell containing the label</li>
  *   <li>{@code marker}: The marker value (non-zero indicates transfer-in-progress)</li>
  * </ul>
  * <p>
- * The position can be reconstructed from flatIndex using {@code Environment.getCoordinateFromIndex()}.
+ * The position can be reconstructed from the canonical index with
+ * {@code EnvironmentProperties.flatIndexToCoordinates()}.
  *
- * @param flatIndex The flat index in the environment grid
- * @param canonicalIndex The canonical index of the same cell, see {@code Environment.toCanonicalIndex}
+ * @param canonicalIndex The canonical index of the cell holding the label
  * @param owner The owner ID of the cell
  * @param marker The marker value (0 = normal, non-zero = transfer marker)
  */
-public record LabelEntry(int flatIndex, int canonicalIndex, int owner, int marker) {
+public record LabelEntry(int canonicalIndex, int owner, int marker) {
 
     /**
      * Checks if this label is considered "foreign" relative to a given code owner.

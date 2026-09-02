@@ -14,7 +14,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
-import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
 
 /**
  * Gene duplication birth handler inspired by Ohno's (1970) model of evolution through gene duplication.
@@ -71,7 +70,7 @@ public class GeneDuplicationPlugin implements IBirthHandler {
         /** Maximum DV-dimension coordinate on this scan line. */
         int maxDv;
         /** Any flat index on this scan line, for coordinate reconstruction. */
-        int sampleFlatIndex;
+        int sampleCanonicalIndex;
         /** Number of owned cells on this scan line. */
         int count;
         /** Start of the shortest arc containing all owned cells (inclusive). */
@@ -87,12 +86,12 @@ public class GeneDuplicationPlugin implements IBirthHandler {
          * Resets this info for a new scan line.
          *
          * @param dvCoord The DV-dimension coordinate of the first cell seen.
-         * @param flatIndex The flat index of the first cell seen.
+         * @param canonicalIndex The canonical index of the first cell seen.
          */
-        void reset(int dvCoord, int flatIndex) {
+        void reset(int dvCoord, int canonicalIndex) {
             this.minDv = dvCoord;
             this.maxDv = dvCoord;
-            this.sampleFlatIndex = flatIndex;
+            this.sampleCanonicalIndex = canonicalIndex;
             this.count = 1;
             this.bestNopStart = -1;
             this.bestNopLength = 0;
@@ -162,8 +161,7 @@ public class GeneDuplicationPlugin implements IBirthHandler {
      */
     void duplicate(Organism child, Environment env) {
         int childId = child.getId();
-        IntOpenHashSet owned = env.getCellsOwnedBy(childId);
-        if (owned == null || owned.isEmpty()) {
+        if (env.countCellsOwnedBy(childId) == 0) {
             LOG.debug("tick={} Organism {} selected for duplication but has no owned cells", child.getBirthTick(), childId);
             return;
         }
@@ -199,8 +197,8 @@ public class GeneDuplicationPlugin implements IBirthHandler {
         final int dvDimFinal = dvDim;
 
         // Canonical (index) order: the reservoir choice below must not depend on write history
-        env.forEachCellOwnedByInCanonicalOrder(childId, (int flatIndex) -> {
-            env.getCoordinateFromIndex(flatIndex, coordBuffer);
+        env.visitCellsOwnedBy(childId, cell -> {
+            System.arraycopy(cell.coordinate(), 0, coordBuffer, 0, coordBuffer.length);
 
             int perpKey = computePerpKey(coordBuffer, dvDimFinal);
             int dvCoord = coordBuffer[dvDimFinal];
@@ -208,14 +206,14 @@ public class GeneDuplicationPlugin implements IBirthHandler {
             ScanLineInfo scanLine = scanLineMap.get(perpKey);
             if (scanLine == null) {
                 scanLine = acquireFromPool();
-                scanLine.reset(dvCoord, flatIndex);
+                scanLine.reset(dvCoord, env.properties.toFlatIndex(coordBuffer));
                 scanLineMap.put(perpKey, scanLine);
             } else {
                 scanLine.update(dvCoord);
             }
 
             // Reservoir sampling for label selection
-            int moleculeInt = env.getMoleculeInt(flatIndex);
+            int moleculeInt = cell.moleculeInt();
             if ((moleculeInt & Config.TYPE_MASK) == Config.TYPE_LABEL) {
                 labelState[2]++;
                 if (random.nextInt(labelState[2]) == 0) {
@@ -225,12 +223,12 @@ public class GeneDuplicationPlugin implements IBirthHandler {
             }
         });
 
-        resolveWalkRanges(owned, env, dvDimFinal, shape[dvDimFinal]);
+        resolveWalkRanges(childId, env, dvDimFinal, shape[dvDimFinal]);
 
         int labelCount = labelState[2];
         if (labelCount == 0) {
             LOG.debug("tick={} Organism {} selected for duplication: {} owned cells, {} scan lines, 0 labels — skipping",
-                    child.getBirthTick(), childId, owned.size(), scanLineMap.size());
+                    child.getBirthTick(), childId, env.countCellsOwnedBy(childId), scanLineMap.size());
             return; // no labels found
         }
 
@@ -240,7 +238,7 @@ public class GeneDuplicationPlugin implements IBirthHandler {
         // --- Step 3: Scan ALL scan lines for NOP areas ---
         int candidateCount = 0;
         for (ScanLineInfo line : scanLineMap.values()) {
-            env.getCoordinateFromIndex(line.sampleFlatIndex, coordBuffer);
+            env.properties.flatIndexToCoordinates(line.sampleCanonicalIndex, coordBuffer);
             findBestNopRun(line, env, dvDimFinal, shape[dvDimFinal]);
             if (line.bestNopLength >= minNopSize) {
                 candidateCount++;
@@ -287,11 +285,11 @@ public class GeneDuplicationPlugin implements IBirthHandler {
 
         // --- Step 5: Copy ---
         // Build source position from label's scan line
-        env.getCoordinateFromIndex(labelLine.sampleFlatIndex, sourcePos);
+        env.properties.flatIndexToCoordinates(labelLine.sampleCanonicalIndex, sourcePos);
         sourcePos[dvDimFinal] = selectedLabelDvCoord;
 
         // Build target position from target scan line, adjusting start for DV direction
-        env.getCoordinateFromIndex(targetLine.sampleFlatIndex, targetPos);
+        env.properties.flatIndexToCoordinates(targetLine.sampleCanonicalIndex, targetPos);
         if (dvStep < 0) {
             targetPos[dvDimFinal] = (targetLine.bestNopStart + copyLength - 1) % shapeDvDim;
         } else {
@@ -299,8 +297,7 @@ public class GeneDuplicationPlugin implements IBirthHandler {
         }
 
         for (int i = 0; i < copyLength; i++) {
-            int srcFlatIdx = env.getIndexFromCoordinate(sourcePos);
-            int srcMoleculeInt = env.getMoleculeInt(srcFlatIdx);
+            int srcMoleculeInt = env.getMoleculeIntAt(sourcePos);
             Molecule molecule = Molecule.fromInt(srcMoleculeInt);
             int ownerId = (srcMoleculeInt == 0) ? 0 : childId;
             env.setMolecule(molecule, ownerId, targetPos);
@@ -323,9 +320,9 @@ public class GeneDuplicationPlugin implements IBirthHandler {
         }
 
         if (LOG.isDebugEnabled()) {
-            env.getCoordinateFromIndex(labelLine.sampleFlatIndex, sourcePos);
+            env.properties.flatIndexToCoordinates(labelLine.sampleCanonicalIndex, sourcePos);
             sourcePos[dvDimFinal] = selectedLabelDvCoord;
-            env.getCoordinateFromIndex(targetLine.sampleFlatIndex, targetPos);
+            env.properties.flatIndexToCoordinates(targetLine.sampleCanonicalIndex, targetPos);
             targetPos[dvDimFinal] = (dvStep < 0)
                     ? (targetLine.bestNopStart + copyLength - 1) % shapeDvDim
                     : targetLine.bestNopStart;
@@ -388,8 +385,8 @@ public class GeneDuplicationPlugin implements IBirthHandler {
      * <p>
      * Walks along the scan line's shortest arc ({@link ScanLineInfo#walkStart} to
      * {@link ScanLineInfo#walkEnd}), correctly handling toroidal wrapping.
-     * Uses the shared coordBuffer (caller must have initialized it via getCoordinateFromIndex
-     * with the scan line's sampleFlatIndex before calling).
+     * Uses the shared coordBuffer (caller must have initialized it via flatIndexToCoordinates
+     * with the scan line's sampleCanonicalIndex before calling).
      *
      * @param line The scan line to scan.
      * @param env The simulation environment.
@@ -409,8 +406,7 @@ public class GeneDuplicationPlugin implements IBirthHandler {
         int dvPos = line.walkStart;
         for (int step = 0; step < arcLength; step++) {
             coordBuffer[dvDim] = dvPos;
-            int flatIdx = env.getIndexFromCoordinate(coordBuffer);
-            int moleculeInt = env.getMoleculeInt(flatIdx);
+            int moleculeInt = env.getMoleculeIntAt(coordBuffer);
 
             if (moleculeInt == 0) {
                 if (nopRunStart == -1) {
@@ -449,7 +445,7 @@ public class GeneDuplicationPlugin implements IBirthHandler {
      * @param dvDim The DV dimension index.
      * @param shapeDvDim The environment size along the DV dimension.
      */
-    private void resolveWalkRanges(IntOpenHashSet owned, Environment env, int dvDim, int shapeDvDim) {
+    private void resolveWalkRanges(int childId, Environment env, int dvDim, int shapeDvDim) {
         boolean anyWrapping = false;
         for (ScanLineInfo line : scanLineMap.values()) {
             line.walkStart = line.minDv;
@@ -475,8 +471,8 @@ public class GeneDuplicationPlugin implements IBirthHandler {
             final int targetPK = perpKey;
             final int[] idx = {0};
 
-            owned.forEach((int flatIndex) -> {
-                env.getCoordinateFromIndex(flatIndex, coordBuffer);
+            env.visitCellsOwnedBy(childId, cell -> {
+                System.arraycopy(cell.coordinate(), 0, coordBuffer, 0, coordBuffer.length);
                 if (computePerpKey(coordBuffer, dvDimF) == targetPK) {
                     dvCoordCollector[idx[0]++] = coordBuffer[dvDimF];
                 }

@@ -6,7 +6,6 @@ import java.util.Random;
 
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
-import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.isa.OpcodeId;
@@ -190,20 +189,20 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
      */
     void substitute(Organism child, Environment env) {
         int childId = child.getId();
-        IntOpenHashSet owned = env.getCellsOwnedBy(childId);
-        if (owned == null || owned.isEmpty()) {
+        if (env.countCellsOwnedBy(childId) == 0) {
             LOG.debug("tick={} Organism {} gene substitution: no owned cells", child.getBirthTick(), childId);
             return;
         }
 
         // Weighted reservoir sampling — state captured via arrays for lambda
-        // [0]=flatIndex, [1]=type (shifted), [2]=raw value, [3]=marker
-        final int[] state = {-1, 0, 0, 0};
+        // [0]=1 once a cell is chosen, [1]=type (shifted), [2]=raw value, [3]=marker
+        final int[] state = {0, 0, 0, 0};
+        final int[] chosen = new int[env.getShape().length];
         final double[] ws = {0.0};
 
         // Canonical (index) order: the reservoir choice below must not depend on write history
-        env.forEachCellOwnedByInCanonicalOrder(childId, (int flatIndex) -> {
-            int moleculeInt = env.getMoleculeInt(flatIndex);
+        env.visitCellsOwnedBy(childId, cell -> {
+            int moleculeInt = cell.moleculeInt();
             if (moleculeInt == 0) {
                 return; // empty cell
             }
@@ -217,14 +216,15 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
             }
             ws[0] += w;
             if (random.nextDouble() * ws[0] < w) {
-                state[0] = flatIndex;
+                state[0] = 1;
+                System.arraycopy(cell.coordinate(), 0, chosen, 0, chosen.length);
                 state[1] = moleculeInt & Config.TYPE_MASK;
                 state[2] = moleculeInt & Config.VALUE_MASK;
                 state[3] = (moleculeInt & Config.MARKER_MASK) >>> Config.MARKER_SHIFT;
             }
         });
 
-        if (state[0] == -1) {
+        if (state[0] == 0) {
             LOG.debug("tick={} Organism {} gene substitution: no mutable molecules", child.getBirthTick(), childId);
             return;
         }
@@ -252,14 +252,14 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
             return;
         }
 
-        env.setMoleculeByIndex(state[0], new Molecule(selectedType, newValue, state[3]));
+        env.setMoleculeAt(chosen, new Molecule(selectedType, newValue, state[3]));
 
         if (LOG.isDebugEnabled()) {
             String typeName = typeNameForLog(selectedType);
-            LOG.debug("tick={} Organism {} gene substitution: {}:{}->{} at flatIndex={}",
+            LOG.debug("tick={} Organism {} gene substitution: {}:{}->{} at {}",
                     child.getBirthTick(), childId, typeName,
                     displayValueForLog(selectedType, selectedRawValue),
-                    displayValueForLog(selectedType, newValue), state[0]);
+                    displayValueForLog(selectedType, newValue), java.util.Arrays.toString(chosen));
         }
     }
 

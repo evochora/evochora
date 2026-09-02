@@ -22,7 +22,7 @@ import java.util.Collection;
  * LabelIndex index = new LabelIndex();
  *
  * // Called by Environment.setMolecule() when a LABEL is placed
- * index.onMoleculeSet(flatIndex, canonicalIndex, oldMolecule, newMolecule, owner);
+ * index.onMoleculeSet(canonicalIndex, oldMolecule, newMolecule, owner);
  *
  * // Called by ControlFlowInstruction to find jump target
  * int targetIndex = index.findTarget(labelValue, codeOwner, callerCoords, environment, organism.getRandom());
@@ -80,19 +80,19 @@ public class LabelIndex {
      *   <li>If new molecule is LABEL: add to index</li>
      * </ul>
      *
-     * @param flatIndex The flat index of the cell
+     * @param canonicalIndex The flat index of the cell
      * @param oldMoleculeInt The old molecule's packed integer value (0 if cell was empty)
      * @param newMoleculeInt The new molecule's packed integer value
      * @param owner The owner ID of the cell
      */
-    public void onMoleculeSet(int flatIndex, int canonicalIndex, int oldMoleculeInt, int newMoleculeInt, int owner) {
+    public void onMoleculeSet(int canonicalIndex, int oldMoleculeInt, int newMoleculeInt, int owner) {
         int oldType = oldMoleculeInt & Config.TYPE_MASK;
         int newType = newMoleculeInt & Config.TYPE_MASK;
 
         // Remove old LABEL if present
         if (oldType == Config.TYPE_LABEL) {
             int oldValue = oldMoleculeInt & Config.VALUE_MASK;
-            strategy.removeLabel(oldValue, flatIndex);
+            strategy.removeLabel(oldValue, canonicalIndex);
         }
 
         // Add new LABEL if present
@@ -100,7 +100,7 @@ public class LabelIndex {
             int newValue = newMoleculeInt & Config.VALUE_MASK;
             // Use unsigned shift (>>>) to avoid sign-extension when bit 31 is set (marker >= 8)
             int marker = (newMoleculeInt & Config.MARKER_MASK) >>> Config.MARKER_SHIFT;
-            LabelEntry entry = new LabelEntry(flatIndex, canonicalIndex, owner, marker);
+            LabelEntry entry = new LabelEntry(canonicalIndex, owner, marker);
             strategy.addLabel(newValue, entry);
         }
     }
@@ -110,15 +110,15 @@ public class LabelIndex {
      * <p>
      * If the cell contains a LABEL molecule, updates the index entry.
      *
-     * @param flatIndex The flat index of the cell
+     * @param canonicalIndex The flat index of the cell
      * @param moleculeInt The molecule's packed integer value
      * @param newOwner The new owner ID
      */
-    public void onOwnerChange(int flatIndex, int moleculeInt, int newOwner) {
+    public void onOwnerChange(int canonicalIndex, int moleculeInt, int newOwner) {
         int type = moleculeInt & Config.TYPE_MASK;
         if (type == Config.TYPE_LABEL) {
             int value = moleculeInt & Config.VALUE_MASK;
-            strategy.updateOwner(value, flatIndex, newOwner);
+            strategy.updateOwner(value, canonicalIndex, newOwner);
         }
     }
 
@@ -127,16 +127,16 @@ public class LabelIndex {
      * <p>
      * If the cell contains a LABEL molecule, updates the index entry.
      *
-     * @param flatIndex The flat index of the cell
+     * @param canonicalIndex The flat index of the cell
      * @param moleculeInt The molecule's packed integer value (with new marker already set)
      */
-    public void onMarkerChange(int flatIndex, int moleculeInt) {
+    public void onMarkerChange(int canonicalIndex, int moleculeInt) {
         int type = moleculeInt & Config.TYPE_MASK;
         if (type == Config.TYPE_LABEL) {
             int value = moleculeInt & Config.VALUE_MASK;
             // Use unsigned shift (>>>) to avoid sign-extension when bit 31 is set (marker >= 8)
             int marker = (moleculeInt & Config.MARKER_MASK) >>> Config.MARKER_SHIFT;
-            strategy.updateMarker(value, flatIndex, marker);
+            strategy.updateMarker(value, canonicalIndex, marker);
         }
     }
 

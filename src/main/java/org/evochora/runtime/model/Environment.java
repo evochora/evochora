@@ -269,6 +269,15 @@ public class Environment implements IEnvironmentReader {
     }
 
     /**
+     * @param ownerId an organism id
+     * @return how many cells that organism owns, {@code 0} if none
+     */
+    public int countCellsOwnedBy(int ownerId) {
+        IntOpenHashSet owned = cellsByOwner.get(ownerId);
+        return owned == null ? 0 : owned.size();
+    }
+
+    /**
      * Hands every cell owned by {@code ownerId} to the visitor through a {@link CellView}, in
      * ascending canonical order — an order determined by the cells' coordinates alone, independent
      * of write history and of how the grid is laid out in memory. This is the owned-cell access for
@@ -359,7 +368,7 @@ public class Environment implements IEnvironmentReader {
 
             // Update label index for fuzzy jump matching
             int owner = this.ownerGrid[index];
-            labelIndex.onMoleculeSet(index, toCanonicalIndex(index), oldMoleculeInt, newMoleculeInt, owner);
+            labelIndex.onMoleculeSet(toCanonicalIndex(index), oldMoleculeInt, newMoleculeInt, owner);
 
             // Update sparse cell tracking if enabled
             updateOccupiedIndices(index);
@@ -397,7 +406,7 @@ public class Environment implements IEnvironmentReader {
         this.ownerGrid[index] = ownerId;
 
         // Update label index for fuzzy jump matching
-        labelIndex.onMoleculeSet(index, toCanonicalIndex(index), oldMoleculeInt, newMoleculeInt, ownerId);
+        labelIndex.onMoleculeSet(toCanonicalIndex(index), oldMoleculeInt, newMoleculeInt, ownerId);
 
         // Update sparse cell tracking if enabled
         updateOccupiedIndices(index);
@@ -435,7 +444,7 @@ public class Environment implements IEnvironmentReader {
 
                 // Update label index for fuzzy jump matching
                 int moleculeInt = this.grid[index];
-                labelIndex.onOwnerChange(index, moleculeInt, ownerId);
+                labelIndex.onOwnerChange(toCanonicalIndex(index), moleculeInt, ownerId);
             }
             this.ownerGrid[index] = ownerId;
 
@@ -781,7 +790,7 @@ public class Environment implements IEnvironmentReader {
 
         // Update label index for fuzzy jump matching
         int owner = this.ownerGrid[flatIndex];
-        labelIndex.onMoleculeSet(flatIndex, toCanonicalIndex(flatIndex), oldMoleculeInt, newMoleculeInt, owner);
+        labelIndex.onMoleculeSet(toCanonicalIndex(flatIndex), oldMoleculeInt, newMoleculeInt, owner);
 
         // Update sparse cell tracking if enabled
         updateOccupiedIndices(flatIndex);
@@ -835,8 +844,8 @@ public class Environment implements IEnvironmentReader {
             toSet.add(flatIndex);
             // Update label index: owner changed and marker reset to 0
             int moleculeInt = grid[flatIndex];
-            labelIndex.onOwnerChange(flatIndex, moleculeInt, toOwnerId);
-            labelIndex.onMarkerChange(flatIndex, moleculeInt);
+            labelIndex.onOwnerChange(toCanonicalIndex(flatIndex), moleculeInt, toOwnerId);
+            labelIndex.onMarkerChange(toCanonicalIndex(flatIndex), moleculeInt);
             // An empty cell handed to "nobody" leaves the occupied set
             updateOccupiedIndices(flatIndex);
         }
@@ -873,8 +882,8 @@ public class Environment implements IEnvironmentReader {
             markChanged(flatIndex);
             // Update label index: owner cleared and marker reset to 0
             int moleculeInt = grid[flatIndex];
-            labelIndex.onOwnerChange(flatIndex, moleculeInt, 0);
-            labelIndex.onMarkerChange(flatIndex, moleculeInt);
+            labelIndex.onOwnerChange(toCanonicalIndex(flatIndex), moleculeInt, 0);
+            labelIndex.onMarkerChange(toCanonicalIndex(flatIndex), moleculeInt);
             // A cell that is now empty and unowned leaves the occupied set; otherwise every dead
             // organism's footprint would stay in it (and in every snapshot) forever
             updateOccupiedIndices(flatIndex);
@@ -926,7 +935,7 @@ public class Environment implements IEnvironmentReader {
             // Update ownership index: remove from owner's set
             owned.remove(flatIndex);
             // Update label index: molecule removed
-            labelIndex.onMoleculeSet(flatIndex, toCanonicalIndex(flatIndex), oldMoleculeInt, 0, 0);
+            labelIndex.onMoleculeSet(toCanonicalIndex(flatIndex), oldMoleculeInt, 0, 0);
             // Update sparse cell tracking if enabled
             occupiedIndices.clear(flatIndex);
         }
