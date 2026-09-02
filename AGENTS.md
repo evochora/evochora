@@ -268,6 +268,11 @@ See `.agents/architecture-guidelines.md` for full review criteria.
 - Use `@AfterEach` with proper cleanup logic
 - If database needed: use in-memory (e.g., in-memory H2)
 
+**Isolation:**
+- The suite runs in two JVMs. Gradle distributes classes, never methods, so every class must pass in whichever JVM and order it lands in; nothing may depend on another class having run first
+- No fixed ports, directories or database names: bind port 0 or ask the OS for a free port, use `@TempDir` or `Files.createTempDirectory`, give in-memory databases a UUID name
+- No wall-clock assertions ("finished within 10 ms"): assert behaviour and let Awaitility bound the wait
+
 **Assertions & Timing:**
 - Use Awaitility for async conditions: `await().atMost(...).until(...)`
 - **NEVER use `Thread.sleep()` in tests**
@@ -284,8 +289,9 @@ See `.agents/architecture-guidelines.md` for full review criteria.
 - **NEVER use `@AllowLog(level=WARN/ERROR)` without patterns** - this defeats the purpose of LogWatchExtension
 - Only use `@ExpectLog` for logs you explicitly provoked in the test
 
-**Coverage Goal:**
-- Optional: 60%+ line coverage (JaCoCo)
+**Coverage:**
+- `jacocoTestCoverageVerification` fails the build below 50% line coverage (JaCoCo); the goal remains 60%+
+- Raising the bound is a deliberate change, made once the suite has grown past it
 
 **Benchmarks:**
 - JMH benchmarks live in `src/jmh/`; they are relative before/after measurements, never absolute references
