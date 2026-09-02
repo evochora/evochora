@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 
 import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -58,9 +60,9 @@ class ArtemisQueueResourceTest {
     private ArtemisQueueResource<BatchInfo> queue;
 
     @BeforeAll
-    static void setupBroker() {
-        String testDirPath = System.getProperty("java.io.tmpdir") + "/artemis-queue-test";
-        testDir = new File(testDirPath);
+    static void setupBroker() throws IOException {
+        testDir = Files.createTempDirectory("artemis-queue-test-").toFile();
+        String testDirPath = testDir.getAbsolutePath();
 
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             deleteDirectory(testDir);

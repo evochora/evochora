@@ -3,6 +3,7 @@ package org.evochora.node.processes.broker;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.File;
+import java.nio.file.Files;
 import java.util.Map;
 
 import org.evochora.junit.extensions.logging.AllowLog;
@@ -30,17 +31,18 @@ import com.typesafe.config.ConfigFactory;
 @ExtendWith(LogWatchExtension.class)
 class EmbeddedBrokerProcessTest {
 
-    private static final String TEST_DIR_PATH = System.getProperty("java.io.tmpdir") + "/artemis-process-test";
+    private File testDir;
 
     @BeforeEach
     void ensureCleanState() throws Exception {
         EmbeddedBrokerRegistry.resetForTesting();
+        testDir = Files.createTempDirectory("artemis-process-test-").toFile();
     }
 
     @AfterEach
     void cleanup() throws Exception {
         EmbeddedBrokerRegistry.resetForTesting();
-        deleteDirectory(new File(TEST_DIR_PATH));
+        deleteDirectory(testDir);
     }
 
     @Test
@@ -48,7 +50,7 @@ class EmbeddedBrokerProcessTest {
     @AllowLog(level = LogLevel.ERROR, loggerPattern = "io\\.netty\\.util\\.ResourceLeakDetector")
 
     void shouldStartBrokerWhenEnabled() {
-        String configPath = TEST_DIR_PATH.replace("\\", "/");
+        String configPath = testDir.getAbsolutePath().replace("\\", "/");
 
         Config options = ConfigFactory.parseString("""
             enabled = true
@@ -98,7 +100,7 @@ class EmbeddedBrokerProcessTest {
     @AllowLog(level = LogLevel.ERROR, loggerPattern = "io\\.netty\\.util\\.ResourceLeakDetector")
 
     void shouldRunTwoBrokersIndependently() {
-        String configPath = TEST_DIR_PATH.replace("\\", "/");
+        String configPath = testDir.getAbsolutePath().replace("\\", "/");
 
         Config topicBrokerConfig = ConfigFactory.parseString("""
             enabled = true

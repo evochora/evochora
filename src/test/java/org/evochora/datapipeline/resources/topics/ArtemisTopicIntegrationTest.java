@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
@@ -51,10 +53,10 @@ class ArtemisTopicIntegrationTest {
     private ArtemisTopicResource<BatchInfo> topic;
 
     @BeforeAll
-    static void setupBroker() {
-        // Create shared test directory and config for the singleton broker
-        String testDirPath = System.getProperty("java.io.tmpdir") + "/artemis-integration-test";
-        testDir = new File(testDirPath);
+    static void setupBroker() throws IOException {
+        // A directory of its own for the singleton broker's journal
+        testDir = Files.createTempDirectory("artemis-integration-test-").toFile();
+        String testDirPath = testDir.getAbsolutePath();
 
         // Register shutdown hook to clean up after ALL tests complete.
         // This ensures no artifacts remain after JVM termination.
