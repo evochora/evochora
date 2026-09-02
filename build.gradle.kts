@@ -410,8 +410,8 @@ tasks.withType<Pmd>().configureEach {
 // answered is the implicit constructor of a public class, which has no place to carry a
 // comment. So the warnings are read as they appear and anything else fails the task.
 tasks.withType<Javadoc>().configureEach {
-    // Generated protobuf sources, excluded for the same reason as above.
-    exclude("org/evochora/datapipeline/api/contracts/**")
+    // Generated protobuf sources, excluded for the same reason as above, and written the same way.
+    exclude("**/org/evochora/datapipeline/api/contracts/**")
 
     // The one warning that is let through is recognised by its text, because doclint offers no
     // way to name a single warning: a future JDK could word it differently, and then this filter
