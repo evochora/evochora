@@ -187,7 +187,15 @@ or an unregistered plugin leaves the tests green.
    because every build step invokes `./gradlew`. The tag is effectively documentation, and changing
    it touches the release path for no functional gain.
 
-2. **Whether the Java toolchain stays at 21.**
+2. **Whether to switch on dependency verification while the versions are being changed.**
+
+   There is no `gradle/verification-metadata.xml` and no `distributionSha256Sum` in
+   `gradle-wrapper.properties`, so nothing the build downloads is checked against a recorded
+   checksum. Doing it during this update rather than separately avoids regenerating the metadata
+   after every version step. Not examined here: what it costs, whether checksums suffice or PGP
+   signatures are wanted, and where in the sequence it would go.
+
+3. **Whether the Java toolchain stays at 21.**
 
    The toolchain, both CI jobs and the Docker image are on JDK 21. Several of the major updates
    raise their own minimum JDK requirement; the exact figures are not established here and must be
