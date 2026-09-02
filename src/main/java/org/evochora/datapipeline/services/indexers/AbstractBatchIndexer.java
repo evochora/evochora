@@ -108,6 +108,14 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
             ? options.getInt("insertBatchSize") : 5;
         this.streamingFlushTimeoutMs = options.hasPath("flushTimeoutMs")
             ? options.getLong("flushTimeoutMs") : 5000L;
+        if (streamingInsertBatchSize <= 0) {
+            throw new IllegalArgumentException(String.format(
+                "'insertBatchSize' must be positive for indexer '%s', but was %d", name, streamingInsertBatchSize));
+        }
+        if (streamingFlushTimeoutMs <= 0) {
+            throw new IllegalArgumentException(String.format(
+                "'flushTimeoutMs' must be positive for indexer '%s', but was %d", name, streamingFlushTimeoutMs));
+        }
         this.streamingTracker = new StreamingAckTracker<>();
     }
 

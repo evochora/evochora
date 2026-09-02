@@ -2,6 +2,7 @@ package org.evochora.datapipeline.services.indexers;
 
 import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -341,6 +342,21 @@ class AbstractBatchIndexerTest {
 
         assertEquals(2, streamingProcessedChunks.size(), "All 2 chunks should be processed");
         assertEquals(1, streamingCommitCount.get(), "Should have 1 timeout-triggered commit");
+    }
+
+    @Test
+    void constructorRejectsNonPositiveInsertBatchSize() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+            () -> createStreamingIndexer("test-run-c01", 0, 100));
+        assertTrue(ex.getMessage().contains("insertBatchSize"), ex.getMessage());
+        assertTrue(ex.getMessage().contains("test-streaming-indexer"), ex.getMessage());
+    }
+
+    @Test
+    void constructorRejectsNonPositiveFlushTimeout() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+            () -> createStreamingIndexer("test-run-c02", 3, 0));
+        assertTrue(ex.getMessage().contains("flushTimeoutMs"), ex.getMessage());
     }
 
     @Test
