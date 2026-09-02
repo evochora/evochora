@@ -15,6 +15,9 @@ import java.util.Map;
  * {@code x} names the column on the horizontal axis and {@code y} what is drawn against it; both
  * are read by every chart, though the shape of {@code y} follows the chart type. Iteration order
  * reaches the frontend through the JSON, so the map preserves insertion order.
+ * <p>
+ * A hint is built through {@link #chart(String, String)}, the one way there is, so that every hint
+ * names a chart and a column to draw it over.
  */
 public class VisualizationHint {
 
@@ -30,6 +33,9 @@ public class VisualizationHint {
      * were added.
      */
     public Map<String, Object> config;
+
+    private VisualizationHint() {
+    }
 
     /**
      * Describes a chart over a column.
