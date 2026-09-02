@@ -201,7 +201,7 @@ public class H2TopicReaderDelegate<T extends Message> extends AbstractTopicDeleg
         // Handle blocking mode (timeout=0, unit=null) - poll indefinitely
         boolean blockIndefinitely = (unit == null);
         long timeoutMs = blockIndefinitely ? Long.MAX_VALUE : unit.toMillis(timeout);
-        long startTime = System.currentTimeMillis();
+        long startNanos = System.nanoTime();
         
         while (true) {
             // Try to read a message
@@ -211,7 +211,7 @@ public class H2TopicReaderDelegate<T extends Message> extends AbstractTopicDeleg
             }
             
             // Check if timeout expired
-            long elapsedMs = System.currentTimeMillis() - startTime;
+            long elapsedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNanos);
             if (elapsedMs >= timeoutMs) {
                 return null; // Timeout reached, no message available
             }
