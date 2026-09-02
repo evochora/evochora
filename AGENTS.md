@@ -168,6 +168,7 @@ runtime      →  (nothing)
 - **Three Pure Data Formats**: Token (`model/token/`), AST (`model/ast/`), IR (`model/ir/`) are strictly separated. No cross-dependencies between them. `SourceInfo` is the only shared type: an AST node never holds a `Token`, it carries the token's `SourceInfo`
 - **Stateless Features**: Features have no constructor parameters and no mutable state. Compilation data flows through phase contexts (e.g., PreProcessorContext, IrGenContext), not through features. Phase-internal state (register alias scopes while parsing, the macro table while preprocessing) lives in that phase's context and dies with the phase; data that crosses a phase boundary is returned to the Compiler and handed to the next phase as input
 - **Pure Data Records**: Core data types (Symbol, AstNode subtypes, IR items) are pure records. Placement/scoping knowledge lives in the SymbolTable and phase contexts, not in the data records themselves.
+- **Output Equivalence**: A compiler change that must not alter generated code is verified by compiling a suitable assembly program before and after the change and diffing the artifacts. Passing tests alone do not prove identical output
 
 ## Runtime (`src/main/java/org/evochora/runtime/`)
 
@@ -289,6 +290,9 @@ See `.agents/architecture-guidelines.md` for full review criteria.
 - WARN/ERROR logs: MUST use `@ExpectLog(level=WARN/ERROR, messagePattern="...")` if explicitly provoked
 - **NEVER use `@AllowLog(level=WARN/ERROR)` without patterns** - this defeats the purpose of LogWatchExtension
 - Only use `@ExpectLog` for logs you explicitly provoked in the test
+
+**Defect tests:**
+- **Test first**: a bugfix starts with a test that reproduces the defect and fails; the fix makes it pass. No fix without the red test before it
 
 **Coverage:**
 - `jacocoTestCoverageVerification` fails the build below 50% line coverage (JaCoCo); the goal remains 60%+
