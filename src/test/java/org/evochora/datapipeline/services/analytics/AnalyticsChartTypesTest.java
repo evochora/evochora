@@ -32,6 +32,9 @@ class AnalyticsChartTypesTest {
 
     private static final String PLUGINS = "pipeline.services.analytics-indexer-1.options.plugins";
     private static final Path CHART_DIR = Path.of("src/main/resources/web/analyzer/js/charts");
+    // Matches the registration as it is written today: the chart type is a quoted literal directly
+    // after the call. Registered any other way it is not seen here, and the plugin naming that type
+    // fails this test.
     private static final Pattern REGISTRATION =
             Pattern.compile("ChartRegistry\\.register\\(\\s*['\"]([^'\"]+)['\"]");
 
