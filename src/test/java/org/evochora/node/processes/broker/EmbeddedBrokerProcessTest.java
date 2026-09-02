@@ -3,6 +3,10 @@ package org.evochora.node.processes.broker;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.File;
+import java.util.Comparator;
+import java.nio.file.Path;
+import java.io.IOException;
+import java.nio.file.Files;
 import java.util.Map;
 
 import org.evochora.junit.extensions.logging.AllowLog;
@@ -30,17 +34,21 @@ import com.typesafe.config.ConfigFactory;
 @ExtendWith(LogWatchExtension.class)
 class EmbeddedBrokerProcessTest {
 
-    private static final String TEST_DIR_PATH = System.getProperty("java.io.tmpdir") + "/artemis-process-test";
+    private File testDir;
 
     @BeforeEach
     void ensureCleanState() throws Exception {
         EmbeddedBrokerRegistry.resetForTesting();
+        testDir = Files.createTempDirectory("artemis-process-test-").toFile();
     }
 
     @AfterEach
     void cleanup() throws Exception {
-        EmbeddedBrokerRegistry.resetForTesting();
-        deleteDirectory(new File(TEST_DIR_PATH));
+        try {
+            EmbeddedBrokerRegistry.resetForTesting();
+        } finally {
+            deleteDirectory(testDir);
+        }
     }
 
     @Test
@@ -48,7 +56,7 @@ class EmbeddedBrokerProcessTest {
     @AllowLog(level = LogLevel.ERROR, loggerPattern = "io\\.netty\\.util\\.ResourceLeakDetector")
 
     void shouldStartBrokerWhenEnabled() {
-        String configPath = TEST_DIR_PATH.replace("\\", "/");
+        String configPath = testDir.getAbsolutePath().replace("\\", "/");
 
         Config options = ConfigFactory.parseString("""
             enabled = true
@@ -98,7 +106,7 @@ class EmbeddedBrokerProcessTest {
     @AllowLog(level = LogLevel.ERROR, loggerPattern = "io\\.netty\\.util\\.ResourceLeakDetector")
 
     void shouldRunTwoBrokersIndependently() {
-        String configPath = TEST_DIR_PATH.replace("\\", "/");
+        String configPath = testDir.getAbsolutePath().replace("\\", "/");
 
         Config topicBrokerConfig = ConfigFactory.parseString("""
             enabled = true
@@ -143,19 +151,15 @@ class EmbeddedBrokerProcessTest {
         assertThat(EmbeddedBrokerRegistry.isBrokerStarted(0)).isFalse();
     }
 
-    private static void deleteDirectory(File dir) {
-        if (dir != null && dir.exists()) {
-            File[] files = dir.listFiles();
-            if (files != null) {
-                for (File file : files) {
-                    if (file.isDirectory()) {
-                        deleteDirectory(file);
-                    } else {
-                        file.delete();
-                    }
-                }
+    /** Removes the directory with everything in it; a path that cannot be deleted fails the caller. */
+    private static void deleteDirectory(File dir) throws IOException {
+        if (dir == null || !dir.exists()) {
+            return;
+        }
+        try (var paths = Files.walk(dir.toPath())) {
+            for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) {
+                Files.delete(path);
             }
-            dir.delete();
         }
     }
 }

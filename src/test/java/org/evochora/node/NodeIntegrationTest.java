@@ -6,6 +6,8 @@ import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasSize;
 
+import java.io.IOException;
+import java.net.ServerSocket;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -38,7 +40,6 @@ import io.restassured.RestAssured;
 @AllowLog(level = LogLevel.WARN, messagePattern = "Could not perform action on service.*")
 class NodeIntegrationTest {
 
-    private static final int TEST_PORT = 58081;
     private static final String BASE_PATH = "/pipeline/api";
 
     // @formatter:off
@@ -89,7 +90,7 @@ class NodeIntegrationTest {
                   className = "org.evochora.node.processes.http.HttpServerProcess"
                   require = { serviceManager = "pipeline" }
                   options {
-                    network { host = "127.0.0.1", port = 58081 }
+                    network { host = "127.0.0.1", port = %d }
                     routes {
                       pipeline {
                         api {
@@ -113,11 +114,12 @@ class NodeIntegrationTest {
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
 
     @BeforeAll
-    void startNode() {
+    void startNode() throws IOException {
+        final int port = freePort();
         RestAssured.baseURI = "http://127.0.0.1";
-        RestAssured.port = TEST_PORT;
+        RestAssured.port = port;
 
-        final Config testConfig = ConfigFactory.parseString(TEST_CONFIG).resolve();
+        final Config testConfig = ConfigFactory.parseString(TEST_CONFIG.formatted(port)).resolve();
         testNode = new Node(testConfig);
 
         executor.submit(testNode::start);
@@ -130,6 +132,16 @@ class NodeIntegrationTest {
                 return false;
             }
         });
+    }
+
+    /**
+     * A port the operating system reports as free right now. Binding a fixed port would fail
+     * whenever another process, such as a running node, already holds it.
+     */
+    private static int freePort() throws IOException {
+        try (ServerSocket socket = new ServerSocket(0)) {
+            return socket.getLocalPort();
+        }
     }
 
     @AfterAll

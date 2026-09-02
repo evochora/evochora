@@ -65,7 +65,6 @@ class EnvironmentIndexerTest {
         config = ConfigFactory.parseString("""
             metadataPollIntervalMs = 100
             metadataMaxPollDurationMs = 5000
-            topicPollTimeoutMs = 1000
             insertBatchSize = 100
             flushTimeoutMs = 1000
             """);

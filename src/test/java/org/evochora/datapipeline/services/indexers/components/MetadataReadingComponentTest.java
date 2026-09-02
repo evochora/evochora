@@ -50,7 +50,7 @@ class MetadataReadingComponentTest {
             .build();
         
         // Create component with short timeouts for testing
-        component = new MetadataReadingComponent(mockReader, 10, 1000);
+        component = new MetadataReadingComponent(mockReader, 10, 100);
     }
     
     @Test
@@ -110,7 +110,7 @@ class MetadataReadingComponentTest {
             component.loadMetadata("missing-run")
         );
         
-        assertTrue(ex.getMessage().contains("Metadata not indexed within 1000ms"));
+        assertTrue(ex.getMessage().contains("Metadata not indexed within 100ms"));
         assertTrue(ex.getMessage().contains("missing-run"));
         
         // Verify multiple attempts were made

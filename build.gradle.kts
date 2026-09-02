@@ -221,8 +221,16 @@ tasks.withType<Tar> {
     archiveExtension.set("tar.gz")
 }
 
+// Two test JVMs for every test task. A second fork cuts the wall-clock time by a third and, as
+// Gradle never splits a class across forks, makes every hidden dependency between test classes
+// fail visibly. More forks do not pay off: each JVM initialises Mockito, H2, Javalin and the
+// brokers on its own, and the JVMs then compete for cores and JIT time. On eight cores, four
+// forks doubled the summed test time and finished later than two.
+val testForks = 2
+
 tasks.test {
     useJUnitPlatform()
+    maxParallelForks = testForks
     // The assembly programs are compiled by a test, so a change to one has to invalidate the
     // task. Gradle decides that per task, not per test class: touching a program reruns the
     // suite, which is the price for the examples and the primordial staying compilable.
@@ -252,7 +260,7 @@ tasks.register<Test>("unit") {
     useJUnitPlatform {
         includeTags("unit")
     }
-    maxParallelForks = 1
+    maxParallelForks = testForks
     jvmArgs("-Duser.language=en", "-Duser.country=US")
     jvmArgs("-Xshare:off")
     testLogging {
@@ -272,7 +280,7 @@ tasks.register<Test>("integration") {
         includeTags("integration")
     }
     maxHeapSize = "2g" // Match test task heap size to avoid OOM
-    maxParallelForks = 1 // Integration tests often can't run in parallel
+    maxParallelForks = testForks
     jvmArgs("-Xshare:off")
     testLogging {
         events("passed", "skipped", "failed")
@@ -300,6 +308,26 @@ tasks.jacocoTestReport {
             }
         })
     )
+}
+
+// Coverage may not erode unnoticed: the build fails below this share of covered lines. The bound
+// sits under the current value so that an ordinary refactoring cannot trip it; raising it is a
+// deliberate change once the suite has grown past it.
+tasks.jacocoTestCoverageVerification {
+    classDirectories.setFrom(tasks.jacocoTestReport.get().classDirectories)
+    violationRules {
+        rule {
+            limit {
+                counter = "LINE"
+                value = "COVEREDRATIO"
+                minimum = "0.50".toBigDecimal()
+            }
+        }
+    }
+}
+
+tasks.check {
+    dependsOn(tasks.jacocoTestCoverageVerification)
 }
 
 protobuf {
@@ -390,6 +418,10 @@ tasks.named("build") {
 // nothing else in this build would ever report it.
 pmd {
     toolVersion = "7.26.0"
+    threads = 4
+    // On by default, stated here because the CI workflow restores and saves the resulting
+    // build/tmp/pmd*/incremental.cache between runs; without it that step would cache nothing.
+    incrementalAnalysis = true
     isConsoleOutput = true
     ruleSetFiles = files("gradle/pmd/ruleset.xml")
     ruleSets = listOf()

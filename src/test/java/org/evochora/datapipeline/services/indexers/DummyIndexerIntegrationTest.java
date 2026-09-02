@@ -99,7 +99,8 @@ class DummyIndexerIntegrationTest {
             "jdbcUrl = \"" + topicJdbcUrl + "\"\n" +
             "username = \"sa\"\n" +
             "password = \"\"\n" +
-            "claimTimeout = 300"
+            "claimTimeout = 300\n" +
+            "pollIntervalMs = 10"
         );
         testBatchTopic = new H2TopicResource<>("batch-topic", topicConfig);
         
@@ -229,7 +230,7 @@ class DummyIndexerIntegrationTest {
         Config config = ConfigFactory.parseString("""
             runId = "%s"
             metadataPollIntervalMs = 100
-            metadataMaxPollDurationMs = 1000
+            metadataMaxPollDurationMs = 300
             """.formatted(runId));
 
         indexer = createDummyIndexer("test-indexer", config);
@@ -314,7 +315,7 @@ class DummyIndexerIntegrationTest {
             runId = "%s"
             metadataPollIntervalMs = 100
             metadataMaxPollDurationMs = 5000
-            topicPollTimeoutMs = 1000
+            insertBatchSize = 3
             """.formatted(runId));
         
         indexer = createDummyIndexerWithRealTopic("test-indexer", config);
@@ -409,7 +410,7 @@ class DummyIndexerIntegrationTest {
             metadataPollIntervalMs = 100
             metadataMaxPollDurationMs = 5000
             insertBatchSize = 10
-            flushTimeoutMs = 1000
+            flushTimeoutMs = 300
             """.formatted(runId));
         
         indexer = createDummyIndexerWithBuffering("test-indexer", config);
@@ -454,7 +455,7 @@ class DummyIndexerIntegrationTest {
             metadataPollIntervalMs = 100
             metadataMaxPollDurationMs = 5000
             insertBatchSize = 3
-            flushTimeoutMs = 10000
+            flushTimeoutMs = 500
             """.formatted(runId));
         
         indexer = createDummyIndexerWithBuffering("test-indexer", config);

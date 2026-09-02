@@ -85,7 +85,8 @@ class EnvironmentIndexerIntegrationTest {
             "jdbcUrl = \"" + topicJdbcUrl + "\"\n" +
             "username = \"sa\"\n" +
             "password = \"\"\n" +
-            "claimTimeout = 300"
+            "claimTimeout = 300\n" +
+            "pollIntervalMs = 10"
         );
         testBatchTopic = new H2TopicResource<>("batch-topic", topicConfig);
     }
@@ -131,8 +132,7 @@ class EnvironmentIndexerIntegrationTest {
             runId = "%s"
             metadataPollIntervalMs = 100
             metadataMaxPollDurationMs = 5000
-            topicPollTimeoutMs = 2000
-            insertBatchSize = 100
+            insertBatchSize = 1
             flushTimeoutMs = 1000
             """.formatted(runId));
         
@@ -160,8 +160,7 @@ class EnvironmentIndexerIntegrationTest {
             runId = "%s"
             metadataPollIntervalMs = 100
             metadataMaxPollDurationMs = 5000
-            topicPollTimeoutMs = 2000
-            insertBatchSize = 100
+            insertBatchSize = 1
             flushTimeoutMs = 1000
             """.formatted(runId));
         
@@ -184,8 +183,7 @@ class EnvironmentIndexerIntegrationTest {
             runId = "%s"
             metadataPollIntervalMs = 100
             metadataMaxPollDurationMs = 5000
-            topicPollTimeoutMs = 2000
-            insertBatchSize = 100
+            insertBatchSize = 1
             flushTimeoutMs = 1000
             """.formatted(runId));
         
@@ -233,8 +231,7 @@ class EnvironmentIndexerIntegrationTest {
             runId = "%s"
             metadataPollIntervalMs = 100
             metadataMaxPollDurationMs = 5000
-            topicPollTimeoutMs = 2000
-            insertBatchSize = 100
+            insertBatchSize = 1
             flushTimeoutMs = 1000
             """.formatted(runId));
         
@@ -296,8 +293,7 @@ class EnvironmentIndexerIntegrationTest {
             runId = "%s"
             metadataPollIntervalMs = 100
             metadataMaxPollDurationMs = 5000
-            topicPollTimeoutMs = 2000
-            insertBatchSize = 100
+            insertBatchSize = 1
             flushTimeoutMs = 1000
             """.formatted(runId));
         
@@ -342,8 +338,7 @@ class EnvironmentIndexerIntegrationTest {
             runId = "%s"
             metadataPollIntervalMs = 100
             metadataMaxPollDurationMs = 5000
-            topicPollTimeoutMs = 2000
-            insertBatchSize = 100
+            insertBatchSize = 1
             flushTimeoutMs = 1000
             """.formatted(runId));
         

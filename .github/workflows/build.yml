@@ -52,6 +52,15 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
           cache: 'gradle'
+      # PMD keys its incremental cache on file content, ruleset and classpath, so a cache from an
+      # earlier commit is valid for every unchanged file. Without it every run analyses the whole
+      # tree, and the test sources alone take PMD longer than compiling the project.
+      - name: Restore PMD incremental cache
+        uses: actions/cache@v4
+        with:
+          path: build/tmp/pmd*/incremental.cache
+          key: pmd-${{ runner.os }}-${{ github.sha }}
+          restore-keys: pmd-${{ runner.os }}-
       - name: Make gradlew executable
         if: runner.os != 'Windows'
         run: chmod +x gradlew

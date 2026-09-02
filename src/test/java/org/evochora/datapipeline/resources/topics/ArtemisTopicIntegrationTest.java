@@ -4,6 +4,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.io.File;
+import java.util.Comparator;
+import java.nio.file.Path;
+import java.io.IOException;
+import java.nio.file.Files;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
@@ -51,15 +55,19 @@ class ArtemisTopicIntegrationTest {
     private ArtemisTopicResource<BatchInfo> topic;
 
     @BeforeAll
-    static void setupBroker() {
-        // Create shared test directory and config for the singleton broker
-        String testDirPath = System.getProperty("java.io.tmpdir") + "/artemis-integration-test";
-        testDir = new File(testDirPath);
+    static void setupBroker() throws IOException {
+        // A directory of its own for the singleton broker's journal
+        testDir = Files.createTempDirectory("artemis-integration-test-").toFile();
+        String testDirPath = testDir.getAbsolutePath();
 
         // Register shutdown hook to clean up after ALL tests complete.
         // This ensures no artifacts remain after JVM termination.
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            deleteDirectory(testDir);
+            try {
+                deleteDirectory(testDir);
+            } catch (IOException e) {
+                System.err.println("Could not remove " + testDir + ": " + e.getMessage());
+            }
         }, "artemis-test-cleanup"));
 
         // Replace backslashes with forward slashes for Windows compatibility
@@ -94,9 +102,12 @@ class ArtemisTopicIntegrationTest {
 
     @AfterAll
     static void teardownBroker() throws Exception {
-        ArtemisTopicResource.resetKnownSubscriptionsForTesting();
-        EmbeddedBrokerRegistry.resetForTesting();
-        deleteDirectory(testDir);
+        try {
+            ArtemisTopicResource.resetKnownSubscriptionsForTesting();
+            EmbeddedBrokerRegistry.resetForTesting();
+        } finally {
+            deleteDirectory(testDir);
+        }
     }
 
     @Test
@@ -340,19 +351,15 @@ class ArtemisTopicIntegrationTest {
     /**
      * Helper to recursively delete a directory.
      */
-    private static void deleteDirectory(File dir) {
-        if (dir != null && dir.exists()) {
-            File[] files = dir.listFiles();
-            if (files != null) {
-                for (File file : files) {
-                    if (file.isDirectory()) {
-                        deleteDirectory(file);
-                    } else {
-                        file.delete();
-                    }
-                }
+    /** Removes the directory with everything in it; a path that cannot be deleted fails the caller. */
+    private static void deleteDirectory(File dir) throws IOException {
+        if (dir == null || !dir.exists()) {
+            return;
+        }
+        try (var paths = Files.walk(dir.toPath())) {
+            for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) {
+                Files.delete(path);
             }
-            dir.delete();
         }
     }
 }

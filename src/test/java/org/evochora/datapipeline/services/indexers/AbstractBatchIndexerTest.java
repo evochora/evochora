@@ -2,6 +2,8 @@ package org.evochora.datapipeline.services.indexers;
 
 import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
@@ -44,6 +46,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.stubbing.Answer;
 
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
@@ -65,6 +68,7 @@ class AbstractBatchIndexerTest {
     private StreamingTestBatchIndexer streamingIndexer;
     private List<TickDataChunk> streamingProcessedChunks;
     private AtomicInteger streamingCommitCount;
+    private AtomicInteger streamingChunksAtFirstCommit;
     private Map<StoragePath, List<TickDataChunk>> storedChunks;
 
     @BeforeEach
@@ -79,6 +83,7 @@ class AbstractBatchIndexerTest {
 
         streamingProcessedChunks = Collections.synchronizedList(new ArrayList<>());
         streamingCommitCount = new AtomicInteger(0);
+        streamingChunksAtFirstCommit = new AtomicInteger(-1);
         storedChunks = new HashMap<>();
 
         // All tests use configured runIds — stub storage validation to pass
@@ -131,7 +136,7 @@ class AbstractBatchIndexerTest {
         lenient().when(mockMetadataReader.getMetadata(runId)).thenReturn(metadata);
         when(mockTopic.poll(anyLong(), any(TimeUnit.class)))
             .thenReturn(message)
-            .thenReturn(null);
+            .thenAnswer(emptyPoll());
         storedChunks.put(StoragePath.of(batchInfo.getStoragePath()), chunks);
 
         // When
@@ -160,7 +165,7 @@ class AbstractBatchIndexerTest {
         lenient().when(mockMetadataReader.getMetadata(runId)).thenReturn(metadata);
         when(mockTopic.poll(anyLong(), any(TimeUnit.class)))
             .thenReturn(message)
-            .thenReturn(null);
+            .thenAnswer(emptyPoll());
         storedChunks.put(StoragePath.of(batchInfo.getStoragePath()), chunks);
 
         // When: flushTimeoutMs=200 so the remainder chunk commits quickly on timeout
@@ -200,7 +205,7 @@ class AbstractBatchIndexerTest {
         when(mockTopic.poll(anyLong(), any(TimeUnit.class)))
             .thenReturn(msg1)
             .thenReturn(msg2)
-            .thenReturn(null);
+            .thenAnswer(emptyPoll());
         storedChunks.put(StoragePath.of(batch1.getStoragePath()), chunks1);
         storedChunks.put(StoragePath.of(batch2.getStoragePath()), chunks2);
 
@@ -233,7 +238,7 @@ class AbstractBatchIndexerTest {
         lenient().when(mockMetadataReader.getMetadata(runId)).thenReturn(metadata);
         when(mockTopic.poll(anyLong(), any(TimeUnit.class)))
             .thenReturn(message)
-            .thenReturn(null);
+            .thenAnswer(emptyPoll());
         doThrow(new IOException("Storage read failed"))
             .when(mockStorage).forEachChunk(eq(StoragePath.of(batchInfo.getStoragePath())), any(), any());
 
@@ -264,7 +269,7 @@ class AbstractBatchIndexerTest {
         lenient().when(mockMetadataReader.getMetadata(runId)).thenReturn(metadata);
         when(mockTopic.poll(anyLong(), any(TimeUnit.class)))
             .thenReturn(message)
-            .thenReturn(null);
+            .thenAnswer(emptyPoll());
         storedChunks.put(StoragePath.of(batchInfo.getStoragePath()), chunks);
 
         // When: processChunk error
@@ -294,7 +299,7 @@ class AbstractBatchIndexerTest {
         lenient().when(mockMetadataReader.getMetadata(runId)).thenReturn(metadata);
         when(mockTopic.poll(anyLong(), any(TimeUnit.class)))
             .thenReturn(message)
-            .thenReturn(null);
+            .thenAnswer(emptyPoll());
         storedChunks.put(StoragePath.of(batchInfo.getStoragePath()), chunks);
 
         // When: commit error (insertBatchSize=3 triggers commit after all 3 chunks processed)
@@ -324,7 +329,7 @@ class AbstractBatchIndexerTest {
         lenient().when(mockMetadataReader.getMetadata(runId)).thenReturn(metadata);
         when(mockTopic.poll(anyLong(), any(TimeUnit.class)))
             .thenReturn(message)
-            .thenReturn(null);
+            .thenAnswer(emptyPoll());
         storedChunks.put(StoragePath.of(batchInfo.getStoragePath()), chunks);
 
         // When: insertBatchSize too large to trigger during processing, timeout will trigger
@@ -337,6 +342,57 @@ class AbstractBatchIndexerTest {
 
         assertEquals(2, streamingProcessedChunks.size(), "All 2 chunks should be processed");
         assertEquals(1, streamingCommitCount.get(), "Should have 1 timeout-triggered commit");
+    }
+
+    @Test
+    void constructorRejectsNonPositiveInsertBatchSize() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+            () -> createStreamingIndexer("test-run-c01", 0, 100));
+        assertTrue(ex.getMessage().contains("insertBatchSize"), ex.getMessage());
+        assertTrue(ex.getMessage().contains("test-streaming-indexer"), ex.getMessage());
+    }
+
+    @Test
+    void constructorRejectsNonPositiveFlushTimeout() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+            () -> createStreamingIndexer("test-run-c02", 3, 0));
+        assertTrue(ex.getMessage().contains("flushTimeoutMs"), ex.getMessage());
+    }
+
+    @Test
+    void testStreamingTimeoutCommitBoundsPendingChunkAgeUnderSparseStream() throws Exception {
+        // Given: one-chunk batches arriving every 50ms, insertBatchSize=100 (never reached),
+        // flushTimeoutMs=300. The topic is never silent for 300ms while the stream flows.
+        String runId = "test-run-s10";
+        SimulationMetadata metadata = createTestMetadata(runId);
+        int streamLength = 20;
+        List<TopicMessage<BatchInfo, String>> messages = new ArrayList<>();
+        for (int i = 0; i < streamLength; i++) {
+            BatchInfo batchInfo = createBatchInfo(runId, "batch_s10_" + i + ".pb", i, i);
+            storedChunks.put(StoragePath.of(batchInfo.getStoragePath()), createTestChunks(runId, i, 1));
+            messages.add(new TopicMessage<>(batchInfo, System.currentTimeMillis(),
+                "msg-s10-" + i, "test-consumer", "ack-s10-" + i));
+        }
+        AtomicInteger polls = new AtomicInteger(0);
+        lenient().when(mockMetadataReader.getMetadata(runId)).thenReturn(metadata);
+        when(mockTopic.poll(anyLong(), any(TimeUnit.class))).thenAnswer(invocation -> {
+            Thread.sleep(50);
+            int index = polls.getAndIncrement();
+            return index < streamLength ? messages.get(index) : null;
+        });
+
+        // When
+        streamingIndexer = createStreamingIndexer(runId, 100, 300);
+        streamingIndexer.start();
+
+        // Then: the first commit happens while the stream is still flowing, because the
+        // oldest pending chunk reaches the flush timeout long before the stream ends
+        await().atMost(5, TimeUnit.SECONDS)
+            .until(() -> streamingCommitCount.get() >= 1);
+        int chunksAtFirstCommit = streamingChunksAtFirstCommit.get();
+        assertTrue(chunksAtFirstCommit < streamLength,
+            "First commit must not wait for the stream to end (chunks at first commit: "
+                + chunksAtFirstCommit + " of " + streamLength + ")");
     }
 
     @Test
@@ -360,7 +416,7 @@ class AbstractBatchIndexerTest {
         when(mockTopic.poll(anyLong(), any(TimeUnit.class)))
             .thenReturn(msg1)
             .thenReturn(msg2)
-            .thenReturn(null);
+            .thenAnswer(emptyPoll());
         storedChunks.put(StoragePath.of(batch1.getStoragePath()), chunks1);
         storedChunks.put(StoragePath.of(batch2.getStoragePath()), chunks2);
 
@@ -443,6 +499,20 @@ class AbstractBatchIndexerTest {
     }
 
     // ========== Helper Methods ==========
+
+    /**
+     * An empty topic blocks for the requested timeout before answering {@code null}. A mock that
+     * answered immediately would let the indexer spin through its poll loop without pause.
+     * The block is capped so that indexers with long flush timeouts still stop promptly.
+     */
+    private static Answer<Object> emptyPoll() {
+        return invocation -> {
+            long timeout = invocation.getArgument(0, Long.class);
+            TimeUnit unit = invocation.getArgument(1, TimeUnit.class);
+            Thread.sleep(Math.min(unit.toMillis(timeout), 50));
+            return null;
+        };
+    }
 
     private StreamingTestBatchIndexer createStreamingIndexer(String runId, int insertBatchSize) {
         return createStreamingIndexer(runId, insertBatchSize, 5000);
@@ -558,7 +628,9 @@ class AbstractBatchIndexerTest {
             if (throwOnCommit) {
                 throw new RuntimeException("Simulated commit error");
             }
-            streamingCommitCount.incrementAndGet();
+            if (streamingCommitCount.incrementAndGet() == 1) {
+                streamingChunksAtFirstCommit.set(streamingProcessedChunks.size());
+            }
         }
     }
 

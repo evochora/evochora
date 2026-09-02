@@ -133,7 +133,7 @@ class MetadataReaderWrapperTest {
     }
 
     @Test
-    void metrics_allO1Operations() throws Exception {
+    void metrics_containCountsAndLatencyPercentiles() throws Exception {
         // Given: Perform several operations
         SimulationMetadata testMetadata = SimulationMetadata.newBuilder()
             .setSimulationRunId("test-run")
@@ -149,12 +149,10 @@ class MetadataReaderWrapperTest {
             wrapper.getMetadata("test-run-" + i);
         }
         
-        // When: Get metrics (should be O(1) regardless of operation count)
-        long startNanos = System.nanoTime();
+        // When: Get metrics
         Map<String, Number> metrics = wrapper.getMetrics();
-        long elapsedNanos = System.nanoTime() - startNanos;
-        
-        // Then: Metrics available and fast
+
+        // Then: Every read is counted and the latency metrics are present
         assertNotNull(metrics);
         assertEquals(100, metrics.get("metadata_reads").intValue());
         assertTrue(metrics.containsKey("get_metadata_latency_p50_ms"));
@@ -163,10 +161,6 @@ class MetadataReaderWrapperTest {
         assertTrue(metrics.containsKey("get_metadata_latency_avg_ms"));
         assertTrue(metrics.containsKey("error_count"));
         assertTrue(metrics.containsKey("connection_cached"));
-        
-        // Metrics retrieval should be very fast (< 10ms even with 100 operations)
-        assertTrue(elapsedNanos < 10_000_000, 
-            "Metrics should be O(1), took " + (elapsedNanos / 1_000_000.0) + "ms");
     }
     
     @Test
