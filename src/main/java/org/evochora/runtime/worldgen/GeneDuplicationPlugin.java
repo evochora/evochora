@@ -30,8 +30,8 @@ import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
  * sampling.
  * <p>
  * <strong>Performance:</strong> Near-zero allocation after warmup. Reusable coordinate buffers,
- * ScanLineInfo pooling, direct bit extraction from packed molecule ints, and self-computed strides
- * for flat index calculation minimize GC pressure. The owned-cell iteration is O(n) where n is
+ * ScanLineInfo pooling, direct bit extraction from packed molecule ints, and the environment's
+ * allocation-free index conversions minimize GC pressure. The owned-cell iteration is O(n) where n is
  * typically 1000-3000, running at most a few times per tick.
  * <p>
  * <strong>Thread Safety:</strong> Not thread-safe. Runs in the sequential post-Execute phase of
@@ -51,7 +51,6 @@ public class GeneDuplicationPlugin implements IBirthHandler {
     private int[] coordBuffer;
     private int[] sourcePos;
     private int[] targetPos;
-    private int[] strides;
     private int[] perpStrides;
 
     // Scan line map and pool (reused across duplicate() calls)
@@ -187,7 +186,6 @@ public class GeneDuplicationPlugin implements IBirthHandler {
         }
 
         ensureBuffers(dims);
-        computeStrides(shape, dims);
         computePerpStrides(shape, dims, dvDim);
 
         // --- Step 2: Group owned cells by scan line + reservoir sample a label ---
@@ -202,7 +200,7 @@ public class GeneDuplicationPlugin implements IBirthHandler {
 
         // Canonical (index) order: the reservoir choice below must not depend on write history
         env.forEachCellOwnedByInCanonicalOrder(childId, (int flatIndex) -> {
-            env.properties.flatIndexToCoordinates(flatIndex, coordBuffer);
+            env.getCoordinateFromIndex(flatIndex, coordBuffer);
 
             int perpKey = computePerpKey(coordBuffer, dvDimFinal);
             int dvCoord = coordBuffer[dvDimFinal];
@@ -242,7 +240,7 @@ public class GeneDuplicationPlugin implements IBirthHandler {
         // --- Step 3: Scan ALL scan lines for NOP areas ---
         int candidateCount = 0;
         for (ScanLineInfo line : scanLineMap.values()) {
-            env.properties.flatIndexToCoordinates(line.sampleFlatIndex, coordBuffer);
+            env.getCoordinateFromIndex(line.sampleFlatIndex, coordBuffer);
             findBestNopRun(line, env, dvDimFinal, shape[dvDimFinal]);
             if (line.bestNopLength >= minNopSize) {
                 candidateCount++;
@@ -289,11 +287,11 @@ public class GeneDuplicationPlugin implements IBirthHandler {
 
         // --- Step 5: Copy ---
         // Build source position from label's scan line
-        env.properties.flatIndexToCoordinates(labelLine.sampleFlatIndex, sourcePos);
+        env.getCoordinateFromIndex(labelLine.sampleFlatIndex, sourcePos);
         sourcePos[dvDimFinal] = selectedLabelDvCoord;
 
         // Build target position from target scan line, adjusting start for DV direction
-        env.properties.flatIndexToCoordinates(targetLine.sampleFlatIndex, targetPos);
+        env.getCoordinateFromIndex(targetLine.sampleFlatIndex, targetPos);
         if (dvStep < 0) {
             targetPos[dvDimFinal] = (targetLine.bestNopStart + copyLength - 1) % shapeDvDim;
         } else {
@@ -301,7 +299,7 @@ public class GeneDuplicationPlugin implements IBirthHandler {
         }
 
         for (int i = 0; i < copyLength; i++) {
-            int srcFlatIdx = computeFlatIndex(sourcePos);
+            int srcFlatIdx = env.getIndexFromCoordinate(sourcePos);
             int srcMoleculeInt = env.getMoleculeInt(srcFlatIdx);
             Molecule molecule = Molecule.fromInt(srcMoleculeInt);
             int ownerId = (srcMoleculeInt == 0) ? 0 : childId;
@@ -325,9 +323,9 @@ public class GeneDuplicationPlugin implements IBirthHandler {
         }
 
         if (LOG.isDebugEnabled()) {
-            env.properties.flatIndexToCoordinates(labelLine.sampleFlatIndex, sourcePos);
+            env.getCoordinateFromIndex(labelLine.sampleFlatIndex, sourcePos);
             sourcePos[dvDimFinal] = selectedLabelDvCoord;
-            env.properties.flatIndexToCoordinates(targetLine.sampleFlatIndex, targetPos);
+            env.getCoordinateFromIndex(targetLine.sampleFlatIndex, targetPos);
             targetPos[dvDimFinal] = (dvStep < 0)
                     ? (targetLine.bestNopStart + copyLength - 1) % shapeDvDim
                     : targetLine.bestNopStart;
@@ -346,21 +344,7 @@ public class GeneDuplicationPlugin implements IBirthHandler {
             coordBuffer = new int[dims];
             sourcePos = new int[dims];
             targetPos = new int[dims];
-            strides = new int[dims];
             perpStrides = new int[dims];
-        }
-    }
-
-    /**
-     * Computes row-major strides from the world shape.
-     *
-     * @param shape The world shape array.
-     * @param dims Number of dimensions.
-     */
-    private void computeStrides(int[] shape, int dims) {
-        strides[dims - 1] = 1;
-        for (int i = dims - 2; i >= 0; i--) {
-            strides[i] = strides[i + 1] * shape[i + 1];
         }
     }
 
@@ -399,26 +383,12 @@ public class GeneDuplicationPlugin implements IBirthHandler {
     }
 
     /**
-     * Computes a flat index from coordinates using pre-computed strides.
-     *
-     * @param coord The coordinate array.
-     * @return The flat index.
-     */
-    private int computeFlatIndex(int[] coord) {
-        int index = 0;
-        for (int i = 0; i < coord.length; i++) {
-            index += coord[i] * strides[i];
-        }
-        return index;
-    }
-
-    /**
      * Scans a scan line for the largest contiguous run of empty cells (CODE:0, marker:0).
      * Results are stored in the ScanLineInfo's bestNopStart/bestNopLength fields.
      * <p>
      * Walks along the scan line's shortest arc ({@link ScanLineInfo#walkStart} to
      * {@link ScanLineInfo#walkEnd}), correctly handling toroidal wrapping.
-     * Uses the shared coordBuffer (caller must have initialized it via flatIndexToCoordinates
+     * Uses the shared coordBuffer (caller must have initialized it via getCoordinateFromIndex
      * with the scan line's sampleFlatIndex before calling).
      *
      * @param line The scan line to scan.
@@ -439,7 +409,7 @@ public class GeneDuplicationPlugin implements IBirthHandler {
         int dvPos = line.walkStart;
         for (int step = 0; step < arcLength; step++) {
             coordBuffer[dvDim] = dvPos;
-            int flatIdx = computeFlatIndex(coordBuffer);
+            int flatIdx = env.getIndexFromCoordinate(coordBuffer);
             int moleculeInt = env.getMoleculeInt(flatIdx);
 
             if (moleculeInt == 0) {
@@ -506,7 +476,7 @@ public class GeneDuplicationPlugin implements IBirthHandler {
             final int[] idx = {0};
 
             owned.forEach((int flatIndex) -> {
-                env.properties.flatIndexToCoordinates(flatIndex, coordBuffer);
+                env.getCoordinateFromIndex(flatIndex, coordBuffer);
                 if (computePerpKey(coordBuffer, dvDimF) == targetPK) {
                     dvCoordCollector[idx[0]++] = coordBuffer[dvDimF];
                 }

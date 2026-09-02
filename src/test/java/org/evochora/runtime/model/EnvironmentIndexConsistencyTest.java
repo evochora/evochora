@@ -36,7 +36,9 @@ class EnvironmentIndexConsistencyTest {
         List<Integer> actual = new ArrayList<>();
         permuted.forEachCellOwnedByInCanonicalOrder(1, actual::add);
 
-        assertThat(expected).hasSize(900).isSorted();
+        assertThat(expected).hasSize(900);
+        assertThat(expected.stream().map(ascending::toCanonicalIndex).toList())
+                .as("visited in ascending canonical order").isSorted();
         assertThat(actual).isEqualTo(expected);
     }
 

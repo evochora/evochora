@@ -5,7 +5,9 @@ import org.evochora.datapipeline.api.contracts.DeltaType;
 import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.PluginState;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
+import org.evochora.runtime.label.PreExpandedHammingStrategy;
 import org.evochora.runtime.model.Environment;
+import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.runtime.model.Molecule;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -188,6 +190,30 @@ class DeltaCodecEncoderTest {
         assertEquals(2, accumulatedDelta.getChangedCells().getFlatIndicesCount());
     }
     
+    @Test
+    void captureTick_persistsCellsUnderTheirCanonicalIndex() {
+        // The environment numbers its cells in its own layout; persisted columns must carry the
+        // canonical row-major index of EnvironmentProperties, which every reader decodes with.
+        Environment tiled = new Environment(new EnvironmentProperties(new int[]{64, 64}, false),
+                new PreExpandedHammingStrategy(), 32);
+        DeltaCodec.Encoder encoder = new DeltaCodec.Encoder(RUN_ID, tiled.getTotalCells(), 2, 10, 1);
+        int[] snapshotCell = {33, 1};
+        int[] deltaCell = {2, 40};
+
+        tiled.setMolecule(Molecule.fromInt(100), snapshotCell);
+        captureTick(encoder, tiled, 0);
+        tiled.setMolecule(Molecule.fromInt(200), deltaCell);
+        captureTick(encoder, tiled, 1);
+
+        TickDataChunk chunk = encoder.flushPartialChunk().get();
+        var snapshotCells = chunk.getSnapshot().getCellColumns();
+        assertEquals(1, snapshotCells.getFlatIndicesCount());
+        assertEquals(tiled.properties.toFlatIndex(snapshotCell), snapshotCells.getFlatIndices(0));
+        var deltaCells = chunk.getDeltas(0).getChangedCells();
+        assertEquals(1, deltaCells.getFlatIndicesCount());
+        assertEquals(tiled.properties.toFlatIndex(deltaCell), deltaCells.getFlatIndices(0));
+    }
+
     // ========================================================================
     // Flush Partial Chunk
     // ========================================================================
@@ -366,9 +392,13 @@ class DeltaCodecEncoderTest {
     // ========================================================================
     
     private Optional<TickDataChunk> captureTick(DeltaCodec.Encoder encoder, long tick) {
+        return captureTick(encoder, env, tick);
+    }
+
+    private Optional<TickDataChunk> captureTick(DeltaCodec.Encoder encoder, Environment environment, long tick) {
         return encoder.captureTick(
                 tick,
-                env,
+                environment,
                 List.of(OrganismState.newBuilder().setOrganismId(1).setEnergy(100).build()),
                 1,
                 0L,

@@ -26,6 +26,16 @@ class EnvironmentChangeTrackingTest {
     // Basic Change Tracking
     // ========================================================================
     
+    /**
+     * Whether the change set holds the cell at the given coordinate. The set is keyed by the
+     * environment's own index, so membership is checked through the canonical index of each set
+     * bit rather than through a number the memory layout would have to be known for.
+     */
+    private boolean containsCell(BitSet changes, int x, int y) {
+        int canonical = env.properties.toFlatIndex(new int[]{x, y});
+        return changes.stream().map(env::toCanonicalIndex).anyMatch(index -> index == canonical);
+    }
+
     @Test
     void newEnvironment_hasNoChanges() {
         BitSet changes = env.getChangedIndices();
@@ -40,8 +50,7 @@ class EnvironmentChangeTrackingTest {
         BitSet changes = env.getChangedIndices();
         assertEquals(1, changes.cardinality());
         
-        // Flat index for (5,5) in 10x10 grid = 5*10 + 5 = 55
-        assertTrue(changes.get(55));
+        assertTrue(containsCell(changes, 5, 5));
     }
     
     @Test
@@ -52,8 +61,7 @@ class EnvironmentChangeTrackingTest {
         BitSet changes = env.getChangedIndices();
         assertEquals(1, changes.cardinality());
         
-        // Flat index for (3,7) = 3*10 + 7 = 37
-        assertTrue(changes.get(37));
+        assertTrue(containsCell(changes, 3, 7));
     }
     
     @Test
@@ -63,8 +71,7 @@ class EnvironmentChangeTrackingTest {
         BitSet changes = env.getChangedIndices();
         assertEquals(1, changes.cardinality());
         
-        // Flat index for (2,3) = 2*10 + 3 = 23
-        assertTrue(changes.get(23));
+        assertTrue(containsCell(changes, 2, 3));
     }
     
     @Test
@@ -76,9 +83,9 @@ class EnvironmentChangeTrackingTest {
         
         BitSet changes = env.getChangedIndices();
         assertEquals(3, changes.cardinality());
-        assertTrue(changes.get(0));   // (0,0) = 0
-        assertTrue(changes.get(11));  // (1,1) = 11
-        assertTrue(changes.get(22));  // (2,2) = 22
+        assertTrue(containsCell(changes, 0, 0));
+        assertTrue(containsCell(changes, 1, 1));
+        assertTrue(containsCell(changes, 2, 2));
     }
     
     // ========================================================================
@@ -111,8 +118,8 @@ class EnvironmentChangeTrackingTest {
         
         BitSet changes = env.getChangedIndices();
         assertEquals(1, changes.cardinality());
-        assertTrue(changes.get(55));  // Only new change
-        assertFalse(changes.get(0));  // Old change not tracked
+        assertTrue(containsCell(changes, 5, 5));  // Only new change
+        assertFalse(containsCell(changes, 0, 0)); // Old change not tracked
     }
     
     // ========================================================================
@@ -144,7 +151,7 @@ class EnvironmentChangeTrackingTest {
         
         BitSet changes = env.getChangedIndices();
         assertEquals(1, changes.cardinality());
-        assertTrue(changes.get(55));
+        assertTrue(containsCell(changes, 5, 5));
     }
     
     @Test
@@ -156,7 +163,7 @@ class EnvironmentChangeTrackingTest {
         
         BitSet changes = env.getChangedIndices();
         assertEquals(1, changes.cardinality());
-        assertTrue(changes.get(33));
+        assertTrue(containsCell(changes, 3, 3));
     }
     
     // ========================================================================
@@ -178,9 +185,9 @@ class EnvironmentChangeTrackingTest {
         assertEquals(2, transferred);
         BitSet changes = env.getChangedIndices();
         assertEquals(2, changes.cardinality());
-        assertTrue(changes.get(0));   // (0,0)
-        assertTrue(changes.get(11));  // (1,1)
-        assertFalse(changes.get(22)); // (2,2) has different marker
+        assertTrue(containsCell(changes, 0, 0));
+        assertTrue(containsCell(changes, 1, 1));
+        assertFalse(containsCell(changes, 2, 2)); // different marker, not transferred
     }
     
     @Test

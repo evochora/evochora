@@ -739,7 +739,7 @@ public class Simulation {
                     throw new IllegalStateException(instruction.getName()
                             + " reports " + targetCoords.size() + " target cells; conflict resolution is defined for one");
                 }
-                int flatIndex = this.environment.properties.toFlatIndex(targetCoords.get(0));
+                int flatIndex = this.environment.getIndexFromCoordinate(targetCoords.get(0));
                 contendersByFlatIndex.computeIfAbsent(flatIndex, k -> new ArrayList<>()).add(instruction);
             }
         }

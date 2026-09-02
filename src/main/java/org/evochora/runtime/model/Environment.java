@@ -21,13 +21,28 @@ import org.evochora.runtime.label.PreExpandedHammingStrategy;
  * <b>Thread safety:</b> Concurrent reads are safe. Writes (e.g. {@code setMolecule},
  * {@code clearOwnershipFor}) must be serialized — in the tick loop, environment-modifying
  * instructions and death handling always run sequentially on the main thread.
+ * <p>
+ * <b>Cell addressing:</b> every flat index this class hands out or accepts — the index-based
+ * accessors, {@link #forEachOccupiedIndex}, {@link #getChangedIndices}, the label index — is an
+ * index of the environment's {@link GridLayout}. Callers treat it as an opaque number: the only
+ * ways to relate it to a coordinate are {@link #getIndexFromCoordinate},
+ * {@link #getCoordinateFromIndex(int, int[])} and {@link #stepIndex}. The canonical row-major index
+ * of {@link EnvironmentProperties}, in which cells are persisted, is a different numbering of the
+ * same cells; {@link #toCanonicalIndex} and {@link #fromCanonicalIndex} convert between the two,
+ * and every order that may influence a simulation result is defined over canonical indices.
  */
 public class Environment implements IEnvironmentReader {
+    /**
+     * The tile side of production environments. A side of 1 stores the grid in the persisted
+     * row-major order itself; tests construct other sides through the constructor that takes one.
+     */
+    private static final int TILE_SIDE = 1;
+
     private final int[] shape;
     private final boolean isToroidal;
     private final int[] grid;
     private final int[] ownerGrid;
-    private final int[] strides;
+    private final GridLayout layout;
 
     /**
      * One bit per cell, set while the cell holds a molecule or an owner. A bit set gives
@@ -120,31 +135,34 @@ public class Environment implements IEnvironmentReader {
      *
      * @param properties The environment properties.
      * @param labelMatchingStrategy The strategy for fuzzy label matching in jump instructions.
+     * @throws IllegalArgumentException if the world shape is not valid for the production tile side,
+     *                                  see {@link GridLayout}
      */
     public Environment(EnvironmentProperties properties, org.evochora.runtime.label.ILabelMatchingStrategy labelMatchingStrategy) {
+        this(properties, labelMatchingStrategy, TILE_SIDE);
+    }
+
+    /**
+     * Creates a new environment whose grid is laid out in tiles of the given side. Production
+     * environments use the one tile side this class defines; this constructor exists so that tests
+     * can prove a simulation result independent of the layout by running it under several.
+     *
+     * @param properties The environment properties.
+     * @param labelMatchingStrategy The strategy for fuzzy label matching in jump instructions.
+     * @param tileSide cells per tile along each dimension, a power of two that divides every
+     *                 dimension of the world
+     * @throws IllegalArgumentException if the tile side or the world shape is not valid, see
+     *                                  {@link GridLayout}
+     */
+    public Environment(EnvironmentProperties properties, org.evochora.runtime.label.ILabelMatchingStrategy labelMatchingStrategy, int tileSide) {
         this.properties = properties;
         this.shape = properties.getWorldShape();
         this.isToroidal = properties.isToroidal();
-        // Calculate size with overflow check (arrays are limited to Integer.MAX_VALUE)
-        long sizeLong = 1L;
-        for (int dim : shape) { sizeLong *= dim; }
-        if (sizeLong > Integer.MAX_VALUE) {
-            throw new IllegalArgumentException(
-                "World too large: " + sizeLong + " cells exceeds Integer.MAX_VALUE (2.1 billion). " +
-                "Reduce environment dimensions. Shape: " + java.util.Arrays.toString(shape));
-        }
-        int size = (int) sizeLong;
+        this.layout = new GridLayout(properties, tileSide);
+        int size = layout.totalCells();
         this.totalCells = size;
         this.grid = new int[size];
-        Arrays.fill(this.grid, 0);
         this.ownerGrid = new int[size];
-        Arrays.fill(this.ownerGrid, 0);
-        this.strides = new int[shape.length];
-        int stride = 1;
-        for (int i = shape.length - 1; i >= 0; i--) {
-            this.strides[i] = stride;
-            stride *= shape[i];
-        }
 
         // Initialize sparse cell tracking if enabled (using primitive int indices for performance)
         this.occupiedIndices = new BitSet(totalCells);
@@ -188,11 +206,7 @@ public class Environment implements IEnvironmentReader {
                 }
             }
         }
-        int flatIndex = 0;
-        for (int i = 0; i < shape.length; i++) {
-            flatIndex += normalizedCoord[i] * this.strides[i];
-        }
-        return flatIndex;
+        return layout.index(normalizedCoord);
     }
 
     /**
@@ -449,20 +463,63 @@ public class Environment implements IEnvironmentReader {
     }
 
     /**
-     * Helper method to convert flat index back to coordinates.
-     * Useful for debugging or when coordinate representation is needed.
+     * Converts a flat index of this environment into the coordinate of the cell.
      *
      * @param flatIndex The flat index to convert
-     * @return The coordinate array
+     * @return A new coordinate array
      */
     public int[] getCoordinateFromIndex(int flatIndex) {
         int[] coord = new int[shape.length];
-        int remaining = flatIndex;
-        for (int i = 0; i < shape.length; i++) {
-            coord[i] = remaining / strides[i];
-            remaining %= strides[i];
-        }
+        layout.coordinate(flatIndex, coord);
         return coord;
+    }
+
+    /**
+     * Converts a flat index of this environment into the coordinate of the cell without allocating.
+     *
+     * @param flatIndex The flat index to convert
+     * @param outCoord Receives the coordinate; one entry per dimension
+     */
+    public void getCoordinateFromIndex(int flatIndex, int[] outCoord) {
+        layout.coordinate(flatIndex, outCoord);
+    }
+
+    /**
+     * Converts an in-range coordinate into the flat index of the cell. Unlike the coordinate-based
+     * accessors this performs no toroidal normalization and no bounds check: every component must
+     * already lie within the world's shape.
+     *
+     * @param coord The coordinate, one in-range entry per dimension
+     * @return The flat index of that cell
+     */
+    public int getIndexFromCoordinate(int[] coord) {
+        return layout.index(coord);
+    }
+
+    /**
+     * Returns the flat index of the cell one step away from an indexed cell along a dimension,
+     * wrapping around in a toroidal world.
+     *
+     * @param flatIndex The flat index of the cell to step from
+     * @param dim The dimension to step along
+     * @param sign {@code +1} or {@code -1}
+     * @return The flat index of the neighbouring cell, or {@code -1} if the step leaves a bounded
+     *         world
+     */
+    public int stepIndex(int flatIndex, int dim, int sign) {
+        return layout.step(flatIndex, dim, sign);
+    }
+
+    /**
+     * The Manhattan distance between a coordinate and an indexed cell, taking the shorter way
+     * around the world in every dimension. The wrap-around is applied regardless of the topology.
+     *
+     * @param coord The coordinate to measure from
+     * @param flatIndex The flat index of the cell to measure to
+     * @return The distance
+     */
+    public int toroidalManhattanDistance(int[] coord, int flatIndex) {
+        return layout.distance(coord, flatIndex);
     }
 
     /**
@@ -523,25 +580,25 @@ public class Environment implements IEnvironmentReader {
      * row-major numbering of {@link EnvironmentProperties}, which is a pure function of the
      * coordinate and the numbering in which cells are persisted. Every order that may influence a
      * simulation result is defined over canonical indices, so that results do not depend on how
-     * the grid is laid out in memory. The grid is currently stored in exactly that row-major order,
-     * so both numberings coincide.
+     * the grid is laid out in memory. Allocation-free.
      *
      * @param flatIndex a flat index of this environment
      * @return the canonical index of the same cell
      */
     public int toCanonicalIndex(int flatIndex) {
-        return flatIndex;
+        return layout.canonical(flatIndex);
     }
 
     /**
      * Converts a canonical index (see {@link #toCanonicalIndex}) into the flat index of the same
-     * cell in this environment.
+     * cell in this environment. Allocates one coordinate array; meant for setup work such as
+     * seeding, not for the per-tick path.
      *
      * @param canonicalIndex the canonical index of a cell
      * @return the flat index of that cell in this environment
      */
     public int fromCanonicalIndex(int canonicalIndex) {
-        return canonicalIndex;
+        return layout.index(properties.flatIndexToCoordinates(canonicalIndex));
     }
 
     /**

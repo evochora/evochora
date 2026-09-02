@@ -145,7 +145,7 @@ public class GeneDeletionPlugin implements IBirthHandler {
 
         // --- Phase 3: Walk & Delete ---
         int selectedFlatIndex = labelFlatIndices.getInt(selectedIdx);
-        int[] pos = env.properties.flatIndexToCoordinates(selectedFlatIndex);
+        int[] pos = env.getCoordinateFromIndex(selectedFlatIndex);
         int[] dv = child.getDv();
 
         // Find DV dimension for safety limit
@@ -193,7 +193,7 @@ public class GeneDeletionPlugin implements IBirthHandler {
         }
 
         if (LOG.isDebugEnabled()) {
-            int[] labelPos = env.properties.flatIndexToCoordinates(selectedFlatIndex);
+            int[] labelPos = env.getCoordinateFromIndex(selectedFlatIndex);
             LOG.debug("tick={} Organism {} gene deletion: removed {} molecules from label hash {} at {}",
                     child.getBirthTick(), childId, deletedCount, labelHashes.getInt(selectedIdx), Arrays.toString(labelPos));
         }

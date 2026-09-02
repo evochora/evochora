@@ -72,7 +72,6 @@ public class GeneInsertionPlugin implements IBirthHandler {
     // --- Reusable buffers (lazy-initialized on first mutate() call) ---
     private int[] coordBuffer;
     private int[] walkPos;
-    private int[] strides;
     private int[] perpStrides;
 
     // --- Scan line infrastructure (reused across mutate() calls) ---
@@ -418,7 +417,6 @@ public class GeneInsertionPlugin implements IBirthHandler {
         int[] shape = env.getShape();
         int dims = shape.length;
         ensureBuffers(dims);
-        computeStrides(shape, dims);
         computePerpStrides(shape, dims, dvDim);
         buildScanLines(childId, env, dvDim);
         resolveWalkRanges(owned, env, dvDim, shape[dvDim]);
@@ -450,7 +448,7 @@ public class GeneInsertionPlugin implements IBirthHandler {
         }
         placeChain(env, childId, dvDim, dvStep, shape[dvDim]);
         if (LOG.isDebugEnabled()) {
-            env.properties.flatIndexToCoordinates(selectedNopScanLine.sampleFlatIndex, coordBuffer);
+            env.getCoordinateFromIndex(selectedNopScanLine.sampleFlatIndex, coordBuffer);
             coordBuffer[dvDim] = selectedNopDvStart;
             LOG.debug("tick={} Organism {} gene insertion: placed {} molecules at {}",
                     child.getBirthTick(), childId, chainBuffer.size(), Arrays.toString(coordBuffer));
@@ -625,7 +623,7 @@ public class GeneInsertionPlugin implements IBirthHandler {
 
         // Canonical (index) order: the choice below must not depend on write history
         env.forEachCellOwnedByInCanonicalOrder(childId, (int flatIndex) -> {
-            env.properties.flatIndexToCoordinates(flatIndex, coordBuffer);
+            env.getCoordinateFromIndex(flatIndex, coordBuffer);
 
             int perpKey = computePerpKey(coordBuffer, dvDimFinal);
             int dvCoord = coordBuffer[dvDimFinal];
@@ -691,7 +689,7 @@ public class GeneInsertionPlugin implements IBirthHandler {
             final int[] idx = {0};
 
             owned.forEach((int flatIndex) -> {
-                env.properties.flatIndexToCoordinates(flatIndex, coordBuffer);
+                env.getCoordinateFromIndex(flatIndex, coordBuffer);
                 if (computePerpKey(coordBuffer, dvDimF) == targetPK) {
                     dvCoordCollector[idx[0]++] = coordBuffer[dvDimF];
                 }
@@ -752,7 +750,7 @@ public class GeneInsertionPlugin implements IBirthHandler {
         nopCandidateCount = 0;
 
         for (ScanLineInfo line : scanLineMap.values()) {
-            env.properties.flatIndexToCoordinates(line.sampleFlatIndex, coordBuffer);
+            env.getCoordinateFromIndex(line.sampleFlatIndex, coordBuffer);
 
             int arcLength = (line.walkEnd >= line.walkStart)
                     ? line.walkEnd - line.walkStart + 1
@@ -764,7 +762,7 @@ public class GeneInsertionPlugin implements IBirthHandler {
 
             for (int step = 0; step < arcLength; step++) {
                 coordBuffer[dvDim] = dvPos;
-                int flatIdx = computeFlatIndex(coordBuffer);
+                int flatIdx = env.getIndexFromCoordinate(coordBuffer);
                 int moleculeInt = env.getMoleculeInt(flatIdx);
 
                 if (moleculeInt == 0) {
@@ -812,7 +810,7 @@ public class GeneInsertionPlugin implements IBirthHandler {
      * @param shapeDvDim The environment size along the DV dimension.
      */
     private void placeChain(Environment env, int childId, int dvDim, int dvStep, int shapeDvDim) {
-        env.properties.flatIndexToCoordinates(selectedNopScanLine.sampleFlatIndex, walkPos);
+        env.getCoordinateFromIndex(selectedNopScanLine.sampleFlatIndex, walkPos);
         walkPos[dvDim] = selectedNopDvStart;
 
         for (Molecule mol : chainBuffer) {
@@ -852,21 +850,7 @@ public class GeneInsertionPlugin implements IBirthHandler {
         if (coordBuffer == null || coordBuffer.length != dims) {
             coordBuffer = new int[dims];
             walkPos = new int[dims];
-            strides = new int[dims];
             perpStrides = new int[dims];
-        }
-    }
-
-    /**
-     * Computes row-major strides from the world shape.
-     *
-     * @param shape The world shape array.
-     * @param dims Number of dimensions.
-     */
-    private void computeStrides(int[] shape, int dims) {
-        strides[dims - 1] = 1;
-        for (int i = dims - 2; i >= 0; i--) {
-            strides[i] = strides[i + 1] * shape[i + 1];
         }
     }
 
@@ -902,20 +886,6 @@ public class GeneInsertionPlugin implements IBirthHandler {
             key += coord[i] * perpStrides[i];
         }
         return key;
-    }
-
-    /**
-     * Computes a flat index from coordinates using pre-computed strides.
-     *
-     * @param coord The coordinate array.
-     * @return The flat index.
-     */
-    private int computeFlatIndex(int[] coord) {
-        int index = 0;
-        for (int i = 0; i < coord.length; i++) {
-            index += coord[i] * strides[i];
-        }
-        return index;
     }
 
     /**

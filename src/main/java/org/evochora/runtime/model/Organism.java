@@ -907,16 +907,10 @@ public class Organism {
             }
         }
 
-        int dimStride = props.getStride(dim);
         int dimSize = props.getDimensionSize(dim);
         int dimPos = fromIp[dim];
-
-        // Compute base flat index (all dimensions except active)
-        int flatIp = 0;
-        for (int i = 0; i < fromIp.length; i++) {
-            flatIp += fromIp[i] * props.getStride(i);
-        }
-        int baseFlatIp = flatIp - dimPos * dimStride;
+        // Outside a bounded world there is no cell: the index is -1 and every read yields empty.
+        int index = (dimPos >= 0 && dimPos < dimSize) ? environment.getIndexFromCoordinate(fromIp) : -1;
 
         int[] rawArgs = new int[argCount];
         for (int a = 0; a < argCount; a++) {
@@ -925,9 +919,10 @@ public class Organism {
                 if (dimPos < 0) dimPos = dimSize - 1;
                 else if (dimPos >= dimSize) dimPos = 0;
             }
-            rawArgs[a] = (dimPos >= 0 && dimPos < dimSize)
-                    ? environment.getMoleculeInt(baseFlatIp + dimPos * dimStride)
-                    : 0;
+            if (index >= 0) {
+                index = environment.stepIndex(index, dim, sign);
+            }
+            rawArgs[a] = index >= 0 ? environment.getMoleculeInt(index) : 0;
         }
         return rawArgs;
     }
@@ -1029,23 +1024,14 @@ public class Organism {
             }
         }
 
-        int dimStride = props.getStride(dim);
         int dimSize = props.getDimensionSize(dim);
         int dimPos = ip[dim];
-
-        // Compute flat index: ip[0]*stride[0] + ip[1]*stride[1] + ...
-        int flatIp = 0;
-        for (int i = 0; i < ip.length; i++) {
-            flatIp += ip[i] * props.getStride(i);
-        }
-        // Base flat index = flat index contribution of all dimensions except the active one
-        int baseFlatIp = flatIp - dimPos * dimStride;
+        // Outside a bounded world there is no cell: the index is -1 and every read yields empty,
+        // which is skippable, until the skip budget runs out.
+        int index = (dimPos >= 0 && dimPos < dimSize) ? environment.getIndexFromCoordinate(ip) : -1;
 
         for (int skips = 0; skips < maxSkipsPerTick && !isDead; skips++) {
-            // In bounded topology, out-of-bounds reads as empty (CODE:0 = skippable)
-            int mol = (dimPos >= 0 && dimPos < dimSize)
-                    ? environment.getMoleculeInt(flatIp)
-                    : 0;
+            int mol = index >= 0 ? environment.getMoleculeInt(index) : 0;
             if ((mol & Config.TYPE_MASK) == Config.TYPE_CODE
                     && (mol & Config.VALUE_MASK) != nopOpcodeId) {
                 ip[dim] = dimPos;
@@ -1059,7 +1045,9 @@ public class Organism {
                     dimPos = 0;
                 }
             }
-            flatIp = baseFlatIp + dimPos * dimStride;
+            if (index >= 0) {
+                index = environment.stepIndex(index, dim, sign);
+            }
         }
         ip[dim] = dimPos;
         recoverFromStall();

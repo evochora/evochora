@@ -34,9 +34,6 @@ import java.util.Arrays;
  */
 public final class GridLayout {
 
-    /** The tile side used by every production environment: 32 cells, 1024 cells per 2D tile. */
-    public static final int PRODUCTION_TILE_SIDE = 32;
-
     private final EnvironmentProperties properties;
     private final int[] shape;
     private final boolean toroidal;

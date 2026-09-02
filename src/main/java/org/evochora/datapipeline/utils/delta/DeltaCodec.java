@@ -312,11 +312,16 @@ public final class DeltaCodec {
             return chunk;
         }
         
+        /**
+         * Serializes every occupied cell. The environment iterates in its own index order and hands
+         * out its own indices; the columns carry the canonical row-major index of
+         * {@link EnvironmentProperties}, the numbering every reader of persisted tick data expects.
+         */
         private CellDataColumns extractAllCells(Environment env) {
             cellColumnsBuilder.clear();
 
             env.forEachOccupiedIndex(flatIndex -> {
-                cellColumnsBuilder.addFlatIndices(flatIndex);
+                cellColumnsBuilder.addFlatIndices(env.toCanonicalIndex(flatIndex));
                 cellColumnsBuilder.addMoleculeData(env.getMoleculeInt(flatIndex));
                 cellColumnsBuilder.addOwnerIds(env.getOwnerIdByIndex(flatIndex));
             });
@@ -324,6 +329,10 @@ public final class DeltaCodec {
             return cellColumnsBuilder.build();
         }
 
+        /**
+         * Serializes the cells whose environment indices are set in {@code changedIndices}, under
+         * their canonical row-major index as in {@link #extractAllCells}.
+         */
         private CellDataColumns extractCellsFromBitSet(Environment env, BitSet changedIndices) {
             cellColumnsBuilder.clear();
 
@@ -332,7 +341,7 @@ public final class DeltaCodec {
                  flatIndex >= 0;
                  flatIndex = changedIndices.nextSetBit(flatIndex + 1)) {
 
-                cellColumnsBuilder.addFlatIndices(flatIndex);
+                cellColumnsBuilder.addFlatIndices(env.toCanonicalIndex(flatIndex));
                 cellColumnsBuilder.addMoleculeData(env.getMoleculeInt(flatIndex));
                 cellColumnsBuilder.addOwnerIds(env.getOwnerIdByIndex(flatIndex));
             }

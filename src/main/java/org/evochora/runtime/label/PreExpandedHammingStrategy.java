@@ -3,7 +3,6 @@ package org.evochora.runtime.label;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.model.Environment;
-import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.runtime.model.OrganismRandom;
 
 import java.util.ArrayList;
@@ -194,8 +193,6 @@ public class PreExpandedHammingStrategy implements ILabelMatchingStrategy {
     @Override
     public int findTarget(int searchValue, int codeOwner, int[] callerCoords, Environment environment,
                           OrganismRandom random) {
-        EnvironmentProperties props = environment.properties;
-
         int bestScore = Integer.MAX_VALUE;
         int bestFlatIndex = -1;
         int bestOwner = Integer.MAX_VALUE;
@@ -214,7 +211,7 @@ public class PreExpandedHammingStrategy implements ILabelMatchingStrategy {
 
             for (int i = 0; i < exactList.size(); i++) {
                 LabelEntry entry = exactList.get(i);
-                int distance = toroidalManhattanDistanceToFlat(callerCoords, entry.flatIndex(), props);
+                int distance = environment.toroidalManhattanDistance(callerCoords, entry.flatIndex());
 
                 if (!entry.isForeign(codeOwner)) {
                     if (selectionSpread > 0) {
@@ -260,7 +257,7 @@ public class PreExpandedHammingStrategy implements ILabelMatchingStrategy {
                 if (bucket != null) {
                     for (int i = 0; i < bucket.size(); i++) {
                         LabelEntry entry = bucket.get(i);
-                        int distance = toroidalManhattanDistanceToFlat(callerCoords, entry.flatIndex(), props);
+                        int distance = environment.toroidalManhattanDistance(callerCoords, entry.flatIndex());
                         int score = stageBaseScore + distance + (entry.isForeign(codeOwner) ? foreignPenalty : 0);
                         if (score < bestScore || (score == bestScore && entry.owner() < bestOwner)) {
                             bestScore = score;
@@ -284,7 +281,7 @@ public class PreExpandedHammingStrategy implements ILabelMatchingStrategy {
                 if (bucket != null) {
                     for (int i = 0; i < bucket.size(); i++) {
                         LabelEntry entry = bucket.get(i);
-                        int distance = toroidalManhattanDistanceToFlat(callerCoords, entry.flatIndex(), props);
+                        int distance = environment.toroidalManhattanDistance(callerCoords, entry.flatIndex());
                         int score = stageBaseScore + distance + (entry.isForeign(codeOwner) ? foreignPenalty : 0);
                         if (score < bestScore || (score == bestScore && entry.owner() < bestOwner)) {
                             bestScore = score;
@@ -308,7 +305,7 @@ public class PreExpandedHammingStrategy implements ILabelMatchingStrategy {
                 if (bucket != null) {
                     for (int i = 0; i < bucket.size(); i++) {
                         LabelEntry entry = bucket.get(i);
-                        int distance = toroidalManhattanDistanceToFlat(callerCoords, entry.flatIndex(), props);
+                        int distance = environment.toroidalManhattanDistance(callerCoords, entry.flatIndex());
                         int score = stageBaseScore + distance + (entry.isForeign(codeOwner) ? foreignPenalty : 0);
                         if (score < bestScore || (score == bestScore && entry.owner() < bestOwner)) {
                             bestScore = score;
@@ -321,35 +318,6 @@ public class PreExpandedHammingStrategy implements ILabelMatchingStrategy {
         }
 
         return bestFlatIndex;
-    }
-
-    /**
-     * Calculates the toroidal Manhattan distance between two coordinates.
-     * <p>
-     * For each dimension, uses the shorter path (direct or wrap-around).
-     *
-     * @param a First coordinate
-     * @param b Second coordinate
-     * @param shape The environment shape (for wrap-around calculation)
-     * @return The toroidal Manhattan distance
-     */
-    /**
-     * Toroidal Manhattan distance between the caller's coordinates and a label's flat
-     * index. The label's coordinate is decoded dimension-wise from the index and the
-     * world's strides without materializing a coordinate array, and each per-dimension
-     * difference wraps around the world, taking the shorter way around the torus.
-     */
-    private static int toroidalManhattanDistanceToFlat(int[] caller, int flatIndex, EnvironmentProperties props) {
-        int distance = 0;
-        int remaining = flatIndex;
-        for (int i = 0; i < caller.length; i++) {
-            int stride = props.getStride(i);
-            int labelCoord = remaining / stride;
-            remaining -= labelCoord * stride;
-            int diff = Math.abs(caller[i] - labelCoord);
-            distance += Math.min(diff, props.getDimensionSize(i) - diff);
-        }
-        return distance;
     }
 
     @Override

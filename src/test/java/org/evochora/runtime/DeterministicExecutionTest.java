@@ -107,6 +107,21 @@ class DeterministicExecutionTest {
         assertSameTrajectory(expected, actual, "uninterrupted vs resumed at tick " + pauseTick);
     }
 
+    /**
+     * The memory layout of the grid is not part of the contract: a run must not be able to tell
+     * whether cells are stored row-major or in tiles. Candidate order in the label index is the
+     * place a layout could leak into label selection.
+     */
+    @Test
+    void labelSelection_isLayoutInvariant() {
+        for (int parallelism : new int[]{1, 2}) {
+            List<int[][]> rowMajor = runJumpers(parallelism, JUMP_TICKS, 1);
+            List<int[][]> tiled = runJumpers(parallelism, JUMP_TICKS, 32);
+
+            assertSameTrajectory(rowMajor, tiled, "tile side 1 vs 32 at parallelism=" + parallelism);
+        }
+    }
+
     // ===================================================================================
     // Organism randomness (RAND)
     // ===================================================================================
@@ -128,6 +143,18 @@ class DeterministicExecutionTest {
         assertThat(actual)
                 .as("RAND values of an interrupted run must equal those of the uninterrupted run")
                 .isEqualTo(expected);
+    }
+
+    @Test
+    void organismRandom_isLayoutInvariant() {
+        int pairs = 10;
+        RandWorld rowMajor = newRandWorld();
+        RandWorld tiled = new RandWorld(32);
+        simulations.add(tiled.sim);
+
+        assertThat(randValues(tiled.sim, tiled.organism(), pairs * 2))
+                .as("RAND values under a tiled layout must equal those under the row-major layout")
+                .isEqualTo(randValues(rowMajor.sim, rowMajor.organism(), pairs * 2));
     }
 
     // ===================================================================================
@@ -215,8 +242,12 @@ class DeterministicExecutionTest {
         final IRandomProvider provider;
 
         JumperWorld(int organismCount, int parallelism) {
+            this(organismCount, parallelism, 1);
+        }
+
+        JumperWorld(int organismCount, int parallelism, int tileSide) {
             env = new Environment(new EnvironmentProperties(new int[]{64, 64}, true),
-                    new PreExpandedHammingStrategy(2, 100, 50, 50));
+                    new PreExpandedHammingStrategy(2, 100, 50, 50), tileSide);
             sim = SimulationTestUtils.createSimulation(env, parallelism);
             simulations.add(sim);
             provider = new SeededRandomProvider(SEED);
@@ -252,6 +283,10 @@ class DeterministicExecutionTest {
         return tick(newJumperWorld(JUMPERS, parallelism).sim, ticks);
     }
 
+    private List<int[][]> runJumpers(int parallelism, int ticks, int tileSide) {
+        return tick(new JumperWorld(JUMPERS, parallelism, tileSide).sim, ticks);
+    }
+
     // ===================================================================================
     // Scenario: one organism alternating SETI and RAND
     // ===================================================================================
@@ -266,7 +301,12 @@ class DeterministicExecutionTest {
         final IRandomProvider provider;
 
         RandWorld() {
-            env = new Environment(new EnvironmentProperties(new int[]{64}, true));
+            this(1);
+        }
+
+        RandWorld(int tileSide) {
+            env = new Environment(new EnvironmentProperties(new int[]{64}, true),
+                    new PreExpandedHammingStrategy(), tileSide);
             sim = SimulationTestUtils.createSimulation(env, 1);
             simulations.add(sim);
             provider = new SeededRandomProvider(SEED);
