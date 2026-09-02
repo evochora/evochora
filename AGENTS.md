@@ -130,7 +130,7 @@ There is a central document for AI agent guidelines that defines architectural p
 ### General Principles
 - **Allowed changes**: Refactors, bug fixes, unit tests, documentation improvements, safe dependency updates (patch/minor versions)
 - **Avoid without explicit request**: Core configuration changes, architectural modifications, breaking changes
-- **Code quality**: Prefer minimal diffs, write comprehensive tests, maintain existing code style
+- **Code quality**: Prefer minimal diffs, write comprehensive tests, maintain existing code style. There is no "cosmetic" or "low" finding: a flaw found is a flaw fixed. After a change, every consequence is checked against the code by an explicit checklist — each mirrored definition (Java enum, JS constants, proto schema, DTO) by name
 - **Communication**: Explain reasoning for changes, ask when uncertain about architectural decisions
 - **Verify before claiming**: read the code before answering about its behaviour; re-check remembered facts and subagent results against the code; a claim about dependency direction, dead code or consumers is backed by a grep, never by the diff alone
 - **Verify the goal**: a change is done when the stated goal is demonstrably achieved in the code paths, not when the build is green
@@ -418,6 +418,9 @@ throw new InterruptedException();
 - All exceptions with conditions (`@throws`)
 - Thread safety if method-specific
 - For interface methods: which capability/interface it belongs to
+
+**Flagship documents:**
+- `README.md` and `docs/SCIENTIFIC_OVERVIEW.md` are the project's public face. Edits derive from the document's structure and purpose, never from "a place where it fits"; exact wording is proposed before editing and approved hunk by hunk; links point to durable targets only, never to proposals; index entries are timeless; claims stay scientifically restrained
 
 **Template Methods:**
 - Document subclass responsibilities clearly

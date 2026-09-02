@@ -31,6 +31,10 @@ For architectural review criteria see **[.agents/architecture-guidelines.md](.ag
 - No messages to other agent sessions unless the maintainer asks for it
 - A suggestion stays a suggestion until the maintainer explicitly decides; never record it as decided
 - Delegate mechanical work to cheaper models, keep judgement work, and verify delegated results
+- Every point, plan step or option is presented so the maintainer can decide without reading the code: what it is, what changes for the simulation, experiments or data, who is affected, and only then the mechanism. A plan step names the files, the concrete change, the verification command and the finished state
+- Options come with their consequences - what gets slower, stricter, or lands on the maintainer's desk; an estimate is marked as an estimate, with its basis
+- Answer every question in a message, not only the first
+- Relay a review completely: every finding, each read in full and understandable on its own, with verification against the code and a recommendation
 
 ## Source Code Comments
 
