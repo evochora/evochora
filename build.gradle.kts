@@ -437,51 +437,76 @@ tasks.withType<Pmd>().configureEach {
 
 // Javadoc that no longer resolves — a link to a method that was renamed, markup that does not
 // parse — compiles without complaint and is only noticed by whoever reads the generated
-// documentation. Running the task as part of check turns it into a build failure instead.
+// documentation. The javadocLint task below turns it into a build failure instead.
 //
-// Warnings need a second step. doclint cannot switch off a single category: "-missing" would
-// take every absent comment, tag and description with it. The one warning that cannot be
-// answered is the implicit constructor of a public class, which has no place to carry a
-// comment. So the warnings are read as they appear and anything else fails the task.
+// The generating task itself runs without doclint. Not because the checks are unwanted, but
+// because it prints every warning it finds, and the 140 unavoidable ones would bury the rest of
+// the build output under every invocation.
 tasks.withType<Javadoc>().configureEach {
-    // Generated protobuf sources, excluded for the same reason as above, and written the same way.
+    // Generated protobuf sources: nobody edits them, and the generator will not follow these rules.
     exclude("**/org/evochora/datapipeline/api/contracts/**")
+    (options as StandardJavadocDocletOptions).addStringOption("Xdoclint:none", "-quiet")
+}
 
-    // The one warning that is let through is recognised by its text, because doclint offers no
-    // way to name a single warning: a future JDK could word it differently, and then this filter
-    // stops matching. It fails loudly if that happens — the build starts reporting warnings it
-    // used to pass — so the wording is worth checking first when that day comes.
-    //
-    // Without this the default cap of 100 would hide real warnings behind the constructor ones.
-    (options as StandardJavadocDocletOptions).addStringOption("Xmaxwarns", "10000")
-
-    // A set, and emptied before each run, so that the outcome does not depend on how many
-    // listeners are attached: doLast does not run when the task itself throws, which is exactly
-    // what a real doclint error does, and the listener registered below then stays behind. A
-    // leftover listener sees the same lines as the first one, so with a set it changes nothing.
-    val unexpected = linkedSetOf<String>()
-    // Held in a variable so it can be taken off again on the ordinary path.
-    val warningCollector = org.gradle.api.logging.StandardOutputListener { message ->
-        message.lineSequence()
-            .filter { it.contains(": warning:") }
-            .filterNot { it.contains("use of default constructor") }
-            .forEach { unexpected.add(it.trim()) }
-    }
-    doFirst {
-        unexpected.clear()
-        logging.addStandardErrorListener(warningCollector)
-    }
+// Runs javadoc a second time, with doclint on and its output captured rather than printed.
+//
+// Everything about the invocation — classpath, sources, destination — is taken from the options
+// file the javadoc task writes, so this cannot drift away from what is actually documented.
+//
+// Only one warning is allowed through: the implicit constructor of a public class has no place in
+// the source to carry a comment. doclint cannot name a single warning — "-missing" would allow
+// back every absent comment, tag and description — so it is recognised by its text. A future JDK
+// could word it differently; the failure would be loud rather than silent, because the build would
+// start reporting warnings it used to pass.
+val javadocLint by tasks.registering {
+    dependsOn(tasks.named("javadoc"))
+    val optionsFile = layout.buildDirectory.file("tmp/javadoc/javadoc.options")
+    val lintDir = layout.buildDirectory.dir("tmp/javadocLint")
+    val javadocTool = javaToolchains.javadocToolFor(java.toolchain).map { it.executablePath }
+    inputs.file(optionsFile)
+    outputs.dir(lintDir)
     doLast {
-        logging.removeStandardErrorListener(warningCollector)
+        val source = optionsFile.get().asFile.readLines()
+        val target = lintDir.get().asFile.also { it.mkdirs() }
+        // The destination is replaced so that the check cannot touch the documentation that was
+        // just generated; Xmaxwarns is raised so the constructor warnings cannot push a real one
+        // past javadoc's default cap of 100.
+        val rewritten = mutableListOf<String>()
+        var skipNext = false
+        for (line in source) {
+            if (skipNext) { skipNext = false; continue }
+            if (line.trim() == "-d") { skipNext = true; continue }
+            if (line.trimStart().startsWith("-d ")) continue
+            if (line.contains("-Xdoclint")) continue
+            rewritten.add(line)
+        }
+        rewritten.add(0, "-d '${File(target, "docs").absolutePath}'")
+        rewritten.add(1, "-Xdoclint:all")
+        rewritten.add(2, "-Xmaxwarns '10000'")
+        val lintOptions = File(target, "javadocLint.options")
+        lintOptions.writeText(rewritten.joinToString("\n"))
+
+        val result = providers.exec {
+            commandLine(javadocTool.get().toString(), "@${lintOptions.absolutePath}")
+            isIgnoreExitValue = true
+        }
+        val text = result.standardOutput.asText.get() + result.standardError.asText.get()
+
+        val unexpected = text.lineSequence()
+            .filter { it.contains(": warning:") || it.contains(": error:") }
+            .filterNot { it.contains("use of default constructor") }
+            .map { it.trim() }
+            .toCollection(linkedSetOf())
+
         if (unexpected.isNotEmpty()) {
             throw GradleException(
-                "javadoc reported ${unexpected.size} warning(s) other than the implicit constructor:\n"
-                    + unexpected.joinToString("\n").take(4000)
+                "javadoc reported ${unexpected.size} problem(s) other than the implicit constructor:\n"
+                    + unexpected.joinToString("\n")
             )
         }
     }
 }
 
 tasks.named("check") {
-    dependsOn(tasks.named("javadoc"))
+    dependsOn(javadocLint)
 }
