@@ -84,7 +84,7 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
     private final int streamingInsertBatchSize;
     private final long streamingFlushTimeoutMs;
     private int streamingUncommittedChunks;
-    private long streamingOldestPendingSinceMs;  // Wall-clock time the oldest uncommitted chunk was processed
+    private long streamingOldestPendingSinceNanos;  // System.nanoTime() when the oldest uncommitted chunk was processed
 
     /**
      * Creates a new batch indexer.
@@ -325,8 +325,8 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
                 // With pending chunks it may block no longer than the oldest one is allowed to wait.
                 long pollTimeoutMs = streamingFlushTimeoutMs;
                 if (streamingUncommittedChunks > 0) {
-                    long remainingMs = streamingFlushTimeoutMs
-                        - (System.currentTimeMillis() - streamingOldestPendingSinceMs);
+                    long pendingMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - streamingOldestPendingSinceNanos);
+                    long remainingMs = streamingFlushTimeoutMs - pendingMs;
                     if (remainingMs <= 0) {
                         commitPendingChunksOnTimeout();
                         continue;
@@ -573,7 +573,7 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
     protected final void onChunkStreamed(String batchId, int tickCount) throws Exception {
         streamingTracker.onChunkProcessed(batchId, tickCount);
         if (streamingUncommittedChunks == 0) {
-            streamingOldestPendingSinceMs = System.currentTimeMillis();
+            streamingOldestPendingSinceNanos = System.nanoTime();
         }
         streamingUncommittedChunks++;
 
