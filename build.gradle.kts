@@ -296,25 +296,27 @@ tasks.register<Test>("integration") {
     testClassesDirs = sourceSets.test.get().output.classesDirs
 }
 
+// The classes the coverage report and the coverage gate look at. Taken from the source set
+// output so that the collection carries the tasks producing it: both JaCoCo tasks then depend on
+// compilation directly, not only through the test task's execution data, and a build that skips
+// the tests (-x test) still resolves its task graph.
+val coveredClasses = sourceSets.main.get().output.classesDirs.asFileTree.matching {
+    exclude("org/evochora/ui/**", "org/evochora/Main*")
+}
+
 tasks.jacocoTestReport {
     reports {
         xml.required.set(true)
         html.required.set(true)
     }
-    classDirectories.setFrom(
-        files(classDirectories.files.map {
-            fileTree(it) {
-                exclude("org/evochora/ui/**", "org/evochora/Main*")
-            }
-        })
-    )
+    classDirectories.setFrom(coveredClasses)
 }
 
 // Coverage may not erode unnoticed: the build fails below this share of covered lines. The bound
 // sits under the current value so that an ordinary refactoring cannot trip it; raising it is a
 // deliberate change once the suite has grown past it.
 tasks.jacocoTestCoverageVerification {
-    classDirectories.setFrom(tasks.jacocoTestReport.get().classDirectories)
+    classDirectories.setFrom(coveredClasses)
     violationRules {
         rule {
             limit {
