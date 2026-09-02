@@ -98,6 +98,9 @@ public class Simulation {
      *                    1 = single-threaded (sequential code path, useful for debugging),
      *                    N &gt; 1 = exactly N threads via {@link TickWorkerPool}.
      *                    Determinism is guaranteed in every mode.
+     * @throws IllegalArgumentException if {@code parallelism} is negative. The thread count is
+     *                                  resolved while the simulation is built, so a rejected value
+     *                                  fails here and not at the first tick.
      */
     public Simulation(Environment environment, ThermodynamicPolicyManager policyManager, Config organismConfig, int parallelism) {
         this.environment = environment;
