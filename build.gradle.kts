@@ -308,6 +308,26 @@ tasks.jacocoTestReport {
     )
 }
 
+// Coverage may not erode unnoticed: the build fails below this share of covered lines. The bound
+// sits under the current value so that an ordinary refactoring cannot trip it; raising it is a
+// deliberate change once the suite has grown past it.
+tasks.jacocoTestCoverageVerification {
+    classDirectories.setFrom(tasks.jacocoTestReport.get().classDirectories)
+    violationRules {
+        rule {
+            limit {
+                counter = "LINE"
+                value = "COVEREDRATIO"
+                minimum = "0.50".toBigDecimal()
+            }
+        }
+    }
+}
+
+tasks.check {
+    dependsOn(tasks.jacocoTestCoverageVerification)
+}
+
 protobuf {
     protoc {
         artifact = "com.google.protobuf:protoc:4.33.0"
