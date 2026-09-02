@@ -67,7 +67,7 @@ class AnalyticsChartTypesTest {
 
     private static List<String> registeredChartTypes() throws IOException {
         List<String> types = new ArrayList<>();
-        try (Stream<Path> files = Files.list(CHART_DIR)) {
+        try (Stream<Path> files = Files.walk(CHART_DIR)) {
             for (Path file : files.filter(f -> f.toString().endsWith(".js")).toList()) {
                 Matcher matcher = REGISTRATION.matcher(Files.readString(file));
                 while (matcher.find()) {
