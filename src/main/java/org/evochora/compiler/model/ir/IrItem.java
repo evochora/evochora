@@ -8,6 +8,12 @@ import org.evochora.compiler.api.SourceInfo;
  * for diagnostics and debugging.
  */
 public interface IrItem {
+	/**
+	 * Returns the source location this item is attributed to, which is what lets
+	 * emitted machine code and diagnostics point back at a line of source.
+	 *
+	 * @return the source information carried by this item
+	 */
 	SourceInfo source();
 }
 

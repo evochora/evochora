@@ -51,8 +51,6 @@ import java.util.concurrent.atomic.AtomicLong;
  * <strong>Custom Buckets:</strong>
  * Provide custom bucket boundaries for different measurement units
  * (e.g., message sizes, request counts).
- *
- * @see LatencyBucket (replaced by this class with O(1) performance)
  */
 public class PercentileTracker {
 

@@ -61,7 +61,7 @@ public interface StreamingBatch<T> extends Iterable<T>, AutoCloseable {
      *   <li>In-memory: no-op (no crash recovery)</li>
      * </ul>
      *
-     * @throws org.evochora.datapipeline.api.resources.OperationalException if the acknowledgment fails
+     * @throws RuntimeException if the acknowledgment fails
      *         (broker communication error). Callers should let this propagate — the batch will be
      *         rolled back on {@link #close()}, and the broker will redeliver the messages.
      */

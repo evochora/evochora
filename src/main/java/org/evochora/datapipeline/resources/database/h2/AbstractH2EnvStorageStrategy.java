@@ -21,7 +21,9 @@ import org.slf4j.LoggerFactory;
  */
 public abstract class AbstractH2EnvStorageStrategy implements IH2EnvStorageStrategy {
     
+    /** Logger bound to the concrete strategy class, so log output carries the subclass name rather than this base class. */
     protected final Logger log = LoggerFactory.getLogger(getClass());
+    /** Strategy configuration handed in at construction; never null, may be empty. */
     protected final Config options;
     
     /**

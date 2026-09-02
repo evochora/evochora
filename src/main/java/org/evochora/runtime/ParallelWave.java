@@ -22,6 +22,12 @@ public final class ParallelWave {
     }
 
     /**
+     * Reports whether the calling thread is currently inside the parallel wave. The flag is
+     * thread-local: it says nothing about the state of other threads, and a thread that has never
+     * entered the wave reads {@code false}.
+     * <p>
+     * Callers use this to reject a facility that is reserved for the sequential parts of a tick.
+     *
      * @return {@code true} while the calling thread is inside the parallel wave
      */
     public static boolean isActive() {

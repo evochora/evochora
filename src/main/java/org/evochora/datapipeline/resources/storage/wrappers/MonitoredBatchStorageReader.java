@@ -29,8 +29,8 @@ import com.google.protobuf.Parser;
 /**
  * Monitored wrapper for batch storage read operations.
  * <p>
- * Tracks per-service read metrics: batches queried, batches read, bytes read, query errors.
- * Used by services that read batches (e.g., future indexer services).
+ * Tracks per-service read metrics: batches and messages read, bytes read, read errors, the
+ * rates of reads and bytes, and the average read latency.
  */
 public class MonitoredBatchStorageReader implements IResourceBatchStorageRead, IWrappedResource, IMonitorable {
 
@@ -48,6 +48,17 @@ public class MonitoredBatchStorageReader implements IResourceBatchStorageRead, I
     private final SlidingWindowCounter bytesCounter;
     private final SlidingWindowPercentiles latencyTracker;
 
+    /**
+     * Wraps a batch storage reader for one service binding.
+     * <p>
+     * The wrapper counts and times the calls it forwards; it holds no I/O resources and never
+     * closes the delegate.
+     *
+     * @param delegate the reader every call is forwarded to
+     * @param context  the binding context; its {@code metricsWindowSeconds} parameter sizes the
+     *                 sliding metric windows (default 30)
+     * @throws NumberFormatException if the {@code metricsWindowSeconds} parameter is not an integer
+     */
     public MonitoredBatchStorageReader(IResourceBatchStorageRead delegate, ResourceContext context) {
         this.delegate = delegate;
         this.context = context;
@@ -211,6 +222,14 @@ public class MonitoredBatchStorageReader implements IResourceBatchStorageRead, I
         return delegate.getResourceName() + ":" + context.serviceName();
     }
 
+    /**
+     * Returns the binding this wrapper was created for.
+     * <p>
+     * The context names the service and usage type this instance measures for, and carries the URI
+     * parameters the metric windows were sized from.
+     *
+     * @return the binding context, never null
+     */
     public ResourceContext getContext() {
         return context;
     }

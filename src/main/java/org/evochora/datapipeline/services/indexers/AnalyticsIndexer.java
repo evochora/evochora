@@ -75,6 +75,8 @@ import com.typesafe.config.ConfigObject;
  * topic redelivers it; a failure that persists moves it to the dead letter queue after the
  * configured number of retries. Files already written are replaced on the retry, since the
  * storage publishes them atomically.
+ *
+ * @param <ACK> The acknowledgment token type (implementation-specific, e.g., H2's AckToken)
  */
 public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements IMemoryEstimatable {
 

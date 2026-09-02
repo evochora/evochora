@@ -79,6 +79,9 @@ public final class IrConverterRegistry {
 	}
 
 	/**
+	 * Returns the converter that {@link #resolve(AstNode)} falls back to when neither the
+	 * node's class nor any of its supertypes has a registration.
+	 *
 	 * @return The default/fallback converter used when no specific converter is registered.
 	 */
 	public IAstNodeToIrConverter<AstNode> defaultConverter() {

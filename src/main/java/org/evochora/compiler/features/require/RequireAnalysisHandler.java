@@ -11,7 +11,7 @@ import org.evochora.compiler.model.symbols.SymbolTable;
  *
  * <p>Validates that the require declaration is properly formed. The actual satisfaction
  * of require dependencies (via USING clauses on the importer's .IMPORT) is validated
- * by {@link ImportAnalysisHandler}.
+ * by {@link org.evochora.compiler.features.importdir.ImportAnalysisHandler}.
  */
 public class RequireAnalysisHandler implements IAnalysisHandler {
 

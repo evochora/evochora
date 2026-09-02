@@ -133,15 +133,18 @@ public class MutableCellState implements ICellStateSource {
     }
     
     /**
-     * Checks if a cell is occupied (has non-zero molecule data).
+     * Checks whether a cell is occupied, that is, whether it holds molecule data, an owner, or both.
+     * <p>
+     * The two are meant to agree: CODE:0 is the empty cell and carries no owner, and every place
+     * that writes the environment keeps it that way. Nothing enforces that centrally, so both
+     * fields are tested — a cell that ends up with an owner but no molecule is then reported as
+     * occupied rather than passing for empty.
      *
      * @param flatIndex the flat index of the cell
-     * @return true if the cell contains a molecule
+     * @return true if the cell holds molecule data or an owner
      * @throws IndexOutOfBoundsException if flatIndex is out of range
      */
     public boolean isOccupied(int flatIndex) {
-        // A cell is "occupied" if it has non-empty molecule data OR has an owner.
-        // This handles backward compatibility with data where CODE:0 may have owner!=0.
         return moleculeData[flatIndex] != 0 || ownerIds[flatIndex] != 0;
     }
     
@@ -170,7 +173,7 @@ public class MutableCellState implements ICellStateSource {
     /**
      * Counts the number of occupied cells.
      * <p>
-     * A cell is "occupied" if it has non-empty molecule data OR has an owner.
+     * Occupancy is decided as in {@link #isOccupied(int)}: molecule data, an owner, or both.
      * <p>
      * Note: This is O(totalCells) - use sparingly.
      *
@@ -204,11 +207,27 @@ public class MutableCellState implements ICellStateSource {
         }
     }
 
+    /**
+     * Packs the occupied cells into a {@link CellDataColumns} message.
+     * <p>
+     * A cell counts as occupied if it holds molecule data, an owner, or both; empty cells are left
+     * out, so the message grows with the occupancy and not with the size of the grid. The three
+     * lists of the message are parallel and ordered by ascending flat index.
+     * <p>
+     * The whole grid is walked on every call and a fresh message is built from it, while the state
+     * itself is left unchanged. The walk yields the CPU every 100,000 cells so that a large
+     * environment does not monopolise its thread. Callers that only read the cells should use
+     * {@link #forEachOccupiedCell(ICellStateSource.CellVisitor)}, which walks the same grid without
+     * building the message.
+     *
+     * @return the occupied cells as columns; empty if no cell is occupied
+     */
     public CellDataColumns toCellDataColumns() {
         CellDataColumns.Builder builder = CellDataColumns.newBuilder();
         for (int i = 0; i < totalCells; i++) {
-            // A cell is "occupied" if it has non-empty molecule data OR has an owner.
-            // CODE:0 (moleculeData=0) can have a valid owner (e.g., initial world objects).
+            // Occupancy is decided as in isOccupied: molecule data, an owner, or both. A cell
+            // with an owner but no molecule is not expected, and is written out rather than
+            // dropped, so that it does not disappear from the data unnoticed.
             if (moleculeData[i] != 0 || ownerIds[i] != 0) {
                 builder.addFlatIndices(i);
                 builder.addMoleculeData(moleculeData[i]);

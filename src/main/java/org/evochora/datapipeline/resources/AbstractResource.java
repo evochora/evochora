@@ -20,7 +20,9 @@ import java.util.concurrent.ConcurrentLinkedDeque;
  * and metrics across all resources, following the same patterns as {@link org.evochora.datapipeline.services.AbstractService}.
  */
 public abstract class AbstractResource implements IResource, IMonitorable {
+    /** Name under which this resource is declared in the configuration; never null and fixed for the life of the instance. */
     protected final String resourceName;
+    /** Configuration section of this resource instance; never null. Subclasses read their own settings from it. */
     protected final Config options;
     
     /**
@@ -38,6 +40,8 @@ public abstract class AbstractResource implements IResource, IMonitorable {
      * Maximum number of errors to keep in memory. When exceeded, oldest errors are removed.
      * This prevents OOM in long-running resources with frequent errors.
      * Subclasses can override this value if needed.
+     *
+     * @return the number of errors retained before the oldest ones are discarded
      */
     protected int getMaxErrors() {
         return 10000;

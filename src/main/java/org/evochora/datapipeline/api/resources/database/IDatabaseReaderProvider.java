@@ -13,7 +13,8 @@ public interface IDatabaseReaderProvider {
      * Creates a new reader for the specified simulation run.
      * @param runId Simulation run ID (sets schema)
      * @return Reader with dedicated connection
-     * @throws RuntimeException with SQLException cause if schema invalid
+     * @throws SQLException if no schema exists for the run or no connection can be acquired.
+     *         The reader owns its connection and must be closed by the caller to release it.
      */
     IDatabaseReader createReader(String runId) throws SQLException;
     

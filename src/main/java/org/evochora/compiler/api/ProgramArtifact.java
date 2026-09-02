@@ -17,13 +17,15 @@ import java.util.Map;
  * @param machineCodeLayout A map from relative coordinates to the integer representation of a molecule.
  * @param initialWorldObjects A map from relative coordinates to molecules that should be placed in the world initially.
  * @param sourceMap A map from linear address to source information, for debugging.
- * @param callSiteBindings A map from linear address of a CALL instruction to its target coordinates.
+ * @param callSiteBindings A map from the address recorded for a CALL instruction to that call's
+ *                         parameter bindings: each formal register id (FDR/FLR bank) to the
+ *                         caller register bound to it.
  * @param relativeCoordToLinearAddress A map from relative coordinate string to linear address.
  * @param linearAddressToCoord A map from linear address to relative coordinates.
  * @param registerAliasMap A map from register alias names (e.g., "%MY_REG") to their physical register index.
  * @param procNameToParamNames A map from procedure names to a list of their parameter information (name and type).
  * @param tokenMap A map from SourceInfo to TokenInfo for deterministic token classification.
- * @param tokenLookup A map from fileName to lineNumber to columnNumber to List<TokenInfo> for efficient file-line-column-based lookup.
+ * @param tokenLookup A map from fileName to lineNumber to columnNumber to {@code List<TokenInfo>} for efficient file-line-column-based lookup.
  * @param sourceLineToInstructions A map from source line identifier (fileName:lineNumber) to a list of machine instructions
  *                                 that were generated from that source line, sorted by linear address.
  * @param labelValueToName A map from label hash value to label name (for reverse lookup in visualizer).
@@ -46,6 +48,16 @@ public record ProgramArtifact(
         Map<Integer, String> labelValueToName,
         Map<String, Integer> labelNameToValue
 ) {
+    /**
+     * Canonical constructor that makes the artifact immutable by wrapping every map component in an
+     * unmodifiable view. {@code sources}, {@code procNameToParamNames}, {@code tokenMap},
+     * {@code tokenLookup}, {@code sourceLineToInstructions}, {@code labelValueToName} and
+     * {@code labelNameToValue} accept null and become empty maps; every other map component must be
+     * non-null. Wrapping does not copy, so a caller that keeps a reference to a map it passed in can
+     * still change what the artifact exposes.
+     *
+     * @throws NullPointerException if one of the map components without null handling is null.
+     */
     public ProgramArtifact {
         sources = sources != null ? Collections.unmodifiableMap(sources) : Collections.emptyMap();
         machineCodeLayout = Collections.unmodifiableMap(machineCodeLayout);
@@ -78,7 +90,7 @@ public record ProgramArtifact(
      * <p>This method linearizes all maps with int[] keys to Integer keys
      * to enable Jackson serialization. The original data remains unchanged.</p>
      * 
-     * <h3>Usage</h3>
+     * <p><b>Usage:</b></p>
      * <pre>{@code
      * ProgramArtifact artifact = ...;
      * EnvironmentProperties envProps = new EnvironmentProperties(new int[]{100, 100}, true);
@@ -88,10 +100,10 @@ public record ProgramArtifact(
      * String json = objectMapper.writeValueAsString(linearized);
      * }</pre>
      * 
-     * <h3>Linearized Fields</h3>
+     * <p><b>Linearized Fields:</b></p>
      * <ul>
-     *   <li><strong>machineCodeLayout</strong>: Map<int[], Integer> → Map<Integer, Integer></li>
-     *   <li><strong>initialWorldObjects</strong>: Map<int[], PlacedMolecule> → Map<Integer, PlacedMolecule></li>
+     *   <li><strong>machineCodeLayout</strong>: {@code Map<int[], Integer>} &rarr; {@code Map<Integer, Integer>}</li>
+     *   <li><strong>initialWorldObjects</strong>: {@code Map<int[], PlacedMolecule>} &rarr; {@code Map<Integer, PlacedMolecule>}</li>
      * </ul>
      * 
      * @param envProps The environment properties containing world shape and toroidal information

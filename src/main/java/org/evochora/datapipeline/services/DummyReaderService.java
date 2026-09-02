@@ -16,7 +16,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * Test service that reads and validates TickDataChunk batches from storage using the chunk batch API.
  * Used for integration testing of storage resources.
  * 
- * <h3>Configuration Options:</h3>
+ * <h2>Configuration Options:</h2>
  * <ul>
  *   <li><b>keyPrefix</b>: Prefix for filtering files (default: "test").</li>
  *   <li><b>intervalMs</b>: Milliseconds between polling cycles (default: 1000).</li>
@@ -42,6 +42,17 @@ public class DummyReaderService extends AbstractService {
     private long minTickSeen = Long.MAX_VALUE;
     private long maxTickSeen = Long.MIN_VALUE;
 
+    /**
+     * Constructs the reader, resolves the storage resource and reads its configuration.
+     *
+     * @param name      The name of the service instance.
+     * @param options   The configuration for this service; the supported keys and their defaults
+     *                  are listed in the class documentation.
+     * @param resources A map of resource ports to lists of resources; the {@code storage} port is
+     *                  required.
+     * @throws IllegalStateException if the {@code storage} port is missing, carries more than one
+     *                               resource, or carries a resource of the wrong type.
+     */
     public DummyReaderService(String name, Config options, Map<String, List<IResource>> resources) {
         super(name, options, resources);
         this.storage = getRequiredResource("storage", IBatchStorageRead.class);

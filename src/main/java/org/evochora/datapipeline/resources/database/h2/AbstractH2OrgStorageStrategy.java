@@ -39,8 +39,11 @@ import com.typesafe.config.Config;
  */
 public abstract class AbstractH2OrgStorageStrategy implements IH2OrgStorageStrategy {
     
+    /** Logger bound to the concrete strategy class, so log output carries the subclass name rather than this base class. */
     protected final Logger log = LoggerFactory.getLogger(getClass());
+    /** Strategy configuration handed in at construction; never null, may be empty. */
     protected final Config options;
+    /** Compression subclasses apply to the BLOB columns they write and read; derived from the strategy configuration. */
     protected final ICompressionCodec codec;
     private volatile boolean tablesCreated;
     
@@ -88,6 +91,11 @@ public abstract class AbstractH2OrgStorageStrategy implements IH2OrgStorageStrat
      * <p>
      * Each competing consumer uses its own database connection, so keying by connection
      * ensures complete isolation between concurrent indexer instances.
+     *
+     * @param organismsStmt prepared MERGE for the static organism data, reused for every tick written on this connection
+     * @param statesStmt prepared MERGE for the per-tick organism state
+     * @param tickStatsStmt prepared MERGE for the per-tick statistics row
+     * @param seenOrganisms organism ids already batched through {@code organismsStmt} in the current commit window, cleared on commit, so the static row is batched once per organism and commit
      */
     protected record StreamingSession(
             PreparedStatement organismsStmt,

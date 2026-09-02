@@ -32,6 +32,18 @@ public class MetadataIndexer<ACK> extends AbstractIndexer<MetadataInfo, ACK> {
     private final AtomicLong metadataIndexed = new AtomicLong(0);
     private final AtomicLong metadataFailed = new AtomicLong(0);
 
+    /**
+     * Constructs the metadata indexer, resolves the database resource and reads the timeout
+     * that bounds the wait for the metadata notification.
+     *
+     * @param name      The name of the service instance.
+     * @param options   The configuration for this indexer; {@code topicPollTimeoutMs} bounds the
+     *                  wait for the metadata notification and defaults to 30000.
+     * @param resources A map of resource ports to lists of resources; the {@code database} port
+     *                  is required in addition to the ports required by the base class.
+     * @throws IllegalStateException if the {@code database} port is missing, carries more than
+     *                               one resource, or carries a resource of the wrong type.
+     */
     public MetadataIndexer(String name, Config options, Map<String, List<IResource>> resources) {
         super(name, options, resources);
         this.database = getRequiredResource("database", IResourceSchemaAwareMetadataWriter.class);

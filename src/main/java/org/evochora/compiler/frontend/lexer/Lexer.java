@@ -61,6 +61,8 @@ public class Lexer {
      * Removes the trailing EOF token from a token list, if present.
      * Used when pre-lexed tokens are injected into another token stream
      * that already has its own EOF.
+     * @param tokens The token list, trimmed in place and therefore required to be mutable.
+     *               An empty list or one not ending in an EOF token is left untouched.
      */
     public static void stripEofToken(List<Token> tokens) {
         if (!tokens.isEmpty() && tokens.getLast().type() == TokenType.END_OF_FILE) {

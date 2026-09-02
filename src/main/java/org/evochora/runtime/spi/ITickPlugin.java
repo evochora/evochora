@@ -13,15 +13,12 @@ import org.evochora.runtime.Simulation;
  *   <li>Current tick via {@code simulation.getCurrentTick()}</li>
  *   <li>Random provider via {@code simulation.getRandomProvider()}</li>
  * </ul>
- * </p>
  * <p>
  * Plugins are executed sequentially in their configured order. A plugin may use
  * internal multithreading if needed, but must ensure thread-safety itself.
- * </p>
  * <p>
  * Implementations must provide a constructor with signature:
  * {@code (IRandomProvider rng, com.typesafe.config.Config options)}
- * </p>
  *
  * @see ISimulationPlugin
  */
@@ -32,7 +29,6 @@ public interface ITickPlugin extends ISimulationPlugin {
      * <p>
      * Called once per tick, before Plan-Resolve-Execute. The plugin has full
      * access to modify the simulation state.
-     * </p>
      *
      * @param simulation The simulation instance providing access to environment and organisms.
      */

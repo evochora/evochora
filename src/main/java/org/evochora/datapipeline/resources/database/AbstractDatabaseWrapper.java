@@ -35,7 +35,9 @@ public abstract class AbstractDatabaseWrapper extends org.evochora.datapipeline.
     private static final Logger log = LoggerFactory.getLogger(AbstractDatabaseWrapper.class);
     
     // Core dependencies
+    /** Database resource this wrapper borrows its connection from and forwards schema and write operations to. */
     protected final AbstractDatabaseResource database;
+    /** Binding this wrapper was created for: service name, usage type and URI parameters. */
     protected final ResourceContext context;
     
     // Connection caching (lazy acquisition, smart release)
@@ -43,6 +45,11 @@ public abstract class AbstractDatabaseWrapper extends org.evochora.datapipeline.
     private String cachedRunId = null;
     
     // Metrics window config (inherited from database resource)
+    /**
+     * Length in seconds of the sliding windows subclasses size their latency and throughput metrics
+     * with. Taken from the binding's {@code metricsWindowSeconds} URI parameter, otherwise from the
+     * database resource option of that name, otherwise 60.
+     */
     protected final int metricsWindowSeconds;
     
     /**
@@ -74,7 +81,10 @@ public abstract class AbstractDatabaseWrapper extends org.evochora.datapipeline.
      * Acquires connection lazily on first call and caches it.
      * Sets schema if runId was previously set via setSimulationRun().
      * <p>
-     * Thread-safe for single-threaded indexer use.
+     * A wrapper belongs to the one service thread it was bound to, and the cached connection may
+     * only be used from that thread: neither it nor the cached run id is guarded, and a JDBC
+     * connection is not meant for concurrent use either. Metrics and health may be read from
+     * another thread, because those paths do not touch this state.
      *
      * @return Database connection (with schema set if cachedRunId is not null)
      * @throws RuntimeException if connection acquisition fails

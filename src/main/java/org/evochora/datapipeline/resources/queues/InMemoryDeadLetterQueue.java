@@ -23,14 +23,12 @@ import java.util.concurrent.atomic.AtomicLong;
  * This implementation wraps an {@link InMemoryBlockingQueue} and adds DLQ-specific functionality
  * such as capacity monitoring and primary queue tracking.
  *
- * <p>This implementation is suitable for:
+ * <p>This implementation is suitable for:</p>
  * <ul>
  *   <li>Local development and testing</li>
  *   <li>In-process deployment mode</li>
  *   <li>Single-instance applications</li>
  * </ul>
- * </p>
- *
  * <p>For distributed/cloud deployments, use a cloud-native DLQ implementation
  * (e.g., SQS-backed DLQ for AWS deployments).</p>
  *

@@ -50,6 +50,21 @@ public class H2DatabaseReader implements IDatabaseReader {
     private final String runId;
     private boolean closed = false;
     
+    /**
+     * Binds a reader to a connection that is already prepared for the run.
+     * <p>
+     * The reader takes over the connection: {@link #close()} returns it to the pool, and until then
+     * no one else may use it. Readers are handed out by {@link H2Database#createReader(String)},
+     * which sets the run's schema on the connection beforehand. One reader serves one request at a
+     * time - it holds a single JDBC connection and its closed flag is not synchronised.
+     *
+     * @param connection  dedicated pooled connection with the run's schema already selected
+     * @param database    owning database, told when the connection is released again
+     * @param envStrategy environment storage strategy; may be null, in which case environment reads
+     *                    fail instead of returning empty results
+     * @param orgStrategy organism storage strategy
+     * @param runId       simulation run this reader reads from
+     */
     public H2DatabaseReader(Connection connection, H2Database database, 
                            IH2EnvStorageStrategy envStrategy, 
                            IH2OrgStorageStrategy orgStrategy,

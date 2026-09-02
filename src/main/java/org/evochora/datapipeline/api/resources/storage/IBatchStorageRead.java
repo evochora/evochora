@@ -28,7 +28,7 @@ import java.util.Optional;
  * <strong>Usage Pattern:</strong> This interface is injected into services via usage type
  * "storage-read:resourceName" to ensure type safety and proper metric isolation.
  *
- * <h3>Implementor contract</h3>
+ * <h2>Implementor contract</h2>
  * Implementations must provide these 6 abstract methods:
  * <ol>
  *   <li>{@link #forEachRawChunk} — streaming raw-byte read (the primary read primitive)</li>
@@ -44,7 +44,7 @@ import java.util.Optional;
  * protobuf parsing. Implementations that need wire-level field filtering (e.g.,
  * {@link ChunkFieldFilter#SKIP_ORGANISMS}) must override {@code forEachChunk} as well.
  *
- * <h3>Streaming consumers</h3>
+ * <h2>Streaming consumers</h2>
  * Use {@link #forEachRawChunk} or {@link #forEachChunk} for streaming processing,
  * and {@link #forEachChunkUntil} when early exit is needed.
  */

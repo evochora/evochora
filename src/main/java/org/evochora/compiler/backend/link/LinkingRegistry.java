@@ -24,6 +24,9 @@ public class LinkingRegistry {
     public void registerAll(List<ILinkingRule> rules) { this.rules.addAll(rules); }
 
     /**
+     * Returns the rules in registration order. The linker applies them to each instruction
+     * in that order, so every rule sees the instruction as rewritten by the previous ones.
+     *
      * @return The list of registered linking rules.
      */
     public List<ILinkingRule> rules() { return Collections.unmodifiableList(rules); }

@@ -38,6 +38,39 @@ import org.slf4j.LoggerFactory;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 
+/**
+ * Owns the life cycle of the pipeline's services and binds them to the resources they work with.
+ * <p>
+ * The manager is built from the {@code pipeline} section of a configuration. It instantiates every
+ * declared resource once, builds one factory per declared service, and — unless auto-start is
+ * switched off — starts the services named in the startup sequence. A service exists as an object
+ * only from a successful {@link #startService(String)} until the next start of the same name;
+ * before the first start there is a configured name and a factory, but no instance.
+ * <p>
+ * <strong>Resources outlive services.</strong> A start binds a service to the resources its
+ * configuration names and, where a resource is contextual, hands the service a wrapper made for
+ * that binding rather than the resource itself. Stopping a service leaves both the bindings and
+ * those wrappers in place; only {@link #shutdown()} closes the resources. That is what makes a
+ * stop/start cycle possible while the process keeps running, and it is also why a manager cannot be
+ * used again after a shutdown: closed resources are not reopened.
+ * <p>
+ * <strong>Failure to start.</strong> A start that fails for a recognised reason — insufficient
+ * memory, a program that does not compile, a checkpoint that cannot be resumed from, a rejected
+ * configuration, a world too large for a Java array — is logged with an explanation and swallowed,
+ * leaving the service without an instance and therefore reported as
+ * {@link IService.State#STOPPED}. Any other runtime failure is logged and rethrown.
+ * <p>
+ * <strong>Failure while running.</strong> The manager does not watch its services. One that ends in
+ * {@link IService.State#ERROR} stays registered in that state: it is skipped by
+ * {@link #stopAll()}, it makes {@link #isHealthy()} false and shows up in
+ * {@link #getServiceErrors()}, and it is replaced only by an explicit start of its name.
+ * <p>
+ * <strong>Threading.</strong> The registries are concurrent maps and the reporting methods take
+ * their snapshots without locking, so they may be called from any thread while services run. The
+ * life-cycle methods hold no lock either: two threads starting or stopping the same service at the
+ * same time race, and serialising them is the caller's job. {@link #stopAll()} makes deliberate use
+ * of this by stopping distinct services in parallel.
+ */
 public class ServiceManager implements IMonitorable {
 
     private static final Logger log = LoggerFactory.getLogger(ServiceManager.class);
@@ -56,6 +89,29 @@ public class ServiceManager implements IMonitorable {
     // Cached reference to the service that owns the current simulation run (set during startService)
     private volatile ISimulationSource simulationSource;
 
+    /**
+     * Builds the manager from a configuration and, unless told otherwise, brings the pipeline up.
+     * <p>
+     * In this order: the resource initializers declared in {@code init} blocks are run — before any
+     * resource class is loaded, because some drivers read system properties at load time and each
+     * initializer class runs only once; then every entry under {@code resources} is instantiated;
+     * then a factory is built for every entry under {@code services}. A resource or a service whose
+     * definition cannot be used is logged and skipped so that the rest of the pipeline still comes
+     * up. A service whose factory could not be built — one naming a resource that does not exist,
+     * for instance — is unknown to the manager from then on: it cannot be started and does not
+     * appear among the reported statuses.
+     * <p>
+     * If {@code autoStart} is absent or true and a non-empty {@code startupSequence} is configured,
+     * the services it names are started in that order before the constructor returns, and a memory
+     * estimate for the running pipeline is logged afterwards. Otherwise nothing is started and the
+     * services wait for {@link #startAll()} or {@link #startService(String)}.
+     *
+     * @param rootConfig configuration holding a {@code pipeline} section; nothing outside that
+     *                   section is read
+     * @throws IllegalArgumentException if the configuration has no {@code pipeline} section
+     * @throws RuntimeException if auto-starting a service fails for a reason the manager does not
+     *                          recognise, in which case the failure is not swallowed but passed on
+     */
     public ServiceManager(Config rootConfig) {
         this.pipelineConfig = loadPipelineConfig(rootConfig);
         log.info("Initializing ServiceManager...");
@@ -353,6 +409,15 @@ public class ServiceManager implements IMonitorable {
         }
     }
 
+    /**
+     * Starts the services named in the configured startup sequence, in that order.
+     * <p>
+     * Nothing else is started: a configured service the sequence does not name stays untouched. A
+     * service that is not defined, or that is already running and would have to be restarted
+     * explicitly, is logged and skipped so the remaining ones still come up. Every other outcome of
+     * a start is the one described for {@link #startService(String)}, including a failure that is
+     * passed on and then leaves the rest of the sequence unstarted.
+     */
     public void startAll() {
         log.info("\u001B[34m========== Starting Services ==========\u001B[0m");
         startAllInternal();
@@ -364,8 +429,25 @@ public class ServiceManager implements IMonitorable {
         applyToAllServices(this::startService, toStart);
     }
 
+    /**
+     * Stops every service that is currently running or paused and waits for all of them.
+     * <p>
+     * The candidates are the startup sequence in reverse, followed by any started service the
+     * sequence does not name. Services that have already stopped themselves or ended in
+     * {@link IService.State#ERROR} are left alone. Each of the remaining ones is stopped on a
+     * thread of its own, so the reversed order decides only in which order the stops are triggered,
+     * not in which order they take effect; the call returns once all those threads have finished.
+     * If the calling thread is interrupted while waiting, the wait is given up and the interrupt
+     * flag is restored, which can leave services still stopping in the background.
+     * <p>
+     * The services stay registered with the state they ended in, so they can still be inspected and
+     * started again. Resources are left open; closing them is {@link #shutdown()}'s job.
+     */
     public void stopAll() {
         log.info("\u001B[34m========== Stopping Services ==========\u001B[0m");
+        // Reversed only to decide which stop is triggered first. The stops themselves run at the
+        // same time (see below), so this order does not sequence them: a service later in the list
+        // may well finish stopping before one earlier in it.
         List<String> toStop = new ArrayList<>(startupSequence);
         Collections.reverse(toStop);
         services.keySet().stream().filter(s -> !toStop.contains(s)).forEach(toStop::add);
@@ -452,11 +534,25 @@ public class ServiceManager implements IMonitorable {
         }
     }
 
+    /**
+     * Pauses every registered service, that is, every service that has been started at least once
+     * and not been replaced since.
+     * <p>
+     * What pausing means in a service's current state is the service's own decision. A service that
+     * refuses is logged and skipped, and the remaining ones are still asked.
+     */
     public void pauseAll() {
         log.info("Pausing all services...");
         applyToAllServices(this::pauseService, new ArrayList<>(services.keySet()));
     }
 
+    /**
+     * Resumes every registered service, that is, every service that has been started at least once
+     * and not been replaced since.
+     * <p>
+     * What resuming means in a service's current state is the service's own decision. A service that
+     * refuses is logged and skipped, and the remaining ones are still asked.
+     */
     public void resumeAll() {
         log.info("Resuming all services...");
         applyToAllServices(this::resumeService, new ArrayList<>(services.keySet()));
@@ -520,6 +616,36 @@ public class ServiceManager implements IMonitorable {
         log.info("Registered custom factory for service '{}'", serviceName);
     }
 
+    /**
+     * Creates a fresh instance of the named service, binds its resources and starts it.
+     * <p>
+     * An instance of that name that is still registered in {@link IService.State#STOPPED} or
+     * {@link IService.State#ERROR} is discarded together with its resource bindings and replaced. A
+     * running or paused instance is not replaced; {@link #restartService(String)} is the way to do
+     * that.
+     * <p>
+     * Resources are prepared before the service is constructed. For each port its configuration
+     * names, a contextual resource is asked for a wrapper made for that binding, and it is the
+     * wrapper — not the resource behind it — that the service receives and that its binding records;
+     * a resource that is not contextual is passed through as it is. Every start asks for new
+     * wrappers and nothing here hands them back: they are released when the resource behind them is
+     * closed, which happens in {@link #shutdown()}. Repeated starts of one service therefore leave
+     * one set of wrappers behind per start.
+     * <p>
+     * A service that identifies itself as the source of the simulation run becomes the one the
+     * manager reports through {@link #getActiveRunId()}.
+     * <p>
+     * Most failures to start are not passed on. Insufficient memory, a program that does not
+     * compile, a checkpoint that cannot be resumed from, a rejected configuration and a world too
+     * large for a Java array are logged with an explanation, and so is any checked exception; in
+     * each case the service is left without an instance and is reported as
+     * {@link IService.State#STOPPED} afterwards. Every other {@link RuntimeException} is logged and
+     * rethrown.
+     *
+     * @param name the configured name of the service
+     * @throws IllegalArgumentException if no service of that name is defined
+     * @throws IllegalStateException if an instance of that name is still running or paused
+     */
     public void startService(String name) {
         // VALIDATION: Check if the service already exists and its state
         IService existing = services.get(name);
@@ -692,6 +818,23 @@ public class ServiceManager implements IMonitorable {
         }
     }
 
+    /**
+     * Stops the named service and waits for it to come to a halt.
+     * <p>
+     * A name with no registered instance — never started, or already discarded — is logged as a
+     * warning and otherwise ignored, which is what lets a stop be asked for without knowing whether
+     * anything is running. Otherwise the service's own {@code stop()} is called, which blocks until
+     * the service has ended or waiting for it has been given up, and the state it ends in is
+     * logged: {@link IService.State#ERROR} as a warning and any state other than that or
+     * {@link IService.State#STOPPED} as an error. Neither is acted upon here.
+     * <p>
+     * The instance stays registered with that final state so it can still be inspected; the next
+     * {@link #startService(String)} for the same name discards it. Its resource bindings stay in
+     * place and the resource wrappers created for it are not released — that happens only when the
+     * resources are closed in {@link #shutdown()}.
+     *
+     * @param name the configured name of the service
+     */
     public void stopService(String name) {
         IService service = services.get(name);
         if (service == null) {
@@ -716,14 +859,48 @@ public class ServiceManager implements IMonitorable {
         // It will be removed on next startService() or during shutdown().
     }
 
+    /**
+     * Pauses the named service.
+     * <p>
+     * What pausing means, and whether it is allowed in the service's current state, is the service's
+     * own decision; this method only forwards the call and reports nothing back.
+     *
+     * @param serviceName the configured name of the service
+     * @throws IllegalArgumentException if no instance of that name is registered, which is also the
+     *                                  case for a configured service that has never been started
+     */
     public void pauseService(String serviceName) {
         getServiceOrFail(serviceName).pause();
     }
 
+    /**
+     * Resumes the named service.
+     * <p>
+     * What resuming means, and whether it is allowed in the service's current state, is the
+     * service's own decision; this method only forwards the call and reports nothing back.
+     *
+     * @param serviceName the configured name of the service
+     * @throws IllegalArgumentException if no instance of that name is registered, which is also the
+     *                                  case for a configured service that has never been started
+     */
     public void resumeService(String serviceName) {
         getServiceOrFail(serviceName).resume();
     }
 
+    /**
+     * Stops the named service and starts it again as a fresh instance.
+     * <p>
+     * The stop half tolerates a service that has no instance, so this also serves to start a
+     * configured service for the first time. The new instance is built by the factory and bound to
+     * newly wrapped resources, while the resources themselves stay as they are. Both halves behave
+     * as described for {@link #stopService(String)} and {@link #startService(String)}, which
+     * includes swallowing a recognised start failure and leaving the service without an instance.
+     *
+     * @param serviceName the configured name of the service
+     * @throws IllegalArgumentException if no service of that name is defined
+     * @throws IllegalStateException if the service did not come to a halt and is still running or
+     *                               paused when the start is attempted
+     */
     public void restartService(String serviceName) {
         log.info("Restarting service '{}'...", serviceName);
         stopService(serviceName);
@@ -738,6 +915,17 @@ public class ServiceManager implements IMonitorable {
         return service;
     }
 
+    /**
+     * The service instances the manager holds, in no particular order.
+     * <p>
+     * This is an unmodifiable view of the live registry rather than a copy, so instances started or
+     * replaced later show up in it. It holds every service that has been started at least once, in
+     * whatever state it has reached — stopped and failed ones included — and nothing for a
+     * configured service that has never been started. {@link #getAllServiceStatus()} covers those
+     * as well.
+     *
+     * @return an unmodifiable view of the registered service instances
+     */
     public Collection<IService> getAllServices() {
         return Collections.unmodifiableCollection(services.values());
     }
@@ -794,6 +982,16 @@ public class ServiceManager implements IMonitorable {
         return servicesOk && resourcesOk;
     }
 
+    /**
+     * The operational errors reported by the registered services, keyed by service name.
+     * <p>
+     * Only services that can be monitored and that actually have errors appear: a service with an
+     * empty error list is left out, as is one that has never been started. The errors are the ones
+     * accumulated since the service last had them cleared, which {@link #clearErrors()} does for
+     * all of them at once.
+     *
+     * @return a map from service name to that service's errors, holding no empty lists
+     */
     public Map<String, List<OperationalError>> getServiceErrors() {
         return services.entrySet().stream()
                 .filter(e -> e.getValue() instanceof IMonitorable)
@@ -802,6 +1000,17 @@ public class ServiceManager implements IMonitorable {
                 .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
     }
 
+    /**
+     * The operational errors reported by one service.
+     * <p>
+     * A service that cannot be monitored has no errors to report and is not distinguished here from
+     * one that reports none.
+     *
+     * @param serviceName the configured name of the service
+     * @return that service's errors, or an empty list if it has none or cannot be monitored
+     * @throws IllegalArgumentException if no instance of that name is registered, which is also the
+     *                                  case for a configured service that has never been started
+     */
     public List<OperationalError> getServiceErrors(String serviceName) {
         IService service = getServiceOrFail(serviceName);
         if (service instanceof IMonitorable) {
@@ -810,11 +1019,30 @@ public class ServiceManager implements IMonitorable {
         return Collections.emptyList();
     }
 
+    /**
+     * A status for every configured service, whether or not it is running.
+     * <p>
+     * A service without an instance — never started, or discarded after a failed start — is reported
+     * as {@link IService.State#STOPPED} with no metrics, errors or resource bindings. The statuses
+     * are taken one after another, so they need not describe the same instant.
+     *
+     * @return a map from service name to that service's current status
+     */
     public Map<String, ServiceStatus> getAllServiceStatus() {
         return serviceFactories.keySet().stream()
                 .collect(Collectors.toMap(Function.identity(), this::getServiceStatus, (v1, v2) -> v1, LinkedHashMap::new));
     }
 
+    /**
+     * The resources the manager instantiated, keyed by their configured name.
+     * <p>
+     * A resource whose instantiation failed is absent, which is the only way this set differs from
+     * the configured one; it is fixed once the manager is built. The map is an unmodifiable view
+     * holding the shared instances the services work with, not copies, so a caller may read their
+     * state but must not close them — their life cycle belongs to the manager.
+     *
+     * @return an unmodifiable view of the instantiated resources
+     */
     public Map<String, IResource> getAllResourceStatus() {
         return Collections.unmodifiableMap(resources);
     }
@@ -850,6 +1078,21 @@ public class ServiceManager implements IMonitorable {
         return expectedType.cast(resource);
     }
 
+    /**
+     * The current status of one configured service.
+     * <p>
+     * A configured service without an instance — never started, or discarded after a failed start —
+     * is reported as {@link IService.State#STOPPED} with no metrics, errors or resource bindings.
+     * For an existing instance, health is what the service reports about itself if it can be
+     * monitored, and otherwise follows from its state alone: anything but
+     * {@link IService.State#ERROR} counts as healthy.
+     *
+     * @param serviceName the configured name of the service
+     * @return a snapshot of the service's state, health, metrics, errors and resource bindings
+     * @throws IllegalArgumentException if no service of that name is defined in the configuration,
+     *                                  which unlike the life-cycle methods is decided by the
+     *                                  configuration and not by whether an instance exists
+     */
     public ServiceStatus getServiceStatus(String serviceName) {
         if (!serviceFactories.containsKey(serviceName)) {
             throw new IllegalArgumentException("Service not found: " + serviceName);

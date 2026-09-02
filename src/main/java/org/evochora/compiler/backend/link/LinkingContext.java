@@ -34,11 +34,15 @@ public final class LinkingContext {
     }
 
     /**
+     * Returns the symbol table the linking rules resolve names against.
+     *
      * @return The symbol table for resolving symbols.
      */
     public SymbolTable symbolTable() { return symbolTable; }
 
     /**
+     * Returns the instruction set a rule consults to turn a register name into its id.
+     *
      * @return The instruction set adapter for register resolution.
      */
     public IInstructionSet isa() { return isa; }
@@ -69,6 +73,8 @@ public final class LinkingContext {
     public void setCurrentAddress(final int linearAddress) { guardFrozen(); this.linearAddressCursor = linearAddress; }
 
     /**
+     * Returns the address the linker is currently working at, as the layout assigned it.
+     *
      * @return The linear address of the item currently being linked.
      */
     public int currentAddress() { return linearAddressCursor; }
@@ -88,6 +94,8 @@ public final class LinkingContext {
 
     /**
      * Pushes an alias chain when entering an imported module.
+     *
+     * @param aliasChain the chain qualifying names inside that module
      */
     public void pushAliasChain(String aliasChain) {
         guardFrozen();
@@ -107,6 +115,8 @@ public final class LinkingContext {
 
     /**
      * Returns the current alias chain, or empty string if the stack is empty.
+     *
+     * @return the chain qualifying names at this point, empty outside any imported module
      */
     public String currentAliasChain() {
         return aliasChainStack.isEmpty() ? "" : aliasChainStack.peek();

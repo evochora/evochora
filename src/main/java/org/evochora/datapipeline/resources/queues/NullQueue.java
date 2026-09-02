@@ -30,6 +30,14 @@ public class NullQueue<T> extends AbstractResource implements IContextualResourc
 
     private final AtomicLong messageCount = new AtomicLong(0);
 
+    /**
+     * Creates a queue that accepts everything and keeps nothing.
+     * <p>
+     * No buffer and no synchronisation are allocated; the instance only counts what it discarded.
+     *
+     * @param name    resource name from the configuration
+     * @param options resource configuration; no option of its own is read
+     */
     public NullQueue(String name, Config options) {
         super(name, options);
     }

@@ -37,6 +37,8 @@ import com.google.protobuf.Message;
  * runs a watchdog thread that calls {@link #isStuck(Instant)} periodically. If a message
  * has been held too long without acknowledgment, {@link #recover()} is called to force
  * session recovery, causing the broker to redeliver the message to another consumer.
+ *
+ * @param <T> The message type (must be a Protobuf {@link Message}).
  */
 public class ArtemisTopicReaderDelegate<T extends Message> 
     extends AbstractTopicDelegateReader<ArtemisTopicResource<T>, T, jakarta.jms.Message> {

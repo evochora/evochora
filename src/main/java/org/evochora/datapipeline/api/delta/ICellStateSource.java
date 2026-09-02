@@ -30,6 +30,10 @@ public interface ICellStateSource {
     @FunctionalInterface
     interface CellVisitor {
         /**
+         * Handles one occupied cell. Called synchronously from
+         * {@link ICellStateSource#forEachOccupiedCell(CellVisitor)} and never for an empty cell,
+         * so a visitor that only counts calls counts occupied cells.
+         *
          * @param flatIndex    position of the cell in the environment, in row-major order
          * @param moleculeData the packed molecule integer, zero if the cell holds no molecule
          * @param ownerId      id of the owning organism, zero if the cell belongs to nobody

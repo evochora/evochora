@@ -51,6 +51,9 @@ public class ParserStatementRegistry {
 
     /**
      * Returns the default handler, if registered.
+     *
+     * @return The handler used for keywords without their own registration, or empty if no
+     *         default was registered.
      */
     public Optional<IParserStatementHandler> getDefault() {
         return Optional.ofNullable(defaultHandler);

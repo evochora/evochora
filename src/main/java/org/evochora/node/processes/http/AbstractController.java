@@ -11,7 +11,19 @@ import org.evochora.node.spi.ServiceRegistry;
  */
 public abstract class AbstractController implements IController {
 
+    /**
+     * The registry through which the controller looks up the services published by the node's
+     * processes. It is shared by all controllers of an HTTP server, so a service fetched here is
+     * the same instance the rest of the node uses, and lookups may happen while requests are being
+     * served.
+     */
     protected final ServiceRegistry registry;
+    /**
+     * The {@code options} block of this controller's route entry, holding the settings that belong
+     * to this controller alone. A route declared without such a block gives an empty configuration,
+     * so subclasses must treat every setting as absent unless they check for it or supply a
+     * default.
+     */
     protected final Config options;
 
     /**

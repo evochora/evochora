@@ -64,6 +64,25 @@ public class H2Database extends AbstractDatabaseResource
     private final ConcurrentHashMap<Connection, Long> readerCheckoutTimes = new ConcurrentHashMap<>();
     private final long readerConnectionWarningThresholdMs;
 
+    /**
+     * Opens the connection pool for the configured H2 database and loads the storage strategies.
+     * <p>
+     * The database location is checked before the first connection attempt and the pool is created
+     * eagerly, so a missing directory, a database file already locked by another process, or wrong
+     * credentials fail construction with a message naming the cause rather than surfacing at the
+     * first query. The organism storage strategy is loaded here; the environment strategy only when
+     * {@code h2EnvironmentStrategy} is configured, and lazily on first use otherwise.
+     *
+     * @param name    resource name from the configuration; also used as the connection pool name in
+     *                log output
+     * @param options resource configuration; read here are {@code username} (default {@code sa}),
+     *                {@code password} (default empty), {@code maxPoolSize} (default 10),
+     *                {@code minIdle} (default 2), {@code metricsWindowSeconds} (default 30),
+     *                {@code readerConnectionWarningThresholdMs} (default 30000),
+     *                {@code metadataCacheSize} (default 100) and the storage strategy sections
+     * @throws RuntimeException if the database cannot be reached or the connection pool cannot be
+     *                          created
+     */
     public H2Database(String name, Config options) {
         super(name, options);
 

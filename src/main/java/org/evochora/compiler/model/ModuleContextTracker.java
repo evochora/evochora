@@ -18,14 +18,22 @@ import java.util.Deque;
  * When entering a context with null alias chain (.SOURCE), the parent context
  * is preserved. When leaving (pop boundary), the previous context is restored.</p>
  *
- * <p>Used by SemanticAnalyzer (Phase 4), AstPostProcessor (Phase 6), and TokenMapGenerator (Phase 5)
- * to ensure symbol operations happen in the correct module context.</p>
+ * <p>Used by SemanticAnalyzer, AstPostProcessor and TokenMapGenerator, each of which walks
+ * the AST and needs symbol operations to happen in the module the node belongs to.</p>
  */
 public class ModuleContextTracker {
 
     private final Deque<String> stack = new ArrayDeque<>();
     private final SymbolTable symbolTable;
 
+    /**
+     * Creates a tracker with an empty boundary stack. The symbol table is shared,
+     * not copied: every module switch made through this tracker is visible to all
+     * other users of the same table. One tracker belongs to one traversal, because
+     * its stack must be balanced across that traversal's push and pop boundaries.
+     *
+     * @param symbolTable the symbol table whose current module is switched
+     */
     public ModuleContextTracker(SymbolTable symbolTable) {
         this.symbolTable = symbolTable;
     }
@@ -56,6 +64,9 @@ public class ModuleContextTracker {
 
     /**
      * Returns the current alias chain from the symbol table.
+     *
+     * @return the alias chain of the module currently in context, or {@code null}
+     *         if no module has been set on the table yet
      */
     public String currentAliasChain() {
         return symbolTable.getCurrentAliasChain();

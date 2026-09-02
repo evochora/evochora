@@ -38,6 +38,12 @@ public abstract class VisualizerBaseController extends AbstractController {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(VisualizerBaseController.class);
     
+    /**
+     * Source of the per-request database readers through which the visualizer endpoints read a
+     * stored run. It is taken from the service registry while the controller is constructed, so a
+     * controller cannot be built before the process that publishes this service is running. Each
+     * reader it hands out owns a database connection that the requesting handler must close again.
+     */
     protected final IDatabaseReaderProvider databaseProvider;
 
     /**
@@ -389,10 +395,23 @@ public abstract class VisualizerBaseController extends AbstractController {
      * Exception thrown when no run ID is available for the request.
      */
     public static class NoRunIdException extends RuntimeException {
+        /**
+         * Creates the exception without an underlying cause, for the case that the requested run
+         * simply is not there.
+         *
+         * @param message names the run that was looked for, or states that no run exists at all
+         */
         public NoRunIdException(final String message) {
             super(message);
         }
         
+        /**
+         * Creates the exception from a lower-level failure that shows the run to be unavailable,
+         * such as a database error naming a schema that does not exist.
+         *
+         * @param message names the run that was looked for, or states that no run exists at all
+         * @param cause the failure that revealed the run to be unavailable
+         */
         public NoRunIdException(final String message, final Throwable cause) {
             super(message, cause);
         }
@@ -402,10 +421,21 @@ public abstract class VisualizerBaseController extends AbstractController {
      * Exception thrown when the connection pool is exhausted or a timeout occurs.
      */
     public static class PoolExhaustionException extends RuntimeException {
+        /**
+         * Creates the exception without an underlying cause.
+         *
+         * @param message describes which access could not obtain a connection
+         */
         public PoolExhaustionException(final String message) {
             super(message);
         }
         
+        /**
+         * Creates the exception from the database failure that reported the exhausted pool.
+         *
+         * @param message describes which access could not obtain a connection
+         * @param cause the database failure that reported the exhausted pool
+         */
         public PoolExhaustionException(final String message, final Throwable cause) {
             super(message, cause);
         }

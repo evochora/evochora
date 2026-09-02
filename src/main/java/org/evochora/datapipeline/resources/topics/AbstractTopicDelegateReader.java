@@ -17,7 +17,8 @@ import java.util.concurrent.atomic.AtomicLong;
 /**
  * Abstract base class for topic reader delegates.
  * <p>
- * This class implements {@link ITopicReader#receive()} and {@link ITopicReader#poll(long, TimeUnit)}
+ * This class implements {@link org.evochora.datapipeline.api.resources.topics.ITopicReader#receive()} and
+ * {@link org.evochora.datapipeline.api.resources.topics.ITopicReader#poll(long, TimeUnit)}
  * to automatically unwrap {@link TopicEnvelope} before returning to the service.
  * <p>
  * <strong>Message Unwrapping:</strong>

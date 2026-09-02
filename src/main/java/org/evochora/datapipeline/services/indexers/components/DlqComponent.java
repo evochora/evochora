@@ -32,6 +32,9 @@ import java.util.List;
  * <p>
  * <strong>Example:</strong> 3x DummyIndexer (competing consumers) each has own
  * DlqComponent, but all share the same IRetryTracker and IDeadLetterQueueResource.
+ *
+ * @param <T> The payload type of the topic messages this component moves to the DLQ
+ * @param <ACK> The acknowledgment token type of those topic messages (implementation-specific)
  */
 public class DlqComponent<T extends Message, ACK> {
     private static final Logger log = LoggerFactory.getLogger(DlqComponent.class);

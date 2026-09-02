@@ -20,6 +20,15 @@ import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 
+/**
+ * Root command of the {@code evochora} command line tool. Invoked without a subcommand it prints
+ * the usage text and returns exit code 0; all actual work is done by the registered subcommands.
+ * <p>
+ * The root command also owns the configuration of an invocation: the {@code --config} option names
+ * the configuration file, and subcommands reach the resolved configuration through
+ * {@link #getConfig()}. It is loaded on first access and kept afterwards, so every subcommand of
+ * one invocation sees the same values.
+ */
 @Command(
     name = "evochora",
     mixinStandardHelpOptions = true,
@@ -60,6 +69,13 @@ public class CommandLineInterface implements Callable<Integer> {
         return 0;
     }
 
+    /**
+     * Entry point of the command line tool. Parses the arguments, runs the selected subcommand and
+     * then terminates the JVM with the exit code that subcommand returned, so this method never
+     * returns to its caller.
+     *
+     * @param args the command line arguments in picocli syntax; an empty array prints the usage text
+     */
     public static void main(final String[] args) {
         final CommandLine commandLine = createCommandLine();
         final int exitCode = commandLine.execute(args);
@@ -132,6 +148,15 @@ public class CommandLineInterface implements Callable<Integer> {
         }
     }
 
+    /**
+     * Prints the ASCII art banner to standard output. The banner appears only when
+     * {@code node.show-welcome-message} is present in the configuration and set to {@code true},
+     * and only when {@code logging.format} is {@code PLAIN} or absent; in every other case the
+     * method does nothing.
+     * <p>
+     * Reads the already loaded configuration and therefore requires a preceding
+     * {@link #getConfig()} call.
+     */
     public void showWelcomeMessage() {
         // Check config again just to be safe, though caller usually checks too
         if (config.hasPath("node.show-welcome-message") && config.getBoolean("node.show-welcome-message")) {
@@ -159,6 +184,17 @@ public class CommandLineInterface implements Callable<Integer> {
         }
     }
 
+    /**
+     * Returns the resolved configuration of this invocation. The first call loads it, either from
+     * the file named by {@code --config} or, without that option, through the discovery cascade of
+     * {@link ConfigLoader#resolve(File, ConfigLoader.ConfigMessageHandler)}, and applies the
+     * logging settings it contains; later calls return the same instance.
+     * <p>
+     * A configuration file that is named but does not exist, and a file that cannot be parsed, are
+     * not signalled by an exception: the error is logged and the JVM terminates with exit code 1.
+     *
+     * @return the resolved configuration for this invocation
+     */
     public Config getConfig() {
         if (!initialized) {
             initialize();

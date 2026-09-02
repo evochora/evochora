@@ -21,6 +21,13 @@ public class MacroExpansionHandler implements IPreProcessorHandler {
 
     private final MacroDefinition macro;
 
+    /**
+     * Binds the handler to one macro definition. One instance exists per {@code .MACRO} definition and
+     * is registered under that macro's name, so an instance only ever expands this single macro.
+     *
+     * @param macro The definition supplying the formal parameters and the body tokens substituted at
+     *              the invocation site.
+     */
     public MacroExpansionHandler(MacroDefinition macro) {
         this.macro = macro;
     }

@@ -17,8 +17,25 @@ import java.util.Map;
  */
 public abstract class AbstractProcess implements IProcess {
 
+    /**
+     * Name of this process instance, taken from the key under {@code node.processes} that declared
+     * it. It distinguishes several instances of the same process class and names the process in the
+     * messages of failed dependency lookups.
+     */
     protected final String processName;
+    /**
+     * Services injected into this process, keyed by the local name under which the configuration
+     * declared them. Never {@code null}: a process without declared dependencies receives an empty
+     * map. Subclasses read it through {@link #getDependency(String, Class)} and
+     * {@link #getOptionalDependency(String, Class)}, which add the type check.
+     */
     protected final Map<String, Object> dependencies;
+    /**
+     * The {@code options} block of this process instance's configuration entry, holding the
+     * settings that belong to this instance alone. A process declared without such a block receives
+     * an empty configuration, so subclasses must treat every setting as absent unless they check
+     * for it or supply a default.
+     */
     protected final Config options;
 
     /**

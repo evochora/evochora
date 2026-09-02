@@ -17,7 +17,12 @@ public record TokenInfo(
     String qualifiedName
 ) {
     /**
-     * Compatibility constructor for tokens that do not require a qualified name.
+     * Creates a token without a qualified name, for the kinds that do not carry one. The
+     * qualified name is left null.
+     *
+     * @param tokenText The literal text of the token as it appears in source.
+     * @param tokenType The semantic classification of the token.
+     * @param scope The scope in which this token is defined.
      */
     public TokenInfo(String tokenText, TokenKind tokenType, String scope) {
         this(tokenText, tokenType, scope, null);

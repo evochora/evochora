@@ -34,6 +34,22 @@ public class DummyWriterService extends AbstractService {
     private final AtomicLong writeErrors = new AtomicLong(0);
     private long currentTick = 0;
 
+    /**
+     * Constructs the writer, resolves the storage resource and reads its configuration.
+     * <p>
+     * Configuration keys read from {@code options}: {@code intervalMs} (pause between write
+     * cycles, default 1000), {@code messagesPerWrite} (chunks written per cycle, default 10),
+     * {@code ticksPerChunk} (ticks contained in one chunk, default 10), {@code maxWrites}
+     * (number of write cycles after which the service stops, values below 1 mean unlimited,
+     * default -1) and {@code keyPrefix} (prefix of the storage keys, default "test").
+     *
+     * @param name      The name of the service instance.
+     * @param options   The configuration for this service.
+     * @param resources A map of resource ports to lists of resources; the {@code storage} port is
+     *                  required.
+     * @throws IllegalStateException if the {@code storage} port is missing, carries more than one
+     *                               resource, or carries a resource of the wrong type.
+     */
     public DummyWriterService(String name, Config options, Map<String, List<IResource>> resources) {
         super(name, options, resources);
         this.storage = getRequiredResource("storage", IBatchStorageWrite.class);

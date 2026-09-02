@@ -58,6 +58,8 @@ import com.typesafe.config.Config;
  * A watchdog thread monitors all reader delegates. If a message is held without
  * acknowledgment longer than {@code claimTimeout}, the session is recovered,
  * causing the broker to redeliver the message to another consumer.
+ *
+ * @param <T> The message type (must be a Protobuf {@link Message}).
  */
 public class ArtemisTopicResource<T extends Message> extends AbstractTopicResource<T, jakarta.jms.Message> 
         implements IMemoryEstimatable {
@@ -297,6 +299,15 @@ public class ArtemisTopicResource<T extends Message> extends AbstractTopicResour
         return writerPool;
     }
     
+    /**
+     * Closes a JMS connection opened by this resource and removes it from the set closed at
+     * shutdown.
+     * <p>
+     * A failing close is logged and swallowed, so the method can be used on a shutdown path
+     * without guarding it. A null connection is ignored.
+     *
+     * @param connection the connection to close, may be null
+     */
     protected void closeConnection(Connection connection) {
         if (connection != null) {
             try {
@@ -308,6 +319,15 @@ public class ArtemisTopicResource<T extends Message> extends AbstractTopicResour
         }
     }
 
+    /**
+     * Returns the topic name that sends and subscriptions currently use.
+     * <p>
+     * Before a simulation run is set this is the configured base name; afterwards it is that name
+     * with the run ID appended. Callers must read it per operation instead of caching it, because
+     * setting the run changes it.
+     *
+     * @return the topic name in effect, never null
+     */
     public String getTopicName() {
         return effectiveTopicName;
     }

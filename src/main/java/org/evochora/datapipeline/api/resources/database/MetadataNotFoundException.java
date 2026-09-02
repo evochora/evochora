@@ -8,6 +8,11 @@ package org.evochora.datapipeline.api.resources.database;
  * until metadata becomes available.
  */
 public class MetadataNotFoundException extends Exception {
+    /**
+     * Creates a new MetadataNotFoundException with the given message.
+     *
+     * @param message description of the metadata that is not available yet.
+     */
     public MetadataNotFoundException(String message) {
         super(message);
     }
