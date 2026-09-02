@@ -153,18 +153,15 @@ public class DeathLifetimesPlugin extends AbstractAnalyticsPlugin {
             entry.dataSources.put(lodName, metricId + "/" + lodName + "/**/*.parquet");
         }
 
-        entry.visualization = new VisualizationHint();
-        entry.visualization.type = "band-chart";
-        entry.visualization.config = new HashMap<>();
-        entry.visualization.config.put("x", "tick");
-        entry.visualization.config.put("y", List.of(
-            "death_lifetime_p10", "death_lifetime_p25", "death_lifetime_p50",
-            "death_lifetime_p75", "death_lifetime_p90"));
-        entry.visualization.config.put("yLabel", "Lifetime at death");
-        entry.visualization.config.put("yFormat", "integer");
-        entry.visualization.config.put("y2", List.of("deaths", "death_count"));
-        entry.visualization.config.put("y2Label", "Deaths");
-        entry.visualization.config.put("y2Format", "integer");
+        entry.visualization = VisualizationHint.chart("band-chart", "tick")
+            .with("y", List.of(
+                "death_lifetime_p10", "death_lifetime_p25", "death_lifetime_p50",
+                "death_lifetime_p75", "death_lifetime_p90"))
+            .with("yLabel", "Lifetime at death")
+            .with("yFormat", "integer")
+            .with("y2", List.of("deaths", "death_count"))
+            .with("y2Label", "Deaths")
+            .with("y2Format", "integer");
 
         // Deaths of the window a row stands for, from the difference of a running total, so the
         // number holds on every level of detail: on a coarse one a row stands for many recordings

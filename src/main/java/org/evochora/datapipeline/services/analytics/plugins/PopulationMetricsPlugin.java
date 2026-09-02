@@ -112,14 +112,11 @@ public class PopulationMetricsPlugin extends AbstractAnalyticsPlugin {
             entry.dataSources.put(lodName, metricId + "/" + lodName + "/**/*.parquet");
         }
 
-        entry.visualization = new VisualizationHint();
-        entry.visualization.type = "line-chart";
-        entry.visualization.config = new HashMap<>();
-        entry.visualization.config.put("x", "tick");
-        entry.visualization.config.put("y", List.of("alive_count", "bodied_count"));
-        entry.visualization.config.put("yFormat", "integer");
-        entry.visualization.config.put("y2", List.of("avg_energy", "avg_entropy"));
-        entry.visualization.config.put("y2Format", "percent");
+        entry.visualization = VisualizationHint.chart("line-chart", "tick")
+            .with("y", List.of("alive_count", "bodied_count"))
+            .with("yFormat", "integer")
+            .with("y2", List.of("avg_energy", "avg_entropy"))
+            .with("y2Format", "percent");
 
         return entry;
     }

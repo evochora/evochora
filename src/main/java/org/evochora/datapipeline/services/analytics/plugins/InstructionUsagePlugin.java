@@ -186,16 +186,13 @@ public class InstructionUsagePlugin extends AbstractAnalyticsPlugin {
         outputCols.add("failure_rate_peak_tick");
         entry.outputColumns = outputCols;
 
-        entry.visualization = new VisualizationHint();
-        entry.visualization.type = "stacked-bar-chart";
-        entry.visualization.config = new HashMap<>();
-        entry.visualization.config.put("x", "tick");
-        entry.visualization.config.put("y", FAMILY_NAMES);
-        entry.visualization.config.put("yAxisMode", "percent");
-        // Secondary Y-axis for failure rate (line overlay)
-        entry.visualization.config.put("y2", "failure_rate");
-        entry.visualization.config.put("y2Label", "Failure Rate");
-        entry.visualization.config.put("y2PeakTick", "failure_rate_peak_tick");
+        entry.visualization = VisualizationHint.chart("stacked-bar-chart", "tick")
+            .with("y", FAMILY_NAMES)
+            .with("yAxisMode", "percent")
+            // Secondary Y-axis for failure rate (line overlay)
+            .with("y2", "failure_rate")
+            .with("y2Label", "Failure Rate")
+            .with("y2PeakTick", "failure_rate_peak_tick");
 
         return entry;
     }

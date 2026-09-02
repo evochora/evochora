@@ -80,11 +80,8 @@ public class GenerationDepthPlugin extends AbstractAnalyticsPlugin {
             entry.dataSources.put(lodName, metricId + "/" + lodName + "/**/*.parquet");
         }
         
-        entry.visualization = new VisualizationHint();
-        entry.visualization.type = "line-chart";
-        entry.visualization.config = new HashMap<>();
-        entry.visualization.config.put("x", "tick");
-        entry.visualization.config.put("y", List.of("max_depth", "avg_depth"));
+        entry.visualization = VisualizationHint.chart("line-chart", "tick")
+            .with("y", List.of("max_depth", "avg_depth"));
 
         return entry;
     }

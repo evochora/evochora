@@ -158,11 +158,8 @@ public class AgeDistributionPlugin extends AbstractAnalyticsPlugin {
         entry.generatedQuery = generateAggregatedQuery();
         entry.outputColumns = List.of("tick", "p0", "p10", "p25", "p50", "p75", "p90", "p100");
         
-        entry.visualization = new VisualizationHint();
-        entry.visualization.type = "band-chart";
-        entry.visualization.config = new HashMap<>();
-        entry.visualization.config.put("x", "tick");
-        entry.visualization.config.put("y", List.of("p0", "p10", "p25", "p50", "p75", "p90", "p100"));
+        entry.visualization = VisualizationHint.chart("band-chart", "tick")
+            .with("y", List.of("p0", "p10", "p25", "p50", "p75", "p90", "p100"));
 
         return entry;
     }

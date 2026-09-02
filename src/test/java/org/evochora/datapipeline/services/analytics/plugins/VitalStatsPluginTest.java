@@ -1,6 +1,7 @@
 package org.evochora.datapipeline.services.analytics.plugins;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.entry;
 
 import java.util.List;
 import java.util.Map;
@@ -81,6 +82,21 @@ class VitalStatsPluginTest {
         
         // And: Visualization is configured
         assertThat(entry.visualization.type).isEqualTo("bar-chart");
+    }
+
+    @Test
+    void testManifest_DescribesTheChartTheFrontendReceives() {
+        // The frontend reads these keys, and the order they carry reaches it through the JSON,
+        // so the whole hint is pinned here rather than only its chart type.
+        ManifestEntry entry = plugin.getManifestEntry();
+
+        assertThat(entry.visualization.type).isEqualTo("bar-chart");
+        assertThat(entry.visualization.config).containsExactly(
+                entry("x", "tick"),
+                entry("y", List.of("births", "deaths")),
+                entry("colors", Map.of("births", "#4ade80", "deaths", "#f87171"))
+        );
+        assertThat(entry.customVisualizerPath).isNull();
     }
 
     @Test

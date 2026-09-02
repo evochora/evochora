@@ -164,13 +164,10 @@ public class EnvironmentCompositionPlugin extends AbstractAnalyticsPlugin {
             entry.dataSources.put(lodName, metricId + "/" + lodName + "/**/*.parquet");
         }
         
-        entry.visualization = new VisualizationHint();
-        entry.visualization.type = "stacked-area-chart";
-        entry.visualization.config = new HashMap<>();
-        entry.visualization.config.put("x", "tick");
-        entry.visualization.config.put("y", List.of("code_cells", "data_cells", "energy_cells", "structure_cells", "label_cells", "labelref_cells", "register_cells", "unknown_cells"));
-        entry.visualization.config.put("yAxisMode", "percent");
-        entry.visualization.config.put("percentBase", List.of("code_cells", "data_cells", "energy_cells", "structure_cells", "label_cells", "labelref_cells", "register_cells", "unknown_cells", "empty_cells"));
+        entry.visualization = VisualizationHint.chart("stacked-area-chart", "tick")
+            .with("y", List.of("code_cells", "data_cells", "energy_cells", "structure_cells", "label_cells", "labelref_cells", "register_cells", "unknown_cells"))
+            .with("yAxisMode", "percent")
+            .with("percentBase", List.of("code_cells", "data_cells", "energy_cells", "structure_cells", "label_cells", "labelref_cells", "register_cells", "unknown_cells", "empty_cells"));
 
         return entry;
     }
