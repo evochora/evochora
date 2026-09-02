@@ -221,14 +221,16 @@ tasks.withType<Tar> {
     archiveExtension.set("tar.gz")
 }
 
+// Two test JVMs for every test task. A second fork cuts the wall-clock time by a third and, as
+// Gradle never splits a class across forks, makes every hidden dependency between test classes
+// fail visibly. More forks do not pay off: each JVM initialises Mockito, H2, Javalin and the
+// brokers on its own, and the JVMs then compete for cores and JIT time. On eight cores, four
+// forks doubled the summed test time and finished later than two.
+val testForks = 2
+
 tasks.test {
     useJUnitPlatform()
-    // Two test JVMs. A second fork cuts the wall-clock time by a third and, as Gradle never splits
-    // a class across forks, makes every hidden dependency between test classes fail visibly.
-    // More forks do not pay off: each JVM initialises Mockito, H2, Javalin and the brokers on
-    // its own, and the JVMs then compete for cores and JIT time. On eight cores, four forks
-    // doubled the summed test time and finished later than two.
-    maxParallelForks = 2
+    maxParallelForks = testForks
     // The assembly programs are compiled by a test, so a change to one has to invalidate the
     // task. Gradle decides that per task, not per test class: touching a program reruns the
     // suite, which is the price for the examples and the primordial staying compilable.
@@ -258,7 +260,7 @@ tasks.register<Test>("unit") {
     useJUnitPlatform {
         includeTags("unit")
     }
-    maxParallelForks = 2 // Same reasoning as for the test task
+    maxParallelForks = testForks
     jvmArgs("-Duser.language=en", "-Duser.country=US")
     jvmArgs("-Xshare:off")
     testLogging {
@@ -278,7 +280,7 @@ tasks.register<Test>("integration") {
         includeTags("integration")
     }
     maxHeapSize = "2g" // Match test task heap size to avoid OOM
-    maxParallelForks = 2 // Same reasoning as for the test task
+    maxParallelForks = testForks
     jvmArgs("-Xshare:off")
     testLogging {
         events("passed", "skipped", "failed")
