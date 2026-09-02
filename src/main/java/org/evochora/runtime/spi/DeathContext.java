@@ -1,5 +1,6 @@
 package org.evochora.runtime.spi;
 
+import org.evochora.runtime.model.CellView;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 
@@ -38,7 +39,7 @@ public class DeathContext {
     private Environment environment;
     private int organismId;
     private boolean initialized = false;
-    private int currentFlatIndex = -1;
+    private CellView current;
 
     /**
      * Resets context for reuse - zero allocation.
@@ -53,7 +54,7 @@ public class DeathContext {
         this.environment = environment;
         this.organismId = organismId;
         this.initialized = true;
-        this.currentFlatIndex = -1;
+        this.current = null;
     }
 
     /**
@@ -76,25 +77,11 @@ public class DeathContext {
         if (!initialized) {
             throw new IllegalStateException("DeathContext not initialized - reset() must be called first");
         }
-        environment.forEachCellOwnedByInCanonicalOrder(organismId, flatIndex -> {
-            currentFlatIndex = flatIndex;
+        environment.visitCellsOwnedBy(organismId, view -> {
+            current = view;
             action.run();
         });
-        currentFlatIndex = -1;
-    }
-
-    /**
-     * Returns the flat index of the current cell being iterated.
-     * <p>
-     * Can only be called within {@link #forEachOwnedCell(Runnable)}.
-     * </p>
-     *
-     * @return The flat index of the current cell
-     * @throws IllegalStateException if called outside of forEachOwnedCell
-     */
-    public int getFlatIndex() {
-        checkCurrentCell();
-        return currentFlatIndex;
+        current = null;
     }
 
     /**
@@ -108,7 +95,7 @@ public class DeathContext {
      */
     public Molecule getMolecule() {
         checkCurrentCell();
-        return environment.getMoleculeByIndex(currentFlatIndex);
+        return current.molecule();
     }
 
     /**
@@ -123,11 +110,11 @@ public class DeathContext {
      */
     public void setMolecule(Molecule molecule) {
         checkCurrentCell();
-        environment.setMoleculeByIndex(currentFlatIndex, molecule);
+        current.setMolecule(molecule);
     }
 
     private void checkCurrentCell() {
-        if (currentFlatIndex == -1) {
+        if (current == null) {
             throw new IllegalStateException("Can only be called within forEachOwnedCell callback");
         }
     }
