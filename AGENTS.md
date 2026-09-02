@@ -457,7 +457,9 @@ void send(T message) throws InterruptedException;
    with the maintainer one point per message, each with a recommendation.
 6. Apply the agreed changes, push again — the round starts over, until a round ends with
    no open points.
-7. Small findings are fixed on the branch, never deferred to other PRs.
+7. Small findings — from a review or noticed in passing — are fixed on the branch in their own
+   commit, never deferred to other PRs. Only a finding with real scope or risk is raised for a
+   decision instead.
 8. PR scope: rather larger, related fixes bundled; whether a change goes through a PR or
    is pushed directly is the maintainer's call, based on risk and a look at the diff.
 9. Merging happens only after the maintainer's approval.
