@@ -79,7 +79,8 @@ class MetadataIndexerIntegrationTest {
             "jdbcUrl = \"" + topicJdbcUrl + "\"\n" +
             "username = \"sa\"\n" +
             "password = \"\"\n" +
-            "claimTimeout = 300"
+            "claimTimeout = 300\n" +
+            "pollIntervalMs = 10"
         );
         testTopic = new H2TopicResource<>("metadata-topic", topicConfig);
     }

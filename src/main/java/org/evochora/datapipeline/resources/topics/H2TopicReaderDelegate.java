@@ -62,6 +62,7 @@ public class H2TopicReaderDelegate<T extends Message> extends AbstractTopicDeleg
     private PreparedStatement updateClaimStatement;           // UPDATE existing claim (reassignment)
     private PreparedStatement ackStatement;                   // Mark as acknowledged
     private final int claimTimeout;  // Store for lazy init
+    private final long pollIntervalMs;  // Pause between two read attempts while waiting for a message
     
     // H2-specific metrics (in addition to abstract delegate metrics)
     private final AtomicLong readErrors = new AtomicLong(0);
@@ -95,6 +96,7 @@ public class H2TopicReaderDelegate<T extends Message> extends AbstractTopicDeleg
             
             // Store claim timeout for lazy PreparedStatement initialization
             this.claimTimeout = parent.getClaimTimeoutSeconds();
+            this.pollIntervalMs = parent.getPollIntervalMs();
             
             // Initialize claim conflict tracking with configurable window (default: 5 seconds)
             Config options = parent.getOptions();
@@ -200,7 +202,6 @@ public class H2TopicReaderDelegate<T extends Message> extends AbstractTopicDeleg
         boolean blockIndefinitely = (unit == null);
         long timeoutMs = blockIndefinitely ? Long.MAX_VALUE : unit.toMillis(timeout);
         long startTime = System.currentTimeMillis();
-        long pollIntervalMs = 500;
         
         while (true) {
             // Try to read a message

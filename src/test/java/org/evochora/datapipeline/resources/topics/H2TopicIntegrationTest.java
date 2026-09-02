@@ -29,6 +29,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.awaitility.Awaitility.await;
 
 /**
@@ -71,6 +72,60 @@ class H2TopicIntegrationTest {
         assertThat(this.topic.getReadUsageState()).isEqualTo(UsageState.ACTIVE);
     }
     
+    @Test
+    @DisplayName("Should reject a poll interval that is not positive")
+    void shouldRejectNonPositivePollInterval() {
+        Config config = ConfigFactory.parseString("""
+            jdbcUrl = "jdbc:h2:mem:h2-topic-poll-interval-invalid"
+            pollIntervalMs = 0
+            """);
+
+        assertThatThrownBy(() -> new H2TopicResource<>("test-topic", config))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("pollIntervalMs")
+            .hasMessageContaining("test-topic");
+    }
+
+    @Test
+    @DisplayName("Should deliver a message written during a poll within the configured poll interval")
+    void shouldDeliverMessageWrittenDuringPollWithinPollInterval() throws Exception {
+        // Given - A reader that pauses 10ms between read attempts instead of the default 500ms
+        Config config = ConfigFactory.parseString("""
+            jdbcUrl = "jdbc:h2:mem:h2-topic-poll-interval"
+            pollIntervalMs = 10
+            """);
+        this.topic = new H2TopicResource<>("batch-topic", config);
+        assertThat(this.topic.getPollIntervalMs()).isEqualTo(10L);
+
+        @SuppressWarnings("unchecked")
+        ITopicWriter<BatchInfo> writer = (ITopicWriter<BatchInfo>) this.topic.getWrappedResource(
+            new ResourceContext("writer-service", "writer-port", "topic-write", "batch-topic", Map.of()));
+        @SuppressWarnings("unchecked")
+        ITopicReader<BatchInfo, AckToken> reader = (ITopicReader<BatchInfo, AckToken>) this.topic.getWrappedResource(
+            new ResourceContext("reader-service", "reader-port", "topic-read", "batch-topic", Map.of("consumerGroup", "poll-interval-group")));
+        this.topic.setSimulationRun("20250101-POLL-INTERVAL");
+
+        BatchInfo message = BatchInfo.newBuilder().setStoragePath("/data/batch_001.pb").build();
+
+        // When - The poll starts on an empty topic and the message arrives while it is waiting
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            var pending = executor.submit(() -> reader.poll(5, TimeUnit.SECONDS));
+            Thread.sleep(100);
+            long writtenAt = System.nanoTime();
+            writer.send(message);
+            var received = pending.get(5, TimeUnit.SECONDS);
+            long latencyMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - writtenAt);
+
+            // Then - Delivery takes a few poll intervals at most, far below the default 500ms pause
+            assertThat(received).isNotNull();
+            assertThat(received.payload()).isEqualTo(message);
+            assertThat(latencyMs).isLessThan(250);
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
     @Test
     @DisplayName("Should write and read message end-to-end")
     void shouldWriteAndReadMessage() throws Exception {

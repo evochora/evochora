@@ -64,6 +64,7 @@ public class H2TopicResource<T extends Message> extends AbstractTopicResource<T,
     
     private final HikariDataSource dataSource;
     private final int claimTimeoutSeconds;  // 0 = disabled, > 0 = timeout for stuck message reassignment
+    private final long pollIntervalMs;  // Pause between two read attempts while a reader waits for a message
     private final AtomicLong stuckMessagesReassigned;  // O(1) metric for reassignments
     // Note: writeThroughput and readThroughput are now inherited from AbstractTopicResource
     
@@ -89,6 +90,8 @@ public class H2TopicResource<T extends Message> extends AbstractTopicResource<T,
      *   <li>{@code username} - Database username (default: "sa")</li>
      *   <li>{@code password} - Database password (default: "")</li>
      *   <li>{@code claimTimeout} - Seconds before stuck message reassignment (default: 300, 0=disabled)</li>
+     *   <li>{@code pollIntervalMs} - Milliseconds a reader pauses between two read attempts while
+     *       waiting for a message (default: 500, must be positive)</li>
      * </ul>
      *
      * @param name The resource name.
@@ -128,6 +131,14 @@ public class H2TopicResource<T extends Message> extends AbstractTopicResource<T,
         this.claimTimeoutSeconds = options.hasPath("claimTimeout")
             ? options.getInt("claimTimeout")
             : 300;  // Default: 5 minutes
+
+        this.pollIntervalMs = options.hasPath("pollIntervalMs")
+            ? options.getLong("pollIntervalMs")
+            : 500;
+        if (pollIntervalMs <= 0) {
+            throw new IllegalArgumentException(String.format(
+                "'pollIntervalMs' must be positive for H2TopicResource '%s', but was %d", name, pollIntervalMs));
+        }
         
         try {
             this.dataSource = new HikariDataSource(hikariConfig);
@@ -184,6 +195,15 @@ public class H2TopicResource<T extends Message> extends AbstractTopicResource<T,
      */
     protected int getClaimTimeoutSeconds() {
         return claimTimeoutSeconds;
+    }
+
+    /**
+     * Returns the pause between two read attempts while a reader waits for a message.
+     *
+     * @return Poll interval in milliseconds (always positive).
+     */
+    protected long getPollIntervalMs() {
+        return pollIntervalMs;
     }
     
     // Note: recordWrite() and recordRead() are inherited from AbstractTopicResource

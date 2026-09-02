@@ -111,7 +111,8 @@ class EnvironmentControllerIntegrationTest {
             "jdbcUrl = \"" + topicJdbcUrl + "\"\n" +
             "username = \"sa\"\n" +
             "password = \"\"\n" +
-            "claimTimeout = 300"
+            "claimTimeout = 300\n" +
+            "pollIntervalMs = 10"
         );
         testBatchTopic = new H2TopicResource<>("batch-topic", topicConfig);
     }
@@ -341,7 +342,8 @@ class EnvironmentControllerIntegrationTest {
             "jdbcUrl = \"" + oldTopicJdbcUrl + "\"\n" +
             "username = \"sa\"\n" +
             "password = \"\"\n" +
-            "claimTimeout = 300"
+            "claimTimeout = 300\n" +
+            "pollIntervalMs = 10"
         );
         H2TopicResource<BatchInfo> oldBatchTopic = new H2TopicResource<>("batch-topic-old", oldTopicConfig);
         
