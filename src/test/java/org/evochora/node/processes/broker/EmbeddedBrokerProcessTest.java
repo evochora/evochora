@@ -3,6 +3,9 @@ package org.evochora.node.processes.broker;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.File;
+import java.util.Comparator;
+import java.nio.file.Path;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.util.Map;
 
@@ -41,8 +44,11 @@ class EmbeddedBrokerProcessTest {
 
     @AfterEach
     void cleanup() throws Exception {
-        EmbeddedBrokerRegistry.resetForTesting();
-        deleteDirectory(testDir);
+        try {
+            EmbeddedBrokerRegistry.resetForTesting();
+        } finally {
+            deleteDirectory(testDir);
+        }
     }
 
     @Test
@@ -145,19 +151,15 @@ class EmbeddedBrokerProcessTest {
         assertThat(EmbeddedBrokerRegistry.isBrokerStarted(0)).isFalse();
     }
 
-    private static void deleteDirectory(File dir) {
-        if (dir != null && dir.exists()) {
-            File[] files = dir.listFiles();
-            if (files != null) {
-                for (File file : files) {
-                    if (file.isDirectory()) {
-                        deleteDirectory(file);
-                    } else {
-                        file.delete();
-                    }
-                }
+    /** Removes the directory with everything in it; a path that cannot be deleted fails the caller. */
+    private static void deleteDirectory(File dir) throws IOException {
+        if (dir == null || !dir.exists()) {
+            return;
+        }
+        try (var paths = Files.walk(dir.toPath())) {
+            for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) {
+                Files.delete(path);
             }
-            dir.delete();
         }
     }
 }
