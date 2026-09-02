@@ -465,7 +465,7 @@ class RowPerChunkStrategyTest {
     }
 
     private TickDataChunk buildChunkWithOrganisms() {
-        Environment env = new Environment(new int[]{10, 10}, false);
+        Environment env = new Environment(new int[]{32, 32}, false);
         DeltaCodec.Encoder encoder = new DeltaCodec.Encoder("test-run", 100, 2, 2, 1);
 
         env.setMolecule(Molecule.fromInt(100), new int[]{0, 0});

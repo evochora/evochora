@@ -33,7 +33,7 @@ class EntropyThresholdTest {
 
     @BeforeEach
     void setUp() {
-        environment = new Environment(new int[]{100, 100}, true);
+        environment = new Environment(new int[]{96, 96}, true);
         sim = SimulationTestUtils.createSimulation(environment);
         maxEntropy = sim.getOrganismConfig().getInt("max-entropy");
     }

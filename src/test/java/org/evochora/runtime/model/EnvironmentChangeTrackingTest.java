@@ -1,5 +1,6 @@
 package org.evochora.runtime.model;
 
+import org.evochora.runtime.label.PreExpandedHammingStrategy;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -18,8 +19,8 @@ class EnvironmentChangeTrackingTest {
     
     @BeforeEach
     void setUp() {
-        // 10x10 environment = 100 cells
-        env = new Environment(new int[]{10, 10}, false);
+        // 32x32 environment = 1024 cells
+        env = new Environment(new int[]{32, 32}, false);
     }
     
     // ========================================================================
@@ -214,9 +215,10 @@ class EnvironmentChangeTrackingTest {
     
     @Test
     void getTotalCells_returnsCorrectValue() {
-        assertEquals(100, env.getTotalCells());  // 10x10
+        assertEquals(1024, env.getTotalCells());  // 32x32
         
-        Environment env3d = new Environment(new int[]{5, 6, 7}, false);
+        // A world this small cannot be tiled; the row-major layout (tile side 1) keeps the test's cell count.
+        Environment env3d = new Environment(new EnvironmentProperties(new int[]{5, 6, 7}, false), new PreExpandedHammingStrategy(), 1);
         assertEquals(210, env3d.getTotalCells());  // 5*6*7
     }
     

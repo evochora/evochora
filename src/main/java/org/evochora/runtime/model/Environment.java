@@ -33,10 +33,13 @@ import org.evochora.runtime.label.PreExpandedHammingStrategy;
  */
 public class Environment implements IEnvironmentReader {
     /**
-     * The tile side of production environments. A side of 1 stores the grid in the persisted
-     * row-major order itself; tests construct other sides through the constructor that takes one.
+     * The tile side of production environments: cells are stored in blocks of 32 cells per
+     * dimension, 1024 cells per two-dimensional tile, so that the cells an organism touches lie
+     * close together in memory. Every world dimension must be a multiple of it. Tests construct
+     * other sides through the constructor that takes one; a side of 1 is the persisted row-major
+     * order itself.
      */
-    private static final int TILE_SIDE = 1;
+    private static final int TILE_SIDE = 32;
 
     private final int[] shape;
     private final boolean isToroidal;

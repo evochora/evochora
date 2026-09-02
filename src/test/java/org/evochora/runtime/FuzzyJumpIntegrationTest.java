@@ -34,7 +34,7 @@ class FuzzyJumpIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        EnvironmentProperties props = new EnvironmentProperties(new int[]{100}, true);
+        EnvironmentProperties props = new EnvironmentProperties(new int[]{96}, true);
         environment = new Environment(props);
         sim = SimulationTestUtils.createSimulation(environment);
         org = Organism.create(sim, new int[]{0}, 1000);
@@ -206,7 +206,7 @@ class FuzzyJumpIntegrationTest {
     @Test
     void conditionalSkipsJmpiCorrectly() {
         // Create a 3D environment to expose the bug
-        EnvironmentProperties props3D = new EnvironmentProperties(new int[]{20, 20, 20}, true);
+        EnvironmentProperties props3D = new EnvironmentProperties(new int[]{32, 32, 32}, true);
         Environment env3D = new Environment(props3D);
         Simulation sim3D = SimulationTestUtils.createSimulation(env3D);
         Organism org3D = Organism.create(sim3D, new int[]{0, 0, 0}, 1000);

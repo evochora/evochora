@@ -291,7 +291,7 @@ class ResumeEndToEndTest {
             pauseTicks = []
             seed = 42
             environment {
-                shape = [30, 30]
+                shape = [32, 32]
                 topology = "TORUS"
             }
             organisms = [{

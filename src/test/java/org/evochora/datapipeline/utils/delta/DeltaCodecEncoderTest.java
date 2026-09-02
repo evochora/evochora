@@ -31,8 +31,8 @@ class DeltaCodecEncoderTest {
     
     @BeforeEach
     void setUp() {
-        // 10x10 environment = 100 cells
-        env = new Environment(new int[]{10, 10}, false);
+        // 32x32 environment = 1024 cells
+        env = new Environment(new int[]{32, 32}, false);
     }
     
     // ========================================================================

@@ -34,7 +34,7 @@ public class VMConditionalInstructionTest {
 
     @BeforeEach
     void setUp() {
-        environment = new Environment(new int[]{100, 100}, true);
+        environment = new Environment(new int[]{96, 96}, true);
         sim = SimulationTestUtils.createSimulation(environment);
         // Create a dummy organism to ensure the main test organism does not have ID 0
         Organism.create(sim, new int[]{-1, -1}, 1);

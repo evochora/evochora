@@ -100,7 +100,7 @@ class SimulationEngineTest {
         return ConfigFactory.parseMap(Map.of(
                 "samplingInterval", 1,
                 "environment", Map.of(
-                        "shape", List.of(10, 10),
+                        "shape", List.of(32, 32),
                         "topology", "TORUS"
                 ),
                 "organisms", List.of(Map.of(
@@ -120,7 +120,7 @@ class SimulationEngineTest {
     void constructor_shouldThrowException_whenOrganismsAreMissing() {
         Config emptyConfig = ConfigFactory.parseMap(Map.of(
                 "organisms", Collections.emptyList(),
-                "environment", Map.of("shape", List.of(10, 10), "topology", "TORUS"),
+                "environment", Map.of("shape", List.of(32, 32), "topology", "TORUS"),
                 "plugins", Collections.emptyList()
         ));
         IllegalArgumentException exception = assertThrows(
@@ -258,7 +258,7 @@ class SimulationEngineTest {
         Files.copy(Path.of("src/test/resources/org/evochora/datapipeline/services/simple_1d.evo"), program1D, StandardCopyOption.REPLACE_EXISTING);
         
         Config config = createValidConfig()
-                .withValue("environment.shape", ConfigValueFactory.fromAnyRef(List.of(20)))
+                .withValue("environment.shape", ConfigValueFactory.fromAnyRef(List.of(32)))
                 .withValue("organisms", ConfigValueFactory.fromAnyRef(List.of(Map.of(
                         "program", program1D.toString(),
                         "initialEnergy", 1000,
@@ -273,7 +273,7 @@ class SimulationEngineTest {
         Files.copy(Path.of("src/test/resources/org/evochora/datapipeline/services/simple_3d.evo"), program3D, StandardCopyOption.REPLACE_EXISTING);
         
         Config config = createValidConfig()
-                .withValue("environment.shape", ConfigValueFactory.fromAnyRef(List.of(10, 10, 10)))
+                .withValue("environment.shape", ConfigValueFactory.fromAnyRef(List.of(32, 32, 32)))
                 .withValue("organisms", ConfigValueFactory.fromAnyRef(List.of(Map.of(
                         "program", program3D.toString(),
                         "initialEnergy", 1000,

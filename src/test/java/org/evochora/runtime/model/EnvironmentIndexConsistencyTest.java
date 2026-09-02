@@ -72,7 +72,7 @@ class EnvironmentIndexConsistencyTest {
 
     @Test
     void clearOwnershipFor_dropsEmptiedCellsFromTheOccupiedSet() {
-        Environment env = new Environment(new EnvironmentProperties(new int[]{8, 8}, true));
+        Environment env = new Environment(new EnvironmentProperties(new int[]{32, 32}, true));
         env.setMolecule(new Molecule(Config.TYPE_CODE, 0), 5, new int[]{1, 1}); // empty but owned
         env.setMolecule(new Molecule(Config.TYPE_DATA, 3), 5, new int[]{2, 1}); // content and owned
         assertThat(occupied(env)).isEqualTo(2);
@@ -85,7 +85,7 @@ class EnvironmentIndexConsistencyTest {
 
     @Test
     void transferOwnership_keepsTheOccupiedSetConsistent() {
-        Environment env = new Environment(new EnvironmentProperties(new int[]{8, 8}, true));
+        Environment env = new Environment(new EnvironmentProperties(new int[]{32, 32}, true));
         env.setMolecule(new Molecule(Config.TYPE_CODE, 0, 1), 5, new int[]{1, 1}); // empty, owned, marker 1
 
         env.transferOwnership(5, 0, 1); // hand the marked cell to "nobody"
@@ -96,7 +96,7 @@ class EnvironmentIndexConsistencyTest {
 
     @Test
     void clearMarkersFor_keepsTheOccupiedSetConsistent() {
-        Environment env = new Environment(new EnvironmentProperties(new int[]{8, 8}, true));
+        Environment env = new Environment(new EnvironmentProperties(new int[]{32, 32}, true));
         env.setMolecule(new Molecule(Config.TYPE_DATA, 9, 1), 5, new int[]{1, 1});
 
         env.clearMarkersFor(5, 1);

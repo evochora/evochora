@@ -57,8 +57,8 @@ class InstructionInterceptorTest {
 
     @BeforeEach
     void setUp() {
-        // Create 10x10 toroidal environment
-        environment = new Environment(new int[]{10, 10}, true);
+        // Create 32x32 toroidal environment
+        environment = new Environment(new int[]{32, 32}, true);
 
         // Minimal thermodynamic config
         String thermoConfigStr = """

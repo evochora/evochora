@@ -32,8 +32,8 @@ class GeneDuplicationPluginTest {
 
     @BeforeEach
     void setUp() {
-        // 30x20 toroidal environment
-        environment = new Environment(new int[]{30, 20}, true);
+        // 32x32 toroidal environment
+        environment = new Environment(new int[]{32, 32}, true);
 
         // Minimal thermodynamic config
         String thermoConfigStr = """
@@ -242,18 +242,18 @@ class GeneDuplicationPluginTest {
 
     @Test
     void duplicatesIntoInteriorNopAreaWhenWrapping() {
-        // Organism wraps around x=0/29 boundary.
-        // y=2: LABEL at x=28, CODE at x=27,29,0,1,2 (source gene wrapping through boundary).
-        // y=4: Empty owned cells at x=27..29,0..3 (NOP target within interior).
-        // External space on y=4: x=4..26 (must remain empty).
+        // Organism wraps around the x=0/31 boundary of the 32-wide world.
+        // y=2: LABEL at x=30, CODE at x=29,31,0,1,2 (source gene wrapping through boundary).
+        // y=4: Empty owned cells at x=29..31,0..3 (NOP target within interior).
+        // External space on y=4: x=4..28 (must remain empty).
         int id = child.getId();
-        environment.setMolecule(new Molecule(Config.TYPE_LABEL, 12345), id, new int[]{28, 2});
-        for (int x : new int[]{27, 29, 0, 1, 2}) {
+        environment.setMolecule(new Molecule(Config.TYPE_LABEL, 12345), id, new int[]{30, 2});
+        for (int x : new int[]{29, 31, 0, 1, 2}) {
             environment.setMolecule(new Molecule(Config.TYPE_CODE, 42), id, new int[]{x, 2});
         }
 
         // Empty owned NOP area wrapping through boundary
-        for (int x : new int[]{27, 28, 29, 0, 1, 2, 3}) {
+        for (int x : new int[]{29, 30, 31, 0, 1, 2, 3}) {
             environment.setMolecule(new Molecule(Config.TYPE_CODE, 0), id, new int[]{x, 4});
         }
 
@@ -262,14 +262,14 @@ class GeneDuplicationPluginTest {
         plugin.onBirth(child, environment);
 
         // External space on y=4 must remain empty
-        for (int x = 4; x <= 26; x++) {
+        for (int x = 4; x <= 28; x++) {
             assertThat(environment.getMolecule(x, 4).isEmpty())
                     .as("External cell (%d,4) should remain empty", x).isTrue();
         }
 
         // Some molecules should be copied into the interior NOP area
         int copiedCount = 0;
-        for (int x : new int[]{27, 28, 29, 0, 1, 2, 3}) {
+        for (int x : new int[]{29, 30, 31, 0, 1, 2, 3}) {
             if (!environment.getMolecule(x, 4).isEmpty()) {
                 copiedCount++;
             }

@@ -23,7 +23,7 @@ class DeathContextTest {
 
     @BeforeEach
     void setUp() {
-        environment = new Environment(new int[]{10, 10}, true);
+        environment = new Environment(new int[]{32, 32}, true);
         context = new DeathContext();
     }
 

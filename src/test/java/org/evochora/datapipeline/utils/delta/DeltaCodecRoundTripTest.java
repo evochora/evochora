@@ -29,14 +29,14 @@ import static org.junit.jupiter.api.Assertions.*;
 class DeltaCodecRoundTripTest {
     
     private static final String RUN_ID = "round-trip-test";
-    private static final int TOTAL_CELLS = 100;  // 10x10 environment
+    private static final int TOTAL_CELLS = 1024;  // 10x10 environment
     
     private Environment env;
     private DeltaCodec.Decoder decoder;
     
     @BeforeEach
     void setUp() {
-        env = new Environment(new int[]{10, 10}, false);
+        env = new Environment(new int[]{32, 32}, false);
         decoder = new DeltaCodec.Decoder(TOTAL_CELLS);
     }
     
@@ -64,8 +64,8 @@ class DeltaCodecRoundTripTest {
         CellDataColumns cells = decoded.get(0).getCellColumns();
         assertEquals(3, cells.getFlatIndicesCount());
         assertCellValue(cells, 0, 100);   // flatIndex 0 = (0,0)
-        assertCellValue(cells, 55, 200);  // flatIndex 55 = (5,5) in 10x10
-        assertCellValue(cells, 99, 300);  // flatIndex 99 = (9,9) in 10x10
+        assertCellValue(cells, 165, 200); // flatIndex 165 = (5,5) in 32x32
+        assertCellValue(cells, 297, 300); // flatIndex 297 = (9,9) in 32x32
     }
     
     @Test
