@@ -643,7 +643,7 @@ The module system allows splitting programs across multiple files. Three directi
 All paths in `.IMPORT`, `.REQUIRE`, and `.SOURCE` are resolved against configured **source roots**. A source root is a base directory (or HTTP URL) from which paths are resolved. Source roots are configured via `compiler.source-roots` in the configuration file or via the `--source-root` CLI flag.
 
 * **Unprefixed paths** (e.g., `"lib/energy.evo"`) resolve against the default (unprefixed) source root.
-* **Prefixed paths** use `PREFIX:path` syntax (e.g., `"PRED:lib/move.evo"`) to target a named source root. Prefixes must match `[A-Z][A-Z0-9_]*`.
+* **Prefixed paths** use `PREFIX:path` syntax (e.g., `"PRED:lib/move.evo"`) to target a named source root. Prefixes must match `[A-Z][A-Z0-9_]+`, that is, at least two characters. The second character is required so that a Windows drive letter such as `C:\` is never read as a prefix.
 * **HTTP URLs** as source root paths are fully supported. A source root like `https://example.com/organisms` resolves `"lib/move.evo"` to `https://example.com/organisms/lib/move.evo`.
 * If no source roots are configured, the main file's directory is used as the default root.
 

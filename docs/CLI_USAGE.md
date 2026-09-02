@@ -86,7 +86,7 @@ Source roots define base directories (or HTTP URLs) from which `.IMPORT`, `.REQU
 Syntax:
 
 - `--source-root <path>` — unprefixed (default) source root
-- `--source-root <path>:<PREFIX>` — named source root with prefix (PREFIX must match `[A-Z][A-Z0-9_]*`)
+- `--source-root <path>:<PREFIX>` — named source root with prefix (PREFIX must match `[A-Z][A-Z0-9_]+`, so at least two characters; a single letter would collide with a Windows drive letter like `C:\`)
 
 When using prefixed source roots, directive paths use `PREFIX:path` syntax (e.g., `.IMPORT "PRED:lib/move.evo" AS MOVE`). If no `--source-root` is specified, the current directory is used as the default root.
 
