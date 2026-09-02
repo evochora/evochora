@@ -1,0 +1,253 @@
+package org.evochora.runtime.model;
+
+import java.util.Arrays;
+
+/**
+ * The memory layout of the environment's cell grid: the mapping between an n-dimensional cell
+ * coordinate and the position of that cell in the environment's flat arrays.
+ * <p>
+ * Cells are stored in cubic tiles of {@code tileSide} cells per dimension. Inside a tile dimension
+ * 0 is contiguous, so a step along the organisms' default direction of execution moves to the
+ * neighbouring array element until the tile edge. The tiles themselves are ordered like the
+ * persisted row-major numbering of {@link EnvironmentProperties}, with the last dimension varying
+ * fastest; with a tile side of 1 the layout therefore reproduces that numbering exactly, and for
+ * every tile side {@link #canonical(int)} converts an internal index into it.
+ * <p>
+ * Key features:
+ * <ul>
+ *   <li>coordinate to index and index to coordinate without allocation,</li>
+ *   <li>a single-cell step along one dimension that honours tile edges and the world's topology,</li>
+ *   <li>conversion to the persisted row-major index,</li>
+ *   <li>the toroidal Manhattan distance between a coordinate and an indexed cell,</li>
+ *   <li>validation of the world shape against the tile side at construction.</li>
+ * </ul>
+ * <p>
+ * Architectural notes: this is the only class that knows how cells are laid out. The environment's
+ * index-based accessors hand out and accept indices of this layout, and no other component may
+ * derive an index from a coordinate or a coordinate from an index by its own arithmetic. The class
+ * is final, holds only immutable primitive state and has no polymorphism, so that the JIT compiles
+ * the primitives to plain integer arithmetic on the hot path. The tile side must be a power of two
+ * so that offsets inside a tile are shifts and masks; a tile-boundary crossing, once per
+ * {@code tileSide} steps, is the only place a division occurs on a step.
+ * <p>
+ * Thread safety: immutable, safe for concurrent use.
+ */
+public final class GridLayout {
+
+    /** The tile side used by every production environment: 32 cells, 1024 cells per 2D tile. */
+    public static final int PRODUCTION_TILE_SIDE = 32;
+
+    private final EnvironmentProperties properties;
+    private final int[] shape;
+    private final boolean toroidal;
+    private final int dimensions;
+    private final int tileSide;
+    /** log2 of the tile side. */
+    private final int tileShift;
+    /** {@code tileSide - 1}: masks the offset of a cell inside its tile along one dimension. */
+    private final int tileMask;
+    /** log2 of the cells per tile, {@code tileShift * dimensions}. */
+    private final int cellsPerTileShift;
+    /** Number of tiles along each dimension. */
+    private final int[] tileCounts;
+    /** Distance, in tiles, between neighbouring tiles along each dimension; row-major over the tile grid. */
+    private final int[] tileStrides;
+    private final int totalCells;
+
+    /**
+     * Creates the layout for a world.
+     *
+     * @param properties the world's shape and topology; its row-major numbering is the persisted
+     *                   index this layout converts to
+     * @param tileSide   cells per tile along each dimension; a power of two, at least 1
+     * @throws IllegalArgumentException if the tile side is not a power of two, if a world dimension
+     *                                  is not a multiple of the tile side, if a tile would hold more
+     *                                  cells than an {@code int} can index, or if the world holds
+     *                                  more cells than an {@code int} can index
+     */
+    public GridLayout(EnvironmentProperties properties, int tileSide) {
+        if (tileSide < 1 || Integer.bitCount(tileSide) != 1) {
+            throw new IllegalArgumentException("Tile side must be a power of two, got " + tileSide);
+        }
+        this.properties = properties;
+        this.shape = properties.getWorldShape();
+        this.toroidal = properties.isToroidal();
+        this.dimensions = shape.length;
+        this.tileSide = tileSide;
+        this.tileShift = Integer.numberOfTrailingZeros(tileSide);
+        this.tileMask = tileSide - 1;
+        if ((long) tileShift * dimensions >= Integer.SIZE - 1) {
+            throw new IllegalArgumentException("A tile of " + tileSide + " cells per side in "
+                    + dimensions + " dimensions holds more cells than an int can index");
+        }
+        this.cellsPerTileShift = tileShift * dimensions;
+
+        this.tileCounts = new int[dimensions];
+        for (int i = 0; i < dimensions; i++) {
+            int size = shape[i];
+            if (size < 1 || size % tileSide != 0) {
+                int below = size - Math.floorMod(size, tileSide);
+                int above = below + tileSide;
+                throw new IllegalArgumentException("World dimension " + i + " is " + size
+                        + ", which is not a multiple of " + tileSide + "; the nearest valid sizes are "
+                        + (below > 0 ? below + " and " + above : above));
+            }
+            tileCounts[i] = size / tileSide;
+        }
+
+        this.tileStrides = new int[dimensions];
+        long tiles = 1L;
+        for (int i = dimensions - 1; i >= 0; i--) {
+            tileStrides[i] = (int) tiles;
+            tiles *= tileCounts[i];
+        }
+        long cells = tiles << cellsPerTileShift;
+        if (tiles > Integer.MAX_VALUE || cells > Integer.MAX_VALUE) {
+            throw new IllegalArgumentException("World too large: " + cells
+                    + " cells exceeds Integer.MAX_VALUE (2.1 billion). Reduce environment dimensions. Shape: "
+                    + Arrays.toString(shape));
+        }
+        this.totalCells = (int) cells;
+    }
+
+    /**
+     * @return cells per tile along each dimension
+     */
+    public int tileSide() {
+        return tileSide;
+    }
+
+    /**
+     * @return the number of cells in the world, the product of all dimension sizes
+     */
+    public int totalCells() {
+        return totalCells;
+    }
+
+    /**
+     * @return the number of dimensions
+     */
+    public int dimensions() {
+        return dimensions;
+    }
+
+    /**
+     * Converts a coordinate into its internal index.
+     *
+     * @param coord the coordinate; every component must lie within the world, no normalization
+     *              takes place
+     * @return the internal index of that cell
+     */
+    public int index(int[] coord) {
+        int tile = 0;
+        int offset = 0;
+        for (int i = 0; i < dimensions; i++) {
+            int c = coord[i];
+            tile += (c >> tileShift) * tileStrides[i];
+            offset |= (c & tileMask) << (tileShift * i);
+        }
+        return (tile << cellsPerTileShift) | offset;
+    }
+
+    /**
+     * Converts an internal index into its coordinate without allocating.
+     *
+     * @param index the internal index
+     * @param out   receives the coordinate; one entry per dimension
+     */
+    public void coordinate(int index, int[] out) {
+        int tile = index >>> cellsPerTileShift;
+        int offset = index & ((1 << cellsPerTileShift) - 1);
+        for (int i = 0; i < dimensions; i++) {
+            int tilePosition = tile / tileStrides[i];
+            tile -= tilePosition * tileStrides[i];
+            out[i] = (tilePosition << tileShift) | ((offset >>> (tileShift * i)) & tileMask);
+        }
+    }
+
+    /**
+     * Returns the index of the cell one step away along a dimension.
+     * <p>
+     * Inside a tile the step is an addition; at a tile edge the step continues in the neighbouring
+     * tile, and at the world edge it wraps around in a toroidal world.
+     *
+     * @param index the internal index of the cell to step from
+     * @param dim   the dimension to step along
+     * @param sign  {@code +1} or {@code -1}
+     * @return the internal index of the neighbouring cell, or {@code -1} if the step leaves a
+     *         bounded world
+     */
+    public int step(int index, int dim, int sign) {
+        int unit = 1 << (tileShift * dim);
+        int offset = (index >>> (tileShift * dim)) & tileMask;
+        if (sign > 0) {
+            if (offset < tileMask) {
+                return index + unit;
+            }
+            int tilePosition = (index >>> cellsPerTileShift) / tileStrides[dim] % tileCounts[dim];
+            int backToTileStart = tileMask * unit;
+            if (tilePosition < tileCounts[dim] - 1) {
+                return index + (tileStrides[dim] << cellsPerTileShift) - backToTileStart;
+            }
+            if (!toroidal) {
+                return -1;
+            }
+            return index - ((tileCounts[dim] - 1) * tileStrides[dim] << cellsPerTileShift) - backToTileStart;
+        }
+        if (offset > 0) {
+            return index - unit;
+        }
+        int tilePosition = (index >>> cellsPerTileShift) / tileStrides[dim] % tileCounts[dim];
+        int toTileEnd = tileMask * unit;
+        if (tilePosition > 0) {
+            return index - (tileStrides[dim] << cellsPerTileShift) + toTileEnd;
+        }
+        if (!toroidal) {
+            return -1;
+        }
+        return index + ((tileCounts[dim] - 1) * tileStrides[dim] << cellsPerTileShift) + toTileEnd;
+    }
+
+    /**
+     * Converts an internal index into the persisted row-major index of
+     * {@link EnvironmentProperties}, the numbering in which cells are serialized.
+     *
+     * @param index the internal index
+     * @return the persisted index of the same cell
+     */
+    public int canonical(int index) {
+        int tile = index >>> cellsPerTileShift;
+        int offset = index & ((1 << cellsPerTileShift) - 1);
+        int canonical = 0;
+        for (int i = 0; i < dimensions; i++) {
+            int tilePosition = tile / tileStrides[i];
+            tile -= tilePosition * tileStrides[i];
+            int c = (tilePosition << tileShift) | ((offset >>> (tileShift * i)) & tileMask);
+            canonical += c * properties.getStride(i);
+        }
+        return canonical;
+    }
+
+    /**
+     * The Manhattan distance between a coordinate and an indexed cell, taking the shorter way
+     * around the world in every dimension. The wrap-around is applied regardless of the topology;
+     * callers in a bounded world must not rely on the direct distance.
+     *
+     * @param coord the coordinate to measure from
+     * @param index the internal index of the cell to measure to
+     * @return the distance
+     */
+    public int distance(int[] coord, int index) {
+        int tile = index >>> cellsPerTileShift;
+        int offset = index & ((1 << cellsPerTileShift) - 1);
+        int distance = 0;
+        for (int i = 0; i < dimensions; i++) {
+            int tilePosition = tile / tileStrides[i];
+            tile -= tilePosition * tileStrides[i];
+            int c = (tilePosition << tileShift) | ((offset >>> (tileShift * i)) & tileMask);
+            int diff = Math.abs(coord[i] - c);
+            distance += Math.min(diff, shape[i] - diff);
+        }
+        return distance;
+    }
+}
