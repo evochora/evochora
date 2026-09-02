@@ -1,6 +1,7 @@
 package org.evochora.compiler.backend.emit;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -25,5 +26,5 @@ public final class EmissionRegistry {
 	/**
 	 * @return The list of registered emission rules.
 	 */
-	public List<IEmissionRule> rules() { return rules; }
+	public List<IEmissionRule> rules() { return Collections.unmodifiableList(rules); }
 }

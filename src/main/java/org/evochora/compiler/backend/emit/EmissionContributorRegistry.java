@@ -1,6 +1,7 @@
 package org.evochora.compiler.backend.emit;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -23,6 +24,6 @@ public final class EmissionContributorRegistry {
      * @return The list of registered contributors.
      */
     public List<IEmissionContributor> contributors() {
-        return contributors;
+        return Collections.unmodifiableList(contributors);
     }
 }

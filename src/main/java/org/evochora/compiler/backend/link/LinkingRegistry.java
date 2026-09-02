@@ -1,6 +1,7 @@
 package org.evochora.compiler.backend.link;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -25,5 +26,5 @@ public class LinkingRegistry {
     /**
      * @return The list of registered linking rules.
      */
-    public List<ILinkingRule> rules() { return rules; }
+    public List<ILinkingRule> rules() { return Collections.unmodifiableList(rules); }
 }
