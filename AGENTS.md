@@ -155,17 +155,17 @@ runtime      →  (nothing)
 
 ## Compiler (`src/main/java/org/evochora/compiler/`)
 
+- **Twelve-Phase Pipeline**: Dependency Scanning (0) → Lexer (1) → PreProcessor (2) → Parser (3) → Semantic Analyzer (4) → Token Map Generator (5) → AST Post-Processor (6) → IR Generator (7) → IR Rewriting (8) → Layout Engine (9) → Linker (10) → Emitter (11). `Compiler.java` is the only class that knows this order.
 - **Immutability**: Compiler phases are immutable - each phase creates an immutable object and passes it to the next
-- **Single Execution**: Every compiler phase runs exactly once; no phase may access a previous phase
-- **No Direct Calls**: Compiler phases never call other compiler phases directly
-- **Multi-Pass Pipeline**: Preprocessor → Lexer → Parser → Semantic Analyzer → IR Generator → Layout Engine → Linker → Emitter
-- **Handler Pattern**: Phase main classes (PreProcessor, Parser, SemanticAnalyzer, IrGenerator, LayoutEngine, Linker, Emitter) must use their corresponding handlers/plugins system
-- **Thin Orchestrators**: All logic goes into handlers/plugins; main classes stay clean as distributors
-- **Registry-Based**: Use DirectiveHandlerRegistry, IrConverterRegistry, LayoutDirectiveRegistry, LinkingRegistry, EmissionRegistry for extensibility
-- **Feature-Slicing**: Features (not phases) are the unit of code organization. Each feature is a self-contained package with all its components (parser handler, AST node, semantics handler, IR converter, etc.). Features register themselves into phase registries.
-- **Feature-Agnostic Core**: Core infrastructure (phases, SymbolTable, data formats) must never reference specific features. Features depend on phases, not vice versa. The only place that knows which features exist is the registration list in Compiler.java.
+- **Single Execution**: Every phase runs exactly once for all modules of a compilation - there is no per-module loop, and no phase may access a previous phase
+- **No Direct Calls**: Phases never call other phases, and handlers never call other handlers. A handler that needs another feature's work reads it from the phase's input data, never from the other handler
+- **Results, Not Side Channels**: A phase returns its result to the Compiler; it never exposes results through getters for a later phase to pull. From phase 7 on, the IR is the single source of truth - what is not in the IR does not exist for the backend
+- **Thin Orchestrators**: All logic goes into handlers/plugins; phase main classes (PreProcessor, Parser, SemanticAnalyzer, IrGenerator, LayoutEngine, Linker, Emitter) stay clean as distributors
+- **Registry-Based Dispatch**: Each phase dispatches through its own registry and nothing else - no `instanceof` chains on tokens, AST nodes or IR items in phase code. One registry per phase: `PreProcessorHandlerRegistry`, `ParserStatementRegistry`, `ModuleSetupRegistry` and `AnalysisHandlerRegistry`, `TokenMapContributorRegistry`, `PostProcessHandlerRegistry`, `IrConverterRegistry`, `EmissionRegistry`, `LayoutDirectiveRegistry`, `LinkingRegistry` and `LinkingDirectiveRegistry`, `EmissionContributorRegistry`. Features fill them through `IFeatureRegistrationContext`
+- **Feature-Slicing**: Features (not phases) are the unit of code organization. Each feature is a self-contained package with all its components (parser handler, AST node, semantics handler, IR converter, etc.). Features register themselves into phase registries. Reason: a feature is the unit of change ("add procedures", "add imports"), so its components belong together even though they run in different phases; organized by phase, every change would spread across the whole pipeline
+- **Feature-Agnostic Core**: Core infrastructure (phases, SymbolTable, data formats) must never reference specific features. Features depend on phases, not vice versa. The only place that knows which features exist is `StandardFeatures.java`
 - **Three Pure Data Formats**: Token (`model/token/`), AST (`model/ast/`), IR (`model/ir/`) are strictly separated. No cross-dependencies between them. `SourceInfo` is the only shared type.
-- **Stateless Features**: Features have no constructor parameters and no mutable state. Compilation data flows through phase contexts (e.g., PreProcessorContext, IrGenContext), not through features.
+- **Stateless Features**: Features have no constructor parameters and no mutable state. Compilation data flows through phase contexts (e.g., PreProcessorContext, IrGenContext), not through features. Phase-internal state (register alias scopes while parsing, the macro table while preprocessing) lives in that phase's context and dies with the phase; data that crosses a phase boundary is returned to the Compiler and handed to the next phase as input
 - **Pure Data Records**: Core data types (Symbol, AstNode subtypes, IR items) are pure records. Placement/scoping knowledge lives in the SymbolTable and phase contexts, not in the data records themselves.
 
 ## Runtime (`src/main/java/org/evochora/runtime/`)
