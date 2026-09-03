@@ -226,6 +226,48 @@ final class GridLayout {
     }
 
     /**
+     * The canonical index of the first cell of a tile: the cell at offset 0, whose coordinate is
+     * the tile position times the tile side in every dimension. With {@link #canonicalOffset(int)}
+     * this splits {@link #canonical(int)} into a part that costs one division per dimension and is
+     * shared by all cells of a tile, and a part that costs only shifts.
+     *
+     * @param tile the tile number, {@code index >>> cellsPerTileShift()}
+     * @return the canonical index of the tile's first cell
+     */
+    int canonicalOfTile(int tile) {
+        int canonical = 0;
+        for (int i = 0; i < dimensions; i++) {
+            int tilePosition = tile / tileStrides[i];
+            tile -= tilePosition * tileStrides[i];
+            canonical += (tilePosition << tileShift) * properties.getStride(i);
+        }
+        return canonical;
+    }
+
+    /**
+     * The canonical distance of a cell from the first cell of its tile, from the cell's offset
+     * inside the tile. Adding it to {@link #canonicalOfTile(int)} gives the cell's canonical index.
+     *
+     * @param offset the offset inside the tile, {@code index & (cellsPerTile - 1)}
+     * @return the canonical index difference to the tile's first cell
+     */
+    int canonicalOffset(int offset) {
+        int canonical = 0;
+        for (int i = 0; i < dimensions; i++) {
+            canonical += ((offset >>> (tileShift * i)) & tileMask) * properties.getStride(i);
+        }
+        return canonical;
+    }
+
+    /**
+     * @return log2 of the cells per tile: an internal index shifted right by it is the tile number,
+     *         its low bits are the offset inside the tile
+     */
+    int cellsPerTileShift() {
+        return cellsPerTileShift;
+    }
+
+    /**
      * The Manhattan distance between a coordinate and an indexed cell, taking the shorter way
      * around the world in every dimension. The wrap-around is applied regardless of the topology;
      * callers in a bounded world must not rely on the direct distance.

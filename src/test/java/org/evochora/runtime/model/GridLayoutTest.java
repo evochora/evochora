@@ -108,6 +108,19 @@ class GridLayoutTest {
         });
     }
 
+    @ParameterizedTest
+    @MethodSource("worlds")
+    void canonicalIndexSplitsIntoATilePartAndAnOffsetPart(int[] shape, boolean toroidal, int tileSide) {
+        GridLayout layout = layout(shape, toroidal, tileSide);
+        int shift = layout.cellsPerTileShift();
+        int offsetMask = (1 << shift) - 1;
+
+        for (int index = 0; index < layout.totalCells(); index++) {
+            assertThat(layout.canonicalOfTile(index >>> shift) + layout.canonicalOffset(index & offsetMask))
+                    .as("index %d", index).isEqualTo(layout.canonical(index));
+        }
+    }
+
     @Test
     void tileSideOneIsThePersistedNumberingItself() {
         int[] shape = {7, 5, 3};

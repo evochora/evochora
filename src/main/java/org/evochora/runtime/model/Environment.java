@@ -72,10 +72,8 @@ public class Environment implements IEnvironmentReader {
     // Maintains index of all LABEL molecules for O(1) lookup
     private final LabelIndex labelIndex;
 
-    // Reusable buffers for handing cells out in canonical order; grow-only, retained between visits
-    private int[] collected = new int[0];
-    private int collectedCount = 0;
-    private long[] sortKeys = new long[0];
+    // The batch through which cells are handed out in canonical order; its buffer is retained
+    private final CanonicalCellOrder canonicalOrder = new CanonicalCellOrder();
 
     // Total number of cells (cached for performance)
     private final int totalCells;
@@ -1005,11 +1003,7 @@ public class Environment implements IEnvironmentReader {
      * @param visitor receives each cell under its canonical index
      */
     public void forEachOccupiedCellInCanonicalOrder(CanonicalCellVisitor visitor) {
-        collectedCount = 0;
-        for (int i = occupiedIndices.nextSetBit(0); i >= 0; i = occupiedIndices.nextSetBit(i + 1)) {
-            collect(i);
-        }
-        visitCollectedInCanonicalOrder(visitor);
+        visitInCanonicalOrder(occupiedIndices, visitor);
     }
 
     /**
@@ -1033,39 +1027,34 @@ public class Environment implements IEnvironmentReader {
     }
 
     private void visitChangedInCanonicalOrder(BitSet changed, CanonicalCellVisitor visitor) {
-        collectedCount = 0;
-        for (int i = changed.nextSetBit(0); i >= 0; i = changed.nextSetBit(i + 1)) {
-            collect(i);
-        }
-        visitCollectedInCanonicalOrder(visitor);
-    }
-
-    /** Appends an internal index to the collection buffer, growing it when full. */
-    private void collect(int flatIndex) {
-        if (collectedCount == collected.length) {
-            collected = Arrays.copyOf(collected, Math.max(1024, collected.length * 2));
-        }
-        collected[collectedCount++] = flatIndex;
+        visitInCanonicalOrder(changed, visitor);
     }
 
     /**
-     * Visits the collected cells sorted by canonical index. Each cell is keyed by its canonical
-     * index in the upper 32 bits and its internal index in the lower 32, so one sort of the keys
-     * orders the cells and keeps the index needed to read each cell.
+     * Hands the cells whose internal indices are set in {@code cells} to the visitor in ascending
+     * canonical order. The set is walked in internal order, which groups cells by tile, so the
+     * part of the canonical index that costs divisions is computed once per tile and each cell adds
+     * only its offset; the batch is then ordered and read back.
      */
-    private void visitCollectedInCanonicalOrder(CanonicalCellVisitor visitor) {
-        if (sortKeys.length < collectedCount) {
-            sortKeys = new long[Math.max(collectedCount, sortKeys.length * 2)];
+    private void visitInCanonicalOrder(BitSet cells, CanonicalCellVisitor visitor) {
+        int tileShift = layout.cellsPerTileShift();
+        int offsetMask = (1 << tileShift) - 1;
+        canonicalOrder.clear();
+        int currentTile = -1;
+        int tileCanonical = 0;
+        for (int i = cells.nextSetBit(0); i >= 0; i = cells.nextSetBit(i + 1)) {
+            int tile = i >>> tileShift;
+            if (tile != currentTile) {
+                currentTile = tile;
+                tileCanonical = layout.canonicalOfTile(tile);
+            }
+            canonicalOrder.add(tileCanonical + layout.canonicalOffset(i & offsetMask), i);
         }
-        for (int i = 0; i < collectedCount; i++) {
-            int flatIndex = collected[i];
-            sortKeys[i] = ((long) layout.canonical(flatIndex) << 32) | (flatIndex & 0xFFFFFFFFL);
-        }
-        Arrays.sort(sortKeys, 0, collectedCount);
-        for (int i = 0; i < collectedCount; i++) {
-            long key = sortKeys[i];
-            int flatIndex = (int) key;
-            visitor.visit((int) (key >>> 32), grid[flatIndex], ownerGrid[flatIndex]);
+        canonicalOrder.sort();
+        int count = canonicalOrder.count();
+        for (int position = 0; position < count; position++) {
+            int flatIndex = canonicalOrder.internalAt(position);
+            visitor.visit(canonicalOrder.canonicalAt(position), grid[flatIndex], ownerGrid[flatIndex]);
         }
     }
     
