@@ -35,7 +35,6 @@ class EnvironmentLayoutTest {
             assertThat(canonical).isEqualTo(env.properties.toFlatIndex(coord));
             assertThat(env.getCoordinateFromIndex(index)).isEqualTo(coord);
             assertThat(env.getIndexFromCoordinate(coord)).isEqualTo(index);
-            assertThat(env.fromCanonicalIndex(canonical)).isEqualTo(index);
             canonicalSeen.set(canonical);
         }
         assertThat(canonicalSeen.cardinality())
@@ -49,11 +48,12 @@ class EnvironmentLayoutTest {
         int[] coord = {63, 31, 2};
         env.setMolecule(Molecule.fromInt(Config.TYPE_DATA | 42), coord);
 
-        int[] occupied = {-1};
-        env.forEachOccupiedIndex(i -> occupied[0] = i);
+        int[] seen = {-1, 0};
+        env.forEachOccupiedCellInCanonicalOrder((canonical, molecule, owner) -> { seen[0] = canonical; seen[1] = molecule; });
 
-        assertThat(env.getCoordinateFromIndex(occupied[0])).isEqualTo(coord);
-        assertThat(env.getMoleculeInt(occupied[0])).isEqualTo(Config.TYPE_DATA | 42);
+        assertThat(seen[0]).isEqualTo(env.properties.toFlatIndex(coord));
+        assertThat(seen[1]).isEqualTo(Config.TYPE_DATA | 42);
+        assertThat(env.getMoleculeInt(env.getIndexFromCoordinate(coord))).isEqualTo(Config.TYPE_DATA | 42);
         assertThat(env.getMolecule(coord).toInt()).isEqualTo(Config.TYPE_DATA | 42);
     }
 
@@ -62,11 +62,10 @@ class EnvironmentLayoutTest {
         Environment env = tiled(new int[]{64, 64}, false);
         env.setMolecule(Molecule.fromInt(Config.TYPE_DATA | 1), new int[]{1, 0});
 
-        int[] occupied = {-1};
-        env.forEachOccupiedIndex(i -> occupied[0] = i);
+        int index = env.getIndexFromCoordinate(new int[]{1, 0});
 
-        assertThat(occupied[0]).as("dimension 0 is contiguous inside a tile").isEqualTo(1);
-        assertThat(env.toCanonicalIndex(occupied[0])).as("row-major").isEqualTo(64);
+        assertThat(index).as("dimension 0 is contiguous inside a tile").isEqualTo(1);
+        assertThat(env.toCanonicalIndex(index)).as("row-major").isEqualTo(64);
     }
 
     @Test
@@ -82,19 +81,6 @@ class EnvironmentLayoutTest {
                 .isEqualTo(new int[]{62, 5});
     }
 
-    @Test
-    void toroidalDistanceTakesTheShorterWayAroundInEveryDimension() {
-        Environment env = tiled(new int[]{64, 32, 32}, true);
-        env.setMolecule(Molecule.fromInt(Config.TYPE_DATA | 1), new int[]{63, 31, 31});
-        int[] occupied = {-1};
-        env.forEachOccupiedIndex(i -> occupied[0] = i);
-
-        assertThat(env.toroidalManhattanDistance(new int[]{0, 0, 0}, occupied[0]))
-                .as("one step across each boundary").isEqualTo(3);
-        assertThat(env.toroidalManhattanDistance(new int[]{30, 10, 20}, occupied[0]))
-                .as("the shorter way per dimension: around in the first two, direct in the third")
-                .isEqualTo(31 + 11 + 11);
-    }
 
     @Test
     void rejectsAWorldThatDoesNotFitTheTileSide() {

@@ -121,6 +121,61 @@ class EnvironmentCellAccessTest {
         });
     }
 
+    @Test
+    void aViewIsValidOnlyInsideItsVisit() {
+        Environment env = tiled();
+        env.setMoleculeAt(new int[]{3, 3}, data(3), 8);
+        env.setMoleculeAt(new int[]{9, 9}, data(9), 8);
+
+        List<CellView> retained = new ArrayList<>();
+        List<int[]> coordinatesSeen = new ArrayList<>();
+        env.visitCellsOwnedBy(8, view -> {
+            retained.add(view);
+            coordinatesSeen.add(view.coordinate());
+        });
+
+        assertThat(coordinatesSeen.get(0)).as("the coordinate buffer is shared between cells").isSameAs(coordinatesSeen.get(1));
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> retained.get(0).moleculeInt())
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("inside the visit");
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> retained.get(0).setMolecule(data(1)))
+                .isInstanceOf(IllegalStateException.class);
+        assertThat(env.getMolecule(9, 9).value()).as("nothing was written after the visit").isEqualTo(9);
+    }
+
+    @Test
+    void aNestedOwnedCellVisitFailsInsteadOfCorruptingTheRunningOne() {
+        Environment env = tiled();
+        env.setMoleculeAt(new int[]{1, 1}, data(1), 4);
+        env.setMoleculeAt(new int[]{2, 2}, data(2), 5);
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() ->
+                env.visitCellsOwnedBy(4, view -> env.visitCellsOwnedBy(5, inner -> { })))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("cannot be nested");
+        List<Integer> afterwards = new ArrayList<>();
+        env.visitCellsOwnedBy(5, view -> afterwards.add(view.moleculeInt()));
+        assertThat(afterwards).as("the environment visits again after the failed nested visit").containsExactly(data(2).toInt());
+    }
+
+    @Test
+    void aNestedCanonicalVisitFailsInsteadOfCorruptingTheBatch() {
+        Environment env = tiled();
+        env.setMoleculeAt(new int[]{1, 1}, data(1));
+        env.setMoleculeAt(new int[]{2, 2}, data(2));
+
+        List<Integer> outer = new ArrayList<>();
+        org.assertj.core.api.Assertions.assertThatThrownBy(() ->
+                env.forEachOccupiedCellInCanonicalOrder((canonical, molecule, owner) -> {
+                    outer.add(canonical);
+                    env.forEachCellChangedSinceLastSample((c, m, o) -> { });
+                }))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("already running");
+        assertThat(canonicalIndices(env::forEachOccupiedCellInCanonicalOrder))
+                .as("the environment visits again after the failed nested visit").hasSize(2);
+    }
+
     private static List<Integer> canonicalIndices(java.util.function.Consumer<CanonicalCellVisitor> visit) {
         List<Integer> out = new ArrayList<>();
         visit.accept((canonical, molecule, owner) -> out.add(canonical));

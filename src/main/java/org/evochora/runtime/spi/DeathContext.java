@@ -1,5 +1,7 @@
 package org.evochora.runtime.spi;
 
+import java.util.function.Consumer;
+
 import org.evochora.runtime.model.CellView;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
@@ -40,6 +42,12 @@ public class DeathContext {
     private int organismId;
     private boolean initialized = false;
     private CellView current;
+    private Runnable currentAction;
+    // One visitor for the lifetime of the context, so that a death allocates nothing
+    private final Consumer<CellView> onCell = view -> {
+        current = view;
+        currentAction.run();
+    };
 
     /**
      * Resets context for reuse - zero allocation.
@@ -77,11 +85,13 @@ public class DeathContext {
         if (!initialized) {
             throw new IllegalStateException("DeathContext not initialized - reset() must be called first");
         }
-        environment.visitCellsOwnedBy(organismId, view -> {
-            current = view;
-            action.run();
-        });
-        current = null;
+        currentAction = action;
+        try {
+            environment.visitCellsOwnedBy(organismId, onCell);
+        } finally {
+            current = null;
+            currentAction = null;
+        }
     }
 
     /**

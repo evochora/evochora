@@ -267,26 +267,4 @@ final class GridLayout {
         return cellsPerTileShift;
     }
 
-    /**
-     * The Manhattan distance between a coordinate and an indexed cell, taking the shorter way
-     * around the world in every dimension. The wrap-around is applied regardless of the topology;
-     * callers in a bounded world must not rely on the direct distance.
-     *
-     * @param coord the coordinate to measure from
-     * @param index the internal index of the cell to measure to
-     * @return the distance
-     */
-    int distance(int[] coord, int index) {
-        int tile = index >>> cellsPerTileShift;
-        int offset = index & ((1 << cellsPerTileShift) - 1);
-        int distance = 0;
-        for (int i = 0; i < dimensions; i++) {
-            int tilePosition = tile / tileStrides[i];
-            tile -= tilePosition * tileStrides[i];
-            int c = (tilePosition << tileShift) | ((offset >>> (tileShift * i)) & tileMask);
-            int diff = Math.abs(coord[i] - c);
-            distance += Math.min(diff, shape[i] - diff);
-        }
-        return distance;
-    }
 }

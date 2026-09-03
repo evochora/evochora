@@ -1,5 +1,7 @@
 package org.evochora.runtime.model;
 
+import java.util.Arrays;
+
 /**
  * A batch of cells ordered by canonical index, used to hand cells out of the environment in the
  * numbering they are persisted in, whatever the environment's memory layout.
@@ -11,7 +13,8 @@ package org.evochora.runtime.model;
  * buffers are grow-only and retained between batches. The batch is sorted in place by an MSD radix
  * sort over the four bytes of the canonical index, moving key and owner together: linear in the
  * number of cells, no second buffer, and equal canonical indices cannot occur, as every cell has
- * one.
+ * one. After the first batch nothing on this path allocates: the key and owner buffers grow only,
+ * and the bucket counters of the radix passes are held per depth.
  * <p>
  * Thread safety: not thread-safe; one instance belongs to one environment and is used only from
  * the thread that serializes it.
@@ -25,9 +28,15 @@ final class CanonicalCellOrder {
     /** Bit position of the least significant byte of the canonical index inside a key. */
     private static final int LOW_BYTE_SHIFT = 32;
 
+    /** Radix passes over the four bytes of the canonical index, from the most significant down. */
+    private static final int RADIX_DEPTH = 4;
+
     private long[] keys = new long[0];
     private int[] owners = new int[0];
     private int count = 0;
+    // Bucket bounds of the radix pass at each depth; a deeper pass never touches its parent's row
+    private final int[][] bucketEnd = new int[RADIX_DEPTH][256];
+    private final int[][] bucketNext = new int[RADIX_DEPTH][256];
 
     /** Empties the batch; the buffer is kept. */
     void clear() {
@@ -44,8 +53,8 @@ final class CanonicalCellOrder {
     void add(int canonicalIndex, int moleculeInt, int ownerId) {
         if (count == keys.length) {
             int capacity = Math.max(1024, keys.length * 2);
-            keys = java.util.Arrays.copyOf(keys, capacity);
-            owners = java.util.Arrays.copyOf(owners, capacity);
+            keys = Arrays.copyOf(keys, capacity);
+            owners = Arrays.copyOf(owners, capacity);
         }
         keys[count] = ((long) canonicalIndex << 32) | (moleculeInt & 0xFFFFFFFFL);
         owners[count] = ownerId;
@@ -103,11 +112,13 @@ final class CanonicalCellOrder {
             insertionSort(from, to);
             return;
         }
-        int[] bucketEnd = new int[256];
+        int depth = (TOP_BYTE_SHIFT - shift) / 8;
+        int[] bucketEnd = this.bucketEnd[depth];
+        int[] bucketNext = this.bucketNext[depth];
+        Arrays.fill(bucketEnd, 0);
         for (int i = from; i < to; i++) {
             bucketEnd[byteAt(keys[i], shift)]++;
         }
-        int[] bucketNext = new int[256];
         int start = from;
         for (int b = 0; b < 256; b++) {
             bucketNext[b] = start;

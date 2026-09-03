@@ -881,7 +881,9 @@ public class Organism {
      * Retrieves the raw integer values of an instruction's arguments from the environment,
      * starting from an explicit position and advancing along an explicit direction vector.
      * <p>
-     * Uses flat-index arithmetic along the unit-vector DV to avoid coordinate array allocations.
+     * Steps from cell to cell through the environment along the unit-vector DV, without
+     * allocating coordinates. A position outside a bounded world is a cell that does not exist:
+     * from there every argument reads as empty.
      *
      * @param instructionLength The total length of the instruction (opcode + arguments).
      * @param environment The simulation environment.
@@ -892,9 +894,6 @@ public class Organism {
     public int[] getRawArgumentsFromEnvironment(int instructionLength, Environment environment, int[] fromIp, int[] withDv) {
         int argCount = instructionLength - 1;
         if (argCount <= 0) return EMPTY_INT_ARRAY;
-
-        EnvironmentProperties props = environment.properties;
-        boolean isToroidal = props.isToroidal();
 
         // DV is a unit vector: exactly one component is ±1, rest 0
         int dim = 0;
@@ -907,18 +906,13 @@ public class Organism {
             }
         }
 
-        int dimSize = props.getDimensionSize(dim);
         int dimPos = fromIp[dim];
-        // Outside a bounded world there is no cell: the index is -1 and every read yields empty.
-        int index = (dimPos >= 0 && dimPos < dimSize) ? environment.getIndexFromCoordinate(fromIp) : -1;
+        int inWorld = environment.properties.getDimensionSize(dim);
+        // A start outside a bounded world has no cell; the step keeps -1 for a bounded edge
+        int index = (dimPos >= 0 && dimPos < inWorld) ? environment.getIndexFromCoordinate(fromIp) : -1;
 
         int[] rawArgs = new int[argCount];
         for (int a = 0; a < argCount; a++) {
-            dimPos += sign;
-            if (isToroidal) {
-                if (dimPos < 0) dimPos = dimSize - 1;
-                else if (dimPos >= dimSize) dimPos = 0;
-            }
             if (index >= 0) {
                 index = environment.stepIndex(index, dim, sign);
             }
@@ -1006,6 +1000,10 @@ public class Organism {
      * LABEL, empty cells, and NOP are all skipped over.
      * This is used both after instruction execution (instant-skip) and by conditional
      * instructions to find the next real instruction to skip.
+     * <p>
+     * The walk steps from cell to cell through the environment; a position outside a bounded
+     * world is a cell that does not exist and counts as empty, so the walk continues until the
+     * skip budget is exhausted.
      *
      * @param environment The simulation environment.
      */

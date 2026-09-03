@@ -89,24 +89,6 @@ class GridLayoutTest {
         });
     }
 
-    @ParameterizedTest
-    @MethodSource("worlds")
-    void distanceIsTheToroidalManhattanDistance(int[] shape, boolean toroidal, int tileSide) {
-        GridLayout layout = layout(shape, toroidal, tileSide);
-        int[] from = new int[shape.length];
-        for (int i = 0; i < shape.length; i++) {
-            from[i] = shape[i] / 3;
-        }
-
-        forEachCoordinate(shape, coord -> {
-            int expected = 0;
-            for (int i = 0; i < shape.length; i++) {
-                int diff = Math.abs(from[i] - coord[i]);
-                expected += Math.min(diff, shape[i] - diff);
-            }
-            assertThat(layout.distance(from, layout.index(coord))).isEqualTo(expected);
-        });
-    }
 
     @ParameterizedTest
     @MethodSource("worlds")

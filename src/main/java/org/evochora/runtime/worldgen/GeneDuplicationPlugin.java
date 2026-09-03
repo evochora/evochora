@@ -77,6 +77,10 @@ public class GeneDuplicationPlugin implements IBirthHandler {
         int walkStart;
         /** End of the shortest arc containing all owned cells (inclusive). */
         int walkEnd;
+        /** Start of this line's segment in the shared DV coordinate buffer while walk ranges are resolved. */
+        int segmentStart;
+        /** Number of DV coordinates already placed in this line's segment. */
+        int segmentFill;
         /** Start of the largest NOP run (DV coordinate), or -1 if none found. */
         int bestNopStart;
         /** Length of the largest NOP run, or 0 if none found. */
@@ -459,45 +463,47 @@ public class GeneDuplicationPlugin implements IBirthHandler {
             return;
         }
 
+        // One pass over the child's cells groups the DV coordinates by scan line: every line owns
+        // a segment of one shared buffer, starting at its offset, sized by its cell count.
+        int total = 0;
+        for (ScanLineInfo line : scanLineMap.values()) {
+            line.segmentStart = total;
+            line.segmentFill = 0;
+            total += line.count;
+        }
+        ensureDvCollector(total);
         final int dvDimF = dvDim;
-        for (var entry : scanLineMap.int2ObjectEntrySet()) {
-            ScanLineInfo line = entry.getValue();
+        env.visitCellsOwnedBy(childId, cell -> {
+            System.arraycopy(cell.coordinate(), 0, coordBuffer, 0, coordBuffer.length);
+            ScanLineInfo line = scanLineMap.get(computePerpKey(coordBuffer, dvDimF));
+            dvCoordCollector[line.segmentStart + line.segmentFill++] = coordBuffer[dvDimF];
+        });
+
+        for (ScanLineInfo line : scanLineMap.values()) {
             if (line.maxDv - line.minDv + 1 <= shapeDvDim / 2) {
                 continue;
             }
-
-            int perpKey = entry.getIntKey();
-            ensureDvCollector(line.count);
-            final int targetPK = perpKey;
-            final int[] idx = {0};
-
-            env.visitCellsOwnedBy(childId, cell -> {
-                System.arraycopy(cell.coordinate(), 0, coordBuffer, 0, coordBuffer.length);
-                if (computePerpKey(coordBuffer, dvDimF) == targetPK) {
-                    dvCoordCollector[idx[0]++] = coordBuffer[dvDimF];
-                }
-            });
-
-            int count = idx[0];
-            Arrays.sort(dvCoordCollector, 0, count);
+            int from = line.segmentStart;
+            int count = line.count;
+            Arrays.sort(dvCoordCollector, from, from + count);
 
             int largestGap = 0;
             int gapAfterIdx = 0;
             for (int i = 1; i < count; i++) {
-                int gap = dvCoordCollector[i] - dvCoordCollector[i - 1];
+                int gap = dvCoordCollector[from + i] - dvCoordCollector[from + i - 1];
                 if (gap > largestGap) {
                     largestGap = gap;
                     gapAfterIdx = i;
                 }
             }
 
-            int wrapGap = dvCoordCollector[0] + shapeDvDim - dvCoordCollector[count - 1];
+            int wrapGap = dvCoordCollector[from] + shapeDvDim - dvCoordCollector[from + count - 1];
             if (wrapGap > largestGap) {
                 gapAfterIdx = 0;
             }
 
-            line.walkStart = dvCoordCollector[gapAfterIdx];
-            line.walkEnd = dvCoordCollector[(gapAfterIdx - 1 + count) % count];
+            line.walkStart = dvCoordCollector[from + gapAfterIdx];
+            line.walkEnd = dvCoordCollector[from + (gapAfterIdx - 1 + count) % count];
         }
     }
 
