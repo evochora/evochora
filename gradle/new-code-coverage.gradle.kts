@@ -85,8 +85,15 @@ fun changedLines(baseRef: String): Map<String, Set<Int>> {
 /** Executable lines per source file from the JaCoCo report, mapped to whether they were reached. */
 fun coveredLines(report: File): Map<String, Map<Int, Boolean>> {
     val doc = DocumentBuilderFactory.newInstance().apply {
-        // The report declares a DTD that is not resolvable offline.
+        // Every JaCoCo report opens with a doctype, so the declaration itself has to be allowed
+        // and what it could pull in is shut off instead: the DTD it names is never fetched, no
+        // entity may reach a file or a URL, and none is expanded, which also rules out an entity
+        // that expands into itself.
         setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false)
+        setFeature("http://xml.org/sax/features/external-general-entities", false)
+        setFeature("http://xml.org/sax/features/external-parameter-entities", false)
+        isXIncludeAware = false
+        isExpandEntityReferences = false
     }.newDocumentBuilder().parse(report)
 
     val result = mutableMapOf<String, Map<Int, Boolean>>()
@@ -122,6 +129,9 @@ tasks.register("newCodeCoverage") {
     dependsOn("test")
 
     val report = layout.buildDirectory.file("reports/jacoco/test/jacocoTestReport.xml")
+    // Enough for the whole list in an ordinary change, far enough from GitHub's 65536-character
+    // limit for a comment that even long paths cannot reach it.
+    val maxListedLines = 50
     val sourceRoot = "src/main/java/"
     // The prefix carries a trailing slash so that removePrefix cuts cleanly; in a sentence the
     // path reads better without it.
@@ -129,7 +139,10 @@ tasks.register("newCodeCoverage") {
     val baseRef = (findProperty("newCodeCoverage.baseRef") ?: "origin/main").toString()
     // A share, not a percentage. Written as 80 it would ask for 8000% and fail every branch,
     // with a figure in the comment that says nothing about what went wrong.
-    val minimum = (findProperty("newCodeCoverage.minimum") as String?)?.let { given ->
+    // Read as text rather than cast: a property set anywhere but the command line — gradle.properties,
+    // an init script, the environment — need not arrive as a String, and a failed cast would land
+    // before the check below ever states what a usable value looks like.
+    val minimum = findProperty("newCodeCoverage.minimum")?.toString()?.let { given ->
         val value = given.toDoubleOrNull()
         require(value != null && value in 0.0..1.0) {
             "newCodeCoverage.minimum is the share of changed lines that has to be covered, " +
@@ -206,10 +219,21 @@ tasks.register("newCodeCoverage") {
             append("($hit of $total coverable lines, against `$baseRef`).\n")
             if (minimum != null) append("\nRequired: %.1f%%.\n".format(Locale.US, minimum * 100))
             if (misses.isNotEmpty()) {
-                append("\n<details><summary>Uncovered changed lines")
-                append(" (${misses.values.sumOf { it.size }})</summary>\n\n")
-                misses.forEach { (path, lines) ->
-                    append("- `$path`: ${lines.joinToString(", ")}\n")
+                val missed = misses.values.sumOf { it.size }
+                append("\n<details><summary>Uncovered changed lines ($missed)</summary>\n\n")
+                // A comment GitHub refuses for its length is worse than a shortened one, and the
+                // branch that would reach the limit is the one whose figure is worth reading. The
+                // count above stays complete, and the job log carries every line.
+                var left = maxListedLines
+                for ((path, lines) in misses) {
+                    if (left == 0) break
+                    val shown = lines.take(left)
+                    left -= shown.size
+                    append("- `$path`: ${shown.joinToString(", ")}")
+                    append(if (shown.size < lines.size) ", …\n" else "\n")
+                }
+                if (missed > maxListedLines) {
+                    append("\n… and ${missed - maxListedLines} more, in full in the job log.\n")
                 }
                 append("\n</details>\n")
             }

@@ -12,6 +12,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -304,9 +305,15 @@ class ArtemisQueueResourceTest {
         List<long[]> processingWindows = new ArrayList<>();
         ExecutorService executor = Executors.newFixedThreadPool(2);
         CountDownLatch done = new CountDownLatch(2);
+        // submit() says nothing about when a task actually starts. Were the second consumer to
+        // begin only after the first had finished a batch, the first would take both and the
+        // windows could not overlap — the test would report serialisation that never happened.
+        // Both wait here until the other has arrived, so they enter receiveBatch together.
+        CyclicBarrier bothReady = new CyclicBarrier(2);
 
         Runnable consumer = () -> {
             try {
+                bothReady.await(10, TimeUnit.SECONDS);
                 while (true) {
                     try (StreamingBatch<BatchInfo> batch = queue.receiveBatch(5, receiveTimeoutMs, TimeUnit.MILLISECONDS)) {
                         if (batch.size() > 0) {
@@ -320,11 +327,11 @@ class ArtemisQueueResourceTest {
                             batch.commit();
                             // Simulate processing time — the OTHER consumer should be able
                             // to receive the next batch during this sleep.
-                            long processingStart = System.currentTimeMillis();
+                            long processingStart = System.nanoTime();
                             Thread.sleep(processingTimeMs);
                             synchronized (processingWindows) {
                                 processingWindows.add(
-                                    new long[] { processingStart, System.currentTimeMillis() });
+                                    new long[] { processingStart, System.nanoTime() });
                             }
                         } else {
                             break;
@@ -333,24 +340,39 @@ class ArtemisQueueResourceTest {
                 }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
+            } catch (Exception e) {
+                // A broken or timed-out barrier leaves this consumer without work to do; the
+                // latch below then reports that not both of them finished.
+                throw new IllegalStateException("Consumer failed before or during receive", e);
             } finally {
                 done.countDown();
             }
         };
 
-        long wallStart = System.currentTimeMillis();
+        // nanoTime throughout: these are durations, and a clock correction during the run
+        // would otherwise be able to turn an interval negative or make windows that lie one after
+        // another look as if they overlapped.
+        long wallStart = System.nanoTime();
         executor.submit(consumer);
         executor.submit(consumer);
 
         boolean bothFinished = done.await(10, TimeUnit.SECONDS);
-        long wallElapsed = System.currentTimeMillis() - wallStart;
-        executor.shutdown();
+        long wallElapsedMs = (System.nanoTime() - wallStart) / 1_000_000;
+        // shutdown() alone would only refuse new work and leave a stuck consumer running into
+        // @AfterEach, which closes the queue underneath it. The JMS receive turns an interrupt
+        // into InterruptedException, so shutdownNow() gets them out of it, and waiting for
+        // termination keeps cleanup behind them.
+        executor.shutdownNow();
+        boolean consumersStopped = executor.awaitTermination(10, TimeUnit.SECONDS);
 
         // Checked before the wall clock is read as evidence: if a consumer never left its loop,
         // the elapsed time is the timeout above and says nothing about whether the two ran in
         // parallel. Reporting that as a parallelism failure would name the wrong cause.
         assertThat(bothFinished)
             .describedAs("Both consumers should finish within 10s")
+            .isTrue();
+        assertThat(consumersStopped)
+            .describedAs("Consumers should have stopped before the queue is closed")
             .isTrue();
 
         // Verify: all messages received
@@ -380,15 +402,25 @@ class ArtemisQueueResourceTest {
         synchronized (processingWindows) {
             windows = new ArrayList<>(processingWindows);
         }
+        // receiveBatch returns up to maxSize, stopping as soon as no message is immediately
+        // available, so ten messages need not split into exactly two batches. Any two windows
+        // that overlap show the property; how many there are does not matter.
         assertThat(windows)
-            .describedAs("Each batch is processed once, so two batches give two windows")
-            .hasSize(2);
-        long overlap = Math.min(windows.get(0)[1], windows.get(1)[1])
-            - Math.max(windows.get(0)[0], windows.get(1)[0]);
-        assertThat(overlap)
-            .describedAs("The two processing windows should overlap, proving one consumer works "
-                + "while the other receives; they did not (gap of %dms), so processing was "
-                + "serialised. Wall clock was %dms.", -overlap, wallElapsed)
+            .describedAs("Concurrency needs at least two processing windows to compare")
+            .hasSizeGreaterThanOrEqualTo(2);
+        long widestOverlapNanos = Long.MIN_VALUE;
+        for (int i = 0; i < windows.size(); i++) {
+            for (int j = i + 1; j < windows.size(); j++) {
+                widestOverlapNanos = Math.max(widestOverlapNanos,
+                    Math.min(windows.get(i)[1], windows.get(j)[1])
+                        - Math.max(windows.get(i)[0], windows.get(j)[0]));
+            }
+        }
+        assertThat(widestOverlapNanos)
+            .describedAs("Two processing windows should overlap, proving one consumer works while "
+                + "the other receives; none of the %d windows did (closest pair %dms apart), so "
+                + "processing was serialised. Elapsed time was %dms.",
+                windows.size(), -widestOverlapNanos / 1_000_000, wallElapsedMs)
             .isPositive();
     }
 
