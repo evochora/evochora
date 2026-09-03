@@ -40,8 +40,8 @@ that makes the layout unobservable: no simulation result may depend on it.
 
 These were agreed on 2026-09-02 and are not re-opened here.
 
-1. The runtime keeps an internal cell numbering that differs from the persisted one. The row-major
-   index of `EnvironmentProperties` remains the persisted contract; the pipeline, resume, CLI and
+1. The runtime keeps a layout index, a cell numbering that differs from the flat index in which
+   cells are persisted. The flat index of `EnvironmentProperties` remains the persisted contract; the pipeline, resume, CLI and
    visualizer are untouched.
 2. Tiles are cubic blocks with side **t = 32** in every dimension. `t` is a constant of the runtime,
    not a configuration key. Every world dimension must be a multiple of 32; a world that is not is
@@ -64,7 +64,7 @@ shape, the topology and the tile side; production always passes 32, tests pass o
 prove invariance. The name says what the class is, not how it works, so it survives a later
 variable tile side.
 
-Its primitives are exactly what the engine needs and nothing more. The layout uses short names,
+Its primitives are exactly what the engine needs and nothing more. The layout names each primitive after what it produces,
 because the class name gives the context; `Environment` exposes them under the descriptive names
 its existing index API already uses (`getCoordinateFromIndex`, `getMoleculeInt`):
 
@@ -116,13 +116,14 @@ layout class or onto the environment's coordinate-based API:
 | `PreExpandedHammingStrategy` decodes a label's coordinate with `EnvironmentProperties` strides | unchanged: labels are keyed by the flat index, whose strides are those of `EnvironmentProperties` |
 | `GeneInsertionPlugin`, `GeneDuplicationPlugin` compute their own row-major strides and index cells with them | environment conversions, own strides removed |
 | `GeneDeletionPlugin` decodes environment indices through `EnvironmentProperties` | environment conversion |
-| `Simulation.resolveConflicts` keys contenders by the flat index of a coordinate | keyed by the environment's index; any injective key is correct, and using one numbering inside the runtime makes the rule below checkable by a search instead of a review |
+| `Simulation.resolveConflicts` keys contenders by the flat index of a coordinate | unchanged: any injective key is correct, and a layout-index key would need an index-returning method outside the model package |
 | `SeedEnergyCreator` draws a random layout index | draws a random flat index and converts it (see next section) |
 
-After the change, `EnvironmentProperties` strides are used by exactly two runtime places, both
-outside the tick: the encoder converting layout indices to flat indices, and the restorer
-converting flat indices to coordinates. Everything else in the runtime treats an index as an
-opaque number that only the environment can interpret. That rule enters `AGENTS.md` for plugin
+After the change, `EnvironmentProperties` strides are used outside the environment only where
+flat indices are produced or decoded: the label strategy's distance computation, the restorer,
+and the plugins' conversions between coordinates and flat indices; the conversion of layout
+indices to flat indices happens inside the environment. Everything else in the runtime treats an
+index as an opaque number that only the environment can interpret. That rule enters `AGENTS.md` for plugin
 authors; three of the project's own plugins violated it silently.
 
 ### Layout independence
@@ -197,17 +198,17 @@ becomes visible only after the code has proven that nothing can observe it.
 
 ### Slice 1 — the layout class
 
-The class with all five primitives and a parameter for the tile side. Unit tests in two, three and
+The class with all four primitives and a parameter for the tile side. Unit tests in two, three and
 four dimensions: round trips between coordinate and index for every cell of small worlds; the set of
 flat indices of all layout indices is a permutation; `step` agrees with coordinate arithmetic
-for every cell and every direction, at tile edges, at world edges, toroidal and bounded; `distance`
-agrees with a reference computation. `t = 1` must reproduce today's row-major numbering exactly.
+for every cell and every direction, at tile edges, at world edges, toroidal and bounded. `t = 1`
+must reproduce today's row-major numbering exactly.
 
 Nothing is wired. Failure here is an arithmetic bug and is found by the cheapest test there is.
 
 ### Slice 2 — layout-independent orderings
 
-The five sites of the invariance table are redefined over the flat index while the environment
+The four sites of the invariance table are redefined over the flat index while the environment
 still uses the row-major numbering, under which flat and layout index coincide. This slice
 changes no behaviour at all.
 
@@ -290,7 +291,7 @@ What is not changed:
 
 ## Outcome
 
-Implemented in the slices above, with five additions decided during implementation:
+Implemented in the slices above, with six additions decided during implementation:
 
 - **The layout index is confined to the model package.** `GridLayout` and every index-based method
   of `Environment` are package-private; outside `org.evochora.runtime.model` no method takes or
@@ -302,10 +303,14 @@ Implemented in the slices above, with five additions decided during implementati
   keys that carry each cell's content, read during a sequential walk of the grid, 12 bytes per
   occupied cell, retained between captures. The memory estimate separates the world size from the
   occupied cells and names the sort batch, the third bit set and the encoder's column lists.
-- **The death-handler SPI lost `DeathContext.getFlatIndex()`.** A handler sees the molecule of
+- **The death-handler SPI lost `DeathContext.getFlatIndex()`**, which returned the environment's
+  layout index. A handler sees the molecule of
   the cell it is visiting and may replace it; where the cell lies is no longer observable. No
   handler in the repository used the index; an external one that did must switch to the molecule
   accessors.
+- **Conflict resolution stays keyed by the flat index.** `Simulation.resolveConflicts` groups
+  contenders by the flat index of the target coordinate; a layout-index key would need an
+  index-returning method outside the model package, which the first addition forbids.
 - **The layout has no distance primitive.** The label index is keyed by the flat index, and the
   toroidal Manhattan distance to a label is computed from that index with the strides of
   `EnvironmentProperties`, without any knowledge of tiles; `distance(coord, index)` from the

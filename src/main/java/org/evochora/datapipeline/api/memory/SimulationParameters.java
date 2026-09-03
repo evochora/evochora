@@ -87,8 +87,9 @@ public record SimulationParameters(
                     + product + "), got " + totalCells);
         }
         if (totalCells > Integer.MAX_VALUE) {
-            // The environment indexes its cells with an int; this also keeps every estimate, a
-            // cell count times a few hundred bytes, far from overflowing a long
+            // The environment indexes its cells with an int; the per-tick estimates, a cell count
+            // times a few hundred bytes, therefore fit a long, and the per-chunk estimates check
+            // their own arithmetic
             throw new IllegalArgumentException("totalCells must not exceed " + Integer.MAX_VALUE
                     + ", the most cells an environment can index, got " + totalCells);
         }
@@ -485,13 +486,15 @@ public record SimulationParameters(
      * Note: This is worst-case for heap, not compressed storage size.
      *
      * @return Estimated bytes per chunk.
+     * @throws ArithmeticException if the chunk is so long that its bytes exceed a long; an
+     *                             estimate that wrapped would understate the need silently
      */
     public long estimateBytesPerChunk() {
         int numSnapshots = snapshotsPerChunk();
         int numDeltas = samplesPerChunk() - numSnapshots;
 
-        return (long) numSnapshots * estimateBytesPerTick()
-             + (long) numDeltas * estimateBytesPerDelta();
+        return Math.addExact(Math.multiplyExact((long) numSnapshots, estimateBytesPerTick()),
+                             Math.multiplyExact((long) numDeltas, estimateBytesPerDelta()));
     }
     
     /**
@@ -503,7 +506,7 @@ public record SimulationParameters(
      * @return Compression ratio (e.g., 10.0 = 10:1 compression).
      */
     public double estimateCompressionRatio() {
-        long uncompressedSize = (long) samplesPerChunk() * estimateBytesPerTick();
+        long uncompressedSize = Math.multiplyExact((long) samplesPerChunk(), estimateBytesPerTick());
         long compressedSize = estimateBytesPerChunk();
         if (compressedSize == 0) return 1.0;
         return (double) uncompressedSize / compressedSize;
@@ -551,13 +554,14 @@ public record SimulationParameters(
      * serialized messages on heap (e.g., PersistenceService with Artemis).
      *
      * @return Estimated serialized bytes per chunk.
+     * @throws ArithmeticException if the chunk is so long that its bytes exceed a long
      */
     public long estimateSerializedBytesPerChunk() {
         int numSnapshots = snapshotsPerChunk();
         int numDeltas = samplesPerChunk() - numSnapshots;
 
-        return (long) numSnapshots * estimateSerializedBytesPerTick()
-             + (long) numDeltas * estimateSerializedBytesPerDelta();
+        return Math.addExact(Math.multiplyExact((long) numSnapshots, estimateSerializedBytesPerTick()),
+                             Math.multiplyExact((long) numDeltas, estimateSerializedBytesPerDelta()));
     }
 
     // ========================================================================

@@ -316,8 +316,8 @@ class GenomeHasherTest {
 
     @Test
     void testToroidalWrapping_anchorLabelSelectedByRelativePosition() {
-        // The anchor label must be chosen by relative position, not flat index.
-        // When a genome wraps across the boundary, the flat index ordering differs
+        // The anchor label must be chosen by relative position, not by the cell's absolute
+        // position in either numbering. When a genome wraps across the boundary, that ordering differs
         // from the relative position ordering, which would pick a different anchor
         // and change the XOR normalization.
         Molecule code = new Molecule(Config.TYPE_CODE, 42, 0);

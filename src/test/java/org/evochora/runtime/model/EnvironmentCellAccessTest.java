@@ -53,6 +53,13 @@ class EnvironmentCellAccessTest {
             assertThatThrownBy(() -> env.setMoleculeAt(coord, data(1), 2)).isInstanceOf(IllegalArgumentException.class).hasMessage(expected);
             assertThatThrownBy(() -> env.getIndexFromCoordinate(coord)).isInstanceOf(IllegalArgumentException.class).hasMessage(expected);
         }
+        for (int[] coord : new int[][]{{1}, {1, 2, 3}}) {
+            String expected = "Coordinate " + java.util.Arrays.toString(coord) + " lies outside the world of shape [64, 64]";
+            assertThatThrownBy(() -> env.getMoleculeIntAt(coord)).as("wrong dimension count")
+                    .isInstanceOf(IllegalArgumentException.class).hasMessage(expected);
+            assertThatThrownBy(() -> env.setMoleculeAt(coord, data(1))).as("wrong dimension count")
+                    .isInstanceOf(IllegalArgumentException.class).hasMessage(expected);
+        }
         List<Integer> occupied = new ArrayList<>();
         env.forEachOccupiedCellInFlatIndexOrder((flatIndex, molecule, owner) -> occupied.add(flatIndex));
         assertThat(occupied).as("nothing was written").isEmpty();
@@ -129,9 +136,9 @@ class EnvironmentCellAccessTest {
         for (int[] cell : cells) {
             env.setMoleculeAt(cell, data(cell[0] + 1), 1);
         }
-        List<Integer> flatIndex = flatIndices(env::forEachOccupiedCellInFlatIndexOrder);
+        List<Integer> visited = flatIndices(env::forEachOccupiedCellInFlatIndexOrder);
 
-        assertThat(flatIndex).hasSize(cells.length).isSorted();
+        assertThat(visited).hasSize(cells.length).isSorted();
         env.forEachOccupiedCellInFlatIndexOrder((index, molecule, owner) -> {
             int[] coord = env.properties.flatIndexToCoordinates(index);
             assertThat(molecule).isEqualTo(data(coord[0] + 1).toInt());

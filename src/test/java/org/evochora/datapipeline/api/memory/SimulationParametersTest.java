@@ -434,6 +434,17 @@ class SimulationParametersTest {
     }
 
     @Test
+    void chunkEstimates_failInsteadOfWrappingWhenAChunkIsAbsurdlyLong() {
+        // A world of two billion cells and a chunk of two billion samples: the bytes of one chunk
+        // exceed a long, and every chunk estimate must say so rather than return a wrapped number
+        SimulationParameters params = new SimulationParameters(
+                new int[]{32768, 65504}, 32768L * 65504L, 32768L * 65504L, 10, 1, 1, 1, Integer.MAX_VALUE, 0.1);
+        assertThrows(ArithmeticException.class, params::estimateBytesPerChunk);
+        assertThrows(ArithmeticException.class, params::estimateSerializedBytesPerChunk);
+        assertThrows(ArithmeticException.class, params::estimateCompressionRatio);
+    }
+
+    @Test
     void withCellOccupancy_rejectsAnOccupancyOutsideTheUnitInterval() {
         SimulationParameters params = SimulationParameters.of(new int[]{100, 100}, 10);
         assertThrows(IllegalArgumentException.class, () -> params.withCellOccupancy(-0.1));

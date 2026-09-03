@@ -170,7 +170,7 @@ class MutationInsertionOrderIndependenceTest {
             };
         }
 
-        /** All occupied cells as "index:molecule:owner", in ascending flat index order. */
+        /** All occupied cells as "index:molecule:owner", in ascending flat-index order. */
         List<String> cells() {
             List<String> out = new ArrayList<>();
             env.forEachOccupiedCellInFlatIndexOrder((index, molecule, owner) -> out.add(index + ":" + molecule + ":" + owner));

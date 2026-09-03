@@ -28,24 +28,24 @@ import org.evochora.runtime.label.PreExpandedHammingStrategy;
  * ({@link #visitCellsOwnedBy}): the visits share buffers owned by the environment, and the guard
  * against nesting catches a second visit on the same thread, not one from another thread.
  * <p>
- * <b>Cell addressing:</b> inside this package, every index this class hands out or accepts is a
- * layout index: the position of the cell in the environment's {@link GridLayout}, to be treated as
- * an opaque number that only this class relates to a coordinate. Outside the package there are no
- * indices: callers see coordinates, the {@link CellView} handed to owned-cell visitors, and the
- * flat-index visits used for serialization. The flat index is the row-major numbering of
- * {@link EnvironmentProperties}, in which cells are persisted: a different numbering of the same
- * cells, by which the label index is keyed, and this class converts at that boundary. Every order
- * that may influence a simulation result — the cells of an owner, the candidates of a label, the
- * seeded cells, the persisted cells — is defined over the flat index, so results and persisted
- * bytes do not depend on the layout.
+ * <b>Cell addressing:</b> two numberings name the same cells. The layout index is the position of
+ * a cell in the environment's {@link GridLayout}: every index-based accessor of this class takes
+ * or returns one, and it is an opaque number that only this class, through its layout, relates to
+ * a coordinate. No layout index leaves this package: callers see coordinates, the {@link CellView}
+ * handed to owned-cell visitors, and the flat index. The flat index is the row-major numbering of
+ * {@link EnvironmentProperties}, in which cells are persisted; the label index is keyed by it, the
+ * flat-index visits hand cells out under it, and this class converts between the two at that
+ * boundary. Every order that may influence a simulation result — the cells of an owner, the
+ * candidates of a label, the seeded cells, the persisted cells — is defined over the flat index,
+ * so results and persisted bytes do not depend on the layout.
  */
 public class Environment implements IEnvironmentReader {
     /**
      * The tile side of production environments: cells are stored in blocks of 32 cells per
      * dimension, 1024 cells per two-dimensional tile, so that the cells an organism touches lie
      * close together in memory. Every world dimension must be a multiple of it. Tests construct
-     * other sides through the constructor that takes one; a side of 1 is the persisted row-major
-     * order itself. Public so that tests can name the production side instead of its value.
+     * other sides through the constructor that takes one; with a side of 1 the layout index equals
+     * the flat index. Public so that tests can name the production side instead of its value.
      */
     public static final int TILE_SIDE = 32;
 
@@ -57,10 +57,10 @@ public class Environment implements IEnvironmentReader {
 
     /**
      * One bit per cell, set while the cell holds a molecule or an owner. A bit set gives
-     * constant-time updates without hashing, a fixed memory footprint of one bit per cell, and —
-     * decisive for reproducible snapshots — iteration in ascending index order, so the order in
-     * which cells are serialized depends on the grid's content alone and not on the history of
-     * writes.
+     * constant-time updates without hashing, a fixed memory footprint of one bit per cell, and
+     * iteration in ascending layout order: the flat-index visits walk it sequentially over memory
+     * and tile by tile, and the batch they fill is what puts the cells into flat-index order, so
+     * the serialized order depends on the grid's content alone and not on the history of writes.
      */
     private final BitSet occupiedIndices;
     
@@ -715,11 +715,8 @@ public class Environment implements IEnvironmentReader {
 
 
     /**
-     * Converts a layout index into the flat index of the same cell: the row-major numbering of
-     * {@link EnvironmentProperties}, which is a pure function of the coordinate and the numbering
-     * in which cells are persisted. Every order that may influence a simulation result is defined
-     * over flat indices, so that results do not depend on how the grid is laid out in memory.
-     * Allocation-free.
+     * Converts a layout index into the flat index of the same cell; the class documentation
+     * defines the two numberings. Allocation-free.
      *
      * @param layoutIndex a layout index of this environment
      * @return the flat index of the same cell
@@ -782,7 +779,8 @@ public class Environment implements IEnvironmentReader {
      * For typical simulations with ~5% occupancy, this is much faster than full grid iteration.
      *
      * @param fromOwnerId   The current owner ID whose molecules should be transferred.
-     * @param toOwnerId     The new owner ID to assign to matching molecules.
+     * @param toOwnerId     The new owner ID to assign to matching molecules; {@code 0} hands them
+     *                      to nobody.
      * @param markerToMatch The marker value that molecules must have to be transferred.
      * @return The number of molecules transferred.
      */
@@ -805,8 +803,9 @@ public class Environment implements IEnvironmentReader {
             }
         });
 
-        // Transfer ownership and reset marker
-        IntOpenHashSet toSet = cellsByOwner.computeIfAbsent(toOwnerId, k -> new IntOpenHashSet());
+        // Transfer ownership and reset marker. Owner 0 is "nobody": cells handed to it leave the
+        // owner index, which never holds a set for 0
+        IntOpenHashSet toSet = toOwnerId == 0 ? null : cellsByOwner.computeIfAbsent(toOwnerId, k -> new IntOpenHashSet());
         for (int i = 0; i < toTransfer.size(); i++) {
             int layoutIndex = toTransfer.getInt(i);
             ownerGrid[layoutIndex] = toOwnerId;
@@ -816,7 +815,9 @@ public class Environment implements IEnvironmentReader {
             markChanged(layoutIndex);
             // Update ownership index
             fromSet.remove(layoutIndex);
-            toSet.add(layoutIndex);
+            if (toSet != null) {
+                toSet.add(layoutIndex);
+            }
             // Update label index: owner changed and marker reset to 0
             int moleculeInt = grid[layoutIndex];
             labelIndex.onOwnerChange(toFlatIndex(layoutIndex), moleculeInt, toOwnerId);

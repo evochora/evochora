@@ -189,8 +189,7 @@ public class PreExpandedHammingStrategy implements ILabelMatchingStrategy {
      * @param callerCoords the coordinates of the calling instruction, for distance calculation
      * @param environment the environment, for coordinate conversion and toroidal distance
      * @param random the random source of the organism executing the lookup; must not be null
-     * @return the flat index (the persisted row-major index of {@code EnvironmentProperties})
-     *         of the best matching label, or -1 if no label is within tolerance
+     * @return the flat index of the best matching label, or -1 if no label is within tolerance
      */
     @Override
     public int findTarget(int searchValue, int codeOwner, int[] callerCoords, Environment environment,

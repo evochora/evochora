@@ -57,7 +57,7 @@ public class VirtualMachine {
     public Instruction plan(Organism organism) {
         organism.resetTickState();
 
-        // Flat-index molecule lookup to avoid coordinate-based getNormalizedCoordinate
+        // The in-range accessor: the IP lies within the world, so no normalization and no allocation
         int rawMol = this.environment.getMoleculeIntAt(organism.getIp());
 
         Instruction instruction;

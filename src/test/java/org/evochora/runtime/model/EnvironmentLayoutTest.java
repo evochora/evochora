@@ -12,7 +12,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * The environment's index API under a tiled layout: indices are opaque, every conversion the
- * environment offers agrees with the flat-index numbering of {@link EnvironmentProperties}, and a
+ * environment offers agrees with the flat index of {@link EnvironmentProperties}, and a
  * world that does not fit the tile side is rejected at construction.
  */
 @Tag("unit")

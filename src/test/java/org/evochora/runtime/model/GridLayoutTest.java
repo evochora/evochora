@@ -169,6 +169,14 @@ class GridLayoutTest {
     }
 
     @Test
+    void containsRejectsAnArrayOfTheWrongLength() {
+        GridLayout layout = layout(new int[]{64, 64}, true, 32);
+        assertThat(layout.contains(new int[]{1})).isFalse();
+        assertThat(layout.contains(new int[]{1, 2, 3})).isFalse();
+        assertThat(layout.contains(new int[]{1, 2})).isTrue();
+    }
+
+    @Test
     void rejectsAWorldDimensionSmallerThanOneCell() {
         assertThatThrownBy(() -> layout(new int[]{64, 0}, true, 32))
                 .isInstanceOf(IllegalArgumentException.class)

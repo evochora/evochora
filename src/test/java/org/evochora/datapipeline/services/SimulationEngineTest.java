@@ -260,6 +260,24 @@ class SimulationEngineTest {
     }
 
     @Test
+    void constructor_shouldRejectEveryRunOptionOutsideItsRange() {
+        assertRejected("accumulatedDeltaInterval", 0, "accumulatedDeltaInterval must be >= 1");
+        assertRejected("snapshotInterval", 0, "snapshotInterval must be >= 1");
+        assertRejected("chunkInterval", -1, "chunkInterval must be >= 1");
+        assertRejected("organismDensityFactor", -0.5, "organismDensityFactor must be >= 0, got -0.5");
+        assertRejected("estimatedDeltaRatio", 1.5, "estimatedDeltaRatio must lie between 0.0 and 1.0, got 1.5");
+    }
+
+    private void assertRejected(String option, Object value, String expectedMessage) {
+        Config config = createValidConfig().withValue(option, ConfigValueFactory.fromAnyRef(value));
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class,
+                () -> new SimulationEngine("test-engine", config, resources)
+        );
+        assertEquals(expectedMessage, exception.getMessage());
+    }
+
+    @Test
     void constructor_shouldRejectAMaxCellsPerOrganismBelowOne() {
         Config config = createValidConfig().withValue("maxCellsPerOrganism", ConfigValueFactory.fromAnyRef(0));
         IllegalArgumentException exception = assertThrows(

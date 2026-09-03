@@ -302,8 +302,8 @@ public final class DeltaCodec {
         
         /**
          * Serializes every occupied cell. The environment hands the cells out under their flat
-         * index, the persisted row-major numbering, in ascending order, so the columns do not depend
-         * on how the environment lays out its grid in memory.
+         * index, in ascending order, so the columns do not depend on how the environment lays out
+         * its grid in memory.
          */
         private CellDataColumns extractAllCells(Environment env) {
             cellColumnsBuilder.clear();

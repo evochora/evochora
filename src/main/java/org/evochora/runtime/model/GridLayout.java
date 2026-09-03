@@ -17,7 +17,7 @@ import java.util.Arrays;
  * <ul>
  *   <li>coordinate to layout index and layout index to coordinate without allocation,</li>
  *   <li>a single-cell step along one dimension that honours tile edges and the world's topology,</li>
- *   <li>conversion to the persisted row-major index,</li>
+ *   <li>conversion of a layout index to the flat index,</li>
  *   <li>validation of the world shape against the tile side at construction.</li>
  * </ul>
  * <p>
@@ -34,7 +34,7 @@ import java.util.Arrays;
 final class GridLayout {
 
     private final int[] shape;
-    /** Distance, in cells, between neighbours along each dimension in the persisted row-major numbering. */
+    /** Distance, in cells, between neighbours along each dimension in the flat index: the strides of {@link EnvironmentProperties}. */
     private final int[] flatStrides;
     private final boolean toroidal;
     private final int dimensions;
@@ -120,14 +120,18 @@ final class GridLayout {
     }
 
     /**
-     * Whether a coordinate names a cell of the world: every component lies in
-     * {@code [0, shape[i])}. No normalization takes place, so in a toroidal world a coordinate
-     * that would wrap onto a cell is still outside.
+     * Whether a coordinate names a cell of the world: one component per dimension, every
+     * component in {@code [0, shape[i])}. No normalization takes place, so in a toroidal world a
+     * coordinate that would wrap onto a cell is still outside, and an array of the wrong length
+     * names no cell at all.
      *
-     * @param coord the coordinate, one entry per dimension
-     * @return {@code true} if every component is in range
+     * @param coord the coordinate
+     * @return {@code true} if the array has one component per dimension and every component is in range
      */
     boolean contains(int[] coord) {
+        if (coord.length != dimensions) {
+            return false;
+        }
         for (int i = 0; i < dimensions; i++) {
             if (Integer.compareUnsigned(coord[i], shape[i]) >= 0) {
                 return false;

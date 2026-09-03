@@ -64,8 +64,7 @@ public class LabelIndex {
      * @param environment The environment (for coordinate conversion and toroidal distance)
      * @param random The random source of the organism executing the lookup (see
      *               {@link ILabelMatchingStrategy#findTarget})
-     * @return The flat index (the persisted row-major index of {@code EnvironmentProperties})
-     *         of the best matching label, or -1 if no match found
+     * @return The flat index of the best matching label, or -1 if no match found
      */
     public int findTarget(int searchValue, int codeOwner, int[] callerCoords, Environment environment,
                           OrganismRandom random) {

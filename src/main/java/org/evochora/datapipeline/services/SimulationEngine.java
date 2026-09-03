@@ -160,14 +160,22 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
     ) {}
 
     private RunOptions readRunOptions(Config config) {
+        double organismDensityFactor = readDouble(config, "organismDensityFactor", SimulationParameters.DEFAULT_ORGANISM_DENSITY_FACTOR);
+        if (!(organismDensityFactor >= 0.0)) {
+            throw new IllegalArgumentException("organismDensityFactor must be >= 0, got " + organismDensityFactor);
+        }
+        double estimatedDeltaRatio = readDouble(config, "estimatedDeltaRatio", SimulationParameters.DEFAULT_ESTIMATED_DELTA_RATIO);
+        if (!(estimatedDeltaRatio >= 0.0 && estimatedDeltaRatio <= 1.0)) {
+            throw new IllegalArgumentException("estimatedDeltaRatio must lie between 0.0 and 1.0, got " + estimatedDeltaRatio);
+        }
         return new RunOptions(
             readPositiveInt(config, "samplingInterval", 1),
-            readInt(config, "accumulatedDeltaInterval", SimulationParameters.DEFAULT_ACCUMULATED_DELTA_INTERVAL),
-            readInt(config, "snapshotInterval", SimulationParameters.DEFAULT_SNAPSHOT_INTERVAL),
-            readInt(config, "chunkInterval", SimulationParameters.DEFAULT_CHUNK_INTERVAL),
-            readDouble(config, "organismDensityFactor", SimulationParameters.DEFAULT_ORGANISM_DENSITY_FACTOR),
+            readPositiveInt(config, "accumulatedDeltaInterval", SimulationParameters.DEFAULT_ACCUMULATED_DELTA_INTERVAL),
+            readPositiveInt(config, "snapshotInterval", SimulationParameters.DEFAULT_SNAPSHOT_INTERVAL),
+            readPositiveInt(config, "chunkInterval", SimulationParameters.DEFAULT_CHUNK_INTERVAL),
+            organismDensityFactor,
             readPositiveInt(config, "maxCellsPerOrganism", SimulationParameters.DEFAULT_MAX_CELLS_PER_ORGANISM),
-            readDouble(config, "estimatedDeltaRatio", SimulationParameters.DEFAULT_ESTIMATED_DELTA_RATIO)
+            estimatedDeltaRatio
         );
     }
 

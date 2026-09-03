@@ -90,6 +90,10 @@ class EnvironmentIndexConsistencyTest {
 
         assertThat(env.getOwnerId(1, 1)).isZero();
         assertThat(occupied(env)).isZero();
+        assertThat(env.countCellsOwnedBy(0)).as("nobody owns nothing: no owner set is kept for 0").isZero();
+        int[] visited = {0};
+        env.visitCellsOwnedBy(0, cell -> visited[0]++);
+        assertThat(visited[0]).isZero();
     }
 
     @Test

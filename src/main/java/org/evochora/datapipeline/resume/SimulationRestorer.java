@@ -360,7 +360,7 @@ public class SimulationRestorer {
      * <p>
      * The indices are the flat indices the encoder persists, the row-major numbering of
      * {@code EnvironmentProperties}, and are decoded through it; the environment's layout index
-     * numbering is internal to it.
+     * never appears in persisted data.
      *
      * @param environment the environment to populate
      * @param cellData the columnar cell data from the snapshot
