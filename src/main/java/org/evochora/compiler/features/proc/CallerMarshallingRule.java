@@ -1,11 +1,12 @@
 package org.evochora.compiler.features.proc;
 
-import org.evochora.compiler.backend.emit.ConditionalUtils;
 import org.evochora.compiler.backend.emit.IEmissionRule;
+import org.evochora.compiler.isa.IInstructionSet;
 import org.evochora.compiler.model.ir.*;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -15,7 +16,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 public final class CallerMarshallingRule implements IEmissionRule {
 
     @Override
-    public List<IrItem> apply(List<IrItem> items) {
+    public List<IrItem> apply(List<IrItem> items, IInstructionSet isa) {
         List<IrItem> out = new ArrayList<>(items.size() + 8);
         // Numbers the bridge labels of this pass from zero, so the same source yields the
         // same labels whatever was compiled before in the same process.
@@ -25,10 +26,11 @@ public final class CallerMarshallingRule implements IEmissionRule {
             IrItem currentItem = items.get(i);
 
             // Look for a conditional instruction followed by a CALL.
-            if (i + 1 < items.size() && currentItem instanceof IrInstruction conditional && ConditionalUtils.isConditional(conditional.opcode())) {
-                if (items.get(i + 1) instanceof IrCallInstruction call) {
-                    // This is a conditional CALL.
-                    handleConditionalCall(out, conditional, call, safeCallCounter);
+            if (i + 1 < items.size() && currentItem instanceof IrInstruction conditional
+                    && items.get(i + 1) instanceof IrCallInstruction call) {
+                Optional<String> negatedOpcode = isa.negatedConditional(conditional.opcode());
+                if (negatedOpcode.isPresent()) {
+                    handleConditionalCall(out, conditional, negatedOpcode.get(), call, safeCallCounter);
                     i += 2; // Consumed both the conditional and the CALL.
                     continue;
                 }
@@ -52,10 +54,9 @@ public final class CallerMarshallingRule implements IEmissionRule {
         return out;
     }
 
-    private void handleConditionalCall(List<IrItem> out, IrInstruction conditional, IrCallInstruction call,
-                                       AtomicInteger safeCallCounter) {
+    private void handleConditionalCall(List<IrItem> out, IrInstruction conditional, String negatedOpcode,
+                                       IrCallInstruction call, AtomicInteger safeCallCounter) {
         String label = "_safe_call_" + safeCallCounter.getAndIncrement();
-        String negatedOpcode = ConditionalUtils.getNegatedOpcode(conditional.opcode());
 
         // 1. Emit negated conditional and jump.
         out.add(IrInstruction.synthetic(negatedOpcode, conditional.operands(), conditional.source()));

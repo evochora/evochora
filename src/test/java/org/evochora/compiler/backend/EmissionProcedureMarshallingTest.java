@@ -4,7 +4,10 @@ import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.backend.emit.EmissionRegistry;
 import org.evochora.compiler.backend.emit.IEmissionRule;
 import org.evochora.compiler.features.proc.ProcedureMarshallingRule;
+import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 import org.evochora.compiler.model.ir.*;
+import org.evochora.runtime.isa.Instruction;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -19,6 +22,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 @DisplayName("Emission: Procedure Marshalling Rules")
 public class EmissionProcedureMarshallingTest {
 
+    private static final RuntimeInstructionSetAdapter ISA = new RuntimeInstructionSetAdapter();
+
+    @BeforeAll
+    static void init() {
+        Instruction.init();
+    }
+
     private static SourceInfo src(String file, int line) {
         return new SourceInfo(file, line, 0);
     }
@@ -29,7 +39,7 @@ public class EmissionProcedureMarshallingTest {
         reg.register(new org.evochora.compiler.features.proc.CallerMarshallingRule());
         List<IrItem> out = items;
         for (IEmissionRule r : reg.rules()) {
-            out = r.apply(out);
+            out = r.apply(out, ISA);
         }
         return out;
     }
@@ -57,7 +67,7 @@ public class EmissionProcedureMarshallingTest {
         items.add(procExit);
 
         ProcedureMarshallingRule rule = new ProcedureMarshallingRule();
-        List<IrItem> rewritten = rule.apply(items);
+        List<IrItem> rewritten = rule.apply(items, ISA);
 
         List<IrInstruction> instructions = rewritten.stream().filter(i -> i instanceof IrInstruction).map(i -> (IrInstruction) i).collect(Collectors.toList());
 

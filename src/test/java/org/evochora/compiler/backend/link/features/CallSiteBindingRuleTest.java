@@ -245,5 +245,10 @@ class CallSiteBindingRuleTest {
         public Optional<Signature> getSignatureById(int id) {
             return Optional.empty();
         }
+
+        @Override
+        public Optional<String> negatedConditional(String opcode) {
+            return Optional.empty();
+        }
     }
 }

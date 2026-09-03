@@ -288,11 +288,12 @@ public class Compiler implements ICompiler {
         IrProgram irProgram = irGenerator.generate(ast, programName, rootAliasChain);
 
         // Phase 8: IR Rewriting (apply emission rules)
+        RuntimeInstructionSetAdapter isa = new RuntimeInstructionSetAdapter();
         EmissionRegistry emissionRegistry = new EmissionRegistry();
         emissionRegistry.registerAll(featureRegistry.emissionRules());
         List<IrItem> rewritten = irProgram.items();
         for (IEmissionRule rule : emissionRegistry.rules()) {
-            rewritten = rule.apply(rewritten);
+            rewritten = rule.apply(rewritten, isa);
         }
         IrProgram rewrittenIr = new IrProgram(programName, rewritten);
 
@@ -302,7 +303,6 @@ public class Compiler implements ICompiler {
             // directive needs layout-phase processing (e.g., core:proc_enter, core:org)
         });
         layoutRegistry.registerAll(featureRegistry.layoutHandlers());
-        RuntimeInstructionSetAdapter isa = new RuntimeInstructionSetAdapter();
         LayoutEngine layoutEngine = new LayoutEngine();
         LayoutResult layout = layoutEngine.layout(rewrittenIr, isa, envProps, layoutRegistry);
 

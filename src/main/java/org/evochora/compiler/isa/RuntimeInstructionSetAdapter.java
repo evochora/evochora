@@ -4,6 +4,7 @@ package org.evochora.compiler.isa;
 
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.isa.InstructionSignature;
+import org.evochora.runtime.isa.instructions.ConditionalInstruction;
 
 import java.util.Optional;
 
@@ -40,7 +41,14 @@ public final class RuntimeInstructionSetAdapter implements IInstructionSet {
      */
     @Override
     public Optional<Integer> resolveRegisterToken(String token) {
-        // Now calls the central method
         return Instruction.resolveRegToken(token);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Optional<String> negatedConditional(String opcode) {
+        return ConditionalInstruction.negationOf(opcode);
     }
 }

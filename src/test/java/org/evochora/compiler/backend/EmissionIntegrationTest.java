@@ -52,6 +52,7 @@ import org.evochora.compiler.model.ir.IrDirective;
 import org.evochora.compiler.model.ir.IrInstruction;
 import org.evochora.compiler.model.ir.IrItem;
 import org.evochora.compiler.model.ir.IrProgram;
+import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 import org.evochora.runtime.isa.Instruction;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
@@ -116,7 +117,7 @@ public class EmissionIntegrationTest {
         eReg.register(new org.evochora.compiler.features.proc.ProcedureMarshallingRule());
         eReg.register(new org.evochora.compiler.features.proc.CallerMarshallingRule());
         List<IrItem> rewritten = items;
-        for (IEmissionRule r : eReg.rules()) rewritten = r.apply(rewritten);
+        for (IEmissionRule r : eReg.rules()) rewritten = r.apply(rewritten, new RuntimeInstructionSetAdapter());
 
         // Verify caller marshalling sequence around CALL
         int newCallIdx = -1;

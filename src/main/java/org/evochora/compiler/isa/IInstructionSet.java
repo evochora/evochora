@@ -31,6 +31,16 @@ public interface IInstructionSet {
 	Optional<Integer> resolveRegisterToken(String token);
 
 	/**
+	 * Names the conditional that skips the next instruction exactly when the given one does
+	 * not. The two take the same operands, so the negation can stand in for the original
+	 * wherever a condition has to be inverted.
+	 *
+	 * @param opcode The name of an instruction, in any letter case.
+	 * @return The name of the negated conditional, or empty if the instruction is no conditional.
+	 */
+	Optional<String> negatedConditional(String opcode);
+
+	/**
 	 * The kind of an instruction argument.
 	 */
 	enum ArgKind {
