@@ -234,7 +234,7 @@ class AstPostProcessorTest {
         IdentifierNode idNode = new IdentifierNode("ORPHAN", createSourceInfo());
         AstNode result = freshProcessor.process(idNode);
 
-        // Should NOT be replaced (ALIAS symbol has no IRegisterAlias node)
+        // Should NOT be replaced (the alias symbol has no node that offers a binding)
         assertThat(result).isSameAs(idNode);
     }
 
@@ -290,23 +290,23 @@ class AstPostProcessorTest {
         st.registerModule(modBChain, "/mod_b.evo");
         st.setCurrentModule(mainChain);
 
-        // Define STEP=10 in module A context
-        st.setCurrentModule(modAChain);
         SourceInfo siA = new SourceInfo("/mod_a.evo", 1, 1);
-        st.define(new Symbol("STEP", siA, Symbol.Type.CONSTANT));
+        SourceInfo siB = new SourceInfo("/mod_b.evo", 1, 1);
+        TypedLiteralNode valueA = new TypedLiteralNode("DATA", 10, siA);
+        TypedLiteralNode valueB = new TypedLiteralNode("DATA", 1, siB);
+        DefineNode defineA = new DefineNode("STEP", siA, valueA);
+        DefineNode defineB = new DefineNode("STEP", siB, valueB);
+
+        // Define STEP=10 in module A context, with the defining node as the symbol's node,
+        // as the analysis handler of .DEFINE does
+        st.setCurrentModule(modAChain);
+        st.define(new Symbol("STEP", siA, Symbol.Type.CONSTANT, defineA));
 
         // Define STEP=1 in module B context
         st.setCurrentModule(modBChain);
-        SourceInfo siB = new SourceInfo("/mod_b.evo", 1, 1);
-        st.define(new Symbol("STEP", siB, Symbol.Type.CONSTANT));
+        st.define(new Symbol("STEP", siB, Symbol.Type.CONSTANT, defineB));
 
         st.setCurrentModule(mainChain);
-
-        TypedLiteralNode valueA = new TypedLiteralNode("DATA", 10, siA);
-        TypedLiteralNode valueB = new TypedLiteralNode("DATA", 1, siB);
-
-        DefineNode defineA = new DefineNode("STEP", siA, valueA);
-        DefineNode defineB = new DefineNode("STEP", siB, valueB);
 
         IdentifierNode useA = new IdentifierNode("STEP", new SourceInfo("/mod_a.evo", 2, 1));
         IdentifierNode useB = new IdentifierNode("STEP", new SourceInfo("/mod_b.evo", 2, 1));
@@ -346,10 +346,9 @@ class AstPostProcessorTest {
     @Test
     void testProcess_SingleFileConstantResolutionStillWorks() {
         // Verify single-file mode (no module context) still resolves constants
-        symbolTable.define(new Symbol("MY_CONST", createSourceInfo(), Symbol.Type.CONSTANT));
-
         TypedLiteralNode constValue = new TypedLiteralNode("DATA", 99, new SourceInfo("test.s", 1, 1));
         DefineNode defineNode = new DefineNode("MY_CONST", createSourceInfo(), constValue);
+        symbolTable.define(new Symbol("MY_CONST", createSourceInfo(), Symbol.Type.CONSTANT, defineNode));
 
         IdentifierNode useNode = new IdentifierNode("MY_CONST", createSourceInfo());
         InstructionNode instr = new InstructionNode(

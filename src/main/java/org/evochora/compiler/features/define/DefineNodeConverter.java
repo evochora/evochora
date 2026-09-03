@@ -2,27 +2,17 @@ package org.evochora.compiler.features.define;
 
 import org.evochora.compiler.frontend.irgen.IAstNodeToIrConverter;
 import org.evochora.compiler.frontend.irgen.IrGenContext;
-import org.evochora.compiler.model.ir.IrOperand;
 
 /**
- * Captures constants from .DEFINE into the IR generation context so they can be
- * resolved during instruction operand conversion.
+ * Converts a {@link DefineNode} into nothing: a constant has no representation in the IR.
+ * Every reference to it was replaced by its value in the post-processing phase, and the
+ * definition itself places no code. The converter exists so that the node is accepted by
+ * IR generation instead of being reported as unknown.
  */
 public final class DefineNodeConverter implements IAstNodeToIrConverter<DefineNode> {
 
-    /**
-     * {@inheritDoc}
-     * <p>
-     * This implementation registers the constant in the {@link IrGenContext} for later use.
-     * It does not emit any {@link org.evochora.compiler.model.ir.IrItem}s.
-     *
-     * @param node The node to convert.
-     * @param ctx  The generation context.
-     */
     @Override
     public void convert(DefineNode node, IrGenContext ctx) {
-        String nameUpper = node.name().toUpperCase();
-        IrOperand value = ctx.convertOperand(node.value());
-        ctx.registerConstant(nameUpper, value);
+        // A constant emits no IR item.
     }
 }

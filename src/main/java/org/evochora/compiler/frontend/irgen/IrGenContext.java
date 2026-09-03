@@ -23,10 +23,7 @@ import org.evochora.compiler.model.ir.IrVec;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
-import java.util.Optional;
 
 /**
  * Mutable context passed to converters during IR generation.
@@ -39,7 +36,6 @@ public final class IrGenContext {
 	private final DiagnosticsEngine diagnostics;
 	private final IrConverterRegistry registry;
 	private final List<IrItem> out = new ArrayList<>();
-	private final Map<String, org.evochora.compiler.model.ir.IrOperand> constantByNameUpper = new HashMap<>();
 	private final Deque<String> aliasChainStack = new ArrayDeque<>();
 
 	/**
@@ -153,9 +149,9 @@ public final class IrGenContext {
 
 	/**
 	 * Converts an AST operand node into its IR representation.
-	 * Handles registers, literals, identifiers (constants and label references),
-	 * and vectors. Parameter identifiers are already resolved to RegisterNodes
-	 * in Phase 6 and take the RegisterNode branch.
+	 * Handles registers, literals, vectors and identifiers. Aliases, parameters and constants
+	 * were replaced by registers and literals in Phase 6, so an identifier that is still one
+	 * here names a label.
 	 *
 	 * @param node The AST node to convert.
 	 * @return The corresponding IR operand.
@@ -171,37 +167,8 @@ public final class IrGenContext {
 			int[] comps = v.values().stream().mapToInt(Integer::intValue).toArray();
 			return new IrVec(comps);
 		} else if (node instanceof IdentifierNode id) {
-			String nameU = id.text().toUpperCase();
-			Optional<IrOperand> constOpt = resolveConstant(nameU);
-			if (constOpt.isPresent()) {
-				return constOpt.get();
-			}
 			return new IrLabelRef(id.text());
 		}
 		throw new IllegalArgumentException("Unsupported operand node type: " + node.getClass().getSimpleName());
-	}
-
-	// --- Constant registry for .DEFINE ---
-
-	/**
-	 * Registers a named constant with module qualification.
-	 * @param nameUpper The upper-case name of the constant.
-	 * @param value The operand value.
-	 */
-	public void registerConstant(String nameUpper, org.evochora.compiler.model.ir.IrOperand value) {
-		if (nameUpper != null && value != null) {
-			String qualifiedKey = qualifyName(nameUpper);
-			constantByNameUpper.put(qualifiedKey, value);
-		}
-	}
-
-	/**
-	 * Resolves a named constant using module-qualified lookup.
-	 * @param nameUpper The upper-case name of the constant to resolve.
-	 * @return The operand value if found, otherwise empty.
-	 */
-	public Optional<org.evochora.compiler.model.ir.IrOperand> resolveConstant(String nameUpper) {
-		String qualifiedKey = qualifyName(nameUpper);
-		return Optional.ofNullable(constantByNameUpper.get(qualifiedKey));
 	}
 }

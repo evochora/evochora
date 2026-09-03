@@ -189,6 +189,22 @@ class CompilerArchitectureRulesTest {
     }
 
     /**
+     * No phase decides by the kind of a symbol; only the token map names the kinds, when it
+     * reports them to the debugger.
+     * <p>
+     * The kinds in {@code Symbol.Type} are those of the features: a label, a procedure, a
+     * register alias. A phase that branches on them knows those features. What a phase may do
+     * with a symbol, it learns from the capabilities of the node that defined it.
+     */
+    @Test
+    void phasesDoNotBranchOnSymbolKinds() {
+        noClasses().that().resideInAnyPackage(COMPILER + ".frontend..", COMPILER + ".backend..")
+                .and().resideOutsideOfPackage(COMPILER + ".frontend.tokenmap..")
+                .should().dependOnClassesThat().haveFullyQualifiedName(COMPILER + ".model.symbols.Symbol$Type")
+                .check(compilerClasses);
+    }
+
+    /**
      * AST nodes and IR items are records: pure data, immutable, equal by content.
      * <p>
      * A record says at a glance what a class has to be read for. The one exception is

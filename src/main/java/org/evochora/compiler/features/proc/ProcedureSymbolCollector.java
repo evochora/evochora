@@ -4,7 +4,6 @@ import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.semantics.ISymbolCollector;
 import org.evochora.compiler.model.ast.AstNode;
 
-import org.evochora.compiler.model.ast.ParameterBinding;
 import org.evochora.compiler.model.symbols.Symbol;
 import org.evochora.compiler.model.symbols.SymbolTable;
 

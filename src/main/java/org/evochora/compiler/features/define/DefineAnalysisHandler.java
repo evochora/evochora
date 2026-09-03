@@ -8,7 +8,8 @@ import org.evochora.compiler.frontend.semantics.IAnalysisHandler;
 
 /**
  * Handles the semantic analysis of {@link DefineNode}s.
- * This involves defining the constant in the symbol table.
+ * This involves defining the constant in the symbol table, with the node itself as the
+ * symbol's node, so that a reference to the constant can be replaced by its value.
  */
 public class DefineAnalysisHandler implements IAnalysisHandler {
     /**
@@ -17,7 +18,7 @@ public class DefineAnalysisHandler implements IAnalysisHandler {
     @Override
     public void analyze(AstNode node, SymbolTable symbolTable, DiagnosticsEngine diagnostics) {
         if (node instanceof DefineNode defineNode) {
-            symbolTable.define(new Symbol(defineNode.name(), defineNode.sourceInfo(), Symbol.Type.CONSTANT, null, defineNode.exported()));
+            symbolTable.define(new Symbol(defineNode.name(), defineNode.sourceInfo(), Symbol.Type.CONSTANT, defineNode, defineNode.exported()));
         }
     }
 }

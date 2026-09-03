@@ -2,8 +2,10 @@ package org.evochora.compiler.features.reg;
 
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.model.ast.AstNode;
-import org.evochora.compiler.model.ast.IRegisterAlias;
+import org.evochora.compiler.model.ast.IIdentifierBinding;
 import org.evochora.compiler.model.ast.ISourceLocatable;
+import org.evochora.compiler.model.ast.IdentifierNode;
+import org.evochora.compiler.model.ast.RegisterNode;
 
 import java.util.List;
 
@@ -18,10 +20,19 @@ public record RegNode(
         String alias,
         String register,
         SourceInfo sourceInfo
-) implements AstNode, ISourceLocatable, IRegisterAlias {
+) implements AstNode, ISourceLocatable, IIdentifierBinding {
 
     @Override
     public List<AstNode> getChildren() {
         return List.of();
+    }
+
+    /**
+     * Replaces a reference to the alias by the register it names, keeping the alias as
+     * written for the token map.
+     */
+    @Override
+    public AstNode bind(IdentifierNode reference) {
+        return new RegisterNode(register, reference.text().toUpperCase(), reference.sourceInfo());
     }
 }
