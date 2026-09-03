@@ -1,0 +1,2 @@
+# Shared constants, loaded with .SOURCE. A sourced file may not import or require.
+.DEFINE MAX_VALUE DATA:99
