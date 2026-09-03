@@ -332,6 +332,9 @@ tasks.check {
     dependsOn(tasks.jacocoTestCoverageVerification)
 }
 
+// Coverage of the lines a change touches, as a counterpart to the project-wide gate above.
+apply(from = "gradle/new-code-coverage.gradle.kts")
+
 protobuf {
     protoc {
         artifact = "com.google.protobuf:protoc:4.33.0"
