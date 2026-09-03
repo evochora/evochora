@@ -50,9 +50,11 @@ public class LabelRewritePlugin implements IBirthHandler {
     private static final Logger LOG = LoggerFactory.getLogger(LabelRewritePlugin.class);
 
     /**
-     * 19-bit mask matching the compiler's label hash space ({@code hashCode() & 0x7FFFF}).
+     * Mask of the bits a label value may use. A molecule value has {@link Config#VALUE_BITS}
+     * bits in two's complement, and a label value must stay non-negative, so it uses one bit
+     * less. A rewrite mask drawn within it keeps every rewritten label value non-negative.
      */
-    private static final int LABEL_HASH_MASK = 0x7FFFF;
+    private static final int LABEL_HASH_MASK = (1 << (Config.VALUE_BITS - 1)) - 1;
 
     private final Random random;
 
@@ -92,7 +94,7 @@ public class LabelRewritePlugin implements IBirthHandler {
             return;
         }
 
-        int mask = random.nextInt(LABEL_HASH_MASK) + 1; // [1, 0x7FFFF], never zero
+        int mask = random.nextInt(LABEL_HASH_MASK) + 1; // [1, LABEL_HASH_MASK], never zero
         final int[] rewriteCount = {0};
 
         owned.forEach((IntConsumer) flatIndex -> {

@@ -54,13 +54,10 @@ public class LabelRefLinkingRule implements ILinkingRule {
 
                 Integer targetAddr = layout.labelToAddress().get(labelNameToFind);
                 if (targetAddr != null) {
-                    // Generate hash value from label name (19-bit, always positive)
-                    // Use 19 bits (0x7FFFF) to ensure value is never interpreted as negative
-                    int labelHash = labelNameToFind.hashCode() & 0x7FFFF;
                     if (rewritten == null) {
                         rewritten = new ArrayList<>(ops);
                     }
-                    rewritten.set(i, new IrTypedImm("LABELREF", labelHash));
+                    rewritten.set(i, new IrTypedImm("LABELREF", IrLabelDef.valueOf(labelNameToFind)));
                 }
             }
         }

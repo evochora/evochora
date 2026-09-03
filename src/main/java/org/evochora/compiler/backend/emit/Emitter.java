@@ -90,9 +90,7 @@ public class Emitter {
                 if (labelCoord == null) {
                     throw new CompilationException(formatSource(lbl.source(), "Missing coord for label address " + labelLinearAddr));
                 }
-                // Generate label hash from name (19-bit, always positive)
-                int labelHash = lbl.name().hashCode() & 0x7FFFF;
-                machineCodeLayout.put(labelCoord, new Molecule(Config.TYPE_LABEL, labelHash).toInt());
+                machineCodeLayout.put(labelCoord, new Molecule(Config.TYPE_LABEL, lbl.value()).toInt());
                 address = labelLinearAddr + 1; // Sync the counter for subsequent items
                 continue;
             }
@@ -175,10 +173,9 @@ public class Emitter {
         Map<String, Integer> labelNameToValue = new HashMap<>();
         for (Map.Entry<String, Integer> entry : layout.labelToAddress().entrySet()) {
             String name = entry.getKey();
-            // Hash must match the formula used in LabelRefLinkingRule (19-bit, always positive)
-            int hash = name.hashCode() & 0x7FFFF;
-            labelValueToName.put(hash, name);
-            labelNameToValue.put(name, hash);
+            int value = IrLabelDef.valueOf(name);
+            labelValueToName.put(value, name);
+            labelNameToValue.put(name, value);
         }
 
         return new ProgramArtifact(
