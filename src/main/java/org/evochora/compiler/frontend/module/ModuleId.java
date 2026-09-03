@@ -1,8 +1,8 @@
-package org.evochora.compiler.frontend.semantics;
+package org.evochora.compiler.frontend.module;
 
 /**
- * Identifies a module by its resolved file path or URL.
- * Used as a map key in the module-aware symbol table.
+ * Identifies a module by its resolved file path or URL. The dependency scanner keys the modules
+ * it has found by it, and every dependency that resolves to a module names its target by it.
  *
  * @param path The resolved, normalized file path or URL that uniquely identifies a module.
  */

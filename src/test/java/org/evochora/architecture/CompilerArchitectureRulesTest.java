@@ -4,6 +4,7 @@ import static com.tngtech.archunit.core.domain.JavaClass.Predicates.resideInAPac
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.fields;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
+import static com.tngtech.archunit.library.Architectures.layeredArchitecture;
 import static com.tngtech.archunit.library.dependencies.SlicesRuleDefinition.slices;
 
 import com.tngtech.archunit.core.domain.JavaClass;
@@ -55,6 +56,21 @@ class CompilerArchitectureRulesTest {
             COMPILER + ".backend.layout.LayoutEngine",
             COMPILER + ".backend.link.Linker",
             COMPILER + ".backend.emit.Emitter",
+    };
+
+    /** The packages holding the phases of the pipeline, in pipeline order. */
+    private static final String[] PHASE_PACKAGES = {
+            COMPILER + ".frontend.module..",
+            COMPILER + ".frontend.lexer..",
+            COMPILER + ".frontend.preprocessor..",
+            COMPILER + ".frontend.parser..",
+            COMPILER + ".frontend.semantics..",
+            COMPILER + ".frontend.tokenmap..",
+            COMPILER + ".frontend.postprocess..",
+            COMPILER + ".frontend.irgen..",
+            COMPILER + ".backend.layout..",
+            COMPILER + ".backend.link..",
+            COMPILER + ".backend.emit..",
     };
 
     private static JavaClasses compilerClasses;
@@ -170,6 +186,30 @@ class CompilerArchitectureRulesTest {
                     .should().dependOnClassesThat().haveNameMatching(otherPhasesThan(phase))
                     .check(compilerClasses);
         }
+    }
+
+    /**
+     * A phase package references only the packages of earlier phases.
+     * <p>
+     * A phase receives the results of earlier phases as its input, so its package may use their
+     * types. A type of a later phase has no business in an earlier one: it would tie the earlier
+     * phase to a decision the pipeline has not reached yet. Packages that hold no phase, such as
+     * the data formats, the diagnostics or the instruction set, are outside the layering and
+     * may be used by every phase.
+     */
+    @Test
+    void phasePackagesReferenceOnlyEarlierPhases() {
+        var layers = layeredArchitecture().consideringOnlyDependenciesInLayers();
+        for (String phasePackage : PHASE_PACKAGES) {
+            layers = layers.layer(phasePackage).definedBy(phasePackage);
+        }
+        for (int i = 0; i < PHASE_PACKAGES.length; i++) {
+            String[] earlier = java.util.Arrays.copyOfRange(PHASE_PACKAGES, 0, i);
+            layers = i == 0
+                    ? layers.whereLayer(PHASE_PACKAGES[i]).mayNotAccessAnyLayer()
+                    : layers.whereLayer(PHASE_PACKAGES[i]).mayOnlyAccessLayers(earlier);
+        }
+        layers.check(compilerClasses);
     }
 
     private static String otherPhasesThan(String phase) {
