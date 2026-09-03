@@ -453,15 +453,24 @@ void send(T message) throws InterruptedException;
 
 ### Pull Request Workflow
 
+**Nothing is pushed without the maintainer's explicit approval** — not the first push, not a
+follow-up, not a one-line fix, however obvious the change looks. Approval for one push is never
+approval for the next; each one is asked for separately.
+
 1. Before every push: fetch and merge `origin/main` (parallel work happens on this repository);
    when new commits arrived, merge and test first — never push unmerged.
 2. Before every push: run `./gradlew check`, not just `test` — the CI has a PMD gate.
 3. After every push: wait for CI **and** for all configured automated reviews before
    anything else happens.
-4. Verify every review finding against the code yourself (reviews can contradict each other)
-   and settle each one with the maintainer before applying it.
-5. Apply the agreed changes, push again — the round starts over, until a round ends with
-   no open points.
+4. Verify every review finding against the code yourself (reviews can contradict each other),
+   then put **every** finding to the maintainer, one at a time and none left out. How much a
+   finding matters is the maintainer's judgement: calling one negligible, or bundling several so
+   that some disappear into a summary, takes that decision away from them.
+5. A round ends only when every one of its points has been settled. Until then the branch stays
+   untouched; then all agreed changes are applied together, approval to push is asked for, and
+   the push happens once. Pushing in the middle of a round restarts every automated review on an
+   unfinished state and spends a round for nothing — CodeRabbit grants one review per hour, so
+   the second reviewer is simply absent from the round that follows.
 6. Small findings — from a review or noticed in passing — are fixed on the branch in their own
    commit, never deferred to other PRs. Only a finding with real scope or risk is raised for a
    decision instead.
