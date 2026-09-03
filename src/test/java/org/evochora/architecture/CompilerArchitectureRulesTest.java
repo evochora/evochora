@@ -23,6 +23,7 @@ import org.evochora.compiler.backend.layout.ILayoutDirectiveHandler;
 import org.evochora.compiler.backend.link.ILinkingDirectiveHandler;
 import org.evochora.compiler.backend.link.ILinkingRule;
 import org.evochora.compiler.model.ast.AstNode;
+import org.evochora.compiler.model.ast.OperandNode;
 import org.evochora.compiler.model.ir.IrInstruction;
 import org.evochora.compiler.model.ir.IrItem;
 import org.evochora.compiler.model.ir.IrOperand;
@@ -179,16 +180,16 @@ class CompilerArchitectureRulesTest {
     /**
      * A top-level interface carries the {@code I} prefix, except the roots of the data formats.
      * <p>
-     * Handler, registration and context interfaces are recognisable by name. The four exceptions
-     * are the types every AST node, IR item, IR operand and IR value implements; they name a
-     * data format, not a role, and are listed here so that a fifth exception is a decision.
-     * A nested interface is named by its owner, as in {@code IInstructionSet.Signature}, and is
-     * not covered.
+     * Handler, registration and context interfaces are recognisable by name. The five exceptions
+     * are the types every AST node, AST operand, IR item, IR operand and IR value implements;
+     * they name a data format, not a role, and are listed here so that a sixth exception is a
+     * decision. A nested interface is named by its owner, as in
+     * {@code IInstructionSet.Signature}, and is not covered.
      */
     @Test
     void topLevelInterfacesCarryThePrefix() {
         classes().that().areInterfaces().and().areTopLevelClasses()
-                .and().doNotBelongToAnyOf(AstNode.class, IrItem.class, IrOperand.class, IrValue.class)
+                .and().doNotBelongToAnyOf(AstNode.class, OperandNode.class, IrItem.class, IrOperand.class, IrValue.class)
                 .should().haveNameMatching(".*\\.I[A-Z][A-Za-z0-9]*")
                 .check(compilerClasses);
     }

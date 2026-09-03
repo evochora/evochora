@@ -12,6 +12,6 @@ import org.evochora.compiler.api.SourceInfo;
 public record IdentifierNode(
         String text,
         SourceInfo sourceInfo
-) implements AstNode, ISourceLocatable {
+) implements OperandNode {
     // This node has no children and inherits the empty list from getChildren().
 }

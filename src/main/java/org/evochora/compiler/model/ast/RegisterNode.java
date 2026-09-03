@@ -14,7 +14,7 @@ import org.evochora.compiler.api.SourceInfo;
  *                      was replaced
  */
 public record RegisterNode(String name, String originalAlias, SourceInfo sourceInfo)
-        implements AstNode, ISourceLocatable {
+        implements OperandNode {
 
     /**
      * Constructor for registers written directly in code.

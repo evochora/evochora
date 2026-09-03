@@ -7,6 +7,7 @@ import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.IdentifierNode;
 
 import org.evochora.compiler.model.ast.NumberLiteralNode;
+import org.evochora.compiler.model.ast.OperandNode;
 import org.evochora.compiler.model.ast.RegisterNode;
 import org.evochora.compiler.model.ast.TypedLiteralNode;
 import org.evochora.compiler.model.ast.VectorLiteralNode;
@@ -127,10 +128,11 @@ public class Parser implements IParsingContext {
 
     /**
      * Parses an expression, which can be a literal, a register, an identifier, or a vector.
-     * @return The parsed {@link AstNode} for the expression.
+     * @return The parsed {@link OperandNode} for the expression, or {@code null} after a
+     *         reported error.
      */
     @Override
-    public AstNode expression() {
+    public OperandNode expression() {
         if (check(TokenType.NUMBER) && checkNext(TokenType.PIPE)) {
             Token first = consume(TokenType.NUMBER, "Expected number component for vector.");
             List<Integer> values = new ArrayList<>();

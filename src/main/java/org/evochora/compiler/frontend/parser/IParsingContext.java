@@ -3,6 +3,7 @@ package org.evochora.compiler.frontend.parser;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.model.ast.AstNode;
+import org.evochora.compiler.model.ast.OperandNode;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 
 /**
@@ -65,9 +66,10 @@ public interface IParsingContext {
 
     /**
      * Parses an expression (literal, register, identifier, or vector).
-     * @return The parsed {@link AstNode} for the expression.
+     * @return The parsed {@link OperandNode} for the expression, or {@code null} after a
+     *         reported error.
      */
-    AstNode expression();
+    OperandNode expression();
 
     /**
      * Parses a single declaration (directive or statement).

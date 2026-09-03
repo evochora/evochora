@@ -7,6 +7,7 @@ import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.IdentifierNode;
 import org.evochora.compiler.model.ast.ISourceLocatable;
 import org.evochora.compiler.model.ast.NumberLiteralNode;
+import org.evochora.compiler.model.ast.OperandNode;
 import org.evochora.compiler.model.ast.RegisterNode;
 import org.evochora.compiler.model.ast.TypedLiteralNode;
 import org.evochora.compiler.model.ast.VectorLiteralNode;
@@ -149,26 +150,24 @@ public final class IrGenContext {
 
 	/**
 	 * Converts an AST operand node into its IR representation.
-	 * Handles registers, literals, vectors and identifiers. Aliases, parameters and constants
-	 * were replaced by registers and literals in Phase 6, so an identifier that is still one
-	 * here names a label.
+	 * Handles every form of {@link OperandNode}. Aliases, parameters and constants were
+	 * replaced by registers and literals in Phase 6, so an identifier that is still one here
+	 * names a label under its qualified name.
 	 *
-	 * @param node The AST node to convert.
+	 * @param node The AST node to convert; it has to be an operand form.
 	 * @return The corresponding IR operand.
+	 * @throws IllegalArgumentException if the node is no operand form.
 	 */
 	public IrOperand convertOperand(AstNode node) {
-		if (node instanceof RegisterNode r) {
-			return new IrReg(r.name());
-		} else if (node instanceof NumberLiteralNode n) {
-			return new IrImm(n.value());
-		} else if (node instanceof TypedLiteralNode t) {
-			return new IrTypedImm(t.typeName(), t.value());
-		} else if (node instanceof VectorLiteralNode v) {
-			int[] comps = v.values().stream().mapToInt(Integer::intValue).toArray();
-			return new IrVec(comps);
-		} else if (node instanceof IdentifierNode id) {
-			return new IrLabelRef(id.text());
+		if (!(node instanceof OperandNode operand)) {
+			throw new IllegalArgumentException("Unsupported operand node type: " + node.getClass().getSimpleName());
 		}
-		throw new IllegalArgumentException("Unsupported operand node type: " + node.getClass().getSimpleName());
+		return switch (operand) {
+			case RegisterNode r -> new IrReg(r.name());
+			case NumberLiteralNode n -> new IrImm(n.value());
+			case TypedLiteralNode t -> new IrTypedImm(t.typeName(), t.value());
+			case VectorLiteralNode v -> new IrVec(v.values().stream().mapToInt(Integer::intValue).toArray());
+			case IdentifierNode id -> new IrLabelRef(id.text());
+		};
 	}
 }
