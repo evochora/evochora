@@ -6,6 +6,7 @@ import org.evochora.compiler.backend.layout.PlacedItem;
 import org.evochora.compiler.model.ir.IrDirective;
 import org.evochora.compiler.model.ir.IrInstruction;
 import org.evochora.compiler.model.ir.IrItem;
+import org.evochora.compiler.model.ir.IrLabelDef;
 import org.evochora.compiler.model.ir.IrProgram;
 
 import java.util.ArrayList;
@@ -47,23 +48,23 @@ public final class Linker {
         List<IrItem> out = new ArrayList<>();
 
         for (PlacedItem placed : layout.placedItems()) {
-            IrItem item = placed.item();
-
-            if (item instanceof IrDirective dir) {
-                directiveRegistry.resolve(dir).handle(dir, context);
-            }
-
-            if (item instanceof IrInstruction ins) {
-                // The address comes from the layout, which assigned it. Counting along here would
-                // mean deciding a second time how many cells each item occupies.
-                context.setCurrentAddress(placed.linearAddress());
-
-                for (ILinkingRule rule : registry.rules()) {
-                    ins = rule.apply(ins, context, layout);
+            switch (placed.item()) {
+                case IrDirective dir -> {
+                    directiveRegistry.resolve(dir).handle(dir, context);
+                    out.add(dir);
                 }
-                out.add(ins);
-            } else {
-                out.add(item);
+                case IrLabelDef lbl -> out.add(lbl);
+                case IrInstruction ins -> {
+                    // The address comes from the layout, which assigned it. Counting along here would
+                    // mean deciding a second time how many cells each item occupies.
+                    context.setCurrentAddress(placed.linearAddress());
+
+                    IrInstruction linked = ins;
+                    for (ILinkingRule rule : registry.rules()) {
+                        linked = rule.apply(linked, context, layout);
+                    }
+                    out.add(linked);
+                }
             }
         }
         return new IrProgram(programName, out);

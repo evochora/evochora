@@ -79,70 +79,57 @@ public class Emitter {
 
         int address = 0;
         for (IrItem item : program.items()) {
-            // Emit LABEL molecules (jump target markers)
-            if (item instanceof IrLabelDef lbl) {
-                // Use the label's registered linear address from the layout, not the sequential counter
-                Integer labelLinearAddr = layout.labelToAddress().get(lbl.name());
-                if (labelLinearAddr == null) {
-                    throw new CompilationException(formatSource(lbl.source(), "Label '" + lbl.name() + "' not found in layout"));
+            switch (item) {
+                case IrDirective directive -> {
+                    // A directive occupies no cell; the contributors above have read it.
                 }
-                int[] labelCoord = linearToCoord.get(labelLinearAddr);
-                if (labelCoord == null) {
-                    throw new CompilationException(formatSource(lbl.source(), "Missing coord for label address " + labelLinearAddr));
+                case IrLabelDef lbl -> {
+                    // Use the label's registered linear address from the layout, not the sequential counter
+                    Integer labelLinearAddr = layout.labelToAddress().get(lbl.name());
+                    if (labelLinearAddr == null) {
+                        throw new CompilationException(formatSource(lbl.source(), "Label '" + lbl.name() + "' not found in layout"));
+                    }
+                    int[] labelCoord = linearToCoord.get(labelLinearAddr);
+                    if (labelCoord == null) {
+                        throw new CompilationException(formatSource(lbl.source(), "Missing coord for label address " + labelLinearAddr));
+                    }
+                    machineCodeLayout.put(labelCoord, new Molecule(Config.TYPE_LABEL, lbl.value()).toInt());
+                    address = labelLinearAddr + 1; // Sync the counter for subsequent items
                 }
-                machineCodeLayout.put(labelCoord, new Molecule(Config.TYPE_LABEL, lbl.value()).toInt());
-                address = labelLinearAddr + 1; // Sync the counter for subsequent items
-                continue;
-            }
+                case IrInstruction ins -> {
+                    // Track the opcode address (where this instruction's opcode is located)
+                    int opcodeAddress = address;
 
-            if (item instanceof IrInstruction ins) {
-                // Track the opcode address (where this instruction's opcode is located)
-                int opcodeAddress = address;
-                
-                int opcode = isa.getInstructionIdByName(ins.opcode()).orElseThrow(() ->
-                        new RuntimeException(formatSource(ins.source(), "Unknown opcode: " + ins.opcode())));
-                int[] opcodeCoord = linearToCoord.get(address);
-                if (opcodeCoord == null) throw new CompilationException(formatSource(ins.source(), "Missing coord for address " + address));
-                machineCodeLayout.put(opcodeCoord, opcode);
-                address++;
-                
-                // Format operands as string for display
-                String operandsAsString = formatOperandsAsString(ins, layout, opcodeCoord, isa, ins.source());
-                
-                // Create MachineInstructionInfo and add to sourceLineToInstructions map
-                SourceInfo src = ins.source();
-                if (src != null) {
-                    String sourceLineKey = createSourceLineKey(src);
-                    MachineInstructionInfo machineInfo = new MachineInstructionInfo(
-                            opcodeAddress,
-                            ins.opcode(),
-                            operandsAsString,
-                            ins.synthetic()
-                    );
-                    sourceLineToInstructions.computeIfAbsent(sourceLineKey, k -> new ArrayList<>()).add(machineInfo);
-                }
+                    int opcode = isa.getInstructionIdByName(ins.opcode()).orElseThrow(() ->
+                            new RuntimeException(formatSource(ins.source(), "Unknown opcode: " + ins.opcode())));
+                    int[] opcodeCoord = linearToCoord.get(address);
+                    if (opcodeCoord == null) throw new CompilationException(formatSource(ins.source(), "Missing coord for address " + address));
+                    machineCodeLayout.put(opcodeCoord, opcode);
+                    address++;
 
-                for (IrOperand op : ins.operands()) {
-                    if (op instanceof IrVec vec) {
-                        int[] comps = vec.components();
-                        for (int c : comps) {
+                    // Format operands as string for display
+                    String operandsAsString = formatOperandsAsString(ins, layout, opcodeCoord, isa, ins.source());
+
+                    // Create MachineInstructionInfo and add to sourceLineToInstructions map
+                    SourceInfo src = ins.source();
+                    if (src != null) {
+                        String sourceLineKey = createSourceLineKey(src);
+                        MachineInstructionInfo machineInfo = new MachineInstructionInfo(
+                                opcodeAddress,
+                                ins.opcode(),
+                                operandsAsString,
+                                ins.synthetic()
+                        );
+                        sourceLineToInstructions.computeIfAbsent(sourceLineKey, k -> new ArrayList<>()).add(machineInfo);
+                    }
+
+                    for (IrOperand op : ins.operands()) {
+                        for (int cell : encodeOperand(op, isa, ins.source())) {
                             int[] coord = linearToCoord.get(address);
                             if (coord == null) throw new CompilationException(formatSource(ins.source(), "Missing coord for address " + address));
-                            machineCodeLayout.put(coord, new Molecule(Config.TYPE_DATA, c).toInt());
+                            machineCodeLayout.put(coord, cell);
                             address++;
                         }
-                    } else if (op instanceof IrLabelRef ref) {
-                        // IrLabelRef should have been converted to IrImm by LabelRefLinkingRule
-                        // If we reach here, something is wrong in the linking phase
-                        throw new CompilationException(formatSource(ins.source(),
-                            "Internal error: IrLabelRef '" + ref.labelName() + "' was not resolved during linking. " +
-                            "This indicates a bug in LabelRefLinkingRule or a missing label definition."));
-                    } else {
-                        int[] coord = linearToCoord.get(address);
-                        if (coord == null) throw new CompilationException(formatSource(ins.source(), "Missing coord for address " + address));
-                        Integer value = encodeOperand(op, isa, ins.source());
-                        machineCodeLayout.put(coord, value);
-                        address++;
                     }
                 }
             }
@@ -236,47 +223,42 @@ public class Emitter {
      * @return A formatted string representation of the operand.
      */
     private String formatOperandAsString(IrOperand op, LayoutResult layout, int[] opcodeCoord, IInstructionSet isa, SourceInfo ctx) {
-        if (op instanceof IrReg r) {
-            // Return the register name as-is (e.g., "%DR0")
-            return r.name();
-        }
-        if (op instanceof IrImm imm) {
-            // Return the numeric value as string
-            return String.valueOf(imm.value());
-        }
-        if (op instanceof IrTypedImm ti) {
-            // Format as "TYPE:VALUE" (e.g., "DATA:3")
-            return ti.typeName() + ":" + ti.value();
-        }
-        if (op instanceof IrVec vec) {
-            // Format vector components joined with "|" (e.g., "10|20")
-            return Arrays.stream(vec.components())
+        return switch (op) {
+            // The register name as-is (e.g., "%DR0")
+            case IrReg r -> r.name();
+            case IrImm imm -> String.valueOf(imm.value());
+            // "TYPE:VALUE" (e.g., "DATA:3")
+            case IrTypedImm ti -> ti.typeName() + ":" + ti.value();
+            // Vector components joined with "|" (e.g., "10|20")
+            case IrVec vec -> Arrays.stream(vec.components())
                     .mapToObj(String::valueOf)
                     .collect(Collectors.joining("|"));
-        }
-        if (op instanceof IrLabelRef ref) {
-            // Try to resolve label to address and format as delta from opcode
-            Integer targetAddr = layout.labelToAddress().get(ref.labelName());
-            if (targetAddr != null) {
-                int[] targetCoord = layout.linearAddressToCoord().get(targetAddr);
-                if (targetCoord != null && opcodeCoord != null) {
-                    int dims = Math.max(opcodeCoord.length, targetCoord.length);
-                    int[] delta = new int[dims];
-                    for (int d = 0; d < dims; d++) {
-                        int s = d < opcodeCoord.length ? opcodeCoord[d] : 0;
-                        int t = d < targetCoord.length ? targetCoord[d] : 0;
-                        delta[d] = t - s;
-                    }
-                    // Format delta as "x|y|..." for display
-                    return Arrays.stream(delta)
-                            .mapToObj(String::valueOf)
-                            .collect(Collectors.joining("|"));
+            case IrLabelRef ref -> formatLabelDelta(ref, layout, opcodeCoord);
+        };
+    }
+
+    /**
+     * Formats a label reference as the delta from the opcode to the label, "x|y|...", or as
+     * the label name if the layout does not know the label.
+     */
+    private String formatLabelDelta(IrLabelRef ref, LayoutResult layout, int[] opcodeCoord) {
+        Integer targetAddr = layout.labelToAddress().get(ref.labelName());
+        if (targetAddr != null) {
+            int[] targetCoord = layout.linearAddressToCoord().get(targetAddr);
+            if (targetCoord != null && opcodeCoord != null) {
+                int dims = Math.max(opcodeCoord.length, targetCoord.length);
+                int[] delta = new int[dims];
+                for (int d = 0; d < dims; d++) {
+                    int s = d < opcodeCoord.length ? opcodeCoord[d] : 0;
+                    int t = d < targetCoord.length ? targetCoord[d] : 0;
+                    delta[d] = t - s;
                 }
+                return Arrays.stream(delta)
+                        .mapToObj(String::valueOf)
+                        .collect(Collectors.joining("|"));
             }
-            // Fallback: return label name if resolution fails
-            return ref.labelName();
         }
-        return "?";
+        return ref.labelName();
     }
 
     /**
@@ -296,34 +278,44 @@ public class Emitter {
     }
 
     /**
-     * Encodes a single IR operand into its integer representation for machine code.
+     * Encodes an IR operand into the cells it occupies in the machine code: one for a register
+     * or a literal, one per component for a vector.
      * @param op The IR operand to encode.
      * @param isa The instruction set for resolving register names.
      * @param ctx The source information for error reporting.
-     * @return The integer representation of the operand.
-     * @throws CompilationException if the operand type is unsupported.
+     * @return The packed molecules of the operand's cells, in placement order.
+     * @throws CompilationException if the operand cannot be encoded: an unknown molecule type,
+     *         or a label reference that linking left unresolved.
      */
-    private Integer encodeOperand(IrOperand op, IInstructionSet isa, SourceInfo ctx) throws CompilationException {
-        if (op instanceof IrReg r) {
-            int regId = isa.resolveRegisterToken(r.name()).orElseThrow(() -> new RuntimeException(formatSource(ctx, "Unknown register: " + r.name())));
-            return new Molecule(Config.TYPE_REGISTER, regId).toInt();
-        }
-        if (op instanceof IrImm imm) {
-            return new Molecule(Config.TYPE_DATA, (int) imm.value()).toInt();
-        }
-        if (op instanceof IrTypedImm ti) {
-            int type;
-            try {
-                type = MoleculeTypeRegistry.nameToType(ti.typeName());
-            } catch (IllegalArgumentException e) {
-                throw new CompilationException(formatSource(ctx, "Unknown molecule type: " + ti.typeName() + ". " + e.getMessage()));
+    private int[] encodeOperand(IrOperand op, IInstructionSet isa, SourceInfo ctx) throws CompilationException {
+        return switch (op) {
+            case IrReg r -> {
+                int regId = isa.resolveRegisterToken(r.name()).orElseThrow(() -> new RuntimeException(formatSource(ctx, "Unknown register: " + r.name())));
+                yield new int[]{new Molecule(Config.TYPE_REGISTER, regId).toInt()};
             }
-            return new Molecule(type, (int) ti.value()).toInt();
-        }
-        if (op instanceof IrVec vec) {
-            return new Molecule(Config.TYPE_DATA, vec.components()[0]).toInt();
-        }
-        throw new CompilationException(formatSource(ctx, "Unsupported operand type: " + op.getClass().getSimpleName()));
+            case IrImm imm -> new int[]{new Molecule(Config.TYPE_DATA, (int) imm.value()).toInt()};
+            case IrTypedImm ti -> {
+                int type;
+                try {
+                    type = MoleculeTypeRegistry.nameToType(ti.typeName());
+                } catch (IllegalArgumentException e) {
+                    throw new CompilationException(formatSource(ctx, "Unknown molecule type: " + ti.typeName() + ". " + e.getMessage()));
+                }
+                yield new int[]{new Molecule(type, (int) ti.value()).toInt()};
+            }
+            case IrVec vec -> {
+                int[] cells = new int[vec.components().length];
+                for (int i = 0; i < cells.length; i++) {
+                    cells[i] = new Molecule(Config.TYPE_DATA, vec.components()[i]).toInt();
+                }
+                yield cells;
+            }
+            // A label reference is turned into a LABELREF literal by the linking rule of the
+            // label feature; one that reaches the emitter names a label the layout does not have.
+            case IrLabelRef ref -> throw new CompilationException(formatSource(ctx,
+                    "Internal error: IrLabelRef '" + ref.labelName() + "' was not resolved during linking. " +
+                    "This indicates a bug in LabelRefLinkingRule or a missing label definition."));
+        };
     }
 
     /**
