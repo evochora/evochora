@@ -54,6 +54,21 @@ class CompilerDiagnosticsTest {
                 .hasMessageContaining("main.evo:3");
     }
 
+    @Test
+    void macroInvokedWithWrongArgumentCountNamesTheMacroAndTheLineOfTheInvocation() throws Exception {
+        write("main.evo",
+                ".MACRO INC REG",
+                "  ADDI REG DATA:1",
+                ".ENDM",
+                "START:",
+                "  INC %DR0 %DR1");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("Macro 'INC' expects 1 arguments, but got 2")
+                .hasMessageContaining("main.evo:5");
+    }
+
     private void write(String fileName, String... lines) throws Exception {
         Files.writeString(sourceRoot.resolve(fileName), String.join("\n", lines) + "\n");
     }

@@ -35,7 +35,7 @@ public class MacroExpansionHandler implements IPreProcessorHandler {
     @Override
     public void process(PreProcessor preProcessor, PreProcessorContext preProcessorContext) {
         int callSiteIndex = preProcessor.getCurrentIndex();
-        preProcessor.advance(); // consume macro name
+        Token invocation = preProcessor.advance(); // consume macro name
 
         List<List<Token>> actualArgs = new ArrayList<>();
         while (!preProcessor.isAtEnd() && preProcessor.peek().type() != TokenType.NEWLINE) {
@@ -64,7 +64,7 @@ public class MacroExpansionHandler implements IPreProcessorHandler {
             preProcessor.getDiagnostics().reportError(
                     "Macro '" + macro.name().text() + "' expects " + macro.parameters().size()
                             + " arguments, but got " + actualArgs.size(),
-                    "preprocessor", macro.name().line());
+                    invocation.fileName(), invocation.line());
             preProcessor.removeTokens(callSiteIndex, preProcessor.getCurrentIndex() - callSiteIndex);
             preProcessor.injectTokens(List.of(), 0);
             return;
