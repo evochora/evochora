@@ -98,11 +98,16 @@ jobs:
         run: |
           set -euo pipefail
           # The marker identifies this workflow's own comment, so every run edits that one
-          # instead of appending another to the conversation.
+          # instead of appending another to the conversation. The author is part of the test:
+          # anyone may leave a comment carrying the marker, and this job holds the permission to
+          # edit comments, so matching on the marker alone would let it overwrite someone else's.
           marker='<!-- new-code-coverage -->'
           body="$marker"$'\n'"$(cat build/reports/new-code-coverage/summary.md)"
-          existing=$(gh api "repos/$REPOSITORY/issues/$PR_NUMBER/comments" --paginate \
-            --jq 'map(select(.body | startswith("<!-- new-code-coverage -->"))) | first | .id // empty')
+          # --paginate --slurp yields one array per page, which add joins back into one list.
+          existing=$(gh api "repos/$REPOSITORY/issues/$PR_NUMBER/comments" --paginate --slurp |
+            jq -r --arg marker "$marker" '(add // [])
+              | map(select(.user.login == "github-actions[bot]" and (.body | startswith($marker))))
+              | first | .id // empty')
           if [ -n "$existing" ]; then
             jq -n --arg body "$body" '{body: $body}' |
               gh api -X PATCH "repos/$REPOSITORY/issues/comments/$existing" --input -
