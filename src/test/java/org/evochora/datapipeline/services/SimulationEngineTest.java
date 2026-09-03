@@ -30,6 +30,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import com.typesafe.config.Config;
+import org.evochora.datapipeline.api.memory.MemoryEstimate;
+import org.evochora.datapipeline.api.memory.SimulationParameters;
 import com.typesafe.config.ConfigFactory;
 import com.typesafe.config.ConfigValueFactory;
 
@@ -241,6 +243,30 @@ class SimulationEngineTest {
     void constructor_shouldUseDeterministicSeedWhenProvided() {
         Config config = createValidConfig().withValue("seed", ConfigValueFactory.fromAnyRef(42L));
         assertDoesNotThrow(() -> new SimulationEngine("test-engine", config, resources));
+    }
+
+    @Test
+    void memoryEstimate_pricesTheOwnedCellVisitBuffersByTheConfiguredLargestOrganism() {
+        Config config = createValidConfig().withValue("maxCellsPerOrganism", ConfigValueFactory.fromAnyRef(50_000));
+        SimulationEngine engine = new SimulationEngine("test-engine", config, resources);
+        SimulationParameters params = SimulationParameters.of(new int[]{32, 32}, 10);
+
+        MemoryEstimate tracking = engine.estimateWorstCaseMemory(params).stream()
+                .filter(e -> e.componentName().endsWith("(Environment tracking)"))
+                .findFirst().orElseThrow();
+        assertTrue(tracking.explanation().contains("owned-cell visit buffers (50000 cells per organism × 24 bytes)"),
+                tracking.explanation());
+        assertTrue(tracking.estimatedBytes() >= 50_000L * 24, "the buffers are part of the total");
+    }
+
+    @Test
+    void constructor_shouldRejectAMaxCellsPerOrganismBelowOne() {
+        Config config = createValidConfig().withValue("maxCellsPerOrganism", ConfigValueFactory.fromAnyRef(0));
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class,
+                () -> new SimulationEngine("test-engine", config, resources)
+        );
+        assertEquals("maxCellsPerOrganism must be >= 1", exception.getMessage());
     }
 
     @Test

@@ -75,7 +75,12 @@ public record SimulationParameters(
             if (environmentShape[i] < 1) {
                 throw new IllegalArgumentException("environmentShape[" + i + "] must be >= 1, got " + environmentShape[i]);
             }
-            product *= environmentShape[i];
+            try {
+                product = Math.multiplyExact(product, environmentShape[i]);
+            } catch (ArithmeticException overflow) {
+                throw new IllegalArgumentException("environmentShape " + java.util.Arrays.toString(environmentShape)
+                        + " holds more cells than a long can count", overflow);
+            }
         }
         if (totalCells != product) {
             throw new IllegalArgumentException("totalCells must equal the product of the shape ("
@@ -92,6 +97,16 @@ public record SimulationParameters(
         requireAtLeastOne("accumulatedDeltaInterval", accumulatedDeltaInterval);
         requireAtLeastOne("snapshotInterval", snapshotInterval);
         requireAtLeastOne("chunkInterval", chunkInterval);
+        try {
+            // The ticks a chunk spans are the largest product the intervals form; it must fit an int
+            Math.multiplyExact(Math.multiplyExact(Math.multiplyExact(samplingInterval, accumulatedDeltaInterval),
+                    snapshotInterval), chunkInterval);
+        } catch (ArithmeticException overflow) {
+            throw new IllegalArgumentException("samplingInterval × accumulatedDeltaInterval × snapshotInterval"
+                    + " × chunkInterval must not exceed " + Integer.MAX_VALUE + " ticks per chunk, got "
+                    + samplingInterval + " × " + accumulatedDeltaInterval + " × " + snapshotInterval + " × " + chunkInterval,
+                    overflow);
+        }
         if (!(estimatedDeltaRatio >= 0.0 && estimatedDeltaRatio <= 1.0)) {
             throw new IllegalArgumentException("estimatedDeltaRatio must lie between 0.0 and 1.0, got " + estimatedDeltaRatio);
         }
@@ -203,6 +218,14 @@ public record SimulationParameters(
      * Formula: {@code maxOrganisms = max(1, (int)(totalCells * organismDensityFactor))}
      */
     public static final double DEFAULT_ORGANISM_DENSITY_FACTOR = 0.0005;
+
+    /**
+     * Default upper bound on the cells one organism owns, for pricing the buffers the environment
+     * keeps per visited organism. An assumption, not a limit of the simulation: the primordial
+     * organism's field is 110 × 85 cells, of which it owns at most all, and until the fork of a
+     * replication the copy belongs to it as well, so twice that, rounded up.
+     */
+    public static final int DEFAULT_MAX_CELLS_PER_ORGANISM = 20_000;
 
     /**
      * Default expected cell occupancy for realistic memory estimation.

@@ -407,6 +407,9 @@ class SimulationParametersTest {
         assertThrows(IllegalArgumentException.class, () ->
                 new SimulationParameters(shape, 9_999L, 1L, 10, 1, 1, 1, 1, 0.1), "totalCells off the shape");
         assertThrows(IllegalArgumentException.class, () ->
+                new SimulationParameters(new int[]{65536, 65536, 65536, 65536}, 0L, 0L, 10, 1, 1, 1, 1, 0.1),
+                "a cell product that overflows long is rejected instead of wrapping to zero");
+        assertThrows(IllegalArgumentException.class, () ->
                 new SimulationParameters(shape, 10_000L, 1L, -1, 1, 1, 1, 1, 0.1), "negative maxOrganisms");
         assertThrows(IllegalArgumentException.class, () ->
                 new SimulationParameters(shape, 10_000L, 1L, 10, 0, 1, 1, 1, 0.1), "samplingInterval 0");
@@ -416,6 +419,9 @@ class SimulationParametersTest {
                 new SimulationParameters(shape, 10_000L, 1L, 10, 1, 1, 0, 1, 0.1), "snapshotInterval 0");
         assertThrows(IllegalArgumentException.class, () ->
                 new SimulationParameters(shape, 10_000L, 1L, 10, 1, 1, 1, 0, 0.1), "chunkInterval 0");
+        assertThrows(IllegalArgumentException.class, () ->
+                new SimulationParameters(shape, 10_000L, 1L, 10, 1, Integer.MAX_VALUE, 2, 1, 0.1),
+                "intervals whose product overflows the ticks per chunk");
         assertThrows(IllegalArgumentException.class, () ->
                 new SimulationParameters(shape, 10_000L, 1L, 10, 1, 1, 1, 1, 1.5), "ratio above 1");
         assertThrows(IllegalArgumentException.class, () ->

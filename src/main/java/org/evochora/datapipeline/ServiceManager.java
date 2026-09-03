@@ -88,6 +88,11 @@ public class ServiceManager implements IMonitorable {
     private final Map<String, Map<String, List<IResource>>> activeWrappedResources = new ConcurrentHashMap<>();
     // Cached reference to the service that owns the current simulation run (set during startService)
     private volatile ISimulationSource simulationSource;
+    /**
+     * The simulation parameters read from the configured engine's options, or null when no engine
+     * is configured. Used by the memory estimate when the engine does not run in this process.
+     */
+    private final SimulationParameters configuredSimulationParameters;
 
     /**
      * Builds the manager from a configuration and, unless told otherwise, brings the pipeline up.
@@ -108,13 +113,20 @@ public class ServiceManager implements IMonitorable {
      *
      * @param rootConfig configuration holding a {@code pipeline} section; nothing outside that
      *                   section is read
-     * @throws IllegalArgumentException if the configuration has no {@code pipeline} section
+     * @throws IllegalArgumentException if the configuration has no {@code pipeline} section, or if
+     *                                  the options of a configured simulation engine do not form
+     *                                  valid simulation parameters — checked before anything is
+     *                                  started, so that the failure leaves no service running
      * @throws RuntimeException if auto-starting a service fails for a reason the manager does not
      *                          recognise, in which case the failure is not swallowed but passed on
      */
     public ServiceManager(Config rootConfig) {
         this.pipelineConfig = loadPipelineConfig(rootConfig);
         log.info("Initializing ServiceManager...");
+
+        // The engine's options are read and validated before any resource or service exists:
+        // a configuration the estimate cannot be built on fails here, with nothing to stop.
+        this.configuredSimulationParameters = extractSimulationParameters(this.pipelineConfig);
 
         // Run resource initializers BEFORE loading any resource classes
         // This allows initializers to set system properties that drivers read at load time
@@ -142,7 +154,7 @@ public class ServiceManager implements IMonitorable {
             
             // Perform memory estimation AFTER services are instantiated
             // This allows iterating over actual service instances
-            performMemoryEstimation(this.pipelineConfig);
+            performMemoryEstimation();
         } else if (!autoStart) {
             log.info("Auto-start is disabled. Services must be started manually via API.");
         } else {
@@ -1142,16 +1154,16 @@ public class ServiceManager implements IMonitorable {
      *   <li>All queues and buffers at full capacity</li>
      * </ul>
      *
-     * @param config Pipeline configuration containing simulation parameters
      */
-    private void performMemoryEstimation(Config config) {
+    private void performMemoryEstimation() {
         // Prefer runtime parameters from a started service (correct for both new and resume mode)
         ISimulationSource source = simulationSource;
         SimulationParameters params = source != null ? source.getMemoryEstimationParameters() : null;
 
-        // Fallback to config parsing (e.g., when SimulationEngine runs in a separate process)
+        // Without a local engine (it runs in another process), the parameters read from the
+        // configuration at construction describe the world this node's services serve
         if (params == null) {
-            params = extractSimulationParameters(config);
+            params = configuredSimulationParameters;
         }
 
         if (params == null) {
@@ -1308,10 +1320,15 @@ public class ServiceManager implements IMonitorable {
                 List<Integer> shapeList = serviceConfig.getIntList("options.environment.shape");
                 int[] shape = shapeList.stream().mapToInt(Integer::intValue).toArray();
 
-                // Calculate total cells (use long to avoid overflow for large worlds)
+                // Calculate total cells in long; a product beyond long is a shape no estimate can price
                 long totalCells = 1L;
                 for (int dim : shape) {
-                    totalCells *= dim;
+                    try {
+                        totalCells = Math.multiplyExact(totalCells, dim);
+                    } catch (ArithmeticException overflow) {
+                        throw new IllegalArgumentException("environment.shape " + Arrays.toString(shape)
+                                + " holds more cells than a long can count", overflow);
+                    }
                 }
 
                 // Derive maxOrganisms from environment size and density factor

@@ -110,6 +110,8 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
     private final int accumulatedDeltaInterval;
     private final int snapshotInterval;
     private final int chunkInterval;
+    /** Upper bound on the cells one organism owns, an estimation assumption read from the options. */
+    private final int maxCellsPerOrganism;
     private final int metricsWindowSeconds;
 
     private final List<Long> pauseTicks;
@@ -149,6 +151,8 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
      *
      * @param organismDensityFactor Fraction of totalCells used to derive maxOrganisms for memory
      *                              estimation. Read from the config that governs this run.
+     * @param maxCellsPerOrganism Upper bound on the cells one organism owns, for pricing the
+     *                            environment's per-organism visit buffers in the memory estimate.
      * @param estimatedDeltaRatio Expected per-tick change rate for memory estimation, read from
      *                            the config that governs this run (current config or checkpoint metadata).
      * @param resumeSnapshot checkpoint snapshot for resume mode (null for new simulations).
@@ -172,6 +176,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         int snapshotInterval,
         int chunkInterval,
         double organismDensityFactor,
+        int maxCellsPerOrganism,
         double estimatedDeltaRatio,
         TickData resumeSnapshot
     ) {}
@@ -244,6 +249,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         this.accumulatedDeltaInterval = state.accumulatedDeltaInterval();
         this.snapshotInterval = state.snapshotInterval();
         this.chunkInterval = state.chunkInterval();
+        this.maxCellsPerOrganism = state.maxCellsPerOrganism();
 
         // Build SimulationParameters from the actual runtime state (correct for both new and resume)
         int[] shape = this.simulation.getEnvironment().getShape();
@@ -392,6 +398,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                 readInt(originalConfig, "snapshotInterval", SimulationParameters.DEFAULT_SNAPSHOT_INTERVAL),
                 readInt(originalConfig, "chunkInterval", SimulationParameters.DEFAULT_CHUNK_INTERVAL),
                 readDouble(originalConfig, "organismDensityFactor", SimulationParameters.DEFAULT_ORGANISM_DENSITY_FACTOR),
+                readPositiveInt(originalConfig, "maxCellsPerOrganism", SimulationParameters.DEFAULT_MAX_CELLS_PER_ORGANISM),
                 readDouble(originalConfig, "estimatedDeltaRatio", SimulationParameters.DEFAULT_ESTIMATED_DELTA_RATIO),
                 checkpoint.snapshot()  // Pass snapshot to prime the encoder
             );
@@ -554,6 +561,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
             readInt(options, "snapshotInterval", SimulationParameters.DEFAULT_SNAPSHOT_INTERVAL),
             readInt(options, "chunkInterval", SimulationParameters.DEFAULT_CHUNK_INTERVAL),
             readDouble(options, "organismDensityFactor", SimulationParameters.DEFAULT_ORGANISM_DENSITY_FACTOR),
+            readPositiveInt(options, "maxCellsPerOrganism", SimulationParameters.DEFAULT_MAX_CELLS_PER_ORGANISM),
             readDouble(options, "estimatedDeltaRatio", SimulationParameters.DEFAULT_ESTIMATED_DELTA_RATIO),
             null  // No resume snapshot for new simulations
         );
@@ -1077,17 +1085,18 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         //   snapshot. The buffers grow by doubling and never shrink, so their capacity reaches up
         //   to twice that batch: 24 bytes per occupied cell is the bound.
         // owned-cell visit: one 4-byte index and one 8-byte key per cell of the largest organism
-        //   ever visited, also grown by doubling. Without a bound on an organism's size it cannot
-        //   be priced per cell; against the grid it is negligible (a few thousand cells).
+        //   ever visited, also grown by doubling, so up to 24 bytes per cell of the largest
+        //   organism the estimate assumes (the maxCellsPerOrganism option).
         long bitSetBytes = (params.totalCells() + 7) / 8;
         long cellsByOwnerBytes = params.occupiedCells() * 12L + (long) params.maxOrganisms() * 100;
         long canonicalOrderBytes = params.occupiedCells() * 24L;
-        long trackingBytes = 3 * bitSetBytes + cellsByOwnerBytes + canonicalOrderBytes;
+        long ownedVisitBytes = maxCellsPerOrganism * 24L;
+        long trackingBytes = 3 * bitSetBytes + cellsByOwnerBytes + canonicalOrderBytes + ownedVisitBytes;
         estimates.add(new MemoryEstimate(
             serviceName + " (Environment tracking)",
             trackingBytes,
-            String.format("3 BitSets (%d cells) + cellsByOwner (%d occupied cells × 12 bytes + %d orgs × 100 bytes) + canonical order buffers (%d occupied cells × 24 bytes, doubling capacity); owned-cell visit buffers follow the largest organism and are not priced",
-                params.totalCells(), params.occupiedCells(), params.maxOrganisms(), params.occupiedCells()),
+            String.format("3 BitSets (%d cells) + cellsByOwner (%d occupied cells × 12 bytes + %d orgs × 100 bytes) + canonical order buffers (%d occupied cells × 24 bytes, doubling capacity) + owned-cell visit buffers (%d cells per organism × 24 bytes)",
+                params.totalCells(), params.occupiedCells(), params.maxOrganisms(), params.occupiedCells(), maxCellsPerOrganism),
             MemoryEstimate.Category.SERVICE_BATCH
         ));
         
