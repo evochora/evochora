@@ -1,6 +1,8 @@
 package org.evochora.architecture;
 
+import static com.tngtech.archunit.core.domain.JavaClass.Predicates.resideInAPackage;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
+import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.fields;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 import static com.tngtech.archunit.library.dependencies.SlicesRuleDefinition.slices;
 
@@ -112,6 +114,23 @@ class CompilerArchitectureRulesTest {
     void featuresHaveNoFields() {
         classes().that().implement(ICompilerFeature.class)
                 .should(haveNoFields())
+                .check(compilerClasses);
+    }
+
+    /**
+     * Static fields of a feature hold constants, not state.
+     * <p>
+     * A static field that changes carries state from one compilation into the next, and the
+     * artifact of a source then depends on what was compiled before it in the same process. The
+     * field has to be final, and it may not hold an atomic, the usual shape of a counter. A
+     * collection is not examined: its type does not tell whether it can change.
+     */
+    @Test
+    void featureStaticFieldsAreConstants() {
+        fields().that().areDeclaredInClassesThat().resideInAPackage(FEATURES + "..")
+                .and().areStatic()
+                .should().beFinal()
+                .andShould().notHaveRawType(resideInAPackage("java.util.concurrent.atomic.."))
                 .check(compilerClasses);
     }
 

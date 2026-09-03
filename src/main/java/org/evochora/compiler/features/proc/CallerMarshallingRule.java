@@ -14,14 +14,12 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public final class CallerMarshallingRule implements IEmissionRule {
 
-    // Static counter across compilations — ensures unique label names across programs
-    // compiled in the same JVM process. Prevents label hash collisions when programs
-    // are placed adjacent in the world grid.
-    private static final AtomicInteger safeCallCounter = new AtomicInteger(0);
-
     @Override
     public List<IrItem> apply(List<IrItem> items) {
         List<IrItem> out = new ArrayList<>(items.size() + 8);
+        // Numbers the bridge labels of this pass from zero, so the same source yields the
+        // same labels whatever was compiled before in the same process.
+        AtomicInteger safeCallCounter = new AtomicInteger(0);
         int i = 0;
         while (i < items.size()) {
             IrItem currentItem = items.get(i);
@@ -30,7 +28,7 @@ public final class CallerMarshallingRule implements IEmissionRule {
             if (i + 1 < items.size() && currentItem instanceof IrInstruction conditional && ConditionalUtils.isConditional(conditional.opcode())) {
                 if (items.get(i + 1) instanceof IrCallInstruction call) {
                     // This is a conditional CALL.
-                    handleConditionalCall(out, conditional, call);
+                    handleConditionalCall(out, conditional, call, safeCallCounter);
                     i += 2; // Consumed both the conditional and the CALL.
                     continue;
                 }
@@ -54,7 +52,8 @@ public final class CallerMarshallingRule implements IEmissionRule {
         return out;
     }
 
-    private void handleConditionalCall(List<IrItem> out, IrInstruction conditional, IrCallInstruction call) {
+    private void handleConditionalCall(List<IrItem> out, IrInstruction conditional, IrCallInstruction call,
+                                       AtomicInteger safeCallCounter) {
         String label = "_safe_call_" + safeCallCounter.getAndIncrement();
         String negatedOpcode = ConditionalUtils.getNegatedOpcode(conditional.opcode());
 

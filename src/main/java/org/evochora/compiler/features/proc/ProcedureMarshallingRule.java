@@ -17,14 +17,12 @@ import java.util.stream.Stream;
  */
 public class ProcedureMarshallingRule implements IEmissionRule {
 
-    // Static counter across compilations — ensures unique label names across programs
-    // compiled in the same JVM process. Prevents label hash collisions when programs
-    // are placed adjacent in the world grid.
-    private static final AtomicInteger safeRetCounter = new AtomicInteger(0);
-
     @Override
     public List<IrItem> apply(List<IrItem> items) {
         List<IrItem> out = new ArrayList<>(items.size() + 16);
+        // Numbers the bridge labels of this pass from zero, so the same source yields the
+        // same labels whatever was compiled before in the same process.
+        AtomicInteger safeRetCounter = new AtomicInteger(0);
         int i = 0;
         while (i < items.size()) {
             IrItem it = items.get(i);
@@ -52,7 +50,7 @@ public class ProcedureMarshallingRule implements IEmissionRule {
                 }
 
                 // Process body for RET instructions (handles epilogue generation)
-                processBodyForRets(out, body, refParamNames, lrefParamNames);
+                processBodyForRets(out, body, refParamNames, lrefParamNames, safeRetCounter);
 
                 if (bodyEndIndex < items.size()) {
                     out.add(items.get(bodyEndIndex)); // Add proc_exit
@@ -66,7 +64,8 @@ public class ProcedureMarshallingRule implements IEmissionRule {
         return out;
     }
 
-    private void processBodyForRets(List<IrItem> out, List<IrItem> body, List<String> refParams, List<String> lrefParams) {
+    private void processBodyForRets(List<IrItem> out, List<IrItem> body, List<String> refParams, List<String> lrefParams,
+                                    AtomicInteger safeRetCounter) {
         int i = 0;
         while (i < body.size()) {
             IrItem currentItem = body.get(i);
@@ -74,7 +73,7 @@ public class ProcedureMarshallingRule implements IEmissionRule {
             // Check for conditional RET
             if (i + 1 < body.size() && currentItem instanceof IrInstruction conditional && ConditionalUtils.isConditional(conditional.opcode())) {
                 if (body.get(i + 1) instanceof IrInstruction ret && "RET".equals(ret.opcode())) {
-                    handleConditionalRet(out, conditional, ret, refParams, lrefParams);
+                    handleConditionalRet(out, conditional, ret, refParams, lrefParams, safeRetCounter);
                     i += 2;
                     continue;
                 }
@@ -93,7 +92,7 @@ public class ProcedureMarshallingRule implements IEmissionRule {
     }
 
     private void handleConditionalRet(List<IrItem> out, IrInstruction conditional, IrInstruction ret,
-                                      List<String> refParams, List<String> lrefParams) {
+                                      List<String> refParams, List<String> lrefParams, AtomicInteger safeRetCounter) {
         String label = "_safe_ret_" + safeRetCounter.getAndIncrement();
         String negatedOpcode = ConditionalUtils.getNegatedOpcode(conditional.opcode());
 
