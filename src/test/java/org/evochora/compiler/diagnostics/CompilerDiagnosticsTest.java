@@ -1,0 +1,65 @@
+package org.evochora.compiler.diagnostics;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
+
+import org.evochora.compiler.Compiler;
+import org.evochora.compiler.api.CompilationException;
+import org.evochora.compiler.api.CompilerOptions;
+import org.evochora.compiler.api.SourceRoot;
+import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.model.EnvironmentProperties;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+/**
+ * What the compiler tells a programmer when a program is wrong.
+ * <p>
+ * Each test writes a small program to disk, compiles it through the whole pipeline and checks
+ * the message of the resulting {@link CompilationException}: that it names the mistake, and
+ * that it names the file and the line the programmer has to look at. Tests here concern the
+ * message, not the phase that produces it.
+ */
+@Tag("integration")
+class CompilerDiagnosticsTest {
+
+    private static final EnvironmentProperties ENV = new EnvironmentProperties(new int[]{100, 100}, true);
+
+    @TempDir
+    Path sourceRoot;
+
+    @BeforeAll
+    static void init() {
+        Instruction.init();
+    }
+
+    @Test
+    void referenceToLabelThatIsNotExportedNamesTheSymbolAndTheLine() throws Exception {
+        write("lib.evo",
+                "PRIVATE:",
+                "  NOP");
+        write("main.evo",
+                ".IMPORT \"lib.evo\" AS LIB",
+                "START:",
+                "  JMPI LIB.PRIVATE");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("Symbol 'LIB.PRIVATE' is not defined")
+                .hasMessageContaining("main.evo:3");
+    }
+
+    private void write(String fileName, String... lines) throws Exception {
+        Files.writeString(sourceRoot.resolve(fileName), String.join("\n", lines) + "\n");
+    }
+
+    private void compile(String fileName) throws Exception {
+        CompilerOptions options = new CompilerOptions(List.of(new SourceRoot(sourceRoot.toString(), null)));
+        new Compiler().compile(fileName, ENV, options);
+    }
+}
