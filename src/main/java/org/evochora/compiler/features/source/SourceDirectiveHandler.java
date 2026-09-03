@@ -43,7 +43,7 @@ public class SourceDirectiveHandler implements IPreProcessorHandler {
         }
 
         // Check for circular .SOURCE
-        if (preProcessor.isInSourceChain(resolvedPath)) {
+        if (preProcessorContext.isIncluding(resolvedPath)) {
             preProcessor.getDiagnostics().reportError(
                     "Circular .SOURCE detected: " + pathValue, pathToken.fileName(), pathToken.line());
             preProcessor.removeTokens(startIndex, endIndex - startIndex);
@@ -60,13 +60,15 @@ public class SourceDirectiveHandler implements IPreProcessorHandler {
             return;
         }
 
-        preProcessor.pushSourceChain(resolvedPath);
+        // A .SOURCE inclusion keeps the enclosing module context, so it carries no alias chain.
+        // The inclusion stays open until the injected .POP_CTX token is processed.
+        PlacementContext placementCtx = new PlacementContext(resolvedPath, null);
+        preProcessorContext.enterInclusion(placementCtx);
 
         // Copy tokens and wrap with context management directives
         List<Token> newTokens = new ArrayList<>(preLexed);
-        PlacementContext placementCtx = new PlacementContext(resolvedPath, null);
         newTokens.add(0, new Token(TokenType.DIRECTIVE, ".PUSH_CTX", placementCtx, pathToken.line(), 0, pathToken.fileName()));
-        newTokens.add(new Token(TokenType.DIRECTIVE, ".POP_CTX", "SOURCE", pathToken.line(), 0, pathToken.fileName()));
+        newTokens.add(new Token(TokenType.DIRECTIVE, ".POP_CTX", null, pathToken.line(), 0, pathToken.fileName()));
 
         preProcessor.removeTokens(startIndex, endIndex - startIndex);
         preProcessor.injectTokens(newTokens, 0);

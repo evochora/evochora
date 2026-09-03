@@ -57,12 +57,11 @@ public class ImportSourceHandler implements IPreProcessorHandler {
         }
 
         // Guard against circular imports
-        if (preProcessor.isInImportChain(resolvedPath)) {
+        if (preProcessorContext.isIncluding(resolvedPath)) {
             preProcessor.getDiagnostics().reportError(
                     "Circular .IMPORT detected: " + pathValue, pathToken.fileName(), pathToken.line());
             return;
         }
-        preProcessor.pushImportChain(resolvedPath);
 
         // Compute alias chain: parent chain + alias
         String parentChain = preProcessorContext.currentAliasChain();
@@ -89,11 +88,11 @@ public class ImportSourceHandler implements IPreProcessorHandler {
         // Wrap with PUSH_CTX/POP_CTX — PUSH_CTX carries PlacementContext with alias chain
         PlacementContext placementCtx = new PlacementContext(resolvedPath, aliasChain);
         newTokens.add(0, new Token(TokenType.DIRECTIVE, ".PUSH_CTX", placementCtx, importToken.line(), 0, importToken.fileName()));
-        newTokens.add(new Token(TokenType.DIRECTIVE, ".POP_CTX", "IMPORT", importToken.line(), 0, importToken.fileName()));
+        newTokens.add(new Token(TokenType.DIRECTIVE, ".POP_CTX", null, importToken.line(), 0, importToken.fileName()));
 
-        // Push alias chain before injecting tokens. The corresponding pop happens when the
-        // injected .POP_CTX token is processed by the preprocessor — not in this handler.
-        preProcessorContext.pushAliasChain(aliasChain);
+        // The inclusion enters the module's alias chain and stays open until the injected
+        // .POP_CTX token is processed by the preprocessor — not in this handler.
+        preProcessorContext.enterInclusion(placementCtx);
 
         // Inject after the .IMPORT directive (tokens remain for the parser)
         preProcessor.injectTokens(newTokens, 0);
