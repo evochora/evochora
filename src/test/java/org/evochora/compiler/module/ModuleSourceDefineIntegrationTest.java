@@ -310,32 +310,18 @@ class ModuleSourceDefineIntegrationTest {
         DependencyGraph graph = scanner.scan(mainSource, mainPath);
         if (diagnostics.hasErrors()) return new PostProcessResult(diagnostics, List.of());
 
-        // Phase 1: Lex all modules
-        Map<String, List<Token>> moduleTokens = new HashMap<>();
+        // Phase 1: Lex the included files under their paths, the main file as the stream
+        Map<String, String> moduleContents = new HashMap<>();
         for (ModuleDescriptor module : graph.topologicalOrder()) {
-            if (module.id().path().equals(mainPath)) continue;
-            String source = module.content();
-            if (!source.endsWith("\n")) source += "\n";
-            Lexer moduleLexer = new Lexer(source, diagnostics, module.sourcePath());
-            List<Token> tokens = moduleLexer.scanTokens();
-            Lexer.stripEofToken(tokens);
-            moduleTokens.put(module.sourcePath(), tokens);
+            if (!module.id().path().equals(mainPath)) {
+                moduleContents.put(module.sourcePath(), module.content());
+            }
         }
-        Lexer mainLexer = new Lexer(mainSource, diagnostics, mainPath);
-        List<Token> mainTokens = new ArrayList<>(mainLexer.scanTokens());
+        Map<String, List<Token>> moduleTokens = Lexer.lexFiles(moduleContents, diagnostics);
+        Map<String, List<Token>> sourceTokens = Lexer.lexFiles(graph.sourceContents(), diagnostics);
+        List<Token> mainTokens = new ArrayList<>(new Lexer(mainSource, diagnostics, mainPath).scanTokens());
 
         // Phase 2: Preprocessing (with root alias chain for alias chain tracking)
-        // Pre-lex .SOURCE files
-        Map<String, List<Token>> sourceTokens = new HashMap<>();
-        for (Map.Entry<String, String> entry : scanner.sourceContents().entrySet()) {
-            String srcPath = entry.getKey();
-            String srcContent = entry.getValue();
-            if (!srcContent.endsWith("\n")) srcContent += "\n";
-            Lexer srcLexer = new Lexer(srcContent, diagnostics, srcPath);
-            List<Token> srcTokens = srcLexer.scanTokens();
-            Lexer.stripEofToken(srcTokens);
-            sourceTokens.put(srcPath, srcTokens);
-        }
         PreProcessorContext ppContext = new PreProcessorContext(rootAliasChain, moduleTokens, sourceTokens);
         ppContext.handlers().register(".SOURCE", new SourceDirectiveHandler());
         ppContext.handlers().register(".MACRO", new MacroDirectiveHandler());

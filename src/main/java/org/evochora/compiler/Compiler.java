@@ -57,6 +57,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -180,32 +181,16 @@ public class Compiler implements ICompiler {
         DependencyGraph graph = depScanner.scan(fullSource, mainFilePath);
         failOnErrors();
 
-        // Phase 1: Lexical Analysis — lex all files, store results
-        Map<String, List<Token>> moduleTokens = new HashMap<>();
+        // Phase 1: Lexical Analysis — the included files under their paths, the main file as the stream
+        Map<String, String> moduleContents = new LinkedHashMap<>();
         for (ModuleDescriptor module : graph.topologicalOrder()) {
-            if (module.id().path().equals(mainFilePath)) continue;
-            String moduleSource = module.content();
-            if (!moduleSource.endsWith("\n")) moduleSource += "\n";
-            Lexer moduleLexer = new Lexer(moduleSource, diagnostics, module.sourcePath());
-            List<Token> tokens = moduleLexer.scanTokens();
-            Lexer.stripEofToken(tokens);
-            moduleTokens.put(module.sourcePath(), tokens);
+            if (!module.id().path().equals(mainFilePath)) {
+                moduleContents.put(module.sourcePath(), module.content());
+            }
         }
-
-        // Phase 1b: Lex .SOURCE files (collected during dependency scanning)
-        Map<String, List<Token>> sourceTokens = new HashMap<>();
-        for (Map.Entry<String, String> entry : depScanner.sourceContents().entrySet()) {
-            String sourcePath = entry.getKey();
-            String sourceContent = entry.getValue();
-            if (!sourceContent.endsWith("\n")) sourceContent += "\n";
-            Lexer sourceLexer = new Lexer(sourceContent, diagnostics, sourcePath);
-            List<Token> tokens = sourceLexer.scanTokens();
-            Lexer.stripEofToken(tokens);
-            sourceTokens.put(sourcePath, tokens);
-        }
-
-        Lexer mainLexer = new Lexer(fullSource, diagnostics, mainFilePath);
-        List<Token> initialTokens = new ArrayList<>(mainLexer.scanTokens());
+        Map<String, List<Token>> moduleTokens = Lexer.lexFiles(moduleContents, diagnostics);
+        Map<String, List<Token>> sourceTokens = Lexer.lexFiles(graph.sourceContents(), diagnostics);
+        List<Token> initialTokens = new ArrayList<>(new Lexer(fullSource, diagnostics, mainFilePath).scanTokens());
 
         // Phase 2: Preprocessing (includes, macros)
         PreProcessorContext ppContext = new PreProcessorContext(rootAliasChain, moduleTokens, sourceTokens);
@@ -215,12 +200,9 @@ public class Compiler implements ICompiler {
 
         Map<String, List<String>> sources = new HashMap<>();
         sources.put(mainFilePath, sourceLines);
-        for (ModuleDescriptor module : graph.topologicalOrder()) {
-            if (!module.id().path().equals(mainFilePath)) {
-                sources.put(module.sourcePath(), Arrays.asList(module.content().split("\\r?\\n")));
-            }
-        }
-        depScanner.sourceContents().forEach((path, content) ->
+        moduleContents.forEach((path, content) ->
+                sources.put(path, Arrays.asList(content.split("\\r?\\n"))));
+        graph.sourceContents().forEach((path, content) ->
                 sources.putIfAbsent(path, Arrays.asList(content.split("\\r?\\n"))));
 
         failOnErrors();

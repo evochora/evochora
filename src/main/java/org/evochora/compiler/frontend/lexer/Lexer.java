@@ -6,7 +6,9 @@ import org.evochora.compiler.model.token.TokenType;
 import org.evochora.runtime.isa.RegisterBank;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * The Lexer (also known as Tokenizer or Scanner) is responsible for converting
@@ -55,6 +57,29 @@ public class Lexer {
         }
         tokens.add(new Token(TokenType.END_OF_FILE, "", null, line, column, logicalFileName));
         return tokens;
+    }
+
+    /**
+     * Lexes a set of files that are going to be included into another token stream. Each file
+     * is lexed under its own path so its tokens carry that path as their file name, and its
+     * trailing EOF token is dropped because the stream it is included into has its own. A file
+     * whose text does not end in a newline is lexed as if it did, so its last line ends where
+     * the inclusion ends.
+     *
+     * @param contents    The text of every file, keyed by the path the tokens are to be filed under.
+     * @param diagnostics The engine for reporting errors.
+     * @return The tokens of every file under the same key, in the iteration order of the input.
+     */
+    public static Map<String, List<Token>> lexFiles(Map<String, String> contents, DiagnosticsEngine diagnostics) {
+        Map<String, List<Token>> tokensByFile = new LinkedHashMap<>();
+        for (Map.Entry<String, String> file : contents.entrySet()) {
+            String text = file.getValue();
+            if (!text.endsWith("\n")) text += "\n";
+            List<Token> tokens = new Lexer(text, diagnostics, file.getKey()).scanTokens();
+            stripEofToken(tokens);
+            tokensByFile.put(file.getKey(), tokens);
+        }
+        return tokensByFile;
     }
 
     /**
