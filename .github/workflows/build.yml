@@ -16,6 +16,15 @@ on:
     # This creates a tag, but doesn't fire 'push' event
     types: [ published ]
 
+# Pull requests share one group per pull request, so a quick second push discards the run its own
+# predecessor started — on this matrix that is two runs per superseded push. Everything else has no
+# pull request number and falls back to the run id, which is unique per run and therefore groups
+# with nothing: a push to main, a tag and a published release each run to the end, because the
+# release job publishes images and creates releases and must never be cut short.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
 jobs:
   notebooks:
     name: Verify Notebooks
@@ -88,8 +97,11 @@ jobs:
       # Pull requests from forks run with a read-only token, so the comment is only attempted for
       # branches of this repository; for a fork the figure stays in the job log.
       - name: Comment new-code coverage on the pull request
+        # Not tied to the success of the steps before it: a branch that breaches the coverage
+        # bound fails the measuring step, and that is exactly the branch whose figure and list of
+        # uncovered lines belong on the pull request. A cancelled run is left alone.
         if: |
-          matrix.os == 'ubuntu-latest' && github.event_name == 'pull_request' &&
+          !cancelled() && matrix.os == 'ubuntu-latest' && github.event_name == 'pull_request' &&
           github.event.pull_request.head.repo.full_name == github.repository
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -97,12 +109,19 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           set -euo pipefail
+          summary=build/reports/new-code-coverage/summary.md
+          # A build that broke before the measurement ran leaves no summary behind. The step that
+          # broke is already red and carries the reason; failing here as well would bury it.
+          if [ ! -f "$summary" ]; then
+            echo "No coverage summary was produced; nothing to comment."
+            exit 0
+          fi
           # The marker identifies this workflow's own comment, so every run edits that one
           # instead of appending another to the conversation. The author is part of the test:
           # anyone may leave a comment carrying the marker, and this job holds the permission to
           # edit comments, so matching on the marker alone would let it overwrite someone else's.
           marker='<!-- new-code-coverage -->'
-          body="$marker"$'\n'"$(cat build/reports/new-code-coverage/summary.md)"
+          body="$marker"$'\n'"$(cat "$summary")"
           # --paginate --slurp yields one array per page, which add joins back into one list.
           existing=$(gh api "repos/$REPOSITORY/issues/$PR_NUMBER/comments" --paginate --slurp |
             jq -r --arg marker "$marker" '(add // [])

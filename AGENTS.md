@@ -38,6 +38,7 @@ Evochora is an artificial life simulator for research into digital evolution. It
 ./gradlew run --args="--help"    # Show CLI help
 ./gradlew distZip distTar    # Create distribution archives
 ./gradlew jmhJar             # Build the JMH benchmark jar (see docs/BENCHMARKING.md)
+./gradlew newCodeCoverage    # Coverage of the lines changed against origin/main (needs a test run first)
 ```
 
 ## Running the Application
@@ -302,6 +303,11 @@ See `.agents/architecture-guidelines.md` for full review criteria.
 **Coverage:**
 - `jacocoTestCoverageVerification` fails the build below 50% line coverage (JaCoCo); the goal remains 60%+
 - Raising the bound is a deliberate change, made once the suite has grown past it
+- `newCodeCoverage` asks the other question: of the lines a branch changes, how many the tests
+  reach. It measures nothing of its own — it intersects the JaCoCo report with `git diff` against
+  the merge base — and covers the same code as the gate above, `src/main/java` minus `ui` and `Main`
+- On a pull request the figure appears as a comment. There is no bound yet: the task reports and
+  passes. Setting `newCodeCoverage.minimum` turns it into a gate that fails the build
 
 **Benchmarks:**
 - JMH benchmarks live in `src/jmh/`; they are relative before/after measurements, never absolute references

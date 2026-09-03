@@ -1,3 +1,4 @@
+import java.util.Locale
 import javax.xml.parsers.DocumentBuilderFactory
 import org.w3c.dom.Element
 
@@ -19,8 +20,15 @@ fun changedLines(baseRef: String): Map<String, Set<Int>> {
             .directory(rootDir)
             .redirectErrorStream(false)
             .start()
+        // Both streams are drained at once. Reading one to its end while the other fills up would
+        // stall the process the moment its buffer is full: it waits to write, this side waits to
+        // read, and neither moves again. The streams stay apart because the diff must not have
+        // anything of git's own reporting mixed into it.
+        var err = ""
+        val errReader = Thread { err = process.errorStream.bufferedReader().readText() }
+        errReader.start()
         val out = process.inputStream.bufferedReader().readText()
-        val err = process.errorStream.bufferedReader().readText()
+        errReader.join()
         val code = process.waitFor()
         // A missing merge base is the common failure on CI, where checkouts are shallow by default
         // and the base branch is simply absent. Reporting zero changed lines there would turn the
@@ -95,6 +103,9 @@ tasks.register("newCodeCoverage") {
     // The same exclusions the project-wide gate uses, so both gates judge the same code.
     val excludedPrefixes = listOf("org/evochora/ui/", "org/evochora/Main")
     val sourceRoot = "src/main/java/"
+    // The prefix carries a trailing slash so that removePrefix cuts cleanly; in a sentence the
+    // path reads better without it.
+    val sourceRootName = sourceRoot.trimEnd('/')
     val baseRef = (findProperty("newCodeCoverage.baseRef") ?: "origin/main").toString()
     val minimum = (findProperty("newCodeCoverage.minimum") as String?)?.toDouble()
     // A rendered summary for whoever reads the pull request rather than the build log.
@@ -119,17 +130,17 @@ tasks.register("newCodeCoverage") {
             if (!path.startsWith(sourceRoot)) continue
             val classPath = path.removePrefix(sourceRoot)
             if (excludedPrefixes.any { classPath.startsWith(it) }) continue
-            // Files absent from the report contain no executable lines the analysis knows about.
+            // Files absent from the report contain no lines the coverage analysis knows about.
             val reported = covered[classPath] ?: continue
 
-            // Only lines JaCoCo considers executable count; blank lines, comments and declarations
-            // are changed text but nothing a test could reach.
-            val executable = lines.filter { reported.containsKey(it) }
-            if (executable.isEmpty()) continue
+            // Only lines JaCoCo can observe count; blank lines, comments and declarations are
+            // changed text but nothing a test could reach.
+            val coverable = lines.filter { reported.containsKey(it) }
+            if (coverable.isEmpty()) continue
 
-            total += executable.size
-            hit += executable.count { reported.getValue(it) }
-            executable.filterNot { reported.getValue(it) }
+            total += coverable.size
+            hit += coverable.count { reported.getValue(it) }
+            coverable.filterNot { reported.getValue(it) }
                 .takeIf { it.isNotEmpty() }
                 ?.let { misses[path] = it }
         }
@@ -138,17 +149,20 @@ tasks.register("newCodeCoverage") {
         summaryFile.parentFile.mkdirs()
 
         if (total == 0) {
-            logger.lifecycle("New-code coverage: no executable lines changed against $baseRef.")
+            logger.lifecycle("New-code coverage: no coverable lines changed in $sourceRootName against $baseRef.")
             summaryFile.writeText(
-                "## New-code coverage\n\nNo executable lines changed against `$baseRef`.\n"
+                "## New-code coverage\n\nNo coverable lines changed in `$sourceRootName` against `$baseRef`.\n"
             )
             return@doLast
         }
 
         val ratio = hit.toDouble() / total
+        // Locale.US throughout: the figure is read by a machine as often as by a person —
+        // the pull request comment, the log line, the failure message — and a decimal comma
+        // from a differently configured JVM would change what those texts say.
         logger.lifecycle(
-            "New-code coverage: %.1f%% (%d of %d changed executable lines) against %s"
-                .format(ratio * 100, hit, total, baseRef)
+            "New-code coverage: %.1f%% (%d of %d changed coverable lines) against %s"
+                .format(Locale.US, ratio * 100, hit, total, baseRef)
         )
         if (misses.isNotEmpty()) {
             logger.lifecycle("Uncovered changed lines:")
@@ -157,9 +171,9 @@ tasks.register("newCodeCoverage") {
 
         summaryFile.writeText(buildString {
             append("## New-code coverage\n\n")
-            append("**%.1f%%** of the lines this branch changes are covered ".format(ratio * 100))
-            append("($hit of $total executable lines, against `$baseRef`).\n")
-            if (minimum != null) append("\nRequired: %.1f%%.\n".format(minimum * 100))
+            append("**%.1f%%** of the lines this branch changes are covered ".format(Locale.US, ratio * 100))
+            append("($hit of $total coverable lines, against `$baseRef`).\n")
+            if (minimum != null) append("\nRequired: %.1f%%.\n".format(Locale.US, minimum * 100))
             if (misses.isNotEmpty()) {
                 append("\n<details><summary>Uncovered changed lines")
                 append(" (${misses.values.sumOf { it.size }})</summary>\n\n")
@@ -175,7 +189,7 @@ tasks.register("newCodeCoverage") {
         if (minimum != null) {
             check(ratio >= minimum) {
                 "New-code coverage %.1f%% is below the required %.1f%%."
-                    .format(ratio * 100, minimum * 100)
+                    .format(Locale.US, ratio * 100, minimum * 100)
             }
         }
     }
