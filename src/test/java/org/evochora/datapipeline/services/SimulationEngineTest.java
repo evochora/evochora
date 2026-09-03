@@ -244,6 +244,19 @@ class SimulationEngineTest {
     }
 
     @Test
+    void constructor_shouldRejectShapeThatIsNotAMultipleOfTheTileSide() {
+        Config config = createValidConfig().withValue(
+                "environment.shape",
+                ConfigValueFactory.fromAnyRef(List.of(32, 40))
+        );
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class,
+                () -> new SimulationEngine("test-engine", config, resources)
+        );
+        assertEquals("environment.shape[1] must be a multiple of 32, got 40", exception.getMessage());
+    }
+
+    @Test
     void constructor_shouldAcceptBoundedTopology() {
         Config config = createValidConfig().withValue(
                 "environment.topology",

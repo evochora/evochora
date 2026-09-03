@@ -186,6 +186,26 @@ class GenomeHasherTest {
     }
 
     @Test
+    void hashIsLayoutInvariant() {
+        // The same genome, wide enough to span several tiles, in a world stored row-major and
+        // in one stored in production tiles: the owned set iterates differently, the hash must not.
+        long[] hashes = new long[2];
+        int[] tileSides = {1, Environment.TILE_SIDE};
+        for (int i = 0; i < tileSides.length; i++) {
+            Environment world = new Environment(new EnvironmentProperties(new int[]{64, 64}, true),
+                    new org.evochora.runtime.label.PreExpandedHammingStrategy(), tileSides[i]);
+            world.setMolecule(new Molecule(Config.TYPE_LABEL, 20, 0), ORGANISM_ID, new int[]{5, 5});
+            for (int x = 6; x < 60; x += 7) {
+                world.setMolecule(new Molecule(Config.TYPE_CODE, x, 0), ORGANISM_ID, new int[]{x, 5});
+                world.setMolecule(new Molecule(Config.TYPE_REGISTER, x, 0), ORGANISM_ID, new int[]{x, 40});
+            }
+            hashes[i] = GenomeHasher.computeGenomeHash(world, ORGANISM_ID, INITIAL_POSITION);
+        }
+        assertThat(hashes[0]).isNotZero();
+        assertThat(hashes[1]).as("tile side 1 vs " + Environment.TILE_SIDE).isEqualTo(hashes[0]);
+    }
+
+    @Test
     void testMoleculeOrderDoesNotMatter() {
         Molecule codeMol = new Molecule(Config.TYPE_CODE, 10, 0);
         Molecule labelMol = new Molecule(Config.TYPE_LABEL, 20, 0);

@@ -28,10 +28,12 @@ import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
  * is chosen as the target for NOP area search, and a random LABEL is selected as the source via reservoir
  * sampling.
  * <p>
- * <strong>Performance:</strong> Near-zero allocation after warmup. Reusable coordinate buffers,
- * ScanLineInfo pooling, direct bit extraction from packed molecule ints, and the environment's
- * allocation-free index conversions minimize GC pressure. The owned-cell iteration is O(n) where n is
- * typically 1000-3000, running at most a few times per tick.
+ * <strong>Performance:</strong> Near-zero allocation after warmup. The owned cells are visited
+ * through the environment's cell views; reusable coordinate buffers, ScanLineInfo pooling and direct
+ * bit extraction from packed molecule ints minimize GC pressure. The only per-call allocations are
+ * one {@code getShape()} defensive copy and the two visitor lambdas (one per owned-cell pass).
+ * The owned-cell iteration is O(n) where n is typically 1000-3000, running at most a few times
+ * per tick.
  * <p>
  * <strong>Thread Safety:</strong> Not thread-safe. Runs in the sequential post-Execute phase of
  * {@code Simulation.tick()}.
@@ -69,7 +71,7 @@ public class GeneDuplicationPlugin implements IBirthHandler {
         int minDv;
         /** Maximum DV-dimension coordinate on this scan line. */
         int maxDv;
-        /** Any flat index on this scan line, for coordinate reconstruction. */
+        /** The canonical index of one owned cell on this scan line, for coordinate reconstruction. */
         int sampleCanonicalIndex;
         /** Number of owned cells on this scan line. */
         int count;
@@ -200,7 +202,7 @@ public class GeneDuplicationPlugin implements IBirthHandler {
 
         final int dvDimFinal = dvDim;
 
-        // Canonical (index) order: the reservoir choice below must not depend on write history
+        // The visit runs in canonical order: the reservoir choice below must not depend on write history
         env.visitCellsOwnedBy(childId, cell -> {
             System.arraycopy(cell.coordinate(), 0, coordBuffer, 0, coordBuffer.length);
 
@@ -231,8 +233,10 @@ public class GeneDuplicationPlugin implements IBirthHandler {
 
         int labelCount = labelState[2];
         if (labelCount == 0) {
-            LOG.debug("tick={} Organism {} selected for duplication: {} owned cells, {} scan lines, 0 labels — skipping",
-                    child.getBirthTick(), childId, env.countCellsOwnedBy(childId), scanLineMap.size());
+            if (LOG.isDebugEnabled()) {
+                LOG.debug("tick={} Organism {} selected for duplication: {} owned cells, {} scan lines, 0 labels — skipping",
+                        child.getBirthTick(), childId, env.countCellsOwnedBy(childId), scanLineMap.size());
+            }
             return; // no labels found
         }
 
@@ -444,7 +448,7 @@ public class GeneDuplicationPlugin implements IBirthHandler {
      * DV coordinates of owned cells on that scan line, sorts them, and finds the largest gap to
      * determine the correct shortest arc.
      *
-     * @param owned The child's owned cell set.
+     * @param childId The newborn whose owned cells were grouped into scan lines.
      * @param env The simulation environment.
      * @param dvDim The DV dimension index.
      * @param shapeDvDim The environment size along the DV dimension.

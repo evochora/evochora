@@ -189,7 +189,8 @@ public class PreExpandedHammingStrategy implements ILabelMatchingStrategy {
      * @param callerCoords the coordinates of the calling instruction, for distance calculation
      * @param environment the environment, for coordinate conversion and toroidal distance
      * @param random the random source of the organism executing the lookup; must not be null
-     * @return the flat index of the best matching label, or -1 if no label is within tolerance
+     * @return the canonical index (the persisted row-major index of {@code EnvironmentProperties})
+     *         of the best matching label, or -1 if no label is within tolerance
      */
     @Override
     public int findTarget(int searchValue, int codeOwner, int[] callerCoords, Environment environment,
@@ -207,7 +208,7 @@ public class PreExpandedHammingStrategy implements ILabelMatchingStrategy {
             // When selectionSpread > 0, uses weighted reservoir sampling among own exact matches
             // to enable "duplication + divergence": after gene duplication, both label copies
             // get a chance to be jumped to, weighted by inverse distance.
-            int bestOwnExactIndex = -1;
+            int bestOwnExactCanonicalIndex = -1;
             int bestOwnExactDistance = Integer.MAX_VALUE;
             int bestOwnExactOwner = Integer.MAX_VALUE;
             long totalWeight = 0;
@@ -222,13 +223,13 @@ public class PreExpandedHammingStrategy implements ILabelMatchingStrategy {
                         if (weight < 1) weight = 1;
                         totalWeight += weight;
                         if (random.nextLong(totalWeight) < weight) {
-                            bestOwnExactIndex = entry.canonicalIndex();
+                            bestOwnExactCanonicalIndex = entry.canonicalIndex();
                         }
                     } else {
                         if (distance < bestOwnExactDistance ||
                             (distance == bestOwnExactDistance && entry.owner() < bestOwnExactOwner)) {
                             bestOwnExactDistance = distance;
-                            bestOwnExactIndex = entry.canonicalIndex();
+                            bestOwnExactCanonicalIndex = entry.canonicalIndex();
                             bestOwnExactOwner = entry.owner();
                         }
                     }
@@ -243,8 +244,8 @@ public class PreExpandedHammingStrategy implements ILabelMatchingStrategy {
                 }
             }
 
-            if (bestOwnExactIndex != -1) {
-                return bestOwnExactIndex;
+            if (bestOwnExactCanonicalIndex != -1) {
+                return bestOwnExactCanonicalIndex;
             }
         }
 

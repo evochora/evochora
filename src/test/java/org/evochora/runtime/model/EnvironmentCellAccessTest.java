@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * The environment's coordinate-only surface: in-range accessors, the owned-cell view and the
@@ -38,6 +39,23 @@ class EnvironmentCellAccessTest {
         env.setMoleculeAt(coord, data(8));
         assertThat(env.getMolecule(coord).value()).isEqualTo(8);
         assertThat(env.getOwnerId(coord)).as("a write without owner keeps the owner").isEqualTo(5);
+    }
+
+    @Test
+    void aCoordinateOutsideTheWorldIsRejectedInsteadOfAddressingAnotherCell() {
+        Environment env = tiled();
+        int[][] outside = {{64, 0}, {0, 64}, {-1, 5}, {5, -1}, {96, 3}};
+        for (int[] coord : outside) {
+            String expected = "Coordinate " + java.util.Arrays.toString(coord) + " lies outside the world of shape [64, 64]";
+            assertThatThrownBy(() -> env.getMoleculeIntAt(coord)).isInstanceOf(IllegalArgumentException.class).hasMessage(expected);
+            assertThatThrownBy(() -> env.getOwnerIdAt(coord)).isInstanceOf(IllegalArgumentException.class).hasMessage(expected);
+            assertThatThrownBy(() -> env.setMoleculeAt(coord, data(1))).isInstanceOf(IllegalArgumentException.class).hasMessage(expected);
+            assertThatThrownBy(() -> env.setMoleculeAt(coord, data(1), 2)).isInstanceOf(IllegalArgumentException.class).hasMessage(expected);
+            assertThatThrownBy(() -> env.getIndexFromCoordinate(coord)).isInstanceOf(IllegalArgumentException.class).hasMessage(expected);
+        }
+        List<Integer> occupied = new ArrayList<>();
+        env.forEachOccupiedCellInCanonicalOrder((canonical, molecule, owner) -> occupied.add(canonical));
+        assertThat(occupied).as("nothing was written").isEmpty();
     }
 
     @Test

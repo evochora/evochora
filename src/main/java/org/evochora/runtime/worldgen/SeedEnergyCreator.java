@@ -77,7 +77,7 @@ public class SeedEnergyCreator implements ITickPlugin {
         // knowledge, and nothing here has to repeat it.
         long attemptsLeft = (long) cellsToSeed * MAX_ATTEMPTS_PER_CELL;
         int seeded = 0;
-        int[] coord = new int[environment.getShape().length];
+        int[] coord = new int[environment.getProperties().getDimensions()];
         while (seeded < cellsToSeed) {
             if (attemptsLeft-- <= 0) {
                 throw new IllegalStateException(

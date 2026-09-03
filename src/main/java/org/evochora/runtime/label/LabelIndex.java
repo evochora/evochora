@@ -64,7 +64,8 @@ public class LabelIndex {
      * @param environment The environment (for coordinate conversion and toroidal distance)
      * @param random The random source of the organism executing the lookup (see
      *               {@link ILabelMatchingStrategy#findTarget})
-     * @return The flat index of the best matching label, or -1 if no match found
+     * @return The canonical index (the persisted row-major index of {@code EnvironmentProperties})
+     *         of the best matching label, or -1 if no match found
      */
     public int findTarget(int searchValue, int codeOwner, int[] callerCoords, Environment environment,
                           OrganismRandom random) {
@@ -80,7 +81,7 @@ public class LabelIndex {
      *   <li>If new molecule is LABEL: add to index</li>
      * </ul>
      *
-     * @param canonicalIndex The flat index of the cell
+     * @param canonicalIndex The canonical index of the cell, its persisted row-major index
      * @param oldMoleculeInt The old molecule's packed integer value (0 if cell was empty)
      * @param newMoleculeInt The new molecule's packed integer value
      * @param owner The owner ID of the cell
@@ -110,7 +111,7 @@ public class LabelIndex {
      * <p>
      * If the cell contains a LABEL molecule, updates the index entry.
      *
-     * @param canonicalIndex The flat index of the cell
+     * @param canonicalIndex The canonical index of the cell, its persisted row-major index
      * @param moleculeInt The molecule's packed integer value
      * @param newOwner The new owner ID
      */
@@ -127,7 +128,7 @@ public class LabelIndex {
      * <p>
      * If the cell contains a LABEL molecule, updates the index entry.
      *
-     * @param canonicalIndex The flat index of the cell
+     * @param canonicalIndex The canonical index of the cell, its persisted row-major index
      * @param moleculeInt The molecule's packed integer value (with new marker already set)
      */
     public void onMarkerChange(int canonicalIndex, int moleculeInt) {

@@ -112,7 +112,7 @@ public class GeneDeletionPlugin implements IBirthHandler {
         labelHashes.clear();
         hashCounts.clear();
 
-        // Canonical (index) order: the choice below must not depend on write history
+        // The visit runs in canonical order: the choice below must not depend on write history
         env.visitCellsOwnedBy(childId, cell -> {
             int moleculeInt = cell.moleculeInt();
             if ((moleculeInt & Config.TYPE_MASK) == Config.TYPE_LABEL) {

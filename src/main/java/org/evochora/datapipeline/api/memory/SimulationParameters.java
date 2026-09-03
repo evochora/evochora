@@ -35,8 +35,8 @@ package org.evochora.datapipeline.api.memory;
  * @param environmentShape The environment dimensions (e.g., [800, 600] for 2D, [100, 100, 50] for 3D).
  *                          Used to calculate total cells.
  * @param totalCells Total cells in environment = product of shape dimensions.
- *                   For [800, 600] = 480,000 cells. This is the WORST-CASE cell count
- *                   the size of the world, independent of occupancy.
+ *                   For [800, 600] = 480,000 cells. This is the size of the world,
+ *                   independent of occupancy.
  * @param occupiedCells Number of cells expected to hold a molecule or an owner; equal to
  *                      totalCells in the worst case.
  * @param maxOrganisms Maximum expected organisms in the simulation.
@@ -59,7 +59,18 @@ public record SimulationParameters(
     int chunkInterval,
     double estimatedDeltaRatio
 ) {
-    
+
+    /**
+     * Rejects an occupancy the world cannot hold: an estimate built on more occupied cells than
+     * the world has, or on a negative count, would be wrong without any later step noticing.
+     */
+    public SimulationParameters {
+        if (occupiedCells < 0 || occupiedCells > totalCells) {
+            throw new IllegalArgumentException("occupiedCells must lie between 0 and totalCells ("
+                    + totalCells + "), got " + occupiedCells);
+        }
+    }
+
     /**
      * Bytes per CellState in Java heap after Protobuf deserialization.
      * <p>
@@ -498,6 +509,7 @@ public record SimulationParameters(
             sb.append(environmentShape[i]);
         }
         sb.append("], totalCells=").append(totalCells);
+        sb.append(", occupiedCells=").append(occupiedCells);
         sb.append(", maxOrganisms=").append(maxOrganisms);
         sb.append(", env=").append(formatBytes(estimateEnvironmentBytesPerTick()));
         sb.append(", org=").append(formatBytes(estimateOrganismBytesPerTick()));

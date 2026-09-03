@@ -139,26 +139,26 @@ class ResumeForkNeutralityTest {
     void trajectoryAcrossTheBirth_isLayoutInvariant() {
         for (int parallelism : new int[]{1, 2}) {
             int totalTicks = ForkProgram.FORK_TICK + 12;
-            ResumeNeutralityHarness.Fixture rowMajor = newWorld(parallelism, 1);
-            assertThat(rowMajor.plugins().stream().map(plugin -> plugin.getClass().getSimpleName()).toList())
+            ResumeNeutralityHarness.Fixture tiled = newWorld(parallelism);
+            assertThat(tiled.plugins().stream().map(plugin -> plugin.getClass().getSimpleName()).toList())
                     .as("every production plugin takes part, so that none can depend on the layout unnoticed")
                     .containsExactlyInAnyOrder("SeedEnergyCreator", "GeyserCreator", "SolarRadiationCreator",
                             "DecayOnDeath", "LabelRewritePlugin", "GeneDuplicationPlugin", "GeneDeletionPlugin",
                             "GeneInsertionPlugin", "GeneSubstitutionPlugin");
-            List<List<String>> expected = ResumeNeutralityHarness.tick(rowMajor.sim(), rowMajor.plugins(), totalTicks, true);
-            ResumeNeutralityHarness.Fixture tiled = newWorld(parallelism, 32);
-            List<List<String>> actual = ResumeNeutralityHarness.tick(tiled.sim(), tiled.plugins(), totalTicks, true);
+            List<List<String>> expected = ResumeNeutralityHarness.tick(tiled.sim(), tiled.plugins(), totalTicks, true);
+            ResumeNeutralityHarness.Fixture rowMajor = newWorld(parallelism, 1);
+            List<List<String>> actual = ResumeNeutralityHarness.tick(rowMajor.sim(), rowMajor.plugins(), totalTicks, true);
 
             assertThat(actual.get(totalTicks - 1))
                     .as("the run must have produced a child")
                     .hasSizeGreaterThan(expected.get(0).size());
             ResumeNeutralityHarness.assertSameTrajectory(expected, actual,
-                    "tile side 1 vs 32 at parallelism " + parallelism);
+                    "tile side " + Environment.TILE_SIDE + " vs 1 at parallelism " + parallelism);
         }
     }
 
     private ResumeNeutralityHarness.Fixture newWorld(int parallelism) {
-        return newWorld(parallelism, 1);
+        return newWorld(parallelism, Environment.TILE_SIDE);
     }
 
     private ResumeNeutralityHarness.Fixture newWorld(int parallelism, int tileSide) {

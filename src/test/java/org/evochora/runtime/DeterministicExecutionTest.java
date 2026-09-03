@@ -110,15 +110,17 @@ class DeterministicExecutionTest {
     /**
      * The memory layout of the grid is not part of the contract: a run must not be able to tell
      * whether cells are stored row-major or in tiles. Candidate order in the label index is the
-     * place a layout could leak into label selection.
+     * place a layout could leak into label selection. The row-major numbering (tile side 1) is
+     * the counter-check against the production tiles every other scenario runs on.
      */
     @Test
     void labelSelection_isLayoutInvariant() {
         for (int parallelism : new int[]{1, 2}) {
+            List<int[][]> tiled = runJumpers(parallelism, JUMP_TICKS);
             List<int[][]> rowMajor = runJumpers(parallelism, JUMP_TICKS, 1);
-            List<int[][]> tiled = runJumpers(parallelism, JUMP_TICKS, 32);
 
-            assertSameTrajectory(rowMajor, tiled, "tile side 1 vs 32 at parallelism=" + parallelism);
+            assertSameTrajectory(tiled, rowMajor,
+                    "tile side " + Environment.TILE_SIDE + " vs 1 at parallelism=" + parallelism);
         }
     }
 
@@ -148,13 +150,13 @@ class DeterministicExecutionTest {
     @Test
     void organismRandom_isLayoutInvariant() {
         int pairs = 10;
-        RandWorld rowMajor = newRandWorld();
-        RandWorld tiled = new RandWorld(32);
-        simulations.add(tiled.sim);
+        RandWorld tiled = newRandWorld();
+        RandWorld rowMajor = new RandWorld(1);
+        simulations.add(rowMajor.sim);
 
-        assertThat(randValues(tiled.sim, tiled.organism(), pairs * 2))
-                .as("RAND values under a tiled layout must equal those under the row-major layout")
-                .isEqualTo(randValues(rowMajor.sim, rowMajor.organism(), pairs * 2));
+        assertThat(randValues(rowMajor.sim, rowMajor.organism(), pairs * 2))
+                .as("RAND values under the row-major layout must equal those under the production tiles")
+                .isEqualTo(randValues(tiled.sim, tiled.organism(), pairs * 2));
     }
 
     // ===================================================================================
@@ -242,7 +244,7 @@ class DeterministicExecutionTest {
         final IRandomProvider provider;
 
         JumperWorld(int organismCount, int parallelism) {
-            this(organismCount, parallelism, 1);
+            this(organismCount, parallelism, Environment.TILE_SIDE);
         }
 
         JumperWorld(int organismCount, int parallelism, int tileSide) {
@@ -301,7 +303,7 @@ class DeterministicExecutionTest {
         final IRandomProvider provider;
 
         RandWorld() {
-            this(1);
+            this(Environment.TILE_SIDE);
         }
 
         RandWorld(int tileSide) {

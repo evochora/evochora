@@ -52,7 +52,7 @@ final class CanonicalCellOrder {
      */
     void add(int canonicalIndex, int moleculeInt, int ownerId) {
         if (count == keys.length) {
-            int capacity = Math.max(1024, keys.length * 2);
+            int capacity = (int) Math.min(Integer.MAX_VALUE - 8, Math.max(1024, 2L * keys.length));
             keys = Arrays.copyOf(keys, capacity);
             owners = Arrays.copyOf(owners, capacity);
         }

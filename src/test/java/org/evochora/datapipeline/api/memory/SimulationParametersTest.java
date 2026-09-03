@@ -379,4 +379,29 @@ class SimulationParametersTest {
                 "persisted cells follow the occupied count");
         assertEquals(params.estimateEnvironmentBytesPerTick() / 4, expected.estimateEnvironmentBytesPerTick());
     }
+
+    // ========================================================================
+    // Validation
+    // ========================================================================
+
+    @Test
+    void constructor_rejectsMoreOccupiedCellsThanTheWorldHas() {
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () ->
+                new SimulationParameters(new int[]{100, 100}, 10_000L, 10_001L, 10, 1, 1, 1, 1, 0.1));
+        assertEquals("occupiedCells must lie between 0 and totalCells (10000), got 10001", exception.getMessage());
+    }
+
+    @Test
+    void constructor_rejectsANegativeOccupiedCellCount() {
+        assertThrows(IllegalArgumentException.class, () ->
+                new SimulationParameters(new int[]{100, 100}, 10_000L, -1L, 10, 1, 1, 1, 1, 0.1));
+    }
+
+    @Test
+    void withCellOccupancy_staysWithinTheWorld() {
+        SimulationParameters params = SimulationParameters.of(new int[]{100, 100}, 10);
+        assertEquals(10_000L, params.withCellOccupancy(1.0).occupiedCells());
+        assertEquals(1L, params.withCellOccupancy(0.0).occupiedCells(), "at least one cell is always estimated");
+        assertTrue(params.toString().contains("occupiedCells=10000"));
+    }
 }

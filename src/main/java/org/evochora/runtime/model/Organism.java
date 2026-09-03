@@ -914,7 +914,7 @@ public class Organism {
         int[] rawArgs = new int[argCount];
         for (int a = 0; a < argCount; a++) {
             if (index >= 0) {
-                index = environment.stepIndex(index, dim, sign);
+                index = environment.stepIndex(index, dim, sign > 0);
             }
             rawArgs[a] = index >= 0 ? environment.getMoleculeInt(index) : 0;
         }
@@ -1044,7 +1044,7 @@ public class Organism {
                 }
             }
             if (index >= 0) {
-                index = environment.stepIndex(index, dim, sign);
+                index = environment.stepIndex(index, dim, sign > 0);
             }
         }
         ip[dim] = dimPos;

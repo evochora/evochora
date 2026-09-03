@@ -291,7 +291,7 @@ What is not changed:
 
 ## Outcome
 
-Implemented in the slices above, with two additions decided during implementation:
+Implemented in the slices above, with four additions decided during implementation:
 
 - **The cell index is confined to the model package.** `GridLayout` and every index-based method
   of `Environment` are package-private; outside `org.evochora.runtime.model` no method takes or
@@ -303,6 +303,15 @@ Implemented in the slices above, with two additions decided during implementatio
   keys that carry each cell's content, read during a sequential walk of the grid, 12 bytes per
   occupied cell, retained between captures. The memory estimate separates the world size from the
   occupied cells and names the sort batch, the third bit set and the encoder's column lists.
+- **The death-handler SPI lost `DeathContext.getFlatIndex()`.** A handler sees the molecule of
+  the cell it is visiting and may replace it; where the cell lies is no longer observable. No
+  handler in the repository used the index; an external one that did must switch to the molecule
+  accessors.
+- **Coordinates outside the world are rejected.** The environment's in-range accessors, including
+  the instruction fetch, throw an `IllegalArgumentException` for a coordinate outside the world
+  instead of addressing another cell; in a bounded world a pointer that crosses an edge therefore
+  stops the engine. Measured at about 1.4 % of the sparse profile, nothing in the detailed
+  profile.
 
 Measured on the demo server (ARM, 4 cores), same simulation, tick hash identical to main:
 

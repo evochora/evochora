@@ -42,10 +42,11 @@ import java.util.Random;
  * no owner and thus never appear among the owned cells. A qualifying run is selected
  * uniformly at random via reservoir sampling across all scan lines.
  * <p>
- * <strong>Performance:</strong> Near-zero allocation after warmup. Reusable coordinate buffers,
- * ScanLineInfo pooling, in-place DV advancement, and reservoir sampling (instead of list
- * collection) minimize GC pressure. The only per-call allocations are one {@code getShape()}
- * defensive copy and 1-4 {@link Molecule} records for the chain.
+ * <strong>Performance:</strong> Near-zero allocation after warmup. The owned cells are visited
+ * through the environment's cell views, and reusable coordinate buffers, ScanLineInfo pooling,
+ * in-place DV advancement, and reservoir sampling (instead of list collection) minimize GC
+ * pressure. The only per-call allocations are one {@code getShape()} defensive copy, the two
+ * visitor lambdas (one per owned-cell pass) and 1-4 {@link Molecule} records for the chain.
  * <p>
  * <strong>Thread Safety:</strong> Not thread-safe. Runs in the sequential post-Execute phase of
  * {@code Simulation.tick()}.
@@ -171,7 +172,7 @@ public class GeneInsertionPlugin implements IBirthHandler {
         int minDv;
         /** Maximum DV-dimension coordinate on this scan line. */
         int maxDv;
-        /** Any flat index on this scan line, for coordinate reconstruction. */
+        /** The canonical index of one owned cell on this scan line, for coordinate reconstruction. */
         int sampleCanonicalIndex;
         /** Number of owned cells on this scan line. */
         int count;
@@ -623,7 +624,7 @@ public class GeneInsertionPlugin implements IBirthHandler {
 
         final int dvDimFinal = dvDim;
 
-        // Canonical (index) order: the choice below must not depend on write history
+        // The visit runs in canonical order: the choice below must not depend on write history
         env.visitCellsOwnedBy(childId, cell -> {
             System.arraycopy(cell.coordinate(), 0, coordBuffer, 0, coordBuffer.length);
 

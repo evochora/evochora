@@ -42,9 +42,9 @@ public class Environment implements IEnvironmentReader {
      * dimension, 1024 cells per two-dimensional tile, so that the cells an organism touches lie
      * close together in memory. Every world dimension must be a multiple of it. Tests construct
      * other sides through the constructor that takes one; a side of 1 is the persisted row-major
-     * order itself.
+     * order itself. Public so that tests can name the production side instead of its value.
      */
-    private static final int TILE_SIDE = 32;
+    public static final int TILE_SIDE = 32;
 
     private final int[] shape;
     private final boolean isToroidal;
@@ -165,7 +165,8 @@ public class Environment implements IEnvironmentReader {
     /**
      * Creates a new environment whose grid is laid out in tiles of the given side. Production
      * environments use the one tile side this class defines; this constructor exists so that tests
-     * can prove a simulation result independent of the layout by running it under several.
+     * can prove a simulation result independent of the layout by running it under several, and so
+     * that tests of worlds smaller than a production tile can use a side of 1.
      *
      * @param properties The environment properties.
      * @param labelMatchingStrategy The strategy for fuzzy label matching in jump instructions.
@@ -234,13 +235,14 @@ public class Environment implements IEnvironmentReader {
     /**
      * Reads the packed molecule value of the cell at a coordinate that lies within the world.
      * Unlike {@link #getMolecule(int...)} this neither normalizes nor allocates; every component
-     * must already be in range.
+     * must already be in range, and a coordinate outside the world is rejected.
      *
      * @param coord the in-range coordinate
      * @return the packed molecule value, {@code 0} for an empty cell
+     * @throws IllegalArgumentException if a component lies outside the world
      */
     public int getMoleculeIntAt(int[] coord) {
-        return grid[layout.index(coord)];
+        return grid[indexOfInRange(coord)];
     }
 
     /**
@@ -249,21 +251,24 @@ public class Environment implements IEnvironmentReader {
      *
      * @param coord the in-range coordinate
      * @return the owner id, {@code 0} for an unowned cell
+     * @throws IllegalArgumentException if a component lies outside the world
      */
     public int getOwnerIdAt(int[] coord) {
-        return ownerGrid[layout.index(coord)];
+        return ownerGrid[indexOfInRange(coord)];
     }
 
     /**
      * Writes a molecule into the cell at a coordinate that lies within the world, keeping the
      * cell's owner. Tracked like every other write. Unlike {@link #setMolecule(Molecule, int...)}
-     * this neither normalizes nor allocates; every component must already be in range.
+     * this neither normalizes nor allocates; every component must already be in range, and a
+     * coordinate outside the world is rejected.
      *
      * @param coord    the in-range coordinate
      * @param molecule the new content
+     * @throws IllegalArgumentException if a component lies outside the world
      */
     public void setMoleculeAt(int[] coord, Molecule molecule) {
-        setMoleculeByIndex(layout.index(coord), molecule);
+        setMoleculeByIndex(indexOfInRange(coord), molecule);
     }
 
     /**
@@ -273,12 +278,17 @@ public class Environment implements IEnvironmentReader {
      * @param coord    the in-range coordinate
      * @param molecule the new content
      * @param ownerId  the new owner
+     * @throws IllegalArgumentException if a component lies outside the world
      */
     public void setMoleculeAt(int[] coord, Molecule molecule, int ownerId) {
-        writeMolecule(layout.index(coord), molecule, ownerId);
+        writeMolecule(indexOfInRange(coord), molecule, ownerId);
     }
 
     /**
+     * The size of an organism's body in cells, answered from the owner index without touching the
+     * grid. Birth handlers use it to skip organisms that own nothing before starting a visit of
+     * their cells.
+     *
      * @param ownerId an organism id
      * @return how many cells that organism owns, {@code 0} if none
      */
@@ -316,7 +326,7 @@ public class Environment implements IEnvironmentReader {
         try {
             int count = owned.size();
             if (ownedIndices.length < count) {
-                int capacity = Math.max(count, ownedIndices.length * 2);
+                int capacity = (int) Math.min(Integer.MAX_VALUE - 8, Math.max(count, 2L * ownedIndices.length));
                 ownedIndices = new int[capacity];
                 ownedKeys = new long[capacity];
             }
@@ -655,13 +665,31 @@ public class Environment implements IEnvironmentReader {
 
     /**
      * Converts an in-range coordinate into the flat index of the cell. Unlike the coordinate-based
-     * accessors this performs no toroidal normalization and no bounds check: every component must
-     * already lie within the world's shape.
+     * accessors this performs no toroidal normalization: every component must already lie within
+     * the world's shape, and a coordinate outside it is rejected.
      *
      * @param coord The coordinate, one in-range entry per dimension
      * @return The flat index of that cell
+     * @throws IllegalArgumentException if a component lies outside the world
      */
     int getIndexFromCoordinate(int[] coord) {
+        return indexOfInRange(coord);
+    }
+
+    /**
+     * The flat index of a coordinate that must name a cell of the world. The layout's tile
+     * arithmetic would map an out-of-range component onto a neighbouring tile instead of failing,
+     * so this check is what keeps the in-range accessors from silently addressing another cell.
+     *
+     * @param coord the coordinate, one entry per dimension
+     * @return the flat index of that cell
+     * @throws IllegalArgumentException if a component lies outside the world
+     */
+    private int indexOfInRange(int[] coord) {
+        if (!layout.contains(coord)) {
+            throw new IllegalArgumentException("Coordinate " + Arrays.toString(coord)
+                    + " lies outside the world of shape " + Arrays.toString(properties.getWorldShape()));
+        }
         return layout.index(coord);
     }
 
@@ -671,12 +699,12 @@ public class Environment implements IEnvironmentReader {
      *
      * @param flatIndex The flat index of the cell to step from
      * @param dim The dimension to step along
-     * @param sign {@code +1} or {@code -1}
+     * @param forward {@code true} to step towards higher coordinates, {@code false} towards lower
      * @return The flat index of the neighbouring cell, or {@code -1} if the step leaves a bounded
      *         world
      */
-    int stepIndex(int flatIndex, int dim, int sign) {
-        return layout.step(flatIndex, dim, sign);
+    int stepIndex(int flatIndex, int dim, boolean forward) {
+        return layout.step(flatIndex, dim, forward);
     }
 
 
@@ -973,7 +1001,7 @@ public class Environment implements IEnvironmentReader {
      * @param visitor receives each cell under its canonical index
      */
     public void forEachCellChangedSinceLastSample(CanonicalCellVisitor visitor) {
-        visitChangedInCanonicalOrder(changedSinceLastSample, visitor);
+        visitInCanonicalOrder(changedSinceLastSample, visitor);
     }
 
     /**
@@ -984,11 +1012,7 @@ public class Environment implements IEnvironmentReader {
      * @param visitor receives each cell under its canonical index
      */
     public void forEachCellChangedSinceLastSnapshot(CanonicalCellVisitor visitor) {
-        visitChangedInCanonicalOrder(changedSinceLastSnapshot, visitor);
-    }
-
-    private void visitChangedInCanonicalOrder(BitSet changed, CanonicalCellVisitor visitor) {
-        visitInCanonicalOrder(changed, visitor);
+        visitInCanonicalOrder(changedSinceLastSnapshot, visitor);
     }
 
     /**

@@ -12,7 +12,6 @@ import org.evochora.runtime.spi.IRandomProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-
 /**
  * Birth handler that gives each newborn organism a unique label namespace by XOR-rewriting
  * all LABEL and LABELREF molecules with a random 19-bit mask.
@@ -32,10 +31,11 @@ import org.slf4j.LoggerFactory;
  * labels through mutation. The difference is that this now requires genuine evolutionary
  * adaptation rather than happening by accident through shared label values.
  * <p>
- * <strong>Performance:</strong> Iterates only owned cells via {@code getCellsOwnedBy()},
- * reads packed ints via {@code getMoleculeInt()}, and writes via {@code setMoleculeByIndex()}.
- * Molecule record allocation occurs only for cells that are actually LABEL or LABELREF
- * (typically 5–20 per organism). Total GC pressure per birth is negligible.
+ * <strong>Performance:</strong> Visits only the newborn's owned cells through
+ * {@link Environment#visitCellsOwnedBy}, reading the packed molecule int from each cell view
+ * and writing the rewritten molecule back through the same view. Per birth this allocates the
+ * visitor lambda, its rewrite counter and one {@link Molecule} record for each cell that is
+ * actually a LABEL or LABELREF (typically 5–20 per organism); the GC pressure is negligible.
  * <p>
  * <strong>Thread Safety:</strong> Not thread-safe. Runs in the sequential post-Execute phase
  * of {@code Simulation.tick()}.

@@ -444,6 +444,11 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                 throw new IllegalArgumentException(
                     "environment.shape[" + i + "] must be >= 1, got " + shape[i]);
             }
+            if (shape[i] % Environment.TILE_SIDE != 0) {
+                throw new IllegalArgumentException(
+                    "environment.shape[" + i + "] must be a multiple of " + Environment.TILE_SIDE
+                    + ", got " + shape[i]);
+            }
         }
         EnvironmentProperties envProps = new EnvironmentProperties(shape, isToroidal);
 

@@ -76,7 +76,7 @@ class GridLayoutTest {
                     System.arraycopy(coord, 0, neighbour, 0, coord.length);
                     neighbour[dim] += sign;
                     boolean leaves = neighbour[dim] < 0 || neighbour[dim] >= shape[dim];
-                    int stepped = layout.step(index, dim, sign);
+                    int stepped = layout.step(index, dim, sign > 0);
                     if (leaves && !toroidal) {
                         assertThat(stepped).as("bounded world, from %s along %d by %d", coordString(coord), dim, sign).isEqualTo(-1);
                     } else {
@@ -101,6 +101,23 @@ class GridLayoutTest {
             assertThat(layout.canonicalOfTile(index >>> shift) + layout.canonicalOffset(index & offsetMask))
                     .as("index %d", index).isEqualTo(layout.canonical(index));
         }
+    }
+
+    @ParameterizedTest
+    @MethodSource("worlds")
+    void containsExactlyTheCoordinatesOfTheWorld(int[] shape, boolean toroidal, int tileSide) {
+        GridLayout layout = layout(shape, toroidal, tileSide);
+        int[] probe = new int[shape.length];
+        forEachCoordinate(shape, coord -> {
+            assertThat(layout.contains(coord)).as("inside %s", java.util.Arrays.toString(coord)).isTrue();
+            for (int i = 0; i < shape.length; i++) {
+                System.arraycopy(coord, 0, probe, 0, shape.length);
+                probe[i] = -1 - coord[i];
+                assertThat(layout.contains(probe)).as("negative %s", java.util.Arrays.toString(probe)).isFalse();
+                probe[i] = shape[i] + coord[i];
+                assertThat(layout.contains(probe)).as("beyond the edge %s", java.util.Arrays.toString(probe)).isFalse();
+            }
+        });
     }
 
     @Test
@@ -149,6 +166,16 @@ class GridLayoutTest {
         assertThatThrownBy(() -> layout(new int[]{20, 64}, true, 32))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessage("World dimension 0 is 20, which is not a multiple of 32; the nearest valid sizes are 32");
+    }
+
+    @Test
+    void rejectsAWorldDimensionSmallerThanOneCell() {
+        assertThatThrownBy(() -> layout(new int[]{64, 0}, true, 32))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("World dimension 1 is 0; every dimension must be at least 32");
+        assertThatThrownBy(() -> layout(new int[]{-32, 64}, true, 32))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("World dimension 0 is -32; every dimension must be at least 32");
     }
 
     @Test

@@ -74,10 +74,10 @@ class EnvironmentLayoutTest {
         Environment bounded = tiled(new int[]{64, 64}, false);
         int[] edge = {63, 5};
 
-        assertThat(torus.getCoordinateFromIndex(torus.stepIndex(torus.getIndexFromCoordinate(edge), 0, 1)))
+        assertThat(torus.getCoordinateFromIndex(torus.stepIndex(torus.getIndexFromCoordinate(edge), 0, true)))
                 .isEqualTo(new int[]{0, 5});
-        assertThat(bounded.stepIndex(bounded.getIndexFromCoordinate(edge), 0, 1)).isEqualTo(-1);
-        assertThat(bounded.getCoordinateFromIndex(bounded.stepIndex(bounded.getIndexFromCoordinate(edge), 0, -1)))
+        assertThat(bounded.stepIndex(bounded.getIndexFromCoordinate(edge), 0, true)).isEqualTo(-1);
+        assertThat(bounded.getCoordinateFromIndex(bounded.stepIndex(bounded.getIndexFromCoordinate(edge), 0, false)))
                 .isEqualTo(new int[]{62, 5});
     }
 

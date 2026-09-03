@@ -78,7 +78,10 @@ public final class GenomeHasher {
         int anchorLabelValue = -1;
         int anchorEntryIndex = -1;
 
-        // Collect all non-DATA molecules with their relative positions
+        // Collect all non-DATA molecules with their relative positions. The set iterates in an
+        // order that follows the environment's internal cell indices, and so its memory layout;
+        // the sort by relative position below removes that order, and it is total because two
+        // cells never share a position, so the hash cannot depend on the layout.
         for (int flatIndex : ownedCells) {
             int moleculeInt = environment.getMoleculeInt(flatIndex);
             int type = moleculeInt & Config.TYPE_MASK;

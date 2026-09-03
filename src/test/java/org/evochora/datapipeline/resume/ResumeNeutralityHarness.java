@@ -160,7 +160,7 @@ final class ResumeNeutralityHarness {
      * @return the assembled fixture, without any organisms yet
      */
     static Fixture newFixture(String configJson, int size, int parallelism) {
-        return newFixture(configJson, size, parallelism, 1);
+        return newFixture(configJson, size, parallelism, Environment.TILE_SIDE);
     }
 
     /**

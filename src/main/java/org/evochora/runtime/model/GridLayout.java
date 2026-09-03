@@ -34,8 +34,9 @@ import java.util.Arrays;
  */
 final class GridLayout {
 
-    private final EnvironmentProperties properties;
     private final int[] shape;
+    /** Distance, in cells, between neighbours along each dimension in the persisted row-major numbering. */
+    private final int[] canonicalStrides;
     private final boolean toroidal;
     private final int dimensions;
     private final int tileSide;
@@ -66,8 +67,11 @@ final class GridLayout {
         if (tileSide < 1 || Integer.bitCount(tileSide) != 1) {
             throw new IllegalArgumentException("Tile side must be a power of two, got " + tileSide);
         }
-        this.properties = properties;
         this.shape = properties.getWorldShape();
+        this.canonicalStrides = new int[shape.length];
+        for (int i = 0; i < shape.length; i++) {
+            canonicalStrides[i] = properties.getStride(i);
+        }
         this.toroidal = properties.isToroidal();
         this.dimensions = shape.length;
         this.tileSide = tileSide;
@@ -82,12 +86,16 @@ final class GridLayout {
         this.tileCounts = new int[dimensions];
         for (int i = 0; i < dimensions; i++) {
             int size = shape[i];
-            if (size < 1 || size % tileSide != 0) {
-                int below = size - Math.floorMod(size, tileSide);
-                int above = below + tileSide;
+            if (size < 1) {
                 throw new IllegalArgumentException("World dimension " + i + " is " + size
-                        + ", which is not a multiple of " + tileSide + "; the nearest valid sizes are "
-                        + (below > 0 ? below + " and " + above : above));
+                        + "; every dimension must be at least " + tileSide);
+            }
+            if (size % tileSide != 0) {
+                int below = size - size % tileSide;
+                int above = below + tileSide;
+                String nearest = below > 0 ? below + " and " + above : String.valueOf(above);
+                throw new IllegalArgumentException("World dimension " + i + " is " + size
+                        + ", which is not a multiple of " + tileSide + "; the nearest valid sizes are " + nearest);
             }
             tileCounts[i] = size / tileSide;
         }
@@ -126,6 +134,23 @@ final class GridLayout {
      */
     int dimensions() {
         return dimensions;
+    }
+
+    /**
+     * Whether a coordinate names a cell of the world: every component lies in
+     * {@code [0, shape[i])}. No normalization takes place, so in a toroidal world a coordinate
+     * that would wrap onto a cell is still outside.
+     *
+     * @param coord the coordinate, one entry per dimension
+     * @return {@code true} if every component is in range
+     */
+    boolean contains(int[] coord) {
+        for (int i = 0; i < dimensions; i++) {
+            if (Integer.compareUnsigned(coord[i], shape[i]) >= 0) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /**
@@ -168,16 +193,16 @@ final class GridLayout {
      * Inside a tile the step is an addition; at a tile edge the step continues in the neighbouring
      * tile, and at the world edge it wraps around in a toroidal world.
      *
-     * @param index the internal index of the cell to step from
-     * @param dim   the dimension to step along
-     * @param sign  {@code +1} or {@code -1}
+     * @param index   the internal index of the cell to step from
+     * @param dim     the dimension to step along
+     * @param forward {@code true} to step towards higher coordinates, {@code false} towards lower
      * @return the internal index of the neighbouring cell, or {@code -1} if the step leaves a
      *         bounded world
      */
-    int step(int index, int dim, int sign) {
+    int step(int index, int dim, boolean forward) {
         int unit = 1 << (tileShift * dim);
         int offset = (index >>> (tileShift * dim)) & tileMask;
-        if (sign > 0) {
+        if (forward) {
             if (offset < tileMask) {
                 return index + unit;
             }
@@ -220,7 +245,7 @@ final class GridLayout {
             int tilePosition = tile / tileStrides[i];
             tile -= tilePosition * tileStrides[i];
             int c = (tilePosition << tileShift) | ((offset >>> (tileShift * i)) & tileMask);
-            canonical += c * properties.getStride(i);
+            canonical += c * canonicalStrides[i];
         }
         return canonical;
     }
@@ -239,7 +264,7 @@ final class GridLayout {
         for (int i = 0; i < dimensions; i++) {
             int tilePosition = tile / tileStrides[i];
             tile -= tilePosition * tileStrides[i];
-            canonical += (tilePosition << tileShift) * properties.getStride(i);
+            canonical += (tilePosition << tileShift) * canonicalStrides[i];
         }
         return canonical;
     }
@@ -254,7 +279,7 @@ final class GridLayout {
     int canonicalOffset(int offset) {
         int canonical = 0;
         for (int i = 0; i < dimensions; i++) {
-            canonical += ((offset >>> (tileShift * i)) & tileMask) * properties.getStride(i);
+            canonical += ((offset >>> (tileShift * i)) & tileMask) * canonicalStrides[i];
         }
         return canonical;
     }
