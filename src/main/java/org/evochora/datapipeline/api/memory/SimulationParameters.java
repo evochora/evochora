@@ -5,7 +5,7 @@ package org.evochora.datapipeline.api.memory;
  * <p>
  * All estimates use <strong>WORST-CASE assumptions</strong>:
  * <ul>
- *   <li>Environment: 100% cell occupancy (all cells filled with organisms/energy)</li>
+ *   <li>Environment: every cell occupied unless {@link #withCellOccupancy(double)} lowers the fraction</li>
  *   <li>Organisms: maxOrganisms at the configured maximum</li>
  * </ul>
  * <p>
@@ -36,7 +36,9 @@ package org.evochora.datapipeline.api.memory;
  *                          Used to calculate total cells.
  * @param totalCells Total cells in environment = product of shape dimensions.
  *                   For [800, 600] = 480,000 cells. This is the WORST-CASE cell count
- *                   (100% occupancy assumed for all estimations).
+ *                   the size of the world, independent of occupancy.
+ * @param occupiedCells Number of cells expected to hold a molecule or an owner; equal to
+ *                      totalCells in the worst case.
  * @param maxOrganisms Maximum expected organisms in the simulation.
  *                     This should be a configured upper bound or a reasonable estimate.
  *                     For worst-case: assume all organisms alive simultaneously.
@@ -49,6 +51,7 @@ package org.evochora.datapipeline.api.memory;
 public record SimulationParameters(
     int[] environmentShape,
     long totalCells,
+    long occupiedCells,
     int maxOrganisms,
     int samplingInterval,
     int accumulatedDeltaInterval,
@@ -187,7 +190,7 @@ public record SimulationParameters(
             totalCells *= dim;
         }
         return new SimulationParameters(
-            environmentShape, totalCells, maxOrganisms,
+            environmentShape, totalCells, totalCells, maxOrganisms,
             DEFAULT_SAMPLING_INTERVAL, DEFAULT_ACCUMULATED_DELTA_INTERVAL,
             DEFAULT_SNAPSHOT_INTERVAL, DEFAULT_CHUNK_INTERVAL, DEFAULT_ESTIMATED_DELTA_RATIO
         );
@@ -214,27 +217,28 @@ public record SimulationParameters(
             totalCells *= dim;
         }
         return new SimulationParameters(
-            environmentShape, totalCells, maxOrganisms,
+            environmentShape, totalCells, totalCells, maxOrganisms,
             samplingInterval, accumulatedDeltaInterval,
             snapshotInterval, chunkInterval, estimatedDeltaRatio
         );
     }
     
     /**
-     * Returns a copy with totalCells scaled by the given occupancy factor.
+     * Returns a copy expecting the given fraction of the world's cells to be occupied.
      * <p>
-     * Used to create a realistic "expected peak" estimation alongside the
-     * worst-case (100% occupancy) estimation. All helper methods
-     * ({@link #estimateBytesPerTick()}, {@link #estimateBytesPerChunk()}, etc.)
-     * automatically reflect the reduced cell count.
+     * {@link #totalCells()} stays the size of the world: structures that hold every cell, such as
+     * the environment's grid arrays and bit sets, are estimated from it. Structures that hold only
+     * occupied cells — persisted cells, owner indices, serialization buffers — are estimated from
+     * {@link #occupiedCells()}, which this method scales. The factories start with every cell
+     * occupied, the worst case; the "expected peak" estimation uses a lower fraction.
      *
      * @param occupancy Fraction of cells expected to be occupied (0.0–1.0).
-     * @return New SimulationParameters with adjusted totalCells.
+     * @return New SimulationParameters with the world size kept and occupiedCells scaled.
      */
     public SimulationParameters withCellOccupancy(double occupancy) {
-        long adjustedCells = Math.max(1, (long) (totalCells * occupancy));
+        long occupied = Math.max(1, (long) (totalCells * occupancy));
         return new SimulationParameters(
-            environmentShape, adjustedCells, maxOrganisms,
+            environmentShape, totalCells, occupied, maxOrganisms,
             samplingInterval, accumulatedDeltaInterval,
             snapshotInterval, chunkInterval, estimatedDeltaRatio
         );
@@ -275,7 +279,7 @@ public record SimulationParameters(
      *   <li>Wrapper overhead: {@value #TICKDATA_WRAPPER_OVERHEAD} bytes</li>
      * </ul>
      *
-     * @return Estimated bytes per TickData at 100% environment occupancy and max organisms.
+     * @return Estimated bytes per TickData for the occupied cells and max organisms.
      */
     public long estimateBytesPerTick() {
         return estimateEnvironmentBytesPerTick() + estimateOrganismBytesPerTick() + TICKDATA_WRAPPER_OVERHEAD;
@@ -292,10 +296,10 @@ public record SimulationParameters(
      *   <li>Alignment: 8 bytes</li>
      * </ul>
      *
-     * @return Estimated bytes for all cells at 100% occupancy.
+     * @return Estimated bytes for all occupied cells.
      */
     public long estimateEnvironmentBytesPerTick() {
-        return (long) totalCells * BYTES_PER_CELL;
+        return occupiedCells * BYTES_PER_CELL;
     }
     
     /**
@@ -388,7 +392,7 @@ public record SimulationParameters(
      * @return Estimated bytes per delta.
      */
     public long estimateBytesPerDelta() {
-        long changedCells = (long) Math.ceil(totalCells * estimatedDeltaRatio);
+        long changedCells = (long) Math.ceil(occupiedCells * estimatedDeltaRatio);
         return changedCells * BYTES_PER_CELL 
              + (long) maxOrganisms * BYTES_PER_ORGANISM 
              + TICKDATA_WRAPPER_OVERHEAD;
@@ -441,10 +445,10 @@ public record SimulationParameters(
      * as opposed to {@link #estimateBytesPerTick()} which estimates Java heap
      * after deserialization. Used for estimating message broker memory overhead.
      *
-     * @return Estimated serialized bytes per TickData at worst-case occupancy.
+     * @return Estimated serialized bytes per TickData for the occupied cells.
      */
     public long estimateSerializedBytesPerTick() {
-        return totalCells * SERIALIZED_BYTES_PER_CELL
+        return occupiedCells * SERIALIZED_BYTES_PER_CELL
              + (long) maxOrganisms * SERIALIZED_BYTES_PER_ORGANISM
              + SERIALIZED_TICKDATA_WRAPPER_OVERHEAD;
     }
@@ -458,7 +462,7 @@ public record SimulationParameters(
      * @return Estimated serialized bytes per TickDelta.
      */
     public long estimateSerializedBytesPerDelta() {
-        long changedCells = (long) Math.ceil(totalCells * estimatedDeltaRatio);
+        long changedCells = (long) Math.ceil(occupiedCells * estimatedDeltaRatio);
         return changedCells * SERIALIZED_BYTES_PER_CELL
              + (long) maxOrganisms * SERIALIZED_BYTES_PER_ORGANISM
              + SERIALIZED_TICKDATA_WRAPPER_OVERHEAD;

@@ -1337,7 +1337,7 @@ public class ServiceManager implements IMonitorable {
                         accumulatedDeltaInterval * snapshotInterval * chunkInterval,
                         samplingInterval * accumulatedDeltaInterval * snapshotInterval * chunkInterval);
                     return new SimulationParameters(
-                        shape, totalCells, maxOrganisms,
+                        shape, totalCells, totalCells, maxOrganisms,
                         samplingInterval, accumulatedDeltaInterval,
                         snapshotInterval, chunkInterval, estimatedDeltaRatio
                     );

@@ -1036,9 +1036,11 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
      * <strong>Major components:</strong>
      * <ul>
      *   <li>Environment cells array: totalCells × 8 bytes (int molecule + int ownerId)</li>
+     *   <li>Environment tracking: three bit sets over the world, the owner index and the
+     *       canonical-order keys over the occupied cells</li>
      *   <li>Organisms: maxOrganisms × ~2KB (registers, stacks, code reference)</li>
      *   <li>Compiled programs: cached ProgramArtifacts</li>
-     *   <li>Encoder: current snapshot + accumulated deltas + change tracking BitSet</li>
+     *   <li>Encoder: current snapshot + accumulated deltas + the column lists of a capture</li>
      * </ul>
      * <p>
      * This is typically the largest memory consumer in the pipeline.
@@ -1047,7 +1049,8 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
     public List<MemoryEstimate> estimateWorstCaseMemory(SimulationParameters params) {
         List<MemoryEstimate> estimates = new ArrayList<>();
         
-        // 1. Environment core arrays - grid[] + ownerGrid[] = 8 bytes/cell
+        // 1. Environment core arrays - grid[] + ownerGrid[] = 8 bytes per cell of the world,
+        //    independent of occupancy
         long coreArrayBytes = (long) params.totalCells() * 8;
         estimates.add(new MemoryEstimate(
             serviceName + " (Environment arrays)",
@@ -1057,21 +1060,24 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         ));
         
         // 2. Environment tracking structures
-        // occupiedIndices and changedSinceLastReset: one BitSet each, totalCells / 8 bytes,
-        //   independent of occupancy.
-        // cellsByOwner: Int2ObjectOpenHashMap<IntOpenHashSet>, one int entry per owned cell. At
-        //   100% occupancy every cell is owned, so the entry count is bounded by totalCells. An
-        //   open-addressing int set with load factor 0.75 and power-of-two capacity holds between
-        //   1.33 and 2.67 key slots per entry (4 bytes each); 12 bytes per cell covers the worst
-        //   case. Each set additionally costs a fixed object, array header and map slot (~100 bytes).
+        // occupiedIndices, changedSinceLastSample, changedSinceLastSnapshot: one BitSet each,
+        //   totalCells / 8 bytes, independent of occupancy.
+        // cellsByOwner: Int2ObjectOpenHashMap<IntOpenHashSet>, one int entry per owned cell, so
+        //   bounded by the occupied cells. An open-addressing int set with load factor 0.75 and
+        //   power-of-two capacity holds between 1.33 and 2.67 key slots per entry (4 bytes each);
+        //   12 bytes per cell covers the worst case. Each set additionally costs a fixed object,
+        //   array header and map slot (~100 bytes).
+        // canonical order: one 8-byte key per cell handed out in canonical order, retained at the
+        //   size of the largest batch, which is every occupied cell at a snapshot.
         long bitSetBytes = (params.totalCells() + 7) / 8;
-        long cellsByOwnerBytes = params.totalCells() * 12L + (long) params.maxOrganisms() * 100;
-        long trackingBytes = 2 * bitSetBytes + cellsByOwnerBytes;
+        long cellsByOwnerBytes = params.occupiedCells() * 12L + (long) params.maxOrganisms() * 100;
+        long canonicalOrderBytes = params.occupiedCells() * 8L;
+        long trackingBytes = 3 * bitSetBytes + cellsByOwnerBytes + canonicalOrderBytes;
         estimates.add(new MemoryEstimate(
             serviceName + " (Environment tracking)",
             trackingBytes,
-            String.format("2 BitSets (%d cells) + cellsByOwner (%d cells × 12 bytes + %d orgs × 100 bytes)",
-                params.totalCells(), params.totalCells(), params.maxOrganisms()),
+            String.format("3 BitSets (%d cells) + cellsByOwner (%d occupied cells × 12 bytes + %d orgs × 100 bytes) + canonical order keys (%d occupied cells × 8 bytes)",
+                params.totalCells(), params.occupiedCells(), params.maxOrganisms(), params.occupiedCells()),
             MemoryEstimate.Category.SERVICE_BATCH
         ));
         
@@ -1107,7 +1113,8 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         // 4. Encoder state for delta compression
         // - currentSnapshot: 1 full TickData (bytesPerTick)
         // - currentDeltas: up to (samplesPerChunk - 1) deltas
-        // - accumulatedSinceSnapshot: BitSet for change tracking (totalCells / 8 bytes)
+        // - cell columns builder: while a snapshot is captured, three int lists with one entry
+        //   per occupied cell (12 bytes per cell) exist next to the message built from them
         long chunkBuilderBytes = 0;
         
         // Current snapshot in memory
@@ -1117,14 +1124,15 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         int maxDeltas = params.samplesPerChunk() - 1;
         chunkBuilderBytes += (long) maxDeltas * params.estimateBytesPerDelta();
 
-        // BitSet for change tracking: totalCells bits = totalCells / 8 bytes
-        chunkBuilderBytes += (params.totalCells() + 7) / 8;
+        // Column lists of the capture in progress
+        long columnListBytes = params.occupiedCells() * 12L;
+        chunkBuilderBytes += columnListBytes;
 
         estimates.add(new MemoryEstimate(
             serviceName + " (Encoder)",
             chunkBuilderBytes,
-            String.format("1 snapshot + %d deltas + BitSet (%d cells), %d samples/chunk (%d ticks)",
-                maxDeltas, params.totalCells(), params.samplesPerChunk(), params.simulationTicksPerChunk()),
+            String.format("1 snapshot + %d deltas + column lists (%d occupied cells × 12 bytes), %d samples/chunk (%d ticks)",
+                maxDeltas, params.occupiedCells(), params.samplesPerChunk(), params.simulationTicksPerChunk()),
             MemoryEstimate.Category.SERVICE_BATCH
         ));
         

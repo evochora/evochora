@@ -366,4 +366,17 @@ class SimulationParametersTest {
         assertEquals("1.5 MB", SimulationParameters.formatBytes(1024 * 1024 + 512 * 1024));
         assertEquals("2.00 GB", SimulationParameters.formatBytes(2L * 1024 * 1024 * 1024));
     }
+
+    @Test
+    void expectedOccupancyScalesOccupiedCellsButNotTheWorld() {
+        SimulationParameters params = SimulationParameters.of(new int[]{100, 100}, 10);
+        SimulationParameters expected = params.withCellOccupancy(0.25);
+
+        assertEquals(10_000, expected.totalCells(), "the world keeps its size");
+        assertEquals(2_500, expected.occupiedCells(), "a quarter of the cells is expected occupied");
+        assertEquals(10_000, params.occupiedCells(), "without a fraction every cell counts as occupied");
+        assertEquals(2_500L * SimulationParameters.BYTES_PER_CELL, expected.estimateEnvironmentBytesPerTick(),
+                "persisted cells follow the occupied count");
+        assertEquals(params.estimateEnvironmentBytesPerTick() / 4, expected.estimateEnvironmentBytesPerTick());
+    }
 }
