@@ -1032,9 +1032,11 @@ public class Environment implements IEnvironmentReader {
 
     /**
      * Hands the cells whose internal indices are set in {@code cells} to the visitor in ascending
-     * canonical order. The set is walked in internal order, which groups cells by tile, so the
-     * part of the canonical index that costs divisions is computed once per tile and each cell adds
-     * only its offset; the batch is then ordered and read back.
+     * canonical order. The set is walked in internal order, which is the order of the grid arrays,
+     * so their contents are read sequentially, and which groups cells by tile, so the part of the
+     * canonical index that costs divisions is computed once per tile and each cell adds only its
+     * offset. The batch, holding each cell's content, is then ordered and handed out without
+     * touching the grid again.
      */
     private void visitInCanonicalOrder(BitSet cells, CanonicalCellVisitor visitor) {
         int tileShift = layout.cellsPerTileShift();
@@ -1048,13 +1050,13 @@ public class Environment implements IEnvironmentReader {
                 currentTile = tile;
                 tileCanonical = layout.canonicalOfTile(tile);
             }
-            canonicalOrder.add(tileCanonical + layout.canonicalOffset(i & offsetMask), i);
+            canonicalOrder.add(tileCanonical + layout.canonicalOffset(i & offsetMask), grid[i], ownerGrid[i]);
         }
         canonicalOrder.sort();
         int count = canonicalOrder.count();
         for (int position = 0; position < count; position++) {
-            int flatIndex = canonicalOrder.internalAt(position);
-            visitor.visit(canonicalOrder.canonicalAt(position), grid[flatIndex], ownerGrid[flatIndex]);
+            visitor.visit(canonicalOrder.canonicalAt(position), canonicalOrder.moleculeAt(position),
+                    canonicalOrder.ownerAt(position));
         }
     }
     

@@ -4,12 +4,14 @@ package org.evochora.runtime.model;
  * A batch of cells ordered by canonical index, used to hand cells out of the environment in the
  * numbering they are persisted in, whatever the environment's memory layout.
  * <p>
- * Each cell is one {@code long} key: the canonical index in the upper 32 bits and the internal
- * index in the lower 32, so that ordering the keys orders the cells and keeps the index needed to
- * read each cell. Keys are collected into one grow-only buffer that is retained between batches,
- * and sorted in place by an MSD radix sort over the four bytes of the canonical index. The sort is
- * linear in the number of cells, needs no second buffer, and leaves keys with equal canonical index
- * in an unspecified mutual order — which cannot occur, as every cell has one canonical index.
+ * Each cell is one {@code long} key — the canonical index in the upper 32 bits, the packed
+ * molecule value in the lower 32 — and one {@code int} owner in a parallel buffer. A cell's content
+ * is read when it is added, in whatever order the caller walks the grid, so that the walk can be
+ * sequential over memory and the sorted batch is handed out without touching the grid again. Both
+ * buffers are grow-only and retained between batches. The batch is sorted in place by an MSD radix
+ * sort over the four bytes of the canonical index, moving key and owner together: linear in the
+ * number of cells, no second buffer, and equal canonical indices cannot occur, as every cell has
+ * one.
  * <p>
  * Thread safety: not thread-safe; one instance belongs to one environment and is used only from
  * the thread that serializes it.
@@ -24,6 +26,7 @@ final class CanonicalCellOrder {
     private static final int LOW_BYTE_SHIFT = 32;
 
     private long[] keys = new long[0];
+    private int[] owners = new int[0];
     private int count = 0;
 
     /** Empties the batch; the buffer is kept. */
@@ -32,16 +35,21 @@ final class CanonicalCellOrder {
     }
 
     /**
-     * Adds a cell to the batch.
+     * Adds a cell with its content to the batch.
      *
      * @param canonicalIndex the cell's canonical index
-     * @param internalIndex  the cell's internal index
+     * @param moleculeInt    the cell's packed molecule value
+     * @param ownerId        the id of the organism owning the cell, {@code 0} if none
      */
-    void add(int canonicalIndex, int internalIndex) {
+    void add(int canonicalIndex, int moleculeInt, int ownerId) {
         if (count == keys.length) {
-            keys = java.util.Arrays.copyOf(keys, Math.max(1024, keys.length * 2));
+            int capacity = Math.max(1024, keys.length * 2);
+            keys = java.util.Arrays.copyOf(keys, capacity);
+            owners = java.util.Arrays.copyOf(owners, capacity);
         }
-        keys[count++] = ((long) canonicalIndex << 32) | (internalIndex & 0xFFFFFFFFL);
+        keys[count] = ((long) canonicalIndex << 32) | (moleculeInt & 0xFFFFFFFFL);
+        owners[count] = ownerId;
+        count++;
     }
 
     /** Orders the batch by canonical index. */
@@ -66,10 +74,18 @@ final class CanonicalCellOrder {
 
     /**
      * @param position a position in the sorted batch, {@code 0 <= position < count()}
-     * @return the internal index of the cell at that position
+     * @return the packed molecule value of the cell at that position
      */
-    int internalAt(int position) {
+    int moleculeAt(int position) {
         return (int) keys[position];
+    }
+
+    /**
+     * @param position a position in the sorted batch, {@code 0 <= position < count()}
+     * @return the owner id of the cell at that position
+     */
+    int ownerAt(int position) {
+        return owners[position];
     }
 
     /**
@@ -111,6 +127,9 @@ final class CanonicalCellOrder {
                     int slot = bucketNext[target]++;
                     keys[i] = keys[slot];
                     keys[slot] = key;
+                    int owner = owners[i];
+                    owners[i] = owners[slot];
+                    owners[slot] = owner;
                 }
             }
             bucketNext[b] = i;
@@ -131,12 +150,15 @@ final class CanonicalCellOrder {
     private void insertionSort(int from, int to) {
         for (int i = from + 1; i < to; i++) {
             long key = keys[i];
+            int owner = owners[i];
             int j = i - 1;
             while (j >= from && Long.compareUnsigned(keys[j], key) > 0) {
                 keys[j + 1] = keys[j];
+                owners[j + 1] = owners[j];
                 j--;
             }
             keys[j + 1] = key;
+            owners[j + 1] = owner;
         }
     }
 }

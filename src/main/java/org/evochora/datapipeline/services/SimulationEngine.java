@@ -1067,16 +1067,17 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         //   power-of-two capacity holds between 1.33 and 2.67 key slots per entry (4 bytes each);
         //   12 bytes per cell covers the worst case. Each set additionally costs a fixed object,
         //   array header and map slot (~100 bytes).
-        // canonical order: one 8-byte key per cell handed out in canonical order, retained at the
-        //   size of the largest batch, which is every occupied cell at a snapshot.
+        // canonical order: one 8-byte key and one 4-byte owner per cell handed out in canonical
+        //   order, retained at the size of the largest batch, which is every occupied cell at a
+        //   snapshot.
         long bitSetBytes = (params.totalCells() + 7) / 8;
         long cellsByOwnerBytes = params.occupiedCells() * 12L + (long) params.maxOrganisms() * 100;
-        long canonicalOrderBytes = params.occupiedCells() * 8L;
+        long canonicalOrderBytes = params.occupiedCells() * 12L;
         long trackingBytes = 3 * bitSetBytes + cellsByOwnerBytes + canonicalOrderBytes;
         estimates.add(new MemoryEstimate(
             serviceName + " (Environment tracking)",
             trackingBytes,
-            String.format("3 BitSets (%d cells) + cellsByOwner (%d occupied cells × 12 bytes + %d orgs × 100 bytes) + canonical order keys (%d occupied cells × 8 bytes)",
+            String.format("3 BitSets (%d cells) + cellsByOwner (%d occupied cells × 12 bytes + %d orgs × 100 bytes) + canonical order batch (%d occupied cells × 12 bytes)",
                 params.totalCells(), params.occupiedCells(), params.maxOrganisms(), params.occupiedCells()),
             MemoryEstimate.Category.SERVICE_BATCH
         ));
