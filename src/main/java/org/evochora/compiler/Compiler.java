@@ -28,7 +28,6 @@ import org.evochora.compiler.diagnostics.CompilerLogger;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.module.IDependencyInfo;
 import org.evochora.compiler.model.ast.AstNode;
-import org.evochora.compiler.model.ir.IrItem;
 import org.evochora.compiler.frontend.irgen.DefaultAstNodeToIrConverter;
 import org.evochora.compiler.frontend.irgen.IrConverterRegistry;
 import org.evochora.compiler.frontend.irgen.IrGenerator;
@@ -48,8 +47,8 @@ import org.evochora.compiler.backend.link.LinkingContext;
 import org.evochora.compiler.backend.link.LinkingDirectiveRegistry;
 import org.evochora.compiler.backend.link.LinkingRegistry;
 import org.evochora.compiler.backend.emit.EmissionContributorRegistry;
-import org.evochora.compiler.backend.emit.EmissionRegistry;
-import org.evochora.compiler.backend.emit.IEmissionRule;
+import org.evochora.compiler.backend.rewrite.IrRewriter;
+import org.evochora.compiler.backend.rewrite.RewriteRegistry;
 import org.evochora.compiler.backend.emit.Emitter;
 import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 
@@ -265,28 +264,20 @@ public class Compiler implements ICompiler {
         ScopeTracker scopeTracker = new ScopeTracker(symbolTable);
         symbolTable.setCurrentModule(rootAliasChain);
         AstPostProcessor astPostProcessor = new AstPostProcessor(symbolTable, postProcessTracker, scopeTracker, postProcessRegistry);
-
-        // Process all AST nodes, not just the first one
-        for (int i = 0; i < ast.size(); i++) {
-            ast.set(i, astPostProcessor.process(ast.get(i)));
-        }
+        List<AstNode> resolvedAst = astPostProcessor.process(ast);
 
         // Phase 7: IR Generation (convert AST to intermediate representation)
         IrConverterRegistry irRegistry = IrConverterRegistry.initialize(new DefaultAstNodeToIrConverter());
         irRegistry.registerAll(featureRegistry.irConverters());
         IrGenerator irGenerator = new IrGenerator(diagnostics, irRegistry);
-        IrProgram irProgram = irGenerator.generate(ast, programName, rootAliasChain);
+        IrProgram irProgram = irGenerator.generate(resolvedAst, programName, rootAliasChain);
         failOnErrors();
 
-        // Phase 8: IR Rewriting (apply emission rules)
+        // Phase 8: IR Rewriting (apply the rewrite rules of the features)
         RuntimeInstructionSetAdapter isa = new RuntimeInstructionSetAdapter();
-        EmissionRegistry emissionRegistry = new EmissionRegistry();
-        emissionRegistry.registerAll(featureRegistry.emissionRules());
-        List<IrItem> rewritten = irProgram.items();
-        for (IEmissionRule rule : emissionRegistry.rules()) {
-            rewritten = rule.apply(rewritten, isa);
-        }
-        IrProgram rewrittenIr = new IrProgram(programName, rewritten);
+        RewriteRegistry rewriteRegistry = new RewriteRegistry();
+        rewriteRegistry.registerAll(featureRegistry.rewriteRules());
+        IrProgram rewrittenIr = new IrRewriter(rewriteRegistry).rewrite(irProgram, isa);
 
         // Phase 9: Layout (assign addresses to instructions)
         LayoutDirectiveRegistry layoutRegistry = new LayoutDirectiveRegistry((directive, context) -> {

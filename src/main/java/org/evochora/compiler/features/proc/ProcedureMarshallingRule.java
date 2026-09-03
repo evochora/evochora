@@ -1,6 +1,6 @@
 package org.evochora.compiler.features.proc;
 
-import org.evochora.compiler.backend.emit.IEmissionRule;
+import org.evochora.compiler.backend.rewrite.IRewriteRule;
 import org.evochora.compiler.isa.IInstructionSet;
 import org.evochora.compiler.model.ir.*;
 
@@ -16,7 +16,7 @@ import java.util.stream.Stream;
  * Inserts procedure prologue and epilogue code for parameter marshalling.
  * It handles standard and conditional RET instructions.
  */
-public class ProcedureMarshallingRule implements IEmissionRule {
+public class ProcedureMarshallingRule implements IRewriteRule {
 
     @Override
     public List<IrItem> apply(List<IrItem> items, IInstructionSet isa) {

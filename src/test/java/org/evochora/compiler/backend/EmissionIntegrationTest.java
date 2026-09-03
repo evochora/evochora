@@ -1,7 +1,7 @@
 package org.evochora.compiler.backend;
 
-import org.evochora.compiler.backend.emit.EmissionRegistry;
-import org.evochora.compiler.backend.emit.IEmissionRule;
+import org.evochora.compiler.backend.rewrite.RewriteRegistry;
+import org.evochora.compiler.backend.rewrite.IRewriteRule;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.irgen.DefaultAstNodeToIrConverter;
 import org.evochora.compiler.frontend.irgen.IrConverterRegistry;
@@ -113,11 +113,11 @@ public class EmissionIntegrationTest {
         List<IrItem> items = new ArrayList<>(ir.items());
 
         // Apply emission rules
-        EmissionRegistry eReg = new EmissionRegistry();
+        RewriteRegistry eReg = new RewriteRegistry();
         eReg.register(new org.evochora.compiler.features.proc.ProcedureMarshallingRule());
         eReg.register(new org.evochora.compiler.features.proc.CallerMarshallingRule());
         List<IrItem> rewritten = items;
-        for (IEmissionRule r : eReg.rules()) rewritten = r.apply(rewritten, new RuntimeInstructionSetAdapter());
+        for (IRewriteRule r : eReg.rules()) rewritten = r.apply(rewritten, new RuntimeInstructionSetAdapter());
 
         // Verify caller marshalling sequence around CALL
         int newCallIdx = -1;

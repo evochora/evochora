@@ -1,7 +1,7 @@
 package org.evochora.compiler;
 
 import org.evochora.compiler.backend.emit.IEmissionContributor;
-import org.evochora.compiler.backend.emit.IEmissionRule;
+import org.evochora.compiler.backend.rewrite.IRewriteRule;
 import org.evochora.compiler.backend.layout.ILayoutDirectiveHandler;
 import org.evochora.compiler.backend.link.ILinkingDirectiveHandler;
 import org.evochora.compiler.backend.link.ILinkingRule;
@@ -137,7 +137,7 @@ public interface IFeatureRegistrationContext {
 	 *
 	 * @param rule The rule that rewrites IR items (e.g., procedure marshalling).
 	 */
-	void emissionRule(IEmissionRule rule);
+	void rewriteRule(IRewriteRule rule);
 
 	// Phase 9: Layout
 

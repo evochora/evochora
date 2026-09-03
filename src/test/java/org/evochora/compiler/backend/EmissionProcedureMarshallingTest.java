@@ -1,8 +1,8 @@
 package org.evochora.compiler.backend;
 
 import org.evochora.compiler.api.SourceInfo;
-import org.evochora.compiler.backend.emit.EmissionRegistry;
-import org.evochora.compiler.backend.emit.IEmissionRule;
+import org.evochora.compiler.backend.rewrite.RewriteRegistry;
+import org.evochora.compiler.backend.rewrite.IRewriteRule;
 import org.evochora.compiler.features.proc.ProcedureMarshallingRule;
 import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 import org.evochora.compiler.model.ir.*;
@@ -34,11 +34,11 @@ public class EmissionProcedureMarshallingTest {
     }
 
     private List<IrItem> runFullEmission(List<IrItem> items) {
-        EmissionRegistry reg = new EmissionRegistry();
+        RewriteRegistry reg = new RewriteRegistry();
         reg.register(new ProcedureMarshallingRule());
         reg.register(new org.evochora.compiler.features.proc.CallerMarshallingRule());
         List<IrItem> out = items;
-        for (IEmissionRule r : reg.rules()) {
+        for (IRewriteRule r : reg.rules()) {
             out = r.apply(out, ISA);
         }
         return out;

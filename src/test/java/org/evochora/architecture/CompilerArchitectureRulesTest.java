@@ -18,7 +18,7 @@ import com.tngtech.archunit.lang.SimpleConditionEvent;
 import org.evochora.compiler.ICompilerFeature;
 import org.evochora.compiler.StandardFeatures;
 import org.evochora.compiler.backend.emit.IEmissionContributor;
-import org.evochora.compiler.backend.emit.IEmissionRule;
+import org.evochora.compiler.backend.rewrite.IRewriteRule;
 import org.evochora.compiler.backend.layout.ILayoutDirectiveHandler;
 import org.evochora.compiler.backend.link.ILinkingDirectiveHandler;
 import org.evochora.compiler.backend.link.ILinkingRule;
@@ -62,6 +62,7 @@ class CompilerArchitectureRulesTest {
             COMPILER + ".frontend.tokenmap.TokenMapGenerator",
             COMPILER + ".frontend.postprocess.AstPostProcessor",
             COMPILER + ".frontend.irgen.IrGenerator",
+            COMPILER + ".backend.rewrite.IrRewriter",
             COMPILER + ".backend.layout.LayoutEngine",
             COMPILER + ".backend.link.Linker",
             COMPILER + ".backend.emit.Emitter",
@@ -77,6 +78,7 @@ class CompilerArchitectureRulesTest {
             COMPILER + ".frontend.tokenmap..",
             COMPILER + ".frontend.postprocess..",
             COMPILER + ".frontend.irgen..",
+            COMPILER + ".backend.rewrite..",
             COMPILER + ".backend.layout..",
             COMPILER + ".backend.link..",
             COMPILER + ".backend.emit..",
@@ -208,7 +210,7 @@ class CompilerArchitectureRulesTest {
                 .or().implement(ILayoutDirectiveHandler.class)
                 .or().implement(ILinkingRule.class)
                 .or().implement(ILinkingDirectiveHandler.class)
-                .or().implement(IEmissionRule.class)
+                .or().implement(IRewriteRule.class)
                 .or().implement(IEmissionContributor.class)
                 .should().dependOnClassesThat().resideInAnyPackage(
                         COMPILER + ".frontend..",

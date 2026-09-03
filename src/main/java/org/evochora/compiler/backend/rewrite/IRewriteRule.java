@@ -1,4 +1,4 @@
-package org.evochora.compiler.backend.emit;
+package org.evochora.compiler.backend.rewrite;
 
 import org.evochora.compiler.isa.IInstructionSet;
 import org.evochora.compiler.model.ir.IrItem;
@@ -6,9 +6,11 @@ import org.evochora.compiler.model.ir.IrItem;
 import java.util.List;
 
 /**
- * Rewriter rule that can expand or modify the IR stream before machine code emission.
+ * A rule of the IR rewriting phase: it takes the whole IR item stream and returns the stream
+ * it should be, expanding or modifying items. The rules run in registration order, each on
+ * the output of the one before, after IR generation and before layout.
  */
-public interface IEmissionRule {
+public interface IRewriteRule {
 
 	/**
 	 * Applies this rule to the given IR item stream.
@@ -20,6 +22,3 @@ public interface IEmissionRule {
 	 */
 	List<IrItem> apply(List<IrItem> items, IInstructionSet isa);
 }
-
-
-

@@ -1,6 +1,6 @@
 package org.evochora.compiler.features.proc;
 
-import org.evochora.compiler.backend.emit.IEmissionRule;
+import org.evochora.compiler.backend.rewrite.IRewriteRule;
 import org.evochora.compiler.isa.IInstructionSet;
 import org.evochora.compiler.model.ir.*;
 
@@ -13,7 +13,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * Inserts caller-side PUSH/POP sequences around CALL instructions.
  * This rule handles both standard and conditional calls, including REF/VAL parameter passing.
  */
-public final class CallerMarshallingRule implements IEmissionRule {
+public final class CallerMarshallingRule implements IRewriteRule {
 
     @Override
     public List<IrItem> apply(List<IrItem> items, IInstructionSet isa) {

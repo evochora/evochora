@@ -23,8 +23,8 @@ public class ProcFeature implements ICompilerFeature {
         ctx.analysisHandler(ProcedureNode.class, new ProcedureAnalysisHandler());
         ctx.tokenMapContributor(ProcedureNode.class, new ProcedureTokenMapContributor());
         ctx.irConverter(ProcedureNode.class, new ProcedureNodeConverter());
-        ctx.emissionRule(new ProcedureMarshallingRule());
-        ctx.emissionRule(new CallerMarshallingRule());
+        ctx.rewriteRule(new ProcedureMarshallingRule());
+        ctx.rewriteRule(new CallerMarshallingRule());
         ctx.linkingRule(new CallSiteBindingRule());
         ctx.emissionContributor(new ProcedureEmissionContributor());
     }

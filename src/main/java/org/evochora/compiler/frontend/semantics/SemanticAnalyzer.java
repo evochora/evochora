@@ -30,12 +30,16 @@ public class SemanticAnalyzer {
 
     private final DiagnosticsEngine diagnostics;
     private final SymbolTable symbolTable;
+    private final DependencyGraph graph;
+    private final String mainFilePath;
+    private final String rootAliasChain;
     private final AnalysisHandlerRegistry registry;
     private final ModuleSetupRegistry setupRegistry;
     private final ModuleContextTracker contextTracker;
 
     /**
-     * Constructs a semantic analyzer with an externally built analysis registry.
+     * Constructs a semantic analyzer with an externally built analysis registry. Nothing is
+     * analyzed and the symbol table is not touched until {@link #analyze(List)} is called.
      *
      * @param diagnostics    The diagnostics engine for reporting errors.
      * @param symbolTable    The symbol table to use for analysis.
@@ -52,24 +56,27 @@ public class SemanticAnalyzer {
                             ModuleSetupRegistry setupRegistry) {
         this.diagnostics = diagnostics;
         this.symbolTable = symbolTable;
+        this.graph = graph;
+        this.mainFilePath = mainFilePath;
+        this.rootAliasChain = rootAliasChain;
         this.contextTracker = new ModuleContextTracker(symbolTable);
         this.registry = registry;
         this.setupRegistry = setupRegistry;
-
-        if (graph != null && rootAliasChain != null) {
-            setupModuleRelationships(graph, mainFilePath, rootAliasChain);
-        }
     }
 
     /**
      * Analyzes the given list of AST statements.
      * This is the main entry point for the semantic analysis phase.
-     * It performs two passes: one to collect top-level symbols (labels, procedures),
+     * It first sets up the module relationships from the dependency graph, if there is one,
+     * then performs two passes: one to collect top-level symbols (labels, procedures),
      * and a second to analyze the statements in detail.
      *
      * @param statements The list of top-level AST nodes to analyze.
      */
     public void analyze(List<AstNode> statements) {
+        if (graph != null && rootAliasChain != null) {
+            setupModuleRelationships(graph, mainFilePath, rootAliasChain);
+        }
         collectSymbols(statements);
         analyzeStatements(statements);
     }

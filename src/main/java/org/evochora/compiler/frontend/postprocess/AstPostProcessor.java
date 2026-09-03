@@ -9,7 +9,9 @@ import org.evochora.compiler.frontend.semantics.ScopeTracker;
 import org.evochora.compiler.model.symbols.ResolvedSymbol;
 import org.evochora.compiler.model.symbols.SymbolTable;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -58,6 +60,22 @@ public class AstPostProcessor implements IPostProcessContext {
         this.contextTracker = contextTracker;
         this.scopeTracker = scopeTracker;
         this.registry = registry;
+    }
+
+    /**
+     * Transforms every top-level statement of a program in order. The module and scope
+     * context carries from one statement to the next, as it does in the source, so the
+     * statements have to be given in program order.
+     *
+     * @param statements The top-level AST nodes of the program.
+     * @return A new list with each statement transformed; the given list is not modified.
+     */
+    public List<AstNode> process(List<AstNode> statements) {
+        List<AstNode> transformed = new ArrayList<>(statements.size());
+        for (AstNode statement : statements) {
+            transformed.add(process(statement));
+        }
+        return transformed;
     }
 
     /**

@@ -1,7 +1,7 @@
 package org.evochora.compiler;
 
 import org.evochora.compiler.backend.emit.IEmissionContributor;
-import org.evochora.compiler.backend.emit.IEmissionRule;
+import org.evochora.compiler.backend.rewrite.IRewriteRule;
 import org.evochora.compiler.backend.layout.ILayoutDirectiveHandler;
 import org.evochora.compiler.backend.link.ILinkingDirectiveHandler;
 import org.evochora.compiler.backend.link.ILinkingRule;
@@ -51,7 +51,7 @@ public class FeatureRegistry implements IFeatureRegistrationContext {
 	// List-based registrations preserve registration order. Within a feature, the feature
 	// controls handler ordering. No guardDuplicate — ordered sequential execution is intended.
 	private final List<IDependencyScanHandler> dependencyScanHandlers = new ArrayList<>();
-	private final List<IEmissionRule> emissionRules = new ArrayList<>();
+	private final List<IRewriteRule> rewriteRules = new ArrayList<>();
 	private final List<ILinkingRule> linkingRules = new ArrayList<>();
 	private final List<IEmissionContributor> emissionContributors = new ArrayList<>();
 
@@ -122,8 +122,8 @@ public class FeatureRegistry implements IFeatureRegistrationContext {
 	}
 
 	@Override
-	public void emissionRule(IEmissionRule rule) {
-		emissionRules.add(rule);
+	public void rewriteRule(IRewriteRule rule) {
+		rewriteRules.add(rule);
 	}
 
 	@Override
@@ -284,8 +284,8 @@ public class FeatureRegistry implements IFeatureRegistrationContext {
 	 *
 	 * @return An unmodifiable view of the live list.
 	 */
-	public List<IEmissionRule> emissionRules() {
-		return Collections.unmodifiableList(emissionRules);
+	public List<IRewriteRule> rewriteRules() {
+		return Collections.unmodifiableList(rewriteRules);
 	}
 
 	/**
