@@ -3,6 +3,7 @@ package org.evochora.compiler.backend.layout;
 import org.evochora.compiler.api.CompilationException;
 import org.evochora.compiler.api.PlacedMolecule;
 import org.evochora.compiler.api.SourceInfo;
+import org.evochora.compiler.isa.IInstructionSet;
 import org.evochora.runtime.model.EnvironmentProperties;
 
 import java.util.ArrayDeque;
@@ -230,6 +231,32 @@ public final class LayoutContext {
     public void placeOperand(SourceInfo src) throws CompilationException {
         initialize();
         placeAtCurrent(src);
+    }
+
+    /**
+     * Places a whole instruction: the opcode cell, then one cell per argument of the
+     * signature, where a vector argument takes one cell per dimension of the world.
+     *
+     * @param opcode    The opcode name, for the error a vector argument raises without a world.
+     * @param signature The instruction's ISA signature, listing its argument kinds in order.
+     * @param src       The source information recorded for every placed cell; may be null.
+     * @throws CompilationException if a coordinate is already occupied, or if the instruction
+     *         needs a world shape and none was supplied.
+     */
+    public void placeInstruction(String opcode, IInstructionSet.Signature signature, SourceInfo src) throws CompilationException {
+        placeOpcode(src);
+        for (IInstructionSet.ArgKind kind : signature.argumentTypes()) {
+            if (kind == IInstructionSet.ArgKind.VECTOR) {
+                if (envProps == null || envProps.getWorldShape() == null || envProps.getWorldShape().length == 0) {
+                    throw new CompilationException("Instruction " + opcode + " requires vector arguments, which need a world context, but no environment properties were provided.", src);
+                }
+                for (int k = 0; k < envProps.getWorldShape().length; k++) {
+                    placeOperand(src);
+                }
+            } else {
+                placeOperand(src);
+            }
+        }
     }
 
     /**
