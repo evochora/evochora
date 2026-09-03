@@ -14,42 +14,39 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * Unit tests for dynamic handler registration on {@link PreProcessorContext}.
+ * Unit tests for {@link PreProcessorHandlerRegistry}: the lookup by name, and what happens
+ * when a name is registered a second time, as a macro definition that is included twice does.
  */
-class PreProcessorContextDynamicHandlerTest {
+@Tag("unit")
+class PreProcessorHandlerRegistryTest {
 
-    private final PreProcessorContext context = new PreProcessorContext();
+    private final PreProcessorHandlerRegistry registry = new PreProcessorContext().handlers();
 
     @Test
-    @Tag("unit")
     void registerAndRetrieve() {
         IPreProcessorHandler handler = createHandler("INC", List.of("R"), List.of(opcode("ADDI")));
-        context.registerDynamicHandler("INC", handler);
+        registry.register("INC", handler);
 
-        Optional<IPreProcessorHandler> result = context.getDynamicHandler("INC");
+        Optional<IPreProcessorHandler> result = registry.get("INC");
         assertThat(result).isPresent().containsSame(handler);
     }
 
     @Test
-    @Tag("unit")
-    void getDynamicHandler_unregistered_returnsEmpty() {
-        Optional<IPreProcessorHandler> result = context.getDynamicHandler("NONEXISTENT");
-        assertThat(result).isEmpty();
+    void unregisteredNameReturnsEmpty() {
+        assertThat(registry.get("NONEXISTENT")).isEmpty();
     }
 
     @Test
-    @Tag("unit")
-    void caseInsensitive() {
+    void lookupIsCaseInsensitive() {
         IPreProcessorHandler handler = createHandler("FOO", List.of(), List.of(opcode("NOP")));
-        context.registerDynamicHandler("FOO", handler);
+        registry.register("FOO", handler);
 
-        assertThat(context.getDynamicHandler("foo")).isPresent().containsSame(handler);
-        assertThat(context.getDynamicHandler("Foo")).isPresent().containsSame(handler);
+        assertThat(registry.get("foo")).isPresent().containsSame(handler);
+        assertThat(registry.get("Foo")).isPresent().containsSame(handler);
     }
 
     @Test
-    @Tag("unit")
-    void idempotentReRegistration() {
+    void registeringTheSameDefinitionAgainIsIgnored() {
         Token nameToken = identifier("INC");
         List<Token> params = List.of(identifier("R"));
         List<Token> body = List.of(opcode("ADDI"));
@@ -57,30 +54,29 @@ class PreProcessorContextDynamicHandlerTest {
         IPreProcessorHandler handler1 = new MacroExpansionHandler(new MacroDefinition(nameToken, params, body));
         IPreProcessorHandler handler2 = new MacroExpansionHandler(new MacroDefinition(nameToken, params, body));
 
-        context.registerDynamicHandler("INC", handler1);
-        context.registerDynamicHandler("INC", handler2);
+        registry.register("INC", handler1);
+        registry.register("INC", handler2);
 
-        assertThat(context.getDynamicHandler("INC")).isPresent().containsSame(handler1);
+        assertThat(registry.get("INC")).isPresent().containsSame(handler1);
     }
 
     @Test
-    @Tag("unit")
-    void conflictingReRegistration_throws() {
+    void registeringADifferentHandlerUnderAHeldNameThrows() {
         // Two macros of the same name from two places are two definitions
         IPreProcessorHandler handler1 = createHandler("FOO", List.of(), List.of(opcode("NOP")));
         IPreProcessorHandler handler2 = new MacroExpansionHandler(
                 new MacroDefinition(identifierAt("FOO", 7), List.of(), List.of(opcode("SETI"))));
 
-        context.registerDynamicHandler("FOO", handler1);
+        registry.register("FOO", handler1);
 
-        assertThatThrownBy(() -> context.registerDynamicHandler("FOO", handler2))
+        assertThatThrownBy(() -> registry.register("FOO", handler2))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("FOO");
     }
 
     private static IPreProcessorHandler createHandler(String name, List<String> paramNames, List<Token> body) {
         Token nameToken = identifier(name);
-        List<Token> params = paramNames.stream().map(PreProcessorContextDynamicHandlerTest::identifier).toList();
+        List<Token> params = paramNames.stream().map(PreProcessorHandlerRegistryTest::identifier).toList();
         return new MacroExpansionHandler(new MacroDefinition(nameToken, params, body));
     }
 

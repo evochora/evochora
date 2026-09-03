@@ -8,7 +8,6 @@ import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.util.SourceRootResolver;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
 import org.evochora.compiler.frontend.preprocessor.PreProcessorContext;
-import org.evochora.compiler.frontend.preprocessor.PreProcessorHandlerRegistry;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 import org.evochora.runtime.isa.Instruction;
@@ -32,13 +31,13 @@ public class RepeatDirectiveTest {
     }
 
     private PreProcessor createPreProcessor(List<Token> initialTokens, DiagnosticsEngine diagnostics) {
-        PreProcessorHandlerRegistry registry = new PreProcessorHandlerRegistry();
-        registry.register(".REPEAT", new RepeatDirectiveHandler());
-        registry.register("^", new CaretDirectiveHandler());
-        registry.register(":", new org.evochora.compiler.features.label.ColonLabelHandler());
+        PreProcessorContext context = new PreProcessorContext();
+        context.handlers().register(".REPEAT", new RepeatDirectiveHandler());
+        context.handlers().register("^", new CaretDirectiveHandler());
+        context.handlers().register(":", new org.evochora.compiler.features.label.ColonLabelHandler());
         return new PreProcessor(initialTokens, diagnostics,
                 new SourceRootResolver(List.of(new SourceRoot(".", null)), Path.of("")),
-                registry, new PreProcessorContext());
+                context);
     }
 
     /**

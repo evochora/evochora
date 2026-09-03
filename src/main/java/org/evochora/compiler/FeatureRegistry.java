@@ -182,7 +182,7 @@ public class FeatureRegistry implements IFeatureRegistrationContext {
 	 * Returns the statically registered Phase 2 preprocessor handlers, keyed by the upper-cased token
 	 * text that triggers them. Handlers that a running preprocessor adds for itself — macro expansion,
 	 * for instance — are held by
-	 * {@link org.evochora.compiler.frontend.preprocessor.PreProcessorContext#registerDynamicHandler}
+	 * {@link org.evochora.compiler.frontend.preprocessor.PreProcessorContext#handlers()}
 	 * and never appear here. A second registration under the same name, compared case-insensitively,
 	 * is rejected when it happens.
 	 *

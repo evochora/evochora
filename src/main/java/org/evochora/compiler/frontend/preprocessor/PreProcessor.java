@@ -15,7 +15,6 @@ public class PreProcessor {
 
     private final List<Token> tokens;
     private final DiagnosticsEngine diagnostics;
-    private final PreProcessorHandlerRegistry directiveRegistry;
     private final SourceRootResolver resolver;
     private int current = 0;
     private final PreProcessorContext ppContext;
@@ -26,43 +25,30 @@ public class PreProcessor {
      * @param initialTokens  The initial list of tokens from the lexer.
      * @param diagnostics    The engine for reporting errors and warnings.
      * @param resolver       The source root resolver for path resolution.
-     * @param registry       The pre-built handler registry for this preprocessing run.
-     * @param ppContext       The shared preprocessor context (alias chains, module tokens, etc.).
+     * @param ppContext      The shared preprocessor context: the handlers to dispatch to, the
+     *                       pre-lexed tokens of includable files, the open inclusions.
      */
     public PreProcessor(List<Token> initialTokens, DiagnosticsEngine diagnostics, SourceRootResolver resolver,
-                        PreProcessorHandlerRegistry registry, PreProcessorContext ppContext) {
+                        PreProcessorContext ppContext) {
         this.tokens = new ArrayList<>(initialTokens);
         this.diagnostics = diagnostics;
         this.resolver = resolver;
-        this.directiveRegistry = registry;
         this.ppContext = ppContext;
     }
 
     /**
-     * Runs the preprocessor on the token stream. It iterates through the tokens,
-     * handling directives and expanding macros until no more expansions can be made.
-     * @return The preprocessing result containing the expanded tokens and included source contents.
+     * Runs the preprocessor on the token stream. Every token is looked up in the context's
+     * handler registry; a token with a handler is handed to it, which rewrites the stream at
+     * the current position, and the walk continues from there. A token without one is left as
+     * it is.
+     * @return The preprocessing result containing the expanded tokens.
      */
     public PreProcessorResult expand() {
         while (current < tokens.size()) {
-            Token token = peek();
-            boolean streamWasModified = false;
-
-            Optional<IPreProcessorHandler> handlerOpt = directiveRegistry.get(token.text());
-            if (handlerOpt.isPresent()) {
-                handlerOpt.get().process(this, ppContext);
-                streamWasModified = true;
-            }
-
-            if (!streamWasModified) {
-                Optional<IPreProcessorHandler> dynamicOpt = ppContext.getDynamicHandler(token.text());
-                if (dynamicOpt.isPresent()) {
-                    dynamicOpt.get().process(this, ppContext);
-                    streamWasModified = true;
-                }
-            }
-
-            if (!streamWasModified) {
+            Optional<IPreProcessorHandler> handler = ppContext.handlers().get(peek().text());
+            if (handler.isPresent()) {
+                handler.get().process(this, ppContext);
+            } else {
                 current++;
             }
         }

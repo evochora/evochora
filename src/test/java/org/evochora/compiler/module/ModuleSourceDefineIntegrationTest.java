@@ -29,7 +29,6 @@ import org.evochora.compiler.frontend.postprocess.AstPostProcessor;
 import org.evochora.compiler.features.ctx.PopCtxPreProcessorHandler;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
 import org.evochora.compiler.frontend.preprocessor.PreProcessorContext;
-import org.evochora.compiler.frontend.preprocessor.PreProcessorHandlerRegistry;
 import org.evochora.compiler.frontend.preprocessor.PreProcessorResult;
 import org.evochora.compiler.features.importdir.ImportSourceHandler;
 import org.evochora.compiler.features.macro.MacroDirectiveHandler;
@@ -237,10 +236,6 @@ class ModuleSourceDefineIntegrationTest {
         List<Token> tokens = new ArrayList<>(lexer.scanTokens());
         SourceRootResolver circularResolver = new SourceRootResolver(
                 List.of(new SourceRoot(".", null)), tempDir);
-        PreProcessorHandlerRegistry registry = new PreProcessorHandlerRegistry();
-        registry.register(".SOURCE", new SourceDirectiveHandler());
-        registry.register(":", new org.evochora.compiler.features.label.ColonLabelHandler());
-
         // Pre-lex .SOURCE files for the circular test
         Map<String, List<Token>> circularSourceTokens = new HashMap<>();
         for (String fileName : List.of("a.evo", "b.evo")) {
@@ -253,8 +248,10 @@ class ModuleSourceDefineIntegrationTest {
             circularSourceTokens.put(resolvedPath, srcTokens);
         }
 
-        PreProcessor preProcessor = new PreProcessor(tokens, diagnostics, circularResolver,
-                registry, new PreProcessorContext("", Map.of(), circularSourceTokens));
+        PreProcessorContext circularContext = new PreProcessorContext("", Map.of(), circularSourceTokens);
+        circularContext.handlers().register(".SOURCE", new SourceDirectiveHandler());
+        circularContext.handlers().register(":", new org.evochora.compiler.features.label.ColonLabelHandler());
+        PreProcessor preProcessor = new PreProcessor(tokens, diagnostics, circularResolver, circularContext);
         preProcessor.expand();
 
         assertThat(diagnostics.hasErrors()).isTrue();
@@ -328,12 +325,6 @@ class ModuleSourceDefineIntegrationTest {
         List<Token> mainTokens = new ArrayList<>(mainLexer.scanTokens());
 
         // Phase 2: Preprocessing (with root alias chain for alias chain tracking)
-        PreProcessorHandlerRegistry ppRegistry = new PreProcessorHandlerRegistry();
-        ppRegistry.register(".SOURCE", new SourceDirectiveHandler());
-        ppRegistry.register(".MACRO", new MacroDirectiveHandler());
-        ppRegistry.register(".POP_CTX", new PopCtxPreProcessorHandler());
-        ppRegistry.register(".IMPORT", new ImportSourceHandler());
-        ppRegistry.register(":", new org.evochora.compiler.features.label.ColonLabelHandler());
         // Pre-lex .SOURCE files
         Map<String, List<Token>> sourceTokens = new HashMap<>();
         for (Map.Entry<String, String> entry : scanner.sourceContents().entrySet()) {
@@ -346,8 +337,12 @@ class ModuleSourceDefineIntegrationTest {
             sourceTokens.put(srcPath, srcTokens);
         }
         PreProcessorContext ppContext = new PreProcessorContext(rootAliasChain, moduleTokens, sourceTokens);
-        PreProcessor preProcessor = new PreProcessor(mainTokens, diagnostics, resolver,
-                ppRegistry, ppContext);
+        ppContext.handlers().register(".SOURCE", new SourceDirectiveHandler());
+        ppContext.handlers().register(".MACRO", new MacroDirectiveHandler());
+        ppContext.handlers().register(".POP_CTX", new PopCtxPreProcessorHandler());
+        ppContext.handlers().register(".IMPORT", new ImportSourceHandler());
+        ppContext.handlers().register(":", new org.evochora.compiler.features.label.ColonLabelHandler());
+        PreProcessor preProcessor = new PreProcessor(mainTokens, diagnostics, resolver, ppContext);
         PreProcessorResult ppResult = preProcessor.expand();
         if (diagnostics.hasErrors()) return new PostProcessResult(diagnostics, List.of());
 

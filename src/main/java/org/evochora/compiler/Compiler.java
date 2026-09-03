@@ -16,7 +16,6 @@ import org.evochora.compiler.util.SourceRootResolver;
 import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ParserStatementRegistry;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
-import org.evochora.compiler.frontend.preprocessor.PreProcessorHandlerRegistry;
 import org.evochora.compiler.frontend.preprocessor.PreProcessorContext;
 import org.evochora.compiler.frontend.preprocessor.PreProcessorResult;
 import org.evochora.compiler.frontend.semantics.AnalysisHandlerRegistry;
@@ -210,11 +209,9 @@ public class Compiler implements ICompiler {
         List<Token> initialTokens = new ArrayList<>(mainLexer.scanTokens());
 
         // Phase 2: Preprocessing (includes, macros)
-        PreProcessorHandlerRegistry ppRegistry = new PreProcessorHandlerRegistry();
-        featureRegistry.preprocessorHandlers().forEach(ppRegistry::register);
         PreProcessorContext ppContext = new PreProcessorContext(rootAliasChain, moduleTokens, sourceTokens);
-        PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, resolver,
-                ppRegistry, ppContext);
+        featureRegistry.preprocessorHandlers().forEach(ppContext.handlers()::register);
+        PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, resolver, ppContext);
         PreProcessorResult ppResult = preProcessor.expand();
 
         Map<String, List<String>> sources = new HashMap<>();

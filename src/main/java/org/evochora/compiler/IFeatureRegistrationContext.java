@@ -56,7 +56,7 @@ public interface IFeatureRegistrationContext {
 	 * Registers a preprocessor handler for Phase 2. Handlers registered here are
 	 * static (initialization-time) and stored in the immutable registry. Dynamic
 	 * runtime registration (e.g., macro expansion handlers) happens through
-	 * {@link org.evochora.compiler.frontend.preprocessor.PreProcessorContext#registerDynamicHandler}.
+	 * {@link org.evochora.compiler.frontend.preprocessor.PreProcessorContext#handlers()}.
 	 *
 	 * @param name    The token text that triggers this handler (e.g., ".MACRO", ".SOURCE").
 	 * @param handler The handler that processes matching tokens.

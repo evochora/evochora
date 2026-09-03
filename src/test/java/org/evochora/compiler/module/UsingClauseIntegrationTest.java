@@ -26,7 +26,6 @@ import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.features.ctx.PopCtxPreProcessorHandler;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
 import org.evochora.compiler.frontend.preprocessor.PreProcessorContext;
-import org.evochora.compiler.frontend.preprocessor.PreProcessorHandlerRegistry;
 import org.evochora.compiler.features.importdir.ImportSourceHandler;
 import org.evochora.compiler.features.macro.MacroDirectiveHandler;
 import org.evochora.compiler.features.source.SourceDirectiveHandler;
@@ -279,12 +278,6 @@ class UsingClauseIntegrationTest {
         List<Token> mainTokens = new ArrayList<>(mainLexer.scanTokens());
 
         // Phase 2: Preprocessing (with root alias chain)
-        PreProcessorHandlerRegistry ppRegistry = new PreProcessorHandlerRegistry();
-        ppRegistry.register(".SOURCE", new SourceDirectiveHandler());
-        ppRegistry.register(".MACRO", new MacroDirectiveHandler());
-        ppRegistry.register(".POP_CTX", new PopCtxPreProcessorHandler());
-        ppRegistry.register(".IMPORT", new ImportSourceHandler());
-        ppRegistry.register(":", new org.evochora.compiler.features.label.ColonLabelHandler());
         // Pre-lex .SOURCE files
         Map<String, List<Token>> sourceTokens = new java.util.HashMap<>();
         for (Map.Entry<String, String> entry : scanner.sourceContents().entrySet()) {
@@ -297,8 +290,12 @@ class UsingClauseIntegrationTest {
             sourceTokens.put(srcPath, srcTokens);
         }
         PreProcessorContext ppContext = new PreProcessorContext(rootAliasChain, moduleTokens, sourceTokens);
-        PreProcessor preProcessor = new PreProcessor(mainTokens, diagnostics, resolver,
-                ppRegistry, ppContext);
+        ppContext.handlers().register(".SOURCE", new SourceDirectiveHandler());
+        ppContext.handlers().register(".MACRO", new MacroDirectiveHandler());
+        ppContext.handlers().register(".POP_CTX", new PopCtxPreProcessorHandler());
+        ppContext.handlers().register(".IMPORT", new ImportSourceHandler());
+        ppContext.handlers().register(":", new org.evochora.compiler.features.label.ColonLabelHandler());
+        PreProcessor preProcessor = new PreProcessor(mainTokens, diagnostics, resolver, ppContext);
         List<Token> processedTokens = preProcessor.expand().tokens();
         if (diagnostics.hasErrors()) return new SemanticsResult(diagnostics, null);
 

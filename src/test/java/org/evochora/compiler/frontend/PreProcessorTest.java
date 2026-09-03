@@ -8,7 +8,6 @@ import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
 import org.evochora.compiler.frontend.preprocessor.PreProcessorContext;
-import org.evochora.compiler.frontend.preprocessor.PreProcessorHandlerRegistry;
 import org.evochora.compiler.features.source.SourceDirectiveHandler;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -66,10 +65,6 @@ public class PreProcessorTest {
 
         SourceRootResolver resolver = new SourceRootResolver(
                 List.of(new SourceRoot(".", null)), tempDir);
-        PreProcessorHandlerRegistry registry = new PreProcessorHandlerRegistry();
-        registry.register(".SOURCE", new SourceDirectiveHandler());
-        registry.register(":", new org.evochora.compiler.features.label.ColonLabelHandler());
-
         // Pre-lex .SOURCE files (simulating Phase 1)
         String sourceContent = Files.readString(libFile);
         if (!sourceContent.endsWith("\n")) sourceContent += "\n";
@@ -79,8 +74,10 @@ public class PreProcessorTest {
         Lexer.stripEofToken(sourceTokenList);
         Map<String, List<Token>> sourceTokens = Map.of(resolvedSourcePath, sourceTokenList);
 
-        PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, resolver,
-                registry, new PreProcessorContext("", Map.of(), sourceTokens));
+        PreProcessorContext context = new PreProcessorContext("", Map.of(), sourceTokens);
+        context.handlers().register(".SOURCE", new SourceDirectiveHandler());
+        context.handlers().register(":", new org.evochora.compiler.features.label.ColonLabelHandler());
+        PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, resolver, context);
 
         // Act
         List<Token> expandedTokens = preProcessor.expand().tokens();
