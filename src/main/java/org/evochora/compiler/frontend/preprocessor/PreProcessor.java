@@ -3,6 +3,7 @@ package org.evochora.compiler.frontend.preprocessor;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
+import org.evochora.compiler.diagnostics.ErrorRecoveryException;
 import org.evochora.compiler.util.SourceRootResolver;
 import java.util.*;
 
@@ -47,12 +48,26 @@ public class PreProcessor {
         while (current < tokens.size()) {
             Optional<IPreProcessorHandler> handler = ppContext.handlers().get(peek().text());
             if (handler.isPresent()) {
-                handler.get().process(this, ppContext);
+                try {
+                    handler.get().process(this, ppContext);
+                } catch (ErrorRecoveryException ex) {
+                    synchronize();
+                }
             } else {
                 current++;
             }
         }
         return new PreProcessorResult(tokens);
+    }
+
+    /**
+     * Skips the rest of the line a reported error was found on, so the walk resumes with the
+     * next line and the handlers see nothing of the directive that failed.
+     */
+    private void synchronize() {
+        while (!isAtEnd()) {
+            if (advance().type() == TokenType.NEWLINE) return;
+        }
     }
 
     // --- Token stream navigation ---
@@ -113,13 +128,14 @@ public class PreProcessor {
      * @param type The expected token type.
      * @param errorMessage The error message if the token type does not match.
      * @return The consumed token.
-     * @throws RuntimeException if the current token does not match the expected type.
+     * @throws ErrorRecoveryException if the current token does not match the expected type;
+     *         the mismatch has been reported to the diagnostics before it is thrown.
      */
     public Token consume(TokenType type, String errorMessage) {
         if (check(type)) return advance();
         Token unexpected = peek();
         getDiagnostics().reportError(errorMessage, unexpected.fileName(), unexpected.line());
-        throw new RuntimeException("Parser error: " + errorMessage);
+        throw new ErrorRecoveryException(errorMessage);
     }
 
     /**

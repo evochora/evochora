@@ -1,6 +1,7 @@
 package org.evochora.compiler.frontend.parser;
 
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
+import org.evochora.compiler.diagnostics.ErrorRecoveryException;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.model.ast.AstNode;
@@ -120,7 +121,7 @@ public class Parser implements IParsingContext {
                         unexpected.fileName(), unexpected.line());
             }
             return null;
-        } catch (RuntimeException ex) {
+        } catch (ErrorRecoveryException ex) {
             synchronize();
             return null;
         }
@@ -235,7 +236,7 @@ public class Parser implements IParsingContext {
         if (check(type)) return advance();
         Token unexpected = peek();
         diagnostics.reportError(errorMessage, unexpected.fileName(), unexpected.line());
-        throw new RuntimeException(errorMessage);
+        throw new ErrorRecoveryException(errorMessage);
     }
 
     @Override public DiagnosticsEngine getDiagnostics() { return diagnostics; }

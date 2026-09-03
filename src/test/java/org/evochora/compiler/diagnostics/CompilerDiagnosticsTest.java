@@ -184,6 +184,21 @@ class CompilerDiagnosticsTest {
                 .hasMessageContaining("lib.evo:3");
     }
 
+    @Test
+    void repeatWithoutACountNamesTheDirectiveAndTheLine() throws Exception {
+        write("main.evo",
+                "START:",
+                "  NOP",
+                ".REPEAT",
+                "  NOP",
+                ".ENDR");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("Expected repeat count after .REPEAT")
+                .hasMessageContaining("main.evo:3");
+    }
+
     private void write(String fileName, String... lines) throws Exception {
         Files.writeString(sourceRoot.resolve(fileName), String.join("\n", lines) + "\n");
     }
