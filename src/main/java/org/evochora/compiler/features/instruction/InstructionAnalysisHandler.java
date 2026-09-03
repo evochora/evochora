@@ -15,7 +15,6 @@ import org.evochora.compiler.model.symbols.Symbol;
 import org.evochora.compiler.model.symbols.SymbolTable;
 import org.evochora.compiler.isa.IInstructionSet;
 import org.evochora.compiler.isa.IInstructionSet.ArgKind;
-import org.evochora.compiler.isa.IInstructionSet.RegisterBankInfo;
 
 import java.util.Optional;
 
@@ -165,113 +164,6 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                         );
                     }
 
-                    // Additional validations by the bank prefixes of the instruction set
-                    if (expectedType == ArgKind.REGISTER && argumentNode instanceof RegisterNode regNode) {
-                        String tokenText = regNode.name();
-                        String u = tokenText.toUpperCase();
-
-                        RegisterBankInfo matchedBank = null;
-                        int regNum = -1;
-                        for (RegisterBankInfo bank : isa.registerBanks()) {
-                            if (bank.count() > 0 && !bank.location() && u.startsWith(bank.prefix())) {
-                                matchedBank = bank;
-                                try {
-                                    regNum = Integer.parseInt(u.substring(bank.prefix().length()));
-                                } catch (NumberFormatException e) {
-                                    diagnostics.reportError(
-                                            String.format("Invalid register format '%s'.", tokenText),
-                                            regNode.sourceInfo().fileName(),
-                                            regNode.sourceInfo().lineNumber()
-                                    );
-                                    return;
-                                }
-                                break;
-                            }
-                        }
-
-                        if (matchedBank != null) {
-                            if (regNum < 0 || regNum >= matchedBank.count()) {
-                                diagnostics.reportError(
-                                        String.format("Register '%s' is out of bounds. Valid range: %s0-%s%d.",
-                                                tokenText, matchedBank.prefix(), matchedBank.prefix(), matchedBank.count() - 1),
-                                        regNode.sourceInfo().fileName(),
-                                        regNode.sourceInfo().lineNumber()
-                                );
-                                return;
-                            }
-                            if (matchedBank.forbidden()) {
-                                diagnostics.reportError(
-                                        "Access to " + matchedBank.name() + " registers is not allowed in user code — managed by the CALL binding mechanism.",
-                                        regNode.sourceInfo().fileName(),
-                                        regNode.sourceInfo().lineNumber()
-                                );
-                                return;
-                            }
-                        }
-
-                        // Resolve and validate
-                        Optional<Integer> regId = isa.resolveRegisterToken(tokenText);
-                        if (regId.isEmpty()) {
-                            diagnostics.reportError(
-                                    String.format("Unknown register '%s'.", tokenText),
-                                    regNode.sourceInfo().fileName(),
-                                    regNode.sourceInfo().lineNumber()
-                            );
-                        }
-                    } else if (expectedType == ArgKind.LOCATION_REGISTER && argumentNode instanceof RegisterNode regNode) {
-                        String tokenText = regNode.name();
-                        String u = tokenText.toUpperCase();
-
-                        RegisterBankInfo matchedBank = null;
-                        int regNum = -1;
-                        for (RegisterBankInfo bank : isa.registerBanks()) {
-                            if (bank.count() > 0 && bank.location() && u.startsWith(bank.prefix())) {
-                                matchedBank = bank;
-                                try {
-                                    regNum = Integer.parseInt(u.substring(bank.prefix().length()));
-                                } catch (NumberFormatException e) {
-                                    diagnostics.reportError(
-                                            String.format("Invalid location register format '%s'.", tokenText),
-                                            regNode.sourceInfo().fileName(),
-                                            regNode.sourceInfo().lineNumber()
-                                    );
-                                    return;
-                                }
-                                break;
-                            }
-                        }
-
-                        if (matchedBank == null) {
-                            diagnostics.reportError(
-                                    String.format("Argument %d for instruction '%s' expects a location register, but got '%s'.",
-                                        i + 1, instructionName, tokenText),
-                                    regNode.sourceInfo().fileName(),
-                                    regNode.sourceInfo().lineNumber()
-                            );
-                            return;
-                        }
-
-                        if (regNum < 0 || regNum >= matchedBank.count()) {
-                            diagnostics.reportError(
-                                    String.format("Location register '%s' is out of bounds. Valid range: %s0-%s%d.",
-                                        tokenText, matchedBank.prefix(), matchedBank.prefix(), matchedBank.count() - 1),
-                                    regNode.sourceInfo().fileName(),
-                                    regNode.sourceInfo().lineNumber()
-                            );
-                            return;
-                        }
-                        
-                        // Resolve register token
-                        Optional<Integer> regId = isa.resolveRegisterToken(tokenText);
-                        if (regId.isEmpty()) {
-                            diagnostics.reportError(
-                                    String.format("Unknown location register '%s'.", tokenText),
-                                    regNode.sourceInfo().fileName(),
-                                    regNode.sourceInfo().lineNumber()
-                            );
-                        }
-                    }
-
                     // 2) Strict typing: prohibit untyped literals when a type is expected
                     if (isa.requiresTypedLiterals() && expectedType == ArgKind.LITERAL && argumentNode instanceof NumberLiteralNode) {
                         diagnostics.reportError(
@@ -288,13 +180,8 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
 
     private ArgKind getArgumentTypeFromNode(AstNode node) {
         if (node instanceof RegisterNode regNode) {
-            String tokenText = regNode.name().toUpperCase();
-            for (RegisterBankInfo bank : isa.registerBanks()) {
-                if (bank.count() > 0 && bank.location() && tokenText.startsWith(bank.prefix())) {
-                    return ArgKind.LOCATION_REGISTER;
-                }
-            }
-            return ArgKind.REGISTER;
+            return isa.parseRegister(regNode.name()).map(ref -> ref.bank().location()).orElse(false)
+                    ? ArgKind.LOCATION_REGISTER : ArgKind.REGISTER;
         }
         if (node instanceof NumberLiteralNode || node instanceof TypedLiteralNode) return ArgKind.LITERAL;
         if (node instanceof VectorLiteralNode) return ArgKind.VECTOR;

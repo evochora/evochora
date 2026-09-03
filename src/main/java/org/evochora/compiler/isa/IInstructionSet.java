@@ -56,6 +56,54 @@ public interface IInstructionSet {
 	boolean requiresTypedLiterals();
 
 	/**
+	 * Reads a register as source writes it: a bank's prefix followed by an index. The index is
+	 * taken as written and may lie beyond the bank; {@link RegisterRef#inBounds()} tells.
+	 *
+	 * @param text The text of one token, in any letter case.
+	 * @return The bank and the index, or empty if the text does not have that shape for any
+	 *         bank of the target that has registers.
+	 */
+	default Optional<RegisterRef> parseRegister(String text) {
+		String upper = text.toUpperCase();
+		for (RegisterBankInfo bank : registerBanks()) {
+			if (bank.count() > 0 && upper.startsWith(bank.prefix())) {
+				String suffix = upper.substring(bank.prefix().length());
+				if (suffix.isEmpty() || !suffix.chars().allMatch(Character::isDigit)) {
+					return Optional.empty();
+				}
+				try {
+					return Optional.of(new RegisterRef(bank, Integer.parseInt(suffix)));
+				} catch (NumberFormatException tooLong) {
+					return Optional.of(new RegisterRef(bank, Integer.MAX_VALUE));
+				}
+			}
+		}
+		return Optional.empty();
+	}
+
+	/**
+	 * A register as source names it: a bank and an index into it.
+	 *
+	 * @param bank  The bank the prefix named.
+	 * @param index The index as written, which may lie beyond the bank.
+	 */
+	record RegisterRef(RegisterBankInfo bank, int index) {
+		/**
+		 * @return Whether the index names a register the bank has.
+		 */
+		public boolean inBounds() {
+			return index >= 0 && index < bank.count();
+		}
+
+		/**
+		 * @return The register's ID, meaningful only when {@link #inBounds()}.
+		 */
+		public int id() {
+			return bank.base() + index;
+		}
+	}
+
+	/**
 	 * What the compiler knows about one register bank of the target.
 	 *
 	 * @param prefix          How a register of the bank starts in source, including the

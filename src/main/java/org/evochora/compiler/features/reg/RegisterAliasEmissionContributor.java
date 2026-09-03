@@ -7,7 +7,6 @@ import org.evochora.compiler.model.ir.IrDirective;
 import org.evochora.compiler.model.ir.IrItem;
 import org.evochora.compiler.model.ir.IrValue;
 import org.evochora.compiler.isa.IInstructionSet;
-import org.evochora.compiler.isa.IInstructionSet.RegisterBankInfo;
 
 /**
  * Extracts register alias metadata from {@code reg_alias} IR directives
@@ -52,21 +51,9 @@ public final class RegisterAliasEmissionContributor implements IEmissionContribu
     }
 
     private Integer resolveRegisterId(String registerName) {
-        String upper = registerName.toUpperCase();
-        for (RegisterBankInfo bank : isa.registerBanks()) {
-            if (bank.count() > 0 && upper.startsWith(bank.prefix())) {
-                String suffix = upper.substring(bank.prefix().length());
-                if (suffix.isEmpty()) {
-                    return null;
-                }
-                try {
-                    int index = Integer.parseInt(suffix);
-                    return index >= 0 && index < bank.count() ? bank.base() + index : null;
-                } catch (NumberFormatException ignored) {
-                    return null;
-                }
-            }
-        }
-        return null;
+        return isa.parseRegister(registerName)
+                .filter(IInstructionSet.RegisterRef::inBounds)
+                .map(IInstructionSet.RegisterRef::id)
+                .orElse(null);
     }
 }

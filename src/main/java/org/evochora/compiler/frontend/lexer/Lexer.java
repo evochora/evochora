@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * The Lexer (also known as Tokenizer or Scanner) is responsible for converting
@@ -171,9 +172,21 @@ public class Lexer {
         String text = source.substring(start, current);
         TokenType type = TokenType.IDENTIFIER;
 
-        // Is it a register? Only treat valid register patterns as REGISTER tokens
-        if (text.startsWith("%") && isValidRegisterPattern(text)) {
+        // A word shaped like a register is one, and this is the one place that checks whether
+        // source may name it: every later phase takes a REGISTER token as valid.
+        Optional<IInstructionSet.RegisterRef> register = text.startsWith("%")
+                ? isa.parseRegister(text) : Optional.empty();
+        if (register.isPresent()) {
             type = TokenType.REGISTER;
+            IInstructionSet.RegisterRef ref = register.get();
+            if (!ref.inBounds()) {
+                diagnostics.reportError(String.format("Register '%s' is out of bounds. Valid range: %s0-%s%d.",
+                        text, ref.bank().prefix(), ref.bank().prefix(), ref.bank().count() - 1), logicalFileName, line);
+            } else if (ref.bank().forbidden()) {
+                diagnostics.reportError(String.format(
+                        "Register '%s' is reserved for procedure parameters. Use the parameter's name instead.", text),
+                        logicalFileName, line);
+            }
         }
         // Is it a directive?
         else if (text.startsWith(".")) {
@@ -188,32 +201,6 @@ public class Lexer {
         addToken(type);
     }
     
-    /**
-     * Checks if a token represents a valid register pattern.
-     * Valid patterns are register tokens matching a register bank's prefix with a numeric suffix (e.g., %DR0, %PLR1, %SLR2).
-     * 
-     * @param text the token text to check
-     * @return true if the text represents a valid register pattern
-     */
-    private boolean isValidRegisterPattern(String text) {
-        if (!text.startsWith("%")) {
-            return false;
-        }
-        String upper = text.toUpperCase();
-        for (IInstructionSet.RegisterBankInfo bank : isa.registerBanks()) {
-            if (bank.count() > 0 && upper.startsWith(bank.prefix())) {
-                String suffix = upper.substring(bank.prefix().length());
-                if (suffix.isEmpty()) continue;
-                try {
-                    int index = Integer.parseInt(suffix);
-                    if (index >= 0 && index < bank.count()) return true;
-                } catch (NumberFormatException e) {
-                    continue;
-                }
-            }
-        }
-        return false;
-    }
 
     private void number() {
         // Recognize hex/binary prefixes right at the start of a number

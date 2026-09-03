@@ -469,7 +469,7 @@ public class SemanticAnalyzerTest {
 
         assertThat(diagnostics.hasErrors()).isTrue();
         assertThat(diagnostics.getDiagnostics().get(0).message())
-                .contains("Access to FDR registers is not allowed in user code");
+                .contains("Register '%FDR0' is reserved for procedure parameters");
     }
 
     /**

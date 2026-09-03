@@ -106,7 +106,7 @@ public class RegDirectiveTest {
         parser.parse();
 
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.summary()).contains("Expected a register");
+        assertThat(diagnostics.summary()).contains("is out of bounds. Valid range:");
     }
 
     /**
@@ -124,7 +124,7 @@ public class RegDirectiveTest {
         parser.parse();
 
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.summary()).contains("not available in the current scope");
+        assertThat(diagnostics.summary()).contains("is only available inside a procedure");
     }
 
     /**
@@ -142,11 +142,11 @@ public class RegDirectiveTest {
         parser.parse();
 
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.summary()).contains("not available in the current scope");
+        assertThat(diagnostics.summary()).contains("is only available inside a procedure");
     }
 
     /**
-     * Verifies that FLR registers cannot be aliased — they are managed by the CALL binding mechanism.
+     * Verifies that FLR registers cannot be aliased — they carry procedure parameters.
      */
     @Test
     @Tag("unit")
@@ -160,11 +160,11 @@ public class RegDirectiveTest {
         parser.parse();
 
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.summary()).contains("cannot be aliased");
+        assertThat(diagnostics.summary()).contains("is reserved for procedure parameters");
     }
 
     /**
-     * Verifies that FDR registers cannot be aliased — they are managed by the CALL binding mechanism.
+     * Verifies that FDR registers cannot be aliased — they carry procedure parameters.
      */
     @Test
     @Tag("unit")
@@ -178,7 +178,7 @@ public class RegDirectiveTest {
         parser.parse();
 
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.summary()).contains("cannot be aliased");
+        assertThat(diagnostics.summary()).contains("is reserved for procedure parameters");
     }
 
     /**
@@ -271,7 +271,7 @@ public class RegDirectiveTest {
         parser.parse();
 
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.summary()).contains("Expected a register");
+        assertThat(diagnostics.summary()).contains("is out of bounds. Valid range:");
     }
 
     /**
@@ -363,7 +363,7 @@ public class RegDirectiveTest {
         parser.parse();
 
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.summary()).contains("Expected a register");
+        assertThat(diagnostics.summary()).contains("is out of bounds. Valid range:");
     }
 
     /**

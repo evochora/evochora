@@ -15,8 +15,8 @@ import org.junit.jupiter.api.Tag;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Tests for RegAnalysisHandler to ensure proper validation of .REG directives
- * for both data registers (%DRx) and location registers (%LRx).
+ * Tests for RegAnalysisHandler: a .REG directive defines an alias of the register's kind,
+ * data or location. Whether the register exists is settled before the node reaches the handler.
  */
 @Tag("unit")
 class RegAnalysisHandlerTest {
@@ -67,26 +67,6 @@ class RegAnalysisHandlerTest {
     }
 
     @Test
-    void testInvalidLocationRegisterOutOfBounds() {
-        RegNode regNode = new RegNode("INVALID", "%LR" + Config.NUM_LOCATION_REGISTERS, TEST_SOURCE);
-
-        handler.analyze(regNode, symbolTable, diagnostics);
-
-        assertTrue(diagnostics.hasErrors());
-        assertFalse(symbolTable.resolve("INVALID", "test.s").isPresent());
-    }
-
-    @Test
-    void testInvalidDataRegisterOutOfBounds() {
-        RegNode regNode = new RegNode("INVALID", "%DR" + Config.NUM_DATA_REGISTERS, TEST_SOURCE);
-
-        handler.analyze(regNode, symbolTable, diagnostics);
-
-        assertTrue(diagnostics.hasErrors());
-        assertFalse(symbolTable.resolve("INVALID", "test.s").isPresent());
-    }
-
-    @Test
     void testValidPdrRegister() {
         RegNode regNode = new RegNode("TMP", "%PDR0", TEST_SOURCE);
 
@@ -95,65 +75,5 @@ class RegAnalysisHandlerTest {
         assertFalse(diagnostics.hasErrors());
         assertTrue(symbolTable.resolve("TMP", "test.s").isPresent());
         assertEquals(Symbol.Type.REGISTER_ALIAS_DATA, symbolTable.resolve("TMP", "test.s").get().symbol().type());
-    }
-
-    @Test
-    void testPdrOutOfBounds() {
-        RegNode regNode = new RegNode("INVALID", "%PDR" + Config.NUM_PDR_REGISTERS, TEST_SOURCE);
-
-        handler.analyze(regNode, symbolTable, diagnostics);
-
-        assertTrue(diagnostics.hasErrors());
-        assertFalse(symbolTable.resolve("INVALID", "test.s").isPresent());
-    }
-
-    @Test
-    void testUnknownRegisterBank() {
-        RegNode regNode = new RegNode("INVALID", "%XYZ0", TEST_SOURCE);
-
-        handler.analyze(regNode, symbolTable, diagnostics);
-
-        assertTrue(diagnostics.hasErrors());
-        assertFalse(symbolTable.resolve("INVALID", "test.s").isPresent());
-    }
-
-    @Test
-    void testInvalidRegisterFormat() {
-        RegNode regNode = new RegNode("INVALID", "%INVALID", TEST_SOURCE);
-
-        handler.analyze(regNode, symbolTable, diagnostics);
-
-        assertTrue(diagnostics.hasErrors());
-        assertFalse(symbolTable.resolve("INVALID", "test.s").isPresent());
-    }
-
-    @Test
-    void testNonRegisterString() {
-        RegNode regNode = new RegNode("INVALID", "NOT_A_REGISTER", TEST_SOURCE);
-
-        handler.analyze(regNode, symbolTable, diagnostics);
-
-        assertTrue(diagnostics.hasErrors());
-        assertFalse(symbolTable.resolve("INVALID", "test.s").isPresent());
-    }
-
-    @Test
-    void testForbiddenFdrRegisterRejected() {
-        RegNode regNode = new RegNode("PARAM", "%FDR0", TEST_SOURCE);
-
-        handler.analyze(regNode, symbolTable, diagnostics);
-
-        assertTrue(diagnostics.hasErrors());
-        assertFalse(symbolTable.resolve("PARAM", "test.s").isPresent());
-    }
-
-    @Test
-    void testForbiddenFlrRegisterRejected() {
-        RegNode regNode = new RegNode("LOC_PARAM", "%FLR0", TEST_SOURCE);
-
-        handler.analyze(regNode, symbolTable, diagnostics);
-
-        assertTrue(diagnostics.hasErrors());
-        assertFalse(symbolTable.resolve("LOC_PARAM", "test.s").isPresent());
     }
 }

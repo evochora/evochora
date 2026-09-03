@@ -241,10 +241,6 @@ public class CallAnalysisHandler implements IAnalysisHandler {
      * Tells whether a register name resolves to a register of a location bank.
      */
     private boolean isLocationRegister(String registerName) {
-        Optional<Integer> regId = isa.resolveRegisterToken(registerName);
-        if (regId.isEmpty()) return false;
-        int id = regId.get();
-        return isa.registerBanks().stream()
-                .anyMatch(bank -> bank.location() && id >= bank.base() && id < bank.base() + bank.count());
+        return isa.parseRegister(registerName).map(ref -> ref.bank().location()).orElse(false);
     }
 }

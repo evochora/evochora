@@ -199,6 +199,56 @@ class CompilerDiagnosticsTest {
                 .hasMessageContaining("main.evo:3");
     }
 
+    @Test
+    void registerIndexBeyondTheBankIsRejectedWhereTheRegisterIsWritten() throws Exception {
+        write("main.evo",
+                "START:",
+                "  SETI %DR999 DATA:1");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("Register '%DR999' is out of bounds. Valid range: %DR0-%DR")
+                .hasMessageContaining("main.evo:2");
+    }
+
+    @Test
+    void registerIndexBeyondTheBankIsRejectedInARegDirectiveToo() throws Exception {
+        write("main.evo",
+                ".REG %X %DR999",
+                "START:",
+                "  NOP");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("Register '%DR999' is out of bounds. Valid range: %DR0-%DR")
+                .hasMessageContaining("main.evo:1");
+    }
+
+    @Test
+    void aParameterRegisterNamedInSourceIsRejectedWithTheWayOut() throws Exception {
+        write("main.evo",
+                "START:",
+                "  SETI %FDR0 DATA:1");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("Register '%FDR0' is reserved for procedure parameters. Use the parameter's name instead.")
+                .hasMessageContaining("main.evo:2");
+    }
+
+    @Test
+    void aProcedureScopedRegisterAliasedOutsideAProcedureNamesTheScope() throws Exception {
+        write("main.evo",
+                ".REG %X %PDR0",
+                "START:",
+                "  NOP");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("Register '%PDR0' is only available inside a procedure.")
+                .hasMessageContaining("main.evo:1");
+    }
+
     private void write(String fileName, String... lines) throws Exception {
         Files.writeString(sourceRoot.resolve(fileName), String.join("\n", lines) + "\n");
     }
