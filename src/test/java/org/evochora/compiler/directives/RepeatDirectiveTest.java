@@ -137,6 +137,45 @@ public class RepeatDirectiveTest {
     }
 
     /**
+     * A statement after a block stays a statement of its own: the newline after .ENDR
+     * separates it from the last repetition.
+     */
+    @Test
+    @Tag("unit")
+    void testBlockRepeatFollowedByStatement() {
+        // Arrange
+        String source = String.join("\n",
+                ".REPEAT 2",
+                "  NOP",
+                ".ENDR",
+                "JMPI START",
+                ""
+        );
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Lexer lexer = new Lexer(source, diagnostics);
+        List<Token> initialTokens = lexer.scanTokens();
+        PreProcessor preProcessor = createPreProcessor(initialTokens, diagnostics);
+
+        // Act
+        List<Token> expandedTokens = preProcessor.expand().tokens();
+
+        // Assert
+        assertThat(diagnostics.hasErrors()).isFalse();
+        List<TokenType> types = expandedTokens.stream().map(Token::type).toList();
+        // (NOP) NEWLINE (NOP) NEWLINE JMPI START NEWLINE EOF
+        assertThat(types).containsExactly(
+                TokenType.OPCODE,      // NOP
+                TokenType.NEWLINE,     // between repetitions
+                TokenType.OPCODE,      // NOP
+                TokenType.NEWLINE,     // the newline after .ENDR
+                TokenType.OPCODE,      // JMPI
+                TokenType.IDENTIFIER,  // START
+                TokenType.NEWLINE,
+                TokenType.END_OF_FILE
+        );
+    }
+
+    /**
      * Tests block mode with actual newlines.
      */
     @Test
