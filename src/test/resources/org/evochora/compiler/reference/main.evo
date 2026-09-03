@@ -8,9 +8,8 @@
 # directions, sourced constants, register aliases for data and location registers,
 # constants, macros, both repeat forms and the caret shorthand, origin and direction
 # changes, every placement form, procedures with all four parameter kinds including a
-# procedure-local alias, calls across modules and through a passed-on import, a call
-# and a jump to a label of another module. A conditional in front of a CALL or a RET is left
-# out: the compiler cannot link the bridge label it creates for that form.
+# procedure-local alias, calls across modules and through a passed-on import, a call and a
+# return guarded by a conditional, and a jump to a label of another module.
 
 .IMPORT "lib/util.evo" AS UTIL
 .IMPORT "lib/nav.evo" AS NAV USING UTIL AS ARITH
@@ -49,9 +48,9 @@ START:
   CALL UTIL.CLAMP REF %VALUE VAL DATA:0 MAX_VALUE
   CALL NAV.PATROL REF %COUNT LREF %POS LVAL MARK
   CALL NAV.STEP.FORWARD REF %COUNT
-  CALL LOCAL_STEP REF %COUNT VAL DATA:2
   LTI %COUNT LIMIT
-    JMPI UTIL.READY
+    CALL LOCAL_STEP REF %COUNT VAL DATA:2
+  JMPI UTIL.READY
   JMPI START
 
 .DIR 0|1
@@ -63,6 +62,8 @@ MARK:
 .PROC LOCAL_STEP REF X VAL DELTA
   .REG %TMP %PDR0
   SETR %TMP DELTA
+  IFI %TMP DATA:0
+    RET
   ADDR X %TMP
   RET
 .ENDP
