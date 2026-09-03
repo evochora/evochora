@@ -172,8 +172,8 @@ public class GeneInsertionPlugin implements IBirthHandler {
         int minDv;
         /** Maximum DV-dimension coordinate on this scan line. */
         int maxDv;
-        /** The canonical index of one owned cell on this scan line, for coordinate reconstruction. */
-        int sampleCanonicalIndex;
+        /** The flat index of one owned cell on this scan line, for coordinate reconstruction. */
+        int sampleFlatIndex;
         /** Number of owned cells on this scan line. */
         int count;
         /** Start of the shortest arc containing all owned cells (inclusive). */
@@ -189,12 +189,12 @@ public class GeneInsertionPlugin implements IBirthHandler {
          * Resets this info for a new scan line.
          *
          * @param dvCoord The DV-dimension coordinate of the first cell seen.
-         * @param canonicalIndex The canonical index of the first cell seen.
+         * @param flatIndex The flat index of the first cell seen.
          */
-        void reset(int dvCoord, int canonicalIndex) {
+        void reset(int dvCoord, int flatIndex) {
             this.minDv = dvCoord;
             this.maxDv = dvCoord;
-            this.sampleCanonicalIndex = canonicalIndex;
+            this.sampleFlatIndex = flatIndex;
             this.count = 1;
         }
 
@@ -451,7 +451,7 @@ public class GeneInsertionPlugin implements IBirthHandler {
         }
         placeChain(env, childId, dvDim, dvStep, shape[dvDim]);
         if (LOG.isDebugEnabled()) {
-            env.properties.flatIndexToCoordinates(selectedNopScanLine.sampleCanonicalIndex, coordBuffer);
+            env.properties.flatIndexToCoordinates(selectedNopScanLine.sampleFlatIndex, coordBuffer);
             coordBuffer[dvDim] = selectedNopDvStart;
             LOG.debug("tick={} Organism {} gene insertion: placed {} molecules at {}",
                     child.getBirthTick(), childId, chainBuffer.size(), Arrays.toString(coordBuffer));
@@ -624,7 +624,7 @@ public class GeneInsertionPlugin implements IBirthHandler {
 
         final int dvDimFinal = dvDim;
 
-        // The visit runs in canonical order: the choice below must not depend on write history
+        // The visit runs in flat-index order: the choice below must not depend on write history
         env.visitCellsOwnedBy(childId, cell -> {
             System.arraycopy(cell.coordinate(), 0, coordBuffer, 0, coordBuffer.length);
 
@@ -755,7 +755,7 @@ public class GeneInsertionPlugin implements IBirthHandler {
         nopCandidateCount = 0;
 
         for (ScanLineInfo line : scanLineMap.values()) {
-            env.properties.flatIndexToCoordinates(line.sampleCanonicalIndex, coordBuffer);
+            env.properties.flatIndexToCoordinates(line.sampleFlatIndex, coordBuffer);
 
             int arcLength = (line.walkEnd >= line.walkStart)
                     ? line.walkEnd - line.walkStart + 1
@@ -814,7 +814,7 @@ public class GeneInsertionPlugin implements IBirthHandler {
      * @param shapeDvDim The environment size along the DV dimension.
      */
     private void placeChain(Environment env, int childId, int dvDim, int dvStep, int shapeDvDim) {
-        env.properties.flatIndexToCoordinates(selectedNopScanLine.sampleCanonicalIndex, walkPos);
+        env.properties.flatIndexToCoordinates(selectedNopScanLine.sampleFlatIndex, walkPos);
         walkPos[dvDim] = selectedNopDvStart;
 
         for (Molecule mol : chainBuffer) {

@@ -66,7 +66,7 @@ public class DeathContext {
     }
 
     /**
-     * Iterates over all cells owned by the dying organism, in ascending order of their canonical
+     * Iterates over all cells owned by the dying organism, in ascending order of their flat
      * index: an order determined by the cells' coordinates alone, so that a handler that draws
      * randomness per cell behaves the same in a live run, after a resume and under any memory
      * layout of the grid.

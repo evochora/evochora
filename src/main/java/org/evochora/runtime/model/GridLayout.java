@@ -4,26 +4,26 @@ import java.util.Arrays;
 
 /**
  * The memory layout of the environment's cell grid: the mapping between an n-dimensional cell
- * coordinate and the position of that cell in the environment's flat arrays.
+ * coordinate and the position of that cell in the environment's grid arrays.
  * <p>
  * Cells are stored in cubic tiles of {@code tileSide} cells per dimension. Inside a tile dimension
  * 0 is contiguous, so a step along the organisms' default direction of execution moves to the
  * neighbouring array element until the tile edge. The tiles themselves are ordered like the
  * persisted row-major numbering of {@link EnvironmentProperties}, with the last dimension varying
  * fastest; with a tile side of 1 the layout therefore reproduces that numbering exactly, and for
- * every tile side {@link #canonical(int)} converts an internal index into it.
+ * every tile side {@link #flatIndex(int)} converts a layout index into it.
  * <p>
  * Key features:
  * <ul>
- *   <li>coordinate to index and index to coordinate without allocation,</li>
+ *   <li>coordinate to layout index and layout index to coordinate without allocation,</li>
  *   <li>a single-cell step along one dimension that honours tile edges and the world's topology,</li>
  *   <li>conversion to the persisted row-major index,</li>
  *   <li>validation of the world shape against the tile side at construction.</li>
  * </ul>
  * <p>
  * Architectural notes: this is the only class that knows how cells are laid out. The environment's
- * index-based accessors hand out and accept indices of this layout, and no other component may
- * derive an index from a coordinate or a coordinate from an index by its own arithmetic. The class
+ * index-based accessors hand out and accept layout indices, and no other component may derive a
+ * layout index from a coordinate or a coordinate from a layout index by its own arithmetic. The class
  * is final, holds only immutable primitive state and has no polymorphism, so that the JIT compiles
  * the primitives to plain integer arithmetic on the hot path. The tile side must be a power of two
  * so that offsets inside a tile are shifts and masks; a tile-boundary crossing, once per
@@ -35,7 +35,7 @@ final class GridLayout {
 
     private final int[] shape;
     /** Distance, in cells, between neighbours along each dimension in the persisted row-major numbering. */
-    private final int[] canonicalStrides;
+    private final int[] flatStrides;
     private final boolean toroidal;
     private final int dimensions;
     /** log2 of the tile side. */
@@ -66,9 +66,9 @@ final class GridLayout {
             throw new IllegalArgumentException("Tile side must be a power of two, got " + tileSide);
         }
         this.shape = properties.getWorldShape();
-        this.canonicalStrides = new int[shape.length];
+        this.flatStrides = new int[shape.length];
         for (int i = 0; i < shape.length; i++) {
-            canonicalStrides[i] = properties.getStride(i);
+            flatStrides[i] = properties.getStride(i);
         }
         this.toroidal = properties.isToroidal();
         this.dimensions = shape.length;
@@ -137,13 +137,13 @@ final class GridLayout {
     }
 
     /**
-     * Converts a coordinate into its internal index.
+     * Converts a coordinate into its layout index.
      *
      * @param coord the coordinate; every component must lie within the world, no normalization
      *              takes place
-     * @return the internal index of that cell
+     * @return the layout index of that cell
      */
-    int index(int[] coord) {
+    int layoutIndex(int[] coord) {
         int tile = 0;
         int offset = 0;
         for (int i = 0; i < dimensions; i++) {
@@ -155,14 +155,14 @@ final class GridLayout {
     }
 
     /**
-     * Converts an internal index into its coordinate without allocating.
+     * Converts a layout index into its coordinate without allocating.
      *
-     * @param index the internal index
+     * @param layoutIndex the layout index
      * @param out   receives the coordinate; one entry per dimension
      */
-    void coordinate(int index, int[] out) {
-        int tile = index >>> cellsPerTileShift;
-        int offset = index & ((1 << cellsPerTileShift) - 1);
+    void coordinate(int layoutIndex, int[] out) {
+        int tile = layoutIndex >>> cellsPerTileShift;
+        int offset = layoutIndex & ((1 << cellsPerTileShift) - 1);
         for (int i = 0; i < dimensions; i++) {
             int tilePosition = tile / tileStrides[i];
             tile -= tilePosition * tileStrides[i];
@@ -171,104 +171,104 @@ final class GridLayout {
     }
 
     /**
-     * Returns the index of the cell one step away along a dimension.
+     * Returns the layout index of the cell one step away along a dimension.
      * <p>
      * Inside a tile the step is an addition; at a tile edge the step continues in the neighbouring
      * tile, and at the world edge it wraps around in a toroidal world.
      *
-     * @param index   the internal index of the cell to step from
-     * @param dim     the dimension to step along
-     * @param forward {@code true} to step towards higher coordinates, {@code false} towards lower
-     * @return the internal index of the neighbouring cell, or {@code -1} if the step leaves a
+     * @param layoutIndex the layout index of the cell to step from
+     * @param dim         the dimension to step along
+     * @param forward     {@code true} to step towards higher coordinates, {@code false} towards lower
+     * @return the layout index of the neighbouring cell, or {@code -1} if the step leaves a
      *         bounded world
      */
-    int step(int index, int dim, boolean forward) {
+    int step(int layoutIndex, int dim, boolean forward) {
         int unit = 1 << (tileShift * dim);
-        int offset = (index >>> (tileShift * dim)) & tileMask;
+        int offset = (layoutIndex >>> (tileShift * dim)) & tileMask;
         if (forward) {
             if (offset < tileMask) {
-                return index + unit;
+                return layoutIndex + unit;
             }
-            int tilePosition = (index >>> cellsPerTileShift) / tileStrides[dim] % tileCounts[dim];
+            int tilePosition = (layoutIndex >>> cellsPerTileShift) / tileStrides[dim] % tileCounts[dim];
             int backToTileStart = tileMask * unit;
             if (tilePosition < tileCounts[dim] - 1) {
-                return index + (tileStrides[dim] << cellsPerTileShift) - backToTileStart;
+                return layoutIndex + (tileStrides[dim] << cellsPerTileShift) - backToTileStart;
             }
             if (!toroidal) {
                 return -1;
             }
-            return index - ((tileCounts[dim] - 1) * tileStrides[dim] << cellsPerTileShift) - backToTileStart;
+            return layoutIndex - ((tileCounts[dim] - 1) * tileStrides[dim] << cellsPerTileShift) - backToTileStart;
         }
         if (offset > 0) {
-            return index - unit;
+            return layoutIndex - unit;
         }
-        int tilePosition = (index >>> cellsPerTileShift) / tileStrides[dim] % tileCounts[dim];
+        int tilePosition = (layoutIndex >>> cellsPerTileShift) / tileStrides[dim] % tileCounts[dim];
         int toTileEnd = tileMask * unit;
         if (tilePosition > 0) {
-            return index - (tileStrides[dim] << cellsPerTileShift) + toTileEnd;
+            return layoutIndex - (tileStrides[dim] << cellsPerTileShift) + toTileEnd;
         }
         if (!toroidal) {
             return -1;
         }
-        return index + ((tileCounts[dim] - 1) * tileStrides[dim] << cellsPerTileShift) + toTileEnd;
+        return layoutIndex + ((tileCounts[dim] - 1) * tileStrides[dim] << cellsPerTileShift) + toTileEnd;
     }
 
     /**
-     * Converts an internal index into the persisted row-major index of
-     * {@link EnvironmentProperties}, the numbering in which cells are serialized.
+     * Converts a layout index into the flat index of the same cell: the persisted row-major
+     * numbering of {@link EnvironmentProperties}, in which cells are serialized.
      *
-     * @param index the internal index
-     * @return the persisted index of the same cell
+     * @param layoutIndex the layout index
+     * @return the flat index of the same cell
      */
-    int canonical(int index) {
-        int tile = index >>> cellsPerTileShift;
-        int offset = index & ((1 << cellsPerTileShift) - 1);
-        int canonical = 0;
+    int flatIndex(int layoutIndex) {
+        int tile = layoutIndex >>> cellsPerTileShift;
+        int offset = layoutIndex & ((1 << cellsPerTileShift) - 1);
+        int result = 0;
         for (int i = 0; i < dimensions; i++) {
             int tilePosition = tile / tileStrides[i];
             tile -= tilePosition * tileStrides[i];
             int c = (tilePosition << tileShift) | ((offset >>> (tileShift * i)) & tileMask);
-            canonical += c * canonicalStrides[i];
+            result += c * flatStrides[i];
         }
-        return canonical;
+        return result;
     }
 
     /**
-     * The canonical index of the first cell of a tile: the cell at offset 0, whose coordinate is
-     * the tile position times the tile side in every dimension. With {@link #canonicalOffset(int)}
-     * this splits {@link #canonical(int)} into a part that costs one division per dimension and is
+     * The flat index of the first cell of a tile: the cell at offset 0, whose coordinate is
+     * the tile position times the tile side in every dimension. With {@link #flatIndexOffset(int)}
+     * this splits {@link #flatIndex(int)} into a part that costs one division per dimension and is
      * shared by all cells of a tile, and a part that costs only shifts.
      *
-     * @param tile the tile number, {@code index >>> cellsPerTileShift()}
-     * @return the canonical index of the tile's first cell
+     * @param tile the tile number, {@code layoutIndex >>> cellsPerTileShift()}
+     * @return the flat index of the tile's first cell
      */
-    int canonicalOfTile(int tile) {
-        int canonical = 0;
+    int flatIndexOfTile(int tile) {
+        int result = 0;
         for (int i = 0; i < dimensions; i++) {
             int tilePosition = tile / tileStrides[i];
             tile -= tilePosition * tileStrides[i];
-            canonical += (tilePosition << tileShift) * canonicalStrides[i];
+            result += (tilePosition << tileShift) * flatStrides[i];
         }
-        return canonical;
+        return result;
     }
 
     /**
-     * The canonical distance of a cell from the first cell of its tile, from the cell's offset
-     * inside the tile. Adding it to {@link #canonicalOfTile(int)} gives the cell's canonical index.
+     * The flat-index distance of a cell from the first cell of its tile, from the cell's offset
+     * inside the tile. Adding it to {@link #flatIndexOfTile(int)} gives the cell's flat index.
      *
-     * @param offset the offset inside the tile, {@code index & (cellsPerTile - 1)}
-     * @return the canonical index difference to the tile's first cell
+     * @param offset the offset inside the tile, {@code layoutIndex & (cellsPerTile - 1)}
+     * @return the flat index difference to the tile's first cell
      */
-    int canonicalOffset(int offset) {
-        int canonical = 0;
+    int flatIndexOffset(int offset) {
+        int result = 0;
         for (int i = 0; i < dimensions; i++) {
-            canonical += ((offset >>> (tileShift * i)) & tileMask) * canonicalStrides[i];
+            result += ((offset >>> (tileShift * i)) & tileMask) * flatStrides[i];
         }
-        return canonical;
+        return result;
     }
 
     /**
-     * @return log2 of the cells per tile: an internal index shifted right by it is the tile number,
+     * @return log2 of the cells per tile: a layout index shifted right by it is the tile number,
      *         its low bits are the offset inside the tile
      */
     int cellsPerTileShift() {

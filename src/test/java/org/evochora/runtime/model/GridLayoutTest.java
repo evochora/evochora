@@ -43,7 +43,7 @@ class GridLayoutTest {
         int[] back = new int[shape.length];
 
         forEachCoordinate(shape, coord -> {
-            int index = layout.index(coord);
+            int index = layout.layoutIndex(coord);
             assertThat(index).isBetween(0, layout.totalCells() - 1);
             assertThat(seen.get(index)).as("index %d used twice", index).isFalse();
             seen.set(index);
@@ -55,12 +55,12 @@ class GridLayoutTest {
 
     @ParameterizedTest
     @MethodSource("worlds")
-    void canonicalIndexIsThePersistedRowMajorIndex(int[] shape, boolean toroidal, int tileSide) {
+    void flatIndexIsThePersistedRowMajorIndex(int[] shape, boolean toroidal, int tileSide) {
         EnvironmentProperties properties = new EnvironmentProperties(shape, toroidal);
         GridLayout layout = new GridLayout(properties, tileSide);
 
         forEachCoordinate(shape, coord ->
-                assertThat(layout.canonical(layout.index(coord))).isEqualTo(properties.toFlatIndex(coord)));
+                assertThat(layout.flatIndex(layout.layoutIndex(coord))).isEqualTo(properties.toFlatIndex(coord)));
     }
 
     @ParameterizedTest
@@ -70,7 +70,7 @@ class GridLayoutTest {
         int[] neighbour = new int[shape.length];
 
         forEachCoordinate(shape, coord -> {
-            int index = layout.index(coord);
+            int index = layout.layoutIndex(coord);
             for (int dim = 0; dim < shape.length; dim++) {
                 for (int sign = -1; sign <= 1; sign += 2) {
                     System.arraycopy(coord, 0, neighbour, 0, coord.length);
@@ -82,7 +82,7 @@ class GridLayoutTest {
                     } else {
                         neighbour[dim] = Math.floorMod(neighbour[dim], shape[dim]);
                         assertThat(stepped).as("from %s along %d by %d", coordString(coord), dim, sign)
-                                .isEqualTo(layout.index(neighbour));
+                                .isEqualTo(layout.layoutIndex(neighbour));
                     }
                 }
             }
@@ -92,14 +92,14 @@ class GridLayoutTest {
 
     @ParameterizedTest
     @MethodSource("worlds")
-    void canonicalIndexSplitsIntoATilePartAndAnOffsetPart(int[] shape, boolean toroidal, int tileSide) {
+    void flatIndexSplitsIntoATilePartAndAnOffsetPart(int[] shape, boolean toroidal, int tileSide) {
         GridLayout layout = layout(shape, toroidal, tileSide);
         int shift = layout.cellsPerTileShift();
         int offsetMask = (1 << shift) - 1;
 
         for (int index = 0; index < layout.totalCells(); index++) {
-            assertThat(layout.canonicalOfTile(index >>> shift) + layout.canonicalOffset(index & offsetMask))
-                    .as("index %d", index).isEqualTo(layout.canonical(index));
+            assertThat(layout.flatIndexOfTile(index >>> shift) + layout.flatIndexOffset(index & offsetMask))
+                    .as("index %d", index).isEqualTo(layout.flatIndex(index));
         }
     }
 
@@ -127,9 +127,9 @@ class GridLayoutTest {
         GridLayout layout = new GridLayout(properties, 1);
 
         forEachCoordinate(shape, coord -> {
-            int index = layout.index(coord);
+            int index = layout.layoutIndex(coord);
             assertThat(index).isEqualTo(properties.toFlatIndex(coord));
-            assertThat(layout.canonical(index)).isEqualTo(index);
+            assertThat(layout.flatIndex(index)).isEqualTo(index);
         });
     }
 
@@ -137,21 +137,21 @@ class GridLayoutTest {
     void dimensionZeroIsContiguousInsideATile() {
         GridLayout layout = layout(new int[]{64, 64}, true, 32);
         int[] coord = {0, 17};
-        int index = layout.index(coord);
+        int index = layout.layoutIndex(coord);
         for (int x = 1; x < 32; x++) {
             coord[0] = x;
-            assertThat(layout.index(coord)).isEqualTo(index + x);
+            assertThat(layout.layoutIndex(coord)).isEqualTo(index + x);
         }
     }
 
     @Test
     void aTileIsContiguousInMemory() {
         GridLayout layout = layout(new int[]{64, 64}, true, 32);
-        int first = layout.index(new int[]{32, 32});
+        int first = layout.layoutIndex(new int[]{32, 32});
         BitSet inTile = new BitSet();
         forEachCoordinate(new int[]{64, 64}, coord -> {
             if (coord[0] >= 32 && coord[1] >= 32) {
-                inTile.set(layout.index(coord) - first);
+                inTile.set(layout.layoutIndex(coord) - first);
             }
         });
         assertThat(inTile.cardinality()).isEqualTo(1024);

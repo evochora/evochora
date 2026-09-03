@@ -301,13 +301,13 @@ public final class DeltaCodec {
         }
         
         /**
-         * Serializes every occupied cell. The environment hands the cells out under their canonical
-         * row-major index, in ascending order, so the columns do not depend on how the environment
-         * lays out its grid in memory.
+         * Serializes every occupied cell. The environment hands the cells out under their flat
+         * index, the persisted row-major numbering, in ascending order, so the columns do not depend
+         * on how the environment lays out its grid in memory.
          */
         private CellDataColumns extractAllCells(Environment env) {
             cellColumnsBuilder.clear();
-            env.forEachOccupiedCellInCanonicalOrder(this::addCell);
+            env.forEachOccupiedCellInFlatIndexOrder(this::addCell);
             return cellColumnsBuilder.build();
         }
 
@@ -325,8 +325,8 @@ public final class DeltaCodec {
             return cellColumnsBuilder.build();
         }
 
-        private void addCell(int canonicalIndex, int moleculeInt, int ownerId) {
-            cellColumnsBuilder.addFlatIndices(canonicalIndex);
+        private void addCell(int flatIndex, int moleculeInt, int ownerId) {
+            cellColumnsBuilder.addFlatIndices(flatIndex);
             cellColumnsBuilder.addMoleculeData(moleculeInt);
             cellColumnsBuilder.addOwnerIds(ownerId);
         }

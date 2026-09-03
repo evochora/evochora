@@ -71,8 +71,8 @@ public class GeneDuplicationPlugin implements IBirthHandler {
         int minDv;
         /** Maximum DV-dimension coordinate on this scan line. */
         int maxDv;
-        /** The canonical index of one owned cell on this scan line, for coordinate reconstruction. */
-        int sampleCanonicalIndex;
+        /** The flat index of one owned cell on this scan line, for coordinate reconstruction. */
+        int sampleFlatIndex;
         /** Number of owned cells on this scan line. */
         int count;
         /** Start of the shortest arc containing all owned cells (inclusive). */
@@ -92,12 +92,12 @@ public class GeneDuplicationPlugin implements IBirthHandler {
          * Resets this info for a new scan line.
          *
          * @param dvCoord The DV-dimension coordinate of the first cell seen.
-         * @param canonicalIndex The canonical index of the first cell seen.
+         * @param flatIndex The flat index of the first cell seen.
          */
-        void reset(int dvCoord, int canonicalIndex) {
+        void reset(int dvCoord, int flatIndex) {
             this.minDv = dvCoord;
             this.maxDv = dvCoord;
-            this.sampleCanonicalIndex = canonicalIndex;
+            this.sampleFlatIndex = flatIndex;
             this.count = 1;
             this.bestNopStart = -1;
             this.bestNopLength = 0;
@@ -202,7 +202,7 @@ public class GeneDuplicationPlugin implements IBirthHandler {
 
         final int dvDimFinal = dvDim;
 
-        // The visit runs in canonical order: the reservoir choice below must not depend on write history
+        // The visit runs in flat-index order: the reservoir choice below must not depend on write history
         env.visitCellsOwnedBy(childId, cell -> {
             System.arraycopy(cell.coordinate(), 0, coordBuffer, 0, coordBuffer.length);
 
@@ -246,7 +246,7 @@ public class GeneDuplicationPlugin implements IBirthHandler {
         // --- Step 3: Scan ALL scan lines for NOP areas ---
         int candidateCount = 0;
         for (ScanLineInfo line : scanLineMap.values()) {
-            env.properties.flatIndexToCoordinates(line.sampleCanonicalIndex, coordBuffer);
+            env.properties.flatIndexToCoordinates(line.sampleFlatIndex, coordBuffer);
             findBestNopRun(line, env, dvDimFinal, shape[dvDimFinal]);
             if (line.bestNopLength >= minNopSize) {
                 candidateCount++;
@@ -293,11 +293,11 @@ public class GeneDuplicationPlugin implements IBirthHandler {
 
         // --- Step 5: Copy ---
         // Build source position from label's scan line
-        env.properties.flatIndexToCoordinates(labelLine.sampleCanonicalIndex, sourcePos);
+        env.properties.flatIndexToCoordinates(labelLine.sampleFlatIndex, sourcePos);
         sourcePos[dvDimFinal] = selectedLabelDvCoord;
 
         // Build target position from target scan line, adjusting start for DV direction
-        env.properties.flatIndexToCoordinates(targetLine.sampleCanonicalIndex, targetPos);
+        env.properties.flatIndexToCoordinates(targetLine.sampleFlatIndex, targetPos);
         if (dvStep < 0) {
             targetPos[dvDimFinal] = (targetLine.bestNopStart + copyLength - 1) % shapeDvDim;
         } else {
@@ -328,9 +328,9 @@ public class GeneDuplicationPlugin implements IBirthHandler {
         }
 
         if (LOG.isDebugEnabled()) {
-            env.properties.flatIndexToCoordinates(labelLine.sampleCanonicalIndex, sourcePos);
+            env.properties.flatIndexToCoordinates(labelLine.sampleFlatIndex, sourcePos);
             sourcePos[dvDimFinal] = selectedLabelDvCoord;
-            env.properties.flatIndexToCoordinates(targetLine.sampleCanonicalIndex, targetPos);
+            env.properties.flatIndexToCoordinates(targetLine.sampleFlatIndex, targetPos);
             targetPos[dvDimFinal] = (dvStep < 0)
                     ? (targetLine.bestNopStart + copyLength - 1) % shapeDvDim
                     : targetLine.bestNopStart;
@@ -394,7 +394,7 @@ public class GeneDuplicationPlugin implements IBirthHandler {
      * Walks along the scan line's shortest arc ({@link ScanLineInfo#walkStart} to
      * {@link ScanLineInfo#walkEnd}), correctly handling toroidal wrapping.
      * Uses the shared coordBuffer (caller must have initialized it via flatIndexToCoordinates
-     * with the scan line's sampleCanonicalIndex before calling).
+     * with the scan line's sampleFlatIndex before calling).
      *
      * @param line The scan line to scan.
      * @param env The simulation environment.

@@ -36,7 +36,7 @@ class EnvironmentIndexConsistencyTest {
         List<Integer> actual = new ArrayList<>();
         permuted.visitCellsOwnedBy(1, cell -> actual.add(permuted.properties.toFlatIndex(cell.coordinate())));
 
-        assertThat(expected).hasSize(900).as("visited in ascending canonical order").isSorted();
+        assertThat(expected).hasSize(900).as("visited in ascending flat-index order").isSorted();
         assertThat(actual).isEqualTo(expected);
     }
 
@@ -60,9 +60,9 @@ class EnvironmentIndexConsistencyTest {
         }
 
         List<Integer> expected = new ArrayList<>();
-        ascending.forEachOccupiedCellInCanonicalOrder((canonical, molecule, owner) -> expected.add(canonical));
+        ascending.forEachOccupiedCellInFlatIndexOrder((flatIndex, molecule, owner) -> expected.add(flatIndex));
         List<Integer> actual = new ArrayList<>();
-        permuted.forEachOccupiedCellInCanonicalOrder((canonical, molecule, owner) -> actual.add(canonical));
+        permuted.forEachOccupiedCellInFlatIndexOrder((flatIndex, molecule, owner) -> actual.add(flatIndex));
 
         assertThat(expected).hasSize(900).isSorted();
         assertThat(actual).isEqualTo(expected);
@@ -114,7 +114,7 @@ class EnvironmentIndexConsistencyTest {
 
     private static int occupied(Environment env) {
         int[] count = {0};
-        env.forEachOccupiedCellInCanonicalOrder((canonical, molecule, owner) -> count[0]++);
+        env.forEachOccupiedCellInFlatIndexOrder((flatIndex, molecule, owner) -> count[0]++);
         return count[0];
     }
 }

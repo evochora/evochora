@@ -1081,7 +1081,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
      * <ul>
      *   <li>Environment cells array: totalCells × 8 bytes (int molecule + int ownerId)</li>
      *   <li>Environment tracking: three bit sets over the world, the owner index and the
-     *       canonical-order keys over the occupied cells</li>
+     *       flat-index order keys over the occupied cells</li>
      *   <li>Organisms: maxOrganisms × ~2KB (registers, stacks, code reference)</li>
      *   <li>Compiled programs: cached ProgramArtifacts</li>
      *   <li>Encoder: current snapshot + accumulated deltas + the column lists of a capture</li>
@@ -1111,7 +1111,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         //   power-of-two capacity holds between 1.33 and 2.67 key slots per entry (4 bytes each);
         //   12 bytes per cell covers the worst case. Each set additionally costs a fixed object,
         //   array header and map slot (~100 bytes).
-        // canonical order: one 8-byte key and one 4-byte owner per cell handed out in canonical
+        // flat-index order: one 8-byte key and one 4-byte owner per cell handed out in flat-index
         //   order, retained at the size of the largest batch, which is every occupied cell at a
         //   snapshot. The buffers grow by doubling and never shrink, so their capacity reaches up
         //   to twice that batch: 24 bytes per occupied cell is the bound.
@@ -1120,13 +1120,13 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         //   organism the estimate assumes (the maxCellsPerOrganism option).
         long bitSetBytes = (params.totalCells() + 7) / 8;
         long cellsByOwnerBytes = params.occupiedCells() * 12L + (long) params.maxOrganisms() * 100;
-        long canonicalOrderBytes = params.occupiedCells() * 24L;
+        long flatIndexOrderBytes = params.occupiedCells() * 24L;
         long ownedVisitBytes = maxCellsPerOrganism * 24L;
-        long trackingBytes = 3 * bitSetBytes + cellsByOwnerBytes + canonicalOrderBytes + ownedVisitBytes;
+        long trackingBytes = 3 * bitSetBytes + cellsByOwnerBytes + flatIndexOrderBytes + ownedVisitBytes;
         estimates.add(new MemoryEstimate(
             serviceName + " (Environment tracking)",
             trackingBytes,
-            String.format("3 BitSets (%d cells) + cellsByOwner (%d occupied cells × 12 bytes + %d orgs × 100 bytes) + canonical order buffers (%d occupied cells × 24 bytes, doubling capacity) + owned-cell visit buffers (%d cells per organism × 24 bytes)",
+            String.format("3 BitSets (%d cells) + cellsByOwner (%d occupied cells × 12 bytes + %d orgs × 100 bytes) + flat-index order buffers (%d occupied cells × 24 bytes, doubling capacity) + owned-cell visit buffers (%d cells per organism × 24 bytes)",
                 params.totalCells(), params.occupiedCells(), params.maxOrganisms(), params.occupiedCells(), maxCellsPerOrganism),
             MemoryEstimate.Category.SERVICE_BATCH
         ));

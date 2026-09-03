@@ -362,13 +362,13 @@ final class ResumeNeutralityHarness {
 
     /**
      * Every occupied cell of the world, so a molecule restored to the wrong place shows up. Cells
-     * are listed under their canonical index, so that two environments with different memory
+     * are listed under their flat index, so that two environments with different memory
      * layouts describe the same world identically.
      */
     static String describe(Environment environment) {
         StringBuilder line = new StringBuilder(256).append("world=");
-        environment.forEachOccupiedCellInCanonicalOrder((canonical, molecule, owner) ->
-                line.append(canonical).append(':').append(molecule).append('/').append(owner).append(' '));
+        environment.forEachOccupiedCellInFlatIndexOrder((flatIndex, molecule, owner) ->
+                line.append(flatIndex).append(':').append(molecule).append('/').append(owner).append(' '));
         return line.toString();
     }
 

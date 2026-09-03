@@ -49,7 +49,7 @@ These were agreed on 2026-09-02 and are not re-opened here.
 3. The simulation stays n-dimensional. The layout is defined for any n; the world minimum of 32ⁿ
    cells is accepted (2D and 3D are the targets, 4D is conceivable, more is not planned).
 4. Results are independent of the layout. Every place where the order of cells enters a decision is
-   defined over the persisted index, which is a pure function of the coordinate.
+   defined over the flat index, which is a pure function of the coordinate.
 5. No performance change buys an architectural regression. Layout knowledge lives in exactly one
    class; the change removes the duplicated stride and wrap arithmetic that exists today.
 
@@ -70,11 +70,10 @@ its existing index API already uses (`getCoordinateFromIndex`, `getMoleculeInt`)
 
 | `GridLayout` | `Environment` | Purpose | Cost |
 |---|---|---|---|
-| `index(coord)` | `getIndexFromCoordinate(coord)` | coordinate → internal index, coordinate already in range | shifts, masks, one multiply-add per dimension |
-| `coordinate(index, out)` | `getCoordinateFromIndex(index, out)`, next to the existing allocating overload | internal index → coordinate, allocation-free | shifts for the offset inside the tile, one division per dimension for the tile position |
-| `step(index, dim, sign)` | `stepIndex(index, dim, sign)` | index of the neighbouring cell along one dimension, honouring tile boundaries and the topology; `-1` outside a bounded world | shift and mask; a division only when a tile boundary is crossed |
-| `canonical(index)` | `toCanonicalIndex(index)` | internal → persisted index | decode plus multiply-add |
-| `distance(coord, index)` | `toroidalManhattanDistance(coord, index)` | toroidal Manhattan distance to the cell at an index | as `coordinate` |
+| `layoutIndex(coord)` | `getIndexFromCoordinate(coord)` | coordinate → layout index, coordinate already in range | shifts, masks, one multiply-add per dimension |
+| `coordinate(layoutIndex, out)` | `getCoordinateFromIndex(layoutIndex, out)`, next to the existing allocating overload | layout index → coordinate, allocation-free | shifts for the offset inside the tile, one division per dimension for the tile position |
+| `step(layoutIndex, dim, forward)` | `stepIndex(layoutIndex, dim, forward)` | layout index of the neighbouring cell along one dimension, honouring tile boundaries and the topology; `-1` outside a bounded world | shift and mask; a division only when a tile boundary is crossed |
+| `flatIndex(layoutIndex)` | `toFlatIndex(layoutIndex)` | layout index → flat index | decode plus multiply-add |
 
 ### Index arithmetic
 
@@ -113,32 +112,32 @@ layout class or onto the environment's coordinate-based API:
 |---|---|
 | `Environment` computes row-major strides | delegates to the layout |
 | `Organism.skipNopCells` and `getRawArgumentsFromEnvironment` compute base index + position × stride and duplicate the toroidal wrap | `index = step(index, dim, sign)` |
-| `VirtualMachine` computes the fetch index from `EnvironmentProperties` strides | `environment.index(ip)` |
-| `PreExpandedHammingStrategy` decodes a label's coordinate with `EnvironmentProperties` strides | `environment.distance(coord, index)` |
+| `VirtualMachine` computes the fetch index from `EnvironmentProperties` strides | `environment.getMoleculeIntAt(ip)` |
+| `PreExpandedHammingStrategy` decodes a label's coordinate with `EnvironmentProperties` strides | unchanged: labels are keyed by the flat index, whose strides are those of `EnvironmentProperties` |
 | `GeneInsertionPlugin`, `GeneDuplicationPlugin` compute their own row-major strides and index cells with them | environment conversions, own strides removed |
 | `GeneDeletionPlugin` decodes environment indices through `EnvironmentProperties` | environment conversion |
-| `Simulation.resolveConflicts` keys contenders by the persisted index of a coordinate | keyed by the environment's index; any injective key is correct, and using one numbering inside the runtime makes the rule below checkable by a search instead of a review |
-| `SeedEnergyCreator` draws a random internal index | draws a random persisted index and converts it (see next section) |
+| `Simulation.resolveConflicts` keys contenders by the flat index of a coordinate | keyed by the environment's index; any injective key is correct, and using one numbering inside the runtime makes the rule below checkable by a search instead of a review |
+| `SeedEnergyCreator` draws a random layout index | draws a random flat index and converts it (see next section) |
 
 After the change, `EnvironmentProperties` strides are used by exactly two runtime places, both
-outside the tick: the encoder converting internal indices to persisted ones, and the restorer
-converting persisted indices to coordinates. Everything else in the runtime treats an index as an
+outside the tick: the encoder converting layout indices to flat indices, and the restorer
+converting flat indices to coordinates. Everything else in the runtime treats an index as an
 opaque number that only the environment can interpret. That rule enters `AGENTS.md` for plugin
 authors; three of the project's own plugins violated it silently.
 
 ### Layout independence
 
 The experiment changed trajectories because four decisions consume randomness or break ties in
-index order. Each of them is redefined over the persisted index, which depends only on the
+index order. Each of them is redefined over the flat index, which depends only on the
 coordinate. None of them is on the per-instruction path, so the redefinition costs nothing
 measurable.
 
 | Site | Today | After |
 |---|---|---|
-| `Environment.forEachCellOwnedByInIndexOrder` — the order in which mutation operators visit a child's cells and draw randomness | ascending internal index | ascending persisted index |
-| Label index candidate lists — order of weighted reservoir sampling; tie-break for equal score and owner | sorted by internal index | sorted by persisted index |
-| `SeedEnergyCreator` — the cell a random number selects | `nextInt(totalCells)` as internal index | as persisted index, converted |
-| `DeathContext` — the order death handlers visit a dying organism's cells | hash-set order of internal indices | ascending persisted index |
+| `Environment.visitCellsOwnedBy` — the order in which mutation operators visit a child's cells and draw randomness | ascending layout index | ascending flat index |
+| Label index candidate lists — order of weighted reservoir sampling; tie-break for equal score and owner | sorted by layout index | sorted by flat index |
+| `SeedEnergyCreator` — the cell a random number selects | `nextInt(totalCells)` as layout index | as flat index, converted |
+| `DeathContext` — the order death handlers visit a dying organism's cells | hash-set order of layout indices | ascending flat index |
 
 The gap search of `GeneInsertionPlugin` needs no change: it sorts the coordinates of owned cells
 along the direction vector and breaks ties on those coordinates, so it is layout-independent
@@ -161,7 +160,7 @@ which is exactly today's row-major layout. Two consequences:
 
 `CellDataColumns.flat_indices` keeps its meaning: the row-major index of `EnvironmentProperties`.
 The encoder converts each occupied or changed cell on the way out, at sampling ticks only. The
-restorer decodes each persisted index through `EnvironmentProperties`, not through the environment's
+restorer decodes each flat index through `EnvironmentProperties`, not through the environment's
 own numbering. Old runs stay readable and resumable; a run may be resumed under a different tile
 side and stays bit-identical, because the tile side is a runtime property with no observable effect.
 
@@ -200,7 +199,7 @@ becomes visible only after the code has proven that nothing can observe it.
 
 The class with all five primitives and a parameter for the tile side. Unit tests in two, three and
 four dimensions: round trips between coordinate and index for every cell of small worlds; the set of
-persisted indices of all internal indices is a permutation; `step` agrees with coordinate arithmetic
+flat indices of all layout indices is a permutation; `step` agrees with coordinate arithmetic
 for every cell and every direction, at tile edges, at world edges, toroidal and bounded; `distance`
 agrees with a reference computation. `t = 1` must reproduce today's row-major numbering exactly.
 
@@ -208,8 +207,8 @@ Nothing is wired. Failure here is an arithmetic bug and is found by the cheapest
 
 ### Slice 2 — layout-independent orderings
 
-The five sites of the invariance table are redefined over the persisted index while the environment
-still uses the row-major numbering, under which persisted and internal index coincide. This slice
+The five sites of the invariance table are redefined over the flat index while the environment
+still uses the row-major numbering, under which flat and layout index coincide. This slice
 changes no behaviour at all.
 
 Oracle: the full test suite, and the 10 M-tick reference run on the demo server produces the same
@@ -291,14 +290,14 @@ What is not changed:
 
 ## Outcome
 
-Implemented in the slices above, with four additions decided during implementation:
+Implemented in the slices above, with five additions decided during implementation:
 
-- **The cell index is confined to the model package.** `GridLayout` and every index-based method
+- **The layout index is confined to the model package.** `GridLayout` and every index-based method
   of `Environment` are package-private; outside `org.evochora.runtime.model` no method takes or
-  returns an environment index. Callers see coordinates, a `CellView` for owned cells and
-  canonical-order visits for serialization. The invariance is thereby enforced by the compiler,
+  returns a layout index. Callers see coordinates, a `CellView` for owned cells and
+  flat-index visits for serialization. The invariance is thereby enforced by the compiler,
   not only by tests.
-- **Persisted cells are written in ascending canonical order**, so persisted bytes are identical
+- **Persisted cells are written in ascending flat-index order**, so persisted bytes are identical
   whatever the layout. The ordering is done by the environment: an in-place MSD radix sort over
   keys that carry each cell's content, read during a sequential walk of the grid, 12 bytes per
   occupied cell, retained between captures. The memory estimate separates the world size from the
@@ -307,6 +306,10 @@ Implemented in the slices above, with four additions decided during implementati
   the cell it is visiting and may replace it; where the cell lies is no longer observable. No
   handler in the repository used the index; an external one that did must switch to the molecule
   accessors.
+- **The layout has no distance primitive.** The label index is keyed by the flat index, and the
+  toroidal Manhattan distance to a label is computed from that index with the strides of
+  `EnvironmentProperties`, without any knowledge of tiles; `distance(coord, index)` from the
+  primitives table was therefore never built.
 - **Coordinates outside the world are rejected.** The environment's in-range accessors, including
   the instruction fetch, throw an `IllegalArgumentException` for a coordinate outside the world
   instead of addressing another cell; in a bounded world a pointer that crosses an edge therefore
@@ -324,4 +327,4 @@ Measured on the demo server (ARM, 4 cores), same simulation, tick hash identical
 The detailed-profile cost is the serialization of a snapshot from an order that is no longer the
 memory order: sorting, conversion and message assembly. The gap search of the insertion plugin
 turned out to be coordinate-ordered already, so four rather than five decisions had to be redefined
-over the canonical index.
+over the flat index.

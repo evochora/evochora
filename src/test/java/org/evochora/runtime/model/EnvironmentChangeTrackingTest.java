@@ -30,16 +30,16 @@ class EnvironmentChangeTrackingTest {
     
     /**
      * Whether the cells changed since the last sample include the one at the given coordinate,
-     * compared through the canonical index the environment hands out, whatever its memory layout.
+     * compared through the flat index the environment hands out, whatever its memory layout.
      */
     private boolean containsCell(List<Integer> changes, int x, int y) {
         return changes.contains(env.properties.toFlatIndex(new int[]{x, y}));
     }
 
-    /** The canonical indices of the cells changed since the last sample, as the environment hands them out. */
+    /** The flat indices of the cells changed since the last sample, as the environment hands them out. */
     private List<Integer> changed() {
         List<Integer> out = new ArrayList<>();
-        env.forEachCellChangedSinceLastSample((canonical, molecule, owner) -> out.add(canonical));
+        env.forEachCellChangedSinceLastSample((flatIndex, molecule, owner) -> out.add(flatIndex));
         return out;
     }
 
@@ -238,7 +238,7 @@ class EnvironmentChangeTrackingTest {
         env.setMolecule(mol, 1, new int[]{3, 7});
         
         int[] seen = {0, 0, 0};
-        env.forEachCellChangedSinceLastSample((canonical, molecule, owner) -> { seen[0]++; seen[1] = molecule; seen[2] = owner; });
+        env.forEachCellChangedSinceLastSample((flatIndex, molecule, owner) -> { seen[0]++; seen[1] = molecule; seen[2] = owner; });
 
         // The changed cell is handed out with its content and owner
         assertEquals(1, seen[0]);

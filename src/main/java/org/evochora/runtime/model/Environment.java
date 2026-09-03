@@ -21,22 +21,23 @@ import org.evochora.runtime.label.PreExpandedHammingStrategy;
  * <b>Thread safety:</b> Concurrent reads through coordinates are safe. Writes (e.g.
  * {@code setMolecule}, {@code clearOwnershipFor}) must be serialized — in the tick loop,
  * environment-modifying instructions and death handling always run sequentially on the main
- * thread. The canonical-order visits ({@link #forEachOccupiedCellInCanonicalOrder},
+ * thread. The flat-index visits ({@link #forEachOccupiedCellInFlatIndexOrder},
  * {@link #forEachCellChangedSinceLastSample}, {@link #forEachCellChangedSinceLastSnapshot}) share
  * one batch and belong to the single thread that serializes the world; they are not concurrent
  * and not re-entrant, and a nested visit fails fast. The same holds for the owned-cell visit
  * ({@link #visitCellsOwnedBy}): the visits share buffers owned by the environment, and the guard
  * against nesting catches a second visit on the same thread, not one from another thread.
  * <p>
- * <b>Cell addressing:</b> inside this package, every flat index this class hands out or accepts
- * is an index of the environment's {@link GridLayout}, to be treated as an opaque number that only
- * this class relates to a coordinate. Outside the package there are no indices: callers see
- * coordinates, the {@link CellView} handed to owned-cell visitors, and the canonical-order visits
- * used for serialization. The canonical row-major index of {@link EnvironmentProperties}, in which
- * cells are persisted, is a different numbering of the same cells; the label index is keyed by it,
- * and this class converts at that boundary. Every order that may influence a simulation result —
- * the cells of an owner, the candidates of a label, the seeded cells, the persisted cells — is
- * defined over the canonical index, so results and persisted bytes do not depend on the layout.
+ * <b>Cell addressing:</b> inside this package, every index this class hands out or accepts is a
+ * layout index: the position of the cell in the environment's {@link GridLayout}, to be treated as
+ * an opaque number that only this class relates to a coordinate. Outside the package there are no
+ * indices: callers see coordinates, the {@link CellView} handed to owned-cell visitors, and the
+ * flat-index visits used for serialization. The flat index is the row-major numbering of
+ * {@link EnvironmentProperties}, in which cells are persisted: a different numbering of the same
+ * cells, by which the label index is keyed, and this class converts at that boundary. Every order
+ * that may influence a simulation result — the cells of an owner, the candidates of a label, the
+ * seeded cells, the persisted cells — is defined over the flat index, so results and persisted
+ * bytes do not depend on the layout.
  */
 public class Environment implements IEnvironmentReader {
     /**
@@ -63,7 +64,7 @@ public class Environment implements IEnvironmentReader {
      */
     private final BitSet occupiedIndices;
     
-    // Ownership index: maps ownerId -> set of flat indices owned by that organism
+    // Ownership index: maps ownerId -> set of layout indices owned by that organism
     // Enables O(1) lookup of all cells owned by a specific organism (for FORK transfer, death cleanup)
     private final Int2ObjectOpenHashMap<IntOpenHashSet> cellsByOwner;
     
@@ -77,10 +78,10 @@ public class Environment implements IEnvironmentReader {
     // Maintains index of all LABEL molecules for O(1) lookup
     private final LabelIndex labelIndex;
 
-    // The batch through which cells are handed out in canonical order; its buffer is retained
-    private final CanonicalCellOrder canonicalOrder = new CanonicalCellOrder();
-    // Set while a canonical-order visit runs, so that a nested visit fails instead of corrupting it
-    private boolean canonicalVisitRunning = false;
+    // The batch through which cells are handed out in flat-index order; its buffer is retained
+    private final FlatIndexCellOrder flatIndexOrder = new FlatIndexCellOrder();
+    // Set while a flat-index visit runs, so that a nested visit fails instead of corrupting it
+    private boolean flatIndexVisitRunning = false;
     // Buffers and cursor of the owned-cell visits, retained between visits and therefore not
     // shareable between a visit and one nested inside it; the flag makes a nested visit fail
     private int[] ownedIndices = new int[0];
@@ -222,7 +223,7 @@ public class Environment implements IEnvironmentReader {
         return normalized;
     }
 
-    private int getFlatIndex(int... coord) {
+    private int getLayoutIndex(int... coord) {
         int[] normalizedCoord = getNormalizedCoordinate(coord);
         if (!isToroidal) {
             for(int i = 0; i < shape.length; i++) {
@@ -231,7 +232,7 @@ public class Environment implements IEnvironmentReader {
                 }
             }
         }
-        return layout.index(normalizedCoord);
+        return layout.layoutIndex(normalizedCoord);
     }
 
     /**
@@ -301,9 +302,9 @@ public class Environment implements IEnvironmentReader {
 
     /**
      * Hands every cell owned by {@code ownerId} to the visitor through a {@link CellView}, in
-     * ascending canonical order — an order determined by the cells' coordinates alone, independent
+     * ascending flat-index order — an order determined by the cells' coordinates alone, independent
      * of write history and of how the grid is laid out in memory. This is the owned-cell access for
-     * callers outside this package, which see coordinates and never an internal index.
+     * callers outside this package, which see coordinates and never a layout index.
      * <p>
      * The visit sorts the owner's cells in buffers retained by the environment and moves one
      * retained cursor over them, so after the first visit nothing here allocates. The buffers and
@@ -335,7 +336,7 @@ public class Environment implements IEnvironmentReader {
             owned.toArray(ownedIndices);
             for (int i = 0; i < count; i++) {
                 int index = ownedIndices[i];
-                ownedKeys[i] = ((long) layout.canonical(index) << 32) | (index & 0xFFFFFFFFL);
+                ownedKeys[i] = ((long) layout.flatIndex(index) << 32) | (index & 0xFFFFFFFFL);
             }
             Arrays.sort(ownedKeys, 0, count);
             for (int i = 0; i < count; i++) {
@@ -349,16 +350,16 @@ public class Environment implements IEnvironmentReader {
     }
 
     /**
-     * The view handed to owned-cell visitors: positioned on one internal index at a time and
+     * The view handed to owned-cell visitors: positioned on one layout index at a time and
      * reading and writing through the environment, so the index never leaves this class.
      */
     private final class OwnedCellCursor implements CellView {
         private final int[] coordinate = new int[shape.length];
         private int index = -1;
 
-        void moveTo(int flatIndex) {
-            this.index = flatIndex;
-            layout.coordinate(flatIndex, coordinate);
+        void moveTo(int layoutIndex) {
+            this.index = layoutIndex;
+            layout.coordinate(layoutIndex, coordinate);
         }
 
         /** Detaches the cursor from any cell, so that a view retained beyond its visit fails. */
@@ -406,7 +407,7 @@ public class Environment implements IEnvironmentReader {
      * @return The molecule at the specified coordinate.
      */
     public Molecule getMolecule(int... coord) {
-        int index = getFlatIndex(coord);
+        int index = getLayoutIndex(coord);
         if (index == -1) {
             return org.evochora.runtime.model.Molecule.fromInt(0);
         }
@@ -420,7 +421,7 @@ public class Environment implements IEnvironmentReader {
      */
     public void setMolecule(Molecule molecule, int... coord) {
         assert outsideParallelWave();
-        int index = getFlatIndex(coord);
+        int index = getLayoutIndex(coord);
         if (index != -1) {
             setMoleculeByIndex(index, molecule);
         }
@@ -434,13 +435,13 @@ public class Environment implements IEnvironmentReader {
      */
     public void setMolecule(Molecule molecule, int ownerId, int... coord) {
         assert outsideParallelWave();
-        int index = getFlatIndex(coord);
+        int index = getLayoutIndex(coord);
         if (index != -1) {
             writeMolecule(index, molecule, ownerId);
         }
     }
 
-    /** Writes molecule and owner into the cell at an internal index, updating every index structure. */
+    /** Writes molecule and owner into the cell at a layout index, updating every index structure. */
     private void writeMolecule(int index, Molecule molecule, int ownerId) {
         assert outsideParallelWave();
         int oldMoleculeInt = this.grid[index];
@@ -458,7 +459,7 @@ public class Environment implements IEnvironmentReader {
         this.ownerGrid[index] = ownerId;
 
         // Update label index for fuzzy jump matching
-        labelIndex.onMoleculeSet(toCanonicalIndex(index), oldMoleculeInt, newMoleculeInt, ownerId);
+        labelIndex.onMoleculeSet(toFlatIndex(index), oldMoleculeInt, newMoleculeInt, ownerId);
 
         // Update sparse cell tracking if enabled
         updateOccupiedIndices(index);
@@ -470,7 +471,7 @@ public class Environment implements IEnvironmentReader {
      * @return The owner ID.
      */
     public int getOwnerId(int... coord) {
-        int index = getFlatIndex(coord);
+        int index = getLayoutIndex(coord);
         if (index == -1) {
             return 0;
         }
@@ -484,7 +485,7 @@ public class Environment implements IEnvironmentReader {
      */
     public void setOwnerId(int ownerId, int... coord) {
         assert outsideParallelWave();
-        int index = getFlatIndex(coord);
+        int index = getLayoutIndex(coord);
         if (index != -1) {
             // Track change for delta compression (owner change is also a change)
             markChanged(index);
@@ -496,7 +497,7 @@ public class Environment implements IEnvironmentReader {
 
                 // Update label index for fuzzy jump matching
                 int moleculeInt = this.grid[index];
-                labelIndex.onOwnerChange(toCanonicalIndex(index), moleculeInt, ownerId);
+                labelIndex.onOwnerChange(toFlatIndex(index), moleculeInt, ownerId);
             }
             this.ownerGrid[index] = ownerId;
 
@@ -555,8 +556,8 @@ public class Environment implements IEnvironmentReader {
             }
             
             // Direct array access instead of getOwnerId() call
-            int flatIndex = getFlatIndex(checkCoord);
-            if (flatIndex != -1 && this.ownerGrid[flatIndex] != 0) {
+            int layoutIndex = getLayoutIndex(checkCoord);
+            if (layoutIndex != -1 && this.ownerGrid[layoutIndex] != 0) {
                 return false;
             }
             
@@ -593,33 +594,33 @@ public class Environment implements IEnvironmentReader {
 
     /**
      * Updates the occupied indices tracking based on the current state of the cell.
-     * @param flatIndex The flat index to check and update.
+     * @param layoutIndex The layout index to check and update.
      */
-    private void updateOccupiedIndices(int flatIndex) {
-        int value = this.grid[flatIndex];
-        int owner = this.ownerGrid[flatIndex];
+    private void updateOccupiedIndices(int layoutIndex) {
+        int value = this.grid[layoutIndex];
+        int owner = this.ownerGrid[layoutIndex];
 
         if (value != 0 || owner != 0) {
             // Cell is occupied - add to tracking
-            occupiedIndices.set(flatIndex);
+            occupiedIndices.set(layoutIndex);
         } else {
             // Cell is empty - remove from tracking
-            occupiedIndices.clear(flatIndex);
+            occupiedIndices.clear(layoutIndex);
         }
     }
 
     /**
      * Updates the ownership index when a cell's owner changes.
-     * @param flatIndex The flat index of the cell.
+     * @param layoutIndex The layout index of the cell.
      * @param oldOwner The previous owner ID.
      * @param newOwner The new owner ID.
      */
-    private void updateOwnershipIndex(int flatIndex, int oldOwner, int newOwner) {
+    private void updateOwnershipIndex(int layoutIndex, int oldOwner, int newOwner) {
         // Remove from old owner's set
         if (oldOwner != 0) {
             IntOpenHashSet oldSet = cellsByOwner.get(oldOwner);
             if (oldSet != null) {
-                oldSet.remove(flatIndex);
+                oldSet.remove(layoutIndex);
                 if (oldSet.isEmpty()) {
                     cellsByOwner.remove(oldOwner);
                 }
@@ -627,40 +628,40 @@ public class Environment implements IEnvironmentReader {
         }
         // Add to new owner's set
         if (newOwner != 0) {
-            cellsByOwner.computeIfAbsent(newOwner, k -> new IntOpenHashSet()).add(flatIndex);
+            cellsByOwner.computeIfAbsent(newOwner, k -> new IntOpenHashSet()).add(layoutIndex);
         }
     }
 
 
     /**
-     * Converts a flat index of this environment into the coordinate of the cell.
+     * Converts a layout index into the coordinate of the cell.
      *
-     * @param flatIndex The flat index to convert
+     * @param layoutIndex The layout index to convert
      * @return A new coordinate array
      */
-    int[] getCoordinateFromIndex(int flatIndex) {
+    int[] getCoordinateFromIndex(int layoutIndex) {
         int[] coord = new int[shape.length];
-        layout.coordinate(flatIndex, coord);
+        layout.coordinate(layoutIndex, coord);
         return coord;
     }
 
     /**
-     * Converts a flat index of this environment into the coordinate of the cell without allocating.
+     * Converts a layout index into the coordinate of the cell without allocating.
      *
-     * @param flatIndex The flat index to convert
+     * @param layoutIndex The layout index to convert
      * @param outCoord Receives the coordinate; one entry per dimension
      */
-    void getCoordinateFromIndex(int flatIndex, int[] outCoord) {
-        layout.coordinate(flatIndex, outCoord);
+    void getCoordinateFromIndex(int layoutIndex, int[] outCoord) {
+        layout.coordinate(layoutIndex, outCoord);
     }
 
     /**
-     * Converts an in-range coordinate into the flat index of the cell. Unlike the coordinate-based
+     * Converts an in-range coordinate into the layout index of the cell. Unlike the coordinate-based
      * accessors this performs no toroidal normalization: every component must already lie within
      * the world's shape, and a coordinate outside it is rejected.
      *
      * @param coord The coordinate, one in-range entry per dimension
-     * @return The flat index of that cell
+     * @return The layout index of that cell
      * @throws IllegalArgumentException if a component lies outside the world
      */
     int getIndexFromCoordinate(int[] coord) {
@@ -668,12 +669,12 @@ public class Environment implements IEnvironmentReader {
     }
 
     /**
-     * The flat index of a coordinate that must name a cell of the world. The layout's tile
+     * The layout index of a coordinate that must name a cell of the world. The layout's tile
      * arithmetic would map an out-of-range component onto a neighbouring tile instead of failing,
      * so this check is what keeps the in-range accessors from silently addressing another cell.
      *
      * @param coord the coordinate, one entry per dimension
-     * @return the flat index of that cell
+     * @return the layout index of that cell
      * @throws IllegalArgumentException if a component lies outside the world
      */
     private int indexOfInRange(int[] coord) {
@@ -681,62 +682,62 @@ public class Environment implements IEnvironmentReader {
             throw new IllegalArgumentException("Coordinate " + Arrays.toString(coord)
                     + " lies outside the world of shape " + Arrays.toString(properties.getWorldShape()));
         }
-        return layout.index(coord);
+        return layout.layoutIndex(coord);
     }
 
     /**
-     * Returns the flat index of the cell one step away from an indexed cell along a dimension,
+     * Returns the layout index of the cell one step away from an indexed cell along a dimension,
      * wrapping around in a toroidal world.
      *
-     * @param flatIndex The flat index of the cell to step from
+     * @param layoutIndex The layout index of the cell to step from
      * @param dim The dimension to step along
      * @param forward {@code true} to step towards higher coordinates, {@code false} towards lower
-     * @return The flat index of the neighbouring cell, or {@code -1} if the step leaves a bounded
+     * @return The layout index of the neighbouring cell, or {@code -1} if the step leaves a bounded
      *         world
      */
-    int stepIndex(int flatIndex, int dim, boolean forward) {
-        return layout.step(flatIndex, dim, forward);
+    int stepIndex(int layoutIndex, int dim, boolean forward) {
+        return layout.step(layoutIndex, dim, forward);
     }
 
 
     /**
-     * Gets the packed molecule integer at the specified flat index.
+     * Gets the packed molecule integer at the specified layout index.
      * OPTIMIZATION: Direct array access without coordinate conversion.
      *
-     * @param flatIndex The flat index
+     * @param layoutIndex The layout index
      * @return The packed molecule integer
      */
-    int getMoleculeInt(int flatIndex) {
-        return this.grid[flatIndex];
+    int getMoleculeInt(int layoutIndex) {
+        return this.grid[layoutIndex];
     }
 
 
 
 
     /**
-     * Converts a flat index of this environment into the canonical index of the same cell: the
-     * row-major numbering of {@link EnvironmentProperties}, which is a pure function of the
-     * coordinate and the numbering in which cells are persisted. Every order that may influence a
-     * simulation result is defined over canonical indices, so that results do not depend on how
-     * the grid is laid out in memory. Allocation-free.
+     * Converts a layout index into the flat index of the same cell: the row-major numbering of
+     * {@link EnvironmentProperties}, which is a pure function of the coordinate and the numbering
+     * in which cells are persisted. Every order that may influence a simulation result is defined
+     * over flat indices, so that results do not depend on how the grid is laid out in memory.
+     * Allocation-free.
      *
-     * @param flatIndex a flat index of this environment
-     * @return the canonical index of the same cell
+     * @param layoutIndex a layout index of this environment
+     * @return the flat index of the same cell
      */
-    int toCanonicalIndex(int flatIndex) {
-        return layout.canonical(flatIndex);
+    int toFlatIndex(int layoutIndex) {
+        return layout.flatIndex(layoutIndex);
     }
 
 
     /**
-     * Returns the set of flat indices owned by the specified organism.
+     * Returns the set of layout indices owned by the specified organism.
      * <p>
      * Returns the internal set directly (no copy) for performance.
      * The returned set should not be modified by callers.
      * </p>
      *
      * @param ownerId The organism ID
-     * @return The set of flat indices, or null if the organism owns no cells
+     * @return The set of layout indices, or null if the organism owns no cells
      */
     it.unimi.dsi.fastutil.ints.IntOpenHashSet getCellsOwnedBy(int ownerId) {
         return cellsByOwner.get(ownerId);
@@ -744,30 +745,30 @@ public class Environment implements IEnvironmentReader {
 
 
     /**
-     * Sets the molecule at the specified flat index.
+     * Sets the molecule at the specified layout index.
      * <p>
      * OPTIMIZATION: Direct array access without coordinate conversion.
      * Updates all tracking structures (delta compression, label index, sparse tracking).
      * </p>
      *
-     * @param flatIndex The flat index
+     * @param layoutIndex The layout index
      * @param molecule The molecule to set
      */
-    void setMoleculeByIndex(int flatIndex, Molecule molecule) {
+    void setMoleculeByIndex(int layoutIndex, Molecule molecule) {
         assert outsideParallelWave();
-        int oldMoleculeInt = this.grid[flatIndex];
+        int oldMoleculeInt = this.grid[layoutIndex];
         int newMoleculeInt = molecule.toInt();
-        this.grid[flatIndex] = newMoleculeInt;
+        this.grid[layoutIndex] = newMoleculeInt;
 
         // Track change for delta compression
-        markChanged(flatIndex);
+        markChanged(layoutIndex);
 
         // Update label index for fuzzy jump matching
-        int owner = this.ownerGrid[flatIndex];
-        labelIndex.onMoleculeSet(toCanonicalIndex(flatIndex), oldMoleculeInt, newMoleculeInt, owner);
+        int owner = this.ownerGrid[layoutIndex];
+        labelIndex.onMoleculeSet(toFlatIndex(layoutIndex), oldMoleculeInt, newMoleculeInt, owner);
 
         // Update sparse cell tracking if enabled
-        updateOccupiedIndices(flatIndex);
+        updateOccupiedIndices(layoutIndex);
     }
 
     /**
@@ -795,33 +796,33 @@ public class Environment implements IEnvironmentReader {
         // Collect indices to transfer (can't modify during iteration)
         it.unimi.dsi.fastutil.ints.IntList toTransfer = new it.unimi.dsi.fastutil.ints.IntArrayList();
 
-        fromSet.forEach((int flatIndex) -> {
-            int moleculeInt = grid[flatIndex];
+        fromSet.forEach((int layoutIndex) -> {
+            int moleculeInt = grid[layoutIndex];
             // Use unsigned shift (>>>) to avoid sign-extension when bit 31 is set (marker >= 8)
             int marker = (moleculeInt & Config.MARKER_MASK) >>> Config.MARKER_SHIFT;
             if (marker == markerToMatch) {
-                toTransfer.add(flatIndex);
+                toTransfer.add(layoutIndex);
             }
         });
 
         // Transfer ownership and reset marker
         IntOpenHashSet toSet = cellsByOwner.computeIfAbsent(toOwnerId, k -> new IntOpenHashSet());
         for (int i = 0; i < toTransfer.size(); i++) {
-            int flatIndex = toTransfer.getInt(i);
-            ownerGrid[flatIndex] = toOwnerId;
+            int layoutIndex = toTransfer.getInt(i);
+            ownerGrid[layoutIndex] = toOwnerId;
             // Reset marker to 0: clear marker bits and keep value/type
-            grid[flatIndex] = grid[flatIndex] & ~Config.MARKER_MASK;
+            grid[layoutIndex] = grid[layoutIndex] & ~Config.MARKER_MASK;
             // Track change for delta compression
-            markChanged(flatIndex);
+            markChanged(layoutIndex);
             // Update ownership index
-            fromSet.remove(flatIndex);
-            toSet.add(flatIndex);
+            fromSet.remove(layoutIndex);
+            toSet.add(layoutIndex);
             // Update label index: owner changed and marker reset to 0
-            int moleculeInt = grid[flatIndex];
-            labelIndex.onOwnerChange(toCanonicalIndex(flatIndex), moleculeInt, toOwnerId);
-            labelIndex.onMarkerChange(toCanonicalIndex(flatIndex), moleculeInt);
+            int moleculeInt = grid[layoutIndex];
+            labelIndex.onOwnerChange(toFlatIndex(layoutIndex), moleculeInt, toOwnerId);
+            labelIndex.onMarkerChange(toFlatIndex(layoutIndex), moleculeInt);
             // An empty cell handed to "nobody" leaves the occupied set
-            updateOccupiedIndices(flatIndex);
+            updateOccupiedIndices(layoutIndex);
         }
         
         // Clean up empty set
@@ -848,19 +849,19 @@ public class Environment implements IEnvironmentReader {
         }
 
         int count = owned.size();
-        owned.forEach((int flatIndex) -> {
-            ownerGrid[flatIndex] = 0;
+        owned.forEach((int layoutIndex) -> {
+            ownerGrid[layoutIndex] = 0;
             // Reset marker to 0
-            grid[flatIndex] = grid[flatIndex] & ~Config.MARKER_MASK;
+            grid[layoutIndex] = grid[layoutIndex] & ~Config.MARKER_MASK;
             // Track change for delta compression
-            markChanged(flatIndex);
+            markChanged(layoutIndex);
             // Update label index: owner cleared and marker reset to 0
-            int moleculeInt = grid[flatIndex];
-            labelIndex.onOwnerChange(toCanonicalIndex(flatIndex), moleculeInt, 0);
-            labelIndex.onMarkerChange(toCanonicalIndex(flatIndex), moleculeInt);
+            int moleculeInt = grid[layoutIndex];
+            labelIndex.onOwnerChange(toFlatIndex(layoutIndex), moleculeInt, 0);
+            labelIndex.onMarkerChange(toFlatIndex(layoutIndex), moleculeInt);
             // A cell that is now empty and unowned leaves the occupied set; otherwise every dead
             // organism's footprint would stay in it (and in every snapshot) forever
-            updateOccupiedIndices(flatIndex);
+            updateOccupiedIndices(layoutIndex);
         });
 
         return count;
@@ -888,30 +889,30 @@ public class Environment implements IEnvironmentReader {
 
         // Collect indices to remove (can't modify during iteration since we're changing ownership)
         it.unimi.dsi.fastutil.ints.IntList toRemove = new it.unimi.dsi.fastutil.ints.IntArrayList();
-        owned.forEach((int flatIndex) -> {
-            int moleculeInt = grid[flatIndex];
+        owned.forEach((int layoutIndex) -> {
+            int moleculeInt = grid[layoutIndex];
             // Use unsigned shift (>>>) to avoid sign-extension when bit 31 is set (marker >= 8)
             int marker = (moleculeInt & Config.MARKER_MASK) >>> Config.MARKER_SHIFT;
             if (marker == markerToMatch) {
-                toRemove.add(flatIndex);
+                toRemove.add(layoutIndex);
             }
         });
 
         // Remove the collected cells completely
         for (int i = 0; i < toRemove.size(); i++) {
-            int flatIndex = toRemove.getInt(i);
-            int oldMoleculeInt = grid[flatIndex];
+            int layoutIndex = toRemove.getInt(i);
+            int oldMoleculeInt = grid[layoutIndex];
             // Completely clear the cell
-            grid[flatIndex] = 0;
-            ownerGrid[flatIndex] = 0;
+            grid[layoutIndex] = 0;
+            ownerGrid[layoutIndex] = 0;
             // Track change for delta compression
-            markChanged(flatIndex);
+            markChanged(layoutIndex);
             // Update ownership index: remove from owner's set
-            owned.remove(flatIndex);
+            owned.remove(layoutIndex);
             // Update label index: molecule removed
-            labelIndex.onMoleculeSet(toCanonicalIndex(flatIndex), oldMoleculeInt, 0, 0);
+            labelIndex.onMoleculeSet(toFlatIndex(layoutIndex), oldMoleculeInt, 0, 0);
             // Update sparse cell tracking if enabled
-            occupiedIndices.clear(flatIndex);
+            occupiedIndices.clear(layoutIndex);
         }
 
         // Clean up empty set
@@ -938,7 +939,7 @@ public class Environment implements IEnvironmentReader {
     }
 
     /**
-     * Records a change to the cell at an internal index in both change sets.
+     * Records a change to the cell at a layout index in both change sets.
      * <p>
      * Both sets are kept on the write path on purpose: one extra word access per write, next to
      * the grid arrays, the occupancy set and the indices the same write already maintains. The
@@ -947,9 +948,9 @@ public class Environment implements IEnvironmentReader {
      * the world, hundreds of thousands of words per sample, at every tick in the most detailed
      * profile.
      */
-    private void markChanged(int flatIndex) {
-        changedSinceLastSample.set(flatIndex);
-        changedSinceLastSnapshot.set(flatIndex);
+    private void markChanged(int layoutIndex) {
+        changedSinceLastSample.set(layoutIndex);
+        changedSinceLastSnapshot.set(layoutIndex);
     }
 
     /**
@@ -975,73 +976,73 @@ public class Environment implements IEnvironmentReader {
     }
 
     /**
-     * Hands every occupied cell to the visitor, in ascending canonical order.
+     * Hands every occupied cell to the visitor, in ascending flat-index order.
      *
-     * @param visitor receives each cell under its canonical index
+     * @param visitor receives each cell under its flat index
      */
-    public void forEachOccupiedCellInCanonicalOrder(CanonicalCellVisitor visitor) {
-        visitInCanonicalOrder(occupiedIndices, visitor);
+    public void forEachOccupiedCellInFlatIndexOrder(FlatIndexCellVisitor visitor) {
+        visitInFlatIndexOrder(occupiedIndices, visitor);
     }
 
     /**
      * Hands every cell changed since {@link #markSampleTaken()} was last called to the visitor,
-     * in ascending canonical order. Reserved for the one observer of the change tracking, see
+     * in ascending flat-index order. Reserved for the one observer of the change tracking, see
      * {@link #markSampleTaken()}; every other reader uses
-     * {@link #forEachOccupiedCellInCanonicalOrder(CanonicalCellVisitor)}.
+     * {@link #forEachOccupiedCellInFlatIndexOrder(FlatIndexCellVisitor)}.
      *
-     * @param visitor receives each cell under its canonical index
+     * @param visitor receives each cell under its flat index
      */
-    public void forEachCellChangedSinceLastSample(CanonicalCellVisitor visitor) {
-        visitInCanonicalOrder(changedSinceLastSample, visitor);
+    public void forEachCellChangedSinceLastSample(FlatIndexCellVisitor visitor) {
+        visitInFlatIndexOrder(changedSinceLastSample, visitor);
     }
 
     /**
      * Hands every cell changed since {@link #markSnapshotTaken()} was last called to the visitor,
-     * in ascending canonical order. Reserved for the one observer of the change tracking, see
+     * in ascending flat-index order. Reserved for the one observer of the change tracking, see
      * {@link #markSampleTaken()}.
      *
-     * @param visitor receives each cell under its canonical index
+     * @param visitor receives each cell under its flat index
      */
-    public void forEachCellChangedSinceLastSnapshot(CanonicalCellVisitor visitor) {
-        visitInCanonicalOrder(changedSinceLastSnapshot, visitor);
+    public void forEachCellChangedSinceLastSnapshot(FlatIndexCellVisitor visitor) {
+        visitInFlatIndexOrder(changedSinceLastSnapshot, visitor);
     }
 
     /**
-     * Hands the cells whose internal indices are set in {@code cells} to the visitor in ascending
-     * canonical order. The set is walked in internal order, which is the order of the grid arrays,
+     * Hands the cells whose layout indices are set in {@code cells} to the visitor in ascending
+     * flat-index order. The set is walked in layout order, which is the order of the grid arrays,
      * so their contents are read sequentially, and which groups cells by tile, so the part of the
-     * canonical index that costs divisions is computed once per tile and each cell adds only its
+     * flat index that costs divisions is computed once per tile and each cell adds only its
      * offset. The batch, holding each cell's content, is then ordered and handed out without
      * touching the grid again.
      */
-    private void visitInCanonicalOrder(BitSet cells, CanonicalCellVisitor visitor) {
-        if (canonicalVisitRunning) {
-            throw new IllegalStateException("A canonical-order visit is already running on this environment; "
+    private void visitInFlatIndexOrder(BitSet cells, FlatIndexCellVisitor visitor) {
+        if (flatIndexVisitRunning) {
+            throw new IllegalStateException("A flat-index visit is already running on this environment; "
                     + "the visits share one batch and cannot be nested or run concurrently");
         }
-        canonicalVisitRunning = true;
+        flatIndexVisitRunning = true;
         try {
             int cellsPerTileShift = layout.cellsPerTileShift();
             int offsetMask = (1 << cellsPerTileShift) - 1;
-            canonicalOrder.clear();
+            flatIndexOrder.clear();
             int currentTile = -1;
-            int tileCanonical = 0;
+            int tileFlatIndex = 0;
             for (int i = cells.nextSetBit(0); i >= 0; i = cells.nextSetBit(i + 1)) {
                 int tile = i >>> cellsPerTileShift;
                 if (tile != currentTile) {
                     currentTile = tile;
-                    tileCanonical = layout.canonicalOfTile(tile);
+                    tileFlatIndex = layout.flatIndexOfTile(tile);
                 }
-                canonicalOrder.add(tileCanonical + layout.canonicalOffset(i & offsetMask), grid[i], ownerGrid[i]);
+                flatIndexOrder.add(tileFlatIndex + layout.flatIndexOffset(i & offsetMask), grid[i], ownerGrid[i]);
             }
-            canonicalOrder.sort();
-            int count = canonicalOrder.count();
+            flatIndexOrder.sort();
+            int count = flatIndexOrder.count();
             for (int position = 0; position < count; position++) {
-                visitor.visit(canonicalOrder.canonicalAt(position), canonicalOrder.moleculeAt(position),
-                        canonicalOrder.ownerAt(position));
+                visitor.visit(flatIndexOrder.flatIndexAt(position), flatIndexOrder.moleculeAt(position),
+                        flatIndexOrder.ownerAt(position));
             }
         } finally {
-            canonicalVisitRunning = false;
+            flatIndexVisitRunning = false;
         }
     }
     

@@ -146,7 +146,7 @@ class LabelIndexTest {
 
         var candidates = labelIndex.getCandidates(labelValue);
         assertThat(candidates).hasSize(1);
-        assertThat(candidates.iterator().next().canonicalIndex()).isEqualTo(flatIndex);
+        assertThat(candidates.iterator().next().flatIndex()).isEqualTo(flatIndex);
     }
 
     @Test

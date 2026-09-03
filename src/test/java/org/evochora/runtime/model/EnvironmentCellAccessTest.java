@@ -13,8 +13,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * The environment's coordinate-only surface: in-range accessors, the owned-cell view and the
- * canonical-order visits used for serialization. Every check runs under the tiled layout, where
- * the internal order differs from the canonical one.
+ * flat-index visits used for serialization. Every check runs under the tiled layout, where
+ * the layout order differs from the flat-index order.
  */
 @Tag("unit")
 class EnvironmentCellAccessTest {
@@ -54,7 +54,7 @@ class EnvironmentCellAccessTest {
             assertThatThrownBy(() -> env.getIndexFromCoordinate(coord)).isInstanceOf(IllegalArgumentException.class).hasMessage(expected);
         }
         List<Integer> occupied = new ArrayList<>();
-        env.forEachOccupiedCellInCanonicalOrder((canonical, molecule, owner) -> occupied.add(canonical));
+        env.forEachOccupiedCellInFlatIndexOrder((flatIndex, molecule, owner) -> occupied.add(flatIndex));
         assertThat(occupied).as("nothing was written").isEmpty();
     }
 
@@ -64,16 +64,16 @@ class EnvironmentCellAccessTest {
         env.setMoleculeAt(new int[]{33, 1}, new Molecule(Config.TYPE_LABEL, 77), 2);
 
         List<Integer> occupied = new ArrayList<>();
-        env.forEachOccupiedCellInCanonicalOrder((canonical, molecule, owner) -> occupied.add(canonical));
+        env.forEachOccupiedCellInFlatIndexOrder((flatIndex, molecule, owner) -> occupied.add(flatIndex));
         assertThat(occupied).containsExactly(env.properties.toFlatIndex(new int[]{33, 1}));
         assertThat(env.getLabelIndex().getCandidates(77)).hasSize(1);
         List<Integer> changed = new ArrayList<>();
-        env.forEachCellChangedSinceLastSample((canonical, molecule, owner) -> changed.add(canonical));
+        env.forEachCellChangedSinceLastSample((flatIndex, molecule, owner) -> changed.add(flatIndex));
         assertThat(changed).isEqualTo(occupied);
     }
 
     @Test
-    void ownedCellsAreViewedInCanonicalOrderAndWritesGoThrough() {
+    void ownedCellsAreViewedInFlatIndexOrderAndWritesGoThrough() {
         Environment env = tiled();
         int[][] cells = {{35, 2}, {2, 35}, {63, 0}, {0, 63}, {1, 1}};
         for (int[] cell : cells) {
@@ -107,32 +107,32 @@ class EnvironmentCellAccessTest {
         env.markSampleTaken();
         env.setMoleculeAt(new int[]{20, 20}, data(2));
 
-        assertThat(canonicalIndices(env::forEachCellChangedSinceLastSample))
+        assertThat(flatIndices(env::forEachCellChangedSinceLastSample))
                 .containsExactly(env.properties.toFlatIndex(new int[]{20, 20}));
-        assertThat(canonicalIndices(env::forEachCellChangedSinceLastSnapshot))
+        assertThat(flatIndices(env::forEachCellChangedSinceLastSnapshot))
                 .containsExactly(env.properties.toFlatIndex(new int[]{10, 10}), env.properties.toFlatIndex(new int[]{20, 20}));
 
         env.markSnapshotTaken();
-        assertThat(canonicalIndices(env::forEachCellChangedSinceLastSnapshot)).isEmpty();
-        assertThat(canonicalIndices(env::forEachCellChangedSinceLastSample))
+        assertThat(flatIndices(env::forEachCellChangedSinceLastSnapshot)).isEmpty();
+        assertThat(flatIndices(env::forEachCellChangedSinceLastSample))
                 .as("a snapshot does not forget what changed since the last sample")
                 .containsExactly(env.properties.toFlatIndex(new int[]{20, 20}));
 
         env.resetChangeTracking();
-        assertThat(canonicalIndices(env::forEachCellChangedSinceLastSample)).isEmpty();
+        assertThat(flatIndices(env::forEachCellChangedSinceLastSample)).isEmpty();
     }
 
     @Test
-    void occupiedCellsArriveInAscendingCanonicalOrder() {
+    void occupiedCellsArriveInAscendingFlatIndexOrder() {
         Environment env = tiled();
         int[][] cells = {{40, 1}, {1, 40}, {33, 33}, {0, 0}, {63, 63}, {2, 0}};
         for (int[] cell : cells) {
             env.setMoleculeAt(cell, data(cell[0] + 1), 1);
         }
-        List<Integer> canonical = canonicalIndices(env::forEachOccupiedCellInCanonicalOrder);
+        List<Integer> flatIndex = flatIndices(env::forEachOccupiedCellInFlatIndexOrder);
 
-        assertThat(canonical).hasSize(cells.length).isSorted();
-        env.forEachOccupiedCellInCanonicalOrder((index, molecule, owner) -> {
+        assertThat(flatIndex).hasSize(cells.length).isSorted();
+        env.forEachOccupiedCellInFlatIndexOrder((index, molecule, owner) -> {
             int[] coord = env.properties.flatIndexToCoordinates(index);
             assertThat(molecule).isEqualTo(data(coord[0] + 1).toInt());
             assertThat(owner).isEqualTo(1);
@@ -177,26 +177,26 @@ class EnvironmentCellAccessTest {
     }
 
     @Test
-    void aNestedCanonicalVisitFailsInsteadOfCorruptingTheBatch() {
+    void aNestedFlatIndexVisitFailsInsteadOfCorruptingTheBatch() {
         Environment env = tiled();
         env.setMoleculeAt(new int[]{1, 1}, data(1));
         env.setMoleculeAt(new int[]{2, 2}, data(2));
 
         List<Integer> outer = new ArrayList<>();
         org.assertj.core.api.Assertions.assertThatThrownBy(() ->
-                env.forEachOccupiedCellInCanonicalOrder((canonical, molecule, owner) -> {
-                    outer.add(canonical);
+                env.forEachOccupiedCellInFlatIndexOrder((flatIndex, molecule, owner) -> {
+                    outer.add(flatIndex);
                     env.forEachCellChangedSinceLastSample((c, m, o) -> { });
                 }))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("already running");
-        assertThat(canonicalIndices(env::forEachOccupiedCellInCanonicalOrder))
+        assertThat(flatIndices(env::forEachOccupiedCellInFlatIndexOrder))
                 .as("the environment visits again after the failed nested visit").hasSize(2);
     }
 
-    private static List<Integer> canonicalIndices(java.util.function.Consumer<CanonicalCellVisitor> visit) {
+    private static List<Integer> flatIndices(java.util.function.Consumer<FlatIndexCellVisitor> visit) {
         List<Integer> out = new ArrayList<>();
-        visit.accept((canonical, molecule, owner) -> out.add(canonical));
+        visit.accept((flatIndex, molecule, owner) -> out.add(flatIndex));
         return out;
     }
 }

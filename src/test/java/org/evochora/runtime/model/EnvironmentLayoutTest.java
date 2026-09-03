@@ -12,7 +12,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * The environment's index API under a tiled layout: indices are opaque, every conversion the
- * environment offers agrees with the canonical numbering of {@link EnvironmentProperties}, and a
+ * environment offers agrees with the flat-index numbering of {@link EnvironmentProperties}, and a
  * world that does not fit the tile side is rejected at construction.
  */
 @Tag("unit")
@@ -23,22 +23,22 @@ class EnvironmentLayoutTest {
     }
 
     @Test
-    void everyIndexDecodesToTheCoordinateOfItsCanonicalIndex() {
+    void everyLayoutIndexDecodesToTheCoordinateOfItsFlatIndex() {
         Environment env = tiled(new int[]{64, 32, 32}, true);
-        BitSet canonicalSeen = new BitSet(env.getTotalCells());
+        BitSet flatIndexSeen = new BitSet(env.getTotalCells());
         int[] coord = new int[3];
 
         for (int index = 0; index < env.getTotalCells(); index++) {
             env.getCoordinateFromIndex(index, coord);
-            int canonical = env.toCanonicalIndex(index);
+            int flatIndex = env.toFlatIndex(index);
 
-            assertThat(canonical).isEqualTo(env.properties.toFlatIndex(coord));
+            assertThat(flatIndex).isEqualTo(env.properties.toFlatIndex(coord));
             assertThat(env.getCoordinateFromIndex(index)).isEqualTo(coord);
             assertThat(env.getIndexFromCoordinate(coord)).isEqualTo(index);
-            canonicalSeen.set(canonical);
+            flatIndexSeen.set(flatIndex);
         }
-        assertThat(canonicalSeen.cardinality())
-                .as("the canonical indices of all indices form a permutation")
+        assertThat(flatIndexSeen.cardinality())
+                .as("the flat indices of all layout indices form a permutation")
                 .isEqualTo(env.getTotalCells());
     }
 
@@ -49,7 +49,7 @@ class EnvironmentLayoutTest {
         env.setMolecule(Molecule.fromInt(Config.TYPE_DATA | 42), coord);
 
         int[] seen = {-1, 0};
-        env.forEachOccupiedCellInCanonicalOrder((canonical, molecule, owner) -> { seen[0] = canonical; seen[1] = molecule; });
+        env.forEachOccupiedCellInFlatIndexOrder((flatIndex, molecule, owner) -> { seen[0] = flatIndex; seen[1] = molecule; });
 
         assertThat(seen[0]).isEqualTo(env.properties.toFlatIndex(coord));
         assertThat(seen[1]).isEqualTo(Config.TYPE_DATA | 42);
@@ -58,14 +58,14 @@ class EnvironmentLayoutTest {
     }
 
     @Test
-    void indexAndCanonicalIndexDifferUnderTiles() {
+    void layoutIndexAndFlatIndexDifferUnderTiles() {
         Environment env = tiled(new int[]{64, 64}, false);
         env.setMolecule(Molecule.fromInt(Config.TYPE_DATA | 1), new int[]{1, 0});
 
         int index = env.getIndexFromCoordinate(new int[]{1, 0});
 
         assertThat(index).as("dimension 0 is contiguous inside a tile").isEqualTo(1);
-        assertThat(env.toCanonicalIndex(index)).as("row-major").isEqualTo(64);
+        assertThat(env.toFlatIndex(index)).as("row-major").isEqualTo(64);
     }
 
     @Test

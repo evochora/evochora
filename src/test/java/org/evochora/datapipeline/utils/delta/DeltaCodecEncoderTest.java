@@ -191,9 +191,9 @@ class DeltaCodecEncoderTest {
     }
     
     @Test
-    void captureTick_persistsCellsUnderTheirCanonicalIndex() {
+    void captureTick_persistsCellsUnderTheirFlatIndex() {
         // The environment numbers its cells in its own layout; persisted columns must carry the
-        // canonical row-major index of EnvironmentProperties, which every reader decodes with.
+        // flat index, the row-major numbering of EnvironmentProperties, which every reader decodes with.
         Environment tiled = new Environment(new EnvironmentProperties(new int[]{64, 64}, false),
                 new PreExpandedHammingStrategy(), 32);
         DeltaCodec.Encoder encoder = new DeltaCodec.Encoder(RUN_ID, 2, 10, 1);
@@ -215,9 +215,9 @@ class DeltaCodecEncoderTest {
     }
 
     @Test
-    void captureTick_listsCellsInAscendingCanonicalOrderWhateverTheLayout() {
+    void captureTick_listsCellsInAscendingFlatIndexOrderWhateverTheLayout() {
         // Two environments with different memory layouts must persist the same world as the same
-        // bytes: the cells appear under their canonical index, in ascending canonical order.
+        // bytes: the cells appear under their flat index, in ascending flat-index order.
         Environment rowMajor = new Environment(new EnvironmentProperties(new int[]{64, 64}, false),
                 new PreExpandedHammingStrategy(), 1);
         Environment tiled = new Environment(new EnvironmentProperties(new int[]{64, 64}, false),
@@ -242,7 +242,7 @@ class DeltaCodecEncoderTest {
         TickDataChunk actual = tiledEncoder.flushPartialChunk().get();
         var snapshot = actual.getSnapshot().getCellColumns();
         for (int i = 1; i < snapshot.getFlatIndicesCount(); i++) {
-            assertTrue(snapshot.getFlatIndices(i - 1) < snapshot.getFlatIndices(i), "ascending canonical order");
+            assertTrue(snapshot.getFlatIndices(i - 1) < snapshot.getFlatIndices(i), "ascending flat-index order");
         }
         assertEquals(expected.getSnapshot().getCellColumns(), snapshot);
         assertEquals(expected.getDeltas(0).getChangedCells(), actual.getDeltas(0).getChangedCells());

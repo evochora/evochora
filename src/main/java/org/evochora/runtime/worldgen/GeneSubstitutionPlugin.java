@@ -217,7 +217,7 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
         weightSum = 0.0;
 
         // Weighted reservoir sampling over the owned cells.
-        // The visit runs in canonical order: the reservoir choice below must not depend on write history
+        // The visit runs in flat-index order: the reservoir choice below must not depend on write history
         env.visitCellsOwnedBy(childId, cell -> {
             int moleculeInt = cell.moleculeInt();
             if (moleculeInt == 0) {

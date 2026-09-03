@@ -358,8 +358,9 @@ public class SimulationRestorer {
      * the environment belongs to a differently shaped world; converting it anyway would place the cell
      * at a wrong but valid position, which is indistinguishable from correct data afterwards.
      * <p>
-     * The indices are the canonical row-major indices the encoder persists and are decoded through
-     * {@code EnvironmentProperties}; the environment's own index numbering is internal to it.
+     * The indices are the flat indices the encoder persists, the row-major numbering of
+     * {@code EnvironmentProperties}, and are decoded through it; the environment's layout index
+     * numbering is internal to it.
      *
      * @param environment the environment to populate
      * @param cellData the columnar cell data from the snapshot
@@ -380,7 +381,7 @@ public class SimulationRestorer {
         for (int i = 0; i < flatIndices.size(); i++) {
             int flatIndex = flatIndices.get(i);
             if (flatIndex < 0 || flatIndex >= totalCells) {
-                throw new ResumeException("Cell index " + flatIndex
+                throw new ResumeException("Flat index " + flatIndex
                         + " lies outside the environment's " + totalCells + " cells");
             }
 

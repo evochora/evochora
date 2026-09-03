@@ -86,7 +86,7 @@ public class SeedEnergyCreator implements ITickPlugin {
                         + " cells placed: the environment holds too few empty cells");
             }
 
-            // The draw selects a canonical index, so the seeded cells depend on the random
+            // The draw selects a flat index, so the seeded cells depend on the random
             // stream and the world's shape alone, not on how the grid is laid out in memory.
             environment.getProperties().flatIndexToCoordinates(random.nextInt(totalCells), coord);
             if (environment.getMoleculeIntAt(coord) != 0) {

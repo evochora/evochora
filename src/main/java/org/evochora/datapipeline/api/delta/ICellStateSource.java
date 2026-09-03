@@ -12,8 +12,8 @@ package org.evochora.datapipeline.api.delta;
  * building that representation for data they only read once.
  * <p>
  * <strong>Related, but deliberately separate:</strong> a live environment answers the same
- * question through {@code Environment.forEachOccupiedCellInCanonicalOrder}, whose visitor
- * receives the same triple of canonical index, molecule and owner. Both walk the occupied cells
+ * question through {@code Environment.forEachOccupiedCellInFlatIndexOrder}, whose visitor
+ * receives the same triple of flat index, molecule and owner. Both walk the occupied cells
  * of a grid in the same order, so the two could be brought under one abstraction - it would have
  * to live in {@code runtime}, since that package may not depend on this one, and today no
  * consumer reads from both a live and a reconstructed state. Worth revisiting once one does.

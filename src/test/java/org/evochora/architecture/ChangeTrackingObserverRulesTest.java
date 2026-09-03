@@ -5,7 +5,7 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 import com.tngtech.archunit.core.domain.JavaClasses;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.core.importer.ImportOption;
-import org.evochora.runtime.model.CanonicalCellVisitor;
+import org.evochora.runtime.model.FlatIndexCellVisitor;
 import org.evochora.runtime.model.Environment;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
@@ -40,8 +40,8 @@ class ChangeTrackingObserverRulesTest {
     @Test
     void onlyTheEncoderReadsTheChangedCells() {
         noClasses().that().doNotHaveFullyQualifiedName(OBSERVER)
-                .should().callMethod(Environment.class, "forEachCellChangedSinceLastSample", CanonicalCellVisitor.class)
-                .orShould().callMethod(Environment.class, "forEachCellChangedSinceLastSnapshot", CanonicalCellVisitor.class)
+                .should().callMethod(Environment.class, "forEachCellChangedSinceLastSample", FlatIndexCellVisitor.class)
+                .orShould().callMethod(Environment.class, "forEachCellChangedSinceLastSnapshot", FlatIndexCellVisitor.class)
                 .check(productionClasses);
     }
 

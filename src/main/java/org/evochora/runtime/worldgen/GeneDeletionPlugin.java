@@ -46,7 +46,7 @@ public class GeneDeletionPlugin implements IBirthHandler {
     private final double countExponent;
 
     // Reusable collections (cleared before each use)
-    private final IntArrayList labelCanonicalIndices = new IntArrayList();
+    private final IntArrayList labelFlatIndices = new IntArrayList();
     private final IntArrayList labelHashes = new IntArrayList();
     private final Int2IntOpenHashMap hashCounts = new Int2IntOpenHashMap();
 
@@ -108,22 +108,22 @@ public class GeneDeletionPlugin implements IBirthHandler {
         }
 
         // --- Phase 1: Collect all labels and count hash frequencies ---
-        labelCanonicalIndices.clear();
+        labelFlatIndices.clear();
         labelHashes.clear();
         hashCounts.clear();
 
-        // The visit runs in canonical order: the choice below must not depend on write history
+        // The visit runs in flat-index order: the choice below must not depend on write history
         env.visitCellsOwnedBy(childId, cell -> {
             int moleculeInt = cell.moleculeInt();
             if ((moleculeInt & Config.TYPE_MASK) == Config.TYPE_LABEL) {
                 int hash = moleculeInt & Config.VALUE_MASK;
-                labelCanonicalIndices.add(env.properties.toFlatIndex(cell.coordinate()));
+                labelFlatIndices.add(env.properties.toFlatIndex(cell.coordinate()));
                 labelHashes.add(hash);
                 hashCounts.addTo(hash, 1);
             }
         });
 
-        if (labelCanonicalIndices.isEmpty()) {
+        if (labelFlatIndices.isEmpty()) {
             LOG.debug("tick={} Organism {} selected for deletion but has no labels", child.getBirthTick(), childId);
             return;
         }
@@ -132,7 +132,7 @@ public class GeneDeletionPlugin implements IBirthHandler {
         double totalWeight = 0.0;
         int selectedIdx = 0;
 
-        for (int i = 0; i < labelCanonicalIndices.size(); i++) {
+        for (int i = 0; i < labelFlatIndices.size(); i++) {
             int hash = labelHashes.getInt(i);
             double weight = Math.pow(hashCounts.get(hash), countExponent);
             totalWeight += weight;
@@ -142,8 +142,8 @@ public class GeneDeletionPlugin implements IBirthHandler {
         }
 
         // --- Phase 3: Walk & Delete ---
-        int selectedCanonicalIndex = labelCanonicalIndices.getInt(selectedIdx);
-        int[] pos = env.properties.flatIndexToCoordinates(selectedCanonicalIndex);
+        int selectedFlatIndex = labelFlatIndices.getInt(selectedIdx);
+        int[] pos = env.properties.flatIndexToCoordinates(selectedFlatIndex);
         int[] dv = child.getDv();
 
         // Find DV dimension for safety limit
@@ -191,7 +191,7 @@ public class GeneDeletionPlugin implements IBirthHandler {
         }
 
         if (LOG.isDebugEnabled()) {
-            int[] labelPos = env.properties.flatIndexToCoordinates(selectedCanonicalIndex);
+            int[] labelPos = env.properties.flatIndexToCoordinates(selectedFlatIndex);
             LOG.debug("tick={} Organism {} gene deletion: removed {} molecules from label hash {} at {}",
                     child.getBirthTick(), childId, deletedCount, labelHashes.getInt(selectedIdx), Arrays.toString(labelPos));
         }

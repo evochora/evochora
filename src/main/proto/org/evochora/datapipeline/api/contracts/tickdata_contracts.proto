@@ -436,7 +436,7 @@ message CellState {
   // EnvironmentProperties.toFlatIndex and flatIndexToCoordinates are the implementation
   // and hold for any number of dimensions.
   //
-  // Source: the canonical index the environment reports for each occupied cell
+  // Source: the flat index the environment reports for each occupied cell
   // Required metadata: Environment.shape from TickData.metadata
   int32 flat_index = 1;
 

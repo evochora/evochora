@@ -3,32 +3,32 @@ package org.evochora.runtime.model;
 import java.util.Arrays;
 
 /**
- * A batch of cells ordered by canonical index, used to hand cells out of the environment in the
+ * A batch of cells ordered by flat index, used to hand cells out of the environment in the
  * numbering they are persisted in, whatever the environment's memory layout.
  * <p>
- * Each cell is one {@code long} key — the canonical index in the upper 32 bits, the packed
+ * Each cell is one {@code long} key — the flat index in the upper 32 bits, the packed
  * molecule value in the lower 32 — and one {@code int} owner in a parallel buffer. A cell's content
  * is read when it is added, in whatever order the caller walks the grid, so that the walk can be
  * sequential over memory and the sorted batch is handed out without touching the grid again. Both
  * buffers are grow-only and retained between batches. The batch is sorted in place by an MSD radix
- * sort over the four bytes of the canonical index, moving key and owner together: linear in the
- * number of cells, no second buffer, and equal canonical indices cannot occur, as every cell has
+ * sort over the four bytes of the flat index, moving key and owner together: linear in the
+ * number of cells, no second buffer, and equal flat indices cannot occur, as every cell has
  * one. After the first batch nothing on this path allocates: the key and owner buffers grow only,
  * and the bucket counters of the radix passes are held per depth.
  * <p>
  * Thread safety: not thread-safe; one instance belongs to one environment and is used only from
  * the thread that serializes it.
  */
-final class CanonicalCellOrder {
+final class FlatIndexCellOrder {
 
     /** Below this many keys a range is finished by insertion sort instead of another radix pass. */
     private static final int INSERTION_SORT_THRESHOLD = 32;
-    /** Bit position of the most significant byte of the canonical index inside a key. */
+    /** Bit position of the most significant byte of the flat index inside a key. */
     private static final int TOP_BYTE_SHIFT = 56;
-    /** Bit position of the least significant byte of the canonical index inside a key. */
+    /** Bit position of the least significant byte of the flat index inside a key. */
     private static final int LOW_BYTE_SHIFT = 32;
 
-    /** Radix passes over the four bytes of the canonical index, from the most significant down. */
+    /** Radix passes over the four bytes of the flat index, from the most significant down. */
     private static final int RADIX_DEPTH = 4;
 
     private long[] keys = new long[0];
@@ -46,22 +46,22 @@ final class CanonicalCellOrder {
     /**
      * Adds a cell with its content to the batch.
      *
-     * @param canonicalIndex the cell's canonical index
+     * @param flatIndex      the cell's flat index
      * @param moleculeInt    the cell's packed molecule value
      * @param ownerId        the id of the organism owning the cell, {@code 0} if none
      */
-    void add(int canonicalIndex, int moleculeInt, int ownerId) {
+    void add(int flatIndex, int moleculeInt, int ownerId) {
         if (count == keys.length) {
             int capacity = (int) Math.min(Integer.MAX_VALUE - 8, Math.max(1024, 2L * keys.length));
             keys = Arrays.copyOf(keys, capacity);
             owners = Arrays.copyOf(owners, capacity);
         }
-        keys[count] = ((long) canonicalIndex << 32) | (moleculeInt & 0xFFFFFFFFL);
+        keys[count] = ((long) flatIndex << 32) | (moleculeInt & 0xFFFFFFFFL);
         owners[count] = ownerId;
         count++;
     }
 
-    /** Orders the batch by canonical index. */
+    /** Orders the batch by flat index. */
     void sort() {
         sortRange(0, count, TOP_BYTE_SHIFT);
     }
@@ -75,9 +75,9 @@ final class CanonicalCellOrder {
 
     /**
      * @param position a position in the sorted batch, {@code 0 <= position < count()}
-     * @return the canonical index of the cell at that position
+     * @return the flat index of the cell at that position
      */
-    int canonicalAt(int position) {
+    int flatIndexAt(int position) {
         return (int) (keys[position] >>> 32);
     }
 
