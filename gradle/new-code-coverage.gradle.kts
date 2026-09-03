@@ -48,15 +48,30 @@ fun changedLines(baseRef: String): Map<String, Set<Int>> {
     // Hunk headers carry the line range of the post-image: "@@ -12,0 +13,4 @@". A missing count
     // means one line.
     val hunk = Regex("""^@@ -\S+ \+(\d+)(?:,(\d+))? @@""")
+    // Content is never mistaken for a header, because position decides rather than appearance.
+    // Every file block opens with "diff --git", a line no content can imitate: content always
+    // carries a leading '+', '-' or space. The headers sit between that line and the block's first
+    // hunk, so once a hunk has been seen no "+++ " counts as a header again — which matters
+    // because an added line beginning with "++ " reaches the diff looking exactly like one, and
+    // reading it as a header would open a file that does not exist and swallow the hunks that
+    // belong to the real one.
+    var inHeaderSection = false
     for (line in diff.lineSequence()) {
+        if (line.startsWith("diff --git ")) {
+            inHeaderSection = true
+            current = null
+        }
+        val isFileHeader = inHeaderSection && line.startsWith("+++ ")
         when {
-            line.startsWith("+++ ") -> {
+            isFileHeader -> {
                 val path = line.removePrefix("+++ ").trim()
                 // Deleted files have no post-image and nothing to cover.
                 current = if (path == "/dev/null") null
                 else byFile.getOrPut(path.removePrefix("b/")) { mutableSetOf() }
             }
             line.startsWith("@@") -> {
+                // The first hunk closes the header section; every later one is just a hunk.
+                inHeaderSection = false
                 val m = hunk.find(line) ?: continue
                 val start = m.groupValues[1].toInt()
                 val count = m.groupValues[2].ifEmpty { "1" }.toInt()
@@ -99,15 +114,29 @@ tasks.register("newCodeCoverage") {
     group = "verification"
     description = "Line coverage of the lines this branch changes, measured against the merge base."
 
+    // The report is only as good as the run that produced it: measuring against execution data
+    // from before the last edit gives line numbers that no longer match the source, and a figure
+    // that is wrong without looking wrong. Gradle decides from file contents whether the tests
+    // have to run again, so an unchanged tree costs nothing here. The task is named rather than
+    // referenced: a script applied with apply(from = ...) has no type-safe task accessors.
+    dependsOn("test")
+
     val report = layout.buildDirectory.file("reports/jacoco/test/jacocoTestReport.xml")
-    // The same exclusions the project-wide gate uses, so both gates judge the same code.
-    val excludedPrefixes = listOf("org/evochora/ui/", "org/evochora/Main")
     val sourceRoot = "src/main/java/"
     // The prefix carries a trailing slash so that removePrefix cuts cleanly; in a sentence the
     // path reads better without it.
     val sourceRootName = sourceRoot.trimEnd('/')
     val baseRef = (findProperty("newCodeCoverage.baseRef") ?: "origin/main").toString()
-    val minimum = (findProperty("newCodeCoverage.minimum") as String?)?.toDouble()
+    // A share, not a percentage. Written as 80 it would ask for 8000% and fail every branch,
+    // with a figure in the comment that says nothing about what went wrong.
+    val minimum = (findProperty("newCodeCoverage.minimum") as String?)?.let { given ->
+        val value = given.toDoubleOrNull()
+        require(value != null && value in 0.0..1.0) {
+            "newCodeCoverage.minimum is the share of changed lines that has to be covered, " +
+                "a value between 0 and 1 — 0.80 for 80 percent — but was \"$given\"."
+        }
+        value
+    }
     // A rendered summary for whoever reads the pull request rather than the build log.
     val summary = layout.buildDirectory.file("reports/new-code-coverage/summary.md")
 
@@ -129,8 +158,10 @@ tasks.register("newCodeCoverage") {
         for ((path, lines) in changed) {
             if (!path.startsWith(sourceRoot)) continue
             val classPath = path.removePrefix(sourceRoot)
-            if (excludedPrefixes.any { classPath.startsWith(it) }) continue
             // Files absent from the report contain no lines the coverage analysis knows about.
+            // This is also what keeps the two gates over the same code: the report is built from
+            // the class directories jacocoTestReport is given, so whatever that excludes is
+            // already missing here and needs no second list to repeat it.
             val reported = covered[classPath] ?: continue
 
             // Only lines JaCoCo can observe count; blank lines, comments and declarations are

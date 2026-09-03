@@ -291,10 +291,17 @@ class ArtemisQueueResourceTest {
 
         // Each consumer receives a batch, then simulates processing time.
         // During processing (outside drainLock), the other consumer can enter receiveBatch.
-        long processingTimeMs = 1000;
+        // Only wide enough for the overlap to be unmistakable: the two consumers start within a
+        // few milliseconds of each other, so this leaves room for a machine an order of magnitude
+        // slower before the windows could come apart.
+        long processingTimeMs = 200;
         long receiveTimeoutMs = 100; // Short timeout so empty-queue exits quickly
 
         List<List<Long>> allBatches = new ArrayList<>();
+        // Start and end of each simulated processing. Two of these overlapping is what "the other
+        // consumer can receive while this one works" means, stated directly instead of inferred
+        // from how long everything took.
+        List<long[]> processingWindows = new ArrayList<>();
         ExecutorService executor = Executors.newFixedThreadPool(2);
         CountDownLatch done = new CountDownLatch(2);
 
@@ -313,7 +320,12 @@ class ArtemisQueueResourceTest {
                             batch.commit();
                             // Simulate processing time — the OTHER consumer should be able
                             // to receive the next batch during this sleep.
+                            long processingStart = System.currentTimeMillis();
                             Thread.sleep(processingTimeMs);
+                            synchronized (processingWindows) {
+                                processingWindows.add(
+                                    new long[] { processingStart, System.currentTimeMillis() });
+                            }
                         } else {
                             break;
                         }
@@ -330,9 +342,16 @@ class ArtemisQueueResourceTest {
         executor.submit(consumer);
         executor.submit(consumer);
 
-        done.await(10, TimeUnit.SECONDS);
+        boolean bothFinished = done.await(10, TimeUnit.SECONDS);
         long wallElapsed = System.currentTimeMillis() - wallStart;
         executor.shutdown();
+
+        // Checked before the wall clock is read as evidence: if a consumer never left its loop,
+        // the elapsed time is the timeout above and says nothing about whether the two ran in
+        // parallel. Reporting that as a parallelism failure would name the wrong cause.
+        assertThat(bothFinished)
+            .describedAs("Both consumers should finish within 10s")
+            .isTrue();
 
         // Verify: all messages received
         Set<Long> allReceived = new java.util.HashSet<>();
@@ -354,11 +373,23 @@ class ArtemisQueueResourceTest {
             }
         }
 
-        // Verify: processing happened concurrently, not sequentially.
-        assertThat(wallElapsed)
-            .describedAs("Wall clock (%dms) should be below 2× processingTime (%dms), "
-                + "proving parallel processing", wallElapsed, 2 * processingTimeMs)
-            .isLessThan(2 * processingTimeMs);
+        // Verify: processing happened concurrently, not sequentially. Two windows that overlap
+        // show it directly; a wall-clock bound would have to sit between the parallel and the
+        // sequential total and would move with the speed of the machine.
+        List<long[]> windows;
+        synchronized (processingWindows) {
+            windows = new ArrayList<>(processingWindows);
+        }
+        assertThat(windows)
+            .describedAs("Each batch is processed once, so two batches give two windows")
+            .hasSize(2);
+        long overlap = Math.min(windows.get(0)[1], windows.get(1)[1])
+            - Math.max(windows.get(0)[0], windows.get(1)[0]);
+        assertThat(overlap)
+            .describedAs("The two processing windows should overlap, proving one consumer works "
+                + "while the other receives; they did not (gap of %dms), so processing was "
+                + "serialised. Wall clock was %dms.", -overlap, wallElapsed)
+            .isPositive();
     }
 
     // =========================================================================

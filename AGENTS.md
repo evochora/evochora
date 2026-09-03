@@ -305,9 +305,11 @@ See `.agents/architecture-guidelines.md` for full review criteria.
 - Raising the bound is a deliberate change, made once the suite has grown past it
 - `newCodeCoverage` asks the other question: of the lines a branch changes, how many the tests
   reach. It measures nothing of its own — it intersects the JaCoCo report with `git diff` against
-  the merge base — and covers the same code as the gate above, `src/main/java` minus `ui` and `Main`
-- On a pull request the figure appears as a comment. There is no bound yet: the task reports and
-  passes. Setting `newCodeCoverage.minimum` turns it into a gate that fails the build
+  the merge base — and covers the same code as the gate above, everything under `src/main/java`
+- On a pull request the figure appears as a comment — from a fork, in the job log only, because
+  its token may not write. There is no bound yet: the task reports and passes; setting
+  `newCodeCoverage.minimum` turns it into a gate that fails the build — a share between 0 and 1,
+  the same form the bound above takes
 
 **Benchmarks:**
 - JMH benchmarks live in `src/jmh/`; they are relative before/after measurements, never absolute references

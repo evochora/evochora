@@ -300,9 +300,7 @@ tasks.register<Test>("integration") {
 // output so that the collection carries the tasks producing it: both JaCoCo tasks then depend on
 // compilation directly, not only through the test task's execution data, and a build that skips
 // the tests (-x test) still resolves its task graph.
-val coveredClasses = sourceSets.main.get().output.classesDirs.asFileTree.matching {
-    exclude("org/evochora/ui/**", "org/evochora/Main*")
-}
+val coveredClasses = sourceSets.main.get().output.classesDirs.asFileTree
 
 tasks.jacocoTestReport {
     reports {
