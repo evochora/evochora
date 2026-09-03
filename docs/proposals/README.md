@@ -4,6 +4,10 @@ Design documents for changes that are agreed in principle but not yet implemente
 Once a proposal is fully implemented it moves to `docs/outdated/proposals/accomplished/`;
 if it is dropped, it moves to `docs/outdated/proposals/delined_or_outdated/`.
 
+A proposal holds agreed solutions only — no alternatives, no open choices; every decision, down to
+a package name, is made with the maintainer before it is written down, never deferred to the
+implementation plan.
+
 Documents under [`ideas/`](ideas/) are not proposals — see below.
 
 ## Planned work

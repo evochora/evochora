@@ -3,7 +3,11 @@ services:
     build:
       context: ../../..
       dockerfile: infrastructure/docker/evochora-node/Dockerfile
-    image: ghcr.io/evochora/evochora:${IMAGE_TAG:-latest}
+    # EVOCHORA_IMAGE takes a whole reference, so it can name a tag or an exact digest
+    # (…@sha256:…). A digest is the only way to redeploy precisely what once ran: a tag such as
+    # latest is overwritten by the next build. IMAGE_TAG remains the fallback so an existing
+    # .env keeps working.
+    image: ${EVOCHORA_IMAGE:-ghcr.io/evochora/evochora:${IMAGE_TAG:-latest}}
     # The user is now managed by the entrypoint.sh script to ensure correct permissions at runtime.
     # user: "${UID:-1000}:${GID:-1000}"
     # Ports are no longer published directly to the host.
