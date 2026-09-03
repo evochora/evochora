@@ -1,7 +1,7 @@
 package org.evochora.compiler.module;
 
 import org.evochora.compiler.FeatureRegistry;
-import org.evochora.compiler.model.ScopeTracker;
+import org.evochora.compiler.frontend.semantics.ScopeTracker;
 import org.evochora.compiler.StandardFeatures;
 import org.evochora.compiler.api.SourceRoot;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
@@ -34,7 +34,7 @@ import org.evochora.compiler.frontend.preprocessor.PreProcessorResult;
 import org.evochora.compiler.features.importdir.ImportSourceHandler;
 import org.evochora.compiler.features.macro.MacroDirectiveHandler;
 import org.evochora.compiler.features.source.SourceDirectiveHandler;
-import org.evochora.compiler.model.ModuleContextTracker;
+import org.evochora.compiler.frontend.module.ModuleContextTracker;
 
 import org.evochora.compiler.TestRegistries;
 import org.evochora.compiler.frontend.semantics.IDependencySetupHandler;

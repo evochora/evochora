@@ -151,6 +151,20 @@ class CompilerArchitectureRulesTest {
     }
 
     /**
+     * The model package holds nothing but its sub-packages: the three data formats and the
+     * symbol table.
+     * <p>
+     * A class placed directly in {@code model} is neither a data format nor a symbol, and what
+     * is not data has no place among the data formats. The helpers that walk the AST for a
+     * phase live with that phase.
+     */
+    @Test
+    void modelPackageHoldsOnlyItsSubPackages() {
+        noClasses().should().resideInAPackage(COMPILER + ".model")
+                .check(compilerClasses);
+    }
+
+    /**
      * The three data formats are separate: token, AST and IR types do not reference one another.
      * <p>
      * An AST node carries a token's {@code SourceInfo}, never the token, and an IR item carries

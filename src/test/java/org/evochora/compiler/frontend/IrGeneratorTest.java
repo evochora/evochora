@@ -99,8 +99,8 @@ public class IrGeneratorTest {
         }
 
         // Phase 6: AST Post-Processing (resolve register aliases and parameters)
-        org.evochora.compiler.model.ModuleContextTracker postTracker = new org.evochora.compiler.model.ModuleContextTracker(symbolTable);
-        org.evochora.compiler.model.ScopeTracker scopeTracker = new org.evochora.compiler.model.ScopeTracker(symbolTable);
+        org.evochora.compiler.frontend.module.ModuleContextTracker postTracker = new org.evochora.compiler.frontend.module.ModuleContextTracker(symbolTable);
+        org.evochora.compiler.frontend.semantics.ScopeTracker scopeTracker = new org.evochora.compiler.frontend.semantics.ScopeTracker(symbolTable);
         symbolTable.setCurrentModule(rootAliasChain);
         org.evochora.compiler.frontend.postprocess.AstPostProcessor postProcessor =
                 new org.evochora.compiler.frontend.postprocess.AstPostProcessor(symbolTable, postTracker, scopeTracker, TestRegistries.postProcessRegistry());
