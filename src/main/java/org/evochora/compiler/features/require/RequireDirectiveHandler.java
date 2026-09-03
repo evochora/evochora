@@ -3,7 +3,7 @@ package org.evochora.compiler.features.require;
 import org.evochora.compiler.frontend.parser.IParserStatementHandler;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
-import org.evochora.compiler.frontend.parser.ParsingContext;
+import org.evochora.compiler.frontend.parser.IParsingContext;
 import org.evochora.compiler.model.ast.AstNode;
 
 /**
@@ -18,7 +18,7 @@ import org.evochora.compiler.model.ast.AstNode;
 public class RequireDirectiveHandler implements IParserStatementHandler {
 
     @Override
-    public AstNode parse(ParsingContext context) {
+    public AstNode parse(IParsingContext context) {
         context.advance(); // consume .REQUIRE
 
         Token pathToken = context.consume(TokenType.STRING, "Expected a file path in quotes after .REQUIRE.");

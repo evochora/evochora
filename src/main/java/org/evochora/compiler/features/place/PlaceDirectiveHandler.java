@@ -2,7 +2,7 @@ package org.evochora.compiler.features.place;
 
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.frontend.parser.IParserStatementHandler;
-import org.evochora.compiler.frontend.parser.ParsingContext;
+import org.evochora.compiler.frontend.parser.IParsingContext;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.TypedLiteralNode;
 import org.evochora.compiler.model.ast.VectorLiteralNode;
@@ -27,7 +27,7 @@ public class PlaceDirectiveHandler implements IParserStatementHandler {
      * @return A {@link PlaceNode} representing the directive.
      */
     @Override
-    public AstNode parse(ParsingContext context) {
+    public AstNode parse(IParsingContext context) {
         SourceInfo placeSourceInfo = context.peek().toSourceInfo();
         context.advance(); // consume .PLACE
 
@@ -51,7 +51,7 @@ public class PlaceDirectiveHandler implements IParserStatementHandler {
         return new PlaceNode(literal, placements, placeSourceInfo);
     }
 
-    private IPlacementArgumentNode parsePlacementArgument(ParsingContext context) {
+    private IPlacementArgumentNode parsePlacementArgument(IParsingContext context) {
         SourceInfo sourceInfo = context.peek().toSourceInfo();
 
         List<IPlacementComponent> components = new ArrayList<>();
@@ -89,7 +89,7 @@ public class PlaceDirectiveHandler implements IParserStatementHandler {
         }
     }
 
-    private IPlacementComponent parseDimensionComponent(ParsingContext context) {
+    private IPlacementComponent parseDimensionComponent(IParsingContext context) {
         if (context.peek().type() == TokenType.STAR) {
             context.advance(); // consume '*'
             return new WildcardValueComponent();

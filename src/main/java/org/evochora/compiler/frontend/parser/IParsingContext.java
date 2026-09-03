@@ -9,7 +9,7 @@ import org.evochora.compiler.diagnostics.DiagnosticsEngine;
  * Provides parser directive handlers with access to the token stream.
  * This interface decouples handlers from the concrete {@link Parser} implementation.
  */
-public interface ParsingContext {
+public interface IParsingContext {
     /**
      * Checks if the current token matches any of the given types. If so, consumes it.
      * @param types The token types to match.

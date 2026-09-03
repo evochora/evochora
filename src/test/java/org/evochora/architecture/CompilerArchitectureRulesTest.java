@@ -19,6 +19,8 @@ import org.evochora.compiler.ICompilerFeature;
 import org.evochora.compiler.StandardFeatures;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ir.IrItem;
+import org.evochora.compiler.model.ir.IrOperand;
+import org.evochora.compiler.model.ir.IrValue;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -166,6 +168,23 @@ class CompilerArchitectureRulesTest {
                     .should().resideInAPackage(flat)
                     .check(compilerClasses);
         }
+    }
+
+    /**
+     * A top-level interface carries the {@code I} prefix, except the roots of the data formats.
+     * <p>
+     * Handler, registration and context interfaces are recognisable by name. The four exceptions
+     * are the types every AST node, IR item, IR operand and IR value implements; they name a
+     * data format, not a role, and are listed here so that a fifth exception is a decision.
+     * A nested interface is named by its owner, as in {@code IInstructionSet.Signature}, and is
+     * not covered.
+     */
+    @Test
+    void topLevelInterfacesCarryThePrefix() {
+        classes().that().areInterfaces().and().areTopLevelClasses()
+                .and().doNotBelongToAnyOf(AstNode.class, IrItem.class, IrOperand.class, IrValue.class)
+                .should().haveNameMatching(".*\\.I[A-Z][A-Za-z0-9]*")
+                .check(compilerClasses);
     }
 
     /**

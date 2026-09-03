@@ -3,7 +3,7 @@ package org.evochora.compiler.features.reg;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.frontend.parser.IParserStatementHandler;
-import org.evochora.compiler.frontend.parser.ParsingContext;
+import org.evochora.compiler.frontend.parser.IParsingContext;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.runtime.isa.RegisterBank;
 
@@ -29,7 +29,7 @@ public class RegDirectiveHandler implements IParserStatementHandler {
      * @return a {@link RegNode} or {@code null} if parsing fails
      */
     @Override
-    public AstNode parse(ParsingContext context) {
+    public AstNode parse(IParsingContext context) {
         context.advance(); // consume .REG
 
         // Alias name can be IDENTIFIER (e.g., DR_A) or REGISTER (e.g., %DR_A)

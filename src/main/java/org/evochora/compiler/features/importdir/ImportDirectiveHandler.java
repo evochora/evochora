@@ -3,7 +3,7 @@ package org.evochora.compiler.features.importdir;
 import org.evochora.compiler.frontend.parser.IParserStatementHandler;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
-import org.evochora.compiler.frontend.parser.ParsingContext;
+import org.evochora.compiler.frontend.parser.IParsingContext;
 import org.evochora.compiler.model.ast.AstNode;
 
 import java.util.ArrayList;
@@ -23,7 +23,7 @@ public class ImportDirectiveHandler implements IParserStatementHandler {
     public boolean supportsExport() { return true; }
 
     @Override
-    public AstNode parse(ParsingContext context) {
+    public AstNode parse(IParsingContext context) {
         // The dependency scanner describes this directive's syntax a second time, as a regular
         // expression, and decides from it which modules are loaded at all. A form accepted here
         // but not there reaches the parser with its module missing.

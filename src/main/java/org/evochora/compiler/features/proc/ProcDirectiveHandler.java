@@ -1,7 +1,7 @@
 package org.evochora.compiler.features.proc;
 
 import org.evochora.compiler.frontend.parser.IParserStatementHandler;
-import org.evochora.compiler.frontend.parser.ParsingContext;
+import org.evochora.compiler.frontend.parser.IParsingContext;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.model.ast.AstNode;
@@ -24,7 +24,7 @@ public class ProcDirectiveHandler implements IParserStatementHandler {
     public boolean supportsExport() { return true; }
 
     @Override
-    public AstNode parse(ParsingContext context) {
+    public AstNode parse(IParsingContext context) {
         context.advance(); // consume .PROC
 
         Token procName = context.consume(TokenType.IDENTIFIER, "Expected procedure name after .PROC.");

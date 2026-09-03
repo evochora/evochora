@@ -20,7 +20,7 @@ import java.util.Optional;
  * from the {@link org.evochora.compiler.frontend.lexer.Lexer} and produces an Abstract Syntax Tree (AST).
  * All statement dispatch goes through the {@link ParserStatementRegistry}.
  */
-public class Parser implements ParsingContext {
+public class Parser implements IParsingContext {
 
     private final List<Token> tokens;
     private final DiagnosticsEngine diagnostics;

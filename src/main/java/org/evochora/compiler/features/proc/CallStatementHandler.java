@@ -1,7 +1,7 @@
 package org.evochora.compiler.features.proc;
 
 import org.evochora.compiler.frontend.parser.IParserStatementHandler;
-import org.evochora.compiler.frontend.parser.ParsingContext;
+import org.evochora.compiler.frontend.parser.IParsingContext;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
@@ -19,7 +19,7 @@ public class CallStatementHandler implements IParserStatementHandler {
     private static final Set<String> PARAM_KEYWORDS = Set.of("REF", "VAL", "LREF", "LVAL");
 
     @Override
-    public AstNode parse(ParsingContext context) {
+    public AstNode parse(IParsingContext context) {
         Token opcode = context.advance(); // consume CALL (OPCODE token)
         AstNode procName = context.expression();
 
