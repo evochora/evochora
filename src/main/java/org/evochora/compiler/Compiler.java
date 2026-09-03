@@ -232,7 +232,6 @@ public class Compiler implements ICompiler {
         TokenMapContributorRegistry tokenMapRegistry = new TokenMapContributorRegistry();
         tokenMapRegistry.registerAll(featureRegistry.tokenMapContributors());
         ModuleContextTracker tokenMapTracker = new ModuleContextTracker(symbolTable);
-        symbolTable.setCurrentModule(rootAliasChain);
         TokenMapGenerator tokenMapGenerator = new TokenMapGenerator(symbolTable, diagnostics, tokenMapRegistry, tokenMapTracker);
         Map<SourceInfo, TokenInfo> tokenMap = tokenMapGenerator.generateAll(ast);
         failOnErrors();
@@ -242,7 +241,6 @@ public class Compiler implements ICompiler {
         postProcessRegistry.registerAll(featureRegistry.postProcessHandlers());
         ModuleContextTracker postProcessTracker = new ModuleContextTracker(symbolTable);
         ScopeTracker scopeTracker = new ScopeTracker(symbolTable);
-        symbolTable.setCurrentModule(rootAliasChain);
         AstPostProcessor astPostProcessor = new AstPostProcessor(symbolTable, postProcessTracker, scopeTracker, postProcessRegistry);
         List<AstNode> resolvedAst = astPostProcessor.process(ast);
 
