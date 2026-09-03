@@ -1,4 +1,4 @@
-package org.evochora.compiler.frontend.semantics.analysis;
+package org.evochora.compiler.frontend.semantics;
 
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;

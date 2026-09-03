@@ -1,7 +1,7 @@
 package org.evochora.compiler.features.proc;
 
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
-import org.evochora.compiler.frontend.semantics.analysis.IAnalysisHandler;
+import org.evochora.compiler.frontend.semantics.IAnalysisHandler;
 import org.evochora.compiler.model.symbols.Symbol;
 import org.evochora.compiler.model.symbols.SymbolTable;
 import org.evochora.compiler.model.symbols.ResolvedSymbol;

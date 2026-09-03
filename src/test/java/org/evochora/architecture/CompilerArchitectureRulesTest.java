@@ -151,6 +151,24 @@ class CompilerArchitectureRulesTest {
     }
 
     /**
+     * A phase package is flat: its orchestrator, registries, contexts and handler interfaces
+     * lie side by side, and it has no sub-packages.
+     * <p>
+     * A handler interface lives in the package of the phase it serves, and there is no separate
+     * package for interfaces. A sub-package of a phase is such a package under another name, and
+     * it splits the phase's surface across two places for no reason the phase has.
+     */
+    @Test
+    void phasePackagesAreFlat() {
+        for (String phasePackage : PHASE_PACKAGES) {
+            String flat = phasePackage.substring(0, phasePackage.length() - 2);
+            classes().that().resideInAPackage(phasePackage)
+                    .should().resideInAPackage(flat)
+                    .check(compilerClasses);
+        }
+    }
+
+    /**
      * The model package holds nothing but its sub-packages: the three data formats and the
      * symbol table.
      * <p>

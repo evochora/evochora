@@ -12,8 +12,8 @@ import org.evochora.compiler.frontend.semantics.IDependencySetupHandler;
 import org.evochora.compiler.frontend.parser.IParserStatementHandler;
 import org.evochora.compiler.frontend.postprocess.IPostProcessHandler;
 import org.evochora.compiler.frontend.preprocessor.IPreProcessorHandler;
-import org.evochora.compiler.frontend.semantics.analysis.IAnalysisHandler;
-import org.evochora.compiler.frontend.semantics.analysis.ISymbolCollector;
+import org.evochora.compiler.frontend.semantics.IAnalysisHandler;
+import org.evochora.compiler.frontend.semantics.ISymbolCollector;
 import org.evochora.compiler.frontend.tokenmap.ITokenMapContributor;
 import org.evochora.compiler.model.ast.AstNode;
 

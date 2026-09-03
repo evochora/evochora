@@ -1,9 +1,8 @@
-package org.evochora.compiler.frontend.semantics;
+package org.evochora.compiler.frontend.module;
 
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.features.ctx.PopCtxNode;
 import org.evochora.compiler.features.ctx.PushCtxNode;
-import org.evochora.compiler.frontend.module.ModuleContextTracker;
 import org.evochora.compiler.model.symbols.SymbolTable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;

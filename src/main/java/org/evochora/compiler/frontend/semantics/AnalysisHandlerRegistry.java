@@ -1,8 +1,6 @@
 package org.evochora.compiler.frontend.semantics;
 
 import org.evochora.compiler.model.ast.AstNode;
-import org.evochora.compiler.frontend.semantics.analysis.IAnalysisHandler;
-import org.evochora.compiler.frontend.semantics.analysis.ISymbolCollector;
 
 import java.util.HashMap;
 import java.util.Map;
