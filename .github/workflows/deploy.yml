@@ -1,3 +1,6 @@
+# Actions are pinned to a commit, with the release tag beside it, for the reason given in
+# build.yml: a version tag is a pointer its owner can move, a commit is not.
+
 name: Manual Deploy to Production
 
 on:
@@ -13,6 +16,10 @@ jobs:
   deploy:
     name: Deploy to Oracle VM
     runs-on: ubuntu-latest
+    # Checkout reads a public repository and the rest happens over ssh, so the token needs
+    # nothing beyond reading the contents it checks out.
+    permissions:
+      contents: read
 
     steps:
       # Which commit the image was built from is recorded in the image itself: the build
@@ -24,9 +31,22 @@ jobs:
       # The labels live apart from the layers, so this reads a few kilobytes, not the image.
       - name: Resolve the commit the image was built from
         id: image
+        env:
+          # Read from the environment, not written into the script text: a value interpolated
+          # there becomes part of the command rather than an argument to it.
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+          REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
-          REF="ghcr.io/${{ github.repository }}:${{ github.event.inputs.tag }}"
+          # A tag or a digest, nothing else. The value reaches a shell on the production server
+          # further down, so what it may contain is stated here rather than assumed.
+          if ! printf '%s' "$INPUT_TAG" | grep -qE '^([A-Za-z0-9][A-Za-z0-9._-]*|@sha256:[a-f0-9]{64})$'; then
+            echo "::error::Not a usable image reference: '$INPUT_TAG'. Expected a tag made of"\
+                 "letters, digits, dot, underscore and hyphen, or @sha256: followed by 64 hex digits."
+            exit 1
+          fi
+          REF="ghcr.io/${REPOSITORY}:${INPUT_TAG}"
+          if [ "${INPUT_TAG#@}" != "$INPUT_TAG" ]; then REF="ghcr.io/${REPOSITORY}${INPUT_TAG}"; fi
           echo "Inspecting $REF"
           # A multi-architecture image carries one label set per architecture. They should all
           # name the same commit; if they ever disagree, there is no single configuration that
@@ -45,12 +65,12 @@ jobs:
           echo "revision=$REVISION" >> "$GITHUB_OUTPUT"
 
       - name: Checkout that commit
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ steps.image.outputs.revision }}
 
       - name: Install SSH key and add known_hosts
-        uses: shimataro/ssh-key-action@v2
+        uses: shimataro/ssh-key-action@87a8f067114a8ce263df83e9ed5c849953548bc3 # v2.8.1
         with:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           # The action will automatically run ssh-keyscan for this host
@@ -64,30 +84,45 @@ jobs:
       # data it must only read. The same goes for docker-compose.override.yml, which is what
       # makes local.conf take effect. Do not add either to this list.
       - name: Copy configuration to server
+        env:
+          SSH_TARGET: ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}
         run: |
-          # Copy the main configuration files to the server.
-          # The new Caddyfile is now included here.
-          scp -o StrictHostKeyChecking=no infrastructure/docker/docker-compose.yml ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:~/app/docker-compose.yml
-          scp -o StrictHostKeyChecking=no infrastructure/docker/Caddyfile ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:~/app/Caddyfile
-          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "mkdir -p ~/app/config"
-          scp -o StrictHostKeyChecking=no config/evochora.conf ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:~/app/config/evochora.conf
+          set -euo pipefail
+          # The main configuration files, the Caddyfile among them.
+          scp -o StrictHostKeyChecking=no infrastructure/docker/docker-compose.yml "$SSH_TARGET:~/app/docker-compose.yml"
+          scp -o StrictHostKeyChecking=no infrastructure/docker/Caddyfile "$SSH_TARGET:~/app/Caddyfile"
+          ssh -o StrictHostKeyChecking=no "$SSH_TARGET" "mkdir -p ~/app/config"
+          scp -o StrictHostKeyChecking=no config/evochora.conf "$SSH_TARGET:~/app/config/evochora.conf"
 
+      # The .env is written here and copied over, and the commands sent to the server contain no
+      # interpolated value at all. Anything written into that command text would be executed by a
+      # shell on the production machine, not read by it as data.
       - name: Create .env file and Deploy with Docker Compose
+        env:
+          SSH_TARGET: ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}
+          DOMAIN_NAME: ${{ secrets.DOMAIN_NAME }}
+          INPUT_TAG: ${{ github.event.inputs.tag }}
         run: |
-          ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
+          set -euo pipefail
+          # UID and GID belong to the account on the server, so they are filled in there.
+          {
+            printf 'DOMAIN_NAME=%s\n' "$DOMAIN_NAME"
+            printf 'IMAGE_TAG=%s\n' "$INPUT_TAG"
+            printf 'JAVA_MAX_MEM=16g\n'
+          } > deploy.env
+          scp -o StrictHostKeyChecking=no deploy.env "$SSH_TARGET:~/app/.env.incoming"
+
+          ssh "$SSH_TARGET" << 'EOF'
             set -e # Exit immediately if a command exits with a non-zero status.
             cd ~/app
-            
-            # Create the .env file from GitHub Secrets and server environment
-            echo "DOMAIN_NAME=${{ secrets.DOMAIN_NAME }}" > .env
-            echo "IMAGE_TAG=${{ github.event.inputs.tag }}" >> .env
+
+            mv .env.incoming .env
             echo "UID=$(id -u)" >> .env
             echo "GID=$(id -g)" >> .env
-            echo "JAVA_MAX_MEM=16g" >> .env
-            
+
             # Pull the new image version from the registry
             docker compose pull
-            
+
             # Stop and restart the service(s).
             # docker-compose will now use UID and GID from the .env file.
             docker compose up -d

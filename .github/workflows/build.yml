@@ -16,6 +16,15 @@ on:
     # This creates a tag, but doesn't fire 'push' event
     types: [ published ]
 
+# Pull requests share one group per pull request, so a quick second push discards the run its own
+# predecessor started — on this matrix that is two runs per superseded push. Everything else has no
+# pull request number and falls back to the run id, which is unique per run and therefore groups
+# with nothing: a push to main, a tag and a published release each run to the end, because the
+# release job publishes images and creates releases and must never be cut short.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
 jobs:
   notebooks:
     name: Verify Notebooks
@@ -43,6 +52,8 @@ jobs:
     permissions:
       contents: read
       checks: write
+      # Writing the new-code coverage comment on a pull request.
+      pull-requests: write
     steps:
       - name: Fix Git Path on Windows
         if: runner.os == 'Windows'
@@ -50,6 +61,10 @@ jobs:
         shell: pwsh
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The new-code coverage step needs the merge base, which a shallow clone does not
+          # contain. The full history costs bandwidth, so only the run that computes it takes it.
+          fetch-depth: ${{ matrix.os == 'ubuntu-latest' && github.event_name == 'pull_request' && '0' || '1' }}
       - name: Set up JDK 21
         uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
         with:
@@ -70,6 +85,56 @@ jobs:
         run: chmod +x gradlew
       - name: Build and run tests with Gradle
         run: ./gradlew build --info --stacktrace
+      # Coverage of the lines this branch changes, as a counterpart to the project-wide gate the
+      # build applies. It reads the JaCoCo report the previous step produced and therefore has to
+      # follow it. One pull request gets one comment, so only the Linux leg of the matrix runs it.
+      - name: Measure new-code coverage
+        if: matrix.os == 'ubuntu-latest' && github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: ./gradlew newCodeCoverage "-PnewCodeCoverage.baseRef=origin/$BASE_REF"
+
+      # Pull requests from forks run with a read-only token, so the comment is only attempted for
+      # branches of this repository; for a fork the figure stays in the job log.
+      - name: Comment new-code coverage on the pull request
+        # Not tied to the success of the steps before it: a branch that breaches the coverage
+        # bound fails the measuring step, and that is exactly the branch whose figure and list of
+        # uncovered lines belong on the pull request. A cancelled run is left alone.
+        if: |
+          !cancelled() && matrix.os == 'ubuntu-latest' && github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          summary=build/reports/new-code-coverage/summary.md
+          # A build that broke before the measurement ran leaves no summary behind. The step that
+          # broke is already red and carries the reason; failing here as well would bury it.
+          if [ ! -f "$summary" ]; then
+            echo "No coverage summary was produced; nothing to comment."
+            exit 0
+          fi
+          # The marker identifies this workflow's own comment, so every run edits that one
+          # instead of appending another to the conversation. The author is part of the test:
+          # anyone may leave a comment carrying the marker, and this job holds the permission to
+          # edit comments, so matching on the marker alone would let it overwrite someone else's.
+          marker='<!-- new-code-coverage -->'
+          body="$marker"$'\n'"$(cat "$summary")"
+          # --paginate --slurp yields one array per page, which add joins back into one list.
+          existing=$(gh api "repos/$REPOSITORY/issues/$PR_NUMBER/comments" --paginate --slurp |
+            jq -r --arg marker "$marker" '(add // [])
+              | map(select(.user.login == "github-actions[bot]" and (.body | startswith($marker))))
+              | first | .id // empty')
+          if [ -n "$existing" ]; then
+            jq -n --arg body "$body" '{body: $body}' |
+              gh api -X PATCH "repos/$REPOSITORY/issues/comments/$existing" --input -
+          else
+            jq -n --arg body "$body" '{body: $body}' |
+              gh api -X POST "repos/$REPOSITORY/issues/$PR_NUMBER/comments" --input -
+          fi
+
       - name: Publish Test Report with Annotations
         uses: mikepenz/action-junit-report@a9170d5795813c01ab4901ffb045b52bab4ab09d # v6.5.0
         if: always()
@@ -111,19 +176,25 @@ jobs:
     steps:
       - name: Determine version tag
         id: version
+        env:
+          # Read from the environment rather than written into the script: a release tag is
+          # chosen by whoever publishes the release, and git allows characters in a tag name
+          # that a shell reads as syntax.
+          EVENT_NAME: ${{ github.event_name }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
-          if [ "${{ github.event_name }}" = "release" ]; then
+          if [ "$EVENT_NAME" = "release" ]; then
             # Release event: tag comes from the release object
-            echo "tag=${{ github.event.release.tag_name }}" >> $GITHUB_OUTPUT
-            echo "is_release=true" >> $GITHUB_OUTPUT
-          elif [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+            echo "is_release=true" >> "$GITHUB_OUTPUT"
+          elif [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             # Tag push: extract tag name from ref
-            echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
-            echo "is_release=true" >> $GITHUB_OUTPUT
+            echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+            echo "is_release=true" >> "$GITHUB_OUTPUT"
           else
             # Main branch push: use 'latest'
-            echo "tag=latest" >> $GITHUB_OUTPUT
-            echo "is_release=false" >> $GITHUB_OUTPUT
+            echo "tag=latest" >> "$GITHUB_OUTPUT"
+            echo "is_release=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Checkout repository
@@ -141,7 +212,9 @@ jobs:
           cache: 'gradle'
 
       - name: Build Distribution Archives with Gradle
-        run: ./gradlew distZip distTar --no-daemon -PRELEASE_TAG=${{ steps.version.outputs.tag }}
+        env:
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+        run: ./gradlew distZip distTar --no-daemon "-PRELEASE_TAG=$RELEASE_TAG"
 
       - name: Upload Distribution Artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
