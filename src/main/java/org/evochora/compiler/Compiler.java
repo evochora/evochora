@@ -180,9 +180,7 @@ public class Compiler implements ICompiler {
         // Phase 0: Dependency Scanning (load imported modules)
         DependencyScanner depScanner = new DependencyScanner(diagnostics, resolver, featureRegistry.dependencyScanHandlers());
         DependencyGraph graph = depScanner.scan(fullSource, mainFilePath);
-        if (diagnostics.hasErrors()) {
-            throw new CompilationException(diagnostics.summary());
-        }
+        failOnErrors();
 
         // Phase 1: Lexical Analysis — lex all files, store results
         Map<String, List<Token>> moduleTokens = new HashMap<>();
@@ -229,9 +227,7 @@ public class Compiler implements ICompiler {
         depScanner.sourceContents().forEach((path, content) ->
                 sources.putIfAbsent(path, Arrays.asList(content.split("\\r?\\n"))));
 
-        if (diagnostics.hasErrors()) {
-            throw new CompilationException(diagnostics.summary());
-        }
+        failOnErrors();
 
         // Phase 3: Parsing (builds AST)
         ParserStatementRegistry parserRegistry = new ParserStatementRegistry();
@@ -242,9 +238,7 @@ public class Compiler implements ICompiler {
         Parser parser = new Parser(ppResult.tokens(), diagnostics, parserRegistry);
         List<AstNode> ast = parser.parse();
 
-        if (diagnostics.hasErrors()) {
-            throw new CompilationException(diagnostics.summary());
-        }
+        failOnErrors();
 
         // Phase 4: Semantic Analysis (symbol resolution, type checking)
         SymbolTable symbolTable = new SymbolTable(diagnostics);
@@ -255,9 +249,7 @@ public class Compiler implements ICompiler {
         featureRegistry.dependencySetupHandlers().forEach((type, handler) -> registerSetupHandler(setupRegistry, type, handler));
         SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, graph, mainFilePath, rootAliasChain, analysisRegistry, setupRegistry);
         analyzer.analyze(ast);
-        if (diagnostics.hasErrors()) {
-            throw new CompilationException(diagnostics.summary());
-        }
+        failOnErrors();
         symbolTable.freeze();
 
         // Phase 5: Token Map Generation (for debugger)
@@ -267,6 +259,7 @@ public class Compiler implements ICompiler {
         symbolTable.setCurrentModule(rootAliasChain);
         TokenMapGenerator tokenMapGenerator = new TokenMapGenerator(symbolTable, diagnostics, tokenMapRegistry, tokenMapTracker);
         Map<SourceInfo, TokenInfo> tokenMap = tokenMapGenerator.generateAll(ast);
+        failOnErrors();
 
         // Phase 6: AST Post-Processing (resolve register aliases and constants)
         PostProcessHandlerRegistry postProcessRegistry = new PostProcessHandlerRegistry();
@@ -286,6 +279,7 @@ public class Compiler implements ICompiler {
         irRegistry.registerAll(featureRegistry.irConverters());
         IrGenerator irGenerator = new IrGenerator(diagnostics, irRegistry);
         IrProgram irProgram = irGenerator.generate(ast, programName, rootAliasChain);
+        failOnErrors();
 
         // Phase 8: IR Rewriting (apply emission rules)
         RuntimeInstructionSetAdapter isa = new RuntimeInstructionSetAdapter();
@@ -347,6 +341,19 @@ public class Compiler implements ICompiler {
     @Override
     public void setVerbosity(int level) {
         this.verbosity = level;
+    }
+
+    /**
+     * Stops the compilation if any phase so far has reported an error. Called after every
+     * phase that reports through the diagnostics engine, so that a later phase never runs on
+     * input an earlier one has rejected. The backend phases throw instead of reporting.
+     *
+     * @throws CompilationException listing the errors reported so far
+     */
+    private void failOnErrors() throws CompilationException {
+        if (diagnostics.hasErrors()) {
+            throw new CompilationException(diagnostics.summary());
+        }
     }
 
     /**
