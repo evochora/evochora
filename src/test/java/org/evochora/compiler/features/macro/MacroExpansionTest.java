@@ -114,6 +114,22 @@ class MacroExpansionTest {
     }
 
     @Test
+    void secondDefinitionOfANameIsRejectedAndTheFirstStaysInForce() {
+        Expansion result = expand(
+                ".MACRO INC REG",
+                "  ADDI REG DATA:1",
+                ".ENDM",
+                ".MACRO INC REG",
+                "  ADDI REG DATA:1",
+                ".ENDM",
+                "INC %DR0");
+
+        assertThat(result.diagnostics.hasErrors()).isTrue();
+        assertThat(result.diagnostics.summary()).contains("Macro 'INC' is already defined in");
+        assertThat(result.texts()).containsExactly("ADDI", "%DR0", "DATA", ":", "1");
+    }
+
+    @Test
     void wrongArgumentCountIsReportedAndTheInvocationRemoved() {
         Expansion result = expand(
                 ".MACRO INC REG",

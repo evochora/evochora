@@ -69,6 +69,27 @@ class CompilerDiagnosticsTest {
                 .hasMessageContaining("main.evo:5");
     }
 
+    @Test
+    void secondDefinitionOfAMacroNamesBothPlaces() throws Exception {
+        write("macros.evo",
+                ".MACRO INC REG",
+                "  ADDI REG DATA:1",
+                ".ENDM");
+        write("main.evo",
+                ".SOURCE \"macros.evo\"",
+                ".MACRO INC REG",
+                "  SUBI REG DATA:1",
+                ".ENDM",
+                "START:",
+                "  INC %DR0");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("Macro 'INC' is already defined in")
+                .hasMessageContaining("macros.evo:1")
+                .hasMessageContaining("main.evo:2");
+    }
+
     private void write(String fileName, String... lines) throws Exception {
         Files.writeString(sourceRoot.resolve(fileName), String.join("\n", lines) + "\n");
     }

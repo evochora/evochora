@@ -1,5 +1,6 @@
 package org.evochora.compiler.features.macro;
 
+import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.frontend.preprocessor.IPreProcessorHandler;
@@ -88,15 +89,31 @@ public class MacroExpansionHandler implements IPreProcessorHandler {
         preProcessor.injectTokens(expandedBody, 0);
     }
 
+    /**
+     * Returns where the macro was defined: the location of its name in the {@code .MACRO}
+     * directive.
+     *
+     * @return the source location of the definition
+     */
+    public SourceInfo definedAt() {
+        return macro.name().toSourceInfo();
+    }
+
+    /**
+     * Two handlers are equal when they come from the same definition, the same {@code .MACRO}
+     * at the same place in the same file. A file that is included twice defines its macros
+     * twice, and those are one definition; a second {@code .MACRO} of the same name anywhere
+     * else is a different one, whatever its text.
+     */
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
         if (!(o instanceof MacroExpansionHandler other)) return false;
-        return Objects.equals(macro, other.macro);
+        return Objects.equals(definedAt(), other.definedAt());
     }
 
     @Override
     public int hashCode() {
-        return Objects.hashCode(macro);
+        return Objects.hashCode(definedAt());
     }
 }

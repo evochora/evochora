@@ -66,8 +66,10 @@ class PreProcessorContextDynamicHandlerTest {
     @Test
     @Tag("unit")
     void conflictingReRegistration_throws() {
+        // Two macros of the same name from two places are two definitions
         IPreProcessorHandler handler1 = createHandler("FOO", List.of(), List.of(opcode("NOP")));
-        IPreProcessorHandler handler2 = createHandler("FOO", List.of(), List.of(opcode("SETI")));
+        IPreProcessorHandler handler2 = new MacroExpansionHandler(
+                new MacroDefinition(identifierAt("FOO", 7), List.of(), List.of(opcode("SETI"))));
 
         context.registerDynamicHandler("FOO", handler1);
 
@@ -83,7 +85,11 @@ class PreProcessorContextDynamicHandlerTest {
     }
 
     private static Token identifier(String text) {
-        return new Token(TokenType.IDENTIFIER, text, null, 1, 1, "test");
+        return identifierAt(text, 1);
+    }
+
+    private static Token identifierAt(String text, int line) {
+        return new Token(TokenType.IDENTIFIER, text, null, line, 1, "test");
     }
 
     private static Token opcode(String text) {

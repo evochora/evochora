@@ -135,11 +135,14 @@ public class PreProcessorContext {
      * <p>Collision policy: if a handler is already registered for the same key and the new
      * handler is {@link Object#equals equal} to it, the registration is silently ignored
      * (idempotent). If the existing handler differs, an {@link IllegalStateException} is
-     * thrown to prevent silent redefinition conflicts.</p>
+     * thrown. This is the last guard; a feature that can tell the programmer what is wrong,
+     * as the macro feature does for a second definition of a name, reports a diagnostic
+     * before registering.</p>
      *
      * @param name    The token text that triggers this handler (uppercased for case-insensitive lookup).
-     * @param handler The handler to register. Must implement {@code equals}/{@code hashCode}
-     *                based on its semantic content.
+     * @param handler The handler to register. Its {@code equals} decides what counts as the
+     *                same registration; a macro expansion handler is equal to another when
+     *                both come from the same definition.
      * @throws IllegalStateException if a different handler is already registered for this name.
      */
     public void registerDynamicHandler(String name, IPreProcessorHandler handler) {
