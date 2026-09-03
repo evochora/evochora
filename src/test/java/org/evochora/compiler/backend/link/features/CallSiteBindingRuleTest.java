@@ -205,6 +205,16 @@ class CallSiteBindingRuleTest {
      */
     private static class StubInstructionSet implements IInstructionSet {
         @Override
+        public List<IInstructionSet.RegisterBankInfo> registerBanks() {
+            return List.of();
+        }
+
+        @Override
+        public boolean requiresTypedLiterals() {
+            return false;
+        }
+
+        @Override
         public Optional<Integer> resolveRegisterToken(String token) {
             String upper = token.toUpperCase().replace("%", "");
             // Order matters: check longer prefixes first to avoid "LR" matching "PLR"

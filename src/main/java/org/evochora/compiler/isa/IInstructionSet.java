@@ -41,6 +41,45 @@ public interface IInstructionSet {
 	Optional<String> negatedConditional(String opcode);
 
 	/**
+	 * Describes the register banks of the target, in the order the target declares them.
+	 * A register is written as the bank's prefix followed by an index below the bank's count.
+	 *
+	 * @return The banks, including those with no registers allocated, which have a count of zero.
+	 */
+	List<RegisterBankInfo> registerBanks();
+
+	/**
+	 * Tells whether the target rejects an untyped literal where a literal operand is expected.
+	 *
+	 * @return {@code true} if every literal operand has to carry a molecule type.
+	 */
+	boolean requiresTypedLiterals();
+
+	/**
+	 * What the compiler knows about one register bank of the target.
+	 *
+	 * @param prefix          How a register of the bank starts in source, including the
+	 *                        leading percent sign, e.g. {@code %PDR}.
+	 * @param base            The ID of the bank's first register; index {@code i} has ID
+	 *                        {@code base + i}.
+	 * @param count           How many registers the bank has.
+	 * @param location        Whether the registers hold coordinate vectors rather than scalars.
+	 * @param forbidden       Whether source must not name the registers; the compiler assigns
+	 *                        them itself.
+	 * @param alwaysAvailable Whether source may name the registers outside a procedure.
+	 * @param procScoped      Whether source may name the registers only inside a procedure.
+	 */
+	record RegisterBankInfo(String prefix, int base, int count, boolean location, boolean forbidden,
+							boolean alwaysAvailable, boolean procScoped) {
+		/**
+		 * @return The bank's name as source and messages use it, the prefix without the percent sign.
+		 */
+		public String name() {
+			return prefix.substring(1);
+		}
+	}
+
+	/**
 	 * The kind of an instruction argument.
 	 */
 	enum ArgKind {
