@@ -1274,82 +1274,83 @@ public class ServiceManager implements IMonitorable {
      * environment shape from its configuration. This approach works regardless of
      * the service name used in the configuration.
      *
+     * A malformed engine configuration is not tolerated here: the estimate built from these
+     * parameters decides whether the run fits into the heap, so an invalid value fails the start
+     * instead of silently disabling the estimate.
+     *
      * @param config Pipeline configuration
      * @return SimulationParameters or null if no SimulationEngine service is configured
+     * @throws IllegalArgumentException if the engine's options do not form valid parameters
+     * @throws com.typesafe.config.ConfigException if an option has the wrong type
      */
     private SimulationParameters extractSimulationParameters(Config config) {
         if (!config.hasPath("services")) {
             return null;
         }
-        
-        try {
-            Config servicesConfig = config.getConfig("services");
-            
-            // Iterate over all configured services to find SimulationEngine
-            for (String serviceName : servicesConfig.root().keySet()) {
-                Config serviceConfig = servicesConfig.getConfig(serviceName);
-                
-                if (!serviceConfig.hasPath("className")) {
-                    continue;
-                }
-                
-                String className = serviceConfig.getString("className");
-                
-                // Check if this is a SimulationEngine (by class name suffix)
-                if (className.endsWith(".SimulationEngine") && 
-                    serviceConfig.hasPath("options.environment.shape")) {
-                    
-                    // Extract environment shape
-                    List<Integer> shapeList = serviceConfig.getIntList("options.environment.shape");
-                    int[] shape = shapeList.stream().mapToInt(Integer::intValue).toArray();
-                    
-                    // Calculate total cells (use long to avoid overflow for large worlds)
-                    long totalCells = 1L;
-                    for (int dim : shape) {
-                        totalCells *= dim;
-                    }
-                    
-                    // Derive maxOrganisms from environment size and density factor
-                    double organismDensityFactor = serviceConfig.hasPath("options.organismDensityFactor")
-                        ? serviceConfig.getDouble("options.organismDensityFactor")
-                        : SimulationParameters.DEFAULT_ORGANISM_DENSITY_FACTOR;
-                    int maxOrganisms = Math.max(1, (int) (totalCells * organismDensityFactor));
 
-                    // Read delta compression parameters
-                    int samplingInterval = serviceConfig.hasPath("options.samplingInterval")
-                        ? serviceConfig.getInt("options.samplingInterval")
-                        : SimulationParameters.DEFAULT_SAMPLING_INTERVAL;
-                    int accumulatedDeltaInterval = serviceConfig.hasPath("options.accumulatedDeltaInterval")
-                        ? serviceConfig.getInt("options.accumulatedDeltaInterval")
-                        : SimulationParameters.DEFAULT_ACCUMULATED_DELTA_INTERVAL;
-                    int snapshotInterval = serviceConfig.hasPath("options.snapshotInterval")
-                        ? serviceConfig.getInt("options.snapshotInterval")
-                        : SimulationParameters.DEFAULT_SNAPSHOT_INTERVAL;
-                    int chunkInterval = serviceConfig.hasPath("options.chunkInterval")
-                        ? serviceConfig.getInt("options.chunkInterval")
-                        : SimulationParameters.DEFAULT_CHUNK_INTERVAL;
-                    double estimatedDeltaRatio = serviceConfig.hasPath("options.estimatedDeltaRatio")
-                        ? serviceConfig.getDouble("options.estimatedDeltaRatio")
-                        : SimulationParameters.DEFAULT_ESTIMATED_DELTA_RATIO;
-                    
-                    log.debug("Found SimulationEngine '{}' with environment shape {}, maxOrganisms={}, samplesPerChunk={}, simulationTicksPerChunk={}",
-                        serviceName, Arrays.toString(shape), maxOrganisms,
-                        accumulatedDeltaInterval * snapshotInterval * chunkInterval,
-                        samplingInterval * accumulatedDeltaInterval * snapshotInterval * chunkInterval);
-                    return new SimulationParameters(
-                        shape, totalCells, totalCells, maxOrganisms,
-                        samplingInterval, accumulatedDeltaInterval,
-                        snapshotInterval, chunkInterval, estimatedDeltaRatio
-                    );
-                }
+        Config servicesConfig = config.getConfig("services");
+
+        // Iterate over all configured services to find SimulationEngine
+        for (String serviceName : servicesConfig.root().keySet()) {
+            Config serviceConfig = servicesConfig.getConfig(serviceName);
+
+            if (!serviceConfig.hasPath("className")) {
+                continue;
             }
-            
-            log.debug("No SimulationEngine service found in configuration");
-            return null;
-        } catch (Exception e) {
-            log.debug("Could not extract simulation parameters: {}", e.getMessage());
-            return null;
+
+            String className = serviceConfig.getString("className");
+
+            // Check if this is a SimulationEngine (by class name suffix)
+            if (className.endsWith(".SimulationEngine") &&
+                serviceConfig.hasPath("options.environment.shape")) {
+
+                // Extract environment shape
+                List<Integer> shapeList = serviceConfig.getIntList("options.environment.shape");
+                int[] shape = shapeList.stream().mapToInt(Integer::intValue).toArray();
+
+                // Calculate total cells (use long to avoid overflow for large worlds)
+                long totalCells = 1L;
+                for (int dim : shape) {
+                    totalCells *= dim;
+                }
+
+                // Derive maxOrganisms from environment size and density factor
+                double organismDensityFactor = serviceConfig.hasPath("options.organismDensityFactor")
+                    ? serviceConfig.getDouble("options.organismDensityFactor")
+                    : SimulationParameters.DEFAULT_ORGANISM_DENSITY_FACTOR;
+                int maxOrganisms = Math.max(1, (int) (totalCells * organismDensityFactor));
+
+                // Read delta compression parameters
+                int samplingInterval = serviceConfig.hasPath("options.samplingInterval")
+                    ? serviceConfig.getInt("options.samplingInterval")
+                    : SimulationParameters.DEFAULT_SAMPLING_INTERVAL;
+                int accumulatedDeltaInterval = serviceConfig.hasPath("options.accumulatedDeltaInterval")
+                    ? serviceConfig.getInt("options.accumulatedDeltaInterval")
+                    : SimulationParameters.DEFAULT_ACCUMULATED_DELTA_INTERVAL;
+                int snapshotInterval = serviceConfig.hasPath("options.snapshotInterval")
+                    ? serviceConfig.getInt("options.snapshotInterval")
+                    : SimulationParameters.DEFAULT_SNAPSHOT_INTERVAL;
+                int chunkInterval = serviceConfig.hasPath("options.chunkInterval")
+                    ? serviceConfig.getInt("options.chunkInterval")
+                    : SimulationParameters.DEFAULT_CHUNK_INTERVAL;
+                double estimatedDeltaRatio = serviceConfig.hasPath("options.estimatedDeltaRatio")
+                    ? serviceConfig.getDouble("options.estimatedDeltaRatio")
+                    : SimulationParameters.DEFAULT_ESTIMATED_DELTA_RATIO;
+
+                log.debug("Found SimulationEngine '{}' with environment shape {}, maxOrganisms={}, samplesPerChunk={}, simulationTicksPerChunk={}",
+                    serviceName, Arrays.toString(shape), maxOrganisms,
+                    accumulatedDeltaInterval * snapshotInterval * chunkInterval,
+                    samplingInterval * accumulatedDeltaInterval * snapshotInterval * chunkInterval);
+                return new SimulationParameters(
+                    shape, totalCells, totalCells, maxOrganisms,
+                    samplingInterval, accumulatedDeltaInterval,
+                    snapshotInterval, chunkInterval, estimatedDeltaRatio
+                );
+            }
         }
+
+        log.debug("No SimulationEngine service found in configuration");
+        return null;
     }
     
     /**

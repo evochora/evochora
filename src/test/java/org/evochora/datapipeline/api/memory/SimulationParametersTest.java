@@ -398,6 +398,41 @@ class SimulationParametersTest {
     }
 
     @Test
+    void constructor_rejectsEveryInvalidComponent() {
+        int[] shape = {100, 100};
+        assertThrows(IllegalArgumentException.class, () ->
+                new SimulationParameters(new int[0], 1L, 1L, 10, 1, 1, 1, 1, 0.1), "empty shape");
+        assertThrows(IllegalArgumentException.class, () ->
+                new SimulationParameters(new int[]{100, 0}, 0L, 0L, 10, 1, 1, 1, 1, 0.1), "zero dimension");
+        assertThrows(IllegalArgumentException.class, () ->
+                new SimulationParameters(shape, 9_999L, 1L, 10, 1, 1, 1, 1, 0.1), "totalCells off the shape");
+        assertThrows(IllegalArgumentException.class, () ->
+                new SimulationParameters(shape, 10_000L, 1L, -1, 1, 1, 1, 1, 0.1), "negative maxOrganisms");
+        assertThrows(IllegalArgumentException.class, () ->
+                new SimulationParameters(shape, 10_000L, 1L, 10, 0, 1, 1, 1, 0.1), "samplingInterval 0");
+        assertThrows(IllegalArgumentException.class, () ->
+                new SimulationParameters(shape, 10_000L, 1L, 10, 1, 0, 1, 1, 0.1), "accumulatedDeltaInterval 0");
+        assertThrows(IllegalArgumentException.class, () ->
+                new SimulationParameters(shape, 10_000L, 1L, 10, 1, 1, 0, 1, 0.1), "snapshotInterval 0");
+        assertThrows(IllegalArgumentException.class, () ->
+                new SimulationParameters(shape, 10_000L, 1L, 10, 1, 1, 1, 0, 0.1), "chunkInterval 0");
+        assertThrows(IllegalArgumentException.class, () ->
+                new SimulationParameters(shape, 10_000L, 1L, 10, 1, 1, 1, 1, 1.5), "ratio above 1");
+        assertThrows(IllegalArgumentException.class, () ->
+                new SimulationParameters(shape, 10_000L, 1L, 10, 1, 1, 1, 1, Double.NaN), "ratio NaN");
+        assertDoesNotThrow(() ->
+                new SimulationParameters(shape, 10_000L, 0L, 0, 1, 1, 1, 1, 0.0), "the lower bounds are valid");
+    }
+
+    @Test
+    void withCellOccupancy_rejectsAnOccupancyOutsideTheUnitInterval() {
+        SimulationParameters params = SimulationParameters.of(new int[]{100, 100}, 10);
+        assertThrows(IllegalArgumentException.class, () -> params.withCellOccupancy(-0.1));
+        assertThrows(IllegalArgumentException.class, () -> params.withCellOccupancy(1.1));
+        assertThrows(IllegalArgumentException.class, () -> params.withCellOccupancy(Double.NaN));
+    }
+
+    @Test
     void withCellOccupancy_staysWithinTheWorld() {
         SimulationParameters params = SimulationParameters.of(new int[]{100, 100}, 10);
         assertEquals(10_000L, params.withCellOccupancy(1.0).occupiedCells());

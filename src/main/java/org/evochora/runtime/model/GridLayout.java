@@ -18,7 +18,6 @@ import java.util.Arrays;
  *   <li>coordinate to index and index to coordinate without allocation,</li>
  *   <li>a single-cell step along one dimension that honours tile edges and the world's topology,</li>
  *   <li>conversion to the persisted row-major index,</li>
- *   <li>the toroidal Manhattan distance between a coordinate and an indexed cell,</li>
  *   <li>validation of the world shape against the tile side at construction.</li>
  * </ul>
  * <p>
@@ -39,7 +38,6 @@ final class GridLayout {
     private final int[] canonicalStrides;
     private final boolean toroidal;
     private final int dimensions;
-    private final int tileSide;
     /** log2 of the tile side. */
     private final int tileShift;
     /** {@code tileSide - 1}: masks the offset of a cell inside its tile along one dimension. */
@@ -74,7 +72,6 @@ final class GridLayout {
         }
         this.toroidal = properties.isToroidal();
         this.dimensions = shape.length;
-        this.tileSide = tileSide;
         this.tileShift = Integer.numberOfTrailingZeros(tileSide);
         this.tileMask = tileSide - 1;
         if ((long) tileShift * dimensions >= Integer.SIZE - 1) {
@@ -116,24 +113,10 @@ final class GridLayout {
     }
 
     /**
-     * @return cells per tile along each dimension
-     */
-    int tileSide() {
-        return tileSide;
-    }
-
-    /**
      * @return the number of cells in the world, the product of all dimension sizes
      */
     int totalCells() {
         return totalCells;
-    }
-
-    /**
-     * @return the number of dimensions
-     */
-    int dimensions() {
-        return dimensions;
     }
 
     /**

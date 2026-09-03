@@ -1074,15 +1074,19 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         //   array header and map slot (~100 bytes).
         // canonical order: one 8-byte key and one 4-byte owner per cell handed out in canonical
         //   order, retained at the size of the largest batch, which is every occupied cell at a
-        //   snapshot.
+        //   snapshot. The buffers grow by doubling and never shrink, so their capacity reaches up
+        //   to twice that batch: 24 bytes per occupied cell is the bound.
+        // owned-cell visit: one 4-byte index and one 8-byte key per cell of the largest organism
+        //   ever visited, also grown by doubling. Without a bound on an organism's size it cannot
+        //   be priced per cell; against the grid it is negligible (a few thousand cells).
         long bitSetBytes = (params.totalCells() + 7) / 8;
         long cellsByOwnerBytes = params.occupiedCells() * 12L + (long) params.maxOrganisms() * 100;
-        long canonicalOrderBytes = params.occupiedCells() * 12L;
+        long canonicalOrderBytes = params.occupiedCells() * 24L;
         long trackingBytes = 3 * bitSetBytes + cellsByOwnerBytes + canonicalOrderBytes;
         estimates.add(new MemoryEstimate(
             serviceName + " (Environment tracking)",
             trackingBytes,
-            String.format("3 BitSets (%d cells) + cellsByOwner (%d occupied cells × 12 bytes + %d orgs × 100 bytes) + canonical order batch (%d occupied cells × 12 bytes)",
+            String.format("3 BitSets (%d cells) + cellsByOwner (%d occupied cells × 12 bytes + %d orgs × 100 bytes) + canonical order buffers (%d occupied cells × 24 bytes, doubling capacity); owned-cell visit buffers follow the largest organism and are not priced",
                 params.totalCells(), params.occupiedCells(), params.maxOrganisms(), params.occupiedCells()),
             MemoryEstimate.Category.SERVICE_BATCH
         ));

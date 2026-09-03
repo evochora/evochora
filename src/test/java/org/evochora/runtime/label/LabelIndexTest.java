@@ -148,4 +148,30 @@ class LabelIndexTest {
         assertThat(candidates).hasSize(1);
         assertThat(candidates.iterator().next().canonicalIndex()).isEqualTo(flatIndex);
     }
+
+    @Test
+    void threeBitMutationIsFoundOnlyWithToleranceThree_andTheNearerLabelWins() {
+        // Two own labels carrying the same value, one 5 cells from the caller, one 20 cells away
+        // in a 64x64 world; the search value differs from both by three bits.
+        int labelValue = 12345;
+        int mutated = labelValue ^ 0b111;
+        int near = environment.getProperties().toFlatIndex(new int[]{5, 0});
+        int far = environment.getProperties().toFlatIndex(new int[]{20, 0});
+        int owner = 1;
+        int moleculeInt = Config.TYPE_LABEL | labelValue;
+
+        LabelIndex tolerant = new LabelIndex(new PreExpandedHammingStrategy(3,
+                PreExpandedHammingStrategy.DEFAULT_FOREIGN_PENALTY, PreExpandedHammingStrategy.DEFAULT_HAMMING_WEIGHT));
+        for (LabelIndex index : new LabelIndex[]{labelIndex, tolerant}) {
+            index.onMoleculeSet(far, 0, moleculeInt, owner);
+            index.onMoleculeSet(near, 0, moleculeInt, owner);
+        }
+
+        assertThat(labelIndex.findTarget(mutated, owner, callerCoords, environment, random))
+                .as("the default tolerance of 2 does not reach three flipped bits")
+                .isEqualTo(-1);
+        assertThat(tolerant.findTarget(mutated, owner, callerCoords, environment, random))
+                .as("tolerance 3 reaches the third stage and picks the nearer of two equal candidates")
+                .isEqualTo(near);
+    }
 }

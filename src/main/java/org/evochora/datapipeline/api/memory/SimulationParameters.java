@@ -61,13 +61,45 @@ public record SimulationParameters(
 ) {
 
     /**
-     * Rejects an occupancy the world cannot hold: an estimate built on more occupied cells than
-     * the world has, or on a negative count, would be wrong without any later step noticing.
+     * Rejects parameters an estimate cannot be built on: a world without cells, a cell count that
+     * does not match the shape, more occupied cells than the world has, intervals that would
+     * divide by zero, or a change rate outside the unit interval. Every estimate derives from
+     * these values, so a wrong one here would be wrong everywhere without any later step noticing.
      */
     public SimulationParameters {
+        if (environmentShape == null || environmentShape.length == 0) {
+            throw new IllegalArgumentException("environmentShape must have at least one dimension");
+        }
+        long product = 1L;
+        for (int i = 0; i < environmentShape.length; i++) {
+            if (environmentShape[i] < 1) {
+                throw new IllegalArgumentException("environmentShape[" + i + "] must be >= 1, got " + environmentShape[i]);
+            }
+            product *= environmentShape[i];
+        }
+        if (totalCells != product) {
+            throw new IllegalArgumentException("totalCells must equal the product of the shape ("
+                    + product + "), got " + totalCells);
+        }
         if (occupiedCells < 0 || occupiedCells > totalCells) {
             throw new IllegalArgumentException("occupiedCells must lie between 0 and totalCells ("
                     + totalCells + "), got " + occupiedCells);
+        }
+        if (maxOrganisms < 0) {
+            throw new IllegalArgumentException("maxOrganisms must be >= 0, got " + maxOrganisms);
+        }
+        requireAtLeastOne("samplingInterval", samplingInterval);
+        requireAtLeastOne("accumulatedDeltaInterval", accumulatedDeltaInterval);
+        requireAtLeastOne("snapshotInterval", snapshotInterval);
+        requireAtLeastOne("chunkInterval", chunkInterval);
+        if (!(estimatedDeltaRatio >= 0.0 && estimatedDeltaRatio <= 1.0)) {
+            throw new IllegalArgumentException("estimatedDeltaRatio must lie between 0.0 and 1.0, got " + estimatedDeltaRatio);
+        }
+    }
+
+    private static void requireAtLeastOne(String name, int value) {
+        if (value < 1) {
+            throw new IllegalArgumentException(name + " must be >= 1, got " + value);
         }
     }
 
@@ -247,6 +279,9 @@ public record SimulationParameters(
      * @return New SimulationParameters with the world size kept and occupiedCells scaled.
      */
     public SimulationParameters withCellOccupancy(double occupancy) {
+        if (!(occupancy >= 0.0 && occupancy <= 1.0)) {
+            throw new IllegalArgumentException("occupancy must lie between 0.0 and 1.0, got " + occupancy);
+        }
         long occupied = Math.max(1, (long) (totalCells * occupancy));
         return new SimulationParameters(
             environmentShape, totalCells, occupied, maxOrganisms,
