@@ -422,19 +422,7 @@ public class Environment implements IEnvironmentReader {
         assert outsideParallelWave();
         int index = getFlatIndex(coord);
         if (index != -1) {
-            int oldMoleculeInt = this.grid[index];
-            int newMoleculeInt = molecule.toInt();
-            this.grid[index] = newMoleculeInt;
-
-            // Track change for delta compression
-            markChanged(index);
-
-            // Update label index for fuzzy jump matching
-            int owner = this.ownerGrid[index];
-            labelIndex.onMoleculeSet(toCanonicalIndex(index), oldMoleculeInt, newMoleculeInt, owner);
-
-            // Update sparse cell tracking if enabled
-            updateOccupiedIndices(index);
+            setMoleculeByIndex(index, molecule);
         }
     }
 
@@ -445,6 +433,7 @@ public class Environment implements IEnvironmentReader {
      * @param coord The coordinate to set the molecule at.
      */
     public void setMolecule(Molecule molecule, int ownerId, int... coord) {
+        assert outsideParallelWave();
         int index = getFlatIndex(coord);
         if (index != -1) {
             writeMolecule(index, molecule, ownerId);
