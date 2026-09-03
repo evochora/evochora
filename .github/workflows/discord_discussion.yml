@@ -4,6 +4,11 @@ on:
   discussion:
     types: [created, edited]
 
+# The job reads nothing from the repository and writes nothing back; it only forwards what the
+# event already carries. Anyone may open a discussion here, so the token it runs with should be
+# able to do as little as possible.
+permissions: {}
+
 jobs:
   discord_notification:
     runs-on: ubuntu-latest
@@ -11,12 +16,21 @@ jobs:
       - name: Send Discord Notification
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          # Passed as environment variables rather than written into the script below. A title is
+          # whatever its author typed, and anyone with a GitHub account can open a discussion here.
+          # Interpolated into the script text, a quote and a semicolon in a title would end the
+          # string and let the rest run as a command; read from the environment, a title stays a
+          # title however it is written.
+          DISCUSSION_CATEGORY: ${{ github.event.discussion.category.name }}
+          DISCUSSION_TITLE: ${{ github.event.discussion.title }}
+          DISCUSSION_AUTHOR: ${{ github.event.discussion.user.login }}
+          DISCUSSION_URL: ${{ github.event.discussion.html_url }}
         if: ${{ env.DISCORD_WEBHOOK != '' }}
         run: |
           jq -n \
-            --arg category "${{ github.event.discussion.category.name }}" \
-            --arg title "${{ github.event.discussion.title }}" \
-            --arg author "${{ github.event.discussion.user.login }}" \
-            --arg url "${{ github.event.discussion.html_url }}" \
+            --arg category "$DISCUSSION_CATEGORY" \
+            --arg title "$DISCUSSION_TITLE" \
+            --arg author "$DISCUSSION_AUTHOR" \
+            --arg url "$DISCUSSION_URL" \
             '{ "content": "📢 **New Discussion** in \($category)\n\n**\($title)**\nby \($author)\n\n\($url)" }' |
           curl -H "Content-Type: application/json" -d @- "$DISCORD_WEBHOOK"

@@ -111,19 +111,25 @@ jobs:
     steps:
       - name: Determine version tag
         id: version
+        env:
+          # Read from the environment rather than written into the script: a release tag is
+          # chosen by whoever publishes the release, and git allows characters in a tag name
+          # that a shell reads as syntax.
+          EVENT_NAME: ${{ github.event_name }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
-          if [ "${{ github.event_name }}" = "release" ]; then
+          if [ "$EVENT_NAME" = "release" ]; then
             # Release event: tag comes from the release object
-            echo "tag=${{ github.event.release.tag_name }}" >> $GITHUB_OUTPUT
-            echo "is_release=true" >> $GITHUB_OUTPUT
-          elif [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+            echo "is_release=true" >> "$GITHUB_OUTPUT"
+          elif [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             # Tag push: extract tag name from ref
-            echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
-            echo "is_release=true" >> $GITHUB_OUTPUT
+            echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+            echo "is_release=true" >> "$GITHUB_OUTPUT"
           else
             # Main branch push: use 'latest'
-            echo "tag=latest" >> $GITHUB_OUTPUT
-            echo "is_release=false" >> $GITHUB_OUTPUT
+            echo "tag=latest" >> "$GITHUB_OUTPUT"
+            echo "is_release=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Checkout repository
@@ -141,7 +147,9 @@ jobs:
           cache: 'gradle'
 
       - name: Build Distribution Archives with Gradle
-        run: ./gradlew distZip distTar --no-daemon -PRELEASE_TAG=${{ steps.version.outputs.tag }}
+        env:
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+        run: ./gradlew distZip distTar --no-daemon "-PRELEASE_TAG=$RELEASE_TAG"
 
       - name: Upload Distribution Artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

@@ -1,3 +1,6 @@
+# Actions are pinned to a commit, with the release tag beside it, for the reason given in
+# build.yml — with one deliberate exception, claude-code-action below.
+
 name: Claude Code Review
 
 on:
@@ -27,12 +30,18 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0  # Full history for proper diff
 
       - name: Run Claude Code Review
         id: claude-review
+        # Left on the moving tag on purpose. v1 is a rolling pointer rather than a fixed
+        # release, so pinning it would freeze this action until someone noticed a newer one
+        # existed and looked up its commit — and improvements to the reviewer are wanted as
+        # they appear. The trade is acceptable here and not elsewhere: this is the vendor's
+        # own action, the same vendor whose tooling already runs against this repository with
+        # far broader access, and the job may only read contents and write comments.
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
