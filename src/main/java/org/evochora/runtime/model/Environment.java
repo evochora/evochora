@@ -24,7 +24,9 @@ import org.evochora.runtime.label.PreExpandedHammingStrategy;
  * thread. The canonical-order visits ({@link #forEachOccupiedCellInCanonicalOrder},
  * {@link #forEachCellChangedSinceLastSample}, {@link #forEachCellChangedSinceLastSnapshot}) share
  * one batch and belong to the single thread that serializes the world; they are not concurrent
- * and not re-entrant, and a nested visit fails fast.
+ * and not re-entrant, and a nested visit fails fast. The same holds for the owned-cell visit
+ * ({@link #visitCellsOwnedBy}): the visits share buffers owned by the environment, and the guard
+ * against nesting catches a second visit on the same thread, not one from another thread.
  * <p>
  * <b>Cell addressing:</b> inside this package, every flat index this class hands out or accepts
  * is an index of the environment's {@link GridLayout}, to be treated as an opaque number that only

@@ -410,6 +410,9 @@ class SimulationParametersTest {
                 new SimulationParameters(new int[]{65536, 65536, 65536, 65536}, 0L, 0L, 10, 1, 1, 1, 1, 0.1),
                 "a cell product that overflows long is rejected instead of wrapping to zero");
         assertThrows(IllegalArgumentException.class, () ->
+                new SimulationParameters(new int[]{65536, 65536}, 4_294_967_296L, 1L, 10, 1, 1, 1, 1, 0.1),
+                "more cells than an environment can index are rejected, so no estimate can overflow");
+        assertThrows(IllegalArgumentException.class, () ->
                 new SimulationParameters(shape, 10_000L, 1L, -1, 1, 1, 1, 1, 0.1), "negative maxOrganisms");
         assertThrows(IllegalArgumentException.class, () ->
                 new SimulationParameters(shape, 10_000L, 1L, 10, 0, 1, 1, 1, 0.1), "samplingInterval 0");

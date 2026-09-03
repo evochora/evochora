@@ -145,6 +145,33 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
     private record BirthHandlerWithConfig(IBirthHandler handler, Config config) {}
 
     /**
+     * The delta-compression intervals and estimation assumptions of a run, read and validated
+     * before the simulation is built or restored, so that an invalid option fails before any
+     * expensive work is done.
+     */
+    private record RunOptions(
+        int samplingInterval,
+        int accumulatedDeltaInterval,
+        int snapshotInterval,
+        int chunkInterval,
+        double organismDensityFactor,
+        int maxCellsPerOrganism,
+        double estimatedDeltaRatio
+    ) {}
+
+    private RunOptions readRunOptions(Config config) {
+        return new RunOptions(
+            readPositiveInt(config, "samplingInterval", 1),
+            readInt(config, "accumulatedDeltaInterval", SimulationParameters.DEFAULT_ACCUMULATED_DELTA_INTERVAL),
+            readInt(config, "snapshotInterval", SimulationParameters.DEFAULT_SNAPSHOT_INTERVAL),
+            readInt(config, "chunkInterval", SimulationParameters.DEFAULT_CHUNK_INTERVAL),
+            readDouble(config, "organismDensityFactor", SimulationParameters.DEFAULT_ORGANISM_DENSITY_FACTOR),
+            readPositiveInt(config, "maxCellsPerOrganism", SimulationParameters.DEFAULT_MAX_CELLS_PER_ORGANISM),
+            readDouble(config, "estimatedDeltaRatio", SimulationParameters.DEFAULT_ESTIMATED_DELTA_RATIO)
+        );
+    }
+
+    /**
      * Holds the initialized state from either resume or new simulation mode.
      * This record allows both initialization paths to produce the same output structure.
      * Includes delta compression intervals to ensure resume uses original values from metadata.
@@ -349,6 +376,9 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
             SimulationMetadata metadata = checkpoint.metadata();
             Config originalConfig = com.typesafe.config.ConfigFactory.parseString(
                 metadata.getResolvedConfigJson());
+            // Intervals and estimation parameters must match the original simulation; read them
+            // before the restore so that an invalid value fails before the state is rebuilt
+            RunOptions runOptions = readRunOptions(originalConfig);
 
             // Parallelism is deployment-specific, read from current options (not checkpoint metadata)
             Config currentRuntimeConfig = options.hasPath("runtime") ? options.getConfig("runtime") : com.typesafe.config.ConfigFactory.empty();
@@ -380,7 +410,6 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
 
             applyParallelismScaling(restored.simulation(), currentRuntimeConfig);
 
-            // Read intervals and estimation parameters from original config (must match original simulation!)
             return new InitializedState(
                 restored.simulation(),
                 randomProvider,
@@ -393,13 +422,13 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                 seed,
                 metadata.getStartTimeMs(),
                 checkpoint.getResumeFromTick() - 1,
-                readPositiveInt(originalConfig, "samplingInterval", 1),
-                readInt(originalConfig, "accumulatedDeltaInterval", SimulationParameters.DEFAULT_ACCUMULATED_DELTA_INTERVAL),
-                readInt(originalConfig, "snapshotInterval", SimulationParameters.DEFAULT_SNAPSHOT_INTERVAL),
-                readInt(originalConfig, "chunkInterval", SimulationParameters.DEFAULT_CHUNK_INTERVAL),
-                readDouble(originalConfig, "organismDensityFactor", SimulationParameters.DEFAULT_ORGANISM_DENSITY_FACTOR),
-                readPositiveInt(originalConfig, "maxCellsPerOrganism", SimulationParameters.DEFAULT_MAX_CELLS_PER_ORGANISM),
-                readDouble(originalConfig, "estimatedDeltaRatio", SimulationParameters.DEFAULT_ESTIMATED_DELTA_RATIO),
+                runOptions.samplingInterval(),
+                runOptions.accumulatedDeltaInterval(),
+                runOptions.snapshotInterval(),
+                runOptions.chunkInterval(),
+                runOptions.organismDensityFactor(),
+                runOptions.maxCellsPerOrganism(),
+                runOptions.estimatedDeltaRatio(),
                 checkpoint.snapshot()  // Pass snapshot to prime the encoder
             );
         } catch (IOException e) {
@@ -413,6 +442,8 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
     private InitializedState initializeNewSimulation(Config options) {
         long startTimeMs = System.currentTimeMillis();
         long seed = options.hasPath("seed") ? options.getLong("seed") : System.currentTimeMillis();
+        // Read first, so that an invalid option fails before programs are compiled and the world built
+        RunOptions runOptions = readRunOptions(options);
 
         List<? extends Config> organismConfigs = options.getConfigList("organisms");
         if (organismConfigs.isEmpty()) {
@@ -556,13 +587,13 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
 
         return new InitializedState(
             simulation, randomProvider, tickPluginsList, interceptorsList, deathHandlersList, birthHandlersList, compiledPrograms, runId, seed, startTimeMs, -1,
-            readPositiveInt(options, "samplingInterval", 1),
-            readInt(options, "accumulatedDeltaInterval", SimulationParameters.DEFAULT_ACCUMULATED_DELTA_INTERVAL),
-            readInt(options, "snapshotInterval", SimulationParameters.DEFAULT_SNAPSHOT_INTERVAL),
-            readInt(options, "chunkInterval", SimulationParameters.DEFAULT_CHUNK_INTERVAL),
-            readDouble(options, "organismDensityFactor", SimulationParameters.DEFAULT_ORGANISM_DENSITY_FACTOR),
-            readPositiveInt(options, "maxCellsPerOrganism", SimulationParameters.DEFAULT_MAX_CELLS_PER_ORGANISM),
-            readDouble(options, "estimatedDeltaRatio", SimulationParameters.DEFAULT_ESTIMATED_DELTA_RATIO),
+            runOptions.samplingInterval(),
+            runOptions.accumulatedDeltaInterval(),
+            runOptions.snapshotInterval(),
+            runOptions.chunkInterval(),
+            runOptions.organismDensityFactor(),
+            runOptions.maxCellsPerOrganism(),
+            runOptions.estimatedDeltaRatio(),
             null  // No resume snapshot for new simulations
         );
     }

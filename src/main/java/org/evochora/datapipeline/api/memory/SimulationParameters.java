@@ -86,6 +86,12 @@ public record SimulationParameters(
             throw new IllegalArgumentException("totalCells must equal the product of the shape ("
                     + product + "), got " + totalCells);
         }
+        if (totalCells > Integer.MAX_VALUE) {
+            // The environment indexes its cells with an int; this also keeps every estimate, a
+            // cell count times a few hundred bytes, far from overflowing a long
+            throw new IllegalArgumentException("totalCells must not exceed " + Integer.MAX_VALUE
+                    + ", the most cells an environment can index, got " + totalCells);
+        }
         if (occupiedCells < 0 || occupiedCells > totalCells) {
             throw new IllegalArgumentException("occupiedCells must lie between 0 and totalCells ("
                     + totalCells + "), got " + occupiedCells);
