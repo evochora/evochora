@@ -13,8 +13,10 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -353,8 +355,11 @@ class ArtemisQueueResourceTest {
         // would otherwise be able to turn an interval negative or make windows that lie one after
         // another look as if they overlapped.
         long wallStart = System.nanoTime();
-        executor.submit(consumer);
-        executor.submit(consumer);
+        // The futures are kept because submit() files an exception in them instead of raising it.
+        // countDown() runs in a finally block, so a consumer that died still counts as finished,
+        // and every assertion below would go on to describe a run that never happened.
+        Future<?> first = executor.submit(consumer);
+        Future<?> second = executor.submit(consumer);
 
         boolean bothFinished = done.await(10, TimeUnit.SECONDS);
         long wallElapsedMs = (System.nanoTime() - wallStart) / 1_000_000;
@@ -364,6 +369,15 @@ class ArtemisQueueResourceTest {
         // termination keeps cleanup behind them.
         executor.shutdownNow();
         boolean consumersStopped = executor.awaitTermination(10, TimeUnit.SECONDS);
+
+        for (Future<?> consumerResult : List.of(first, second)) {
+            try {
+                consumerResult.get();
+            } catch (ExecutionException e) {
+                throw new AssertionError("A consumer failed; the measurements below describe a run "
+                    + "that did not happen as intended", e.getCause());
+            }
+        }
 
         // Checked before the wall clock is read as evidence: if a consumer never left its loop,
         // the elapsed time is the timeout above and says nothing about whether the two ran in
