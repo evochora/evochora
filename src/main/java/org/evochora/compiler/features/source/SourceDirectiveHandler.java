@@ -49,11 +49,12 @@ public class SourceDirectiveHandler implements IPreProcessorHandler {
             return;
         }
 
-        // A file the dependency scan did not find has no tokens to inline
+        // The dependency scan loads every source file whose path is written in the source, so a
+        // file without tokens here was named by a path the scan could not see: a macro parameter.
         List<Token> preLexed = preProcessorContext.fileTokens().get(resolvedPath);
         if (preLexed == null) {
             preProcessor.getDiagnostics().reportError(
-                    "Source file not found: " + pathValue + " (resolved to: " + resolvedPath + ")",
+                    ".SOURCE path must be a literal, not a macro parameter",
                     pathToken.fileName(), pathToken.line());
             preProcessor.removeTokens(startIndex, endIndex - startIndex);
             return;

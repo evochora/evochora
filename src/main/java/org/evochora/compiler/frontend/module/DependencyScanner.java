@@ -104,14 +104,12 @@ public final class DependencyScanner {
 
     /**
      * Core line-by-line scanning with generic handler dispatch.
-     * @param sourceFileMode If true, every collected dependency is checked against
+     * @param sourceFileMode If true, every dependency a handler adds is checked against
      *                        {@link IDependencyInfo#allowedInSourceFile()} and reported as an error
-     *                        when it is not allowed there.
+     *                        at its line when it is not allowed there.
      */
     private List<IDependencyInfo> scanLines(ScanState state, String sourcePath, String content, boolean sourceFileMode) {
-        List<IDependencyInfo> dependencies = new ArrayList<>();
-
-        ScanContext ctx = new ScanContext(state, sourcePath);
+        ScanContext ctx = new ScanContext(state, sourcePath, sourceFileMode);
 
         String[] lines = content.split("\\r?\\n");
         for (int i = 0; i < lines.length; i++) {
@@ -133,18 +131,7 @@ public final class DependencyScanner {
             }
         }
 
-        // Collect dependencies and validate source-file mode
-        for (IDependencyInfo dep : ctx.collectedDependencies()) {
-            if (sourceFileMode && !dep.allowedInSourceFile()) {
-                diagnostics.reportError(
-                        ".SOURCE files must not contain " + dep.directiveName() + " directives.",
-                        sourcePath, 0);
-            } else {
-                dependencies.add(dep);
-            }
-        }
-
-        return dependencies;
+        return ctx.collectedDependencies();
     }
 
     String loadContent(String resolvedPath) throws IOException {
@@ -213,12 +200,14 @@ public final class DependencyScanner {
     private class ScanContext implements IDependencyScanContext {
         private final ScanState state;
         private final String sourcePath;
+        private final boolean sourceFileMode;
         private int lineNumber;
         private final List<IDependencyInfo> collected = new ArrayList<>();
 
-        ScanContext(ScanState state, String sourcePath) {
+        ScanContext(ScanState state, String sourcePath, boolean sourceFileMode) {
             this.state = state;
             this.sourcePath = sourcePath;
+            this.sourceFileMode = sourceFileMode;
         }
 
         void setLineNumber(int lineNumber) {
@@ -261,6 +250,10 @@ public final class DependencyScanner {
 
         @Override
         public void addDependency(IDependencyInfo info) {
+            if (sourceFileMode && !info.allowedInSourceFile()) {
+                reportError(info.directiveName() + " not allowed in a .SOURCE file");
+                return;
+            }
             collected.add(info);
         }
 

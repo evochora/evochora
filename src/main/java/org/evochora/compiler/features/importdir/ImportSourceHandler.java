@@ -40,18 +40,24 @@ public class ImportSourceHandler implements IPreProcessorHandler {
             return;
         }
 
-        // A file the dependency scan did not find has no tokens to inline. The directive stays
-        // in the stream for the parser, which reports whatever is wrong with its form.
+        // The dependency scan loads every module file whose path is written in the source, so a
+        // file without tokens here was named by a path the scan could not see: a macro parameter.
         List<Token> tokens = preProcessorContext.fileTokens().get(resolvedPath);
         if (tokens == null) {
             preProcessor.getDiagnostics().reportError(
-                    "Module not found: " + pathValue + " (resolved to: " + resolvedPath + ")",
+                    ".IMPORT path must be a literal, not a macro parameter",
                     pathToken.fileName(), pathToken.line());
             return;
         }
 
-        // Extract alias from "AS ALIAS" before skipping the rest of the directive
+        // The alias is read here because the module's tokens are placed under it; the parser
+        // reads the directive again and reports every other malformation.
         String alias = extractAlias(preProcessor);
+        if (alias == null) {
+            preProcessor.getDiagnostics().reportError(
+                    "Expected AS after .IMPORT path.", pathToken.fileName(), pathToken.line());
+            return;
+        }
 
         // Skip remaining tokens (USING clauses) — leave them for the parser
         while (!preProcessor.isAtEnd() && !preProcessor.check(TokenType.NEWLINE)) {
@@ -71,10 +77,6 @@ public class ImportSourceHandler implements IPreProcessorHandler {
 
         // Compute alias chain: parent chain + alias
         String parentChain = preProcessorContext.currentAliasChain();
-        if (alias == null) {
-            throw new IllegalStateException(
-                    "Import alias is null — parser must enforce AS clause");
-        }
         String aliasUpper = alias.toUpperCase();
         String aliasChain = (parentChain == null || parentChain.isEmpty())
                 ? aliasUpper

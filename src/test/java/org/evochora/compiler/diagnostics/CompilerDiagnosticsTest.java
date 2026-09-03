@@ -90,6 +90,100 @@ class CompilerDiagnosticsTest {
                 .hasMessageContaining("main.evo:2");
     }
 
+    @Test
+    void importWithoutAliasNamesTheMissingAsAndTheLine() throws Exception {
+        write("lib.evo",
+                "  NOP");
+        write("main.evo",
+                ".IMPORT \"lib.evo\"",
+                "START:",
+                "  NOP");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("Expected AS after .IMPORT path.")
+                .hasMessageContaining("main.evo:1");
+    }
+
+    @Test
+    void secondImportOfTheSameFileWithoutAliasNamesTheMissingAsAndItsLine() throws Exception {
+        write("lib.evo",
+                "  NOP");
+        write("main.evo",
+                ".IMPORT \"lib.evo\" AS LIB",
+                ".IMPORT \"lib.evo\"",
+                "START:",
+                "  NOP");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("Expected AS after .IMPORT path.")
+                .hasMessageContaining("main.evo:2");
+    }
+
+    @Test
+    void importOfAMissingFileNamesTheFileAndTheLine() throws Exception {
+        write("main.evo",
+                ".IMPORT \"nowhere.evo\" AS X",
+                "START:",
+                "  NOP");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("Module file not found: nowhere.evo")
+                .hasMessageContaining("main.evo:1");
+    }
+
+    @Test
+    void sourceOfAMissingFileNamesTheFileAndTheLine() throws Exception {
+        write("main.evo",
+                ".SOURCE \"nowhere.evo\"",
+                "START:",
+                "  NOP");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("Source file not found: nowhere.evo")
+                .hasMessageContaining("main.evo:1");
+    }
+
+    @Test
+    void importPathFromAMacroParameterIsRejectedAtTheInvocation() throws Exception {
+        write("lib.evo",
+                "  NOP");
+        write("main.evo",
+                ".MACRO USE P",
+                "  .IMPORT P AS X",
+                ".ENDM",
+                "USE \"lib.evo\"",
+                "START:",
+                "  NOP");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining(".IMPORT path must be a literal, not a macro parameter")
+                .hasMessageContaining("main.evo:4");
+    }
+
+    @Test
+    void importInsideASourcedFileNamesTheFileAndTheLineOfTheImport() throws Exception {
+        write("x.evo",
+                "  NOP");
+        write("lib.evo",
+                "# text that is sourced, not a module",
+                "  NOP",
+                ".IMPORT \"x.evo\" AS X");
+        write("main.evo",
+                ".SOURCE \"lib.evo\"",
+                "START:",
+                "  NOP");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining(".IMPORT not allowed in a .SOURCE file")
+                .hasMessageContaining("lib.evo:3");
+    }
+
     private void write(String fileName, String... lines) throws Exception {
         Files.writeString(sourceRoot.resolve(fileName), String.join("\n", lines) + "\n");
     }
