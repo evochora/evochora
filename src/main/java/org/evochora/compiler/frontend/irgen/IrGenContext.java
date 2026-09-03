@@ -162,7 +162,7 @@ public final class IrGenContext {
 	 */
 	public IrOperand convertOperand(AstNode node) {
 		if (node instanceof RegisterNode r) {
-			return new IrReg(r.getName());
+			return new IrReg(r.name());
 		} else if (node instanceof NumberLiteralNode n) {
 			return new IrImm(n.value());
 		} else if (node instanceof TypedLiteralNode t) {

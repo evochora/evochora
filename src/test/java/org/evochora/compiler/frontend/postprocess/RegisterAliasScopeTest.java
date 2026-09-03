@@ -84,13 +84,13 @@ class RegisterAliasScopeTest {
         ProcedureNode resultProcA = (ProcedureNode) resultA;
         InstructionNode resultInstrA = (InstructionNode) resultProcA.body().get(1);
         assertThat(resultInstrA.arguments().get(0)).isInstanceOf(RegisterNode.class);
-        assertThat(((RegisterNode) resultInstrA.arguments().get(0)).getName()).isEqualTo("%DR0");
+        assertThat(((RegisterNode) resultInstrA.arguments().get(0)).name()).isEqualTo("%DR0");
 
         // Proc B: COUNTER → %DR1
         ProcedureNode resultProcB = (ProcedureNode) resultB;
         InstructionNode resultInstrB = (InstructionNode) resultProcB.body().get(1);
         assertThat(resultInstrB.arguments().get(0)).isInstanceOf(RegisterNode.class);
-        assertThat(((RegisterNode) resultInstrB.arguments().get(0)).getName()).isEqualTo("%DR1");
+        assertThat(((RegisterNode) resultInstrB.arguments().get(0)).name()).isEqualTo("%DR1");
     }
 
     @Test
@@ -122,14 +122,14 @@ class RegisterAliasScopeTest {
         // Outside proc: X → %DR0
         AstNode outsideResult = processor.process(useOutside);
         assertThat(outsideResult).isInstanceOf(RegisterNode.class);
-        assertThat(((RegisterNode) outsideResult).getName()).isEqualTo("%DR0");
+        assertThat(((RegisterNode) outsideResult).name()).isEqualTo("%DR0");
 
         // Inside proc: X → %PDR0 (shadowed)
         AstNode procResult = processor.process(proc);
         ProcedureNode resultProc = (ProcedureNode) procResult;
         InstructionNode resultInstr = (InstructionNode) resultProc.body().get(1);
         assertThat(resultInstr.arguments().get(0)).isInstanceOf(RegisterNode.class);
-        assertThat(((RegisterNode) resultInstr.arguments().get(0)).getName()).isEqualTo("%PDR0");
+        assertThat(((RegisterNode) resultInstr.arguments().get(0)).name()).isEqualTo("%PDR0");
     }
 
     @Test
@@ -157,7 +157,7 @@ class RegisterAliasScopeTest {
         ProcedureNode resultProc = (ProcedureNode) procResult;
         InstructionNode resultInstr = (InstructionNode) resultProc.body().get(0);
         assertThat(resultInstr.arguments().get(0)).isInstanceOf(RegisterNode.class);
-        assertThat(((RegisterNode) resultInstr.arguments().get(0)).getName()).isEqualTo("%DR7");
+        assertThat(((RegisterNode) resultInstr.arguments().get(0)).name()).isEqualTo("%DR7");
     }
 
     @Test
@@ -184,7 +184,7 @@ class RegisterAliasScopeTest {
         ProcedureNode resultProc = (ProcedureNode) procResult;
         InstructionNode resultInstr = (InstructionNode) resultProc.body().get(0);
         assertThat(resultInstr.arguments().get(0)).isInstanceOf(RegisterNode.class);
-        assertThat(((RegisterNode) resultInstr.arguments().get(0)).getName()).isEqualTo("%FDR0");
+        assertThat(((RegisterNode) resultInstr.arguments().get(0)).name()).isEqualTo("%FDR0");
     }
 
     private AstPostProcessor createProcessor() {

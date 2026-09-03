@@ -160,7 +160,7 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
 
                     // Additional validations via RegisterBank enum iteration
                     if (expectedType == InstructionArgumentType.REGISTER && argumentNode instanceof RegisterNode regNode) {
-                        String tokenText = regNode.getName();
+                        String tokenText = regNode.name();
                         String u = tokenText.toUpperCase();
 
                         RegisterBank matchedBank = null;
@@ -212,7 +212,7 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                             );
                         }
                     } else if (expectedType == InstructionArgumentType.LOCATION_REGISTER && argumentNode instanceof RegisterNode regNode) {
-                        String tokenText = regNode.getName();
+                        String tokenText = regNode.name();
                         String u = tokenText.toUpperCase();
 
                         RegisterBank matchedBank = null;
@@ -281,7 +281,7 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
 
     private InstructionArgumentType getArgumentTypeFromNode(AstNode node) {
         if (node instanceof RegisterNode regNode) {
-            String tokenText = regNode.getName().toUpperCase();
+            String tokenText = regNode.name().toUpperCase();
             for (RegisterBank bank : RegisterBank.values()) {
                 if (bank.count > 0 && bank.isLocation && tokenText.startsWith(bank.prefix)) {
                     return InstructionArgumentType.LOCATION_REGISTER;

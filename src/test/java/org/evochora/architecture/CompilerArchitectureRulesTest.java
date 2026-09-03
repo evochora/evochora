@@ -18,6 +18,7 @@ import com.tngtech.archunit.lang.SimpleConditionEvent;
 import org.evochora.compiler.ICompilerFeature;
 import org.evochora.compiler.StandardFeatures;
 import org.evochora.compiler.model.ast.AstNode;
+import org.evochora.compiler.model.ir.IrInstruction;
 import org.evochora.compiler.model.ir.IrItem;
 import org.evochora.compiler.model.ir.IrOperand;
 import org.evochora.compiler.model.ir.IrValue;
@@ -184,6 +185,22 @@ class CompilerArchitectureRulesTest {
         classes().that().areInterfaces().and().areTopLevelClasses()
                 .and().doNotBelongToAnyOf(AstNode.class, IrItem.class, IrOperand.class, IrValue.class)
                 .should().haveNameMatching(".*\\.I[A-Z][A-Za-z0-9]*")
+                .check(compilerClasses);
+    }
+
+    /**
+     * AST nodes and IR items are records: pure data, immutable, equal by content.
+     * <p>
+     * A record says at a glance what a class has to be read for. The one exception is
+     * {@code IrInstruction}: a feature may subtype it to carry operands beyond the main ones,
+     * which a record cannot do, and {@code IrCallInstruction} does.
+     */
+    @Test
+    void dataTypesAreRecords() {
+        classes().that().implement(AstNode.class).or().implement(IrItem.class)
+                .and().areNotInterfaces()
+                .and().areNotAssignableTo(IrInstruction.class)
+                .should().beRecords()
                 .check(compilerClasses);
     }
 

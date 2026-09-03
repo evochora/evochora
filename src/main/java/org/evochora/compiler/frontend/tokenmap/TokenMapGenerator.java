@@ -208,9 +208,9 @@ public class TokenMapGenerator implements ITokenMapContext {
         } else if (node instanceof RegisterNode registerNode) {
             if (registerNode.isAlias()) {
                 SourceInfo aliasSourceInfo = registerNode.sourceInfo();
-                String qualifiedAlias = qualifyName(registerNode.getOriginalAlias());
+                String qualifiedAlias = qualifyName(registerNode.originalAlias());
                 tokenMap.put(aliasSourceInfo, new TokenInfo(
-                    registerNode.getOriginalAlias(),
+                    registerNode.originalAlias(),
                     TokenKind.ALIAS,
                     this.currentScopeName,
                     qualifiedAlias
@@ -218,7 +218,7 @@ public class TokenMapGenerator implements ITokenMapContext {
             } else {
                 SourceInfo regSourceInfo = registerNode.sourceInfo();
                 tokenMap.put(regSourceInfo, new TokenInfo(
-                    registerNode.getName(),
+                    registerNode.name(),
                     TokenKind.REGISTER,
                     this.currentScopeName
                 ));

@@ -66,7 +66,7 @@ public class ParserTest {
         assertThat(setiNode.arguments().get(1)).isInstanceOf(NumberLiteralNode.class);
 
         RegisterNode regArg = (RegisterNode) setiNode.arguments().get(0);
-        assertThat(regArg.getName()).isEqualTo("%DR0");
+        assertThat(regArg.name()).isEqualTo("%DR0");
 
         NumberLiteralNode numArg = (NumberLiteralNode) setiNode.arguments().get(1);
         assertThat(numArg.value()).isEqualTo(42);

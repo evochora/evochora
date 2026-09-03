@@ -81,8 +81,8 @@ class AstPostProcessorTest {
         RegisterNode registerNode = (RegisterNode) result;
 
         // Verify the replacement details
-        assertThat(registerNode.getName()).isEqualTo("%DR0");
-        assertThat(registerNode.getOriginalAlias()).isEqualTo("COUNTER");
+        assertThat(registerNode.name()).isEqualTo("%DR0");
+        assertThat(registerNode.originalAlias()).isEqualTo("COUNTER");
         assertThat(registerNode.isAlias()).isTrue();
     }
 
@@ -116,9 +116,9 @@ class AstPostProcessorTest {
         RegisterNode tmpReg = (RegisterNode) resultInstruction.arguments().get(1);
         RegisterNode posReg = (RegisterNode) resultInstruction.arguments().get(2);
 
-        assertThat(counterReg.getName()).isEqualTo("%DR0");
-        assertThat(tmpReg.getName()).isEqualTo("%PDR0");
-        assertThat(posReg.getName()).isEqualTo("%DR1");
+        assertThat(counterReg.name()).isEqualTo("%DR0");
+        assertThat(tmpReg.name()).isEqualTo("%PDR0");
+        assertThat(posReg.name()).isEqualTo("%DR1");
     }
 
     @Test
@@ -189,8 +189,8 @@ class AstPostProcessorTest {
 
         // Verify the alias replacement
         RegisterNode counterReg = (RegisterNode) resultInstruction.arguments().get(0);
-        assertThat(counterReg.getName()).isEqualTo("%DR0");
-        assertThat(counterReg.getOriginalAlias()).isEqualTo("COUNTER");
+        assertThat(counterReg.name()).isEqualTo("%DR0");
+        assertThat(counterReg.originalAlias()).isEqualTo("COUNTER");
     }
 
     @Test
@@ -270,7 +270,7 @@ class AstPostProcessorTest {
         RegisterNode registerNode = (RegisterNode) result;
 
         // Verify name and source info
-        assertThat(registerNode.getName()).isEqualTo("%DR0");
+        assertThat(registerNode.name()).isEqualTo("%DR0");
         assertThat(registerNode.sourceInfo().lineNumber()).isEqualTo(10);
         assertThat(registerNode.sourceInfo().columnNumber()).isEqualTo(5);
         assertThat(registerNode.sourceInfo().fileName()).isEqualTo("test.s");

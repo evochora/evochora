@@ -87,7 +87,7 @@ public class RegDirectiveTest {
 
         assertThat(seti.arguments().get(0)).isInstanceOf(RegisterNode.class);
         RegisterNode reg = (RegisterNode) seti.arguments().get(0);
-        assertThat(reg.getName()).isEqualTo("%DR7");
+        assertThat(reg.name()).isEqualTo("%DR7");
     }
 
     /**
@@ -248,7 +248,7 @@ public class RegDirectiveTest {
         InstructionNode seti = (InstructionNode) setiNode;
         assertThat(seti.arguments().get(0)).isInstanceOf(RegisterNode.class);
         RegisterNode reg = (RegisterNode) seti.arguments().get(0);
-        assertThat(reg.getName()).as("Alias %TMP should resolve to %PDR0").isEqualTo("%PDR0");
+        assertThat(reg.name()).as("Alias %TMP should resolve to %PDR0").isEqualTo("%PDR0");
     }
 
     /**
@@ -320,7 +320,7 @@ public class RegDirectiveTest {
 
         assertThat(dplr.arguments().get(0)).isInstanceOf(RegisterNode.class);
         RegisterNode reg = (RegisterNode) dplr.arguments().get(0);
-        assertThat(reg.getName()).isEqualTo("%LR0");
+        assertThat(reg.name()).isEqualTo("%LR0");
     }
 
     /**

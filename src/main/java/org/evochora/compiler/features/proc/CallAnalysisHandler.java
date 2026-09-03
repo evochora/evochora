@@ -105,12 +105,12 @@ public class CallAnalysisHandler implements IAnalysisHandler {
         // Validate LREF argument types — must be location registers
         for (AstNode lrefArg : callNode.lrefArguments()) {
             if (lrefArg instanceof RegisterNode regNode) {
-                Optional<Integer> regId = Instruction.resolveRegToken(regNode.getName());
+                Optional<Integer> regId = Instruction.resolveRegToken(regNode.name());
                 if (regId.isPresent()) {
                     RegisterBank bank = RegisterBank.forId(regId.get());
                     if (bank != null && bank.isLocation) continue;
                 }
-                diagnostics.reportError("LREF arguments must be location registers (LR, PLR, SLR), got '" + regNode.getName() + "'.",
+                diagnostics.reportError("LREF arguments must be location registers (LR, PLR, SLR), got '" + regNode.name() + "'.",
                         callNode.sourceInfo().fileName(), callNode.sourceInfo().lineNumber());
             } else if (lrefArg instanceof IdentifierNode idNode) {
                 validateLocationIdentifier(idNode, "LREF", symbolTable, diagnostics);
@@ -123,12 +123,12 @@ public class CallAnalysisHandler implements IAnalysisHandler {
         // Validate LVAL argument types — location registers or labels
         for (AstNode lvalArg : callNode.lvalArguments()) {
             if (lvalArg instanceof RegisterNode regNode) {
-                Optional<Integer> regId = Instruction.resolveRegToken(regNode.getName());
+                Optional<Integer> regId = Instruction.resolveRegToken(regNode.name());
                 if (regId.isPresent()) {
                     RegisterBank bank = RegisterBank.forId(regId.get());
                     if (bank != null && bank.isLocation) continue;
                 }
-                diagnostics.reportError("LVAL arguments must be location registers, got '" + regNode.getName() + "'.",
+                diagnostics.reportError("LVAL arguments must be location registers, got '" + regNode.name() + "'.",
                         callNode.sourceInfo().fileName(), callNode.sourceInfo().lineNumber());
             } else if (lvalArg instanceof IdentifierNode idNode) {
                 validateLocationIdentifierOrLabel(idNode, "LVAL", symbolTable, diagnostics);
