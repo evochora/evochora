@@ -136,7 +136,7 @@ public class IrGeneratorTest {
 
         assertEquals(1, callInstruction.operands().size());
         assertInstanceOf(IrLabelRef.class, callInstruction.operands().get(0));
-        assertEquals("myProc", ((IrLabelRef) callInstruction.operands().get(0)).labelName());
+        assertEquals("MYPROC", ((IrLabelRef) callInstruction.operands().get(0)).labelName());
 
         assertEquals(1, callInstruction.refOperands().size());
         assertInstanceOf(IrReg.class, callInstruction.refOperands().get(0));
@@ -166,7 +166,7 @@ public class IrGeneratorTest {
 
         assertEquals(1, callInstruction.operands().size());
         assertInstanceOf(IrLabelRef.class, callInstruction.operands().get(0));
-        assertEquals("oldProc", ((IrLabelRef) callInstruction.operands().get(0)).labelName());
+        assertEquals("OLDPROC", ((IrLabelRef) callInstruction.operands().get(0)).labelName());
 
         assertEquals(1, callInstruction.refOperands().size());
         assertInstanceOf(IrReg.class, callInstruction.refOperands().get(0));
@@ -318,7 +318,7 @@ public class IrGeneratorTest {
         // Check that the CALL has the correct operands
         assertEquals(1, callInstruction.operands().size());
         assertInstanceOf(IrLabelRef.class, callInstruction.operands().get(0));
-        assertEquals("innerProc", ((IrLabelRef) callInstruction.operands().get(0)).labelName());
+        assertEquals("INNERPROC", ((IrLabelRef) callInstruction.operands().get(0)).labelName());
 
         // Check REF operands - should be resolved to %FDRx
         assertEquals(1, callInstruction.refOperands().size());

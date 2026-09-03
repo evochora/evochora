@@ -39,7 +39,7 @@ class CallSiteBindingRuleTest {
     void setUp() {
         IInstructionSet stubIsa = new StubInstructionSet();
         rule = new CallSiteBindingRule();
-        context = new LinkingContext(null, stubIsa);
+        context = new LinkingContext(stubIsa);
         layout = new LayoutResult(
                 Collections.emptyMap(), Collections.emptyMap(),
                 Collections.emptyMap(), Collections.emptyMap(), Collections.emptyMap(),

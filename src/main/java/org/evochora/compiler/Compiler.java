@@ -309,8 +309,7 @@ public class Compiler implements ICompiler {
         });
         linkingDirRegistry.registerAll(featureRegistry.linkingDirectiveHandlers());
         Linker linker = new Linker(linkingRegistry, linkingDirRegistry);
-        LinkingContext linkContext = new LinkingContext(symbolTable, isa);
-        linkContext.pushAliasChain(rootAliasChain);
+        LinkingContext linkContext = new LinkingContext(isa);
         IrProgram linkedIr = linker.link(layout, linkContext, programName);
         linkContext.freeze();
 

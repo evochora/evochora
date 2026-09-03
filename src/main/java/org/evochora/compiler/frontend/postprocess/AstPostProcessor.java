@@ -16,13 +16,18 @@ import java.util.Optional;
 /**
  * A dedicated compiler phase that transforms the AST after semantic analysis.
  * It replaces every identifier that names a definition by what the definition stands for:
- * a register alias or a procedure parameter by the register, a constant by its value.
+ * a register alias or a procedure parameter by the register, a constant by its value, and
+ * any other definition, such as a label or a procedure, by its full name. After this phase
+ * no name in the AST depends on where it is written, and the backend needs nothing from the
+ * symbol table.
  * This runs *after* the TokenMapGenerator to ensure debug info is based on the original source.
  *
  * <p>The phase does not know the kinds of definitions. It resolves the identifier in the
  * {@link SymbolTable}, with scope-aware lookup for proc-scoped aliases and shadowing, and
  * asks the defining node for the replacement through {@link IIdentifierBinding}. A symbol
- * whose node offers no binding leaves the identifier as it is.</p>
+ * whose node offers no binding is referred to by its qualified name, as the symbol table
+ * resolved it with the module's imports and export rules. An identifier that names no symbol
+ * is left as it is.</p>
  */
 public class AstPostProcessor implements IPostProcessContext {
 
@@ -96,15 +101,24 @@ public class AstPostProcessor implements IPostProcessContext {
      * Finds what an identifier stands for, following a replacement that is itself an
      * identifier until a node that is not one is reached.
      *
-     * @return the replacement, or {@code null} if the identifier names no definition that
-     *         offers one, or the chain of definitions exceeds {@link #MAX_BINDING_DEPTH}
+     * @return the replacement: what the defining node binds the identifier to, or the
+     *         identifier under the symbol's qualified name if the node offers no binding;
+     *         {@code null} if the identifier names no symbol, is already written under the
+     *         qualified name, or the chain of definitions exceeds {@link #MAX_BINDING_DEPTH}
      */
     private AstNode resolveBinding(IdentifierNode reference) {
         IdentifierNode current = reference;
         for (int depth = 0; depth < MAX_BINDING_DEPTH; depth++) {
             Optional<ResolvedSymbol> resolved = symbolTable.resolve(current.text(), current.sourceInfo().fileName());
-            if (resolved.isEmpty() || !(resolved.get().symbol().node() instanceof IIdentifierBinding binding)) {
+            if (resolved.isEmpty()) {
                 return null;
+            }
+            if (!(resolved.get().symbol().node() instanceof IIdentifierBinding binding)) {
+                String qualifiedName = resolved.get().qualifiedName();
+                if (qualifiedName.equals(current.text())) {
+                    return current == reference ? null : current;
+                }
+                return new IdentifierNode(qualifiedName, current.sourceInfo());
             }
             AstNode bound = binding.bind(current);
             if (!(bound instanceof IdentifierNode next)) {

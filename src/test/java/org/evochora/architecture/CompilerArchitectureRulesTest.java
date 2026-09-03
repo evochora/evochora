@@ -17,6 +17,11 @@ import com.tngtech.archunit.lang.ConditionEvents;
 import com.tngtech.archunit.lang.SimpleConditionEvent;
 import org.evochora.compiler.ICompilerFeature;
 import org.evochora.compiler.StandardFeatures;
+import org.evochora.compiler.backend.emit.IEmissionContributor;
+import org.evochora.compiler.backend.emit.IEmissionRule;
+import org.evochora.compiler.backend.layout.ILayoutDirectiveHandler;
+import org.evochora.compiler.backend.link.ILinkingDirectiveHandler;
+import org.evochora.compiler.backend.link.ILinkingRule;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ir.IrInstruction;
 import org.evochora.compiler.model.ir.IrItem;
@@ -185,6 +190,30 @@ class CompilerArchitectureRulesTest {
         classes().that().areInterfaces().and().areTopLevelClasses()
                 .and().doNotBelongToAnyOf(AstNode.class, IrItem.class, IrOperand.class, IrValue.class)
                 .should().haveNameMatching(".*\\.I[A-Z][A-Za-z0-9]*")
+                .check(compilerClasses);
+    }
+
+    /**
+     * The backend sees the IR and the instruction set, nothing of the frontend.
+     * <p>
+     * From phase 7 on the IR is the single source of truth: what is not in the IR does not
+     * exist for the backend. Neither a backend package nor a handler a feature registers for a
+     * backend phase may read the symbol table, the AST or the tokens. A handler that needs
+     * something from there says that the IR is missing it, and then it belongs into the IR.
+     */
+    @Test
+    void backendReadsOnlyTheIrAndTheInstructionSet() {
+        noClasses().that().resideInAPackage(COMPILER + ".backend..")
+                .or().implement(ILayoutDirectiveHandler.class)
+                .or().implement(ILinkingRule.class)
+                .or().implement(ILinkingDirectiveHandler.class)
+                .or().implement(IEmissionRule.class)
+                .or().implement(IEmissionContributor.class)
+                .should().dependOnClassesThat().resideInAnyPackage(
+                        COMPILER + ".frontend..",
+                        COMPILER + ".model.ast..",
+                        COMPILER + ".model.token..",
+                        COMPILER + ".model.symbols..")
                 .check(compilerClasses);
     }
 
