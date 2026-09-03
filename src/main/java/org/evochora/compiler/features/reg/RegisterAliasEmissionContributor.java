@@ -6,7 +6,8 @@ import org.evochora.compiler.backend.emit.IEmissionContributor;
 import org.evochora.compiler.model.ir.IrDirective;
 import org.evochora.compiler.model.ir.IrItem;
 import org.evochora.compiler.model.ir.IrValue;
-import org.evochora.runtime.isa.RegisterBank;
+import org.evochora.compiler.isa.IInstructionSet;
+import org.evochora.compiler.isa.IInstructionSet.RegisterBankInfo;
 
 /**
  * Extracts register alias metadata from {@code reg_alias} IR directives
@@ -20,6 +21,15 @@ import org.evochora.runtime.isa.RegisterBank;
  * for debugger and frontend visualization.</p>
  */
 public final class RegisterAliasEmissionContributor implements IEmissionContributor {
+
+    private final IInstructionSet isa;
+
+    /**
+     * @param isa The instruction set, whose register banks give an alias its register ID.
+     */
+    public RegisterAliasEmissionContributor(IInstructionSet isa) {
+        this.isa = isa;
+    }
 
     @Override
     public void onItem(IrItem item, EmissionContext context) {
@@ -43,15 +53,15 @@ public final class RegisterAliasEmissionContributor implements IEmissionContribu
 
     private Integer resolveRegisterId(String registerName) {
         String upper = registerName.toUpperCase();
-        for (RegisterBank bank : RegisterBank.values()) {
-            if (bank.count > 0 && upper.startsWith(bank.prefix)) {
-                String suffix = upper.substring(bank.prefixLength);
+        for (RegisterBankInfo bank : isa.registerBanks()) {
+            if (bank.count() > 0 && upper.startsWith(bank.prefix())) {
+                String suffix = upper.substring(bank.prefix().length());
                 if (suffix.isEmpty()) {
                     return null;
                 }
                 try {
                     int index = Integer.parseInt(suffix);
-                    return index >= 0 && index < bank.count ? bank.base + index : null;
+                    return index >= 0 && index < bank.count() ? bank.base() + index : null;
                 } catch (NumberFormatException ignored) {
                     return null;
                 }

@@ -1,5 +1,6 @@
 package org.evochora.compiler.module;
 
+import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 import org.evochora.compiler.FeatureRegistry;
 import org.evochora.compiler.frontend.semantics.ScopeTracker;
 import org.evochora.compiler.StandardFeatures;
@@ -304,7 +305,7 @@ class ModuleSourceDefineIntegrationTest {
         // Phase 0: Dependency scanning
         SourceRootResolver resolver = new SourceRootResolver(
                 List.of(new SourceRoot(".", null)), tempDir);
-        FeatureRegistry featureRegistry = new FeatureRegistry();
+        FeatureRegistry featureRegistry = new FeatureRegistry(new RuntimeInstructionSetAdapter());
         StandardFeatures.all().forEach(f -> f.register(featureRegistry));
         DependencyScanner scanner = new DependencyScanner(diagnostics, resolver, featureRegistry.dependencyScanHandlers());
         DependencyGraph graph = scanner.scan(mainSource, mainPath);
@@ -318,7 +319,7 @@ class ModuleSourceDefineIntegrationTest {
             }
         }
         includedContents.putAll(graph.sourceContents());
-        Map<String, List<Token>> fileTokens = Lexer.lexFiles(includedContents, diagnostics);
+        Map<String, List<Token>> fileTokens = Lexer.lexFiles(includedContents, diagnostics, new RuntimeInstructionSetAdapter());
         List<Token> mainTokens = new ArrayList<>(new Lexer(mainSource, diagnostics, mainPath).scanTokens());
 
         // Phase 2: Preprocessing (with root alias chain for alias chain tracking)
@@ -369,8 +370,8 @@ class ModuleSourceDefineIntegrationTest {
     private static ParserStatementRegistry allHandlers() {
         ParserStatementRegistry reg = new ParserStatementRegistry();
         reg.register(".DEFINE", new DefineDirectiveHandler());
-        reg.register(".REG", new RegDirectiveHandler());
-        reg.register(".PROC", new ProcDirectiveHandler());
+        reg.register(".REG", new RegDirectiveHandler(new RuntimeInstructionSetAdapter()));
+        reg.register(".PROC", new ProcDirectiveHandler(new RuntimeInstructionSetAdapter()));
         reg.register(".ORG", new OrgDirectiveHandler());
         reg.register(".DIR", new DirDirectiveHandler());
         reg.register(".PLACE", new PlaceDirectiveHandler());

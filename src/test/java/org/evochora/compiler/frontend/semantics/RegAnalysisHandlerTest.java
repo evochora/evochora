@@ -1,5 +1,6 @@
 package org.evochora.compiler.frontend.semantics;
 
+import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.features.reg.RegAnalysisHandler;
@@ -28,7 +29,7 @@ class RegAnalysisHandlerTest {
 
     @BeforeEach
     void setUp() {
-        handler = new RegAnalysisHandler();
+        handler = new RegAnalysisHandler(new RuntimeInstructionSetAdapter());
         diagnostics = new DiagnosticsEngine();
         symbolTable = new SymbolTable(diagnostics);
     }

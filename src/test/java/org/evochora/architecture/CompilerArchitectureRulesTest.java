@@ -221,6 +221,23 @@ class CompilerArchitectureRulesTest {
     }
 
     /**
+     * The compiler looks at the instruction set through one view, {@code IInstructionSet}, and
+     * only the adapter behind that view reads the runtime's declarations.
+     * <p>
+     * Opcodes, signatures and register banks are what the compiler targets. Reading them from
+     * the runtime in one phase and through the view in another gives the compiler two pictures
+     * of the same target, and a test can replace neither. The view is the compiler's picture;
+     * the adapter is where the runtime's picture becomes it.
+     */
+    @Test
+    void onlyTheAdapterReadsTheRuntimesInstructionSet() {
+        noClasses().that().resideInAPackage(COMPILER + "..")
+                .and().resideOutsideOfPackage(COMPILER + ".isa..")
+                .should().dependOnClassesThat().resideInAPackage("org.evochora.runtime.isa..")
+                .check(compilerClasses);
+    }
+
+    /**
      * No phase decides by the kind of a symbol; only the token map names the kinds, when it
      * reports them to the debugger.
      * <p>

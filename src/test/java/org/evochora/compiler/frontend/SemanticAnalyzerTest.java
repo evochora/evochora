@@ -1,5 +1,6 @@
 package org.evochora.compiler.frontend;
 
+import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 import org.evochora.runtime.Config;
 import org.evochora.compiler.diagnostics.Diagnostic;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
@@ -616,8 +617,8 @@ public class SemanticAnalyzerTest {
     private static ParserStatementRegistry allHandlers() {
         ParserStatementRegistry reg = new ParserStatementRegistry();
         reg.register(".DEFINE", new DefineDirectiveHandler());
-        reg.register(".REG", new RegDirectiveHandler());
-        reg.register(".PROC", new ProcDirectiveHandler());
+        reg.register(".REG", new RegDirectiveHandler(new RuntimeInstructionSetAdapter()));
+        reg.register(".PROC", new ProcDirectiveHandler(new RuntimeInstructionSetAdapter()));
         reg.register(".ORG", new OrgDirectiveHandler());
         reg.register(".DIR", new DirDirectiveHandler());
         reg.register(".PLACE", new PlaceDirectiveHandler());

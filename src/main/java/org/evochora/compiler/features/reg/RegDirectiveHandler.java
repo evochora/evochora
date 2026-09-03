@@ -5,7 +5,8 @@ import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.frontend.parser.IParserStatementHandler;
 import org.evochora.compiler.frontend.parser.IParsingContext;
 import org.evochora.compiler.model.ast.AstNode;
-import org.evochora.runtime.isa.RegisterBank;
+import org.evochora.compiler.isa.IInstructionSet;
+import org.evochora.compiler.isa.IInstructionSet.RegisterBankInfo;
 
 /**
  * Handler for the {@code .REG} directive.
@@ -13,6 +14,15 @@ import org.evochora.runtime.isa.RegisterBank;
  * that the target register is allowed in the current scope.
  */
 public class RegDirectiveHandler implements IParserStatementHandler {
+
+    private final IInstructionSet isa;
+
+    /**
+     * @param isa The instruction set, whose register banks decide what a register text names.
+     */
+    public RegDirectiveHandler(IInstructionSet isa) {
+        this.isa = isa;
+    }
 
     /**
      * Parses a {@code .REG} directive.
@@ -57,14 +67,14 @@ public class RegDirectiveHandler implements IParserStatementHandler {
         String regText = register.text().toUpperCase();
         int line = register.line();
 
-        // Extract bank and index via RegisterBank enum iteration
-        RegisterBank matchedBank = null;
+        // Extract bank and index by the bank prefixes of the instruction set
+        RegisterBankInfo matchedBank = null;
         int index = -1;
         try {
-            for (RegisterBank bank : RegisterBank.values()) {
-                if (bank.count > 0 && regText.startsWith(bank.prefix)) {
+            for (RegisterBankInfo bank : isa.registerBanks()) {
+                if (bank.count() > 0 && regText.startsWith(bank.prefix())) {
                     matchedBank = bank;
-                    index = Integer.parseInt(regText.substring(bank.prefixLength));
+                    index = Integer.parseInt(regText.substring(bank.prefix().length()));
                     break;
                 }
             }
@@ -80,10 +90,10 @@ public class RegDirectiveHandler implements IParserStatementHandler {
             return null;
         }
 
-        String bankName = matchedBank.prefix.substring(1); // strip "%"
+        String bankName = matchedBank.name();
 
         // 1. Forbidden-bank check
-        if (matchedBank.isForbidden) {
+        if (matchedBank.forbidden()) {
             context.getDiagnostics().reportError(
                     "Register " + register.text() + " cannot be aliased — "
                             + bankName + " registers are managed by the CALL binding mechanism.",
@@ -92,7 +102,7 @@ public class RegDirectiveHandler implements IParserStatementHandler {
         }
 
         // 2. Scope availability check
-        if (!context.state().isRegisterBankAvailable(bankName)) {
+        if (!matchedBank.alwaysAvailable() && !context.state().isRegisterBankAvailable(bankName)) {
             context.getDiagnostics().reportError(
                     "Register " + register.text() + " is not available in the current scope.",
                     register.fileName(), line);
@@ -100,10 +110,10 @@ public class RegDirectiveHandler implements IParserStatementHandler {
         }
 
         // 3. Bounds check
-        if (index < 0 || index >= matchedBank.count) {
+        if (index < 0 || index >= matchedBank.count()) {
             context.getDiagnostics().reportError(
                     "Register index " + index + " is out of bounds for " + bankName
-                            + " bank. Valid range: 0-" + (matchedBank.count - 1) + ".",
+                            + " bank. Valid range: 0-" + (matchedBank.count() - 1) + ".",
                     register.fileName(), line);
             return null;
         }

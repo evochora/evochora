@@ -173,7 +173,8 @@ public class Compiler implements ICompiler {
         String fullSource = String.join("\n", sourceLines) + "\n";
 
         // Feature registration
-        FeatureRegistry featureRegistry = new FeatureRegistry();
+        RuntimeInstructionSetAdapter isa = new RuntimeInstructionSetAdapter();
+        FeatureRegistry featureRegistry = new FeatureRegistry(isa);
         StandardFeatures.all().forEach(f -> f.register(featureRegistry));
 
         // Phase 0: Dependency Scanning (load imported modules)
@@ -189,8 +190,8 @@ public class Compiler implements ICompiler {
             }
         }
         includedContents.putAll(graph.sourceContents());
-        Map<String, List<Token>> fileTokens = Lexer.lexFiles(includedContents, diagnostics);
-        List<Token> initialTokens = new ArrayList<>(new Lexer(fullSource, diagnostics, mainFilePath).scanTokens());
+        Map<String, List<Token>> fileTokens = Lexer.lexFiles(includedContents, diagnostics, isa);
+        List<Token> initialTokens = new ArrayList<>(new Lexer(fullSource, diagnostics, mainFilePath, isa).scanTokens());
 
         // Phase 2: Preprocessing (includes, macros)
         PreProcessorContext ppContext = new PreProcessorContext(rootAliasChain, fileTokens);
@@ -252,7 +253,6 @@ public class Compiler implements ICompiler {
         failOnErrors();
 
         // Phase 8: IR Rewriting (apply the rewrite rules of the features)
-        RuntimeInstructionSetAdapter isa = new RuntimeInstructionSetAdapter();
         RewriteRegistry rewriteRegistry = new RewriteRegistry();
         rewriteRegistry.registerAll(featureRegistry.rewriteRules());
         IrProgram rewrittenIr = new IrRewriter(rewriteRegistry).rewrite(irProgram, isa);

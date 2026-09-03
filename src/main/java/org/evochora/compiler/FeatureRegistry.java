@@ -15,6 +15,7 @@ import org.evochora.compiler.frontend.semantics.IDependencySetupHandler;
 import org.evochora.compiler.frontend.semantics.IAnalysisHandler;
 import org.evochora.compiler.frontend.semantics.ISymbolCollector;
 import org.evochora.compiler.frontend.tokenmap.ITokenMapContributor;
+import org.evochora.compiler.isa.IInstructionSet;
 import org.evochora.compiler.model.ast.AstNode;
 
 import java.util.ArrayList;
@@ -34,6 +35,8 @@ import java.util.Map;
  * features only see the write-only registration side. The compiler sees the full class with getters.</p>
  */
 public class FeatureRegistry implements IFeatureRegistrationContext {
+
+	private final IInstructionSet isa;
 
 	// Map-based registrations are key-based with guardDuplicate — duplicates are a configuration error.
 	private final Map<Class<? extends IDependencyInfo>, IDependencySetupHandler<?>> dependencySetupHandlers = new HashMap<>();
@@ -55,7 +58,21 @@ public class FeatureRegistry implements IFeatureRegistrationContext {
 	private final List<ILinkingRule> linkingRules = new ArrayList<>();
 	private final List<IEmissionContributor> emissionContributors = new ArrayList<>();
 
+	/**
+	 * Creates an empty registry for a compilation that targets the given instruction set.
+	 *
+	 * @param isa The instruction set the features' handlers read.
+	 */
+	public FeatureRegistry(IInstructionSet isa) {
+		this.isa = isa;
+	}
+
 	// --- IFeatureRegistrationContext implementation (write side) ---
+
+	@Override
+	public IInstructionSet isa() {
+		return isa;
+	}
 
 	@Override
 	public void dependencyScanHandler(IDependencyScanHandler handler) {

@@ -15,10 +15,10 @@ public class ProcFeature implements ICompilerFeature {
 
     @Override
     public void register(IFeatureRegistrationContext ctx) {
-        ctx.parserStatement(".PROC", new ProcDirectiveHandler());
+        ctx.parserStatement(".PROC", new ProcDirectiveHandler(ctx.isa()));
         ctx.parserStatement("CALL", new CallStatementHandler());
         ctx.symbolCollector(ProcedureNode.class, new ProcedureSymbolCollector());
-        ctx.analysisHandler(CallNode.class, new CallAnalysisHandler());
+        ctx.analysisHandler(CallNode.class, new CallAnalysisHandler(ctx.isa()));
         ctx.irConverter(CallNode.class, new CallNodeConverter());
         ctx.analysisHandler(ProcedureNode.class, new ProcedureAnalysisHandler());
         ctx.tokenMapContributor(ProcedureNode.class, new ProcedureTokenMapContributor());

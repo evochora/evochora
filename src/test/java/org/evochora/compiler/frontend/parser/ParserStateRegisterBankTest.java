@@ -9,11 +9,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ParserStateRegisterBankTest {
 
     @Test
-    void testDefaultBanksAreAvailable() {
+    void aFreshStateHasNoBankAdded() {
+        // Whether a bank may be named everywhere is the bank's own property, which the .REG
+        // handler reads from the instruction set; the state only tracks what scopes opened up.
         ParserState state = new ParserState();
 
-        assertThat(state.isRegisterBankAvailable("DR")).isTrue();
-        assertThat(state.isRegisterBankAvailable("LR")).isTrue();
+        assertThat(state.isRegisterBankAvailable("DR")).isFalse();
+        assertThat(state.isRegisterBankAvailable("LR")).isFalse();
     }
 
     @Test

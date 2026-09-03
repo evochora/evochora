@@ -206,7 +206,10 @@ class CallSiteBindingRuleTest {
     private static class StubInstructionSet implements IInstructionSet {
         @Override
         public List<IInstructionSet.RegisterBankInfo> registerBanks() {
-            return List.of();
+            return java.util.Arrays.stream(RegisterBank.values())
+                    .map(b -> new IInstructionSet.RegisterBankInfo(b.prefix, b.base, b.count, b.isLocation,
+                            b.isForbidden, b.isAlwaysAvailable, RegisterBank.allProcScoped().contains(b)))
+                    .toList();
         }
 
         @Override

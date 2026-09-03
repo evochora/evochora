@@ -1,5 +1,6 @@
 package org.evochora.compiler;
 
+import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 import org.evochora.compiler.frontend.module.IDependencyScanHandler;
 import org.evochora.compiler.frontend.module.IDependencyScanContext;
 import org.evochora.compiler.frontend.parser.IParserStatementHandler;
@@ -29,7 +30,7 @@ class FeatureRegistryTest {
 
     @BeforeEach
     void setUp() {
-        registry = new FeatureRegistry();
+        registry = new FeatureRegistry(new RuntimeInstructionSetAdapter());
     }
 
     @Test

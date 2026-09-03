@@ -1,5 +1,6 @@
 package org.evochora.compiler.directives;
 
+import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 import org.evochora.compiler.frontend.semantics.ScopeTracker;
 import org.evochora.runtime.Config;
 import org.evochora.compiler.frontend.lexer.Lexer;
@@ -405,8 +406,8 @@ public class RegDirectiveTest {
 
     private static ParserStatementRegistry registry() {
         ParserStatementRegistry reg = new ParserStatementRegistry();
-        reg.register(".REG", new RegDirectiveHandler());
-        reg.register(".PROC", new org.evochora.compiler.features.proc.ProcDirectiveHandler());
+        reg.register(".REG", new RegDirectiveHandler(new RuntimeInstructionSetAdapter()));
+        reg.register(".PROC", new org.evochora.compiler.features.proc.ProcDirectiveHandler(new org.evochora.compiler.isa.RuntimeInstructionSetAdapter()));
         reg.registerDefault(new org.evochora.compiler.features.instruction.InstructionParsingHandler());
         return reg;
     }

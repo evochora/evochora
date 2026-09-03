@@ -6,6 +6,7 @@
 
 package org.evochora.compiler.frontend;
 
+import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.irgen.DefaultAstNodeToIrConverter;
 import org.evochora.compiler.frontend.irgen.IrConverterRegistry;
@@ -334,8 +335,8 @@ public class IrGeneratorTest {
     private static ParserStatementRegistry allHandlers() {
         ParserStatementRegistry reg = new ParserStatementRegistry();
         reg.register(".DEFINE", new DefineDirectiveHandler());
-        reg.register(".REG", new RegDirectiveHandler());
-        reg.register(".PROC", new ProcDirectiveHandler());
+        reg.register(".REG", new RegDirectiveHandler(new RuntimeInstructionSetAdapter()));
+        reg.register(".PROC", new ProcDirectiveHandler(new RuntimeInstructionSetAdapter()));
         reg.register(".ORG", new OrgDirectiveHandler());
         reg.register(".DIR", new DirDirectiveHandler());
         reg.register(".PLACE", new PlaceDirectiveHandler());

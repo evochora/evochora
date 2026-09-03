@@ -15,14 +15,15 @@ import org.evochora.compiler.frontend.preprocessor.IPreProcessorHandler;
 import org.evochora.compiler.frontend.semantics.IAnalysisHandler;
 import org.evochora.compiler.frontend.semantics.ISymbolCollector;
 import org.evochora.compiler.frontend.tokenmap.ITokenMapContributor;
+import org.evochora.compiler.isa.IInstructionSet;
 import org.evochora.compiler.model.ast.AstNode;
 
 /**
  * Pure declarative registration interface for compiler features.
  *
  * <p>Features call these methods during {@link ICompilerFeature#register} to declare
- * which handlers they contribute to each compiler phase. This interface has no getters
- * and no state accessors — it is write-only from the feature's perspective.</p>
+ * which handlers they contribute to each compiler phase. The one thing a feature reads here
+ * is the instruction set, which it hands to the handlers that need it.</p>
  *
  * <p>The concrete implementation ({@link FeatureRegistry}) collects all registrations
  * and provides getter methods for the compiler to read them back.</p>
@@ -30,6 +31,14 @@ import org.evochora.compiler.model.ast.AstNode;
  * <p>Phase 1 (Lexing) has no extension points because the lexer uses generic token types.</p>
  */
 public interface IFeatureRegistrationContext {
+
+	/**
+	 * The instruction set this compilation targets, for handlers that read opcodes,
+	 * signatures or register banks.
+	 *
+	 * @return The compiler's view of the instruction set.
+	 */
+	IInstructionSet isa();
 
 	// Phase 0: Dependency Scanning
 

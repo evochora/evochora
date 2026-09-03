@@ -5,7 +5,7 @@ import org.evochora.compiler.frontend.parser.IParsingContext;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.model.ast.AstNode;
-import org.evochora.runtime.isa.RegisterBank;
+import org.evochora.compiler.isa.IInstructionSet;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -19,6 +19,15 @@ import java.util.Set;
 public class ProcDirectiveHandler implements IParserStatementHandler {
 
     private static final Set<String> PARAM_KEYWORDS = Set.of("REF", "VAL", "LREF", "LVAL");
+
+    private final IInstructionSet isa;
+
+    /**
+     * @param isa The instruction set, which names the register banks a procedure body opens up.
+     */
+    public ProcDirectiveHandler(IInstructionSet isa) {
+        this.isa = isa;
+    }
 
     @Override
     public boolean supportsExport() { return true; }
@@ -75,9 +84,9 @@ public class ProcDirectiveHandler implements IParserStatementHandler {
         }
 
         context.state().pushScope();
-        String[] procScopedBanks = RegisterBank.allProcScoped().stream()
-                .filter(b -> !b.isForbidden)
-                .map(b -> b.prefix.substring(1))
+        String[] procScopedBanks = isa.registerBanks().stream()
+                .filter(b -> b.procScoped() && !b.forbidden())
+                .map(IInstructionSet.RegisterBankInfo::name)
                 .toArray(String[]::new);
         context.state().addAvailableRegisterBanks(procScopedBanks);
 

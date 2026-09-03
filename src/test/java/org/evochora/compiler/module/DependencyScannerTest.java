@@ -1,5 +1,6 @@
 package org.evochora.compiler.module;
 
+import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 import org.evochora.compiler.FeatureRegistry;
 import org.evochora.compiler.StandardFeatures;
 import org.evochora.compiler.api.SourceRoot;
@@ -33,7 +34,7 @@ public class DependencyScannerTest {
     }
 
     private List<IDependencyScanHandler> defaultHandlers() {
-        FeatureRegistry featureRegistry = new FeatureRegistry();
+        FeatureRegistry featureRegistry = new FeatureRegistry(new RuntimeInstructionSetAdapter());
         StandardFeatures.all().forEach(f -> f.register(featureRegistry));
         return featureRegistry.dependencyScanHandlers();
     }
