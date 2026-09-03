@@ -181,6 +181,7 @@ runtime      →  (nothing)
 - **Conflict Resolution**: Contenders for one cell are ranked by a per-tick priority computed from seed, tick and organism ID (`OrganismRandom.tickStreamSeed()`); the loser is booked as a failed instruction (`"Lost write conflict"`, error penalty) and retries with its instruction pointer held.
 - **Two Kinds of Randomness**: The root `IRandomProvider` serves the sequential parts of a tick (tick plugins, birth/death handlers) and is checkpointed. Anything executing for an organism inside the parallel wave — instructions, interceptors, label matching — uses `Organism.getRandom()`, whose values are computed from seed, tick, organism ID and draw index and need no persistence. Drawing from the root provider inside the wave throws; `ParallelWave.isActive()` is the guard.
 - **Organism Autonomy**: Each Organism is a self-contained VM with own registers, stacks, and energy
+- **Self-Contained Machine Code**: Execution reads nothing from the program artifact. Everything a `CALL`, a jump or a parameter binding needs is in the molecules the compiler placed, so code that arose by mutation runs by the same rules as compiled code. The artifact serves the compiler's consumers, the visualizer and the data pipeline, never the runtime.
 - **Embodied Organisms**: Organisms have an instruction pointer (IP) and data pointers (DPs) navigating the n-D grid
 - **Instruction Registry**: All instructions register via `Instruction.init()` with unique IDs and planners
 - **Immutable Environment**: Environment is read-only during conflict resolution
