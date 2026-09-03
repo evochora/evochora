@@ -18,6 +18,7 @@ plugins {
     id("com.google.protobuf") version "0.9.6"
     id("me.champeau.jmh") version "0.7.3"
     id("pmd")
+    id("org.sonarqube") version "7.5.0.8588"
 }
 
 java {
@@ -434,6 +435,23 @@ pmd {
 tasks.withType<Pmd>().configureEach {
     // Generated protobuf sources: nobody edits them, and the generator will not follow these rules.
     exclude("**/org/evochora/datapipeline/api/contracts/**")
+}
+
+// Analysis by SonarQube Cloud. The `sonar` task is deliberately not wired into `build` or `check`:
+// it uploads to an external service and needs a token, so it runs only where it is asked for —
+// the CI workflow, or an explicit local `./gradlew sonar`.
+//
+// Coverage is not reported here. The build already gates line coverage through
+// jacocoTestCoverageVerification, and Sonar does not measure coverage itself; it would only import
+// the same JaCoCo report. Leaving it out keeps the analysis independent of a test run.
+sonar {
+    properties {
+        property("sonar.projectKey", "evochora_evochora")
+        property("sonar.organization", "evochora")
+        property("sonar.host.url", "https://sonarcloud.io")
+        // Generated protobuf sources: nobody edits them, and the generator will not follow these rules.
+        property("sonar.exclusions", "**/org/evochora/datapipeline/api/contracts/**")
+    }
 }
 
 // Javadoc that no longer resolves — a link to a method that was renamed, markup that does not
