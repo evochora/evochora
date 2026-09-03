@@ -46,8 +46,12 @@ class GeneInsertionPluginTest {
 
     /** Left boundary x-coordinate for the standard scan line. */
     private static final int LEFT = 2;
-    /** Right boundary x-coordinate for the standard scan line. */
-    private static final int RIGHT = 20;
+    /**
+     * Right boundary x-coordinate for the standard scan line. The two boundaries must span at
+     * most half the 32-cell axis: beyond that the plugin takes the arc wrapping around the world
+     * edge as the body, and the NOP gap between them would count as outside.
+     */
+    private static final int RIGHT = 16;
     /** Y-coordinate for the standard scan line. */
     private static final int Y = 5;
 
@@ -554,14 +558,14 @@ class GeneInsertionPluginTest {
 
     @Test
     void insertsIntoInteriorNopAreaWhenWrapping() {
-        // Organism wraps around x=0/29 boundary in the 30-wide world.
-        // Owned cells at x=0, x=5, x=25, x=29 define a wrapping scan line at y=Y.
-        // Shortest arc: x=25→26→...→29→0→...→5. Interior NOP: x=26,27,28 and x=1,2,3,4.
+        // Organism wraps around the x=0/31 edge of the 32-wide world.
+        // Owned cells at x=0, x=5, x=25, x=31 define a wrapping scan line at y=Y.
+        // Shortest arc: x=25→26→...→31→0→...→5. Interior NOP: x=26..30 and x=1..4.
         // External space: x=6..24 (must remain empty).
         placeCode(0, Y);
         placeCode(5, Y);
         placeCode(25, Y);
-        placeCode(29, Y);
+        placeCode(31, Y);
 
         IRandomProvider rng = new SeededRandomProvider(42L);
         GeneInsertionPlugin plugin = new GeneInsertionPlugin(rng, 1.0, List.of(createSetiEntry()));
@@ -576,13 +580,44 @@ class GeneInsertionPluginTest {
 
         // Chain should be placed somewhere in the interior NOP area
         boolean foundChain = false;
-        for (int x : new int[]{26, 27, 28, 1, 2, 3, 4}) {
+        for (int x : new int[]{26, 27, 28, 29, 30, 1, 2, 3, 4}) {
             if (!environment.getMolecule(x, Y).isEmpty()) {
                 foundChain = true;
                 break;
             }
         }
         assertThat(foundChain).as("Chain should be placed in interior NOP area").isTrue();
+    }
+
+    @Test
+    void insertsIntoNopGapAtTheWorldEdgeOfASmallWrappingBody() {
+        // A small body crossing the x=0/31 edge with its NOP gap exactly at the edge:
+        // CODE at x=27,28,29 and x=2,3; the interior NOP run is x=30,31,0,1.
+        // The raw span 2..29 is shorter than the axis, yet the shortest arc wraps.
+        // External space: x=4..26 (must remain empty).
+        placeCode(27, Y);
+        placeCode(28, Y);
+        placeCode(29, Y);
+        placeCode(2, Y);
+        placeCode(3, Y);
+
+        IRandomProvider rng = new SeededRandomProvider(42L);
+        GeneInsertionPlugin plugin = new GeneInsertionPlugin(rng, 1.0, List.of(createSetiEntry()));
+        plugin.mutate(child, environment);
+
+        for (int x = 4; x <= 26; x++) {
+            assertThat(environment.getMolecule(x, Y).isEmpty())
+                    .as("External cell (%d,%d) should remain empty", x, Y)
+                    .isTrue();
+        }
+        boolean foundChain = false;
+        for (int x : new int[]{30, 31, 0, 1}) {
+            if (!environment.getMolecule(x, Y).isEmpty()) {
+                foundChain = true;
+                break;
+            }
+        }
+        assertThat(foundChain).as("Chain should be placed in the NOP gap at the world edge").isTrue();
     }
 
     @Test

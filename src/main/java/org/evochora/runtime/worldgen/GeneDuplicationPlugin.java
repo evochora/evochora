@@ -458,7 +458,7 @@ public class GeneDuplicationPlugin implements IBirthHandler {
         for (ScanLineInfo line : scanLineMap.values()) {
             line.walkStart = line.minDv;
             line.walkEnd = line.maxDv;
-            if (line.maxDv - line.minDv + 1 >= shapeDvDim - 1) {
+            if (line.maxDv - line.minDv + 1 > shapeDvDim / 2) {
                 anyWrapping = true;
             }
         }
