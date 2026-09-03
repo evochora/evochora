@@ -1,6 +1,6 @@
 # Tiled Grid Layout
 
-**Status: TO BE REVIEWED — evidence from a throw-away experiment; all design decisions taken on 2026-09-02.**
+**Status: ACCOMPLISHED 2026-09-03 — implemented on branch `feature/grid-layout`; outcome recorded at the end.**
 
 ## Problem
 
@@ -288,3 +288,31 @@ What is not changed:
 - Spatial decomposition of the engine across threads or machines. Tiles become its natural unit of
   ownership, but nothing here anticipates it beyond the invariant above.
 - The coordinate-based environment API and its allocations, a separate performance item.
+
+## Outcome
+
+Implemented in the slices above, with two additions decided during implementation:
+
+- **The cell index is confined to the model package.** `GridLayout` and every index-based method
+  of `Environment` are package-private; outside `org.evochora.runtime.model` no method takes or
+  returns an environment index. Callers see coordinates, a `CellView` for owned cells and
+  canonical-order visits for serialization. The invariance is thereby enforced by the compiler,
+  not only by tests.
+- **Persisted cells are written in ascending canonical order**, so persisted bytes are identical
+  whatever the layout. The ordering is done by the environment: an in-place MSD radix sort over
+  keys that carry each cell's content, read during a sequential walk of the grid, 12 bytes per
+  occupied cell, retained between captures. The memory estimate separates the world size from the
+  occupied cells and names the sort batch, the third bit set and the encoder's column lists.
+
+Measured on the demo server (ARM, 4 cores), same simulation, tick hash identical to main:
+
+| Profile | main | tiled |
+|---|---|---|
+| sparse, 10 M ticks, ~100 organisms | 415–431 s | 356–368 s (−14 %) |
+| detailed, 100 k ticks, 1 organism, 2000 snapshots of 83 000 cells | 37–38 s | 42–43 s (+14 %) |
+| peak live set, sparse / detailed | 372 / 327 MB | 375 / 329 MB |
+
+The detailed-profile cost is the serialization of a snapshot from an order that is no longer the
+memory order: sorting, conversion and message assembly. The gap search of the insertion plugin
+turned out to be coordinate-ordered already, so four rather than five decisions had to be redefined
+over the canonical index.

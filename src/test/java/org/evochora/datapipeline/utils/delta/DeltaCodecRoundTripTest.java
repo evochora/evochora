@@ -29,7 +29,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class DeltaCodecRoundTripTest {
     
     private static final String RUN_ID = "round-trip-test";
-    private static final int TOTAL_CELLS = 1024;  // 10x10 environment
+    private static final int TOTAL_CELLS = 1024;  // 32x32 environment
     
     private Environment env;
     private DeltaCodec.Decoder decoder;

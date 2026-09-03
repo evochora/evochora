@@ -177,6 +177,7 @@ runtime      →  (nothing)
 - **Embodied Organisms**: Organisms have an instruction pointer (IP) and data pointers (DPs) navigating the n-D grid
 - **Instruction Registry**: All instructions register via `Instruction.init()` with unique IDs and planners
 - **Immutable Environment**: Environment is read-only during conflict resolution
+- **Opaque Cell Index**: The environment stores its grid in 32-cell tiles, and every world dimension must be a multiple of 32. Outside `org.evochora.runtime.model` no method takes or returns an environment index: code and plugins see cells through coordinates, the `CellView` handed to owned-cell visitors, and the canonical-order visits used for serialization. Every order that can influence a result — mutation operators, label candidates, seeding, death handlers, persisted cells — is defined over the canonical row-major index of `EnvironmentProperties`, so results and persisted bytes do not depend on the memory layout; `DeterministicExecutionTest` and `ResumeForkNeutralityTest` prove this by running scenarios under tile sides 1 and 32
 - **Energy-First**: Every action costs energy; zero energy = organism death
 
 ## Data Pipeline (`src/main/java/org/evochora/datapipeline/`)

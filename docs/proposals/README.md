@@ -13,7 +13,6 @@ table carries the whole order.
 
 | Document / Issue | Status | Summary |
 |---|---|---|
-| [GRID_LAYOUT](GRID_LAYOUT.md) | TO BE REVIEWED | Tiled cell layout (32ⁿ-cell blocks, dimension 0 contiguous) behind an unchanged persisted index; layout made unobservable so the tick hash stays identical, verified by an invariance test; experiment showed −15 % per organism-tick from the weakest variant |
 | [PERSISTED_FORMAT_VERSIONING](PERSISTED_FORMAT_VERSIONING.md) | TO BE REVIEWED | Storage batches, run database and run metadata carry no format version, so data written by an incompatible build is read silently or fails without naming the cause; one version constant plus fail-fast reads |
 | [DEPENDENCY_UPDATE](DEPENDENCY_UPDATE.md) | TO BE REVIEWED | 24 of 32 dependencies behind, six by a major version; removal of the unused JLine pair, three build hygiene fixes, and a staged update procedure derived from what the test suite can and cannot verify |
 
