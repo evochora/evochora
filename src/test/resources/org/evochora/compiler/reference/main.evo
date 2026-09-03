@@ -53,8 +53,10 @@ START:
   JMPI UTIL.READY
   JMPI START
 
+# Downward code below every placement: the rows above are taken by the placements, and a
+# cell cannot hold an instruction and a placed molecule at once.
 .DIR 0|1
-.ORG 0|20
+.ORG 0|40
 MARK:
   NOP^2
   JMPI START

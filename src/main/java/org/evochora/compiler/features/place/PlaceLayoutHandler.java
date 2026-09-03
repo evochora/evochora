@@ -37,7 +37,7 @@ public final class PlaceLayoutHandler implements ILayoutDirectiveHandler {
             List<int[]> coordinates = generateCoordinates(placement, context);
             for (int[] coord : coordinates) {
                 int[] finalCoord = Nd.add(context.basePos(), coord);
-                context.initialWorldObjects().put(finalCoord, molecule);
+                context.placeObject(finalCoord, molecule, directive.source());
             }
         }
     }

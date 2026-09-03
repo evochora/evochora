@@ -249,6 +249,52 @@ class CompilerDiagnosticsTest {
                 .hasMessageContaining("main.evo:1");
     }
 
+    @Test
+    void twoPlacementsOnTheSameCellNameBothLines() throws Exception {
+        write("main.evo",
+                ".PLACE DATA:5 20|20",
+                ".PLACE DATA:6 20|20",
+                "START:",
+                "  NOP");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("Coordinate [20, 20] is already occupied by a .PLACE at")
+                .hasMessageContaining("main.evo:1")
+                .hasMessageContaining("main.evo:2");
+    }
+
+    @Test
+    void codeLaidOverAPlacementNamesBothLines() throws Exception {
+        write("main.evo",
+                ".PLACE DATA:5 0|0",
+                ".ORG 0|0",
+                "START:",
+                "  NOP");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("Coordinate [0, 0] is already occupied by a .PLACE at")
+                .hasMessageContaining("main.evo:1")
+                .hasMessageContaining("main.evo:3");
+    }
+
+    @Test
+    void codeLaidOverCodeNamesBothLines() throws Exception {
+        write("main.evo",
+                ".ORG 0|0",
+                "START:",
+                "  NOP",
+                ".ORG 0|0",
+                "  NOP");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("Coordinate [0, 0] is already occupied by an instruction at")
+                .hasMessageContaining("main.evo:2")
+                .hasMessageContaining("main.evo:5");
+    }
+
     private void write(String fileName, String... lines) throws Exception {
         Files.writeString(sourceRoot.resolve(fileName), String.join("\n", lines) + "\n");
     }
