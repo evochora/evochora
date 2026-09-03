@@ -9,7 +9,6 @@ import org.evochora.compiler.frontend.preprocessor.PreProcessorContext;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 /**
  * Handles the {@code .IMPORT} directive in the preprocessor phase.
@@ -17,22 +16,39 @@ import java.util.Map;
  * PUSH_CTX/POP_CTX for relative .ORG support. The directive tokens remain in the
  * stream for the parser to create an {@code ImportNode}.
  *
- * <p>Module tokens are pre-lexed in Phase 1 (Lexical Analysis) and made available via
- * {@link PreProcessorContext#moduleTokens()}. This handler does not call the Lexer,
+ * <p>The module's tokens are pre-lexed in Phase 1 (Lexical Analysis) and made available via
+ * {@link PreProcessorContext#fileTokens()}. This handler does not call the Lexer,
  * maintaining strict phase separation.</p>
  */
 public class ImportSourceHandler implements IPreProcessorHandler {
 
     @Override
     public void process(PreProcessor preProcessor, PreProcessorContext preProcessorContext) {
-        Map<String, List<Token>> moduleTokens = preProcessorContext.moduleTokens();
-        if (moduleTokens.isEmpty()) return;
-
         Token importToken = preProcessor.peek();
         preProcessor.advance(); // consume .IMPORT
 
         Token pathToken = preProcessor.consume(TokenType.STRING, "Expected a file path in quotes after .IMPORT.");
         if (pathToken == null) return;
+
+        // Resolve the path to an absolute path
+        String pathValue = (String) pathToken.value();
+        String resolvedPath;
+        try {
+            resolvedPath = preProcessor.getResolver().resolve(pathValue, pathToken.fileName());
+        } catch (org.evochora.compiler.util.SourceRootResolver.UnknownPrefixException e) {
+            preProcessor.getDiagnostics().reportError(e.getMessage(), pathToken.fileName(), pathToken.line());
+            return;
+        }
+
+        // A file the dependency scan did not find has no tokens to inline. The directive stays
+        // in the stream for the parser, which reports whatever is wrong with its form.
+        List<Token> tokens = preProcessorContext.fileTokens().get(resolvedPath);
+        if (tokens == null) {
+            preProcessor.getDiagnostics().reportError(
+                    "Module not found: " + pathValue + " (resolved to: " + resolvedPath + ")",
+                    pathToken.fileName(), pathToken.line());
+            return;
+        }
 
         // Extract alias from "AS ALIAS" before skipping the rest of the directive
         String alias = extractAlias(preProcessor);
@@ -44,16 +60,6 @@ public class ImportSourceHandler implements IPreProcessorHandler {
         // Advance past the NEWLINE so module tokens are injected after the directive line
         if (!preProcessor.isAtEnd() && preProcessor.check(TokenType.NEWLINE)) {
             preProcessor.advance();
-        }
-
-        // Resolve the path to an absolute path
-        String pathValue = (String) pathToken.value();
-        String resolvedPath;
-        try {
-            resolvedPath = preProcessor.getResolver().resolve(pathValue, pathToken.fileName());
-        } catch (org.evochora.compiler.util.SourceRootResolver.UnknownPrefixException e) {
-            preProcessor.getDiagnostics().reportError(e.getMessage(), pathToken.fileName(), pathToken.line());
-            return;
         }
 
         // Guard against circular imports
@@ -73,14 +79,6 @@ public class ImportSourceHandler implements IPreProcessorHandler {
         String aliasChain = (parentChain == null || parentChain.isEmpty())
                 ? aliasUpper
                 : parentChain + "." + aliasUpper;
-
-        List<Token> tokens = moduleTokens.get(resolvedPath);
-        if (tokens == null) {
-            preProcessor.getDiagnostics().reportError(
-                    "Module tokens not found for: " + pathValue + " (resolved to: " + resolvedPath + ")",
-                    pathToken.fileName(), pathToken.line());
-            return;
-        }
 
         // Create a copy of the pre-lexed tokens (each import gets its own instance)
         List<Token> newTokens = new ArrayList<>(tokens);

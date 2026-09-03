@@ -9,7 +9,6 @@ import org.evochora.compiler.frontend.preprocessor.PreProcessorContext;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 /**
  * Handles the {@code .SOURCE} directive in the preprocessor phase.
@@ -50,12 +49,12 @@ public class SourceDirectiveHandler implements IPreProcessorHandler {
             return;
         }
 
-        // Get pre-lexed tokens
-        Map<String, List<Token>> sourceTokens = preProcessorContext.sourceTokens();
-        List<Token> preLexed = sourceTokens.get(resolvedPath);
+        // A file the dependency scan did not find has no tokens to inline
+        List<Token> preLexed = preProcessorContext.fileTokens().get(resolvedPath);
         if (preLexed == null) {
             preProcessor.getDiagnostics().reportError(
-                    "Source file not found in pre-lexed sources: " + pathValue, pathToken.fileName(), pathToken.line());
+                    "Source file not found: " + pathValue + " (resolved to: " + resolvedPath + ")",
+                    pathToken.fileName(), pathToken.line());
             preProcessor.removeTokens(startIndex, endIndex - startIndex);
             return;
         }

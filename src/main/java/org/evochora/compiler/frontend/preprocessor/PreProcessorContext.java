@@ -18,30 +18,29 @@ public class PreProcessorContext {
     private final PreProcessorHandlerRegistry handlers = new PreProcessorHandlerRegistry();
     private final String rootAliasChain;
     private final Deque<PlacementContext> inclusions = new ArrayDeque<>();
-    private final Map<String, List<Token>> moduleTokens;
-    private final Map<String, List<Token>> sourceTokens;
+    private final Map<String, List<Token>> fileTokens;
 
     /**
      * Creates a context carrying the token streams that were pre-lexed for the files found
      * during dependency scanning. Null arguments are tolerated: a null alias chain becomes
-     * the empty chain, null maps become empty maps.
+     * the empty chain, a null map becomes an empty map.
      *
      * @param rootAliasChain The alias chain for the compilation root module.
-     * @param moduleTokens   Pre-lexed module tokens keyed by resolved absolute path.
-     * @param sourceTokens   Pre-lexed tokens of text inclusions keyed by resolved absolute path.
+     * @param fileTokens     Pre-lexed tokens of every file that may be included, keyed by
+     *                       resolved absolute path. Whether an inclusion is a module or plain
+     *                       text is decided by the directive that includes the file, not here.
      */
-    public PreProcessorContext(String rootAliasChain, Map<String, List<Token>> moduleTokens, Map<String, List<Token>> sourceTokens) {
+    public PreProcessorContext(String rootAliasChain, Map<String, List<Token>> fileTokens) {
         this.rootAliasChain = rootAliasChain != null ? rootAliasChain : "";
-        this.moduleTokens = moduleTokens != null ? moduleTokens : Map.of();
-        this.sourceTokens = sourceTokens != null ? sourceTokens : Map.of();
+        this.fileTokens = fileTokens != null ? fileTokens : Map.of();
     }
 
     /**
-     * Creates a context for preprocessing a single file: empty root alias chain, no pre-lexed
-     * module or source tokens.
+     * Creates a context for preprocessing a single file: empty root alias chain, no files
+     * that may be included.
      */
     public PreProcessorContext() {
-        this("", Map.of(), Map.of());
+        this("", Map.of());
     }
 
     /**
@@ -56,23 +55,14 @@ public class PreProcessorContext {
     }
 
     /**
-     * Returns the pre-lexed module tokens keyed by resolved absolute path.
-     *
-     * @return The map passed to the constructor, returned as given rather than copied; empty
-     *         for a context created without modules.
-     */
-    public Map<String, List<Token>> moduleTokens() {
-        return moduleTokens;
-    }
-
-    /**
-     * Returns the pre-lexed tokens of text inclusions keyed by resolved absolute path.
+     * Returns the pre-lexed tokens of every file that may be included, keyed by resolved
+     * absolute path.
      *
      * @return The map passed to the constructor, returned as given rather than copied; empty
      *         for a context created without such files.
      */
-    public Map<String, List<Token>> sourceTokens() {
-        return sourceTokens;
+    public Map<String, List<Token>> fileTokens() {
+        return fileTokens;
     }
 
     // --- Inclusions ---

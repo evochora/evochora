@@ -264,18 +264,18 @@ class UsingClauseIntegrationTest {
         if (diagnostics.hasErrors()) return new SemanticsResult(diagnostics, null);
 
         // Phase 1: Lex the included files under their paths, the main file as the stream
-        Map<String, String> moduleContents = new HashMap<>();
+        Map<String, String> includedContents = new HashMap<>();
         for (ModuleDescriptor module : graph.topologicalOrder()) {
             if (!module.id().path().equals(mainPath)) {
-                moduleContents.put(module.sourcePath(), module.content());
+                includedContents.put(module.sourcePath(), module.content());
             }
         }
-        Map<String, List<Token>> moduleTokens = Lexer.lexFiles(moduleContents, diagnostics);
-        Map<String, List<Token>> sourceTokens = Lexer.lexFiles(graph.sourceContents(), diagnostics);
+        includedContents.putAll(graph.sourceContents());
+        Map<String, List<Token>> fileTokens = Lexer.lexFiles(includedContents, diagnostics);
         List<Token> mainTokens = new ArrayList<>(new Lexer(mainSource, diagnostics, mainPath).scanTokens());
 
         // Phase 2: Preprocessing (with root alias chain)
-        PreProcessorContext ppContext = new PreProcessorContext(rootAliasChain, moduleTokens, sourceTokens);
+        PreProcessorContext ppContext = new PreProcessorContext(rootAliasChain, fileTokens);
         ppContext.handlers().register(".SOURCE", new SourceDirectiveHandler());
         ppContext.handlers().register(".MACRO", new MacroDirectiveHandler());
         ppContext.handlers().register(".POP_CTX", new PopCtxPreProcessorHandler());

@@ -181,29 +181,27 @@ public class Compiler implements ICompiler {
         DependencyGraph graph = depScanner.scan(fullSource, mainFilePath);
         failOnErrors();
 
-        // Phase 1: Lexical Analysis — the included files under their paths, the main file as the stream
-        Map<String, String> moduleContents = new LinkedHashMap<>();
+        // Phase 1: Lexical Analysis — every included file under its path, the main file as the stream
+        Map<String, String> includedContents = new LinkedHashMap<>();
         for (ModuleDescriptor module : graph.topologicalOrder()) {
             if (!module.id().path().equals(mainFilePath)) {
-                moduleContents.put(module.sourcePath(), module.content());
+                includedContents.put(module.sourcePath(), module.content());
             }
         }
-        Map<String, List<Token>> moduleTokens = Lexer.lexFiles(moduleContents, diagnostics);
-        Map<String, List<Token>> sourceTokens = Lexer.lexFiles(graph.sourceContents(), diagnostics);
+        includedContents.putAll(graph.sourceContents());
+        Map<String, List<Token>> fileTokens = Lexer.lexFiles(includedContents, diagnostics);
         List<Token> initialTokens = new ArrayList<>(new Lexer(fullSource, diagnostics, mainFilePath).scanTokens());
 
         // Phase 2: Preprocessing (includes, macros)
-        PreProcessorContext ppContext = new PreProcessorContext(rootAliasChain, moduleTokens, sourceTokens);
+        PreProcessorContext ppContext = new PreProcessorContext(rootAliasChain, fileTokens);
         featureRegistry.preprocessorHandlers().forEach(ppContext.handlers()::register);
         PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, resolver, ppContext);
         PreProcessorResult ppResult = preProcessor.expand();
 
         Map<String, List<String>> sources = new HashMap<>();
         sources.put(mainFilePath, sourceLines);
-        moduleContents.forEach((path, content) ->
+        includedContents.forEach((path, content) ->
                 sources.put(path, Arrays.asList(content.split("\\r?\\n"))));
-        graph.sourceContents().forEach((path, content) ->
-                sources.putIfAbsent(path, Arrays.asList(content.split("\\r?\\n"))));
 
         failOnErrors();
 
