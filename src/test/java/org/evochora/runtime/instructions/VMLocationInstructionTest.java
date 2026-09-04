@@ -30,7 +30,7 @@ public class VMLocationInstructionTest {
     void setUp() {
         // A minimal environment is needed for organism creation
         Instruction.init();
-        Environment environment = new Environment(new int[]{10, 10}, true);
+        Environment environment = new Environment(new int[]{32, 32}, true);
         sim = SimulationTestUtils.createSimulation(environment);
         org = Organism.create(sim, new int[]{0, 0}, 1000);
         sim.addOrganism(org);

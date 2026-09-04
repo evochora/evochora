@@ -5,7 +5,7 @@ package org.evochora.datapipeline.api.memory;
  * <p>
  * All estimates use <strong>WORST-CASE assumptions</strong>:
  * <ul>
- *   <li>Environment: 100% cell occupancy (all cells filled with organisms/energy)</li>
+ *   <li>Environment: every cell occupied unless {@link #withCellOccupancy(double)} lowers the fraction</li>
  *   <li>Organisms: maxOrganisms at the configured maximum</li>
  * </ul>
  * <p>
@@ -35,8 +35,10 @@ package org.evochora.datapipeline.api.memory;
  * @param environmentShape The environment dimensions (e.g., [800, 600] for 2D, [100, 100, 50] for 3D).
  *                          Used to calculate total cells.
  * @param totalCells Total cells in environment = product of shape dimensions.
- *                   For [800, 600] = 480,000 cells. This is the WORST-CASE cell count
- *                   (100% occupancy assumed for all estimations).
+ *                   For [800, 600] = 480,000 cells. This is the size of the world,
+ *                   independent of occupancy.
+ * @param occupiedCells Number of cells expected to hold a molecule or an owner; equal to
+ *                      totalCells in the worst case.
  * @param maxOrganisms Maximum expected organisms in the simulation.
  *                     This should be a configured upper bound or a reasonable estimate.
  *                     For worst-case: assume all organisms alive simultaneously.
@@ -49,6 +51,7 @@ package org.evochora.datapipeline.api.memory;
 public record SimulationParameters(
     int[] environmentShape,
     long totalCells,
+    long occupiedCells,
     int maxOrganisms,
     int samplingInterval,
     int accumulatedDeltaInterval,
@@ -56,7 +59,72 @@ public record SimulationParameters(
     int chunkInterval,
     double estimatedDeltaRatio
 ) {
-    
+
+    /**
+     * Rejects parameters an estimate cannot be built on: a world without cells, a cell count that
+     * does not match the shape, more occupied cells than the world has, intervals that would
+     * divide by zero, or a change rate outside the unit interval. Every estimate derives from
+     * these values, so a wrong one here would be wrong everywhere without any later step noticing.
+     */
+    public SimulationParameters {
+        if (environmentShape == null || environmentShape.length == 0) {
+            throw new IllegalArgumentException("environmentShape must have at least one dimension");
+        }
+        long product = 1L;
+        for (int i = 0; i < environmentShape.length; i++) {
+            if (environmentShape[i] < 1) {
+                throw new IllegalArgumentException("environmentShape[" + i + "] must be >= 1, got " + environmentShape[i]);
+            }
+            try {
+                product = Math.multiplyExact(product, environmentShape[i]);
+            } catch (ArithmeticException overflow) {
+                throw new IllegalArgumentException("environmentShape " + java.util.Arrays.toString(environmentShape)
+                        + " holds more cells than a long can count", overflow);
+            }
+        }
+        if (totalCells != product) {
+            throw new IllegalArgumentException("totalCells must equal the product of the shape ("
+                    + product + "), got " + totalCells);
+        }
+        if (totalCells > Integer.MAX_VALUE) {
+            // The environment indexes its cells with an int; the per-tick estimates, a cell count
+            // times a few hundred bytes, therefore fit a long, and the per-chunk estimates
+            // (estimateBytesPerChunk, estimateSerializedBytesPerChunk) check their own arithmetic
+            throw new IllegalArgumentException("totalCells must not exceed " + Integer.MAX_VALUE
+                    + ", the most cells an environment can index, got " + totalCells);
+        }
+        if (occupiedCells < 0 || occupiedCells > totalCells) {
+            throw new IllegalArgumentException("occupiedCells must lie between 0 and totalCells ("
+                    + totalCells + "), got " + occupiedCells);
+        }
+        if (maxOrganisms < 0) {
+            throw new IllegalArgumentException("maxOrganisms must be >= 0, got " + maxOrganisms);
+        }
+        requireAtLeastOne("samplingInterval", samplingInterval);
+        requireAtLeastOne("accumulatedDeltaInterval", accumulatedDeltaInterval);
+        requireAtLeastOne("snapshotInterval", snapshotInterval);
+        requireAtLeastOne("chunkInterval", chunkInterval);
+        try {
+            // The ticks a chunk spans are the largest product the intervals form; it must fit an int
+            Math.multiplyExact(Math.multiplyExact(Math.multiplyExact(samplingInterval, accumulatedDeltaInterval),
+                    snapshotInterval), chunkInterval);
+        } catch (ArithmeticException overflow) {
+            throw new IllegalArgumentException("samplingInterval × accumulatedDeltaInterval × snapshotInterval"
+                    + " × chunkInterval must not exceed " + Integer.MAX_VALUE + " ticks per chunk, got "
+                    + samplingInterval + " × " + accumulatedDeltaInterval + " × " + snapshotInterval + " × " + chunkInterval,
+                    overflow);
+        }
+        if (!(estimatedDeltaRatio >= 0.0 && estimatedDeltaRatio <= 1.0)) {
+            throw new IllegalArgumentException("estimatedDeltaRatio must lie between 0.0 and 1.0, got " + estimatedDeltaRatio);
+        }
+    }
+
+    private static void requireAtLeastOne(String name, int value) {
+        if (value < 1) {
+            throw new IllegalArgumentException(name + " must be >= 1, got " + value);
+        }
+    }
+
     /**
      * Bytes per CellState in Java heap after Protobuf deserialization.
      * <p>
@@ -159,6 +227,14 @@ public record SimulationParameters(
     public static final double DEFAULT_ORGANISM_DENSITY_FACTOR = 0.0005;
 
     /**
+     * Default upper bound on the cells one organism owns, for pricing the buffers the environment
+     * keeps per visited organism. An assumption, not a limit of the simulation: the primordial
+     * organism's field is 110 × 85 cells, of which it owns at most all, and until the fork of a
+     * replication the copy belongs to it as well, so twice that, rounded up.
+     */
+    public static final int DEFAULT_MAX_CELLS_PER_ORGANISM = 20_000;
+
+    /**
      * Default expected cell occupancy for realistic memory estimation.
      * <p>
      * Typical simulations occupy roughly 25% of environment cells with molecules.
@@ -187,7 +263,7 @@ public record SimulationParameters(
             totalCells *= dim;
         }
         return new SimulationParameters(
-            environmentShape, totalCells, maxOrganisms,
+            environmentShape, totalCells, totalCells, maxOrganisms,
             DEFAULT_SAMPLING_INTERVAL, DEFAULT_ACCUMULATED_DELTA_INTERVAL,
             DEFAULT_SNAPSHOT_INTERVAL, DEFAULT_CHUNK_INTERVAL, DEFAULT_ESTIMATED_DELTA_RATIO
         );
@@ -214,27 +290,31 @@ public record SimulationParameters(
             totalCells *= dim;
         }
         return new SimulationParameters(
-            environmentShape, totalCells, maxOrganisms,
+            environmentShape, totalCells, totalCells, maxOrganisms,
             samplingInterval, accumulatedDeltaInterval,
             snapshotInterval, chunkInterval, estimatedDeltaRatio
         );
     }
     
     /**
-     * Returns a copy with totalCells scaled by the given occupancy factor.
+     * Returns a copy expecting the given fraction of the world's cells to be occupied.
      * <p>
-     * Used to create a realistic "expected peak" estimation alongside the
-     * worst-case (100% occupancy) estimation. All helper methods
-     * ({@link #estimateBytesPerTick()}, {@link #estimateBytesPerChunk()}, etc.)
-     * automatically reflect the reduced cell count.
+     * {@link #totalCells()} stays the size of the world: structures that hold every cell, such as
+     * the environment's grid arrays and bit sets, are estimated from it. Structures that hold only
+     * occupied cells — persisted cells, owner indices, serialization buffers — are estimated from
+     * {@link #occupiedCells()}, which this method scales. The factories start with every cell
+     * occupied, the worst case; the "expected peak" estimation uses a lower fraction.
      *
      * @param occupancy Fraction of cells expected to be occupied (0.0–1.0).
-     * @return New SimulationParameters with adjusted totalCells.
+     * @return New SimulationParameters with the world size kept and occupiedCells scaled.
      */
     public SimulationParameters withCellOccupancy(double occupancy) {
-        long adjustedCells = Math.max(1, (long) (totalCells * occupancy));
+        if (!(occupancy >= 0.0 && occupancy <= 1.0)) {
+            throw new IllegalArgumentException("occupancy must lie between 0.0 and 1.0, got " + occupancy);
+        }
+        long occupied = Math.max(1, (long) (totalCells * occupancy));
         return new SimulationParameters(
-            environmentShape, adjustedCells, maxOrganisms,
+            environmentShape, totalCells, occupied, maxOrganisms,
             samplingInterval, accumulatedDeltaInterval,
             snapshotInterval, chunkInterval, estimatedDeltaRatio
         );
@@ -275,7 +355,7 @@ public record SimulationParameters(
      *   <li>Wrapper overhead: {@value #TICKDATA_WRAPPER_OVERHEAD} bytes</li>
      * </ul>
      *
-     * @return Estimated bytes per TickData at 100% environment occupancy and max organisms.
+     * @return Estimated bytes per TickData for the occupied cells and max organisms.
      */
     public long estimateBytesPerTick() {
         return estimateEnvironmentBytesPerTick() + estimateOrganismBytesPerTick() + TICKDATA_WRAPPER_OVERHEAD;
@@ -292,10 +372,10 @@ public record SimulationParameters(
      *   <li>Alignment: 8 bytes</li>
      * </ul>
      *
-     * @return Estimated bytes for all cells at 100% occupancy.
+     * @return Estimated bytes for all occupied cells.
      */
     public long estimateEnvironmentBytesPerTick() {
-        return (long) totalCells * BYTES_PER_CELL;
+        return occupiedCells * BYTES_PER_CELL;
     }
     
     /**
@@ -388,7 +468,7 @@ public record SimulationParameters(
      * @return Estimated bytes per delta.
      */
     public long estimateBytesPerDelta() {
-        long changedCells = (long) Math.ceil(totalCells * estimatedDeltaRatio);
+        long changedCells = (long) Math.ceil(occupiedCells * estimatedDeltaRatio);
         return changedCells * BYTES_PER_CELL 
              + (long) maxOrganisms * BYTES_PER_ORGANISM 
              + TICKDATA_WRAPPER_OVERHEAD;
@@ -406,13 +486,15 @@ public record SimulationParameters(
      * Note: This is worst-case for heap, not compressed storage size.
      *
      * @return Estimated bytes per chunk.
+     * @throws ArithmeticException if the chunk is so long that its bytes exceed a long; an
+     *                             estimate that wrapped would understate the need silently
      */
     public long estimateBytesPerChunk() {
         int numSnapshots = snapshotsPerChunk();
         int numDeltas = samplesPerChunk() - numSnapshots;
 
-        return (long) numSnapshots * estimateBytesPerTick()
-             + (long) numDeltas * estimateBytesPerDelta();
+        return Math.addExact(Math.multiplyExact((long) numSnapshots, estimateBytesPerTick()),
+                             Math.multiplyExact((long) numDeltas, estimateBytesPerDelta()));
     }
     
     /**
@@ -424,7 +506,7 @@ public record SimulationParameters(
      * @return Compression ratio (e.g., 10.0 = 10:1 compression).
      */
     public double estimateCompressionRatio() {
-        long uncompressedSize = (long) samplesPerChunk() * estimateBytesPerTick();
+        long uncompressedSize = Math.multiplyExact((long) samplesPerChunk(), estimateBytesPerTick());
         long compressedSize = estimateBytesPerChunk();
         if (compressedSize == 0) return 1.0;
         return (double) uncompressedSize / compressedSize;
@@ -441,10 +523,10 @@ public record SimulationParameters(
      * as opposed to {@link #estimateBytesPerTick()} which estimates Java heap
      * after deserialization. Used for estimating message broker memory overhead.
      *
-     * @return Estimated serialized bytes per TickData at worst-case occupancy.
+     * @return Estimated serialized bytes per TickData for the occupied cells.
      */
     public long estimateSerializedBytesPerTick() {
-        return totalCells * SERIALIZED_BYTES_PER_CELL
+        return occupiedCells * SERIALIZED_BYTES_PER_CELL
              + (long) maxOrganisms * SERIALIZED_BYTES_PER_ORGANISM
              + SERIALIZED_TICKDATA_WRAPPER_OVERHEAD;
     }
@@ -458,7 +540,7 @@ public record SimulationParameters(
      * @return Estimated serialized bytes per TickDelta.
      */
     public long estimateSerializedBytesPerDelta() {
-        long changedCells = (long) Math.ceil(totalCells * estimatedDeltaRatio);
+        long changedCells = (long) Math.ceil(occupiedCells * estimatedDeltaRatio);
         return changedCells * SERIALIZED_BYTES_PER_CELL
              + (long) maxOrganisms * SERIALIZED_BYTES_PER_ORGANISM
              + SERIALIZED_TICKDATA_WRAPPER_OVERHEAD;
@@ -472,13 +554,14 @@ public record SimulationParameters(
      * serialized messages on heap (e.g., PersistenceService with Artemis).
      *
      * @return Estimated serialized bytes per chunk.
+     * @throws ArithmeticException if the chunk is so long that its bytes exceed a long
      */
     public long estimateSerializedBytesPerChunk() {
         int numSnapshots = snapshotsPerChunk();
         int numDeltas = samplesPerChunk() - numSnapshots;
 
-        return (long) numSnapshots * estimateSerializedBytesPerTick()
-             + (long) numDeltas * estimateSerializedBytesPerDelta();
+        return Math.addExact(Math.multiplyExact((long) numSnapshots, estimateSerializedBytesPerTick()),
+                             Math.multiplyExact((long) numDeltas, estimateSerializedBytesPerDelta()));
     }
 
     // ========================================================================
@@ -494,6 +577,7 @@ public record SimulationParameters(
             sb.append(environmentShape[i]);
         }
         sb.append("], totalCells=").append(totalCells);
+        sb.append(", occupiedCells=").append(occupiedCells);
         sb.append(", maxOrganisms=").append(maxOrganisms);
         sb.append(", env=").append(formatBytes(estimateEnvironmentBytesPerTick()));
         sb.append(", org=").append(formatBytes(estimateOrganismBytesPerTick()));

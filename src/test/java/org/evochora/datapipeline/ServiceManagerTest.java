@@ -329,6 +329,41 @@ public class ServiceManagerTest {
     }
 
     @Test
+    void constructorRejectsInvalidEngineOptionsBeforeStartingAnything() {
+        // A node without a local engine still reads the engine's options for its memory estimate;
+        // an option the estimate cannot be built on fails the constructor, so no service exists yet.
+        Config config = ConfigFactory.parseString("""
+            pipeline {
+              autoStart = true
+              startupSequence = ["producer"]
+              resources {
+                "test-queue" {
+                  className = "org.evochora.datapipeline.resources.queues.InMemoryBlockingQueue"
+                  options { capacity = 100 }
+                }
+              }
+              services {
+                producer {
+                  className = "org.evochora.datapipeline.services.DummyProducerService"
+                  resources { output = "queue-out:test-queue?window=5" }
+                  options { intervalMs = 10, maxMessages = -1 }
+                }
+                "simulation-engine" {
+                  className = "org.evochora.datapipeline.services.SimulationEngine"
+                  options {
+                    environment { shape = [32, 32] }
+                    samplingInterval = 0
+                  }
+                }
+              }
+            }
+        """);
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
+                () -> new ServiceManager(config));
+        assertTrue(exception.getMessage().contains("samplingInterval"), exception.getMessage());
+    }
+
+    @Test
     @AllowLog(level = LogLevel.WARN, messagePattern = ".*")
     void testConcurrentLifecycleCalls() throws InterruptedException {
         ServiceManager sm = new ServiceManager(createTestConfig(true));

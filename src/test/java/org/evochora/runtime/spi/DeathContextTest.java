@@ -23,7 +23,7 @@ class DeathContextTest {
 
     @BeforeEach
     void setUp() {
-        environment = new Environment(new int[]{10, 10}, true);
+        environment = new Environment(new int[]{32, 32}, true);
         context = new DeathContext();
     }
 
@@ -48,10 +48,6 @@ class DeathContextTest {
             .hasMessageContaining("within forEachOwnedCell");
 
         assertThatThrownBy(() -> context.setMolecule(new Molecule(Config.TYPE_ENERGY, 100)))
-            .isInstanceOf(IllegalStateException.class)
-            .hasMessageContaining("within forEachOwnedCell");
-
-        assertThatThrownBy(() -> context.getFlatIndex())
             .isInstanceOf(IllegalStateException.class)
             .hasMessageContaining("within forEachOwnedCell");
     }
@@ -84,7 +80,7 @@ class DeathContextTest {
         context.reset(environment, 99);
 
         List<Integer> visited = new ArrayList<>();
-        context.forEachOwnedCell(() -> visited.add(context.getFlatIndex()));
+        context.forEachOwnedCell(() -> visited.add(context.getMolecule().value()));
 
         assertThat(visited).isEmpty();
     }

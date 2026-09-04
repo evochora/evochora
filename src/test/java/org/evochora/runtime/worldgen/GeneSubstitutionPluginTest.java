@@ -30,7 +30,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /**
  * Unit tests for {@link GeneSubstitutionPlugin}.
  * <p>
- * Tests use a 30x20 toroidal environment with a child organism owning molecules
+ * Tests use a 32x32 toroidal environment with a child organism owning molecules
  * of various types. Each test verifies that the type-specific mutation strategy
  * produces correct results within the expected constraints.
  */
@@ -54,7 +54,7 @@ class GeneSubstitutionPluginTest {
 
     @BeforeEach
     void setUp() {
-        environment = new Environment(new int[]{30, 20}, true);
+        environment = new Environment(new int[]{32, 32}, true);
 
         String thermoConfigStr = """
             default {

@@ -5,7 +5,9 @@ import org.evochora.datapipeline.api.contracts.DeltaType;
 import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.PluginState;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
+import org.evochora.runtime.label.PreExpandedHammingStrategy;
 import org.evochora.runtime.model.Environment;
+import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.runtime.model.Molecule;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -29,8 +31,8 @@ class DeltaCodecEncoderTest {
     
     @BeforeEach
     void setUp() {
-        // 10x10 environment = 100 cells
-        env = new Environment(new int[]{10, 10}, false);
+        // 32x32 environment = 1024 cells
+        env = new Environment(new int[]{32, 32}, false);
     }
     
     // ========================================================================
@@ -40,27 +42,27 @@ class DeltaCodecEncoderTest {
     @Test
     void constructor_invalidAccumulatedInterval_throws() {
         assertThrows(IllegalArgumentException.class, () ->
-                new DeltaCodec.Encoder(RUN_ID, 100, 0, 10, 1));
+                new DeltaCodec.Encoder(RUN_ID, 0, 10, 1));
     }
     
     @Test
     void constructor_invalidSnapshotInterval_throws() {
         assertThrows(IllegalArgumentException.class, () ->
-                new DeltaCodec.Encoder(RUN_ID, 100, 5, 0, 1));
+                new DeltaCodec.Encoder(RUN_ID, 5, 0, 1));
     }
     
     @Test
     void constructor_invalidChunkInterval_throws() {
         assertThrows(IllegalArgumentException.class, () ->
-                new DeltaCodec.Encoder(RUN_ID, 100, 5, 10, 0));
+                new DeltaCodec.Encoder(RUN_ID, 5, 10, 0));
     }
     
     @Test
     void getSamplesPerChunk_calculatesCorrectly() {
-        DeltaCodec.Encoder encoder = new DeltaCodec.Encoder(RUN_ID, 100, 5, 20, 1);
+        DeltaCodec.Encoder encoder = new DeltaCodec.Encoder(RUN_ID, 5, 20, 1);
         assertEquals(100, encoder.getSamplesPerChunk());  // 5 * 20 * 1
         
-        DeltaCodec.Encoder encoder2 = new DeltaCodec.Encoder(RUN_ID, 100, 2, 10, 3);
+        DeltaCodec.Encoder encoder2 = new DeltaCodec.Encoder(RUN_ID, 2, 10, 3);
         assertEquals(60, encoder2.getSamplesPerChunk());  // 2 * 10 * 3
     }
     
@@ -70,7 +72,7 @@ class DeltaCodecEncoderTest {
     
     @Test
     void captureTick_firstTick_createsSnapshot() {
-        DeltaCodec.Encoder encoder = new DeltaCodec.Encoder(RUN_ID, 100, 5, 20, 1);
+        DeltaCodec.Encoder encoder = new DeltaCodec.Encoder(RUN_ID, 5, 20, 1);
         
         // Set some cells
         env.setMolecule(Molecule.fromInt(100), new int[]{0, 0});
@@ -87,7 +89,7 @@ class DeltaCodecEncoderTest {
     void captureTick_atSnapshotInterval_createsSnapshot() {
         // With accumulatedDeltaInterval=2, snapshotInterval=2
         // Snapshots at sample 0, 4, 8, ...
-        DeltaCodec.Encoder encoder = new DeltaCodec.Encoder(RUN_ID, 100, 2, 2, 1);
+        DeltaCodec.Encoder encoder = new DeltaCodec.Encoder(RUN_ID, 2, 2, 1);
         
         // Sample 0: snapshot
         captureTick(encoder, 0);
@@ -121,7 +123,7 @@ class DeltaCodecEncoderTest {
     @Test
     void captureTick_incrementalDelta_hasIncrementalType() {
         // accumulatedDeltaInterval=5 means accumulated at 5, 10, 15, ...
-        DeltaCodec.Encoder encoder = new DeltaCodec.Encoder(RUN_ID, 100, 5, 20, 1);
+        DeltaCodec.Encoder encoder = new DeltaCodec.Encoder(RUN_ID, 5, 20, 1);
         
         // Sample 0: snapshot
         captureTick(encoder, 0);
@@ -141,7 +143,7 @@ class DeltaCodecEncoderTest {
     @Test
     void captureTick_accumulatedDelta_hasAccumulatedType() {
         // accumulatedDeltaInterval=2 means accumulated at 2, 4, 6, ...
-        DeltaCodec.Encoder encoder = new DeltaCodec.Encoder(RUN_ID, 100, 2, 10, 1);
+        DeltaCodec.Encoder encoder = new DeltaCodec.Encoder(RUN_ID, 2, 10, 1);
         
         // Sample 0: snapshot
         captureTick(encoder, 0);
@@ -165,7 +167,7 @@ class DeltaCodecEncoderTest {
     
     @Test
     void captureTick_accumulatedDelta_containsAllChangesSinceSnapshot() {
-        DeltaCodec.Encoder encoder = new DeltaCodec.Encoder(RUN_ID, 100, 2, 10, 1);
+        DeltaCodec.Encoder encoder = new DeltaCodec.Encoder(RUN_ID, 2, 10, 1);
         
         // Sample 0: snapshot
         env.setMolecule(Molecule.fromInt(10), new int[]{0, 0});
@@ -188,20 +190,78 @@ class DeltaCodecEncoderTest {
         assertEquals(2, accumulatedDelta.getChangedCells().getFlatIndicesCount());
     }
     
+    @Test
+    void captureTick_persistsCellsUnderTheirFlatIndex() {
+        // The environment numbers its cells in its own layout; persisted columns must carry the
+        // flat index, the row-major numbering of EnvironmentProperties, which every reader decodes with.
+        Environment tiled = new Environment(new EnvironmentProperties(new int[]{64, 64}, false),
+                new PreExpandedHammingStrategy(), 32);
+        DeltaCodec.Encoder encoder = new DeltaCodec.Encoder(RUN_ID, 2, 10, 1);
+        int[] snapshotCell = {33, 1};
+        int[] deltaCell = {2, 40};
+
+        tiled.setMolecule(Molecule.fromInt(100), snapshotCell);
+        captureTick(encoder, tiled, 0);
+        tiled.setMolecule(Molecule.fromInt(200), deltaCell);
+        captureTick(encoder, tiled, 1);
+
+        TickDataChunk chunk = encoder.flushPartialChunk().get();
+        var snapshotCells = chunk.getSnapshot().getCellColumns();
+        assertEquals(1, snapshotCells.getFlatIndicesCount());
+        assertEquals(tiled.properties.toFlatIndex(snapshotCell), snapshotCells.getFlatIndices(0));
+        var deltaCells = chunk.getDeltas(0).getChangedCells();
+        assertEquals(1, deltaCells.getFlatIndicesCount());
+        assertEquals(tiled.properties.toFlatIndex(deltaCell), deltaCells.getFlatIndices(0));
+    }
+
+    @Test
+    void captureTick_listsCellsInAscendingFlatIndexOrderWhateverTheLayout() {
+        // Two environments with different memory layouts must persist the same world as the same
+        // bytes: the cells appear under their flat index, in ascending flat-index order.
+        Environment rowMajor = new Environment(new EnvironmentProperties(new int[]{64, 64}, false),
+                new PreExpandedHammingStrategy(), 1);
+        Environment tiled = new Environment(new EnvironmentProperties(new int[]{64, 64}, false),
+                new PreExpandedHammingStrategy(), 32);
+        int[][] cells = {{40, 1}, {1, 40}, {33, 33}, {0, 0}, {63, 63}, {2, 0}};
+        for (int[] cell : cells) {
+            rowMajor.setMolecule(Molecule.fromInt(100 + cell[0]), cell);
+            tiled.setMolecule(Molecule.fromInt(100 + cell[0]), cell);
+        }
+        DeltaCodec.Encoder rowMajorEncoder = new DeltaCodec.Encoder(RUN_ID, 2, 10, 1);
+        DeltaCodec.Encoder tiledEncoder = new DeltaCodec.Encoder(RUN_ID, 2, 10, 1);
+        captureTick(rowMajorEncoder, rowMajor, 0);
+        captureTick(tiledEncoder, tiled, 0);
+        for (int[] cell : new int[][]{{50, 5}, {5, 50}}) {
+            rowMajor.setMolecule(Molecule.fromInt(7), cell);
+            tiled.setMolecule(Molecule.fromInt(7), cell);
+        }
+        captureTick(rowMajorEncoder, rowMajor, 1);
+        captureTick(tiledEncoder, tiled, 1);
+
+        TickDataChunk expected = rowMajorEncoder.flushPartialChunk().get();
+        TickDataChunk actual = tiledEncoder.flushPartialChunk().get();
+        var snapshot = actual.getSnapshot().getCellColumns();
+        for (int i = 1; i < snapshot.getFlatIndicesCount(); i++) {
+            assertTrue(snapshot.getFlatIndices(i - 1) < snapshot.getFlatIndices(i), "ascending flat-index order");
+        }
+        assertEquals(expected.getSnapshot().getCellColumns(), snapshot);
+        assertEquals(expected.getDeltas(0).getChangedCells(), actual.getDeltas(0).getChangedCells());
+    }
+
     // ========================================================================
     // Flush Partial Chunk
     // ========================================================================
     
     @Test
     void flushPartialChunk_noData_returnsEmpty() {
-        DeltaCodec.Encoder encoder = new DeltaCodec.Encoder(RUN_ID, 100, 5, 20, 1);
+        DeltaCodec.Encoder encoder = new DeltaCodec.Encoder(RUN_ID, 5, 20, 1);
         
         assertFalse(encoder.flushPartialChunk().isPresent());
     }
     
     @Test
     void flushPartialChunk_withData_returnsPartialChunk() {
-        DeltaCodec.Encoder encoder = new DeltaCodec.Encoder(RUN_ID, 100, 5, 20, 1);
+        DeltaCodec.Encoder encoder = new DeltaCodec.Encoder(RUN_ID, 5, 20, 1);
         
         // Capture a few ticks (not enough for complete chunk)
         captureTick(encoder, 0);  // snapshot
@@ -218,7 +278,7 @@ class DeltaCodecEncoderTest {
     
     @Test
     void flushPartialChunk_clearsState() {
-        DeltaCodec.Encoder encoder = new DeltaCodec.Encoder(RUN_ID, 100, 5, 20, 1);
+        DeltaCodec.Encoder encoder = new DeltaCodec.Encoder(RUN_ID, 5, 20, 1);
         
         captureTick(encoder, 0);
         assertTrue(encoder.hasPartialChunk());
@@ -237,7 +297,7 @@ class DeltaCodecEncoderTest {
     void captureTick_multipleChunks_workCorrectly() {
         // Small intervals for easy testing: 1 accumulated, 2 snapshots, 1 chunk
         // = 2 samples per chunk
-        DeltaCodec.Encoder encoder = new DeltaCodec.Encoder(RUN_ID, 100, 1, 2, 1);
+        DeltaCodec.Encoder encoder = new DeltaCodec.Encoder(RUN_ID, 1, 2, 1);
 
         // Chunk 1: samples 0, 1
         env.setMolecule(Molecule.fromInt(10), new int[]{0, 0});
@@ -268,7 +328,7 @@ class DeltaCodecEncoderTest {
         // accumulatedDeltaInterval=2, snapshotInterval=2, chunkInterval=2
         // samplesPerSnapshot = 2 * 2 = 4
         // samplesPerChunk = 4 * 2 = 8
-        DeltaCodec.Encoder encoder = new DeltaCodec.Encoder(RUN_ID, 100, 2, 2, 2);
+        DeltaCodec.Encoder encoder = new DeltaCodec.Encoder(RUN_ID, 2, 2, 2);
         assertEquals(8, encoder.getSamplesPerChunk());
 
         // Capture 8 samples (ticks 0-7)
@@ -322,7 +382,7 @@ class DeltaCodecEncoderTest {
         // accumulatedDeltaInterval=1, snapshotInterval=2, chunkInterval=3
         // samplesPerSnapshot = 1 * 2 = 2
         // samplesPerChunk = 2 * 3 = 6
-        DeltaCodec.Encoder encoder = new DeltaCodec.Encoder(RUN_ID, 100, 1, 2, 3);
+        DeltaCodec.Encoder encoder = new DeltaCodec.Encoder(RUN_ID, 1, 2, 3);
         assertEquals(6, encoder.getSamplesPerChunk());
 
         // Capture 6 samples
@@ -348,17 +408,17 @@ class DeltaCodecEncoderTest {
     
     @Test
     void captureTick_resetsChangeTracking() {
-        DeltaCodec.Encoder encoder = new DeltaCodec.Encoder(RUN_ID, 100, 5, 20, 1);
+        DeltaCodec.Encoder encoder = new DeltaCodec.Encoder(RUN_ID, 5, 20, 1);
         
         // Make a change
         env.setMolecule(Molecule.fromInt(100), new int[]{5, 5});
-        assertEquals(1, env.getChangedIndices().cardinality());
+        assertEquals(1, changedSinceLastSample());
         
         // Capture tick - should reset
         captureTick(encoder, 0);
         
         // Change tracking should be reset
-        assertEquals(0, env.getChangedIndices().cardinality());
+        assertEquals(0, changedSinceLastSample());
     }
     
     // ========================================================================
@@ -366,9 +426,19 @@ class DeltaCodecEncoderTest {
     // ========================================================================
     
     private Optional<TickDataChunk> captureTick(DeltaCodec.Encoder encoder, long tick) {
+        return captureTick(encoder, env, tick);
+    }
+
+    private int changedSinceLastSample() {
+        int[] count = {0};
+        env.forEachCellChangedSinceLastSample((index, molecule, owner) -> count[0]++);
+        return count[0];
+    }
+
+    private Optional<TickDataChunk> captureTick(DeltaCodec.Encoder encoder, Environment environment, long tick) {
         return encoder.captureTick(
                 tick,
-                env,
+                environment,
                 List.of(OrganismState.newBuilder().setOrganismId(1).setEnergy(100).build()),
                 1,
                 0L,

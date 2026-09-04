@@ -14,7 +14,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
-import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
 
 /**
  * Gene duplication birth handler inspired by Ohno's (1970) model of evolution through gene duplication.
@@ -29,10 +28,12 @@ import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
  * is chosen as the target for NOP area search, and a random LABEL is selected as the source via reservoir
  * sampling.
  * <p>
- * <strong>Performance:</strong> Near-zero allocation after warmup. Reusable coordinate buffers,
- * ScanLineInfo pooling, direct bit extraction from packed molecule ints, and self-computed strides
- * for flat index calculation minimize GC pressure. The owned-cell iteration is O(n) where n is
- * typically 1000-3000, running at most a few times per tick.
+ * <strong>Performance:</strong> Near-zero allocation after warmup. The owned cells are visited
+ * through the environment's cell views; reusable coordinate buffers, ScanLineInfo pooling and direct
+ * bit extraction from packed molecule ints minimize GC pressure. The only per-call allocations are
+ * one {@code getShape()} defensive copy and the two visitor lambdas (one per owned-cell pass).
+ * The owned-cell iteration is O(n) where n is typically 1000-3000, running at most a few times
+ * per tick.
  * <p>
  * <strong>Thread Safety:</strong> Not thread-safe. Runs in the sequential post-Execute phase of
  * {@code Simulation.tick()}.
@@ -51,7 +52,6 @@ public class GeneDuplicationPlugin implements IBirthHandler {
     private int[] coordBuffer;
     private int[] sourcePos;
     private int[] targetPos;
-    private int[] strides;
     private int[] perpStrides;
 
     // Scan line map and pool (reused across duplicate() calls)
@@ -71,7 +71,7 @@ public class GeneDuplicationPlugin implements IBirthHandler {
         int minDv;
         /** Maximum DV-dimension coordinate on this scan line. */
         int maxDv;
-        /** Any flat index on this scan line, for coordinate reconstruction. */
+        /** The flat index of one owned cell on this scan line, for coordinate reconstruction. */
         int sampleFlatIndex;
         /** Number of owned cells on this scan line. */
         int count;
@@ -79,6 +79,10 @@ public class GeneDuplicationPlugin implements IBirthHandler {
         int walkStart;
         /** End of the shortest arc containing all owned cells (inclusive). */
         int walkEnd;
+        /** Start of this line's segment in the shared DV coordinate buffer while walk ranges are resolved. */
+        int segmentStart;
+        /** Number of DV coordinates already placed in this line's segment. */
+        int segmentFill;
         /** Start of the largest NOP run (DV coordinate), or -1 if none found. */
         int bestNopStart;
         /** Length of the largest NOP run, or 0 if none found. */
@@ -163,8 +167,7 @@ public class GeneDuplicationPlugin implements IBirthHandler {
      */
     void duplicate(Organism child, Environment env) {
         int childId = child.getId();
-        IntOpenHashSet owned = env.getCellsOwnedBy(childId);
-        if (owned == null || owned.isEmpty()) {
+        if (env.countCellsOwnedBy(childId) == 0) {
             LOG.debug("tick={} Organism {} selected for duplication but has no owned cells", child.getBirthTick(), childId);
             return;
         }
@@ -187,7 +190,6 @@ public class GeneDuplicationPlugin implements IBirthHandler {
         }
 
         ensureBuffers(dims);
-        computeStrides(shape, dims);
         computePerpStrides(shape, dims, dvDim);
 
         // --- Step 2: Group owned cells by scan line + reservoir sample a label ---
@@ -200,9 +202,9 @@ public class GeneDuplicationPlugin implements IBirthHandler {
 
         final int dvDimFinal = dvDim;
 
-        // Canonical (index) order: the reservoir choice below must not depend on write history
-        env.forEachCellOwnedByInIndexOrder(childId, (int flatIndex) -> {
-            env.properties.flatIndexToCoordinates(flatIndex, coordBuffer);
+        // The visit runs in flat-index order: the reservoir choice below must not depend on write history
+        env.visitCellsOwnedBy(childId, cell -> {
+            System.arraycopy(cell.coordinate(), 0, coordBuffer, 0, coordBuffer.length);
 
             int perpKey = computePerpKey(coordBuffer, dvDimFinal);
             int dvCoord = coordBuffer[dvDimFinal];
@@ -210,14 +212,14 @@ public class GeneDuplicationPlugin implements IBirthHandler {
             ScanLineInfo scanLine = scanLineMap.get(perpKey);
             if (scanLine == null) {
                 scanLine = acquireFromPool();
-                scanLine.reset(dvCoord, flatIndex);
+                scanLine.reset(dvCoord, env.properties.toFlatIndex(coordBuffer));
                 scanLineMap.put(perpKey, scanLine);
             } else {
                 scanLine.update(dvCoord);
             }
 
             // Reservoir sampling for label selection
-            int moleculeInt = env.getMoleculeInt(flatIndex);
+            int moleculeInt = cell.moleculeInt();
             if ((moleculeInt & Config.TYPE_MASK) == Config.TYPE_LABEL) {
                 labelState[2]++;
                 if (random.nextInt(labelState[2]) == 0) {
@@ -227,12 +229,14 @@ public class GeneDuplicationPlugin implements IBirthHandler {
             }
         });
 
-        resolveWalkRanges(owned, env, dvDimFinal, shape[dvDimFinal]);
+        resolveWalkRanges(childId, env, dvDimFinal, shape[dvDimFinal]);
 
         int labelCount = labelState[2];
         if (labelCount == 0) {
-            LOG.debug("tick={} Organism {} selected for duplication: {} owned cells, {} scan lines, 0 labels — skipping",
-                    child.getBirthTick(), childId, owned.size(), scanLineMap.size());
+            if (LOG.isDebugEnabled()) {
+                LOG.debug("tick={} Organism {} selected for duplication: {} owned cells, {} scan lines, 0 labels — skipping",
+                        child.getBirthTick(), childId, env.countCellsOwnedBy(childId), scanLineMap.size());
+            }
             return; // no labels found
         }
 
@@ -301,8 +305,7 @@ public class GeneDuplicationPlugin implements IBirthHandler {
         }
 
         for (int i = 0; i < copyLength; i++) {
-            int srcFlatIdx = computeFlatIndex(sourcePos);
-            int srcMoleculeInt = env.getMoleculeInt(srcFlatIdx);
+            int srcMoleculeInt = env.getMoleculeIntAt(sourcePos);
             Molecule molecule = Molecule.fromInt(srcMoleculeInt);
             int ownerId = (srcMoleculeInt == 0) ? 0 : childId;
             env.setMolecule(molecule, ownerId, targetPos);
@@ -346,21 +349,7 @@ public class GeneDuplicationPlugin implements IBirthHandler {
             coordBuffer = new int[dims];
             sourcePos = new int[dims];
             targetPos = new int[dims];
-            strides = new int[dims];
             perpStrides = new int[dims];
-        }
-    }
-
-    /**
-     * Computes row-major strides from the world shape.
-     *
-     * @param shape The world shape array.
-     * @param dims Number of dimensions.
-     */
-    private void computeStrides(int[] shape, int dims) {
-        strides[dims - 1] = 1;
-        for (int i = dims - 2; i >= 0; i--) {
-            strides[i] = strides[i + 1] * shape[i + 1];
         }
     }
 
@@ -399,20 +388,6 @@ public class GeneDuplicationPlugin implements IBirthHandler {
     }
 
     /**
-     * Computes a flat index from coordinates using pre-computed strides.
-     *
-     * @param coord The coordinate array.
-     * @return The flat index.
-     */
-    private int computeFlatIndex(int[] coord) {
-        int index = 0;
-        for (int i = 0; i < coord.length; i++) {
-            index += coord[i] * strides[i];
-        }
-        return index;
-    }
-
-    /**
      * Scans a scan line for the largest contiguous run of empty cells (CODE:0, marker:0).
      * Results are stored in the ScanLineInfo's bestNopStart/bestNopLength fields.
      * <p>
@@ -439,8 +414,7 @@ public class GeneDuplicationPlugin implements IBirthHandler {
         int dvPos = line.walkStart;
         for (int step = 0; step < arcLength; step++) {
             coordBuffer[dvDim] = dvPos;
-            int flatIdx = computeFlatIndex(coordBuffer);
-            int moleculeInt = env.getMoleculeInt(flatIdx);
+            int moleculeInt = env.getMoleculeIntAt(coordBuffer);
 
             if (moleculeInt == 0) {
                 if (nopRunStart == -1) {
@@ -474,17 +448,17 @@ public class GeneDuplicationPlugin implements IBirthHandler {
      * DV coordinates of owned cells on that scan line, sorts them, and finds the largest gap to
      * determine the correct shortest arc.
      *
-     * @param owned The child's owned cell set.
+     * @param childId The newborn whose owned cells were grouped into scan lines.
      * @param env The simulation environment.
      * @param dvDim The DV dimension index.
      * @param shapeDvDim The environment size along the DV dimension.
      */
-    private void resolveWalkRanges(IntOpenHashSet owned, Environment env, int dvDim, int shapeDvDim) {
+    private void resolveWalkRanges(int childId, Environment env, int dvDim, int shapeDvDim) {
         boolean anyWrapping = false;
         for (ScanLineInfo line : scanLineMap.values()) {
             line.walkStart = line.minDv;
             line.walkEnd = line.maxDv;
-            if (line.maxDv - line.minDv + 1 >= shapeDvDim - 1) {
+            if (line.maxDv - line.minDv + 1 > shapeDvDim / 2) {
                 anyWrapping = true;
             }
         }
@@ -493,45 +467,47 @@ public class GeneDuplicationPlugin implements IBirthHandler {
             return;
         }
 
+        // One pass over the child's cells groups the DV coordinates by scan line: every line owns
+        // a segment of one shared buffer, starting at its offset, sized by its cell count.
+        int total = 0;
+        for (ScanLineInfo line : scanLineMap.values()) {
+            line.segmentStart = total;
+            line.segmentFill = 0;
+            total += line.count;
+        }
+        ensureDvCollector(total);
         final int dvDimF = dvDim;
-        for (var entry : scanLineMap.int2ObjectEntrySet()) {
-            ScanLineInfo line = entry.getValue();
+        env.visitCellsOwnedBy(childId, cell -> {
+            System.arraycopy(cell.coordinate(), 0, coordBuffer, 0, coordBuffer.length);
+            ScanLineInfo line = scanLineMap.get(computePerpKey(coordBuffer, dvDimF));
+            dvCoordCollector[line.segmentStart + line.segmentFill++] = coordBuffer[dvDimF];
+        });
+
+        for (ScanLineInfo line : scanLineMap.values()) {
             if (line.maxDv - line.minDv + 1 <= shapeDvDim / 2) {
                 continue;
             }
-
-            int perpKey = entry.getIntKey();
-            ensureDvCollector(line.count);
-            final int targetPK = perpKey;
-            final int[] idx = {0};
-
-            owned.forEach((int flatIndex) -> {
-                env.properties.flatIndexToCoordinates(flatIndex, coordBuffer);
-                if (computePerpKey(coordBuffer, dvDimF) == targetPK) {
-                    dvCoordCollector[idx[0]++] = coordBuffer[dvDimF];
-                }
-            });
-
-            int count = idx[0];
-            Arrays.sort(dvCoordCollector, 0, count);
+            int from = line.segmentStart;
+            int count = line.count;
+            Arrays.sort(dvCoordCollector, from, from + count);
 
             int largestGap = 0;
             int gapAfterIdx = 0;
             for (int i = 1; i < count; i++) {
-                int gap = dvCoordCollector[i] - dvCoordCollector[i - 1];
+                int gap = dvCoordCollector[from + i] - dvCoordCollector[from + i - 1];
                 if (gap > largestGap) {
                     largestGap = gap;
                     gapAfterIdx = i;
                 }
             }
 
-            int wrapGap = dvCoordCollector[0] + shapeDvDim - dvCoordCollector[count - 1];
+            int wrapGap = dvCoordCollector[from] + shapeDvDim - dvCoordCollector[from + count - 1];
             if (wrapGap > largestGap) {
                 gapAfterIdx = 0;
             }
 
-            line.walkStart = dvCoordCollector[gapAfterIdx];
-            line.walkEnd = dvCoordCollector[(gapAfterIdx - 1 + count) % count];
+            line.walkStart = dvCoordCollector[from + gapAfterIdx];
+            line.walkEnd = dvCoordCollector[from + (gapAfterIdx - 1 + count) % count];
         }
     }
 

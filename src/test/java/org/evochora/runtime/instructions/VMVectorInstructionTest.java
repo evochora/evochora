@@ -33,7 +33,7 @@ public class VMVectorInstructionTest {
 
     @BeforeEach
     void setUp() {
-        environment = new Environment(new int[]{100, 100}, true);
+        environment = new Environment(new int[]{96, 96}, true);
         sim = SimulationTestUtils.createSimulation(environment);
         org = Organism.create(sim, startPos, 2000);
         sim.addOrganism(org);
@@ -197,7 +197,7 @@ public class VMVectorInstructionTest {
     @Test
     @Tag("unit")
     void testRtri3dOtherAxesUnaffected() {
-        Environment env3d = new Environment(new int[]{50, 50, 50}, true);
+        Environment env3d = new Environment(new int[]{64, 64, 64}, true);
         Simulation sim3d = SimulationTestUtils.createSimulation(env3d);
         Organism org3d = Organism.create(sim3d, new int[]{5, 5, 5}, 2000);
         sim3d.addOrganism(org3d);

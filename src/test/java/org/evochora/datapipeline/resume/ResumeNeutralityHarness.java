@@ -160,9 +160,18 @@ final class ResumeNeutralityHarness {
      * @return the assembled fixture, without any organisms yet
      */
     static Fixture newFixture(String configJson, int size, int parallelism) {
+        return newFixture(configJson, size, parallelism, Environment.TILE_SIDE);
+    }
+
+    /**
+     * As {@link #newFixture(String, int, int)}, with the grid laid out in tiles of the given side.
+     * The layout is not part of the simulation contract, so a scenario run under two tile sides
+     * must produce the same trajectory.
+     */
+    static Fixture newFixture(String configJson, int size, int parallelism, int tileSide) {
         Config config = ConfigFactory.parseString(configJson);
         Environment env = new Environment(new EnvironmentProperties(new int[]{size, size}, true),
-                Environment.createLabelMatchingStrategy(config.getConfig("runtime.label-matching")));
+                Environment.createLabelMatchingStrategy(config.getConfig("runtime.label-matching")), tileSide);
         Simulation sim = new Simulation(env,
                 new ThermodynamicPolicyManager(config.getConfig("runtime.thermodynamics")),
                 config.getConfig("runtime.organism"), parallelism);
@@ -228,8 +237,7 @@ final class ResumeNeutralityHarness {
         // The engine labels the state after simulation tick T with T, while the simulation's own
         // counter already stands at T + 1 at that point; the snapshot must carry the engine's label.
         long snapshotTick = live.getCurrentTick() - 1;
-        DeltaCodec.Encoder encoder = new DeltaCodec.Encoder(
-                "resume-test", (int) live.getEnvironment().getTotalCells(), 1, 1, 1);
+        DeltaCodec.Encoder encoder = new DeltaCodec.Encoder("resume-test", 1, 1, 1);
         Optional<TickDataChunk> chunk = encoder.captureTick(
                 snapshotTick, live.getEnvironment(), states,
                 live.getTotalOrganismsCreatedCount(), live.getTotalUniqueGenomesCount(),
@@ -352,18 +360,15 @@ final class ResumeNeutralityHarness {
             .toString();
     }
 
-    /** Every occupied cell of the world, so a molecule restored to the wrong place shows up. */
+    /**
+     * Every occupied cell of the world, so a molecule restored to the wrong place shows up. Cells
+     * are listed under their flat index, so that two environments with different memory
+     * layouts describe the same world identically.
+     */
     static String describe(Environment environment) {
         StringBuilder line = new StringBuilder(256).append("world=");
-        int totalCells = environment.getTotalCells();
-        for (int index = 0; index < totalCells; index++) {
-            int[] coord = environment.getCoordinateFromIndex(index);
-            int molecule = environment.getMolecule(coord).toInt();
-            int owner = environment.getOwnerId(coord);
-            if (molecule != 0 || owner != 0) {
-                line.append(index).append(':').append(molecule).append('/').append(owner).append(' ');
-            }
-        }
+        environment.forEachOccupiedCellInFlatIndexOrder((flatIndex, molecule, owner) ->
+                line.append(flatIndex).append(':').append(molecule).append('/').append(owner).append(' '));
         return line.toString();
     }
 

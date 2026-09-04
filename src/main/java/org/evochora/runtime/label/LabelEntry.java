@@ -5,14 +5,18 @@ package org.evochora.runtime.label;
  * <p>
  * A label entry contains all information needed for fuzzy jump matching:
  * <ul>
- *   <li>{@code flatIndex}: The flat grid index where the label is located</li>
+ *   <li>{@code flatIndex}: The flat index of the cell holding the label, its persisted row-major
+ *       index from {@code EnvironmentProperties} and a pure function of its coordinate; candidate
+ *       lists are ordered by it, so that candidate order does not depend on the grid's memory
+ *       layout</li>
  *   <li>{@code owner}: The owner ID of the cell containing the label</li>
  *   <li>{@code marker}: The marker value (non-zero indicates transfer-in-progress)</li>
  * </ul>
  * <p>
- * The position can be reconstructed from flatIndex using {@code Environment.getCoordinateFromIndex()}.
+ * The position can be reconstructed from the flat index with
+ * {@code EnvironmentProperties.flatIndexToCoordinates()}.
  *
- * @param flatIndex The flat index in the environment grid
+ * @param flatIndex The flat index of the cell holding the label
  * @param owner The owner ID of the cell
  * @param marker The marker value (0 = normal, non-zero = transfer marker)
  */

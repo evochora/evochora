@@ -30,6 +30,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import com.typesafe.config.Config;
+import org.evochora.datapipeline.api.memory.MemoryEstimate;
+import org.evochora.datapipeline.api.memory.SimulationParameters;
 import com.typesafe.config.ConfigFactory;
 import com.typesafe.config.ConfigValueFactory;
 
@@ -100,7 +102,7 @@ class SimulationEngineTest {
         return ConfigFactory.parseMap(Map.of(
                 "samplingInterval", 1,
                 "environment", Map.of(
-                        "shape", List.of(10, 10),
+                        "shape", List.of(32, 32),
                         "topology", "TORUS"
                 ),
                 "organisms", List.of(Map.of(
@@ -120,7 +122,7 @@ class SimulationEngineTest {
     void constructor_shouldThrowException_whenOrganismsAreMissing() {
         Config emptyConfig = ConfigFactory.parseMap(Map.of(
                 "organisms", Collections.emptyList(),
-                "environment", Map.of("shape", List.of(10, 10), "topology", "TORUS"),
+                "environment", Map.of("shape", List.of(32, 32), "topology", "TORUS"),
                 "plugins", Collections.emptyList()
         ));
         IllegalArgumentException exception = assertThrows(
@@ -244,6 +246,75 @@ class SimulationEngineTest {
     }
 
     @Test
+    void memoryEstimate_pricesTheOwnedCellVisitBuffersByTheConfiguredLargestOrganism() {
+        Config config = createValidConfig().withValue("maxCellsPerOrganism", ConfigValueFactory.fromAnyRef(50_000));
+        SimulationEngine engine = new SimulationEngine("test-engine", config, resources);
+        SimulationParameters params = SimulationParameters.of(new int[]{32, 32}, 10);
+
+        MemoryEstimate tracking = engine.estimateWorstCaseMemory(params).stream()
+                .filter(e -> e.componentName().endsWith("(Environment tracking)"))
+                .findFirst().orElseThrow();
+        assertTrue(tracking.explanation().contains("owned-cell visit buffers (50000 cells per organism × 24 bytes)"),
+                tracking.explanation());
+        assertTrue(tracking.estimatedBytes() >= 50_000L * 24, "the buffers are part of the total");
+    }
+
+    @Test
+    void constructor_shouldRejectEveryRunOptionOutsideItsRange() {
+        assertRejected("accumulatedDeltaInterval", 0, "accumulatedDeltaInterval must be >= 1");
+        assertRejected("snapshotInterval", 0, "snapshotInterval must be >= 1");
+        assertRejected("chunkInterval", -1, "chunkInterval must be >= 1");
+        assertRejected("organismDensityFactor", -0.5, "organismDensityFactor must be >= 0, got -0.5");
+        assertRejected("estimatedDeltaRatio", 1.5, "estimatedDeltaRatio must lie between 0.0 and 1.0, got 1.5");
+        Config overflowing = createValidConfig()
+                .withValue("accumulatedDeltaInterval", ConfigValueFactory.fromAnyRef(Integer.MAX_VALUE))
+                .withValue("snapshotInterval", ConfigValueFactory.fromAnyRef(2));
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
+                () -> new SimulationEngine("test-engine", overflowing, resources));
+        assertTrue(exception.getMessage().startsWith("samplingInterval × accumulatedDeltaInterval"), exception.getMessage());
+    }
+
+    private void assertRejected(String option, Object value, String expectedMessage) {
+        Config config = createValidConfig().withValue(option, ConfigValueFactory.fromAnyRef(value));
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class,
+                () -> new SimulationEngine("test-engine", config, resources)
+        );
+        assertEquals(expectedMessage, exception.getMessage());
+    }
+
+    @Test
+    void memoryEstimate_failsInsteadOfWrappingForAnAbsurdlyLongChunk() {
+        SimulationEngine engine = new SimulationEngine("test-engine", createValidConfig(), resources);
+        SimulationParameters absurd = new SimulationParameters(
+                new int[]{32768, 65504}, 32768L * 65504L, 32768L * 65504L, 10, 1, 1, 1, Integer.MAX_VALUE, 0.1);
+        assertThrows(ArithmeticException.class, () -> engine.estimateWorstCaseMemory(absurd));
+    }
+
+    @Test
+    void constructor_shouldRejectAMaxCellsPerOrganismBelowOne() {
+        Config config = createValidConfig().withValue("maxCellsPerOrganism", ConfigValueFactory.fromAnyRef(0));
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class,
+                () -> new SimulationEngine("test-engine", config, resources)
+        );
+        assertEquals("maxCellsPerOrganism must be >= 1", exception.getMessage());
+    }
+
+    @Test
+    void constructor_shouldRejectShapeThatIsNotAMultipleOfTheTileSide() {
+        Config config = createValidConfig().withValue(
+                "environment.shape",
+                ConfigValueFactory.fromAnyRef(List.of(32, 40))
+        );
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class,
+                () -> new SimulationEngine("test-engine", config, resources)
+        );
+        assertEquals("environment.shape[1] must be a multiple of 32, got 40", exception.getMessage());
+    }
+
+    @Test
     void constructor_shouldAcceptBoundedTopology() {
         Config config = createValidConfig().withValue(
                 "environment.topology",
@@ -258,7 +329,7 @@ class SimulationEngineTest {
         Files.copy(Path.of("src/test/resources/org/evochora/datapipeline/services/simple_1d.evo"), program1D, StandardCopyOption.REPLACE_EXISTING);
         
         Config config = createValidConfig()
-                .withValue("environment.shape", ConfigValueFactory.fromAnyRef(List.of(20)))
+                .withValue("environment.shape", ConfigValueFactory.fromAnyRef(List.of(32)))
                 .withValue("organisms", ConfigValueFactory.fromAnyRef(List.of(Map.of(
                         "program", program1D.toString(),
                         "initialEnergy", 1000,
@@ -273,7 +344,7 @@ class SimulationEngineTest {
         Files.copy(Path.of("src/test/resources/org/evochora/datapipeline/services/simple_3d.evo"), program3D, StandardCopyOption.REPLACE_EXISTING);
         
         Config config = createValidConfig()
-                .withValue("environment.shape", ConfigValueFactory.fromAnyRef(List.of(10, 10, 10)))
+                .withValue("environment.shape", ConfigValueFactory.fromAnyRef(List.of(32, 32, 32)))
                 .withValue("organisms", ConfigValueFactory.fromAnyRef(List.of(Map.of(
                         "program", program3D.toString(),
                         "initialEnergy", 1000,

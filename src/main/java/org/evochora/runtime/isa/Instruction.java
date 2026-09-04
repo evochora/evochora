@@ -423,7 +423,7 @@ public abstract class Instruction {
         if (targetFlatIndex < 0) {
             return null;
         }
-        return environment.getCoordinateFromIndex(targetFlatIndex);
+        return environment.getProperties().flatIndexToCoordinates(targetFlatIndex);
     }
 
     /**

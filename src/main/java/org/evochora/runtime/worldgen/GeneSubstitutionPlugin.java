@@ -6,7 +6,6 @@ import java.util.Random;
 
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
-import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.isa.OpcodeId;
@@ -41,10 +40,11 @@ import org.slf4j.LoggerFactory;
  * the same arity group (0-arg, 1-arg, 2-arg, 3-arg), so instruction length never changes.
  * Every mutation result is guaranteed to be a registered opcode.
  * <p>
- * <strong>Performance:</strong> Near-zero allocation after warmup. The entire operation works
- * on flat indices (no coordinate buffers), uses a single-pass reservoir sampling (no list
- * collection), and pre-computed O(1) lookup tables for CODE mutation. The only per-call
- * allocation is one {@link Molecule} record for the write-back.
+ * <strong>Performance:</strong> Near-zero allocation after warmup. The owned cells are visited
+ * through the environment's cell views in a single reservoir-sampling pass (no list collection),
+ * the reservoir state and the coordinate of the chosen cell live in reusable fields, and CODE
+ * mutation uses pre-computed O(1) lookup tables. The only per-call allocations are the visitor
+ * lambda and one {@link Molecule} record for the write-back.
  * <p>
  * <strong>Thread Safety:</strong> Not thread-safe. Runs in the sequential post-Execute phase of
  * {@code Simulation.tick()}.
@@ -87,6 +87,20 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
     private final Int2ObjectOpenHashMap<int[]> operationFlipAlternatives;
     private final Int2ObjectOpenHashMap<int[]> familyFlipAlternatives;
     private final Int2ObjectOpenHashMap<int[]> variantFlipAlternatives;
+
+    // --- Reservoir state, reused across births (only the visitor lambda and the written molecule are allocated per call) ---
+    /** Whether the reservoir holds a candidate cell. */
+    private boolean cellChosen;
+    /** Type bits (unshifted, as in the packed molecule int) of the candidate cell. */
+    private int chosenType;
+    /** Raw 20-bit value of the candidate cell. */
+    private int chosenRawValue;
+    /** Marker of the candidate cell. */
+    private int chosenMarker;
+    /** Sum of the weights seen so far during the weighted reservoir walk. */
+    private double weightSum;
+    /** Coordinate of the candidate cell; sized from the world's dimension count on first use. */
+    private int[] chosen;
 
     /**
      * Creates a gene substitution plugin from configuration.
@@ -183,27 +197,29 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
      * <p>
      * Iterates the child's owned cells via weighted reservoir sampling to select one random
      * non-empty code-encoding molecule, then applies a type-specific mutation and writes
-     * the new value back via {@link Environment#setMoleculeByIndex}.
+     * the new value back via {@link Environment#setMoleculeAt(int[], Molecule)}.
      *
      * @param child The newborn organism.
      * @param env The simulation environment.
      */
     void substitute(Organism child, Environment env) {
         int childId = child.getId();
-        IntOpenHashSet owned = env.getCellsOwnedBy(childId);
-        if (owned == null || owned.isEmpty()) {
+        if (env.countCellsOwnedBy(childId) == 0) {
             LOG.debug("tick={} Organism {} gene substitution: no owned cells", child.getBirthTick(), childId);
             return;
         }
 
-        // Weighted reservoir sampling — state captured via arrays for lambda
-        // [0]=flatIndex, [1]=type (shifted), [2]=raw value, [3]=marker
-        final int[] state = {-1, 0, 0, 0};
-        final double[] ws = {0.0};
+        int dims = env.getProperties().getDimensions();
+        if (chosen == null || chosen.length != dims) {
+            chosen = new int[dims];
+        }
+        cellChosen = false;
+        weightSum = 0.0;
 
-        // Canonical (index) order: the reservoir choice below must not depend on write history
-        env.forEachCellOwnedByInIndexOrder(childId, (int flatIndex) -> {
-            int moleculeInt = env.getMoleculeInt(flatIndex);
+        // Weighted reservoir sampling over the owned cells.
+        // The visit runs in flat-index order: the reservoir choice below must not depend on write history
+        env.visitCellsOwnedBy(childId, cell -> {
+            int moleculeInt = cell.moleculeInt();
             if (moleculeInt == 0) {
                 return; // empty cell
             }
@@ -215,22 +231,23 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
             if (w <= 0.0) {
                 return; // type disabled
             }
-            ws[0] += w;
-            if (random.nextDouble() * ws[0] < w) {
-                state[0] = flatIndex;
-                state[1] = moleculeInt & Config.TYPE_MASK;
-                state[2] = moleculeInt & Config.VALUE_MASK;
-                state[3] = (moleculeInt & Config.MARKER_MASK) >>> Config.MARKER_SHIFT;
+            weightSum += w;
+            if (random.nextDouble() * weightSum < w) {
+                cellChosen = true;
+                System.arraycopy(cell.coordinate(), 0, chosen, 0, dims);
+                chosenType = moleculeInt & Config.TYPE_MASK;
+                chosenRawValue = moleculeInt & Config.VALUE_MASK;
+                chosenMarker = (moleculeInt & Config.MARKER_MASK) >>> Config.MARKER_SHIFT;
             }
         });
 
-        if (state[0] == -1) {
+        if (!cellChosen) {
             LOG.debug("tick={} Organism {} gene substitution: no mutable molecules", child.getBirthTick(), childId);
             return;
         }
 
-        int selectedType = state[1];
-        int selectedRawValue = state[2];
+        int selectedType = chosenType;
+        int selectedRawValue = chosenRawValue;
         int newValue;
 
         if (selectedType == Config.TYPE_CODE) {
@@ -252,14 +269,14 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
             return;
         }
 
-        env.setMoleculeByIndex(state[0], new Molecule(selectedType, newValue, state[3]));
+        env.setMoleculeAt(chosen, new Molecule(selectedType, newValue, chosenMarker));
 
         if (LOG.isDebugEnabled()) {
             String typeName = typeNameForLog(selectedType);
-            LOG.debug("tick={} Organism {} gene substitution: {}:{}->{} at flatIndex={}",
+            LOG.debug("tick={} Organism {} gene substitution: {}:{}->{} at {}",
                     child.getBirthTick(), childId, typeName,
                     displayValueForLog(selectedType, selectedRawValue),
-                    displayValueForLog(selectedType, newValue), state[0]);
+                    displayValueForLog(selectedType, newValue), Arrays.toString(chosen));
         }
     }
 

@@ -1,5 +1,7 @@
 package org.evochora.runtime.worldgen;
 
+import org.evochora.runtime.model.EnvironmentProperties;
+import org.evochora.runtime.label.PreExpandedHammingStrategy;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
 import org.evochora.runtime.model.Environment;
@@ -28,7 +30,8 @@ public class GeyserStrategyTest {
     @Tag("unit")
     void initializesGeysersAndPlacesEnergyOnAxisAdjacentCells_inND() {
         // 3D world 3x3x3 to allow neighbors around random geyser locations
-        Environment env = new Environment(new int[]{3, 3, 3}, true);
+        // A world this small cannot be tiled; the row-major layout (tile side 1) keeps the test's cell count.
+        Environment env = new Environment(new EnvironmentProperties(new int[]{3, 3, 3}, true), new PreExpandedHammingStrategy(), 1);
         // percentage yields 1 geyser for 27 cells, interval=1 to trigger on tick 1, amount=77
         GeyserCreator strat = new GeyserCreator(
                 new org.evochora.runtime.internal.services.SeededRandomProvider(0L),

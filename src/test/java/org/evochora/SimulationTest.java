@@ -33,7 +33,7 @@ public class SimulationTest {
 
     @BeforeEach
     void setUp() {
-        environment = new Environment(new int[]{50, 50}, true);
+        environment = new Environment(new int[]{64, 64}, true);
         sim = SimulationTestUtils.createSimulation(environment);
     }
 

@@ -4,7 +4,6 @@ import java.util.Arrays;
 
 import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
-import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
@@ -103,8 +102,7 @@ public class GeneDeletionPlugin implements IBirthHandler {
      */
     void delete(Organism child, Environment env) {
         int childId = child.getId();
-        IntOpenHashSet owned = env.getCellsOwnedBy(childId);
-        if (owned == null || owned.isEmpty()) {
+        if (env.countCellsOwnedBy(childId) == 0) {
             LOG.debug("tick={} Organism {} gene deletion: no owned cells", child.getBirthTick(), childId);
             return;
         }
@@ -114,12 +112,12 @@ public class GeneDeletionPlugin implements IBirthHandler {
         labelHashes.clear();
         hashCounts.clear();
 
-        // Canonical (index) order: the choice below must not depend on write history
-        env.forEachCellOwnedByInIndexOrder(childId, (int flatIndex) -> {
-            int moleculeInt = env.getMoleculeInt(flatIndex);
+        // The visit runs in flat-index order: the choice below must not depend on write history
+        env.visitCellsOwnedBy(childId, cell -> {
+            int moleculeInt = cell.moleculeInt();
             if ((moleculeInt & Config.TYPE_MASK) == Config.TYPE_LABEL) {
                 int hash = moleculeInt & Config.VALUE_MASK;
-                labelFlatIndices.add(flatIndex);
+                labelFlatIndices.add(env.properties.toFlatIndex(cell.coordinate()));
                 labelHashes.add(hash);
                 hashCounts.addTo(hash, 1);
             }

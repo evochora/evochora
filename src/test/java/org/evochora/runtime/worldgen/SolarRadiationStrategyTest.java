@@ -1,5 +1,7 @@
 package org.evochora.runtime.worldgen;
 
+import org.evochora.runtime.model.EnvironmentProperties;
+import org.evochora.runtime.label.PreExpandedHammingStrategy;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
 import org.evochora.runtime.model.Environment;
@@ -27,7 +29,8 @@ public class SolarRadiationStrategyTest {
     @Tag("unit")
     void placesEnergyInNDEnvironment_whenAreaIsUnowned() {
         // 3D world with a single cell ensures deterministic coordinate selection
-        Environment env = new Environment(new int[]{1, 1, 1}, true);
+        // A world this small cannot be tiled; the row-major layout (tile side 1) keeps the test's cell count.
+        Environment env = new Environment(new EnvironmentProperties(new int[]{1, 1, 1}, true), new PreExpandedHammingStrategy(), 1);
         SolarRadiationCreator strat = new SolarRadiationCreator(1.0, 42, 0);
 
         // Create mock Simulation
@@ -51,7 +54,8 @@ public class SolarRadiationStrategyTest {
     @Tag("unit")
     void respectsSafetyRadius_andDoesNotPlaceEnergyNearOwnedCells() {
         // 3D world with single cell; mark it as owned to violate safety radius
-        Environment env = new Environment(new int[]{1, 1, 1}, true);
+        // A world this small cannot be tiled; the row-major layout (tile side 1) keeps the test's cell count.
+        Environment env = new Environment(new EnvironmentProperties(new int[]{1, 1, 1}, true), new PreExpandedHammingStrategy(), 1);
         env.setOwnerId(7, 0, 0, 0);
         SolarRadiationCreator strat = new SolarRadiationCreator(1.0, 99, 1);
 

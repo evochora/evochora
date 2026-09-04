@@ -35,7 +35,7 @@ class SimulationResumeTest {
 
     @BeforeEach
     void setUp() {
-        environment = new Environment(new int[]{100, 100}, true);
+        environment = new Environment(new int[]{96, 96}, true);
 
         // Minimal thermodynamic config for testing
         String thermoConfigStr = """

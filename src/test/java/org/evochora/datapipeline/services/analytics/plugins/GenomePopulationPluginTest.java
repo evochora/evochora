@@ -177,7 +177,7 @@ class GenomePopulationPluginTest {
     @Test
     void memoryIsBoundedByTheOrganismLimit() {
         SimulationParameters params = new SimulationParameters(
-            new int[]{100, 100}, 10_000L, 1000, 1, 10, 50, 50, 0.1);
+            new int[]{100, 100}, 10_000L, 10_000L, 1000, 1, 10, 50, 50, 0.1);
 
         List<MemoryEstimate> estimates = plugin.estimateWorstCaseMemory(params);
 

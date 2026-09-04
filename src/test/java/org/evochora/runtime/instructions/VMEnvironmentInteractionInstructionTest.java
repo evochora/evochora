@@ -34,7 +34,7 @@ public class VMEnvironmentInteractionInstructionTest {
 
     @BeforeEach
     void setUp() {
-        environment = new Environment(new int[]{100, 100}, true);
+        environment = new Environment(new int[]{96, 96}, true);
         sim = SimulationTestUtils.createSimulation(environment);
         org = Organism.create(sim, startPos, 2000);
         sim.addOrganism(org);

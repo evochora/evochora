@@ -255,7 +255,7 @@ class ResumeIntegrationTest {
 
         // Build the full resolvedConfigJson with environment and runtime
         String fullConfigJson = TestMetadataHelper.builder()
-            .shape(50, 50)
+            .shape(64, 64)
             .toroidal(true)
             .samplingInterval(1)
             .accumulatedDeltaInterval(ACCUMULATED_DELTA_INTERVAL)
