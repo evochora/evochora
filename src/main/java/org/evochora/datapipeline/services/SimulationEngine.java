@@ -1184,18 +1184,21 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         // - currentDeltas: up to (samplesPerChunk - 1) deltas
         // - cell columns builder: while a snapshot is captured, three int lists with one entry
         //   per occupied cell (12 bytes per cell) exist next to the message built from them
+        // Checked arithmetic throughout: a chunk long enough to overflow a long must fail the
+        // estimate rather than understate it
         long chunkBuilderBytes = 0;
         
         // Current snapshot in memory
-        chunkBuilderBytes += params.estimateBytesPerTick();
+        chunkBuilderBytes = Math.addExact(chunkBuilderBytes, params.estimateBytesPerTick());
         
         // Accumulated deltas (worst case: all samples before chunk completion)
         int maxDeltas = params.samplesPerChunk() - 1;
-        chunkBuilderBytes += (long) maxDeltas * params.estimateBytesPerDelta();
+        chunkBuilderBytes = Math.addExact(chunkBuilderBytes,
+                Math.multiplyExact((long) maxDeltas, params.estimateBytesPerDelta()));
 
         // Column lists of the capture in progress
         long columnListBytes = params.occupiedCells() * 12L;
-        chunkBuilderBytes += columnListBytes;
+        chunkBuilderBytes = Math.addExact(chunkBuilderBytes, columnListBytes);
 
         estimates.add(new MemoryEstimate(
             serviceName + " (Encoder)",

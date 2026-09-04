@@ -63,13 +63,14 @@ public final class DeltaCodec {
     /**
      * Builds TickDataChunks from sampled ticks using delta compression.
      * <p>
-     * This class encapsulates all chunk-building logic to keep SimulationEngine clean.
-     * It tracks changes between samples and decides when to create snapshots, incremental
-     * deltas, or accumulated deltas based on the configured intervals.
+     * This class encapsulates all chunk-building logic to keep SimulationEngine clean. The
+     * environment records which cells changed since the last sample and since the last snapshot;
+     * the encoder reads those cells from it and decides, from the configured intervals, when to
+     * create a snapshot, an incremental delta or an accumulated delta.
      * <p>
      * <strong>Usage:</strong>
      * <pre>{@code
-     * DeltaCodec.Encoder encoder = new DeltaCodec.Encoder(runId, totalCells, 5, 20, 1);
+     * DeltaCodec.Encoder encoder = new DeltaCodec.Encoder(runId, 5, 20, 1);
      * 
      * // For each sampled tick:
      * Optional<TickDataChunk> chunk = encoder.captureTick(

@@ -284,6 +284,14 @@ class SimulationEngineTest {
     }
 
     @Test
+    void memoryEstimate_failsInsteadOfWrappingForAnAbsurdlyLongChunk() {
+        SimulationEngine engine = new SimulationEngine("test-engine", createValidConfig(), resources);
+        SimulationParameters absurd = new SimulationParameters(
+                new int[]{32768, 65504}, 32768L * 65504L, 32768L * 65504L, 10, 1, 1, 1, Integer.MAX_VALUE, 0.1);
+        assertThrows(ArithmeticException.class, () -> engine.estimateWorstCaseMemory(absurd));
+    }
+
+    @Test
     void constructor_shouldRejectAMaxCellsPerOrganismBelowOne() {
         Config config = createValidConfig().withValue("maxCellsPerOrganism", ConfigValueFactory.fromAnyRef(0));
         IllegalArgumentException exception = assertThrows(
