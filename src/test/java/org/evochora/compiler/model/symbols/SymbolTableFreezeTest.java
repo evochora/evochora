@@ -79,7 +79,6 @@ class SymbolTableFreezeTest {
     void readOperations_allowedAfterFreeze() {
         assertThat(symbolTable.getCurrentAliasChain()).isNotNull();
         assertThat(symbolTable.getRootScope()).isNotNull();
-        assertThat(symbolTable.getAllSymbols()).isNotEmpty();
     }
 
     @Test

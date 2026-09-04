@@ -38,7 +38,6 @@ public class SymbolTable {
     public static class Scope {
         private final Scope parent;
         private final String name;
-        private final List<Scope> children = new ArrayList<>();
         private final Map<String, Map<String, Symbol>> symbols = new HashMap<>(); // name -> (fileName -> symbol)
 
         Scope(Scope parent, String name) {
@@ -54,10 +53,6 @@ public class SymbolTable {
          */
         public String name() {
             return name;
-        }
-
-        void addChild(Scope child) {
-            children.add(child);
         }
     }
 
@@ -167,16 +162,6 @@ public class SymbolTable {
         return Optional.ofNullable(modules.get(aliasChain));
     }
 
-    /**
-     * Gets the module scope map (for multi-module iteration).
-     *
-     * @return an unmodifiable map from alias chain to module scope; the scopes it
-     *         contains become immutable only once the table is frozen
-     */
-    public Map<String, ModuleScope> getModules() {
-        return Collections.unmodifiableMap(modules);
-    }
-
     // === Scope management ===
 
     /**
@@ -194,7 +179,6 @@ public class SymbolTable {
     public Scope enterScope(String name) {
         guardFrozen();
         Scope newScope = new Scope(currentScope, name);
-        currentScope.addChild(newScope);
         currentScope = newScope;
         return newScope;
     }
@@ -447,26 +431,5 @@ public class SymbolTable {
      */
     private boolean isExported(Symbol sym) {
         return sym.exported();
-    }
-
-    /**
-     * Returns all symbols from all scopes in the symbol table.
-     * Used for generating debug information like TokenMap.
-     *
-     * @return A list of all symbols in the symbol table
-     */
-    public List<Symbol> getAllSymbols() {
-        List<Symbol> allSymbols = new ArrayList<>();
-        collectSymbols(rootScope, allSymbols);
-        return allSymbols;
-    }
-
-    private void collectSymbols(Scope scope, List<Symbol> symbols) {
-        for (Map<String, Symbol> perFile : scope.symbols.values()) {
-            symbols.addAll(perFile.values());
-        }
-        for (Scope child : scope.children) {
-            collectSymbols(child, symbols);
-        }
     }
 }
