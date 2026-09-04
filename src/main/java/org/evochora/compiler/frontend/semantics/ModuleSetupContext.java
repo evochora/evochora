@@ -69,6 +69,8 @@ public class ModuleSetupContext {
     public void bindPath(String resolvedPath, String aliasChain) { pathToAliasChain.put(resolvedPath, aliasChain); }
 
     /**
+     * Looks up the placement a module file got in pass 1.
+     *
      * @param resolvedPath The module file's resolved path.
      * @return The alias chain of its placement, or {@code null} if pass 1 has not seen the file.
      */

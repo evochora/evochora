@@ -48,13 +48,17 @@ public final class ModuleScope {
     }
 
     /**
-     * @return The import alias chain that names this placement, empty for the root module.
+     * Names this placement.
+     *
+     * @return The import alias chain that names it, empty for the root module.
      */
     public String aliasChain() {
         return aliasChain;
     }
 
     /**
+     * Names the module's file.
+     *
      * @return The file the module was read from.
      */
     public String sourcePath() {
@@ -130,35 +134,45 @@ public final class ModuleScope {
     }
 
     /**
-     * @return The symbols this module defines, by name; unmodifiable.
+     * Returns the symbols this module defines.
+     *
+     * @return The symbols by name; unmodifiable.
      */
     public Map<String, Symbol> symbols() {
         return Collections.unmodifiableMap(symbols);
     }
 
     /**
-     * @return The alias chains of the modules this module imports, by alias; unmodifiable.
+     * Returns the modules this module imports.
+     *
+     * @return Their placements' alias chains by alias; unmodifiable.
      */
     public Map<String, String> imports() {
         return Collections.unmodifiableMap(imports);
     }
 
     /**
-     * @return The paths this module requires, by alias; unmodifiable.
+     * Returns the modules this module requires.
+     *
+     * @return Their paths by alias; unmodifiable.
      */
     public Map<String, String> requires() {
         return Collections.unmodifiableMap(requires);
     }
 
     /**
-     * @return The placements this module received for its requirements, by alias; unmodifiable.
+     * Returns what importers supplied for this module's requirements.
+     *
+     * @return The supplied placements' alias chains by requirement alias; unmodifiable.
      */
     public Map<String, String> usingBindings() {
         return Collections.unmodifiableMap(usingBindings);
     }
 
     /**
-     * @return Whether each import is passed on to this module's importers, by alias; unmodifiable.
+     * Returns which imports this module passes on to its own importers.
+     *
+     * @return The export flag by import alias; unmodifiable.
      */
     public Map<String, Boolean> importExported() {
         return Collections.unmodifiableMap(importExported);
