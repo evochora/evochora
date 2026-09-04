@@ -73,7 +73,6 @@ public final class ProcedureCallHandler {
         // Always track which procedure is active (needed for correct save on RET after first dirty write)
         organism.setCurrentProcLabelHash(labelHash);
 
-        // Note: Parameter passing is handled by compiler-generated PUSH/POP sequences.
         // Skip past the LABEL molecule to the actual procedure code
         int[] codeIp = organism.getNextInstructionPosition(targetIp, organism.getDv(), environment);
         organism.setIp(codeIp);
