@@ -9,6 +9,7 @@ import java.nio.file.Path;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
@@ -19,6 +20,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.evochora.datapipeline.api.contracts.BatchInfo;
 import org.evochora.datapipeline.api.memory.MemoryEstimate;
@@ -294,17 +296,30 @@ class ArtemisQueueResourceTest {
 
         // Each consumer receives a batch, then simulates processing time.
         // During processing (outside drainLock), the other consumer can enter receiveBatch.
-        // Only wide enough for the overlap to be unmistakable: the two consumers start within a
-        // few milliseconds of each other, so this leaves room for a machine an order of magnitude
-        // slower before the windows could come apart.
-        long processingTimeMs = 200;
-        long receiveTimeoutMs = 100; // Short timeout so empty-queue exits quickly
+        // The window the second consumer has to reach its own batch in. What it must cover is not
+        // computation but the drain token's round trip: the first consumer hands it back as a
+        // persistent message, which the broker journals before the next consumer can take it.
+        // That trip has been seen to take upwards of a tenth of a second on a loaded machine,
+        // so the window is set an order of magnitude above it rather than above the arithmetic.
+        long processingTimeMs = 500;
+        long receiveTimeoutMs = 100; // Short timeout so an empty client buffer is retried quickly
 
         List<List<Long>> allBatches = new ArrayList<>();
         // Start and end of each simulated processing. Two of these overlapping is what "the other
         // consumer can receive while this one works" means, stated directly instead of inferred
         // from how long everything took.
         List<long[]> processingWindows = new ArrayList<>();
+        // How many messages the two consumers have taken between them. It is the loop's exit
+        // condition, so that an empty batch means "not yet" rather than "never".
+        AtomicInteger consumed = new AtomicInteger();
+        long consumeDeadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        // Evidence for the overlap assertion below, and only for it: how often each consumer drew
+        // an empty batch before it got work, and when its first batch arrived. A failure that
+        // names these tells whether the second consumer was late or never got in at all; a run
+        // that passes says nothing.
+        AtomicInteger nextSlot = new AtomicInteger();
+        int[] emptyDraws = new int[2];
+        long[] firstBatchNanos = { -1, -1 };
         ExecutorService executor = Executors.newFixedThreadPool(2);
         CountDownLatch done = new CountDownLatch(2);
         // submit() says nothing about when a task actually starts. Were the second consumer to
@@ -314,11 +329,15 @@ class ArtemisQueueResourceTest {
         CyclicBarrier bothReady = new CyclicBarrier(2);
 
         Runnable consumer = () -> {
+            int slot = nextSlot.getAndIncrement();
             try {
                 bothReady.await(10, TimeUnit.SECONDS);
-                while (true) {
+                while (consumed.get() < totalMessages && System.nanoTime() < consumeDeadlineNanos) {
                     try (StreamingBatch<BatchInfo> batch = queue.receiveBatch(5, receiveTimeoutMs, TimeUnit.MILLISECONDS)) {
                         if (batch.size() > 0) {
+                            if (firstBatchNanos[slot] < 0) {
+                                firstBatchNanos[slot] = System.nanoTime();
+                            }
                             List<Long> batchTicks = new ArrayList<>();
                             for (BatchInfo msg : batch) {
                                 batchTicks.add(msg.getTickStart());
@@ -326,6 +345,7 @@ class ArtemisQueueResourceTest {
                             synchronized (allBatches) {
                                 allBatches.add(batchTicks);
                             }
+                            consumed.addAndGet(batchTicks.size());
                             batch.commit();
                             // Simulate processing time — the OTHER consumer should be able
                             // to receive the next batch during this sleep.
@@ -336,8 +356,17 @@ class ArtemisQueueResourceTest {
                                     new long[] { processingStart, System.nanoTime() });
                             }
                         } else {
-                            break;
+                            emptyDraws[slot]++;
                         }
+                        // An empty batch does not mean the queue has run dry. The drain token
+                        // travels back to the next consumer as a persistent message through the
+                        // broker, and the non-blocking drain sees only what has already been
+                        // delivered to the client; either can outlast the receive timeout on a
+                        // loaded machine. Leaving on the first empty batch would take a consumer
+                        // that is merely early out of the run for good, and the remaining one
+                        // would then process both batches one after the other — which reads
+                        // exactly like the serialisation this test is meant to detect. The count
+                        // of messages consumed says when there is genuinely nothing left.
                     }
                 }
             } catch (InterruptedException e) {
@@ -433,8 +462,15 @@ class ArtemisQueueResourceTest {
         assertThat(widestOverlapNanos)
             .describedAs("Two processing windows should overlap, proving one consumer works while "
                 + "the other receives; none of the %d windows did (closest pair %dms apart), so "
-                + "processing was serialised. Elapsed time was %dms.",
-                windows.size(), -widestOverlapNanos / 1_000_000, wallElapsedMs)
+                + "processing was serialised. Elapsed time was %dms. First batch reached each "
+                + "consumer after %s ms, after %s empty draws: a consumer that arrived late but "
+                + "within the run points at the token's round trip outgrowing the %dms processing "
+                + "window, while one that never received points at the drain lock itself.",
+                windows.size(), -widestOverlapNanos / 1_000_000, wallElapsedMs,
+                Arrays.toString(new long[] {
+                    firstBatchNanos[0] < 0 ? -1 : (firstBatchNanos[0] - wallStart) / 1_000_000,
+                    firstBatchNanos[1] < 0 ? -1 : (firstBatchNanos[1] - wallStart) / 1_000_000 }),
+                Arrays.toString(emptyDraws), processingTimeMs)
             .isPositive();
     }
 
