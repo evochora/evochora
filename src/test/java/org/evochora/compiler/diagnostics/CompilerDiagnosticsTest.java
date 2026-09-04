@@ -15,6 +15,7 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
@@ -369,7 +370,7 @@ class CompilerDiagnosticsTest {
                 "START:",
                 "  NOP");
 
-        compile("main.evo");
+        assertThatCode(() -> compile("main.evo")).doesNotThrowAnyException();
     }
 
     @Test
@@ -392,7 +393,7 @@ class CompilerDiagnosticsTest {
                 "START:",
                 "  NOP");
 
-        compile("main.evo");
+        assertThatCode(() -> compile("main.evo")).doesNotThrowAnyException();
     }
 
     @Test
@@ -567,7 +568,7 @@ class CompilerDiagnosticsTest {
                 "START:",
                 "  SETI %DR0 A");
 
-        compile("main.evo");
+        assertThatCode(() -> compile("main.evo")).doesNotThrowAnyException();
     }
 
     private void write(String fileName, String... lines) throws Exception {

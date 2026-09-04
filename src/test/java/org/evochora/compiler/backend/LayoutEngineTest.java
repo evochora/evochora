@@ -103,8 +103,8 @@ public class LayoutEngineTest {
         LayoutResult once = new LayoutEngine().layout(ir, isa, new EnvironmentProperties(new int[]{10, 10}, true), allLayoutHandlers());
         LayoutResult again = new LayoutEngine().layout(ir, isa, new EnvironmentProperties(new int[]{10, 10}, true), allLayoutHandlers());
 
-        assertThat(once.labelToValue().get(first)).isEqualTo(isa.labelValue(first));
-        assertThat(once.labelToValue().get(second)).isNotEqualTo(once.labelToValue().get(first));
+        assertThat(once.labelToValue()).containsEntry(first, isa.labelValue(first));
+        assertThat(once.labelToValue()).doesNotContainEntry(second, once.labelToValue().get(first));
         assertThat(again.labelToValue()).isEqualTo(once.labelToValue());
     }
 }

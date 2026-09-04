@@ -98,7 +98,7 @@ public class Emitter {
                             address++;
                         }
                     }
-                    sourceLines.record(ins, opcodeAddress, opcodeCoord);
+                    sourceLines.note(ins, opcodeAddress, opcodeCoord);
                 }
             }
         }

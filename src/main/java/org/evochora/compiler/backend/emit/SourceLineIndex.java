@@ -49,7 +49,7 @@ final class SourceLineIndex {
      * @param opcodeAddress The linear address of the instruction's opcode cell.
      * @param opcodeCoord   The coordinate of that cell.
      */
-    void record(IrInstruction instruction, int opcodeAddress, int[] opcodeCoord) {
+    void note(IrInstruction instruction, int opcodeAddress, int[] opcodeCoord) {
         SourceInfo src = instruction.source();
         if (src == null) {
             return;
@@ -72,7 +72,7 @@ final class SourceLineIndex {
         for (Map.Entry<String, List<MachineInstructionInfo>> entry : instructionsByLine.entrySet()) {
             sorted.put(entry.getKey(), entry.getValue().stream()
                     .sorted((a, b) -> Integer.compare(a.linearAddress(), b.linearAddress()))
-                    .collect(Collectors.toList()));
+                    .toList());
         }
         return sorted;
     }

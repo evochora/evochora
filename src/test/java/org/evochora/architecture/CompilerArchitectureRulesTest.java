@@ -371,7 +371,7 @@ class CompilerArchitectureRulesTest {
         StringBuilder pattern = new StringBuilder();
         for (String other : PHASE_CLASSES) {
             if (other.equals(phase)) continue;
-            if (pattern.length() > 0) pattern.append('|');
+            if (!pattern.isEmpty()) pattern.append('|');
             pattern.append(other.replace(".", "\\."));
         }
         return pattern.toString();

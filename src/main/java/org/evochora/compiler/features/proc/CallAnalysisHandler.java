@@ -140,6 +140,9 @@ public class CallAnalysisHandler implements IAnalysisHandler {
      */
     private enum Meaning { DATA_REGISTER, LOCATION_REGISTER, LITERAL, LABEL, NONE, UNRESOLVED }
 
+    private static final String A_DATA_REGISTER = "a data register";
+    private static final String A_LOCATION_REGISTER = "a location register";
+
     private Meaning meaningOf(AstNode definition, IdentifierNode idNode, SymbolTable st) {
         if (!(definition instanceof IIdentifierBinding) && !(definition instanceof IJumpTarget)) {
             return Meaning.NONE;
@@ -155,8 +158,8 @@ public class CallAnalysisHandler implements IAnalysisHandler {
 
     private static String describe(Meaning meaning) {
         return switch (meaning) {
-            case DATA_REGISTER -> "a data register";
-            case LOCATION_REGISTER -> "a location register";
+            case DATA_REGISTER -> A_DATA_REGISTER;
+            case LOCATION_REGISTER -> A_LOCATION_REGISTER;
             case LITERAL -> "a literal";
             case LABEL -> "a label";
             case NONE, UNRESOLVED -> "";
@@ -193,24 +196,24 @@ public class CallAnalysisHandler implements IAnalysisHandler {
 
     private void validateDataIdentifier(IdentifierNode idNode, String position,
                                         SymbolTable st, DiagnosticsEngine diag) {
-        validateIdentifier(idNode, position, java.util.EnumSet.of(Meaning.DATA_REGISTER), "a data register", true, st, diag);
+        validateIdentifier(idNode, position, java.util.EnumSet.of(Meaning.DATA_REGISTER), A_DATA_REGISTER, true, st, diag);
     }
 
     private void validateDataIdentifierOrLabel(IdentifierNode idNode, String position,
                                                SymbolTable st, DiagnosticsEngine diag) {
         validateIdentifier(idNode, position, java.util.EnumSet.of(Meaning.DATA_REGISTER, Meaning.LITERAL, Meaning.LABEL),
-                "a data register", false, st, diag);
+                A_DATA_REGISTER, false, st, diag);
     }
 
     private void validateLocationIdentifier(IdentifierNode idNode, String position,
                                             SymbolTable st, DiagnosticsEngine diag) {
-        validateIdentifier(idNode, position, java.util.EnumSet.of(Meaning.LOCATION_REGISTER), "a location register", true, st, diag);
+        validateIdentifier(idNode, position, java.util.EnumSet.of(Meaning.LOCATION_REGISTER), A_LOCATION_REGISTER, true, st, diag);
     }
 
     private void validateLocationIdentifierOrLabel(IdentifierNode idNode, String position,
                                                    SymbolTable st, DiagnosticsEngine diag) {
         validateIdentifier(idNode, position, java.util.EnumSet.of(Meaning.LOCATION_REGISTER, Meaning.LITERAL, Meaning.LABEL),
-                "a location register", false, st, diag);
+                A_LOCATION_REGISTER, false, st, diag);
     }
 
     /**
