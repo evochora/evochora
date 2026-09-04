@@ -502,6 +502,32 @@ class CompilerDiagnosticsTest {
                 .hasMessageContaining("main.evo:1");
     }
 
+    @Test
+    void anUnknownMoleculeTypeInAPlacementNamesTheTypeAndTheLine() throws Exception {
+        write("main.evo",
+                "START:",
+                "  NOP",
+                ".PLACE FOO:1 5|5");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("Unknown molecule type 'FOO' in .PLACE.")
+                .hasMessageContaining("main.evo:3");
+    }
+
+    @Test
+    void aPlacementWithMoreDimensionsThanTheWorldNamesBothCounts() throws Exception {
+        write("main.evo",
+                "START:",
+                "  NOP",
+                ".PLACE DATA:1 5|5|*");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining(".PLACE uses 3 dimensions, the world has 2.")
+                .hasMessageContaining("main.evo:3");
+    }
+
     private void write(String fileName, String... lines) throws Exception {
         Files.writeString(sourceRoot.resolve(fileName), String.join("\n", lines) + "\n");
     }
