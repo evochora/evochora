@@ -62,11 +62,11 @@ import java.util.Map;
 
 /**
  * The main compiler implementation. This class orchestrates the entire compilation
- * pipeline from source code to a program artifact. It is not thread-safe.
+ * pipeline from source code to a program artifact. It keeps nothing between compilations,
+ * so one instance may compile any number of programs, one after the other.
  */
 public class Compiler implements ICompiler {
 
-    private final DiagnosticsEngine diagnostics = new DiagnosticsEngine();
     private final List<ICompilerFeature> features;
     private int verbosity = -1;
 
@@ -157,6 +157,7 @@ public class Compiler implements ICompiler {
      */
     private ProgramArtifact runPhases(List<String> sourceLines, String programName, EnvironmentProperties envProps,
                                       CompilerOptions effectiveOptions, MainFile mainFile) throws CompilationException {
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         String rootAliasChain = mainFile.rootAliasChain();
         final String mainFilePath = mainFile.path();
         SourceRootResolver resolver = new SourceRootResolver(
@@ -172,7 +173,7 @@ public class Compiler implements ICompiler {
         // Phase 0: Dependency Scanning (load imported modules)
         DependencyScanner depScanner = new DependencyScanner(diagnostics, resolver, featureRegistry.dependencyScanHandlers());
         DependencyGraph graph = depScanner.scan(fullSource, mainFilePath);
-        failOnErrors();
+        failOnErrors(diagnostics);
 
         // Phase 1: Lexical Analysis — every included file under its path, the main file as the stream
         Map<String, List<Token>> fileTokens = Lexer.lexFiles(graph.includedContents(), diagnostics, isa);
@@ -187,7 +188,7 @@ public class Compiler implements ICompiler {
         Map<String, String> sources = new HashMap<>(graph.includedContents());
         sources.put(mainFilePath, fullSource);
 
-        failOnErrors();
+        failOnErrors(diagnostics);
 
         // Phase 3: Parsing (builds AST)
         ParserStatementRegistry parserRegistry = new ParserStatementRegistry();
@@ -198,7 +199,7 @@ public class Compiler implements ICompiler {
         Parser parser = new Parser(ppResult.tokens(), diagnostics, parserRegistry);
         List<AstNode> ast = parser.parse();
 
-        failOnErrors();
+        failOnErrors(diagnostics);
 
         // Phase 4: Semantic Analysis (symbol resolution, type checking)
         SymbolTable symbolTable = new SymbolTable(diagnostics);
@@ -209,7 +210,7 @@ public class Compiler implements ICompiler {
         featureRegistry.dependencySetupHandlers().forEach((type, handler) -> registerSetupHandler(setupRegistry, type, handler));
         SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, graph, mainFilePath, rootAliasChain, analysisRegistry, setupRegistry);
         analyzer.analyze(ast);
-        failOnErrors();
+        failOnErrors(diagnostics);
         symbolTable.freeze();
 
         // Phase 5: Token Map Generation (for debugger)
@@ -218,7 +219,7 @@ public class Compiler implements ICompiler {
         ModuleContextTracker tokenMapTracker = new ModuleContextTracker(symbolTable);
         TokenMapGenerator tokenMapGenerator = new TokenMapGenerator(symbolTable, diagnostics, tokenMapRegistry, tokenMapTracker);
         Map<SourceInfo, TokenInfo> tokenMap = tokenMapGenerator.generateAll(ast);
-        failOnErrors();
+        failOnErrors(diagnostics);
 
         // Phase 6: AST Post-Processing (resolve register aliases and constants)
         PostProcessHandlerRegistry postProcessRegistry = new PostProcessHandlerRegistry();
@@ -227,14 +228,14 @@ public class Compiler implements ICompiler {
         ScopeTracker scopeTracker = new ScopeTracker(symbolTable);
         AstPostProcessor astPostProcessor = new AstPostProcessor(symbolTable, postProcessTracker, scopeTracker, postProcessRegistry);
         List<AstNode> resolvedAst = astPostProcessor.process(ast);
-        failOnErrors();
+        failOnErrors(diagnostics);
 
         // Phase 7: IR Generation (convert AST to intermediate representation)
         IrConverterRegistry irRegistry = IrConverterRegistry.initialize(new DefaultAstNodeToIrConverter());
         irRegistry.registerAll(featureRegistry.irConverters());
         IrGenerator irGenerator = new IrGenerator(diagnostics, irRegistry);
         IrProgram irProgram = irGenerator.generate(resolvedAst, programName, rootAliasChain);
-        failOnErrors();
+        failOnErrors(diagnostics);
 
         // Phase 8: IR Rewriting (apply the rewrite rules of the features)
         RewriteRegistry rewriteRegistry = new RewriteRegistry();
@@ -324,7 +325,7 @@ public class Compiler implements ICompiler {
         }
     }
 
-    private void failOnErrors() throws CompilationException {
+    private static void failOnErrors(DiagnosticsEngine diagnostics) throws CompilationException {
         if (diagnostics.hasErrors()) {
             throw new CompilationException(diagnostics.summary());
         }
