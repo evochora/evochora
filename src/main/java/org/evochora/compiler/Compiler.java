@@ -285,13 +285,6 @@ public class Compiler implements ICompiler {
     }
 
     /**
-     * Stops the compilation if any phase so far has reported an error. Called after every
-     * phase that reports through the diagnostics engine, so that a later phase never runs on
-     * input an earlier one has rejected. The backend phases throw instead of reporting.
-     *
-     * @throws CompilationException listing the errors reported so far
-     */
-    /**
      * Where the main file is and what it is called: its resolved path, the directory the
      * included files' paths are resolved against, and the alias chain the program's own names
      * are qualified with, which is the source root prefix of the program name if it has one.
@@ -325,6 +318,13 @@ public class Compiler implements ICompiler {
         }
     }
 
+    /**
+     * Stops the compilation if any phase so far has reported an error. Called after every
+     * phase that reports through the diagnostics engine, so that a later phase never runs on
+     * input an earlier one has rejected. The backend phases throw instead of reporting.
+     *
+     * @throws CompilationException listing the errors reported so far
+     */
     private static void failOnErrors(DiagnosticsEngine diagnostics) throws CompilationException {
         if (diagnostics.hasErrors()) {
             throw new CompilationException(diagnostics.summary());
