@@ -357,9 +357,11 @@ message ProcFrame {
   // Location registers use the RegisterValue.vector variant.
   repeated RegisterValue saved_registers = 4;
 
-  // Mapping from formal register ID to source register ID for parameter bindings.
-  // Keys are full register IDs (FDR_BASE+i for data params, FLR_BASE+i for location params).
-  map<int32, int32> parameter_bindings = 5;
+  // Frames carry no parameter bindings: the machine code binds parameters through the PUSH/POP
+  // marshalling instructions the compiler emits, so there is nothing beside it to record. Readers
+  // that display a binding resolve it from absolute_call_ip against the program artifact. Field
+  // number 5 stays reserved so it cannot be given a second meaning.
+  reserved 5;
 
   // Absolute address of the CALL instruction that created this frame.
   // Used for resolving parameter bindings from artifact at debug time.

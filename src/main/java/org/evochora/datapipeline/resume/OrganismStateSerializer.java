@@ -239,8 +239,7 @@ public final class OrganismStateSerializer {
         procFrameBuilder
                 .setLabelHash(frame.labelHash())
                 .setAbsoluteReturnIp(convertVectorReuse(frame.absoluteReturnIp(), vectorBuilder))
-                .setAbsoluteCallIp(convertVectorReuse(frame.absoluteCallIp(), vectorBuilder))
-                .putAllParameterBindings(frame.parameterBindings());
+                .setAbsoluteCallIp(convertVectorReuse(frame.absoluteCallIp(), vectorBuilder));
 
         if (frame.savedRegisters() != null) {
             for (Object rv : frame.savedRegisters()) {

@@ -86,9 +86,9 @@ class ResumeNeutralityTest {
         // any ordering mistake in the round trip, because a single-element stack reads the same in
         // both directions.
         organism.getCallStack().push(new Organism.ProcFrame(123, new int[]{5, 5}, new int[]{6, 6},
-                organism.snapshotStackSavedRegisters(), java.util.Map.of(0, 1)));
+                organism.snapshotStackSavedRegisters()));
         organism.getCallStack().push(new Organism.ProcFrame(456, new int[]{7, 7}, new int[]{8, 8},
-                organism.snapshotStackSavedRegisters(), java.util.Map.of(1, 2)));
+                organism.snapshotStackSavedRegisters()));
         organism.setDp(1, new int[]{9, 9});
         organism.setActiveDpIndex(1);
         organism.addSr(17);

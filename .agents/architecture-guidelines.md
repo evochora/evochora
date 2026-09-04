@@ -71,6 +71,11 @@ You will conduct comprehensive architectural reviews of the Evochora simulation 
 - **Flag** a phase that branches on the kind of a symbol instead of asking the defining node for what it can do (`IIdentifierBinding`)
 - **Verify** that a compiler change which must not alter generated code passes `CompilerOutputEquivalenceTest` unchanged; an intended change regenerates the reference artifact and says so in the pull request
 
+### 9. Self-Contained Machine Code
+- **Check** that no runtime path reads the program artifact: what an instruction does must follow from the cells it occupies and the organism's own state
+- **Check** that anything a program needs at run time is put into the machine code by the compiler, the way parameter passing is carried by the PUSH/POP marshalling around a CALL
+- **Reject** any registry, cache or side channel that lets execution consult compile-time data by address, because it would make a mutated instruction behave differently from a compiled one
+
 ## Your Review Process
 
 ### Step 1: Understand the Change Context
@@ -91,6 +96,7 @@ For each modified component, systematically verify:
 8. Documentation quality
 9. Package dependency compliance
 10. Compiler structure, for changes under `compiler/`
+11. Self-contained machine code
 
 ### Step 3: Architectural Impact Analysis
 - Assess how changes affect the overall system architecture
