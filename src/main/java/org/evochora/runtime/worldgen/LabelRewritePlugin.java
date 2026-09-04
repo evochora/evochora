@@ -47,7 +47,6 @@ public class LabelRewritePlugin implements IBirthHandler {
 
     private static final Logger LOG = LoggerFactory.getLogger(LabelRewritePlugin.class);
 
-
     private final Random random;
 
     /**

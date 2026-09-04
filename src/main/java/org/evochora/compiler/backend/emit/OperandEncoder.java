@@ -53,7 +53,7 @@ public final class OperandEncoder {
      */
     public int encodeOpcode(IrInstruction instruction) throws CompilationException {
         return isa.getInstructionIdByName(instruction.opcode()).orElseThrow(() ->
-                new CompilationException(located(instruction.source(), "Unknown opcode: " + instruction.opcode())));
+                new CompilationException(SourceInfo.locate(instruction.source(), "Unknown opcode: " + instruction.opcode())));
     }
 
     /**
@@ -80,13 +80,13 @@ public final class OperandEncoder {
         return switch (op) {
             case IrReg r -> {
                 int regId = isa.resolveRegisterToken(r.name()).orElseThrow(() ->
-                        new CompilationException(located(src, "Unknown register: " + r.name())));
+                        new CompilationException(SourceInfo.locate(src, "Unknown register: " + r.name())));
                 yield new int[]{isa.encodeCell(registerType, regId)};
             }
             case IrImm imm -> new int[]{isa.encodeCell(dataType, (int) imm.value())};
             case IrTypedImm ti -> {
                 int type = isa.moleculeType(ti.typeName()).orElseThrow(() ->
-                        new CompilationException(located(src, "Unknown molecule type: " + ti.typeName())));
+                        new CompilationException(SourceInfo.locate(src, "Unknown molecule type: " + ti.typeName())));
                 yield new int[]{isa.encodeCell(type, (int) ti.value())};
             }
             case IrVec vec -> {
@@ -98,22 +98,10 @@ public final class OperandEncoder {
             }
             // A label reference is turned into a LABELREF literal by the linking rule of the
             // label feature; one that reaches the emitter names a label the layout does not have.
-            case IrLabelRef ref -> throw new CompilationException(located(src,
+            case IrLabelRef ref -> throw new CompilationException(SourceInfo.locate(src,
                     "Internal error: IrLabelRef '" + ref.labelName() + "' was not resolved during linking. " +
                     "This indicates a bug in LabelRefLinkingRule or a missing label definition."));
         };
     }
 
-    /**
-     * Prefixes a message with the file and line it concerns, as the compiler reports errors.
-     *
-     * @param src     The source location, or {@code null} for a message without one.
-     * @param message The message.
-     * @return "file:line: message", or the message alone without a location.
-     */
-    static String located(SourceInfo src, String message) {
-        if (src == null) return message;
-        String file = src.fileName() != null ? src.fileName() : "<unknown>";
-        return String.format("%s:%d: %s", file, src.lineNumber(), message);
-    }
 }

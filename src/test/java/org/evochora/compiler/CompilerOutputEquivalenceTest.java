@@ -35,7 +35,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  * JSON, not on the text, because the artifact holds maps whose iteration order is not part of
  * the output. The compiled artifact is always written to {@code build/reference-artifacts/}: on
  * a failure, that file is the one to diff against the checked-in artifact, and, if the
- * difference is intended, the one to copy over it.
+ * difference is intended, the one to copy over it. Leaving that file behind is a deliberate
+ * exception to the rule that a test cleans up after itself: the file is the test's finding.
  */
 @Tag("integration")
 class CompilerOutputEquivalenceTest {

@@ -14,7 +14,9 @@ import org.evochora.compiler.model.ast.TypedLiteralNode;
 
 import org.evochora.compiler.isa.IInstructionSet;
 
+import java.util.EnumSet;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * Semantic analysis handler for CALL instructions.
@@ -173,7 +175,7 @@ public class CallAnalysisHandler implements IAnalysisHandler {
      * @param mustExist Whether an identifier the symbol table does not know is reported here;
      *                  a position that accepts a label leaves that to the linker.
      */
-    private void validateIdentifier(IdentifierNode idNode, String position, java.util.Set<Meaning> accepted,
+    private void validateIdentifier(IdentifierNode idNode, String position, Set<Meaning> accepted,
                                     String expected, boolean mustExist, SymbolTable st, DiagnosticsEngine diag) {
         Optional<ResolvedSymbol> opt = st.resolve(idNode.text(), idNode.sourceInfo().fileName());
         if (opt.isEmpty()) {
@@ -196,23 +198,23 @@ public class CallAnalysisHandler implements IAnalysisHandler {
 
     private void validateDataIdentifier(IdentifierNode idNode, String position,
                                         SymbolTable st, DiagnosticsEngine diag) {
-        validateIdentifier(idNode, position, java.util.EnumSet.of(Meaning.DATA_REGISTER), A_DATA_REGISTER, true, st, diag);
+        validateIdentifier(idNode, position, EnumSet.of(Meaning.DATA_REGISTER), A_DATA_REGISTER, true, st, diag);
     }
 
     private void validateDataIdentifierOrLabel(IdentifierNode idNode, String position,
                                                SymbolTable st, DiagnosticsEngine diag) {
-        validateIdentifier(idNode, position, java.util.EnumSet.of(Meaning.DATA_REGISTER, Meaning.LITERAL, Meaning.LABEL),
+        validateIdentifier(idNode, position, EnumSet.of(Meaning.DATA_REGISTER, Meaning.LITERAL, Meaning.LABEL),
                 A_DATA_REGISTER, false, st, diag);
     }
 
     private void validateLocationIdentifier(IdentifierNode idNode, String position,
                                             SymbolTable st, DiagnosticsEngine diag) {
-        validateIdentifier(idNode, position, java.util.EnumSet.of(Meaning.LOCATION_REGISTER), A_LOCATION_REGISTER, true, st, diag);
+        validateIdentifier(idNode, position, EnumSet.of(Meaning.LOCATION_REGISTER), A_LOCATION_REGISTER, true, st, diag);
     }
 
     private void validateLocationIdentifierOrLabel(IdentifierNode idNode, String position,
                                                    SymbolTable st, DiagnosticsEngine diag) {
-        validateIdentifier(idNode, position, java.util.EnumSet.of(Meaning.LOCATION_REGISTER, Meaning.LITERAL, Meaning.LABEL),
+        validateIdentifier(idNode, position, EnumSet.of(Meaning.LOCATION_REGISTER, Meaning.LITERAL, Meaning.LABEL),
                 A_LOCATION_REGISTER, false, st, diag);
     }
 

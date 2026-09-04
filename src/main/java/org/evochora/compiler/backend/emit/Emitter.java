@@ -81,7 +81,7 @@ public class Emitter {
                     // A label sits at the address the layout registered for it, not at the counter
                     Integer labelAddress = layout.labelToAddress().get(lbl.name());
                     if (labelAddress == null) {
-                        throw new CompilationException(OperandEncoder.located(lbl.source(), "Label '" + lbl.name() + "' not found in layout"));
+                        throw new CompilationException(SourceInfo.locate(lbl.source(), "Label '" + lbl.name() + "' not found in layout"));
                     }
                     machineCodeLayout.put(coordinateOf(linearToCoord, labelAddress, lbl.source()),
                             encoder.encodeLabel(layout.labelToValue().get(lbl.name())));
@@ -152,7 +152,7 @@ public class Emitter {
     private static int[] coordinateOf(Map<Integer, int[]> linearToCoord, int address, SourceInfo src) throws CompilationException {
         int[] coord = linearToCoord.get(address);
         if (coord == null) {
-            throw new CompilationException(OperandEncoder.located(src, "Missing coord for address " + address));
+            throw new CompilationException(SourceInfo.locate(src, "Missing coord for address " + address));
         }
         return coord;
     }

@@ -49,7 +49,7 @@ public final class LayoutContext {
      */
     private record Occupant(String description, SourceInfo source) {
         String location() {
-            return String.format("%s:%d", source != null ? source.fileName() : "unknown", source != null ? source.lineNumber() : 0);
+            return SourceInfo.position(source);
         }
     }
 
