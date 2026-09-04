@@ -486,6 +486,22 @@ class CompilerDiagnosticsTest {
                 .hasMessageContaining("main.evo:1");
     }
 
+    @Test
+    void aUsingClauseWithoutAsNamesTheMissingAsAndTheLine() throws Exception {
+        write("lib.evo",
+                "HELPER:",
+                "  NOP");
+        write("main.evo",
+                ".IMPORT \"lib.evo\" AS LIB USING X",
+                "START:",
+                "  NOP");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("Expected AS after USING source alias.")
+                .hasMessageContaining("main.evo:1");
+    }
+
     private void write(String fileName, String... lines) throws Exception {
         Files.writeString(sourceRoot.resolve(fileName), String.join("\n", lines) + "\n");
     }

@@ -31,7 +31,6 @@ public class ImportDirectiveHandler implements IParserStatementHandler {
         context.advance(); // consume .IMPORT
 
         Token pathToken = context.consume(TokenType.STRING, "Expected a file path in quotes after .IMPORT.");
-        if (pathToken == null) return null;
 
         // Consume AS keyword
         if (!context.check(TokenType.IDENTIFIER) || !"AS".equalsIgnoreCase(context.peek().text())) {
@@ -43,7 +42,6 @@ public class ImportDirectiveHandler implements IParserStatementHandler {
         context.advance(); // consume AS
 
         Token aliasToken = context.consume(TokenType.IDENTIFIER, "Expected an alias name after AS.");
-        if (aliasToken == null) return null;
 
         // Parse optional USING clauses
         List<ImportNode.UsingClause> usings = new ArrayList<>();
@@ -52,7 +50,6 @@ public class ImportDirectiveHandler implements IParserStatementHandler {
                 context.advance(); // consume USING
 
                 Token sourceAlias = context.consume(TokenType.IDENTIFIER, "Expected a source alias after USING.");
-                if (sourceAlias == null) break;
 
                 if (!context.check(TokenType.IDENTIFIER) || !"AS".equalsIgnoreCase(context.peek().text())) {
                     context.getDiagnostics().reportError(
@@ -63,7 +60,6 @@ public class ImportDirectiveHandler implements IParserStatementHandler {
                 context.advance(); // consume AS
 
                 Token targetAlias = context.consume(TokenType.IDENTIFIER, "Expected a target alias after AS.");
-                if (targetAlias == null) break;
 
                 usings.add(new ImportNode.UsingClause(
                         sourceAlias.text(), targetAlias.text(),

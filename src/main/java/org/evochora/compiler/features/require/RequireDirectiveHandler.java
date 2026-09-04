@@ -22,7 +22,6 @@ public class RequireDirectiveHandler implements IParserStatementHandler {
         context.advance(); // consume .REQUIRE
 
         Token pathToken = context.consume(TokenType.STRING, "Expected a file path in quotes after .REQUIRE.");
-        if (pathToken == null) return null;
 
         // Consume AS keyword
         if (!context.check(TokenType.IDENTIFIER) || !"AS".equalsIgnoreCase(context.peek().text())) {
@@ -34,7 +33,6 @@ public class RequireDirectiveHandler implements IParserStatementHandler {
         context.advance(); // consume AS
 
         Token aliasToken = context.consume(TokenType.IDENTIFIER, "Expected an alias name after AS.");
-        if (aliasToken == null) return null;
 
         return new RequireNode((String) pathToken.value(), aliasToken.text(), aliasToken.toSourceInfo());
     }

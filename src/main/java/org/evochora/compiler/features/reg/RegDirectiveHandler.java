@@ -57,10 +57,6 @@ public class RegDirectiveHandler implements IParserStatementHandler {
             register = context.consume(TokenType.REGISTER, "Expected a register after the alias name in .REG.");
         }
 
-        if (name == null || register == null) {
-            return null;
-        }
-
         int line = register.line();
         RegisterBankInfo bank = isa.parseRegister(register.text())
                 .orElseThrow(() -> new IllegalStateException("REGISTER token the instruction set cannot read: " + register.text()))

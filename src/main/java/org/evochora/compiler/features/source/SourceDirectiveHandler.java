@@ -26,7 +26,6 @@ public class SourceDirectiveHandler implements IPreProcessorHandler {
 
         preProcessor.advance(); // consume .SOURCE
         Token pathToken = preProcessor.consume(TokenType.STRING, "Expected a file path in quotes after .SOURCE.");
-        if (pathToken == null) return;
 
         int endIndex = preProcessor.getCurrentIndex();
         String pathValue = (String) pathToken.value();

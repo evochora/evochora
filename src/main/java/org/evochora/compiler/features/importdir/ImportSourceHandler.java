@@ -28,7 +28,6 @@ public class ImportSourceHandler implements IPreProcessorHandler {
         preProcessor.advance(); // consume .IMPORT
 
         Token pathToken = preProcessor.consume(TokenType.STRING, "Expected a file path in quotes after .IMPORT.");
-        if (pathToken == null) return;
 
         // Resolve the path to an absolute path
         String pathValue = (String) pathToken.value();

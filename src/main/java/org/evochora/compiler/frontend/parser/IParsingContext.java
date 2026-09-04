@@ -44,11 +44,13 @@ public interface IParsingContext {
     Token previous();
 
     /**
-     * Consumes the current token if it is of the expected type.
-     * If not, it reports an error.
+     * Consumes the current token if it is of the expected type. If not, it reports the error
+     * at the token and unwinds to the next statement, so the caller never sees a mismatch.
      * @param type The expected token type.
      * @param errorMessage The error message to report if the token type does not match.
-     * @return The consumed token, or null if the type did not match.
+     * @return The consumed token.
+     * @throws org.evochora.compiler.diagnostics.ErrorRecoveryException if the token type does
+     *         not match; the mismatch has been reported before it is thrown.
      */
     Token consume(TokenType type, String errorMessage);
 
