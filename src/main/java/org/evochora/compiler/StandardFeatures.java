@@ -32,7 +32,7 @@ public final class StandardFeatures {
      * @return An unmodifiable list of all built-in compiler features.
      */
     public static List<ICompilerFeature> all() {
-        // The order is semantically relevant for list-based registrations (emissionRules,
+        // The order is semantically relevant for list-based registrations (rewriteRules,
         // linkingRules, emissionContributors). Features are registered in this order —
         // within a feature, the registration order determines execution order.
         // InstructionFeature must be last — it registers the defaultParserStatement handler.

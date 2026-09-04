@@ -2,6 +2,7 @@ package org.evochora.compiler.features.label;
 
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.model.ast.AstNode;
+import org.evochora.compiler.model.ast.IJumpTarget;
 import org.evochora.compiler.model.ast.ISourceLocatable;
 
 import java.util.List;
@@ -19,7 +20,7 @@ public record LabelNode(
         SourceInfo sourceInfo,
         AstNode statement,
         boolean exported
-) implements AstNode, ISourceLocatable {
+) implements AstNode, ISourceLocatable, IJumpTarget {
 
     @Override
     public List<AstNode> getChildren() {

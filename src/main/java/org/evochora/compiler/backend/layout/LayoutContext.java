@@ -3,10 +3,12 @@ package org.evochora.compiler.backend.layout;
 import org.evochora.compiler.api.CompilationException;
 import org.evochora.compiler.api.PlacedMolecule;
 import org.evochora.compiler.api.SourceInfo;
+import org.evochora.compiler.isa.IInstructionSet;
 import org.evochora.runtime.model.EnvironmentProperties;
 
 import java.util.ArrayDeque;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.Map;
@@ -31,7 +33,6 @@ public final class LayoutContext {
     private int[] currentPos;
     private int[] currentDv;
     private int[] basePos;
-    private int[] anchorPos;
     private final Deque<int[]> basePosStack = new ArrayDeque<>();
     private final Deque<int[]> dvStack = new ArrayDeque<>();
 
@@ -39,7 +40,18 @@ public final class LayoutContext {
     private final Map<String, Integer> coordToLinear = new HashMap<>();
     private final Map<Integer, SourceInfo> sourceMap = new HashMap<>();
     private final Map<int[], PlacedMolecule> initialWorldObjects = new HashMap<>();
+    private final Map<String, Occupant> occupied = new HashMap<>();
     private int linearAddress = 0;
+
+    /**
+     * What sits in a cell already: how the item is named in a conflict message, and where in
+     * the source it came from.
+     */
+    private record Occupant(String description, SourceInfo source) {
+        String location() {
+            return SourceInfo.position(source);
+        }
+    }
 
     /**
      * Creates a layout context for the given environment.
@@ -64,7 +76,6 @@ public final class LayoutContext {
         this.currentDv = new int[dims];
         this.currentDv[0] = 1;
         this.basePos = new int[dims];
-        this.anchorPos = new int[dims];
         this.isInitialized = true;
     }
 
@@ -157,31 +168,6 @@ public final class LayoutContext {
     }
 
     /**
-     * Returns the position most recently established by an origin directive, recorded alongside
-     * the cursor move that directive caused.
-     *
-     * @return the context's own anchor array, not a copy
-     * @throws CompilationException if the cursor still has to be created and no world shape is
-     *         available.
-     */
-    public int[] anchorPos() throws CompilationException {
-        initialize();
-        return anchorPos;
-    }
-
-    /**
-     * Records the position established by an origin directive. The array is stored by reference.
-     *
-     * @param p The anchor position, relative to the program origin.
-     * @throws CompilationException if the cursor still has to be created and no world shape is
-     *         available.
-     */
-    public void setAnchorPos(int[] p) throws CompilationException {
-        initialize();
-        this.anchorPos = p;
-    }
-
-    /**
      * Returns the stack of saved base positions. Context directives push the current base position
      * before entering a nested context and pop it again on leaving, so handlers manipulate it
      * directly.
@@ -216,7 +202,7 @@ public final class LayoutContext {
      */
     public void placeOpcode(SourceInfo src) throws CompilationException {
         initialize();
-        placeAtCurrent(src);
+        placeAtCurrent("an instruction", src);
     }
 
     /**
@@ -229,7 +215,33 @@ public final class LayoutContext {
      */
     public void placeOperand(SourceInfo src) throws CompilationException {
         initialize();
-        placeAtCurrent(src);
+        placeAtCurrent("an instruction", src);
+    }
+
+    /**
+     * Places a whole instruction: the opcode cell, then one cell per argument of the
+     * signature, where a vector argument takes one cell per dimension of the world.
+     *
+     * @param opcode    The opcode name, for the error a vector argument raises without a world.
+     * @param signature The instruction's ISA signature, listing its argument kinds in order.
+     * @param src       The source information recorded for every placed cell; may be null.
+     * @throws CompilationException if a coordinate is already occupied, or if the instruction
+     *         needs a world shape and none was supplied.
+     */
+    public void placeInstruction(String opcode, IInstructionSet.Signature signature, SourceInfo src) throws CompilationException {
+        placeOpcode(src);
+        for (IInstructionSet.ArgKind kind : signature.argumentTypes()) {
+            if (kind == IInstructionSet.ArgKind.VECTOR) {
+                if (envProps == null || envProps.getWorldShape() == null || envProps.getWorldShape().length == 0) {
+                    throw new CompilationException("Instruction " + opcode + " requires vector arguments, which need a world context, but no environment properties were provided.", src);
+                }
+                for (int k = 0; k < envProps.getWorldShape().length; k++) {
+                    placeOperand(src);
+                }
+            } else {
+                placeOperand(src);
+            }
+        }
     }
 
     /**
@@ -241,28 +253,57 @@ public final class LayoutContext {
      */
     public void placeLabel(SourceInfo src) throws CompilationException {
         initialize();
-        placeAtCurrent(src);
+        placeAtCurrent("a label", src);
     }
 
-    private void placeAtCurrent(SourceInfo src) throws CompilationException {
-        String coordKey = coordToStringKey(currentPos);
-        if (coordToLinear.containsKey(coordKey)) {
-            Integer oldLinearAddress = coordToLinear.get(coordKey);
-            SourceInfo oldSource = sourceMap.get(oldLinearAddress);
-            String currentLocation = String.format("%s:%d", src != null ? src.fileName() : "unknown", src != null ? src.lineNumber() : 0);
-            String originalLocation = String.format("%s:%d", oldSource != null ? oldSource.fileName() : "unknown", oldSource != null ? oldSource.lineNumber() : 0);
-            throw new CompilationException(String.format(
-                "Address conflict: Coordinate %s is already occupied by an instruction at %s. " +
-                "Cannot place new item at %s.",
-                Arrays.toString(currentPos), originalLocation, currentLocation
-            ));
-        }
-        
+    private void placeAtCurrent(String description, SourceInfo src) throws CompilationException {
+        String coordKey = occupy(currentPos, new Occupant(description, src));
         linearToCoord.put(linearAddress, Nd.copy(currentPos));
         coordToLinear.put(coordKey, linearAddress);
         sourceMap.put(linearAddress, src);
         linearAddress++;
         currentPos = Nd.add(currentPos, currentDv);
+    }
+
+    /**
+     * Places a molecule that is written into the world before execution, at a cell of its own
+     * choosing rather than at the cursor. The cell is claimed like a code cell, so a molecule
+     * and an instruction, or two molecules, cannot share one.
+     *
+     * @param coord       The cell, relative to the program origin; copied.
+     * @param molecule    The molecule to write there.
+     * @param description How the placing directive is named in a conflict message, e.g.
+     *                    {@code "a .PLACE"}; the context does not know the directive itself.
+     * @param src         The source information of the directive, named if the cell is taken.
+     * @throws CompilationException if the cell is already occupied.
+     */
+    public void placeObject(int[] coord, PlacedMolecule molecule, String description, SourceInfo src) throws CompilationException {
+        occupy(coord, new Occupant(description, src));
+        initialWorldObjects.put(Nd.copy(coord), molecule);
+    }
+
+    /**
+     * Claims a cell for an item, or reports whose it already is. A coordinate with more or
+     * fewer dimensions than the world cannot name a cell, and is reported with the item's position.
+     *
+     * @return The cell's key in the occupancy tables.
+     */
+    private String occupy(int[] coord, Occupant occupant) throws CompilationException {
+        if (envProps != null && envProps.getWorldShape() != null && coord.length != envProps.getWorldShape().length) {
+            throw new CompilationException(String.format("%s: Coordinate %s has %d dimensions, the world has %d.",
+                    occupant.location(), Arrays.toString(coord), coord.length, envProps.getWorldShape().length));
+        }
+        String coordKey = coordToStringKey(coord);
+        Occupant existing = occupied.get(coordKey);
+        if (existing != null) {
+            throw new CompilationException(String.format(
+                "Address conflict: Coordinate %s is already occupied by %s at %s. " +
+                "Cannot place new item at %s.",
+                Arrays.toString(coord), existing.description(), existing.location(), occupant.location()
+            ));
+        }
+        occupied.put(coordKey, occupant);
+        return coordKey;
     }
 
     /**
@@ -298,13 +339,13 @@ public final class LayoutContext {
 
     /**
      * Returns the molecules to be written into the world before execution, keyed by relative
-     * coordinate. Placement directive handlers fill it directly; these cells are not placed
-     * through the cursor and therefore have no linear address.
+     * coordinate. They enter through {@link #placeObject}; these cells are not placed through
+     * the cursor and therefore have no linear address.
      *
-     * @return the live map, not a copy
+     * @return an unmodifiable view of the context's map
      */
     public Map<int[], PlacedMolecule> initialWorldObjects() {
-        return initialWorldObjects;
+        return Collections.unmodifiableMap(initialWorldObjects);
     }
 
     /**

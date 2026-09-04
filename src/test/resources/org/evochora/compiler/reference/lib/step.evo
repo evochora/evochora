@@ -1,0 +1,9 @@
+# Module that declares its dependency with .REQUIRE and leaves the choice to its importer.
+.REQUIRE "util.evo" AS CALC
+.SOURCE "lib/consts.evo"
+
+EXPORT .PROC FORWARD REF X
+  ADDI X DATA:1
+  CALL CALC.CLAMP REF X VAL DATA:0 MAX_VALUE
+  RET
+.ENDP

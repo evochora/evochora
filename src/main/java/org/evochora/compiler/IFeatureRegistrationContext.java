@@ -1,7 +1,7 @@
 package org.evochora.compiler;
 
 import org.evochora.compiler.backend.emit.IEmissionContributor;
-import org.evochora.compiler.backend.emit.IEmissionRule;
+import org.evochora.compiler.backend.rewrite.IRewriteRule;
 import org.evochora.compiler.backend.layout.ILayoutDirectiveHandler;
 import org.evochora.compiler.backend.link.ILinkingDirectiveHandler;
 import org.evochora.compiler.backend.link.ILinkingRule;
@@ -12,17 +12,18 @@ import org.evochora.compiler.frontend.semantics.IDependencySetupHandler;
 import org.evochora.compiler.frontend.parser.IParserStatementHandler;
 import org.evochora.compiler.frontend.postprocess.IPostProcessHandler;
 import org.evochora.compiler.frontend.preprocessor.IPreProcessorHandler;
-import org.evochora.compiler.frontend.semantics.analysis.IAnalysisHandler;
-import org.evochora.compiler.frontend.semantics.analysis.ISymbolCollector;
+import org.evochora.compiler.frontend.semantics.IAnalysisHandler;
+import org.evochora.compiler.frontend.semantics.ISymbolCollector;
 import org.evochora.compiler.frontend.tokenmap.ITokenMapContributor;
+import org.evochora.compiler.isa.IInstructionSet;
 import org.evochora.compiler.model.ast.AstNode;
 
 /**
  * Pure declarative registration interface for compiler features.
  *
  * <p>Features call these methods during {@link ICompilerFeature#register} to declare
- * which handlers they contribute to each compiler phase. This interface has no getters
- * and no state accessors — it is write-only from the feature's perspective.</p>
+ * which handlers they contribute to each compiler phase. The one thing a feature reads here
+ * is the instruction set, which it hands to the handlers that need it.</p>
  *
  * <p>The concrete implementation ({@link FeatureRegistry}) collects all registrations
  * and provides getter methods for the compiler to read them back.</p>
@@ -30,6 +31,14 @@ import org.evochora.compiler.model.ast.AstNode;
  * <p>Phase 1 (Lexing) has no extension points because the lexer uses generic token types.</p>
  */
 public interface IFeatureRegistrationContext {
+
+	/**
+	 * The instruction set this compilation targets, for handlers that read opcodes,
+	 * signatures or register banks.
+	 *
+	 * @return The compiler's view of the instruction set.
+	 */
+	IInstructionSet isa();
 
 	// Phase 0: Dependency Scanning
 
@@ -56,7 +65,7 @@ public interface IFeatureRegistrationContext {
 	 * Registers a preprocessor handler for Phase 2. Handlers registered here are
 	 * static (initialization-time) and stored in the immutable registry. Dynamic
 	 * runtime registration (e.g., macro expansion handlers) happens through
-	 * {@link org.evochora.compiler.frontend.preprocessor.PreProcessorContext#registerDynamicHandler}.
+	 * {@link org.evochora.compiler.frontend.preprocessor.PreProcessorContext#handlers()}.
 	 *
 	 * @param name    The token text that triggers this handler (e.g., ".MACRO", ".SOURCE").
 	 * @param handler The handler that processes matching tokens.
@@ -137,7 +146,7 @@ public interface IFeatureRegistrationContext {
 	 *
 	 * @param rule The rule that rewrites IR items (e.g., procedure marshalling).
 	 */
-	void emissionRule(IEmissionRule rule);
+	void rewriteRule(IRewriteRule rule);
 
 	// Phase 9: Layout
 

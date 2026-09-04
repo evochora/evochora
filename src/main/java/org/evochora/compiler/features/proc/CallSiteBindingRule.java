@@ -7,7 +7,6 @@ import org.evochora.compiler.isa.IInstructionSet;
 import org.evochora.compiler.model.ir.IrInstruction;
 import org.evochora.compiler.model.ir.IrOperand;
 import org.evochora.compiler.model.ir.IrReg;
-import org.evochora.runtime.isa.RegisterBank;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -24,6 +23,8 @@ public class CallSiteBindingRule implements ILinkingRule {
         if (!(instruction instanceof IrCallInstruction call)) return instruction;
 
         IInstructionSet isa = context.isa();
+        int formalDataBase = baseOfBank(isa, "FDR");
+        int formalLocationBase = baseOfBank(isa, "FLR");
         Map<Integer, Integer> bindings = new HashMap<>();
 
         int dataIndex = 0;
@@ -32,13 +33,13 @@ public class CallSiteBindingRule implements ILinkingRule {
                 throw new IllegalStateException("Expected IrReg for REF operand at index " + dataIndex
                         + ", got: " + op.getClass().getSimpleName());
             }
-            bindings.put(RegisterBank.FDR.base + dataIndex, resolveReg(isa, reg.name()));
+            bindings.put(formalDataBase + dataIndex, resolveReg(isa, reg.name()));
             dataIndex++;
         }
         for (IrOperand op : call.valOperands()) {
             // VAL can be IrImm/IrTypedImm (literals) — no source register binding for those
             if (op instanceof IrReg reg) {
-                bindings.put(RegisterBank.FDR.base + dataIndex, resolveReg(isa, reg.name()));
+                bindings.put(formalDataBase + dataIndex, resolveReg(isa, reg.name()));
             }
             dataIndex++;
         }
@@ -49,13 +50,13 @@ public class CallSiteBindingRule implements ILinkingRule {
                 throw new IllegalStateException("Expected IrReg for LREF operand at index " + locationIndex
                         + ", got: " + op.getClass().getSimpleName());
             }
-            bindings.put(RegisterBank.FLR.base + locationIndex, resolveReg(isa, reg.name()));
+            bindings.put(formalLocationBase + locationIndex, resolveReg(isa, reg.name()));
             locationIndex++;
         }
         for (IrOperand op : call.lvalOperands()) {
             // LVAL can be IrLabelRef (label resolved via PSLI) — no source register binding for those
             if (op instanceof IrReg reg) {
-                bindings.put(RegisterBank.FLR.base + locationIndex, resolveReg(isa, reg.name()));
+                bindings.put(formalLocationBase + locationIndex, resolveReg(isa, reg.name()));
             }
             locationIndex++;
         }
@@ -70,5 +71,17 @@ public class CallSiteBindingRule implements ILinkingRule {
         return isa.resolveRegisterToken(regName).orElseThrow(() ->
                 new IllegalStateException("Cannot resolve register '" + regName
                         + "' — should have been validated in semantic analysis"));
+    }
+
+    /**
+     * The ID of the first register of the named bank; the formal parameter banks are bound by
+     * position from there.
+     */
+    private static int baseOfBank(IInstructionSet isa, String bankName) {
+        return isa.registerBanks().stream()
+                .filter(bank -> bank.name().equals(bankName))
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException("The instruction set has no register bank " + bankName))
+                .base();
     }
 }

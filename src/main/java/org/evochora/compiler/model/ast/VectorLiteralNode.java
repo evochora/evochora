@@ -13,6 +13,6 @@ import java.util.List;
 public record VectorLiteralNode(
         List<Integer> values,
         SourceInfo sourceInfo
-) implements AstNode, ISourceLocatable {
+) implements OperandNode {
     // This node has no children and inherits the empty list from getChildren().
 }

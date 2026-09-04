@@ -23,8 +23,8 @@ public record ImportDependencyInfo(
 
     @Override public String directiveName() { return ".IMPORT"; }
     @Override public boolean allowedInSourceFile() { return false; }
-    @Override public org.evochora.compiler.frontend.semantics.ModuleId resolvedModuleId() {
-        return new org.evochora.compiler.frontend.semantics.ModuleId(resolvedPath);
+    @Override public org.evochora.compiler.frontend.module.ModuleId resolvedModuleId() {
+        return new org.evochora.compiler.frontend.module.ModuleId(resolvedPath);
     }
 
     /**

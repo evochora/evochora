@@ -1,12 +1,13 @@
 package org.evochora.compiler.features.proc;
 
-import org.evochora.compiler.backend.emit.ConditionalUtils;
-import org.evochora.compiler.backend.emit.IEmissionRule;
+import org.evochora.compiler.backend.rewrite.IRewriteRule;
+import org.evochora.compiler.isa.IInstructionSet;
 import org.evochora.compiler.model.ir.*;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -15,16 +16,14 @@ import java.util.stream.Stream;
  * Inserts procedure prologue and epilogue code for parameter marshalling.
  * It handles standard and conditional RET instructions.
  */
-public class ProcedureMarshallingRule implements IEmissionRule {
-
-    // Static counter across compilations — ensures unique label names across programs
-    // compiled in the same JVM process. Prevents label hash collisions when programs
-    // are placed adjacent in the world grid.
-    private static final AtomicInteger safeRetCounter = new AtomicInteger(0);
+public class ProcedureMarshallingRule implements IRewriteRule {
 
     @Override
-    public List<IrItem> apply(List<IrItem> items) {
+    public List<IrItem> apply(List<IrItem> items, IInstructionSet isa) {
         List<IrItem> out = new ArrayList<>(items.size() + 16);
+        // Numbers the bridge labels of this pass from zero, so the same source yields the
+        // same labels whatever was compiled before in the same process.
+        AtomicInteger safeRetCounter = new AtomicInteger(0);
         int i = 0;
         while (i < items.size()) {
             IrItem it = items.get(i);
@@ -52,7 +51,7 @@ public class ProcedureMarshallingRule implements IEmissionRule {
                 }
 
                 // Process body for RET instructions (handles epilogue generation)
-                processBodyForRets(out, body, refParamNames, lrefParamNames);
+                processBodyForRets(out, body, refParamNames, lrefParamNames, isa, safeRetCounter);
 
                 if (bodyEndIndex < items.size()) {
                     out.add(items.get(bodyEndIndex)); // Add proc_exit
@@ -66,15 +65,18 @@ public class ProcedureMarshallingRule implements IEmissionRule {
         return out;
     }
 
-    private void processBodyForRets(List<IrItem> out, List<IrItem> body, List<String> refParams, List<String> lrefParams) {
+    private void processBodyForRets(List<IrItem> out, List<IrItem> body, List<String> refParams, List<String> lrefParams,
+                                    IInstructionSet isa, AtomicInteger safeRetCounter) {
         int i = 0;
         while (i < body.size()) {
             IrItem currentItem = body.get(i);
 
             // Check for conditional RET
-            if (i + 1 < body.size() && currentItem instanceof IrInstruction conditional && ConditionalUtils.isConditional(conditional.opcode())) {
-                if (body.get(i + 1) instanceof IrInstruction ret && "RET".equals(ret.opcode())) {
-                    handleConditionalRet(out, conditional, ret, refParams, lrefParams);
+            if (i + 1 < body.size() && currentItem instanceof IrInstruction conditional
+                    && body.get(i + 1) instanceof IrInstruction ret && "RET".equals(ret.opcode())) {
+                Optional<String> negatedOpcode = isa.negatedConditional(conditional.opcode());
+                if (negatedOpcode.isPresent()) {
+                    handleConditionalRet(out, conditional, negatedOpcode.get(), ret, refParams, lrefParams, safeRetCounter);
                     i += 2;
                     continue;
                 }
@@ -92,10 +94,10 @@ public class ProcedureMarshallingRule implements IEmissionRule {
         }
     }
 
-    private void handleConditionalRet(List<IrItem> out, IrInstruction conditional, IrInstruction ret,
-                                      List<String> refParams, List<String> lrefParams) {
+    private void handleConditionalRet(List<IrItem> out, IrInstruction conditional, String negatedOpcode,
+                                      IrInstruction ret, List<String> refParams, List<String> lrefParams,
+                                      AtomicInteger safeRetCounter) {
         String label = "_safe_ret_" + safeRetCounter.getAndIncrement();
-        String negatedOpcode = ConditionalUtils.getNegatedOpcode(conditional.opcode());
 
         out.add(IrInstruction.synthetic(negatedOpcode, conditional.operands(), conditional.source()));
         out.add(IrInstruction.synthetic("JMPI", List.of(new IrLabelRef(label)), conditional.source()));

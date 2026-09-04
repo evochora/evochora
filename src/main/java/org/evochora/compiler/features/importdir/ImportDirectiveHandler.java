@@ -3,7 +3,7 @@ package org.evochora.compiler.features.importdir;
 import org.evochora.compiler.frontend.parser.IParserStatementHandler;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
-import org.evochora.compiler.frontend.parser.ParsingContext;
+import org.evochora.compiler.frontend.parser.IParsingContext;
 import org.evochora.compiler.model.ast.AstNode;
 
 import java.util.ArrayList;
@@ -23,7 +23,7 @@ public class ImportDirectiveHandler implements IParserStatementHandler {
     public boolean supportsExport() { return true; }
 
     @Override
-    public AstNode parse(ParsingContext context) {
+    public AstNode parse(IParsingContext context) {
         // The dependency scanner describes this directive's syntax a second time, as a regular
         // expression, and decides from it which modules are loaded at all. A form accepted here
         // but not there reaches the parser with its module missing.
@@ -31,7 +31,6 @@ public class ImportDirectiveHandler implements IParserStatementHandler {
         context.advance(); // consume .IMPORT
 
         Token pathToken = context.consume(TokenType.STRING, "Expected a file path in quotes after .IMPORT.");
-        if (pathToken == null) return null;
 
         // Consume AS keyword
         if (!context.check(TokenType.IDENTIFIER) || !"AS".equalsIgnoreCase(context.peek().text())) {
@@ -43,7 +42,6 @@ public class ImportDirectiveHandler implements IParserStatementHandler {
         context.advance(); // consume AS
 
         Token aliasToken = context.consume(TokenType.IDENTIFIER, "Expected an alias name after AS.");
-        if (aliasToken == null) return null;
 
         // Parse optional USING clauses
         List<ImportNode.UsingClause> usings = new ArrayList<>();
@@ -52,7 +50,6 @@ public class ImportDirectiveHandler implements IParserStatementHandler {
                 context.advance(); // consume USING
 
                 Token sourceAlias = context.consume(TokenType.IDENTIFIER, "Expected a source alias after USING.");
-                if (sourceAlias == null) break;
 
                 if (!context.check(TokenType.IDENTIFIER) || !"AS".equalsIgnoreCase(context.peek().text())) {
                     context.getDiagnostics().reportError(
@@ -63,7 +60,6 @@ public class ImportDirectiveHandler implements IParserStatementHandler {
                 context.advance(); // consume AS
 
                 Token targetAlias = context.consume(TokenType.IDENTIFIER, "Expected a target alias after AS.");
-                if (targetAlias == null) break;
 
                 usings.add(new ImportNode.UsingClause(
                         sourceAlias.text(), targetAlias.text(),

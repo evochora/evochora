@@ -2,6 +2,7 @@ package org.evochora.compiler.features.place;
 
 import org.evochora.compiler.api.CompilationException;
 import org.evochora.compiler.api.PlacedMolecule;
+import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.backend.layout.ILayoutDirectiveHandler;
 import org.evochora.compiler.backend.layout.LayoutContext;
 import org.evochora.compiler.backend.layout.Nd;
@@ -9,7 +10,7 @@ import org.evochora.compiler.model.ir.IrDirective;
 import org.evochora.compiler.model.ir.IrValue;
 import org.evochora.compiler.model.ir.placement.*;
 import org.evochora.runtime.model.EnvironmentProperties;
-import org.evochora.runtime.model.MoleculeTypeRegistry;
+import org.evochora.compiler.isa.IInstructionSet;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -21,6 +22,17 @@ import java.util.List;
  * molecules into the initial world object map at the computed coordinates.
  */
 public final class PlaceLayoutHandler implements ILayoutDirectiveHandler {
+
+    private final IInstructionSet isa;
+
+    /**
+     * Creates the handler for an instruction set.
+     *
+     * @param isa The instruction set, which names the molecule types a placement may use.
+     */
+    public PlaceLayoutHandler(IInstructionSet isa) {
+        this.isa = isa;
+    }
 
     @Override
     public void handle(IrDirective directive, LayoutContext context) throws CompilationException {
@@ -34,10 +46,10 @@ public final class PlaceLayoutHandler implements ILayoutDirectiveHandler {
         List<IPlacementArgument> placements = placementsVal.placements();
 
         for (IPlacementArgument placement : placements) {
-            List<int[]> coordinates = generateCoordinates(placement, context);
+            List<int[]> coordinates = generateCoordinates(placement, context, directive.source());
             for (int[] coord : coordinates) {
                 int[] finalCoord = Nd.add(context.basePos(), coord);
-                context.initialWorldObjects().put(finalCoord, molecule);
+                context.placeObject(finalCoord, molecule, "a .PLACE", directive.source());
             }
         }
     }
@@ -50,17 +62,13 @@ public final class PlaceLayoutHandler implements ILayoutDirectiveHandler {
                     "Missing 'type' argument in place directive — PlaceNodeConverter must provide it");
         }
         String ts = t.value();
-        int type;
-        try {
-            type = MoleculeTypeRegistry.nameToType(ts);
-        } catch (IllegalArgumentException e) {
-            throw new CompilationException("Unknown molecule type in .PLACE directive: " + ts + ". " + e.getMessage());
-        }
+        int type = isa.moleculeType(ts).orElseThrow(() ->
+                new CompilationException(SourceInfo.locate(directive.source(), "Unknown molecule type '" + ts + "' in .PLACE.")));
         long value = val instanceof IrValue.Int64 iv ? iv.value() : 0L;
         return new PlacedMolecule(type, (int) value, 0);
     }
 
-    private List<int[]> generateCoordinates(IPlacementArgument placement, LayoutContext context) throws CompilationException {
+    private List<int[]> generateCoordinates(IPlacementArgument placement, LayoutContext context, SourceInfo src) throws CompilationException {
         if (placement instanceof IrVectorPlacement vp) {
             return List.of(vp.components().stream().mapToInt(i -> i).toArray());
         } else if (placement instanceof IrRangeExpression re) {
@@ -69,17 +77,19 @@ public final class PlaceLayoutHandler implements ILayoutDirectiveHandler {
             for (List<IIrPlacementComponent> dimComponents : re.dimensions()) {
                 // For now, we only support one component per dimension
                 if (dimComponents.size() != 1) {
-                    throw new CompilationException("Multiple components per dimension are not yet supported.");
+                    throw new CompilationException(SourceInfo.locate(src, ".PLACE has " + dimComponents.size()
+                            + " components in dimension " + (dimIndex + 1) + "; only one is supported."));
                 }
                 IIrPlacementComponent component = dimComponents.get(0);
-                dimensionValues.add(getValuesForComponent(component, dimIndex++, context));
+                dimensionValues.add(getValuesForComponent(component, dimIndex++, re.dimensions().size(), context, src));
             }
             return cartesianProduct(dimensionValues);
         }
         return Collections.emptyList();
     }
 
-    private List<Integer> getValuesForComponent(IIrPlacementComponent component, int dimIndex, LayoutContext context) throws CompilationException {
+    private List<Integer> getValuesForComponent(IIrPlacementComponent component, int dimIndex, int dimensions,
+                                                LayoutContext context, SourceInfo src) throws CompilationException {
         if (component instanceof IrSingleValueComponent svc) {
             return List.of(svc.value());
         } else if (component instanceof IrRangeValueComponent rvc) {
@@ -97,11 +107,11 @@ public final class PlaceLayoutHandler implements ILayoutDirectiveHandler {
         } else if (component instanceof IrWildcardValueComponent) {
             EnvironmentProperties envProps = context.getEnvProps();
             if (envProps == null || envProps.getWorldShape() == null) {
-                throw new CompilationException("Use of '*' in .PLACE requires a compilation context with world dimensions.");
+                throw new CompilationException(SourceInfo.locate(src, "'*' in .PLACE needs a world shape."));
             }
             int[] shape = envProps.getWorldShape();
             if (dimIndex >= shape.length) {
-                throw new CompilationException("Wildcard used for dimension " + dimIndex + " which is out of bounds for the world shape.");
+                throw new CompilationException(SourceInfo.locate(src, ".PLACE uses " + dimensions + " dimensions, the world has " + shape.length + "."));
             }
             List<Integer> values = new ArrayList<>();
             for (int i = 0; i < shape[dimIndex]; i++) {
@@ -136,4 +146,5 @@ public final class PlaceLayoutHandler implements ILayoutDirectiveHandler {
         }
         return result;
     }
+
 }

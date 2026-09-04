@@ -9,8 +9,11 @@ import org.evochora.runtime.model.Organism;
 import org.evochora.runtime.model.Environment;
 
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.NoSuchElementException;
+import java.util.Optional;
 
 import static org.evochora.runtime.isa.Instruction.OperandSource.*;
 
@@ -22,85 +25,81 @@ public class ConditionalInstruction extends Instruction {
 
     private static int family;
 
+    /** Maps each conditional opcode name to the name of the opcode that skips exactly when it does not. */
+    private static final Map<String, String> NEGATION_BY_NAME = new HashMap<>();
+
     /**
      * Registers all conditional instructions with the instruction registry.
+     * <p>
+     * Every conditional is registered together with its negation, the instruction that skips
+     * the next instruction exactly when this one does not. The two share their operands, so
+     * one can stand in for the other wherever a condition has to be inverted.
      *
      * @param f the family ID for this instruction family
      */
     public static void register(int f) {
         family = f;
-        // Operation 0: IF/EQ (If Equal)
-        reg(0, Variant.RR, "IFR", REGISTER, REGISTER);
-        reg(0, Variant.RI, "IFI", REGISTER, IMMEDIATE);
-        reg(0, Variant.SS, "IFS", STACK, STACK);
-        // Operation 1: NE (Not Equal)
-        reg(1, Variant.RR, "INR", REGISTER, REGISTER);
-        reg(1, Variant.RI, "INI", REGISTER, IMMEDIATE);
-        reg(1, Variant.SS, "INS", STACK, STACK);
-        // Operation 2: LT (Less Than)
-        reg(2, Variant.RR, "LTR", REGISTER, REGISTER);
-        reg(2, Variant.RI, "LTI", REGISTER, IMMEDIATE);
-        reg(2, Variant.SS, "LTS", STACK, STACK);
-        // Operation 3: GT (Greater Than)
-        reg(3, Variant.RR, "GTR", REGISTER, REGISTER);
-        reg(3, Variant.RI, "GTI", REGISTER, IMMEDIATE);
-        reg(3, Variant.SS, "GTS", STACK, STACK);
-        // Operation 4: LE (Less Than or Equal)
-        reg(4, Variant.RR, "LETR", REGISTER, REGISTER);
-        reg(4, Variant.RI, "LETI", REGISTER, IMMEDIATE);
-        reg(4, Variant.SS, "LETS", STACK, STACK);
-        // Operation 5: GE (Greater Than or Equal)
-        reg(5, Variant.RR, "GETR", REGISTER, REGISTER);
-        reg(5, Variant.RI, "GETI", REGISTER, IMMEDIATE);
-        reg(5, Variant.SS, "GETS", STACK, STACK);
-        // Operation 6: IFT (If True / non-zero)
-        reg(6, Variant.RR, "IFTR", REGISTER, REGISTER);
-        reg(6, Variant.RI, "IFTI", REGISTER, IMMEDIATE);
-        reg(6, Variant.SS, "IFTS", STACK, STACK);
-        // Operation 7: INT (If Not True / zero)
-        reg(7, Variant.RR, "INTR", REGISTER, REGISTER);
-        reg(7, Variant.RI, "INTI", REGISTER, IMMEDIATE);
-        reg(7, Variant.SS, "INTS", STACK, STACK);
-        // Operation 8: IFM (If Mine - ownership check)
-        reg(8, Variant.R, "IFMR", REGISTER);
-        reg(8, Variant.V, "IFMI", VECTOR);  // Note: uses VECTOR operand despite "I" suffix
-        reg(8, Variant.S, "IFMS", STACK);
-        // Operation 9: INM (If Not Mine - ownership check)
-        reg(9, Variant.R, "INMR", REGISTER);
-        reg(9, Variant.V, "INMI", VECTOR);  // Note: uses VECTOR operand despite "I" suffix
-        reg(9, Variant.S, "INMS", STACK);
-        // Operation 10: IFP (If Passable)
-        reg(10, Variant.R, "IFPR", REGISTER);
-        reg(10, Variant.V, "IFPI", VECTOR);  // Note: uses VECTOR operand despite "I" suffix
-        reg(10, Variant.S, "IFPS", STACK);
-        // Operation 11: INP (If Not Passable)
-        reg(11, Variant.R, "INPR", REGISTER);
-        reg(11, Variant.V, "INPI", VECTOR);  // Note: uses VECTOR operand despite "I" suffix
-        reg(11, Variant.S, "INPS", STACK);
-        // Operation 12: IFF (If Foreign ownership)
-        reg(12, Variant.R, "IFFR", REGISTER);
-        reg(12, Variant.V, "IFFI", VECTOR);  // Note: uses VECTOR operand despite "I" suffix
-        reg(12, Variant.S, "IFFS", STACK);
-        // Operation 13: INF (If Not Foreign ownership)
-        reg(13, Variant.R, "INFR", REGISTER);
-        reg(13, Variant.V, "INFI", VECTOR);  // Note: uses VECTOR operand despite "I" suffix
-        reg(13, Variant.S, "INFS", STACK);
-        // Operation 14: IFV (If Vacant ownership)
-        reg(14, Variant.R, "IFVR", REGISTER);
-        reg(14, Variant.V, "IFVI", VECTOR);  // Note: uses VECTOR operand despite "I" suffix
-        reg(14, Variant.S, "IFVS", STACK);
-        // Operation 15: INV (If Not Vacant ownership)
-        reg(15, Variant.R, "INVR", REGISTER);
-        reg(15, Variant.V, "INVI", VECTOR);  // Note: uses VECTOR operand despite "I" suffix
-        reg(15, Variant.S, "INVS", STACK);
-        // Operation 16: IER (If Error - previous instruction failed)
-        reg(16, Variant.NONE, "IFER");
-        // Operation 17: INE (If No Error - previous instruction did not fail)
-        reg(17, Variant.NONE, "INER");
+        // Operations 0 and 1: equal / not equal
+        regPair(0, 1, Variant.RR, "IFR", "INR", REGISTER, REGISTER);
+        regPair(0, 1, Variant.RI, "IFI", "INI", REGISTER, IMMEDIATE);
+        regPair(0, 1, Variant.SS, "IFS", "INS", STACK, STACK);
+        // Operations 2 and 5: less than / greater than or equal
+        regPair(2, 5, Variant.RR, "LTR", "GETR", REGISTER, REGISTER);
+        regPair(2, 5, Variant.RI, "LTI", "GETI", REGISTER, IMMEDIATE);
+        regPair(2, 5, Variant.SS, "LTS", "GETS", STACK, STACK);
+        // Operations 3 and 4: greater than / less than or equal
+        regPair(3, 4, Variant.RR, "GTR", "LETR", REGISTER, REGISTER);
+        regPair(3, 4, Variant.RI, "GTI", "LETI", REGISTER, IMMEDIATE);
+        regPair(3, 4, Variant.SS, "GTS", "LETS", STACK, STACK);
+        // Operations 6 and 7: true (non-zero) / not true (zero)
+        regPair(6, 7, Variant.RR, "IFTR", "INTR", REGISTER, REGISTER);
+        regPair(6, 7, Variant.RI, "IFTI", "INTI", REGISTER, IMMEDIATE);
+        regPair(6, 7, Variant.SS, "IFTS", "INTS", STACK, STACK);
+        // Operations 8 and 9: mine / not mine (ownership check)
+        regPair(8, 9, Variant.R, "IFMR", "INMR", REGISTER);
+        regPair(8, 9, Variant.V, "IFMI", "INMI", VECTOR);  // Note: uses VECTOR operand despite "I" suffix
+        regPair(8, 9, Variant.S, "IFMS", "INMS", STACK);
+        // Operations 10 and 11: passable / not passable
+        regPair(10, 11, Variant.R, "IFPR", "INPR", REGISTER);
+        regPair(10, 11, Variant.V, "IFPI", "INPI", VECTOR);  // Note: uses VECTOR operand despite "I" suffix
+        regPair(10, 11, Variant.S, "IFPS", "INPS", STACK);
+        // Operations 12 and 13: foreign ownership / not foreign ownership
+        regPair(12, 13, Variant.R, "IFFR", "INFR", REGISTER);
+        regPair(12, 13, Variant.V, "IFFI", "INFI", VECTOR);  // Note: uses VECTOR operand despite "I" suffix
+        regPair(12, 13, Variant.S, "IFFS", "INFS", STACK);
+        // Operations 14 and 15: vacant ownership / not vacant ownership
+        regPair(14, 15, Variant.R, "IFVR", "INVR", REGISTER);
+        regPair(14, 15, Variant.V, "IFVI", "INVI", VECTOR);  // Note: uses VECTOR operand despite "I" suffix
+        regPair(14, 15, Variant.S, "IFVS", "INVS", STACK);
+        // Operations 16 and 17: previous instruction failed / did not fail
+        regPair(16, 17, Variant.NONE, "IFER", "INER");
+    }
+
+    /**
+     * Registers a conditional and its negation, one variant of each, with the same operands.
+     */
+    private static void regPair(int op, int negatedOp, int variant, String name, String negatedName,
+                                OperandSource... sources) {
+        reg(op, variant, name, sources);
+        reg(negatedOp, variant, negatedName, sources);
+        NEGATION_BY_NAME.put(name.toUpperCase(), negatedName.toUpperCase());
+        NEGATION_BY_NAME.put(negatedName.toUpperCase(), name.toUpperCase());
     }
 
     private static void reg(int op, int variant, String name, OperandSource... sources) {
         Instruction.registerOp(ConditionalInstruction.class, ConditionalInstruction::new, family, op, variant, name, true, sources);
+    }
+
+    /**
+     * Returns the opcode that skips the next instruction exactly when the given one does not.
+     * The two take the same operands, so the negation can replace the original wherever a
+     * condition has to be inverted.
+     *
+     * @param opcodeName the name of a conditional opcode, in any letter case
+     * @return the name of its negation, or empty if the name is not a conditional opcode
+     */
+    public static Optional<String> negationOf(String opcodeName) {
+        return Optional.ofNullable(NEGATION_BY_NAME.get(opcodeName.toUpperCase()));
     }
 
     /**

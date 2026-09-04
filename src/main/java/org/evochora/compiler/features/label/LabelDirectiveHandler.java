@@ -1,7 +1,7 @@
 package org.evochora.compiler.features.label;
 
 import org.evochora.compiler.frontend.parser.IParserStatementHandler;
-import org.evochora.compiler.frontend.parser.ParsingContext;
+import org.evochora.compiler.frontend.parser.IParsingContext;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
@@ -17,7 +17,7 @@ public class LabelDirectiveHandler implements IParserStatementHandler {
     public boolean supportsExport() { return true; }
 
     @Override
-    public AstNode parse(ParsingContext context) {
+    public AstNode parse(IParsingContext context) {
         context.advance(); // consume .LABEL
         Token nameToken = context.consume(TokenType.IDENTIFIER, "Expected label name after .LABEL.");
         boolean exported = context.isExported();

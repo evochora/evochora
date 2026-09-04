@@ -19,7 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class RegisterAliasEmissionContributorTest {
 
     private final org.evochora.compiler.features.reg.RegisterAliasEmissionContributor contributor =
-            new org.evochora.compiler.features.reg.RegisterAliasEmissionContributor();
+            new org.evochora.compiler.features.reg.RegisterAliasEmissionContributor(new org.evochora.compiler.isa.RuntimeInstructionSetAdapter());
 
     @BeforeAll
     static void initIsa() {

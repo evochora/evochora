@@ -2,7 +2,7 @@ package org.evochora.compiler.features.ctx;
 
 import org.evochora.compiler.frontend.module.PlacementContext;
 import org.evochora.compiler.frontend.parser.IParserStatementHandler;
-import org.evochora.compiler.frontend.parser.ParsingContext;
+import org.evochora.compiler.frontend.parser.IParsingContext;
 import org.evochora.compiler.model.ast.AstNode;
 
 /**
@@ -12,7 +12,7 @@ import org.evochora.compiler.model.ast.AstNode;
  */
 public class PushCtxDirectiveHandler implements IParserStatementHandler {
     @Override
-    public AstNode parse(ParsingContext context) {
+    public AstNode parse(IParsingContext context) {
         Object value = context.peek().value();
         context.advance(); // consume .PUSH_CTX
 

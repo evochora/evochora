@@ -4,9 +4,6 @@ import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.backend.layout.LayoutResult;
 import org.evochora.compiler.backend.link.LinkingContext;
 import org.evochora.compiler.features.label.LabelRefLinkingRule;
-import org.evochora.compiler.diagnostics.DiagnosticsEngine;
-import org.evochora.compiler.model.symbols.Symbol;
-import org.evochora.compiler.model.symbols.SymbolTable;
 import org.evochora.compiler.model.ir.IrImm;
 import org.evochora.compiler.model.ir.IrInstruction;
 import org.evochora.compiler.model.ir.IrLabelRef;
@@ -24,8 +21,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Unit tests for LabelRefLinkingRule.
  * <p>
- * Verifies that label references are correctly converted to hash values
- * that match what the runtime expects.
+ * A label reference reaches the linker under the label's qualified name, as the frontend
+ * resolved it. The rule turns it into the value the runtime matches jumps against.
  */
 @Tag("unit")
 class LabelRefLinkingRuleTest {
@@ -37,11 +34,8 @@ class LabelRefLinkingRuleTest {
 
     @BeforeEach
     void setUp() {
-        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        SymbolTable symbolTable = new SymbolTable(diagnostics);
         rule = new LabelRefLinkingRule();
-        context = new LinkingContext(symbolTable, null);
-        context.pushAliasChain("TEST");
+        context = new LinkingContext(new org.evochora.compiler.isa.RuntimeInstructionSetAdapter());
         dummySource = new SourceInfo("test.s", 1, 0);
     }
 
@@ -52,15 +46,16 @@ class LabelRefLinkingRuleTest {
                 Map.of(10, new int[]{5, 5}),
                 Map.of("5|5", 10),
                 Map.of("TEST.FOO", 10),
+                valuesOf(Map.of("TEST.FOO", 10)),
                 Collections.emptyMap(),
                 Collections.emptyMap(),
                 Collections.emptyList()
         );
 
-        // And: An instruction with IrLabelRef("FOO") from "test.s"
+        // And: An instruction referring to the label under its qualified name
         IrInstruction input = new IrInstruction(
                 "CALL",
-                List.of(new IrLabelRef("FOO")),
+                List.of(new IrLabelRef("TEST.FOO")),
                 dummySource
         );
 
@@ -82,16 +77,17 @@ class LabelRefLinkingRuleTest {
         // This test verifies that the hash generation in the compiler
         // matches what the runtime's LabelIndex expects.
 
-        String[] labelNames = {"INCREMENT", "LOOP_START", "EXIT", "my_proc", "A"};
+        String[] labelNames = {"INCREMENT", "LOOP_START", "EXIT", "MY_PROC", "A"};
 
         for (String labelName : labelNames) {
-            String qualifiedName = "TEST." + labelName.toUpperCase();
+            String qualifiedName = "TEST." + labelName;
 
             // Given: A layout with the module-qualified label
             layout = new LayoutResult(
                     Map.of(0, new int[]{0, 0}),
                     Map.of("0|0", 0),
                     Map.of(qualifiedName, 0),
+                    valuesOf(Map.of(qualifiedName, 0)),
                     Collections.emptyMap(),
                     Collections.emptyMap(),
                     Collections.emptyList()
@@ -99,7 +95,7 @@ class LabelRefLinkingRuleTest {
 
             IrInstruction input = new IrInstruction(
                     "JMPI",
-                    List.of(new IrLabelRef(labelName)),
+                    List.of(new IrLabelRef(qualifiedName)),
                     dummySource
             );
 
@@ -113,7 +109,7 @@ class LabelRefLinkingRuleTest {
 
             long expectedHash = qualifiedName.hashCode() & 0x7FFFF;
             assertThat(typedImm.value())
-                    .as("Hash for label '%s' (qualified: '%s') should match runtime expectation", labelName, qualifiedName)
+                    .as("Hash for label '%s' should match runtime expectation", qualifiedName)
                     .isEqualTo(expectedHash);
 
             // And: The hash is within the valid range (19 bits, always positive)
@@ -123,11 +119,40 @@ class LabelRefLinkingRuleTest {
     }
 
     @Test
+    void resolvesSyntheticLabelUnderItsOwnName() {
+        // Given: A bridge label created by a marshalling rule, which carries no module name
+        layout = new LayoutResult(
+                Map.of(3, new int[]{3, 0}),
+                Map.of("3|0", 3),
+                Map.of("_safe_call_0", 3),
+                valuesOf(Map.of("_safe_call_0", 3)),
+                Collections.emptyMap(),
+                Collections.emptyMap(),
+                Collections.emptyList()
+        );
+
+        IrInstruction input = new IrInstruction(
+                "JMPI",
+                List.of(new IrLabelRef("_safe_call_0")),
+                dummySource
+        );
+
+        // When: The rule is applied
+        IrInstruction result = rule.apply(input, context, layout);
+
+        // Then: The reference is resolved exactly as written
+        assertThat(result.operands().get(0)).isInstanceOf(IrTypedImm.class);
+        assertThat(((IrTypedImm) result.operands().get(0)).value())
+                .isEqualTo("_safe_call_0".hashCode() & 0x7FFFF);
+    }
+
+    @Test
     void doesNotModifyInstructionWithoutLabelRef() {
         layout = new LayoutResult(
                 Collections.emptyMap(),
                 Collections.emptyMap(),
                 Collections.emptyMap(),
+                valuesOf(Collections.emptyMap()),
                 Collections.emptyMap(),
                 Collections.emptyMap(),
                 Collections.emptyList()
@@ -149,11 +174,12 @@ class LabelRefLinkingRuleTest {
 
     @Test
     void doesNotConvertUnknownLabel() {
-        // Given: A layout WITHOUT the referenced label (module-qualified keys)
+        // Given: A layout WITHOUT the referenced label
         layout = new LayoutResult(
                 Collections.emptyMap(),
                 Collections.emptyMap(),
                 Map.of("TEST.OTHER_LABEL", 5), // Different label
+                valuesOf(Map.of("TEST.OTHER_LABEL", 5)),
                 Collections.emptyMap(),
                 Collections.emptyMap(),
                 Collections.emptyList()
@@ -161,7 +187,7 @@ class LabelRefLinkingRuleTest {
 
         IrInstruction input = new IrInstruction(
                 "CALL",
-                List.of(new IrLabelRef("UNKNOWN")),
+                List.of(new IrLabelRef("TEST.UNKNOWN")),
                 dummySource
         );
 
@@ -172,106 +198,10 @@ class LabelRefLinkingRuleTest {
         assertThat(result.operands().get(0)).isInstanceOf(IrLabelRef.class);
     }
 
-    @Test
-    void resolvesExportedLabelViaQualifiedName() {
-        // Given: A symbol table with an exported label in LIB and an import alias in MAIN
-        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        SymbolTable symbolTable = new SymbolTable(diagnostics);
-
-        String libChain = "LIB";
-        String mainChain = "MAIN";
-        symbolTable.registerModule(libChain, "lib.s");
-        symbolTable.registerModule(mainChain, "main.s");
-
-        // Define the label in LIB module
-        symbolTable.setCurrentModule(libChain);
-        symbolTable.define(new Symbol("TARGET", new SourceInfo("lib.s", 1, 0), Symbol.Type.LABEL, null, true));
-
-        // Register the import alias: in MAIN, LIB -> libChain
-        symbolTable.setCurrentModule(mainChain);
-        symbolTable.getModuleScope(mainChain).orElseThrow().imports().put("LIB", libChain);
-
-        // Set up linking context with MAIN alias chain and symbol table
-        LabelRefLinkingRule ruleWithExport = new LabelRefLinkingRule();
-        LinkingContext exportContext = new LinkingContext(symbolTable, null);
-        exportContext.pushAliasChain(mainChain);
-
-        // Given: A layout with module-qualified label "LIB.TARGET"
-        layout = new LayoutResult(
-                Map.of(10, new int[]{5, 5}),
-                Map.of("5|5", 10),
-                Map.of("LIB.TARGET", 10),
-                Collections.emptyMap(),
-                Collections.emptyMap(),
-                Collections.emptyList()
-        );
-
-        // And: An instruction referencing "LIB.TARGET" from main.s
-        SourceInfo mainSource = new SourceInfo("main.s", 1, 0);
-        IrInstruction input = new IrInstruction(
-                "JMPI",
-                List.of(new IrLabelRef("LIB.TARGET")),
-                mainSource
-        );
-
-        // When: The rule is applied
-        IrInstruction result = ruleWithExport.apply(input, exportContext, layout);
-
-        // Then: The qualified label is resolved to the hash of "LIB.TARGET"
-        assertThat(result.operands()).hasSize(1);
-        assertThat(result.operands().get(0)).isInstanceOf(IrTypedImm.class);
-
-        IrTypedImm typedImm = (IrTypedImm) result.operands().get(0);
-        assertThat(typedImm.typeName()).isEqualTo("LABELREF");
-        long expectedHash = "LIB.TARGET".hashCode() & 0x7FFFF;
-        assertThat(typedImm.value()).isEqualTo(expectedHash);
-    }
-
-    @Test
-    void doesNotResolveNonExportedLabelViaQualifiedName() {
-        // Given: A symbol table with a NON-exported label in LIB
-        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        SymbolTable symbolTable = new SymbolTable(diagnostics);
-
-        String libChain = "LIB";
-        String mainChain = "MAIN";
-        symbolTable.registerModule(libChain, "lib.s");
-        symbolTable.registerModule(mainChain, "main.s");
-
-        // Define the label in LIB module (NOT exported)
-        symbolTable.setCurrentModule(libChain);
-        symbolTable.define(new Symbol("PRIVATE", new SourceInfo("lib.s", 1, 0), Symbol.Type.LABEL));
-
-        // Register the import alias
-        symbolTable.setCurrentModule(mainChain);
-        symbolTable.getModuleScope(mainChain).orElseThrow().imports().put("LIB", libChain);
-
-        LabelRefLinkingRule ruleWithNonExport = new LabelRefLinkingRule();
-        LinkingContext nonExportContext = new LinkingContext(symbolTable, null);
-        nonExportContext.pushAliasChain(mainChain);
-
-        // Layout contains the label
-        layout = new LayoutResult(
-                Map.of(10, new int[]{5, 5}),
-                Map.of("5|5", 10),
-                Map.of("PRIVATE", 10),
-                Collections.emptyMap(),
-                Collections.emptyMap(),
-                Collections.emptyList()
-        );
-
-        // Instruction referencing "LIB.PRIVATE" from main.s
-        SourceInfo mainSource = new SourceInfo("main.s", 1, 0);
-        IrInstruction input = new IrInstruction(
-                "JMPI",
-                List.of(new IrLabelRef("LIB.PRIVATE")),
-                mainSource
-        );
-
-        // When: The rule is applied
-        IrInstruction result = ruleWithNonExport.apply(input, nonExportContext, layout);
-
-        // Then: The label is NOT resolved (stays as IrLabelRef) because it's not exported
-        assertThat(result.operands().get(0)).isInstanceOf(IrLabelRef.class);
+    /** The values the layout would assign when no two of the labels collide. */
+    private static Map<String, Integer> valuesOf(Map<String, Integer> labelToAddress) {
+        Map<String, Integer> values = new java.util.HashMap<>();
+        labelToAddress.keySet().forEach(name -> values.put(name, new org.evochora.compiler.isa.RuntimeInstructionSetAdapter().labelValue(name)));
+        return values;
     }
 }

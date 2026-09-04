@@ -1,6 +1,7 @@
 package org.evochora.compiler;
 
 import org.evochora.compiler.api.CompilationException;
+import org.evochora.compiler.api.InternalCompilerException;
 import org.evochora.compiler.api.CompilerOptions;
 import org.evochora.compiler.api.ICompiler;
 import org.evochora.compiler.api.ProgramArtifact;
@@ -11,25 +12,23 @@ import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.frontend.module.DependencyGraph;
 import org.evochora.compiler.frontend.module.DependencyScanner;
-import org.evochora.compiler.frontend.module.ModuleDescriptor;
 import org.evochora.compiler.util.SourceRootResolver;
 import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ParserStatementRegistry;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
-import org.evochora.compiler.frontend.preprocessor.PreProcessorHandlerRegistry;
 import org.evochora.compiler.frontend.preprocessor.PreProcessorContext;
 import org.evochora.compiler.frontend.preprocessor.PreProcessorResult;
 import org.evochora.compiler.frontend.semantics.AnalysisHandlerRegistry;
 import org.evochora.compiler.frontend.semantics.IDependencySetupHandler;
 import org.evochora.compiler.frontend.semantics.ModuleSetupRegistry;
-import org.evochora.compiler.model.ModuleContextTracker;
-import org.evochora.compiler.model.ScopeTracker;
+import org.evochora.compiler.frontend.module.ModuleContextTracker;
+import org.evochora.compiler.frontend.semantics.ScopeTracker;
 import org.evochora.compiler.frontend.semantics.SemanticAnalyzer;
 import org.evochora.compiler.diagnostics.CompilerLogger;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
+import org.evochora.compiler.diagnostics.ErrorRecoveryException;
 import org.evochora.compiler.frontend.module.IDependencyInfo;
 import org.evochora.compiler.model.ast.AstNode;
-import org.evochora.compiler.model.ir.IrItem;
 import org.evochora.compiler.frontend.irgen.DefaultAstNodeToIrConverter;
 import org.evochora.compiler.frontend.irgen.IrConverterRegistry;
 import org.evochora.compiler.frontend.irgen.IrGenerator;
@@ -49,27 +48,44 @@ import org.evochora.compiler.backend.link.LinkingContext;
 import org.evochora.compiler.backend.link.LinkingDirectiveRegistry;
 import org.evochora.compiler.backend.link.LinkingRegistry;
 import org.evochora.compiler.backend.emit.EmissionContributorRegistry;
-import org.evochora.compiler.backend.emit.EmissionRegistry;
-import org.evochora.compiler.backend.emit.IEmissionRule;
+import org.evochora.compiler.backend.rewrite.IrRewriter;
+import org.evochora.compiler.backend.rewrite.RewriteRegistry;
 import org.evochora.compiler.backend.emit.Emitter;
 import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
  * The main compiler implementation. This class orchestrates the entire compilation
- * pipeline from source code to a program artifact. It is not thread-safe.
+ * pipeline from source code to a program artifact. It keeps nothing between compilations,
+ * so one instance may compile any number of programs, one after the other.
  */
 public class Compiler implements ICompiler {
 
-    private final DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+    private final List<ICompilerFeature> features;
     private int verbosity = -1;
+
+    /**
+     * Creates a compiler with the standard features.
+     */
+    public Compiler() {
+        this(StandardFeatures.all());
+    }
+
+    /**
+     * Creates a compiler with the given features, which tests use to put a feature of their
+     * own next to the standard ones.
+     *
+     * @param features The features to register, in order.
+     */
+    Compiler(List<ICompilerFeature> features) {
+        this.features = features;
+    }
 
     /**
      * {@inheritDoc}
@@ -77,24 +93,8 @@ public class Compiler implements ICompiler {
     @Override
     public ProgramArtifact compile(String programPath, EnvironmentProperties envProps, CompilerOptions options)
             throws CompilationException, IOException {
-        String resolvedPath;
-        if (options != null) {
-            // Explicit source roots: resolve via source roots relative to CWD
-            SourceRootResolver resolver = new SourceRootResolver(
-                    options.sourceRoots(), Path.of("").toAbsolutePath());
-            try {
-                resolvedPath = resolver.resolve(programPath, "");
-            } catch (SourceRootResolver.UnknownPrefixException e) {
-                throw new CompilationException(e.getMessage());
-            }
-        } else {
-            // No source roots: treat programPath as CWD-relative file path
-            SourceRootResolver.ParsedPath parsed = SourceRootResolver.parsePath(programPath);
-            resolvedPath = Path.of(parsed.filePath()).toAbsolutePath().normalize()
-                    .toString().replace('\\', '/');
-        }
-
-        List<String> sourceLines = Files.readAllLines(Path.of(resolvedPath));
+        MainFile mainFile = locateMainFile(programPath, options);
+        List<String> sourceLines = Files.readAllLines(Path.of(mainFile.path()));
         return compile(sourceLines, programPath, envProps, options);
     }
 
@@ -139,99 +139,56 @@ public class Compiler implements ICompiler {
         CompilerOptions effectiveOptions = (options != null) ? options : CompilerOptions.defaults();
         effectiveOptions.validate();
 
-        // Derive root alias chain from the source root prefix in programName
-        SourceRootResolver.ParsedPath parsedProgram = SourceRootResolver.parsePath(programName);
-        String rootAliasChain = (parsedProgram.prefix() != null) ? parsedProgram.prefix() : "";
-
-        // Determine working directory and resolve programName to actual file path
-        final Path workingDirectory;
-        final String mainFilePath;
-        if (options != null) {
-            // Explicit source roots: resolve relative to CWD
-            workingDirectory = Path.of("").toAbsolutePath();
-            SourceRootResolver initResolver = new SourceRootResolver(
-                    effectiveOptions.sourceRoots(), workingDirectory);
-            try {
-                mainFilePath = initResolver.resolve(programName, "");
-            } catch (SourceRootResolver.UnknownPrefixException e) {
-                throw new CompilationException(e.getMessage());
-            }
-        } else {
-            // No source roots: resolve relative to program file's parent
-            try {
-                Path programFile = Path.of(parsedProgram.filePath()).toAbsolutePath().normalize();
-                mainFilePath = programFile.toString().replace('\\', '/');
-                workingDirectory = programFile.getParent() != null
-                        ? programFile.getParent()
-                        : Path.of("").toAbsolutePath();
-            } catch (java.nio.file.InvalidPathException e) {
-                throw new CompilationException("Invalid program path: " + programName + " — " + e.getMessage());
-            }
+        MainFile mainFile = locateMainFile(programName, options);
+        try {
+            return runPhases(sourceLines, programName, envProps, effectiveOptions, mainFile);
+        } catch (ErrorRecoveryException unwound) {
+            // Every phase that throws this catches it itself; one that reaches here is a defect too
+            throw new InternalCompilerException(unwound);
+        } catch (RuntimeException defect) {
+            throw new InternalCompilerException(defect);
         }
+    }
+
+    /**
+     * Runs the twelve phases in order and returns what the last one emits. A mistake in the
+     * program surfaces as a {@link CompilationException} from {@link #failOnErrors()} or from
+     * a backend phase; anything else that is thrown is a defect of the compiler.
+     */
+    private ProgramArtifact runPhases(List<String> sourceLines, String programName, EnvironmentProperties envProps,
+                                      CompilerOptions effectiveOptions, MainFile mainFile) throws CompilationException {
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        String rootAliasChain = mainFile.rootAliasChain();
+        final String mainFilePath = mainFile.path();
         SourceRootResolver resolver = new SourceRootResolver(
-                effectiveOptions.sourceRoots(), workingDirectory);
+                effectiveOptions.sourceRoots(), mainFile.workingDirectory());
 
         String fullSource = String.join("\n", sourceLines) + "\n";
 
         // Feature registration
-        FeatureRegistry featureRegistry = new FeatureRegistry();
-        StandardFeatures.all().forEach(f -> f.register(featureRegistry));
+        RuntimeInstructionSetAdapter isa = new RuntimeInstructionSetAdapter();
+        FeatureRegistry featureRegistry = new FeatureRegistry(isa);
+        features.forEach(f -> f.register(featureRegistry));
 
         // Phase 0: Dependency Scanning (load imported modules)
         DependencyScanner depScanner = new DependencyScanner(diagnostics, resolver, featureRegistry.dependencyScanHandlers());
         DependencyGraph graph = depScanner.scan(fullSource, mainFilePath);
-        if (diagnostics.hasErrors()) {
-            throw new CompilationException(diagnostics.summary());
-        }
+        failOnErrors(diagnostics);
 
-        // Phase 1: Lexical Analysis — lex all files, store results
-        Map<String, List<Token>> moduleTokens = new HashMap<>();
-        for (ModuleDescriptor module : graph.topologicalOrder()) {
-            if (module.id().path().equals(mainFilePath)) continue;
-            String moduleSource = module.content();
-            if (!moduleSource.endsWith("\n")) moduleSource += "\n";
-            Lexer moduleLexer = new Lexer(moduleSource, diagnostics, module.sourcePath());
-            List<Token> tokens = moduleLexer.scanTokens();
-            Lexer.stripEofToken(tokens);
-            moduleTokens.put(module.sourcePath(), tokens);
-        }
-
-        // Phase 1b: Lex .SOURCE files (collected during dependency scanning)
-        Map<String, List<Token>> sourceTokens = new HashMap<>();
-        for (Map.Entry<String, String> entry : depScanner.sourceContents().entrySet()) {
-            String sourcePath = entry.getKey();
-            String sourceContent = entry.getValue();
-            if (!sourceContent.endsWith("\n")) sourceContent += "\n";
-            Lexer sourceLexer = new Lexer(sourceContent, diagnostics, sourcePath);
-            List<Token> tokens = sourceLexer.scanTokens();
-            Lexer.stripEofToken(tokens);
-            sourceTokens.put(sourcePath, tokens);
-        }
-
-        Lexer mainLexer = new Lexer(fullSource, diagnostics, mainFilePath);
-        List<Token> initialTokens = new ArrayList<>(mainLexer.scanTokens());
+        // Phase 1: Lexical Analysis — every included file under its path, the main file as the stream
+        Map<String, List<Token>> fileTokens = Lexer.lexFiles(graph.includedContents(), diagnostics, isa);
+        List<Token> initialTokens = new ArrayList<>(new Lexer(fullSource, diagnostics, mainFilePath, isa).scanTokens());
 
         // Phase 2: Preprocessing (includes, macros)
-        PreProcessorHandlerRegistry ppRegistry = new PreProcessorHandlerRegistry();
-        featureRegistry.preprocessorHandlers().forEach(ppRegistry::register);
-        PreProcessorContext ppContext = new PreProcessorContext(rootAliasChain, moduleTokens, sourceTokens);
-        PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, resolver,
-                ppRegistry, ppContext);
+        PreProcessorContext ppContext = new PreProcessorContext(rootAliasChain, fileTokens);
+        featureRegistry.preprocessorHandlers().forEach(ppContext.handlers()::register);
+        PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, resolver, ppContext);
         PreProcessorResult ppResult = preProcessor.expand();
 
-        Map<String, List<String>> sources = new HashMap<>();
-        sources.put(mainFilePath, sourceLines);
-        for (ModuleDescriptor module : graph.topologicalOrder()) {
-            if (!module.id().path().equals(mainFilePath)) {
-                sources.put(module.sourcePath(), Arrays.asList(module.content().split("\\r?\\n")));
-            }
-        }
-        depScanner.sourceContents().forEach((path, content) ->
-                sources.putIfAbsent(path, Arrays.asList(content.split("\\r?\\n"))));
+        Map<String, String> sources = new HashMap<>(graph.includedContents());
+        sources.put(mainFilePath, fullSource);
 
-        if (diagnostics.hasErrors()) {
-            throw new CompilationException(diagnostics.summary());
-        }
+        failOnErrors(diagnostics);
 
         // Phase 3: Parsing (builds AST)
         ParserStatementRegistry parserRegistry = new ParserStatementRegistry();
@@ -242,9 +199,7 @@ public class Compiler implements ICompiler {
         Parser parser = new Parser(ppResult.tokens(), diagnostics, parserRegistry);
         List<AstNode> ast = parser.parse();
 
-        if (diagnostics.hasErrors()) {
-            throw new CompilationException(diagnostics.summary());
-        }
+        failOnErrors(diagnostics);
 
         // Phase 4: Semantic Analysis (symbol resolution, type checking)
         SymbolTable symbolTable = new SymbolTable(diagnostics);
@@ -255,46 +210,37 @@ public class Compiler implements ICompiler {
         featureRegistry.dependencySetupHandlers().forEach((type, handler) -> registerSetupHandler(setupRegistry, type, handler));
         SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, graph, mainFilePath, rootAliasChain, analysisRegistry, setupRegistry);
         analyzer.analyze(ast);
-        if (diagnostics.hasErrors()) {
-            throw new CompilationException(diagnostics.summary());
-        }
+        failOnErrors(diagnostics);
         symbolTable.freeze();
 
         // Phase 5: Token Map Generation (for debugger)
         TokenMapContributorRegistry tokenMapRegistry = new TokenMapContributorRegistry();
         tokenMapRegistry.registerAll(featureRegistry.tokenMapContributors());
         ModuleContextTracker tokenMapTracker = new ModuleContextTracker(symbolTable);
-        symbolTable.setCurrentModule(rootAliasChain);
         TokenMapGenerator tokenMapGenerator = new TokenMapGenerator(symbolTable, diagnostics, tokenMapRegistry, tokenMapTracker);
         Map<SourceInfo, TokenInfo> tokenMap = tokenMapGenerator.generateAll(ast);
+        failOnErrors(diagnostics);
 
         // Phase 6: AST Post-Processing (resolve register aliases and constants)
         PostProcessHandlerRegistry postProcessRegistry = new PostProcessHandlerRegistry();
         postProcessRegistry.registerAll(featureRegistry.postProcessHandlers());
         ModuleContextTracker postProcessTracker = new ModuleContextTracker(symbolTable);
         ScopeTracker scopeTracker = new ScopeTracker(symbolTable);
-        symbolTable.setCurrentModule(rootAliasChain);
         AstPostProcessor astPostProcessor = new AstPostProcessor(symbolTable, postProcessTracker, scopeTracker, postProcessRegistry);
-
-        // Process all AST nodes, not just the first one
-        for (int i = 0; i < ast.size(); i++) {
-            ast.set(i, astPostProcessor.process(ast.get(i)));
-        }
+        List<AstNode> resolvedAst = astPostProcessor.process(ast);
+        failOnErrors(diagnostics);
 
         // Phase 7: IR Generation (convert AST to intermediate representation)
         IrConverterRegistry irRegistry = IrConverterRegistry.initialize(new DefaultAstNodeToIrConverter());
         irRegistry.registerAll(featureRegistry.irConverters());
         IrGenerator irGenerator = new IrGenerator(diagnostics, irRegistry);
-        IrProgram irProgram = irGenerator.generate(ast, programName, rootAliasChain);
+        IrProgram irProgram = irGenerator.generate(resolvedAst, programName, rootAliasChain);
+        failOnErrors(diagnostics);
 
-        // Phase 8: IR Rewriting (apply emission rules)
-        EmissionRegistry emissionRegistry = new EmissionRegistry();
-        emissionRegistry.registerAll(featureRegistry.emissionRules());
-        List<IrItem> rewritten = irProgram.items();
-        for (IEmissionRule rule : emissionRegistry.rules()) {
-            rewritten = rule.apply(rewritten);
-        }
-        IrProgram rewrittenIr = new IrProgram(programName, rewritten);
+        // Phase 8: IR Rewriting (apply the rewrite rules of the features)
+        RewriteRegistry rewriteRegistry = new RewriteRegistry();
+        rewriteRegistry.registerAll(featureRegistry.rewriteRules());
+        IrProgram rewrittenIr = new IrRewriter(rewriteRegistry).rewrite(irProgram, isa);
 
         // Phase 9: Layout (assign addresses to instructions)
         LayoutDirectiveRegistry layoutRegistry = new LayoutDirectiveRegistry((directive, context) -> {
@@ -302,7 +248,6 @@ public class Compiler implements ICompiler {
             // directive needs layout-phase processing (e.g., core:proc_enter, core:org)
         });
         layoutRegistry.registerAll(featureRegistry.layoutHandlers());
-        RuntimeInstructionSetAdapter isa = new RuntimeInstructionSetAdapter();
         LayoutEngine layoutEngine = new LayoutEngine();
         LayoutResult layout = layoutEngine.layout(rewrittenIr, isa, envProps, layoutRegistry);
 
@@ -315,8 +260,7 @@ public class Compiler implements ICompiler {
         });
         linkingDirRegistry.registerAll(featureRegistry.linkingDirectiveHandlers());
         Linker linker = new Linker(linkingRegistry, linkingDirRegistry);
-        LinkingContext linkContext = new LinkingContext(symbolTable, isa);
-        linkContext.pushAliasChain(rootAliasChain);
+        LinkingContext linkContext = new LinkingContext(isa);
         IrProgram linkedIr = linker.link(layout, linkContext, programName);
         linkContext.freeze();
 
@@ -324,17 +268,8 @@ public class Compiler implements ICompiler {
         EmissionContributorRegistry emissionContributorRegistry = new EmissionContributorRegistry();
         featureRegistry.emissionContributors().forEach(emissionContributorRegistry::register);
         Emitter emitter = new Emitter();
-        ProgramArtifact artifact;
-        try {
-            // Generate tokenLookup from tokenMap for efficient line-based lookup
-            Map<String, Map<Integer, Map<Integer, List<TokenInfo>>>> tokenLookup = TokenMapGenerator.buildTokenLookup(tokenMap);
-            artifact = emitter.emit(linkedIr, layout, linkContext, isa, emissionContributorRegistry, sources, tokenMap, tokenLookup);
-        } catch (CompilationException ce) {
-            throw ce; // already formatted with file/line
-        } catch (RuntimeException re) {
-            // If any runtime exception bubbles up, wrap into CompilationException to present user-friendly message
-            throw new CompilationException(re.getMessage(), re);
-        }
+        Map<String, Map<Integer, Map<Integer, List<TokenInfo>>>> tokenLookup = TokenMapGenerator.buildTokenLookup(tokenMap);
+        ProgramArtifact artifact = emitter.emit(linkedIr, layout, linkContext, isa, emissionContributorRegistry, sources, tokenMap, tokenLookup);
 
         CompilerLogger.debug("Compiler: " + programName + " programId:" + artifact.programId());
         return artifact;
@@ -347,6 +282,53 @@ public class Compiler implements ICompiler {
     @Override
     public void setVerbosity(int level) {
         this.verbosity = level;
+    }
+
+    /**
+     * Where the main file is and what it is called: its resolved path, the directory the
+     * included files' paths are resolved against, and the alias chain the program's own names
+     * are qualified with, which is the source root prefix of the program name if it has one.
+     */
+    private record MainFile(String path, Path workingDirectory, String rootAliasChain) {
+    }
+
+    /**
+     * Locates the main file. With source roots the program name is resolved against them from
+     * the current directory; without, it is a file path, and the included files are resolved
+     * against that file's directory.
+     */
+    private static MainFile locateMainFile(String programName, CompilerOptions options) throws CompilationException {
+        SourceRootResolver.ParsedPath parsed = SourceRootResolver.parsePath(programName);
+        String rootAliasChain = parsed.prefix() != null ? parsed.prefix() : "";
+        if (options != null) {
+            Path workingDirectory = Path.of("").toAbsolutePath();
+            SourceRootResolver resolver = new SourceRootResolver(options.sourceRoots(), workingDirectory);
+            try {
+                return new MainFile(resolver.resolve(programName, ""), workingDirectory, rootAliasChain);
+            } catch (SourceRootResolver.UnknownPrefixException e) {
+                throw new CompilationException(e.getMessage());
+            }
+        }
+        try {
+            Path programFile = Path.of(parsed.filePath()).toAbsolutePath().normalize();
+            Path workingDirectory = programFile.getParent() != null ? programFile.getParent() : Path.of("").toAbsolutePath();
+            return new MainFile(programFile.toString().replace('\\', '/'), workingDirectory, rootAliasChain);
+        } catch (java.nio.file.InvalidPathException e) {
+            throw new CompilationException("Invalid program path: " + programName + " — " + e.getMessage());
+        }
+    }
+
+    /**
+     * Stops the compilation if any phase so far has reported an error. Called after every
+     * phase that reports through the diagnostics engine, so that a later phase never runs on
+     * input an earlier one has rejected. The backend phases throw instead of reporting.
+     *
+     * @throws CompilationException listing the errors reported so far
+     */
+    private static void failOnErrors(DiagnosticsEngine diagnostics) throws CompilationException {
+        if (diagnostics.hasErrors()) {
+            throw new CompilationException(diagnostics.summary());
+        }
     }
 
     /**

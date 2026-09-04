@@ -1,11 +1,16 @@
 package org.evochora.compiler.model.symbols;
 
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
+import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.model.ast.AstNode;
+import org.evochora.compiler.model.ast.IIdentifierBinding;
+import org.evochora.compiler.model.ast.IdentifierNode;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
@@ -70,6 +75,13 @@ public class SymbolTable {
     private final Map<AstNode, Scope> nodeScopeMap = new IdentityHashMap<>();
 
     private final DiagnosticsEngine diagnostics;
+
+    /**
+     * How many definitions {@link #bindingOf} follows before it gives up; a chain longer than
+     * this is a circle it failed to notice, and it returns empty as for one it did.
+     */
+    private static final int MAX_BINDING_DEPTH = 32;
+    private final Set<String> reportedCircles = new HashSet<>();
     private boolean frozen = false;
 
     /**
@@ -280,6 +292,54 @@ public class SymbolTable {
         if (modScope != null && currentScope == rootScope) {
             modScope.symbols().putIfAbsent(name, symbol);
         }
+    }
+
+    /**
+     * Follows what an identifier is bound to, through definitions that are themselves
+     * identifiers, until a node that is not one is reached.
+     *
+     * @param reference The identifier as written.
+     * @return The node the identifier finally stands for: what the last binding binds to, or
+     *         the identifier under the qualified name of a symbol that offers no binding (a
+     *         label, a procedure). Empty if the identifier names no symbol, or if its
+     *         definitions go in a circle, which is reported once at the definition the circle
+     *         was entered through.
+     */
+    public Optional<AstNode> bindingOf(IdentifierNode reference) {
+        IdentifierNode current = reference;
+        // The symbols visited, by identity, and the names as written, for the message
+        Set<Symbol> visited = Collections.newSetFromMap(new IdentityHashMap<>());
+        List<String> chain = new ArrayList<>();
+        SourceInfo firstDefinition = null;
+        for (int depth = 0; depth < MAX_BINDING_DEPTH; depth++) {
+            Optional<ResolvedSymbol> resolved = resolve(current.text(), current.sourceInfo().fileName());
+            if (resolved.isEmpty()) {
+                return Optional.empty();
+            }
+            if (!(resolved.get().symbol().node() instanceof IIdentifierBinding binding)) {
+                return Optional.of(new IdentifierNode(resolved.get().qualifiedName(), current.sourceInfo()));
+            }
+            if (visited.contains(resolved.get().symbol())) {
+                if (reportedCircles.add(resolved.get().symbol().sourceInfo() + " " + resolved.get().symbol().name())) {
+                    diagnostics.reportError(
+                            "Definition of " + chain.get(0) + " is circular: " + String.join(" -> ", chain) + " -> " + current.text() + ".",
+                            firstDefinition != null ? firstDefinition.fileName() : "unknown",
+                            firstDefinition != null ? firstDefinition.lineNumber() : 0);
+                }
+                return Optional.empty();
+            }
+            visited.add(resolved.get().symbol());
+            chain.add(current.text());
+            if (firstDefinition == null) {
+                firstDefinition = resolved.get().symbol().sourceInfo();
+            }
+            AstNode bound = binding.bind(current);
+            if (!(bound instanceof IdentifierNode next)) {
+                return Optional.of(bound);
+            }
+            current = next;
+        }
+        return Optional.empty();
     }
 
     /**

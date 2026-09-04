@@ -8,7 +8,6 @@ import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.util.SourceRootResolver;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
 import org.evochora.compiler.frontend.preprocessor.PreProcessorContext;
-import org.evochora.compiler.frontend.preprocessor.PreProcessorHandlerRegistry;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 import org.evochora.runtime.isa.Instruction;
@@ -32,13 +31,13 @@ public class RepeatDirectiveTest {
     }
 
     private PreProcessor createPreProcessor(List<Token> initialTokens, DiagnosticsEngine diagnostics) {
-        PreProcessorHandlerRegistry registry = new PreProcessorHandlerRegistry();
-        registry.register(".REPEAT", new RepeatDirectiveHandler());
-        registry.register("^", new CaretDirectiveHandler());
-        registry.register(":", new org.evochora.compiler.features.label.ColonLabelHandler());
+        PreProcessorContext context = new PreProcessorContext();
+        context.handlers().register(".REPEAT", new RepeatDirectiveHandler());
+        context.handlers().register("^", new CaretDirectiveHandler());
+        context.handlers().register(":", new org.evochora.compiler.features.label.ColonLabelHandler());
         return new PreProcessor(initialTokens, diagnostics,
                 new SourceRootResolver(List.of(new SourceRoot(".", null)), Path.of("")),
-                registry, new PreProcessorContext());
+                context);
     }
 
     /**
@@ -132,6 +131,45 @@ public class RepeatDirectiveTest {
                 TokenType.IDENTIFIER,  // LOOP
                 TokenType.NEWLINE,
                 TokenType.OPCODE,      // NOP
+                TokenType.END_OF_FILE
+        );
+    }
+
+    /**
+     * A statement after a block stays a statement of its own: the newline after .ENDR
+     * separates it from the last repetition.
+     */
+    @Test
+    @Tag("unit")
+    void testBlockRepeatFollowedByStatement() {
+        // Arrange
+        String source = String.join("\n",
+                ".REPEAT 2",
+                "  NOP",
+                ".ENDR",
+                "JMPI START",
+                ""
+        );
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Lexer lexer = new Lexer(source, diagnostics);
+        List<Token> initialTokens = lexer.scanTokens();
+        PreProcessor preProcessor = createPreProcessor(initialTokens, diagnostics);
+
+        // Act
+        List<Token> expandedTokens = preProcessor.expand().tokens();
+
+        // Assert
+        assertThat(diagnostics.hasErrors()).isFalse();
+        List<TokenType> types = expandedTokens.stream().map(Token::type).toList();
+        // (NOP) NEWLINE (NOP) NEWLINE JMPI START NEWLINE EOF
+        assertThat(types).containsExactly(
+                TokenType.OPCODE,      // NOP
+                TokenType.NEWLINE,     // between repetitions
+                TokenType.OPCODE,      // NOP
+                TokenType.NEWLINE,     // the newline after .ENDR
+                TokenType.OPCODE,      // JMPI
+                TokenType.IDENTIFIER,  // START
+                TokenType.NEWLINE,
                 TokenType.END_OF_FILE
         );
     }
