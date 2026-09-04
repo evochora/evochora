@@ -56,6 +56,34 @@ public interface IInstructionSet {
 	boolean requiresTypedLiterals();
 
 	/**
+	 * Looks up a molecule type by the name source uses for it, such as {@code DATA} or
+	 * {@code STRUCTURE}.
+	 *
+	 * @param name The type name, in any letter case.
+	 * @return The type's code in a cell, or empty if the target has no type of that name.
+	 */
+	Optional<Integer> moleculeType(String name);
+
+	/**
+	 * Packs a molecule into the value a cell holds.
+	 *
+	 * @param type  The molecule type, as returned by {@link #moleculeType}.
+	 * @param value The molecule value.
+	 * @return The packed cell.
+	 */
+	int encodeCell(int type, int value);
+
+	/**
+	 * The value that stands for a label name in the machine code: a LABEL molecule carries it,
+	 * a LABELREF operand carries the value of the label it refers to, and the runtime matches
+	 * the two by Hamming distance. Definitions and references use this one derivation.
+	 *
+	 * @param name The label name, qualified as it is in the layout.
+	 * @return The value, reduced to the bits a label value may use; never negative.
+	 */
+	int labelValue(String name);
+
+	/**
 	 * Reads a register as source writes it: a bank's prefix followed by an index. The index is
 	 * taken as written and may lie beyond the bank; {@link RegisterRef#inBounds()} tells.
 	 *

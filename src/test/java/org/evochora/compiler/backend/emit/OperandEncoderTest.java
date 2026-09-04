@@ -73,7 +73,7 @@ class OperandEncoderTest {
         IrLabelDef label = new IrLabelDef("MAIN.START", SRC);
 
         assertThat(encoder.encodeLabel(label))
-                .isEqualTo(new Molecule(Config.TYPE_LABEL, IrLabelDef.valueOf("MAIN.START")).toInt());
+                .isEqualTo(new Molecule(Config.TYPE_LABEL, new RuntimeInstructionSetAdapter().labelValue("MAIN.START")).toInt());
     }
 
     @Test

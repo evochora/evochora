@@ -1,6 +1,8 @@
 package org.evochora.architecture;
 
+import static com.tngtech.archunit.base.DescribedPredicate.not;
 import static com.tngtech.archunit.core.domain.JavaClass.Predicates.resideInAPackage;
+import static com.tngtech.archunit.core.domain.JavaClass.Predicates.type;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.fields;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
@@ -21,6 +23,7 @@ import org.evochora.compiler.backend.emit.IEmissionContributor;
 import org.evochora.compiler.backend.rewrite.IRewriteRule;
 import org.evochora.compiler.backend.layout.ILayoutDirectiveHandler;
 import org.evochora.compiler.backend.link.ILinkingDirectiveHandler;
+import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.compiler.backend.link.ILinkingRule;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.OperandNode;
@@ -221,19 +224,21 @@ class CompilerArchitectureRulesTest {
     }
 
     /**
-     * The compiler looks at the instruction set through one view, {@code IInstructionSet}, and
-     * only the adapter behind that view reads the runtime's declarations.
+     * The compiler sees its target through two doors: {@code EnvironmentProperties}, the world
+     * it lays a program out for, and {@code IInstructionSet}, the compiler's view of the
+     * instruction set and the cell encoding. Only the adapter behind that view reads the
+     * runtime's declarations.
      * <p>
-     * Opcodes, signatures and register banks are what the compiler targets. Reading them from
-     * the runtime in one phase and through the view in another gives the compiler two pictures
-     * of the same target, and a test can replace neither. The view is the compiler's picture;
-     * the adapter is where the runtime's picture becomes it.
+     * Opcodes, signatures, register banks and molecule types are what the compiler targets.
+     * Reading them from the runtime in one place and through the view in another gives the
+     * compiler two pictures of the same target, and a test can replace neither.
      */
     @Test
-    void onlyTheAdapterReadsTheRuntimesInstructionSet() {
+    void onlyTheAdapterReadsTheRuntime() {
         noClasses().that().resideInAPackage(COMPILER + "..")
                 .and().resideOutsideOfPackage(COMPILER + ".isa..")
-                .should().dependOnClassesThat().resideInAPackage("org.evochora.runtime.isa..")
+                .should().dependOnClassesThat(resideInAPackage("org.evochora.runtime..")
+                        .and(not(type(EnvironmentProperties.class))))
                 .check(compilerClasses);
     }
 

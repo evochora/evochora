@@ -75,7 +75,7 @@ public class LayoutEngineTest {
         LayoutDirectiveRegistry reg = new LayoutDirectiveRegistry((directive, context) -> {});
         reg.register("core", "org", new OrgLayoutHandler());
         reg.register("core", "dir", new DirLayoutHandler());
-        reg.register("core", "place", new PlaceLayoutHandler());
+        reg.register("core", "place", new PlaceLayoutHandler(new org.evochora.compiler.isa.RuntimeInstructionSetAdapter()));
         reg.register("core", "push_ctx", new PushCtxLayoutHandler());
         reg.register("core", "pop_ctx", new PopCtxLayoutHandler());
         return reg;

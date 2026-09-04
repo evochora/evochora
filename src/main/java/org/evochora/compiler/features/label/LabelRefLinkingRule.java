@@ -28,7 +28,7 @@ public class LabelRefLinkingRule implements ILinkingRule {
                 if (rewritten == null) {
                     rewritten = new ArrayList<>(ops);
                 }
-                rewritten.set(i, new IrTypedImm("LABELREF", IrLabelDef.valueOf(ref.labelName())));
+                rewritten.set(i, new IrTypedImm("LABELREF", context.isa().labelValue(ref.labelName())));
             }
         }
         return rewritten != null ? instruction.withOperands(rewritten) : instruction;

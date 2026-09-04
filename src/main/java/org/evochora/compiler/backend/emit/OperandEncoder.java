@@ -11,9 +11,6 @@ import org.evochora.compiler.model.ir.IrOperand;
 import org.evochora.compiler.model.ir.IrReg;
 import org.evochora.compiler.model.ir.IrTypedImm;
 import org.evochora.compiler.model.ir.IrVec;
-import org.evochora.runtime.Config;
-import org.evochora.runtime.model.Molecule;
-import org.evochora.runtime.model.MoleculeTypeRegistry;
 
 /**
  * Turns IR items into the packed molecules of the machine code: an opcode into its CODE
@@ -23,14 +20,29 @@ import org.evochora.runtime.model.MoleculeTypeRegistry;
 public final class OperandEncoder {
 
     private final IInstructionSet isa;
+    private final int dataType;
+    private final int registerType;
+    private final int labelType;
 
     /**
      * Creates an encoder for an instruction set.
      *
-     * @param isa The instruction set that resolves opcode names and register names to ids.
+     * @param isa The instruction set that resolves names to ids and packs molecules into cells.
      */
     public OperandEncoder(IInstructionSet isa) {
         this.isa = isa;
+        this.dataType = typeOf("DATA");
+        this.registerType = typeOf("REGISTER");
+        this.labelType = typeOf("LABEL");
+    }
+
+    /**
+     * The code of a molecule type every program needs; an instruction set without it cannot
+     * be a target at all.
+     */
+    private int typeOf(String name) {
+        return isa.moleculeType(name).orElseThrow(() ->
+                new IllegalStateException("The instruction set has no molecule type " + name));
     }
 
     /**
@@ -52,7 +64,7 @@ public final class OperandEncoder {
      * @return The packed LABEL molecule carrying the label's value.
      */
     public int encodeLabel(IrLabelDef label) {
-        return new Molecule(Config.TYPE_LABEL, label.value()).toInt();
+        return isa.encodeCell(labelType, isa.labelValue(label.name()));
     }
 
     /**
@@ -70,22 +82,18 @@ public final class OperandEncoder {
             case IrReg r -> {
                 int regId = isa.resolveRegisterToken(r.name()).orElseThrow(() ->
                         new CompilationException(located(src, "Unknown register: " + r.name())));
-                yield new int[]{new Molecule(Config.TYPE_REGISTER, regId).toInt()};
+                yield new int[]{isa.encodeCell(registerType, regId)};
             }
-            case IrImm imm -> new int[]{new Molecule(Config.TYPE_DATA, (int) imm.value()).toInt()};
+            case IrImm imm -> new int[]{isa.encodeCell(dataType, (int) imm.value())};
             case IrTypedImm ti -> {
-                int type;
-                try {
-                    type = MoleculeTypeRegistry.nameToType(ti.typeName());
-                } catch (IllegalArgumentException e) {
-                    throw new CompilationException(located(src, "Unknown molecule type: " + ti.typeName() + ". " + e.getMessage()));
-                }
-                yield new int[]{new Molecule(type, (int) ti.value()).toInt()};
+                int type = isa.moleculeType(ti.typeName()).orElseThrow(() ->
+                        new CompilationException(located(src, "Unknown molecule type: " + ti.typeName())));
+                yield new int[]{isa.encodeCell(type, (int) ti.value())};
             }
             case IrVec vec -> {
                 int[] cells = new int[vec.components().length];
                 for (int i = 0; i < cells.length; i++) {
-                    cells[i] = new Molecule(Config.TYPE_DATA, vec.components()[i]).toInt();
+                    cells[i] = isa.encodeCell(dataType, vec.components()[i]);
                 }
                 yield cells;
             }

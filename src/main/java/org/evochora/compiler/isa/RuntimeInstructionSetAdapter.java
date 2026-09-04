@@ -7,6 +7,8 @@ import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.isa.InstructionSignature;
 import org.evochora.runtime.isa.RegisterBank;
 import org.evochora.runtime.isa.instructions.ConditionalInstruction;
+import org.evochora.runtime.model.Molecule;
+import org.evochora.runtime.model.MoleculeTypeRegistry;
 
 import java.util.Arrays;
 import java.util.List;
@@ -76,5 +78,41 @@ public final class RuntimeInstructionSetAdapter implements IInstructionSet {
     @Override
     public boolean requiresTypedLiterals() {
         return Config.STRICT_TYPING;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Optional<Integer> moleculeType(String name) {
+        try {
+            return Optional.of(MoleculeTypeRegistry.nameToType(name));
+        } catch (IllegalArgumentException unknown) {
+            return Optional.empty();
+        }
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public int encodeCell(int type, int value) {
+        return new Molecule(type, value).toInt();
+    }
+
+    /**
+     * Mask of the bits a label value may use. A molecule value has {@link Config#VALUE_BITS}
+     * bits in two's complement, and a label value must stay non-negative, so it uses one bit
+     * less. The runtime's label rewriting derives the same mask.
+     */
+    private static final int LABEL_VALUE_MASK = (1 << (Config.VALUE_BITS - 1)) - 1;
+
+    /**
+     * {@inheritDoc}
+     * <p>The name's hash code reduced to the label value's bits.</p>
+     */
+    @Override
+    public int labelValue(String name) {
+        return name.hashCode() & LABEL_VALUE_MASK;
     }
 }

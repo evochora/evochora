@@ -218,6 +218,21 @@ class CallSiteBindingRuleTest {
         }
 
         @Override
+        public Optional<Integer> moleculeType(String name) {
+            return Optional.empty();
+        }
+
+        @Override
+        public int encodeCell(int type, int value) {
+            throw new UnsupportedOperationException("not needed by this test");
+        }
+
+        @Override
+        public int labelValue(String name) {
+            throw new UnsupportedOperationException("not needed by this test");
+        }
+
+        @Override
         public Optional<Integer> resolveRegisterToken(String token) {
             String upper = token.toUpperCase().replace("%", "");
             // Order matters: check longer prefixes first to avoid "LR" matching "PLR"

@@ -9,7 +9,7 @@ import org.evochora.compiler.model.ir.IrDirective;
 import org.evochora.compiler.model.ir.IrValue;
 import org.evochora.compiler.model.ir.placement.*;
 import org.evochora.runtime.model.EnvironmentProperties;
-import org.evochora.runtime.model.MoleculeTypeRegistry;
+import org.evochora.compiler.isa.IInstructionSet;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -21,6 +21,15 @@ import java.util.List;
  * molecules into the initial world object map at the computed coordinates.
  */
 public final class PlaceLayoutHandler implements ILayoutDirectiveHandler {
+
+    private final IInstructionSet isa;
+
+    /**
+     * @param isa The instruction set, which names the molecule types a placement may use.
+     */
+    public PlaceLayoutHandler(IInstructionSet isa) {
+        this.isa = isa;
+    }
 
     @Override
     public void handle(IrDirective directive, LayoutContext context) throws CompilationException {
@@ -50,12 +59,8 @@ public final class PlaceLayoutHandler implements ILayoutDirectiveHandler {
                     "Missing 'type' argument in place directive — PlaceNodeConverter must provide it");
         }
         String ts = t.value();
-        int type;
-        try {
-            type = MoleculeTypeRegistry.nameToType(ts);
-        } catch (IllegalArgumentException e) {
-            throw new CompilationException("Unknown molecule type in .PLACE directive: " + ts + ". " + e.getMessage());
-        }
+        int type = isa.moleculeType(ts).orElseThrow(() ->
+                new CompilationException("Unknown molecule type in .PLACE directive: " + ts));
         long value = val instanceof IrValue.Int64 iv ? iv.value() : 0L;
         return new PlacedMolecule(type, (int) value, 0);
     }

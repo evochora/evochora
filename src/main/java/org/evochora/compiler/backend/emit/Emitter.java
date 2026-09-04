@@ -115,7 +115,7 @@ public class Emitter {
         Map<Integer, String> labelValueToName = new HashMap<>();
         Map<String, Integer> labelNameToValue = new HashMap<>();
         for (String name : layout.labelToAddress().keySet()) {
-            int value = IrLabelDef.valueOf(name);
+            int value = isa.labelValue(name);
             labelValueToName.put(value, name);
             labelNameToValue.put(name, value);
         }
