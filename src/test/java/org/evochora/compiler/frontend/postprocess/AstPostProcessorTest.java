@@ -148,7 +148,7 @@ class AstPostProcessorTest {
         st.setCurrentModule("LIB");
         st.define(new Symbol("TARGET", new SourceInfo("lib.s", 1, 0), Symbol.Type.LABEL, null, true));
         st.setCurrentModule("MAIN");
-        st.getModuleScope("MAIN").orElseThrow().imports().put("LIB", "LIB");
+        st.getModuleScope("MAIN").orElseThrow().addImport("LIB", "LIB", false);
         AstPostProcessor mainProcessor = new AstPostProcessor(st, new ModuleContextTracker(st), new ScopeTracker(st), TestRegistries.postProcessRegistry());
 
         // When: main.s refers to the label through the alias
@@ -170,7 +170,7 @@ class AstPostProcessorTest {
         st.setCurrentModule("LIB");
         st.define(new Symbol("PRIVATE", new SourceInfo("lib.s", 1, 0), Symbol.Type.LABEL));
         st.setCurrentModule("MAIN");
-        st.getModuleScope("MAIN").orElseThrow().imports().put("LIB", "LIB");
+        st.getModuleScope("MAIN").orElseThrow().addImport("LIB", "LIB", false);
         AstPostProcessor mainProcessor = new AstPostProcessor(st, new ModuleContextTracker(st), new ScopeTracker(st), TestRegistries.postProcessRegistry());
 
         // When: main.s refers to it through the alias

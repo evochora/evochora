@@ -89,20 +89,14 @@ class SymbolTableFreezeTest {
     }
 
     @Test
-    void moduleScopeMapsAreImmutableAfterFreeze() {
+    void moduleScopeRefusesEveryWriteAfterFreeze() {
         ModuleScope scope = symbolTable.getModuleScope("MAIN").orElseThrow();
 
-        // All 5 map getters must return unmodifiable views after freeze
-        assertThatThrownBy(() -> scope.symbols().put("X", new Symbol("X", new SourceInfo("t", 1, 0), Symbol.Type.LABEL)))
-                .isInstanceOf(UnsupportedOperationException.class);
-        assertThatThrownBy(() -> scope.imports().put("X", "Y"))
-                .isInstanceOf(UnsupportedOperationException.class);
-        assertThatThrownBy(() -> scope.requires().put("X", "Y"))
-                .isInstanceOf(UnsupportedOperationException.class);
-        assertThatThrownBy(() -> scope.usingBindings().put("X", "Y"))
-                .isInstanceOf(UnsupportedOperationException.class);
-        assertThatThrownBy(() -> scope.importExported().put("X", true))
-                .isInstanceOf(UnsupportedOperationException.class);
+        assertThatThrownBy(() -> scope.defineSymbol("X", new Symbol("X", new SourceInfo("t", 1, 0), Symbol.Type.LABEL)))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("MAIN");
+        assertThatThrownBy(() -> scope.addImport("X", "Y", false)).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> scope.addRequirement("X", "Y")).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> scope.bindUsing("X", "Y")).isInstanceOf(IllegalStateException.class);
 
         // Read operations still work
         assertThat(scope.symbols().get("TEST")).isNotNull();
@@ -110,16 +104,16 @@ class SymbolTableFreezeTest {
     }
 
     @Test
-    void moduleScopeMapsAreMutableBeforeFreeze() {
+    void moduleScopeTakesWritesBeforeFreeze() {
         SymbolTable unfrozen = new SymbolTable(new DiagnosticsEngine());
         unfrozen.registerModule("MOD", "mod.evo");
         ModuleScope scope = unfrozen.getModuleScope("MOD").orElseThrow();
 
-        // Before freeze, maps are mutable
-        scope.imports().put("LIB", "LIB_CHAIN");
+        scope.addImport("LIB", "LIB_CHAIN", true);
         assertThat(scope.imports().get("LIB")).isEqualTo("LIB_CHAIN");
+        assertThat(scope.importExported().get("LIB")).isTrue();
 
-        scope.requires().put("DEP", "dep.evo");
+        scope.addRequirement("DEP", "dep.evo");
         assertThat(scope.requires().get("DEP")).isEqualTo("dep.evo");
     }
 }

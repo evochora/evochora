@@ -571,6 +571,143 @@ class CompilerDiagnosticsTest {
         assertThatCode(() -> compile("main.evo")).doesNotThrowAnyException();
     }
 
+    @Test
+    void aSecondLabelOfTheSameNameNamesTheFirst() throws Exception {
+        write("main.evo",
+                "START:",
+                "  NOP",
+                "START:",
+                "  NOP");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("Cannot define label 'START': the name is already used at")
+                .hasMessageContaining("main.evo:1")
+                .hasMessageContaining("main.evo:3");
+    }
+
+    @Test
+    void aSecondProcedureOfTheSameNameNamesTheFirst() throws Exception {
+        write("main.evo",
+                ".PROC STEP",
+                "  RET",
+                ".ENDP",
+                ".PROC STEP",
+                "  RET",
+                ".ENDP",
+                "START:",
+                "  NOP");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("Cannot define procedure 'STEP': the name is already used at")
+                .hasMessageContaining("main.evo:1")
+                .hasMessageContaining("main.evo:4");
+    }
+
+    @Test
+    void aSecondConstantOfTheSameNameNamesTheFirst() throws Exception {
+        write("main.evo",
+                ".DEFINE MAX DATA:1",
+                ".DEFINE MAX DATA:2",
+                "START:",
+                "  NOP");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("Cannot define constant 'MAX': the name is already used at")
+                .hasMessageContaining("main.evo:1")
+                .hasMessageContaining("main.evo:2");
+    }
+
+    @Test
+    void aSecondRegisterAliasOfTheSameNameNamesTheFirst() throws Exception {
+        write("main.evo",
+                ".REG %TMP %DR0",
+                ".REG %TMP %DR1",
+                "START:",
+                "  NOP");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("Cannot define register alias '%TMP': the name is already used at")
+                .hasMessageContaining("main.evo:1")
+                .hasMessageContaining("main.evo:2");
+    }
+
+    @Test
+    void aParameterDeclaredTwiceNamesTheProcedure() throws Exception {
+        write("main.evo",
+                ".PROC STEP REF X VAL X",
+                "  RET",
+                ".ENDP",
+                "START:",
+                "  NOP");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("Cannot declare parameter 'X' twice in procedure 'STEP'.")
+                .hasMessageContaining("main.evo:1");
+    }
+
+    @Test
+    void aSecondImportUnderTheSameAliasNamesTheFirst() throws Exception {
+        write("a.evo", "A:", "  NOP");
+        write("b.evo", "B:", "  NOP");
+        write("main.evo",
+                ".IMPORT \"a.evo\" AS LIB",
+                ".IMPORT \"b.evo\" AS LIB",
+                "START:",
+                "  NOP");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("Cannot import as 'LIB': the name is already used at")
+                .hasMessageContaining("main.evo:1")
+                .hasMessageContaining("main.evo:2");
+    }
+
+    @Test
+    void aSecondRequirementUnderTheSameAliasNamesTheFirst() throws Exception {
+        write("lib.evo",
+                ".REQUIRE \"a.evo\" AS DEP",
+                ".REQUIRE \"b.evo\" AS DEP",
+                "L:",
+                "  NOP");
+        write("a.evo", "A:", "  NOP");
+        write("b.evo", "B:", "  NOP");
+        write("main.evo",
+                ".IMPORT \"a.evo\" AS A",
+                ".IMPORT \"lib.evo\" AS LIB USING A AS DEP",
+                "START:",
+                "  NOP");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("Cannot require as 'DEP': the name is already used at")
+                .hasMessageContaining("lib.evo:1")
+                .hasMessageContaining("lib.evo:2");
+    }
+
+    @Test
+    void aUsingAliasBoundTwiceInOneImportIsRejected() throws Exception {
+        write("lib.evo",
+                ".REQUIRE \"a.evo\" AS DEP",
+                "L:",
+                "  NOP");
+        write("a.evo", "A:", "  NOP");
+        write("main.evo",
+                ".IMPORT \"a.evo\" AS A",
+                ".IMPORT \"lib.evo\" AS LIB USING A AS DEP USING A AS DEP",
+                "START:",
+                "  NOP");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("Cannot bind 'DEP' twice in the USING clauses of one import.")
+                .hasMessageContaining("main.evo:2");
+    }
+
     private void write(String fileName, String... lines) throws Exception {
         Files.writeString(sourceRoot.resolve(fileName), String.join("\n", lines) + "\n");
     }

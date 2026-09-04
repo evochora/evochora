@@ -45,12 +45,12 @@ class ImportAnalysisHandlerTest {
 
         // main imports dep as "D" and lib as "LIB"
         ModuleScope mainScope = symbolTable.getModuleScope(MAIN_CHAIN).orElseThrow();
-        mainScope.imports().put("D", DEP_CHAIN);
-        mainScope.imports().put("LIB", LIB_CHAIN);
+        mainScope.addImport("D", DEP_CHAIN, false);
+        mainScope.addImport("LIB", LIB_CHAIN, false);
 
         // lib requires "DEP"
         ModuleScope libScope = symbolTable.getModuleScope(LIB_CHAIN).orElseThrow();
-        libScope.requires().put("DEP", "dep.evo");
+        libScope.addRequirement("DEP", "dep.evo");
 
         symbolTable.setCurrentModule(MAIN_CHAIN);
     }
@@ -123,12 +123,12 @@ class ImportAnalysisHandlerTest {
     void multipleRequiresAllSatisfied() {
         // lib requires both DEP and EXTRA
         ModuleScope libScope = symbolTable.getModuleScope(LIB_CHAIN).orElseThrow();
-        libScope.requires().put("EXTRA", "extra.evo");
+        libScope.addRequirement("EXTRA", "extra.evo");
 
         String extraChain = "E";
         symbolTable.registerModule(extraChain, "/test/extra.evo");
         ModuleScope mainScope = symbolTable.getModuleScope(MAIN_CHAIN).orElseThrow();
-        mainScope.imports().put("E", extraChain);
+        mainScope.addImport("E", extraChain, false);
 
         // .IMPORT "lib.evo" AS LIB USING D AS DEP USING E AS EXTRA
         ImportNode node = importNode("lib.evo", "LIB", List.of(
@@ -146,7 +146,7 @@ class ImportAnalysisHandlerTest {
     void multipleRequiresPartiallySatisfiedReportsError() {
         // lib requires both DEP and EXTRA, but only DEP is provided
         ModuleScope libScope = symbolTable.getModuleScope(LIB_CHAIN).orElseThrow();
-        libScope.requires().put("EXTRA", "extra.evo");
+        libScope.addRequirement("EXTRA", "extra.evo");
 
         ImportNode node = importNode("lib.evo", "LIB", List.of(
                 usingClause("D", "DEP")
@@ -162,7 +162,7 @@ class ImportAnalysisHandlerTest {
     void anExportMarkerTheScanAndTheParserReadDifferentlyIsReported() {
         // The scan recorded an exported import, the parser saw none on the same line.
         ModuleScope mainScope = symbolTable.getModuleScope(MAIN_CHAIN).orElseThrow();
-        mainScope.importExported().put("D", true);
+        mainScope.addImport("D", DEP_CHAIN, true);
 
         ImportNode node = importNode("dep.evo", "D", List.of(), false);
 
@@ -175,7 +175,7 @@ class ImportAnalysisHandlerTest {
     @Tag("unit")
     void anExportMarkerBothReadTheSameWayPassesValidation() {
         ModuleScope mainScope = symbolTable.getModuleScope(MAIN_CHAIN).orElseThrow();
-        mainScope.importExported().put("D", true);
+        mainScope.addImport("D", DEP_CHAIN, true);
 
         ImportNode node = importNode("dep.evo", "D", List.of(), true);
 
@@ -190,7 +190,7 @@ class ImportAnalysisHandlerTest {
         // The USING clause below is invalid as well, but analysis stops at the contradiction
         // rather than adding a second, unrelated complaint about a state known to be broken.
         ModuleScope mainScope = symbolTable.getModuleScope(MAIN_CHAIN).orElseThrow();
-        mainScope.importExported().put("LIB", true);
+        mainScope.addImport("LIB", LIB_CHAIN, true);
 
         ImportNode node = importNode("lib.evo", "LIB", List.of(
                 usingClause("UNKNOWN", "DEP")

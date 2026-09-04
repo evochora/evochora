@@ -2,6 +2,7 @@ package org.evochora.compiler.features.importdir;
 
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.semantics.ISymbolCollector;
+import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.symbols.Symbol;
 import org.evochora.compiler.model.symbols.SymbolTable;
@@ -20,6 +21,9 @@ public class ImportSymbolCollector implements ISymbolCollector {
     @Override
     public void collect(AstNode node, SymbolTable symbolTable, DiagnosticsEngine diagnostics) {
         ImportNode importNode = (ImportNode) node;
-        symbolTable.define(new Symbol(importNode.alias(), importNode.sourceInfo(), Symbol.Type.MODULE_ALIAS, importNode));
+        symbolTable.define(new Symbol(importNode.alias(), importNode.sourceInfo(), Symbol.Type.MODULE_ALIAS, importNode))
+                .ifPresent(existing -> diagnostics.reportError(
+                        "Cannot import as '" + importNode.alias() + "': the name is already used at " + SourceInfo.position(existing.sourceInfo()) + ".",
+                        importNode.sourceInfo().fileName(), importNode.sourceInfo().lineNumber()));
     }
 }

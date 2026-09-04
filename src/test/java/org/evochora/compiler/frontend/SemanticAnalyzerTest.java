@@ -74,7 +74,7 @@ public class SemanticAnalyzerTest {
                 .filter(d -> d.type() == Diagnostic.Type.ERROR)
                 .toList();
         assertThat(errors).hasSize(1);
-        assertThat(errors.get(0).message()).contains("Symbol 'START' is already defined in this scope.");
+        assertThat(errors.get(0).message()).contains("Cannot define label 'START': the name is already used at");
     }
 
     /**
@@ -137,7 +137,7 @@ public class SemanticAnalyzerTest {
                 .filter(d -> d.type() == Diagnostic.Type.ERROR)
                 .toList();
         assertThat(errors).hasSize(1);
-        assertThat(errors.get(0).message()).contains("Symbol 'LOOP' is already defined in this scope.");
+        assertThat(errors.get(0).message()).contains("Cannot define label 'LOOP': the name is already used at");
     }
 
     /**

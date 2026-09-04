@@ -2,6 +2,7 @@ package org.evochora.compiler.features.require;
 
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.semantics.ISymbolCollector;
+import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.symbols.Symbol;
 import org.evochora.compiler.model.symbols.SymbolTable;
@@ -20,6 +21,9 @@ public class RequireSymbolCollector implements ISymbolCollector {
     @Override
     public void collect(AstNode node, SymbolTable symbolTable, DiagnosticsEngine diagnostics) {
         RequireNode requireNode = (RequireNode) node;
-        symbolTable.define(new Symbol(requireNode.alias(), requireNode.sourceInfo(), Symbol.Type.MODULE_ALIAS, requireNode));
+        symbolTable.define(new Symbol(requireNode.alias(), requireNode.sourceInfo(), Symbol.Type.MODULE_ALIAS, requireNode))
+                .ifPresent(existing -> diagnostics.reportError(
+                        "Cannot require as '" + requireNode.alias() + "': the name is already used at " + SourceInfo.position(existing.sourceInfo()) + ".",
+                        requireNode.sourceInfo().fileName(), requireNode.sourceInfo().lineNumber()));
     }
 }

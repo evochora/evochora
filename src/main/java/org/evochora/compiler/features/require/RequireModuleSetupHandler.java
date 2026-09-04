@@ -19,7 +19,7 @@ public class RequireModuleSetupHandler implements IDependencySetupHandler<Requir
     public void registerRelationships(RequireDependencyInfo dep, ModuleSetupContext ctx) {
         ModuleScope modScope = ctx.getModuleScope(ctx.currentAliasChain());
         if (modScope != null) {
-            modScope.requires().put(dep.alias().toUpperCase(), dep.path());
+            modScope.addRequirement(dep.alias().toUpperCase(), dep.path());
         }
     }
 }

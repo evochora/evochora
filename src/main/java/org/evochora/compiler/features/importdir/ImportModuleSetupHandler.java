@@ -19,26 +19,25 @@ public class ImportModuleSetupHandler implements IDependencySetupHandler<ImportD
         String importedAliasChain = (moduleAliasChain == null || moduleAliasChain.isEmpty())
                 ? importAlias
                 : moduleAliasChain + "." + importAlias;
-        ctx.pathToAliasChain().put(dep.resolvedPath(), importedAliasChain);
+        ctx.bindPath(dep.resolvedPath(), importedAliasChain);
     }
 
     @Override
     public void registerRelationships(ImportDependencyInfo dep, ModuleSetupContext ctx) {
         String importAlias = dep.alias().toUpperCase();
-        String importedAliasChain = ctx.pathToAliasChain().get(dep.resolvedPath());
+        String importedAliasChain = ctx.aliasChainOf(dep.resolvedPath());
         ModuleScope modScope = ctx.getModuleScope(ctx.currentAliasChain());
         if (modScope != null) {
-            modScope.imports().put(importAlias, importedAliasChain);
             // Whether a name may reach through this import from outside. Resolution walks the
             // chain segment by segment and asks at every step, so a module that keeps its import
             // to itself ends the chain there.
-            modScope.importExported().put(importAlias, dep.exported());
+            modScope.addImport(importAlias, importedAliasChain, dep.exported());
         }
     }
 
     @Override
     public void resolveBindings(ImportDependencyInfo dep, ModuleSetupContext ctx) {
-        String importedAliasChain = ctx.pathToAliasChain().get(dep.resolvedPath());
+        String importedAliasChain = ctx.aliasChainOf(dep.resolvedPath());
         ModuleScope importedModScope = ctx.getModuleScope(importedAliasChain);
         if (importedModScope == null) return;
 
@@ -53,7 +52,7 @@ public class ImportModuleSetupHandler implements IDependencySetupHandler<ImportD
                 sourceAliasChain = importerScope.usingBindings().get(sourceAlias);
             }
             if (sourceAliasChain != null) {
-                importedModScope.usingBindings().put(using.targetAlias().toUpperCase(), sourceAliasChain);
+                importedModScope.bindUsing(using.targetAlias().toUpperCase(), sourceAliasChain);
             }
         }
     }

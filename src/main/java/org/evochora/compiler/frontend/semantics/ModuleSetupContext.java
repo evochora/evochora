@@ -59,13 +59,26 @@ public class ModuleSetupContext {
      *
      * @return The live path-to-alias-chain map.
      */
-    public Map<String, String> pathToAliasChain() { return pathToAliasChain; }
+    /**
+     * Records the placement a module file got: pass 1 of the setup writes it, the later passes
+     * read it through {@link #aliasChainOf}.
+     *
+     * @param resolvedPath The module file's resolved path.
+     * @param aliasChain   The alias chain of its placement.
+     */
+    public void bindPath(String resolvedPath, String aliasChain) { pathToAliasChain.put(resolvedPath, aliasChain); }
+
+    /**
+     * @param resolvedPath The module file's resolved path.
+     * @return The alias chain of its placement, or {@code null} if pass 1 has not seen the file.
+     */
+    public String aliasChainOf(String resolvedPath) { return pathToAliasChain.get(resolvedPath); }
 
     /**
      * Identifies whose dependencies are currently being processed.
      *
      * @return The source path of that module; it is the key {@link #currentAliasChain()}
-     *         looks up in {@link #pathToAliasChain()}.
+     *         looks up through {@link #aliasChainOf}.
      */
     public String currentModulePath() { return currentModulePath; }
 

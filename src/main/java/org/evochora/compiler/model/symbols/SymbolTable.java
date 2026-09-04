@@ -261,10 +261,13 @@ public class SymbolTable {
 
     /**
      * Defines a new symbol in the current scope and registers it in the current module scope.
-     * Reports an error if the symbol is already defined in the same file within the current scope.
+     * A name that the same file has defined in this scope already keeps its first definition;
+     * the caller, which knows what kind of thing it tried to define, reports that.
      * @param symbol The symbol to define.
+     * @return The definition the name already had in this scope, which stays; empty if the
+     *         symbol was defined.
      */
-    public void define(Symbol symbol) {
+    public Optional<Symbol> define(Symbol symbol) {
         guardFrozen();
         String name = symbol.name().toUpperCase();
         String file = symbol.sourceInfo().fileName();
@@ -278,20 +281,16 @@ public class SymbolTable {
 
         // Register in the scope hierarchy (for procedure-local visibility)
         Map<String, Symbol> perFile = currentScope.symbols.computeIfAbsent(name, k -> new HashMap<>());
-        if (perFile.containsKey(file)) {
-            diagnostics.reportError(
-                    "Symbol '" + name + "' is already defined in this scope.",
-                    symbol.sourceInfo().fileName(),
-                    symbol.sourceInfo().lineNumber()
-            );
-        } else {
-            perFile.put(file, symbol);
+        Symbol existing = perFile.putIfAbsent(file, symbol);
+        if (existing != null) {
+            return Optional.of(existing);
         }
 
         // Register in the module scope (for cross-module visibility)
         if (modScope != null && currentScope == rootScope) {
-            modScope.symbols().putIfAbsent(name, symbol);
+            modScope.defineSymbol(name, symbol);
         }
+        return Optional.empty();
     }
 
     /**

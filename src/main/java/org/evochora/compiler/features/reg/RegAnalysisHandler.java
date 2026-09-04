@@ -1,5 +1,6 @@
 package org.evochora.compiler.features.reg;
 
+import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.symbols.Symbol;
@@ -38,6 +39,9 @@ public class RegAnalysisHandler implements IAnalysisHandler {
                 .orElseThrow(() -> new IllegalStateException("Register the instruction set cannot read: " + regNode.register()))
                 .bank();
         Symbol.Type aliasType = bank.location() ? Symbol.Type.REGISTER_ALIAS_LOCATION : Symbol.Type.REGISTER_ALIAS_DATA;
-        symbolTable.define(new Symbol(regNode.alias(), regNode.sourceInfo(), aliasType, regNode));
+        symbolTable.define(new Symbol(regNode.alias(), regNode.sourceInfo(), aliasType, regNode))
+                .ifPresent(existing -> diagnostics.reportError(
+                        "Cannot define register alias '" + regNode.alias() + "': the name is already used at " + SourceInfo.position(existing.sourceInfo()) + ".",
+                        regNode.sourceInfo().fileName(), regNode.sourceInfo().lineNumber()));
     }
 }

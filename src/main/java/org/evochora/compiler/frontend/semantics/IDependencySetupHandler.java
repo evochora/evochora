@@ -21,8 +21,8 @@ public interface IDependencySetupHandler<T extends IDependencyInfo> {
      *
      * @param dependency The dependency declared by the module being set up.
      * @param ctx        Context of the declaring module. Alias chains computed here must be
-     *                   written into {@link ModuleSetupContext#pathToAliasChain()}, which is
-     *                   the map the later passes read from.
+     *                   recorded through {@link ModuleSetupContext#bindPath}, which is where
+     *                   the later passes read them from.
      */
     void registerScope(T dependency, ModuleSetupContext ctx);
 

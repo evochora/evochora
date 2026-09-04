@@ -61,6 +61,13 @@ public class ImportDirectiveHandler implements IParserStatementHandler {
 
                 Token targetAlias = context.consume(TokenType.IDENTIFIER, "Expected a target alias after AS.");
 
+                boolean bound = usings.stream().anyMatch(u -> u.targetAlias().equalsIgnoreCase(targetAlias.text()));
+                if (bound) {
+                    context.getDiagnostics().reportError(
+                            "Cannot bind '" + targetAlias.text() + "' twice in the USING clauses of one import.",
+                            targetAlias.fileName(), targetAlias.line());
+                    continue;
+                }
                 usings.add(new ImportNode.UsingClause(
                         sourceAlias.text(), targetAlias.text(),
                         sourceAlias.toSourceInfo(), targetAlias.toSourceInfo()));
