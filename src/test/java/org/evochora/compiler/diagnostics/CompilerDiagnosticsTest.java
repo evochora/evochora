@@ -280,7 +280,7 @@ class CompilerDiagnosticsTest {
     }
 
     @Test
-    void codeLaidOverCodeNamesBothLines() throws Exception {
+    void codeLaidOverALabelNamesTheLabel() throws Exception {
         write("main.evo",
                 ".ORG 0|0",
                 "START:",
@@ -290,8 +290,24 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Coordinate [0, 0] is already occupied by an instruction at")
+                .hasMessageContaining("Coordinate [0, 0] is already occupied by a label at")
                 .hasMessageContaining("main.evo:2")
+                .hasMessageContaining("main.evo:5");
+    }
+
+    @Test
+    void codeLaidOverCodeNamesBothLines() throws Exception {
+        write("main.evo",
+                ".ORG 0|0",
+                "START:",
+                "  NOP",
+                ".ORG 1|0",
+                "  NOP");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("Coordinate [1, 0] is already occupied by an instruction at")
+                .hasMessageContaining("main.evo:3")
                 .hasMessageContaining("main.evo:5");
     }
 

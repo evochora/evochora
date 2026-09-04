@@ -202,7 +202,7 @@ public final class LayoutContext {
      */
     public void placeOpcode(SourceInfo src) throws CompilationException {
         initialize();
-        placeAtCurrent(src);
+        placeAtCurrent("an instruction", src);
     }
 
     /**
@@ -215,7 +215,7 @@ public final class LayoutContext {
      */
     public void placeOperand(SourceInfo src) throws CompilationException {
         initialize();
-        placeAtCurrent(src);
+        placeAtCurrent("an instruction", src);
     }
 
     /**
@@ -253,11 +253,11 @@ public final class LayoutContext {
      */
     public void placeLabel(SourceInfo src) throws CompilationException {
         initialize();
-        placeAtCurrent(src);
+        placeAtCurrent("a label", src);
     }
 
-    private void placeAtCurrent(SourceInfo src) throws CompilationException {
-        String coordKey = occupy(currentPos, new Occupant("an instruction", src));
+    private void placeAtCurrent(String description, SourceInfo src) throws CompilationException {
+        String coordKey = occupy(currentPos, new Occupant(description, src));
         linearToCoord.put(linearAddress, Nd.copy(currentPos));
         coordToLinear.put(coordKey, linearAddress);
         sourceMap.put(linearAddress, src);
@@ -270,13 +270,15 @@ public final class LayoutContext {
      * choosing rather than at the cursor. The cell is claimed like a code cell, so a molecule
      * and an instruction, or two molecules, cannot share one.
      *
-     * @param coord    The cell, relative to the program origin; copied.
-     * @param molecule The molecule to write there.
-     * @param src      The source information of the directive, named if the cell is taken.
+     * @param coord       The cell, relative to the program origin; copied.
+     * @param molecule    The molecule to write there.
+     * @param description How the placing directive is named in a conflict message, e.g.
+     *                    {@code "a .PLACE"}; the context does not know the directive itself.
+     * @param src         The source information of the directive, named if the cell is taken.
      * @throws CompilationException if the cell is already occupied.
      */
-    public void placeObject(int[] coord, PlacedMolecule molecule, SourceInfo src) throws CompilationException {
-        occupy(coord, new Occupant("a .PLACE", src));
+    public void placeObject(int[] coord, PlacedMolecule molecule, String description, SourceInfo src) throws CompilationException {
+        occupy(coord, new Occupant(description, src));
         initialWorldObjects.put(Nd.copy(coord), molecule);
     }
 
