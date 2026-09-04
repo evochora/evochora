@@ -82,24 +82,21 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                         // stand where a label or a jump vector is expected, anything else is
                         // no argument at all.
                         AstNode definition = symbolOpt.get().symbol().node();
-                        if (definition instanceof IIdentifierBinding binding) {
-                            ArgKind actualType = getArgumentTypeFromNode(binding.bind(idNode));
-                            if (expectedType != actualType) {
-                                diagnostics.reportError(
-                                        String.format("Argument %d for instruction '%s' has the wrong type. Expected %s, but got %s.",
-                                                i + 1, instructionName, expectedType, actualType),
-                                        instructionNode.sourceInfo().fileName(),
-                                        instructionNode.sourceInfo().lineNumber()
-                                );
-                            }
-                        } else if (definition instanceof IJumpTarget) {
-                            if (expectedType != ArgKind.LABEL && expectedType != ArgKind.VECTOR) {
-                                diagnostics.reportError(
-                                        String.format("Argument %d for instruction '%s' has the wrong type. Expected %s, but got LABEL.",
-                                                i + 1, instructionName, expectedType),
-                                        instructionNode.sourceInfo().fileName(),
-                                        instructionNode.sourceInfo().lineNumber()
-                                );
+                        if (definition instanceof IIdentifierBinding || definition instanceof IJumpTarget) {
+                            // The symbol table follows the definitions; a circle it reports itself
+                            Optional<AstNode> bound = symbolTable.bindingOf(idNode);
+                            if (bound.isPresent()) {
+                                ArgKind actualType = getArgumentTypeFromNode(bound.get());
+                                boolean fits = expectedType == actualType
+                                        || (actualType == ArgKind.LABEL && expectedType == ArgKind.VECTOR);
+                                if (!fits) {
+                                    diagnostics.reportError(
+                                            String.format("Argument %d for instruction '%s' has the wrong type. Expected %s, but got %s.",
+                                                    i + 1, instructionName, expectedType, actualType),
+                                            instructionNode.sourceInfo().fileName(),
+                                            instructionNode.sourceInfo().lineNumber()
+                                    );
+                                }
                             }
                         } else {
                             diagnostics.reportError(

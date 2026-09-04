@@ -136,17 +136,19 @@ public class CallAnalysisHandler implements IAnalysisHandler {
     /**
      * What an identifier stands for in a CALL argument, asked of the node that defined it.
      */
-    private enum Meaning { DATA_REGISTER, LOCATION_REGISTER, LITERAL, LABEL, NONE }
+    private enum Meaning { DATA_REGISTER, LOCATION_REGISTER, LITERAL, LABEL, NONE, UNRESOLVED }
 
-    private Meaning meaningOf(AstNode definition, IdentifierNode idNode) {
-        if (definition instanceof IIdentifierBinding binding) {
-            AstNode bound = binding.bind(idNode);
-            if (bound instanceof RegisterNode reg) {
-                return isLocationRegister(reg.name()) ? Meaning.LOCATION_REGISTER : Meaning.DATA_REGISTER;
-            }
-            return Meaning.LITERAL;
+    private Meaning meaningOf(AstNode definition, IdentifierNode idNode, SymbolTable st) {
+        if (!(definition instanceof IIdentifierBinding) && !(definition instanceof IJumpTarget)) {
+            return Meaning.NONE;
         }
-        return definition instanceof IJumpTarget ? Meaning.LABEL : Meaning.NONE;
+        // The symbol table follows the definitions; a circle it reports itself
+        AstNode bound = st.bindingOf(idNode).orElse(null);
+        if (bound == null) return Meaning.UNRESOLVED;
+        if (bound instanceof RegisterNode reg) {
+            return isLocationRegister(reg.name()) ? Meaning.LOCATION_REGISTER : Meaning.DATA_REGISTER;
+        }
+        return bound instanceof IdentifierNode ? Meaning.LABEL : Meaning.LITERAL;
     }
 
     private static String describe(Meaning meaning) {
@@ -155,7 +157,7 @@ public class CallAnalysisHandler implements IAnalysisHandler {
             case LOCATION_REGISTER -> "a location register";
             case LITERAL -> "a literal";
             case LABEL -> "a label";
-            case NONE -> "";
+            case NONE, UNRESOLVED -> "";
         };
     }
 
@@ -176,8 +178,8 @@ public class CallAnalysisHandler implements IAnalysisHandler {
             }
             return;
         }
-        Meaning meaning = meaningOf(opt.get().symbol().node(), idNode);
-        if (accepted.contains(meaning)) return;
+        Meaning meaning = meaningOf(opt.get().symbol().node(), idNode, st);
+        if (accepted.contains(meaning) || meaning == Meaning.UNRESOLVED) return;
         if (meaning == Meaning.NONE) {
             diag.reportError("'" + idNode.text() + "' is not a register or a label and cannot be a CALL argument.",
                     idNode.sourceInfo().fileName(), idNode.sourceInfo().lineNumber());

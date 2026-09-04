@@ -472,6 +472,20 @@ class CompilerDiagnosticsTest {
                 .hasMessageContaining("main.evo:6");
     }
 
+    @Test
+    void aCircularDefinitionNamesTheCircle() throws Exception {
+        write("main.evo",
+                ".DEFINE A B",
+                ".DEFINE B A",
+                "START:",
+                "  SETI %DR0 A");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("Definition of A is circular: A -> B -> A.")
+                .hasMessageContaining("main.evo:1");
+    }
+
     private void write(String fileName, String... lines) throws Exception {
         Files.writeString(sourceRoot.resolve(fileName), String.join("\n", lines) + "\n");
     }

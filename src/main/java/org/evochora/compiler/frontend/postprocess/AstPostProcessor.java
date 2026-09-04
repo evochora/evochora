@@ -6,14 +6,12 @@ import org.evochora.compiler.model.ast.IIdentifierBinding;
 import org.evochora.compiler.model.ast.IdentifierNode;
 import org.evochora.compiler.frontend.module.ModuleContextTracker;
 import org.evochora.compiler.frontend.semantics.ScopeTracker;
-import org.evochora.compiler.model.symbols.ResolvedSymbol;
 import org.evochora.compiler.model.symbols.SymbolTable;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 
 /**
  * A dedicated compiler phase that transforms the AST after semantic analysis.
@@ -32,13 +30,6 @@ import java.util.Optional;
  * is left as it is.</p>
  */
 public class AstPostProcessor implements IPostProcessContext {
-
-    /**
-     * Bound on how many definitions a reference may pass through, such as a constant defined
-     * as another constant. A chain longer than this is left unresolved rather than followed
-     * without end.
-     */
-    private static final int MAX_BINDING_DEPTH = 32;
 
     private final SymbolTable symbolTable;
     private final ModuleContextTracker contextTracker;
@@ -116,34 +107,18 @@ public class AstPostProcessor implements IPostProcessContext {
     }
 
     /**
-     * Finds what an identifier stands for, following a replacement that is itself an
-     * identifier until a node that is not one is reached.
+     * Finds what an identifier stands for, as the symbol table follows its definitions.
      *
      * @return the replacement: what the defining node binds the identifier to, or the
      *         identifier under the symbol's qualified name if the node offers no binding;
      *         {@code null} if the identifier names no symbol, is already written under the
-     *         qualified name, or the chain of definitions exceeds {@link #MAX_BINDING_DEPTH}
+     *         qualified name, or its definitions go in a circle
      */
     private AstNode resolveBinding(IdentifierNode reference) {
-        IdentifierNode current = reference;
-        for (int depth = 0; depth < MAX_BINDING_DEPTH; depth++) {
-            Optional<ResolvedSymbol> resolved = symbolTable.resolve(current.text(), current.sourceInfo().fileName());
-            if (resolved.isEmpty()) {
-                return null;
-            }
-            if (!(resolved.get().symbol().node() instanceof IIdentifierBinding binding)) {
-                String qualifiedName = resolved.get().qualifiedName();
-                if (qualifiedName.equals(current.text())) {
-                    return current == reference ? null : current;
-                }
-                return new IdentifierNode(qualifiedName, current.sourceInfo());
-            }
-            AstNode bound = binding.bind(current);
-            if (!(bound instanceof IdentifierNode next)) {
-                return bound;
-            }
-            current = next;
+        AstNode bound = symbolTable.bindingOf(reference).orElse(null);
+        if (bound instanceof IdentifierNode qualified && qualified.text().equals(reference.text())) {
+            return null;
         }
-        return null;
+        return bound;
     }
 }

@@ -227,6 +227,7 @@ public class Compiler implements ICompiler {
         ScopeTracker scopeTracker = new ScopeTracker(symbolTable);
         AstPostProcessor astPostProcessor = new AstPostProcessor(symbolTable, postProcessTracker, scopeTracker, postProcessRegistry);
         List<AstNode> resolvedAst = astPostProcessor.process(ast);
+        failOnErrors();
 
         // Phase 7: IR Generation (convert AST to intermediate representation)
         IrConverterRegistry irRegistry = IrConverterRegistry.initialize(new DefaultAstNodeToIrConverter());
