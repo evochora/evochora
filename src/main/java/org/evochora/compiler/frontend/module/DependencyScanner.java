@@ -61,11 +61,11 @@ public final class DependencyScanner {
         scanModule(state, mainId, mainPath, mainContent);
 
         if (diagnostics.hasErrors()) {
-            return new DependencyGraph(List.of(), Map.of());
+            return new DependencyGraph(List.of(), Map.of(), mainPath);
         }
 
         List<ModuleDescriptor> sorted = topologicalSort(state);
-        return new DependencyGraph(sorted, Collections.unmodifiableMap(state.sourceContents));
+        return new DependencyGraph(sorted, Collections.unmodifiableMap(state.sourceContents), mainPath);
     }
 
     /**

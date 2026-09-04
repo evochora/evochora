@@ -11,7 +11,6 @@ import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.frontend.module.DependencyGraph;
 import org.evochora.compiler.frontend.module.DependencyScanner;
-import org.evochora.compiler.frontend.module.ModuleDescriptor;
 import org.evochora.compiler.util.SourceRootResolver;
 import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ParserStatementRegistry;
@@ -55,9 +54,7 @@ import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Arrays;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -76,24 +73,8 @@ public class Compiler implements ICompiler {
     @Override
     public ProgramArtifact compile(String programPath, EnvironmentProperties envProps, CompilerOptions options)
             throws CompilationException, IOException {
-        String resolvedPath;
-        if (options != null) {
-            // Explicit source roots: resolve via source roots relative to CWD
-            SourceRootResolver resolver = new SourceRootResolver(
-                    options.sourceRoots(), Path.of("").toAbsolutePath());
-            try {
-                resolvedPath = resolver.resolve(programPath, "");
-            } catch (SourceRootResolver.UnknownPrefixException e) {
-                throw new CompilationException(e.getMessage());
-            }
-        } else {
-            // No source roots: treat programPath as CWD-relative file path
-            SourceRootResolver.ParsedPath parsed = SourceRootResolver.parsePath(programPath);
-            resolvedPath = Path.of(parsed.filePath()).toAbsolutePath().normalize()
-                    .toString().replace('\\', '/');
-        }
-
-        List<String> sourceLines = Files.readAllLines(Path.of(resolvedPath));
+        MainFile mainFile = locateMainFile(programPath, options);
+        List<String> sourceLines = Files.readAllLines(Path.of(mainFile.path()));
         return compile(sourceLines, programPath, envProps, options);
     }
 
@@ -138,37 +119,11 @@ public class Compiler implements ICompiler {
         CompilerOptions effectiveOptions = (options != null) ? options : CompilerOptions.defaults();
         effectiveOptions.validate();
 
-        // Derive root alias chain from the source root prefix in programName
-        SourceRootResolver.ParsedPath parsedProgram = SourceRootResolver.parsePath(programName);
-        String rootAliasChain = (parsedProgram.prefix() != null) ? parsedProgram.prefix() : "";
-
-        // Determine working directory and resolve programName to actual file path
-        final Path workingDirectory;
-        final String mainFilePath;
-        if (options != null) {
-            // Explicit source roots: resolve relative to CWD
-            workingDirectory = Path.of("").toAbsolutePath();
-            SourceRootResolver initResolver = new SourceRootResolver(
-                    effectiveOptions.sourceRoots(), workingDirectory);
-            try {
-                mainFilePath = initResolver.resolve(programName, "");
-            } catch (SourceRootResolver.UnknownPrefixException e) {
-                throw new CompilationException(e.getMessage());
-            }
-        } else {
-            // No source roots: resolve relative to program file's parent
-            try {
-                Path programFile = Path.of(parsedProgram.filePath()).toAbsolutePath().normalize();
-                mainFilePath = programFile.toString().replace('\\', '/');
-                workingDirectory = programFile.getParent() != null
-                        ? programFile.getParent()
-                        : Path.of("").toAbsolutePath();
-            } catch (java.nio.file.InvalidPathException e) {
-                throw new CompilationException("Invalid program path: " + programName + " — " + e.getMessage());
-            }
-        }
+        MainFile mainFile = locateMainFile(programName, options);
+        String rootAliasChain = mainFile.rootAliasChain();
+        final String mainFilePath = mainFile.path();
         SourceRootResolver resolver = new SourceRootResolver(
-                effectiveOptions.sourceRoots(), workingDirectory);
+                effectiveOptions.sourceRoots(), mainFile.workingDirectory());
 
         String fullSource = String.join("\n", sourceLines) + "\n";
 
@@ -183,14 +138,7 @@ public class Compiler implements ICompiler {
         failOnErrors();
 
         // Phase 1: Lexical Analysis — every included file under its path, the main file as the stream
-        Map<String, String> includedContents = new LinkedHashMap<>();
-        for (ModuleDescriptor module : graph.topologicalOrder()) {
-            if (!module.id().path().equals(mainFilePath)) {
-                includedContents.put(module.sourcePath(), module.content());
-            }
-        }
-        includedContents.putAll(graph.sourceContents());
-        Map<String, List<Token>> fileTokens = Lexer.lexFiles(includedContents, diagnostics, isa);
+        Map<String, List<Token>> fileTokens = Lexer.lexFiles(graph.includedContents(), diagnostics, isa);
         List<Token> initialTokens = new ArrayList<>(new Lexer(fullSource, diagnostics, mainFilePath, isa).scanTokens());
 
         // Phase 2: Preprocessing (includes, macros)
@@ -199,10 +147,8 @@ public class Compiler implements ICompiler {
         PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, resolver, ppContext);
         PreProcessorResult ppResult = preProcessor.expand();
 
-        Map<String, List<String>> sources = new HashMap<>();
-        sources.put(mainFilePath, sourceLines);
-        includedContents.forEach((path, content) ->
-                sources.put(path, Arrays.asList(content.split("\\r?\\n"))));
+        Map<String, String> sources = new HashMap<>(graph.includedContents());
+        sources.put(mainFilePath, fullSource);
 
         failOnErrors();
 
@@ -315,6 +261,40 @@ public class Compiler implements ICompiler {
      *
      * @throws CompilationException listing the errors reported so far
      */
+    /**
+     * Where the main file is and what it is called: its resolved path, the directory the
+     * included files' paths are resolved against, and the alias chain the program's own names
+     * are qualified with, which is the source root prefix of the program name if it has one.
+     */
+    private record MainFile(String path, Path workingDirectory, String rootAliasChain) {
+    }
+
+    /**
+     * Locates the main file. With source roots the program name is resolved against them from
+     * the current directory; without, it is a file path, and the included files are resolved
+     * against that file's directory.
+     */
+    private static MainFile locateMainFile(String programName, CompilerOptions options) throws CompilationException {
+        SourceRootResolver.ParsedPath parsed = SourceRootResolver.parsePath(programName);
+        String rootAliasChain = parsed.prefix() != null ? parsed.prefix() : "";
+        if (options != null) {
+            Path workingDirectory = Path.of("").toAbsolutePath();
+            SourceRootResolver resolver = new SourceRootResolver(options.sourceRoots(), workingDirectory);
+            try {
+                return new MainFile(resolver.resolve(programName, ""), workingDirectory, rootAliasChain);
+            } catch (SourceRootResolver.UnknownPrefixException e) {
+                throw new CompilationException(e.getMessage());
+            }
+        }
+        try {
+            Path programFile = Path.of(parsed.filePath()).toAbsolutePath().normalize();
+            Path workingDirectory = programFile.getParent() != null ? programFile.getParent() : Path.of("").toAbsolutePath();
+            return new MainFile(programFile.toString().replace('\\', '/'), workingDirectory, rootAliasChain);
+        } catch (java.nio.file.InvalidPathException e) {
+            throw new CompilationException("Invalid program path: " + programName + " — " + e.getMessage());
+        }
+    }
+
     private void failOnErrors() throws CompilationException {
         if (diagnostics.hasErrors()) {
             throw new CompilationException(diagnostics.summary());

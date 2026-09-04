@@ -42,7 +42,8 @@ public class Emitter {
      * @param linkingContext The context from the linking phase, containing call site bindings.
      * @param isa The instruction set architecture for opcode and register resolution.
      * @param contributorRegistry Registry of emission contributors for extracting metadata from IR.
-     * @param sources A map of source file names to their content.
+     * @param sources The text of every source file, keyed by file name; the artifact carries
+     *                them line by line.
      * @param tokenMap Token classification per source position, copied into the artifact unchanged.
      * @param tokenLookup The same token classification indexed by file name, line and column,
      *                    copied into the artifact unchanged.
@@ -54,7 +55,7 @@ public class Emitter {
                                 LinkingContext linkingContext,
                                 IInstructionSet isa,
                                 EmissionContributorRegistry contributorRegistry,
-                                Map<String, List<String>> sources,
+                                Map<String, String> sources,
                                 Map<SourceInfo, TokenInfo> tokenMap,
                                 Map<String, Map<Integer, Map<Integer, List<TokenInfo>>>> tokenLookup) throws CompilationException {
         EmissionContext emissionContext = new EmissionContext();
@@ -120,9 +121,12 @@ public class Emitter {
             labelNameToValue.put(name, value);
         }
 
+        Map<String, List<String>> linesByFile = new HashMap<>();
+        sources.forEach((path, text) -> linesByFile.put(path, Arrays.asList(text.split("\\r?\\n"))));
+
         return new ProgramArtifact(
                 programId,
-                sources,
+                linesByFile,
                 sortedMachineCodeLayout,
                 sortedInitialObjects,
                 layout.sourceMap(),

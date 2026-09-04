@@ -9,7 +9,6 @@ import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.frontend.module.DependencyGraph;
 import org.evochora.compiler.frontend.module.DependencyScanner;
-import org.evochora.compiler.frontend.module.ModuleDescriptor;
 import org.evochora.compiler.util.SourceRootResolver;
 import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ParserStatementRegistry;
@@ -312,14 +311,7 @@ class ModuleSourceDefineIntegrationTest {
         if (diagnostics.hasErrors()) return new PostProcessResult(diagnostics, List.of());
 
         // Phase 1: Lex the included files under their paths, the main file as the stream
-        Map<String, String> includedContents = new HashMap<>();
-        for (ModuleDescriptor module : graph.topologicalOrder()) {
-            if (!module.id().path().equals(mainPath)) {
-                includedContents.put(module.sourcePath(), module.content());
-            }
-        }
-        includedContents.putAll(graph.sourceContents());
-        Map<String, List<Token>> fileTokens = Lexer.lexFiles(includedContents, diagnostics, new RuntimeInstructionSetAdapter());
+        Map<String, List<Token>> fileTokens = Lexer.lexFiles(graph.includedContents(), diagnostics, new RuntimeInstructionSetAdapter());
         List<Token> mainTokens = new ArrayList<>(new Lexer(mainSource, diagnostics, mainPath).scanTokens());
 
         // Phase 2: Preprocessing (with root alias chain for alias chain tracking)
