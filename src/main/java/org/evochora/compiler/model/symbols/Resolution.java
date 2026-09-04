@@ -19,6 +19,9 @@ public sealed interface Resolution permits ResolvedSymbol, Resolution.Missing {
     }
 
     /**
+     * Views this resolution as an optional symbol, for callers that only need to know whether the
+     * lookup succeeded.
+     *
      * @return The symbol found, or empty if the lookup found nothing.
      */
     default Optional<ResolvedSymbol> found() {
