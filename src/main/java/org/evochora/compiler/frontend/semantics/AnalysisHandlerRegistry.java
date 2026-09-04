@@ -31,17 +31,6 @@ public final class AnalysisHandlerRegistry {
     }
 
     /**
-     * Registers a pass-1 symbol collector for the given AST node class.
-     *
-     * @param nodeType  The concrete AST node class.
-     * @param collector The collector instance.
-     * @param <T>       Concrete AST type parameter.
-     */
-    public <T extends AstNode> void registerCollector(Class<T> nodeType, ISymbolCollector collector) {
-        collectors.put(nodeType, collector);
-    }
-
-    /**
      * Resolves the pass-2 handler for the given node class.
      *
      * @param nodeType The AST node class to look up.

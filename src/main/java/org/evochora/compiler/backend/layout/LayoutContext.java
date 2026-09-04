@@ -33,7 +33,6 @@ public final class LayoutContext {
     private int[] currentPos;
     private int[] currentDv;
     private int[] basePos;
-    private int[] anchorPos;
     private final Deque<int[]> basePosStack = new ArrayDeque<>();
     private final Deque<int[]> dvStack = new ArrayDeque<>();
 
@@ -77,7 +76,6 @@ public final class LayoutContext {
         this.currentDv = new int[dims];
         this.currentDv[0] = 1;
         this.basePos = new int[dims];
-        this.anchorPos = new int[dims];
         this.isInitialized = true;
     }
 
@@ -167,31 +165,6 @@ public final class LayoutContext {
     public void setBasePos(int[] p) throws CompilationException {
         initialize();
         this.basePos = p;
-    }
-
-    /**
-     * Returns the position most recently established by an origin directive, recorded alongside
-     * the cursor move that directive caused.
-     *
-     * @return the context's own anchor array, not a copy
-     * @throws CompilationException if the cursor still has to be created and no world shape is
-     *         available.
-     */
-    public int[] anchorPos() throws CompilationException {
-        initialize();
-        return anchorPos;
-    }
-
-    /**
-     * Records the position established by an origin directive. The array is stored by reference.
-     *
-     * @param p The anchor position, relative to the program origin.
-     * @throws CompilationException if the cursor still has to be created and no world shape is
-     *         available.
-     */
-    public void setAnchorPos(int[] p) throws CompilationException {
-        initialize();
-        this.anchorPos = p;
     }
 
     /**

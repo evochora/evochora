@@ -218,12 +218,4 @@ public class PreProcessor {
         tokens.subList(startIndex, startIndex + count).clear();
         this.current = startIndex;
     }
-
-    /**
-     * Gets the shared context for the preprocessor.
-     * @return The preprocessor context.
-     */
-    public PreProcessorContext getPreProcessorContext() {
-        return this.ppContext;
-    }
 }

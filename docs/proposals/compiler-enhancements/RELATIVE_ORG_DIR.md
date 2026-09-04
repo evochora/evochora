@@ -27,9 +27,9 @@ In `primordial/lib/reproduce.evo`, there are 25+ `.ORG` directives at consecutiv
 
 When code is placed at coordinates that fall outside the grid (e.g., negative absolute coordinates near a grid edge), `Environment.setMolecule` silently ignores the placement (`getFlatIndex` returns -1, the molecule is not placed). This means code is lost without any error. In toroidal grids, coordinates wrap correctly via `Math.floorMod`. In non-toroidal grids, out-of-bounds coordinates should be a compile-time error.
 
-### 4. Dead code: anchorPos in LayoutContext
+### 4. Dead code: anchorPos in LayoutContext — done
 
-`LayoutContext.anchorPos` is set by `OrgLayoutHandler` but never read by any code. The field, getter `anchorPos()`, setter `setAnchorPos()`, and the call in `OrgLayoutHandler` are dead code.
+`LayoutContext.anchorPos` was set by `OrgLayoutHandler` but never read by any code. The field, getter, setter and the call have been deleted; nothing of this remains to do.
 
 ## Solution
 
@@ -177,10 +177,6 @@ if (!envProps.isToroidal()) {
 ```
 
 - `LayoutContext` needs access to `EnvironmentProperties` for the toroidal check. It already has the field (`envProps`, line 17).
-- DELETE: field `anchorPos`, getter `anchorPos()`, setter `setAnchorPos()`.
-
-**OrgLayoutHandler.java** (`features/org/`):
-- DELETE: `context.setAnchorPos(newPos)` call.
 
 **Tests:**
 - Non-toroidal grid: placement at (-1, 0) with basePos (0, 0) → compile error

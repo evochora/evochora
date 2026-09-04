@@ -21,7 +21,6 @@ public final class OrgLayoutHandler implements ILayoutDirectiveHandler {
 		IrValue.Vector vec = (IrValue.Vector) directive.args().get("position");
 		// .ORG is relative to the current base position (which is set by includes)
 		int[] newPos = Nd.add(context.basePos(), vec.components());
-		context.setAnchorPos(newPos);
 		context.setCurrentPos(newPos);
 	}
 }
