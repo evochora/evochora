@@ -303,7 +303,7 @@ public class SemanticAnalyzerTest {
         // Assert
         assertThat(diagnostics.hasErrors()).isTrue();
         assertThat(diagnostics.getDiagnostics().get(0).message())
-                .isEqualTo("Symbol 'INNER_LABEL' is not defined.");
+                .isEqualTo("Cannot use 'INNER_LABEL' as an argument: the name is not defined.");
     }
 
     /**
@@ -333,7 +333,7 @@ public class SemanticAnalyzerTest {
         // Assert
         assertThat(diagnostics.hasErrors()).isTrue();
         assertThat(diagnostics.getDiagnostics().get(0).message())
-                .isEqualTo("Symbol 'INTERNAL_LABEL' is not defined.");
+                .isEqualTo("Cannot use 'INTERNAL_LABEL' as an argument: the name is not defined.");
     }
 
     /**
@@ -383,7 +383,7 @@ public class SemanticAnalyzerTest {
         // Assert
         assertThat(diagnostics.hasErrors()).isTrue();
         assertThat(diagnostics.getDiagnostics().get(0).message())
-                .isEqualTo("Symbol 'NON_EXISTENT_LABEL' is not defined.");
+                .isEqualTo("Cannot use 'NON_EXISTENT_LABEL' as an argument: the name is not defined.");
     }
 
     /**

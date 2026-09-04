@@ -54,7 +54,7 @@ public class ModuleVisibilityTest {
     @Tag("unit")
     void qualifiedNameResolvesExportedSymbol() {
         symbolTable.setCurrentModule(MAIN_CHAIN);
-        Optional<ResolvedSymbol> result = symbolTable.resolve("LIB.HARVEST", "/test/main.evo");
+        Optional<ResolvedSymbol> result = symbolTable.resolve("LIB.HARVEST", "/test/main.evo").found();
 
         assertThat(result).isPresent();
         assertThat(result.get().symbol().name()).isEqualToIgnoringCase("HARVEST");
@@ -65,7 +65,7 @@ public class ModuleVisibilityTest {
     void qualifiedNameDoesNotResolveNonExportedSymbol() {
         symbolTable.setCurrentModule(MAIN_CHAIN);
 
-        Optional<ResolvedSymbol> result = symbolTable.resolve("LIB.INTERNAL", "/test/main.evo");
+        Optional<ResolvedSymbol> result = symbolTable.resolve("LIB.INTERNAL", "/test/main.evo").found();
 
         assertThat(result).isEmpty();
     }
@@ -75,7 +75,7 @@ public class ModuleVisibilityTest {
     void unknownAliasDoesNotResolve() {
         symbolTable.setCurrentModule(MAIN_CHAIN);
 
-        Optional<ResolvedSymbol> result = symbolTable.resolve("UNKNOWN.HARVEST", "/test/main.evo");
+        Optional<ResolvedSymbol> result = symbolTable.resolve("UNKNOWN.HARVEST", "/test/main.evo").found();
 
         assertThat(result).isEmpty();
     }
@@ -85,7 +85,7 @@ public class ModuleVisibilityTest {
     void unqualifiedNameFromSameModuleResolves() {
         symbolTable.setCurrentModule(LIB_CHAIN);
 
-        Optional<ResolvedSymbol> result = symbolTable.resolve("HARVEST", "/test/lib.evo");
+        Optional<ResolvedSymbol> result = symbolTable.resolve("HARVEST", "/test/lib.evo").found();
 
         assertThat(result).isPresent();
     }
@@ -99,7 +99,7 @@ public class ModuleVisibilityTest {
 
         symbolTable.setCurrentModule(MAIN_CHAIN);
 
-        Optional<ResolvedSymbol> result = symbolTable.resolve("DEP.HARVEST", "/test/main.evo");
+        Optional<ResolvedSymbol> result = symbolTable.resolve("DEP.HARVEST", "/test/main.evo").found();
 
         assertThat(result).isPresent();
         assertThat(result.get().symbol().name()).isEqualToIgnoringCase("HARVEST");

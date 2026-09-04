@@ -12,6 +12,7 @@ import org.evochora.compiler.model.ast.NumberLiteralNode;
 import org.evochora.compiler.model.ast.RegisterNode;
 import org.evochora.compiler.model.ast.TypedLiteralNode;
 import org.evochora.compiler.model.ast.VectorLiteralNode;
+import org.evochora.compiler.model.symbols.Resolution;
 import org.evochora.compiler.model.symbols.ResolvedSymbol;
 import org.evochora.compiler.model.symbols.SymbolTable;
 import org.evochora.compiler.isa.IInstructionSet;
@@ -76,7 +77,8 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
 
                 // An identifier is checked by what it stands for
                 if (argumentNode instanceof IdentifierNode idNode) {
-                    Optional<ResolvedSymbol> symbolOpt = symbolTable.resolve(idNode.text(), idNode.sourceInfo().fileName());
+                    Resolution resolution = symbolTable.resolve(idNode.text(), idNode.sourceInfo().fileName());
+                    Optional<ResolvedSymbol> symbolOpt = resolution.found();
 
                     if (symbolOpt.isPresent()) {
                         // What the identifier stands for is asked of the node that defined it:
@@ -110,9 +112,9 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                         }
                     } else {
                         // Allow unresolved if a VECTOR is expected (forward-referenced label to be linked)
-                        if (expectedType != ArgKind.VECTOR) {
+                        if (expectedType != ArgKind.VECTOR && resolution instanceof Resolution.Missing missing) {
                             diagnostics.reportError(
-                                    String.format("Symbol '%s' is not defined.", idNode.text()),
+                                    "Cannot use '" + idNode.text() + "' as an argument: " + missing.explanation(),
                                     idNode.sourceInfo().fileName(),
                                     idNode.sourceInfo().lineNumber()
                             );

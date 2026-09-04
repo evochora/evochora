@@ -3,6 +3,7 @@ package org.evochora.compiler.features.proc;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.semantics.IAnalysisHandler;
 import org.evochora.compiler.model.symbols.SymbolTable;
+import org.evochora.compiler.model.symbols.Resolution;
 import org.evochora.compiler.model.symbols.ResolvedSymbol;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.IIdentifierBinding;
@@ -39,23 +40,29 @@ public class CallAnalysisHandler implements IAnalysisHandler {
     public void analyze(AstNode node, SymbolTable symbolTable, DiagnosticsEngine diagnostics) {
         if (!(node instanceof CallNode callNode)) return;
 
-        // Only validate procedure reference and parameter types when parameters are present
-        if (!callNode.refArguments().isEmpty() || !callNode.valArguments().isEmpty()
-                || !callNode.lrefArguments().isEmpty() || !callNode.lvalArguments().isEmpty()) {
-            analyzeNewSyntax(callNode, symbolTable, diagnostics);
-        }
-    }
-
-    private void analyzeNewSyntax(CallNode callNode, SymbolTable symbolTable, DiagnosticsEngine diagnostics) {
+        boolean hasArguments = !callNode.refArguments().isEmpty() || !callNode.valArguments().isEmpty()
+                || !callNode.lrefArguments().isEmpty() || !callNode.lvalArguments().isEmpty();
         if (!(callNode.procedureName() instanceof IdentifierNode procIdentifier)) {
-            diagnostics.reportError("CALL with REF/VAL requires a procedure name.",
-                    callNode.sourceInfo().fileName(), callNode.sourceInfo().lineNumber());
+            if (hasArguments) {
+                diagnostics.reportError("CALL with REF/VAL requires a procedure name.",
+                        callNode.sourceInfo().fileName(), callNode.sourceInfo().lineNumber());
+            }
             return;
         }
 
-        Optional<ResolvedSymbol> procSymbolOpt = symbolTable.resolve(procIdentifier.text(), procIdentifier.sourceInfo().fileName());
-        if (procSymbolOpt.isEmpty() || !(procSymbolOpt.get().symbol().node() instanceof ProcedureNode procedureNode)) {
-            diagnostics.reportError("Procedure '" + procIdentifier.text() + "' not found or is not a procedure.",
+        // The target has to exist for every CALL; only a CALL that passes arguments needs it to
+        // be a procedure, a plain CALL may target any label.
+        Resolution resolution = symbolTable.resolve(procIdentifier.text(), procIdentifier.sourceInfo().fileName());
+        if (resolution instanceof Resolution.Missing missing) {
+            diagnostics.reportError("Cannot call '" + procIdentifier.text() + "': " + missing.explanation(),
+                    procIdentifier.sourceInfo().fileName(), procIdentifier.sourceInfo().lineNumber());
+            return;
+        }
+        if (!hasArguments) {
+            return;
+        }
+        if (!(((ResolvedSymbol) resolution).symbol().node() instanceof ProcedureNode procedureNode)) {
+            diagnostics.reportError("Cannot call '" + procIdentifier.text() + "': it is not a procedure.",
                     procIdentifier.sourceInfo().fileName(), procIdentifier.sourceInfo().lineNumber());
             return;
         }
@@ -177,10 +184,11 @@ public class CallAnalysisHandler implements IAnalysisHandler {
      */
     private void validateIdentifier(IdentifierNode idNode, String position, Set<Meaning> accepted,
                                     String expected, boolean mustExist, SymbolTable st, DiagnosticsEngine diag) {
-        Optional<ResolvedSymbol> opt = st.resolve(idNode.text(), idNode.sourceInfo().fileName());
+        Resolution resolution = st.resolve(idNode.text(), idNode.sourceInfo().fileName());
+        Optional<ResolvedSymbol> opt = resolution.found();
         if (opt.isEmpty()) {
-            if (mustExist) {
-                diag.reportError(position + " argument '" + idNode.text() + "' is not defined.",
+            if (mustExist && resolution instanceof Resolution.Missing missing) {
+                diag.reportError("Cannot pass '" + idNode.text() + "' as " + position + " argument: " + missing.explanation(),
                         idNode.sourceInfo().fileName(), idNode.sourceInfo().lineNumber());
             }
             return;

@@ -41,8 +41,8 @@ class RegAnalysisHandlerTest {
         handler.analyze(regNode, symbolTable, diagnostics);
 
         assertFalse(diagnostics.hasErrors());
-        assertTrue(symbolTable.resolve("COUNTER", "test.s").isPresent());
-        assertEquals(Symbol.Type.REGISTER_ALIAS_DATA, symbolTable.resolve("COUNTER", "test.s").get().symbol().type());
+        assertTrue(symbolTable.resolve("COUNTER", "test.s").found().isPresent());
+        assertEquals(Symbol.Type.REGISTER_ALIAS_DATA, symbolTable.resolve("COUNTER", "test.s").found().get().symbol().type());
     }
 
     @Test
@@ -52,8 +52,8 @@ class RegAnalysisHandlerTest {
         handler.analyze(regNode, symbolTable, diagnostics);
 
         assertFalse(diagnostics.hasErrors());
-        assertTrue(symbolTable.resolve("POSITION", "test.s").isPresent());
-        assertEquals(Symbol.Type.REGISTER_ALIAS_LOCATION, symbolTable.resolve("POSITION", "test.s").get().symbol().type());
+        assertTrue(symbolTable.resolve("POSITION", "test.s").found().isPresent());
+        assertEquals(Symbol.Type.REGISTER_ALIAS_LOCATION, symbolTable.resolve("POSITION", "test.s").found().get().symbol().type());
     }
 
     @Test
@@ -63,7 +63,7 @@ class RegAnalysisHandlerTest {
         handler.analyze(regNode, symbolTable, diagnostics);
 
         assertFalse(diagnostics.hasErrors());
-        assertTrue(symbolTable.resolve("TARGET", "test.s").isPresent());
+        assertTrue(symbolTable.resolve("TARGET", "test.s").found().isPresent());
     }
 
     @Test
@@ -73,7 +73,7 @@ class RegAnalysisHandlerTest {
         handler.analyze(regNode, symbolTable, diagnostics);
 
         assertFalse(diagnostics.hasErrors());
-        assertTrue(symbolTable.resolve("TMP", "test.s").isPresent());
-        assertEquals(Symbol.Type.REGISTER_ALIAS_DATA, symbolTable.resolve("TMP", "test.s").get().symbol().type());
+        assertTrue(symbolTable.resolve("TMP", "test.s").found().isPresent());
+        assertEquals(Symbol.Type.REGISTER_ALIAS_DATA, symbolTable.resolve("TMP", "test.s").found().get().symbol().type());
     }
 }

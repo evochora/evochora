@@ -51,7 +51,7 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Symbol 'LIB.PRIVATE' is not defined")
+                .hasMessageContaining("Cannot use 'LIB.PRIVATE' as an argument: 'PRIVATE' of LIB is not marked EXPORT.")
                 .hasMessageContaining("main.evo:3");
     }
 
@@ -705,6 +705,118 @@ class CompilerDiagnosticsTest {
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
                 .hasMessageContaining("Cannot bind 'DEP' twice in the USING clauses of one import.")
+                .hasMessageContaining("main.evo:2");
+    }
+
+    @Test
+    void callingThroughAnImportThatIsNotPassedOnNamesTheMissingExport() throws Exception {
+        write("arith.evo",
+                "EXPORT .PROC ADD_CLAMPED",
+                "  RET",
+                ".ENDP");
+        write("nav.evo",
+                ".IMPORT \"arith.evo\" AS ARITH",
+                "NAV_START:",
+                "  NOP");
+        write("main.evo",
+                ".IMPORT \"nav.evo\" AS NAV",
+                "START:",
+                "  CALL NAV.ARITH.ADD_CLAMPED");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("Cannot call 'NAV.ARITH.ADD_CLAMPED': import 'ARITH' of NAV is not marked EXPORT.")
+                .hasMessageContaining("main.evo:3");
+    }
+
+    @Test
+    void callingThroughARequirementOfAnotherModuleNamesTheRule() throws Exception {
+        write("arith.evo",
+                "EXPORT .PROC ADD",
+                "  RET",
+                ".ENDP");
+        write("nav.evo",
+                ".REQUIRE \"arith.evo\" AS ARITH",
+                "NAV_START:",
+                "  NOP");
+        write("main.evo",
+                ".IMPORT \"arith.evo\" AS M",
+                ".IMPORT \"nav.evo\" AS NAV USING M AS ARITH",
+                "START:",
+                "  CALL NAV.ARITH.ADD");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("Cannot call 'NAV.ARITH.ADD': 'ARITH' is a requirement of NAV; use the module you supplied for it.")
+                .hasMessageContaining("main.evo:4");
+    }
+
+    @Test
+    void callingAProcedureAModuleDoesNotExportNamesTheMissingExport() throws Exception {
+        write("nav.evo",
+                ".PROC STEP",
+                "  RET",
+                ".ENDP");
+        write("main.evo",
+                ".IMPORT \"nav.evo\" AS NAV",
+                "START:",
+                "  CALL NAV.STEP");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("Cannot call 'NAV.STEP': 'STEP' of NAV is not marked EXPORT.")
+                .hasMessageContaining("main.evo:3");
+    }
+
+    @Test
+    void callingAProcedureAModuleDoesNotHaveSaysSo() throws Exception {
+        write("nav.evo",
+                "NAV_START:",
+                "  NOP");
+        write("main.evo",
+                ".IMPORT \"nav.evo\" AS NAV",
+                "START:",
+                "  CALL NAV.STEP");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("Cannot call 'NAV.STEP': NAV has no symbol 'STEP'.")
+                .hasMessageContaining("main.evo:3");
+    }
+
+    @Test
+    void callingThroughAnUnknownAliasSaysWhatTheAliasIsNot() throws Exception {
+        write("main.evo",
+                "START:",
+                "  CALL FOO.STEP");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("Cannot call 'FOO.STEP': 'FOO' is neither an import nor a requirement of this module.")
+                .hasMessageContaining("main.evo:2");
+    }
+
+    @Test
+    void callingSomethingThatIsNotAProcedureSaysSo() throws Exception {
+        write("main.evo",
+                "START:",
+                "  CALL START REF %DR0");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("Cannot call 'START': it is not a procedure.")
+                .hasMessageContaining("main.evo:2");
+    }
+
+    @Test
+    void anUndefinedNameAsAnArgumentSaysSo() throws Exception {
+        write("main.evo",
+                "START:",
+                "  SETI %DR0 MAX");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("Cannot use 'MAX' as an argument: the name is not defined.")
                 .hasMessageContaining("main.evo:2");
     }
 

@@ -8,5 +8,5 @@ package org.evochora.compiler.model.symbols;
  * @param symbol        The resolved symbol.
  * @param qualifiedName The fully qualified name (aliasChain + "." + name, or just name if root module).
  */
-public record ResolvedSymbol(Symbol symbol, String qualifiedName) {
+public record ResolvedSymbol(Symbol symbol, String qualifiedName) implements Resolution {
 }

@@ -311,7 +311,7 @@ public class SymbolTable {
         List<String> chain = new ArrayList<>();
         SourceInfo firstDefinition = null;
         for (int depth = 0; depth < MAX_BINDING_DEPTH; depth++) {
-            Optional<ResolvedSymbol> resolved = resolve(current.text(), current.sourceInfo().fileName());
+            Optional<ResolvedSymbol> resolved = resolve(current.text(), current.sourceInfo().fileName()).found();
             if (resolved.isEmpty()) {
                 return Optional.empty();
             }
@@ -347,9 +347,9 @@ public class SymbolTable {
      * (e.g., {@code ALIAS.SYMBOL}) using the current module's import aliases.
      * @param name The name of the symbol to resolve.
      * @param requestingFile The file requesting the symbol resolution (for module scoping).
-     * @return An optional containing the resolved symbol with its qualified name, or empty if not found.
+     * @return The symbol with its qualified name, or the reason there is none.
      */
-    public Optional<ResolvedSymbol> resolve(String name, String requestingFile) {
+    public Resolution resolve(String name, String requestingFile) {
         String key = name.toUpperCase();
 
         // Search scope hierarchy (current scope → root)
@@ -359,81 +359,77 @@ public class SymbolTable {
                 if (perFile.containsKey(requestingFile)) {
                     Symbol sym = perFile.get(requestingFile);
                     String qualified = qualifyName(key);
-                    return Optional.of(new ResolvedSymbol(sym, qualified));
+                    return new ResolvedSymbol(sym, qualified);
                 }
             }
         }
 
         // Attempt qualified name resolution (ALIAS.SYMBOL or multi-level ALIAS.B.SYMBOL)
         int dot = key.indexOf('.');
-        if (dot > 0) {
-            String alias = key.substring(0, dot);
-            String remainder = key.substring(dot + 1);
-
-            ModuleScope resolveModScope = modules.get(currentAliasChain);
-            if (resolveModScope != null) {
-                String targetAliasChain = resolveModScope.imports().get(alias);
-                if (targetAliasChain == null) {
-                    targetAliasChain = resolveModScope.usingBindings().get(alias);
-                }
-                if (targetAliasChain != null) {
-                    // Check for multi-level resolution (A.B.SYMBOL)
-                    int nextDot = remainder.indexOf('.');
-                    if (nextDot > 0) {
-                        return resolveMultiLevel(targetAliasChain, remainder);
-                    }
-
-                    ModuleScope targetModScope = modules.get(targetAliasChain);
-                    if (targetModScope != null) {
-                        Symbol sym = targetModScope.symbols().get(remainder);
-                        if (sym != null && isExported(sym)) {
-                            String qualified = targetAliasChain.isEmpty()
-                                    ? remainder : targetAliasChain + "." + remainder;
-                            return Optional.of(new ResolvedSymbol(sym, qualified));
-                        }
-                    }
-                }
-            }
+        if (dot <= 0) {
+            return new Resolution.Missing("the name is not defined.");
         }
-        return Optional.empty();
+        String alias = key.substring(0, dot);
+        String remainder = key.substring(dot + 1);
+
+        ModuleScope resolveModScope = modules.get(currentAliasChain);
+        if (resolveModScope == null) {
+            return new Resolution.Missing("the name is not defined.");
+        }
+        String targetAliasChain = resolveModScope.imports().get(alias);
+        if (targetAliasChain == null) {
+            targetAliasChain = resolveModScope.usingBindings().get(alias);
+        }
+        if (targetAliasChain == null) {
+            return new Resolution.Missing("'" + alias + "' is neither an import nor a requirement of this module.");
+        }
+        return resolveMultiLevel(targetAliasChain, alias, remainder);
     }
 
     /**
-     * Recursively resolves multi-level qualified names (e.g., "A.B.C.LABEL").
-     * <p>
-     * Every step but the last leads through an import the module marked with EXPORT. A module's
+     * Resolves the rest of a qualified name inside a module, one segment at a time. Every step
+     * but the last leads through an import the module marked with EXPORT. A module's
      * requirements are deliberately not steps: a requirement is satisfied by the importer, who
      * therefore already has a name for that module and does not reach it through the module it
      * handed it to.
+     *
+     * @param currentChain The alias chain of the module the remainder is looked up in.
+     * @param moduleName   How the program names that module, for the explanation of a failure.
+     * @param remainder    The rest of the qualified name.
      */
-    private Optional<ResolvedSymbol> resolveMultiLevel(String currentChain, String remainder) {
+    private Resolution resolveMultiLevel(String currentChain, String moduleName, String remainder) {
+        ModuleScope modScope = modules.get(currentChain);
+        if (modScope == null) {
+            return new Resolution.Missing(moduleName + " is not a module of this compilation.");
+        }
         int dot = remainder.indexOf('.');
         if (dot <= 0) {
-            ModuleScope modScope = modules.get(currentChain);
-            if (modScope != null) {
-                Symbol sym = modScope.symbols().get(remainder);
-                if (sym != null && isExported(sym)) {
-                    String qualified = currentChain.isEmpty()
-                            ? remainder : currentChain + "." + remainder;
-                    return Optional.of(new ResolvedSymbol(sym, qualified));
-                }
+            Symbol sym = modScope.symbols().get(remainder);
+            if (sym == null) {
+                return new Resolution.Missing(moduleName + " has no symbol '" + remainder + "'.");
             }
-            return Optional.empty();
+            if (!isExported(sym)) {
+                return new Resolution.Missing("'" + remainder + "' of " + moduleName + " is not marked EXPORT.");
+            }
+            String qualified = currentChain.isEmpty() ? remainder : currentChain + "." + remainder;
+            return new ResolvedSymbol(sym, qualified);
         }
 
         String nextAlias = remainder.substring(0, dot);
         String nextRemainder = remainder.substring(dot + 1);
 
-        ModuleScope modScope = modules.get(currentChain);
-        if (modScope == null) return Optional.empty();
-
         String nextChain = modScope.imports().get(nextAlias);
-        if (nextChain == null) return Optional.empty();
-
-        Boolean exp = modScope.importExported().get(nextAlias);
-        if (!Boolean.TRUE.equals(exp)) return Optional.empty();
-
-        return resolveMultiLevel(nextChain, nextRemainder);
+        if (nextChain == null) {
+            if (modScope.requires().containsKey(nextAlias)) {
+                return new Resolution.Missing("'" + nextAlias + "' is a requirement of " + moduleName
+                        + "; use the module you supplied for it.");
+            }
+            return new Resolution.Missing("'" + nextAlias + "' is not an import of " + moduleName + ".");
+        }
+        if (!Boolean.TRUE.equals(modScope.importExported().get(nextAlias))) {
+            return new Resolution.Missing("import '" + nextAlias + "' of " + moduleName + " is not marked EXPORT.");
+        }
+        return resolveMultiLevel(nextChain, moduleName + "." + nextAlias, nextRemainder);
     }
 
     /**

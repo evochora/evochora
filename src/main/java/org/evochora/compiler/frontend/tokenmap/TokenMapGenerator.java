@@ -243,7 +243,7 @@ public class TokenMapGenerator implements ITokenMapContext {
             symbolTable.setCurrentScope(this.currentScopeObj);
         }
         try {
-            return symbolTable.resolve(name, fileName);
+            return symbolTable.resolve(name, fileName).found();
         } finally {
             symbolTable.setCurrentScope(originalScope);
         }
