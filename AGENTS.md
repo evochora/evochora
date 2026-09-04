@@ -68,21 +68,23 @@ Evochora is an artificial life simulator for research into digital evolution. It
 
 When the node is running, it exposes a REST API for controlling and monitoring the data pipeline:
 
+The base path is `/pipeline/api`, formed by the route nesting in the HTTP process's `routes` block.
+
 **Pipeline-wide control:**
-- `GET /api/pipeline/status` - Get overall pipeline status
-- `POST /api/pipeline/start` - Start all services
-- `POST /api/pipeline/stop` - Stop all services
-- `POST /api/pipeline/restart` - Restart all services
-- `POST /api/pipeline/pause` - Pause all services
-- `POST /api/pipeline/resume` - Resume all services
+- `GET /pipeline/api/status` - Get overall pipeline status
+- `POST /pipeline/api/start` - Start all services
+- `POST /pipeline/api/stop` - Stop all services
+- `POST /pipeline/api/restart` - Restart all services
+- `POST /pipeline/api/pause` - Pause all services
+- `POST /pipeline/api/resume` - Resume all services
 
 **Individual service control:**
-- `GET /api/pipeline/service/{serviceName}/status` - Get service status
-- `POST /api/pipeline/service/{serviceName}/start` - Start specific service
-- `POST /api/pipeline/service/{serviceName}/stop` - Stop specific service
-- `POST /api/pipeline/service/{serviceName}/restart` - Restart specific service
-- `POST /api/pipeline/service/{serviceName}/pause` - Pause specific service
-- `POST /api/pipeline/service/{serviceName}/resume` - Resume specific service
+- `GET /pipeline/api/service/{serviceName}/status` - Get service status
+- `POST /pipeline/api/service/{serviceName}/start` - Start specific service
+- `POST /pipeline/api/service/{serviceName}/stop` - Stop specific service
+- `POST /pipeline/api/service/{serviceName}/restart` - Restart specific service
+- `POST /pipeline/api/service/{serviceName}/pause` - Pause specific service
+- `POST /pipeline/api/service/{serviceName}/resume` - Resume specific service
 
 ## Assembly Compile System
 The compiler can be invoked in multiple equivalent ways. For details and examples, see the **Compile** section in `docs/CLI_USAGE.md`.
@@ -236,7 +238,7 @@ runtime      →  (nothing)
 - **Service Registry**: Use ServiceRegistry for sharing services between processes
 - **Abstract Base**: Processes extend `AbstractProcess` for common dependency resolution
 - **HTTP Controllers**: Controllers extend `AbstractController`, register routes via `registerRoutes(Javalin, String basePath)`
-- **HTTP API**: Endpoints at `/api/visualizer/*`, `/api/analyzer/*`, `/api/pipeline/*`
+- **HTTP API**: Endpoints at `/visualizer/api/*`, `/analyzer/api/*`, `/pipeline/api/*` — the route nesting in the HTTP process's `routes` block puts `api` under the area, not the other way round
 
 ## CLI (`src/main/java/org/evochora/cli/`)
 
