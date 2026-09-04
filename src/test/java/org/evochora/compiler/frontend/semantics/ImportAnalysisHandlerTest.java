@@ -115,7 +115,7 @@ class ImportAnalysisHandlerTest {
 
         handler.analyze(node, symbolTable, diagnostics);
 
-        assertErrorContaining("DEP", "no USING clause provides it");
+        assertErrorContaining("DEP", "add USING <module> AS");
     }
 
     @Test
@@ -154,7 +154,7 @@ class ImportAnalysisHandlerTest {
 
         handler.analyze(node, symbolTable, diagnostics);
 
-        assertErrorContaining("EXTRA", "no USING clause provides it");
+        assertErrorContaining("EXTRA", "add USING <module> AS");
     }
 
     @Test

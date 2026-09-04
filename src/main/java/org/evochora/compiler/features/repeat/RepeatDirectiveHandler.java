@@ -39,6 +39,7 @@ public class RepeatDirectiveHandler implements IPreProcessorHandler {
     public void process(PreProcessor preProcessor, PreProcessorContext preProcessorContext) {
         int startIndex = preProcessor.getCurrentIndex();
 
+        Token repeatToken = preProcessor.peek();
         preProcessor.advance(); // consume .REPEAT
 
         // Parse the repeat count
@@ -58,7 +59,7 @@ public class RepeatDirectiveHandler implements IPreProcessorHandler {
         if (isBlockMode) {
             // Block mode: .REPEAT n; ... .ENDR
             preProcessor.advance(); // consume the NEWLINE after count
-            body = readUntilEndr(preProcessor);
+            body = readUntilEndr(preProcessor, repeatToken);
         } else {
             // Inline mode: .REPEAT n INSTRUCTION(S)
             body = readUntilNewline(preProcessor);
@@ -107,7 +108,7 @@ public class RepeatDirectiveHandler implements IPreProcessorHandler {
      * Reads tokens until {@code .ENDR} (for block mode).
      * Consumes the {@code .ENDR} directive and optional trailing NEWLINE.
      */
-    private List<Token> readUntilEndr(PreProcessor preProcessor) {
+    private List<Token> readUntilEndr(PreProcessor preProcessor, Token repeatToken) {
         List<Token> body = new ArrayList<>();
         while (!preProcessor.isAtEnd()) {
             Token token = preProcessor.peek();
@@ -118,19 +119,13 @@ public class RepeatDirectiveHandler implements IPreProcessorHandler {
         }
 
         // Consume .ENDR
-        if (!preProcessor.isAtEnd() && preProcessor.check(TokenType.DIRECTIVE)) {
-            Token endrToken = preProcessor.peek();
-            if (endrToken.text().equalsIgnoreCase(".ENDR")) {
-                preProcessor.advance();
-            } else {
-                preProcessor.getDiagnostics().reportError(
-                        "Expected .ENDR to close .REPEAT block",
-                        endrToken.fileName(), endrToken.line());
-            }
+        if (!preProcessor.isAtEnd() && preProcessor.check(TokenType.DIRECTIVE)
+                && preProcessor.peek().text().equalsIgnoreCase(".ENDR")) {
+            preProcessor.advance();
         } else {
             preProcessor.getDiagnostics().reportError(
-                    "Unterminated .REPEAT block, expected .ENDR",
-                    "<unknown>", 0);
+                    ".REPEAT is not closed; expected .ENDR.",
+                    repeatToken.fileName(), repeatToken.line());
         }
 
         // The newline after .ENDR is left in the stream. The expansion ends with the last body

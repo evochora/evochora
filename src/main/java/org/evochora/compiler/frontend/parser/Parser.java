@@ -99,7 +99,7 @@ public class Parser implements IParsingContext {
             if (check(TokenType.DIRECTIVE)) {
                 Token directive = advance();
                 diagnostics.reportError(
-                        "Unregistered directive '" + directive.text() + "'.",
+                        "Unknown directive '" + directive.text() + "'.",
                         directive.fileName(), directive.line());
                 return null;
             }
@@ -170,7 +170,7 @@ public class Parser implements IParsingContext {
         }
 
         Token unexpected = advance();
-        diagnostics.reportError("Unexpected token while parsing expression: " + unexpected.text(), unexpected.fileName(), unexpected.line());
+        diagnostics.reportError("Expected a register, a literal, a vector or a name, but got '" + unexpected.text() + "'.", unexpected.fileName(), unexpected.line());
         return null;
     }
 

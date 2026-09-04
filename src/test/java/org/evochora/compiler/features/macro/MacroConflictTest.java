@@ -52,6 +52,6 @@ class MacroConflictTest {
 
         assertThatThrownBy(() -> compiler.compile("main.evo", null, options))
                 .isInstanceOf(Exception.class)
-                .hasMessageContaining("is already defined");
+                .hasMessageContaining("the name is already used at");
     }
 }

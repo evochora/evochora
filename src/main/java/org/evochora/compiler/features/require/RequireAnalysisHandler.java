@@ -32,7 +32,7 @@ public class RequireAnalysisHandler implements IAnalysisHandler {
 
         if (!modScope.requires().containsKey(alias)) {
             diagnostics.reportError(
-                    "Require alias '" + requireNode.alias()
+                    "Internal error: require alias '" + requireNode.alias()
                             + "' was not found in dependency scan results.",
                     requireNode.sourceInfo().fileName(),
                     requireNode.sourceInfo().lineNumber());

@@ -54,7 +54,7 @@ public class ProcDirectiveHandler implements IParserStatementHandler {
             String keyword = context.peek().text().toUpperCase();
             List<ProcedureNode.ParamDecl> target = parametersByKeyword.get(keyword);
             if (target == null) {
-                context.getDiagnostics().reportError("Unexpected token '" + context.peek().text() + "' in procedure declaration.", procName.fileName(), procName.line());
+                context.getDiagnostics().reportError("Unexpected '" + context.peek().text() + "' in .PROC: expected REF, VAL, LREF or LVAL.", procName.fileName(), procName.line());
                 break;
             }
             context.advance();
@@ -88,7 +88,7 @@ public class ProcDirectiveHandler implements IParserStatementHandler {
         context.state().popScope();
 
         if (context.isAtEnd() || !(context.check(TokenType.DIRECTIVE) && context.peek().text().equalsIgnoreCase(".ENDP"))) {
-            context.getDiagnostics().reportError("Expected .ENDP to close procedure block.", procName.fileName(), procName.line());
+            context.getDiagnostics().reportError(".PROC '" + procName.text() + "' is not closed; expected .ENDP.", procName.fileName(), procName.line());
         } else {
             context.advance(); // consume .ENDP
         }

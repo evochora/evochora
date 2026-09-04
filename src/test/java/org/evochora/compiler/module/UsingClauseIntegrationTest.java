@@ -99,7 +99,7 @@ class UsingClauseIntegrationTest {
         DiagnosticsEngine diagnostics = compileThroughSemantics(mainSource, mainPath);
 
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertErrorContaining(diagnostics, "DEP", "no USING clause provides it");
+        assertErrorContaining(diagnostics, "DEP", "add USING <module> AS");
     }
 
     @Test
@@ -170,7 +170,7 @@ class UsingClauseIntegrationTest {
         DiagnosticsEngine diagnostics = compileThroughSemantics(mainSource, mainPath);
 
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertErrorContaining(diagnostics, "B", "no USING clause provides it");
+        assertErrorContaining(diagnostics, "B", "add USING <module> AS");
     }
 
     @Test

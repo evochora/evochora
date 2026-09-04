@@ -35,7 +35,7 @@ public class ImportAnalysisHandler implements IAnalysisHandler {
         String importedAliasChain = currentModScope.imports().get(alias);
         if (importedAliasChain == null) {
             diagnostics.reportError(
-                    "Import alias '" + importNode.alias()
+                    "Internal error: import alias '" + importNode.alias()
                             + "' is not registered in the module scope.",
                     importNode.sourceInfo().fileName(),
                     importNode.sourceInfo().lineNumber());
@@ -91,8 +91,8 @@ public class ImportAnalysisHandler implements IAnalysisHandler {
                         .anyMatch(u -> u.targetAlias().equalsIgnoreCase(requiredAlias));
                 if (!satisfied) {
                     diagnostics.reportError(
-                            "Imported module requires '" + requiredAlias
-                                    + "' but no USING clause provides it.",
+                            "Cannot import " + importNode.alias() + ": it requires '" + requiredAlias
+                                    + "'; add USING <module> AS " + requiredAlias + " to the import.",
                             importNode.sourceInfo().fileName(),
                             importNode.sourceInfo().lineNumber());
                 }

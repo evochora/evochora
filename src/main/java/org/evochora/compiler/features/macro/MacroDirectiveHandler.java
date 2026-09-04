@@ -55,7 +55,7 @@ public class MacroDirectiveHandler implements IPreProcessorHandler {
                     ? first.definedAt().fileName() + ":" + first.definedAt().lineNumber()
                     : "another definition";
             preProcessor.getDiagnostics().reportError(
-                    "Macro '" + name.text() + "' is already defined in " + firstDefinition,
+                    "Cannot define macro '" + name.text() + "': the name is already used at " + firstDefinition + ".",
                     name.fileName(), name.line());
         } else {
             preProcessorContext.handlers().defineInModule(name.text(), expansion);

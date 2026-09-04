@@ -199,8 +199,8 @@ public class TokenMapGenerator implements ITokenMapContext {
                 tokenMap.put(si, new TokenInfo(identifierNode.text(), TokenKindMapper.map(sym.type()), this.currentScopeName, qualifiedName));
             } else {
                 diagnostics.reportError(
-                    "Symbol '" + identifierNode.text() +
-                    "' could not be resolved. This indicates a semantic analysis failure.",
+                    "Internal error: symbol '" + identifierNode.text() +
+                    "' could not be resolved although the semantic analysis accepted it.",
                     identifierNode.sourceInfo().fileName(),
                     identifierNode.sourceInfo().lineNumber()
                 );

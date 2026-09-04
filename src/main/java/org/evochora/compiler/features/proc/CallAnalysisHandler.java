@@ -12,6 +12,7 @@ import org.evochora.compiler.model.ast.IdentifierNode;
 import org.evochora.compiler.model.ast.NumberLiteralNode;
 import org.evochora.compiler.model.ast.RegisterNode;
 import org.evochora.compiler.model.ast.TypedLiteralNode;
+import org.evochora.compiler.model.ast.VectorLiteralNode;
 
 import org.evochora.compiler.isa.IInstructionSet;
 
@@ -86,7 +87,7 @@ public class CallAnalysisHandler implements IAnalysisHandler {
                 validateDataIdentifier(idNode, "REF", symbolTable, diagnostics);
                 continue;
             }
-            diagnostics.reportError("REF arguments must be registers.",
+            diagnostics.reportError("Cannot pass " + describe(refArg) + " as REF argument: REF takes a register.",
                     callNode.sourceInfo().fileName(), callNode.sourceInfo().lineNumber());
         }
 
@@ -99,7 +100,7 @@ public class CallAnalysisHandler implements IAnalysisHandler {
                 validateDataIdentifierOrLabel(idNode, "VAL", symbolTable, diagnostics);
                 continue;
             }
-            diagnostics.reportError("VAL arguments must be registers, literals, or labels.",
+            diagnostics.reportError("Cannot pass " + describe(valArg) + " as VAL argument: VAL takes a register, a literal or a label.",
                     callNode.sourceInfo().fileName(), callNode.sourceInfo().lineNumber());
         }
 
@@ -119,12 +120,12 @@ public class CallAnalysisHandler implements IAnalysisHandler {
         for (AstNode lrefArg : callNode.lrefArguments()) {
             if (lrefArg instanceof RegisterNode regNode) {
                 if (isLocationRegister(regNode.name())) continue;
-                diagnostics.reportError("LREF arguments must be location registers (LR, PLR, SLR), got '" + regNode.name() + "'.",
+                diagnostics.reportError("Cannot pass '" + regNode.name() + "' as LREF argument: it is not a location register.",
                         callNode.sourceInfo().fileName(), callNode.sourceInfo().lineNumber());
             } else if (lrefArg instanceof IdentifierNode idNode) {
                 validateLocationIdentifier(idNode, "LREF", symbolTable, diagnostics);
             } else {
-                diagnostics.reportError("LREF arguments must be location registers.",
+                diagnostics.reportError("Cannot pass " + describe(lrefArg) + " as LREF argument: LREF takes a location register.",
                         callNode.sourceInfo().fileName(), callNode.sourceInfo().lineNumber());
             }
         }
@@ -133,12 +134,12 @@ public class CallAnalysisHandler implements IAnalysisHandler {
         for (AstNode lvalArg : callNode.lvalArguments()) {
             if (lvalArg instanceof RegisterNode regNode) {
                 if (isLocationRegister(regNode.name())) continue;
-                diagnostics.reportError("LVAL arguments must be location registers, got '" + regNode.name() + "'.",
+                diagnostics.reportError("Cannot pass '" + regNode.name() + "' as LVAL argument: it is not a location register.",
                         callNode.sourceInfo().fileName(), callNode.sourceInfo().lineNumber());
             } else if (lvalArg instanceof IdentifierNode idNode) {
                 validateLocationIdentifierOrLabel(idNode, "LVAL", symbolTable, diagnostics);
             } else {
-                diagnostics.reportError("LVAL arguments must be location registers.",
+                diagnostics.reportError("Cannot pass " + describe(lvalArg) + " as LVAL argument: LVAL takes a location register or a label.",
                         callNode.sourceInfo().fileName(), callNode.sourceInfo().lineNumber());
             }
         }
@@ -163,6 +164,15 @@ public class CallAnalysisHandler implements IAnalysisHandler {
             return isLocationRegister(reg.name()) ? Meaning.LOCATION_REGISTER : Meaning.DATA_REGISTER;
         }
         return bound instanceof IdentifierNode ? Meaning.LABEL : Meaning.LITERAL;
+    }
+
+    /**
+     * Names an argument that is no register and no identifier, for a message.
+     */
+    private static String describe(AstNode argument) {
+        if (argument instanceof VectorLiteralNode) return "a vector";
+        if (argument instanceof NumberLiteralNode || argument instanceof TypedLiteralNode) return "a literal";
+        return "this argument";
     }
 
     private static String describe(Meaning meaning) {

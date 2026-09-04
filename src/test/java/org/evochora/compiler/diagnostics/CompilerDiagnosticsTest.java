@@ -86,7 +86,7 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Macro 'INC' is already defined in")
+                .hasMessageContaining("Cannot define macro 'INC': the name is already used at")
                 .hasMessageContaining("macros.evo:1")
                 .hasMessageContaining("main.evo:2");
     }
@@ -817,6 +817,121 @@ class CompilerDiagnosticsTest {
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
                 .hasMessageContaining("Cannot use 'MAX' as an argument: the name is not defined.")
+                .hasMessageContaining("main.evo:2");
+    }
+
+    @Test
+    void aLiteralPassedByRefSaysWhatRefTakes() throws Exception {
+        write("main.evo",
+                ".PROC P REF X",
+                "  RET",
+                ".ENDP",
+                "START:",
+                "  CALL P REF DATA:1");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("Cannot pass a literal as REF argument: REF takes a register.")
+                .hasMessageContaining("main.evo:5");
+    }
+
+    @Test
+    void aDataRegisterPassedByLrefSaysItIsNoLocationRegister() throws Exception {
+        write("main.evo",
+                ".PROC P LREF X",
+                "  RET",
+                ".ENDP",
+                "START:",
+                "  CALL P LREF %DR0");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("Cannot pass '%DR0' as LREF argument: it is not a location register.")
+                .hasMessageContaining("main.evo:5");
+    }
+
+    @Test
+    void anUnexpectedWordInAProcDeclarationNamesWhatIsExpected() throws Exception {
+        write("main.evo",
+                ".PROC P FOO X",
+                "  RET",
+                ".ENDP",
+                "START:",
+                "  NOP");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("Unexpected 'FOO' in .PROC: expected REF, VAL, LREF or LVAL.")
+                .hasMessageContaining("main.evo:1");
+    }
+
+    @Test
+    void anUnclosedRepeatIsReportedAtTheRepeat() throws Exception {
+        write("main.evo",
+                "START:",
+                "  NOP",
+                ".REPEAT 2",
+                "  NOP");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining(".REPEAT is not closed; expected .ENDR.")
+                .hasMessageContaining("main.evo:3");
+    }
+
+    @Test
+    void anUnclosedProcIsReportedAtTheProc() throws Exception {
+        write("main.evo",
+                "START:",
+                "  NOP",
+                ".PROC STEP",
+                "  RET");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining(".PROC 'STEP' is not closed; expected .ENDP.")
+                .hasMessageContaining("main.evo:3");
+    }
+
+    @Test
+    void anImportMissingAUsingClauseSaysWhichToAdd() throws Exception {
+        write("dep.evo", "D:", "  NOP");
+        write("lib.evo",
+                ".REQUIRE \"dep.evo\" AS DEP",
+                "L:",
+                "  NOP");
+        write("main.evo",
+                ".IMPORT \"lib.evo\" AS LIB",
+                "START:",
+                "  NOP");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("Cannot import LIB: it requires 'DEP'; add USING <module> AS DEP to the import.")
+                .hasMessageContaining("main.evo:1");
+    }
+
+    @Test
+    void anUnknownDirectiveIsCalledUnknown() throws Exception {
+        write("main.evo",
+                "START:",
+                "  .FOO 1");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("Unknown directive '.FOO'.")
+                .hasMessageContaining("main.evo:2");
+    }
+
+    @Test
+    void aBrokenOperandNamesWhatAnOperandCanBe() throws Exception {
+        write("main.evo",
+                "START:",
+                "  SETI %DR0 :");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("Expected a register, a literal, a vector or a name, but got ':'.")
                 .hasMessageContaining("main.evo:2");
     }
 

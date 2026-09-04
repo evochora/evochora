@@ -543,7 +543,7 @@ public class SemanticAnalyzerTest {
 
         // Assert
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.getDiagnostics()).anyMatch(d -> d.message().contains("REF arguments must be registers."));
+        assertThat(diagnostics.getDiagnostics()).anyMatch(d -> d.message().contains("Cannot pass a literal as REF argument: REF takes a register."));
     }
 
     @Test

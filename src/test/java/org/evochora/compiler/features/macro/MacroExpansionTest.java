@@ -124,7 +124,7 @@ class MacroExpansionTest {
                 "INC %DR0");
 
         assertThat(result.diagnostics.hasErrors()).isTrue();
-        assertThat(result.diagnostics.summary()).contains("Macro 'INC' is already defined in");
+        assertThat(result.diagnostics.summary()).contains("Cannot define macro 'INC': the name is already used at");
         assertThat(result.texts()).containsExactly("ADDI", "%DR0", "DATA", ":", "1");
     }
 
