@@ -15,8 +15,10 @@ public final class ProcedureCallHandler {
     private ProcedureCallHandler() {}
 
     /**
-     * Executes a procedure call. This involves resolving parameter bindings,
-     * saving the current processor state, and jumping to the target procedure's address.
+     * Executes a procedure call. This involves saving the current processor state
+     * and jumping to the target procedure's address. Parameters are not bound here:
+     * the compiler emits PUSH/POP marshalling instructions around the CALL and in the
+     * procedure's prologue, so the machine code binds them on its own.
      * @param context The execution context for the current instruction.
      * @param targetIp The absolute coordinates of the target procedure (resolved via LabelIndex).
      * @param labelHash The hash value of the target label, kept in the frame so that observers can
@@ -31,10 +33,7 @@ public final class ProcedureCallHandler {
             return;
         }
 
-        Map<Integer, Integer> bindings = CallBindingResolver.resolveBindings(context);
         int[] ipBeforeFetch = organism.getIpBeforeFetch();
-
-        Map<Integer, Integer> parameterBindings = bindings != null ? bindings : Map.of();
 
         // CALL now only consumes 1 operand (label hash) instead of N (coordinate delta)
         int instructionLength = 1 + 1; // opcode + label hash
@@ -68,7 +67,7 @@ public final class ProcedureCallHandler {
             }
         }
 
-        Organism.ProcFrame frame = new Organism.ProcFrame(labelHash, returnIp, ipBeforeFetch, savedRegisters, parameterBindings);
+        Organism.ProcFrame frame = new Organism.ProcFrame(labelHash, returnIp, ipBeforeFetch, savedRegisters);
         organism.getCallStack().push(frame);
 
         // Always track which procedure is active (needed for correct save on RET after first dirty write)

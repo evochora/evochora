@@ -63,6 +63,11 @@ You will conduct comprehensive architectural reviews of the Evochora simulation 
 - **Check** that new imports respect the permitted dependency graph between top-level packages, documented in `AGENTS.md` and enforced by `PackageDependencyRulesTest`
 - **Treat** an edit to that test as a design change requiring justification, not as a routine fix for a failing build
 
+### 8. Self-Contained Machine Code
+- **Check** that no runtime path reads the program artifact: what an instruction does must follow from the cells it occupies and the organism's own state
+- **Check** that anything a program needs at run time is put into the machine code by the compiler, the way parameter passing is carried by the PUSH/POP marshalling around a CALL
+- **Reject** any registry, cache or side channel that lets execution consult compile-time data by address, because it would make a mutated instruction behave differently from a compiled one
+
 ## Your Review Process
 
 ### Step 1: Understand the Change Context
@@ -82,6 +87,7 @@ For each modified component, systematically verify:
 7. Performance implications
 8. Documentation quality
 9. Package dependency compliance
+10. Self-contained machine code
 
 ### Step 3: Architectural Impact Analysis
 - Assess how changes affect the overall system architecture

@@ -198,12 +198,7 @@ export class AnnotationUtils {
         for (const frame of callStack) {
             if (!frame) continue;
 
-            let frameBindings = _resolveFrameBindings(frame, initialPosition, artifact);
-
-            // If no bindings from artifact, check runtime parameterBindings (fallback)
-            if (!frameBindings && frame.parameterBindings && typeof frame.parameterBindings === 'object') {
-                frameBindings = frame.parameterBindings;
-            }
+            const frameBindings = _resolveFrameBindings(frame, initialPosition, artifact);
 
             if (frameBindings) {
                 const mappedId = frameBindings[currentRegId];
@@ -268,11 +263,7 @@ export class AnnotationUtils {
         for (const frame of callStack) {
             if (!frame) continue;
 
-            let frameBindings = _resolveFrameBindings(frame, initialPosition, artifact);
-
-            if (!frameBindings && frame.parameterBindings && typeof frame.parameterBindings === 'object') {
-                frameBindings = frame.parameterBindings;
-            }
+            const frameBindings = _resolveFrameBindings(frame, initialPosition, artifact);
 
             if (frameBindings) {
                 const mappedId = frameBindings[currentRegId];

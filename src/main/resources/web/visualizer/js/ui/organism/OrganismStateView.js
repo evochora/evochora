@@ -165,9 +165,9 @@ export class OrganismStateView {
                         }
                     }
 
-                    // Resolve parameter bindings
-                    let parameterBindings = entry.parameterBindings;
-                    if ((!parameterBindings || Object.keys(parameterBindings).length === 0) && this.artifact && staticInfo && entry.absoluteCallIp) {
+                    // Resolve parameter bindings from the program artifact by call address
+                    let parameterBindings = null;
+                    if (this.artifact && staticInfo && entry.absoluteCallIp) {
                         parameterBindings = resolveBindingsFromArtifact(entry.absoluteCallIp, staticInfo);
                     }
 
