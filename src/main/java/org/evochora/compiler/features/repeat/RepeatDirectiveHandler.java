@@ -105,8 +105,12 @@ public class RepeatDirectiveHandler implements IPreProcessorHandler {
     }
 
     /**
-     * Reads tokens until {@code .ENDR} (for block mode).
-     * Consumes the {@code .ENDR} directive and optional trailing NEWLINE.
+     * Reads the body of a block-mode {@code .REPEAT} up to its {@code .ENDR} and consumes the
+     * {@code .ENDR}; the newline after it stays in the stream.
+     *
+     * @param preProcessor The token stream, positioned on the first body token.
+     * @param repeatToken  The opening {@code .REPEAT}, where an unclosed block is reported.
+     * @return The body tokens, without the {@code .ENDR}.
      */
     private List<Token> readUntilEndr(PreProcessor preProcessor, Token repeatToken) {
         List<Token> body = new ArrayList<>();

@@ -12,7 +12,9 @@ public sealed interface Resolution permits ResolvedSymbol, Resolution.Missing {
     /**
      * A lookup that found nothing.
      *
-     * @param explanation Why, as a sentence fragment that completes "Cannot use 'X': …", e.g.
+     * @param explanation Why, as a fragment that completes a sentence of the form
+     *                    {@code Cannot <do something with> 'X': …}; it starts in lowercase or
+     *                    with a module name and ends with a period, e.g.
      *                    {@code "import 'ARITH' of NAV is not marked EXPORT."}
      */
     record Missing(String explanation) implements Resolution {

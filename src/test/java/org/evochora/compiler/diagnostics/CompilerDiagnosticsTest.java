@@ -769,6 +769,23 @@ class CompilerDiagnosticsTest {
     }
 
     @Test
+    void anExplanationQuotesTheNameAsTheProgramWroteIt() throws Exception {
+        write("nav.evo",
+                ".PROC STEP",
+                "  RET",
+                ".ENDP");
+        write("main.evo",
+                ".IMPORT \"nav.evo\" AS NAV",
+                "START:",
+                "  call nav.step");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("Cannot call 'nav.step': 'step' of nav is not marked EXPORT.")
+                .hasMessageContaining("main.evo:3");
+    }
+
+    @Test
     void callingAProcedureAModuleDoesNotHaveSaysSo() throws Exception {
         write("nav.evo",
                 "NAV_START:",

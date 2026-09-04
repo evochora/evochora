@@ -77,47 +77,47 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
 
                 // An identifier is checked by what it stands for
                 if (argumentNode instanceof IdentifierNode idNode) {
-                    Resolution resolution = symbolTable.resolve(idNode.text(), idNode.sourceInfo().fileName());
-                    Optional<ResolvedSymbol> symbolOpt = resolution.found();
-
-                    if (symbolOpt.isPresent()) {
-                        // What the identifier stands for is asked of the node that defined it:
-                        // a binding is checked as the argument it binds to, a jump target may
-                        // stand where a label or a jump vector is expected, anything else is
-                        // no argument at all.
-                        AstNode definition = symbolOpt.get().symbol().node();
-                        if (definition instanceof IIdentifierBinding || definition instanceof IJumpTarget) {
-                            // The symbol table follows the definitions; a circle it reports itself
-                            Optional<AstNode> bound = symbolTable.bindingOf(idNode);
-                            if (bound.isPresent()) {
-                                ArgKind actualType = getArgumentTypeFromNode(bound.get());
-                                boolean fits = expectedType == actualType
-                                        || (actualType == ArgKind.LABEL && expectedType == ArgKind.VECTOR);
-                                if (!fits) {
-                                    diagnostics.reportError(
-                                            String.format("Argument %d for instruction '%s' has the wrong type. Expected %s, but got %s.",
-                                                    i + 1, instructionName, expectedType, actualType),
-                                            instructionNode.sourceInfo().fileName(),
-                                            instructionNode.sourceInfo().lineNumber()
-                                    );
+                    switch (symbolTable.resolve(idNode.text(), idNode.sourceInfo().fileName())) {
+                        case ResolvedSymbol resolved -> {
+                            // What the identifier stands for is asked of the node that defined it:
+                            // a binding is checked as the argument it binds to, a jump target may
+                            // stand where a label or a jump vector is expected, anything else is
+                            // no argument at all.
+                            AstNode definition = resolved.symbol().node();
+                            if (definition instanceof IIdentifierBinding || definition instanceof IJumpTarget) {
+                                // The symbol table follows the definitions; a circle it reports itself
+                                Optional<AstNode> bound = symbolTable.bindingOf(idNode);
+                                if (bound.isPresent()) {
+                                    ArgKind actualType = getArgumentTypeFromNode(bound.get());
+                                    boolean fits = expectedType == actualType
+                                            || (actualType == ArgKind.LABEL && expectedType == ArgKind.VECTOR);
+                                    if (!fits) {
+                                        diagnostics.reportError(
+                                                String.format("Argument %d for instruction '%s' has the wrong type. Expected %s, but got %s.",
+                                                        i + 1, instructionName, expectedType, actualType),
+                                                instructionNode.sourceInfo().fileName(),
+                                                instructionNode.sourceInfo().lineNumber()
+                                        );
+                                    }
                                 }
+                            } else {
+                                diagnostics.reportError(
+                                        String.format("'%s' is not a value, a register or a label and cannot be an instruction argument.",
+                                                idNode.text()),
+                                        instructionNode.sourceInfo().fileName(),
+                                        instructionNode.sourceInfo().lineNumber()
+                                );
                             }
-                        } else {
-                            diagnostics.reportError(
-                                    String.format("'%s' is not a value, a register or a label and cannot be an instruction argument.",
-                                            idNode.text()),
-                                    instructionNode.sourceInfo().fileName(),
-                                    instructionNode.sourceInfo().lineNumber()
-                            );
                         }
-                    } else {
-                        // Allow unresolved if a VECTOR is expected (forward-referenced label to be linked)
-                        if (expectedType != ArgKind.VECTOR && resolution instanceof Resolution.Missing missing) {
-                            diagnostics.reportError(
-                                    "Cannot use '" + idNode.text() + "' as an argument: " + missing.explanation(),
-                                    idNode.sourceInfo().fileName(),
-                                    idNode.sourceInfo().lineNumber()
-                            );
+                        case Resolution.Missing missing -> {
+                            // Where a VECTOR is expected, an unresolved name may be a label the linker binds
+                            if (expectedType != ArgKind.VECTOR) {
+                                diagnostics.reportError(
+                                        "Cannot use '" + idNode.text() + "' as an argument: " + missing.explanation(),
+                                        idNode.sourceInfo().fileName(),
+                                        idNode.sourceInfo().lineNumber()
+                                );
+                            }
                         }
                     }
                 } else {

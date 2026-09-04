@@ -17,7 +17,6 @@ import org.evochora.compiler.model.ast.VectorLiteralNode;
 import org.evochora.compiler.isa.IInstructionSet;
 
 import java.util.EnumSet;
-import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -53,16 +52,19 @@ public class CallAnalysisHandler implements IAnalysisHandler {
 
         // The target has to exist for every CALL; only a CALL that passes arguments needs it to
         // be a procedure, a plain CALL may target any label.
-        Resolution resolution = symbolTable.resolve(procIdentifier.text(), procIdentifier.sourceInfo().fileName());
-        if (resolution instanceof Resolution.Missing missing) {
-            diagnostics.reportError("Cannot call '" + procIdentifier.text() + "': " + missing.explanation(),
-                    procIdentifier.sourceInfo().fileName(), procIdentifier.sourceInfo().lineNumber());
-            return;
+        ResolvedSymbol target;
+        switch (symbolTable.resolve(procIdentifier.text(), procIdentifier.sourceInfo().fileName())) {
+            case Resolution.Missing missing -> {
+                diagnostics.reportError("Cannot call '" + procIdentifier.text() + "': " + missing.explanation(),
+                        procIdentifier.sourceInfo().fileName(), procIdentifier.sourceInfo().lineNumber());
+                return;
+            }
+            case ResolvedSymbol found -> target = found;
         }
         if (!hasArguments) {
             return;
         }
-        if (!(((ResolvedSymbol) resolution).symbol().node() instanceof ProcedureNode procedureNode)) {
+        if (!(target.symbol().node() instanceof ProcedureNode procedureNode)) {
             diagnostics.reportError("Cannot call '" + procIdentifier.text() + "': it is not a procedure.",
                     procIdentifier.sourceInfo().fileName(), procIdentifier.sourceInfo().lineNumber());
             return;
@@ -194,16 +196,18 @@ public class CallAnalysisHandler implements IAnalysisHandler {
      */
     private void validateIdentifier(IdentifierNode idNode, String position, Set<Meaning> accepted,
                                     String expected, boolean mustExist, SymbolTable st, DiagnosticsEngine diag) {
-        Resolution resolution = st.resolve(idNode.text(), idNode.sourceInfo().fileName());
-        Optional<ResolvedSymbol> opt = resolution.found();
-        if (opt.isEmpty()) {
-            if (mustExist && resolution instanceof Resolution.Missing missing) {
-                diag.reportError("Cannot pass '" + idNode.text() + "' as " + position + " argument: " + missing.explanation(),
-                        idNode.sourceInfo().fileName(), idNode.sourceInfo().lineNumber());
+        ResolvedSymbol resolved;
+        switch (st.resolve(idNode.text(), idNode.sourceInfo().fileName())) {
+            case Resolution.Missing missing -> {
+                if (mustExist) {
+                    diag.reportError("Cannot pass '" + idNode.text() + "' as " + position + " argument: " + missing.explanation(),
+                            idNode.sourceInfo().fileName(), idNode.sourceInfo().lineNumber());
+                }
+                return;
             }
-            return;
+            case ResolvedSymbol found -> resolved = found;
         }
-        Meaning meaning = meaningOf(opt.get().symbol().node(), idNode, st);
+        Meaning meaning = meaningOf(resolved.symbol().node(), idNode, st);
         if (accepted.contains(meaning) || meaning == Meaning.UNRESOLVED) return;
         if (meaning == Meaning.NONE) {
             diag.reportError("'" + idNode.text() + "' is not a register or a label and cannot be a CALL argument.",
