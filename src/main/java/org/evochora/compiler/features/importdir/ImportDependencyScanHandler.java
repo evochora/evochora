@@ -16,11 +16,14 @@ import java.util.regex.Pattern;
  */
 public class ImportDependencyScanHandler implements IDependencyScanHandler {
 
-    // The same syntax is described a second time by the parser handler for this directive.
-    // Whatever changes here has to change there as well: a form this pattern does not match is
-    // never scanned, so the module is never loaded, and the parser never gets to see it.
+    // Every line that names a module file is matched, whatever follows the path, so the file is
+    // loaded even when the directive is malformed and the parser can report the malformation.
+    // The same syntax is described a second time by the parser handler for this directive;
+    // whatever changes in the clause pattern has to change there as well.
     private static final Pattern IMPORT_PATTERN = Pattern.compile(
-            "(?i)^(EXPORT\\s+)?\\.IMPORT\\s+\"([^\"]+)\"\\s+AS\\s+(\\w+)((?:\\s+USING\\s+\\w+\\s+AS\\s+\\w+)*)\\s*$");
+            "(?i)^(EXPORT\\s+)?\\.IMPORT\\s+\"([^\"]+)\"(.*)$");
+    private static final Pattern CLAUSES_PATTERN = Pattern.compile(
+            "(?i)^\\s+AS\\s+(\\w+)((?:\\s+USING\\s+\\w+\\s+AS\\s+\\w+)*)\\s*$");
     private static final Pattern USING_PATTERN = Pattern.compile(
             "(?i)USING\\s+(\\w+)\\s+AS\\s+(\\w+)");
 
@@ -33,16 +36,6 @@ public class ImportDependencyScanHandler implements IDependencyScanHandler {
     public void handleMatch(Matcher matcher, IDependencyScanContext ctx) {
         boolean exported = matcher.group(1) != null;
         String path = matcher.group(2);
-        String alias = matcher.group(3);
-        String usingsPart = matcher.group(4);
-
-        List<ImportDependencyInfo.UsingDecl> usings = new ArrayList<>();
-        if (usingsPart != null && !usingsPart.isBlank()) {
-            Matcher usingMatcher = USING_PATTERN.matcher(usingsPart);
-            while (usingMatcher.find()) {
-                usings.add(new ImportDependencyInfo.UsingDecl(usingMatcher.group(1), usingMatcher.group(2)));
-            }
-        }
 
         String resolvedPath;
         try {
@@ -52,13 +45,24 @@ public class ImportDependencyScanHandler implements IDependencyScanHandler {
             return;
         }
 
-        ctx.addDependency(new ImportDependencyInfo(path, alias, usings, resolvedPath, exported));
+        // A directive without a well-formed alias clause names no dependency; its tokens are still
+        // needed so the phase that reads the clause can report what is wrong with it.
+        Matcher clauses = CLAUSES_PATTERN.matcher(matcher.group(3));
+        if (clauses.matches()) {
+            String alias = clauses.group(1);
+            List<ImportDependencyInfo.UsingDecl> usings = new ArrayList<>();
+            Matcher usingMatcher = USING_PATTERN.matcher(clauses.group(2));
+            while (usingMatcher.find()) {
+                usings.add(new ImportDependencyInfo.UsingDecl(usingMatcher.group(1), usingMatcher.group(2)));
+            }
+            ctx.addDependency(new ImportDependencyInfo(path, alias, usings, resolvedPath, exported));
+        }
 
         try {
             String content = ctx.loadContent(resolvedPath);
             ctx.scanNestedModule(resolvedPath, content);
         } catch (IOException e) {
-            ctx.reportError("Could not load imported module: " + path);
+            ctx.reportError("Module file not found: " + path);
         }
     }
 }

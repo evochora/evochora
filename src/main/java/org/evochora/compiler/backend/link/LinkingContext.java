@@ -1,44 +1,30 @@
 package org.evochora.compiler.backend.link;
 
-import org.evochora.compiler.model.symbols.SymbolTable;
 import org.evochora.compiler.isa.IInstructionSet;
 
-import java.util.ArrayDeque;
-import java.util.Deque;
 import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Mutable context for the linking phase. Provides runtime dependencies
- * (symbol table, instruction set) to linking rules, following the same
- * pattern as IrGenContext and EmissionContext in other phases.
+ * Mutable context for the linking phase. Provides the instruction set to linking rules,
+ * following the same pattern as IrGenContext and EmissionContext in other phases, and
+ * collects what the rules find out about the items they link.
  */
 public final class LinkingContext {
 
-    private final SymbolTable symbolTable;
     private final IInstructionSet isa;
     private int linearAddressCursor = 0;
     private Map<Integer, Map<Integer, Integer>> callSiteBindings = new HashMap<>();
-    private final Deque<String> aliasChainStack = new ArrayDeque<>();
     private boolean frozen = false;
 
     /**
-     * Constructs a new linking context with the given runtime dependencies.
+     * Constructs a new linking context.
      *
-     * @param symbolTable The symbol table for resolving symbols during linking.
-     * @param isa         The instruction set adapter for register resolution.
+     * @param isa The instruction set adapter for register resolution.
      */
-    public LinkingContext(SymbolTable symbolTable, IInstructionSet isa) {
-        this.symbolTable = symbolTable;
+    public LinkingContext(IInstructionSet isa) {
         this.isa = isa;
     }
-
-    /**
-     * Returns the symbol table the linking rules resolve names against.
-     *
-     * @return The symbol table for resolving symbols.
-     */
-    public SymbolTable symbolTable() { return symbolTable; }
 
     /**
      * Returns the instruction set a rule consults to turn a register name into its id.
@@ -49,8 +35,7 @@ public final class LinkingContext {
 
     /**
      * Freezes the context, preventing further modifications.
-     * After freeze: pushAliasChain/popAliasChain/setCurrentAddress throw,
-     * callSiteBindings returns unmodifiable view.
+     * After freeze: setCurrentAddress throws, callSiteBindings returns unmodifiable view.
      */
     public void freeze() {
         this.frozen = true;
@@ -88,37 +73,5 @@ public final class LinkingContext {
      */
     public Map<Integer, Map<Integer, Integer>> callSiteBindings() {
         return callSiteBindings;
-    }
-
-    // --- Alias chain stack for module context tracking ---
-
-    /**
-     * Pushes an alias chain when entering an imported module.
-     *
-     * @param aliasChain the chain qualifying names inside that module
-     */
-    public void pushAliasChain(String aliasChain) {
-        guardFrozen();
-        aliasChainStack.push(aliasChain);
-    }
-
-    /**
-     * Pops the alias chain when leaving an imported module.
-     */
-    public void popAliasChain() {
-        guardFrozen();
-        if (aliasChainStack.isEmpty()) {
-            throw new IllegalStateException("Cannot pop alias chain: stack is empty");
-        }
-        aliasChainStack.pop();
-    }
-
-    /**
-     * Returns the current alias chain, or empty string if the stack is empty.
-     *
-     * @return the chain qualifying names at this point, empty outside any imported module
-     */
-    public String currentAliasChain() {
-        return aliasChainStack.isEmpty() ? "" : aliasChainStack.peek();
     }
 }

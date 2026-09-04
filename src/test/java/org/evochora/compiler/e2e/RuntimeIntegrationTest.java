@@ -3,7 +3,6 @@ package org.evochora.compiler.e2e;
 import org.evochora.compiler.Compiler;
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.Simulation;
-import org.evochora.runtime.internal.services.CallBindingRegistry;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
@@ -16,7 +15,6 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -32,11 +30,6 @@ public class RuntimeIntegrationTest {
 	@BeforeAll
 	static void setUp() {
 		Instruction.init();
-	}
-
-	@org.junit.jupiter.api.AfterEach
-	void cleanup() {
-		CallBindingRegistry.getInstance().clearAll();
 	}
 
 	/**
@@ -97,9 +90,15 @@ public class RuntimeIntegrationTest {
 				.as("DR1 should remain 2 (raw=%d)", dr1Raw).isEqualTo(2);
 	}
 
+    /**
+     * Verifies that a CALL binds its parameters through the marshalling instructions alone.
+     * Only the machine code is loaded into the environment; the program artifact is never
+     * handed to the simulation. The caller's PUSH before the CALL and the prologue's POP into
+     * the formal register are what carry the argument, so the addition must still yield 30.
+     */
     @Test
     @Tag("integration")
-    void procedureCall_worksCorrectlyWithCorruptedProgramArtifact() throws Exception {
+    void procedureCall_bindsParametersFromMachineCodeAlone() throws Exception {
         String sourceCode = String.join("\n",
                 "SETI %DR0 DATA:29",
                 "CALL INC REF %DR0",
@@ -114,71 +113,29 @@ public class RuntimeIntegrationTest {
 
         Compiler compiler = new Compiler();
         EnvironmentProperties envProps = new EnvironmentProperties(new int[]{64, 64}, true);
-        ProgramArtifact correctArtifact = compiler.compile(Arrays.asList(sourceCode.split("\\r?\\n")), "correct.s", envProps);
-        assertThat(correctArtifact).isNotNull();
-
-        Map<Integer, Map<Integer, Integer>> corruptedBindings = new HashMap<>();
-        correctArtifact.callSiteBindings().forEach((addr, bindings) -> {
-            corruptedBindings.put(addr, Map.of(RegisterBank.FDR.base, 1));
-        });
-
-        ProgramArtifact corruptedArtifact = new ProgramArtifact(
-                correctArtifact.programId(),
-                correctArtifact.sources(),
-                correctArtifact.machineCodeLayout(),
-                correctArtifact.initialWorldObjects(),
-                correctArtifact.sourceMap(),
-                corruptedBindings,
-                correctArtifact.relativeCoordToLinearAddress(),
-                correctArtifact.linearAddressToCoord(),
-                correctArtifact.registerAliasMap(),
-                correctArtifact.procNameToParamNames(),
-                correctArtifact.tokenMap(),
-                correctArtifact.tokenLookup(),
-                correctArtifact.sourceLineToInstructions(),
-                correctArtifact.labelValueToName(),
-                correctArtifact.labelNameToValue()
-        );
+        ProgramArtifact artifact = compiler.compile(Arrays.asList(sourceCode.split("\\r?\\n")), "main.s", envProps);
+        assertThat(artifact).isNotNull();
 
         Environment env = new Environment(envProps);
         Simulation sim = SimulationTestUtils.createSimulation(env);
 
-        for (Map.Entry<int[], Integer> e : correctArtifact.machineCodeLayout().entrySet()) {
+        for (Map.Entry<int[], Integer> e : artifact.machineCodeLayout().entrySet()) {
             env.setMolecule(Molecule.fromInt(e.getValue()), e.getKey());
         }
 
-
         Organism org = Organism.create(sim, new int[]{0, 0}, 1000);
-        org.setProgramId(correctArtifact.programId());
+        org.setProgramId(artifact.programId());
         sim.addOrganism(org);
-
-        CallBindingRegistry.getInstance().clearAll();
-        for (var binding : corruptedArtifact.callSiteBindings().entrySet()) {
-            int[] coord = corruptedArtifact.linearAddressToCoord().get(binding.getKey());
-            if (coord != null) {
-                int flatIndex = env.properties.toFlatIndex(coord);
-                CallBindingRegistry.getInstance().registerBinding(flatIndex, binding.getValue());
-            }
-        }
-
-        // Track instructions and register states
-        //ExecutionTracker tracker = new ExecutionTracker(sim, org);
 
         // Run exactly 9 ticks: SETI(1) + PUSH(2) + CALL(3) + POP(4) + ADDI(5) + PUSH(6) + RET(7) + POP(8) + WAIT(9)
         // Note: More ticks would cause instant-skip loop to wrap around grid and re-execute SETI!
         for (int i = 0; i < 9; i++) {
-        //    tracker.beforeTick();
             sim.tick();
-        //    tracker.afterTick();
         }
-
-        // Print execution trace
-        //String trace = tracker.getTraceAsString();
-        //System.out.println(trace);
 
         Molecule result = Molecule.fromInt((Integer) org.readOperand(0));
         assertThat(result.toScalarValue())
-                .as("Das Ergebnis der Addition muss 30 sein, basierend auf dem Maschinencode, nicht dem falschen Artefakt.\n" /*+ trace*/)
+                .as("The addition must yield 30, carried by the marshalling instructions in the machine code.")
                 .isEqualTo(30);
         assertThat(org.isInstructionFailed()).isFalse();
     }
@@ -367,6 +324,62 @@ public class RuntimeIntegrationTest {
         // LREF write-back copies FLR0 back to LR0. So LR0 should be [0,0], not [5,7].
         int[] lr0Value = (int[]) org.readOperand(RegisterBank.LR.base);
         assertThat(lr0Value).as("LR0 should be [0,0] after LREF write-back from CLEAR_POS (was [5,7] before CALL)")
+                .isEqualTo(new int[]{0, 0});
+    }
+
+    /**
+     * Verifies that a call mixing a data parameter and a location parameter carries both
+     * through marshalling alone: the argument reaches FDR0 over the data stack and FLR0 over
+     * the location stack, and both write-backs reach the caller's registers after RET.
+     */
+    @Test
+    @Tag("integration")
+    void mixedRefAndLrefParametersArriveThroughMarshalling() throws Exception {
+        String source = String.join("\n",
+                "DPLR %LR0",                          // LR0 = current DP (non-zero position)
+                "SETI %DR1 DATA:41",
+                "CALL MIX REF %DR1 LREF %LR0",
+                "WAIT",
+                ".ORG 0|1",
+                "EXPORT .PROC MIX REF a LREF lPos",
+                "  ADDI a DATA:1",                    // FDR0 = 42
+                "  CRLR lPos",                        // FLR0 = [0,0]
+                "  RET",
+                ".ENDP"
+        );
+
+        Compiler compiler = new Compiler();
+        EnvironmentProperties envProps = new EnvironmentProperties(new int[]{64, 64}, true);
+        ProgramArtifact artifact = compiler.compile(Arrays.asList(source.split("\\r?\\n")), "mixed_params.s", envProps);
+        assertThat(artifact).isNotNull();
+
+        Environment env = new Environment(envProps);
+        Simulation sim = SimulationTestUtils.createSimulation(env);
+
+        for (Map.Entry<int[], Integer> e : artifact.machineCodeLayout().entrySet()) {
+            env.setMolecule(Molecule.fromInt(e.getValue()), e.getKey());
+        }
+
+        Organism org = Organism.create(sim, new int[]{0, 0}, 1000);
+        org.setProgramId(artifact.programId());
+        sim.addOrganism(org);
+
+        org.setDp(0, new int[]{5, 7});
+
+        // DPLR(1) SETI(2) PUSH(3) PUSL(4) CALL(5) POP(6) POPL(7) ADDI(8) CRLR(9)
+        // PUSL(10) PUSH(11) RET(12) POPL(13) POP(14) WAIT(15)
+        for (int i = 0; i < 15; i++) {
+            sim.tick();
+        }
+
+        assertThat(org.isInstructionFailed()).as("Failure: " + org.getFailureReason()).isFalse();
+
+        int dr1Raw = (Integer) org.readOperand(1);
+        assertThat(Molecule.fromInt(dr1Raw).toScalarValue())
+                .as("DR1 must be 42 after the REF write-back (raw=%d)", dr1Raw).isEqualTo(42);
+
+        int[] lr0Value = (int[]) org.readOperand(RegisterBank.LR.base);
+        assertThat(lr0Value).as("LR0 must be [0,0] after the LREF write-back (was [5,7] before the CALL)")
                 .isEqualTo(new int[]{0, 0});
     }
 

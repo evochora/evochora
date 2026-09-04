@@ -1,6 +1,5 @@
 package org.evochora.compiler.frontend.module;
 
-import org.evochora.compiler.frontend.semantics.ModuleId;
 
 import java.util.List;
 

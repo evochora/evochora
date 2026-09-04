@@ -1,12 +1,13 @@
 package org.evochora.compiler;
 
+import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 import org.evochora.compiler.frontend.module.IDependencyScanHandler;
 import org.evochora.compiler.frontend.module.IDependencyScanContext;
 import org.evochora.compiler.frontend.parser.IParserStatementHandler;
 import org.evochora.compiler.frontend.semantics.IDependencySetupHandler;
 import org.evochora.compiler.frontend.semantics.ModuleSetupContext;
-import org.evochora.compiler.frontend.semantics.analysis.IAnalysisHandler;
-import org.evochora.compiler.frontend.semantics.analysis.ISymbolCollector;
+import org.evochora.compiler.frontend.semantics.IAnalysisHandler;
+import org.evochora.compiler.frontend.semantics.ISymbolCollector;
 import org.evochora.compiler.features.importdir.ImportDependencyInfo;
 import org.evochora.compiler.model.ast.IdentifierNode;
 import org.junit.jupiter.api.BeforeEach;
@@ -29,7 +30,7 @@ class FeatureRegistryTest {
 
     @BeforeEach
     void setUp() {
-        registry = new FeatureRegistry();
+        registry = new FeatureRegistry(new RuntimeInstructionSetAdapter());
     }
 
     @Test

@@ -68,21 +68,23 @@ Evochora is an artificial life simulator for research into digital evolution. It
 
 When the node is running, it exposes a REST API for controlling and monitoring the data pipeline:
 
+The base path is `/pipeline/api`, formed by the route nesting in the HTTP process's `routes` block.
+
 **Pipeline-wide control:**
-- `GET /api/pipeline/status` - Get overall pipeline status
-- `POST /api/pipeline/start` - Start all services
-- `POST /api/pipeline/stop` - Stop all services
-- `POST /api/pipeline/restart` - Restart all services
-- `POST /api/pipeline/pause` - Pause all services
-- `POST /api/pipeline/resume` - Resume all services
+- `GET /pipeline/api/status` - Get overall pipeline status
+- `POST /pipeline/api/start` - Start all services
+- `POST /pipeline/api/stop` - Stop all services
+- `POST /pipeline/api/restart` - Restart all services
+- `POST /pipeline/api/pause` - Pause all services
+- `POST /pipeline/api/resume` - Resume all services
 
 **Individual service control:**
-- `GET /api/pipeline/service/{serviceName}/status` - Get service status
-- `POST /api/pipeline/service/{serviceName}/start` - Start specific service
-- `POST /api/pipeline/service/{serviceName}/stop` - Stop specific service
-- `POST /api/pipeline/service/{serviceName}/restart` - Restart specific service
-- `POST /api/pipeline/service/{serviceName}/pause` - Pause specific service
-- `POST /api/pipeline/service/{serviceName}/resume` - Resume specific service
+- `GET /pipeline/api/service/{serviceName}/status` - Get service status
+- `POST /pipeline/api/service/{serviceName}/start` - Start specific service
+- `POST /pipeline/api/service/{serviceName}/stop` - Stop specific service
+- `POST /pipeline/api/service/{serviceName}/restart` - Restart specific service
+- `POST /pipeline/api/service/{serviceName}/pause` - Pause specific service
+- `POST /pipeline/api/service/{serviceName}/resume` - Resume specific service
 
 ## Assembly Compile System
 The compiler can be invoked in multiple equivalent ways. For details and examples, see the **Compile** section in `docs/CLI_USAGE.md`.
@@ -155,7 +157,7 @@ runtime      →  (nothing)
 
 - **Authority**: `PackageDependencyRulesTest` enforces this graph and is the single source of truth. The graph is repeated here for orientation only — when the two disagree, the test is right.
 - **`runtime` depends on nothing**: the simulation core carries no outward surface. Every type it borrowed from another package would have to be carried along by a reimplementation in another language.
-- **`compiler → runtime` is intended**: the instruction set is what the compiler targets.
+- **`compiler → runtime` is intended**: the instruction set is what the compiler targets. The compiler sees it through `IInstructionSet`; only the adapter in `compiler.isa` reads the runtime's declarations, and `EnvironmentProperties`, the world a program is laid out for, is the one other runtime type the compiler takes.
 - **Process wrappers belong to `node`, domain logic to `datapipeline`**: node owns process lifecycles, not what runs inside them. An adapter joining the two lives on node's side, which is the permitted direction.
 - **Adding an edge**: a new dependency the graph does not permit fails the test, which names the classes involved. Withdraw the import, or change the rule and let the change be reviewed. Editing the rule is legitimate — doing it by reflex is what destroys its value.
 
@@ -167,14 +169,15 @@ runtime      →  (nothing)
 - **Single Execution**: Every phase runs exactly once for all modules of a compilation - there is no per-module loop, and no phase may access a previous phase
 - **No Direct Calls**: Phases never call other phases, and handlers never call other handlers. A handler that needs another feature's work reads it from the phase's input data, never from the other handler
 - **Results, Not Side Channels**: A phase returns its result to the Compiler; it never exposes results through getters for a later phase to pull. From phase 7 on, the IR is the single source of truth - what is not in the IR does not exist for the backend
-- **Thin Orchestrators**: All logic goes into handlers/plugins; phase main classes (PreProcessor, Parser, SemanticAnalyzer, IrGenerator, LayoutEngine, Linker, Emitter) stay clean as distributors
-- **Registry-Based Dispatch**: Each phase dispatches through its own registry and nothing else - no `instanceof` chains on tokens, AST nodes or IR items in phase code. One registry per phase: `PreProcessorHandlerRegistry`, `ParserStatementRegistry`, `ModuleSetupRegistry` and `AnalysisHandlerRegistry`, `TokenMapContributorRegistry`, `PostProcessHandlerRegistry`, `IrConverterRegistry`, `EmissionRegistry`, `LayoutDirectiveRegistry`, `LinkingRegistry` and `LinkingDirectiveRegistry`, `EmissionContributorRegistry`. Features fill them through `IFeatureRegistrationContext`
+- **Thin Orchestrators**: A phase class walks its input and dispatches. Logic lives in the handlers features register, or for the kinds the core fixes, in a class next to the phase. `Compiler.java` runs the phases in order and does nothing else
+- **Registry-Based Dispatch**: What features extend goes through the phase's registry; what the core fixes is `sealed` and handled by an exhaustive `switch`; what a node can do is asked through a capability interface, never by feature type. One registry per phase: `PreProcessorHandlerRegistry`, `ParserStatementRegistry`, `ModuleSetupRegistry` and `AnalysisHandlerRegistry`, `TokenMapContributorRegistry`, `PostProcessHandlerRegistry`, `IrConverterRegistry`, `RewriteRegistry`, `LayoutDirectiveRegistry`, `LinkingRegistry` and `LinkingDirectiveRegistry`, `EmissionContributorRegistry`. Features fill them through `IFeatureRegistrationContext`
 - **Feature-Slicing**: Features (not phases) are the unit of code organization. Each feature is a self-contained package with all its components (parser handler, AST node, semantics handler, IR converter, etc.). Features register themselves into phase registries. Reason: a feature is the unit of change ("add procedures", "add imports"), so its components belong together even though they run in different phases; organized by phase, every change would spread across the whole pipeline
 - **Feature-Agnostic Core**: Core infrastructure (phases, SymbolTable, data formats) must never reference specific features. Features depend on phases, not vice versa. The only place that knows which features exist is `StandardFeatures.java`
 - **Three Pure Data Formats**: Token (`model/token/`), AST (`model/ast/`), IR (`model/ir/`) are strictly separated. No cross-dependencies between them. `SourceInfo` is the only shared type: an AST node never holds a `Token`, it carries the token's `SourceInfo`
-- **Stateless Features**: Features have no constructor parameters and no mutable state. Compilation data flows through phase contexts (e.g., PreProcessorContext, IrGenContext), not through features. Phase-internal state (register alias scopes while parsing, the macro table while preprocessing) lives in that phase's context and dies with the phase; data that crosses a phase boundary is returned to the Compiler and handed to the next phase as input
+- **Fixed Kinds**: The core fixes the three IR item kinds and the five operand forms. A feature extends the IR through directives and their handlers, or by subtyping `IrInstruction`; it never adds a kind
+- **Stateless Features**: Features and their handlers hold no compilation state. Compilation data flows through phase contexts (e.g., PreProcessorContext, IrGenContext), not through features. Phase-internal state (register alias scopes while parsing, the macro table while preprocessing) lives in that phase's context and dies with the phase; data that crosses a phase boundary is returned to the Compiler and handed to the next phase as input
 - **Pure Data Records**: Core data types (Symbol, AstNode subtypes, IR items) are pure records. Placement/scoping knowledge lives in the SymbolTable and phase contexts, not in the data records themselves.
-- **Output Equivalence**: A compiler change that must not alter generated code is verified by compiling a suitable assembly program before and after the change and diffing the artifacts. Passing tests alone do not prove identical output
+- **Output Equivalence**: A compiler change that must not alter generated code passes `CompilerOutputEquivalenceTest` unchanged: it compiles the reference program under `src/test/resources` and compares the artifact with the checked-in one. An intended change regenerates the reference artifact and says so in the pull request. Passing tests alone do not prove identical output
 
 ## Runtime (`src/main/java/org/evochora/runtime/`)
 
@@ -182,6 +185,7 @@ runtime      →  (nothing)
 - **Conflict Resolution**: Contenders for one cell are ranked by a per-tick priority computed from seed, tick and organism ID (`OrganismRandom.tickStreamSeed()`); the loser is booked as a failed instruction (`"Lost write conflict"`, error penalty) and retries with its instruction pointer held.
 - **Two Kinds of Randomness**: The root `IRandomProvider` serves the sequential parts of a tick (tick plugins, birth/death handlers) and is checkpointed. Anything executing for an organism inside the parallel wave — instructions, interceptors, label matching — uses `Organism.getRandom()`, whose values are computed from seed, tick, organism ID and draw index and need no persistence. Drawing from the root provider inside the wave throws; `ParallelWave.isActive()` is the guard.
 - **Organism Autonomy**: Each Organism is a self-contained VM with own registers, stacks, and energy
+- **Self-Contained Machine Code**: Execution reads nothing from the program artifact. Everything a `CALL`, a jump or a parameter binding needs is in the molecules the compiler placed, so code that arose by mutation runs by the same rules as compiled code. The artifact serves the compiler's consumers, the visualizer and the data pipeline, never the runtime.
 - **Embodied Organisms**: Organisms have an instruction pointer (IP) and data pointers (DPs) navigating the n-D grid
 - **Instruction Registry**: All instructions register via `Instruction.init()` with unique IDs and planners
 - **Immutable Environment**: Environment is read-only during conflict resolution
@@ -236,7 +240,7 @@ runtime      →  (nothing)
 - **Service Registry**: Use ServiceRegistry for sharing services between processes
 - **Abstract Base**: Processes extend `AbstractProcess` for common dependency resolution
 - **HTTP Controllers**: Controllers extend `AbstractController`, register routes via `registerRoutes(Javalin, String basePath)`
-- **HTTP API**: Endpoints at `/api/visualizer/*`, `/api/analyzer/*`, `/api/pipeline/*`
+- **HTTP API**: Endpoints at `/visualizer/api/*`, `/analyzer/api/*`, `/pipeline/api/*` — the route nesting in the HTTP process's `routes` block puts `api` under the area, not the other way round
 
 ## CLI (`src/main/java/org/evochora/cli/`)
 

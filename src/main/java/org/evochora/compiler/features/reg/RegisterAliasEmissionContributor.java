@@ -6,7 +6,7 @@ import org.evochora.compiler.backend.emit.IEmissionContributor;
 import org.evochora.compiler.model.ir.IrDirective;
 import org.evochora.compiler.model.ir.IrItem;
 import org.evochora.compiler.model.ir.IrValue;
-import org.evochora.runtime.isa.RegisterBank;
+import org.evochora.compiler.isa.IInstructionSet;
 
 /**
  * Extracts register alias metadata from {@code reg_alias} IR directives
@@ -20,6 +20,17 @@ import org.evochora.runtime.isa.RegisterBank;
  * for debugger and frontend visualization.</p>
  */
 public final class RegisterAliasEmissionContributor implements IEmissionContributor {
+
+    private final IInstructionSet isa;
+
+    /**
+     * Creates the contributor for an instruction set.
+     *
+     * @param isa The instruction set, whose register banks give an alias its register ID.
+     */
+    public RegisterAliasEmissionContributor(IInstructionSet isa) {
+        this.isa = isa;
+    }
 
     @Override
     public void onItem(IrItem item, EmissionContext context) {
@@ -42,21 +53,9 @@ public final class RegisterAliasEmissionContributor implements IEmissionContribu
     }
 
     private Integer resolveRegisterId(String registerName) {
-        String upper = registerName.toUpperCase();
-        for (RegisterBank bank : RegisterBank.values()) {
-            if (bank.count > 0 && upper.startsWith(bank.prefix)) {
-                String suffix = upper.substring(bank.prefixLength);
-                if (suffix.isEmpty()) {
-                    return null;
-                }
-                try {
-                    int index = Integer.parseInt(suffix);
-                    return index >= 0 && index < bank.count ? bank.base + index : null;
-                } catch (NumberFormatException ignored) {
-                    return null;
-                }
-            }
-        }
-        return null;
+        return isa.parseRegister(registerName)
+                .filter(IInstructionSet.RegisterRef::inBounds)
+                .map(IInstructionSet.RegisterRef::id)
+                .orElse(null);
     }
 }

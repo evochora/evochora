@@ -1,10 +1,13 @@
 package org.evochora.compiler.backend;
 
 import org.evochora.compiler.api.SourceInfo;
-import org.evochora.compiler.backend.emit.EmissionRegistry;
-import org.evochora.compiler.backend.emit.IEmissionRule;
+import org.evochora.compiler.backend.rewrite.RewriteRegistry;
+import org.evochora.compiler.backend.rewrite.IRewriteRule;
 import org.evochora.compiler.features.proc.IrCallInstruction;
+import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 import org.evochora.compiler.model.ir.*;
+import org.evochora.runtime.isa.Instruction;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -21,17 +24,24 @@ import static org.assertj.core.api.Assertions.assertThat;
 @Tag("unit")
 class EmissionIfpMarshallingTest {
 
+    private static final RuntimeInstructionSetAdapter ISA = new RuntimeInstructionSetAdapter();
+
+    @BeforeAll
+    static void init() {
+        Instruction.init();
+    }
+
     private static SourceInfo src(String file, int line) {
         return new SourceInfo(file, line, 0);
     }
 
     private List<IrItem> runEmission(List<IrItem> items) {
-        EmissionRegistry reg = new EmissionRegistry();
+        RewriteRegistry reg = new RewriteRegistry();
         reg.register(new org.evochora.compiler.features.proc.ProcedureMarshallingRule());
         reg.register(new org.evochora.compiler.features.proc.CallerMarshallingRule());
         List<IrItem> out = items;
-        for (IEmissionRule r : reg.rules()) {
-            out = r.apply(out);
+        for (IRewriteRule r : reg.rules()) {
+            out = r.apply(out, ISA);
         }
         return out;
     }

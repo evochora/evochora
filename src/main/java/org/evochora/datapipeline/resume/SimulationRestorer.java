@@ -838,14 +838,11 @@ public class SimulationRestorer {
             }
         }
 
-        Map<Integer, Integer> parameterBindings = new HashMap<>(pf.getParameterBindingsMap());
-
         return new Organism.ProcFrame(
             pf.getLabelHash(),
             toIntArray(pf.getAbsoluteReturnIp()),
             toIntArray(pf.getAbsoluteCallIp()),
-            savedRegisters,
-            parameterBindings
+            savedRegisters
         );
     }
 

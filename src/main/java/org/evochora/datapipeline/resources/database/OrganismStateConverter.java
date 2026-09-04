@@ -9,7 +9,6 @@ import org.evochora.runtime.model.MoleculeTypeRegistry;
 
 import java.sql.SQLException;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -151,9 +150,7 @@ public final class OrganismStateConverter {
             savedRegisters.add(convertRegisterValue(rv));
         }
 
-        Map<Integer, Integer> parameterBindings = new HashMap<>(frame.getParameterBindingsMap());
-
-        return new ProcFrameView(procName, absReturnIp, absCallIp, savedRegisters, parameterBindings);
+        return new ProcFrameView(procName, absReturnIp, absCallIp, savedRegisters);
     }
     
     /**

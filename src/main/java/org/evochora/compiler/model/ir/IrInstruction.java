@@ -16,7 +16,7 @@ import java.util.Objects;
  * Represents a generic instruction in the intermediate representation.
  * Non-final to allow feature-specific subtypes (e.g., IrCallInstruction).
  */
-public class IrInstruction implements IrItem {
+public non-sealed class IrInstruction implements IrItem {
     private final String opcode;
     private final List<IrOperand> operands;
     private final SourceInfo source;

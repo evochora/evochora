@@ -445,7 +445,6 @@ final class ResumeNeutralityHarness {
                .append("<-").append(Arrays.toString(frame.absoluteCallIp()))
                .append(" saved=").append(frame.savedRegisters() == null
                        ? "none" : values(Arrays.asList(frame.savedRegisters())))
-               .append(" bindings=").append(new TreeMap<>(frame.parameterBindings()))
                .append(';');
         }
         return out.append(']').toString();

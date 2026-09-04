@@ -18,7 +18,7 @@ public interface IParserStatementHandler {
      *         parsing context diagnostics. Handlers must never return {@code null}
      *         without first reporting an error or being a legitimately void statement.
      */
-    AstNode parse(ParsingContext context);
+    AstNode parse(IParsingContext context);
 
     /**
      * Returns whether this handler supports the EXPORT keyword preceding the statement.

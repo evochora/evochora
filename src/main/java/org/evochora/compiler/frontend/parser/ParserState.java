@@ -1,6 +1,5 @@
 package org.evochora.compiler.frontend.parser;
 
-import org.evochora.runtime.isa.RegisterBank;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -18,13 +17,6 @@ public class ParserState {
     private final Map<Class<?>, Object> state = new HashMap<>();
     private final List<IScopedParserState> scopedStates = new ArrayList<>();
     private final Map<String, Integer> availableRegisterBanks = new HashMap<>();
-    {
-        for (RegisterBank bank : RegisterBank.values()) {
-            if (bank.count > 0 && bank.isAlwaysAvailable) {
-                availableRegisterBanks.put(bank.prefix.substring(1), 1);
-            }
-        }
-    }
 
     /**
      * Retrieves the state object associated with the given key type.
@@ -90,10 +82,12 @@ public class ParserState {
     }
 
     /**
-     * Checks whether a register bank is currently available for use in directives like {@code .REG}.
+     * Checks whether a scope has made a register bank available for use in directives like
+     * {@code .REG}. A bank that source may name everywhere is never added here; whoever asks
+     * checks the bank's own availability first.
      *
-     * @param bank the bank prefix (e.g., "DR", "PDR")
-     * @return {@code true} if the bank is available in the current scope
+     * @param bank the bank prefix (e.g., "PDR")
+     * @return {@code true} if a scope currently open has added the bank
      */
     public boolean isRegisterBankAvailable(String bank) {
         return availableRegisterBanks.getOrDefault(bank, 0) > 0;

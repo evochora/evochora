@@ -1,7 +1,7 @@
 package org.evochora.compiler.features.instruction;
 
 import org.evochora.compiler.frontend.parser.IParserStatementHandler;
-import org.evochora.compiler.frontend.parser.ParsingContext;
+import org.evochora.compiler.frontend.parser.IParsingContext;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.InstructionNode;
 import org.evochora.compiler.model.token.Token;
@@ -18,7 +18,7 @@ import java.util.List;
 public class InstructionParsingHandler implements IParserStatementHandler {
 
     @Override
-    public AstNode parse(ParsingContext context) {
+    public AstNode parse(IParsingContext context) {
         if (context.match(TokenType.OPCODE)) {
             Token opcode = context.previous();
             List<AstNode> arguments = new ArrayList<>();

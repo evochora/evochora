@@ -198,12 +198,7 @@ export class AnnotationUtils {
         for (const frame of callStack) {
             if (!frame) continue;
 
-            let frameBindings = _resolveFrameBindings(frame, initialPosition, artifact);
-
-            // If no bindings from artifact, check runtime parameterBindings (fallback)
-            if (!frameBindings && frame.parameterBindings && typeof frame.parameterBindings === 'object') {
-                frameBindings = frame.parameterBindings;
-            }
+            const frameBindings = _resolveFrameBindings(frame, initialPosition, artifact);
 
             if (frameBindings) {
                 const mappedId = frameBindings[currentRegId];
@@ -268,11 +263,7 @@ export class AnnotationUtils {
         for (const frame of callStack) {
             if (!frame) continue;
 
-            let frameBindings = _resolveFrameBindings(frame, initialPosition, artifact);
-
-            if (!frameBindings && frame.parameterBindings && typeof frame.parameterBindings === 'object') {
-                frameBindings = frame.parameterBindings;
-            }
+            const frameBindings = _resolveFrameBindings(frame, initialPosition, artifact);
 
             if (frameBindings) {
                 const mappedId = frameBindings[currentRegId];
@@ -338,6 +329,9 @@ export class AnnotationUtils {
 
 /**
  * Resolves frame bindings from artifact for a given call stack frame.
+ * The artifact addresses a call by its offset from the organism's initial position, so a
+ * wrapping dimension has to be reduced into the world's range before the lookup: code that
+ * crosses the boundary would otherwise yield an offset the artifact has no entry for.
  * @private
  */
 function _resolveFrameBindings(frame, initialPosition, artifact) {
@@ -346,9 +340,15 @@ function _resolveFrameBindings(frame, initialPosition, artifact) {
         return null;
     }
 
+    const worldShape = artifact.envProps?.worldShape;
+    const toroidal = artifact.envProps?.toroidal;
     const relativeCoord = [];
     for (let i = 0; i < frame.absoluteCallIp.length && i < initialPosition.length; i++) {
-        relativeCoord.push(frame.absoluteCallIp[i] - initialPosition[i]);
+        let rel = frame.absoluteCallIp[i] - initialPosition[i];
+        if (worldShape && toroidal && toroidal[i] && worldShape[i] > 0) {
+            rel = ((rel % worldShape[i]) + worldShape[i]) % worldShape[i];
+        }
+        relativeCoord.push(rel);
     }
 
     const coordKey = relativeCoord.join('|');

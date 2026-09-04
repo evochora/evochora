@@ -5,7 +5,6 @@ import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
 import org.evochora.compiler.frontend.preprocessor.PreProcessorContext;
-import org.evochora.compiler.frontend.preprocessor.PreProcessorHandlerRegistry;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.util.SourceRootResolver;
@@ -34,11 +33,11 @@ class ColonLabelHandlerTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics, "test.s");
         List<Token> tokens = lexer.scanTokens();
-        PreProcessorHandlerRegistry registry = new PreProcessorHandlerRegistry();
-        registry.register(":", new ColonLabelHandler());
+        PreProcessorContext context = new PreProcessorContext();
+        context.handlers().register(":", new ColonLabelHandler());
         PreProcessor pp = new PreProcessor(tokens, diagnostics,
                 new SourceRootResolver(List.of(new SourceRoot(".", null)), Path.of("")),
-                registry, new PreProcessorContext());
+                context);
         return pp.expand().tokens();
     }
 

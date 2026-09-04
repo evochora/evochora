@@ -41,7 +41,7 @@ public class SourceDependencyScanHandler implements IDependencyScanHandler {
             ctx.addDependency(new SourceDependencyInfo(path, resolvedPath));
             ctx.scanNestedSourceFile(resolvedPath, content);
         } catch (IOException e) {
-            ctx.reportError("Could not load sourced file: " + path);
+            ctx.reportError("Source file not found: " + path);
         }
     }
 }

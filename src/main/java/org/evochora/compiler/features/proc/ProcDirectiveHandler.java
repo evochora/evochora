@@ -1,14 +1,15 @@
 package org.evochora.compiler.features.proc;
 
 import org.evochora.compiler.frontend.parser.IParserStatementHandler;
-import org.evochora.compiler.frontend.parser.ParsingContext;
+import org.evochora.compiler.frontend.parser.IParsingContext;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.model.ast.AstNode;
-import org.evochora.runtime.isa.RegisterBank;
+import org.evochora.compiler.isa.IInstructionSet;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -20,11 +21,22 @@ public class ProcDirectiveHandler implements IParserStatementHandler {
 
     private static final Set<String> PARAM_KEYWORDS = Set.of("REF", "VAL", "LREF", "LVAL");
 
+    private final IInstructionSet isa;
+
+    /**
+     * Creates the handler for an instruction set.
+     *
+     * @param isa The instruction set, which names the register banks a procedure body opens up.
+     */
+    public ProcDirectiveHandler(IInstructionSet isa) {
+        this.isa = isa;
+    }
+
     @Override
     public boolean supportsExport() { return true; }
 
     @Override
-    public AstNode parse(ParsingContext context) {
+    public AstNode parse(IParsingContext context) {
         context.advance(); // consume .PROC
 
         Token procName = context.consume(TokenType.IDENTIFIER, "Expected procedure name after .PROC.");
@@ -34,39 +46,21 @@ public class ProcDirectiveHandler implements IParserStatementHandler {
         List<ProcedureNode.ParamDecl> lrefParameters = new ArrayList<>();
         List<ProcedureNode.ParamDecl> lvalParameters = new ArrayList<>();
 
-        while (!context.isAtEnd() && !context.check(TokenType.NEWLINE)) {
-            if (context.check(TokenType.IDENTIFIER)) {
-                String keyword = context.peek().text();
-                if ("REF".equalsIgnoreCase(keyword)) {
-                    context.advance();
-                    while (!context.isAtEnd() && context.check(TokenType.IDENTIFIER) && !isParamKeyword(context.peek().text())) {
-                        Token p = context.consume(TokenType.IDENTIFIER, "Expected a formal parameter name after REF.");
-                        refParameters.add(new ProcedureNode.ParamDecl(p.text(), p.toSourceInfo()));
-                    }
-                } else if ("VAL".equalsIgnoreCase(keyword)) {
-                    context.advance();
-                    while (!context.isAtEnd() && context.check(TokenType.IDENTIFIER) && !isParamKeyword(context.peek().text())) {
-                        Token p = context.consume(TokenType.IDENTIFIER, "Expected a formal parameter name after VAL.");
-                        valParameters.add(new ProcedureNode.ParamDecl(p.text(), p.toSourceInfo()));
-                    }
-                } else if ("LREF".equalsIgnoreCase(keyword)) {
-                    context.advance();
-                    while (!context.isAtEnd() && context.check(TokenType.IDENTIFIER) && !isParamKeyword(context.peek().text())) {
-                        Token p = context.consume(TokenType.IDENTIFIER, "Expected a formal parameter name after LREF.");
-                        lrefParameters.add(new ProcedureNode.ParamDecl(p.text(), p.toSourceInfo()));
-                    }
-                } else if ("LVAL".equalsIgnoreCase(keyword)) {
-                    context.advance();
-                    while (!context.isAtEnd() && context.check(TokenType.IDENTIFIER) && !isParamKeyword(context.peek().text())) {
-                        Token p = context.consume(TokenType.IDENTIFIER, "Expected a formal parameter name after LVAL.");
-                        lvalParameters.add(new ProcedureNode.ParamDecl(p.text(), p.toSourceInfo()));
-                    }
-                } else {
-                    context.getDiagnostics().reportError("Unexpected token '" + keyword + "' in procedure declaration.", procName.fileName(), procName.line());
-                    break;
-                }
-            } else {
+        // Each parameter keyword opens a list; the names that follow it, up to the next keyword,
+        // are that list's formal parameters.
+        Map<String, List<ProcedureNode.ParamDecl>> parametersByKeyword = Map.of(
+                "REF", refParameters, "VAL", valParameters, "LREF", lrefParameters, "LVAL", lvalParameters);
+        while (!context.isAtEnd() && context.check(TokenType.IDENTIFIER)) {
+            String keyword = context.peek().text().toUpperCase();
+            List<ProcedureNode.ParamDecl> target = parametersByKeyword.get(keyword);
+            if (target == null) {
+                context.getDiagnostics().reportError("Unexpected token '" + context.peek().text() + "' in procedure declaration.", procName.fileName(), procName.line());
                 break;
+            }
+            context.advance();
+            while (!context.isAtEnd() && context.check(TokenType.IDENTIFIER) && !isParamKeyword(context.peek().text())) {
+                Token p = context.consume(TokenType.IDENTIFIER, "Expected a formal parameter name after " + keyword + ".");
+                target.add(new ProcedureNode.ParamDecl(p.text(), p.toSourceInfo()));
             }
         }
 
@@ -75,9 +69,9 @@ public class ProcDirectiveHandler implements IParserStatementHandler {
         }
 
         context.state().pushScope();
-        String[] procScopedBanks = RegisterBank.allProcScoped().stream()
-                .filter(b -> !b.isForbidden)
-                .map(b -> b.prefix.substring(1))
+        String[] procScopedBanks = isa.registerBanks().stream()
+                .filter(b -> b.procScoped() && !b.forbidden())
+                .map(IInstructionSet.RegisterBankInfo::name)
                 .toArray(String[]::new);
         context.state().addAvailableRegisterBanks(procScopedBanks);
 

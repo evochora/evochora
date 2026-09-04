@@ -2,38 +2,39 @@ package org.evochora.compiler.frontend.postprocess;
 
 import org.evochora.compiler.frontend.TreeWalker;
 import org.evochora.compiler.model.ast.AstNode;
-import org.evochora.compiler.model.ast.IParameterBinding;
-import org.evochora.compiler.model.ast.IRegisterAlias;
+import org.evochora.compiler.model.ast.IIdentifierBinding;
 import org.evochora.compiler.model.ast.IdentifierNode;
-import org.evochora.compiler.model.ast.RegisterNode;
-import org.evochora.compiler.model.ast.TypedLiteralNode;
-import org.evochora.compiler.model.ModuleContextTracker;
-import org.evochora.compiler.model.ScopeTracker;
-import org.evochora.compiler.model.symbols.ResolvedSymbol;
-import org.evochora.compiler.model.symbols.Symbol;
+import org.evochora.compiler.frontend.module.ModuleContextTracker;
+import org.evochora.compiler.frontend.semantics.ScopeTracker;
 import org.evochora.compiler.model.symbols.SymbolTable;
-import org.evochora.compiler.api.SourceInfo;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 
 /**
  * A dedicated compiler phase that transforms the AST after semantic analysis.
- * It resolves identifiers like constants and register aliases into their concrete forms.
+ * It replaces every identifier that names a definition by what the definition stands for:
+ * a register alias or a procedure parameter by the register, a constant by its value, and
+ * any other definition, such as a label or a procedure, by its full name. After this phase
+ * no name in the AST depends on where it is written, and the backend needs nothing from the
+ * symbol table.
  * This runs *after* the TokenMapGenerator to ensure debug info is based on the original source.
  *
- * <p>Register aliases are resolved via the {@link SymbolTable} with scope-aware lookup,
- * giving correct behavior for proc-scoped aliases and shadowing. Constants are still
- * collected into a module-qualified map (scope-aware constant resolution is a separate effort).</p>
+ * <p>The phase does not know the kinds of definitions. It resolves the identifier in the
+ * {@link SymbolTable}, with scope-aware lookup for proc-scoped aliases and shadowing, and
+ * asks the defining node for the replacement through {@link IIdentifierBinding}. A symbol
+ * whose node offers no binding is referred to by its qualified name, as the symbol table
+ * resolved it with the module's imports and export rules. An identifier that names no symbol
+ * is left as it is.</p>
  */
 public class AstPostProcessor implements IPostProcessContext {
+
     private final SymbolTable symbolTable;
     private final ModuleContextTracker contextTracker;
     private final ScopeTracker scopeTracker;
     private final PostProcessHandlerRegistry registry;
-    // Module-qualified constants: aliasChain -> (constantName -> value)
-    private final Map<String, Map<String, TypedLiteralNode>> constants = new HashMap<>();
     private final Map<AstNode, AstNode> replacements = new HashMap<>();
 
     /**
@@ -53,14 +54,30 @@ public class AstPostProcessor implements IPostProcessContext {
     }
 
     /**
-     * Transforms the given AST by replacing aliases and constants.
+     * Transforms every top-level statement of a program in order. The module and scope
+     * context carries from one statement to the next, as it does in the source, so the
+     * statements have to be given in program order.
+     *
+     * @param statements The top-level AST nodes of the program.
+     * @return A new list with each statement transformed; the given list is not modified.
+     */
+    public List<AstNode> process(List<AstNode> statements) {
+        List<AstNode> transformed = new ArrayList<>(statements.size());
+        for (AstNode statement : statements) {
+            transformed.add(process(statement));
+        }
+        return transformed;
+    }
+
+    /**
+     * Transforms the given AST by replacing the identifiers that name definitions.
      * @param root The root of the AST to transform.
      * @return The transformed AST root.
      */
     public AstNode process(AstNode root) {
         replacements.clear();
 
-        // First pass: collect constants and replacements with module/scope context tracking
+        // First pass: collect replacements with module/scope context tracking
         collectPass(root);
 
         // Second pass: apply the replacements
@@ -75,9 +92,11 @@ public class AstPostProcessor implements IPostProcessContext {
         // Dispatch through registry for feature-specific handlers
         registry.get(node.getClass()).ifPresent(h -> h.collect(node, this));
 
-        // Orchestrator infrastructure: IdentifierNode replacement (not feature-specific)
-        if (node instanceof IdentifierNode) {
-            collectReplacements(node);
+        if (node instanceof IdentifierNode identifier) {
+            AstNode replacement = resolveBinding(identifier);
+            if (replacement != null) {
+                replacements.put(identifier, replacement);
+            }
         }
 
         SymbolTable.Scope savedScope = scopeTracker.enterNode(node);
@@ -87,62 +106,19 @@ public class AstPostProcessor implements IPostProcessContext {
         scopeTracker.leaveNode(savedScope);
     }
 
-    @Override
-    public void collectConstant(String constantName, TypedLiteralNode value) {
-        String moduleKey = currentModuleKey();
-        constants.computeIfAbsent(moduleKey, k -> new HashMap<>()).put(constantName, value);
-    }
-
-    private void collectReplacements(AstNode node) {
-        if (!(node instanceof IdentifierNode idNode)) {
-            return;
-        }
-
-        String identifierName = idNode.text();
-
-        Optional<ResolvedSymbol> symbolOpt = symbolTable.resolve(identifierName, idNode.sourceInfo().fileName());
-        if (symbolOpt.isPresent()) {
-            Symbol symbol = symbolOpt.get().symbol();
-            if ((symbol.type() == Symbol.Type.REGISTER_ALIAS_DATA || symbol.type() == Symbol.Type.REGISTER_ALIAS_LOCATION)
-                    && symbol.node() instanceof IRegisterAlias alias) {
-                createRegisterReplacement(idNode, identifierName.toUpperCase(), alias.register());
-                return;
-            }
-            if ((symbol.type() == Symbol.Type.PARAMETER_DATA || symbol.type() == Symbol.Type.PARAMETER_LOCATION)
-                    && symbol.node() instanceof IParameterBinding pb) {
-                createRegisterReplacement(idNode, identifierName.toUpperCase(), pb.targetRegister());
-                return;
-            }
-            if (symbol.type() == Symbol.Type.CONSTANT) {
-                String moduleKey = currentModuleKey();
-                Map<String, TypedLiteralNode> moduleConstants = constants.get(moduleKey);
-                if (moduleConstants != null && moduleConstants.containsKey(identifierName)) {
-                    replacements.put(idNode, moduleConstants.get(identifierName));
-                }
-            }
-        }
-    }
-
-    private String currentModuleKey() {
-        String chain = symbolTable.getCurrentAliasChain();
-        return chain != null ? chain : "";
-    }
-
     /**
-     * Creates a RegisterNode replacement for an identifier that resolves to a register alias.
+     * Finds what an identifier stands for, as the symbol table follows its definitions.
      *
-     * @param originalNode the original identifier node
-     * @param aliasName the alias name (e.g., "TMP")
-     * @param resolvedRegister the resolved register (e.g., "%PDR0")
+     * @return the replacement: what the defining node binds the identifier to, or the
+     *         identifier under the symbol's qualified name if the node offers no binding;
+     *         {@code null} if the identifier names no symbol, is already written under the
+     *         qualified name, or its definitions go in a circle
      */
-    private void createRegisterReplacement(IdentifierNode originalNode, String aliasName, String resolvedRegister) {
-        SourceInfo sourceInfo = originalNode.sourceInfo();
-        RegisterNode replacement = new RegisterNode(
-            resolvedRegister,
-            aliasName,
-            sourceInfo
-        );
-        replacements.put(originalNode, replacement);
+    private AstNode resolveBinding(IdentifierNode reference) {
+        AstNode bound = symbolTable.bindingOf(reference).orElse(null);
+        if (bound instanceof IdentifierNode qualified && qualified.text().equals(reference.text())) {
+            return null;
+        }
+        return bound;
     }
-
 }

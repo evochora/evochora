@@ -1,6 +1,6 @@
 package org.evochora.compiler.frontend.postprocess;
 
-import org.evochora.compiler.model.ScopeTracker;
+import org.evochora.compiler.frontend.semantics.ScopeTracker;
 import org.evochora.compiler.features.ctx.PushCtxNode;
 import org.evochora.compiler.features.ctx.PopCtxNode;
 import org.evochora.compiler.features.reg.RegNode;
@@ -11,7 +11,7 @@ import org.evochora.compiler.model.ast.NumberLiteralNode;
 import org.evochora.compiler.model.ast.RegisterNode;
 import org.evochora.compiler.model.ast.TypedLiteralNode;
 import org.evochora.compiler.features.define.DefineNode;
-import org.evochora.compiler.model.ModuleContextTracker;
+import org.evochora.compiler.frontend.module.ModuleContextTracker;
 import org.evochora.compiler.model.symbols.Symbol;
 import org.evochora.compiler.model.symbols.SymbolTable;
 import org.evochora.compiler.api.SourceInfo;
@@ -81,8 +81,8 @@ class AstPostProcessorTest {
         RegisterNode registerNode = (RegisterNode) result;
 
         // Verify the replacement details
-        assertThat(registerNode.getName()).isEqualTo("%DR0");
-        assertThat(registerNode.getOriginalAlias()).isEqualTo("COUNTER");
+        assertThat(registerNode.name()).isEqualTo("%DR0");
+        assertThat(registerNode.originalAlias()).isEqualTo("COUNTER");
         assertThat(registerNode.isAlias()).isTrue();
     }
 
@@ -116,14 +116,14 @@ class AstPostProcessorTest {
         RegisterNode tmpReg = (RegisterNode) resultInstruction.arguments().get(1);
         RegisterNode posReg = (RegisterNode) resultInstruction.arguments().get(2);
 
-        assertThat(counterReg.getName()).isEqualTo("%DR0");
-        assertThat(tmpReg.getName()).isEqualTo("%PDR0");
-        assertThat(posReg.getName()).isEqualTo("%DR1");
+        assertThat(counterReg.name()).isEqualTo("%DR0");
+        assertThat(tmpReg.name()).isEqualTo("%PDR0");
+        assertThat(posReg.name()).isEqualTo("%DR1");
     }
 
     @Test
-    void testProcess_NonAliasIdentifier_NotReplaced() {
-        // Create an identifier that is NOT an alias
+    void testProcess_LabelIdentifier_ReplacedByQualifiedName() {
+        // Create an identifier that names a label, a definition without a binding
         IdentifierNode idNode = new IdentifierNode("SOME_LABEL", createSourceInfo());
 
         // Add it as a LABEL symbol (not ALIAS)
@@ -132,8 +132,53 @@ class AstPostProcessorTest {
         // Process the AST
         AstNode result = processor.process(idNode);
 
-        // Should NOT be replaced
-        assertThat(result).isSameAs(idNode);
+        // The identifier now carries the label's qualified name, with the source location kept
+        assertThat(result).isInstanceOf(IdentifierNode.class);
+        assertThat(((IdentifierNode) result).text()).isEqualTo("TEST.SOME_LABEL");
+        assertThat(((IdentifierNode) result).sourceInfo()).isEqualTo(idNode.sourceInfo());
+    }
+
+    @Test
+    void testProcess_ExportedLabelOfImportedModule_ReplacedByQualifiedName() {
+        // Given: an exported label in module LIB and an import alias LIB in module MAIN
+        DiagnosticsEngine diags = new DiagnosticsEngine();
+        SymbolTable st = new SymbolTable(diags);
+        st.registerModule("LIB", "lib.s");
+        st.registerModule("MAIN", "main.s");
+        st.setCurrentModule("LIB");
+        st.define(new Symbol("TARGET", new SourceInfo("lib.s", 1, 0), Symbol.Type.LABEL, null, true));
+        st.setCurrentModule("MAIN");
+        st.getModuleScope("MAIN").orElseThrow().imports().put("LIB", "LIB");
+        AstPostProcessor mainProcessor = new AstPostProcessor(st, new ModuleContextTracker(st), new ScopeTracker(st), TestRegistries.postProcessRegistry());
+
+        // When: main.s refers to the label through the alias
+        IdentifierNode reference = new IdentifierNode("LIB.TARGET", new SourceInfo("main.s", 1, 0));
+        AstNode result = mainProcessor.process(reference);
+
+        // Then: the reference carries the label's qualified name, which here equals what was written
+        assertThat(result).isInstanceOf(IdentifierNode.class);
+        assertThat(((IdentifierNode) result).text()).isEqualTo("LIB.TARGET");
+    }
+
+    @Test
+    void testProcess_NonExportedLabelOfImportedModule_NotReplaced() {
+        // Given: a label in module LIB that is not exported
+        DiagnosticsEngine diags = new DiagnosticsEngine();
+        SymbolTable st = new SymbolTable(diags);
+        st.registerModule("LIB", "lib.s");
+        st.registerModule("MAIN", "main.s");
+        st.setCurrentModule("LIB");
+        st.define(new Symbol("PRIVATE", new SourceInfo("lib.s", 1, 0), Symbol.Type.LABEL));
+        st.setCurrentModule("MAIN");
+        st.getModuleScope("MAIN").orElseThrow().imports().put("LIB", "LIB");
+        AstPostProcessor mainProcessor = new AstPostProcessor(st, new ModuleContextTracker(st), new ScopeTracker(st), TestRegistries.postProcessRegistry());
+
+        // When: main.s refers to it through the alias
+        IdentifierNode reference = new IdentifierNode("LIB.PRIVATE", new SourceInfo("main.s", 1, 0));
+        AstNode result = mainProcessor.process(reference);
+
+        // Then: the symbol table does not resolve it, so the identifier stays as written
+        assertThat(result).isSameAs(reference);
     }
 
     @Test
@@ -149,19 +194,20 @@ class AstPostProcessorTest {
     }
 
     @Test
-    void testProcess_ModuleAlias_NotReplaced() {
-        // MODULE_ALIAS symbol — should NOT be replaced (not a register alias)
+    void testProcess_ModuleAlias_ReplacedByQualifiedName() {
+        // A module alias is a definition without a binding, so a reference to it is qualified
+        // like any other symbol; it is never replaced by a register or a value
         IdentifierNode idNode = new IdentifierNode("SOME_ALIAS", createSourceInfo());
         symbolTable.define(new Symbol("SOME_ALIAS", createSourceInfo(), Symbol.Type.MODULE_ALIAS));
 
         AstNode result = processor.process(idNode);
 
-        // Should NOT be replaced (module alias, not register alias)
-        assertThat(result).isSameAs(idNode);
+        assertThat(result).isInstanceOf(IdentifierNode.class);
+        assertThat(((IdentifierNode) result).text()).isEqualTo("TEST.SOME_ALIAS");
     }
 
     @Test
-    void testProcess_ComplexAst_OnlyAliasesReplaced() {
+    void testProcess_ComplexAst_AliasAndLabelReplaced() {
         // Create a complex AST with mixed content
         IdentifierNode counterNode = new IdentifierNode("COUNTER", createSourceInfo());
         IdentifierNode labelNode = new IdentifierNode("SOME_LABEL", createSourceInfo());
@@ -182,15 +228,16 @@ class AstPostProcessorTest {
         assertThat(result).isInstanceOf(InstructionNode.class);
         InstructionNode resultInstruction = (InstructionNode) result;
 
-        // Only the alias should be replaced
+        // The alias becomes a register, the label reference its qualified name, the literal stays
         assertThat(resultInstruction.arguments().get(0)).isInstanceOf(RegisterNode.class);
-        assertThat(resultInstruction.arguments().get(1)).isSameAs(labelNode); // Not replaced
+        assertThat(resultInstruction.arguments().get(1)).isInstanceOf(IdentifierNode.class);
+        assertThat(((IdentifierNode) resultInstruction.arguments().get(1)).text()).isEqualTo("TEST.SOME_LABEL");
         assertThat(resultInstruction.arguments().get(2)).isSameAs(numberNode); // Not replaced
 
         // Verify the alias replacement
         RegisterNode counterReg = (RegisterNode) resultInstruction.arguments().get(0);
-        assertThat(counterReg.getName()).isEqualTo("%DR0");
-        assertThat(counterReg.getOriginalAlias()).isEqualTo("COUNTER");
+        assertThat(counterReg.name()).isEqualTo("%DR0");
+        assertThat(counterReg.originalAlias()).isEqualTo("COUNTER");
     }
 
     @Test
@@ -221,7 +268,7 @@ class AstPostProcessorTest {
     }
 
     @Test
-    void testProcess_AliasWithoutRegNode_NotReplaced() {
+    void testProcess_AliasWithoutRegNode_NotBoundToRegister() {
         // Create a fresh symbol table with an ALIAS symbol that has no RegNode (node=null)
         DiagnosticsEngine freshDiags = new DiagnosticsEngine();
         SymbolTable freshSt = new SymbolTable(freshDiags);
@@ -234,8 +281,10 @@ class AstPostProcessorTest {
         IdentifierNode idNode = new IdentifierNode("ORPHAN", createSourceInfo());
         AstNode result = freshProcessor.process(idNode);
 
-        // Should NOT be replaced (ALIAS symbol has no IRegisterAlias node)
-        assertThat(result).isSameAs(idNode);
+        // Not replaced by a register: the symbol has no node that offers a binding. Like any
+        // other symbol without one, it is referred to by its qualified name.
+        assertThat(result).isInstanceOf(IdentifierNode.class);
+        assertThat(((IdentifierNode) result).text()).isEqualTo("TEST.ORPHAN");
     }
 
     @Test
@@ -270,7 +319,7 @@ class AstPostProcessorTest {
         RegisterNode registerNode = (RegisterNode) result;
 
         // Verify name and source info
-        assertThat(registerNode.getName()).isEqualTo("%DR0");
+        assertThat(registerNode.name()).isEqualTo("%DR0");
         assertThat(registerNode.sourceInfo().lineNumber()).isEqualTo(10);
         assertThat(registerNode.sourceInfo().columnNumber()).isEqualTo(5);
         assertThat(registerNode.sourceInfo().fileName()).isEqualTo("test.s");
@@ -290,23 +339,23 @@ class AstPostProcessorTest {
         st.registerModule(modBChain, "/mod_b.evo");
         st.setCurrentModule(mainChain);
 
-        // Define STEP=10 in module A context
-        st.setCurrentModule(modAChain);
         SourceInfo siA = new SourceInfo("/mod_a.evo", 1, 1);
-        st.define(new Symbol("STEP", siA, Symbol.Type.CONSTANT));
+        SourceInfo siB = new SourceInfo("/mod_b.evo", 1, 1);
+        TypedLiteralNode valueA = new TypedLiteralNode("DATA", 10, siA);
+        TypedLiteralNode valueB = new TypedLiteralNode("DATA", 1, siB);
+        DefineNode defineA = new DefineNode("STEP", siA, valueA);
+        DefineNode defineB = new DefineNode("STEP", siB, valueB);
+
+        // Define STEP=10 in module A context, with the defining node as the symbol's node,
+        // as the analysis handler of .DEFINE does
+        st.setCurrentModule(modAChain);
+        st.define(new Symbol("STEP", siA, Symbol.Type.CONSTANT, defineA));
 
         // Define STEP=1 in module B context
         st.setCurrentModule(modBChain);
-        SourceInfo siB = new SourceInfo("/mod_b.evo", 1, 1);
-        st.define(new Symbol("STEP", siB, Symbol.Type.CONSTANT));
+        st.define(new Symbol("STEP", siB, Symbol.Type.CONSTANT, defineB));
 
         st.setCurrentModule(mainChain);
-
-        TypedLiteralNode valueA = new TypedLiteralNode("DATA", 10, siA);
-        TypedLiteralNode valueB = new TypedLiteralNode("DATA", 1, siB);
-
-        DefineNode defineA = new DefineNode("STEP", siA, valueA);
-        DefineNode defineB = new DefineNode("STEP", siB, valueB);
 
         IdentifierNode useA = new IdentifierNode("STEP", new SourceInfo("/mod_a.evo", 2, 1));
         IdentifierNode useB = new IdentifierNode("STEP", new SourceInfo("/mod_b.evo", 2, 1));
@@ -346,10 +395,9 @@ class AstPostProcessorTest {
     @Test
     void testProcess_SingleFileConstantResolutionStillWorks() {
         // Verify single-file mode (no module context) still resolves constants
-        symbolTable.define(new Symbol("MY_CONST", createSourceInfo(), Symbol.Type.CONSTANT));
-
         TypedLiteralNode constValue = new TypedLiteralNode("DATA", 99, new SourceInfo("test.s", 1, 1));
         DefineNode defineNode = new DefineNode("MY_CONST", createSourceInfo(), constValue);
+        symbolTable.define(new Symbol("MY_CONST", createSourceInfo(), Symbol.Type.CONSTANT, defineNode));
 
         IdentifierNode useNode = new IdentifierNode("MY_CONST", createSourceInfo());
         InstructionNode instr = new InstructionNode(

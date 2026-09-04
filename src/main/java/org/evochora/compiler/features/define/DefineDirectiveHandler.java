@@ -3,7 +3,7 @@ package org.evochora.compiler.features.define;
 import org.evochora.compiler.frontend.parser.IParserStatementHandler;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
-import org.evochora.compiler.frontend.parser.ParsingContext;
+import org.evochora.compiler.frontend.parser.IParsingContext;
 import org.evochora.compiler.model.ast.AstNode;
 
 /**
@@ -22,7 +22,7 @@ public class DefineDirectiveHandler implements IParserStatementHandler {
      * @return A {@link DefineNode} representing the constant definition.
      */
     @Override
-    public AstNode parse(ParsingContext context) {
+    public AstNode parse(IParsingContext context) {
         context.advance(); // consume .DEFINE
 
         Token name = context.consume(TokenType.IDENTIFIER, "Expected a constant name after .DEFINE.");

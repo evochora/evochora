@@ -2,6 +2,7 @@ package org.evochora.compiler.features.proc;
 
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.model.ast.AstNode;
+import org.evochora.compiler.model.ast.IJumpTarget;
 import org.evochora.compiler.model.ast.ISourceLocatable;
 
 import java.util.List;
@@ -27,7 +28,7 @@ public record ProcedureNode(
         List<ParamDecl> lvalParameters,
         List<AstNode> body,
         SourceInfo sourceInfo
-) implements AstNode, ISourceLocatable {
+) implements AstNode, ISourceLocatable, IJumpTarget {
 
     /**
      * A single parameter declaration with its name and source location.

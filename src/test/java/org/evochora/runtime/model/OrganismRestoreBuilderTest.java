@@ -8,7 +8,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Deque;
 import java.util.List;
-import java.util.Map;
 
 import org.evochora.runtime.Config;
 import org.evochora.runtime.isa.RegisterBank;
@@ -113,8 +112,7 @@ class OrganismRestoreBuilderTest {
             0,
             new int[]{50, 50},
             new int[]{40, 40},
-            savedRegisters,
-            Map.of(0, 1)
+            savedRegisters
         ));
 
         Organism org = Organism.restore(99, 5000L)
@@ -412,7 +410,7 @@ class OrganismRestoreBuilderTest {
         Deque<Organism.ProcFrame> oversizedStack = new ArrayDeque<>();
         for (int i = 0; i <= Config.CALL_STACK_MAX_DEPTH; i++) {
             oversizedStack.addLast(new Organism.ProcFrame(
-                    i, new int[]{0, 0}, new int[]{0, 0}, null, Map.of()));
+                    i, new int[]{0, 0}, new int[]{0, 0}, null));
         }
 
         assertThatThrownBy(() ->

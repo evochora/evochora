@@ -1,5 +1,6 @@
 package org.evochora.compiler;
 
+import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.postprocess.PostProcessHandlerRegistry;
 import org.evochora.compiler.frontend.semantics.AnalysisHandlerRegistry;
@@ -17,7 +18,7 @@ public final class TestRegistries {
      * Builds a fully populated analysis handler registry for Phase 4 (semantic analysis).
      */
     public static AnalysisHandlerRegistry analysisRegistry(SymbolTable symbolTable, DiagnosticsEngine diagnostics) {
-        FeatureRegistry featureRegistry = new FeatureRegistry();
+        FeatureRegistry featureRegistry = new FeatureRegistry(new RuntimeInstructionSetAdapter());
         StandardFeatures.all().forEach(f -> f.register(featureRegistry));
 
         AnalysisHandlerRegistry registry = new AnalysisHandlerRegistry();
@@ -31,7 +32,7 @@ public final class TestRegistries {
      * Builds a fully populated post-process handler registry for Phase 6 (AST post-processing).
      */
     public static PostProcessHandlerRegistry postProcessRegistry() {
-        FeatureRegistry featureRegistry = new FeatureRegistry();
+        FeatureRegistry featureRegistry = new FeatureRegistry(new RuntimeInstructionSetAdapter());
         StandardFeatures.all().forEach(f -> f.register(featureRegistry));
 
         PostProcessHandlerRegistry registry = new PostProcessHandlerRegistry();

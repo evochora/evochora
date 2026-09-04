@@ -4,7 +4,6 @@ import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
 import org.evochora.test.utils.SimulationTestUtils;
 import org.evochora.runtime.isa.Instruction;
-import org.evochora.runtime.internal.services.CallBindingRegistry;
 import org.evochora.runtime.isa.RegisterBank;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
@@ -171,7 +170,7 @@ public class VMControlFlowInstructionTest {
         int[] callIp = new int[]{5}; // CALL instruction address
         Object[] savedRegisters = org.snapshotStackSavedRegisters();
 
-        org.getCallStack().push(new Organism.ProcFrame(0, expectedIp, callIp, savedRegisters, java.util.Collections.emptyMap()));
+        org.getCallStack().push(new Organism.ProcFrame(0, expectedIp, callIp, savedRegisters));
 
         // Place WAIT at expected IP to stop instant-skip loop
         environment.setMolecule(new Molecule(Config.TYPE_CODE, Instruction.getInstructionIdByName("WAIT")), expectedIp);
@@ -223,49 +222,6 @@ public class VMControlFlowInstructionTest {
         // Verify FDRs are restored to pre-CALL values (not the callee's 999/888)
         assertThat((int) org.readOperand(RegisterBank.FDR.base + 0)).isEqualTo(111);
         assertThat((int) org.readOperand(RegisterBank.FDR.base + 1)).isEqualTo(222);
-    }
-
-    /**
-     * Verifies that mixed REF + LREF parameter bindings are correctly mapped to
-     * FDR and FLR keys in ProcFrame.parameterBindings. The callSiteBindings map
-     * uses formal register IDs as keys (FDR_BASE+i for data, FLR_BASE+i for location).
-     */
-    @Test
-    @Tag("unit")
-    void testMixedRefAndLrefParameterBindings() {
-        int labelHash = 55555 & Config.VALUE_MASK;
-        int[] labelPos = new int[]{20};
-        int[] afterLabel = new int[]{21};
-
-        environment.setMolecule(new Molecule(Config.TYPE_LABEL, labelHash), labelPos);
-        environment.setMolecule(new Molecule(Config.TYPE_CODE, Instruction.getInstructionIdByName("WAIT")), afterLabel);
-
-        // Register mixed bindings: FDR0→DR1, FLR0→LR0
-        int dr1Id = 1; // DR1
-        int lr0Id = RegisterBank.LR.base; // LR0
-        CallBindingRegistry.getInstance().clearAll();
-        int flatIndex = environment.properties.toFlatIndex(org.getIp());
-        CallBindingRegistry.getInstance().registerBinding(
-                flatIndex, java.util.Map.of(
-                        RegisterBank.FDR.base + 0, dr1Id,
-                        RegisterBank.FLR.base + 0, lr0Id));
-
-        placeInstruction("CALL", labelHash);
-        sim.tick();
-
-        assertThat(org.getCallStack()).isNotEmpty();
-        Organism.ProcFrame frame = org.getCallStack().peek();
-        java.util.Map<Integer, Integer> bindings = frame.parameterBindings();
-
-        // FDR0 should be bound to DR1 (data parameter)
-        assertThat(bindings.get(RegisterBank.FDR.base + 0))
-                .as("FDR0 should be bound to DR1")
-                .isEqualTo(dr1Id);
-
-        // FLR0 should be bound to LR0 (location parameter)
-        assertThat(bindings.get(RegisterBank.FLR.base + 0))
-                .as("FLR0 should be bound to LR0")
-                .isEqualTo(lr0Id);
     }
 
     /**
@@ -658,7 +614,6 @@ public class VMControlFlowInstructionTest {
 
     @org.junit.jupiter.api.AfterEach
     void cleanup() {
-        CallBindingRegistry.getInstance().clearAll();
         assertThat(org.isInstructionFailed()).as("Instruction failed: " + org.getFailureReason()).isFalse();
     }
 }

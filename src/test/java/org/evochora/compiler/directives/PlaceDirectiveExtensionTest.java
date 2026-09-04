@@ -102,7 +102,7 @@ public class PlaceDirectiveExtensionTest {
         Compiler compiler = new Compiler();
         assertThatThrownBy(() -> compiler.compile(List.of(source), "test.s", null))
             .isInstanceOf(CompilationException.class)
-            .hasMessageContaining("Use of '*' in .PLACE requires a compilation context");
+            .hasMessageContaining("'*' in .PLACE needs a world shape.");
     }
 
     @Test
@@ -137,6 +137,6 @@ public class PlaceDirectiveExtensionTest {
         Compiler compiler = new Compiler();
         assertThatThrownBy(() -> compiler.compile(List.of(source), "test.s", testEnvProps))
             .isInstanceOf(CompilationException.class)
-            .hasMessageContaining("Unknown molecule type in .PLACE directive: FOOD");
+            .hasMessageContaining("Unknown molecule type 'FOOD' in .PLACE.");
     }
 }

@@ -39,10 +39,10 @@ class CallSiteBindingRuleTest {
     void setUp() {
         IInstructionSet stubIsa = new StubInstructionSet();
         rule = new CallSiteBindingRule();
-        context = new LinkingContext(null, stubIsa);
+        context = new LinkingContext(stubIsa);
         layout = new LayoutResult(
                 Collections.emptyMap(), Collections.emptyMap(),
-                Collections.emptyMap(), Collections.emptyMap(), Collections.emptyMap(),
+                Collections.emptyMap(), Collections.emptyMap(), Collections.emptyMap(), Collections.emptyMap(),
                 Collections.emptyList()
         );
         dummySource = new SourceInfo("test.s", 1, 0);
@@ -205,6 +205,34 @@ class CallSiteBindingRuleTest {
      */
     private static class StubInstructionSet implements IInstructionSet {
         @Override
+        public List<IInstructionSet.RegisterBankInfo> registerBanks() {
+            return java.util.Arrays.stream(RegisterBank.values())
+                    .map(b -> new IInstructionSet.RegisterBankInfo(b.prefix, b.base, b.count, b.isLocation,
+                            b.isForbidden, b.isAlwaysAvailable, RegisterBank.allProcScoped().contains(b)))
+                    .toList();
+        }
+
+        @Override
+        public boolean requiresTypedLiterals() {
+            return false;
+        }
+
+        @Override
+        public Optional<Integer> moleculeType(String name) {
+            return Optional.empty();
+        }
+
+        @Override
+        public int encodeCell(int type, int value) {
+            throw new UnsupportedOperationException("not needed by this test");
+        }
+
+        @Override
+        public int labelValue(String name) {
+            throw new UnsupportedOperationException("not needed by this test");
+        }
+
+        @Override
         public Optional<Integer> resolveRegisterToken(String token) {
             String upper = token.toUpperCase().replace("%", "");
             // Order matters: check longer prefixes first to avoid "LR" matching "PLR"
@@ -243,6 +271,11 @@ class CallSiteBindingRuleTest {
 
         @Override
         public Optional<Signature> getSignatureById(int id) {
+            return Optional.empty();
+        }
+
+        @Override
+        public Optional<String> negatedConditional(String opcode) {
             return Optional.empty();
         }
     }

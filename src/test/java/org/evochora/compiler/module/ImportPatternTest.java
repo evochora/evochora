@@ -13,9 +13,11 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Tests the pattern by which the dependency scan recognises an {@code .IMPORT} line.
  * <p>
  * A line this pattern misses is never scanned, so the module behind it is never loaded and the
- * parser never sees it; a group it captures wrongly decides what a module re-exports. Both are
+ * parser never sees it; a marker it captures wrongly decides what a module re-exports. Both are
  * silent failures at the very front of the pipeline, which is why the syntax is pinned here in
- * isolation rather than only through programs that happen to use it.
+ * isolation rather than only through programs that happen to use it. The pattern recognises a
+ * line by the directive and the quoted path alone, so a directive whose clauses are malformed
+ * is still loaded and its malformation is reported by the phases that read the clauses.
  */
 class ImportPatternTest {
 
@@ -34,7 +36,6 @@ class ImportPatternTest {
 
         assertThat(matcher.group(1)).isNull();
         assertThat(matcher.group(2)).isEqualTo("modules/math.evo");
-        assertThat(matcher.group(3)).isEqualTo("MATHLIB");
     }
 
     @Test
@@ -44,19 +45,18 @@ class ImportPatternTest {
 
         assertThat(matcher.group(1)).isNotNull();
         assertThat(matcher.group(2)).isEqualTo("modules/math.evo");
-        assertThat(matcher.group(3)).isEqualTo("MATHLIB");
     }
 
     @Test
     @Tag("unit")
-    void usingClausesSurviveBothWithAndWithoutTheMarker() {
+    void usingClausesDoNotHideTheMarkerOrThePath() {
         Matcher plain = match(".IMPORT \"m.evo\" AS NAV USING MATHLIB AS ARITH");
         assertThat(plain.group(1)).isNull();
-        assertThat(plain.group(4)).isEqualTo(" USING MATHLIB AS ARITH");
+        assertThat(plain.group(2)).isEqualTo("m.evo");
 
         Matcher exported = match("EXPORT .IMPORT \"m.evo\" AS NAV USING MATHLIB AS ARITH USING B AS C");
         assertThat(exported.group(1)).isNotNull();
-        assertThat(exported.group(4)).isEqualTo(" USING MATHLIB AS ARITH USING B AS C");
+        assertThat(exported.group(2)).isEqualTo("m.evo");
     }
 
     @Test
@@ -65,7 +65,23 @@ class ImportPatternTest {
         Matcher matcher = match("export .import \"m.evo\" as nav");
 
         assertThat(matcher.group(1)).isNotNull();
-        assertThat(matcher.group(3)).isEqualTo("nav");
+        assertThat(matcher.group(2)).isEqualTo("m.evo");
+    }
+
+    @Test
+    @Tag("unit")
+    void aDirectiveWithoutTheAliasClauseIsStillRecognised() {
+        Matcher matcher = match(".IMPORT \"m.evo\"");
+
+        assertThat(matcher.group(2)).isEqualTo("m.evo");
+    }
+
+    @Test
+    @Tag("unit")
+    void aDirectiveWithAMalformedUsingClauseIsStillRecognised() {
+        Matcher matcher = match(".IMPORT \"m.evo\" AS NAV USING X");
+
+        assertThat(matcher.group(2)).isEqualTo("m.evo");
     }
 
     @Test
