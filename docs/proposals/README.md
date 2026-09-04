@@ -58,4 +58,5 @@ specifications and carry no commitment to implement.
 | [EVOCHORA_X](ideas/EVOCHORA_X.md) | Documented non-decision with literature basis: why a continuous substrate (CTRNN/ODE, strand displacement, Flow-Lenia-class) is a separate research track, not Evochora 2.0 |
 | [LOCAL_STATE](ideas/LOCAL_STATE.md) | `.STATE`/`.LOAD`/`.STORE` directives for grid-backed module state, replacing manual `.ORG`+`.PLACE`+`STATIC_LOAD` macros |
 | [DATA_ACCESS_IMPROVEMENTS](ideas/DATA_ACCESS_IMPROVEMENTS.md) | Backlog for analysis tooling: `death_tick` column, lifecycle/Muller/lineage analytics plugins, read-only SQL access |
+| [ALLOCATION_FREE_CELL_ACCESS](ideas/ALLOCATION_FREE_CELL_ACCESS.md) | Handover from the tiled-grid work: the coordinate-based cell accessors allocate on every instruction (25–29 % of engine time in the profile); call sites, constraints, measurement method and the open design choices for making them allocation-free |
 | [EVOLUTION_VISUALIZATION](ideas/EVOLUTION_VISUALIZATION.md) | Catalogue of ten visualisation ideas for evolutionary dynamics, classified by target view and data availability |
