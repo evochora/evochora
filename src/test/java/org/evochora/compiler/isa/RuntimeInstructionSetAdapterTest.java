@@ -62,4 +62,58 @@ class RuntimeInstructionSetAdapterTest {
     void typedLiteralsAreRequiredExactlyWhenTheRuntimeTypesStrictly() {
         assertThat(isa.requiresTypedLiterals()).isEqualTo(Config.STRICT_TYPING);
     }
+
+    @Test
+    void aRegisterTextIsReadIntoItsBankAndIndex() {
+        IInstructionSet.RegisterRef ref = isa.parseRegister("%dr3").orElseThrow();
+
+        assertThat(ref.bank().name()).isEqualTo("DR");
+        assertThat(ref.index()).isEqualTo(3);
+        assertThat(ref.inBounds()).isTrue();
+        assertThat(ref.id()).isEqualTo(ref.bank().base() + 3);
+    }
+
+    @Test
+    void anIndexBeyondTheBankIsReadButOutOfBounds() {
+        IInstructionSet.RegisterRef ref = isa.parseRegister("%DR999").orElseThrow();
+
+        assertThat(ref.bank().name()).isEqualTo("DR");
+        assertThat(ref.inBounds()).isFalse();
+    }
+
+    @Test
+    void anOverlongIndexIsReadAsOutOfBounds() {
+        IInstructionSet.RegisterRef ref = isa.parseRegister("%DR99999999999999999999").orElseThrow();
+
+        assertThat(ref.inBounds()).isFalse();
+    }
+
+    @Test
+    void aWordThatIsNoRegisterStaysAWord() {
+        // An alias like %DR_TMP or a name with no bank prefix is not a register
+        assertThat(isa.parseRegister("%DR_TMP")).isEmpty();
+        assertThat(isa.parseRegister("%XR0")).isEmpty();
+        assertThat(isa.parseRegister("%DR")).isEmpty();
+    }
+
+    @Test
+    void moleculeTypesAreTheRuntimes() {
+        assertThat(isa.moleculeType("DATA")).contains(Config.TYPE_DATA);
+        assertThat(isa.moleculeType("structure")).contains(Config.TYPE_STRUCTURE);
+        assertThat(isa.moleculeType("FOO")).isEmpty();
+    }
+
+    @Test
+    void aCellIsPackedAsTheRuntimePacksAMolecule() {
+        assertThat(isa.encodeCell(Config.TYPE_DATA, 42))
+                .isEqualTo(new org.evochora.runtime.model.Molecule(Config.TYPE_DATA, 42).toInt());
+    }
+
+    @Test
+    void aLabelValueNeverLeavesTheLabelValueBits() {
+        for (String name : List.of("START", "MAIN.LOOP", "_safe_call_7", "", "a very long label name indeed")) {
+            int value = isa.labelValue(name);
+            assertThat(value).isBetween(0, Config.LABEL_VALUE_MASK);
+        }
+    }
 }
