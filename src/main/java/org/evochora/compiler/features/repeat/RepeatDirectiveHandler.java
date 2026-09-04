@@ -133,8 +133,8 @@ public class RepeatDirectiveHandler implements IPreProcessorHandler {
                     "<unknown>", 0);
         }
 
-        // Consume optional trailing NEWLINE after .ENDR
-        preProcessor.match(TokenType.NEWLINE);
+        // The newline after .ENDR is left in the stream. The expansion ends with the last body
+        // statement, and that newline separates it from the statement that follows.
 
         // Remove trailing NEWLINE from body if present (to avoid double newlines)
         if (!body.isEmpty() && body.get(body.size() - 1).type() == TokenType.NEWLINE) {

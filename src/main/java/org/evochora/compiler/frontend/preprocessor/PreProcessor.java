@@ -3,24 +3,21 @@ package org.evochora.compiler.frontend.preprocessor;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
+import org.evochora.compiler.diagnostics.ErrorRecoveryException;
 import org.evochora.compiler.util.SourceRootResolver;
 import java.util.*;
-import java.util.Deque;
 
 /**
  * The preprocessor for the assembly language. It runs after the lexer and before the parser.
- * Its main responsibilities are handling file includes and expanding macros.
- * It operates directly on the token stream.
+ * It walks the token stream and hands every token that a handler is registered for to that
+ * handler, which rewrites the stream in place.
  */
 public class PreProcessor {
 
     private final List<Token> tokens;
     private final DiagnosticsEngine diagnostics;
-    private final PreProcessorHandlerRegistry directiveRegistry;
     private final SourceRootResolver resolver;
     private int current = 0;
-    private final Deque<String> sourceChain = new ArrayDeque<>();
-    private final Deque<String> importChain = new ArrayDeque<>();
     private final PreProcessorContext ppContext;
 
     /**
@@ -29,47 +26,48 @@ public class PreProcessor {
      * @param initialTokens  The initial list of tokens from the lexer.
      * @param diagnostics    The engine for reporting errors and warnings.
      * @param resolver       The source root resolver for path resolution.
-     * @param registry       The pre-built handler registry for this preprocessing run.
-     * @param ppContext       The shared preprocessor context (alias chains, module tokens, etc.).
+     * @param ppContext      The shared preprocessor context: the handlers to dispatch to, the
+     *                       pre-lexed tokens of includable files, the open inclusions.
      */
     public PreProcessor(List<Token> initialTokens, DiagnosticsEngine diagnostics, SourceRootResolver resolver,
-                        PreProcessorHandlerRegistry registry, PreProcessorContext ppContext) {
+                        PreProcessorContext ppContext) {
         this.tokens = new ArrayList<>(initialTokens);
         this.diagnostics = diagnostics;
         this.resolver = resolver;
-        this.directiveRegistry = registry;
         this.ppContext = ppContext;
     }
 
     /**
-     * Runs the preprocessor on the token stream. It iterates through the tokens,
-     * handling directives and expanding macros until no more expansions can be made.
-     * @return The preprocessing result containing the expanded tokens and included source contents.
+     * Runs the preprocessor on the token stream. Every token is looked up in the context's
+     * handler registry; a token with a handler is handed to it, which rewrites the stream at
+     * the current position, and the walk continues from there. A token without one is left as
+     * it is.
+     * @return The preprocessing result containing the expanded tokens.
      */
     public PreProcessorResult expand() {
         while (current < tokens.size()) {
-            Token token = peek();
-            boolean streamWasModified = false;
-
-            Optional<IPreProcessorHandler> handlerOpt = directiveRegistry.get(token.text());
-            if (handlerOpt.isPresent()) {
-                handlerOpt.get().process(this, ppContext);
-                streamWasModified = true;
-            }
-
-            if (!streamWasModified) {
-                Optional<IPreProcessorHandler> dynamicOpt = ppContext.getDynamicHandler(token.text());
-                if (dynamicOpt.isPresent()) {
-                    dynamicOpt.get().process(this, ppContext);
-                    streamWasModified = true;
+            Optional<IPreProcessorHandler> handler = ppContext.handlers().get(peek().text());
+            if (handler.isPresent()) {
+                try {
+                    handler.get().process(this, ppContext);
+                } catch (ErrorRecoveryException ex) {
+                    synchronize();
                 }
-            }
-
-            if (!streamWasModified) {
+            } else {
                 current++;
             }
         }
         return new PreProcessorResult(tokens);
+    }
+
+    /**
+     * Skips the rest of the line a reported error was found on, so the walk resumes with the
+     * next line and the handlers see nothing of the directive that failed.
+     */
+    private void synchronize() {
+        while (!isAtEnd()) {
+            if (advance().type() == TokenType.NEWLINE) return;
+        }
     }
 
     // --- Token stream navigation ---
@@ -130,13 +128,14 @@ public class PreProcessor {
      * @param type The expected token type.
      * @param errorMessage The error message if the token type does not match.
      * @return The consumed token.
-     * @throws RuntimeException if the current token does not match the expected type.
+     * @throws ErrorRecoveryException if the current token does not match the expected type;
+     *         the mismatch has been reported to the diagnostics before it is thrown.
      */
     public Token consume(TokenType type, String errorMessage) {
         if (check(type)) return advance();
         Token unexpected = peek();
         getDiagnostics().reportError(errorMessage, unexpected.fileName(), unexpected.line());
-        throw new RuntimeException("Parser error: " + errorMessage);
+        throw new ErrorRecoveryException(errorMessage);
     }
 
     /**
@@ -183,55 +182,6 @@ public class PreProcessor {
     }
 
     /**
-     * Checks if a file is currently in the .SOURCE inclusion chain (circular detection).
-     * Unlike global dedup, this allows the same file to be sourced from different modules.
-     * @param path The path of the file to check.
-     * @return true if the file is in the current inclusion chain, false otherwise.
-     */
-    public boolean isInSourceChain(String path) {
-        return sourceChain.contains(path);
-    }
-
-    /**
-     * Pushes a file onto the .SOURCE inclusion chain before inlining its tokens.
-     * @param path The path of the file being sourced.
-     */
-    public void pushSourceChain(String path) {
-        sourceChain.push(path);
-    }
-
-    /**
-     * Pops the top entry from the .SOURCE inclusion chain after inlining completes.
-     */
-    public void popSourceChain() {
-        if (!sourceChain.isEmpty()) sourceChain.pop();
-    }
-
-    /**
-     * Checks if a module is currently in the .IMPORT inclusion chain (circular detection).
-     * @param path The resolved path of the module to check.
-     * @return true if the module is in the current inclusion chain, false otherwise.
-     */
-    public boolean isInImportChain(String path) {
-        return importChain.contains(path);
-    }
-
-    /**
-     * Pushes a module onto the .IMPORT inclusion chain before inlining its tokens.
-     * @param path The resolved path of the module being imported.
-     */
-    public void pushImportChain(String path) {
-        importChain.push(path);
-    }
-
-    /**
-     * Pops the top entry from the .IMPORT inclusion chain after inlining completes.
-     */
-    public void popImportChain() {
-        if (!importChain.isEmpty()) importChain.pop();
-    }
-
-    /**
      * Gets the current index in the token stream.
      * @return The current index.
      */
@@ -267,13 +217,5 @@ public class PreProcessor {
         }
         tokens.subList(startIndex, startIndex + count).clear();
         this.current = startIndex;
-    }
-
-    /**
-     * Gets the shared context for the preprocessor.
-     * @return The preprocessor context.
-     */
-    public PreProcessorContext getPreProcessorContext() {
-        return this.ppContext;
     }
 }

@@ -1,7 +1,7 @@
 package org.evochora.compiler.features.dir;
 
 import org.evochora.compiler.frontend.parser.IParserStatementHandler;
-import org.evochora.compiler.frontend.parser.ParsingContext;
+import org.evochora.compiler.frontend.parser.IParsingContext;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.VectorLiteralNode;
 
@@ -18,7 +18,7 @@ public class DirDirectiveHandler implements IParserStatementHandler {
      * @return A {@link DirNode} representing the directive.
      */
     @Override
-    public AstNode parse(ParsingContext context) {
+    public AstNode parse(IParsingContext context) {
         context.advance(); // consume .DIR
         AstNode vector = context.expression();
         if (!(vector instanceof VectorLiteralNode)) {

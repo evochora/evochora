@@ -1,11 +1,12 @@
 package org.evochora.compiler.backend;
 
 import org.evochora.compiler.api.SourceInfo;
-import org.evochora.compiler.backend.emit.EmissionRegistry;
-import org.evochora.compiler.backend.emit.IEmissionRule;
+import org.evochora.compiler.backend.rewrite.RewriteRegistry;
+import org.evochora.compiler.backend.rewrite.IRewriteRule;
 import org.evochora.compiler.features.proc.CallerMarshallingRule;
 import org.evochora.compiler.features.proc.IrCallInstruction;
 import org.evochora.compiler.model.ir.*;
+import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 import org.evochora.runtime.isa.Instruction;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
@@ -28,6 +29,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 @DisplayName("Emission: Caller Marshalling Rules")
 public class EmissionCallerMarshallingTest {
 
+    private static final RuntimeInstructionSetAdapter ISA = new RuntimeInstructionSetAdapter();
+
     @BeforeAll
     static void setUp() {
         Instruction.init();
@@ -38,12 +41,12 @@ public class EmissionCallerMarshallingTest {
     }
 
     private List<IrItem> runEmission(List<IrItem> items) {
-        EmissionRegistry reg = new EmissionRegistry();
+        RewriteRegistry reg = new RewriteRegistry();
         reg.register(new org.evochora.compiler.features.proc.ProcedureMarshallingRule());
         reg.register(new CallerMarshallingRule());
         List<IrItem> out = items;
-        for (IEmissionRule r : reg.rules()) {
-            out = r.apply(out);
+        for (IRewriteRule r : reg.rules()) {
+            out = r.apply(out, ISA);
         }
         return out;
     }
@@ -333,7 +336,7 @@ public class EmissionCallerMarshallingTest {
 
         // Apply only the CallerMarshallingRule
         CallerMarshallingRule rule = new CallerMarshallingRule();
-        List<IrItem> emitted = rule.apply(items);
+        List<IrItem> emitted = rule.apply(items, ISA);
 
         // Find the CALL instruction and marshalled instructions in the emitted list
         IrInstruction callInstruction = null;

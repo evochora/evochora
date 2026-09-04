@@ -22,9 +22,6 @@ public class DefineFeature implements ICompilerFeature {
         // Phase 4: Semantic Analysis
         ctx.analysisHandler(DefineNode.class, new DefineAnalysisHandler());
 
-        // Phase 6: AST Post-Processing
-        ctx.postProcessHandler(DefineNode.class, new DefinePostProcessHandler());
-
         // Phase 7: IR Generation
         ctx.irConverter(DefineNode.class, new DefineNodeConverter());
     }

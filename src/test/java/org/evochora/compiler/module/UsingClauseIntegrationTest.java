@@ -1,5 +1,6 @@
 package org.evochora.compiler.module;
 
+import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 import org.evochora.compiler.FeatureRegistry;
 import org.evochora.compiler.StandardFeatures;
 import org.evochora.compiler.api.SourceRoot;
@@ -8,7 +9,6 @@ import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.frontend.module.DependencyGraph;
 import org.evochora.compiler.frontend.module.DependencyScanner;
-import org.evochora.compiler.frontend.module.ModuleDescriptor;
 import org.evochora.compiler.util.SourceRootResolver;
 import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ParserStatementRegistry;
@@ -26,7 +26,6 @@ import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.features.ctx.PopCtxPreProcessorHandler;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
 import org.evochora.compiler.frontend.preprocessor.PreProcessorContext;
-import org.evochora.compiler.frontend.preprocessor.PreProcessorHandlerRegistry;
 import org.evochora.compiler.features.importdir.ImportSourceHandler;
 import org.evochora.compiler.features.macro.MacroDirectiveHandler;
 import org.evochora.compiler.features.source.SourceDirectiveHandler;
@@ -46,7 +45,6 @@ import org.junit.jupiter.api.io.TempDir;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -258,47 +256,24 @@ class UsingClauseIntegrationTest {
         // Phase 0: Dependency scanning
         SourceRootResolver resolver = new SourceRootResolver(
                 List.of(new SourceRoot(".", null)), tempDir);
-        FeatureRegistry featureRegistry = new FeatureRegistry();
+        FeatureRegistry featureRegistry = new FeatureRegistry(new RuntimeInstructionSetAdapter());
         StandardFeatures.all().forEach(f -> f.register(featureRegistry));
         DependencyScanner scanner = new DependencyScanner(diagnostics, resolver, featureRegistry.dependencyScanHandlers());
         DependencyGraph graph = scanner.scan(mainSource, mainPath);
         if (diagnostics.hasErrors()) return new SemanticsResult(diagnostics, null);
 
-        // Phase 1: Lex all modules
-        Map<String, List<Token>> moduleTokens = new HashMap<>();
-        for (ModuleDescriptor module : graph.topologicalOrder()) {
-            if (module.id().path().equals(mainPath)) continue;
-            String source = module.content();
-            if (!source.endsWith("\n")) source += "\n";
-            Lexer moduleLexer = new Lexer(source, diagnostics, module.sourcePath());
-            List<Token> tokens = moduleLexer.scanTokens();
-            Lexer.stripEofToken(tokens);
-            moduleTokens.put(module.sourcePath(), tokens);
-        }
-        Lexer mainLexer = new Lexer(mainSource, diagnostics, mainPath);
-        List<Token> mainTokens = new ArrayList<>(mainLexer.scanTokens());
+        // Phase 1: Lex the included files under their paths, the main file as the stream
+        Map<String, List<Token>> fileTokens = Lexer.lexFiles(graph.includedContents(), diagnostics, new RuntimeInstructionSetAdapter());
+        List<Token> mainTokens = new ArrayList<>(new Lexer(mainSource, diagnostics, mainPath).scanTokens());
 
         // Phase 2: Preprocessing (with root alias chain)
-        PreProcessorHandlerRegistry ppRegistry = new PreProcessorHandlerRegistry();
-        ppRegistry.register(".SOURCE", new SourceDirectiveHandler());
-        ppRegistry.register(".MACRO", new MacroDirectiveHandler());
-        ppRegistry.register(".POP_CTX", new PopCtxPreProcessorHandler());
-        ppRegistry.register(".IMPORT", new ImportSourceHandler());
-        ppRegistry.register(":", new org.evochora.compiler.features.label.ColonLabelHandler());
-        // Pre-lex .SOURCE files
-        Map<String, List<Token>> sourceTokens = new java.util.HashMap<>();
-        for (Map.Entry<String, String> entry : scanner.sourceContents().entrySet()) {
-            String srcPath = entry.getKey();
-            String srcContent = entry.getValue();
-            if (!srcContent.endsWith("\n")) srcContent += "\n";
-            Lexer srcLexer = new Lexer(srcContent, diagnostics, srcPath);
-            List<Token> srcTokens = srcLexer.scanTokens();
-            Lexer.stripEofToken(srcTokens);
-            sourceTokens.put(srcPath, srcTokens);
-        }
-        PreProcessorContext ppContext = new PreProcessorContext(rootAliasChain, moduleTokens, sourceTokens);
-        PreProcessor preProcessor = new PreProcessor(mainTokens, diagnostics, resolver,
-                ppRegistry, ppContext);
+        PreProcessorContext ppContext = new PreProcessorContext(rootAliasChain, fileTokens);
+        ppContext.handlers().register(".SOURCE", new SourceDirectiveHandler());
+        ppContext.handlers().register(".MACRO", new MacroDirectiveHandler());
+        ppContext.handlers().register(".POP_CTX", new PopCtxPreProcessorHandler());
+        ppContext.handlers().register(".IMPORT", new ImportSourceHandler());
+        ppContext.handlers().register(":", new org.evochora.compiler.features.label.ColonLabelHandler());
+        PreProcessor preProcessor = new PreProcessor(mainTokens, diagnostics, resolver, ppContext);
         List<Token> processedTokens = preProcessor.expand().tokens();
         if (diagnostics.hasErrors()) return new SemanticsResult(diagnostics, null);
 
@@ -320,8 +295,8 @@ class UsingClauseIntegrationTest {
     private static ParserStatementRegistry allHandlers() {
         ParserStatementRegistry reg = new ParserStatementRegistry();
         reg.register(".DEFINE", new DefineDirectiveHandler());
-        reg.register(".REG", new RegDirectiveHandler());
-        reg.register(".PROC", new ProcDirectiveHandler());
+        reg.register(".REG", new RegDirectiveHandler(new RuntimeInstructionSetAdapter()));
+        reg.register(".PROC", new ProcDirectiveHandler(new RuntimeInstructionSetAdapter()));
         reg.register(".ORG", new OrgDirectiveHandler());
         reg.register(".DIR", new DirDirectiveHandler());
         reg.register(".PLACE", new PlaceDirectiveHandler());

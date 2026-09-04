@@ -63,6 +63,14 @@ You will conduct comprehensive architectural reviews of the Evochora simulation 
 - **Check** that new imports respect the permitted dependency graph between top-level packages, documented in `AGENTS.md` and enforced by `PackageDependencyRulesTest`
 - **Treat** an edit to that test as a design change requiring justification, not as a routine fix for a failing build
 
+### 8. Compiler Structure
+- **Check** changes under `compiler/` against the Compiler section of `AGENTS.md`; `CompilerArchitectureRulesTest` enforces the structural part, and an edit to that test is a design change like an edit to `PackageDependencyRulesTest`
+- **Flag** a method or field on a phase class or a phase context that names a directive or a feature (`isInSourceChain`, `collectConstant`): the phase has learned a feature. A feature's results reach the artifact under a key the feature owns, not through a method the core provides for it
+- **Flag** a feature that recognises another feature through a string on a token, an AST node or an IR item, such as comparing a token value to a directive name
+- **Flag** a layout, linking or emission handler that reads anything but the IR and the instruction set; the symbol table, the AST and the tokens belong to the frontend
+- **Flag** a phase that branches on the kind of a symbol instead of asking the defining node for what it can do (`IIdentifierBinding`)
+- **Verify** that a compiler change which must not alter generated code passes `CompilerOutputEquivalenceTest` unchanged; an intended change regenerates the reference artifact and says so in the pull request
+
 ## Your Review Process
 
 ### Step 1: Understand the Change Context
@@ -82,6 +90,7 @@ For each modified component, systematically verify:
 7. Performance implications
 8. Documentation quality
 9. Package dependency compliance
+10. Compiler structure, for changes under `compiler/`
 
 ### Step 3: Architectural Impact Analysis
 - Assess how changes affect the overall system architecture

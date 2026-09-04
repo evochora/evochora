@@ -1,6 +1,7 @@
 package org.evochora.compiler.directives;
 
-import org.evochora.compiler.model.ScopeTracker;
+import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
+import org.evochora.compiler.frontend.semantics.ScopeTracker;
 import org.evochora.runtime.Config;
 import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.frontend.parser.Parser;
@@ -12,7 +13,7 @@ import org.evochora.compiler.model.ast.InstructionNode;
 import org.evochora.compiler.model.ast.RegisterNode;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.TestRegistries;
-import org.evochora.compiler.model.ModuleContextTracker;
+import org.evochora.compiler.frontend.module.ModuleContextTracker;
 import org.evochora.compiler.frontend.semantics.SemanticAnalyzer;
 import org.evochora.compiler.model.symbols.SymbolTable;
 import org.evochora.compiler.frontend.postprocess.AstPostProcessor;
@@ -87,7 +88,7 @@ public class RegDirectiveTest {
 
         assertThat(seti.arguments().get(0)).isInstanceOf(RegisterNode.class);
         RegisterNode reg = (RegisterNode) seti.arguments().get(0);
-        assertThat(reg.getName()).isEqualTo("%DR7");
+        assertThat(reg.name()).isEqualTo("%DR7");
     }
 
     /**
@@ -105,7 +106,7 @@ public class RegDirectiveTest {
         parser.parse();
 
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.summary()).contains("Expected a register");
+        assertThat(diagnostics.summary()).contains("is out of bounds. Valid range:");
     }
 
     /**
@@ -123,7 +124,7 @@ public class RegDirectiveTest {
         parser.parse();
 
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.summary()).contains("not available in the current scope");
+        assertThat(diagnostics.summary()).contains("is only available inside a procedure");
     }
 
     /**
@@ -141,11 +142,11 @@ public class RegDirectiveTest {
         parser.parse();
 
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.summary()).contains("not available in the current scope");
+        assertThat(diagnostics.summary()).contains("is only available inside a procedure");
     }
 
     /**
-     * Verifies that FLR registers cannot be aliased — they are managed by the CALL binding mechanism.
+     * Verifies that FLR registers cannot be aliased — they carry procedure parameters.
      */
     @Test
     @Tag("unit")
@@ -159,11 +160,11 @@ public class RegDirectiveTest {
         parser.parse();
 
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.summary()).contains("cannot be aliased");
+        assertThat(diagnostics.summary()).contains("is reserved for procedure parameters");
     }
 
     /**
-     * Verifies that FDR registers cannot be aliased — they are managed by the CALL binding mechanism.
+     * Verifies that FDR registers cannot be aliased — they carry procedure parameters.
      */
     @Test
     @Tag("unit")
@@ -177,7 +178,7 @@ public class RegDirectiveTest {
         parser.parse();
 
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.summary()).contains("cannot be aliased");
+        assertThat(diagnostics.summary()).contains("is reserved for procedure parameters");
     }
 
     /**
@@ -248,7 +249,7 @@ public class RegDirectiveTest {
         InstructionNode seti = (InstructionNode) setiNode;
         assertThat(seti.arguments().get(0)).isInstanceOf(RegisterNode.class);
         RegisterNode reg = (RegisterNode) seti.arguments().get(0);
-        assertThat(reg.getName()).as("Alias %TMP should resolve to %PDR0").isEqualTo("%PDR0");
+        assertThat(reg.name()).as("Alias %TMP should resolve to %PDR0").isEqualTo("%PDR0");
     }
 
     /**
@@ -270,7 +271,7 @@ public class RegDirectiveTest {
         parser.parse();
 
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.summary()).contains("Expected a register");
+        assertThat(diagnostics.summary()).contains("is out of bounds. Valid range:");
     }
 
     /**
@@ -320,7 +321,7 @@ public class RegDirectiveTest {
 
         assertThat(dplr.arguments().get(0)).isInstanceOf(RegisterNode.class);
         RegisterNode reg = (RegisterNode) dplr.arguments().get(0);
-        assertThat(reg.getName()).isEqualTo("%LR0");
+        assertThat(reg.name()).isEqualTo("%LR0");
     }
 
     /**
@@ -362,7 +363,7 @@ public class RegDirectiveTest {
         parser.parse();
 
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.summary()).contains("Expected a register");
+        assertThat(diagnostics.summary()).contains("is out of bounds. Valid range:");
     }
 
     /**
@@ -405,8 +406,8 @@ public class RegDirectiveTest {
 
     private static ParserStatementRegistry registry() {
         ParserStatementRegistry reg = new ParserStatementRegistry();
-        reg.register(".REG", new RegDirectiveHandler());
-        reg.register(".PROC", new org.evochora.compiler.features.proc.ProcDirectiveHandler());
+        reg.register(".REG", new RegDirectiveHandler(new RuntimeInstructionSetAdapter()));
+        reg.register(".PROC", new org.evochora.compiler.features.proc.ProcDirectiveHandler(new org.evochora.compiler.isa.RuntimeInstructionSetAdapter()));
         reg.registerDefault(new org.evochora.compiler.features.instruction.InstructionParsingHandler());
         return reg;
     }

@@ -17,7 +17,7 @@ public class InstructionFeature implements ICompilerFeature {
     @Override
     public void register(IFeatureRegistrationContext ctx) {
         ctx.defaultParserStatement(new InstructionParsingHandler());
-        ctx.analysisHandler(InstructionNode.class, new InstructionAnalysisHandler());
+        ctx.analysisHandler(InstructionNode.class, new InstructionAnalysisHandler(ctx.isa()));
         ctx.tokenMapContributor(InstructionNode.class, new InstructionTokenMapContributor());
         ctx.irConverter(InstructionNode.class, new InstructionNodeConverter());
     }

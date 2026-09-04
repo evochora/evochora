@@ -1,12 +1,16 @@
 package org.evochora.compiler.frontend.lexer;
 
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
+import org.evochora.compiler.isa.IInstructionSet;
+import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
-import org.evochora.runtime.isa.RegisterBank;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 
 /**
  * The Lexer (also known as Tokenizer or Scanner) is responsible for converting
@@ -18,6 +22,7 @@ public class Lexer {
     private final DiagnosticsEngine diagnostics;
     private final List<Token> tokens = new ArrayList<>();
     private final String logicalFileName;
+    private final IInstructionSet isa;
     private int start = 0;
     private int current = 0;
     private int line = 1;
@@ -33,15 +38,28 @@ public class Lexer {
     }
 
     /**
-     * Creates a new Lexer with an explicit logical file name.
+     * Creates a new Lexer with an explicit logical file name, for the runtime's instruction set.
      * @param source The source code as a single string.
      * @param diagnostics The engine for reporting errors.
      * @param logicalFileName The name of the file being parsed, for error reporting.
      */
     public Lexer(String source, DiagnosticsEngine diagnostics, String logicalFileName) {
+        this(source, diagnostics, logicalFileName, new RuntimeInstructionSetAdapter());
+    }
+
+    /**
+     * Creates a new Lexer for the given instruction set, which decides what is an opcode and
+     * what is a register.
+     * @param source The source code as a single string.
+     * @param diagnostics The engine for reporting errors.
+     * @param logicalFileName The name of the file being parsed, for error reporting.
+     * @param isa The instruction set the source is written for.
+     */
+    public Lexer(String source, DiagnosticsEngine diagnostics, String logicalFileName, IInstructionSet isa) {
         this.source = source;
         this.diagnostics = diagnostics;
         this.logicalFileName = logicalFileName;
+        this.isa = isa;
     }
 
     /**
@@ -55,6 +73,31 @@ public class Lexer {
         }
         tokens.add(new Token(TokenType.END_OF_FILE, "", null, line, column, logicalFileName));
         return tokens;
+    }
+
+    /**
+     * Lexes a set of files that are going to be included into another token stream. Each file
+     * is lexed under its own path so its tokens carry that path as their file name, and its
+     * trailing EOF token is dropped because the stream it is included into has its own. A file
+     * whose text does not end in a newline is lexed as if it did, so its last line ends where
+     * the inclusion ends.
+     *
+     * @param contents    The text of every file, keyed by the path the tokens are to be filed under.
+     * @param diagnostics The engine for reporting errors.
+     * @param isa         The instruction set the files are written for.
+     * @return The tokens of every file under the same key, in the iteration order of the input.
+     */
+    public static Map<String, List<Token>> lexFiles(Map<String, String> contents, DiagnosticsEngine diagnostics,
+                                                    IInstructionSet isa) {
+        Map<String, List<Token>> tokensByFile = new LinkedHashMap<>();
+        for (Map.Entry<String, String> file : contents.entrySet()) {
+            String text = file.getValue();
+            if (!text.endsWith("\n")) text += "\n";
+            List<Token> tokens = new Lexer(text, diagnostics, file.getKey(), isa).scanTokens();
+            stripEofToken(tokens);
+            tokensByFile.put(file.getKey(), tokens);
+        }
+        return tokensByFile;
     }
 
     /**
@@ -129,9 +172,21 @@ public class Lexer {
         String text = source.substring(start, current);
         TokenType type = TokenType.IDENTIFIER;
 
-        // Is it a register? Only treat valid register patterns as REGISTER tokens
-        if (text.startsWith("%") && isValidRegisterPattern(text)) {
+        // A word shaped like a register is one, and this is the one place that checks whether
+        // source may name it: every later phase takes a REGISTER token as valid.
+        Optional<IInstructionSet.RegisterRef> register = text.startsWith("%")
+                ? isa.parseRegister(text) : Optional.empty();
+        if (register.isPresent()) {
             type = TokenType.REGISTER;
+            IInstructionSet.RegisterRef ref = register.get();
+            if (!ref.inBounds()) {
+                diagnostics.reportError(String.format("Register '%s' is out of bounds. Valid range: %s0-%s%d.",
+                        text, ref.bank().prefix(), ref.bank().prefix(), ref.bank().count() - 1), logicalFileName, line);
+            } else if (ref.bank().forbidden()) {
+                diagnostics.reportError(String.format(
+                        "Register '%s' is reserved for procedure parameters. Use the parameter's name instead.", text),
+                        logicalFileName, line);
+            }
         }
         // Is it a directive?
         else if (text.startsWith(".")) {
@@ -139,39 +194,13 @@ public class Lexer {
         }
 
         // Is it a known opcode? We check this by trying to get an ID for it.
-        else if (org.evochora.runtime.isa.Instruction.getInstructionIdByName(text) != null) {
+        else if (isa.getInstructionIdByName(text).isPresent()) {
             type = TokenType.OPCODE;
         }
 
         addToken(type);
     }
     
-    /**
-     * Checks if a token represents a valid register pattern.
-     * Valid patterns are register tokens matching a {@link RegisterBank} prefix with a numeric suffix (e.g., %DR0, %PLR1, %SLR2).
-     * 
-     * @param text the token text to check
-     * @return true if the text represents a valid register pattern
-     */
-    private boolean isValidRegisterPattern(String text) {
-        if (!text.startsWith("%")) {
-            return false;
-        }
-        String upper = text.toUpperCase();
-        for (RegisterBank bank : RegisterBank.values()) {
-            if (bank.count > 0 && upper.startsWith(bank.prefix)) {
-                String suffix = upper.substring(bank.prefix.length());
-                if (suffix.isEmpty()) continue;
-                try {
-                    int index = Integer.parseInt(suffix);
-                    if (index >= 0 && index < bank.count) return true;
-                } catch (NumberFormatException e) {
-                    continue;
-                }
-            }
-        }
-        return false;
-    }
 
     private void number() {
         // Recognize hex/binary prefixes right at the start of a number

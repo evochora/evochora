@@ -9,7 +9,6 @@ import org.evochora.compiler.frontend.preprocessor.PreProcessorContext;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 /**
  * Handles the {@code .SOURCE} directive in the preprocessor phase.
@@ -27,7 +26,6 @@ public class SourceDirectiveHandler implements IPreProcessorHandler {
 
         preProcessor.advance(); // consume .SOURCE
         Token pathToken = preProcessor.consume(TokenType.STRING, "Expected a file path in quotes after .SOURCE.");
-        if (pathToken == null) return;
 
         int endIndex = preProcessor.getCurrentIndex();
         String pathValue = (String) pathToken.value();
@@ -43,30 +41,33 @@ public class SourceDirectiveHandler implements IPreProcessorHandler {
         }
 
         // Check for circular .SOURCE
-        if (preProcessor.isInSourceChain(resolvedPath)) {
+        if (preProcessorContext.isIncluding(resolvedPath)) {
             preProcessor.getDiagnostics().reportError(
                     "Circular .SOURCE detected: " + pathValue, pathToken.fileName(), pathToken.line());
             preProcessor.removeTokens(startIndex, endIndex - startIndex);
             return;
         }
 
-        // Get pre-lexed tokens
-        Map<String, List<Token>> sourceTokens = preProcessorContext.sourceTokens();
-        List<Token> preLexed = sourceTokens.get(resolvedPath);
+        // The dependency scan loads every source file whose path is written in the source, so a
+        // file without tokens here was named by a path the scan could not see: a macro parameter.
+        List<Token> preLexed = preProcessorContext.fileTokens().get(resolvedPath);
         if (preLexed == null) {
             preProcessor.getDiagnostics().reportError(
-                    "Source file not found in pre-lexed sources: " + pathValue, pathToken.fileName(), pathToken.line());
+                    ".SOURCE path must be a literal, not a macro parameter",
+                    pathToken.fileName(), pathToken.line());
             preProcessor.removeTokens(startIndex, endIndex - startIndex);
             return;
         }
 
-        preProcessor.pushSourceChain(resolvedPath);
+        // A .SOURCE inclusion keeps the enclosing module context, so it carries no alias chain.
+        // The inclusion stays open until the injected .POP_CTX token is processed.
+        PlacementContext placementCtx = new PlacementContext(resolvedPath, null);
+        preProcessorContext.enterInclusion(placementCtx);
 
         // Copy tokens and wrap with context management directives
         List<Token> newTokens = new ArrayList<>(preLexed);
-        PlacementContext placementCtx = new PlacementContext(resolvedPath, null);
         newTokens.add(0, new Token(TokenType.DIRECTIVE, ".PUSH_CTX", placementCtx, pathToken.line(), 0, pathToken.fileName()));
-        newTokens.add(new Token(TokenType.DIRECTIVE, ".POP_CTX", "SOURCE", pathToken.line(), 0, pathToken.fileName()));
+        newTokens.add(new Token(TokenType.DIRECTIVE, ".POP_CTX", null, pathToken.line(), 0, pathToken.fileName()));
 
         preProcessor.removeTokens(startIndex, endIndex - startIndex);
         preProcessor.injectTokens(newTokens, 0);

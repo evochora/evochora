@@ -6,6 +6,7 @@
 
 package org.evochora.compiler.frontend;
 
+import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.irgen.DefaultAstNodeToIrConverter;
 import org.evochora.compiler.frontend.irgen.IrConverterRegistry;
@@ -99,8 +100,8 @@ public class IrGeneratorTest {
         }
 
         // Phase 6: AST Post-Processing (resolve register aliases and parameters)
-        org.evochora.compiler.model.ModuleContextTracker postTracker = new org.evochora.compiler.model.ModuleContextTracker(symbolTable);
-        org.evochora.compiler.model.ScopeTracker scopeTracker = new org.evochora.compiler.model.ScopeTracker(symbolTable);
+        org.evochora.compiler.frontend.module.ModuleContextTracker postTracker = new org.evochora.compiler.frontend.module.ModuleContextTracker(symbolTable);
+        org.evochora.compiler.frontend.semantics.ScopeTracker scopeTracker = new org.evochora.compiler.frontend.semantics.ScopeTracker(symbolTable);
         symbolTable.setCurrentModule(rootAliasChain);
         org.evochora.compiler.frontend.postprocess.AstPostProcessor postProcessor =
                 new org.evochora.compiler.frontend.postprocess.AstPostProcessor(symbolTable, postTracker, scopeTracker, TestRegistries.postProcessRegistry());
@@ -136,7 +137,7 @@ public class IrGeneratorTest {
 
         assertEquals(1, callInstruction.operands().size());
         assertInstanceOf(IrLabelRef.class, callInstruction.operands().get(0));
-        assertEquals("myProc", ((IrLabelRef) callInstruction.operands().get(0)).labelName());
+        assertEquals("MYPROC", ((IrLabelRef) callInstruction.operands().get(0)).labelName());
 
         assertEquals(1, callInstruction.refOperands().size());
         assertInstanceOf(IrReg.class, callInstruction.refOperands().get(0));
@@ -166,7 +167,7 @@ public class IrGeneratorTest {
 
         assertEquals(1, callInstruction.operands().size());
         assertInstanceOf(IrLabelRef.class, callInstruction.operands().get(0));
-        assertEquals("oldProc", ((IrLabelRef) callInstruction.operands().get(0)).labelName());
+        assertEquals("OLDPROC", ((IrLabelRef) callInstruction.operands().get(0)).labelName());
 
         assertEquals(1, callInstruction.refOperands().size());
         assertInstanceOf(IrReg.class, callInstruction.refOperands().get(0));
@@ -318,7 +319,7 @@ public class IrGeneratorTest {
         // Check that the CALL has the correct operands
         assertEquals(1, callInstruction.operands().size());
         assertInstanceOf(IrLabelRef.class, callInstruction.operands().get(0));
-        assertEquals("innerProc", ((IrLabelRef) callInstruction.operands().get(0)).labelName());
+        assertEquals("INNERPROC", ((IrLabelRef) callInstruction.operands().get(0)).labelName());
 
         // Check REF operands - should be resolved to %FDRx
         assertEquals(1, callInstruction.refOperands().size());
@@ -334,8 +335,8 @@ public class IrGeneratorTest {
     private static ParserStatementRegistry allHandlers() {
         ParserStatementRegistry reg = new ParserStatementRegistry();
         reg.register(".DEFINE", new DefineDirectiveHandler());
-        reg.register(".REG", new RegDirectiveHandler());
-        reg.register(".PROC", new ProcDirectiveHandler());
+        reg.register(".REG", new RegDirectiveHandler(new RuntimeInstructionSetAdapter()));
+        reg.register(".PROC", new ProcDirectiveHandler(new RuntimeInstructionSetAdapter()));
         reg.register(".ORG", new OrgDirectiveHandler());
         reg.register(".DIR", new DirDirectiveHandler());
         reg.register(".PLACE", new PlaceDirectiveHandler());

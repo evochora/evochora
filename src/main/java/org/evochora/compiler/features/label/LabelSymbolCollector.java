@@ -4,7 +4,7 @@ import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.symbols.Symbol;
 import org.evochora.compiler.model.symbols.SymbolTable;
-import org.evochora.compiler.frontend.semantics.analysis.ISymbolCollector;
+import org.evochora.compiler.frontend.semantics.ISymbolCollector;
 
 /**
  * Collects label symbols during pass 1: defines the label symbol
@@ -15,6 +15,6 @@ public class LabelSymbolCollector implements ISymbolCollector {
     @Override
     public void collect(AstNode node, SymbolTable symbolTable, DiagnosticsEngine diagnostics) {
         LabelNode lbl = (LabelNode) node;
-        symbolTable.define(new Symbol(lbl.name(), lbl.sourceInfo(), Symbol.Type.LABEL, null, lbl.exported()));
+        symbolTable.define(new Symbol(lbl.name(), lbl.sourceInfo(), Symbol.Type.LABEL, lbl, lbl.exported()));
     }
 }

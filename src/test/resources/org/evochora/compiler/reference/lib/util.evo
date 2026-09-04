@@ -1,0 +1,18 @@
+# Standalone module without dependencies. Exports a label and a procedure.
+.SOURCE "lib/consts.evo"
+
+EXPORT READY:
+  NOP
+
+EXPORT .PROC CLAMP REF VALUE VAL MIN MAX
+  LTR VALUE MIN
+  JMPI TO_MIN
+  LTR MAX VALUE
+  JMPI DONE
+  SETR VALUE MAX
+  RET
+TO_MIN:
+  SETR VALUE MIN
+DONE:
+  RET
+.ENDP

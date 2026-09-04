@@ -1,0 +1,71 @@
+# Reference program for the compiler's output-equivalence test.
+#
+# The compiled artifact of this program is checked in next to it. A compiler change that
+# alters the artifact fails the test, so an intended change to the generated code is made
+# visible by regenerating the artifact, and an unintended one is caught.
+#
+# Every feature of the compiler appears here at least once: module wiring in both
+# directions, sourced constants, register aliases for data and location registers,
+# constants, macros, both repeat forms and the caret shorthand, origin and direction
+# changes, every placement form, procedures with all four parameter kinds including a
+# procedure-local alias, calls across modules and through a passed-on import, a call and a
+# return guarded by a conditional, and a jump to a label of another module.
+
+.IMPORT "lib/util.evo" AS UTIL
+.IMPORT "lib/nav.evo" AS NAV USING UTIL AS ARITH
+.SOURCE "lib/consts.evo"
+
+.REG %COUNT %DR0
+.REG %VALUE %DR1
+.REG %POS %LR0
+
+.DEFINE LIMIT DATA:7
+
+.MACRO BUMP REG AMOUNT
+  ADDI REG AMOUNT
+  NOP
+.ENDM
+
+# Placement forms: a range, several single cells, a stepped range, a wildcard and a
+# two-dimensional range.
+.PLACE STRUCTURE:1 -1..12|-1
+.PLACE DATA:5 20|20, 21|20
+.PLACE DATA:6 0:2:8|22
+.PLACE DATA:7 *|30
+.PLACE DATA:8 30..32|32..33
+
+# The imported modules were placed from 0|0 along the first axis; own code starts below.
+.ORG 0|10
+START:
+  SETI %COUNT DATA:0
+  BUMP %COUNT LIMIT
+  .REPEAT 3 NOP
+  .REPEAT 2
+    ADDI %VALUE DATA:1
+    NOP
+  .ENDR
+  NOP^4
+  CALL UTIL.CLAMP REF %VALUE VAL DATA:0 MAX_VALUE
+  CALL NAV.PATROL REF %COUNT LREF %POS LVAL MARK
+  CALL NAV.STEP.FORWARD REF %COUNT
+  LTI %COUNT LIMIT
+    CALL LOCAL_STEP REF %COUNT VAL DATA:2
+  JMPI UTIL.READY
+  JMPI START
+
+# Downward code below every placement: the rows above are taken by the placements, and a
+# cell cannot hold an instruction and a placed molecule at once.
+.DIR 0|1
+.ORG 0|40
+MARK:
+  NOP^2
+  JMPI START
+
+.PROC LOCAL_STEP REF X VAL DELTA
+  .REG %TMP %PDR0
+  SETR %TMP DELTA
+  IFI %TMP DATA:0
+    RET
+  ADDR X %TMP
+  RET
+.ENDP

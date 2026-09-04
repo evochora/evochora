@@ -7,7 +7,7 @@ import org.evochora.compiler.model.ast.IModuleContextBoundary;
  * An AST node representing a .POP_CTX directive.
  * This is an internal directive injected by the preprocessor.
  */
-public class PopCtxNode implements AstNode, IModuleContextBoundary {
+public record PopCtxNode() implements AstNode, IModuleContextBoundary {
     @Override
     public boolean isPush() {
         return false;

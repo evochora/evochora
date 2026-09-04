@@ -1,130 +1,134 @@
 package org.evochora.compiler.frontend.preprocessor;
 
+import org.evochora.compiler.frontend.module.PlacementContext;
 import org.evochora.compiler.model.token.Token;
 
 import java.util.ArrayDeque;
 import java.util.Deque;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 
 /**
  * A shared context for the preprocessor phase.
- * Contains global state that is modified or read by handlers during preprocessing
- * (e.g., the alias chain stack for module context tracking).
+ * Contains the state that handlers read and modify while the token stream is expanded: the
+ * handlers the preprocessor dispatches to, the pre-lexed token streams of the files that may
+ * be included, and the inclusions currently open.
  */
 public class PreProcessorContext {
-    private final Deque<String> aliasChainStack = new ArrayDeque<>();
-    private final Map<String, List<Token>> moduleTokens;
-    private final Map<String, List<Token>> sourceTokens;
-    private final Map<String, IPreProcessorHandler> dynamicHandlers = new HashMap<>();
+    private final PreProcessorHandlerRegistry handlers = new PreProcessorHandlerRegistry();
+    private final String rootAliasChain;
+    private final Deque<PlacementContext> inclusions = new ArrayDeque<>();
+    private final Map<String, List<Token>> fileTokens;
 
     /**
      * Creates a context carrying the token streams that were pre-lexed for the files found
      * during dependency scanning. Null arguments are tolerated: a null alias chain becomes
-     * the empty chain, null maps become empty maps.
+     * the empty chain, a null map becomes an empty map.
      *
      * @param rootAliasChain The alias chain for the compilation root module.
-     * @param moduleTokens   Pre-lexed .IMPORT module tokens keyed by resolved absolute path.
-     * @param sourceTokens   Pre-lexed .SOURCE file tokens keyed by resolved absolute path.
+     * @param fileTokens     Pre-lexed tokens of every file that may be included, keyed by
+     *                       resolved absolute path. Whether an inclusion is a module or plain
+     *                       text is decided by the directive that includes the file, not here.
      */
-    public PreProcessorContext(String rootAliasChain, Map<String, List<Token>> moduleTokens, Map<String, List<Token>> sourceTokens) {
-        aliasChainStack.push(rootAliasChain != null ? rootAliasChain : "");
-        this.moduleTokens = moduleTokens != null ? moduleTokens : Map.of();
-        this.sourceTokens = sourceTokens != null ? sourceTokens : Map.of();
+    public PreProcessorContext(String rootAliasChain, Map<String, List<Token>> fileTokens) {
+        this.rootAliasChain = rootAliasChain != null ? rootAliasChain : "";
+        this.fileTokens = fileTokens != null ? fileTokens : Map.of();
     }
 
     /**
-     * Creates a context for preprocessing a single file: empty root alias chain, no pre-lexed
-     * module or source tokens.
+     * Creates a context for preprocessing a single file: empty root alias chain, no files
+     * that may be included.
      */
     public PreProcessorContext() {
-        this("", Map.of(), Map.of());
+        this("", Map.of());
     }
 
     /**
-     * Returns the pre-lexed .IMPORT module tokens keyed by resolved absolute path.
+     * Returns the handlers the preprocessor dispatches to. The compiler fills the registry
+     * from the features before the phase; a handler that defines a new name during the phase,
+     * as {@code .MACRO} does, registers here too.
+     *
+     * @return The registry, owned by this context and used by the preprocessor for every lookup.
+     */
+    public PreProcessorHandlerRegistry handlers() {
+        return handlers;
+    }
+
+    /**
+     * Returns the pre-lexed tokens of every file that may be included, keyed by resolved
+     * absolute path.
      *
      * @return The map passed to the constructor, returned as given rather than copied; empty
-     *         for a context created without modules.
+     *         for a context created without such files.
      */
-    public Map<String, List<Token>> moduleTokens() {
-        return moduleTokens;
+    public Map<String, List<Token>> fileTokens() {
+        return fileTokens;
+    }
+
+    // --- Inclusions ---
+
+    /**
+     * Records that the tokens of a file are being inlined at the current position. The
+     * inclusion stays open until {@link #leaveInclusion()} is called, so that a file which
+     * includes itself, directly or through other files, is recognised.
+     * <p>
+     * An inclusion that carries an alias chain enters a module: names inside it are qualified
+     * by that chain until the inclusion is left, and the handlers it defines, its macros, are
+     * its own. An inclusion without one keeps the enclosing module context and defines into it.
+     *
+     * @param inclusion The included file and the alias chain of the module it enters, if any.
+     */
+    public void enterInclusion(PlacementContext inclusion) {
+        inclusions.push(inclusion);
+        if (inclusion.aliasChain() != null) {
+            handlers.enterModule();
+        }
     }
 
     /**
-     * Returns the pre-lexed .SOURCE file tokens keyed by resolved absolute path.
-     *
-     * @return The map passed to the constructor, returned as given rather than copied; empty
-     *         for a context created without .SOURCE files.
+     * Closes the innermost open inclusion; if it entered a module, that module's definitions
+     * go with it. Leaving with no inclusion open is ignored, so a stream whose closing marker
+     * has no matching opening does not fail here.
      */
-    public Map<String, List<Token>> sourceTokens() {
-        return sourceTokens;
+    public void leaveInclusion() {
+        if (!inclusions.isEmpty()) {
+            PlacementContext left = inclusions.pop();
+            if (left.aliasChain() != null) {
+                handlers.leaveModule();
+            }
+        }
     }
 
     /**
-     * Returns the current import alias chain (e.g., "PRED.MATH").
+     * Reports whether a file is currently being inlined, at any depth. Including it again
+     * would inline it into itself.
      *
-     * @return The chain of the module currently being preprocessed, which is the root chain
-     *         while no module has been entered. Never null; the root chain may be empty.
+     * @param resolvedPath The resolved absolute path of the file.
+     * @return {@code true} if an inclusion of that file is open.
+     */
+    public boolean isIncluding(String resolvedPath) {
+        for (PlacementContext inclusion : inclusions) {
+            if (inclusion.sourcePath().equals(resolvedPath)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Returns the current import alias chain (e.g., "PRED.MATH"): the chain of the innermost
+     * open inclusion that entered a module, or the root chain while no module has been entered.
+     *
+     * @return The chain qualifying names at the current position. Never null; the root chain
+     *         may be empty.
      */
     public String currentAliasChain() {
-        return aliasChainStack.peek();
-    }
-
-    /**
-     * Pushes a new alias chain when entering an imported module.
-     * @param aliasChain The full alias chain for the entered module.
-     */
-    public void pushAliasChain(String aliasChain) {
-        aliasChainStack.push(aliasChain);
-    }
-
-    /**
-     * Pops the alias chain when leaving an imported module.
-     */
-    public void popAliasChain() {
-        if (aliasChainStack.size() > 1) {
-            aliasChainStack.pop();
-        }
-    }
-
-    /**
-     * Registers a dynamic preprocessor handler at runtime (e.g., macro expansion handlers).
-     * Dynamic handlers are looked up after static registry handlers, allowing features like
-     * {@code .MACRO} to define new directives during preprocessing.
-     *
-     * <p>Collision policy: if a handler is already registered for the same key and the new
-     * handler is {@link Object#equals equal} to it, the registration is silently ignored
-     * (idempotent). If the existing handler differs, an {@link IllegalStateException} is
-     * thrown to prevent silent redefinition conflicts.</p>
-     *
-     * @param name    The token text that triggers this handler (uppercased for case-insensitive lookup).
-     * @param handler The handler to register. Must implement {@code equals}/{@code hashCode}
-     *                based on its semantic content.
-     * @throws IllegalStateException if a different handler is already registered for this name.
-     */
-    public void registerDynamicHandler(String name, IPreProcessorHandler handler) {
-        String key = name.toUpperCase();
-        IPreProcessorHandler existing = dynamicHandlers.get(key);
-        if (existing != null) {
-            if (existing.equals(handler)) {
-                return;
+        for (PlacementContext inclusion : inclusions) {
+            if (inclusion.aliasChain() != null) {
+                return inclusion.aliasChain();
             }
-            throw new IllegalStateException(
-                    "Dynamic preprocessor handler conflict for '" + key + "': redefinition with different body");
         }
-        dynamicHandlers.put(key, handler);
+        return rootAliasChain;
     }
 
-    /**
-     * Looks up a dynamic preprocessor handler by name.
-     *
-     * @param name The token text to look up (uppercased for case-insensitive lookup).
-     * @return The handler if registered, empty otherwise.
-     */
-    public Optional<IPreProcessorHandler> getDynamicHandler(String name) {
-        return Optional.ofNullable(dynamicHandlers.get(name.toUpperCase()));
-    }
 }

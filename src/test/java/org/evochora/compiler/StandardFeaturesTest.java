@@ -1,5 +1,6 @@
 package org.evochora.compiler;
 
+import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
@@ -42,21 +43,21 @@ class StandardFeaturesTest {
     @Test
     void everyFeatureRegistersWithoutError() {
         for (ICompilerFeature feature : StandardFeatures.all()) {
-            FeatureRegistry registry = new FeatureRegistry();
+            FeatureRegistry registry = new FeatureRegistry(new RuntimeInstructionSetAdapter());
             feature.register(registry);
         }
     }
 
     @Test
     void defaultParserStatementHandlerIsRegistered() {
-        FeatureRegistry registry = new FeatureRegistry();
+        FeatureRegistry registry = new FeatureRegistry(new RuntimeInstructionSetAdapter());
         StandardFeatures.all().forEach(f -> f.register(registry));
         assertThat(registry.defaultParserStatementHandler()).isNotNull();
     }
 
     @Test
     void allFeaturesRegisterWithoutConflict() {
-        FeatureRegistry registry = new FeatureRegistry();
+        FeatureRegistry registry = new FeatureRegistry(new RuntimeInstructionSetAdapter());
         org.junit.jupiter.api.Assertions.assertDoesNotThrow(
                 () -> StandardFeatures.all().forEach(f -> f.register(registry)));
     }

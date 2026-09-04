@@ -16,9 +16,9 @@ public class RegFeature implements ICompilerFeature {
 
     @Override
     public void register(IFeatureRegistrationContext ctx) {
-        ctx.parserStatement(".REG", new RegDirectiveHandler());
-        ctx.analysisHandler(RegNode.class, new RegAnalysisHandler());
+        ctx.parserStatement(".REG", new RegDirectiveHandler(ctx.isa()));
+        ctx.analysisHandler(RegNode.class, new RegAnalysisHandler(ctx.isa()));
         ctx.irConverter(RegNode.class, new RegNodeConverter());
-        ctx.emissionContributor(new RegisterAliasEmissionContributor());
+        ctx.emissionContributor(new RegisterAliasEmissionContributor(ctx.isa()));
     }
 }

@@ -17,25 +17,10 @@ class LinkingContextFreezeTest {
 
     @BeforeEach
     void setUp() {
-        context = new LinkingContext(null, null);
-        context.pushAliasChain("ROOT");
+        context = new LinkingContext(null);
         context.setCurrentAddress(1);
         context.callSiteBindings().put(0, new HashMap<>(Map.of(1024, 1, 1025, 2)));
         context.freeze();
-    }
-
-    @Test
-    void pushAliasChain_throwsAfterFreeze() {
-        assertThatThrownBy(() -> context.pushAliasChain("MOD"))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("frozen");
-    }
-
-    @Test
-    void popAliasChain_throwsAfterFreeze() {
-        assertThatThrownBy(() -> context.popAliasChain())
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("frozen");
     }
 
     @Test
@@ -59,11 +44,6 @@ class LinkingContextFreezeTest {
     @Test
     void currentAddress_allowedAfterFreeze() {
         assertThat(context.currentAddress()).isEqualTo(1);
-    }
-
-    @Test
-    void currentAliasChain_allowedAfterFreeze() {
-        assertThat(context.currentAliasChain()).isEqualTo("ROOT");
     }
 
     @Test

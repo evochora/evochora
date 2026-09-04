@@ -1,6 +1,5 @@
 package org.evochora.compiler.frontend.module;
 
-import org.evochora.compiler.frontend.semantics.ModuleId;
 
 /**
  * Marker interface for feature-specific dependency data discovered during Phase 0 scanning.

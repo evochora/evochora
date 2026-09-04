@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Objects;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * Contains unit tests for the {@link Parser}.
@@ -66,7 +67,7 @@ public class ParserTest {
         assertThat(setiNode.arguments().get(1)).isInstanceOf(NumberLiteralNode.class);
 
         RegisterNode regArg = (RegisterNode) setiNode.arguments().get(0);
-        assertThat(regArg.getName()).isEqualTo("%DR0");
+        assertThat(regArg.name()).isEqualTo("%DR0");
 
         NumberLiteralNode numArg = (NumberLiteralNode) setiNode.arguments().get(1);
         assertThat(numArg.value()).isEqualTo(42);
@@ -274,6 +275,25 @@ public class ParserTest {
         DefineNode defineNode = (DefineNode) ast.get(0);
         assertThat(defineNode.name()).isEqualTo("MAX_ENERGY");
         assertThat(defineNode.exported()).isFalse();
+    }
+
+    /**
+     * A handler that fails with an exception it did not report is a defect in the compiler,
+     * not a mistake in the program: the parser must not recover from it as if it were a syntax
+     * error, because that would drop the statement from the program without a word.
+     */
+    @Test
+    @Tag("unit")
+    void aDefectInAHandlerLeavesTheParserInsteadOfDroppingTheStatement() {
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        List<Token> tokens = new Lexer(".BROKEN\nNOP\n", diagnostics).scanTokens();
+        ParserStatementRegistry reg = registry();
+        reg.register(".BROKEN", context -> { throw new NullPointerException("defect in the handler"); });
+        Parser parser = new Parser(tokens, diagnostics, reg);
+
+        assertThatThrownBy(parser::parse)
+                .isInstanceOf(NullPointerException.class)
+                .hasMessage("defect in the handler");
     }
 
     private static ParserStatementRegistry registry() {

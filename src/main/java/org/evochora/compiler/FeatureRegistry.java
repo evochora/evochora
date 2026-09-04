@@ -1,7 +1,7 @@
 package org.evochora.compiler;
 
 import org.evochora.compiler.backend.emit.IEmissionContributor;
-import org.evochora.compiler.backend.emit.IEmissionRule;
+import org.evochora.compiler.backend.rewrite.IRewriteRule;
 import org.evochora.compiler.backend.layout.ILayoutDirectiveHandler;
 import org.evochora.compiler.backend.link.ILinkingDirectiveHandler;
 import org.evochora.compiler.backend.link.ILinkingRule;
@@ -12,9 +12,10 @@ import org.evochora.compiler.frontend.parser.IParserStatementHandler;
 import org.evochora.compiler.frontend.postprocess.IPostProcessHandler;
 import org.evochora.compiler.frontend.preprocessor.IPreProcessorHandler;
 import org.evochora.compiler.frontend.semantics.IDependencySetupHandler;
-import org.evochora.compiler.frontend.semantics.analysis.IAnalysisHandler;
-import org.evochora.compiler.frontend.semantics.analysis.ISymbolCollector;
+import org.evochora.compiler.frontend.semantics.IAnalysisHandler;
+import org.evochora.compiler.frontend.semantics.ISymbolCollector;
 import org.evochora.compiler.frontend.tokenmap.ITokenMapContributor;
+import org.evochora.compiler.isa.IInstructionSet;
 import org.evochora.compiler.model.ast.AstNode;
 
 import java.util.ArrayList;
@@ -35,6 +36,8 @@ import java.util.Map;
  */
 public class FeatureRegistry implements IFeatureRegistrationContext {
 
+	private final IInstructionSet isa;
+
 	// Map-based registrations are key-based with guardDuplicate — duplicates are a configuration error.
 	private final Map<Class<? extends IDependencyInfo>, IDependencySetupHandler<?>> dependencySetupHandlers = new HashMap<>();
 	private final Map<String, IPreProcessorHandler> preprocessorHandlers = new HashMap<>();
@@ -51,11 +54,25 @@ public class FeatureRegistry implements IFeatureRegistrationContext {
 	// List-based registrations preserve registration order. Within a feature, the feature
 	// controls handler ordering. No guardDuplicate — ordered sequential execution is intended.
 	private final List<IDependencyScanHandler> dependencyScanHandlers = new ArrayList<>();
-	private final List<IEmissionRule> emissionRules = new ArrayList<>();
+	private final List<IRewriteRule> rewriteRules = new ArrayList<>();
 	private final List<ILinkingRule> linkingRules = new ArrayList<>();
 	private final List<IEmissionContributor> emissionContributors = new ArrayList<>();
 
+	/**
+	 * Creates an empty registry for a compilation that targets the given instruction set.
+	 *
+	 * @param isa The instruction set the features' handlers read.
+	 */
+	public FeatureRegistry(IInstructionSet isa) {
+		this.isa = isa;
+	}
+
 	// --- IFeatureRegistrationContext implementation (write side) ---
+
+	@Override
+	public IInstructionSet isa() {
+		return isa;
+	}
 
 	@Override
 	public void dependencyScanHandler(IDependencyScanHandler handler) {
@@ -122,8 +139,8 @@ public class FeatureRegistry implements IFeatureRegistrationContext {
 	}
 
 	@Override
-	public void emissionRule(IEmissionRule rule) {
-		emissionRules.add(rule);
+	public void rewriteRule(IRewriteRule rule) {
+		rewriteRules.add(rule);
 	}
 
 	@Override
@@ -182,7 +199,7 @@ public class FeatureRegistry implements IFeatureRegistrationContext {
 	 * Returns the statically registered Phase 2 preprocessor handlers, keyed by the upper-cased token
 	 * text that triggers them. Handlers that a running preprocessor adds for itself — macro expansion,
 	 * for instance — are held by
-	 * {@link org.evochora.compiler.frontend.preprocessor.PreProcessorContext#registerDynamicHandler}
+	 * {@link org.evochora.compiler.frontend.preprocessor.PreProcessorContext#handlers()}
 	 * and never appear here. A second registration under the same name, compared case-insensitively,
 	 * is rejected when it happens.
 	 *
@@ -284,8 +301,8 @@ public class FeatureRegistry implements IFeatureRegistrationContext {
 	 *
 	 * @return An unmodifiable view of the live list.
 	 */
-	public List<IEmissionRule> emissionRules() {
-		return Collections.unmodifiableList(emissionRules);
+	public List<IRewriteRule> rewriteRules() {
+		return Collections.unmodifiableList(rewriteRules);
 	}
 
 	/**

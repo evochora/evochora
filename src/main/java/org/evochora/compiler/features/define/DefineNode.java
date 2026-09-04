@@ -2,7 +2,9 @@ package org.evochora.compiler.features.define;
 
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.model.ast.AstNode;
+import org.evochora.compiler.model.ast.IIdentifierBinding;
 import org.evochora.compiler.model.ast.ISourceLocatable;
+import org.evochora.compiler.model.ast.IdentifierNode;
 
 import java.util.List;
 
@@ -19,7 +21,7 @@ public record DefineNode(
         SourceInfo sourceInfo,
         AstNode value,
         boolean exported
-) implements AstNode, ISourceLocatable {
+) implements AstNode, ISourceLocatable, IIdentifierBinding {
 
     /**
      * Constructs a non-exported define node.
@@ -35,5 +37,14 @@ public record DefineNode(
     @Override
     public List<AstNode> getChildren() {
         return List.of(value);
+    }
+
+    /**
+     * Replaces a reference to the constant by its value. A value that is itself an identifier
+     * names another constant and is resolved again by the caller.
+     */
+    @Override
+    public AstNode bind(IdentifierNode reference) {
+        return value;
     }
 }

@@ -1,12 +1,14 @@
 package org.evochora.compiler.frontend.parser;
 
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
+import org.evochora.compiler.diagnostics.ErrorRecoveryException;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.IdentifierNode;
 
 import org.evochora.compiler.model.ast.NumberLiteralNode;
+import org.evochora.compiler.model.ast.OperandNode;
 import org.evochora.compiler.model.ast.RegisterNode;
 import org.evochora.compiler.model.ast.TypedLiteralNode;
 import org.evochora.compiler.model.ast.VectorLiteralNode;
@@ -20,7 +22,7 @@ import java.util.Optional;
  * from the {@link org.evochora.compiler.frontend.lexer.Lexer} and produces an Abstract Syntax Tree (AST).
  * All statement dispatch goes through the {@link ParserStatementRegistry}.
  */
-public class Parser implements ParsingContext {
+public class Parser implements IParsingContext {
 
     private final List<Token> tokens;
     private final DiagnosticsEngine diagnostics;
@@ -119,7 +121,7 @@ public class Parser implements ParsingContext {
                         unexpected.fileName(), unexpected.line());
             }
             return null;
-        } catch (RuntimeException ex) {
+        } catch (ErrorRecoveryException ex) {
             synchronize();
             return null;
         }
@@ -127,10 +129,11 @@ public class Parser implements ParsingContext {
 
     /**
      * Parses an expression, which can be a literal, a register, an identifier, or a vector.
-     * @return The parsed {@link AstNode} for the expression.
+     * @return The parsed {@link OperandNode} for the expression, or {@code null} after a
+     *         reported error.
      */
     @Override
-    public AstNode expression() {
+    public OperandNode expression() {
         if (check(TokenType.NUMBER) && checkNext(TokenType.PIPE)) {
             Token first = consume(TokenType.NUMBER, "Expected number component for vector.");
             List<Integer> values = new ArrayList<>();
@@ -233,7 +236,7 @@ public class Parser implements ParsingContext {
         if (check(type)) return advance();
         Token unexpected = peek();
         diagnostics.reportError(errorMessage, unexpected.fileName(), unexpected.line());
-        throw new RuntimeException(errorMessage);
+        throw new ErrorRecoveryException(errorMessage);
     }
 
     @Override public DiagnosticsEngine getDiagnostics() { return diagnostics; }
