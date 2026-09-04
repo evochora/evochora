@@ -1,6 +1,7 @@
 package org.evochora.compiler;
 
 import org.evochora.compiler.api.CompilationException;
+import org.evochora.compiler.api.InternalCompilerException;
 import org.evochora.compiler.api.CompilerOptions;
 import org.evochora.compiler.api.ICompiler;
 import org.evochora.compiler.api.ProgramArtifact;
@@ -25,6 +26,7 @@ import org.evochora.compiler.frontend.semantics.ScopeTracker;
 import org.evochora.compiler.frontend.semantics.SemanticAnalyzer;
 import org.evochora.compiler.diagnostics.CompilerLogger;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
+import org.evochora.compiler.diagnostics.ErrorRecoveryException;
 import org.evochora.compiler.frontend.module.IDependencyInfo;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.frontend.irgen.DefaultAstNodeToIrConverter;
@@ -65,7 +67,25 @@ import java.util.Map;
 public class Compiler implements ICompiler {
 
     private final DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+    private final List<ICompilerFeature> features;
     private int verbosity = -1;
+
+    /**
+     * Creates a compiler with the standard features.
+     */
+    public Compiler() {
+        this(StandardFeatures.all());
+    }
+
+    /**
+     * Creates a compiler with the given features, which tests use to put a feature of their
+     * own next to the standard ones.
+     *
+     * @param features The features to register, in order.
+     */
+    Compiler(List<ICompilerFeature> features) {
+        this.features = features;
+    }
 
     /**
      * {@inheritDoc}
@@ -120,6 +140,23 @@ public class Compiler implements ICompiler {
         effectiveOptions.validate();
 
         MainFile mainFile = locateMainFile(programName, options);
+        try {
+            return runPhases(sourceLines, programName, envProps, effectiveOptions, mainFile);
+        } catch (ErrorRecoveryException unwound) {
+            // Every phase that throws this catches it itself; one that reaches here is a defect too
+            throw new InternalCompilerException(unwound);
+        } catch (RuntimeException defect) {
+            throw new InternalCompilerException(defect);
+        }
+    }
+
+    /**
+     * Runs the twelve phases in order and returns what the last one emits. A mistake in the
+     * program surfaces as a {@link CompilationException} from {@link #failOnErrors()} or from
+     * a backend phase; anything else that is thrown is a defect of the compiler.
+     */
+    private ProgramArtifact runPhases(List<String> sourceLines, String programName, EnvironmentProperties envProps,
+                                      CompilerOptions effectiveOptions, MainFile mainFile) throws CompilationException {
         String rootAliasChain = mainFile.rootAliasChain();
         final String mainFilePath = mainFile.path();
         SourceRootResolver resolver = new SourceRootResolver(
@@ -130,7 +167,7 @@ public class Compiler implements ICompiler {
         // Feature registration
         RuntimeInstructionSetAdapter isa = new RuntimeInstructionSetAdapter();
         FeatureRegistry featureRegistry = new FeatureRegistry(isa);
-        StandardFeatures.all().forEach(f -> f.register(featureRegistry));
+        features.forEach(f -> f.register(featureRegistry));
 
         // Phase 0: Dependency Scanning (load imported modules)
         DependencyScanner depScanner = new DependencyScanner(diagnostics, resolver, featureRegistry.dependencyScanHandlers());
@@ -229,17 +266,8 @@ public class Compiler implements ICompiler {
         EmissionContributorRegistry emissionContributorRegistry = new EmissionContributorRegistry();
         featureRegistry.emissionContributors().forEach(emissionContributorRegistry::register);
         Emitter emitter = new Emitter();
-        ProgramArtifact artifact;
-        try {
-            // Generate tokenLookup from tokenMap for efficient line-based lookup
-            Map<String, Map<Integer, Map<Integer, List<TokenInfo>>>> tokenLookup = TokenMapGenerator.buildTokenLookup(tokenMap);
-            artifact = emitter.emit(linkedIr, layout, linkContext, isa, emissionContributorRegistry, sources, tokenMap, tokenLookup);
-        } catch (CompilationException ce) {
-            throw ce; // already formatted with file/line
-        } catch (RuntimeException re) {
-            // If any runtime exception bubbles up, wrap into CompilationException to present user-friendly message
-            throw new CompilationException(re.getMessage(), re);
-        }
+        Map<String, Map<Integer, Map<Integer, List<TokenInfo>>>> tokenLookup = TokenMapGenerator.buildTokenLookup(tokenMap);
+        ProgramArtifact artifact = emitter.emit(linkedIr, layout, linkContext, isa, emissionContributorRegistry, sources, tokenMap, tokenLookup);
 
         CompilerLogger.debug("Compiler: " + programName + " programId:" + artifact.programId());
         return artifact;
