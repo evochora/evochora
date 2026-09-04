@@ -46,9 +46,9 @@ public class MacroDirectiveHandler implements IPreProcessorHandler {
 
         MacroExpansionHandler expansion = new MacroExpansionHandler(new MacroDefinition(name, params, body));
 
-        // A macro name is defined once per compilation. The same definition may arrive again,
-        // when the file holding it is included a second time; any other definition of the
-        // name is rejected, and the first one stays in force.
+        // A macro name is defined once per module. The same definition may arrive again, when
+        // the file holding it is included a second time; any other definition of the name in
+        // this module is rejected, and the first one stays in force.
         Optional<IPreProcessorHandler> existing = preProcessorContext.handlers().get(name.text());
         if (existing.isPresent() && !existing.get().equals(expansion)) {
             String firstDefinition = existing.get() instanceof MacroExpansionHandler first
@@ -58,7 +58,7 @@ public class MacroDirectiveHandler implements IPreProcessorHandler {
                     "Macro '" + name.text() + "' is already defined in " + firstDefinition,
                     name.fileName(), name.line());
         } else {
-            preProcessorContext.handlers().register(name.text(), expansion);
+            preProcessorContext.handlers().defineInModule(name.text(), expansion);
         }
 
         int endIndex = preProcessor.getCurrentIndex();

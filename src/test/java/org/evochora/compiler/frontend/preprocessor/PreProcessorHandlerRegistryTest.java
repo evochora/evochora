@@ -91,4 +91,29 @@ class PreProcessorHandlerRegistryTest {
     private static Token opcode(String text) {
         return new Token(TokenType.OPCODE, text, null, 1, 1, "test");
     }
+
+    @Test
+    void aDefinitionOfAModuleIsGoneWhenTheModuleIsLeft() {
+        IPreProcessorHandler outer = (pp, ctx) -> { };
+        IPreProcessorHandler inner = (pp, ctx) -> { };
+        registry.defineInModule("INC", outer);
+
+        registry.enterModule();
+        assertThat(registry.get("INC")).isEmpty();
+        registry.defineInModule("INC", inner);
+        assertThat(registry.get("INC")).contains(inner);
+        registry.leaveModule();
+
+        assertThat(registry.get("INC")).contains(outer);
+    }
+
+    @Test
+    void sharedHandlersAnswerInEveryModule() {
+        IPreProcessorHandler source = (pp, ctx) -> { };
+        registry.register(".SOURCE", source);
+
+        registry.enterModule();
+
+        assertThat(registry.get(".SOURCE")).contains(source);
+    }
 }

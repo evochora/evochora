@@ -73,22 +73,29 @@ public class PreProcessorContext {
      * includes itself, directly or through other files, is recognised.
      * <p>
      * An inclusion that carries an alias chain enters a module: names inside it are qualified
-     * by that chain until the inclusion is left. An inclusion without one keeps the enclosing
-     * module context.
+     * by that chain until the inclusion is left, and the handlers it defines, its macros, are
+     * its own. An inclusion without one keeps the enclosing module context and defines into it.
      *
      * @param inclusion The included file and the alias chain of the module it enters, if any.
      */
     public void enterInclusion(PlacementContext inclusion) {
         inclusions.push(inclusion);
+        if (inclusion.aliasChain() != null) {
+            handlers.enterModule();
+        }
     }
 
     /**
-     * Closes the innermost open inclusion. Leaving with no inclusion open is ignored, so a
-     * stream whose closing marker has no matching opening does not fail here.
+     * Closes the innermost open inclusion; if it entered a module, that module's definitions
+     * go with it. Leaving with no inclusion open is ignored, so a stream whose closing marker
+     * has no matching opening does not fail here.
      */
     public void leaveInclusion() {
         if (!inclusions.isEmpty()) {
-            inclusions.pop();
+            PlacementContext left = inclusions.pop();
+            if (left.aliasChain() != null) {
+                handlers.leaveModule();
+            }
         }
     }
 

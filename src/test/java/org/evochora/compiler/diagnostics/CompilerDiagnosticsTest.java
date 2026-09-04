@@ -295,6 +295,90 @@ class CompilerDiagnosticsTest {
                 .hasMessageContaining("main.evo:5");
     }
 
+    @Test
+    void aMacroOfAnImportedModuleIsNotAMacroInTheImportingFile() throws Exception {
+        write("lib.evo",
+                ".MACRO INC REG",
+                "  ADDI REG DATA:1",
+                ".ENDM",
+                "HELPER:",
+                "  NOP");
+        write("main.evo",
+                ".IMPORT \"lib.evo\" AS LIB",
+                "START:",
+                "  INC %DR0");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("'INC'")
+                .hasMessageContaining("main.evo:3");
+    }
+
+    @Test
+    void aMacroOfTheImportingFileIsNotAMacroInTheImportedModule() throws Exception {
+        write("lib.evo",
+                "HELPER:",
+                "  INC %DR0");
+        write("main.evo",
+                ".MACRO INC REG",
+                "  ADDI REG DATA:1",
+                ".ENDM",
+                ".IMPORT \"lib.evo\" AS LIB",
+                "START:",
+                "  NOP");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("'INC'")
+                .hasMessageContaining("lib.evo:2");
+    }
+
+    @Test
+    void twoModulesMayEachDefineAMacroOfTheSameName() throws Exception {
+        write("a.evo",
+                ".MACRO INC REG",
+                "  ADDI REG DATA:1",
+                ".ENDM",
+                "A:",
+                "  INC %DR0");
+        write("b.evo",
+                ".MACRO INC REG",
+                "  ADDI REG DATA:2",
+                ".ENDM",
+                "B:",
+                "  INC %DR0");
+        write("main.evo",
+                ".IMPORT \"a.evo\" AS A",
+                ".IMPORT \"b.evo\" AS B",
+                "START:",
+                "  NOP");
+
+        compile("main.evo");
+    }
+
+    @Test
+    void aSourcedMacroFileServesEveryModuleThatSourcesIt() throws Exception {
+        write("macros.evo",
+                ".MACRO INC REG",
+                "  ADDI REG DATA:1",
+                ".ENDM");
+        write("a.evo",
+                ".SOURCE \"macros.evo\"",
+                "A:",
+                "  INC %DR0");
+        write("b.evo",
+                ".SOURCE \"macros.evo\"",
+                "B:",
+                "  INC %DR0");
+        write("main.evo",
+                ".IMPORT \"a.evo\" AS A",
+                ".IMPORT \"b.evo\" AS B",
+                "START:",
+                "  NOP");
+
+        compile("main.evo");
+    }
+
     private void write(String fileName, String... lines) throws Exception {
         Files.writeString(sourceRoot.resolve(fileName), String.join("\n", lines) + "\n");
     }
