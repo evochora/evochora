@@ -70,6 +70,10 @@ You will conduct comprehensive architectural reviews of the Evochora simulation 
 - **Flag** a layout, linking or emission handler that reads anything but the IR and the instruction set; the symbol table, the AST and the tokens belong to the frontend
 - **Flag** a phase that branches on the kind of a symbol instead of asking the defining node for what it can do (`IIdentifierBinding`)
 - **Verify** that a compiler change which must not alter generated code passes `CompilerOutputEquivalenceTest` unchanged; an intended change regenerates the reference artifact and says so in the pull request
+- **Ask** of every hunk in the core (everything under `compiler/` but `features/`) which feature would have to be missing for the code never to run; any answer but "none" is a finding, whatever the code is named
+- **Ask** whether the code could live in a feature through `IFeatureRegistrationContext`; the author justifies core code, not the reviewer
+- **Flag** a new field on a phase context, the symbol table or the artifact, a new branch over a node or item kind, and a new string literal or `instanceof` in the core
+- **Hold** a hunk that touches a coupling listed in `docs/COMPILER_CORE_BOUNDARY.md` to shrinking it; a coupling not listed there is new, and a change to that list is a design decision
 
 ### 9. Self-Contained Machine Code
 - **Check** that no runtime path reads the program artifact: what an instruction does must follow from the cells it occupies and the organism's own state
