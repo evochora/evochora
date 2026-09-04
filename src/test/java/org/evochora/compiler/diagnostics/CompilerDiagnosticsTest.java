@@ -851,6 +851,36 @@ class CompilerDiagnosticsTest {
     }
 
     @Test
+    void aVectorPassedByValSaysWhatValTakes() throws Exception {
+        write("main.evo",
+                ".PROC P VAL X",
+                "  RET",
+                ".ENDP",
+                "START:",
+                "  CALL P VAL 1|0");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("Cannot pass a vector as VAL argument: VAL takes a register, a literal or a label.")
+                .hasMessageContaining("main.evo:5");
+    }
+
+    @Test
+    void aLiteralPassedByLvalSaysWhatLvalTakes() throws Exception {
+        write("main.evo",
+                ".PROC P LVAL X",
+                "  RET",
+                ".ENDP",
+                "START:",
+                "  CALL P LVAL DATA:1");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("Cannot pass a literal as LVAL argument: LVAL takes a location register or a label.")
+                .hasMessageContaining("main.evo:5");
+    }
+
+    @Test
     void anUnexpectedWordInAProcDeclarationNamesWhatIsExpected() throws Exception {
         write("main.evo",
                 ".PROC P FOO X",
