@@ -26,6 +26,8 @@ public final class PlaceLayoutHandler implements ILayoutDirectiveHandler {
     private final IInstructionSet isa;
 
     /**
+     * Creates the handler for an instruction set.
+     *
      * @param isa The instruction set, which names the molecule types a placement may use.
      */
     public PlaceLayoutHandler(IInstructionSet isa) {

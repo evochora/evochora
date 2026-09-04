@@ -18,6 +18,8 @@ public class RegAnalysisHandler implements IAnalysisHandler {
     private final IInstructionSet isa;
 
     /**
+     * Creates the handler for an instruction set.
+     *
      * @param isa The instruction set, which tells a location register from a data register.
      */
     public RegAnalysisHandler(IInstructionSet isa) {

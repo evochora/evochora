@@ -10,6 +10,8 @@ package org.evochora.compiler.diagnostics;
 public class ErrorRecoveryException extends RuntimeException {
 
     /**
+     * Creates the exception for an error that has just been reported.
+     *
      * @param reportedMessage The message that was reported to the diagnostics, kept for
      *                        anyone looking at the exception itself.
      */

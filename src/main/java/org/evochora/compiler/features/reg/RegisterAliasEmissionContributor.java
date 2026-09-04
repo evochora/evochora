@@ -24,6 +24,8 @@ public final class RegisterAliasEmissionContributor implements IEmissionContribu
     private final IInstructionSet isa;
 
     /**
+     * Creates the contributor for an instruction set.
+     *
      * @param isa The instruction set, whose register banks give an alias its register ID.
      */
     public RegisterAliasEmissionContributor(IInstructionSet isa) {

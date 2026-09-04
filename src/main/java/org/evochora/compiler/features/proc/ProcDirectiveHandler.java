@@ -23,6 +23,8 @@ public class ProcDirectiveHandler implements IParserStatementHandler {
     private final IInstructionSet isa;
 
     /**
+     * Creates the handler for an instruction set.
+     *
      * @param isa The instruction set, which names the register banks a procedure body opens up.
      */
     public ProcDirectiveHandler(IInstructionSet isa) {

@@ -18,6 +18,8 @@ public class RegDirectiveHandler implements IParserStatementHandler {
     private final IInstructionSet isa;
 
     /**
+     * Creates the handler for an instruction set.
+     *
      * @param isa The instruction set, whose register banks decide what a register text names.
      */
     public RegDirectiveHandler(IInstructionSet isa) {

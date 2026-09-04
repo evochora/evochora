@@ -28,6 +28,8 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
     private final IInstructionSet isa;
 
     /**
+     * Creates the handler for an instruction set.
+     *
      * @param isa The instruction set the instructions are checked against.
      */
     public InstructionAnalysisHandler(IInstructionSet isa) {

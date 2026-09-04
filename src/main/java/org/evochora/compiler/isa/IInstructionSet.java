@@ -117,6 +117,8 @@ public interface IInstructionSet {
 	 */
 	record RegisterRef(RegisterBankInfo bank, int index) {
 		/**
+		 * Tells whether the index names a register the bank has.
+		 *
 		 * @return Whether the index names a register the bank has.
 		 */
 		public boolean inBounds() {
@@ -124,6 +126,8 @@ public interface IInstructionSet {
 		}
 
 		/**
+		 * Computes the register's ID from the bank's base and the index.
+		 *
 		 * @return The register's ID, meaningful only when {@link #inBounds()}.
 		 */
 		public int id() {
@@ -148,7 +152,9 @@ public interface IInstructionSet {
 	record RegisterBankInfo(String prefix, int base, int count, boolean location, boolean forbidden,
 							boolean alwaysAvailable, boolean procScoped) {
 		/**
-		 * @return The bank's name as source and messages use it, the prefix without the percent sign.
+		 * Names the bank as source and messages do.
+		 *
+		 * @return The bank's name, the prefix without the percent sign.
 		 */
 		public String name() {
 			return prefix.substring(1);

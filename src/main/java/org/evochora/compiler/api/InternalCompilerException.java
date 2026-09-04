@@ -10,6 +10,8 @@ package org.evochora.compiler.api;
 public class InternalCompilerException extends CompilationException {
 
     /**
+     * Wraps the exception the compiler failed with.
+     *
      * @param cause The exception the compiler failed with.
      */
     public InternalCompilerException(Throwable cause) {

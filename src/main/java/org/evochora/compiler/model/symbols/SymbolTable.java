@@ -295,14 +295,6 @@ public class SymbolTable {
     }
 
     /**
-     * Resolves a symbol by name, searching from the current scope upwards to the root.
-     * If the symbol is not found, it attempts to resolve it as a qualified name
-     * (e.g., {@code ALIAS.SYMBOL}) using the current module's import aliases.
-     * @param name The name of the symbol to resolve.
-     * @param requestingFile The file requesting the symbol resolution (for module scoping).
-     * @return An optional containing the resolved symbol with its qualified name, or empty if not found.
-     */
-    /**
      * Follows what an identifier is bound to, through definitions that are themselves
      * identifiers, until a node that is not one is reached.
      *
@@ -347,6 +339,14 @@ public class SymbolTable {
         return Optional.empty();
     }
 
+    /**
+     * Resolves a symbol by name, searching from the current scope upwards to the root.
+     * If the symbol is not found, it attempts to resolve it as a qualified name
+     * (e.g., {@code ALIAS.SYMBOL}) using the current module's import aliases.
+     * @param name The name of the symbol to resolve.
+     * @param requestingFile The file requesting the symbol resolution (for module scoping).
+     * @return An optional containing the resolved symbol with its qualified name, or empty if not found.
+     */
     public Optional<ResolvedSymbol> resolve(String name, String requestingFile) {
         String key = name.toUpperCase();
 
