@@ -64,4 +64,81 @@ public class GeyserStrategyTest {
         }
         assertThat(found).isTrue();
     }
+
+    /**
+     * Verifies that every valid neighbour of a geyser is chosen over many eruptions: the
+     * neighbours are visited in random order and the first valid one erupts, so none of the
+     * four may be structurally excluded.
+     */
+    @Test
+    @Tag("unit")
+    void eruptionsReachEveryValidNeighbour() {
+        Environment env = new Environment(new EnvironmentProperties(new int[]{8, 8}, true), new PreExpandedHammingStrategy(), 1);
+        GeyserCreator geyser = geyserAt(env, new int[]{4, 4}, 1);
+
+        int[] hits = eruptFor(geyser, env, new int[]{4, 4}, 200);
+
+        assertThat(hits[0] + hits[1] + hits[2] + hits[3]).isEqualTo(200);
+        // Uniform over four neighbours: 50 expected each; 20 is far below any plausible draw.
+        for (int h : hits) {
+            assertThat(h).isGreaterThan(20);
+        }
+    }
+
+    /**
+     * Verifies that a neighbour whose safety radius contains an organism-owned cell is never
+     * chosen, while the neighbours with a free surrounding still erupt.
+     */
+    @Test
+    @Tag("unit")
+    void eruptionsSkipNeighbourWithOwnedSurrounding() {
+        Environment env = new Environment(new EnvironmentProperties(new int[]{8, 8}, true), new PreExpandedHammingStrategy(), 1);
+        GeyserCreator geyser = geyserAt(env, new int[]{4, 4}, 1);
+        // Owned cell within radius 1 of the neighbour (5,4) only.
+        env.setMolecule(new Molecule(Config.TYPE_DATA, 1), 7, new int[]{6, 4});
+
+        int[] hits = eruptFor(geyser, env, new int[]{4, 4}, 200);
+
+        assertThat(hits[1]).isZero();          // (5,4)
+        assertThat(hits[0]).isPositive();      // (3,4)
+        assertThat(hits[2]).isPositive();      // (4,3)
+        assertThat(hits[3]).isPositive();      // (4,5)
+    }
+
+    /** A geyser plugin whose single geyser sits at a known position, restored through its state. */
+    private static GeyserCreator geyserAt(Environment env, int[] position, int safetyRadius) {
+        GeyserCreator geyser = new GeyserCreator(
+                new org.evochora.runtime.internal.services.SeededRandomProvider(7L), 0.0, 1, 5, safetyRadius);
+        java.nio.ByteBuffer state = java.nio.ByteBuffer.allocate(8 + 4 * position.length);
+        state.putInt(1).putInt(position.length);
+        for (int c : position) {
+            state.putInt(c);
+        }
+        geyser.loadState(state.array());
+        env.setMolecule(new Molecule(Config.TYPE_STRUCTURE, -1), position);
+        return geyser;
+    }
+
+    /**
+     * Erupts the geyser the given number of times, clearing the placed energy after each
+     * eruption, and counts the hits on the four axis-adjacent neighbours in the order
+     * -x, +x, -y, +y.
+     */
+    private static int[] eruptFor(GeyserCreator geyser, Environment env, int[] g, int eruptions) {
+        Simulation sim = mock(Simulation.class);
+        when(sim.getEnvironment()).thenReturn(env);
+        when(sim.getCurrentTick()).thenReturn(1L);
+        int[][] neighbours = {{g[0] - 1, g[1]}, {g[0] + 1, g[1]}, {g[0], g[1] - 1}, {g[0], g[1] + 1}};
+        int[] hits = new int[4];
+        for (int i = 0; i < eruptions; i++) {
+            geyser.execute(sim);
+            for (int n = 0; n < 4; n++) {
+                if (env.getMolecule(neighbours[n]).type() == Config.TYPE_ENERGY) {
+                    hits[n]++;
+                    env.setMolecule(new Molecule(Config.TYPE_CODE, 0), neighbours[n]);
+                }
+            }
+        }
+        return hits;
+    }
 }

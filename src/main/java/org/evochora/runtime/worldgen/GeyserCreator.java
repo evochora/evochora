@@ -9,7 +9,6 @@ import org.evochora.runtime.spi.ITickPlugin;
 
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Random;
 
@@ -18,7 +17,12 @@ import java.util.Random;
  * at regular intervals, distributing energy to nearby cells.
  * <p>
  * The number of geysers scales with the environment size via a configurable
- * percentage of total cells.
+ * percentage of total cells. An eruption goes to one of the geyser's axis-adjacent
+ * neighbours: the neighbours are visited in random order, and the first one that is empty
+ * and has no organism-owned cell within the safety radius receives the energy. Every valid
+ * neighbour is equally likely to be chosen; a geyser with no valid neighbour skips the
+ * eruption. In a bounded world a neighbour beyond the edge counts as empty and unowned, and
+ * energy placed there is lost.
  * <ul>
  *   <li><b>percentage:</b> Fraction of total cells to place as geyser sources (0.0–1.0).</li>
  *   <li><b>interval:</b> Tick interval between eruptions.</li>
@@ -30,11 +34,18 @@ public class GeyserCreator implements ITickPlugin {
 
     private final double geyserPercentage;
     private final int tickInterval;
-    private final int energyAmount;
     /** Radius around a candidate cell that must be free of organism-owned cells. */
     private final int safetyRadius;
     private final Random random;
+    /** The molecule every eruption places; the amount is fixed, so one instance serves all. */
+    private final Molecule eruption;
     private List<int[]> geyserLocations = null; // Initialized on first call
+    /** Visiting order of the {@code 2 * dims} neighbour directions, permuted per eruption. */
+    private int[] directionOrder;
+    /** Unit vector of the direction currently checked. */
+    private int[] direction;
+    /** The neighbour cell currently checked. */
+    private int[] neighbour;
 
     /**
      * Creates a geyser-based energy distributor.
@@ -49,8 +60,8 @@ public class GeyserCreator implements ITickPlugin {
         this.random = randomProvider.asJavaRandom();
         this.geyserPercentage = percentage;
         this.tickInterval = interval;
-        this.energyAmount = amount;
         this.safetyRadius = Math.max(0, safetyRadius);
+        this.eruption = new Molecule(Config.TYPE_ENERGY, amount);
     }
 
     /**
@@ -79,26 +90,46 @@ public class GeyserCreator implements ITickPlugin {
         }
 
         if (currentTick > 0 && currentTick % tickInterval == 0) {
+            int dims = environment.getProperties().getDimensions();
+            if (neighbour == null || neighbour.length != dims) {
+                directionOrder = new int[2 * dims];
+                direction = new int[dims];
+                neighbour = new int[dims];
+            }
             for (int[] geyserPos : geyserLocations) {
-                // Find all valid neighbor cells (empty and safe distance from owned cells) in N dimensions
-                List<int[]> validTargets = new ArrayList<>();
-                int dims = environment.getShape().length;
-                for (int axis = 0; axis < dims; axis++) {
-                    for (int delta : new int[]{-1, 1}) {
-                        int[] checkPos = java.util.Arrays.copyOf(geyserPos, dims);
-                        checkPos[axis] = checkPos[axis] + delta;
-                        if (environment.getMolecule(checkPos).isEmpty() && environment.isAreaUnowned(checkPos, this.safetyRadius)) {
-                            validTargets.add(checkPos);
-                        }
-                    }
-                }
+                erupt(geyserPos, environment);
+            }
+        }
+    }
 
-                // Choose a random valid target and place the energy
-                if (!validTargets.isEmpty()) {
-                    Collections.shuffle(validTargets, random);
-                    int[] targetCell = validTargets.get(0);
-                    environment.setMolecule(new Molecule(Config.TYPE_ENERGY, energyAmount), targetCell);
+    /**
+     * Places one eruption next to a geyser: the first neighbour in a random visiting order
+     * that is empty and has no owned cell within the safety radius. Visiting the neighbours in
+     * a uniformly random order and stopping at the first valid one chooses uniformly among the
+     * valid neighbours, without checking the ones after it.
+     */
+    private void erupt(int[] geyserPos, Environment environment) {
+        int count = directionOrder.length;
+        for (int i = 0; i < count; i++) {
+            directionOrder[i] = i;
+        }
+        for (int i = count - 1; i > 0; i--) {
+            int j = random.nextInt(i + 1);
+            int swapped = directionOrder[i];
+            directionOrder[i] = directionOrder[j];
+            directionOrder[j] = swapped;
+        }
+        for (int k = 0; k < count; k++) {
+            int axis = directionOrder[k] >> 1;
+            direction[axis] = (directionOrder[k] & 1) == 0 ? -1 : 1;
+            boolean inside = environment.getProperties().getTargetCoordinate(geyserPos, direction, neighbour);
+            direction[axis] = 0;
+            boolean empty = !inside || environment.getMoleculeIntAt(neighbour) == 0;
+            if (empty && environment.isAreaUnowned(neighbour, this.safetyRadius)) {
+                if (inside) {
+                    environment.setMoleculeAt(neighbour, eruption);
                 }
+                return;
             }
         }
     }

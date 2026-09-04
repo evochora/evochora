@@ -530,46 +530,42 @@ public class Environment implements IEnvironmentReader {
     }
 
     /**
-     * Checks if a square/cubic area around a central coordinate is completely unowned.
+     * Checks if a square/cubic area around a central coordinate is completely unowned. The centre
+     * may lie outside the world; on a torus the area wraps around, on a bounded world the cells
+     * beyond the edge do not exist and count as unowned. Two small arrays are allocated per call,
+     * none per cell.
      *
      * @param centerCoord The coordinate of the center of the area.
      * @param radius The radius of the check (e.g., radius 2 checks a 5x5 area in 2D).
      * @return {@code true} if no cell in the area has an owner (ownerId == 0), otherwise {@code false}.
+     * @throws IllegalArgumentException if the coordinate does not have one entry per dimension
      */
     public boolean isAreaUnowned(int[] centerCoord, int radius) {
         if (centerCoord.length != this.shape.length) {
             throw new IllegalArgumentException("Coordinate dimensions do not match world dimensions.");
         }
-        
-        // Optimized implementation: reuse arrays and direct array access
         int dims = this.shape.length;
         int[] offsets = new int[dims];
-        int[] checkCoord = new int[dims]; // Reuse this array instead of creating new ones
-        
-        // Initialize offsets
+        int[] checkCoord = new int[dims];
         for (int i = 0; i < dims; i++) {
             offsets[i] = -radius;
         }
 
         while (true) {
-            // Calculate check coordinate by reusing the array
-            for (int i = 0; i < dims; i++) {
-                checkCoord[i] = centerCoord[i] + offsets[i];
-            }
-            
-            // Direct array access instead of getOwnerId() call
-            int layoutIndex = getLayoutIndex(checkCoord);
-            if (layoutIndex != -1 && this.ownerGrid[layoutIndex] != 0) {
+            if (properties.getTargetCoordinate(centerCoord, offsets, checkCoord)
+                    && this.ownerGrid[layout.layoutIndex(checkCoord)] != 0) {
                 return false;
             }
-            
+
             // Increment the offsets like a counter from -radius to +radius per dimension
             int dim = dims - 1;
             while (dim >= 0 && offsets[dim] == radius) {
                 offsets[dim] = -radius;
                 dim--;
             }
-            if (dim < 0) break; // all combinations have been checked
+            if (dim < 0) {
+                break; // all combinations have been checked
+            }
             offsets[dim]++;
         }
         return true;

@@ -93,6 +93,35 @@ public class EnvironmentProperties {
     }
     
     /**
+     * Calculates a target coordinate by adding a vector to a starting position, writing the
+     * result into a caller-supplied buffer instead of allocating one. On a toroidal world the
+     * result wraps around; on a bounded world it may lie outside, which the return value reports.
+     *
+     * @param startPos The starting coordinate, one entry per dimension
+     * @param vector   The vector to add, one entry per dimension
+     * @param out      Receives the target; one entry per dimension, may be {@code startPos} itself
+     * @return {@code true} if the target names a cell of the world, {@code false} if it lies
+     *         outside a bounded world ({@code out} then holds the unwrapped sum)
+     */
+    public boolean getTargetCoordinate(int[] startPos, int[] vector, int[] out) {
+        boolean inside = true;
+        for (int i = 0; i < worldShape.length; i++) {
+            int c = startPos[i] + vector[i];
+            int size = worldShape[i];
+            if (isToroidal) {
+                c %= size;
+                if (c < 0) {
+                    c += size;
+                }
+            } else if (c < 0 || c >= size) {
+                inside = false;
+            }
+            out[i] = c;
+        }
+        return inside;
+    }
+
+    /**
      * Calculates a target coordinate by adding a vector to a starting position.
      * 
      * @param startPos The starting coordinate
