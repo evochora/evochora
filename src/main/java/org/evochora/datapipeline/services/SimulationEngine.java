@@ -110,6 +110,8 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
     private final int accumulatedDeltaInterval;
     private final int snapshotInterval;
     private final int chunkInterval;
+    /** Upper bound on the cells one organism owns, an estimation assumption read from the options. */
+    private final int maxCellsPerOrganism;
     private final int metricsWindowSeconds;
 
     private final List<Long> pauseTicks;
@@ -143,12 +145,60 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
     private record BirthHandlerWithConfig(IBirthHandler handler, Config config) {}
 
     /**
+     * The delta-compression intervals and estimation assumptions of a run, read and validated
+     * before the simulation is built or restored, so that an invalid option fails before any
+     * expensive work is done.
+     */
+    private record RunOptions(
+        int samplingInterval,
+        int accumulatedDeltaInterval,
+        int snapshotInterval,
+        int chunkInterval,
+        double organismDensityFactor,
+        int maxCellsPerOrganism,
+        double estimatedDeltaRatio
+    ) {}
+
+    private RunOptions readRunOptions(Config config) {
+        double organismDensityFactor = readDouble(config, "organismDensityFactor", SimulationParameters.DEFAULT_ORGANISM_DENSITY_FACTOR);
+        if (!(organismDensityFactor >= 0.0)) {
+            throw new IllegalArgumentException("organismDensityFactor must be >= 0, got " + organismDensityFactor);
+        }
+        double estimatedDeltaRatio = readDouble(config, "estimatedDeltaRatio", SimulationParameters.DEFAULT_ESTIMATED_DELTA_RATIO);
+        if (!(estimatedDeltaRatio >= 0.0 && estimatedDeltaRatio <= 1.0)) {
+            throw new IllegalArgumentException("estimatedDeltaRatio must lie between 0.0 and 1.0, got " + estimatedDeltaRatio);
+        }
+        int samplingInterval = readPositiveInt(config, "samplingInterval", 1);
+        int accumulatedDeltaInterval = readPositiveInt(config, "accumulatedDeltaInterval", SimulationParameters.DEFAULT_ACCUMULATED_DELTA_INTERVAL);
+        int snapshotInterval = readPositiveInt(config, "snapshotInterval", SimulationParameters.DEFAULT_SNAPSHOT_INTERVAL);
+        int chunkInterval = readPositiveInt(config, "chunkInterval", SimulationParameters.DEFAULT_CHUNK_INTERVAL);
+        try {
+            // The ticks a chunk spans must fit an int, as SimulationParameters requires of them
+            Math.multiplyExact(Math.multiplyExact(Math.multiplyExact(samplingInterval, accumulatedDeltaInterval),
+                    snapshotInterval), chunkInterval);
+        } catch (ArithmeticException overflow) {
+            throw new IllegalArgumentException("samplingInterval × accumulatedDeltaInterval × snapshotInterval"
+                    + " × chunkInterval must not exceed " + Integer.MAX_VALUE + " ticks per chunk, got "
+                    + samplingInterval + " × " + accumulatedDeltaInterval + " × " + snapshotInterval + " × " + chunkInterval,
+                    overflow);
+        }
+        return new RunOptions(
+            samplingInterval, accumulatedDeltaInterval, snapshotInterval, chunkInterval,
+            organismDensityFactor,
+            readPositiveInt(config, "maxCellsPerOrganism", SimulationParameters.DEFAULT_MAX_CELLS_PER_ORGANISM),
+            estimatedDeltaRatio
+        );
+    }
+
+    /**
      * Holds the initialized state from either resume or new simulation mode.
      * This record allows both initialization paths to produce the same output structure.
      * Includes delta compression intervals to ensure resume uses original values from metadata.
      *
      * @param organismDensityFactor Fraction of totalCells used to derive maxOrganisms for memory
      *                              estimation. Read from the config that governs this run.
+     * @param maxCellsPerOrganism Upper bound on the cells one organism owns, for pricing the
+     *                            environment's per-organism visit buffers in the memory estimate.
      * @param estimatedDeltaRatio Expected per-tick change rate for memory estimation, read from
      *                            the config that governs this run (current config or checkpoint metadata).
      * @param resumeSnapshot checkpoint snapshot for resume mode (null for new simulations).
@@ -172,6 +222,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         int snapshotInterval,
         int chunkInterval,
         double organismDensityFactor,
+        int maxCellsPerOrganism,
         double estimatedDeltaRatio,
         TickData resumeSnapshot
     ) {}
@@ -244,6 +295,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         this.accumulatedDeltaInterval = state.accumulatedDeltaInterval();
         this.snapshotInterval = state.snapshotInterval();
         this.chunkInterval = state.chunkInterval();
+        this.maxCellsPerOrganism = state.maxCellsPerOrganism();
 
         // Build SimulationParameters from the actual runtime state (correct for both new and resume)
         int[] shape = this.simulation.getEnvironment().getShape();
@@ -303,22 +355,14 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
     }
 
     private DeltaCodec.Encoder createChunkEncoder(TickData resumeSnapshot) {
-        long totalCellsLong = this.simulation.getEnvironment().getTotalCells();
-        if (totalCellsLong > Integer.MAX_VALUE) {
-            throw new IllegalStateException(
-                "World too large for simulation: " + totalCellsLong + " cells exceeds Integer.MAX_VALUE. " +
-                "Reduce environment dimensions.");
-        }
-        int totalCells = (int) totalCellsLong;
-
         if (resumeSnapshot != null) {
             log.debug("Creating encoder with checkpoint snapshot at tick {}", resumeSnapshot.getTickNumber());
             return DeltaCodec.Encoder.forResume(
-                resumeSnapshot, this.runId, totalCells,
+                resumeSnapshot, this.runId,
                 this.accumulatedDeltaInterval, this.snapshotInterval, this.chunkInterval);
         }
         return new DeltaCodec.Encoder(
-            this.runId, totalCells,
+            this.runId,
             this.accumulatedDeltaInterval, this.snapshotInterval, this.chunkInterval);
     }
 
@@ -351,6 +395,9 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
             SimulationMetadata metadata = checkpoint.metadata();
             Config originalConfig = com.typesafe.config.ConfigFactory.parseString(
                 metadata.getResolvedConfigJson());
+            // Intervals and estimation parameters must match the original simulation; read them
+            // before the restore so that an invalid value fails before the state is rebuilt
+            RunOptions runOptions = readRunOptions(originalConfig);
 
             // Parallelism is deployment-specific, read from current options (not checkpoint metadata)
             Config currentRuntimeConfig = options.hasPath("runtime") ? options.getConfig("runtime") : com.typesafe.config.ConfigFactory.empty();
@@ -382,7 +429,6 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
 
             applyParallelismScaling(restored.simulation(), currentRuntimeConfig);
 
-            // Read intervals and estimation parameters from original config (must match original simulation!)
             return new InitializedState(
                 restored.simulation(),
                 randomProvider,
@@ -395,12 +441,13 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                 seed,
                 metadata.getStartTimeMs(),
                 checkpoint.getResumeFromTick() - 1,
-                readPositiveInt(originalConfig, "samplingInterval", 1),
-                readInt(originalConfig, "accumulatedDeltaInterval", SimulationParameters.DEFAULT_ACCUMULATED_DELTA_INTERVAL),
-                readInt(originalConfig, "snapshotInterval", SimulationParameters.DEFAULT_SNAPSHOT_INTERVAL),
-                readInt(originalConfig, "chunkInterval", SimulationParameters.DEFAULT_CHUNK_INTERVAL),
-                readDouble(originalConfig, "organismDensityFactor", SimulationParameters.DEFAULT_ORGANISM_DENSITY_FACTOR),
-                readDouble(originalConfig, "estimatedDeltaRatio", SimulationParameters.DEFAULT_ESTIMATED_DELTA_RATIO),
+                runOptions.samplingInterval(),
+                runOptions.accumulatedDeltaInterval(),
+                runOptions.snapshotInterval(),
+                runOptions.chunkInterval(),
+                runOptions.organismDensityFactor(),
+                runOptions.maxCellsPerOrganism(),
+                runOptions.estimatedDeltaRatio(),
                 checkpoint.snapshot()  // Pass snapshot to prime the encoder
             );
         } catch (IOException e) {
@@ -414,6 +461,8 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
     private InitializedState initializeNewSimulation(Config options) {
         long startTimeMs = System.currentTimeMillis();
         long seed = options.hasPath("seed") ? options.getLong("seed") : System.currentTimeMillis();
+        // Read first, so that an invalid option fails before programs are compiled and the world built
+        RunOptions runOptions = readRunOptions(options);
 
         List<? extends Config> organismConfigs = options.getConfigList("organisms");
         if (organismConfigs.isEmpty()) {
@@ -451,6 +500,11 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
             if (shape[i] < 1) {
                 throw new IllegalArgumentException(
                     "environment.shape[" + i + "] must be >= 1, got " + shape[i]);
+            }
+            if (shape[i] % Environment.TILE_SIDE != 0) {
+                throw new IllegalArgumentException(
+                    "environment.shape[" + i + "] must be a multiple of " + Environment.TILE_SIDE
+                    + ", got " + shape[i]);
             }
         }
         EnvironmentProperties envProps = new EnvironmentProperties(shape, isToroidal);
@@ -552,12 +606,13 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
 
         return new InitializedState(
             simulation, randomProvider, tickPluginsList, interceptorsList, deathHandlersList, birthHandlersList, compiledPrograms, runId, seed, startTimeMs, -1,
-            readPositiveInt(options, "samplingInterval", 1),
-            readInt(options, "accumulatedDeltaInterval", SimulationParameters.DEFAULT_ACCUMULATED_DELTA_INTERVAL),
-            readInt(options, "snapshotInterval", SimulationParameters.DEFAULT_SNAPSHOT_INTERVAL),
-            readInt(options, "chunkInterval", SimulationParameters.DEFAULT_CHUNK_INTERVAL),
-            readDouble(options, "organismDensityFactor", SimulationParameters.DEFAULT_ORGANISM_DENSITY_FACTOR),
-            readDouble(options, "estimatedDeltaRatio", SimulationParameters.DEFAULT_ESTIMATED_DELTA_RATIO),
+            runOptions.samplingInterval(),
+            runOptions.accumulatedDeltaInterval(),
+            runOptions.snapshotInterval(),
+            runOptions.chunkInterval(),
+            runOptions.organismDensityFactor(),
+            runOptions.maxCellsPerOrganism(),
+            runOptions.estimatedDeltaRatio(),
             null  // No resume snapshot for new simulations
         );
     }
@@ -1044,9 +1099,11 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
      * <strong>Major components:</strong>
      * <ul>
      *   <li>Environment cells array: totalCells × 8 bytes (int molecule + int ownerId)</li>
+     *   <li>Environment tracking: three bit sets over the world, the owner index and the
+     *       flat-index order keys over the occupied cells</li>
      *   <li>Organisms: maxOrganisms × ~2KB (registers, stacks, code reference)</li>
      *   <li>Compiled programs: cached ProgramArtifacts</li>
-     *   <li>Encoder: current snapshot + accumulated deltas + change tracking BitSet</li>
+     *   <li>Encoder: current snapshot + accumulated deltas + the column lists of a capture</li>
      * </ul>
      * <p>
      * This is typically the largest memory consumer in the pipeline.
@@ -1055,7 +1112,8 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
     public List<MemoryEstimate> estimateWorstCaseMemory(SimulationParameters params) {
         List<MemoryEstimate> estimates = new ArrayList<>();
         
-        // 1. Environment core arrays - grid[] + ownerGrid[] = 8 bytes/cell
+        // 1. Environment core arrays - grid[] + ownerGrid[] = 8 bytes per cell of the world,
+        //    independent of occupancy
         long coreArrayBytes = (long) params.totalCells() * 8;
         estimates.add(new MemoryEstimate(
             serviceName + " (Environment arrays)",
@@ -1065,21 +1123,30 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         ));
         
         // 2. Environment tracking structures
-        // occupiedIndices and changedSinceLastReset: one BitSet each, totalCells / 8 bytes,
-        //   independent of occupancy.
-        // cellsByOwner: Int2ObjectOpenHashMap<IntOpenHashSet>, one int entry per owned cell. At
-        //   100% occupancy every cell is owned, so the entry count is bounded by totalCells. An
-        //   open-addressing int set with load factor 0.75 and power-of-two capacity holds between
-        //   1.33 and 2.67 key slots per entry (4 bytes each); 12 bytes per cell covers the worst
-        //   case. Each set additionally costs a fixed object, array header and map slot (~100 bytes).
+        // occupiedIndices, changedSinceLastSample, changedSinceLastSnapshot: one BitSet each,
+        //   totalCells / 8 bytes, independent of occupancy.
+        // cellsByOwner: Int2ObjectOpenHashMap<IntOpenHashSet>, one int entry per owned cell, so
+        //   bounded by the occupied cells. An open-addressing int set with load factor 0.75 and
+        //   power-of-two capacity holds between 1.33 and 2.67 key slots per entry (4 bytes each);
+        //   12 bytes per cell covers the worst case. Each set additionally costs a fixed object,
+        //   array header and map slot (~100 bytes).
+        // flat-index order: one 8-byte key and one 4-byte owner per cell handed out in flat-index
+        //   order, retained at the size of the largest batch, which is every occupied cell at a
+        //   snapshot. The buffers grow by doubling and never shrink, so their capacity reaches up
+        //   to twice that batch: 24 bytes per occupied cell is the bound.
+        // owned-cell visit: one 4-byte index and one 8-byte key per cell of the largest organism
+        //   ever visited, also grown by doubling, so up to 24 bytes per cell of the largest
+        //   organism the estimate assumes (the maxCellsPerOrganism option).
         long bitSetBytes = (params.totalCells() + 7) / 8;
-        long cellsByOwnerBytes = params.totalCells() * 12L + (long) params.maxOrganisms() * 100;
-        long trackingBytes = 2 * bitSetBytes + cellsByOwnerBytes;
+        long cellsByOwnerBytes = params.occupiedCells() * 12L + (long) params.maxOrganisms() * 100;
+        long flatIndexOrderBytes = params.occupiedCells() * 24L;
+        long ownedVisitBytes = maxCellsPerOrganism * 24L;
+        long trackingBytes = 3 * bitSetBytes + cellsByOwnerBytes + flatIndexOrderBytes + ownedVisitBytes;
         estimates.add(new MemoryEstimate(
             serviceName + " (Environment tracking)",
             trackingBytes,
-            String.format("2 BitSets (%d cells) + cellsByOwner (%d cells × 12 bytes + %d orgs × 100 bytes)",
-                params.totalCells(), params.totalCells(), params.maxOrganisms()),
+            String.format("3 BitSets (%d cells) + cellsByOwner (%d occupied cells × 12 bytes + %d orgs × 100 bytes) + flat-index order buffers (%d occupied cells × 24 bytes, doubling capacity) + owned-cell visit buffers (%d cells per organism × 24 bytes)",
+                params.totalCells(), params.occupiedCells(), params.maxOrganisms(), params.occupiedCells(), maxCellsPerOrganism),
             MemoryEstimate.Category.SERVICE_BATCH
         ));
         
@@ -1115,24 +1182,29 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         // 4. Encoder state for delta compression
         // - currentSnapshot: 1 full TickData (bytesPerTick)
         // - currentDeltas: up to (samplesPerChunk - 1) deltas
-        // - accumulatedSinceSnapshot: BitSet for change tracking (totalCells / 8 bytes)
+        // - cell columns builder: while a snapshot is captured, three int lists with one entry
+        //   per occupied cell (12 bytes per cell) exist next to the message built from them
+        // Checked arithmetic throughout: a chunk long enough to overflow a long must fail the
+        // estimate rather than understate it
         long chunkBuilderBytes = 0;
         
         // Current snapshot in memory
-        chunkBuilderBytes += params.estimateBytesPerTick();
+        chunkBuilderBytes = Math.addExact(chunkBuilderBytes, params.estimateBytesPerTick());
         
         // Accumulated deltas (worst case: all samples before chunk completion)
         int maxDeltas = params.samplesPerChunk() - 1;
-        chunkBuilderBytes += (long) maxDeltas * params.estimateBytesPerDelta();
+        chunkBuilderBytes = Math.addExact(chunkBuilderBytes,
+                Math.multiplyExact((long) maxDeltas, params.estimateBytesPerDelta()));
 
-        // BitSet for change tracking: totalCells bits = totalCells / 8 bytes
-        chunkBuilderBytes += (params.totalCells() + 7) / 8;
+        // Column lists of the capture in progress
+        long columnListBytes = params.occupiedCells() * 12L;
+        chunkBuilderBytes = Math.addExact(chunkBuilderBytes, columnListBytes);
 
         estimates.add(new MemoryEstimate(
             serviceName + " (Encoder)",
             chunkBuilderBytes,
-            String.format("1 snapshot + %d deltas + BitSet (%d cells), %d samples/chunk (%d ticks)",
-                maxDeltas, params.totalCells(), params.samplesPerChunk(), params.simulationTicksPerChunk()),
+            String.format("1 snapshot + %d deltas + column lists (%d occupied cells × 12 bytes), %d samples/chunk (%d ticks)",
+                maxDeltas, params.occupiedCells(), params.samplesPerChunk(), params.simulationTicksPerChunk()),
             MemoryEstimate.Category.SERVICE_BATCH
         ));
         

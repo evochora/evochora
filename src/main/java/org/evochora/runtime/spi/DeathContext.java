@@ -1,6 +1,8 @@
 package org.evochora.runtime.spi;
 
-import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
+import java.util.function.Consumer;
+
+import org.evochora.runtime.model.CellView;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 
@@ -37,9 +39,15 @@ import org.evochora.runtime.model.Molecule;
 public class DeathContext {
 
     private Environment environment;
-    private IntOpenHashSet ownedCells;
+    private int organismId;
     private boolean initialized = false;
-    private int currentFlatIndex = -1;
+    private CellView current;
+    private Runnable currentAction;
+    // One visitor for the lifetime of the context, so that a death allocates nothing
+    private final Consumer<CellView> onCell = view -> {
+        current = view;
+        currentAction.run();
+    };
 
     /**
      * Resets context for reuse - zero allocation.
@@ -52,13 +60,16 @@ public class DeathContext {
      */
     public void reset(Environment environment, int organismId) {
         this.environment = environment;
-        this.ownedCells = environment.getCellsOwnedBy(organismId);
+        this.organismId = organismId;
         this.initialized = true;
-        this.currentFlatIndex = -1;
+        this.current = null;
     }
 
     /**
-     * Iterates over all cells owned by the dying organism.
+     * Iterates over all cells owned by the dying organism, in ascending order of their flat
+     * index: an order determined by the cells' coordinates alone, so that a handler that draws
+     * randomness per cell behaves the same in a live run, after a resume and under any memory
+     * layout of the grid.
      * <p>
      * Within the callback, {@link #getMolecule()} and {@link #setMolecule(Molecule)}
      * can be used to read/modify the current cell.
@@ -74,28 +85,13 @@ public class DeathContext {
         if (!initialized) {
             throw new IllegalStateException("DeathContext not initialized - reset() must be called first");
         }
-        if (ownedCells == null) {
-            return; // Organism had no cells - valid state
+        currentAction = action;
+        try {
+            environment.visitCellsOwnedBy(organismId, onCell);
+        } finally {
+            current = null;
+            currentAction = null;
         }
-        ownedCells.forEach(flatIndex -> {
-            currentFlatIndex = flatIndex;
-            action.run();
-        });
-        currentFlatIndex = -1;
-    }
-
-    /**
-     * Returns the flat index of the current cell being iterated.
-     * <p>
-     * Can only be called within {@link #forEachOwnedCell(Runnable)}.
-     * </p>
-     *
-     * @return The flat index of the current cell
-     * @throws IllegalStateException if called outside of forEachOwnedCell
-     */
-    public int getFlatIndex() {
-        checkCurrentCell();
-        return currentFlatIndex;
     }
 
     /**
@@ -109,7 +105,7 @@ public class DeathContext {
      */
     public Molecule getMolecule() {
         checkCurrentCell();
-        return environment.getMoleculeByIndex(currentFlatIndex);
+        return current.molecule();
     }
 
     /**
@@ -124,11 +120,11 @@ public class DeathContext {
      */
     public void setMolecule(Molecule molecule) {
         checkCurrentCell();
-        environment.setMoleculeByIndex(currentFlatIndex, molecule);
+        current.setMolecule(molecule);
     }
 
     private void checkCurrentCell() {
-        if (currentFlatIndex == -1) {
+        if (current == null) {
             throw new IllegalStateException("Can only be called within forEachOwnedCell callback");
         }
     }

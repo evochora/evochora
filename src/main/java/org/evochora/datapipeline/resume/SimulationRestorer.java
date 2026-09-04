@@ -357,6 +357,10 @@ public class SimulationRestorer {
      * means the columns describe different cells and no pairing can be trusted. A flat index outside
      * the environment belongs to a differently shaped world; converting it anyway would place the cell
      * at a wrong but valid position, which is indistinguishable from correct data afterwards.
+     * <p>
+     * The indices are the flat indices the encoder persists, the row-major numbering of
+     * {@code EnvironmentProperties}, and are decoded through it; the environment's layout index
+     * never appears in persisted data.
      *
      * @param environment the environment to populate
      * @param cellData the columnar cell data from the snapshot
@@ -377,11 +381,11 @@ public class SimulationRestorer {
         for (int i = 0; i < flatIndices.size(); i++) {
             int flatIndex = flatIndices.get(i);
             if (flatIndex < 0 || flatIndex >= totalCells) {
-                throw new ResumeException("Cell index " + flatIndex
+                throw new ResumeException("Flat index " + flatIndex
                         + " lies outside the environment's " + totalCells + " cells");
             }
 
-            int[] coord = environment.getCoordinateFromIndex(flatIndex);
+            int[] coord = environment.getProperties().flatIndexToCoordinates(flatIndex);
             org.evochora.runtime.model.Molecule molecule =
                 org.evochora.runtime.model.Molecule.fromInt(moleculeData.get(i));
             environment.setMolecule(molecule, ownerIds.get(i), coord);

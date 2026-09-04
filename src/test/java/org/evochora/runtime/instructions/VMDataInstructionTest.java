@@ -34,7 +34,7 @@ public class VMDataInstructionTest {
 
     @BeforeEach
     void setUp() {
-        environment = new Environment(new int[]{100, 100}, true);
+        environment = new Environment(new int[]{96, 96}, true);
         sim = SimulationTestUtils.createSimulation(environment);
         org = Organism.create(sim, startPos, 1000);
         sim.addOrganism(org);
@@ -183,10 +183,10 @@ public class VMDataInstructionTest {
             "NOP"
         );
         
-        org.evochora.compiler.api.ProgramArtifact artifact = compiler.compile(lines, "test.s", new EnvironmentProperties(new int[]{100, 100}, true));
+        org.evochora.compiler.api.ProgramArtifact artifact = compiler.compile(lines, "test.s", new EnvironmentProperties(new int[]{96, 96}, true));
         
         // Erstelle eine neue Simulation mit dem kompilierten Code
-        Environment testEnv = new Environment(new int[]{100, 100}, true);
+        Environment testEnv = new Environment(new int[]{96, 96}, true);
         Simulation testSim = SimulationTestUtils.createSimulation(testEnv);
         Organism testOrg = Organism.create(testSim, new int[]{0, 0}, 1000);
         testSim.addOrganism(testOrg);

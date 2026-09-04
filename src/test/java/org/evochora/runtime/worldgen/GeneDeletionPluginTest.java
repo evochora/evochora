@@ -32,7 +32,7 @@ class GeneDeletionPluginTest {
 
     @BeforeEach
     void setUp() {
-        environment = new Environment(new int[]{30, 20}, true);
+        environment = new Environment(new int[]{32, 32}, true);
 
         String thermoConfigStr = """
             default {

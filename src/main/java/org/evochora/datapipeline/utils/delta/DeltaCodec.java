@@ -63,13 +63,14 @@ public final class DeltaCodec {
     /**
      * Builds TickDataChunks from sampled ticks using delta compression.
      * <p>
-     * This class encapsulates all chunk-building logic to keep SimulationEngine clean.
-     * It tracks changes between samples and decides when to create snapshots, incremental
-     * deltas, or accumulated deltas based on the configured intervals.
+     * This class encapsulates all chunk-building logic to keep SimulationEngine clean. The
+     * environment records which cells changed since the last sample and since the last snapshot;
+     * the encoder reads those cells from it and decides, from the configured intervals, when to
+     * create a snapshot, an incremental delta or an accumulated delta.
      * <p>
      * <strong>Usage:</strong>
      * <pre>{@code
-     * DeltaCodec.Encoder encoder = new DeltaCodec.Encoder(runId, totalCells, 5, 20, 1);
+     * DeltaCodec.Encoder encoder = new DeltaCodec.Encoder(runId, 5, 20, 1);
      * 
      * // For each sampled tick:
      * Optional<TickDataChunk> chunk = encoder.captureTick(
@@ -104,7 +105,6 @@ public final class DeltaCodec {
         // State
         private TickData currentSnapshot;
         private final List<DeltaCapture> currentDeltas = new ArrayList<>();
-        private final BitSet accumulatedSinceSnapshot;
         private int samplesSinceSnapshot = 0;
 
         // Reusable builder to avoid repeated allocations
@@ -114,13 +114,12 @@ public final class DeltaCodec {
          * Creates a new Encoder for a new simulation.
          *
          * @param runId simulation run ID for chunk metadata
-         * @param totalCells total cells in environment (for BitSet allocation)
          * @param accumulatedDeltaInterval samples between accumulated deltas (must be >= 1)
          * @param snapshotInterval accumulated deltas between snapshots (must be >= 1)
          * @param chunkInterval snapshots per chunk (must be >= 1)
          * @throws IllegalArgumentException if any interval is less than 1
          */
-        public Encoder(String runId, int totalCells,
+        public Encoder(String runId,
                        int accumulatedDeltaInterval, int snapshotInterval, int chunkInterval) {
             if (accumulatedDeltaInterval < 1) {
                 throw new IllegalArgumentException("accumulatedDeltaInterval must be >= 1, got: " + accumulatedDeltaInterval);
@@ -137,8 +136,6 @@ public final class DeltaCodec {
 
             this.samplesPerSnapshot = accumulatedDeltaInterval * snapshotInterval;
             this.samplesPerChunk = samplesPerSnapshot * chunkInterval;
-
-            this.accumulatedSinceSnapshot = new BitSet(totalCells);
         }
 
         /**
@@ -149,19 +146,18 @@ public final class DeltaCodec {
          *
          * @param resumeSnapshot checkpoint snapshot (must not be null)
          * @param runId simulation run ID for chunk metadata
-         * @param totalCells total cells in environment (for BitSet allocation)
          * @param accumulatedDeltaInterval samples between accumulated deltas (must be >= 1)
          * @param snapshotInterval accumulated deltas between snapshots (must be >= 1)
          * @param chunkInterval snapshots per chunk (must be >= 1)
          * @return encoder initialized with the checkpoint snapshot
          * @throws IllegalArgumentException if resumeSnapshot is null or any interval is less than 1
          */
-        public static Encoder forResume(TickData resumeSnapshot, String runId, int totalCells,
+        public static Encoder forResume(TickData resumeSnapshot, String runId,
                                         int accumulatedDeltaInterval, int snapshotInterval, int chunkInterval) {
             if (resumeSnapshot == null) {
                 throw new IllegalArgumentException("resumeSnapshot cannot be null");
             }
-            Encoder encoder = new Encoder(runId, totalCells, accumulatedDeltaInterval, snapshotInterval, chunkInterval);
+            Encoder encoder = new Encoder(runId, accumulatedDeltaInterval, snapshotInterval, chunkInterval);
             encoder.currentSnapshot = resumeSnapshot;
             encoder.samplesSinceSnapshot = 1;  // Snapshot counts as sample 0, next tick is sample 1
             return encoder;
@@ -194,12 +190,6 @@ public final class DeltaCodec {
                 ByteString rngState,
                 List<PluginState> pluginStates) {
 
-            // Get changes since last sample
-            BitSet changedSinceLastSample = env.getChangedIndices();
-
-            // Accumulate changes for accumulated deltas
-            accumulatedSinceSnapshot.or(changedSinceLastSample);
-
             // Determine tick type
             boolean isSnapshot = (samplesSinceSnapshot == 0);
             boolean isAccumulated = !isSnapshot && (samplesSinceSnapshot % accumulatedDeltaInterval == 0);
@@ -225,12 +215,12 @@ public final class DeltaCodec {
                 }
                 currentSnapshot = snapshotBuilder.build();
 
-                accumulatedSinceSnapshot.clear();
+                env.markSnapshotTaken();
             } else if (isAccumulated) {
                 // Accumulated delta - all changes since last snapshot
                 // Note: RNG state and plugin states are only stored in snapshots (not accumulated deltas)
                 // since resume always happens from snapshot (chunk start)
-                CellDataColumns changedCells = extractCellsFromBitSet(env, accumulatedSinceSnapshot);
+                CellDataColumns changedCells = extractCellsChangedSinceSnapshot(env);
                 DeltaCapture delta = captureDelta(
                         tick, captureTimeMs, DeltaType.ACCUMULATED,
                         changedCells, organisms, totalOrganismsCreated,
@@ -239,7 +229,7 @@ public final class DeltaCodec {
                 currentDeltas.add(delta);
             } else {
                 // Incremental delta - only changes since last sample
-                CellDataColumns changedCells = extractCellsFromBitSet(env, changedSinceLastSample);
+                CellDataColumns changedCells = extractCellsChangedSinceSample(env);
                 DeltaCapture delta = captureDelta(
                         tick, captureTimeMs, DeltaType.INCREMENTAL,
                         changedCells, organisms, totalOrganismsCreated,
@@ -250,8 +240,8 @@ public final class DeltaCodec {
             
             samplesSinceSnapshot++;
 
-            // Reset change tracking for next sample
-            env.resetChangeTracking();
+            // Changes recorded so far belong to this sample
+            env.markSampleTaken();
 
             // Check if chunk is complete
             // Note: chunkInterval is a multiplier for chunk size, not "snapshots per chunk"
@@ -307,37 +297,39 @@ public final class DeltaCodec {
             currentSnapshot = null;
             currentDeltas.clear();
             samplesSinceSnapshot = 0;
-            // Note: accumulatedSinceSnapshot is cleared when new snapshot is taken
             
             return chunk;
         }
         
+        /**
+         * Serializes every occupied cell. The environment hands the cells out under their flat
+         * index, in ascending order, so the columns do not depend on how the environment lays out
+         * its grid in memory.
+         */
         private CellDataColumns extractAllCells(Environment env) {
             cellColumnsBuilder.clear();
-
-            env.forEachOccupiedIndex(flatIndex -> {
-                cellColumnsBuilder.addFlatIndices(flatIndex);
-                cellColumnsBuilder.addMoleculeData(env.getMoleculeInt(flatIndex));
-                cellColumnsBuilder.addOwnerIds(env.getOwnerIdByIndex(flatIndex));
-            });
-
+            env.forEachOccupiedCellInFlatIndexOrder(this::addCell);
             return cellColumnsBuilder.build();
         }
 
-        private CellDataColumns extractCellsFromBitSet(Environment env, BitSet changedIndices) {
+        /** Serializes the cells changed since the last sample, as in {@link #extractAllCells}. */
+        private CellDataColumns extractCellsChangedSinceSample(Environment env) {
             cellColumnsBuilder.clear();
-
-            // Iterate over set bits
-            for (int flatIndex = changedIndices.nextSetBit(0);
-                 flatIndex >= 0;
-                 flatIndex = changedIndices.nextSetBit(flatIndex + 1)) {
-
-                cellColumnsBuilder.addFlatIndices(flatIndex);
-                cellColumnsBuilder.addMoleculeData(env.getMoleculeInt(flatIndex));
-                cellColumnsBuilder.addOwnerIds(env.getOwnerIdByIndex(flatIndex));
-            }
-
+            env.forEachCellChangedSinceLastSample(this::addCell);
             return cellColumnsBuilder.build();
+        }
+
+        /** Serializes the cells changed since the last snapshot, as in {@link #extractAllCells}. */
+        private CellDataColumns extractCellsChangedSinceSnapshot(Environment env) {
+            cellColumnsBuilder.clear();
+            env.forEachCellChangedSinceLastSnapshot(this::addCell);
+            return cellColumnsBuilder.build();
+        }
+
+        private void addCell(int flatIndex, int moleculeInt, int ownerId) {
+            cellColumnsBuilder.addFlatIndices(flatIndex);
+            cellColumnsBuilder.addMoleculeData(moleculeInt);
+            cellColumnsBuilder.addOwnerIds(ownerId);
         }
     }
     

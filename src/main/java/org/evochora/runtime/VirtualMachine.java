@@ -57,13 +57,8 @@ public class VirtualMachine {
     public Instruction plan(Organism organism) {
         organism.resetTickState();
 
-        // Flat-index molecule lookup to avoid coordinate-based getNormalizedCoordinate
-        int[] ip = organism.getIp();
-        int flatIp = 0;
-        for (int i = 0; i < ip.length; i++) {
-            flatIp += ip[i] * this.environment.properties.getStride(i);
-        }
-        int rawMol = this.environment.getMoleculeInt(flatIp);
+        // The in-range accessor: the IP lies within the world, so no normalization and no allocation
+        int rawMol = this.environment.getMoleculeIntAt(organism.getIp());
 
         Instruction instruction;
 
@@ -284,12 +279,7 @@ public class VirtualMachine {
             return null;
         }
 
-        int[] ip = organism.getIp();
-        int flatIp = 0;
-        for (int i = 0; i < ip.length; i++) {
-            flatIp += ip[i] * this.environment.properties.getStride(i);
-        }
-        int rawMol = this.environment.getMoleculeInt(flatIp);
+        int rawMol = this.environment.getMoleculeIntAt(organism.getIp());
         if (rawMol == 0) {
             return null;
         }

@@ -1,10 +1,12 @@
 package org.evochora.runtime.model;
 
+import org.evochora.runtime.label.PreExpandedHammingStrategy;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
-import java.util.BitSet;
+import java.util.ArrayList;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -18,17 +20,32 @@ class EnvironmentChangeTrackingTest {
     
     @BeforeEach
     void setUp() {
-        // 10x10 environment = 100 cells
-        env = new Environment(new int[]{10, 10}, false);
+        // 32x32 environment = 1024 cells
+        env = new Environment(new int[]{32, 32}, false);
     }
     
     // ========================================================================
     // Basic Change Tracking
     // ========================================================================
     
+    /**
+     * Whether the cells changed since the last sample include the one at the given coordinate,
+     * compared through the flat index the environment hands out, whatever its memory layout.
+     */
+    private boolean containsCell(List<Integer> changes, int x, int y) {
+        return changes.contains(env.properties.toFlatIndex(new int[]{x, y}));
+    }
+
+    /** The flat indices of the cells changed since the last sample, as the environment hands them out. */
+    private List<Integer> changed() {
+        List<Integer> out = new ArrayList<>();
+        env.forEachCellChangedSinceLastSample((flatIndex, molecule, owner) -> out.add(flatIndex));
+        return out;
+    }
+
     @Test
     void newEnvironment_hasNoChanges() {
-        BitSet changes = env.getChangedIndices();
+        List<Integer> changes = changed();
         assertTrue(changes.isEmpty());
     }
     
@@ -37,11 +54,10 @@ class EnvironmentChangeTrackingTest {
         Molecule mol = Molecule.fromInt(100);
         env.setMolecule(mol, new int[]{5, 5});
         
-        BitSet changes = env.getChangedIndices();
-        assertEquals(1, changes.cardinality());
+        List<Integer> changes = changed();
+        assertEquals(1, changes.size());
         
-        // Flat index for (5,5) in 10x10 grid = 5*10 + 5 = 55
-        assertTrue(changes.get(55));
+        assertTrue(containsCell(changes, 5, 5));
     }
     
     @Test
@@ -49,22 +65,20 @@ class EnvironmentChangeTrackingTest {
         Molecule mol = Molecule.fromInt(100);
         env.setMolecule(mol, 1, new int[]{3, 7});
         
-        BitSet changes = env.getChangedIndices();
-        assertEquals(1, changes.cardinality());
+        List<Integer> changes = changed();
+        assertEquals(1, changes.size());
         
-        // Flat index for (3,7) = 3*10 + 7 = 37
-        assertTrue(changes.get(37));
+        assertTrue(containsCell(changes, 3, 7));
     }
     
     @Test
     void setOwnerId_tracksChange() {
         env.setOwnerId(5, new int[]{2, 3});
         
-        BitSet changes = env.getChangedIndices();
-        assertEquals(1, changes.cardinality());
+        List<Integer> changes = changed();
+        assertEquals(1, changes.size());
         
-        // Flat index for (2,3) = 2*10 + 3 = 23
-        assertTrue(changes.get(23));
+        assertTrue(containsCell(changes, 2, 3));
     }
     
     @Test
@@ -74,11 +88,11 @@ class EnvironmentChangeTrackingTest {
         env.setMolecule(mol, new int[]{1, 1});
         env.setMolecule(mol, new int[]{2, 2});
         
-        BitSet changes = env.getChangedIndices();
-        assertEquals(3, changes.cardinality());
-        assertTrue(changes.get(0));   // (0,0) = 0
-        assertTrue(changes.get(11));  // (1,1) = 11
-        assertTrue(changes.get(22));  // (2,2) = 22
+        List<Integer> changes = changed();
+        assertEquals(3, changes.size());
+        assertTrue(containsCell(changes, 0, 0));
+        assertTrue(containsCell(changes, 1, 1));
+        assertTrue(containsCell(changes, 2, 2));
     }
     
     // ========================================================================
@@ -90,11 +104,11 @@ class EnvironmentChangeTrackingTest {
         Molecule mol = Molecule.fromInt(100);
         env.setMolecule(mol, new int[]{0, 0});
         env.setMolecule(mol, new int[]{5, 5});
-        assertEquals(2, env.getChangedIndices().cardinality());
+        assertEquals(2, changed().size());
         
         env.resetChangeTracking();
         
-        assertTrue(env.getChangedIndices().isEmpty());
+        assertTrue(changed().isEmpty());
     }
     
     @Test
@@ -109,10 +123,10 @@ class EnvironmentChangeTrackingTest {
         // Second batch of changes
         env.setMolecule(mol, new int[]{5, 5});
         
-        BitSet changes = env.getChangedIndices();
-        assertEquals(1, changes.cardinality());
-        assertTrue(changes.get(55));  // Only new change
-        assertFalse(changes.get(0));  // Old change not tracked
+        List<Integer> changes = changed();
+        assertEquals(1, changes.size());
+        assertTrue(containsCell(changes, 5, 5));  // Only new change
+        assertFalse(containsCell(changes, 0, 0)); // Old change not tracked
     }
     
     // ========================================================================
@@ -120,7 +134,7 @@ class EnvironmentChangeTrackingTest {
     // ========================================================================
     
     @Test
-    void sameCellMultipleTimes_onlyOneBitSet() {
+    void sameCellMultipleTimes_isOneChange() {
         Molecule mol1 = Molecule.fromInt(100);
         Molecule mol2 = Molecule.fromInt(200);
         
@@ -128,8 +142,8 @@ class EnvironmentChangeTrackingTest {
         env.setMolecule(mol2, new int[]{5, 5});
         env.setMolecule(mol1, new int[]{5, 5});
         
-        BitSet changes = env.getChangedIndices();
-        assertEquals(1, changes.cardinality());
+        List<Integer> changes = changed();
+        assertEquals(1, changes.size());
     }
     
     @Test
@@ -142,9 +156,9 @@ class EnvironmentChangeTrackingTest {
         Molecule empty = Molecule.fromInt(0);
         env.setMolecule(empty, new int[]{5, 5});
         
-        BitSet changes = env.getChangedIndices();
-        assertEquals(1, changes.cardinality());
-        assertTrue(changes.get(55));
+        List<Integer> changes = changed();
+        assertEquals(1, changes.size());
+        assertTrue(containsCell(changes, 5, 5));
     }
     
     @Test
@@ -154,9 +168,9 @@ class EnvironmentChangeTrackingTest {
         
         env.clearOwner(new int[]{3, 3});
         
-        BitSet changes = env.getChangedIndices();
-        assertEquals(1, changes.cardinality());
-        assertTrue(changes.get(33));
+        List<Integer> changes = changed();
+        assertEquals(1, changes.size());
+        assertTrue(containsCell(changes, 3, 3));
     }
     
     // ========================================================================
@@ -176,11 +190,11 @@ class EnvironmentChangeTrackingTest {
         int transferred = env.transferOwnership(1, 2, 5);
         
         assertEquals(2, transferred);
-        BitSet changes = env.getChangedIndices();
-        assertEquals(2, changes.cardinality());
-        assertTrue(changes.get(0));   // (0,0)
-        assertTrue(changes.get(11));  // (1,1)
-        assertFalse(changes.get(22)); // (2,2) has different marker
+        List<Integer> changes = changed();
+        assertEquals(2, changes.size());
+        assertTrue(containsCell(changes, 0, 0));
+        assertTrue(containsCell(changes, 1, 1));
+        assertFalse(containsCell(changes, 2, 2)); // different marker, not transferred
     }
     
     @Test
@@ -197,8 +211,8 @@ class EnvironmentChangeTrackingTest {
         int cleared = env.clearOwnershipFor(1);
         
         assertEquals(3, cleared);
-        BitSet changes = env.getChangedIndices();
-        assertEquals(3, changes.cardinality());
+        List<Integer> changes = changed();
+        assertEquals(3, changes.size());
     }
     
     // ========================================================================
@@ -207,26 +221,28 @@ class EnvironmentChangeTrackingTest {
     
     @Test
     void getTotalCells_returnsCorrectValue() {
-        assertEquals(100, env.getTotalCells());  // 10x10
+        assertEquals(1024, env.getTotalCells());  // 32x32
         
-        Environment env3d = new Environment(new int[]{5, 6, 7}, false);
+        // A world this small cannot be tiled; the row-major layout (tile side 1) keeps the test's cell count.
+        Environment env3d = new Environment(new EnvironmentProperties(new int[]{5, 6, 7}, false), new PreExpandedHammingStrategy(), 1);
         assertEquals(210, env3d.getTotalCells());  // 5*6*7
     }
     
     // ========================================================================
-    // Integration with Flat Index Access
+    // Content of changed cells
     // ========================================================================
     
     @Test
-    void changedIndices_matchFlatIndexAccess() {
+    void changedCells_carryTheirContent() {
         Molecule mol = Molecule.fromInt(100);
         env.setMolecule(mol, 1, new int[]{3, 7});
         
-        BitSet changes = env.getChangedIndices();
-        int changedIndex = changes.nextSetBit(0);
-        
-        // Verify we can read the changed cell using flat index
-        assertEquals(100, env.getMoleculeInt(changedIndex));
-        assertEquals(1, env.getOwnerIdByIndex(changedIndex));
+        int[] seen = {0, 0, 0};
+        env.forEachCellChangedSinceLastSample((flatIndex, molecule, owner) -> { seen[0]++; seen[1] = molecule; seen[2] = owner; });
+
+        // The changed cell is handed out with its content and owner
+        assertEquals(1, seen[0]);
+        assertEquals(100, seen[1]);
+        assertEquals(1, seen[2]);
     }
 }

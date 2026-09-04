@@ -35,7 +35,7 @@ class CaptureExecutionDetailsTest {
 
     @BeforeEach
     void setUp() {
-        Environment environment = new Environment(new int[]{10, 10}, true);
+        Environment environment = new Environment(new int[]{32, 32}, true);
         ThermodynamicPolicyManager policyManager = new ThermodynamicPolicyManager(
             ConfigFactory.parseString("""
                 default {

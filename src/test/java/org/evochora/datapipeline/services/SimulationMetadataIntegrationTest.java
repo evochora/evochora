@@ -197,8 +197,8 @@ class SimulationMetadataIntegrationTest {
         // Verify environment configuration from resolvedConfigJson
         int[] shape = MetadataConfigHelper.getEnvironmentShape(metadata);
         assertEquals(2, shape.length);
-        assertEquals(100, shape[0]);
-        assertEquals(100, shape[1]);
+        assertEquals(96, shape[0]);
+        assertEquals(96, shape[1]);
 
         // Verify programs
         assertTrue(metadata.getProgramsCount() > 0);
@@ -326,7 +326,7 @@ class SimulationMetadataIntegrationTest {
                     samplingInterval = 10
                     seed = 42
                     environment {
-                      shape = [100, 100]
+                      shape = [96, 96]
                       topology = "TORUS"
                     }
                     plugins = [

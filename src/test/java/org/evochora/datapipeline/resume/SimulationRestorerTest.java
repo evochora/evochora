@@ -80,7 +80,7 @@ class SimulationRestorerTest {
                 .as("snapshot 1000 holds the state after tick 1000; the simulation continues with tick 1001")
                 .isEqualTo(1001);
         assertThat(simulation.getTotalOrganismsCreatedCount()).isEqualTo(100);
-        assertThat(simulation.getEnvironment().getShape()).isEqualTo(new int[]{100, 100});
+        assertThat(simulation.getEnvironment().getShape()).isEqualTo(new int[]{96, 96});
         assertThat(simulation.getOrganisms()).hasSize(1);
     }
 
@@ -186,16 +186,16 @@ class SimulationRestorerTest {
         SimulationMetadata metadata = createMinimalMetadata();
 
         // Create cell data with some cells
-        // flatIndexToCoord with shape [100, 100] and flatIndex 510:
-        //   coord[1] = 510 % 100 = 10
-        //   coord[0] = 510 / 100 = 5
-        // So flatIndex 510 -> coord [5, 10]
+        // flatIndexToCoord with shape [96, 96] and flatIndex 490:
+        //   coord[1] = 490 % 96 = 10
+        //   coord[0] = 490 / 96 = 5
+        // So flatIndex 490 -> coord [5, 10]
         //
         // Pack molecule data: type=TYPE_DATA, value=42, marker=0
         int packedMolecule = Config.TYPE_DATA | 42;
 
         CellDataColumns cells = CellDataColumns.newBuilder()
-            .addFlatIndices(510)  // coord [5, 10]
+            .addFlatIndices(490)  // coord [5, 10]
             .addMoleculeData(packedMolecule)
             .addOwnerIds(7)
             .build();
@@ -229,8 +229,8 @@ class SimulationRestorerTest {
         SimulationMetadata metadata = createMinimalMetadata();
 
         CellDataColumns cells = CellDataColumns.newBuilder()
-            .addFlatIndices(510).addMoleculeData(Config.TYPE_DATA | 42).addOwnerIds(7)
-            .addFlatIndices(511).addMoleculeData(Config.TYPE_DATA | 43).addOwnerIds(7)
+            .addFlatIndices(490).addMoleculeData(Config.TYPE_DATA | 42).addOwnerIds(7)
+            .addFlatIndices(491).addMoleculeData(Config.TYPE_DATA | 43).addOwnerIds(7)
             .build();
 
         TickData snapshot = TickData.newBuilder()
@@ -245,7 +245,9 @@ class SimulationRestorerTest {
         ResumeCheckpoint checkpoint = new ResumeCheckpoint(metadata, snapshot);
         SimulationRestorer.RestoredState state = SimulationRestorer.restore(checkpoint, randomProvider, 1);
 
-        assertThat(state.simulation().getEnvironment().getChangedIndices().cardinality())
+        int[] changed = {0};
+        state.simulation().getEnvironment().forEachCellChangedSinceLastSample((index, molecule, owner) -> changed[0]++);
+        assertThat(changed[0])
             .as("a restored cell is state, not a change to it")
             .isZero();
     }
@@ -552,8 +554,8 @@ class SimulationRestorerTest {
     @Test
     void restore_CellColumnsOfDifferentLength_Rejected() {
         CellDataColumns cells = CellDataColumns.newBuilder()
-            .addFlatIndices(510)
-            .addFlatIndices(511)
+            .addFlatIndices(490)
+            .addFlatIndices(491)
             .addMoleculeData(Config.TYPE_DATA | 42)
             .addOwnerIds(7)
             .build();
@@ -1077,7 +1079,7 @@ class SimulationRestorerTest {
 
         // Build the full resolvedConfigJson with environment and runtime
         String fullConfigJson = TestMetadataHelper.builder()
-            .shape(100, 100)
+            .shape(96, 96)
             .toroidal(true)
             .samplingInterval(1)
             .accumulatedDeltaInterval(5)

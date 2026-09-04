@@ -220,7 +220,7 @@ class SimulationToPersistenceIntegrationTest {
                             "snapshotInterval", 1,
                             "chunkInterval", 1,
                             "environment", Map.of(
-                                "shape", List.of(10, 10),
+                                "shape", List.of(32, 32),
                                 "topology", "TORUS"
                             ),
                             "organisms", List.of(Map.of(
@@ -332,7 +332,7 @@ class SimulationToPersistenceIntegrationTest {
                             "snapshotInterval", 1,
                             "chunkInterval", 1,
                             "environment", Map.of(
-                                "shape", List.of(10, 10),
+                                "shape", List.of(32, 32),
                                 "topology", "TORUS"
                             ),
                             "organisms", List.of(Map.of(

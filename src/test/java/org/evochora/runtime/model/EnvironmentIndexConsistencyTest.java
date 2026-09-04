@@ -32,11 +32,11 @@ class EnvironmentIndexConsistencyTest {
         Environment permuted = fill(positions);
 
         List<Integer> expected = new ArrayList<>();
-        ascending.forEachCellOwnedByInIndexOrder(1, expected::add);
+        ascending.visitCellsOwnedBy(1, cell -> expected.add(ascending.properties.toFlatIndex(cell.coordinate())));
         List<Integer> actual = new ArrayList<>();
-        permuted.forEachCellOwnedByInIndexOrder(1, actual::add);
+        permuted.visitCellsOwnedBy(1, cell -> actual.add(permuted.properties.toFlatIndex(cell.coordinate())));
 
-        assertThat(expected).hasSize(900).isSorted();
+        assertThat(expected).hasSize(900).as("visited in ascending flat-index order").isSorted();
         assertThat(actual).isEqualTo(expected);
     }
 
@@ -60,9 +60,9 @@ class EnvironmentIndexConsistencyTest {
         }
 
         List<Integer> expected = new ArrayList<>();
-        ascending.forEachOccupiedIndex(expected::add);
+        ascending.forEachOccupiedCellInFlatIndexOrder((flatIndex, molecule, owner) -> expected.add(flatIndex));
         List<Integer> actual = new ArrayList<>();
-        permuted.forEachOccupiedIndex(actual::add);
+        permuted.forEachOccupiedCellInFlatIndexOrder((flatIndex, molecule, owner) -> actual.add(flatIndex));
 
         assertThat(expected).hasSize(900).isSorted();
         assertThat(actual).isEqualTo(expected);
@@ -70,7 +70,7 @@ class EnvironmentIndexConsistencyTest {
 
     @Test
     void clearOwnershipFor_dropsEmptiedCellsFromTheOccupiedSet() {
-        Environment env = new Environment(new EnvironmentProperties(new int[]{8, 8}, true));
+        Environment env = new Environment(new EnvironmentProperties(new int[]{32, 32}, true));
         env.setMolecule(new Molecule(Config.TYPE_CODE, 0), 5, new int[]{1, 1}); // empty but owned
         env.setMolecule(new Molecule(Config.TYPE_DATA, 3), 5, new int[]{2, 1}); // content and owned
         assertThat(occupied(env)).isEqualTo(2);
@@ -83,18 +83,22 @@ class EnvironmentIndexConsistencyTest {
 
     @Test
     void transferOwnership_keepsTheOccupiedSetConsistent() {
-        Environment env = new Environment(new EnvironmentProperties(new int[]{8, 8}, true));
+        Environment env = new Environment(new EnvironmentProperties(new int[]{32, 32}, true));
         env.setMolecule(new Molecule(Config.TYPE_CODE, 0, 1), 5, new int[]{1, 1}); // empty, owned, marker 1
 
         env.transferOwnership(5, 0, 1); // hand the marked cell to "nobody"
 
         assertThat(env.getOwnerId(1, 1)).isZero();
         assertThat(occupied(env)).isZero();
+        assertThat(env.countCellsOwnedBy(0)).as("nobody owns nothing: no owner set is kept for 0").isZero();
+        int[] visited = {0};
+        env.visitCellsOwnedBy(0, cell -> visited[0]++);
+        assertThat(visited[0]).isZero();
     }
 
     @Test
     void clearMarkersFor_keepsTheOccupiedSetConsistent() {
-        Environment env = new Environment(new EnvironmentProperties(new int[]{8, 8}, true));
+        Environment env = new Environment(new EnvironmentProperties(new int[]{32, 32}, true));
         env.setMolecule(new Molecule(Config.TYPE_DATA, 9, 1), 5, new int[]{1, 1});
 
         env.clearMarkersFor(5, 1);
@@ -114,7 +118,7 @@ class EnvironmentIndexConsistencyTest {
 
     private static int occupied(Environment env) {
         int[] count = {0};
-        env.forEachOccupiedIndex(i -> count[0]++);
+        env.forEachOccupiedCellInFlatIndexOrder((flatIndex, molecule, owner) -> count[0]++);
         return count[0];
     }
 }

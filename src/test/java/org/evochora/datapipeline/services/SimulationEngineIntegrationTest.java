@@ -114,7 +114,7 @@ class SimulationEngineIntegrationTest {
                 "snapshotInterval", 1,
                 "chunkInterval", 1,
                 "environment", Map.of(
-                        "shape", List.of(10, 10),
+                        "shape", List.of(32, 32),
                         "topology", "TORUS"
                 ),
                 "organisms", List.of(Map.of(
@@ -188,8 +188,8 @@ class SimulationEngineIntegrationTest {
         // Verify environment configuration from resolvedConfigJson
         int[] shape = MetadataConfigHelper.getEnvironmentShape(metadata);
         assertEquals(2, shape.length);
-        assertEquals(10, shape[0]);
-        assertEquals(10, shape[1]);
+        assertEquals(32, shape[0]);
+        assertEquals(32, shape[1]);
         assertTrue(MetadataConfigHelper.isEnvironmentToroidal(metadata)); // TORUS topology
     }
 
@@ -710,7 +710,7 @@ class SimulationEngineIntegrationTest {
     @Test
     void engine_shouldRunIn1DWorld() {
         Config config1D = baseConfig
-                .withValue("environment.shape", ConfigValueFactory.fromAnyRef(List.of(50)))
+                .withValue("environment.shape", ConfigValueFactory.fromAnyRef(List.of(64)))
                 .withValue("organisms", ConfigValueFactory.fromAnyRef(List.of(Map.of(
                         "program", programFile1D.toString(),
                         "initialEnergy", 1000,
@@ -733,7 +733,7 @@ class SimulationEngineIntegrationTest {
     @Test
     void engine_shouldRunIn3DWorld() {
         Config config3D = baseConfig
-                .withValue("environment.shape", ConfigValueFactory.fromAnyRef(List.of(8, 8, 8)))
+                .withValue("environment.shape", ConfigValueFactory.fromAnyRef(List.of(32, 32, 32)))
                 .withValue("organisms", ConfigValueFactory.fromAnyRef(List.of(Map.of(
                         "program", programFile3D.toString(),
                         "initialEnergy", 1000,
@@ -774,7 +774,7 @@ class SimulationEngineIntegrationTest {
     @Test
     void engine_shouldRunInLargeWorld() {
         Config largeWorldConfig = baseConfig
-                .withValue("environment.shape", ConfigValueFactory.fromAnyRef(List.of(50, 50)))
+                .withValue("environment.shape", ConfigValueFactory.fromAnyRef(List.of(64, 64)))
                 .withValue("organisms", ConfigValueFactory.fromAnyRef(List.of(Map.of(
                         "program", programFile.toString(),
                         "initialEnergy", 1000,
@@ -797,7 +797,7 @@ class SimulationEngineIntegrationTest {
     @Test
     void engine_shouldRunInSmallWorld() {
         Config smallWorldConfig = baseConfig
-                .withValue("environment.shape", ConfigValueFactory.fromAnyRef(List.of(5, 5)))
+                .withValue("environment.shape", ConfigValueFactory.fromAnyRef(List.of(32, 32)))
                 .withValue("organisms", ConfigValueFactory.fromAnyRef(List.of(Map.of(
                         "program", programFile.toString(),
                         "initialEnergy", 1000,

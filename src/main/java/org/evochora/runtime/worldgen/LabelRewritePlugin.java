@@ -1,7 +1,6 @@
 package org.evochora.runtime.worldgen;
 
 import java.util.Random;
-import java.util.function.IntConsumer;
 
 import org.evochora.runtime.Config;
 import org.evochora.runtime.model.Environment;
@@ -12,8 +11,6 @@ import org.evochora.runtime.spi.IRandomProvider;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
 
 /**
  * Birth handler that gives each newborn organism a unique label namespace by XOR-rewriting
@@ -34,10 +31,11 @@ import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
  * labels through mutation. The difference is that this now requires genuine evolutionary
  * adaptation rather than happening by accident through shared label values.
  * <p>
- * <strong>Performance:</strong> Iterates only owned cells via {@code getCellsOwnedBy()},
- * reads packed ints via {@code getMoleculeInt()}, and writes via {@code setMoleculeByIndex()}.
- * Molecule record allocation occurs only for cells that are actually LABEL or LABELREF
- * (typically 5–20 per organism). Total GC pressure per birth is negligible.
+ * <strong>Performance:</strong> Visits only the newborn's owned cells through
+ * {@link Environment#visitCellsOwnedBy}, reading the packed molecule int from each cell view
+ * and writing the rewritten molecule back through the same view. Per birth this allocates the
+ * visitor lambda, its rewrite counter and one {@link Molecule} record for each cell that is
+ * actually a LABEL or LABELREF (typically 5–20 per organism); the GC pressure is negligible.
  * <p>
  * <strong>Thread Safety:</strong> Not thread-safe. Runs in the sequential post-Execute phase
  * of {@code Simulation.tick()}.
@@ -86,8 +84,7 @@ public class LabelRewritePlugin implements IBirthHandler {
      */
     @Override
     public void onBirth(Organism child, Environment environment) {
-        IntOpenHashSet owned = environment.getCellsOwnedBy(child.getId());
-        if (owned == null || owned.isEmpty()) {
+        if (environment.countCellsOwnedBy(child.getId()) == 0) {
             LOG.debug("tick={} Organism {} label rewrite: no owned cells", child.getBirthTick(), child.getId());
             return;
         }
@@ -95,15 +92,15 @@ public class LabelRewritePlugin implements IBirthHandler {
         int mask = random.nextInt(LABEL_HASH_MASK) + 1; // [1, 0x7FFFF], never zero
         final int[] rewriteCount = {0};
 
-        owned.forEach((IntConsumer) flatIndex -> {
-            int moleculeInt = environment.getMoleculeInt(flatIndex);
+        environment.visitCellsOwnedBy(child.getId(), cell -> {
+            int moleculeInt = cell.moleculeInt();
             int type = moleculeInt & Config.TYPE_MASK;
 
             if (type == Config.TYPE_LABEL || type == Config.TYPE_LABELREF) {
                 int oldValue = moleculeInt & Config.VALUE_MASK;
                 int newValue = oldValue ^ mask;
                 int marker = (moleculeInt & Config.MARKER_MASK) >>> Config.MARKER_SHIFT;
-                environment.setMoleculeByIndex(flatIndex, new Molecule(type, newValue, marker));
+                cell.setMolecule(new Molecule(type, newValue, marker));
                 rewriteCount[0]++;
             }
         });

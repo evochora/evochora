@@ -77,6 +77,7 @@ public class SeedEnergyCreator implements ITickPlugin {
         // knowledge, and nothing here has to repeat it.
         long attemptsLeft = (long) cellsToSeed * MAX_ATTEMPTS_PER_CELL;
         int seeded = 0;
+        int[] coord = new int[environment.getProperties().getDimensions()];
         while (seeded < cellsToSeed) {
             if (attemptsLeft-- <= 0) {
                 throw new IllegalStateException(
@@ -85,8 +86,10 @@ public class SeedEnergyCreator implements ITickPlugin {
                         + " cells placed: the environment holds too few empty cells");
             }
 
-            int flatIndex = random.nextInt(totalCells);
-            if (environment.getMoleculeInt(flatIndex) != 0) {
+            // The draw selects a flat index, so the seeded cells depend on the random
+            // stream and the world's shape alone, not on how the grid is laid out in memory.
+            environment.getProperties().flatIndexToCoordinates(random.nextInt(totalCells), coord);
+            if (environment.getMoleculeIntAt(coord) != 0) {
                 continue;
             }
 
@@ -96,7 +99,7 @@ public class SeedEnergyCreator implements ITickPlugin {
                 finalAmount = (int) (amount * (1.0 + variance));
             }
             if (finalAmount > 0) {
-                environment.setMoleculeByIndex(flatIndex,
+                environment.setMoleculeAt(coord,
                         new Molecule(org.evochora.runtime.Config.TYPE_ENERGY, finalAmount));
             }
             seeded++;

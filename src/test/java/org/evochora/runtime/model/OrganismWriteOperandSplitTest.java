@@ -23,7 +23,7 @@ class OrganismWriteOperandSplitTest {
 
     @BeforeEach
     void setUp() {
-        Environment environment = new Environment(new int[]{100, 100}, true);
+        Environment environment = new Environment(new int[]{96, 96}, true);
         Simulation sim = SimulationTestUtils.createSimulation(environment);
         org = Organism.create(sim, new int[]{0, 0}, 100);
         sim.addOrganism(org);

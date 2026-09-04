@@ -18,7 +18,7 @@ import org.junit.jupiter.api.Test;
 @Tag("unit")
 class EnvironmentParallelWaveGuardTest {
 
-    private final Environment env = new Environment(new EnvironmentProperties(new int[]{8, 8}, true));
+    private final Environment env = new Environment(new EnvironmentProperties(new int[]{32, 32}, true));
     private TickWorkerPool pool;
 
     @AfterEach

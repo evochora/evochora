@@ -366,4 +366,97 @@ class SimulationParametersTest {
         assertEquals("1.5 MB", SimulationParameters.formatBytes(1024 * 1024 + 512 * 1024));
         assertEquals("2.00 GB", SimulationParameters.formatBytes(2L * 1024 * 1024 * 1024));
     }
+
+    @Test
+    void expectedOccupancyScalesOccupiedCellsButNotTheWorld() {
+        SimulationParameters params = SimulationParameters.of(new int[]{100, 100}, 10);
+        SimulationParameters expected = params.withCellOccupancy(0.25);
+
+        assertEquals(10_000, expected.totalCells(), "the world keeps its size");
+        assertEquals(2_500, expected.occupiedCells(), "a quarter of the cells is expected occupied");
+        assertEquals(10_000, params.occupiedCells(), "without a fraction every cell counts as occupied");
+        assertEquals(2_500L * SimulationParameters.BYTES_PER_CELL, expected.estimateEnvironmentBytesPerTick(),
+                "persisted cells follow the occupied count");
+        assertEquals(params.estimateEnvironmentBytesPerTick() / 4, expected.estimateEnvironmentBytesPerTick());
+    }
+
+    // ========================================================================
+    // Validation
+    // ========================================================================
+
+    @Test
+    void constructor_rejectsMoreOccupiedCellsThanTheWorldHas() {
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () ->
+                new SimulationParameters(new int[]{100, 100}, 10_000L, 10_001L, 10, 1, 1, 1, 1, 0.1));
+        assertEquals("occupiedCells must lie between 0 and totalCells (10000), got 10001", exception.getMessage());
+    }
+
+    @Test
+    void constructor_rejectsANegativeOccupiedCellCount() {
+        assertThrows(IllegalArgumentException.class, () ->
+                new SimulationParameters(new int[]{100, 100}, 10_000L, -1L, 10, 1, 1, 1, 1, 0.1));
+    }
+
+    @Test
+    void constructor_rejectsEveryInvalidComponent() {
+        int[] shape = {100, 100};
+        assertThrows(IllegalArgumentException.class, () ->
+                new SimulationParameters(new int[0], 1L, 1L, 10, 1, 1, 1, 1, 0.1), "empty shape");
+        assertThrows(IllegalArgumentException.class, () ->
+                new SimulationParameters(new int[]{100, 0}, 0L, 0L, 10, 1, 1, 1, 1, 0.1), "zero dimension");
+        assertThrows(IllegalArgumentException.class, () ->
+                new SimulationParameters(shape, 9_999L, 1L, 10, 1, 1, 1, 1, 0.1), "totalCells off the shape");
+        assertThrows(IllegalArgumentException.class, () ->
+                new SimulationParameters(new int[]{65536, 65536, 65536, 65536}, 0L, 0L, 10, 1, 1, 1, 1, 0.1),
+                "a cell product that overflows long is rejected instead of wrapping to zero");
+        assertThrows(IllegalArgumentException.class, () ->
+                new SimulationParameters(new int[]{65536, 65536}, 4_294_967_296L, 1L, 10, 1, 1, 1, 1, 0.1),
+                "more cells than an environment can index are rejected, so no estimate can overflow");
+        assertThrows(IllegalArgumentException.class, () ->
+                new SimulationParameters(shape, 10_000L, 1L, -1, 1, 1, 1, 1, 0.1), "negative maxOrganisms");
+        assertThrows(IllegalArgumentException.class, () ->
+                new SimulationParameters(shape, 10_000L, 1L, 10, 0, 1, 1, 1, 0.1), "samplingInterval 0");
+        assertThrows(IllegalArgumentException.class, () ->
+                new SimulationParameters(shape, 10_000L, 1L, 10, 1, 0, 1, 1, 0.1), "accumulatedDeltaInterval 0");
+        assertThrows(IllegalArgumentException.class, () ->
+                new SimulationParameters(shape, 10_000L, 1L, 10, 1, 1, 0, 1, 0.1), "snapshotInterval 0");
+        assertThrows(IllegalArgumentException.class, () ->
+                new SimulationParameters(shape, 10_000L, 1L, 10, 1, 1, 1, 0, 0.1), "chunkInterval 0");
+        assertThrows(IllegalArgumentException.class, () ->
+                new SimulationParameters(shape, 10_000L, 1L, 10, 1, Integer.MAX_VALUE, 2, 1, 0.1),
+                "intervals whose product overflows the ticks per chunk");
+        assertThrows(IllegalArgumentException.class, () ->
+                new SimulationParameters(shape, 10_000L, 1L, 10, 1, 1, 1, 1, 1.5), "ratio above 1");
+        assertThrows(IllegalArgumentException.class, () ->
+                new SimulationParameters(shape, 10_000L, 1L, 10, 1, 1, 1, 1, Double.NaN), "ratio NaN");
+        assertDoesNotThrow(() ->
+                new SimulationParameters(shape, 10_000L, 0L, 0, 1, 1, 1, 1, 0.0), "the lower bounds are valid");
+    }
+
+    @Test
+    void chunkEstimates_failInsteadOfWrappingWhenAChunkIsAbsurdlyLong() {
+        // A world of two billion cells and a chunk of two billion samples: the bytes of one chunk
+        // exceed a long, and every chunk estimate must say so rather than return a wrapped number
+        SimulationParameters params = new SimulationParameters(
+                new int[]{32768, 65504}, 32768L * 65504L, 32768L * 65504L, 10, 1, 1, 1, Integer.MAX_VALUE, 0.1);
+        assertThrows(ArithmeticException.class, params::estimateBytesPerChunk);
+        assertThrows(ArithmeticException.class, params::estimateSerializedBytesPerChunk);
+        assertThrows(ArithmeticException.class, params::estimateCompressionRatio);
+    }
+
+    @Test
+    void withCellOccupancy_rejectsAnOccupancyOutsideTheUnitInterval() {
+        SimulationParameters params = SimulationParameters.of(new int[]{100, 100}, 10);
+        assertThrows(IllegalArgumentException.class, () -> params.withCellOccupancy(-0.1));
+        assertThrows(IllegalArgumentException.class, () -> params.withCellOccupancy(1.1));
+        assertThrows(IllegalArgumentException.class, () -> params.withCellOccupancy(Double.NaN));
+    }
+
+    @Test
+    void withCellOccupancy_staysWithinTheWorld() {
+        SimulationParameters params = SimulationParameters.of(new int[]{100, 100}, 10);
+        assertEquals(10_000L, params.withCellOccupancy(1.0).occupiedCells());
+        assertEquals(1L, params.withCellOccupancy(0.0).occupiedCells(), "at least one cell is always estimated");
+        assertTrue(params.toString().contains("occupiedCells=10000"));
+    }
 }

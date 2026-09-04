@@ -73,14 +73,17 @@ public final class GenomeHasher {
         List<long[]> genomeMolecules = new ArrayList<>();
 
         // Track anchor label: the LABEL at the smallest RELATIVE position (lexicographic).
-        // Using relative position instead of flat index ensures the same anchor is chosen
-        // regardless of absolute placement in toroidal worlds.
+        // Using the relative position instead of the cell's index ensures the same anchor is
+        // chosen regardless of absolute placement in toroidal worlds.
         int anchorLabelValue = -1;
         int anchorEntryIndex = -1;
 
-        // Collect all non-DATA molecules with their relative positions
-        for (int flatIndex : ownedCells) {
-            int moleculeInt = environment.getMoleculeInt(flatIndex);
+        // Collect all non-DATA molecules with their relative positions. The set iterates in an
+        // order that follows the environment's layout indices, and so its memory layout; the
+        // sort by relative position below removes that order, and it is total because two cells
+        // never share a position, so the hash cannot depend on the layout.
+        for (int layoutIndex : ownedCells) {
+            int moleculeInt = environment.getMoleculeInt(layoutIndex);
             int type = moleculeInt & Config.TYPE_MASK;
 
             // Skip DATA molecules - they can be modified by the organism at runtime
@@ -88,7 +91,7 @@ public final class GenomeHasher {
                 continue;
             }
 
-            int[] absCoord = environment.getCoordinateFromIndex(flatIndex);
+            int[] absCoord = environment.getCoordinateFromIndex(layoutIndex);
 
             // Create entry: [relPos0, relPos1, ..., relPosN, moleculeValue]
             long[] entry = new long[dims + 1];

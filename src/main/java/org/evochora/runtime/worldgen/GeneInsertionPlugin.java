@@ -1,7 +1,6 @@
 package org.evochora.runtime.worldgen;
 
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
-import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.isa.Instruction.OperandSource;
@@ -40,13 +39,14 @@ import java.util.Random;
  * <strong>NOP Area Search:</strong> Groups owned cells by scan line (perpendicular to DV),
  * tracks the DV extent per scan line, and walks between minDv and maxDv checking for empty
  * cells ({@code moleculeInt == 0}). This correctly handles the fact that empty cells have
- * no owner and thus never appear in {@code getCellsOwnedBy()}. A qualifying run is selected
+ * no owner and thus never appear among the owned cells. A qualifying run is selected
  * uniformly at random via reservoir sampling across all scan lines.
  * <p>
- * <strong>Performance:</strong> Near-zero allocation after warmup. Reusable coordinate buffers,
- * ScanLineInfo pooling, in-place DV advancement, and reservoir sampling (instead of list
- * collection) minimize GC pressure. The only per-call allocations are one {@code getShape()}
- * defensive copy and 1-4 {@link Molecule} records for the chain.
+ * <strong>Performance:</strong> Near-zero allocation after warmup. The owned cells are visited
+ * through the environment's cell views, and reusable coordinate buffers, ScanLineInfo pooling,
+ * in-place DV advancement, and reservoir sampling (instead of list collection) minimize GC
+ * pressure. The only per-call allocations are one {@code getShape()} defensive copy, the two
+ * visitor lambdas (one per owned-cell pass) and 1-4 {@link Molecule} records for the chain.
  * <p>
  * <strong>Thread Safety:</strong> Not thread-safe. Runs in the sequential post-Execute phase of
  * {@code Simulation.tick()}.
@@ -72,7 +72,6 @@ public class GeneInsertionPlugin implements IBirthHandler {
     // --- Reusable buffers (lazy-initialized on first mutate() call) ---
     private int[] coordBuffer;
     private int[] walkPos;
-    private int[] strides;
     private int[] perpStrides;
 
     // --- Scan line infrastructure (reused across mutate() calls) ---
@@ -173,7 +172,7 @@ public class GeneInsertionPlugin implements IBirthHandler {
         int minDv;
         /** Maximum DV-dimension coordinate on this scan line. */
         int maxDv;
-        /** Any flat index on this scan line, for coordinate reconstruction. */
+        /** The flat index of one owned cell on this scan line, for coordinate reconstruction. */
         int sampleFlatIndex;
         /** Number of owned cells on this scan line. */
         int count;
@@ -181,6 +180,10 @@ public class GeneInsertionPlugin implements IBirthHandler {
         int walkStart;
         /** End of the shortest arc containing all owned cells (inclusive). */
         int walkEnd;
+        /** Start of this line's segment in the shared DV coordinate buffer while walk ranges are resolved. */
+        int segmentStart;
+        /** Number of DV coordinates already placed in this line's segment. */
+        int segmentFill;
 
         /**
          * Resets this info for a new scan line.
@@ -402,8 +405,7 @@ public class GeneInsertionPlugin implements IBirthHandler {
      */
     void mutate(Organism child, Environment env) {
         int childId = child.getId();
-        IntOpenHashSet owned = env.getCellsOwnedBy(childId);
-        if (owned == null || owned.isEmpty()) {
+        if (env.countCellsOwnedBy(childId) == 0) {
             LOG.debug("tick={} Organism {} gene insertion: no owned cells", child.getBirthTick(), childId);
             return;
         }
@@ -418,10 +420,9 @@ public class GeneInsertionPlugin implements IBirthHandler {
         int[] shape = env.getShape();
         int dims = shape.length;
         ensureBuffers(dims);
-        computeStrides(shape, dims);
         computePerpStrides(shape, dims, dvDim);
         buildScanLines(childId, env, dvDim);
-        resolveWalkRanges(owned, env, dvDim, shape[dvDim]);
+        resolveWalkRanges(childId, env, dvDim, shape[dvDim]);
 
         MutationEntry entry = selectEntry();
         chainBuffer.clear();
@@ -623,9 +624,9 @@ public class GeneInsertionPlugin implements IBirthHandler {
 
         final int dvDimFinal = dvDim;
 
-        // Canonical (index) order: the choice below must not depend on write history
-        env.forEachCellOwnedByInIndexOrder(childId, (int flatIndex) -> {
-            env.properties.flatIndexToCoordinates(flatIndex, coordBuffer);
+        // The visit runs in flat-index order: the choice below must not depend on write history
+        env.visitCellsOwnedBy(childId, cell -> {
+            System.arraycopy(cell.coordinate(), 0, coordBuffer, 0, coordBuffer.length);
 
             int perpKey = computePerpKey(coordBuffer, dvDimFinal);
             int dvCoord = coordBuffer[dvDimFinal];
@@ -633,14 +634,14 @@ public class GeneInsertionPlugin implements IBirthHandler {
             ScanLineInfo line = scanLineMap.get(perpKey);
             if (line == null) {
                 line = acquireFromPool();
-                line.reset(dvCoord, flatIndex);
+                line.reset(dvCoord, env.properties.toFlatIndex(coordBuffer));
                 scanLineMap.put(perpKey, line);
             } else {
                 line.update(dvCoord);
             }
 
             // Concurrent reservoir sampling for label hashes
-            int moleculeInt = env.getMoleculeInt(flatIndex);
+            int moleculeInt = cell.moleculeInt();
             if ((moleculeInt & Config.TYPE_MASK) == Config.TYPE_LABEL) {
                 reservoirLabelCount++;
                 if (random.nextInt(reservoirLabelCount) == 0) {
@@ -664,12 +665,12 @@ public class GeneInsertionPlugin implements IBirthHandler {
      * @param dvDim The DV dimension index.
      * @param shapeDvDim The environment size along the DV dimension.
      */
-    private void resolveWalkRanges(IntOpenHashSet owned, Environment env, int dvDim, int shapeDvDim) {
+    private void resolveWalkRanges(int childId, Environment env, int dvDim, int shapeDvDim) {
         boolean anyWrapping = false;
         for (ScanLineInfo line : scanLineMap.values()) {
             line.walkStart = line.minDv;
             line.walkEnd = line.maxDv;
-            if (line.maxDv - line.minDv + 1 >= shapeDvDim - 1) {
+            if (line.maxDv - line.minDv + 1 > shapeDvDim / 2) {
                 anyWrapping = true;
             }
         }
@@ -678,45 +679,47 @@ public class GeneInsertionPlugin implements IBirthHandler {
             return;
         }
 
+        // One pass over the child's cells groups the DV coordinates by scan line: every line owns
+        // a segment of one shared buffer, starting at its offset, sized by its cell count.
+        int total = 0;
+        for (ScanLineInfo line : scanLineMap.values()) {
+            line.segmentStart = total;
+            line.segmentFill = 0;
+            total += line.count;
+        }
+        ensureDvCollector(total);
         final int dvDimF = dvDim;
-        for (var entry : scanLineMap.int2ObjectEntrySet()) {
-            ScanLineInfo line = entry.getValue();
+        env.visitCellsOwnedBy(childId, cell -> {
+            System.arraycopy(cell.coordinate(), 0, coordBuffer, 0, coordBuffer.length);
+            ScanLineInfo line = scanLineMap.get(computePerpKey(coordBuffer, dvDimF));
+            dvCoordCollector[line.segmentStart + line.segmentFill++] = coordBuffer[dvDimF];
+        });
+
+        for (ScanLineInfo line : scanLineMap.values()) {
             if (line.maxDv - line.minDv + 1 <= shapeDvDim / 2) {
                 continue;
             }
-
-            int perpKey = entry.getIntKey();
-            ensureDvCollector(line.count);
-            final int targetPK = perpKey;
-            final int[] idx = {0};
-
-            owned.forEach((int flatIndex) -> {
-                env.properties.flatIndexToCoordinates(flatIndex, coordBuffer);
-                if (computePerpKey(coordBuffer, dvDimF) == targetPK) {
-                    dvCoordCollector[idx[0]++] = coordBuffer[dvDimF];
-                }
-            });
-
-            int count = idx[0];
-            Arrays.sort(dvCoordCollector, 0, count);
+            int from = line.segmentStart;
+            int count = line.count;
+            Arrays.sort(dvCoordCollector, from, from + count);
 
             int largestGap = 0;
             int gapAfterIdx = 0;
             for (int i = 1; i < count; i++) {
-                int gap = dvCoordCollector[i] - dvCoordCollector[i - 1];
+                int gap = dvCoordCollector[from + i] - dvCoordCollector[from + i - 1];
                 if (gap > largestGap) {
                     largestGap = gap;
                     gapAfterIdx = i;
                 }
             }
 
-            int wrapGap = dvCoordCollector[0] + shapeDvDim - dvCoordCollector[count - 1];
+            int wrapGap = dvCoordCollector[from] + shapeDvDim - dvCoordCollector[from + count - 1];
             if (wrapGap > largestGap) {
                 gapAfterIdx = 0;
             }
 
-            line.walkStart = dvCoordCollector[gapAfterIdx];
-            line.walkEnd = dvCoordCollector[(gapAfterIdx - 1 + count) % count];
+            line.walkStart = dvCoordCollector[from + gapAfterIdx];
+            line.walkEnd = dvCoordCollector[from + (gapAfterIdx - 1 + count) % count];
         }
     }
 
@@ -764,8 +767,7 @@ public class GeneInsertionPlugin implements IBirthHandler {
 
             for (int step = 0; step < arcLength; step++) {
                 coordBuffer[dvDim] = dvPos;
-                int flatIdx = computeFlatIndex(coordBuffer);
-                int moleculeInt = env.getMoleculeInt(flatIdx);
+                int moleculeInt = env.getMoleculeIntAt(coordBuffer);
 
                 if (moleculeInt == 0) {
                     if (nopRunStart == -1) {
@@ -852,21 +854,7 @@ public class GeneInsertionPlugin implements IBirthHandler {
         if (coordBuffer == null || coordBuffer.length != dims) {
             coordBuffer = new int[dims];
             walkPos = new int[dims];
-            strides = new int[dims];
             perpStrides = new int[dims];
-        }
-    }
-
-    /**
-     * Computes row-major strides from the world shape.
-     *
-     * @param shape The world shape array.
-     * @param dims Number of dimensions.
-     */
-    private void computeStrides(int[] shape, int dims) {
-        strides[dims - 1] = 1;
-        for (int i = dims - 2; i >= 0; i--) {
-            strides[i] = strides[i + 1] * shape[i + 1];
         }
     }
 
@@ -902,20 +890,6 @@ public class GeneInsertionPlugin implements IBirthHandler {
             key += coord[i] * perpStrides[i];
         }
         return key;
-    }
-
-    /**
-     * Computes a flat index from coordinates using pre-computed strides.
-     *
-     * @param coord The coordinate array.
-     * @return The flat index.
-     */
-    private int computeFlatIndex(int[] coord) {
-        int index = 0;
-        for (int i = 0; i < coord.length; i++) {
-            index += coord[i] * strides[i];
-        }
-        return index;
     }
 
     /**

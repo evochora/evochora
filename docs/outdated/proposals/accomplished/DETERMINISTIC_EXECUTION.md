@@ -281,5 +281,5 @@ count regardless of available cores.
    order, which differs between a live and a rebuilt set (now flat-index order); the occupied-cell
    index was not updated on death/fork ownership transfer; analytics plugin states were restored
    in hash order (now registration order). The occupied-cell index is now a `BitSet`, so snapshots
-   are written in canonical order on live and resumed runs alike. After the fixes run C matched
+   are written in flat-index order on live and resumed runs alike. After the fixes run C matched
    run A. No acceptance data is kept.

@@ -130,9 +130,40 @@ class ResumeForkNeutralityTest {
         ResumeNeutralityHarness.assertSameTrajectory(expected, actual, "parallelism " + parallelism);
     }
 
+    /**
+     * The memory layout of the grid is not part of the contract. A birth with mutations is where a
+     * layout could leak into the trajectory: the mutation operators visit the newborn's cells and
+     * draw randomness on the way, and the label index orders its candidates.
+     */
+    @Test
+    void trajectoryAcrossTheBirth_isLayoutInvariant() {
+        for (int parallelism : new int[]{1, 2}) {
+            int totalTicks = ForkProgram.FORK_TICK + 12;
+            ResumeNeutralityHarness.Fixture tiled = newWorld(parallelism);
+            assertThat(tiled.plugins().stream().map(plugin -> plugin.getClass().getSimpleName()).toList())
+                    .as("every production plugin takes part, so that none can depend on the layout unnoticed")
+                    .containsExactlyInAnyOrder("SeedEnergyCreator", "GeyserCreator", "SolarRadiationCreator",
+                            "DecayOnDeath", "LabelRewritePlugin", "GeneDuplicationPlugin", "GeneDeletionPlugin",
+                            "GeneInsertionPlugin", "GeneSubstitutionPlugin");
+            List<List<String>> expected = ResumeNeutralityHarness.tick(tiled.sim(), tiled.plugins(), totalTicks, true);
+            ResumeNeutralityHarness.Fixture rowMajor = newWorld(parallelism, 1);
+            List<List<String>> actual = ResumeNeutralityHarness.tick(rowMajor.sim(), rowMajor.plugins(), totalTicks, true);
+
+            assertThat(actual.get(totalTicks - 1))
+                    .as("the run must have produced a child")
+                    .hasSizeGreaterThan(expected.get(0).size());
+            ResumeNeutralityHarness.assertSameTrajectory(expected, actual,
+                    "tile side " + Environment.TILE_SIDE + " vs 1 at parallelism " + parallelism);
+        }
+    }
+
     private ResumeNeutralityHarness.Fixture newWorld(int parallelism) {
+        return newWorld(parallelism, Environment.TILE_SIDE);
+    }
+
+    private ResumeNeutralityHarness.Fixture newWorld(int parallelism, int tileSide) {
         ResumeNeutralityHarness.Fixture fixture =
-                ResumeNeutralityHarness.newFixture(MUTATING, SIZE, parallelism);
+                ResumeNeutralityHarness.newFixture(MUTATING, SIZE, parallelism, tileSide);
         simulations.add(fixture.sim());
         ForkProgram.place(fixture.sim(), fixture.env(), new int[]{0, 0}, PARENT_ENERGY);
         return fixture;
@@ -145,16 +176,11 @@ class ResumeForkNeutralityTest {
                 .orElseThrow(() -> new AssertionError("the parent did not reproduce"));
     }
 
-    /** The child's cells as sorted text, so two runs can be compared and differences read off. */
+    /** The child's cells as text in flat-index order, so two runs can be compared and differences read off. */
     private static List<String> cellsOf(Environment environment, int organismId) {
         List<String> cells = new ArrayList<>();
-        int totalCells = environment.getTotalCells();
-        for (int index = 0; index < totalCells; index++) {
-            int[] coord = environment.getCoordinateFromIndex(index);
-            if (environment.getOwnerId(coord) == organismId) {
-                cells.add(index + ":" + environment.getMolecule(coord).toInt());
-            }
-        }
+        environment.visitCellsOwnedBy(organismId, cell ->
+                cells.add(environment.getProperties().toFlatIndex(cell.coordinate()) + ":" + cell.moleculeInt()));
         return cells;
     }
 }

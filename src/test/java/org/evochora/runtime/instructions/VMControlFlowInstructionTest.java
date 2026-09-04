@@ -36,7 +36,7 @@ public class VMControlFlowInstructionTest {
 
     @BeforeEach
     void setUp() {
-        environment = new Environment(new int[]{100}, true);
+        environment = new Environment(new int[]{96}, true);
         sim = SimulationTestUtils.createSimulation(environment);
         org = Organism.create(sim, startPos, 1000);
         sim.addOrganism(org);
@@ -538,7 +538,7 @@ public class VMControlFlowInstructionTest {
     @Tag("unit")
     void testRecoverFromStallResetsPersistentContext() {
         // Use a non-toroidal environment so IP advance runs off the edge → stall
-        Environment nonToroidal = new Environment(new int[]{100}, false);
+        Environment nonToroidal = new Environment(new int[]{96}, false);
         Simulation stalSim = SimulationTestUtils.createSimulation(nonToroidal);
         Organism stalOrg = Organism.create(stalSim, new int[]{5}, 1000);
         stalSim.addOrganism(stalOrg);
@@ -612,7 +612,7 @@ public class VMControlFlowInstructionTest {
     @Test
     @Tag("unit")
     void testRecoverFromStallDoesNotLeakCalleeStackSavedRegisters() {
-        Environment nonToroidal = new Environment(new int[]{100}, false);
+        Environment nonToroidal = new Environment(new int[]{96}, false);
         Simulation stalSim = SimulationTestUtils.createSimulation(nonToroidal);
         Organism stalOrg = Organism.create(stalSim, new int[]{5}, 1000);
         stalSim.addOrganism(stalOrg);

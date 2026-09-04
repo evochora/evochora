@@ -29,7 +29,7 @@ class VirtualMachineTest {
 
     @BeforeEach
     void setUp() {
-        environment = new Environment(new int[]{100, 100}, true);
+        environment = new Environment(new int[]{96, 96}, true);
         sim = SimulationTestUtils.createSimulation(environment);
         vm = sim.getVirtualMachine();
     }

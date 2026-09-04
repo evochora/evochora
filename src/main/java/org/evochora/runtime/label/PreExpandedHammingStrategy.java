@@ -207,14 +207,14 @@ public class PreExpandedHammingStrategy implements ILabelMatchingStrategy {
             // When selectionSpread > 0, uses weighted reservoir sampling among own exact matches
             // to enable "duplication + divergence": after gene duplication, both label copies
             // get a chance to be jumped to, weighted by inverse distance.
-            int bestOwnExactIndex = -1;
+            int bestOwnExactFlatIndex = -1;
             int bestOwnExactDistance = Integer.MAX_VALUE;
             int bestOwnExactOwner = Integer.MAX_VALUE;
             long totalWeight = 0;
 
             for (int i = 0; i < exactList.size(); i++) {
                 LabelEntry entry = exactList.get(i);
-                int distance = toroidalManhattanDistanceToFlat(callerCoords, entry.flatIndex(), props);
+                int distance = toroidalManhattanDistanceToFlatIndex(callerCoords, entry.flatIndex(), props);
 
                 if (!entry.isForeign(codeOwner)) {
                     if (selectionSpread > 0) {
@@ -222,13 +222,13 @@ public class PreExpandedHammingStrategy implements ILabelMatchingStrategy {
                         if (weight < 1) weight = 1;
                         totalWeight += weight;
                         if (random.nextLong(totalWeight) < weight) {
-                            bestOwnExactIndex = entry.flatIndex();
+                            bestOwnExactFlatIndex = entry.flatIndex();
                         }
                     } else {
                         if (distance < bestOwnExactDistance ||
                             (distance == bestOwnExactDistance && entry.owner() < bestOwnExactOwner)) {
                             bestOwnExactDistance = distance;
-                            bestOwnExactIndex = entry.flatIndex();
+                            bestOwnExactFlatIndex = entry.flatIndex();
                             bestOwnExactOwner = entry.owner();
                         }
                     }
@@ -243,8 +243,8 @@ public class PreExpandedHammingStrategy implements ILabelMatchingStrategy {
                 }
             }
 
-            if (bestOwnExactIndex != -1) {
-                return bestOwnExactIndex;
+            if (bestOwnExactFlatIndex != -1) {
+                return bestOwnExactFlatIndex;
             }
         }
 
@@ -260,7 +260,7 @@ public class PreExpandedHammingStrategy implements ILabelMatchingStrategy {
                 if (bucket != null) {
                     for (int i = 0; i < bucket.size(); i++) {
                         LabelEntry entry = bucket.get(i);
-                        int distance = toroidalManhattanDistanceToFlat(callerCoords, entry.flatIndex(), props);
+                        int distance = toroidalManhattanDistanceToFlatIndex(callerCoords, entry.flatIndex(), props);
                         int score = stageBaseScore + distance + (entry.isForeign(codeOwner) ? foreignPenalty : 0);
                         if (score < bestScore || (score == bestScore && entry.owner() < bestOwner)) {
                             bestScore = score;
@@ -284,7 +284,7 @@ public class PreExpandedHammingStrategy implements ILabelMatchingStrategy {
                 if (bucket != null) {
                     for (int i = 0; i < bucket.size(); i++) {
                         LabelEntry entry = bucket.get(i);
-                        int distance = toroidalManhattanDistanceToFlat(callerCoords, entry.flatIndex(), props);
+                        int distance = toroidalManhattanDistanceToFlatIndex(callerCoords, entry.flatIndex(), props);
                         int score = stageBaseScore + distance + (entry.isForeign(codeOwner) ? foreignPenalty : 0);
                         if (score < bestScore || (score == bestScore && entry.owner() < bestOwner)) {
                             bestScore = score;
@@ -308,7 +308,7 @@ public class PreExpandedHammingStrategy implements ILabelMatchingStrategy {
                 if (bucket != null) {
                     for (int i = 0; i < bucket.size(); i++) {
                         LabelEntry entry = bucket.get(i);
-                        int distance = toroidalManhattanDistanceToFlat(callerCoords, entry.flatIndex(), props);
+                        int distance = toroidalManhattanDistanceToFlatIndex(callerCoords, entry.flatIndex(), props);
                         int score = stageBaseScore + distance + (entry.isForeign(codeOwner) ? foreignPenalty : 0);
                         if (score < bestScore || (score == bestScore && entry.owner() < bestOwner)) {
                             bestScore = score;
@@ -324,22 +324,12 @@ public class PreExpandedHammingStrategy implements ILabelMatchingStrategy {
     }
 
     /**
-     * Calculates the toroidal Manhattan distance between two coordinates.
-     * <p>
-     * For each dimension, uses the shorter path (direct or wrap-around).
-     *
-     * @param a First coordinate
-     * @param b Second coordinate
-     * @param shape The environment shape (for wrap-around calculation)
-     * @return The toroidal Manhattan distance
+     * Toroidal Manhattan distance between the caller's coordinates and the cell at a flat
+     * index. The cell's coordinate is decoded dimension-wise from the index and the world's
+     * row-major strides without materializing a coordinate array, and each per-dimension
+     * difference takes the shorter way around the torus.
      */
-    /**
-     * Toroidal Manhattan distance between the caller's coordinates and a label's flat
-     * index. The label's coordinate is decoded dimension-wise from the index and the
-     * world's strides without materializing a coordinate array, and each per-dimension
-     * difference wraps around the world, taking the shorter way around the torus.
-     */
-    private static int toroidalManhattanDistanceToFlat(int[] caller, int flatIndex, EnvironmentProperties props) {
+    private static int toroidalManhattanDistanceToFlatIndex(int[] caller, int flatIndex, EnvironmentProperties props) {
         int distance = 0;
         int remaining = flatIndex;
         for (int i = 0; i < caller.length; i++) {
@@ -354,9 +344,10 @@ public class PreExpandedHammingStrategy implements ILabelMatchingStrategy {
 
     @Override
     public void addLabel(int labelValue, LabelEntry entry) {
-        // Entries of one value are kept ordered by flat index, so that candidate order — and with
-        // it the stochastic selection — depends on the environment's content alone, never on the
-        // order in which labels were placed (a resumed run rebuilds the index from a snapshot).
+        // Entries of one value are kept ordered by flat index, so that candidate order — and
+        // with it the stochastic selection — depends on the labels' coordinates alone: never on the
+        // order in which labels were placed (a resumed run rebuilds the index from a snapshot) and
+        // never on how the grid is laid out in memory.
         List<LabelEntry> entries = valueToLabels.computeIfAbsent(labelValue, k -> new ArrayList<>());
         int low = 0;
         int high = entries.size();

@@ -170,15 +170,10 @@ class MutationInsertionOrderIndependenceTest {
             };
         }
 
-        /** All occupied cells as "index:molecule:owner", in ascending index order. */
+        /** All occupied cells as "index:molecule:owner", in ascending flat-index order. */
         List<String> cells() {
-            List<int[]> raw = new ArrayList<>();
-            env.forEachOccupiedIndex(i -> raw.add(new int[]{i, env.getMoleculeInt(i), env.getOwnerIdByIndex(i)}));
-            raw.sort((a, b) -> Integer.compare(a[0], b[0]));
-            List<String> out = new ArrayList<>(raw.size());
-            for (int[] c : raw) {
-                out.add(c[0] + ":" + c[1] + ":" + c[2]);
-            }
+            List<String> out = new ArrayList<>();
+            env.forEachOccupiedCellInFlatIndexOrder((index, molecule, owner) -> out.add(index + ":" + molecule + ":" + owner));
             return out;
         }
     }

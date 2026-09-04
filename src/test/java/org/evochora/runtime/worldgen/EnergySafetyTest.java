@@ -1,5 +1,7 @@
 package org.evochora.runtime.worldgen;
 
+import org.evochora.runtime.model.EnvironmentProperties;
+import org.evochora.runtime.label.PreExpandedHammingStrategy;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
 import org.evochora.runtime.internal.services.SeededRandomProvider;
@@ -27,7 +29,8 @@ public class EnergySafetyTest {
     @Test
     @Tag("unit")
     void solar_does_not_place_within_safety_radius_of_owned_cells() {
-        Environment env = new Environment(new int[]{5, 5}, true);
+        // A world this small cannot be tiled; the row-major layout (tile side 1) keeps the test's cell count.
+        Environment env = new Environment(new EnvironmentProperties(new int[]{5, 5}, true), new PreExpandedHammingStrategy(), 1);
         // Mark center owned
         env.setOwnerId(99, 2, 2);
 
@@ -64,7 +67,8 @@ public class EnergySafetyTest {
     @Test
     @Tag("unit")
     void geyser_sources_and_eruptions_respect_safety_radius() {
-        Environment env = new Environment(new int[]{7, 7}, true);
+        // A world this small cannot be tiled; the row-major layout (tile side 1) keeps the test's cell count.
+        Environment env = new Environment(new EnvironmentProperties(new int[]{7, 7}, true), new PreExpandedHammingStrategy(), 1);
         // Create an owned block in the middle (3x3) to create a forbidden zone with radius 1-2
         for (int x = 2; x <= 4; x++) {
             for (int y = 2; y <= 4; y++) {
