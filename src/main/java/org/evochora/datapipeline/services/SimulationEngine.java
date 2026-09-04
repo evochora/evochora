@@ -168,11 +168,22 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         if (!(estimatedDeltaRatio >= 0.0 && estimatedDeltaRatio <= 1.0)) {
             throw new IllegalArgumentException("estimatedDeltaRatio must lie between 0.0 and 1.0, got " + estimatedDeltaRatio);
         }
+        int samplingInterval = readPositiveInt(config, "samplingInterval", 1);
+        int accumulatedDeltaInterval = readPositiveInt(config, "accumulatedDeltaInterval", SimulationParameters.DEFAULT_ACCUMULATED_DELTA_INTERVAL);
+        int snapshotInterval = readPositiveInt(config, "snapshotInterval", SimulationParameters.DEFAULT_SNAPSHOT_INTERVAL);
+        int chunkInterval = readPositiveInt(config, "chunkInterval", SimulationParameters.DEFAULT_CHUNK_INTERVAL);
+        try {
+            // The ticks a chunk spans must fit an int, as SimulationParameters requires of them
+            Math.multiplyExact(Math.multiplyExact(Math.multiplyExact(samplingInterval, accumulatedDeltaInterval),
+                    snapshotInterval), chunkInterval);
+        } catch (ArithmeticException overflow) {
+            throw new IllegalArgumentException("samplingInterval × accumulatedDeltaInterval × snapshotInterval"
+                    + " × chunkInterval must not exceed " + Integer.MAX_VALUE + " ticks per chunk, got "
+                    + samplingInterval + " × " + accumulatedDeltaInterval + " × " + snapshotInterval + " × " + chunkInterval,
+                    overflow);
+        }
         return new RunOptions(
-            readPositiveInt(config, "samplingInterval", 1),
-            readPositiveInt(config, "accumulatedDeltaInterval", SimulationParameters.DEFAULT_ACCUMULATED_DELTA_INTERVAL),
-            readPositiveInt(config, "snapshotInterval", SimulationParameters.DEFAULT_SNAPSHOT_INTERVAL),
-            readPositiveInt(config, "chunkInterval", SimulationParameters.DEFAULT_CHUNK_INTERVAL),
+            samplingInterval, accumulatedDeltaInterval, snapshotInterval, chunkInterval,
             organismDensityFactor,
             readPositiveInt(config, "maxCellsPerOrganism", SimulationParameters.DEFAULT_MAX_CELLS_PER_ORGANISM),
             estimatedDeltaRatio

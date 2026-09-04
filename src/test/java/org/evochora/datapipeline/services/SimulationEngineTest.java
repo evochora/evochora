@@ -266,6 +266,12 @@ class SimulationEngineTest {
         assertRejected("chunkInterval", -1, "chunkInterval must be >= 1");
         assertRejected("organismDensityFactor", -0.5, "organismDensityFactor must be >= 0, got -0.5");
         assertRejected("estimatedDeltaRatio", 1.5, "estimatedDeltaRatio must lie between 0.0 and 1.0, got 1.5");
+        Config overflowing = createValidConfig()
+                .withValue("accumulatedDeltaInterval", ConfigValueFactory.fromAnyRef(Integer.MAX_VALUE))
+                .withValue("snapshotInterval", ConfigValueFactory.fromAnyRef(2));
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
+                () -> new SimulationEngine("test-engine", overflowing, resources));
+        assertTrue(exception.getMessage().startsWith("samplingInterval × accumulatedDeltaInterval"), exception.getMessage());
     }
 
     private void assertRejected(String option, Object value, String expectedMessage) {

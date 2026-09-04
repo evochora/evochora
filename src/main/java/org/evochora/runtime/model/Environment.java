@@ -310,7 +310,9 @@ public class Environment implements IEnvironmentReader {
      * retained cursor over them, so after the first visit nothing here allocates. The buffers and
      * the cursor are shared by all owned-cell visits of this environment: a visit started inside a
      * visitor fails fast rather than corrupting the visit in progress. A visitor that needs the
-     * cells of a second organism collects what it needs and visits that organism afterwards.
+     * cells of a second organism collects what it needs and visits that organism afterwards. The
+     * flat-index visits keep their own batch, so one of them may run inside an owned-cell visit
+     * and vice versa; only a visit of the same kind is rejected.
      *
      * @param ownerId the owner whose cells to visit
      * @param visitor receives the view, positioned on one cell after the other

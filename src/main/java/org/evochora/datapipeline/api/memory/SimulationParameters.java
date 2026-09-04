@@ -88,8 +88,8 @@ public record SimulationParameters(
         }
         if (totalCells > Integer.MAX_VALUE) {
             // The environment indexes its cells with an int; the per-tick estimates, a cell count
-            // times a few hundred bytes, therefore fit a long, and the per-chunk estimates check
-            // their own arithmetic
+            // times a few hundred bytes, therefore fit a long, and the per-chunk estimates
+            // (estimateBytesPerChunk, estimateSerializedBytesPerChunk) check their own arithmetic
             throw new IllegalArgumentException("totalCells must not exceed " + Integer.MAX_VALUE
                     + ", the most cells an environment can index, got " + totalCells);
         }
