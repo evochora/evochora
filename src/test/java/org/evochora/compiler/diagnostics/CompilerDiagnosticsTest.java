@@ -528,6 +528,32 @@ class CompilerDiagnosticsTest {
                 .hasMessageContaining("main.evo:3");
     }
 
+    @Test
+    void aPlacementCoordinateWithMoreDimensionsThanTheWorldIsRejected() throws Exception {
+        write("main.evo",
+                "START:",
+                "  NOP",
+                ".PLACE DATA:1 5|5|7");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("Coordinate [5, 5, 7] has 3 dimensions, the world has 2.")
+                .hasMessageContaining("main.evo:3");
+    }
+
+    @Test
+    void anOriginWithMoreDimensionsThanTheWorldIsRejectedAtTheFirstCellPlacedThere() throws Exception {
+        write("main.evo",
+                ".ORG 1|2|3",
+                "START:",
+                "  NOP");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("Coordinate [1, 2, 3] has 3 dimensions, the world has 2.")
+                .hasMessageContaining("main.evo:2");
+    }
+
     private void write(String fileName, String... lines) throws Exception {
         Files.writeString(sourceRoot.resolve(fileName), String.join("\n", lines) + "\n");
     }

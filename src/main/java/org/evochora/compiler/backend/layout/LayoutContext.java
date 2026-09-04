@@ -283,11 +283,16 @@ public final class LayoutContext {
     }
 
     /**
-     * Claims a cell for an item, or reports whose it already is.
+     * Claims a cell for an item, or reports whose it already is. A coordinate with more or
+     * fewer dimensions than the world cannot name a cell, and is reported with the item's position.
      *
      * @return The cell's key in the occupancy tables.
      */
     private String occupy(int[] coord, Occupant occupant) throws CompilationException {
+        if (envProps != null && envProps.getWorldShape() != null && coord.length != envProps.getWorldShape().length) {
+            throw new CompilationException(String.format("%s: Coordinate %s has %d dimensions, the world has %d.",
+                    occupant.location(), Arrays.toString(coord), coord.length, envProps.getWorldShape().length));
+        }
         String coordKey = coordToStringKey(coord);
         Occupant existing = occupied.get(coordKey);
         if (existing != null) {
