@@ -59,3 +59,4 @@ specifications and carry no commitment to implement.
 | [LOCAL_STATE](ideas/LOCAL_STATE.md) | `.STATE`/`.LOAD`/`.STORE` directives for grid-backed module state, replacing manual `.ORG`+`.PLACE`+`STATIC_LOAD` macros |
 | [DATA_ACCESS_IMPROVEMENTS](ideas/DATA_ACCESS_IMPROVEMENTS.md) | Backlog for analysis tooling: `death_tick` column, lifecycle/Muller/lineage analytics plugins, read-only SQL access |
 | [EVOLUTION_VISUALIZATION](ideas/EVOLUTION_VISUALIZATION.md) | Catalogue of ten visualisation ideas for evolutionary dynamics, classified by target view and data availability |
+| [OPEN_COMPILER_BACKEND](ideas/OPEN_COMPILER_BACKEND.md) | Compiler backend with feature-defined IR item kinds and per-phase item-handler registries; due when the first feature needs a kind beyond instruction, label and directive |
