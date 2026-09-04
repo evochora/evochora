@@ -12,6 +12,9 @@ import org.evochora.runtime.model.EnvironmentProperties;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.Set;
 import java.util.List;
 import java.util.Map;
 
@@ -58,7 +61,32 @@ public final class LayoutEngine {
             }
         }
 
-        return new LayoutResult(ctx.linearToCoord(), ctx.coordToLinear(), labelToAddress, ctx.sourceMap(),
-                ctx.initialWorldObjects(), List.copyOf(placedItems));
+        return new LayoutResult(ctx.linearToCoord(), ctx.coordToLinear(), labelToAddress,
+                assignLabelValues(labelToAddress, isa), ctx.sourceMap(), ctx.initialWorldObjects(), List.copyOf(placedItems));
+    }
+
+    /**
+     * Gives every label the value that stands for it in the machine code. A label gets the
+     * value the instruction set derives from its name; if another label of the program has that
+     * value already, it gets the value derived from its name and an attempt number instead,
+     * so that no two labels share one and a jump cannot mistake one for the other. Labels are
+     * taken in address order, which makes the assignment the same for the same program.
+     */
+    private static Map<String, Integer> assignLabelValues(Map<String, Integer> labelToAddress, IInstructionSet isa) {
+        List<String> byAddress = labelToAddress.entrySet().stream()
+                .sorted(Map.Entry.comparingByValue())
+                .map(Map.Entry::getKey)
+                .toList();
+        Map<String, Integer> labelToValue = new LinkedHashMap<>();
+        Set<Integer> taken = new HashSet<>();
+        for (String name : byAddress) {
+            int value = isa.labelValue(name);
+            for (int attempt = 1; taken.contains(value); attempt++) {
+                value = isa.labelValue(name + "#" + attempt);
+            }
+            taken.add(value);
+            labelToValue.put(name, value);
+        }
+        return labelToValue;
     }
 }

@@ -42,7 +42,7 @@ class CallSiteBindingRuleTest {
         context = new LinkingContext(stubIsa);
         layout = new LayoutResult(
                 Collections.emptyMap(), Collections.emptyMap(),
-                Collections.emptyMap(), Collections.emptyMap(), Collections.emptyMap(),
+                Collections.emptyMap(), Collections.emptyMap(), Collections.emptyMap(), Collections.emptyMap(),
                 Collections.emptyList()
         );
         dummySource = new SourceInfo("test.s", 1, 0);

@@ -5,7 +5,6 @@ import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.isa.IInstructionSet;
 import org.evochora.compiler.model.ir.IrImm;
 import org.evochora.compiler.model.ir.IrInstruction;
-import org.evochora.compiler.model.ir.IrLabelDef;
 import org.evochora.compiler.model.ir.IrLabelRef;
 import org.evochora.compiler.model.ir.IrOperand;
 import org.evochora.compiler.model.ir.IrReg;
@@ -60,11 +59,11 @@ public final class OperandEncoder {
     /**
      * Encodes a label definition.
      *
-     * @param label The label.
-     * @return The packed LABEL molecule carrying the label's value.
+     * @param value The value the layout assigned to the label.
+     * @return The packed LABEL molecule carrying that value.
      */
-    public int encodeLabel(IrLabelDef label) {
-        return isa.encodeCell(labelType, isa.labelValue(label.name()));
+    public int encodeLabel(int value) {
+        return isa.encodeCell(labelType, value);
     }
 
     /**

@@ -80,4 +80,31 @@ public class LayoutEngineTest {
         reg.register("core", "pop_ctx", new PopCtxLayoutHandler());
         return reg;
     }
+
+    /**
+     * Two label names whose values collide get different values, the earlier one its own, so
+     * that a jump cannot mistake one for the other; the values are the same on every run.
+     */
+    @Test
+    void twoLabelsWithTheSameHashGetDifferentValues() throws Exception {
+        RuntimeInstructionSetAdapter isa = new RuntimeInstructionSetAdapter();
+        java.util.Map<Integer, String> seen = new java.util.HashMap<>();
+        String first = null, second = null;
+        for (int i = 0; second == null; i++) {
+            String name = "L" + i;
+            String other = seen.putIfAbsent(isa.labelValue(name), name);
+            if (other != null) { first = other; second = name; }
+        }
+
+        IrProgram ir = new IrProgram("Collision", List.of(
+                new IrLabelDef(first, src("main.evo", 1)),
+                new IrInstruction("NOP", List.of(), src("main.evo", 2)),
+                new IrLabelDef(second, src("main.evo", 3))));
+        LayoutResult once = new LayoutEngine().layout(ir, isa, new EnvironmentProperties(new int[]{10, 10}, true), allLayoutHandlers());
+        LayoutResult again = new LayoutEngine().layout(ir, isa, new EnvironmentProperties(new int[]{10, 10}, true), allLayoutHandlers());
+
+        assertThat(once.labelToValue().get(first)).isEqualTo(isa.labelValue(first));
+        assertThat(once.labelToValue().get(second)).isNotEqualTo(once.labelToValue().get(first));
+        assertThat(again.labelToValue()).isEqualTo(once.labelToValue());
+    }
 }

@@ -83,7 +83,8 @@ public class Emitter {
                     if (labelAddress == null) {
                         throw new CompilationException(OperandEncoder.located(lbl.source(), "Label '" + lbl.name() + "' not found in layout"));
                     }
-                    machineCodeLayout.put(coordinateOf(linearToCoord, labelAddress, lbl.source()), encoder.encodeLabel(lbl));
+                    machineCodeLayout.put(coordinateOf(linearToCoord, labelAddress, lbl.source()),
+                            encoder.encodeLabel(layout.labelToValue().get(lbl.name())));
                     address = labelAddress + 1;
                 }
                 case IrInstruction ins -> {
@@ -115,11 +116,10 @@ public class Emitter {
         // Label values for the visualizer's view of fuzzy jumps
         Map<Integer, String> labelValueToName = new HashMap<>();
         Map<String, Integer> labelNameToValue = new HashMap<>();
-        for (String name : layout.labelToAddress().keySet()) {
-            int value = isa.labelValue(name);
+        layout.labelToValue().forEach((name, value) -> {
             labelValueToName.put(value, name);
             labelNameToValue.put(name, value);
-        }
+        });
 
         Map<String, List<String>> linesByFile = new HashMap<>();
         sources.forEach((path, text) -> linesByFile.put(path, Arrays.asList(text.split("\\r?\\n"))));

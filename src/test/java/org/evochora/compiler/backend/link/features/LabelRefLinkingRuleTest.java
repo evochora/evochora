@@ -46,6 +46,7 @@ class LabelRefLinkingRuleTest {
                 Map.of(10, new int[]{5, 5}),
                 Map.of("5|5", 10),
                 Map.of("TEST.FOO", 10),
+                valuesOf(Map.of("TEST.FOO", 10)),
                 Collections.emptyMap(),
                 Collections.emptyMap(),
                 Collections.emptyList()
@@ -86,6 +87,7 @@ class LabelRefLinkingRuleTest {
                     Map.of(0, new int[]{0, 0}),
                     Map.of("0|0", 0),
                     Map.of(qualifiedName, 0),
+                    valuesOf(Map.of(qualifiedName, 0)),
                     Collections.emptyMap(),
                     Collections.emptyMap(),
                     Collections.emptyList()
@@ -123,6 +125,7 @@ class LabelRefLinkingRuleTest {
                 Map.of(3, new int[]{3, 0}),
                 Map.of("3|0", 3),
                 Map.of("_safe_call_0", 3),
+                valuesOf(Map.of("_safe_call_0", 3)),
                 Collections.emptyMap(),
                 Collections.emptyMap(),
                 Collections.emptyList()
@@ -149,6 +152,7 @@ class LabelRefLinkingRuleTest {
                 Collections.emptyMap(),
                 Collections.emptyMap(),
                 Collections.emptyMap(),
+                valuesOf(Collections.emptyMap()),
                 Collections.emptyMap(),
                 Collections.emptyMap(),
                 Collections.emptyList()
@@ -175,6 +179,7 @@ class LabelRefLinkingRuleTest {
                 Collections.emptyMap(),
                 Collections.emptyMap(),
                 Map.of("TEST.OTHER_LABEL", 5), // Different label
+                valuesOf(Map.of("TEST.OTHER_LABEL", 5)),
                 Collections.emptyMap(),
                 Collections.emptyMap(),
                 Collections.emptyList()
@@ -191,5 +196,12 @@ class LabelRefLinkingRuleTest {
 
         // Then: The IrLabelRef is NOT converted (stays as-is for error handling later)
         assertThat(result.operands().get(0)).isInstanceOf(IrLabelRef.class);
+    }
+
+    /** The values the layout would assign when no two of the labels collide. */
+    private static Map<String, Integer> valuesOf(Map<String, Integer> labelToAddress) {
+        Map<String, Integer> values = new java.util.HashMap<>();
+        labelToAddress.keySet().forEach(name -> values.put(name, new org.evochora.compiler.isa.RuntimeInstructionSetAdapter().labelValue(name)));
+        return values;
     }
 }

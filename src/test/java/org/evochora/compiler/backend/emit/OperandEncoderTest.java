@@ -5,7 +5,6 @@ import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 import org.evochora.compiler.model.ir.IrImm;
 import org.evochora.compiler.model.ir.IrInstruction;
-import org.evochora.compiler.model.ir.IrLabelDef;
 import org.evochora.compiler.model.ir.IrLabelRef;
 import org.evochora.compiler.model.ir.IrReg;
 import org.evochora.compiler.model.ir.IrTypedImm;
@@ -69,11 +68,9 @@ class OperandEncoderTest {
     }
 
     @Test
-    void labelBecomesALabelMoleculeWithTheLabelValue() {
-        IrLabelDef label = new IrLabelDef("MAIN.START", SRC);
-
-        assertThat(encoder.encodeLabel(label))
-                .isEqualTo(new Molecule(Config.TYPE_LABEL, new RuntimeInstructionSetAdapter().labelValue("MAIN.START")).toInt());
+    void labelBecomesALabelMoleculeWithTheAssignedValue() {
+        assertThat(encoder.encodeLabel(12345))
+                .isEqualTo(new Molecule(Config.TYPE_LABEL, 12345).toInt());
     }
 
     @Test
