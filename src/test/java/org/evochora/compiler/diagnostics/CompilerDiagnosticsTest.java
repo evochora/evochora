@@ -554,6 +554,22 @@ class CompilerDiagnosticsTest {
                 .hasMessageContaining("main.evo:2");
     }
 
+    @Test
+    void constantsOfTheSameNameInTwoModulesAreNoCircle() throws Exception {
+        write("lib.evo",
+                ".DEFINE A DATA:5",
+                "EXPORT .DEFINE B A",
+                "HELPER:",
+                "  NOP");
+        write("main.evo",
+                ".IMPORT \"lib.evo\" AS LIB",
+                ".DEFINE A LIB.B",
+                "START:",
+                "  SETI %DR0 A");
+
+        compile("main.evo");
+    }
+
     private void write(String fileName, String... lines) throws Exception {
         Files.writeString(sourceRoot.resolve(fileName), String.join("\n", lines) + "\n");
     }

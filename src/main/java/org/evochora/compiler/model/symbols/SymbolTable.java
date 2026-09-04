@@ -307,6 +307,8 @@ public class SymbolTable {
      */
     public Optional<AstNode> bindingOf(IdentifierNode reference) {
         IdentifierNode current = reference;
+        // The symbols visited, by identity, and the names as written, for the message
+        Set<Symbol> visited = Collections.newSetFromMap(new IdentityHashMap<>());
         List<String> chain = new ArrayList<>();
         SourceInfo firstDefinition = null;
         for (int depth = 0; depth < MAX_BINDING_DEPTH; depth++) {
@@ -317,8 +319,8 @@ public class SymbolTable {
             if (!(resolved.get().symbol().node() instanceof IIdentifierBinding binding)) {
                 return Optional.of(new IdentifierNode(resolved.get().qualifiedName(), current.sourceInfo()));
             }
-            if (chain.contains(current.text())) {
-                if (reportedCircles.add(chain.get(0))) {
+            if (visited.contains(resolved.get().symbol())) {
+                if (reportedCircles.add(resolved.get().symbol().sourceInfo() + " " + resolved.get().symbol().name())) {
                     diagnostics.reportError(
                             "Definition of " + chain.get(0) + " is circular: " + String.join(" -> ", chain) + " -> " + current.text() + ".",
                             firstDefinition != null ? firstDefinition.fileName() : "unknown",
@@ -326,6 +328,7 @@ public class SymbolTable {
                 }
                 return Optional.empty();
             }
+            visited.add(resolved.get().symbol());
             chain.add(current.text());
             if (firstDefinition == null) {
                 firstDefinition = resolved.get().symbol().sourceInfo();
