@@ -241,7 +241,7 @@ When the compiler encounters `.IF <conditional>`:
 
 ### Label Generation
 
-The compiler generates unique label names for each `.IF`/`.ELSEIF`/`.ELSE`/`.ENDIF` block using a monotonic counter: `__if_N`, `__elseif_N`, `__else_N`, `__endif_N`. Labels are prefixed with `__` to avoid collision with user-defined labels. The counter is global across the compilation unit to ensure uniqueness.
+The compiler generates unique label names for each `.IF`/`.ELSEIF`/`.ELSE`/`.ENDIF` block using a monotonic counter: `__if_N`, `__elseif_N`, `__else_N`, `__endif_N`. Labels are prefixed with `__` to avoid collision with user-defined labels. The counter is global across the compilation unit to ensure uniqueness, and it belongs to that compilation: it starts at zero for every run of the compiler, never in a static field, so that the same source compiles to the same artifact. The bridge labels of the marshalling rules (`_safe_call_N`) are numbered the same way.
 
 ### Phase and Architecture
 

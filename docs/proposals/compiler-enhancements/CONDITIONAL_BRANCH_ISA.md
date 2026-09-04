@@ -126,6 +126,13 @@ The compiler-generated control flow sugar (future proposal) will use branch vari
 
 ### Conditional Instruction Metadata
 
+> **Note (2026-09-04):** The skip half of this is done. `ConditionalUtils` is gone; every
+> conditional is registered together with its negation in `ConditionalInstruction.regPair`,
+> `negationOf` answers the negation by name, and the compiler asks through
+> `IInstructionSet.negatedConditional`. What remains is the branch half: `regPair` grows into
+> the `conditionalSet` described below, the instruction-set view gains the branch variant, and
+> the marshalling rules ask the view rather than a table of their own.
+
 Replace `ConditionalUtils` (hardcoded Map in `backend/emit/`) with explicit metadata on `ConditionalInstruction`. Relationships are declared via `conditionalSet()` — one call per instruction group that registers all four related instructions and derives all relationships automatically.
 
 ```java
@@ -183,6 +190,8 @@ All methods return `Optional.empty()` when no counterpart exists. If a new instr
 ### Compiler Marshalling Rule Changes
 
 `CallerMarshallingRule` and `ProcedureMarshallingRule` currently detect "skip-conditional before CALL/RET" and generate `negate + JMPI + marshalling` (2 instructions overhead). With branch variants, they can generate better machine code (1 instruction overhead).
+
+The rules reach these methods through `IInstructionSet`, the compiler's view of the instruction set; no feature reads `ConditionalInstruction` directly.
 
 **Updated logic (same for both rules):**
 
