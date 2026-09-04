@@ -12,10 +12,10 @@ import org.evochora.compiler.model.ast.IModuleContextBoundary;
  * For .SOURCE directives, the alias chain is null — the enclosing module
  * context is preserved.</p>
  *
- * @param targetPath The absolute path of the module being entered, or {@code null} where no
- *                   separate module is entered, as for .SOURCE text inclusions.
+ * @param targetPath The resolved absolute path of the included file, for a module and for a
+ *                   .SOURCE text inclusion alike.
  * @param aliasChain The import alias chain the traversal switches to (e.g., "PRED.MATH"), or
- *                   {@code null} to keep the enclosing module context.
+ *                   {@code null} to keep the enclosing module context, as for .SOURCE.
  */
 public record PushCtxNode(String targetPath, String aliasChain) implements AstNode, IModuleContextBoundary {
 
