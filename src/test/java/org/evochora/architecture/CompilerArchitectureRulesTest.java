@@ -23,6 +23,7 @@ import org.evochora.compiler.backend.emit.IEmissionContributor;
 import org.evochora.compiler.backend.rewrite.IRewriteRule;
 import org.evochora.compiler.backend.layout.ILayoutDirectiveHandler;
 import org.evochora.compiler.backend.link.ILinkingDirectiveHandler;
+import org.evochora.compiler.model.symbols.Symbol;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.compiler.backend.link.ILinkingRule;
 import org.evochora.compiler.model.ast.AstNode;
@@ -255,6 +256,22 @@ class CompilerArchitectureRulesTest {
         noClasses().that().resideInAnyPackage(COMPILER + ".frontend..", COMPILER + ".backend..")
                 .and().resideOutsideOfPackage(COMPILER + ".frontend.tokenmap..")
                 .should().dependOnClassesThat().haveFullyQualifiedName(COMPILER + ".model.symbols.Symbol$Type")
+                .check(compilerClasses);
+    }
+
+    /**
+     * Nobody reads the kind of a symbol except the token map, which reports the kinds to the
+     * visualizer. A feature that needs to know what an identifier stands for asks the node
+     * that defined it: an {@code IIdentifierBinding} says what the identifier binds to, an
+     * {@code IJumpTarget} that it marks a place in the code. Those capabilities are the
+     * model's, the kinds are the features'.
+     */
+    @Test
+    void nobodyReadsTheKindOfASymbol() {
+        noClasses().that().resideInAPackage(COMPILER + "..")
+                .and().resideOutsideOfPackage(COMPILER + ".frontend.tokenmap..")
+                .and().doNotHaveFullyQualifiedName(Symbol.class.getName())
+                .should().callMethod(Symbol.class, "type")
                 .check(compilerClasses);
     }
 

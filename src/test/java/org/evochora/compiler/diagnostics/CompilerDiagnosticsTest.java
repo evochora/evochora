@@ -379,6 +379,83 @@ class CompilerDiagnosticsTest {
         compile("main.evo");
     }
 
+    @Test
+    void aConstantWhereARegisterIsExpectedNamesTheKindItHas() throws Exception {
+        write("main.evo",
+                ".DEFINE LIMIT DATA:5",
+                "START:",
+                "  SETI LIMIT DATA:1");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("Argument 1 for instruction 'SETI' has the wrong type. Expected REGISTER, but got LITERAL.")
+                .hasMessageContaining("main.evo:3");
+    }
+
+    @Test
+    void aRegisterAliasWhereALiteralIsExpectedNamesTheKindItHas() throws Exception {
+        write("main.evo",
+                ".REG %X %DR1",
+                "START:",
+                "  SETI %DR0 %X");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("Argument 2 for instruction 'SETI' has the wrong type. Expected LITERAL, but got REGISTER.")
+                .hasMessageContaining("main.evo:3");
+    }
+
+    @Test
+    void aModuleAliasIsNoInstructionArgument() throws Exception {
+        write("lib.evo",
+                "HELPER:",
+                "  NOP");
+        write("main.evo",
+                ".IMPORT \"lib.evo\" AS LIB",
+                "START:",
+                "  SETI LIB DATA:1");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("'LIB' is not a value, a register or a label and cannot be an instruction argument.")
+                .hasMessageContaining("main.evo:3");
+    }
+
+    @Test
+    void aLocationAliasPassedByRefNamesTheKindItHas() throws Exception {
+        write("main.evo",
+                ".PROC P REF X",
+                "  RET",
+                ".ENDP",
+                ".REG %POS %LR0",
+                "START:",
+                "  CALL P REF %POS");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("REF argument '%POS' is a location register, expected a data register.")
+                .hasMessageContaining("main.evo:6");
+    }
+
+    @Test
+    void aModuleAliasIsNoCallArgument() throws Exception {
+        write("lib.evo",
+                "HELPER:",
+                "  NOP");
+        write("main.evo",
+                ".IMPORT \"lib.evo\" AS LIB",
+                ".PROC P REF X",
+                "  RET",
+                ".ENDP",
+                "START:",
+                "  CALL P REF LIB");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("'LIB' is not a register or a label and cannot be a CALL argument.")
+                .hasMessageContaining("main.evo:6");
+    }
+
     private void write(String fileName, String... lines) throws Exception {
         Files.writeString(sourceRoot.resolve(fileName), String.join("\n", lines) + "\n");
     }

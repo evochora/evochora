@@ -5,6 +5,10 @@ import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.features.proc.CallAnalysisHandler;
 import org.evochora.compiler.features.proc.CallNode;
+import org.evochora.compiler.features.proc.ParameterBinding;
+import org.evochora.compiler.features.label.LabelNode;
+import org.evochora.compiler.features.define.DefineNode;
+import org.evochora.compiler.model.ast.NumberLiteralNode;
 import org.evochora.compiler.features.proc.ProcedureNode;
 import org.evochora.compiler.features.reg.RegNode;
 import org.evochora.compiler.model.ast.IdentifierNode;
@@ -91,7 +95,7 @@ class CallAnalysisHandlerTypeSafetyTest {
 
         assertThat(diagnostics.hasErrors()).isTrue();
         assertThat(diagnostics.getDiagnostics().stream()
-                .anyMatch(d -> d.message().contains("data register alias"))).isTrue();
+                .anyMatch(d -> d.message().contains("is a data register, expected a location register"))).isTrue();
     }
 
     @Test
@@ -104,55 +108,55 @@ class CallAnalysisHandlerTypeSafetyTest {
 
         assertThat(diagnostics.hasErrors()).isTrue();
         assertThat(diagnostics.getDiagnostics().stream()
-                .anyMatch(d -> d.message().contains("location register alias"))).isTrue();
+                .anyMatch(d -> d.message().contains("is a location register, expected a data register"))).isTrue();
     }
 
     @Test
     void dataParameterAsLref_reportsError() {
-        symbolTable.define(new Symbol("P", SRC, Symbol.Type.PARAMETER_DATA));
+        symbolTable.define(new Symbol("P", SRC, Symbol.Type.PARAMETER_DATA, new ParameterBinding("%FDR0")));
 
         CallNode call = callWithLref("P");
         handler.analyze(call, symbolTable, diagnostics);
 
         assertThat(diagnostics.hasErrors()).isTrue();
         assertThat(diagnostics.getDiagnostics().stream()
-                .anyMatch(d -> d.message().contains("data parameter"))).isTrue();
+                .anyMatch(d -> d.message().contains("is a data register, expected a location register"))).isTrue();
     }
 
     @Test
     void locationParameterAsRef_reportsError() {
-        symbolTable.define(new Symbol("P", SRC, Symbol.Type.PARAMETER_LOCATION));
+        symbolTable.define(new Symbol("P", SRC, Symbol.Type.PARAMETER_LOCATION, new ParameterBinding("%FLR0")));
 
         CallNode call = callWithRef("P");
         handler.analyze(call, symbolTable, diagnostics);
 
         assertThat(diagnostics.hasErrors()).isTrue();
         assertThat(diagnostics.getDiagnostics().stream()
-                .anyMatch(d -> d.message().contains("location parameter"))).isTrue();
+                .anyMatch(d -> d.message().contains("is a location register, expected a data register"))).isTrue();
     }
 
     @Test
     void labelAsRef_reportsError() {
-        symbolTable.define(new Symbol("MY_LABEL", SRC, Symbol.Type.LABEL));
+        symbolTable.define(new Symbol("MY_LABEL", SRC, Symbol.Type.LABEL, new LabelNode("MY_LABEL", SRC, null, false)));
 
         CallNode call = callWithRef("MY_LABEL");
         handler.analyze(call, symbolTable, diagnostics);
 
         assertThat(diagnostics.hasErrors()).isTrue();
         assertThat(diagnostics.getDiagnostics().stream()
-                .anyMatch(d -> d.message().contains("must resolve to a data register"))).isTrue();
+                .anyMatch(d -> d.message().contains("is a label, expected a data register"))).isTrue();
     }
 
     @Test
     void constantAsLref_reportsError() {
-        symbolTable.define(new Symbol("MY_CONST", SRC, Symbol.Type.CONSTANT));
+        symbolTable.define(new Symbol("MY_CONST", SRC, Symbol.Type.CONSTANT, new DefineNode("MY_CONST", SRC, new NumberLiteralNode(1, SRC), false)));
 
         CallNode call = callWithLref("MY_CONST");
         handler.analyze(call, symbolTable, diagnostics);
 
         assertThat(diagnostics.hasErrors()).isTrue();
         assertThat(diagnostics.getDiagnostics().stream()
-                .anyMatch(d -> d.message().contains("must resolve to a location register"))).isTrue();
+                .anyMatch(d -> d.message().contains("is a literal, expected a location register"))).isTrue();
     }
 
     @Test
@@ -164,7 +168,7 @@ class CallAnalysisHandlerTypeSafetyTest {
 
         assertThat(diagnostics.hasErrors()).isTrue();
         assertThat(diagnostics.getDiagnostics().stream()
-                .anyMatch(d -> d.message().contains("Module alias"))).isTrue();
+                .anyMatch(d -> d.message().contains("cannot be a CALL argument"))).isTrue();
     }
 
     @Test
@@ -176,7 +180,7 @@ class CallAnalysisHandlerTypeSafetyTest {
 
         assertThat(diagnostics.hasErrors()).isTrue();
         assertThat(diagnostics.getDiagnostics().stream()
-                .anyMatch(d -> d.message().contains("Module alias"))).isTrue();
+                .anyMatch(d -> d.message().contains("cannot be a CALL argument"))).isTrue();
     }
 
     @Test

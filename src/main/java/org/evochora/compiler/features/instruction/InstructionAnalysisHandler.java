@@ -4,6 +4,8 @@ import org.evochora.compiler.frontend.semantics.IAnalysisHandler;
 
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.model.ast.AstNode;
+import org.evochora.compiler.model.ast.IIdentifierBinding;
+import org.evochora.compiler.model.ast.IJumpTarget;
 import org.evochora.compiler.model.ast.IdentifierNode;
 import org.evochora.compiler.model.ast.InstructionNode;
 import org.evochora.compiler.model.ast.NumberLiteralNode;
@@ -11,7 +13,6 @@ import org.evochora.compiler.model.ast.RegisterNode;
 import org.evochora.compiler.model.ast.TypedLiteralNode;
 import org.evochora.compiler.model.ast.VectorLiteralNode;
 import org.evochora.compiler.model.symbols.ResolvedSymbol;
-import org.evochora.compiler.model.symbols.Symbol;
 import org.evochora.compiler.model.symbols.SymbolTable;
 import org.evochora.compiler.isa.IInstructionSet;
 import org.evochora.compiler.isa.IInstructionSet.ArgKind;
@@ -71,23 +72,27 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                 AstNode argumentNode = instructionNode.arguments().get(i);
                 ArgKind expectedType = signature.argumentTypes().get(i);
 
-                // Handle constant substitution
+                // An identifier is checked by what it stands for
                 if (argumentNode instanceof IdentifierNode idNode) {
                     Optional<ResolvedSymbol> symbolOpt = symbolTable.resolve(idNode.text(), idNode.sourceInfo().fileName());
 
                     if (symbolOpt.isPresent()) {
-                        Symbol symbol = symbolOpt.get().symbol();
-                        if (symbol.type() == Symbol.Type.CONSTANT) {
-                            if (expectedType != ArgKind.LITERAL) {
+                        // What the identifier stands for is asked of the node that defined it:
+                        // a binding is checked as the argument it binds to, a jump target may
+                        // stand where a label or a jump vector is expected, anything else is
+                        // no argument at all.
+                        AstNode definition = symbolOpt.get().symbol().node();
+                        if (definition instanceof IIdentifierBinding binding) {
+                            ArgKind actualType = getArgumentTypeFromNode(binding.bind(idNode));
+                            if (expectedType != actualType) {
                                 diagnostics.reportError(
-                                        String.format("Argument %d for instruction '%s' has the wrong type. Expected %s, but got CONSTANT.",
-                                                i + 1, instructionName, expectedType),
+                                        String.format("Argument %d for instruction '%s' has the wrong type. Expected %s, but got %s.",
+                                                i + 1, instructionName, expectedType, actualType),
                                         instructionNode.sourceInfo().fileName(),
                                         instructionNode.sourceInfo().lineNumber()
                                 );
                             }
-                        } else if (symbol.type() == Symbol.Type.LABEL || symbol.type() == Symbol.Type.PROCEDURE) {
-                            // Labels are valid for LABEL arguments, and also for VECTOR arguments (to be linked to deltas)
+                        } else if (definition instanceof IJumpTarget) {
                             if (expectedType != ArgKind.LABEL && expectedType != ArgKind.VECTOR) {
                                 diagnostics.reportError(
                                         String.format("Argument %d for instruction '%s' has the wrong type. Expected %s, but got LABEL.",
@@ -96,51 +101,13 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                                         instructionNode.sourceInfo().lineNumber()
                                 );
                             }
-                        } else if (symbol.type() == Symbol.Type.REGISTER_ALIAS_DATA) {
-                            if (expectedType != ArgKind.REGISTER) {
-                                diagnostics.reportError(
-                                        String.format("Argument %d for instruction '%s' has the wrong type. Expected %s, but got data register alias.",
-                                                i + 1, instructionName, expectedType),
-                                        instructionNode.sourceInfo().fileName(),
-                                        instructionNode.sourceInfo().lineNumber()
-                                );
-                            }
-                        } else if (symbol.type() == Symbol.Type.REGISTER_ALIAS_LOCATION) {
-                            if (expectedType != ArgKind.LOCATION_REGISTER) {
-                                diagnostics.reportError(
-                                        String.format("Argument %d for instruction '%s' has the wrong type. Expected %s, but got location register alias.",
-                                                i + 1, instructionName, expectedType),
-                                        instructionNode.sourceInfo().fileName(),
-                                        instructionNode.sourceInfo().lineNumber()
-                                );
-                            }
-                        } else if (symbol.type() == Symbol.Type.MODULE_ALIAS) {
+                        } else {
                             diagnostics.reportError(
-                                    String.format("Module alias '%s' cannot be used as an instruction argument.",
+                                    String.format("'%s' is not a value, a register or a label and cannot be an instruction argument.",
                                             idNode.text()),
                                     instructionNode.sourceInfo().fileName(),
                                     instructionNode.sourceInfo().lineNumber()
                             );
-                        } else if (symbol.type() == Symbol.Type.PARAMETER_DATA) {
-                            // Accept data parameters (REF/VAL → FDR) in REGISTER positions
-                            if (expectedType != ArgKind.REGISTER) {
-                                diagnostics.reportError(
-                                        String.format("Argument %d for instruction '%s' has the wrong type. Expected %s, but got data parameter.",
-                                                i + 1, instructionName, expectedType),
-                                        instructionNode.sourceInfo().fileName(),
-                                        instructionNode.sourceInfo().lineNumber()
-                                );
-                            }
-                        } else if (symbol.type() == Symbol.Type.PARAMETER_LOCATION) {
-                            // Accept location parameters (LREF/LVAL → FLR) in LOCATION_REGISTER positions
-                            if (expectedType != ArgKind.LOCATION_REGISTER) {
-                                diagnostics.reportError(
-                                        String.format("Argument %d for instruction '%s' has the wrong type. Expected %s, but got location parameter.",
-                                                i + 1, instructionName, expectedType),
-                                        instructionNode.sourceInfo().fileName(),
-                                        instructionNode.sourceInfo().lineNumber()
-                                );
-                            }
                         }
                     } else {
                         // Allow unresolved if a VECTOR is expected (forward-referenced label to be linked)

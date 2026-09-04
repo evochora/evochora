@@ -89,7 +89,7 @@ class InstructionAnalysisHandlerAliasTest {
 
         assertThat(diagnostics.hasErrors()).isTrue();
         assertThat(diagnostics.getDiagnostics().stream()
-                .anyMatch(d -> d.message().contains("location register alias"))).isTrue();
+                .anyMatch(d -> d.message().contains("but got LOCATION_REGISTER"))).isTrue();
     }
 
     @Test
@@ -105,7 +105,7 @@ class InstructionAnalysisHandlerAliasTest {
 
         assertThat(diagnostics.hasErrors()).isTrue();
         assertThat(diagnostics.getDiagnostics().stream()
-                .anyMatch(d -> d.message().contains("data register alias"))).isTrue();
+                .anyMatch(d -> d.message().contains("but got REGISTER"))).isTrue();
     }
 
     @Test
@@ -120,6 +120,6 @@ class InstructionAnalysisHandlerAliasTest {
 
         assertThat(diagnostics.hasErrors()).isTrue();
         assertThat(diagnostics.getDiagnostics().stream()
-                .anyMatch(d -> d.message().contains("Module alias"))).isTrue();
+                .anyMatch(d -> d.message().contains("cannot be an instruction argument"))).isTrue();
     }
 }

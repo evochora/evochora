@@ -15,6 +15,6 @@ public class LabelSymbolCollector implements ISymbolCollector {
     @Override
     public void collect(AstNode node, SymbolTable symbolTable, DiagnosticsEngine diagnostics) {
         LabelNode lbl = (LabelNode) node;
-        symbolTable.define(new Symbol(lbl.name(), lbl.sourceInfo(), Symbol.Type.LABEL, null, lbl.exported()));
+        symbolTable.define(new Symbol(lbl.name(), lbl.sourceInfo(), Symbol.Type.LABEL, lbl, lbl.exported()));
     }
 }

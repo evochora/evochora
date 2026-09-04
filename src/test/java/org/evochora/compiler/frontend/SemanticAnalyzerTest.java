@@ -360,7 +360,7 @@ public class SemanticAnalyzerTest {
         // Assert
         assertThat(diagnostics.hasErrors()).isTrue();
         assertThat(diagnostics.getDiagnostics().get(0).message())
-                .isEqualTo("Argument 1 for instruction 'JMPI' has the wrong type. Expected LABEL, but got CONSTANT.");
+                .isEqualTo("Argument 1 for instruction 'JMPI' has the wrong type. Expected LABEL, but got LITERAL.");
     }
 
     /**

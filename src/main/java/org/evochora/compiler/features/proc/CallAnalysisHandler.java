@@ -2,10 +2,11 @@ package org.evochora.compiler.features.proc;
 
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.semantics.IAnalysisHandler;
-import org.evochora.compiler.model.symbols.Symbol;
 import org.evochora.compiler.model.symbols.SymbolTable;
 import org.evochora.compiler.model.symbols.ResolvedSymbol;
 import org.evochora.compiler.model.ast.AstNode;
+import org.evochora.compiler.model.ast.IIdentifierBinding;
+import org.evochora.compiler.model.ast.IJumpTarget;
 import org.evochora.compiler.model.ast.IdentifierNode;
 import org.evochora.compiler.model.ast.NumberLiteralNode;
 import org.evochora.compiler.model.ast.RegisterNode;
@@ -49,15 +50,8 @@ public class CallAnalysisHandler implements IAnalysisHandler {
         }
 
         Optional<ResolvedSymbol> procSymbolOpt = symbolTable.resolve(procIdentifier.text(), procIdentifier.sourceInfo().fileName());
-        if (procSymbolOpt.isEmpty() || procSymbolOpt.get().symbol().type() != Symbol.Type.PROCEDURE) {
+        if (procSymbolOpt.isEmpty() || !(procSymbolOpt.get().symbol().node() instanceof ProcedureNode procedureNode)) {
             diagnostics.reportError("Procedure '" + procIdentifier.text() + "' not found or is not a procedure.",
-                    procIdentifier.sourceInfo().fileName(), procIdentifier.sourceInfo().lineNumber());
-            return;
-        }
-
-        Symbol procSymbol = procSymbolOpt.get().symbol();
-        if (!(procSymbol.node() instanceof ProcedureNode procedureNode)) {
-            diagnostics.reportError("Internal error: Symbol for procedure '" + procIdentifier.text() + "' does not contain a valid ProcedureNode.",
                     procIdentifier.sourceInfo().fileName(), procIdentifier.sourceInfo().lineNumber());
             return;
         }
@@ -139,102 +133,80 @@ public class CallAnalysisHandler implements IAnalysisHandler {
         }
     }
 
-    private void validateDataIdentifier(IdentifierNode idNode, String position,
-                                        SymbolTable st, DiagnosticsEngine diag) {
+    /**
+     * What an identifier stands for in a CALL argument, asked of the node that defined it.
+     */
+    private enum Meaning { DATA_REGISTER, LOCATION_REGISTER, LITERAL, LABEL, NONE }
+
+    private Meaning meaningOf(AstNode definition, IdentifierNode idNode) {
+        if (definition instanceof IIdentifierBinding binding) {
+            AstNode bound = binding.bind(idNode);
+            if (bound instanceof RegisterNode reg) {
+                return isLocationRegister(reg.name()) ? Meaning.LOCATION_REGISTER : Meaning.DATA_REGISTER;
+            }
+            return Meaning.LITERAL;
+        }
+        return definition instanceof IJumpTarget ? Meaning.LABEL : Meaning.NONE;
+    }
+
+    private static String describe(Meaning meaning) {
+        return switch (meaning) {
+            case DATA_REGISTER -> "a data register";
+            case LOCATION_REGISTER -> "a location register";
+            case LITERAL -> "a literal";
+            case LABEL -> "a label";
+            case NONE -> "";
+        };
+    }
+
+    /**
+     * Checks one identifier argument against the meanings its position accepts and reports
+     * what it is instead when it does not fit.
+     *
+     * @param mustExist Whether an identifier the symbol table does not know is reported here;
+     *                  a position that accepts a label leaves that to the linker.
+     */
+    private void validateIdentifier(IdentifierNode idNode, String position, java.util.Set<Meaning> accepted,
+                                    String expected, boolean mustExist, SymbolTable st, DiagnosticsEngine diag) {
         Optional<ResolvedSymbol> opt = st.resolve(idNode.text(), idNode.sourceInfo().fileName());
         if (opt.isEmpty()) {
-            diag.reportError(position + " argument '" + idNode.text() + "' is not defined.",
-                    idNode.sourceInfo().fileName(), idNode.sourceInfo().lineNumber());
+            if (mustExist) {
+                diag.reportError(position + " argument '" + idNode.text() + "' is not defined.",
+                        idNode.sourceInfo().fileName(), idNode.sourceInfo().lineNumber());
+            }
             return;
         }
-        Symbol.Type type = opt.get().symbol().type();
-        if (type == Symbol.Type.REGISTER_ALIAS_DATA || type == Symbol.Type.PARAMETER_DATA) return;
-        if (type == Symbol.Type.REGISTER_ALIAS_LOCATION) {
-            diag.reportError(position + " argument '" + idNode.text() + "' is a location register alias, expected a data register.",
-                    idNode.sourceInfo().fileName(), idNode.sourceInfo().lineNumber());
-        } else if (type == Symbol.Type.PARAMETER_LOCATION) {
-            diag.reportError(position + " argument '" + idNode.text() + "' is a location parameter, expected a data register.",
-                    idNode.sourceInfo().fileName(), idNode.sourceInfo().lineNumber());
-        } else if (type == Symbol.Type.MODULE_ALIAS) {
-            diag.reportError("Module alias '" + idNode.text() + "' cannot be used as a CALL argument.",
+        Meaning meaning = meaningOf(opt.get().symbol().node(), idNode);
+        if (accepted.contains(meaning)) return;
+        if (meaning == Meaning.NONE) {
+            diag.reportError("'" + idNode.text() + "' is not a register or a label and cannot be a CALL argument.",
                     idNode.sourceInfo().fileName(), idNode.sourceInfo().lineNumber());
         } else {
-            diag.reportError(position + " argument '" + idNode.text()
-                    + "' must resolve to a data register alias or data parameter.",
+            diag.reportError(position + " argument '" + idNode.text() + "' is " + describe(meaning) + ", expected " + expected + ".",
                     idNode.sourceInfo().fileName(), idNode.sourceInfo().lineNumber());
         }
+    }
+
+    private void validateDataIdentifier(IdentifierNode idNode, String position,
+                                        SymbolTable st, DiagnosticsEngine diag) {
+        validateIdentifier(idNode, position, java.util.EnumSet.of(Meaning.DATA_REGISTER), "a data register", true, st, diag);
     }
 
     private void validateDataIdentifierOrLabel(IdentifierNode idNode, String position,
                                                SymbolTable st, DiagnosticsEngine diag) {
-        Optional<ResolvedSymbol> opt = st.resolve(idNode.text(), idNode.sourceInfo().fileName());
-        if (opt.isEmpty()) return;
-        Symbol.Type type = opt.get().symbol().type();
-        if (type == Symbol.Type.REGISTER_ALIAS_DATA || type == Symbol.Type.PARAMETER_DATA) return;
-        if (type == Symbol.Type.LABEL || type == Symbol.Type.PROCEDURE || type == Symbol.Type.CONSTANT) return;
-        if (type == Symbol.Type.REGISTER_ALIAS_LOCATION) {
-            diag.reportError(position + " argument '" + idNode.text() + "' is a location register alias, expected a data register.",
-                    idNode.sourceInfo().fileName(), idNode.sourceInfo().lineNumber());
-        } else if (type == Symbol.Type.PARAMETER_LOCATION) {
-            diag.reportError(position + " argument '" + idNode.text() + "' is a location parameter, expected a data register.",
-                    idNode.sourceInfo().fileName(), idNode.sourceInfo().lineNumber());
-        } else if (type == Symbol.Type.MODULE_ALIAS) {
-            diag.reportError("Module alias '" + idNode.text() + "' cannot be used as a CALL argument.",
-                    idNode.sourceInfo().fileName(), idNode.sourceInfo().lineNumber());
-        } else {
-            diag.reportError(position + " argument '" + idNode.text()
-                    + "' must resolve to a data register, label, constant, or procedure.",
-                    idNode.sourceInfo().fileName(), idNode.sourceInfo().lineNumber());
-        }
+        validateIdentifier(idNode, position, java.util.EnumSet.of(Meaning.DATA_REGISTER, Meaning.LITERAL, Meaning.LABEL),
+                "a data register", false, st, diag);
     }
 
     private void validateLocationIdentifier(IdentifierNode idNode, String position,
                                             SymbolTable st, DiagnosticsEngine diag) {
-        Optional<ResolvedSymbol> opt = st.resolve(idNode.text(), idNode.sourceInfo().fileName());
-        if (opt.isEmpty()) {
-            diag.reportError(position + " argument '" + idNode.text() + "' is not defined.",
-                    idNode.sourceInfo().fileName(), idNode.sourceInfo().lineNumber());
-            return;
-        }
-        Symbol.Type type = opt.get().symbol().type();
-        if (type == Symbol.Type.REGISTER_ALIAS_LOCATION || type == Symbol.Type.PARAMETER_LOCATION) return;
-        if (type == Symbol.Type.REGISTER_ALIAS_DATA) {
-            diag.reportError(position + " argument '" + idNode.text() + "' is a data register alias, expected a location register.",
-                    idNode.sourceInfo().fileName(), idNode.sourceInfo().lineNumber());
-        } else if (type == Symbol.Type.PARAMETER_DATA) {
-            diag.reportError(position + " argument '" + idNode.text() + "' is a data parameter, expected a location register.",
-                    idNode.sourceInfo().fileName(), idNode.sourceInfo().lineNumber());
-        } else if (type == Symbol.Type.MODULE_ALIAS) {
-            diag.reportError("Module alias '" + idNode.text() + "' cannot be used as a CALL argument.",
-                    idNode.sourceInfo().fileName(), idNode.sourceInfo().lineNumber());
-        } else {
-            diag.reportError(position + " argument '" + idNode.text()
-                    + "' must resolve to a location register alias or location parameter.",
-                    idNode.sourceInfo().fileName(), idNode.sourceInfo().lineNumber());
-        }
+        validateIdentifier(idNode, position, java.util.EnumSet.of(Meaning.LOCATION_REGISTER), "a location register", true, st, diag);
     }
 
     private void validateLocationIdentifierOrLabel(IdentifierNode idNode, String position,
                                                    SymbolTable st, DiagnosticsEngine diag) {
-        Optional<ResolvedSymbol> opt = st.resolve(idNode.text(), idNode.sourceInfo().fileName());
-        if (opt.isEmpty()) return;
-        Symbol.Type type = opt.get().symbol().type();
-        if (type == Symbol.Type.REGISTER_ALIAS_LOCATION || type == Symbol.Type.PARAMETER_LOCATION) return;
-        if (type == Symbol.Type.LABEL || type == Symbol.Type.PROCEDURE || type == Symbol.Type.CONSTANT) return;
-        if (type == Symbol.Type.REGISTER_ALIAS_DATA) {
-            diag.reportError(position + " argument '" + idNode.text() + "' is a data register alias, expected a location register.",
-                    idNode.sourceInfo().fileName(), idNode.sourceInfo().lineNumber());
-        } else if (type == Symbol.Type.PARAMETER_DATA) {
-            diag.reportError(position + " argument '" + idNode.text() + "' is a data parameter, expected a location register.",
-                    idNode.sourceInfo().fileName(), idNode.sourceInfo().lineNumber());
-        } else if (type == Symbol.Type.MODULE_ALIAS) {
-            diag.reportError("Module alias '" + idNode.text() + "' cannot be used as a CALL argument.",
-                    idNode.sourceInfo().fileName(), idNode.sourceInfo().lineNumber());
-        } else {
-            diag.reportError(position + " argument '" + idNode.text()
-                    + "' must resolve to a location register, label, constant, or procedure.",
-                    idNode.sourceInfo().fileName(), idNode.sourceInfo().lineNumber());
-        }
+        validateIdentifier(idNode, position, java.util.EnumSet.of(Meaning.LOCATION_REGISTER, Meaning.LITERAL, Meaning.LABEL),
+                "a location register", false, st, diag);
     }
 
     /**
