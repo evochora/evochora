@@ -164,25 +164,23 @@ public record Molecule(int type, int value, int marker) {
 
     /**
      * Translates a molecule type name (e.g., "ENERGY") to its integer constant (e.g., Config.TYPE_ENERGY).
-     * This method is the single source of truth for parsing type names from configuration.
+     * The names it accepts are those registered in {@link MoleculeTypeRegistry}. This is the
+     * tolerant form of the lookup, for callers that read type names from configuration and want
+     * to report an unknown name themselves instead of failing.
      *
      * @param typeName The name of the molecule type (case-insensitive).
-     * @return An Optional containing the integer constant if found, or empty if unknown.
+     * @return An Optional containing the integer constant if found, or empty if the name is null
+     *         or names no registered type.
      */
     public static java.util.Optional<Integer> getTypeConstantByName(String typeName) {
         if (typeName == null) {
             return java.util.Optional.empty();
         }
-        return switch (typeName.toUpperCase()) {
-            case "CODE" -> java.util.Optional.of(Config.TYPE_CODE);
-            case "DATA" -> java.util.Optional.of(Config.TYPE_DATA);
-            case "ENERGY" -> java.util.Optional.of(Config.TYPE_ENERGY);
-            case "STRUCTURE" -> java.util.Optional.of(Config.TYPE_STRUCTURE);
-            case "LABEL" -> java.util.Optional.of(Config.TYPE_LABEL);
-            case "LABELREF" -> java.util.Optional.of(Config.TYPE_LABELREF);
-            case "REGISTER" -> java.util.Optional.of(Config.TYPE_REGISTER);
-            default -> java.util.Optional.empty();
-        };
+        try {
+            return java.util.Optional.of(MoleculeTypeRegistry.nameToType(typeName));
+        } catch (IllegalArgumentException unknown) {
+            return java.util.Optional.empty();
+        }
     }
 
     @Override

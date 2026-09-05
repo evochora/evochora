@@ -209,4 +209,12 @@ public final class Config {
      * so that mutation systems can apply bank-aware mutation strategies.
      */
     public static final int TYPE_REGISTER = (0x06 & ((1 << TYPE_BITS) - 1)) << TYPE_SHIFT;
+
+    /**
+     * The type code for a cell holding an organism's runtime memory.
+     * A STATE cell carries a value the organism itself wrote while it was running — a counter,
+     * a threshold it recomputed, a slot it reads back later — as opposed to the cells that make
+     * up its genome. The value field is a plain scalar, like {@link #TYPE_DATA}.
+     */
+    public static final int TYPE_STATE = (0x07 & ((1 << TYPE_BITS) - 1)) << TYPE_SHIFT;
 }
