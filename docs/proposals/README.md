@@ -17,6 +17,7 @@ table carries the whole order.
 
 | Document / Issue | Status | Summary |
 |---|---|---|
+| [STATE_MOLECULE_TYPE](STATE_MOLECULE_TYPE.md) | TO BE REVIEWED | A STATE molecule type for runtime state, assigned by the physics at write time from the marker register; the genome hash then includes DATA operands (thresholds, harvest periods) and excludes state slots, making parameter evolution observable; consolidates the molecule-type enumerations to one source per side |
 | [PERSISTED_FORMAT_VERSIONING](PERSISTED_FORMAT_VERSIONING.md) | TO BE REVIEWED | Storage batches, run database and run metadata carry no format version, so data written by an incompatible build is read silently or fails without naming the cause; one version constant plus fail-fast reads |
 | [DEPENDENCY_UPDATE](DEPENDENCY_UPDATE.md) | TO BE REVIEWED | 24 of 32 dependencies behind, six by a major version; removal of the unused JLine pair, three build hygiene fixes, and a staged update procedure derived from what the test suite can and cannot verify |
 
