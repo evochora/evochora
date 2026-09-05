@@ -152,9 +152,13 @@ projects that last make their decisions; everything built has to be carried for 
   least "do nothing" and "drop the idea" — and says for each what it costs: in performance,
   in strictness, in complexity, in what lands on the maintainer's desk. The first workable
   option is never the proposal; it is one row in the comparison.
-- **Every side, before the decision.** Each option is checked against the code, the
-  architecture guidelines, the simulation's behaviour and the data formats before it is
-  presented. A concern found later restarts the comparison; it does not get patched in.
+- **Every side, before the decision.** Each option is examined for its pitfalls before it is
+  presented: what it breaks, which call sites, formats and invariants it touches, which edge
+  case or interaction defeats it, what it costs on the hot path, what it makes harder later.
+  The search is for the case in which the option fails, not for confirmation that it works.
+  The proposal names only the pitfalls that can become a problem, each with the case in which
+  it does; checks that came back clean are not listed. A concern found later restarts the
+  comparison; it does not get patched in.
 - **A clean way or no way.** When no option can be implemented cleanly within the existing
   architecture, the idea is dropped or parked under `docs/proposals/ideas/`, not built in a
   reduced form. Half of a feature is worse than none, because it fixes the design before the
