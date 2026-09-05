@@ -5,8 +5,14 @@ description: Analyze an Evochora simulation run scientifically — population dy
 
 # Analyzing an Evochora run
 
-Work in three layers, cheapest first. Report observations separately from interpretations, and
-never claim selection without the checks in step 4.
+Work in layers, cheapest first. Report observations separately from interpretations, and never
+claim selection without the checks in step 4.
+
+The question a run is opened with is rarely the finding it holds. Before answering it, build the
+life table of step 1b and read it against its control group — the children that carry their
+parent's genome unchanged. Most of what earlier sessions found by accident (a lifetime the whole
+population shares, a class of children that never reproduces, variation the mutation plugins did
+not produce) shows in that table without being looked for.
 
 A current run needs nothing but the exports and the queries in this text. `scripts/sweep.py` is
 **temporary tooling for older runs only** — it reconstructs from organism snapshots what those runs
@@ -67,6 +73,74 @@ ones, and do not read small categories out of them at all.
 
 **A selective sweep is invisible in every aggregate curve.** Do not stop here.
 
+## 1b · Life table (every organism, no node needed)
+
+One row per organism: id, parent id, birth tick, death tick, genome hash, parent genome hash,
+generation. It is complete — including the children that are born and die between two
+recordings — and it is where fates, lethality and non-plugin variation are read.
+
+**Source 1: the raw batches** (`raw/**/batch_*.pb.zst`). Every living organism appears in every
+recording; a dead one appears exactly once more, in the first recording after its death, with
+`is_dead` and `death_tick` set, then it is pruned. The union over all recordings is therefore the
+whole population ever born. Reading them:
+
+- Generate Python stubs from `src/main/proto/**/tickdata_contracts.proto` with `protoc`
+  (`protobuf` and `zstandard` in a temporary venv, never the system Python).
+- A batch file is zstd with possibly several frames — decompress *across frames*. The payload is
+  one or more length-delimited `TickDataChunk` messages (varint size prefix, `writeDelimitedTo`).
+- **The first recording of every batch is in the chunk's `snapshot` field, the remaining ones in
+  `deltas`.** Reading only `deltas` silently loses a tenth of all births and deaths; the totals
+  then disagree with `vital_stats` and `death_lifetimes`, which is how to notice.
+- Per organism take the first record for birth data and the `is_dead` record for `death_tick`,
+  `energy` and `entropy_register` at death. 87 M ticks (874 batches) take about 40 s.
+
+**Source 2: the H2 index** (`<dataBaseDir>/database/indexdb.mv.db`, schema `SIM_<runId with _>`,
+table `ORGANISMS` with organism_id, parent_id, birth_tick, genome_hash, generation,
+parent_genome_hash). Read-only via the H2 shell shipped in the install:
+
+```
+java -cp build/install/evochora/lib/h2-*.jar org.h2.tools.Shell \
+  -url "jdbc:h2:file:<dataBaseDir>/database/indexdb;ACCESS_MODE_DATA=r;IFEXISTS=TRUE" -user sa \
+  -sql "CALL CSVWRITE('<out>.csv', 'SELECT * FROM <schema>.ORGANISMS')"
+```
+
+It has no death tick, and the file is locked while a node serves the directory — shell and node
+never at the same time.
+
+**Control group first.** Split the children into *clones* (genome hash equal to the parent's) and
+*mutants* (different), and report every rate for mutants next to the same rate for clones. In the
+runs analysed so far, 59–64 % of the clones died at the same age without reproducing and only
+25–32 % of clones ever had a child: the baseline is a lottery set by the environment, and a
+mutant rate read without it is misread as a mutation effect.
+
+**Fate classes** per child: *fertile* (has children); *acute lethal* (lifetime below ~1 000
+ticks); *entropy death* (lifetime below ~20 000); *sterile long-lived*; *alive at end*. Two
+lifetimes recur and both follow from the run's resolved config (in `raw/metadata.pb.zst`, a
+3-byte varint prefix then a `SimulationMetadata` message; `resolved_config_json` holds every
+value):
+
+| lifetime | origin | check at death |
+|---|---|---|
+| ≈ child initial energy ÷ `error-penalty-cost` (25 000 ÷ 100 → 248 ticks) | the child fails every instruction from birth | `energy` ≤ 0 |
+| ≈ `max-entropy` ÷ base entropy (+ a few ticks; 10 000 → 10 010) | the child ran but never wrote a cell, so nothing dissipated entropy | `entropy_register` ≥ max-entropy, energy account full |
+
+Children with genome hash 0 are futile forks (no cells handed over); they die in the first class.
+
+**The acute-lethal class is invisible in body data**: its members die before the first recording
+after their birth, so no body endpoint ever shows them. Count them from the life table, or as the
+deficit between births expected from the plugin rates and the genomes actually observed.
+
+**Mutant does not mean mutated by a plugin.** A child's genome hash differs from its parent's
+whenever the copy differs from the parent's *birth* genome — also when the parent lost or gained
+cells during its life (damage inherited through copying) or when the parent's copy routine itself
+is defective. Find them: parents with ≥ 5 children none of which carries the parent's genome. Then
+fetch the parent's body (step 3) at its first and at its last recording and diff the two — a
+changed body is inherited damage, an unchanged one a defective copier. In the run where this was
+first measured, such parents produced 16 % of all births, their children reproduced half as often
+as other mutants, and the only adaptive sweep of the run came from this channel, not from a plugin.
+
+**Generation time** = median (child birth − parent birth) over all children of the life table.
+
 ## 2 · Genome layer (Parquet, no node needed)
 
 The lineage comes from the `genome_lineage` metric: one row per genome, with the genome it arose
@@ -99,6 +173,14 @@ Off the Analyzer the same thing is a join: take a genome, collect its descendant
 there — no ranking — so a clade's share is the complete sum of its members. A genome can carry more
 than one parent edge; take the one with the smallest `first_birth_tick`, which is what the chart
 does.
+
+**Fixed mutations from the trunk.** Take the organisms alive at the end, walk each one's parent
+chain to the founder, and count for every organism how many of the final organisms descend from
+it. Organisms that are ancestors of ≥ 90 % of the final population form the *trunk*; a mutant
+genome whose first carrier sits on the trunk is a fixed mutation. The mutant share of trunk births
+against the mutant share of all births is the relative fixation probability of a mutant birth. In
+a population of a few hundred every trunk genome has a clade of thousands — clade size alone is
+genealogy, not selection.
 
 **Naming a genome:** everything in this project names a genome by six base-62 digits
 (`0-9a-zA-Z`) of its *unsigned* 64-bit hash — the chart legends, the analysis scripts. Compute it
@@ -189,6 +271,11 @@ JSON format. For those runs body forensics goes the old way:
   time gives it per generation. Fit **only the polymorphic phase**, shares strictly between 0.01
   and 0.99: below and above, the logit is undefined or dominated by relict individuals, and the
   near-fixation tail flattens the slope without carrying information about selection.
+  **Fit it only for a variant named before looking at the tree** (a switch setting, a body
+  difference verified in step 3). For genomes picked *because* they fixed — every trunk mutation
+  of step 2 — the slope is positive by construction: a neutral lineage that happens to fix also
+  rises. In one run all 19 trunk mutations, neutral hitchhikers in NOP padding included, fitted
+  +0.04 to +0.2 per generation.
 - Generation time = median parent-birth→child-birth distance over sampled newborns; use it to
   express fixation speed in generations, not ticks.
 - Per-capita rates (births per organism per Mtick), never raw counts, when comparing clades.
@@ -203,6 +290,16 @@ JSON format. For those runs body forensics goes the old way:
 - Old runs (pre-#103 proto renumbering) are unreadable by current builds — serve them with the
   build that wrote them.
 - One organism per parent when sampling bodies (siblings bias the sample).
+- Batch chunks carry their first recording in `snapshot`, not in `deltas` (step 1b).
+- The H2 index file is locked by a running node; the H2 shell then fails or, worse, the node
+  does. Finish shell exports before starting a node.
+- The genome hash includes ENERGY cells and every owned cell whatever its marker (see
+  `GenomeHasher`). A child born owning an energy cell is a "mutant" with identical code. When
+  diffing bodies, drop DATA cells and cells with marker ≠ 0, and XOR-normalize LABEL and
+  LABELREF values with the value of the LABEL at the smallest relative position, as the hasher
+  does — otherwise every child differs from its parent in every label.
+- Empty cells (`CODE:0`) are unowned and absent from a body; inserted or duplicated code therefore
+  appears as *new* cells, a deletion as *missing* cells.
 
 ## Fallbacks for runs without the newer metrics
 
