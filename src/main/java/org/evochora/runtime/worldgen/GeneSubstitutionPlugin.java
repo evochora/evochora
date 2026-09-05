@@ -12,6 +12,7 @@ import org.evochora.runtime.isa.OpcodeId;
 import org.evochora.runtime.isa.RegisterBank;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
+import org.evochora.runtime.model.MoleculeTypeRegistry;
 import org.evochora.runtime.model.Organism;
 import org.evochora.runtime.spi.IBirthHandler;
 import org.evochora.runtime.spi.IRandomProvider;
@@ -24,15 +25,20 @@ import org.slf4j.LoggerFactory;
  * <p>
  * Called once per newborn organism in the post-Execute phase of each tick. With configurable
  * probability, selects one random non-empty code-encoding molecule via weighted reservoir
- * sampling and applies a type-specific mutation:
- * <ul>
- *   <li><b>CODE:</b> Flip to a different registered opcode (operation/family/variant modes)</li>
- *   <li><b>REGISTER:</b> ±1 within bank boundaries (DR stays DR, PDR stays PDR, etc.)</li>
- *   <li><b>DATA:</b> Scale-proportional perturbation of the signed value:
- *       delta = max(1, round(|value|^exponent)); a result leaving the 20-bit range wraps</li>
- *   <li><b>LABEL/LABELREF:</b> Flip N random bits in 19-bit hash</li>
- * </ul>
- * ENERGY and STRUCTURE molecules are never mutated (world-substance types).
+ * sampling and applies the strategy that belongs to the molecule's type.
+ * <p>
+ * <strong>Strategies:</strong> Types whose value is an identifier have their own strategy — CODE
+ * flips to a different registered opcode (operation, family or variant mode), REGISTER moves ±1
+ * within its bank boundaries (DR stays DR, PDR stays PDR), LABEL and LABELREF flip N random bits
+ * of the 19-bit hash. Every other type carries a plain number and uses the general strategy:
+ * scale-proportional perturbation of the signed value, {@code delta = max(1,
+ * round(|value|^exponent))} with the type's own exponent, a result leaving the 20-bit range
+ * wrapping.
+ * <p>
+ * <strong>Selection:</strong> Every type registered in {@link org.evochora.runtime.model.MoleculeTypeRegistry}
+ * has a selection weight, read from the plugin configuration under the type's name. A type without
+ * a configuration block, and a type of a molecule the registry does not know, has weight 0 and is
+ * never selected.
  * <p>
  * <strong>CODE Mutation:</strong> At init time, three lookup tables are pre-computed from
  * the registered instruction set. Each table maps an opcode ID to an array of valid alternative
@@ -61,8 +67,14 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
     private static final int LABEL_HASH_BITS = 19;
     private static final int LABEL_HASH_MAX = (1 << LABEL_HASH_BITS) - 1;
 
-    /** Number of molecule types (CODE=0 through REGISTER=6). */
-    private static final int NUM_TYPES = 7;
+    /** Exponent used for a value-carrying type whose configuration block names none. */
+    private static final double DEFAULT_EXPONENT = 0.7;
+
+    /**
+     * Length of the per-type lookup arrays: one slot for every raw type index a registered type
+     * can produce, so the highest registered index is still addressable.
+     */
+    private static final int TYPE_TABLE_SIZE = typeTableSize();
 
     /** Arity group boundaries from {@link org.evochora.runtime.isa.Variant}. */
     private static final int ARITY_0_MAX = 15;
@@ -76,12 +88,17 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
     private final double familyFlipWeight;
     private final double variantFlipWeight;
     private final double totalFlipWeight;
-    private final double dataExponent;
     private final int labelBitflips;
     private final int labelrefBitflips;
 
-    /** Type weight lookup: indexed by (type >> TYPE_SHIFT). Length {@value NUM_TYPES}. */
+    /** Selection weight per type, indexed by raw type index. Length {@link #TYPE_TABLE_SIZE}. */
     private final double[] typeWeights;
+
+    /**
+     * Perturbation exponent per type, indexed by raw type index. Only the slots of types that use
+     * the general value strategy are ever read. Length {@link #TYPE_TABLE_SIZE}.
+     */
+    private final double[] typeExponents;
 
     // --- Pre-computed opcode alternative tables (computed once at init) ---
     private final Int2ObjectOpenHashMap<int[]> operationFlipAlternatives;
@@ -104,37 +121,46 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
 
     /**
      * Creates a gene substitution plugin from configuration.
+     * <p>
+     * Every registered molecule type is looked up under its name. A type with a block contributes
+     * its {@code weight}, and, if it uses the general value strategy, its {@code exponent} or
+     * {@value #DEFAULT_EXPONENT} when the block names none. A type without a block gets weight 0.
      *
      * @param randomProvider Source of randomness.
-     * @param config Configuration containing substitutionRate and per-type settings.
+     * @param config Configuration containing substitutionRate and one block per mutable type.
      */
     public GeneSubstitutionPlugin(IRandomProvider randomProvider, com.typesafe.config.Config config) {
         this.random = randomProvider.asJavaRandom();
         this.substitutionRate = config.getDouble("substitutionRate");
 
-        com.typesafe.config.Config codeConfig = config.getConfig("CODE");
-        double codeWeight = codeConfig.getDouble("weight");
-        this.operationFlipWeight = codeConfig.getDouble("operationFlipWeight");
-        this.familyFlipWeight = codeConfig.getDouble("familyFlipWeight");
-        this.variantFlipWeight = codeConfig.getDouble("variantFlipWeight");
+        this.typeWeights = new double[TYPE_TABLE_SIZE];
+        this.typeExponents = new double[TYPE_TABLE_SIZE];
+        for (int type : MoleculeTypeRegistry.orderedTypes()) {
+            com.typesafe.config.Config typeConfig = blockOrNull(config, MoleculeTypeRegistry.typeToName(type));
+            if (typeConfig == null) {
+                continue;
+            }
+            int index = rawIndex(type);
+            this.typeWeights[index] = typeConfig.getDouble("weight");
+            if (usesValueStrategy(type)) {
+                this.typeExponents[index] = typeConfig.hasPath("exponent")
+                        ? typeConfig.getDouble("exponent")
+                        : DEFAULT_EXPONENT;
+            }
+        }
+        validateRanges(this.substitutionRate, this.typeExponents);
+
+        com.typesafe.config.Config codeConfig = blockOrNull(config, "CODE");
+        this.operationFlipWeight = codeConfig == null ? 0.0 : codeConfig.getDouble("operationFlipWeight");
+        this.familyFlipWeight = codeConfig == null ? 0.0 : codeConfig.getDouble("familyFlipWeight");
+        this.variantFlipWeight = codeConfig == null ? 0.0 : codeConfig.getDouble("variantFlipWeight");
         this.totalFlipWeight = operationFlipWeight + familyFlipWeight + variantFlipWeight;
 
-        double registerWeight = config.getConfig("REGISTER").getDouble("weight");
+        com.typesafe.config.Config labelConfig = blockOrNull(config, "LABEL");
+        this.labelBitflips = labelConfig == null ? 0 : labelConfig.getInt("bitflips");
 
-        com.typesafe.config.Config dataConfig = config.getConfig("DATA");
-        double dataWeight = dataConfig.getDouble("weight");
-        this.dataExponent = dataConfig.getDouble("exponent");
-        validateRanges(this.substitutionRate, this.dataExponent);
-
-        com.typesafe.config.Config labelConfig = config.getConfig("LABEL");
-        double labelWeight = labelConfig.getDouble("weight");
-        this.labelBitflips = labelConfig.getInt("bitflips");
-
-        com.typesafe.config.Config labelrefConfig = config.getConfig("LABELREF");
-        double labelrefWeight = labelrefConfig.getDouble("weight");
-        this.labelrefBitflips = labelrefConfig.getInt("bitflips");
-
-        this.typeWeights = buildTypeWeights(codeWeight, dataWeight, registerWeight, labelWeight, labelrefWeight);
+        com.typesafe.config.Config labelrefConfig = blockOrNull(config, "LABELREF");
+        this.labelrefBitflips = labelrefConfig == null ? 0 : labelrefConfig.getInt("bitflips");
 
         this.operationFlipAlternatives = new Int2ObjectOpenHashMap<>();
         this.familyFlipAlternatives = new Int2ObjectOpenHashMap<>();
@@ -144,6 +170,9 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
 
     /**
      * Convenience constructor for tests.
+     * <p>
+     * Covers the five types with a non-zero default weight. Every other registered type gets
+     * weight 0, and every type that uses the general value strategy gets the given exponent.
      *
      * @param randomProvider Source of randomness.
      * @param substitutionRate Probability of substitution per newborn (0.0 to 1.0).
@@ -155,7 +184,7 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
      * @param operationFlipWeight Weight for operation flip mode within CODE.
      * @param familyFlipWeight Weight for family flip mode within CODE.
      * @param variantFlipWeight Weight for variant flip mode within CODE.
-     * @param dataExponent Exponent for scale-proportional DATA mutation.
+     * @param valueExponent Exponent for the scale-proportional value perturbation.
      * @param labelBitflips Number of bits to flip for LABEL mutation.
      * @param labelrefBitflips Number of bits to flip for LABELREF mutation.
      */
@@ -163,19 +192,30 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
                            double codeWeight, double registerWeight, double dataWeight,
                            double labelWeight, double labelrefWeight,
                            double operationFlipWeight, double familyFlipWeight, double variantFlipWeight,
-                           double dataExponent, int labelBitflips, int labelrefBitflips) {
+                           double valueExponent, int labelBitflips, int labelrefBitflips) {
         this.random = randomProvider.asJavaRandom();
         this.substitutionRate = substitutionRate;
         this.operationFlipWeight = operationFlipWeight;
         this.familyFlipWeight = familyFlipWeight;
         this.variantFlipWeight = variantFlipWeight;
         this.totalFlipWeight = operationFlipWeight + familyFlipWeight + variantFlipWeight;
-        this.dataExponent = dataExponent;
-        validateRanges(this.substitutionRate, this.dataExponent);
         this.labelBitflips = labelBitflips;
         this.labelrefBitflips = labelrefBitflips;
 
-        this.typeWeights = buildTypeWeights(codeWeight, dataWeight, registerWeight, labelWeight, labelrefWeight);
+        this.typeWeights = new double[TYPE_TABLE_SIZE];
+        this.typeWeights[rawIndex(Config.TYPE_CODE)] = codeWeight;
+        this.typeWeights[rawIndex(Config.TYPE_DATA)] = dataWeight;
+        this.typeWeights[rawIndex(Config.TYPE_REGISTER)] = registerWeight;
+        this.typeWeights[rawIndex(Config.TYPE_LABEL)] = labelWeight;
+        this.typeWeights[rawIndex(Config.TYPE_LABELREF)] = labelrefWeight;
+
+        this.typeExponents = new double[TYPE_TABLE_SIZE];
+        for (int type : MoleculeTypeRegistry.orderedTypes()) {
+            if (usesValueStrategy(type)) {
+                this.typeExponents[rawIndex(type)] = valueExponent;
+            }
+        }
+        validateRanges(this.substitutionRate, this.typeExponents);
 
         this.operationFlipAlternatives = new Int2ObjectOpenHashMap<>();
         this.familyFlipAlternatives = new Int2ObjectOpenHashMap<>();
@@ -224,8 +264,8 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
                 return; // empty cell
             }
             int typeIdx = (moleculeInt & Config.TYPE_MASK) >>> Config.TYPE_SHIFT;
-            if (typeIdx >= NUM_TYPES) {
-                return; // unknown type
+            if (typeIdx >= TYPE_TABLE_SIZE) {
+                return; // no registered type has this index, so its weight is 0
             }
             double w = typeWeights[typeIdx];
             if (w <= 0.0) {
@@ -254,14 +294,12 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
             newValue = mutateCode(selectedRawValue);
         } else if (selectedType == Config.TYPE_REGISTER) {
             newValue = mutateRegister(selectedRawValue);
-        } else if (selectedType == Config.TYPE_DATA) {
-            newValue = mutateData(selectedRawValue);
         } else if (selectedType == Config.TYPE_LABEL) {
             newValue = mutateLabelHash(selectedRawValue, labelBitflips);
         } else if (selectedType == Config.TYPE_LABELREF) {
             newValue = mutateLabelHash(selectedRawValue, labelrefBitflips);
         } else {
-            return;
+            newValue = mutateValue(selectedRawValue, typeExponents[rawIndex(selectedType)]);
         }
 
         if (newValue == selectedRawValue) {
@@ -272,7 +310,7 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
         env.setMoleculeAt(chosen, new Molecule(selectedType, newValue, chosenMarker));
 
         if (LOG.isDebugEnabled()) {
-            String typeName = typeNameForLog(selectedType);
+            String typeName = MoleculeTypeRegistry.typeToName(selectedType);
             LOG.debug("tick={} Organism {} gene substitution: {}:{}->{} at {}",
                     child.getBirthTick(), childId, typeName,
                     displayValueForLog(selectedType, selectedRawValue),
@@ -330,7 +368,7 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
     }
 
     /**
-     * Mutates a DATA molecule's value using scale-proportional perturbation.
+     * Mutates the value of a value-carrying molecule using scale-proportional perturbation.
      * <p>
      * Computes delta as {@code max(1, round(|value|^exponent))}, then adds a uniform random
      * offset in {@code [-delta, +delta]}. Small values therefore change relatively strongly and
@@ -344,12 +382,13 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
      * Input and output are the raw 20-bit pattern, as for every mutator in this class: the caller
      * compares the returned pattern against the sampled one to detect a no-op.
      *
-     * @param rawValue The current data value as the raw 20-bit pattern.
+     * @param rawValue The current value as the raw 20-bit pattern.
+     * @param exponent The exponent of the scale-proportional delta, in {@code [0.0, 1.0]}.
      * @return The mutated value as the raw 20-bit pattern.
      */
-    private int mutateData(int rawValue) {
+    private int mutateValue(int rawValue, double exponent) {
         int value = Molecule.extractSignedValue(rawValue);
-        int delta = Math.max(1, (int) Math.round(Math.pow(Math.abs(value), dataExponent)));
+        int delta = Math.max(1, (int) Math.round(Math.pow(Math.abs(value), exponent)));
         int offset = random.nextInt(2 * delta + 1) - delta;
         return (value + offset) & Config.VALUE_MASK;
     }
@@ -491,63 +530,86 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
      * scale-proportional.
      *
      * @param substitutionRate Probability of substitution per newborn.
-     * @param dataExponent Exponent for scale-proportional DATA mutation.
-     * @throws IllegalArgumentException If either value lies outside {@code [0.0, 1.0]}.
+     * @param exponents Perturbation exponents indexed by raw type index.
+     * @throws IllegalArgumentException If any value lies outside {@code [0.0, 1.0]}.
      */
-    private static void validateRanges(double substitutionRate, double dataExponent) {
+    private static void validateRanges(double substitutionRate, double[] exponents) {
         if (!(substitutionRate >= 0.0 && substitutionRate <= 1.0)) {
             throw new IllegalArgumentException("substitutionRate must be in [0.0, 1.0], got: " + substitutionRate);
         }
-        if (!(dataExponent >= 0.0 && dataExponent <= 1.0)) {
-            throw new IllegalArgumentException("DATA exponent must be in [0.0, 1.0], got: " + dataExponent);
+        for (int type : MoleculeTypeRegistry.orderedTypes()) {
+            double exponent = exponents[rawIndex(type)];
+            if (!(exponent >= 0.0 && exponent <= 1.0)) {
+                throw new IllegalArgumentException(MoleculeTypeRegistry.typeToName(type)
+                        + " exponent must be in [0.0, 1.0], got: " + exponent);
+            }
         }
     }
 
     /**
-     * Builds the type weight lookup array.
+     * Returns the position of a molecule type's bits within the packed molecule integer, shifted
+     * down to a small index. This is the index of every per-type lookup array in this class.
      *
-     * @return Array indexed by (type >> TYPE_SHIFT), length {@value NUM_TYPES}.
+     * @param type The shifted type constant.
+     * @return The raw type index.
      */
-    private static double[] buildTypeWeights(double codeWeight, double dataWeight, double registerWeight,
-                                             double labelWeight, double labelrefWeight) {
-        double[] weights = new double[NUM_TYPES];
-        weights[0x00] = codeWeight;      // TYPE_CODE
-        weights[0x01] = dataWeight;      // TYPE_DATA
-        weights[0x02] = 0.0;            // TYPE_ENERGY — never mutated
-        weights[0x03] = 0.0;            // TYPE_STRUCTURE — never mutated
-        weights[0x04] = labelWeight;     // TYPE_LABEL
-        weights[0x05] = labelrefWeight;  // TYPE_LABELREF
-        weights[0x06] = registerWeight;  // TYPE_REGISTER
-        return weights;
+    private static int rawIndex(int type) {
+        return (type & Config.TYPE_MASK) >>> Config.TYPE_SHIFT;
+    }
+
+    /**
+     * Returns the length a per-type lookup array needs to address every registered type.
+     *
+     * @return One more than the highest raw type index in the registry.
+     */
+    private static int typeTableSize() {
+        int highest = 0;
+        for (int type : MoleculeTypeRegistry.orderedTypes()) {
+            highest = Math.max(highest, rawIndex(type));
+        }
+        return highest + 1;
+    }
+
+    /**
+     * Reports whether a type is mutated by the general scale-proportional value perturbation.
+     * <p>
+     * The types that answer {@code false} carry an identifier in their value field — an opcode, a
+     * register id, a label hash — and have a strategy of their own. Every other type carries a
+     * plain number.
+     *
+     * @param type The shifted type constant.
+     * @return true if the general value strategy applies to this type.
+     */
+    private static boolean usesValueStrategy(int type) {
+        return type != Config.TYPE_CODE
+                && type != Config.TYPE_REGISTER
+                && type != Config.TYPE_LABEL
+                && type != Config.TYPE_LABELREF;
+    }
+
+    /**
+     * Returns a configuration block if the configuration has one under that path.
+     *
+     * @param config The plugin configuration.
+     * @param path The block name.
+     * @return The block, or {@code null} if the configuration does not contain it.
+     */
+    private static com.typesafe.config.Config blockOrNull(com.typesafe.config.Config config, String path) {
+        return config.hasPath(path) ? config.getConfig(path) : null;
     }
 
     /**
      * Returns the value to print for debug logging.
      * <p>
-     * DATA values are numbers and are shown sign-extended, matching how every other reader of the
-     * cell sees them. The remaining types carry identifiers, for which the raw pattern is correct.
+     * A value-carrying molecule is shown sign-extended, matching how every other reader of the
+     * cell sees it. The remaining types carry identifiers, for which the raw pattern is correct.
      *
      * @param type The shifted type constant.
      * @param value The raw 20-bit value pattern.
      * @return The value in the representation that belongs to the type.
      */
     private static int displayValueForLog(int type, int value) {
-        return type == Config.TYPE_DATA ? Molecule.extractSignedValue(value) : value;
-    }
-
-    /**
-     * Returns a human-readable type name for debug logging.
-     *
-     * @param type The shifted type constant.
-     * @return Short type name.
-     */
-    private static String typeNameForLog(int type) {
-        if (type == Config.TYPE_CODE) return "CODE";
-        if (type == Config.TYPE_DATA) return "DATA";
-        if (type == Config.TYPE_REGISTER) return "REG";
-        if (type == Config.TYPE_LABEL) return "LABEL";
-        if (type == Config.TYPE_LABELREF) return "LABELREF";
-        return "?";
+        return usesValueStrategy(type) ? Molecule.extractSignedValue(value) : value;
     }
 
     /** {@inheritDoc} */

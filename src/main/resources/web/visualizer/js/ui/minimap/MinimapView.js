@@ -420,6 +420,17 @@ export class MinimapView {
     }
 
     /**
+     * Passes the run's molecule type map to the renderer, which resolves the minimap's type bytes
+     * to type names through it.
+     *
+     * @param {object|null|undefined} moleculeTypes - Metadata map of the shifted type constant,
+     *        as a string, to the type name.
+     */
+    setMoleculeTypes(moleculeTypes) {
+        this.renderer.setMoleculeTypes(moleculeTypes);
+    }
+
+    /**
      * Returns the current overlay mode.
      * @returns {'org'|'own'|'off'}
      */

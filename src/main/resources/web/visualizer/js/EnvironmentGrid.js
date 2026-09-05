@@ -1,4 +1,5 @@
 import { loadingManager } from './ui/LoadingManager.js';
+import { moleculeTypeEntry, moleculeTypeName } from './MoleculeTypePalette.js';
 
 /**
  * Manages the PIXI.js-based rendering of the simulation environment grid.
@@ -1241,7 +1242,7 @@ export class EnvironmentGrid {
                 if (!Array.isArray(coords) || coords.length < 2) continue;
                 const key = `${coords[0]},${coords[1]}`;
                 this.cellData.set(key, {
-                    type: this.detailedRenderer.typeMapping[cell.moleculeType] ?? 0,
+                    type: moleculeTypeName(cell.moleculeType),
                     value: cell.moleculeValue,
                     ownerId: cell.ownerId,
                     opcodeName: cell.opcodeName || null,
@@ -1292,7 +1293,7 @@ export class EnvironmentGrid {
 
         let cellInfo = '';
         if (cell) {
-            const typeName = this.getTypeName(cell.type);
+            const typeName = cell.type;
             // For unknown opcodes (??), show full ID in tooltip
             let opcodeInfo = '';
             if (cell.opcodeName && (cell.ownerId !== 0 || cell.value !== 0)) {
@@ -1361,27 +1362,6 @@ export class EnvironmentGrid {
         // Reset cached organism list; actual graphics cleanup happens
         // incrementally within renderOrganisms() based on the new tick's data.
         this.currentOrganisms = [];
-    }
-
-    /**
-     * Gets the string name for a given molecule type ID.
-     *
-     * @param {number} typeId - The molecule type ID.
-     * @returns {string} The name of the type (e.g., "CODE").
-     * @private
-     */
-    getTypeName(typeId) {
-        const C = this.config;
-        switch (typeId) {
-            case C.typeCode: return 'CODE';
-            case C.typeData: return 'DATA';
-            case C.typeEnergy: return 'ENERGY';
-            case C.typeStructure: return 'STRUCTURE';
-            case C.typeLabel: return 'LABEL';
-            case C.typeLabelRef: return 'LABELREF';
-            case C.typeRegister: return 'REGISTER';
-            default: return 'UNKNOWN';
-        }
     }
 
     _getOrganismColor(organismId, energy, genomeHash, isDead) {
@@ -1508,7 +1488,6 @@ class DetailedRendererStrategy extends BaseRendererStrategy {
         this.ipGraphics = new Map();
         this.dpGraphics = new Map();
 
-        this.typeMapping = { 'CODE': 0, 'DATA': 1, 'ENERGY': 2, 'STRUCTURE': 3, 'LABEL': 4, 'LABELREF': 5, 'REGISTER': 6 };
         this.cellFont = {
             fontFamily: 'Monospaced, "Courier New"',
             fontSize: this.config.cellSize * 0.4,
@@ -1555,7 +1534,7 @@ class DetailedRendererStrategy extends BaseRendererStrategy {
 
             // Convert raw cell to internal format and draw directly
             const cellData = {
-                type: this.typeMapping[cell.moleculeType] ?? 0,
+                type: moleculeTypeName(cell.moleculeType),
                 value: cell.moleculeValue,
                 ownerId: cell.ownerId,
                 opcodeName: cell.opcodeName || null,
@@ -1612,14 +1591,14 @@ class DetailedRendererStrategy extends BaseRendererStrategy {
         }
         background.clear();
         background.rect(0, 0, cellSize, cellSize);
-        const isEmpty = cell.type === this.typeMapping['CODE'] && cell.value === 0 && cell.ownerId === 0;
+        const isEmpty = cell.type === 'CODE' && cell.value === 0 && cell.ownerId === 0;
         background.fill(isEmpty ? this.config.colorEmptyBg : this.getBackgroundColorForType(cell.type));
 
         // Draw text
-        const shouldHaveText = !isEmpty && ((cell.type === this.config.typeCode && (cell.value !== 0 || cell.ownerId !== 0)) || cell.type !== this.config.typeCode);
+        const shouldHaveText = !isEmpty && ((cell.type === 'CODE' && (cell.value !== 0 || cell.ownerId !== 0)) || cell.type !== 'CODE');
         if (shouldHaveText) {
             let label;
-            if (cell.type === this.config.typeCode) {
+            if (cell.type === 'CODE') {
                 label = (cell.opcodeName && typeof cell.opcodeName === 'string') ? cell.opcodeName : String(cell.value);
             } else {
                 label = cell.value.toString();
@@ -1857,33 +1836,24 @@ class DetailedRendererStrategy extends BaseRendererStrategy {
         }
     }
     
-    // Helper methods for color, etc.
-    getBackgroundColorForType(typeId) {
-        const C = this.config;
-        switch (typeId) {
-            case this.typeMapping['CODE']: return C.colorCodeBg;
-            case this.typeMapping['DATA']: return C.colorDataBg;
-            case this.typeMapping['ENERGY']: return C.colorEnergyBg;
-            case this.typeMapping['STRUCTURE']: return C.colorStructureBg;
-            case this.typeMapping['LABEL']: return C.colorLabelBg;
-            case this.typeMapping['LABELREF']: return C.colorLabelRefBg;
-            case this.typeMapping['REGISTER']: return C.colorRegisterBg;
-            default: return C.colorEmptyBg;
-        }
+    /**
+     * Returns the cell background colour of a molecule type.
+     *
+     * @param {string} typeName - The molecule type name, e.g. 'CODE'.
+     * @returns {number} The 0xRRGGBB background colour, the UNKNOWN colour for an unknown type.
+     */
+    getBackgroundColorForType(typeName) {
+        return moleculeTypeEntry(typeName).bg;
     }
 
-    getTextColorForType(typeId) {
-        const C = this.config;
-        switch (typeId) {
-            case this.typeMapping['STRUCTURE']: return C.colorStructureText;
-            case this.typeMapping['ENERGY']: return C.colorEnergyText;
-            case this.typeMapping['DATA']: return C.colorDataText;
-            case this.typeMapping['CODE']: return C.colorCodeText;
-            case this.typeMapping['LABEL']: return C.colorLabelText;
-            case this.typeMapping['LABELREF']: return C.colorLabelRefText;
-            case this.typeMapping['REGISTER']: return C.colorRegisterText;
-            default: return C.colorText;
-        }
+    /**
+     * Returns the colour the value of a molecule type is written in.
+     *
+     * @param {string} typeName - The molecule type name, e.g. 'CODE'.
+     * @returns {number} The 0xRRGGBB text colour, the UNKNOWN colour for an unknown type.
+     */
+    getTextColorForType(typeName) {
+        return moleculeTypeEntry(typeName).text;
     }
 }
 
@@ -2065,8 +2035,7 @@ class ZoomedOutRendererStrategy extends BaseRendererStrategy {
         uint32View.fill(emptyPixel);
 
         // --- Step 2: Draw cells into pixel buffer ---
-        const typeMapping = this.grid.detailedRenderer.typeMapping;
-        const getColor = (typeId) => this.grid.detailedRenderer.getBackgroundColorForType(typeId);
+        const getColor = (typeName) => this.grid.detailedRenderer.getBackgroundColorForType(typeName);
 
         for (let i = 0; i < cells.length; i++) {
             const cell = cells[i];
@@ -2079,11 +2048,11 @@ class ZoomedOutRendererStrategy extends BaseRendererStrategy {
             // Skip cells outside the region
             if (cellX < clampedX1 || cellX >= clampedX2 || cellY < clampedY1 || cellY >= clampedY2) continue;
 
-            const typeId = typeMapping[cell.moleculeType] ?? 0;
-            const isEmpty = typeId === typeMapping['CODE'] && cell.moleculeValue === 0 && cell.ownerId === 0;
+            const typeName = moleculeTypeName(cell.moleculeType);
+            const isEmpty = typeName === 'CODE' && cell.moleculeValue === 0 && cell.ownerId === 0;
             if (isEmpty) continue; // Already filled with empty color
 
-            const color = this._hexToRgb(getColor(typeId));
+            const color = this._hexToRgb(getColor(typeName));
             const colorPixel = (255 << 24) | (color.b << 16) | (color.g << 8) | color.r;
 
             // Position relative to region origin, scaled

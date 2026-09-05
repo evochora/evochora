@@ -294,7 +294,7 @@ public interface IAnalyticsPlugin extends IMemoryEstimatable {
      * <ul>
      *   <li>Plugin reads cells through {@link #extractRows(TickData, ICellStateSource)}</li>
      *   <li>Plugin analyzes spatial distribution of molecules</li>
-     *   <li>Plugin counts cell types (CODE, DATA, ENERGY, STRUCTURE)</li>
+     *   <li>Plugin counts molecule types</li>
      * </ul>
      * <p>
      * A plugin that returns {@code true} is called through

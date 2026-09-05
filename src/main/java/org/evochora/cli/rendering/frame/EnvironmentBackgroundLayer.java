@@ -11,6 +11,9 @@ import org.evochora.runtime.Config;
  * composable layer by renderers that need an environment background (e.g.
  * {@link MinimapFrameRenderer}, {@link DensityMapRenderer}).
  * <p>
+ * Cell colours come from {@link MoleculeTypeColors}; the empty background is this layer's own
+ * {@link #COLOR_EMPTY}, because an empty cell is not a molecule type.
+ * <p>
  * <strong>Performance:</strong> Uses generation numbers for O(1) state reset instead of
  * O(worldSize) Arrays.fill. Aggregation counts are built incrementally during cell processing.
  * <p>
@@ -19,43 +22,20 @@ import org.evochora.runtime.Config;
 public class EnvironmentBackgroundLayer {
 
     // ─────────────────────────────────────────────────────────────────────────────
-    // Cell type constants and colors
+    // Cell type slots and the empty background
     // ─────────────────────────────────────────────────────────────────────────────
 
-    /** Cell type index for CODE molecules. */
-    public static final int TYPE_CODE = 0;
-    /** Cell type index for DATA molecules. */
-    public static final int TYPE_DATA = 1;
-    /** Cell type index for ENERGY molecules. */
-    public static final int TYPE_ENERGY = 2;
-    /** Cell type index for STRUCTURE molecules. */
-    public static final int TYPE_STRUCTURE = 3;
-    /** Cell type index for LABEL molecules. */
-    public static final int TYPE_LABEL = 4;
-    /** Cell type index for LABELREF molecules. */
-    public static final int TYPE_LABELREF = 5;
-    /** Cell type index for REGISTER molecules. */
-    public static final int TYPE_REGISTER = 6;
-    /** Cell type index for empty cells (no molecule). */
-    public static final int TYPE_EMPTY = 7;
-
-    /** Number of non-empty types tracked for aggregation. */
-    static final int NUM_NON_EMPTY_TYPES = 7;
-
     /**
-     * RGB colors for each cell type, indexed by type constant.
-     * Matches the web visualizer minimap colors.
+     * Cell type slot for empty cells (no molecule). Empty is not a molecule type, so it sits
+     * beyond the slots {@link MoleculeTypeColors} hands out and is coloured here.
      */
-    public static final int[] CELL_COLORS = {
-        0x3c5078,  // CODE - blue-gray
-        0x32323c,  // DATA - dark gray
-        0xffe664,  // ENERGY - yellow
-        0xff7878,  // STRUCTURE - red/pink
-        0xa0a0a8,  // LABEL - light gray
-        0xa0a0a8,  // LABELREF - same as LABEL
-        0x506080,  // REGISTER - medium blue-gray
-        0x1e1e28   // EMPTY - dark background
-    };
+    public static final int TYPE_EMPTY = MoleculeTypeColors.slotCount();
+
+    /** RGB colour of an empty cell, the background this layer draws under everything. */
+    public static final int COLOR_EMPTY = 0x1e1e28;
+
+    /** Number of non-empty slots tracked for aggregation: every molecule type plus UNKNOWN. */
+    static final int NUM_NON_EMPTY_TYPES = MoleculeTypeColors.slotCount();
 
     // ─────────────────────────────────────────────────────────────────────────────
     // Dimensions
@@ -175,7 +155,7 @@ public class EnvironmentBackgroundLayer {
 
         for (int pixelIdx = 0; pixelIdx < totalPixels; pixelIdx++) {
             if (pixelGenerations[pixelIdx] != currentGeneration) {
-                frameBuffer[pixelIdx] = CELL_COLORS[TYPE_EMPTY];
+                frameBuffer[pixelIdx] = COLOR_EMPTY;
                 continue;
             }
 
@@ -200,7 +180,9 @@ public class EnvironmentBackgroundLayer {
                 }
             }
 
-            frameBuffer[pixelIdx] = CELL_COLORS[winningType];
+            frameBuffer[pixelIdx] = winningType == TYPE_EMPTY
+                    ? COLOR_EMPTY
+                    : MoleculeTypeColors.colorOfSlot(winningType);
         }
     }
 
@@ -266,22 +248,15 @@ public class EnvironmentBackgroundLayer {
     }
 
     /**
-     * Maps a raw molecule integer to a cell type index.
-     * Returns {@link #TYPE_EMPTY} for empty cells (moleculeInt == 0).
+     * Maps a raw molecule integer to the cell type slot it is aggregated under.
+     * Returns {@link #TYPE_EMPTY} for empty cells (moleculeInt == 0), and the UNKNOWN slot of
+     * {@link MoleculeTypeColors} for a molecule whose type is not registered.
      *
      * @param moleculeInt Raw molecule data from CellDataColumns.
-     * @return Cell type index (0-7).
+     * @return Cell type slot, at most {@link #TYPE_EMPTY}.
      */
     static int getCellTypeIndex(int moleculeInt) {
         if (moleculeInt == 0) return TYPE_EMPTY;
-        int moleculeType = moleculeInt & Config.TYPE_MASK;
-        if (moleculeType == Config.TYPE_CODE) return TYPE_CODE;
-        if (moleculeType == Config.TYPE_DATA) return TYPE_DATA;
-        if (moleculeType == Config.TYPE_ENERGY) return TYPE_ENERGY;
-        if (moleculeType == Config.TYPE_STRUCTURE) return TYPE_STRUCTURE;
-        if (moleculeType == Config.TYPE_LABEL) return TYPE_LABEL;
-        if (moleculeType == Config.TYPE_LABELREF) return TYPE_LABELREF;
-        if (moleculeType == Config.TYPE_REGISTER) return TYPE_REGISTER;
-        return TYPE_EMPTY;
+        return MoleculeTypeColors.slotOf(moleculeInt & Config.TYPE_MASK);
     }
 }
