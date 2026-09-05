@@ -12,6 +12,7 @@ For architectural review criteria see **[.agents/architecture-guidelines.md](.ag
 - Verify the solution is fundamentally possible given system constraints
 - For architectural changes: confirm the approach solves the problem without creating new ones
 - For performance claims (heap, CPU, latency): verify with evidence or explicitly state uncertainty
+- Follow the decision path in AGENTS.md ("How decisions are made"): options laid out and examined before any one of them is proposed; an idea without a clean implementation is dropped
 
 **Before Implementing Changes:**
 - Interface changes: analyze full impact (all implementations, all call sites, all tests)
