@@ -246,10 +246,11 @@ Clade membership is a proxy; the mutation is molecules in the world. Via the nod
   needed (feature request: see the execution-coverage issue on GitHub).
 - **Founder mutations** of a clade: full-body diff against organism 1 at tick 0. Both bodies come
   from the body endpoint in the same relative coordinates, so the diff is a set operation without
-  shifting. Exclude STATE molecules (written by the organism for itself) and LABEL/LABELREF *values*
-  (XOR-masked per organism); DATA operands stay in the diff, they are genome. Compare several
-  clade members — only shared differences are the inherited founder mutation, the rest is ongoing
-  per-individual mutation.
+  shifting. Exclude STATE molecules (written by the organism for itself); XOR-normalize
+  LABEL/LABELREF values with the anchor label as the hasher does (see Pitfalls) — excluding them
+  would hide an inherited label mutation; DATA operands stay in the diff, they are genome. Compare
+  several clade members — only shared differences are the inherited founder mutation, the rest is
+  ongoing per-individual mutation.
 
 **Which rule applies depends on the build that wrote the run.** A run written with the STATE type
 hashes the DATA operands and excludes STATE, and its body diffs drop STATE cells. A run from before

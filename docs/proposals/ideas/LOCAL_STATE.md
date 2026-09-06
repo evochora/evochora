@@ -21,8 +21,8 @@ different problem. The two mechanisms are orthogonal:
 | Lifetime | across generations | lifetime of one organism |
 | Visible to other organisms | yes — readable and writable in space | no |
 
-State whose values are meant to be tuned by evolution must live on the grid and needs a non-zero STATE substitution weight. SDR/SLR are runtime
-scratch state for a single organism's lifetime.
+State meant to be tuned by evolution must live on the grid, and its STATE cells need a non-zero
+substitution weight; SDR/SLR are scratch state for one organism's lifetime and are never mutated.
 
 A write with marker register 0 stores a `DATA` value as `STATE`, which is the type state fields
 should have, so the code generated for `.STORE` should save the marker register, set it to 0 for
