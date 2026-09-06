@@ -193,10 +193,37 @@ over `organism_id, event_index`: smallest position, number of rows, class and ki
 against fate, fixation and clade is a join against `genome_lineage` and `genome_population` on
 the genome hashes.
 
-No manifest entry, so no chart in the Analyzer.
-
 The plugin is registered in `reference.conf` under `analytics-indexer-1` and mirrored in
-`config/evochora.conf` beside the other metrics.
+`config/evochora.conf` beside the other metrics. It carries no manifest entry of its own; the two
+charts below read it.
+
+### Two charts in the Analyzer
+
+**The cause on the clade band.** The Clade Shares chart shows a sweep as a rising band but not
+what started it. Every genome has its founding mutation in the events of its first carrier, so
+the chart names it in the band's legend and tooltip: plugin, kind, number of cells and the first
+position — or "no plugin event", which is the copy channel. The browser's DuckDB build does not
+survive a hash aggregation over an unsorted column beyond a few thousand rows (see
+`GenomePopulationPlugin`), so the chart must not group `mutation_events` by genome hash. The
+plugin therefore writes a second, small table `mutation_summary` with one row per event —
+`tick, birth_tick, organism_id, genome_hash, parent_genome_hash, event_index, plugin_class, kind,
+cell_count, position` (the smallest position) — and the chart filters that table by the band's
+genome hash, a scan of a few thousand rows. `GenomePopulationPlugin.getManifestEntry` gains
+`mutation_summary` as a second companion metric with that query; the manifest and the chart
+accept a list of companions instead of one.
+
+**Variation sources per birth.** A second analytics plugin `VariationSourcesPlugin`, metric
+`variation_sources`, reading every recording like the events plugin. A newborn is a state whose
+`birth_tick` lies after the previous recording, the interval taken from the analytics context;
+dead newborns are in the recording too. One row per recording and source with the number of
+births: source is `unchanged` (genome hash equals the parent's), `bodiless` (genome hash 0),
+`no-event` (hash differs, no event), or the kinds of the birth's events joined by `+` in plugin
+order, so that a birth counts exactly once and the shares of a recording sum to one. The manifest
+entry is a stacked area chart of the shares over ticks, like Clade Shares. It shows the copy
+channel and its episodes directly, and whether mutator lineages gain ground over a run.
+
+What is not a chart: mutation class against fate. That needs the newborn's future and stays a
+notebook question over the join with `genome_lineage`.
 
 ### Controller
 
@@ -285,8 +312,10 @@ Every step in its own commit on the branch `mutation-events`.
 3. **Plugins.** The four recording sites beside the existing debug logs. Tests: one case per plugin
    test that checks cells, old and new values against what was written, and that a no-op records
    nothing.
-4. **Analytics.** `MutationEventsPlugin`, its test after the pattern of `DeathLifetimesPluginTest`,
-   the entries in `reference.conf` and `config/evochora.conf`.
+4. **Analytics.** `MutationEventsPlugin` with both tables, its test after the pattern of
+   `DeathLifetimesPluginTest`, the entries in `reference.conf` and `config/evochora.conf`.
+   4a. The second companion on the Clade Shares manifest and its display in the chart.
+   4b. `VariationSourcesPlugin`, its test, its manifest entry and its config entries.
 5. **Organism indexer.** The column, the second statement and the conversion in
    `AbstractH2OrgStorageStrategy`. Tests: both strategy tests write a state with events and read
    the column back; a later window without events leaves it untouched.
