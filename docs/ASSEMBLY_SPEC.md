@@ -24,15 +24,22 @@ The world is toroidal, meaning it wraps around at the edges. An organism moving 
 
 ### Molecules
 
-Every cell in the grid contains a **Molecule**, which is the fundamental unit of information and matter. A molecule has three properties: a **type**, a **value**, and a **marker**. The type determines its function and how organisms interact with it. The marker is a 4-bit value (0-15) used for ownership transfer during reproduction. There are four primary types:
+Every cell in the grid contains a **Molecule**, which is the fundamental unit of information and matter. A molecule has three properties: a **type**, a **value**, and a **marker**. The type determines its function and how organisms interact with it. The marker is a 4-bit value (0-15) used for ownership transfer during reproduction. The types are:
 
-* **`CODE`**: Represents an executable instruction for an organism's virtual machine.
+* **`CODE`**: an executable instruction of the organism's virtual machine.
+* **`DATA`**: a numeric value. As an instruction operand it is a constant of the program; instructions can also read and write it in the grid.
+* **`STATE`**: a numeric value an organism has written into the grid for itself. It is not part of a genome. In value operations it counts as `DATA` (see below).
+* **`ENERGY`**: a resource organisms consume to replenish their energy reserves (ER).
+* **`STRUCTURE`**: physical matter, such as the shell of an organism's body.
+* **`LABEL`**: a jump target; the anchor that fuzzy label matching resolves (see Labels).
+* **`LABELREF`**: an instruction operand naming a label by its hash.
+* **`REGISTER`**: an instruction operand naming a register.
 
-* **`DATA`**: Represents a generic data value that can be manipulated by instructions. These values can also be arguments for instructions.
+The last three are emitted by the compiler as instruction operands and read by the virtual machine; organisms scan and copy them like any other molecule.
 
-* **`ENERGY`**: A resource that organisms can consume to replenish their own energy reserves (ER).
+#### Types in value operations
 
-* **`STRUCTURE`**: Represents physical matter, like the body of an organism.
+Two scalar values are *value-compatible* if their types are equal, or if one is `DATA` and the other `STATE`. Arithmetic and bitwise instructions fail on incompatible operands. Value comparisons (`IF*`, `GT*`, `LT*`, …) between incompatible operands are never satisfied, whatever the comparison; the instruction itself does not fail. Where an instruction requires a plain number, such as the shift amount of `SHL*`/`SHR*` or the operand of `SMR*`/`CMR*`, `DATA` or `STATE` is accepted. A computation keeps the type of its first operand, so an operation on a `STATE` value yields a `STATE` result. Type comparisons (`IFT*`, `INT*`) and type scans (`SNT*`) match types exactly.
 
 ### Ownership
 
@@ -342,8 +349,8 @@ These instructions operate on the integer value of scalars.
 * `ADNR %REG1 %REG2`, `ADNI %REG1 <Literal>`, `ADNS`: Bitwise AND-NOT (`a & ~b`). Clears bits in first operand that are set in second.
 * `ORNR %REG1 %REG2`, `ORNI %REG1 <Literal>`, `ORNS`: Bitwise OR-NOT (`a | ~b`).
 * `NOT %REG`, `NOTS`: Bitwise NOT.
-* `SHLR %REG_VAL %REG_AMT`, `SHLI %REG_VAL <Literal>`, `SHLS`: Logical shift left.
-* `SHRR %REG_VAL %REG_AMT`, `SHRI %REG_VAL <Literal>`, `SHRS`: Logical shift right.
+* `SHLR %REG_VAL %REG_AMT`, `SHLI %REG_VAL <Literal>`, `SHLS`: Logical shift left. The shift amount must be a `DATA`-compatible scalar, that is of type `DATA` or `STATE`.
+* `SHRR %REG_VAL %REG_AMT`, `SHRI %REG_VAL <Literal>`, `SHRS`: Logical shift right. The shift amount must be a `DATA`-compatible scalar, that is of type `DATA` or `STATE`.
 
 #### Rotation and Bit Utilities
 
@@ -385,6 +392,7 @@ Scans axis-aligned neighbors around the active DP and returns a bitmask indicati
 
 * `SNTR %DEST_REG %TYPE_REG`, `SNTI %DEST_REG <Type_Lit>`, `SNTS`
   - Compares only the molecule type of the neighbor cell; the VALUE is ignored.
+  - The type match is exact, without the `DATA`/`STATE` compatibility of value operations: a scan for `DATA` does not report `STATE` neighbors, and `SNTI %M STATE:0` is the scan that finds them.
   - `<Type_Lit>` is any typed literal; only its type component is used (e.g., `ENERGY:0` selects ENERGY).
   - Register variants write the `DATA`-typed mask into `%DEST_REG`; stack variant pushes it.
   - If no neighbors match, the mask is `DATA:0`.
@@ -468,9 +476,9 @@ Note on conflicts: If a world interaction loses conflict resolution for its targ
 * `FORK %DP_VEC_REG %NRG_REG %DV_VEC_REG`: Creates a child organism at `DP` + delta vector. After the child is created, all molecules owned by the parent that have a marker value equal to the parent's current `MR` are transferred to the child, and their markers are reset to 0. Additional energy may be consumed based on the energy amount transferred to the child.
 * `FRKI <DP_Vec> <NRG_Lit> <DV_Vec>`, `FRKS`: Creates a child organism (immediate/stack variants). Same ownership transfer behavior as `FORK`.
 * `ADPR %REG`, `ADPI <Literal>`, `ADPS`: Sets the active Data Pointer index.
-* `SMR %REG`, `SMRI <Literal>`, `SMRS`: Sets the Molecule Marker Register (`MR`) to the value from the register, literal, or stack. The operand must be of type `DATA`; otherwise, the instruction fails. The value is masked to 4 bits (0-15).
+* `SMR %REG`, `SMRI <Literal>`, `SMRS`: Sets the Molecule Marker Register (`MR`) to the value from the register, literal, or stack. The operand must be of type `DATA` or `STATE`; otherwise, the instruction fails. The value is masked to 4 bits (0-15).
 * `GMR %REG`, `GMRS`: Gets the current value of the Molecule Marker Register (`MR`) and stores it in the specified register or pushes it onto the stack. The result is of type `DATA`.
-* `CMR %REG`, `CMRI <Literal>`, `CMRS`: Orphans all molecules owned by this organism that have a marker value matching the operand. Sets both marker and owner to 0. The operand must be of type `DATA`.
+* `CMR %REG`, `CMRI <Literal>`, `CMRS`: Orphans all molecules owned by this organism that have a marker value matching the operand. Sets both marker and owner to 0. The operand must be of type `DATA` or `STATE`.
 
 ### Location Stack and Register Operations
 

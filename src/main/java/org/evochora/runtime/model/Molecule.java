@@ -98,6 +98,41 @@ public record Molecule(int type, int value, int marker) {
     }
 
     /**
+     * Reports whether two molecule types may take part in the same scalar value operation.
+     * <p>
+     * Two types are value-compatible when computing with or comparing their values is meaningful
+     * under strict typing. Identical types always are. Beyond that, {@link Config#TYPE_DATA} and
+     * {@link Config#TYPE_STATE} are interchangeable: both hold a plain number and differ only in
+     * whether the cell belongs to an organism's genome or to the memory the organism writes while
+     * it runs. A value loaded from a state cell therefore computes and compares against the
+     * {@code DATA} constants in the organism's own code.
+     * <p>
+     * The operations that ask this question are the scalar arithmetic and MIN/MAX paths of
+     * {@code ArithmeticInstruction}, the two-operand and shift paths of {@code BitwiseInstruction},
+     * the value comparisons of {@code ConditionalInstruction}, and the marker operand of the
+     * {@code SMR*} and {@code CMR*} instructions in {@code StateInstruction}.
+     * <p>
+     * Compatibility does not make the two types equal: the result of an operation keeps the type of
+     * its first operand, and type comparisons ({@code IFT*}, {@code INT*}) as well as type scans
+     * ({@code SNT*}) still match exactly.
+     * <p>
+     * It is static and takes the type bits as they are stored in a packed molecule integer, so that
+     * callers on the instruction-execution path can ask without allocating a record. Equality is
+     * the fast path.
+     *
+     * @param typeA The first molecule type, a {@code Config.TYPE_*} constant.
+     * @param typeB The second molecule type, a {@code Config.TYPE_*} constant.
+     * @return true if values of the two types may be combined or compared, false otherwise.
+     */
+    public static boolean areValueCompatible(int typeA, int typeB) {
+        if (typeA == typeB) {
+            return true;
+        }
+        return (typeA == Config.TYPE_DATA && typeB == Config.TYPE_STATE)
+                || (typeA == Config.TYPE_STATE && typeB == Config.TYPE_DATA);
+    }
+
+    /**
      * Creates a molecule from its integer representation.
      * @param fullValue The integer representation of the molecule.
      * @return The created molecule.

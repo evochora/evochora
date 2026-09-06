@@ -696,8 +696,8 @@ public class StateInstruction extends Instruction {
      * Handles the SMR, SMRI, and SMRS instructions (Set Molecule marker Register).
      * Sets the organism's MR register to the value from the operand.
      * <p>
-     * The operand must be of type DATA. The value is masked to MARKER_BITS (4 bits).
-     * If the operand type is not DATA, the instruction fails.
+     * The operand must be a DATA-compatible scalar, that is of type DATA or STATE. The value is
+     * masked to MARKER_BITS (4 bits). For any other operand type, the instruction fails.
      *
      * @param opName   The instruction name (SMR, SMRI, or SMRS)
      * @param operands The operands containing the value to set
@@ -731,9 +731,9 @@ public class StateInstruction extends Instruction {
             source = Molecule.fromInt(intValue);
         }
 
-        // Type check: must be DATA
-        if (source.type() != Config.TYPE_DATA) {
-            organism.instructionFailed(opName + " requires DATA type operand.");
+        // Type check: the operand must be a scalar that counts as DATA
+        if (!Molecule.areValueCompatible(source.type(), Config.TYPE_DATA)) {
+            organism.instructionFailed(opName + " requires a DATA-compatible scalar operand.");
             return;
         }
 
@@ -810,9 +810,9 @@ public class StateInstruction extends Instruction {
             source = Molecule.fromInt(intValue);
         }
 
-        // Type check: must be DATA
-        if (source.type() != Config.TYPE_DATA) {
-            organism.instructionFailed(opName + " requires DATA type operand.");
+        // Type check: the operand must be a scalar that counts as DATA
+        if (!Molecule.areValueCompatible(source.type(), Config.TYPE_DATA)) {
+            organism.instructionFailed(opName + " requires a DATA-compatible scalar operand.");
             return;
         }
 

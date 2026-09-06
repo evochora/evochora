@@ -545,6 +545,18 @@ public class VMStateInstructionTest {
 
     @Test
     @Tag("unit")
+    void testSmr_AcceptsStateOperand() {
+        int markerValue = 7;
+        org.writeOperand(0, new Molecule(Config.TYPE_STATE, markerValue).toInt());
+
+        placeInstruction("SMR", 0); // SMR %DR0
+        sim.tick();
+
+        assertThat(org.getMr()).isEqualTo(markerValue);
+    }
+
+    @Test
+    @Tag("unit")
     void testSmr_FailsWithNonDataType() {
         // Set register to ENERGY type instead of DATA
         org.writeOperand(0, new Molecule(Config.TYPE_ENERGY, 5).toInt());
@@ -749,6 +761,22 @@ public class VMStateInstructionTest {
         // Other organism's molecule should be completely unchanged
         assertThat(environment.getMolecule(otherPos).marker()).isEqualTo(3);
         assertThat(environment.getOwnerId(otherPos)).isEqualTo(other.getId());
+    }
+
+    @Test
+    @Tag("unit")
+    void testCmr_AcceptsStateOperand() {
+        int[] pos1 = new int[]{16, 16};
+        environment.setMolecule(new Molecule(Config.TYPE_DATA, 99, 7), pos1); // marker=7
+        environment.setOwnerId(org.getId(), pos1);
+
+        org.writeOperand(0, new Molecule(Config.TYPE_STATE, 7).toInt());
+
+        placeInstruction("CMR", 0); // CMR %DR0
+        sim.tick();
+
+        assertThat(environment.getMolecule(pos1).marker()).isEqualTo(0);
+        assertThat(environment.getOwnerId(pos1)).isEqualTo(0); // orphaned
     }
 
     @Test
