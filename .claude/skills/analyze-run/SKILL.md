@@ -304,12 +304,13 @@ JSON format. For those runs body forensics goes the old way:
 - Batch chunks carry their first recording in `snapshot`, not in `deltas` (step 1b).
 - The H2 index file is locked by a running node; the H2 shell then fails or, worse, the node
   does. Finish shell exports before starting a node.
-- The genome hash includes the DATA operands, the ENERGY cells and every owned cell whatever its
-  marker, and excludes STATE (see `GenomeHasher`). A child born owning an energy cell is a
-  "mutant" with identical code. When diffing bodies, drop STATE cells and cells with marker ≠ 0,
-  and XOR-normalize LABEL and LABELREF values with the value of the LABEL at the smallest
-  relative position, as the hasher does — otherwise every child differs from its parent in every
-  label.
+- The genome hash is taken at birth, when the child owns no marker cells (FORK resets the marker
+  on every cell it hands over); it includes the DATA operands and the ENERGY cells and excludes
+  STATE (see `GenomeHasher`). A child born owning an energy cell is a "mutant" with identical
+  code. A body read later may contain the copy in progress for the next child, marked ≠ 0. When
+  diffing bodies, drop those cells and the STATE cells, and XOR-normalize LABEL and LABELREF
+  values with the value of the LABEL at the smallest relative position, as the hasher does —
+  otherwise every child differs from its parent in every label.
 - Empty cells (`CODE:0`) are unowned and absent from a body; inserted or duplicated code therefore
   appears as *new* cells, a deletion as *missing* cells.
 

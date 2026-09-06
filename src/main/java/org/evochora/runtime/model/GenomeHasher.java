@@ -16,8 +16,9 @@ import java.util.List;
  * its absolute position in the environment. It includes every molecule the organism owns
  * except STATE. A STATE cell is what an organism wrote for itself while running: the
  * environment stores a value written with marker register 0 as STATE, and its content varies
- * between copies of the same genome, because siblings inherit their parent's state cells as
- * they stood at copy time. Including them would make every birth look like a mutation.
+ * between copies of the same genome, because the copy loop carries the parent's state cells
+ * into the child as they stand at copy time. Including them would make every birth look like a
+ * mutation.
  * <p>
  * LABEL and LABELREF values are normalized before hashing: all values are XOR-ed with
  * the value of the LABEL molecule at the smallest relative position (the "anchor label"). This

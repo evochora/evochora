@@ -1,7 +1,7 @@
 # A STATE Molecule Type: Separating Soma from Genome
 
-**Status: TO BE REVIEWED — decisions taken with the maintainer, listed at the end. Reviewed by a
-second session and by the architecture reviewer; both sets of findings are incorporated.**
+**Status: ACCOMPLISHED — implemented on branch `state-molecule-type` (PR #157), 2026-09-06.
+Decisions taken with the maintainer are listed at the end.**
 
 ## Problem
 

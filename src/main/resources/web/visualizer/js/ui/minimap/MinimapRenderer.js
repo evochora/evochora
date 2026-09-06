@@ -76,6 +76,7 @@ export class MinimapRenderer {
         const unknownColor = moleculeTypeEntry(UNKNOWN_TYPE_NAME).bg;
         const table = new Array(256).fill(unknownColor);
         if (this.moleculeTypes && this.typeShift !== null) {
+            // Bytes 254 and 255 are the aggregator's sentinels for unknown and empty, never a type index.
             for (let byte = 0; byte < MinimapRenderer.BYTE_UNKNOWN; byte++) {
                 const typeName = this.moleculeTypes[String(byte << this.typeShift)];
                 table[byte] = typeName ? moleculeTypeEntry(typeName).bg : unknownColor;
