@@ -61,6 +61,9 @@ public class EnergyCostTest {
         // ensure target is empty
         environment.setMolecule(new Molecule(Config.TYPE_CODE, 0), target);
 
+        // A non-zero marker register keeps the written molecule DATA, so the DATA write rule prices it.
+        int marker = 1;
+        org.setMr(marker);
         int payload = new Molecule(Config.TYPE_DATA, 50).toInt();
         org.writeOperand(0, payload);      // value register
         org.writeOperand(1, vec);          // vector register
@@ -71,7 +74,8 @@ public class EnergyCostTest {
         sim.tick();
 
         assertThat(org.isInstructionFailed()).as("POKE should succeed on empty cell").isFalse();
-        assertThat(environment.getMolecule(target).toInt()).isEqualTo(payload);
+        assertThat(environment.getMolecule(target).toInt())
+                .isEqualTo(new Molecule(Config.TYPE_DATA, 50, marker).toInt());
         // POKE(DATA) costs 6 (from test config, replicating old behavior of 1 base + 5 DATA)
         assertThat(org.getEr()).isEqualTo(initialEr - 6);
     }

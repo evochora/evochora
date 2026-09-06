@@ -1,5 +1,6 @@
 package org.evochora.runtime.thermodynamics.impl;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -8,6 +9,7 @@ import java.util.Optional;
 import org.evochora.runtime.isa.Instruction.ConflictResolutionStatus;
 import org.evochora.runtime.isa.Instruction.Operand;
 import org.evochora.runtime.model.Molecule;
+import org.evochora.runtime.model.MoleculeTypeRegistry;
 import org.evochora.runtime.spi.thermodynamics.IThermodynamicPolicy;
 import org.evochora.runtime.spi.thermodynamics.ThermodynamicContext;
 import org.slf4j.Logger;
@@ -119,6 +121,32 @@ public class PokeThermodynamicPolicy implements IThermodynamicPolicy {
                 }
             }
         }
+        requireRuleForEveryType();
+    }
+
+    /**
+     * Ensures that every molecule type a write can store has an entropy rule.
+     * <p>
+     * A rule is required for each type registered in {@link MoleculeTypeRegistry} unless a
+     * {@code _default} block covers the rest. Checking this here turns a write of an unlisted
+     * type into a configuration error at start instead of a failure in the middle of a run.
+     *
+     * @throws IllegalArgumentException if a registered type has neither a rule nor a default
+     */
+    private void requireRuleForEveryType() {
+        if (typeRules.containsKey(DEFAULT_TYPE_KEY)) {
+            return;
+        }
+        List<String> missing = new ArrayList<>();
+        for (int type : MoleculeTypeRegistry.orderedTypes()) {
+            if (!typeRules.containsKey(type)) {
+                missing.add(MoleculeTypeRegistry.typeToName(type));
+            }
+        }
+        if (!missing.isEmpty()) {
+            throw new IllegalArgumentException("PokeThermodynamicPolicy has no rule for " + String.join(", ", missing)
+                + " and no _default block; every registered molecule type needs an entropy rule.");
+        }
     }
 
     @Override
@@ -134,7 +162,7 @@ public class PokeThermodynamicPolicy implements IThermodynamicPolicy {
             return 0;
         }
 
-        Molecule toWrite = getMoleculeToWrite(context.resolvedOperands());
+        Molecule toWrite = getMoleculeToWrite(context);
         if (toWrite != null) {
             Rule rule = typeRules.get(toWrite.type());
             if (rule == null) {
@@ -166,7 +194,7 @@ public class PokeThermodynamicPolicy implements IThermodynamicPolicy {
             return 0;
         }
 
-        Molecule toWrite = getMoleculeToWrite(context.resolvedOperands());
+        Molecule toWrite = getMoleculeToWrite(context);
         if (toWrite != null) {
             Rule rule = typeRules.get(toWrite.type());
             if (rule == null) {
@@ -200,13 +228,24 @@ public class PokeThermodynamicPolicy implements IThermodynamicPolicy {
         return context.targetInfo().isEmpty() || context.targetInfo().get().molecule().isEmpty();
     }
 
-    private Molecule getMoleculeToWrite(List<Operand> operands) {
+    /**
+     * Extracts the molecule a write instruction stores from its resolved operands.
+     * For POKE/POKI/POKS and PPK* instructions, the first operand contains the value to write.
+     * The value is converted into the form the environment stores it in
+     * ({@link Molecule#storedFormOfWrite(int, int)}), so that costs are resolved for the molecule
+     * that actually ends up in the cell.
+     *
+     * @param context The thermodynamic context of the executing instruction.
+     * @return The molecule as it is stored, or {@code null} if the operands carry no scalar value.
+     */
+    private Molecule getMoleculeToWrite(ThermodynamicContext context) {
+        List<Operand> operands = context.resolvedOperands();
         if (operands != null && !operands.isEmpty()) {
             // For POKE/POKI/POKS, the value to write is always the first operand.
             // For PPK*, the first operand is also the value to write (after the peek).
             Object value = operands.get(0).value();
             if (value instanceof Integer) {
-                return Molecule.fromInt((Integer) value);
+                return Molecule.fromInt(Molecule.storedFormOfWrite((Integer) value, context.organism().getMr()));
             }
         }
         return null;

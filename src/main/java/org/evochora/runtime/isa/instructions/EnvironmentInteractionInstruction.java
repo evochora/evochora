@@ -109,10 +109,7 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
                 organism.instructionFailed("POKE: Cannot write vectors to the world.");
                 return;
             }
-            Molecule toWriteRaw = org.evochora.runtime.model.Molecule.fromInt((Integer) valueToWrite);
-            // CODE:0 should always have marker=0 (represents empty cell)
-            int marker = (toWriteRaw.type() == Config.TYPE_CODE && toWriteRaw.value() == 0) ? 0 : organism.getMr();
-            Molecule toWrite = new Molecule(toWriteRaw.type(), toWriteRaw.value(), marker);
+            Molecule toWrite = Molecule.fromInt(Molecule.storedFormOfWrite((Integer) valueToWrite, organism.getMr()));
 
             // Energy costs and entropy dissipation are now handled by the thermodynamic policy in VirtualMachine
 
@@ -238,10 +235,7 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
                 organism.instructionFailed("PPK: Cannot write vectors to the world.");
                 return;
             }
-            Molecule toWriteRaw = org.evochora.runtime.model.Molecule.fromInt((Integer) valueToWrite);
-            // CODE:0 should always have marker=0 (represents empty cell)
-            int marker = (toWriteRaw.type() == Config.TYPE_CODE && toWriteRaw.value() == 0) ? 0 : organism.getMr();
-            Molecule toWrite = new Molecule(toWriteRaw.type(), toWriteRaw.value(), marker);
+            Molecule toWrite = Molecule.fromInt(Molecule.storedFormOfWrite((Integer) valueToWrite, organism.getMr()));
 
             // Energy costs and entropy dissipation are now handled by the thermodynamic policy in VirtualMachine
 

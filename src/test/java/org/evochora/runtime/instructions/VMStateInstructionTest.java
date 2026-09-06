@@ -450,6 +450,9 @@ public class VMStateInstructionTest {
         // Set up: ensure we have enough energy and a clear target location
         org.addEr(1000); // Give organism more energy for the fork operation
         org.setDp(0, org.getIp());
+        // A fork hands the child the cells carrying the parent's marker and requires a non-zero
+        // marker register.
+        org.setMr(1);
         
         // Prepare stack with values in the order expected by assembly code:
         // Stack order (top to bottom): [childDv, energy, delta]
@@ -490,6 +493,80 @@ public class VMStateInstructionTest {
         assertThat(child).isNotNull();
         assertThat(child.getDv()).isEqualTo(childDv);
         assertThat(child.getParentId()).isEqualTo(org.getId());
+    }
+
+    /**
+     * A fork with marker register 0 fails: marker 0 is the ephemeral class, whose cells stay with
+     * the organism that wrote them, so there is no set of cells to hand to a child.
+     */
+    @Test
+    @Tag("unit")
+    void testFork_FailsWithZeroMarkerRegister() {
+        org.addEr(1000);
+        org.setDp(0, org.getIp());
+        int energyBefore = org.getEr();
+
+        org.writeOperand(0, new int[]{1, 0});
+        org.writeOperand(1, new Molecule(Config.TYPE_DATA, 100).toInt());
+        org.writeOperand(2, new int[]{1, 0});
+        placeInstruction("FORK", 0, 1, 2);
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).isTrue();
+        assertThat(org.getFailureReason()).isEqualTo("FORK requires a non-zero molecule marker register");
+        assertThat(sim.getOrganisms()).hasSize(1);
+        // No child energy was taken: only the instruction's own cost and the error penalty apply.
+        assertThat(energyBefore - org.getEr()).isLessThan(100);
+
+        org.resetTickState();
+    }
+
+    /**
+     * FRKI with marker register 0 fails for the same reason as FORK, and names itself in the
+     * failure message.
+     */
+    @Test
+    @Tag("unit")
+    void testFrki_FailsWithZeroMarkerRegister() {
+        org.addEr(1000);
+        org.setDp(0, org.getIp());
+        int energyBefore = org.getEr();
+
+        placeInstruction("FRKI", 1, 0, 100, 1, 0);
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).isTrue();
+        assertThat(org.getFailureReason()).isEqualTo("FRKI requires a non-zero molecule marker register");
+        assertThat(sim.getOrganisms()).hasSize(1);
+        assertThat(energyBefore - org.getEr()).isLessThan(100);
+
+        org.resetTickState();
+    }
+
+    /**
+     * FRKS with marker register 0 fails before the stack operands are consumed for a birth, and
+     * no child organism is created.
+     */
+    @Test
+    @Tag("unit")
+    void testFrks_FailsWithZeroMarkerRegister() {
+        org.addEr(1000);
+        org.setDp(0, org.getIp());
+        int energyBefore = org.getEr();
+
+        org.getDataStack().push(new int[]{1, 0});
+        org.getDataStack().push(new Molecule(Config.TYPE_DATA, 100).toInt());
+        org.getDataStack().push(new int[]{0, 1});
+
+        placeInstruction("FRKS");
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).isTrue();
+        assertThat(org.getFailureReason()).isEqualTo("FRKS requires a non-zero molecule marker register");
+        assertThat(sim.getOrganisms()).hasSize(1);
+        assertThat(energyBefore - org.getEr()).isLessThan(100);
+
+        org.resetTickState();
     }
 
     // ==================== SMR Instruction Tests ====================

@@ -28,7 +28,7 @@ Every cell in the grid contains a **Molecule**, which is the fundamental unit of
 
 * **`CODE`**: an executable instruction of the organism's virtual machine.
 * **`DATA`**: a numeric value. As an instruction operand it is a constant of the program; instructions can also read and write it in the grid.
-* **`STATE`**: a numeric value an organism has written into the grid for itself. It is not part of a genome. In value operations it counts as `DATA` (see below).
+* **`STATE`**: a numeric value an organism wrote for itself: `DATA` written with marker 0 is stored as `STATE`. In value operations it counts as `DATA` (see below).
 * **`ENERGY`**: a resource organisms consume to replenish their energy reserves (ER).
 * **`STRUCTURE`**: physical matter, such as the shell of an organism's body.
 * **`LABEL`**: a jump target; the anchor that fuzzy label matching resolves (see Labels).
@@ -48,6 +48,8 @@ Any grid cell can be "owned" by an organism. This ownership is tracked separatel
 ### Molecule Marker
 
 Each molecule carries a 4-bit marker value (0-15). When an organism writes a molecule to the environment using `POKE` or similar instructions, the current value of the organism's Molecule Marker Register (`MR`) is embedded into the molecule. This marker is used during `FORK` to transfer ownership of specific molecules to the offspring (see `FORK` instruction).
+
+The marker separates soma from genome. What an organism writes with `MR` 0 is soma: it belongs to no genome, and `DATA` written this way is stored as `STATE`. What it writes with any other marker is genome: it keeps its type and is handed to a child by a `FORK` executed with that marker. `FORK`, `FRKI` and `FRKS` fail when `MR` is 0.
 
 ---
 
@@ -149,8 +151,8 @@ The energy costs and entropy changes for all instructions are configurable throu
 
 **Universal Thermodynamic Policy**: All instructions use the `UniversalThermodynamicPolicy`, which supports flexible configuration through:
 - **Base Values**: `base-energy` and `base-entropy` applied to all executions
-- **Read Rules**: Applied when instructions read from environment cells (e.g., `PEEK`, `PEKI`, `PEKS`). Rules are organized by ownership (`own`, `foreign`, `unowned`) and molecule type (`ENERGY`, `STRUCTURE`, `CODE`, `DATA`, or `_default`)
-- **Write Rules**: Applied when instructions write to environment cells (e.g., `POKE`, `POKI`, `POKS`). Rules are organized by molecule type (`ENERGY`, `STRUCTURE`, `CODE`, `DATA`)
+- **Read Rules**: Applied when instructions read from environment cells (e.g., `PEEK`, `PEKI`, `PEKS`). Rules are organized by ownership (`own`, `foreign`, `unowned`) and molecule type (`ENERGY`, `STRUCTURE`, `CODE`, `DATA`, `STATE`, or `_default`)
+- **Write Rules**: Applied when instructions write to environment cells (e.g., `POKE`, `POKI`, `POKS`). Rules are organized by molecule type (`ENERGY`, `STRUCTURE`, `CODE`, `DATA`, `STATE`) and resolved for the molecule as it is stored
 
 **Default Behavior**: If no specific policy is configured for an instruction, a default policy applies. The default policy typically applies a base energy cost and generates entropy proportional to energy consumption.
 
@@ -449,16 +451,17 @@ Note on conflicts: If a world interaction loses conflict resolution for its targ
 * `PEEK %DEST_REG %VEC_REG`, `PEKI %DEST_REG <Vector>`, `PEKS`: Reads and consumes molecule at `DP` + vector, then clears ownership on that cell.
   - ENERGY molecules: Adds their value to `ER`. Energy costs and entropy generation depend on ownership (own/foreign/unowned) and are configured via thermodynamic policies.
   - STRUCTURE molecules: Energy costs depend on ownership (own/foreign/unowned) and are configured via thermodynamic policies.
-  - CODE/DATA molecules: Energy costs depend on ownership (own/foreign/unowned) and are configured via thermodynamic policies.
+  - CODE/DATA/STATE molecules: Energy costs depend on ownership (own/foreign/unowned) and are configured via thermodynamic policies.
   - Entropy generation is configured per molecule type and ownership status in the thermodynamic policy configuration.
 * `SCAN %DEST_REG %VEC_REG`, `SCNI %DEST_REG <Vector>`, `SCNS`: Reads molecule at `DP` + vector without consuming it.
-* `POKE %SRC_REG %VEC_REG`, `POKI %SRC_REG <Vector>`, `POKS`: Writes molecule from `<%SRC_REG>` or stack to an empty cell at `DP` + vector and sets the ownership.
-  - Energy costs depend on the molecule type being written (ENERGY, STRUCTURE, CODE, DATA) and are configured via thermodynamic policies.
+* `POKE %SRC_REG %VEC_REG`, `POKI %SRC_REG <Vector>`, `POKS`: Writes molecule from `<%SRC_REG>` or stack to an empty cell at `DP` + vector and sets the ownership. The current `MR` is embedded into the written molecule; a `DATA` molecule written with `MR` 0 is stored as `STATE`.
+  - Energy costs depend on the type of the molecule as it is stored (ENERGY, STRUCTURE, CODE, DATA, STATE) and are configured via thermodynamic policies.
   - Entropy dissipation is configured per molecule type in the thermodynamic policy configuration.
   - Note: Energy costs may be charged even if the target cell is occupied and the write fails, depending on policy configuration.
 * `PPKR %REG %VEC_REG`, `PPKI %REG <Vector>`, `PPKS`: Atomically reads and consumes molecule at `DP` + vector into `%REG`, and writes new molecule that was in `%REG` or stack to the same cell, basically swaps molecule in cell with the one in register or stack. Sets the ownership.
+  - The written molecule follows the same rule as `POKE`: the current `MR` is embedded into it, and a `DATA` molecule written with `MR` 0 is stored as `STATE`.
   - PEEK costs: Same as individual PEEK instruction, configured via thermodynamic policies.
-  - POKE costs: Same as individual POKE instruction, configured via thermodynamic policies.
+  - POKE costs: Same as individual POKE instruction, configured via thermodynamic policies, and resolved for the molecule as it is stored.
   - If target cell is empty, stores empty molecule (CODE:0) in destination and proceeds with POKE.
 * `SEEK %VEC_REG`, `SEKI <Vector>`, `SEKS`: Moves active `DP` by vector if target cell is empty or accessible (owned by self).
 
@@ -473,8 +476,8 @@ Note on conflicts: If a world interaction loses conflict resolution for its targ
 * `NTR %REG`, `NTRS`: Stores current `SR` in `<%REG>` or on the stack.
 * `RAND %REG`, `RNDS`: Stores a random number [0, `<%REG>`) back into `<%REG>` or on the stack.
 * `GDVR %VEC_REG`, `GDVS`: Stores current `DV` in `<%VEC_REG>` or on the stack.
-* `FORK %DP_VEC_REG %NRG_REG %DV_VEC_REG`: Creates a child organism at `DP` + delta vector. After the child is created, all molecules owned by the parent that have a marker value equal to the parent's current `MR` are transferred to the child, and their markers are reset to 0. Additional energy may be consumed based on the energy amount transferred to the child.
-* `FRKI <DP_Vec> <NRG_Lit> <DV_Vec>`, `FRKS`: Creates a child organism (immediate/stack variants). Same ownership transfer behavior as `FORK`.
+* `FORK %DP_VEC_REG %NRG_REG %DV_VEC_REG`: Creates a child organism at `DP` + delta vector. After the child is created, all molecules owned by the parent that have a marker value equal to the parent's current `MR` are transferred to the child, and their markers are reset to 0. Additional energy may be consumed based on the energy amount transferred to the child. The instruction fails when `MR` is 0, before any energy is taken and before the child is created: marker 0 is the ephemeral class and hands nothing on.
+* `FRKI <DP_Vec> <NRG_Lit> <DV_Vec>`, `FRKS`: Creates a child organism (immediate/stack variants). Same ownership transfer behavior as `FORK`, including the failure with `MR` 0.
 * `ADPR %REG`, `ADPI <Literal>`, `ADPS`: Sets the active Data Pointer index.
 * `SMR %REG`, `SMRI <Literal>`, `SMRS`: Sets the Molecule Marker Register (`MR`) to the value from the register, literal, or stack. The operand must be of type `DATA` or `STATE`; otherwise, the instruction fails. The value is masked to 4 bits (0-15).
 * `GMR %REG`, `GMRS`: Gets the current value of the Molecule Marker Register (`MR`) and stores it in the specified register or pushes it onto the stack. The result is of type `DATA`.

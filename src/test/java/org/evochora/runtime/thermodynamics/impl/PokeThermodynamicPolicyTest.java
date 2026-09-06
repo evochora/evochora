@@ -1,6 +1,7 @@
 package org.evochora.runtime.thermodynamics.impl;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -30,23 +31,57 @@ class PokeThermodynamicPolicyTest {
         var policy = new PokeThermodynamicPolicy();
         policy.initialize(ConfigFactory.parseString("""
             CODE: { energy = 5, entropy = -500 }
+            _default: { energy = 0, entropy = 0 }
             """));
         return policy;
     }
 
     private ThermodynamicContext writeContext(Molecule toWrite, Molecule targetMolecule, String instructionName) {
+        return writeContext(toWrite, targetMolecule, instructionName, 0);
+    }
+
+    /**
+     * Creates a write context for an organism whose marker register holds the given value. The
+     * marker register decides the stored form of the written molecule, which is what the type
+     * rules are resolved for.
+     */
+    private ThermodynamicContext writeContext(Molecule toWrite, Molecule targetMolecule,
+                                              String instructionName, int markerRegister) {
         Instruction instruction = mock(Instruction.class);
         when(instruction.getConflictStatus()).thenReturn(ConflictResolutionStatus.NOT_APPLICABLE);
         when(instruction.getName()).thenReturn(instructionName);
 
         Organism organism = mock(Organism.class);
         when(organism.getId()).thenReturn(1);
+        when(organism.getMr()).thenReturn(markerRegister);
 
         List<Operand> operands = List.of(new Operand(toWrite.toInt(), 0));
         Optional<ThermodynamicContext.TargetInfo> targetInfo = (targetMolecule == null)
                 ? Optional.empty()
                 : Optional.of(new ThermodynamicContext.TargetInfo(new int[]{0, 0}, targetMolecule, 0));
         return new ThermodynamicContext(instruction, organism, null, operands, targetInfo);
+    }
+
+    @Test
+    void writeOfDataIsPricedByTheRuleOfItsStoredForm() {
+        var policy = new PokeThermodynamicPolicy();
+        policy.initialize(ConfigFactory.parseString("""
+            DATA:  { energy = 6, entropy = -60 }
+            STATE: { energy = 2, entropy = -20 }
+            _default: { energy = 0, entropy = 0 }
+            """));
+
+        Molecule empty = new Molecule(Config.TYPE_CODE, 0, 0);
+
+        // With marker register 0 the DATA value is stored as STATE, so the STATE rule applies.
+        ThermodynamicContext ephemeral = writeContext(new Molecule(Config.TYPE_DATA, 50, 0), empty, "POKE", 0);
+        assertThat(policy.getEnergyCost(ephemeral)).isEqualTo(2);
+        assertThat(policy.getEntropyDelta(ephemeral)).isEqualTo(-20);
+
+        // With a non-zero marker register the molecule stays DATA and is priced by the DATA rule.
+        ThermodynamicContext durable = writeContext(new Molecule(Config.TYPE_DATA, 50, 0), empty, "POKE", 3);
+        assertThat(policy.getEnergyCost(durable)).isEqualTo(6);
+        assertThat(policy.getEntropyDelta(durable)).isEqualTo(-60);
     }
 
     @Test
@@ -78,5 +113,15 @@ class PokeThermodynamicPolicyTest {
                 new Molecule(Config.TYPE_CODE, 42, 0), new Molecule(Config.TYPE_DATA, 7, 0), "PPKR");
         assertThat(policy.getEnergyCost(ctx)).isEqualTo(5);
         assertThat(policy.getEntropyDelta(ctx)).isEqualTo(-500);
+    }
+    @Test
+    void aTypeWithoutARuleAndNoDefaultIsRejectedAtInitialization() {
+        var policy = new PokeThermodynamicPolicy();
+        assertThatThrownBy(() -> policy.initialize(ConfigFactory.parseString("""
+            CODE: { energy = 5, entropy = -500 }
+            """)))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("STATE")
+            .hasMessageContaining("_default");
     }
 }

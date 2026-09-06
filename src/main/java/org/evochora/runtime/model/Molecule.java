@@ -133,6 +133,47 @@ public record Molecule(int type, int value, int marker) {
     }
 
     /**
+     * Computes the form in which a molecule an organism writes into the environment is stored.
+     * <p>
+     * A write carries the organism's Molecule Marker Register into the grid, and the marker
+     * register also decides whether the written molecule is part of a genome or the organism's
+     * own memory. This method is the single definition of that rule:
+     * <ul>
+     *   <li>{@code CODE:0} is the empty cell and is always stored with marker 0, whatever the
+     *       marker register holds.</li>
+     *   <li>{@link Config#TYPE_DATA} written while the marker register is 0 is stored as
+     *       {@link Config#TYPE_STATE} with the same value: marker 0 is the ephemeral class, and
+     *       what an organism writes in it is its own working memory rather than genetic material.
+     *       {@code STATE} cells are excluded from the genome hash.</li>
+     *   <li>Every other molecule keeps its type; the marker register is stamped into it.</li>
+     * </ul>
+     * The value is carried over unchanged, so a stored molecule differs from the written one at
+     * most in its type and marker bits.
+     * <p>
+     * The callers are the two write paths of {@code EnvironmentInteractionInstruction} - the
+     * {@code POKE} path and the {@code PPK} peek-and-poke path - and the thermodynamic policies
+     * {@code UniversalThermodynamicPolicy} and {@code PokeThermodynamicPolicy}, which price the
+     * stored form so that write costs and read costs both key on what a cell actually holds.
+     * <p>
+     * It is static and works on packed molecule integers, so that callers on the
+     * instruction-execution path need no record allocation.
+     *
+     * @param moleculeInt The packed molecule integer the organism writes; any marker bits it
+     *                    carries are replaced by the marker register.
+     * @param markerRegister The writing organism's marker register value (0-15).
+     * @return The packed molecule integer as it is stored in the environment.
+     */
+    public static int storedFormOfWrite(int moleculeInt, int markerRegister) {
+        int type = moleculeInt & Config.TYPE_MASK;
+        int value = moleculeInt & Config.VALUE_MASK;
+        if (type == Config.TYPE_CODE && value == 0) {
+            return 0;
+        }
+        int storedType = (type == Config.TYPE_DATA && markerRegister == 0) ? Config.TYPE_STATE : type;
+        return ((markerRegister & Config.MARKER_VALUE_MASK) << Config.MARKER_SHIFT) | storedType | value;
+    }
+
+    /**
      * Creates a molecule from its integer representation.
      * @param fullValue The integer representation of the molecule.
      * @return The created molecule.
