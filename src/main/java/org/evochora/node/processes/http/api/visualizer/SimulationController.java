@@ -201,6 +201,9 @@ public class SimulationController extends VisualizerBaseController {
      *       carry the type bits at their position within a packed molecule and are therefore
      *       multiples of {@code 1 << Config.TYPE_SHIFT}: {1048576: "DATA", 2097152: "ENERGY", ...},
      *       with CODE at 0. Cell responses report {@code moleculeType} on the same scale.</li>
+     *   <li>moleculeTypeShift: {@code Config.TYPE_SHIFT}, the bit position of the type inside a
+     *       packed molecule. A client that holds a raw type index shifts it by this amount to
+     *       obtain the key of the {@code moleculeTypes} map.</li>
      *   <li>opcodes: {0x00: "NOP", 0x10: "ADD", ...}</li>
      * </ul>
      *
@@ -239,6 +242,7 @@ public class SimulationController extends VisualizerBaseController {
                 moleculeTypes.put(String.valueOf(entry.getKey()), entry.getValue());
             }
             root.set("moleculeTypes", moleculeTypes);
+            root.put("moleculeTypeShift", org.evochora.runtime.Config.TYPE_SHIFT);
 
             // Add opcode mappings (id -> name)
             final ObjectNode opcodes = mapper.createObjectNode();

@@ -31,6 +31,8 @@ class ConflictLossSemanticsTest {
     private static final int[] CELL_X = {0, 1};
     private static final int[] VECTOR_TO_X = {0, 1};
     private static final int ENERGY = 2_000;
+    /** The marker register the contenders write with. */
+    private static final int MARKER = 1;
 
     private final List<Simulation> simulations = new ArrayList<>();
 
@@ -210,6 +212,9 @@ class ConflictLossSemanticsTest {
         }
 
         private void arm(Organism organism) {
+            // With a non-zero marker register the written molecule keeps its DATA type, so the
+            // payload identifies its writer in the cell.
+            organism.setMr(MARKER);
             organism.setDp(0, new int[]{0, 0});
             organism.writeOperand(0, payloadOf(organism));
             placeWithVector(env, organism, "POKI", 0, VECTOR_TO_X);
@@ -225,7 +230,7 @@ class ConflictLossSemanticsTest {
         }
 
         int payloadOf(Organism organism) {
-            return new Molecule(Config.TYPE_DATA, 100 + organism.getId()).toInt();
+            return new Molecule(Config.TYPE_DATA, 100 + organism.getId(), MARKER).toInt();
         }
 
         Organism winner() {

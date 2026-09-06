@@ -1,3 +1,5 @@
+import { moleculeTypeEntry } from '../MoleculeTypePalette.js';
+
 /**
  * A utility class for formatting various data types from the simulation
  * into human-readable strings for the UI.
@@ -40,7 +42,7 @@ export class ValueFormatter {
                 throw new Error(`Invalid MOLECULE object: ${JSON.stringify(value)}`);
             }
             const typeName = value.type || '';
-            const typeAbbr = (typeName.length > 0 ? typeName.charAt(0).toUpperCase() + ':' : '');
+            const typeAbbr = (typeName.length > 0 ? moleculeTypeEntry(typeName).abbr + ':' : '');
             return `${typeAbbr}${value.value}`;
         }
 

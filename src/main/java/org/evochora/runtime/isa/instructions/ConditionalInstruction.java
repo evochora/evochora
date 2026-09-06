@@ -265,8 +265,8 @@ public class ConditionalInstruction extends Instruction {
                 } else if (op1.value() instanceof Integer i1 && op2.value() instanceof Integer i2) {
                     Molecule s1 = org.evochora.runtime.model.Molecule.fromInt(i1);
                     Molecule s2 = org.evochora.runtime.model.Molecule.fromInt(i2);
-                    if (Config.STRICT_TYPING && s1.type() != s2.type()) {
-                        // Condition is false if types don't match in strict mode
+                    if (Config.STRICT_TYPING && !Molecule.areValueCompatible(s1.type(), s2.type())) {
+                        // Condition is false if the types cannot be compared by value in strict mode
                     } else {
                         int val1 = s1.toScalarValue();
                         int val2 = s2.toScalarValue();

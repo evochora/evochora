@@ -8,6 +8,7 @@ import org.evochora.runtime.isa.OpcodeId;
 import org.evochora.runtime.isa.RegisterBank;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
+import org.evochora.runtime.model.MoleculeTypeRegistry;
 import org.evochora.runtime.model.Organism;
 import org.evochora.runtime.spi.IRandomProvider;
 import org.evochora.runtime.thermodynamics.ThermodynamicPolicyManager;
@@ -833,6 +834,191 @@ class GeneSubstitutionPluginTest {
         assertThatThrownBy(() -> pluginWith(1.0, Double.NaN))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("exponent");
+    }
+
+    // ---- Registry-driven configuration tests ----
+
+    /**
+     * Builds a plugin configuration with one block per registered molecule type, in which only the
+     * named type carries a non-zero weight. Types that need more than a weight get their own
+     * settings, so any type can be enabled without a second place to edit.
+     */
+    private static String configWithOnly(String enabledType) {
+        StringBuilder text = new StringBuilder("substitutionRate = 1.0\n");
+        for (int type : MoleculeTypeRegistry.orderedTypes()) {
+            String name = MoleculeTypeRegistry.typeToName(type);
+            text.append(name).append(" { weight = ").append(name.equals(enabledType) ? "1.0" : "0.0");
+            if ("CODE".equals(name)) {
+                text.append(", operationFlipWeight = 0.7, familyFlipWeight = 0.2, variantFlipWeight = 0.1");
+            }
+            if ("LABEL".equals(name) || "LABELREF".equals(name)) {
+                text.append(", bitflips = 1");
+            }
+            text.append(" }\n");
+        }
+        return text.toString();
+    }
+
+    /** Places a molecule of the given type whose value the type's own strategy can change. */
+    private void placeMutableMoleculeOf(int type) {
+        int value;
+        if (type == Config.TYPE_CODE) {
+            value = ADDR_OPCODE;
+        } else if (type == Config.TYPE_REGISTER) {
+            value = 3;
+        } else if (type == Config.TYPE_LABEL || type == Config.TYPE_LABELREF) {
+            value = 12345;
+        } else {
+            value = 100;
+        }
+        environment.setMolecule(new Molecule(type, value), child.getId(), new int[]{5, 5});
+    }
+
+    /**
+     * Every type the registry knows has a weight and a strategy, so registering a type is enough
+     * to make it mutable. A type the plugin could not act on would stay untouched here.
+     */
+    @Test
+    void everyRegisteredTypeIsMutableWhenItsWeightIsSet() {
+        for (int type : MoleculeTypeRegistry.orderedTypes()) {
+            String name = MoleculeTypeRegistry.typeToName(type);
+            com.typesafe.config.Config config = ConfigFactory.parseString(configWithOnly(name));
+
+            boolean mutated = false;
+            for (int seed = 0; seed < 100 && !mutated; seed++) {
+                setUp();
+                placeMutableMoleculeOf(type);
+                new GeneSubstitutionPlugin(new SeededRandomProvider(seed), config)
+                        .substitute(child, environment);
+
+                Molecule molecule = environment.getMolecule(5, 5);
+                assertThat(molecule.type()).as("%s keeps its type", name).isEqualTo(type);
+                mutated = molecule.value() != (type == Config.TYPE_CODE ? ADDR_OPCODE
+                        : type == Config.TYPE_REGISTER ? 3
+                        : type == Config.TYPE_LABEL || type == Config.TYPE_LABELREF ? 12345
+                        : 100);
+            }
+            assertThat(mutated).as("%s is mutated at weight 1", name).isTrue();
+        }
+    }
+
+    @Test
+    void stateIsNeverSelectedAtWeightZero() {
+        com.typesafe.config.Config config = ConfigFactory.parseString(configWithOnly("CODE"));
+
+        for (int seed = 0; seed < 50; seed++) {
+            setUp();
+            placeCode(5, 5, ADDR_OPCODE);
+            environment.setMolecule(new Molecule(Config.TYPE_STATE, 89), child.getId(), new int[]{10, 5});
+
+            new GeneSubstitutionPlugin(new SeededRandomProvider(seed), config)
+                    .substitute(child, environment);
+
+            assertThat(environment.getMolecule(10, 5).value())
+                    .as("seed=%d: STATE with weight 0 is never selected", seed)
+                    .isEqualTo(89);
+        }
+    }
+
+    @Test
+    void aMissingTypeBlockMeansWeightZero() {
+        // No STATE block at all, so nothing may happen to a STATE cell
+        com.typesafe.config.Config config = ConfigFactory.parseString("""
+                substitutionRate = 1.0
+                CODE { weight = 1.0, operationFlipWeight = 0.7, familyFlipWeight = 0.2, variantFlipWeight = 0.1 }
+                """);
+
+        for (int seed = 0; seed < 50; seed++) {
+            setUp();
+            placeCode(5, 5, ADDR_OPCODE);
+            environment.setMolecule(new Molecule(Config.TYPE_STATE, 89), child.getId(), new int[]{10, 5});
+
+            new GeneSubstitutionPlugin(new SeededRandomProvider(seed), config)
+                    .substitute(child, environment);
+
+            assertThat(environment.getMolecule(10, 5).value())
+                    .as("seed=%d: a type without a block is never selected", seed)
+                    .isEqualTo(89);
+        }
+    }
+
+    /**
+     * A block whose name is neither the substitution rate nor a molecule type would be read by
+     * nothing, so it is rejected instead of being silently ignored.
+     */
+    @Test
+    void anUnknownBlockNameIsRejected() {
+        com.typesafe.config.Config config = ConfigFactory.parseString("""
+                substitutionRate = 1.0
+                DATTA { weight = 1.0 }
+                """);
+
+        assertThatThrownBy(() -> new GeneSubstitutionPlugin(new SeededRandomProvider(1), config))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("DATTA")
+                .hasMessageContaining("substitutionRate")
+                .hasMessageContaining("DATA");
+    }
+
+    @Test
+    void aConfiguredStateWeightPerturbsTheValue() {
+        com.typesafe.config.Config config = ConfigFactory.parseString(configWithOnly("STATE"));
+
+        boolean steppedBeyondOne = false;
+        for (int seed = 0; seed < 50; seed++) {
+            setUp();
+            environment.setMolecule(new Molecule(Config.TYPE_STATE, 100), child.getId(), new int[]{5, 5});
+
+            new GeneSubstitutionPlugin(new SeededRandomProvider(seed), config)
+                    .substitute(child, environment);
+
+            Molecule molecule = environment.getMolecule(5, 5);
+            assertThat(molecule.type()).isEqualTo(Config.TYPE_STATE);
+            // delta = round(100^0.7) = 25, so the value stays in the neighbourhood of 100
+            assertThat(molecule.value()).as("seed=%d: scale-proportional step", seed).isBetween(75, 125);
+            if (Math.abs(molecule.value() - 100) > 1) {
+                steppedBeyondOne = true;
+            }
+        }
+        // A step of more than 1 can only come from the configured exponent: an exponent of 0.0
+        // would make every delta max(1, round(1)) = 1 and leave the value at 99, 100 or 101.
+        assertThat(steppedBeyondOne)
+                .as("a STATE value is perturbed scale-proportionally at weight 1")
+                .isTrue();
+    }
+
+    /**
+     * The exponent of a value-carrying type defaults where its block names none, so a block that
+     * only sets a weight still produces the same perturbation as the documented default.
+     */
+    @Test
+    void aValueBlockWithoutAnExponentUsesTheDefault() {
+        com.typesafe.config.Config config = ConfigFactory.parseString("""
+                substitutionRate = 1.0
+                STATE { weight = 1.0 }
+                """);
+
+        boolean steppedBeyondOne = false;
+        for (int seed = 0; seed < 50; seed++) {
+            setUp();
+            environment.setMolecule(new Molecule(Config.TYPE_STATE, 100), child.getId(), new int[]{5, 5});
+
+            new GeneSubstitutionPlugin(new SeededRandomProvider(seed), config)
+                    .substitute(child, environment);
+
+            int value = environment.getMolecule(5, 5).value();
+            assertThat(value)
+                    .as("seed=%d: delta = round(100^0.7) = 25", seed)
+                    .isBetween(75, 125);
+            if (Math.abs(value - 100) > 1) {
+                steppedBeyondOne = true;
+            }
+        }
+        // The default exponent is what produces a step of more than 1: an exponent of 0.0 would
+        // make every delta max(1, round(1)) = 1 and leave the value at 99, 100 or 101.
+        assertThat(steppedBeyondOne)
+                .as("the default exponent produces a scale-proportional step")
+                .isTrue();
     }
 
     // ---- Plugin contract tests ----

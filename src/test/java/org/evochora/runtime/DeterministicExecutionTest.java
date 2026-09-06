@@ -365,10 +365,13 @@ class DeterministicExecutionTest {
         sim.setRandomProvider(new SeededRandomProvider(SEED));
 
         int[] cellX = new int[]{0, 1};
-        int payload = new Molecule(Config.TYPE_DATA, 77).toInt();
+        // The writer runs with a non-zero marker register, so the cell holds the written molecule
+        // unchanged; with marker register 0 a DATA write is stored as STATE.
+        int payload = new Molecule(Config.TYPE_DATA, 77, 1).toInt();
 
         Organism writer = Organism.create(sim, new int[]{0, 0}, 10_000);
         sim.addOrganism(writer);
+        writer.setMr(1);
         writer.setDp(0, new int[]{0, 0});
         writer.writeOperand(0, payload);
         placeWithVector(env, writer, "POKI", 0, new int[]{0, 1});

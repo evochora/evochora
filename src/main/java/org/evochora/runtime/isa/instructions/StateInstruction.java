@@ -255,11 +255,16 @@ public class StateInstruction extends Instruction {
     /**
      * Handles the FORK instruction: spawns a child organism at a neighboring cell.
      * Transfers energy from parent to child and copies marker-matching molecule ownership.
+     * <p>
+     * A fork requires a non-zero marker register: marker 0 is the ephemeral class, whose cells are
+     * an organism's own memory and never leave it. The check runs before energy is taken and before
+     * a child organism is created, because organism IDs feed the per-tick conflict priority.
      *
      * @param operands Three operands: unit delta vector, energy scalar, child DV vector.
      * @param simulation The simulation for coordinate resolution and organism registration.
      */
     private void handleFork(List<Operand> operands, Simulation simulation) {
+        if (!requireNonZeroMarkerRegister("FORK")) { return; }
         if (operands.size() != 3) { organism.instructionFailed("Invalid operands for FORK."); return; }
         int[] delta = (int[]) operands.get(0).value();
         if (!organism.isUnitVector(delta)) {
@@ -284,6 +289,24 @@ public class StateInstruction extends Instruction {
         } else {
             organism.instructionFailed("FORK failed due to insufficient energy or invalid parameters.");
         }
+    }
+
+    /**
+     * Checks that the organism's Molecule Marker Register is not 0, which every fork requires.
+     * <p>
+     * The marker register selects the cells a fork hands to the child. Marker 0 is the ephemeral
+     * class: cells written in it are the organism's own memory and belong to no genome, so a fork
+     * executed in it has no set of cells to pass on. The instruction fails instead.
+     *
+     * @param opName The name of the fork instruction, used in the failure message.
+     * @return true if the marker register is non-zero, false if the instruction has been failed.
+     */
+    private boolean requireNonZeroMarkerRegister(String opName) {
+        if (organism.getMr() == 0) {
+            organism.instructionFailed(opName + " requires a non-zero molecule marker register");
+            return false;
+        }
+        return true;
     }
 
     private void handleDiff(List<Operand> operands) {
@@ -414,8 +437,9 @@ public class StateInstruction extends Instruction {
     /**
      * Handles the extended FORK variants (FRKI / FRKS).
      * FRKI takes immediate operands; FRKS pops delta, energy, and child DV from the data stack.
-     * Otherwise identical to {@link #handleFork}: validates the delta as a unit vector,
-     * transfers energy, creates a child organism, and transfers marker-matching ownership.
+     * Otherwise identical to {@link #handleFork}: requires a non-zero marker register, validates
+     * the delta as a unit vector, transfers energy, creates a child organism, and transfers
+     * marker-matching ownership.
      *
      * @param opName "FRKI" (immediate) or "FRKS" (stack).
      * @param operands Resolved operands for the instruction.
@@ -423,6 +447,7 @@ public class StateInstruction extends Instruction {
      * @param simulation The simulation for organism registration.
      */
     private void handleForkExtended(String opName, List<Operand> operands, Environment environment, Simulation simulation) {
+        if (!requireNonZeroMarkerRegister(opName)) { return; }
         if ("FRKI".equals(opName)) {
             if (operands.size() != 3) { organism.instructionFailed("FRKI expects <Vec>, <Lit>, <Vec>."); return; }
             int[] delta = (int[]) operands.get(0).value();
@@ -696,8 +721,8 @@ public class StateInstruction extends Instruction {
      * Handles the SMR, SMRI, and SMRS instructions (Set Molecule marker Register).
      * Sets the organism's MR register to the value from the operand.
      * <p>
-     * The operand must be of type DATA. The value is masked to MARKER_BITS (4 bits).
-     * If the operand type is not DATA, the instruction fails.
+     * The operand must be a DATA-compatible scalar, that is of type DATA or STATE. The value is
+     * masked to MARKER_BITS (4 bits). For any other operand type, the instruction fails.
      *
      * @param opName   The instruction name (SMR, SMRI, or SMRS)
      * @param operands The operands containing the value to set
@@ -731,9 +756,9 @@ public class StateInstruction extends Instruction {
             source = Molecule.fromInt(intValue);
         }
 
-        // Type check: must be DATA
-        if (source.type() != Config.TYPE_DATA) {
-            organism.instructionFailed(opName + " requires DATA type operand.");
+        // Type check: the operand must be a scalar that counts as DATA
+        if (!Molecule.areValueCompatible(source.type(), Config.TYPE_DATA)) {
+            organism.instructionFailed(opName + " requires a DATA-compatible scalar operand.");
             return;
         }
 
@@ -810,9 +835,9 @@ public class StateInstruction extends Instruction {
             source = Molecule.fromInt(intValue);
         }
 
-        // Type check: must be DATA
-        if (source.type() != Config.TYPE_DATA) {
-            organism.instructionFailed(opName + " requires DATA type operand.");
+        // Type check: the operand must be a scalar that counts as DATA
+        if (!Molecule.areValueCompatible(source.type(), Config.TYPE_DATA)) {
+            organism.instructionFailed(opName + " requires a DATA-compatible scalar operand.");
             return;
         }
 

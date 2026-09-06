@@ -341,7 +341,7 @@ public class UniversalThermodynamicPolicy implements IThermodynamicPolicy {
         }
 
         if (this.writeTable != null && writeCharged(context)) {
-            Molecule toWrite = getMoleculeToWrite(context.resolvedOperands());
+            Molecule toWrite = getMoleculeToWrite(context);
             if (toWrite != null) {
                 Rule writeRule = writeRuleFor(toWrite);
                 if (writeRule != null) {
@@ -407,16 +407,23 @@ public class UniversalThermodynamicPolicy implements IThermodynamicPolicy {
     }
 
     /**
-     * Extracts the molecule to be written from the resolved operands.
-     * For POKE/POKI/POKS and PPK* instructions, the first operand contains the molecule to write.
+     * Extracts the molecule a write instruction stores from its resolved operands.
+     * For POKE/POKI/POKS and PPK* instructions, the first operand contains the value to write.
+     * The value is converted into the form the environment stores it in
+     * ({@link Molecule#storedFormOfWrite(int, int)}), so that write costs are resolved for the
+     * molecule that actually ends up in the cell, symmetric to the read rules.
+     *
+     * @param context The thermodynamic context of the executing instruction.
+     * @return The molecule as it is stored, or {@code null} if the operands carry no scalar value.
      */
-    private Molecule getMoleculeToWrite(List<Operand> operands) {
+    private Molecule getMoleculeToWrite(ThermodynamicContext context) {
+        List<Operand> operands = context.resolvedOperands();
         if (operands != null && !operands.isEmpty()) {
             // For POKE/POKI/POKS, the value to write is always the first operand.
             // For PPK*, the first operand is also the value to write (after the peek).
             Object value = operands.get(0).value();
             if (value instanceof Integer) {
-                return Molecule.fromInt((Integer) value);
+                return Molecule.fromInt(Molecule.storedFormOfWrite((Integer) value, context.organism().getMr()));
             }
         }
         return null;

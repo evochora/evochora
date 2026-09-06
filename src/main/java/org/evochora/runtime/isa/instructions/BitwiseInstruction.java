@@ -168,14 +168,14 @@ public class BitwiseInstruction extends Instruction {
                     s2 = org.evochora.runtime.model.Molecule.fromInt(i2);
                 }
 
-                if (Config.STRICT_TYPING && s1.type() != s2.type()) {
-                    organism.instructionFailed("Operand types must match in strict mode for bitwise operations.");
+                if (Config.STRICT_TYPING && !Molecule.areValueCompatible(s1.type(), s2.type())) {
+                    organism.instructionFailed("Operand types must be compatible in strict mode for bitwise operations.");
                     return;
                 }
 
-                // For shifts, the second operand must be DATA type
-                if (opName.contains("SH") && s2.type() != Config.TYPE_DATA) {
-                    organism.instructionFailed("Shift amount must be of type DATA.");
+                // For shifts, the second operand must be a scalar that counts as DATA
+                if (opName.contains("SH") && !Molecule.areValueCompatible(s2.type(), Config.TYPE_DATA)) {
+                    organism.instructionFailed("Shift amount must be a DATA-compatible scalar.");
                     return;
                 }
 

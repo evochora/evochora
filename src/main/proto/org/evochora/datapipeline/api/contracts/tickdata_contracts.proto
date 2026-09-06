@@ -234,7 +234,8 @@ message OrganismState {
   // Value range: 0-15 (4 bits)
   int32 molecule_marker_register = 27;
 
-  // Genome hash computed at birth from CODE, LABEL, LABELREF, REGISTER, STRUCTURE, ENERGY molecules
+  // Genome hash computed at birth from every molecule the organism owns except STATE:
+  // CODE, DATA, LABEL, LABELREF, REGISTER, STRUCTURE, ENERGY
   // Source: Organism.getGenomeHash()
   // Uniquely identifies the organism's genetic material independent of position
   // Value is 0 if the organism has no genome molecules (empty genome)

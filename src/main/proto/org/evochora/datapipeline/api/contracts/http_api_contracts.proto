@@ -52,10 +52,12 @@ message MinimapData {
   int32 height = 2;
 
   // Cell types as raw bytes, one byte per pixel (row-major order).
-  // Values are the type bits shifted down to a small id: 0=CODE, 1=DATA, 2=ENERGY,
-  // 3=STRUCTURE, 4=LABEL, 5=LABELREF, 6=REGISTER, plus 7=EMPTY for a pixel holding no
-  // molecule. This is the minimap's own compact encoding and differs from molecule_type
-  // in CellHttpResponse, which carries the unshifted Config constant.
+  // A registered molecule type is its Config type constant shifted down by the type shift; the
+  // moleculeTypes map of the simulation metadata names each constant. Two bytes outside that
+  // range stand for what is not a type: 255=EMPTY for a pixel holding no molecule, and
+  // 254=UNKNOWN for a molecule whose type the server's registry does not know.
+  // This is the minimap's own compact encoding and differs from molecule_type in
+  // CellHttpResponse, which carries the unshifted Config constant.
   // Client maps these to colors using the same palette as the main grid.
   bytes cell_types = 3;
 

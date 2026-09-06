@@ -34,11 +34,11 @@ class GenomeHasherTest {
     }
 
     @Test
-    void testOnlyDataMolecules_returnsZero() {
-        // Place only DATA molecules - should be excluded from genome
-        Molecule dataMol = new Molecule(Config.TYPE_DATA, 42, 0);
-        env.setMolecule(dataMol, ORGANISM_ID, new int[]{5, 5});
-        env.setMolecule(dataMol, ORGANISM_ID, new int[]{5, 6});
+    void testOnlyStateMolecules_returnsZero() {
+        // Place only STATE molecules - they are the organism's own memory and carry no genome
+        Molecule stateMol = new Molecule(Config.TYPE_STATE, 42, 0);
+        env.setMolecule(stateMol, ORGANISM_ID, new int[]{5, 5});
+        env.setMolecule(stateMol, ORGANISM_ID, new int[]{5, 6});
 
         long hash = GenomeHasher.computeGenomeHash(env, ORGANISM_ID, INITIAL_POSITION);
         assertThat(hash).isEqualTo(0L);
@@ -101,8 +101,28 @@ class GenomeHasherTest {
     }
 
     @Test
-    void testDataMoleculesIgnored() {
-        // Place CODE and DATA molecules
+    void testStateMoleculesIgnored() {
+        // Place CODE and STATE molecules
+        Molecule codeMol = new Molecule(Config.TYPE_CODE, 10, 0);
+        Molecule stateMol = new Molecule(Config.TYPE_STATE, 42, 0);
+        env.setMolecule(codeMol, ORGANISM_ID, new int[]{5, 5});
+        env.setMolecule(stateMol, ORGANISM_ID, new int[]{5, 6});
+
+        long hashWithState = GenomeHasher.computeGenomeHash(env, ORGANISM_ID, INITIAL_POSITION);
+
+        // Reset and place only CODE
+        env = new Environment(new int[]{32, 32}, false);
+        env.setMolecule(codeMol, ORGANISM_ID, new int[]{5, 5});
+
+        long hashWithoutState = GenomeHasher.computeGenomeHash(env, ORGANISM_ID, INITIAL_POSITION);
+
+        // Hashes should be the same - STATE is ignored
+        assertThat(hashWithState).isEqualTo(hashWithoutState);
+    }
+
+    @Test
+    void testDataMoleculesChangeTheHash() {
+        // Place CODE and DATA molecules - DATA operands are part of the genome
         Molecule codeMol = new Molecule(Config.TYPE_CODE, 10, 0);
         Molecule dataMol = new Molecule(Config.TYPE_DATA, 42, 0);
         env.setMolecule(codeMol, ORGANISM_ID, new int[]{5, 5});
@@ -116,8 +136,15 @@ class GenomeHasherTest {
 
         long hashWithoutData = GenomeHasher.computeGenomeHash(env, ORGANISM_ID, INITIAL_POSITION);
 
-        // Hashes should be the same - DATA is ignored
-        assertThat(hashWithData).isEqualTo(hashWithoutData);
+        assertThat(hashWithData).isNotEqualTo(hashWithoutData);
+
+        // A different DATA value produces a different hash again
+        env = new Environment(new int[]{32, 32}, false);
+        env.setMolecule(codeMol, ORGANISM_ID, new int[]{5, 5});
+        env.setMolecule(new Molecule(Config.TYPE_DATA, 43, 0), ORGANISM_ID, new int[]{5, 6});
+
+        long hashWithOtherData = GenomeHasher.computeGenomeHash(env, ORGANISM_ID, INITIAL_POSITION);
+        assertThat(hashWithOtherData).isNotEqualTo(hashWithData);
     }
 
     @Test

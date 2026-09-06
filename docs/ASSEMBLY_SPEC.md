@@ -24,15 +24,22 @@ The world is toroidal, meaning it wraps around at the edges. An organism moving 
 
 ### Molecules
 
-Every cell in the grid contains a **Molecule**, which is the fundamental unit of information and matter. A molecule has three properties: a **type**, a **value**, and a **marker**. The type determines its function and how organisms interact with it. The marker is a 4-bit value (0-15) used for ownership transfer during reproduction. There are four primary types:
+Every cell in the grid contains a **Molecule**, which is the fundamental unit of information and matter. A molecule has three properties: a **type**, a **value**, and a **marker**. The type determines its function and how organisms interact with it. The marker is a 4-bit value (0-15) used for ownership transfer during reproduction. The types are:
 
-* **`CODE`**: Represents an executable instruction for an organism's virtual machine.
+* **`CODE`**: an executable instruction of the organism's virtual machine.
+* **`DATA`**: a numeric value. As an instruction operand it is a constant of the program; instructions can also read and write it in the grid.
+* **`STATE`**: a numeric value an organism wrote for itself: `DATA` written with marker 0 is stored as `STATE`. In value operations it counts as `DATA` (see below).
+* **`ENERGY`**: a resource organisms consume to replenish their energy reserves (ER).
+* **`STRUCTURE`**: physical matter, such as the shell of an organism's body.
+* **`LABEL`**: a jump target; the anchor that fuzzy label matching resolves (see Labels).
+* **`LABELREF`**: an instruction operand naming a label by its hash.
+* **`REGISTER`**: an instruction operand naming a register.
 
-* **`DATA`**: Represents a generic data value that can be manipulated by instructions. These values can also be arguments for instructions.
+`LABEL` is placed in the grid by the compiler as the anchor a jump resolves to; `LABELREF` and `REGISTER` are emitted as instruction operands. All three are read by the virtual machine; organisms scan and copy them like any other molecule.
 
-* **`ENERGY`**: A resource that organisms can consume to replenish their own energy reserves (ER).
+#### Types in value operations
 
-* **`STRUCTURE`**: Represents physical matter, like the body of an organism.
+Two scalar values are *value-compatible* if their types are equal, or if one is `DATA` and the other `STATE`. Arithmetic and bitwise instructions fail on incompatible operands. Value comparisons (`IF*`, `GT*`, `LT*`, …) between incompatible operands are never satisfied, whatever the comparison; the instruction itself does not fail. Where an instruction requires a plain number, such as the shift amount of `SHL*`/`SHR*` or the operand of `SMR*`/`CMR*`, `DATA` or `STATE` is accepted. A computation keeps the type of its first operand, so an operation on a `STATE` value yields a `STATE` result. Type comparisons (`IFT*`, `INT*`) and type scans (`SNT*`) match types exactly.
 
 ### Ownership
 
@@ -41,6 +48,8 @@ Any grid cell can be "owned" by an organism. This ownership is tracked separatel
 ### Molecule Marker
 
 Each molecule carries a 4-bit marker value (0-15). When an organism writes a molecule to the environment using `POKE` or similar instructions, the current value of the organism's Molecule Marker Register (`MR`) is embedded into the molecule. This marker is used during `FORK` to transfer ownership of specific molecules to the offspring (see `FORK` instruction).
+
+The marker separates soma from genome. What an organism writes with `MR` 0 is soma: it belongs to no genome, and `DATA` written this way is stored as `STATE`. What it writes with any other marker is genome: it keeps its type and is handed to a child by a `FORK` executed with that marker. `FORK`, `FRKI` and `FRKS` fail when `MR` is 0.
 
 ---
 
@@ -142,8 +151,8 @@ The energy costs and entropy changes for all instructions are configurable throu
 
 **Universal Thermodynamic Policy**: All instructions use the `UniversalThermodynamicPolicy`, which supports flexible configuration through:
 - **Base Values**: `base-energy` and `base-entropy` applied to all executions
-- **Read Rules**: Applied when instructions read from environment cells (e.g., `PEEK`, `PEKI`, `PEKS`). Rules are organized by ownership (`own`, `foreign`, `unowned`) and molecule type (`ENERGY`, `STRUCTURE`, `CODE`, `DATA`, or `_default`)
-- **Write Rules**: Applied when instructions write to environment cells (e.g., `POKE`, `POKI`, `POKS`). Rules are organized by molecule type (`ENERGY`, `STRUCTURE`, `CODE`, `DATA`)
+- **Read Rules**: Applied when instructions read from environment cells (e.g., `PEEK`, `PEKI`, `PEKS`). Rules are organized by ownership (`own`, `foreign`, `unowned`) and molecule type (`ENERGY`, `STRUCTURE`, `CODE`, `DATA`, `STATE`, or `_default`)
+- **Write Rules**: Applied when instructions write to environment cells (e.g., `POKE`, `POKI`, `POKS`). Rules are organized by molecule type (`ENERGY`, `STRUCTURE`, `CODE`, `DATA`, `STATE`) and resolved for the molecule as it is stored
 
 **Default Behavior**: If no specific policy is configured for an instruction, a default policy applies. The default policy typically applies a base energy cost and generates entropy proportional to energy consumption.
 
@@ -342,8 +351,8 @@ These instructions operate on the integer value of scalars.
 * `ADNR %REG1 %REG2`, `ADNI %REG1 <Literal>`, `ADNS`: Bitwise AND-NOT (`a & ~b`). Clears bits in first operand that are set in second.
 * `ORNR %REG1 %REG2`, `ORNI %REG1 <Literal>`, `ORNS`: Bitwise OR-NOT (`a | ~b`).
 * `NOT %REG`, `NOTS`: Bitwise NOT.
-* `SHLR %REG_VAL %REG_AMT`, `SHLI %REG_VAL <Literal>`, `SHLS`: Logical shift left.
-* `SHRR %REG_VAL %REG_AMT`, `SHRI %REG_VAL <Literal>`, `SHRS`: Logical shift right.
+* `SHLR %REG_VAL %REG_AMT`, `SHLI %REG_VAL <Literal>`, `SHLS`: Logical shift left. The shift amount must be a `DATA`-compatible scalar, that is of type `DATA` or `STATE`.
+* `SHRR %REG_VAL %REG_AMT`, `SHRI %REG_VAL <Literal>`, `SHRS`: Logical shift right. The shift amount must be a `DATA`-compatible scalar, that is of type `DATA` or `STATE`.
 
 #### Rotation and Bit Utilities
 
@@ -385,6 +394,7 @@ Scans axis-aligned neighbors around the active DP and returns a bitmask indicati
 
 * `SNTR %DEST_REG %TYPE_REG`, `SNTI %DEST_REG <Type_Lit>`, `SNTS`
   - Compares only the molecule type of the neighbor cell; the VALUE is ignored.
+  - The type match is exact, without the `DATA`/`STATE` compatibility of value operations: a scan for `DATA` does not report `STATE` neighbors, and `SNTI %M STATE:0` is the scan that finds them.
   - `<Type_Lit>` is any typed literal; only its type component is used (e.g., `ENERGY:0` selects ENERGY).
   - Register variants write the `DATA`-typed mask into `%DEST_REG`; stack variant pushes it.
   - If no neighbors match, the mask is `DATA:0`.
@@ -441,16 +451,17 @@ Note on conflicts: If a world interaction loses conflict resolution for its targ
 * `PEEK %DEST_REG %VEC_REG`, `PEKI %DEST_REG <Vector>`, `PEKS`: Reads and consumes molecule at `DP` + vector, then clears ownership on that cell.
   - ENERGY molecules: Adds their value to `ER`. Energy costs and entropy generation depend on ownership (own/foreign/unowned) and are configured via thermodynamic policies.
   - STRUCTURE molecules: Energy costs depend on ownership (own/foreign/unowned) and are configured via thermodynamic policies.
-  - CODE/DATA molecules: Energy costs depend on ownership (own/foreign/unowned) and are configured via thermodynamic policies.
+  - CODE/DATA/STATE molecules: Energy costs depend on ownership (own/foreign/unowned) and are configured via thermodynamic policies.
   - Entropy generation is configured per molecule type and ownership status in the thermodynamic policy configuration.
 * `SCAN %DEST_REG %VEC_REG`, `SCNI %DEST_REG <Vector>`, `SCNS`: Reads molecule at `DP` + vector without consuming it.
-* `POKE %SRC_REG %VEC_REG`, `POKI %SRC_REG <Vector>`, `POKS`: Writes molecule from `<%SRC_REG>` or stack to an empty cell at `DP` + vector and sets the ownership.
-  - Energy costs depend on the molecule type being written (ENERGY, STRUCTURE, CODE, DATA) and are configured via thermodynamic policies.
+* `POKE %SRC_REG %VEC_REG`, `POKI %SRC_REG <Vector>`, `POKS`: Writes molecule from `<%SRC_REG>` or stack to an empty cell at `DP` + vector and sets the ownership. The current `MR` is embedded into the written molecule; a `DATA` molecule written with `MR` 0 is stored as `STATE`.
+  - Energy costs depend on the type of the molecule as it is stored (ENERGY, STRUCTURE, CODE, DATA, STATE) and are configured via thermodynamic policies.
   - Entropy dissipation is configured per molecule type in the thermodynamic policy configuration.
   - Note: Energy costs may be charged even if the target cell is occupied and the write fails, depending on policy configuration.
 * `PPKR %REG %VEC_REG`, `PPKI %REG <Vector>`, `PPKS`: Atomically reads and consumes molecule at `DP` + vector into `%REG`, and writes new molecule that was in `%REG` or stack to the same cell, basically swaps molecule in cell with the one in register or stack. Sets the ownership.
+  - The written molecule follows the same rule as `POKE`: the current `MR` is embedded into it, and a `DATA` molecule written with `MR` 0 is stored as `STATE`.
   - PEEK costs: Same as individual PEEK instruction, configured via thermodynamic policies.
-  - POKE costs: Same as individual POKE instruction, configured via thermodynamic policies.
+  - POKE costs: Same as individual POKE instruction, configured via thermodynamic policies, and resolved for the molecule as it is stored.
   - If target cell is empty, stores empty molecule (CODE:0) in destination and proceeds with POKE.
 * `SEEK %VEC_REG`, `SEKI <Vector>`, `SEKS`: Moves active `DP` by vector if target cell is empty or accessible (owned by self).
 
@@ -465,12 +476,12 @@ Note on conflicts: If a world interaction loses conflict resolution for its targ
 * `NTR %REG`, `NTRS`: Stores current `SR` in `<%REG>` or on the stack.
 * `RAND %REG`, `RNDS`: Stores a random number [0, `<%REG>`) back into `<%REG>` or on the stack.
 * `GDVR %VEC_REG`, `GDVS`: Stores current `DV` in `<%VEC_REG>` or on the stack.
-* `FORK %DP_VEC_REG %NRG_REG %DV_VEC_REG`: Creates a child organism at `DP` + delta vector. After the child is created, all molecules owned by the parent that have a marker value equal to the parent's current `MR` are transferred to the child, and their markers are reset to 0. Additional energy may be consumed based on the energy amount transferred to the child.
-* `FRKI <DP_Vec> <NRG_Lit> <DV_Vec>`, `FRKS`: Creates a child organism (immediate/stack variants). Same ownership transfer behavior as `FORK`.
+* `FORK %DP_VEC_REG %NRG_REG %DV_VEC_REG`: Creates a child organism at `DP` + delta vector. After the child is created, all molecules owned by the parent that have a marker value equal to the parent's current `MR` are transferred to the child, and their markers are reset to 0. Additional energy may be consumed based on the energy amount transferred to the child. The instruction fails when `MR` is 0, before any energy is taken and before the child is created: marker 0 is the ephemeral class and hands nothing on.
+* `FRKI <DP_Vec> <NRG_Lit> <DV_Vec>`, `FRKS`: Creates a child organism (immediate/stack variants). Same ownership transfer behavior as `FORK`, including the failure with `MR` 0.
 * `ADPR %REG`, `ADPI <Literal>`, `ADPS`: Sets the active Data Pointer index.
-* `SMR %REG`, `SMRI <Literal>`, `SMRS`: Sets the Molecule Marker Register (`MR`) to the value from the register, literal, or stack. The operand must be of type `DATA`; otherwise, the instruction fails. The value is masked to 4 bits (0-15).
+* `SMR %REG`, `SMRI <Literal>`, `SMRS`: Sets the Molecule Marker Register (`MR`) to the value from the register, literal, or stack. The operand must be of type `DATA` or `STATE`; otherwise, the instruction fails. The value is masked to 4 bits (0-15).
 * `GMR %REG`, `GMRS`: Gets the current value of the Molecule Marker Register (`MR`) and stores it in the specified register or pushes it onto the stack. The result is of type `DATA`.
-* `CMR %REG`, `CMRI <Literal>`, `CMRS`: Orphans all molecules owned by this organism that have a marker value matching the operand. Sets both marker and owner to 0. The operand must be of type `DATA`.
+* `CMR %REG`, `CMRI <Literal>`, `CMRS`: Orphans all molecules owned by this organism that have a marker value matching the operand. Sets both marker and owner to 0. The operand must be of type `DATA` or `STATE`.
 
 ### Location Stack and Register Operations
 

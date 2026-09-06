@@ -65,7 +65,8 @@ class EnvironmentInteractionInstructionCompilerTest extends CompilerTestBase {
             assertThat(machineCode.values()).contains(OpcodeId.compute(ENVIRONMENT, 2, RR)); // PPKR instruction ID
             
             // After PPKR execution: DR0 should contain DATA:99 (read from cell 0|1), DR1 unchanged
-            // Cell 0|1 should contain DATA:111 (written from %DR0)
+            // Cell 0|1 should contain STATE:111: a DATA value written with marker register 0 is
+            // stored as STATE
         });
     }
 
@@ -88,7 +89,8 @@ class EnvironmentInteractionInstructionCompilerTest extends CompilerTestBase {
             assertThat(machineCode.values()).contains(OpcodeId.compute(ENVIRONMENT, 2, RV)); // PPKI instruction ID
             
             // After PPKI execution: DR0 should contain DATA:99 (read from cell 0|1)
-            // Cell 0|1 should contain DATA:111 (written from %DR0)
+            // Cell 0|1 should contain STATE:111: a DATA value written with marker register 0 is
+            // stored as STATE
         });
     }
 
@@ -113,7 +115,8 @@ class EnvironmentInteractionInstructionCompilerTest extends CompilerTestBase {
             assertThat(machineCode.values()).contains(OpcodeId.compute(ENVIRONMENT, 2, SS)); // PPKS instruction ID
             
             // After PPKS execution: DR0 should contain DATA:99 (read from cell 0|1)
-            // Cell 0|1 should contain DATA:111 (written from stack)
+            // Cell 0|1 should contain STATE:111: a DATA value written with marker register 0 is
+            // stored as STATE
             // Stack should be empty (both values popped)
         });
     }
