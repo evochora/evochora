@@ -47,7 +47,10 @@ fastutil primitive lists so that the plugins' write loops do not box:
 | `cells` | `int[]` | absolute flat indices of the cells the plugin wrote or cleared |
 | `oldValues` | `int[]` | the molecule int at each cell before the write, parallel to `cells` |
 | `newValues` | `int[]` | the molecule int at each cell after the write, parallel to `cells` |
+| `dv` | `int[]` | the newborn's direction vector when the plugin ran, from `child.getDv()`; the duplication, deletion and insertion plugins choose scan line and walk direction by it |
 | `params` | `long[]` | numbers with plugin-defined meaning, documented by the plugin |
+
+`cells` are listed in the order the plugin wrote them, which is its walk along `dv`.
 
 The core carries no list of mutation kinds and no per-plugin logic. A new plugin records itself by
 calling the same method and is complete: analytics groups by class name, the visualizer marks the
@@ -61,13 +64,17 @@ is observation data on the organism, like `deathTick` and `parentGenomeHash`, fo
 the event belongs to the individual and is read out with its state.
 
 `Simulation.clearBirthMutationRecords()` clears the lists of all organisms. `SimulationEngine`
-calls it in `captureSampledTick` right after `pruneDeadOrganisms()`, so the engine, not the
-serializer, changes the runtime state, and the serializer remains an observer. Dead newborns are
-retained until they have been recorded, so a record is never lost, not even for a child that dies
-248 ticks after birth.
+calls it in `captureSampledTick` in the same capture, after the states have been serialized and
+the dead pruned, so the engine, not the serializer, changes the runtime state, and the serializer
+remains an observer. Dead organisms stay in the list until the capture that records them, so a
+newborn that is born and dies between two recordings is serialized with its events, as a dead
+state, before anything is cleared. A test in step 2 covers exactly this case.
 
-Resume needs nothing. Every checkpoint is a recording, and at a recording the lists are emitted and
-cleared in the same capture, so a resumed run and an uninterrupted run carry identical state.
+Resume restores nothing here. Every checkpoint is a recording, at which the lists were emitted and
+then cleared; `SimulationRestorer` rebuilds each organism field by field through `RestoreBuilder`
+and does not read `birth_mutations`, so a restored organism carries no record, the same state the
+uninterrupted run had after that capture. A test restores from a snapshot that carries events and
+checks that the organism has no records and the next recording emits none.
 
 The plugins do not touch the random source for this, so the trajectory of a run does not change.
 
@@ -90,6 +97,7 @@ message MutationEvent {
   repeated int32 old_values = 4 [packed = true];
   repeated int32 new_values = 5 [packed = true];
   repeated int64 params = 6 [packed = true];
+  repeated sint32 dv = 7 [packed = true];        // the newborn's direction vector at birth
 }
 ```
 
@@ -108,6 +116,7 @@ message StoredMutationEvent {
   repeated int32 old_values = 5 [packed = true];
   repeated int32 new_values = 6 [packed = true];
   repeated int64 params = 7 [packed = true];
+  repeated sint32 dv = 8 [packed = true];
 }
 
 message StoredMutationEvents {
@@ -133,8 +142,14 @@ be laid over the displayed body by adding its `initial_position`.
 |---|---|---|---|---|
 | `GeneDuplicationPlugin` | `duplication` | the target cells that received a non-empty molecule | 0 / the copied molecule | flat index of the first source cell |
 | `GeneDeletionPlugin` | `deletion` | the label cell and every cleared cell | the removed molecule / 0 | occurrence count of the label hash in the genome |
-| `GeneInsertionPlugin` | `insertion` or `label-insertion` | the cells of the placed chain | 0 / the placed molecule | none |
+| `GeneInsertionPlugin`, instruction entry | `insertion` | the cells of the placed chain | 0 / the placed molecule | none |
+| `GeneInsertionPlugin`, label entry | `label-insertion` | the one label cell | 0 / the placed label | none |
 | `GeneSubstitutionPlugin` | `substitution` | the one cell | old molecule / new molecule | none |
+
+`params` keep two things that are lost otherwise. The duplication's source position: from the
+copied values alone the source can only be searched for, and ambiguously. The deletion's label
+count: the weight that made the deletion choose this label, no longer readable from the child
+because the label is gone.
 
 `LabelRewritePlugin` records nothing: it changes every label and reference by the same mask, the
 genome hash normalizes that away, and it is not a mutation. A plugin that decides to do nothing —
@@ -207,7 +222,8 @@ survive a hash aggregation over an unsorted column beyond a few thousand rows (s
 `GenomePopulationPlugin`), so the chart must not group `mutation_events` by genome hash. The
 plugin therefore writes a second, small table `mutation_summary` with one row per event —
 `tick, birth_tick, organism_id, genome_hash, parent_genome_hash, event_index, plugin_class, kind,
-cell_count, position` (the smallest position) — and the chart filters that table by the band's
+cell_count, position` (the smallest position), `dv` and `params` (both as text, components
+joined by `|`) — and the chart filters that table by the band's
 genome hash, a scan of a few thousand rows. `GenomePopulationPlugin.getManifestEntry` gains
 `mutation_summary` as a second companion metric with that query; the manifest and the chart
 accept a list of companions instead of one.
@@ -233,7 +249,7 @@ every stored event with
 
 - the origin: `organismId`, `generation` and `genomeHash` of the organism that received the
   mutation,
-- `pluginClass`, `kind`, `params`,
+- `pluginClass`, `kind`, `dv`, `params`,
 - the cells as absolute coordinates on the displayed body (`initial_position` of the displayed
   organism plus the relative offset, modulo the world shape), with `oldValue` and `newValue`.
 
