@@ -360,69 +360,64 @@ class OrganismRestoreBuilderTest {
     // enforced by the restorer, which knows the data came from a checkpoint.
 
     /**
-     * A stack deeper than the ISA limit describes a state no running organism can reach: the
-     * instruction that would exceed the limit fails instead of pushing. Truncating such a stack would
-     * silently drop return targets and continue from a state the original run never had.
+     * The builder restores a stack at whatever depth it is given, the instruction set's limit
+     * included: cutting it would silently drop values or return targets and continue from a state
+     * the original run never had. Whether the depth deserves a warning is the restorer's business,
+     * which knows the data came from a checkpoint.
      */
     @Test
     @Tag("unit")
-    void testRestoreBuilder_LocationStackBeyondLimit_ThrowsException() {
+    void testRestoreBuilder_LocationStackBeyondLimit_RestoredAsGiven() {
         Deque<int[]> oversizedStack = new ArrayDeque<>();
         for (int i = 0; i <= Config.LOCATION_STACK_MAX_DEPTH; i++) {
             oversizedStack.addLast(new int[]{i, i});
         }
 
-        assertThatThrownBy(() ->
-            Organism.restore(1, 0L)
+        Organism organism = Organism.restore(1, 0L)
                 .ip(new int[]{0, 0})
                 .dv(new int[]{1, 0})
                 .initialPosition(new int[]{0, 0})
                 .locationStack(oversizedStack)
-                .build(simulation)
-        )
-            .isInstanceOf(IllegalStateException.class)
-            .hasMessageContaining(String.valueOf(Config.LOCATION_STACK_MAX_DEPTH));
+                .build(simulation);
+
+        assertThat(organism.getLocationStack()).hasSize(Config.LOCATION_STACK_MAX_DEPTH + 1);
     }
 
     @Test
     @Tag("unit")
-    void testRestoreBuilder_DataStackBeyondLimit_ThrowsException() {
+    void testRestoreBuilder_DataStackBeyondLimit_RestoredAsGiven() {
         Deque<Object> oversizedStack = new ArrayDeque<>();
         for (int i = 0; i <= Config.DS_MAX_DEPTH; i++) {
             oversizedStack.addLast(i);
         }
 
-        assertThatThrownBy(() ->
-            Organism.restore(1, 0L)
+        Organism organism = Organism.restore(1, 0L)
                 .ip(new int[]{0, 0})
                 .dv(new int[]{1, 0})
                 .initialPosition(new int[]{0, 0})
                 .dataStack(oversizedStack)
-                .build(simulation)
-        )
-            .isInstanceOf(IllegalStateException.class)
-            .hasMessageContaining(String.valueOf(Config.DS_MAX_DEPTH));
+                .build(simulation);
+
+        assertThat(organism.getDataStack()).hasSize(Config.DS_MAX_DEPTH + 1);
     }
 
     @Test
     @Tag("unit")
-    void testRestoreBuilder_CallStackBeyondLimit_ThrowsException() {
+    void testRestoreBuilder_CallStackBeyondLimit_RestoredAsGiven() {
         Deque<Organism.ProcFrame> oversizedStack = new ArrayDeque<>();
         for (int i = 0; i <= Config.CALL_STACK_MAX_DEPTH; i++) {
             oversizedStack.addLast(new Organism.ProcFrame(
                     i, new int[]{0, 0}, new int[]{0, 0}, null));
         }
 
-        assertThatThrownBy(() ->
-            Organism.restore(1, 0L)
+        Organism organism = Organism.restore(1, 0L)
                 .ip(new int[]{0, 0})
                 .dv(new int[]{1, 0})
                 .initialPosition(new int[]{0, 0})
                 .callStack(oversizedStack)
-                .build(simulation)
-        )
-            .isInstanceOf(IllegalStateException.class)
-            .hasMessageContaining(String.valueOf(Config.CALL_STACK_MAX_DEPTH));
+                .build(simulation);
+
+        assertThat(organism.getCallStack()).hasSize(Config.CALL_STACK_MAX_DEPTH + 1);
     }
 
     /**
