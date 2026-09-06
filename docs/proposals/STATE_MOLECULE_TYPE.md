@@ -91,8 +91,7 @@ DATA becomes STATE, using the Molecule Marker Register as the switch.
    touched: it writes DATA operands directly into the environment without a marker register, and
    they stay DATA, which is what the genome needs.
 7. **Thermodynamics.** `reference.conf` gets explicit STATE entries in the PEEK/POKE read rules
-   (own, foreign, unowned) and write rules with the same costs as DATA, documented in the option
-   comments.
+   (own, foreign, unowned) and write rules with the same costs as DATA.
 8. **Primordial.** The three `.PLACE DATA` lines that seed state slots become `.PLACE STATE`
    (`lib/energy.evo` lines 16–18, `lib/reproduce.evo` lines 16–17). No literal, macro or
    instruction changes.
@@ -238,15 +237,16 @@ check, and a later type addition is again a manual check.
 | Type | `src/main/java/org/evochora/runtime/model/MoleculeTypeRegistry.java` | register `STATE`; order and count; validator removed; Javadoc |
 | Type | `src/main/java/org/evochora/runtime/model/Molecule.java` | name resolution delegates to the registry; static compatibility predicate; static *stored form* function |
 | Write rule | `src/main/java/org/evochora/runtime/isa/instructions/EnvironmentInteractionInstruction.java` | both write paths (POKE path, PPK path) call the stored-form function instead of their duplicated marker rule |
-| Write costs | `src/main/java/org/evochora/runtime/thermodynamics/impl/UniversalThermodynamicPolicy.java`, `PokeThermodynamicPolicy.java` | the molecule to price is the stored form of the operand, not the raw operand |
+| Write costs | `src/main/java/org/evochora/runtime/thermodynamics/impl/UniversalThermodynamicPolicy.java`, `PokeThermodynamicPolicy.java` | the molecule to price is the stored form of the operand, not the raw operand; `PokeThermodynamicPolicy` fails at start when a registered type has neither an entropy rule nor a `_default` block |
 | Fork rule | `src/main/java/org/evochora/runtime/isa/instructions/StateInstruction.java` | `FORK`, `FRKI`, `FRKS` fail first thing with MR 0; `SMR*`/`CMR*` operand check uses the predicate |
 | Compatibility | `ArithmeticInstruction.java` (two sites), `BitwiseInstruction.java` (type check and shift amount), `ConditionalInstruction.java` | replace the type-equality and DATA-only checks with the predicate |
 | Hash | `src/main/java/org/evochora/runtime/model/GenomeHasher.java` | exclude STATE instead of DATA; class and method Javadoc (lines 16–17, 52–53) describe soma and germline |
 | Mutation | `src/main/java/org/evochora/runtime/worldgen/GeneSubstitutionPlugin.java` | weight table from the registry; per-type strategy with value perturbation as the general case; no silent return |
 | Mutation | `src/main/java/org/evochora/runtime/worldgen/GeneInsertionPlugin.java` | no change: writes DATA operands without a marker register, and they must stay DATA |
 | Death plugin | `src/main/java/org/evochora/runtime/worldgen/DecayOnDeath.java` | name switch, Javadoc type list and error message replaced by the registry |
-| Defaults | `src/main/resources/reference.conf` | STATE rows in read and write rules with comments; the "cost model" comment block; all types in the substitution defaults with weight and exponent; the substitution comment block ("STATE: not mutated by default") |
-| Experiment config | `config/evochora.conf` | `STATE { weight = 0 }` line with comment |
+| Defaults | `src/main/resources/reference.conf` | STATE rows in read and write rules; the "cost model" comment block; all types in the substitution defaults with weight and exponent; the substitution comment block |
+| Experiment config | `config/evochora.conf` | STATE rows in the read and write rules of the thermodynamic policies; `STATE { weight = 0 }` line with comment |
+| Test fixtures | `src/testFixtures/java/org/evochora/test/utils/SimulationTestUtils.java` | STATE write rule in the fixture's thermodynamic configuration, so a test prices a marker-0 write as production does |
 | Primordial | `assembly/primordial/lib/energy.evo`, `assembly/primordial/lib/reproduce.evo` | `.PLACE STATE` for the five state slots |
 | Analytics | `src/main/java/org/evochora/datapipeline/services/analytics/plugins/EnvironmentCompositionPlugin.java` | columns, row array and chart lists from the registry; class Javadoc metric list corrected |
 | Analytics docs | `src/main/java/org/evochora/datapipeline/api/analytics/IAnalyticsPlugin.java` (line 297), `notebooks/data_analysis_guide.ipynb` | type and column lists |
@@ -419,7 +419,16 @@ data directory before they start.
 - STATE literals in instructions are allowed and documented; no compiler error, no warning.
 - Every registered type has a substitution strategy and a configurable weight; value perturbation
   is the general strategy; defaults 0 for ENERGY, STRUCTURE and STATE; a missing block is weight 0.
-- STATE thermodynamic costs equal DATA costs.
+- STATE thermodynamic costs equal DATA costs, written as plain rows without explanatory comments.
+- `PokeThermodynamicPolicy` validates at start that every registered type has an entropy rule,
+  unless a `_default` block covers the rest; a missing rule is a configuration error, not a
+  warning during a run.
+- In the frontend palette STATE shares the DATA background and is told apart by amber text, the
+  way LABELREF is told from LABEL by its text colour; the CLI colour table, which has one colour
+  per type and draws no text, gives STATE the DATA colour.
+- The specification carries strict typing and the DATA/STATE compatibility once, in §2
+  "Molecules" where the types are introduced; the instruction entries only name the operand
+  types they accept.
 - No change to `GenomeHasher`'s signature; no direction-vector parameter; marker bits stay part of
   the hashed value.
 - Type enumerations are consolidated to one source per side as part of this change; the registry

@@ -13,16 +13,21 @@ different problem. The two mechanisms are orthogonal:
 
 | | Grid state (`.STATE`) | SDR/SLR |
 |---|---|---|
-| Storage | molecules on the grid — part of the genome | organism-internal registers |
+| Storage | molecules on the grid — copied to the child, outside the genome hash | organism-internal registers |
 | On reproduction | copied to the child with the genome | child starts at defaults |
-| Mutable by mutation operators | yes (DATA molecules) | no |
-| Evolvable | yes | no |
+| Mutable by mutation operators | not at the default weights — fields written with marker register 0 are STATE molecules, and the substitution weight of STATE is 0 (configurable) | no |
+| Evolvable | only with a non-zero STATE substitution weight | no |
 | Capacity | arbitrary field count | 8 SDR + 4 SLR per procedure |
 | Lifetime | across generations | lifetime of one organism |
 | Visible to other organisms | yes — readable and writable in space | no |
 
-State whose values are meant to be tuned by evolution must live on the grid. SDR/SLR are runtime
+State whose values are meant to be tuned by evolution must live on the grid and needs a non-zero STATE substitution weight. SDR/SLR are runtime
 scratch state for a single organism's lifetime.
+
+A write with marker register 0 stores a `DATA` value as `STATE`, which is the type state fields
+should have, so the code generated for `.STORE` should save the marker register, set it to 0 for
+the write and restore it afterwards, instead of relying on the caller leaving it at 0 as the
+`STATIC*_STORE` macros do.
 
 ## Motivation
 
