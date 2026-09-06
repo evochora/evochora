@@ -62,7 +62,7 @@ Scan for: population phases and crashes; birth-rate steps (see above); `genome_d
 failure rates. `generation_depth` is read from each organism and is therefore correct across
 indexer restarts; a drop to near zero in an older run is the restart artifact of #112, not biology.
 
-**Environment composition counts every cell**, so all ten columns are exact — including the small
+**Environment composition counts every cell**, so all eleven columns are exact — including the small
 ones. `energy_cells` rising means the population cannot consume the input, falling means the world
 is being eaten empty. `structure_cells`, `label_cells` and `register_cells` are small fractions of
 a large world and are usable in absolute numbers: a step in them marks a change in what the

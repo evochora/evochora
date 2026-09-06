@@ -237,7 +237,7 @@ check, and a later type addition is again a manual check.
 | Type | `src/main/java/org/evochora/runtime/model/MoleculeTypeRegistry.java` | register `STATE`; order and count; validator removed; Javadoc |
 | Type | `src/main/java/org/evochora/runtime/model/Molecule.java` | name resolution delegates to the registry; static compatibility predicate; static *stored form* function |
 | Write rule | `src/main/java/org/evochora/runtime/isa/instructions/EnvironmentInteractionInstruction.java` | both write paths (POKE path, PPK path) call the stored-form function instead of their duplicated marker rule |
-| Write costs | `src/main/java/org/evochora/runtime/thermodynamics/impl/UniversalThermodynamicPolicy.java`, `PokeThermodynamicPolicy.java` | the molecule to price is the stored form of the operand, not the raw operand; `PokeThermodynamicPolicy` fails at start when a registered type has neither an entropy rule nor a `_default` block |
+| Write costs | `src/main/java/org/evochora/runtime/thermodynamics/impl/UniversalThermodynamicPolicy.java`, `PokeThermodynamicPolicy.java` | the molecule to price is the stored form of the operand, not the raw operand; both policies price a type without a rule and without a `_default` block at nothing, base costs only for the universal policy |
 | Fork rule | `src/main/java/org/evochora/runtime/isa/instructions/StateInstruction.java` | `FORK`, `FRKI`, `FRKS` fail first thing with MR 0; `SMR*`/`CMR*` operand check uses the predicate |
 | Compatibility | `ArithmeticInstruction.java` (two sites), `BitwiseInstruction.java` (type check and shift amount), `ConditionalInstruction.java` | replace the type-equality and DATA-only checks with the predicate |
 | Hash | `src/main/java/org/evochora/runtime/model/GenomeHasher.java` | exclude STATE instead of DATA; class and method Javadoc (lines 16–17, 52–53) describe soma and germline |
@@ -245,7 +245,7 @@ check, and a later type addition is again a manual check.
 | Mutation | `src/main/java/org/evochora/runtime/worldgen/GeneInsertionPlugin.java` | no change: writes DATA operands without a marker register, and they must stay DATA |
 | Death plugin | `src/main/java/org/evochora/runtime/worldgen/DecayOnDeath.java` | name switch, Javadoc type list and error message replaced by the registry |
 | Defaults | `src/main/resources/reference.conf` | STATE rows in read and write rules; the "cost model" comment block; all types in the substitution defaults with weight and exponent; the substitution comment block |
-| Experiment config | `config/evochora.conf` | STATE rows in the read and write rules of the thermodynamic policies; `STATE { weight = 0 }` line with comment |
+| Experiment config | `config/evochora.conf` | STATE rows in the read and write rules of the thermodynamic policies; the substitution block lists no STATE block, and none for ENERGY or STRUCTURE either, so those types keep weight 0 |
 | Test fixtures | `src/testFixtures/java/org/evochora/test/utils/SimulationTestUtils.java` | STATE write rule in the fixture's thermodynamic configuration, so a test prices a marker-0 write as production does |
 | Primordial | `assembly/primordial/lib/energy.evo`, `assembly/primordial/lib/reproduce.evo` | `.PLACE STATE` for the five state slots |
 | Analytics | `src/main/java/org/evochora/datapipeline/services/analytics/plugins/EnvironmentCompositionPlugin.java` | columns, row array and chart lists from the registry; class Javadoc metric list corrected |
@@ -301,7 +301,7 @@ provokes the unknown-type warning in a thermodynamic policy declares it with `@E
 The grandchild-level invariant (three equal hashes across parent, child and grandchild of the
 primordial) is verified once by the throwaway harness of slice 0 and is not regression-protected: a
 permanent test of that shape does not fit the test-time budget, and the primordial is not part of
-the test suite.
+the test suite. The harness was deleted after slice 5.
 
 Verification: `./gradlew check` in the worktree; JMH tick benchmark before merge. The benchmark's
 ENVIRONMENT and REALISTIC programs already execute `POKI`/`PPKI` at MR 0, so the new write branch is
@@ -368,6 +368,9 @@ data directory before they start.
   path and the compiler's typed literals must stay), hardening the primordial's row terminator test
   (`IFR %TMP %SHELL` currently relies on typed equality; the KLEFT slot passes through the value 100
   and lies in a copied row), and a fertility comparison before and after.
+- **Follow-up.** A permanent primordial replication test in place of the throwaway harness: a
+  test-owned configuration, organism placement offered as a runtime utility instead of copied from
+  the engine, and the state slots to inspect derived from the program artifact.
 
 ### Documented limits
 
@@ -420,9 +423,8 @@ data directory before they start.
 - Every registered type has a substitution strategy and a configurable weight; value perturbation
   is the general strategy; defaults 0 for ENERGY, STRUCTURE and STATE; a missing block is weight 0.
 - STATE thermodynamic costs equal DATA costs, written as plain rows without explanatory comments.
-- `PokeThermodynamicPolicy` validates at start that every registered type has an entropy rule,
-  unless a `_default` block covers the rest; a missing rule is a configuration error, not a
-  warning during a run.
+- Both thermodynamic policies price a type without a rule and without a `_default` block at
+  nothing; for the universal policy the instruction's base costs remain.
 - In the frontend palette STATE shares the DATA background and is told apart by amber text, the
   way LABELREF is told from LABEL by its text colour; the CLI colour table, which has one colour
   per type and draws no text, gives STATE the DATA colour.

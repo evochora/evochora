@@ -11,18 +11,13 @@ import {
  *
  * The server sends one byte per pixel: the raw index of a registered molecule type, or one of two
  * sentinels for what is not a type. A raw index is resolved to a type name through the run
- * metadata's `moleculeTypes` map and coloured from {@link MOLECULE_TYPE_PALETTE}, so grid and
- * minimap show the same type in the same colour.
+ * metadata's `moleculeTypes` map, whose keys carry the type bits shifted by the metadata's
+ * `moleculeTypeShift`, and coloured from {@link MOLECULE_TYPE_PALETTE}, so grid and minimap show
+ * the same type in the same colour.
  *
  * @class MinimapRenderer
  */
 export class MinimapRenderer {
-
-    /**
-     * Bit position of the molecule type inside a packed molecule, matching Config.TYPE_SHIFT.
-     * The metadata map is keyed by the shifted type constant, the minimap byte is the raw index.
-     */
-    static TYPE_SHIFT = 20;
 
     /** Minimap byte of a pixel holding no molecule. */
     static BYTE_EMPTY = 255;
@@ -33,8 +28,9 @@ export class MinimapRenderer {
     /**
      * Creates a new MinimapRenderer.
      *
-     * Until {@link setMoleculeTypes} has supplied the run's type map, molecule bytes are drawn in
-     * the no-data background; the two sentinels are coloured from the start.
+     * Until {@link setMoleculeTypes} has supplied the run's type map and shift, no molecule byte
+     * can be resolved to a type name and every one of them is drawn in the UNKNOWN colour; the two
+     * sentinels are coloured from the start.
      *
      * @param {HTMLCanvasElement} canvas - The canvas element to render onto.
      */
@@ -42,6 +38,7 @@ export class MinimapRenderer {
         this.canvas = canvas;
         this.ctx = canvas.getContext('2d', { alpha: false });
         this.moleculeTypes = null;
+        this.typeShift = null;
         this.colorByByte = this.buildColorTable();
         this.lastMinimapData = null;
 
@@ -51,13 +48,17 @@ export class MinimapRenderer {
     }
 
     /**
-     * Sets the run's molecule type map and rebuilds the colour table from it.
+     * Sets the run's molecule type map and the bit position its keys are shifted by, and rebuilds
+     * the colour table from them.
      *
      * @param {object|null|undefined} moleculeTypes - Metadata map of the shifted type constant,
      *        as a string, to the type name, e.g. {"0": "CODE", "1048576": "DATA"}.
+     * @param {number|null|undefined} typeShift - The metadata's `moleculeTypeShift`, the bit
+     *        position of the type inside a packed molecule.
      */
-    setMoleculeTypes(moleculeTypes) {
+    setMoleculeTypes(moleculeTypes, typeShift) {
         this.moleculeTypes = moleculeTypes || null;
+        this.typeShift = Number.isInteger(typeShift) ? typeShift : null;
         this.colorByByte = this.buildColorTable();
         if (this.lastMinimapData) {
             this.render(this.lastMinimapData);
@@ -65,21 +66,22 @@ export class MinimapRenderer {
     }
 
     /**
-     * Builds the colour of every possible minimap byte.
+     * Builds the colour of every possible minimap byte. A byte that names a type the metadata
+     * does not resolve is drawn in the UNKNOWN colour, so an unexpected type is visible.
      *
      * @returns {number[]} 256 colours as 0xRRGGBB integers, indexed by minimap byte.
      * @private
      */
     buildColorTable() {
-        const table = new Array(256).fill(NO_DATA_COLOR);
-        if (this.moleculeTypes) {
-            const unknownColor = moleculeTypeEntry(UNKNOWN_TYPE_NAME).bg;
+        const unknownColor = moleculeTypeEntry(UNKNOWN_TYPE_NAME).bg;
+        const table = new Array(256).fill(unknownColor);
+        if (this.moleculeTypes && this.typeShift !== null) {
             for (let byte = 0; byte < MinimapRenderer.BYTE_UNKNOWN; byte++) {
-                const typeName = this.moleculeTypes[String(byte << MinimapRenderer.TYPE_SHIFT)];
+                const typeName = this.moleculeTypes[String(byte << this.typeShift)];
                 table[byte] = typeName ? moleculeTypeEntry(typeName).bg : unknownColor;
             }
         }
-        table[MinimapRenderer.BYTE_UNKNOWN] = moleculeTypeEntry(UNKNOWN_TYPE_NAME).bg;
+        table[MinimapRenderer.BYTE_UNKNOWN] = unknownColor;
         table[MinimapRenderer.BYTE_EMPTY] = EMPTY_CELL_COLOR;
         return table;
     }

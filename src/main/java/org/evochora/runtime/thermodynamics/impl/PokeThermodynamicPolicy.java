@@ -1,6 +1,5 @@
 package org.evochora.runtime.thermodynamics.impl;
 
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -9,7 +8,6 @@ import java.util.Optional;
 import org.evochora.runtime.isa.Instruction.ConflictResolutionStatus;
 import org.evochora.runtime.isa.Instruction.Operand;
 import org.evochora.runtime.model.Molecule;
-import org.evochora.runtime.model.MoleculeTypeRegistry;
 import org.evochora.runtime.spi.thermodynamics.IThermodynamicPolicy;
 import org.evochora.runtime.spi.thermodynamics.ThermodynamicContext;
 import org.slf4j.Logger;
@@ -36,7 +34,10 @@ import com.typesafe.config.Config;
  * }
  * </pre>
  * <p>
- * Entropy must be explicitly configured for each molecule type.
+ * Rules are per molecule type. A written type that has neither its own block nor a
+ * {@code _default} block is not priced by this policy: it costs no energy and dissipates
+ * no entropy. A rule that is present must configure entropy explicitly, through
+ * {@code entropy}, {@code entropy-permille} or both.
  */
 public class PokeThermodynamicPolicy implements IThermodynamicPolicy {
 
@@ -121,34 +122,15 @@ public class PokeThermodynamicPolicy implements IThermodynamicPolicy {
                 }
             }
         }
-        requireRuleForEveryType();
     }
 
     /**
-     * Ensures that every molecule type a write can store has an entropy rule.
-     * <p>
-     * A rule is required for each type registered in {@link MoleculeTypeRegistry} unless a
-     * {@code _default} block covers the rest. Checking this here turns a write of an unlisted
-     * type into a configuration error at start instead of a failure in the middle of a run.
+     * Reports the energy a write costs, resolved by the rule of the stored molecule's type.
      *
-     * @throws IllegalArgumentException if a registered type has neither a rule nor a default
+     * @param context The thermodynamic context of the executing instruction.
+     * @return The energy cost, or 0 when the write does not happen or the stored type has
+     *         neither its own rule nor a {@code _default} rule.
      */
-    private void requireRuleForEveryType() {
-        if (typeRules.containsKey(DEFAULT_TYPE_KEY)) {
-            return;
-        }
-        List<String> missing = new ArrayList<>();
-        for (int type : MoleculeTypeRegistry.orderedTypes()) {
-            if (!typeRules.containsKey(type)) {
-                missing.add(MoleculeTypeRegistry.typeToName(type));
-            }
-        }
-        if (!missing.isEmpty()) {
-            throw new IllegalArgumentException("PokeThermodynamicPolicy has no rule for " + String.join(", ", missing)
-                + " and no _default block; every registered molecule type needs an entropy rule.");
-        }
-    }
-
     @Override
     public int getEnergyCost(ThermodynamicContext context) {
         // A write that lost its conflict never happens and therefore costs nothing
@@ -177,6 +159,14 @@ public class PokeThermodynamicPolicy implements IThermodynamicPolicy {
         return 0;
     }
 
+    /**
+     * Reports the entropy a write contributes, resolved by the rule of the stored molecule's type.
+     * Negative values dissipate entropy, positive values generate it.
+     *
+     * @param context The thermodynamic context of the executing instruction.
+     * @return The entropy delta, or 0 when the write does not happen or the stored type has
+     *         neither its own rule nor a {@code _default} rule.
+     */
     @Override
     public int getEntropyDelta(ThermodynamicContext context) {
         // POKE only dissipates entropy, does NOT generate entropy from energy cost.
@@ -204,12 +194,9 @@ public class PokeThermodynamicPolicy implements IThermodynamicPolicy {
             if (rule != null) {
                 // Return only the configured entropy delta (negative = dissipation)
                 return rule.calculateEntropyDelta(toWrite);
-            } else {
-                // No rule found - entropy must be explicitly configured
-                throw new IllegalStateException("No entropy rule found for POKE instruction: moleculeType=" + toWrite.type() + ". Entropy must be explicitly configured in evochora.conf.");
             }
         }
-        
+
         return 0;
     }
     

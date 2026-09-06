@@ -1,6 +1,8 @@
 package org.evochora.runtime.worldgen;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 import java.util.Random;
 
@@ -122,14 +124,18 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
     /**
      * Creates a gene substitution plugin from configuration.
      * <p>
-     * Every registered molecule type is looked up under its name. A type with a block contributes
-     * its {@code weight}, and, if it uses the general value strategy, its {@code exponent} or
-     * {@value #DEFAULT_EXPONENT} when the block names none. A type without a block gets weight 0.
+     * The configuration carries {@code substitutionRate} and one block per molecule type, named
+     * after the type. A type with a block contributes its {@code weight}, and, if it uses the
+     * general value strategy, its {@code exponent} or {@value #DEFAULT_EXPONENT} when the block
+     * names none. A type without a block gets weight 0. Any other key is rejected.
      *
      * @param randomProvider Source of randomness.
      * @param config Configuration containing substitutionRate and one block per mutable type.
+     * @throws IllegalArgumentException if the configuration carries a key that is neither
+     *         {@code substitutionRate} nor the name of a registered molecule type
      */
     public GeneSubstitutionPlugin(IRandomProvider randomProvider, com.typesafe.config.Config config) {
+        requireKnownKeys(config);
         this.random = randomProvider.asJavaRandom();
         this.substitutionRate = config.getDouble("substitutionRate");
 
@@ -585,6 +591,30 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
                 && type != Config.TYPE_REGISTER
                 && type != Config.TYPE_LABEL
                 && type != Config.TYPE_LABELREF;
+    }
+
+    /**
+     * Rejects a configuration key that names neither the substitution rate nor a molecule type.
+     * <p>
+     * Every block of this plugin's options is the configuration of one molecule type and is read
+     * under the type's name as {@link MoleculeTypeRegistry} spells it. A key that names no
+     * registered type is read by nothing, so its weight and exponent would have no effect at all.
+     *
+     * @param config The plugin configuration.
+     * @throws IllegalArgumentException if the configuration carries an unaccepted key
+     */
+    private static void requireKnownKeys(com.typesafe.config.Config config) {
+        List<String> accepted = new ArrayList<>();
+        accepted.add("substitutionRate");
+        for (int type : MoleculeTypeRegistry.orderedTypes()) {
+            accepted.add(MoleculeTypeRegistry.typeToName(type));
+        }
+        for (String key : config.root().keySet()) {
+            if (!accepted.contains(key)) {
+                throw new IllegalArgumentException("GeneSubstitutionPlugin has no setting '" + key
+                        + "'; accepted names are " + String.join(", ", accepted) + ".");
+            }
+        }
     }
 
     /**

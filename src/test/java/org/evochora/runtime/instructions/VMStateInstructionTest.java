@@ -22,6 +22,18 @@ import org.junit.jupiter.api.Test;
  */
 public class VMStateInstructionTest {
 
+    /** Base energy every instruction costs under the test simulation's default policy. */
+    private static final int BASE_ENERGY_COST = 1;
+
+    /** Energy penalty a failed instruction is charged, as {@link SimulationTestUtils} configures it. */
+    private static final int ERROR_PENALTY_COST = 10;
+
+    /**
+     * Energy a fork that fails on the marker register costs: its own base cost and the error
+     * penalty. Nothing is taken for a child, because none is created.
+     */
+    private static final int FAILED_FORK_ENERGY_COST = BASE_ENERGY_COST + ERROR_PENALTY_COST;
+
     private Environment environment;
     private Organism org;
     private Simulation sim;
@@ -516,7 +528,7 @@ public class VMStateInstructionTest {
         assertThat(org.getFailureReason()).isEqualTo("FORK requires a non-zero molecule marker register");
         assertThat(sim.getOrganisms()).hasSize(1);
         // No child energy was taken: only the instruction's own cost and the error penalty apply.
-        assertThat(energyBefore - org.getEr()).isLessThan(100);
+        assertThat(energyBefore - org.getEr()).isEqualTo(FAILED_FORK_ENERGY_COST);
 
         org.resetTickState();
     }
@@ -538,14 +550,15 @@ public class VMStateInstructionTest {
         assertThat(org.isInstructionFailed()).isTrue();
         assertThat(org.getFailureReason()).isEqualTo("FRKI requires a non-zero molecule marker register");
         assertThat(sim.getOrganisms()).hasSize(1);
-        assertThat(energyBefore - org.getEr()).isLessThan(100);
+        assertThat(energyBefore - org.getEr()).isEqualTo(FAILED_FORK_ENERGY_COST);
 
         org.resetTickState();
     }
 
     /**
-     * FRKS with marker register 0 fails before the stack operands are consumed for a birth, and
-     * no child organism is created.
+     * FRKS with marker register 0 fails before any energy is handed over and before a child
+     * organism is created. Its operands come off the data stack while the instruction is fetched,
+     * so the stack is consumed as it is for a successful fork.
      */
     @Test
     @Tag("unit")
@@ -564,9 +577,49 @@ public class VMStateInstructionTest {
         assertThat(org.isInstructionFailed()).isTrue();
         assertThat(org.getFailureReason()).isEqualTo("FRKS requires a non-zero molecule marker register");
         assertThat(sim.getOrganisms()).hasSize(1);
-        assertThat(energyBefore - org.getEr()).isLessThan(100);
+        assertThat(org.getDataStack()).isEmpty();
+        assertThat(energyBefore - org.getEr()).isEqualTo(FAILED_FORK_ENERGY_COST);
 
         org.resetTickState();
+    }
+
+    /**
+     * A fork that fails on the marker register consumes no organism ID: the check runs before the
+     * child is created, so the next successful fork's child carries the ID that would have gone to
+     * the failed attempt. Organism IDs feed the per-tick conflict priority, which is why a
+     * create-then-fail order would shift every later ID.
+     */
+    @Test
+    @Tag("unit")
+    void testAFailedForkConsumesNoOrganismId() {
+        org.addEr(1000);
+        org.setDp(0, org.getIp());
+
+        org.writeOperand(0, new int[]{1, 0});
+        org.writeOperand(1, new Molecule(Config.TYPE_DATA, 100).toInt());
+        org.writeOperand(2, new int[]{1, 0});
+        placeInstruction("FORK", 0, 1, 2);
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).isTrue();
+        assertThat(sim.getOrganisms()).hasSize(1);
+
+        org.setMr(1);
+        org.setDp(0, org.getIp());
+        org.writeOperand(0, new int[]{1, 0});
+        org.writeOperand(1, new Molecule(Config.TYPE_DATA, 100).toInt());
+        org.writeOperand(2, new int[]{1, 0});
+        placeInstruction("FORK", 0, 1, 2);
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).isFalse();
+        assertThat(sim.getOrganisms()).hasSize(2);
+
+        Organism child = sim.getOrganisms().stream()
+            .filter(o -> o.getId() != org.getId())
+            .findFirst()
+            .orElseThrow();
+        assertThat(child.getId()).isEqualTo(org.getId() + 1);
     }
 
     // ==================== SMR Instruction Tests ====================

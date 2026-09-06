@@ -1,9 +1,8 @@
 package org.evochora.node.processes.http.api.visualizer;
 
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
-
-import java.util.Arrays;
 
 import org.evochora.datapipeline.api.contracts.CellDataColumns;
 import org.evochora.runtime.Config;

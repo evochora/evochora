@@ -7,6 +7,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * Central registry for molecule type definitions.
@@ -144,6 +145,23 @@ public final class MoleculeTypeRegistry {
     }
     
     /**
+     * Looks up a molecule type by name without throwing.
+     * <p>
+     * This is the tolerant counterpart of {@link #nameToType(String)}, for callers that treat an
+     * unrecognized name as a normal outcome rather than an error. Input is case-insensitive, and a
+     * null, empty or blank name yields an empty result.
+     *
+     * @param name The molecule type name (case-insensitive), may be null
+     * @return The integer type value from {@link Config}, or empty if the name is not registered
+     */
+    public static Optional<Integer> findType(String name) {
+        if (name == null || name.trim().isEmpty()) {
+            return Optional.empty();
+        }
+        return Optional.ofNullable(NAME_TO_TYPE.get(name.toUpperCase()));
+    }
+
+    /**
      * Checks if a molecule type integer is registered.
      *
      * @param type The molecule type integer value
@@ -159,7 +177,9 @@ public final class MoleculeTypeRegistry {
      * This is useful for serializing the complete type mapping to clients
      * (e.g., in metadata responses for the visualizer API).
      *
-     * @return Unmodifiable map of type ID to type name (e.g., {0: "CODE", 1: "DATA", ...})
+     * @return Unmodifiable map of type ID to type name. The keys carry the type bits at their
+     *         position within a packed molecule and are therefore multiples of
+     *         {@code 1 << Config.TYPE_SHIFT} (e.g., {0: "CODE", 1048576: "DATA", ...})
      */
     public static Map<Integer, String> getAllTypes() {
         return Collections.unmodifiableMap(TYPE_TO_NAME);

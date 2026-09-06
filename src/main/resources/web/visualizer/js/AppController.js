@@ -67,7 +67,6 @@ export class AppController {
             worldSize: [100, 30],
             cellSize: 22,
             backgroundColor: '#1a1a28', // Border area visible when scrolling beyond grid
-            colorEmptyBg: '#14141e',
             organismPalette: AppController.ORGANISM_PALETTE.map(hex => parseInt(hex.slice(1), 16))
         };
         
@@ -173,7 +172,7 @@ export class AppController {
             
             // Set type mappings for Protobuf ID resolution in EnvironmentApi
             setTypeMappings(metadata);
-            this.minimapView?.setMoleculeTypes(metadata?.moleculeTypes);
+            this.minimapView?.setMoleculeTypes(metadata?.moleculeTypes, metadata?.moleculeTypeShift);
 
             // Update UI components that depend on metadata
             this.tickPanelManager?.updateSamplingInfo(metadata?.samplingInterval || 1);
@@ -595,7 +594,7 @@ export class AppController {
                 
                 // Set type mappings for Protobuf ID resolution in EnvironmentApi
                 setTypeMappings(metadata);
-                this.minimapView?.setMoleculeTypes(metadata?.moleculeTypes);
+                this.minimapView?.setMoleculeTypes(metadata?.moleculeTypes, metadata?.moleculeTypeShift);
 
                 // Update sampling info in the UI
                 this.tickPanelManager?.updateSamplingInfo(metadata?.samplingInterval || 1);

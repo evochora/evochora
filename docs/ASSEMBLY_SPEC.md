@@ -35,7 +35,7 @@ Every cell in the grid contains a **Molecule**, which is the fundamental unit of
 * **`LABELREF`**: an instruction operand naming a label by its hash.
 * **`REGISTER`**: an instruction operand naming a register.
 
-The last three are emitted by the compiler as instruction operands and read by the virtual machine; organisms scan and copy them like any other molecule.
+`LABEL` is placed in the grid by the compiler as the anchor a jump resolves to; `LABELREF` and `REGISTER` are emitted as instruction operands. All three are read by the virtual machine; organisms scan and copy them like any other molecule.
 
 #### Types in value operations
 

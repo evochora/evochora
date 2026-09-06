@@ -942,11 +942,29 @@ class GeneSubstitutionPluginTest {
         }
     }
 
+    /**
+     * A block whose name is neither the substitution rate nor a molecule type would be read by
+     * nothing, so it is rejected instead of being silently ignored.
+     */
+    @Test
+    void anUnknownBlockNameIsRejected() {
+        com.typesafe.config.Config config = ConfigFactory.parseString("""
+                substitutionRate = 1.0
+                DATTA { weight = 1.0 }
+                """);
+
+        assertThatThrownBy(() -> new GeneSubstitutionPlugin(new SeededRandomProvider(1), config))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("DATTA")
+                .hasMessageContaining("substitutionRate")
+                .hasMessageContaining("DATA");
+    }
+
     @Test
     void aConfiguredStateWeightPerturbsTheValue() {
         com.typesafe.config.Config config = ConfigFactory.parseString(configWithOnly("STATE"));
 
-        boolean mutated = false;
+        boolean steppedBeyondOne = false;
         for (int seed = 0; seed < 50; seed++) {
             setUp();
             environment.setMolecule(new Molecule(Config.TYPE_STATE, 100), child.getId(), new int[]{5, 5});
@@ -958,11 +976,15 @@ class GeneSubstitutionPluginTest {
             assertThat(molecule.type()).isEqualTo(Config.TYPE_STATE);
             // delta = round(100^0.7) = 25, so the value stays in the neighbourhood of 100
             assertThat(molecule.value()).as("seed=%d: scale-proportional step", seed).isBetween(75, 125);
-            if (molecule.value() != 100) {
-                mutated = true;
+            if (Math.abs(molecule.value() - 100) > 1) {
+                steppedBeyondOne = true;
             }
         }
-        assertThat(mutated).as("a STATE value is perturbed at weight 1").isTrue();
+        // A step of more than 1 can only come from the configured exponent: an exponent of 0.0
+        // would make every delta max(1, round(1)) = 1 and leave the value at 99, 100 or 101.
+        assertThat(steppedBeyondOne)
+                .as("a STATE value is perturbed scale-proportionally at weight 1")
+                .isTrue();
     }
 
     /**
@@ -976,6 +998,7 @@ class GeneSubstitutionPluginTest {
                 STATE { weight = 1.0 }
                 """);
 
+        boolean steppedBeyondOne = false;
         for (int seed = 0; seed < 50; seed++) {
             setUp();
             environment.setMolecule(new Molecule(Config.TYPE_STATE, 100), child.getId(), new int[]{5, 5});
@@ -983,10 +1006,19 @@ class GeneSubstitutionPluginTest {
             new GeneSubstitutionPlugin(new SeededRandomProvider(seed), config)
                     .substitute(child, environment);
 
-            assertThat(environment.getMolecule(5, 5).value())
+            int value = environment.getMolecule(5, 5).value();
+            assertThat(value)
                     .as("seed=%d: delta = round(100^0.7) = 25", seed)
                     .isBetween(75, 125);
+            if (Math.abs(value - 100) > 1) {
+                steppedBeyondOne = true;
+            }
         }
+        // The default exponent is what produces a step of more than 1: an exponent of 0.0 would
+        // make every delta max(1, round(1)) = 1 and leave the value at 99, 100 or 101.
+        assertThat(steppedBeyondOne)
+                .as("the default exponent produces a scale-proportional step")
+                .isTrue();
     }
 
     // ---- Plugin contract tests ----

@@ -10,7 +10,8 @@
  * - `text`: the colour of the value drawn on that background
  * - `abbr`: the short type prefix used where a value is written as `<abbr>:<value>`
  *
- * EMPTY and the no-data background are not molecule types and are exported separately below.
+ * The empty-pixel colour and the ground colour are not molecule types and are exported
+ * separately below.
  */
 export const MOLECULE_TYPE_PALETTE = {
     CODE:      { bg: 0x3c5078, text: 0xffffff, abbr: 'C'  },  // blue-gray
@@ -27,10 +28,13 @@ export const MOLECULE_TYPE_PALETTE = {
 /** The name of the entry every unrecognized type falls back to. */
 export const UNKNOWN_TYPE_NAME = 'UNKNOWN';
 
-/** Colour of a pixel or cell that holds no molecule. */
+/** Colour of a minimap pixel whose cells hold no molecule. */
 export const EMPTY_CELL_COLOR = 0x1e1e28;
 
-/** Colour of an area for which no cell data exists at all. */
+/**
+ * Colour of the ground the molecules are drawn on: an empty cell of the environment grid, and a
+ * minimap area for which no cell data exists at all.
+ */
 export const NO_DATA_COLOR = 0x14141e;
 
 /**

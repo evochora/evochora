@@ -1,5 +1,5 @@
 import { loadingManager } from './ui/LoadingManager.js';
-import { moleculeTypeEntry, moleculeTypeName } from './MoleculeTypePalette.js';
+import { moleculeTypeEntry, moleculeTypeName, NO_DATA_COLOR } from './MoleculeTypePalette.js';
 
 /**
  * Manages the PIXI.js-based rendering of the simulation environment grid.
@@ -258,7 +258,7 @@ export class EnvironmentGrid {
         
         this.gridBackground.clear();
         this.gridBackground.rect(0, 0, worldWidthPx, worldHeightPx);
-        this.gridBackground.fill(this.config.colorEmptyBg);
+        this.gridBackground.fill(NO_DATA_COLOR);
     }
 
     /**
@@ -1592,7 +1592,7 @@ class DetailedRendererStrategy extends BaseRendererStrategy {
         background.clear();
         background.rect(0, 0, cellSize, cellSize);
         const isEmpty = cell.type === 'CODE' && cell.value === 0 && cell.ownerId === 0;
-        background.fill(isEmpty ? this.config.colorEmptyBg : this.getBackgroundColorForType(cell.type));
+        background.fill(isEmpty ? NO_DATA_COLOR : this.getBackgroundColorForType(cell.type));
 
         // Draw text
         const shouldHaveText = !isEmpty && ((cell.type === 'CODE' && (cell.value !== 0 || cell.ownerId !== 0)) || cell.type !== 'CODE');
@@ -2030,7 +2030,7 @@ class ZoomedOutRendererStrategy extends BaseRendererStrategy {
         const uint32View = new Uint32Array(this._pixelBuffer.buffer);
 
         // Fill buffer with empty cell background color
-        const emptyColor = this._hexToRgb(this.config.colorEmptyBg);
+        const emptyColor = this._hexToRgb(NO_DATA_COLOR);
         const emptyPixel = (255 << 24) | (emptyColor.b << 16) | (emptyColor.g << 8) | emptyColor.r;
         uint32View.fill(emptyPixel);
 

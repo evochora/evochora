@@ -1,5 +1,7 @@
 package org.evochora.runtime.model;
 
+import org.evochora.junit.extensions.logging.ExpectLog;
+import org.evochora.junit.extensions.logging.LogLevel;
 import org.evochora.runtime.Config;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -72,6 +74,17 @@ class MoleculeStoredFormTest {
         assertThat(result.type()).isEqualTo(Config.TYPE_CODE);
         assertThat(result.value()).isEqualTo(0);
         assertThat(result.marker()).isEqualTo(0);
+    }
+
+    @Test
+    @ExpectLog(level = LogLevel.ERROR, loggerPattern = ".*Molecule.*",
+               messagePattern = "CODE:0 molecule with marker.*")
+    void testAWrittenEmptyCellCarryingAMarkerIsReported() {
+        // A CODE:0 that already carries marker bits breaks the empty-cell invariant before it
+        // reaches the grid; it is stored empty and the violation is reported.
+        int written = ((4 & Config.MARKER_VALUE_MASK) << Config.MARKER_SHIFT) | Config.TYPE_CODE;
+
+        assertThat(Molecule.storedFormOfWrite(written, 0)).isZero();
     }
 
     @Test

@@ -1,7 +1,6 @@
 package org.evochora.runtime.thermodynamics.impl;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -31,7 +30,6 @@ class PokeThermodynamicPolicyTest {
         var policy = new PokeThermodynamicPolicy();
         policy.initialize(ConfigFactory.parseString("""
             CODE: { energy = 5, entropy = -500 }
-            _default: { energy = 0, entropy = 0 }
             """));
         return policy;
     }
@@ -68,7 +66,6 @@ class PokeThermodynamicPolicyTest {
         policy.initialize(ConfigFactory.parseString("""
             DATA:  { energy = 6, entropy = -60 }
             STATE: { energy = 2, entropy = -20 }
-            _default: { energy = 0, entropy = 0 }
             """));
 
         Molecule empty = new Molecule(Config.TYPE_CODE, 0, 0);
@@ -114,14 +111,15 @@ class PokeThermodynamicPolicyTest {
         assertThat(policy.getEnergyCost(ctx)).isEqualTo(5);
         assertThat(policy.getEntropyDelta(ctx)).isEqualTo(-500);
     }
+
     @Test
-    void aTypeWithoutARuleAndNoDefaultIsRejectedAtInitialization() {
-        var policy = new PokeThermodynamicPolicy();
-        assertThatThrownBy(() -> policy.initialize(ConfigFactory.parseString("""
-            CODE: { energy = 5, entropy = -500 }
-            """)))
-            .isInstanceOf(IllegalArgumentException.class)
-            .hasMessageContaining("STATE")
-            .hasMessageContaining("_default");
+    void aTypeWithoutARuleAndWithoutADefaultIsPricedAtNothing() {
+        var policy = policy();
+        // The configuration of policy() holds a CODE rule and no _default block, so a DATA
+        // write is not covered by any rule and contributes neither energy nor entropy.
+        ThermodynamicContext ctx = writeContext(
+                new Molecule(Config.TYPE_DATA, 42, 0), new Molecule(Config.TYPE_CODE, 0, 0), "POKE", 3);
+        assertThat(policy.getEnergyCost(ctx)).isEqualTo(0);
+        assertThat(policy.getEntropyDelta(ctx)).isEqualTo(0);
     }
 }

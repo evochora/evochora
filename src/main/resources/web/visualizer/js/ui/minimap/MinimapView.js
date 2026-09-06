@@ -420,14 +420,16 @@ export class MinimapView {
     }
 
     /**
-     * Passes the run's molecule type map to the renderer, which resolves the minimap's type bytes
-     * to type names through it.
+     * Passes the run's molecule type map and the bit position its keys are shifted by to the
+     * renderer, which resolves the minimap's type bytes to type names through them.
      *
      * @param {object|null|undefined} moleculeTypes - Metadata map of the shifted type constant,
      *        as a string, to the type name.
+     * @param {number|null|undefined} typeShift - The metadata's `moleculeTypeShift`, the bit
+     *        position of the type inside a packed molecule.
      */
-    setMoleculeTypes(moleculeTypes) {
-        this.renderer.setMoleculeTypes(moleculeTypes);
+    setMoleculeTypes(moleculeTypes, typeShift) {
+        this.renderer.setMoleculeTypes(moleculeTypes, typeShift);
     }
 
     /**

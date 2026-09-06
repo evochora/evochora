@@ -140,7 +140,8 @@ public record Molecule(int type, int value, int marker) {
      * own memory. This method is the single definition of that rule:
      * <ul>
      *   <li>{@code CODE:0} is the empty cell and is always stored with marker 0, whatever the
-     *       marker register holds.</li>
+     *       marker register holds. A written {@code CODE:0} that already carries marker bits
+     *       violates that invariant before it reaches the grid and is reported as such.</li>
      *   <li>{@link Config#TYPE_DATA} written while the marker register is 0 is stored as
      *       {@link Config#TYPE_STATE} with the same value: marker 0 is the ephemeral class, and
      *       what an organism writes in it is its own working memory rather than genetic material.
@@ -150,10 +151,10 @@ public record Molecule(int type, int value, int marker) {
      * The value is carried over unchanged, so a stored molecule differs from the written one at
      * most in its type and marker bits.
      * <p>
-     * The callers are the two write paths of {@code EnvironmentInteractionInstruction} - the
-     * {@code POKE} path and the {@code PPK} peek-and-poke path - and the thermodynamic policies
-     * {@code UniversalThermodynamicPolicy} and {@code PokeThermodynamicPolicy}, which price the
-     * stored form so that write costs and read costs both key on what a cell actually holds.
+     * Everything that has to know what a write ends up as goes through this method: the write
+     * paths of the world-interaction instructions, which store the result, and the thermodynamic
+     * policies, which price it, so that write costs and read costs both key on what a cell
+     * actually holds.
      * <p>
      * It is static and works on packed molecule integers, so that callers on the
      * instruction-execution path need no record allocation.
@@ -167,6 +168,11 @@ public record Molecule(int type, int value, int marker) {
         int type = moleculeInt & Config.TYPE_MASK;
         int value = moleculeInt & Config.VALUE_MASK;
         if (type == Config.TYPE_CODE && value == 0) {
+            int marker = (moleculeInt & Config.MARKER_MASK) >>> Config.MARKER_SHIFT;
+            if (marker != 0) {
+                LOG.error("CODE:0 molecule with marker={} - fixing to marker=0", marker,
+                          new IllegalStateException("Invariant violation: CODE:0 must have marker=0"));
+            }
             return 0;
         }
         int storedType = (type == Config.TYPE_DATA && markerRegister == 0) ? Config.TYPE_STATE : type;
@@ -249,14 +255,7 @@ public record Molecule(int type, int value, int marker) {
      *         or names no registered type.
      */
     public static java.util.Optional<Integer> getTypeConstantByName(String typeName) {
-        if (typeName == null) {
-            return java.util.Optional.empty();
-        }
-        try {
-            return java.util.Optional.of(MoleculeTypeRegistry.nameToType(typeName));
-        } catch (IllegalArgumentException unknown) {
-            return java.util.Optional.empty();
-        }
+        return MoleculeTypeRegistry.findType(typeName);
     }
 
     @Override
