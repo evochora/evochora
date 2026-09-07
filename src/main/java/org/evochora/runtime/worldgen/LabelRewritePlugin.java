@@ -43,8 +43,10 @@ import org.slf4j.LoggerFactory;
  * mask as its one parameter. It is not a mutation — every label and every reference move by the
  * same mask, and the genome hash normalizes that away — but without the mask a consumer cannot
  * compare a label value across generations: the value a mutation plugin recorded for a LABEL or
- * LABELREF cell is masked again in every descendant. An organism whose cells carry no label is
- * left as it is and records nothing.
+ * LABELREF cell is masked again in every descendant. A consumer that wants the value as it stands
+ * in a given body therefore XORs the masks of every birth from the recording organism down to that
+ * body, and within the recording birth only those masks that were recorded after the mutation. An
+ * organism whose cells carry no label is left as it is and records nothing.
  * <p>
  * <strong>Thread Safety:</strong> Not thread-safe. Runs in the sequential post-Execute phase
  * of {@code Simulation.tick()}.
@@ -56,8 +58,14 @@ public class LabelRewritePlugin implements IBirthHandler {
 
     private static final Logger LOG = LoggerFactory.getLogger(LabelRewritePlugin.class);
 
-    /** The kind this plugin reports its mask under. */
-    private static final String MUTATION_KIND = "label-rewrite";
+    /**
+     * The kind this plugin reports its mask under.
+     * <p>
+     * Public because a consumer that compares a recorded label value with a body has to recognise
+     * these events among the mutations of a lineage and compose their masks; naming the kind here
+     * keeps that recognition tied to the plugin that produces it.
+     */
+    public static final String MUTATION_KIND = "label-rewrite";
 
     private final Random random;
 
