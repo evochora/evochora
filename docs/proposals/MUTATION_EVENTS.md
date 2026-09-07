@@ -64,11 +64,19 @@ is observation data on the organism, like `deathTick` and `parentGenomeHash`, fo
 the event belongs to the individual and is read out with its state.
 
 `Simulation.clearBirthMutationRecords()` clears the lists of all organisms. `SimulationEngine`
-calls it in `captureSampledTick` in the same capture, after the states have been serialized and
-the dead pruned, so the engine, not the serializer, changes the runtime state, and the serializer
-remains an observer. Dead organisms stay in the list until the capture that records them, so a
-newborn that is born and dies between two recordings is serialized with its events, as a dead
-state, before anything is cleared. A test in step 2 covers exactly this case.
+calls it in `captureSampledTick` after the chunk has been handed to the output successfully —
+after `tickDataOutput.put`, not before — so the engine, not the serializer, changes the runtime
+state, and the serializer remains an observer. Dead organisms stay in the list until the capture
+that records them, so a newborn that is born and dies between two recordings is serialized with
+its events, as a dead state, before anything is cleared. A test in step 2 covers exactly this
+case.
+
+The capture loop logs a failed send as `SEND_ERROR` and continues. Because the lists are cleared
+only after a successful send, a failed one leaves the records in place and the next recording
+carries them; a consumer then sees them in a recording that is not the first after the birth,
+which the indexer's idempotent MERGE and the analytics rule "the field is present" both accept.
+A chunk that is lost after the send — in the dead-letter queue, say — loses its events with
+every other field of that chunk; that is accepted.
 
 Resume restores nothing here. Every checkpoint is a recording, at which the lists were emitted and
 then cleared; `SimulationRestorer` rebuilds each organism field by field through `RestoreBuilder`
@@ -127,10 +135,17 @@ message StoredMutationEvents {
 ### Coordinates
 
 Consumers convert a flat index to a coordinate with the world shape from the run metadata, and to
-an offset relative to the organism's `initial_position` along the shortest toroidal path, with the
-rule the `GenomeHasher` applies (a difference of exactly half the world size is canonicalized to
-the positive side). The rule becomes a static helper on `EnvironmentProperties`, documented as the
-`GenomeHasher`'s rule; the `GenomeHasher` itself is not changed, so no genome hash changes.
+an offset relative to the organism's `initial_position` along the shortest toroidal path.
+
+That offset rule exists twice today, with opposite tie-breaks for a difference of exactly half
+an even world size: `GenomeHasher.computeGenomeHash` canonicalizes `-size/2` to `+size/2`,
+`EnvironmentProperties.getRelativeVector` (used by the body endpoint) maps `+size/2` to
+`-size/2`. One rule, the `GenomeHasher`'s, becomes a static helper on `EnvironmentProperties`;
+`GenomeHasher` and `getRelativeVector` both call it. The arithmetic of the hasher is unchanged,
+so no genome hash changes, which the resume and determinism tests confirm; the body endpoint
+differs only for a body spanning exactly half the world; the assertion in
+`EnvironmentPropertiesTest` that pins the old tie-break (`x < 50` at width 100) becomes
+`x <= 50`.
 
 Relative coordinates are what the lineage display needs: a mutation an ancestor received at a
 cell sits at the same offset from every descendant's origin, so the events of a whole lineage can
@@ -163,9 +178,14 @@ its own. See the label rule under the display below.
 
 ### Organism indexer
 
-`AbstractH2OrgStorageStrategy` — the base of `SingleBlobOrgStrategy` and
-`RowPerOrganismStrategy`, so both strategies get it — gains a column `birth_mutations BYTEA NULL`
-in `organisms`, holding a `StoredMutationEvents` message, and a second prepared statement
+The `organisms` table is today defined twice: `SingleBlobOrgStrategy` and
+`RowPerOrganismStrategy` each hold an identical copy of its DDL and of the static MERGE
+statement, while their base `AbstractH2OrgStorageStrategy` owns only the parameter binding.
+Before the column is added, the DDL and the statement move into the base, next to
+`createTickStatsTable`, so that the table has one definition; the two strategy tests stay
+unchanged and green across that move. The base then gains the column
+`birth_mutations BYTEA NULL` in `organisms`, holding a `StoredMutationEvents` message, and a
+second prepared statement
 
 ```
 MERGE INTO organisms (organism_id, birth_mutations) KEY (organism_id) VALUES (?, ?)
@@ -173,12 +193,17 @@ MERGE INTO organisms (organism_id, birth_mutations) KEY (organism_id) VALUES (?,
 
 batched only for states that carry events and executed after the main organism batch of the same
 commit window, so the row exists. An H2 `MERGE ... KEY` writes the named columns only, so the main
-statement, which does not name the column, never clears it in later windows. The indexer converts
-the flat indices to relative coordinates here, with the organism's `initial_position` from the
-same state and the world shape from the run metadata.
+statement, which does not name the column, never clears it in later windows.
+
+The conversion does not happen in the strategy. The strategy is a resource-layer serializer that
+knows only its options, a connection and the tick data; it stores bytes. `OrganismIndexer`
+derives the `EnvironmentProperties` from the run metadata in `prepareTables`, the way
+`EnvironmentIndexer.prepareTables` already does, converts the flat indices of each event to
+relative coordinates with the organism's `initial_position` from the same state, builds the
+`StoredMutationEvents` message and hands the strategy its bytes for the column.
 
 Batches reach the organism indexers in arbitrary order across competing consumers. Nothing here
-depends on the order: the statement touches only the organism's own row, and the lineage is walked
+depends on the order: the statement touches only the organism's own row, and the lineage is read
 at request time, as `readLineage` does today.
 
 ### Analytics
@@ -219,14 +244,24 @@ what started it. Every genome has its founding mutation in the events of its fir
 the chart names it in the band's legend and tooltip: plugin, kind, number of cells and the first
 position — or "no plugin event", which is the copy channel. The browser's DuckDB build does not
 survive a hash aggregation over an unsorted column beyond a few thousand rows (see
-`GenomePopulationPlugin`), so the chart must not group `mutation_events` by genome hash. The
-plugin therefore writes a second, small table `mutation_summary` with one row per event —
+`GenomePopulationPlugin`), so the chart must not group `mutation_events` by genome hash. A
+second, small table `mutation_summary` therefore holds one row per event —
 `tick, birth_tick, organism_id, genome_hash, parent_genome_hash, event_index, plugin_class, kind,
 cell_count, position` (the smallest position), `dv` and `params` (both as text, components
-joined by `|`) — and the chart filters that table by the band's
-genome hash, a scan of a few thousand rows. `GenomePopulationPlugin.getManifestEntry` gains
-`mutation_summary` as a second companion metric with that query; the manifest and the chart
-accept a list of companions instead of one.
+joined by `|`) — and the chart filters that table by the band's genome hash, a scan of a few
+thousand rows. An analytics plugin has exactly one schema and one metric id
+(`IAnalyticsPlugin.getSchema`, `AbstractAnalyticsPlugin.metricId`), so the table is written by a
+plugin of its own, `MutationSummaryPlugin`, which reads the same events; the position conversion
+it shares with `MutationEventsPlugin` through one helper.
+
+The Clade Shares chart then has two companions, `genome_lineage` and `mutation_summary`.
+`ManifestEntry` carries one `companionMetricId` and one `companionQuery` today; they become a
+list of companions, each with metric id and query. That definition is mirrored in three places
+and all three change together: `ManifestEntry` itself, the manifest JSON the `AnalyticsIndexer`
+writes to storage per run at plugin initialization (`writePluginMetadata`) and the
+`AnalyticsController` reads back, and `AnalyzerController.js`, where `loadCompanionData` loads
+the one companion and the clade chart consumes it. Manifests written by an earlier build are not
+read by this one: data is always read with the build that produced it.
 
 **Variation sources per birth.** A second analytics plugin `VariationSourcesPlugin`, metric
 `variation_sources`, reading every recording like the events plugin. A newborn is a state whose
@@ -251,10 +286,14 @@ every stored event with
   mutation,
 - `pluginClass`, `kind`, `dv`, `params`,
 - the cells as absolute coordinates on the displayed body (`initial_position` of the displayed
-  organism plus the relative offset, modulo the world shape), with `oldValue` and `newValue`.
+  organism plus the relative offset, modulo the world shape), each with its molecule before and
+  after in the form the environment API uses for cells — `moleculeType` and `moleculeValue`,
+  split in the controller — so the grid compares fields and never a bit layout.
 
-The reader walks the parent chain the way `readLineage` does, one primary-key lookup per
-ancestor; the column is read from `organisms` like the genome hash. The route is called when an
+The reader extends the recursive query `readLineage` already runs over `organisms` — one
+`WITH RECURSIVE` round trip for the whole ancestry — by `birth_mutations` and `generation`, and
+by the selected organism itself, which the existing query leaves out because it seeds from
+`parent_id`. The column is read from `organisms` like the genome hash. The route is called when an
 organism is selected, not per tick.
 
 ### Display in the environment grid
@@ -290,9 +329,12 @@ of every visible cell is at hand, and they must be documented in the code beside
 Both holders of data declare their worst case. With the default density factor the engine's
 `maxOrganisms` is `totalCells × 0.0003`, about 10,000 organisms for a 7680 × 4320 world.
 
-- `SimulationEngine`: pending records, `maxOrganisms × 500 bytes` — every living organism born
-  since the last recording and carrying one duplication-sized event; about 5 MB at the default
-  density, conservative in the same way as the 24 KB per organism.
+- `SimulationEngine`: pending records, declared as `maxOrganisms × 500 bytes` — every living
+  organism born since the last recording and carrying one median-sized duplication; about 5 MB
+  at the default density. That is a realistic figure in the way the 24 KB per organism are; the
+  absolute bound, every organism duplicating a whole scan line of the world's width, is named in
+  the comment and not declared, because births per window are a fraction of the population and
+  such a duplication needs an empty scan line of that length.
 - `MutationEventsPlugin`: rows per recording, in the style of `GenomeLineagePlugin`.
 
 ### Out of scope
@@ -308,19 +350,21 @@ which carry no genome and therefore no mutation.
 | Tick hot path | none | only birth handlers are touched, and they run per newborn |
 | Birth handler | one record per applied mutation; the cell list is filled inside the loop that writes the cells | the plugins already hold every value |
 | Engine heap | records since the last recording, about 100 KB for 1,000 births per window at 0.3 events per birth; none in the detailed profile | estimate; the 240 MB the engine estimates for 10,000 organisms are unaffected |
-| Chunk storage | about 50 bytes fixed plus about 8 bytes per cell per event; a median duplication of 17 cells about 190 bytes; run `20260902`: about 5,000 events, under 1 MB against 3.8 GB; under 0.1 % in every profile | counted in the analysis of that run |
+| Chunk storage | about 50 bytes fixed plus 8 to 20 bytes per cell per event, depending on the marker, as in `molecule_data`; a median duplication of 17 cells about 190 bytes; run `20260902`: about 5,000 events, under 1 MB against 3.8 GB; under 0.1 % in every profile | counted in the analysis of that run |
 | Organism table | one BLOB of about 200 bytes per mutated organism, written once | |
 | Parquet | about 80,000 rows for run `20260902`; one to a few million rows for a run with millions of births | |
-| Lineage request | one primary-key lookup per ancestor; a few milliseconds at generation depth 200, under 200 ms at depth 3,000 | estimate from H2 lookup times; per selection, not per tick |
+| Lineage request | one recursive query over `organisms`, as `readLineage` runs today, plus the column's bytes per ancestor | per selection, not per tick |
 
 ## Implementation
 
 Every step in its own commit on the branch `mutation-events`.
 
 1. **Runtime model.** `runtime/model/MutationRecord.java`; `Organism`: field and three methods;
-   `Simulation.clearBirthMutationRecords()`; `EnvironmentProperties`: relative-offset helper.
-   Tests: `MutationRecordTest`, additions to the organism and environment-properties tests
-   (record, read, clear; wrap-around; half world size).
+   `Simulation.clearBirthMutationRecords()`; `EnvironmentProperties`: the relative-offset helper,
+   with `GenomeHasher` and `getRelativeVector` delegating to it. Tests: `MutationRecordTest`,
+   additions to the organism and environment-properties tests (record, read, clear; wrap-around;
+   half world size, with the tie-break assertion adjusted); the resume and determinism tests
+   unchanged and green as the proof that no hash changed.
 2. **Contract and serialization.** `MutationEvent`, `StoredMutationEvent`, `StoredMutationEvents`
    and field 39; `OrganismStateSerializer` copies the record; `SimulationEngine`: clearing after
    the prune, memory estimate. Tests: a serializer test for the copy and the empty case;
@@ -328,13 +372,20 @@ Every step in its own commit on the branch `mutation-events`.
 3. **Plugins.** The four recording sites beside the existing debug logs. Tests: one case per plugin
    test that checks cells, old and new values against what was written, and that a no-op records
    nothing.
-4. **Analytics.** `MutationEventsPlugin` with both tables, its test after the pattern of
-   `DeathLifetimesPluginTest`, the entries in `reference.conf` and `config/evochora.conf`.
-   4a. The second companion on the Clade Shares manifest and its display in the chart.
+4. **Analytics.** `MutationEventsPlugin` and `MutationSummaryPlugin` with the shared position
+   helper, their tests after the pattern of `DeathLifetimesPluginTest`, the entries in
+   `reference.conf` and `config/evochora.conf`.
+   4a. The companion list in `ManifestEntry`, the written manifest and `AnalyzerController.js`;
+   `mutation_summary` as the second companion of the Clade Shares manifest and its display in
+   the chart.
    4b. `VariationSourcesPlugin`, its test, its manifest entry and its config entries.
-5. **Organism indexer.** The column, the second statement and the conversion in
-   `AbstractH2OrgStorageStrategy`. Tests: both strategy tests write a state with events and read
-   the column back; a later window without events leaves it untouched.
+5. **Organism table.** First, as its own commit, the `organisms` DDL and the static MERGE move
+   from the two strategies into `AbstractH2OrgStorageStrategy`; both strategy tests unchanged and
+   green. Then the column and the second statement in the base, which receives the stored bytes,
+   and the conversion in `OrganismIndexer` (environment properties from the metadata in
+   `prepareTables`). Tests: the indexer converts a state with events into the stored form with
+   the right offsets; both strategy tests write the bytes and read the column back; a later
+   window without events leaves it untouched.
 6. **Controller.** The route, the reader method walking the lineage, the DTOs and the JSON.
    Tests: reader and controller.
 7. **Frontend.** The border and fill in the two renderers, the three rules with their
