@@ -7,6 +7,7 @@ import java.util.Random;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
+import org.evochora.runtime.model.MutationRecord;
 import org.evochora.runtime.model.Organism;
 import org.evochora.runtime.spi.IBirthHandler;
 import org.evochora.runtime.spi.IRandomProvider;
@@ -31,9 +32,18 @@ import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
  * <strong>Performance:</strong> Near-zero allocation after warmup. The owned cells are visited
  * through the environment's cell views; reusable coordinate buffers, ScanLineInfo pooling and direct
  * bit extraction from packed molecule ints minimize GC pressure. The only per-call allocations are
- * one {@code getShape()} defensive copy and the two visitor lambdas (one per owned-cell pass).
+ * one {@code getShape()} defensive copy, the two visitor lambdas (one per owned-cell pass) and,
+ * when a copy is applied, the {@link MutationRecord} handed to the newborn.
  * The owned-cell iteration is O(n) where n is typically 1000-3000, running at most a few times
  * per tick.
+ * <p>
+ * <strong>What it records:</strong> an applied duplication reports itself on the newborn as a
+ * {@link MutationRecord} of kind {@code "duplication"}. Its cells are the target cells that
+ * received a non-empty molecule, in the order the copy loop wrote them; the old value is what
+ * stood at the target cell before the write, the new value the copied molecule. Its one parameter
+ * is the flat index of the first source cell, which is the chosen label, because the source of a
+ * copy cannot be recovered from the copied values alone. A run that finds no label or no NOP run
+ * long enough writes nothing and records nothing.
  * <p>
  * <strong>Thread Safety:</strong> Not thread-safe. Runs in the sequential post-Execute phase of
  * {@code Simulation.tick()}.
@@ -43,6 +53,9 @@ import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 public class GeneDuplicationPlugin implements IBirthHandler {
 
     private static final Logger LOG = LoggerFactory.getLogger(GeneDuplicationPlugin.class);
+
+    /** The kind this plugin reports its writes under. */
+    private static final String MUTATION_KIND = "duplication";
 
     private final Random random;
     private final double duplicationRate;
@@ -61,6 +74,9 @@ public class GeneDuplicationPlugin implements IBirthHandler {
 
     // DV coordinate collector for shortest-arc computation (reused)
     private int[] dvCoordCollector;
+
+    /** Collects the record of a copy; reused so that a birth allocates only the record itself. */
+    private final MutationRecord.Builder recordBuilder = new MutationRecord.Builder();
 
     /**
      * Mutable scan line info for grouping owned cells by perpendicular coordinates.
@@ -160,7 +176,7 @@ public class GeneDuplicationPlugin implements IBirthHandler {
      * <p>
      * Groups owned cells by scan line, selects a random LABEL via reservoir sampling,
      * finds the largest NOP area on a random scan line, and copies the code block
-     * starting at the label into the NOP area.
+     * starting at the label into the NOP area. A copy that is applied is recorded on the child.
      *
      * @param child The newborn organism.
      * @param env The simulation environment.
@@ -304,10 +320,18 @@ public class GeneDuplicationPlugin implements IBirthHandler {
             targetPos[dvDimFinal] = targetLine.bestNopStart;
         }
 
+        // The source walk starts at the chosen label, which the copy cannot recover from its values
+        recordBuilder.start(getClass().getName(), MUTATION_KIND, dv)
+                .param(env.properties.toFlatIndex(sourcePos));
+
         for (int i = 0; i < copyLength; i++) {
             int srcMoleculeInt = env.getMoleculeIntAt(sourcePos);
             Molecule molecule = Molecule.fromInt(srcMoleculeInt);
             int ownerId = (srcMoleculeInt == 0) ? 0 : childId;
+            if (srcMoleculeInt != 0) {
+                recordBuilder.cell(env.properties.toFlatIndex(targetPos),
+                        env.getMoleculeIntAt(targetPos), molecule.toInt());
+            }
             env.setMolecule(molecule, ownerId, targetPos);
 
             // In-place advancement along DV
@@ -326,6 +350,8 @@ public class GeneDuplicationPlugin implements IBirthHandler {
                 targetPos[dvDimFinal] += shapeDvDim;
             }
         }
+
+        child.recordBirthMutation(recordBuilder.build());
 
         if (LOG.isDebugEnabled()) {
             env.properties.flatIndexToCoordinates(labelLine.sampleFlatIndex, sourcePos);

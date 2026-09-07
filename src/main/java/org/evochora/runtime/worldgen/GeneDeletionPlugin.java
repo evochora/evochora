@@ -7,6 +7,7 @@ import it.unimi.dsi.fastutil.ints.IntArrayList;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
+import org.evochora.runtime.model.MutationRecord;
 import org.evochora.runtime.model.Organism;
 import org.evochora.runtime.spi.IBirthHandler;
 import org.evochora.runtime.spi.IRandomProvider;
@@ -31,6 +32,13 @@ import java.util.Random;
  * genome bloat from duplication. This plugin provides variation: redundant genes (from duplication)
  * are preferentially deleted (neutral), while unique genes are rarely hit (lethal, filtered by selection).
  * <p>
+ * <strong>What it records:</strong> an applied deletion reports itself on the newborn as a
+ * {@link MutationRecord} of kind {@code "deletion"}. Its cells are the label cell and every cleared
+ * cell, in the order they are cleared; the old value is the removed molecule, the new value the
+ * empty cell. Its one parameter is how often the chosen label's hash occurs in the genome, the
+ * weight that made the deletion choose this label and the one thing the child no longer shows,
+ * because the label is gone. A run that finds no label deletes nothing and records nothing.
+ * <p>
  * <strong>Thread Safety:</strong> Not thread-safe. Runs in the sequential post-Execute phase of
  * {@code Simulation.tick()}.
  *
@@ -41,6 +49,9 @@ public class GeneDeletionPlugin implements IBirthHandler {
 
     private static final Logger LOG = LoggerFactory.getLogger(GeneDeletionPlugin.class);
 
+    /** The kind this plugin reports its deletions under. */
+    private static final String MUTATION_KIND = "deletion";
+
     private final Random random;
     private final double deletionRate;
     private final double countExponent;
@@ -49,6 +60,9 @@ public class GeneDeletionPlugin implements IBirthHandler {
     private final IntArrayList labelFlatIndices = new IntArrayList();
     private final IntArrayList labelHashes = new IntArrayList();
     private final Int2IntOpenHashMap hashCounts = new Int2IntOpenHashMap();
+
+    /** Collects the record of a deletion; reused so that a birth allocates only the record itself. */
+    private final MutationRecord.Builder recordBuilder = new MutationRecord.Builder();
 
     /**
      * Creates a gene deletion plugin from configuration.
@@ -95,7 +109,8 @@ public class GeneDeletionPlugin implements IBirthHandler {
      * <p>
      * Collects all LABEL molecules owned by the child, selects one using weighted reservoir
      * sampling (weight = hashCount^countExponent), then walks in DV direction deleting all
-     * molecules until hitting the next LABEL, STRUCTURE, or a foreign molecule.
+     * molecules until hitting the next LABEL, STRUCTURE, or a foreign molecule. A deletion that is
+     * applied is recorded on the child.
      *
      * @param child The newborn organism.
      * @param env The simulation environment.
@@ -161,7 +176,13 @@ public class GeneDeletionPlugin implements IBirthHandler {
 
         int maxSteps = env.getShape()[dvDim];
 
+        // How often the chosen hash occurs is what made this label the one deleted, and it is
+        // unreadable in the child afterwards, because the label is gone
+        recordBuilder.start(getClass().getName(), MUTATION_KIND, dv)
+                .param(hashCounts.get(labelHashes.getInt(selectedIdx)));
+
         // Delete the label itself
+        recordBuilder.cell(selectedFlatIndex, env.getMoleculeIntAt(pos), 0);
         env.setMolecule(new Molecule(Config.TYPE_CODE, 0), 0, pos);
         int deletedCount = 1;
 
@@ -185,10 +206,13 @@ public class GeneDeletionPlugin implements IBirthHandler {
             }
 
             if (!mol.isEmpty()) {
+                recordBuilder.cell(env.properties.toFlatIndex(pos), mol.toInt(), 0);
                 env.setMolecule(new Molecule(Config.TYPE_CODE, 0), 0, pos);
                 deletedCount++;
             }
         }
+
+        child.recordBirthMutation(recordBuilder.build());
 
         if (LOG.isDebugEnabled()) {
             int[] labelPos = env.properties.flatIndexToCoordinates(selectedFlatIndex);

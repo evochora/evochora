@@ -5,6 +5,7 @@ import org.evochora.runtime.Simulation;
 import org.evochora.runtime.internal.services.SeededRandomProvider;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
+import org.evochora.runtime.model.MutationRecord;
 import org.evochora.runtime.model.Organism;
 import org.evochora.runtime.spi.IRandomProvider;
 import org.evochora.runtime.thermodynamics.ThermodynamicPolicyManager;
@@ -14,6 +15,7 @@ import org.junit.jupiter.api.Test;
 
 import com.typesafe.config.ConfigFactory;
 
+import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -357,6 +359,77 @@ class GeneDuplicationPluginTest {
             }
         }
         assertThat(copiedCount).as("Should copy molecules into NOP area").isGreaterThan(0);
+    }
+
+    // ---- Mutation record tests ----
+
+    /** The flat index the environment persists the cell at the given coordinate by. */
+    private int flatIndex(int x, int y) {
+        return environment.getProperties().toFlatIndex(new int[]{x, y});
+    }
+
+    @Test
+    void anAppliedCopyIsRecordedWithItsTargetCellsAndItsSource() {
+        // One gene at y=2 (LABEL at x=10, CODE at x=11 and x=12) and one empty row at y=4 as the
+        // only scan line with a NOP run: three molecules land at x=0..2 of that row
+        environment.setMolecule(new Molecule(Config.TYPE_LABEL, 12345), child.getId(), new int[]{10, 2});
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, 42), child.getId(), new int[]{11, 2});
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, 42), child.getId(), new int[]{12, 2});
+        placeEmptyOwnedRow(4, 0, 19);
+
+        IRandomProvider rng = new SeededRandomProvider(42L);
+        GeneDuplicationPlugin plugin = new GeneDuplicationPlugin(rng, 1.0, 3);
+        plugin.onBirth(child, environment);
+
+        List<MutationRecord> records = child.getBirthMutations();
+        assertThat(records).hasSize(1);
+        MutationRecord record = records.get(0);
+        assertThat(record.pluginClass()).isEqualTo(GeneDuplicationPlugin.class.getName());
+        assertThat(record.kind()).isEqualTo("duplication");
+        assertThat(record.cells()).containsExactly(flatIndex(0, 4), flatIndex(1, 4), flatIndex(2, 4));
+        assertThat(record.oldValues()).containsExactly(0, 0, 0);
+        assertThat(record.newValues()).containsExactly(
+                environment.getMolecule(0, 4).toInt(),
+                environment.getMolecule(1, 4).toInt(),
+                environment.getMolecule(2, 4).toInt());
+        assertThat(record.newValues()[0])
+                .as("the first target cell holds the copied label")
+                .isEqualTo(environment.getMolecule(10, 2).toInt());
+        assertThat(record.params())
+                .as("the flat index of the first source cell")
+                .containsExactly(flatIndex(10, 2));
+        assertThat(record.dv()).isEqualTo(child.getDv());
+    }
+
+    @Test
+    void aRunThatFindsNoLabelRecordsNothing() {
+        for (int x = 0; x <= 14; x++) {
+            environment.setMolecule(new Molecule(Config.TYPE_CODE, 42), child.getId(), new int[]{x, 2});
+        }
+        placeEmptyOwnedRow(4, 0, 14);
+
+        IRandomProvider rng = new SeededRandomProvider(42L);
+        GeneDuplicationPlugin plugin = new GeneDuplicationPlugin(rng, 1.0, 3);
+        plugin.onBirth(child, environment);
+
+        assertThat(child.getBirthMutations()).isNull();
+    }
+
+    @Test
+    void aRunThatFindsNoNopRunLongEnoughRecordsNothing() {
+        placeCodeRow(2, 0, 14, 5);
+        for (int x = 0; x <= 14; x++) {
+            Molecule mol = (x >= 7 && x <= 8)
+                    ? new Molecule(Config.TYPE_CODE, 0)
+                    : new Molecule(Config.TYPE_CODE, 42);
+            environment.setMolecule(mol, child.getId(), new int[]{x, 4});
+        }
+
+        IRandomProvider rng = new SeededRandomProvider(42L);
+        GeneDuplicationPlugin plugin = new GeneDuplicationPlugin(rng, 1.0, 5);
+        plugin.onBirth(child, environment);
+
+        assertThat(child.getBirthMutations()).isNull();
     }
 
     @Test

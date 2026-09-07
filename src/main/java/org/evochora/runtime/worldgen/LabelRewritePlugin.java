@@ -5,6 +5,7 @@ import java.util.Random;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
+import org.evochora.runtime.model.MutationRecord;
 import org.evochora.runtime.model.Organism;
 import org.evochora.runtime.spi.IBirthHandler;
 import org.evochora.runtime.spi.IRandomProvider;
@@ -37,6 +38,14 @@ import org.slf4j.LoggerFactory;
  * visitor lambda, its rewrite counter and one {@link Molecule} record for each cell that is
  * actually a LABEL or LABELREF (typically 5–20 per organism); the GC pressure is negligible.
  * <p>
+ * <strong>What it records:</strong> a rewrite that changed at least one molecule reports itself on
+ * the newborn as a {@link MutationRecord} of kind {@code "label-rewrite"} with no cells and the
+ * mask as its one parameter. It is not a mutation — every label and every reference move by the
+ * same mask, and the genome hash normalizes that away — but without the mask a consumer cannot
+ * compare a label value across generations: the value a mutation plugin recorded for a LABEL or
+ * LABELREF cell is masked again in every descendant. An organism whose cells carry no label is
+ * left as it is and records nothing.
+ * <p>
  * <strong>Thread Safety:</strong> Not thread-safe. Runs in the sequential post-Execute phase
  * of {@code Simulation.tick()}.
  *
@@ -47,7 +56,13 @@ public class LabelRewritePlugin implements IBirthHandler {
 
     private static final Logger LOG = LoggerFactory.getLogger(LabelRewritePlugin.class);
 
+    /** The kind this plugin reports its mask under. */
+    private static final String MUTATION_KIND = "label-rewrite";
+
     private final Random random;
+
+    /** Collects the record of a rewrite; reused so that a birth allocates only the record itself. */
+    private final MutationRecord.Builder recordBuilder = new MutationRecord.Builder();
 
     /**
      * Creates a label rewrite plugin.
@@ -73,6 +88,8 @@ public class LabelRewritePlugin implements IBirthHandler {
      * <p>
      * The mask is a non-zero 19-bit value. Applying the same mask to both labels and labelrefs
      * preserves all Hamming distances, so the organism's internal fuzzy jump behaviour is unchanged.
+     * A rewrite that moved at least one molecule is recorded on the child, with the mask as its
+     * parameter.
      *
      * @param child The newly born organism.
      * @param environment The simulation environment.
@@ -99,6 +116,15 @@ public class LabelRewritePlugin implements IBirthHandler {
                 rewriteCount[0]++;
             }
         });
+
+        // Only a mask that moved a molecule is worth reporting; a genome without labels is
+        // unchanged, and an event that says nothing happened would have to be filtered out again
+        if (rewriteCount[0] > 0) {
+            child.recordBirthMutation(recordBuilder
+                    .start(getClass().getName(), MUTATION_KIND, child.getDv())
+                    .param(mask)
+                    .build());
+        }
 
         LOG.debug("tick={} Organism {} label rewrite: rewrote {} molecules with mask={}",
                 child.getBirthTick(), child.getId(), rewriteCount[0], Integer.toHexString(mask));
