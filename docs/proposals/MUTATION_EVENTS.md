@@ -409,53 +409,59 @@ which carry no genome and therefore no mutation.
 
 ## Implementation
 
-Every step in its own commit on the branch `mutation-events`.
+The work is cut into vertical slices, each one testable on its own and, from the first on,
+runnable end to end, so that a fault in a contract or a seam shows up in the slice that made it.
+Every slice ends in its own commits on the branch `mutation-events`, is checked with its tests
+and `./gradlew check`, and is shown to the maintainer on a short run before the next one starts.
 
-1. **Runtime model.** `runtime/model/MutationRecord.java`; `Organism`: field and three methods;
-   `Simulation.clearBirthMutationRecords()`; `EnvironmentProperties`: the relative-offset helper,
-   with `GenomeHasher` and `getRelativeVector` delegating to it. Tests: `MutationRecordTest`,
-   additions to the organism and environment-properties tests (record, read, clear; wrap-around;
-   half world size, with the tie-break assertion adjusted); the resume and determinism tests
-   unchanged and green as the proof that no hash changed.
-2. **Contract and serialization.** `MutationEvent`, `StoredMutationEvent`, `StoredMutationEvents`
-   and field 39; `OrganismStateSerializer` copies the record; `SimulationEngine`: clearing after
-   the prune, memory estimate. Tests: a serializer test for the copy and the empty case;
-   `ResumeNeutralityTest` unchanged and green.
-3. **Plugins.** The four recording sites beside the existing debug logs. Tests: one case per plugin
-   test that checks cells, old and new values against what was written, and that a no-op records
-   nothing.
-4. **Analytics.** `MutationEventsPlugin` and `MutationSummaryPlugin` with the shared position
-   helper, their tests after the pattern of `DeathLifetimesPluginTest`, the entries in
-   `reference.conf` and `config/evochora.conf`.
-   4a. The companion list in `ManifestEntry`, the written manifest and `AnalyzerController.js`;
-   `mutation_summary` as the second companion of the Clade Shares manifest and its display in
-   the chart.
-   4b. `VariationSourcesPlugin`, its test, its manifest entry and its config entries.
-5. **Organism table.** First, as its own commit, the `organisms` DDL and the static MERGE move
-   from the two strategies into `AbstractH2OrgStorageStrategy`; both strategy tests unchanged and
-   green. Then the column and the second statement in the base, which receives the stored bytes,
-   and the conversion in `OrganismIndexer` (environment properties from the metadata in
-   `prepareTables`). Tests: the indexer converts a state with events into the stored form with
-   the right offsets; both strategy tests write the bytes and read the column back; a later
-   window without events leaves it untouched.
-6. **Controller.** The route; the new method on `IOrganismDataReader` — the dual-mode seam —
+1. **One mutation from the engine to Parquet.** `runtime/model/MutationRecord.java`;
+   `Organism`: field and three methods; `Simulation`: the list of newborns with pending records
+   and `clearBirthMutationRecords()`; the complete `MutationEvent` message with field 39 (all
+   fields, so that later slices renumber nothing); `OrganismStateSerializer` copies the record;
+   `SimulationEngine`: clearing after the successful send, memory estimate;
+   `GeneSubstitutionPlugin` records; `MutationEventsPlugin` writes one row per molecule, with the
+   entries in `reference.conf` and `config/evochora.conf`. Tests: `MutationRecordTest`; the
+   organism, simulation and serializer tests for record, read, clear, the newborn dead before its
+   first recording, and the empty case; the substitution plugin test for cells, old and new
+   values and the no-op; `MutationEventsPluginTest` after the pattern of
+   `DeathLifetimesPluginTest`; `ResumeNeutralityTest` unchanged and green, plus the test that a
+   restore from a snapshot with events carries no records. Runnable: a short run shows
+   substitution rows in `mutation_events`.
+2. **The remaining reporters.** `GeneDuplicationPlugin`, `GeneDeletionPlugin`,
+   `GeneInsertionPlugin` (both entries), `LabelRewritePlugin` with its mask. Tests: one case per
+   plugin test that checks cells, old and new values against what was written, `dv` and `params`,
+   and that a no-op records nothing. Runnable: every kind appears in the table, and births whose
+   hash changed without an event with cells are visible as the remainder.
+3. **The organism table.** First, as its own commit, the `organisms` DDL and the static MERGE
+   move from the two strategies into `AbstractH2OrgStorageStrategy`, both strategy tests
+   unchanged and green. Then the relative-offset helper on `EnvironmentProperties` with
+   `GenomeHasher` and `getRelativeVector` delegating to it (tie-break assertion adjusted; resume
+   and determinism tests as the proof that no hash changed); the factory
+   `MetadataConfigHelper.environmentProperties` replacing the three copies; `StoredMutationEvent`
+   and `StoredMutationEvents`; the conversion in `OrganismIndexer`; the column and the second
+   statement in the base. Tests: the helper (wrap-around, half world size), the indexer's
+   conversion, both strategy tests for writing the bytes, reading the column back, the order of
+   the two statements and the untouched later window. Runnable: the column is filled in H2 and
+   readable.
+4. **The controller route.** The new method on `IOrganismDataReader` — the dual-mode seam —
    implemented in `H2DatabaseReader` by extending the recursive lineage query; the label
    translation; the DTOs and the JSON. Tests: reader, translation across three generations with
-   masks, and controller.
-7. **Frontend.** The border and fill in the two renderers, the two rules with their
-   documentation, the fetch on selection. Three things this step must settle, found in review:
-   the browser holds the lineage answer, which for a deep lineage is tens of thousands of cells,
-   so its size is estimated and bounded; both renderers cache drawn cells (`cellObjects`,
-   `clearCache`), so a selection change invalidates and redraws the marked cells; and the lineage
-   colour of an extinct ancestor genome is computed from `_genomeParent`, which today is filled
-   only from the displayed tick's `genomeAncestors`, so the genome-to-parent edges of the lineage
-   answer are fed into it before the colours are computed, or an extinct ancestor gets an
-   unrelated root colour. The concrete look is agreed with the maintainer before this step.
-8. **Documentation.** The `analyze-run` skill: the tables `mutation_events` and
+   masks, controller. Runnable: `curl` returns the events of a lineage.
+5. **The environment grid.** The border and fill in the two renderers, the two rules with their
+   documentation, the fetch on selection; the browser heap of the lineage answer estimated and
+   bounded; the render caches (`cellObjects`, `clearCache`) invalidated on a selection change; the
+   genome-to-parent edges of the lineage answer fed into `_genomeParent` before the colours are
+   computed, so an extinct ancestor genome keeps its lineage colour. The concrete look is agreed
+   with the maintainer before this slice. Runnable: the marks of one lineage in the visualizer.
+6. **The cause on the clade band.** `MutationSummaryPlugin` with the shared position helper and
+   its test; the companion list in `ManifestEntry`, the written manifest and
+   `AnalyzerController.js`; `mutation_summary` as the second companion of the Clade Shares
+   manifest and its display in the chart. Runnable: a band names its founding mutation.
+7. **Variation sources.** `VariationSourcesPlugin`, its test, its manifest entry, its config
+   entries. Runnable: the stacked chart in the Analyzer.
+8. **Documentation and sight check.** The `analyze-run` skill: the tables `mutation_events` and
    `mutation_summary` in the genome layer, the join, the `::INTEGER[]` cast for the list
    columns, and the rule that a changed hash without an event with cells is variation outside
-   the plugins.
-9. **Gate.** `./gradlew check`.
-10. **Sight check** on a short run: event count against births times rates, one duplication opened
-    in DuckDB and compared with the body, the marks of one lineage in the visualizer. The run is
-    proposed separately with duration and data directory.
+   the plugins. A sight check on a run of some length: event count against births times rates,
+   one duplication opened in DuckDB and compared with the body, the marks of one lineage in the
+   visualizer. Every run is proposed separately with duration and data directory.
