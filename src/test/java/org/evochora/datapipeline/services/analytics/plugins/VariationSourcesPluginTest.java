@@ -282,15 +282,25 @@ class VariationSourcesPluginTest {
     }
 
     @Test
-    void levelsOfDetailFollowTheConfiguration() {
-        VariationSourcesPlugin configured = new VariationSourcesPlugin();
-        configured.configure(ConfigFactory.parseMap(
-            Map.of("metricId", "variation_sources", "lodLevels", 3)));
-        configured.initialize(context());
+    void levelsOfDetailCannotBeConfigured() {
+        // A coarser level would keep every tenth recording and a tenth of the births
+        assertThatThrownBy(() -> new VariationSourcesPlugin().configure(ConfigFactory.parseMap(
+                Map.of("metricId", "m", "lodLevels", 3))))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("lodLevels")
+            .hasMessageContaining("tenth of the births");
+        assertThat(plugin.getLodLevels()).isEqualTo(1);
+    }
 
-        assertThat(configured.getLodLevels()).isEqualTo(3);
-        assertThat(configured.getManifestEntry().dataSources)
-            .containsOnlyKeys("lod0", "lod1", "lod2");
+    @Test
+    void theChartSumsTheRecordingsOverTimeBuckets() {
+        ManifestEntry entry = plugin.getManifestEntry();
+
+        assertThat(entry.outputColumns).startsWith("tick").containsAll(COUNT_COLUMNS);
+        for (String column : COUNT_COLUMNS) {
+            assertThat(entry.generatedQuery).contains("SUM(" + column + ")::BIGINT AS " + column);
+        }
+        assertThat(entry.generatedQuery).contains("bucket_size").contains("GROUP BY 1");
     }
 
     @Test

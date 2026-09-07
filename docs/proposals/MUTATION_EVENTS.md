@@ -326,9 +326,12 @@ The manifest entry is a stacked bar chart over ticks with the ten counts as its 
 births rather than shares: recording is sparse, so a bar stands on a handful of births, where a
 share turns single births into a band jumping between halves and thirds — the height of the bar
 carries the episode itself, and a burst of the copy channel is a block whatever the population
-does around it. Levels of detail are sampled recordings, not sums over windows: a coarser level
-shows the births of the recordings it kept, and the births of a whole window are a query over
-lod0. The chart shows the copy channel and its episodes directly, and whether mutator lineages
+does around it. Under sparse recording a single recording holds a handful of births at most, so a
+bar per recording would show nothing; and a coarser level of detail keeps every tenth recording
+and with it a tenth of the births, so the metric has one level only. The chart's query, run in
+the browser over the loaded rows the way `InstructionUsagePlugin`'s is, cuts the ticks into one
+hundred buckets and sums the counts of the recordings in each, so a bar carries the births of a
+window. The chart shows the copy channel and its episodes directly, and whether mutator lineages
 gain ground over a run.
 
 What is not a chart: mutation class against fate. That needs the newborn's future and stays a

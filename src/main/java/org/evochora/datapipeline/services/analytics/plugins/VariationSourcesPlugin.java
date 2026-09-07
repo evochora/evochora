@@ -63,8 +63,10 @@ import org.evochora.datapipeline.utils.MetadataConfigHelper;
  * <strong>Why it must see every recording.</strong> A birth appears as a newborn in exactly one
  * recording, and an organism's mutation events are written with that recording and dropped
  * afterwards. A plugin that skips it does not see those births later - it never sees them. Levels
- * of detail select whole recordings after the fact, so a coarser level shows the births of the
- * recordings it kept, not the births of the ticks between them.
+ * of detail select whole recordings after the fact, so a coarser level would keep every tenth
+ * recording and with it a tenth of the births; the metric therefore has one level, and the chart
+ * sums the rows of that level over time buckets in the browser, so that a bar carries the births
+ * of a window and not of one recording.
  * <p>
  * A recording without births produces no row: a row of zeros would read as a recording whose
  * births came from nowhere rather than as one that had none.
@@ -87,6 +89,9 @@ public class VariationSourcesPlugin extends AbstractAnalyticsPlugin {
         "substitution",
         "multiple",
         "other");
+
+    /** How many time buckets the chart's query cuts the loaded ticks into. */
+    private static final int TARGET_BUCKETS = 100;
 
     private static final int UNCHANGED = COUNT_COLUMNS.indexOf("unchanged");
     private static final int BODILESS = COUNT_COLUMNS.indexOf("bodiless");
@@ -128,6 +133,13 @@ public class VariationSourcesPlugin extends AbstractAnalyticsPlugin {
         return new Fixed(1, "a birth is reported as a newborn in exactly one recording, so a "
             + "skipped recording loses its births for good - births are events, not a state that "
             + "can be sampled");
+    }
+
+    @Override
+    protected Fixed fixedLodLevels() {
+        return new Fixed(1, "a coarser level keeps every tenth recording and with it a tenth of "
+            + "the births; the chart sums the one level over time buckets instead, so the births "
+            + "of a window are counted, not sampled");
     }
 
     /**
@@ -231,8 +243,8 @@ public class VariationSourcesPlugin extends AbstractAnalyticsPlugin {
         ManifestEntry entry = new ManifestEntry();
         entry.id = metricId;
         entry.name = "Variation Sources";
-        entry.description = "Every recording's births split by what changed the genome at birth: "
-            + "one bar segment per mutation kind, one for genomes copied unchanged, one for "
+        entry.description = "The births of each time window split by what changed the genome at "
+            + "birth: one bar segment per mutation kind, one for genomes copied unchanged, one for "
             + "newborns without a genome, one for the genomes that changed without any mutation "
             + "plugin doing it, and 'multiple' for a birth two or more plugins changed.";
 
@@ -242,12 +254,44 @@ public class VariationSourcesPlugin extends AbstractAnalyticsPlugin {
             entry.dataSources.put(lodName, metricId + "/" + lodName + "/**/*.parquet");
         }
 
+        entry.generatedQuery = bucketSumQuery();
+        List<String> outputColumns = new java.util.ArrayList<>();
+        outputColumns.add("tick");
+        outputColumns.addAll(COUNT_COLUMNS);
+        entry.outputColumns = outputColumns;
+
         entry.visualization = VisualizationHint.chart("stacked-bar-chart", "tick")
             .with("y", COUNT_COLUMNS)
             .with("yLabel", "Births")
             .with("yFormat", "integer");
 
         return entry;
+    }
+
+    /**
+     * Builds the query the browser runs over the loaded rows: the ticks are cut into
+     * {@link #TARGET_BUCKETS} buckets of equal width and the counts of every recording in a bucket
+     * are added up, so a bar stands for the births of a window. Recordings without births have no
+     * row, which the sum tolerates; a bucket without any row has no bar.
+     *
+     * @return the SQL with {@code {table}} standing for the loaded rows
+     */
+    private static String bucketSumQuery() {
+        String sums = COUNT_COLUMNS.stream()
+            .map(name -> "SUM(" + name + ")::BIGINT AS " + name)
+            .collect(java.util.stream.Collectors.joining(",\n                "));
+        return """
+            WITH params AS (
+                SELECT GREATEST(1, (MAX(tick) - MIN(tick)) / %d)::BIGINT AS bucket_size
+                FROM {table}
+            )
+            SELECT
+                (FLOOR(tick / (SELECT bucket_size FROM params)) * (SELECT bucket_size FROM params))::BIGINT AS tick,
+                %s
+            FROM {table}
+            GROUP BY 1
+            ORDER BY tick
+            """.formatted(TARGET_BUCKETS, sums);
     }
 
     @Override
