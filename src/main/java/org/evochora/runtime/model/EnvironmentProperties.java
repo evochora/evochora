@@ -118,12 +118,18 @@ public class EnvironmentProperties {
      * vector to {@code from} yields {@code to}.
      * <p>
      * On a toroidal world two positions are connected by infinitely many vectors, one per number
-     * of wraps. This method returns the shortest of them, with each component in
-     * {@code [-size/2, size/2)}. Without that normalization a position a few cells before the
-     * origin would be reported as nearly a full world away.
+     * of wraps. This method returns the shortest of them, component by component through
+     * {@link #relativeOffset(int, int, int, boolean)}. Without that normalization a position a few
+     * cells before the origin would be reported as nearly a full world away.
+     * <p>
+     * That is the rule the genome hash places its molecules by, and it is shared so that a body
+     * this method describes and a hash computed over the same cells agree on where those cells
+     * sit; for a body spanning exactly half an even world the two halves are equidistant, and both
+     * resolve it to the positive one.
      *
-     * @param from The starting coordinate
-     * @param to The coordinate to reach
+     * @param from The starting coordinate, one component per dimension and inside the world's
+     *             bounds
+     * @param to The coordinate to reach, one component per dimension and inside the world's bounds
      * @return The vector from {@code from} to {@code to}, shortest across the wrap on a torus
      * @throws IllegalArgumentException if a coordinate does not have one component per dimension
      */
@@ -136,15 +142,7 @@ public class EnvironmentProperties {
 
         int[] relative = new int[from.length];
         for (int i = 0; i < from.length; i++) {
-            int delta = to[i] - from[i];
-            if (isToroidal) {
-                int size = worldShape[i];
-                delta = ((delta % size) + size) % size;
-                if (delta >= (size + 1) / 2) {
-                    delta -= size;
-                }
-            }
-            relative[i] = delta;
+            relative[i] = relativeOffset(to[i], from[i], worldShape[i], isToroidal);
         }
         return relative;
     }
@@ -160,7 +158,9 @@ public class EnvironmentProperties {
      * <p>
      * The rule is stated once here because an offset computed by it is comparable with the
      * positions the genome hash was built from; a rule with the opposite tie-break would place a
-     * body spanning exactly half the world on the other side of its origin.
+     * body spanning exactly half the world on the other side of its origin. Everything that
+     * reports a position relative to an organism goes through it, {@link #getRelativeVector}
+     * included.
      * <p>
      * Both components are expected inside the world's bounds, as every coordinate the environment
      * hands out is; the wrap is corrected by one world size, which is what a difference of two

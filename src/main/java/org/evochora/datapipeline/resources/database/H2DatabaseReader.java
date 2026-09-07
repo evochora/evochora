@@ -26,13 +26,12 @@ import org.evochora.datapipeline.api.resources.database.dto.OrganismTickDetails;
 import org.evochora.datapipeline.api.resources.database.dto.OrganismTickSummary;
 import org.evochora.datapipeline.resources.database.h2.IH2EnvStorageStrategy;
 import org.evochora.datapipeline.resources.database.h2.IH2OrgStorageStrategy;
+import org.evochora.datapipeline.utils.MetadataConfigHelper;
 
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.typesafe.config.Config;
-import com.typesafe.config.ConfigFactory;
 
 /**
  * Per-request database reader for H2.
@@ -87,18 +86,6 @@ public class H2DatabaseReader implements IDatabaseReader {
         return envStrategy.prepareChunkRead(connection, tickNumber);
     }
     
-    private EnvironmentProperties extractEnvironmentProperties(SimulationMetadata metadata) {
-        // Parse environment config from resolvedConfigJson
-        Config resolvedConfig = ConfigFactory.parseString(metadata.getResolvedConfigJson());
-
-        int[] shape = resolvedConfig.getIntList("environment.shape").stream()
-            .mapToInt(i -> i).toArray();
-        boolean isToroidal = "TORUS".equalsIgnoreCase(
-            resolvedConfig.getString("environment.topology"));
-
-        return new EnvironmentProperties(shape, isToroidal);
-    }
-
     /**
      * Looks up the label-hash-to-name map of the program an organism descends from.
      * <p>
@@ -253,7 +240,7 @@ public class H2DatabaseReader implements IDatabaseReader {
         } catch (org.evochora.datapipeline.api.resources.database.MetadataNotFoundException e) {
             throw new SQLException("Metadata not found for runId: " + runId, e);
         }
-        EnvironmentProperties envProps = extractEnvironmentProperties(metadata);
+        EnvironmentProperties envProps = MetadataConfigHelper.environmentProperties(metadata);
         int[] envDimensions = envProps.getWorldShape();
 
         // Read organism state from strategy (BLOB-based for SingleBlobOrgStrategy)

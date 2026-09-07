@@ -5,6 +5,7 @@ import com.typesafe.config.ConfigFactory;
 
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.memory.SimulationParameters;
+import org.evochora.runtime.model.EnvironmentProperties;
 
 /**
  * Helper class to extract configuration values from SimulationMetadata.
@@ -49,6 +50,24 @@ public final class MetadataConfigHelper {
     public static boolean isEnvironmentToroidal(SimulationMetadata metadata) {
         Config config = getResolvedConfig(metadata);
         return "TORUS".equalsIgnoreCase(config.getString("environment.topology"));
+    }
+
+    /**
+     * Builds the environment properties of a run from its metadata.
+     * <p>
+     * Shape and topology are all a consumer needs to turn a persisted flat index back into a
+     * coordinate and to measure a distance the way the run measured it. The two values are read
+     * here together so that every consumer describes the same world; deriving them separately
+     * invites one place to read the topology and another to assume it.
+     *
+     * @param metadata The simulation metadata
+     * @return The world the run took place in
+     */
+    public static EnvironmentProperties environmentProperties(SimulationMetadata metadata) {
+        return new EnvironmentProperties(
+            getEnvironmentShape(metadata),
+            isEnvironmentToroidal(metadata)
+        );
     }
 
     /**

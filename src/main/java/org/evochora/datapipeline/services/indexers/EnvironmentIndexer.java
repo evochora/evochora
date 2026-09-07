@@ -99,7 +99,7 @@ public class EnvironmentIndexer<ACK> extends AbstractBatchIndexer<ACK> implement
     @Override
     protected void prepareTables(String runId) throws Exception {
         SimulationMetadata metadata = getMetadata();
-        this.envProps = extractEnvironmentProperties(metadata);
+        this.envProps = MetadataConfigHelper.environmentProperties(metadata);
 
         int dimensions = envProps.getWorldShape().length;
         database.createEnvironmentDataTable(dimensions);
@@ -146,19 +146,6 @@ public class EnvironmentIndexer<ACK> extends AbstractBatchIndexer<ACK> implement
     @Override
     protected void commitProcessedChunks() throws Exception {
         database.commitRawChunks();
-    }
-
-    /**
-     * Extracts EnvironmentProperties from SimulationMetadata.
-     *
-     * @param metadata Simulation metadata containing environment configuration
-     * @return EnvironmentProperties for coordinate conversion
-     */
-    private EnvironmentProperties extractEnvironmentProperties(SimulationMetadata metadata) {
-        return new EnvironmentProperties(
-            MetadataConfigHelper.getEnvironmentShape(metadata),
-            MetadataConfigHelper.isEnvironmentToroidal(metadata)
-        );
     }
 
     // ==================== IMemoryEstimatable ====================

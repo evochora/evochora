@@ -148,15 +148,25 @@ class EnvironmentPropertiesTest {
 
     @Test
     void relativeVectorStaysWithinHalfTheWorld() {
+        // At an even width the two halves are equidistant and the rule the genome hash is built
+        // with resolves them to the positive one, so +50 is in range at width 100 and -50 is not
         EnvironmentProperties props = new EnvironmentProperties(new int[]{100, 51}, true);
 
         for (int x = 0; x < 100; x++) {
             for (int y = 0; y < 51; y++) {
                 int[] relative = props.getRelativeVector(new int[]{0, 0}, new int[]{x, y});
-                assertTrue(relative[0] >= -50 && relative[0] < 50, "x out of range: " + relative[0]);
+                assertTrue(relative[0] >= -50 && relative[0] <= 50, "x out of range: " + relative[0]);
                 assertTrue(relative[1] >= -25 && relative[1] <= 25, "y out of range: " + relative[1]);
             }
         }
+    }
+
+    @Test
+    void relativeVectorResolvesHalfAnEvenWorldToThePositiveHalf() {
+        EnvironmentProperties props = new EnvironmentProperties(new int[]{100, 50}, true);
+
+        assertArrayEquals(new int[]{50, 25}, props.getRelativeVector(new int[]{0, 0}, new int[]{50, 25}));
+        assertArrayEquals(new int[]{50, 25}, props.getRelativeVector(new int[]{60, 30}, new int[]{10, 5}));
     }
 
     @Test
