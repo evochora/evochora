@@ -69,26 +69,27 @@ the event belongs to the individual and is read out with its state.
 handlers of a tick have run (one null check per newborn), and
 `Simulation.clearBirthMutationRecords()` clears exactly those, so the clear costs the number of
 pending records, not the population, and the engine's memory figure counts what is actually
-held. `SimulationEngine`
-calls it in `captureSampledTick` after the chunk has been handed to the output successfully —
-after `tickDataOutput.put`, not before — so the engine, not the serializer, changes the runtime
-state, and the serializer remains an observer. Dead organisms stay in the list until the capture
+held. `SimulationEngine` calls it in `captureSampledTick` right after
+`chunkEncoder.captureTick` has taken the states of the recording, so the engine, not the
+serializer, changes the runtime state, and the serializer remains an observer. Dead organisms stay in the list until the capture
 that records them, so a newborn that is born and dies between two recordings is serialized with
 its events, as a dead state, before anything is cleared. A test in step 2 covers exactly this
 case.
 
-The capture loop logs a failed send as `SEND_ERROR` and continues. Because the lists are cleared
-only after a successful send, a failed one leaves the records in place and the next recording
-carries them; a consumer then sees them in a recording that is not the first after the birth,
-which the indexer's idempotent MERGE and the analytics rule "the field is present" both accept.
-A chunk that is lost after the send — in the dead-letter queue, say — loses its events with
-every other field of that chunk; that is accepted.
+The unit the engine sends is a chunk, not a recording: `tickDataOutput.put` runs only when the
+encoder has completed a chunk, which is `accumulatedDeltaInterval × snapshotInterval ×
+chunkInterval` recordings. Clearing the records only after that send was considered and
+rejected: the records would reappear in every recording of the chunk, and the pending list
+would keep the organisms of the whole chunk alive, dead ones included. The capture loop logs a
+failed send as `SEND_ERROR` and continues; a chunk that fails to send, or is lost afterwards in
+the dead-letter queue, loses its events with every other field of every recording in it. That
+is accepted, and it is the exposure every field already has.
 
 Resume restores nothing here. Every checkpoint is a recording, at which the lists were emitted and
 then cleared; `SimulationRestorer` rebuilds each organism field by field through `RestoreBuilder`
 and does not read `birth_mutations`, so a restored organism carries no record, the same state the
 uninterrupted run had after that capture. A test restores from a snapshot that carries events and
-checks that the organism has no records and the next recording emits none.
+checks that the organism has no records.
 
 The plugins do not touch the random source for this, so the trajectory of a run does not change.
 
@@ -271,9 +272,10 @@ over `organism_id, event_index`: smallest position, number of rows, class and ki
 against fate, fixation and clade is a join against `genome_lineage` and `genome_population` on
 the genome hashes.
 
-The plugin is registered in `reference.conf` under `analytics-indexer-1` and mirrored in
-`config/evochora.conf` beside the other metrics. It carries no manifest entry of its own; the two
-charts below read it.
+The plugin is registered in `reference.conf` under `analytics-indexer-1`. `config/evochora.conf`
+overrides only the simulation engine and the logging and carries no analytics plugin list, so
+there is nothing to mirror there; a HOCON array in that file would replace the whole list rather
+than add to it. The plugin carries no manifest entry of its own; the two charts below read it.
 
 ### Two charts in the Analyzer
 
@@ -419,8 +421,10 @@ and `./gradlew check`, and is shown to the maintainer on a short run before the 
    and `clearBirthMutationRecords()`; the complete `MutationEvent` message with field 39 (all
    fields, so that later slices renumber nothing); `OrganismStateSerializer` copies the record;
    `SimulationEngine`: clearing after the successful send, memory estimate;
-   `GeneSubstitutionPlugin` records; `MutationEventsPlugin` writes one row per molecule, with the
-   entries in `reference.conf` and `config/evochora.conf`. Tests: `MutationRecordTest`; the
+   `GeneSubstitutionPlugin` records; the relative-offset helper on `EnvironmentProperties`, which
+   the analytics plugin needs and which slice 3 makes the `GenomeHasher` and `getRelativeVector`
+   delegate to; `MutationEventsPlugin` writes one row per molecule, with the entry in
+   `reference.conf`. Tests: `MutationRecordTest`; the
    organism, simulation and serializer tests for record, read, clear, the newborn dead before its
    first recording, and the empty case; the substitution plugin test for cells, old and new
    values and the no-op; `MutationEventsPluginTest` after the pattern of
@@ -454,11 +458,12 @@ and `./gradlew check`, and is shown to the maintainer on a short run before the 
    computed, so an extinct ancestor genome keeps its lineage colour. The concrete look is agreed
    with the maintainer before this slice. Runnable: the marks of one lineage in the visualizer.
 6. **The cause on the clade band.** `MutationSummaryPlugin` with the shared position helper and
-   its test; the companion list in `ManifestEntry`, the written manifest and
-   `AnalyzerController.js`; `mutation_summary` as the second companion of the Clade Shares
-   manifest and its display in the chart. Runnable: a band names its founding mutation.
-7. **Variation sources.** `VariationSourcesPlugin`, its test, its manifest entry, its config
-   entries. Runnable: the stacked chart in the Analyzer.
+   its test and its entry in `reference.conf`; the companion list in `ManifestEntry`, the
+   written manifest and `AnalyzerController.js`; `mutation_summary` as the second companion of
+   the Clade Shares manifest and its display in the chart. Runnable: a band names its founding
+   mutation.
+7. **Variation sources.** `VariationSourcesPlugin`, its test, its manifest entry, its entry in
+   `reference.conf`. Runnable: the stacked chart in the Analyzer.
 8. **Documentation and sight check.** The `analyze-run` skill: the tables `mutation_events` and
    `mutation_summary` in the genome layer, the join, the `::INTEGER[]` cast for the list
    columns, and the rule that a changed hash without an event with cells is variation outside
