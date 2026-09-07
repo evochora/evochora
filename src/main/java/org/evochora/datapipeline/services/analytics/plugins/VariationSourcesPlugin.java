@@ -91,7 +91,7 @@ public class VariationSourcesPlugin extends AbstractAnalyticsPlugin {
         "other");
 
     /** How many time buckets the chart's query cuts the loaded ticks into. */
-    private static final int TARGET_BUCKETS = 100;
+    private static final int TARGET_BUCKETS = 50;
 
     private static final int UNCHANGED = COUNT_COLUMNS.indexOf("unchanged");
     private static final int BODILESS = COUNT_COLUMNS.indexOf("bodiless");
@@ -271,27 +271,36 @@ public class VariationSourcesPlugin extends AbstractAnalyticsPlugin {
     /**
      * Builds the query the browser runs over the loaded rows: the ticks are cut into
      * {@link #TARGET_BUCKETS} buckets of equal width and the counts of every recording in a bucket
-     * are added up, so a bar stands for the births of a window. Recordings without births have no
-     * row, which the sum tolerates; a bucket without any row has no bar.
+     * are added up, so a bar stands for the births of a window. Every bucket gets a row, a bucket
+     * without a recording in it one of zeros, so that the bars stand at equal width across the
+     * whole range.
      *
      * @return the SQL with {@code {table}} standing for the loaded rows
      */
     private static String bucketSumQuery() {
         String sums = COUNT_COLUMNS.stream()
-            .map(name -> "SUM(" + name + ")::BIGINT AS " + name)
+            .map(name -> "COALESCE(SUM(" + name + "), 0)::BIGINT AS " + name)
             .collect(java.util.stream.Collectors.joining(",\n                "));
         return """
             WITH params AS (
-                SELECT GREATEST(1, (MAX(tick) - MIN(tick)) / %d)::BIGINT AS bucket_size
+                SELECT MIN(tick) AS first_tick,
+                       GREATEST(1, (MAX(tick) - MIN(tick)) / %d)::BIGINT AS bucket_size
                 FROM {table}
+            ),
+            buckets AS (
+                SELECT (first_tick + n * bucket_size)::BIGINT AS bucket_tick
+                FROM params, range(0, %d + 1) AS r(n)
+                WHERE first_tick + n * bucket_size <= (SELECT MAX(tick) FROM {table})
             )
             SELECT
-                (FLOOR(tick / (SELECT bucket_size FROM params)) * (SELECT bucket_size FROM params))::BIGINT AS tick,
+                b.bucket_tick AS tick,
                 %s
-            FROM {table}
-            GROUP BY 1
+            FROM buckets b
+            LEFT JOIN {table} t
+              ON t.tick >= b.bucket_tick AND t.tick < b.bucket_tick + (SELECT bucket_size FROM params)
+            GROUP BY b.bucket_tick
             ORDER BY tick
-            """.formatted(TARGET_BUCKETS, sums);
+            """.formatted(TARGET_BUCKETS, TARGET_BUCKETS, sums);
     }
 
     @Override

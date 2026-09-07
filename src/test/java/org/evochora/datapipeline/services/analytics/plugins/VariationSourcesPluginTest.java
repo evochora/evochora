@@ -298,9 +298,9 @@ class VariationSourcesPluginTest {
 
         assertThat(entry.outputColumns).startsWith("tick").containsAll(COUNT_COLUMNS);
         for (String column : COUNT_COLUMNS) {
-            assertThat(entry.generatedQuery).contains("SUM(" + column + ")::BIGINT AS " + column);
+            assertThat(entry.generatedQuery).contains("COALESCE(SUM(" + column + "), 0)::BIGINT AS " + column);
         }
-        assertThat(entry.generatedQuery).contains("bucket_size").contains("GROUP BY 1");
+        assertThat(entry.generatedQuery).contains("bucket_size").contains("LEFT JOIN").contains("GROUP BY b.bucket_tick");
     }
 
     @Test

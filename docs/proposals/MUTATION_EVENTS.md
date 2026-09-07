@@ -329,8 +329,8 @@ carries the episode itself, and a burst of the copy channel is a block whatever 
 does around it. Under sparse recording a single recording holds a handful of births at most, so a
 bar per recording would show nothing; and a coarser level of detail keeps every tenth recording
 and with it a tenth of the births, so the metric has one level only. The chart's query, run in
-the browser over the loaded rows the way `InstructionUsagePlugin`'s is, cuts the ticks into one
-hundred buckets and sums the counts of the recordings in each, so a bar carries the births of a
+the browser over the loaded rows the way `InstructionUsagePlugin`'s is, cuts the ticks into fifty
+buckets and sums the counts of the recordings in each, so a bar carries the births of a
 window. The chart shows the copy channel and its episodes directly, and whether mutator lineages
 gain ground over a run.
 
