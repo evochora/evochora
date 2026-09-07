@@ -2,10 +2,10 @@ package org.evochora.datapipeline.services.analytics.plugins;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.assertj.core.api.Assertions.tuple;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -40,6 +40,19 @@ class VariationSourcesPluginTest {
     private static final long RECORDING = 1000L;
     private static final long PARENT_GENOME = 0x5678L;
 
+    /** The count columns a row carries after the tick, in the order they are expected in. */
+    private static final List<String> COUNT_COLUMNS = List.of(
+        "unchanged",
+        "bodiless",
+        "no_event",
+        "duplication",
+        "deletion",
+        "insertion",
+        "label_insertion",
+        "substitution",
+        "multiple",
+        "other");
+
     private VariationSourcesPlugin plugin;
 
     @BeforeEach
@@ -50,28 +63,38 @@ class VariationSourcesPluginTest {
     }
 
     @Test
-    void schemaCarriesTheRecordingTheSourceAndTheCount() {
+    void schemaCarriesTheRecordingAndOneCountPerSource() {
         ParquetSchema schema = plugin.getSchema();
 
-        assertThat(schema.getColumnCount()).isEqualTo(3);
         List<ParquetSchema.Column> columns = schema.getColumns();
+        assertThat(schema.getColumnCount()).isEqualTo(COUNT_COLUMNS.size() + 1);
         assertThat(columns.get(0).name()).isEqualTo("tick");
         assertThat(columns.get(0).type()).isEqualTo(ColumnType.BIGINT);
-        assertThat(columns.get(1).name()).isEqualTo("source");
-        assertThat(columns.get(1).type()).isEqualTo(ColumnType.VARCHAR);
-        assertThat(columns.get(2).name()).isEqualTo("births");
-        assertThat(columns.get(2).type()).isEqualTo(ColumnType.INTEGER);
+        assertThat(columns.subList(1, columns.size()))
+            .extracting(ParquetSchema.Column::name)
+            .containsExactlyElementsOf(COUNT_COLUMNS);
+        assertThat(columns.subList(1, columns.size()))
+            .extracting(ParquetSchema.Column::type)
+            .containsOnly(ColumnType.INTEGER);
+    }
+
+    @Test
+    void aRowCarriesTheRecordingItCounts() {
+        List<Object[]> rows = plugin.extractRows(recordingOf(newborn(7).setGenomeHash(0x1234L)));
+
+        assertThat(rows).singleElement()
+            .satisfies(row -> assertThat(row[0]).isEqualTo(RECORDING));
     }
 
     @Test
     void aGenomeEqualToTheParentsIsCopiedUnchanged() {
-        assertThat(sourcesOf(newborn(7).setGenomeHash(PARENT_GENOME)))
+        assertThat(birthsOf(newborn(7).setGenomeHash(PARENT_GENOME)))
             .containsExactly(Map.entry("unchanged", 1));
     }
 
     @Test
     void aNewbornWithoutAGenomeIsBodiless() {
-        assertThat(sourcesOf(newborn(7).setGenomeHash(0L)))
+        assertThat(birthsOf(newborn(7).setGenomeHash(0L)))
             .containsExactly(Map.entry("bodiless", 1));
     }
 
@@ -79,76 +102,99 @@ class VariationSourcesPluginTest {
     void aNewbornWithoutAGenomeIsBodilessEvenWhenTheParentHadNoneEither() {
         // Both hashes are 0 and therefore equal, but there is no genome that could have been
         // copied unchanged - what the birth produced is a child without a body
-        TickData tick = TickData.newBuilder()
-            .setTickNumber(RECORDING)
-            .addOrganisms(newborn(7).setGenomeHash(0L).setParentGenomeHash(0L))
-            .build();
-
-        assertThat(plugin.extractRows(tick)).singleElement()
-            .satisfies(row -> assertThat(row[1]).isEqualTo("bodiless"));
+        assertThat(birthsOf(newborn(7).setGenomeHash(0L).setParentGenomeHash(0L)))
+            .containsExactly(Map.entry("bodiless", 1));
     }
 
     @Test
     void aChangedGenomeThatNoPluginClaimsIsTheCopyChannel() {
-        assertThat(sourcesOf(newborn(7).setGenomeHash(0x1234L)))
-            .containsExactly(Map.entry("no-event", 1));
+        assertThat(birthsOf(newborn(7).setGenomeHash(0x1234L)))
+            .containsExactly(Map.entry("no_event", 1));
     }
 
     @Test
-    void aBirthWithOneEventIsNamedByItsKind() {
-        assertThat(sourcesOf(newborn(7).setGenomeHash(0x1234L)
+    void aBirthWithOneEventCountsUnderThatKind() {
+        assertThat(birthsOf(newborn(7).setGenomeHash(0x1234L)
                 .addBirthMutations(event("substitution", 1))))
             .containsExactly(Map.entry("substitution", 1));
     }
 
     @Test
-    void aBirthWithTwoEventsJoinsTheirKindsInPluginOrder() {
-        assertThat(sourcesOf(newborn(7).setGenomeHash(0x1234L)
+    void aKindSpelledWithADashHasItsColumnSpelledWithAnUnderscore() {
+        assertThat(birthsOf(newborn(7).setGenomeHash(0x1234L)
+                .addBirthMutations(event("label-insertion", 4))))
+            .containsExactly(Map.entry("label_insertion", 1));
+    }
+
+    @Test
+    void twoEventsOfOneKindAreStillThatKind() {
+        assertThat(birthsOf(newborn(7).setGenomeHash(0x1234L)
+                .addBirthMutations(event("duplication", 17))
+                .addBirthMutations(event("duplication", 9))))
+            .containsExactly(Map.entry("duplication", 1));
+    }
+
+    @Test
+    void aBirthWithTwoKindsCountsUnderMultiple() {
+        assertThat(birthsOf(newborn(7).setGenomeHash(0x1234L)
                 .addBirthMutations(event("duplication", 17))
                 .addBirthMutations(event("substitution", 1))))
-            .containsExactly(Map.entry("duplication+substitution", 1));
+            .containsExactly(Map.entry("multiple", 1));
+    }
+
+    @Test
+    void aKindWithoutAColumnOfItsOwnCountsUnderOther() {
+        // A mutation plugin from outside this project reports a kind these columns do not name,
+        // and a band of its own is what keeps it from vanishing into one of them
+        assertThat(birthsOf(newborn(7).setGenomeHash(0x1234L)
+                .addBirthMutations(event("transposition", 3))))
+            .containsExactly(Map.entry("other", 1));
     }
 
     @Test
     void anEventWithoutCellsIsNoSourceOfItsOwn() {
         // The label mask changes every label by the same amount and no molecule of its own, so a
         // birth carrying only it stands where its genome puts it - here beside the copy channel
-        assertThat(sourcesOf(newborn(7).setGenomeHash(0x1234L)
+        assertThat(birthsOf(newborn(7).setGenomeHash(0x1234L)
                 .addBirthMutations(event("label-rewrite", 0))))
-            .containsExactly(Map.entry("no-event", 1));
+            .containsExactly(Map.entry("no_event", 1));
     }
 
     @Test
     void anEventWithoutCellsLeavesAnUnchangedGenomeUnchanged() {
-        assertThat(sourcesOf(newborn(7).setGenomeHash(PARENT_GENOME)
+        assertThat(birthsOf(newborn(7).setGenomeHash(PARENT_GENOME)
                 .addBirthMutations(event("label-rewrite", 0))))
             .containsExactly(Map.entry("unchanged", 1));
     }
 
     @Test
-    void anEventWithoutCellsIsSkippedInAJoinOfKinds() {
-        assertThat(sourcesOf(newborn(7).setGenomeHash(0x1234L)
+    void anEventWithoutCellsIsNoSecondKind() {
+        assertThat(birthsOf(newborn(7).setGenomeHash(0x1234L)
                 .addBirthMutations(event("duplication", 17))
-                .addBirthMutations(event("label-rewrite", 0))
-                .addBirthMutations(event("substitution", 1))))
-            .containsExactly(Map.entry("duplication+substitution", 1));
+                .addBirthMutations(event("label-rewrite", 0))))
+            .containsExactly(Map.entry("duplication", 1));
     }
 
     @Test
-    void birthsOfOneSourceAreCounted() {
+    void theBirthsOfARecordingAreSummedIntoOneRow() {
         TickData tick = TickData.newBuilder()
             .setTickNumber(RECORDING)
             .addOrganisms(newborn(7).setGenomeHash(PARENT_GENOME))
             .addOrganisms(newborn(8).setGenomeHash(PARENT_GENOME))
             .addOrganisms(newborn(9).setGenomeHash(0x1234L)
                 .addBirthMutations(event("substitution", 1)))
+            .addOrganisms(newborn(10).setGenomeHash(0x9999L)
+                .addBirthMutations(event("deletion", 2))
+                .addBirthMutations(event("insertion", 5)))
             .build();
 
-        assertThat(plugin.extractRows(tick))
-            .extracting(row -> row[0], row -> row[1], row -> row[2])
-            .containsExactlyInAnyOrder(
-                tuple(RECORDING, "unchanged", 2),
-                tuple(RECORDING, "substitution", 1));
+        List<Object[]> rows = plugin.extractRows(tick);
+
+        assertThat(rows).hasSize(1);
+        assertThat(countsOf(rows.get(0))).containsExactly(
+            Map.entry("unchanged", 2),
+            Map.entry("substitution", 1),
+            Map.entry("multiple", 1));
     }
 
     @Test
@@ -178,16 +224,11 @@ class VariationSourcesPluginTest {
 
     @Test
     void aNewbornThatDiedBeforeTheRecordingStillCounts() {
-        TickData tick = TickData.newBuilder()
-            .setTickNumber(RECORDING)
-            .addOrganisms(newborn(7).setGenomeHash(0x1234L)
+        assertThat(birthsOf(newborn(7).setGenomeHash(0x1234L)
                 .addBirthMutations(event("substitution", 1))
                 .setIsDead(true)
-                .setDeathTick(RECORDING - 2))
-            .build();
-
-        assertThat(plugin.extractRows(tick)).singleElement()
-            .satisfies(row -> assertThat(row[1]).isEqualTo("substitution"));
+                .setDeathTick(RECORDING - 2)))
+            .containsExactly(Map.entry("substitution", 1));
     }
 
     @Test
@@ -212,19 +253,21 @@ class VariationSourcesPluginTest {
     }
 
     @Test
-    void theChartStacksTheSourcesOfARecordingToShares() {
+    void theChartStacksTheBirthsOfARecordingAsCounts() {
         ManifestEntry entry = plugin.getManifestEntry();
 
         assertThat(entry.id).isEqualTo("variation_sources");
         assertThat(entry.name).isEqualTo("Variation Sources");
         assertThat(entry.description).isNotEmpty();
         assertThat(entry.dataSources).containsOnlyKeys("lod0");
-        assertThat(entry.visualization.type).isEqualTo("stacked-area-chart");
+        assertThat(entry.visualization.type).isEqualTo("stacked-bar-chart");
         assertThat(entry.visualization.config)
             .containsEntry("x", "tick")
-            .containsEntry("groupBy", "source")
-            .containsEntry("y", "births")
-            .containsEntry("yAxisMode", "percent");
+            .containsEntry("y", COUNT_COLUMNS)
+            .containsEntry("yLabel", "Births")
+            .containsEntry("yFormat", "integer")
+            // Bars carrying births, not shares of them
+            .doesNotContainKey("yAxisMode");
     }
 
     @Test
@@ -239,30 +282,53 @@ class VariationSourcesPluginTest {
     }
 
     @Test
-    void lodLevelsCannotBeConfigured() {
-        assertThatThrownBy(() -> new VariationSourcesPlugin().configure(ConfigFactory.parseMap(
-                Map.of("metricId", "m", "lodLevels", 5))))
-            .isInstanceOf(IllegalArgumentException.class)
-            .hasMessageContaining("lodLevels");
+    void levelsOfDetailFollowTheConfiguration() {
+        VariationSourcesPlugin configured = new VariationSourcesPlugin();
+        configured.configure(ConfigFactory.parseMap(
+            Map.of("metricId", "variation_sources", "lodLevels", 3)));
+        configured.initialize(context());
+
+        assertThat(configured.getLodLevels()).isEqualTo(3);
+        assertThat(configured.getManifestEntry().dataSources)
+            .containsOnlyKeys("lod0", "lod1", "lod2");
     }
 
     @Test
     void everyRecordedTickIsRead() {
         assertThat(plugin.getSamplingInterval()).isEqualTo(1);
-        assertThat(plugin.getLodLevels()).isEqualTo(1);
     }
 
     /**
-     * The rows of a recording holding exactly this one newborn, as source and count.
+     * The counts of a recording holding exactly these newborns, zeros left out.
      */
-    private List<Map.Entry<String, Integer>> sourcesOf(OrganismState.Builder newborn) {
-        TickData tick = TickData.newBuilder()
+    private Map<String, Integer> birthsOf(OrganismState.Builder newborn) {
+        List<Object[]> rows = plugin.extractRows(recordingOf(newborn));
+        assertThat(rows).hasSize(1);
+        return countsOf(rows.get(0));
+    }
+
+    /**
+     * The count columns of one row that carry a birth, by column name and in column order.
+     */
+    private static Map<String, Integer> countsOf(Object[] row) {
+        Map<String, Integer> counts = new LinkedHashMap<>();
+        for (int i = 0; i < COUNT_COLUMNS.size(); i++) {
+            int births = (Integer) row[i + 1];
+            if (births > 0) {
+                counts.put(COUNT_COLUMNS.get(i), births);
+            }
+        }
+        return counts;
+    }
+
+    /**
+     * The recording at {@link #RECORDING} holding exactly this one state.
+     */
+    private static TickData recordingOf(OrganismState.Builder organism) {
+        return TickData.newBuilder()
             .setTickNumber(RECORDING)
-            .addOrganisms(newborn)
+            .addOrganisms(organism)
             .build();
-        return plugin.extractRows(tick).stream()
-            .map(row -> Map.entry((String) row[1], (Integer) row[2]))
-            .toList();
     }
 
     /**
