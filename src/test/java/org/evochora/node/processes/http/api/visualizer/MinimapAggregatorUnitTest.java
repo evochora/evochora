@@ -3,7 +3,9 @@ package org.evochora.node.processes.http.api.visualizer;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import org.evochora.datapipeline.api.contracts.CellDataColumns;
+import org.evochora.runtime.Config;
 import org.evochora.runtime.model.EnvironmentProperties;
+import org.evochora.runtime.model.MoleculeTypeRegistry;
 import org.evochora.node.processes.http.api.visualizer.MinimapAggregator.MinimapResult;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -120,6 +122,29 @@ class MinimapAggregatorUnitTest {
         }
 
         @Test
+        @DisplayName("Every registered type is reported as its own raw type index")
+        void everyRegisteredType_reportsItsRawIndex() {
+            var envProps = new EnvironmentProperties(new int[]{600, 600}, false);
+
+            for (int type : MoleculeTypeRegistry.orderedTypes()) {
+                int rawIndex = (type & Config.TYPE_MASK) >>> Config.TYPE_SHIFT;
+                var columns = createColumns(
+                    new int[]{300 * 600 + 300},
+                    new int[]{packMolecule(rawIndex)}
+                );
+
+                MinimapResult result = aggregator.aggregate(columns, envProps);
+
+                assertThat(result).isNotNull();
+                assertThat(result.cellTypes()[150 * 300 + 150])
+                    .as("type %s", MoleculeTypeRegistry.typeToName(type))
+                    .isEqualTo((byte) rawIndex);
+                assertThat(result.cellTypes()[150 * 300 + 150])
+                    .isNotIn(MinimapAggregator.TYPE_EMPTY, MinimapAggregator.TYPE_UNKNOWN);
+            }
+        }
+
+        @Test
         @DisplayName("STRUCTURE wins over CODE when it has majority")
         void structureWinsOverCode() {
             // Use 600x600 world which scales to 300x300 minimap (2:1 ratio, 4 cells per pixel)
@@ -218,10 +243,26 @@ class MinimapAggregatorUnitTest {
             MinimapResult result = aggregator.aggregate(columns, envProps);
 
             assertThat(result).isNotNull();
-            // All bytes should be 7 (TYPE_EMPTY) since there are no cells
+            // Every pixel reports the EMPTY sentinel since there are no cells
             for (byte b : result.cellTypes()) {
-                assertThat(b).isEqualTo((byte) 7);
+                assertThat(b).isEqualTo(MinimapAggregator.TYPE_EMPTY);
             }
+        }
+
+        @Test
+        @DisplayName("A molecule of an unregistered type reports the UNKNOWN sentinel")
+        void unregisteredType_reportsUnknownSentinel() {
+            var envProps = new EnvironmentProperties(new int[]{600, 600}, false);
+            // 0xFF is no registered type, so the pixel must say so instead of looking empty
+            var columns = createColumns(
+                new int[]{300 * 600 + 300},
+                new int[]{packMolecule(0xFF)}
+            );
+
+            MinimapResult result = aggregator.aggregate(columns, envProps);
+
+            assertThat(result).isNotNull();
+            assertThat(result.cellTypes()[150 * 300 + 150]).isEqualTo(MinimapAggregator.TYPE_UNKNOWN);
         }
 
         @Test

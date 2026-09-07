@@ -61,12 +61,16 @@ public class SimulationTest {
     void testConflictResolutionSameTarget_oneWritesOtherLoses() {
         Organism orgLow = Organism.create(sim, new int[]{0, 0}, 2000);
         orgLow.setDv(new int[]{1, 0});
-        orgLow.setDp(0, new int[]{0, 0});        int payloadLow = new Molecule(Config.TYPE_DATA, 11).toInt();
+        // A non-zero marker register keeps the written molecules DATA, so each payload identifies
+        // its writer in the cell.
+        orgLow.setMr(1);
+        orgLow.setDp(0, new int[]{0, 0});        int payloadLow = new Molecule(Config.TYPE_DATA, 11, 1).toInt();
         orgLow.writeOperand(0, payloadLow);
 
         Organism orgHigh = Organism.create(sim, new int[]{10, 0}, 2000);
         orgHigh.setDv(new int[]{1, 0});
-        orgHigh.setDp(0, new int[]{0, 0});        int payloadHigh = new Molecule(Config.TYPE_DATA, 22).toInt();
+        orgHigh.setMr(1);
+        orgHigh.setDp(0, new int[]{0, 0});        int payloadHigh = new Molecule(Config.TYPE_DATA, 22, 1).toInt();
         orgHigh.writeOperand(0, payloadHigh);
 
         sim.addOrganism(orgLow);
@@ -118,12 +122,14 @@ public class SimulationTest {
     void testNoConflictDifferentTargetsBothExecute() {
         Organism o1 = Organism.create(sim, new int[]{0, 0}, 2000);
         o1.setDv(new int[]{1, 0});
-        o1.setDp(0, new int[]{0, 0});        int v1 = new Molecule(Config.TYPE_DATA, 5).toInt();
+        o1.setMr(1);
+        o1.setDp(0, new int[]{0, 0});        int v1 = new Molecule(Config.TYPE_DATA, 5, 1).toInt();
         o1.writeOperand(0, v1);
 
         Organism o2 = Organism.create(sim, new int[]{10, 0}, 2000);
         o2.setDv(new int[]{1, 0});
-        o2.setDp(0, new int[]{1, 0});        int v2 = new Molecule(Config.TYPE_DATA, 7).toInt();
+        o2.setMr(1);
+        o2.setDp(0, new int[]{1, 0});        int v2 = new Molecule(Config.TYPE_DATA, 7, 1).toInt();
         o2.writeOperand(0, v2);
 
         sim.addOrganism(o1);

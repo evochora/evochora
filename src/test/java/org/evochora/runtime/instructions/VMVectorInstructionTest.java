@@ -268,4 +268,28 @@ public class VMVectorInstructionTest {
     void assertNoInstructionFailure() {
         assertThat(org.isInstructionFailed()).as("Instruction failed: " + org.getFailureReason()).isFalse();
     }
+
+    /**
+     * Verifies that VGTS fails with a data stack overflow when its index and vector operands leave
+     * the stack at the depth limit, so that the component finds no room and nothing is pushed.
+     */
+    @Test
+    @Tag("unit")
+    void testVgtsDataStackOverflow() {
+        int filler = new Molecule(Config.TYPE_DATA, 1).toInt();
+        for (int i = 0; i < Config.DS_MAX_DEPTH; i++) {
+            org.getDataStack().push(filler);
+        }
+        org.getDataStack().push(new int[]{10, 20});
+        org.getDataStack().push(new Molecule(Config.TYPE_DATA, 1).toInt());
+
+        placeInstruction("VGTS");
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).isTrue();
+        assertThat(org.getFailureReason()).contains("Data stack overflow");
+        assertThat(org.getDataStack()).hasSize(Config.DS_MAX_DEPTH);
+
+        org.resetTickState();
+    }
 }

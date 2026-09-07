@@ -579,8 +579,7 @@ public class Organism {
         /**
          * Sets the data stack contents.
          *
-         * @param stack the stacked values, the deque's head being the top of the stack. A stack
-         *              deeper than {@link Config#DS_MAX_DEPTH} is rejected by {@link #build}
+         * @param stack the stacked values, the deque's head being the top of the stack
          * @return this builder
          */
         public RestoreBuilder dataStack(Deque<Object> stack) {
@@ -589,10 +588,9 @@ public class Organism {
         }
 
         /**
-         * Sets the location stack contents; a stack deeper than the limit is rejected by {@link #build}.
+         * Sets the location stack contents.
          *
-         * @param stack the stacked coordinate values, the deque's head being the top of the stack.
-         *              The limit is {@link Config#LOCATION_STACK_MAX_DEPTH}
+         * @param stack the stacked coordinate values, the deque's head being the top of the stack
          * @return this builder
          */
         public RestoreBuilder locationStack(Deque<int[]> stack) {
@@ -604,8 +602,7 @@ public class Organism {
          * Sets the call stack contents.
          *
          * @param stack the frames of the procedures the organism is inside, the deque's head being
-         *              the innermost one. A stack deeper than {@link Config#CALL_STACK_MAX_DEPTH}
-         *              is rejected by {@link #build}
+         *              the innermost one
          * @return this builder
          */
         public RestoreBuilder callStack(Deque<ProcFrame> stack) {
@@ -785,31 +782,6 @@ public class Organism {
             if (activeDpIndex < 0 || activeDpIndex >= Math.max(dps.size(), 1)) {
                 throw new InvalidRestoreState("Active data pointer index " + activeDpIndex
                         + " lies outside the " + dps.size() + " data pointers");
-            }
-            requireStackWithinLimit("Data stack", dataStack.size(), Config.DS_MAX_DEPTH);
-            requireStackWithinLimit("Location stack", locationStack.size(), Config.LOCATION_STACK_MAX_DEPTH);
-            requireStackWithinLimit("Call stack", callStack.size(), Config.CALL_STACK_MAX_DEPTH);
-        }
-
-        /**
-         * Rejects a stack deeper than the instruction set allows. Such a depth describes a state no
-         * running organism can reach, because the instruction that would exceed the limit fails
-         * instead of pushing.
-         * <p>
-         * A restorer reading a checkpoint checks the same limits before it gets here, so that its
-         * message can name the checkpoint. This one guards the organism itself and therefore holds
-         * for every caller. Sharing one helper between the two is not possible: it would have to live
-         * in a package this one may depend on, and this package depends on nothing.
-         *
-         * @param name  the stack's name, for the message
-         * @param depth the restored depth
-         * @param limit the maximum depth the instruction set enforces
-         * @throws InvalidRestoreState if the depth exceeds the limit
-         */
-        private void requireStackWithinLimit(String name, int depth, int limit) {
-            if (depth > limit) {
-                throw new InvalidRestoreState(
-                        name + " depth " + depth + " exceeds the limit of " + limit);
             }
         }
     }
@@ -1640,31 +1612,79 @@ public class Organism {
     public int[] getInitialPosition() { return Arrays.copyOf(this.initialPosition, this.initialPosition.length); }
     /**
      * The organism's general-purpose stack, handed out live rather than copied so that instructions
-     * push and pop on it directly. The deque's head is the top of the stack. It does not enforce a
-     * depth of its own: a caller that pushes has to check {@link Config#DS_MAX_DEPTH} first, the
-     * limit that also bounds a restored stack.
+     * peek and pop on it directly. The deque's head is the top of the stack. It does not enforce a
+     * depth of its own: pushing goes through {@link #pushData(Object)}, which holds the stack to
+     * {@link Config#DS_MAX_DEPTH}, and a caller that pops checks the depth it needs first.
      *
      * @return A reference to the Data Stack (DS).
      */
     public Deque<Object> getDataStack() { 
         return this.dataStack;
     }
+
+    /**
+     * Pushes a value onto the data stack, or fails the current instruction if the stack is full.
+     * <p>
+     * Every instruction that leaves a value on the data stack pushes through here, so the stack
+     * never grows past {@link Config#DS_MAX_DEPTH}. An instruction whose side effect precedes its
+     * push calls {@link #requireDataStackRoom()} before the side effect, so that a full stack fails
+     * the instruction as a whole.
+     *
+     * @param value the scalar or vector to push
+     * @return {@code true} if the value was pushed, {@code false} if the instruction has been failed
+     */
+    public boolean pushData(Object value) {
+        if (!requireDataStackRoom()) {
+            return false;
+        }
+        this.dataStack.push(value);
+        return true;
+    }
+
+    /**
+     * Fails the current instruction if the data stack has no room for one more value.
+     *
+     * @return {@code true} if a push would succeed, {@code false} if the instruction has been failed
+     */
+    public boolean requireDataStackRoom() {
+        if (this.dataStack.size() >= Config.DS_MAX_DEPTH) {
+            this.instructionFailed("Data stack overflow");
+            return false;
+        }
+        return true;
+    }
     /**
      * The frames of the procedures the organism is currently inside, handed out live: a call pushes
      * onto this very deque and a return pops from it. The head is the innermost procedure, and an
-     * empty stack means execution is at main level. As with the data stack, the depth limit
-     * {@link Config#CALL_STACK_MAX_DEPTH} is the caller's to check.
+     * empty stack means execution is at main level. Pushing goes through
+     * {@link #pushCallFrame(ProcFrame)}, which holds the stack to {@link Config#CALL_STACK_MAX_DEPTH}.
      * <p>
      * A call also sets {@link #setCurrentProcLabelHash(int)} from the same label hash it puts in
-     * the frame, and a return moves both back together. Pushing onto this deque directly bypasses
-     * that: the hash then belongs to no frame, and the next return files the running procedure's
-     * persistent registers under another procedure's name. Whoever pushes here keeps the two in
-     * step themselves.
+     * the frame, and a return moves both back together. Pushing a frame without setting the hash
+     * bypasses that: the hash then belongs to no frame, and the next return files the running
+     * procedure's persistent registers under another procedure's name. Whoever pushes keeps the
+     * two in step themselves.
      *
      * @return A reference to the Call Stack (CS).
      */
     public Deque<ProcFrame> getCallStack() { 
         return this.callStack;
+    }
+
+    /**
+     * Pushes a procedure frame onto the call stack, or fails the current instruction if the stack
+     * is full.
+     *
+     * @param frame the frame of the procedure being entered
+     * @return {@code true} if the frame was pushed, {@code false} if the instruction has been failed
+     */
+    public boolean pushCallFrame(ProcFrame frame) {
+        if (this.callStack.size() >= Config.CALL_STACK_MAX_DEPTH) {
+            this.instructionFailed("Call stack overflow");
+            return false;
+        }
+        this.callStack.push(frame);
+        return true;
     }
 
     /**
@@ -1676,11 +1696,27 @@ public class Organism {
      * registers, the data stack and the data pointers without distinguishing the two, and
      * {@link #setActiveDp(int[])} accepts whatever it is given.
      *
-     * @return the live stack, not a copy; its depth is bounded by
-     *         {@link org.evochora.runtime.Config#LOCATION_STACK_MAX_DEPTH}
+     * @return the live stack, not a copy; pushing goes through {@link #pushLocation(int[])}, which
+     *         holds the stack to {@link org.evochora.runtime.Config#LOCATION_STACK_MAX_DEPTH}
      */
     public Deque<int[]> getLocationStack() {
         return this.locationStack;
+    }
+
+    /**
+     * Pushes a vector onto the location stack, or fails the current instruction if the stack is
+     * full.
+     *
+     * @param vector the vector to push
+     * @return {@code true} if the vector was pushed, {@code false} if the instruction has been failed
+     */
+    public boolean pushLocation(int[] vector) {
+        if (this.locationStack.size() >= Config.LOCATION_STACK_MAX_DEPTH) {
+            this.instructionFailed("Location stack overflow");
+            return false;
+        }
+        this.locationStack.push(vector);
+        return true;
     }
 
     /**

@@ -22,6 +22,18 @@ import org.junit.jupiter.api.Test;
  */
 public class VMStateInstructionTest {
 
+    /** Base energy every instruction costs under the test simulation's default policy. */
+    private static final int BASE_ENERGY_COST = 1;
+
+    /** Energy penalty a failed instruction is charged, as {@link SimulationTestUtils} configures it. */
+    private static final int ERROR_PENALTY_COST = 10;
+
+    /**
+     * Energy a fork that fails on the marker register costs: its own base cost and the error
+     * penalty. Nothing is taken for a child, because none is created.
+     */
+    private static final int FAILED_FORK_ENERGY_COST = BASE_ENERGY_COST + ERROR_PENALTY_COST;
+
     private Environment environment;
     private Organism org;
     private Simulation sim;
@@ -450,6 +462,9 @@ public class VMStateInstructionTest {
         // Set up: ensure we have enough energy and a clear target location
         org.addEr(1000); // Give organism more energy for the fork operation
         org.setDp(0, org.getIp());
+        // A fork hands the child the cells carrying the parent's marker and requires a non-zero
+        // marker register.
+        org.setMr(1);
         
         // Prepare stack with values in the order expected by assembly code:
         // Stack order (top to bottom): [childDv, energy, delta]
@@ -490,6 +505,121 @@ public class VMStateInstructionTest {
         assertThat(child).isNotNull();
         assertThat(child.getDv()).isEqualTo(childDv);
         assertThat(child.getParentId()).isEqualTo(org.getId());
+    }
+
+    /**
+     * A fork with marker register 0 fails: marker 0 is the ephemeral class, whose cells stay with
+     * the organism that wrote them, so there is no set of cells to hand to a child.
+     */
+    @Test
+    @Tag("unit")
+    void testFork_FailsWithZeroMarkerRegister() {
+        org.addEr(1000);
+        org.setDp(0, org.getIp());
+        int energyBefore = org.getEr();
+
+        org.writeOperand(0, new int[]{1, 0});
+        org.writeOperand(1, new Molecule(Config.TYPE_DATA, 100).toInt());
+        org.writeOperand(2, new int[]{1, 0});
+        placeInstruction("FORK", 0, 1, 2);
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).isTrue();
+        assertThat(org.getFailureReason()).isEqualTo("FORK requires a non-zero molecule marker register");
+        assertThat(sim.getOrganisms()).hasSize(1);
+        // No child energy was taken: only the instruction's own cost and the error penalty apply.
+        assertThat(energyBefore - org.getEr()).isEqualTo(FAILED_FORK_ENERGY_COST);
+
+        org.resetTickState();
+    }
+
+    /**
+     * FRKI with marker register 0 fails for the same reason as FORK, and names itself in the
+     * failure message.
+     */
+    @Test
+    @Tag("unit")
+    void testFrki_FailsWithZeroMarkerRegister() {
+        org.addEr(1000);
+        org.setDp(0, org.getIp());
+        int energyBefore = org.getEr();
+
+        placeInstruction("FRKI", 1, 0, 100, 1, 0);
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).isTrue();
+        assertThat(org.getFailureReason()).isEqualTo("FRKI requires a non-zero molecule marker register");
+        assertThat(sim.getOrganisms()).hasSize(1);
+        assertThat(energyBefore - org.getEr()).isEqualTo(FAILED_FORK_ENERGY_COST);
+
+        org.resetTickState();
+    }
+
+    /**
+     * FRKS with marker register 0 fails before any energy is handed over and before a child
+     * organism is created. Its operands come off the data stack while the instruction is fetched,
+     * so the stack is consumed as it is for a successful fork.
+     */
+    @Test
+    @Tag("unit")
+    void testFrks_FailsWithZeroMarkerRegister() {
+        org.addEr(1000);
+        org.setDp(0, org.getIp());
+        int energyBefore = org.getEr();
+
+        org.getDataStack().push(new int[]{1, 0});
+        org.getDataStack().push(new Molecule(Config.TYPE_DATA, 100).toInt());
+        org.getDataStack().push(new int[]{0, 1});
+
+        placeInstruction("FRKS");
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).isTrue();
+        assertThat(org.getFailureReason()).isEqualTo("FRKS requires a non-zero molecule marker register");
+        assertThat(sim.getOrganisms()).hasSize(1);
+        assertThat(org.getDataStack()).isEmpty();
+        assertThat(energyBefore - org.getEr()).isEqualTo(FAILED_FORK_ENERGY_COST);
+
+        org.resetTickState();
+    }
+
+    /**
+     * A fork that fails on the marker register consumes no organism ID: the check runs before the
+     * child is created, so the next successful fork's child carries the ID that would have gone to
+     * the failed attempt. Organism IDs feed the per-tick conflict priority, which is why a
+     * create-then-fail order would shift every later ID.
+     */
+    @Test
+    @Tag("unit")
+    void testAFailedForkConsumesNoOrganismId() {
+        org.addEr(1000);
+        org.setDp(0, org.getIp());
+
+        org.writeOperand(0, new int[]{1, 0});
+        org.writeOperand(1, new Molecule(Config.TYPE_DATA, 100).toInt());
+        org.writeOperand(2, new int[]{1, 0});
+        placeInstruction("FORK", 0, 1, 2);
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).isTrue();
+        assertThat(sim.getOrganisms()).hasSize(1);
+
+        org.setMr(1);
+        org.setDp(0, org.getIp());
+        org.writeOperand(0, new int[]{1, 0});
+        org.writeOperand(1, new Molecule(Config.TYPE_DATA, 100).toInt());
+        org.writeOperand(2, new int[]{1, 0});
+        placeInstruction("FORK", 0, 1, 2);
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).isFalse();
+        assertThat(sim.getOrganisms()).hasSize(2);
+
+        Organism child = sim.getOrganisms().stream()
+            .filter(o -> o.getId() != org.getId())
+            .findFirst()
+            .orElseThrow();
+        assertThat(child.getId()).isEqualTo(org.getId() + 1);
     }
 
     // ==================== SMR Instruction Tests ====================
@@ -541,6 +671,18 @@ public class VMStateInstructionTest {
         sim.tick();
         
         assertThat(org.getMr()).isEqualTo(4); // 20 & 0xF = 4
+    }
+
+    @Test
+    @Tag("unit")
+    void testSmr_AcceptsStateOperand() {
+        int markerValue = 7;
+        org.writeOperand(0, new Molecule(Config.TYPE_STATE, markerValue).toInt());
+
+        placeInstruction("SMR", 0); // SMR %DR0
+        sim.tick();
+
+        assertThat(org.getMr()).isEqualTo(markerValue);
     }
 
     @Test
@@ -753,6 +895,22 @@ public class VMStateInstructionTest {
 
     @Test
     @Tag("unit")
+    void testCmr_AcceptsStateOperand() {
+        int[] pos1 = new int[]{16, 16};
+        environment.setMolecule(new Molecule(Config.TYPE_DATA, 99, 7), pos1); // marker=7
+        environment.setOwnerId(org.getId(), pos1);
+
+        org.writeOperand(0, new Molecule(Config.TYPE_STATE, 7).toInt());
+
+        placeInstruction("CMR", 0); // CMR %DR0
+        sim.tick();
+
+        assertThat(environment.getMolecule(pos1).marker()).isEqualTo(0);
+        assertThat(environment.getOwnerId(pos1)).isEqualTo(0); // orphaned
+    }
+
+    @Test
+    @Tag("unit")
     void testCmr_FailsWithNonDataType() {
         // Use register variant to test type check (similar to testSmr_FailsWithNonDataType)
         org.writeOperand(0, new Molecule(Config.TYPE_ENERGY, 3).toInt());
@@ -769,5 +927,27 @@ public class VMStateInstructionTest {
     @org.junit.jupiter.api.AfterEach
     void assertNoInstructionFailure() {
         assertThat(org.isInstructionFailed()).as("Instruction failed: " + org.getFailureReason()).isFalse();
+    }
+
+    /**
+     * Verifies that NRGS fails with a data stack overflow when the data stack is at its depth
+     * limit, and that the stack keeps the depth it had.
+     */
+    @Test
+    @Tag("unit")
+    void testNrgsDataStackOverflow() {
+        int filler = new Molecule(Config.TYPE_DATA, 1).toInt();
+        for (int i = 0; i < Config.DS_MAX_DEPTH; i++) {
+            org.getDataStack().push(filler);
+        }
+
+        placeInstruction("NRGS");
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).isTrue();
+        assertThat(org.getFailureReason()).contains("Data stack overflow");
+        assertThat(org.getDataStack()).hasSize(Config.DS_MAX_DEPTH);
+
+        org.resetTickState();
     }
 }

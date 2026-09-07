@@ -72,30 +72,7 @@ export class AppController {
         const defaultConfig = {
             worldSize: [100, 30],
             cellSize: 22,
-            typeCode: 0,
-            typeData: 1,
-            typeEnergy: 2,
-            typeStructure: 3,
-            typeLabel: 4,
-            typeLabelRef: 5,
-            typeRegister: 6,
             backgroundColor: '#1a1a28', // Border area visible when scrolling beyond grid
-            colorEmptyBg: '#14141e',
-            colorCodeBg: '#3c5078',
-            colorDataBg: '#32323c',
-            colorStructureBg: '#ff7878',
-            colorEnergyBg: '#ffe664',
-            colorLabelBg: '#a0a0a8', // Light gray for jump target labels
-            colorLabelRefBg: '#a0a0a8', // Same background as LABEL
-            colorRegisterBg: '#506080', // Medium blue-gray for register references
-            colorCodeText: '#ffffff',
-            colorDataText: '#ffffff',
-            colorStructureText: '#323232',
-            colorEnergyText: '#323232',
-            colorLabelText: '#323232', // Dark text on light background
-            colorLabelRefText: '#ffffff', // Light text to distinguish from LABEL
-            colorRegisterText: '#ffffff',
-            colorText: '#ffffff',
             organismPalette: AppController.ORGANISM_PALETTE.map(hex => parseInt(hex.slice(1), 16))
         };
         
@@ -202,6 +179,7 @@ export class AppController {
             
             // Set type mappings for Protobuf ID resolution in EnvironmentApi
             setTypeMappings(metadata);
+            this.minimapView?.setMoleculeTypes(metadata?.moleculeTypes, metadata?.moleculeTypeShift);
 
             // Update UI components that depend on metadata
             this.tickPanelManager?.updateSamplingInfo(metadata?.samplingInterval || 1);
@@ -625,6 +603,7 @@ export class AppController {
                 
                 // Set type mappings for Protobuf ID resolution in EnvironmentApi
                 setTypeMappings(metadata);
+                this.minimapView?.setMoleculeTypes(metadata?.moleculeTypes, metadata?.moleculeTypeShift);
 
                 // Update sampling info in the UI
                 this.tickPanelManager?.updateSamplingInfo(metadata?.samplingInterval || 1);
@@ -1126,7 +1105,7 @@ export class AppController {
             this.renderer?.setMutationMarks(
                 buildMarkMap(events, {
                     organismId,
-                    resolveTypeId: (moleculeType) => this._resolveMoleculeTypeId(moleculeType)
+                    resolveTypeName: (moleculeType) => this._resolveMoleculeTypeName(moleculeType)
                 }),
                 (genomeHash) => this._genomeHashToLineageColor(genomeHash)
             );
@@ -1179,22 +1158,19 @@ export class AppController {
     /**
      * Resolves a packed molecule type to the type id the grid holds in its cell data.
      *
-     * A cell of the environment reaches the grid with its type as a name, which the grid maps to
-     * its own id; a mutation reaches it as the type constant at its place in the packed molecule.
-     * The run's metadata names those constants, which is what joins the two.
+     * A cell of the environment reaches the grid with its type as a name; a mutation reaches it as
+     * the type constant at its place in the packed molecule. The run's metadata names those
+     * constants, which is what joins the two.
      *
      * @param {number} moleculeType - The molecule type as the mutations endpoint reports it.
-     * @returns {number|null} The type id, or null for a type this run does not name.
+     * @returns {string|null} The type name the run metadata gives that type, null for a type this
+     *     run does not name.
      * @private
      */
-    _resolveMoleculeTypeId(moleculeType) {
+    _resolveMoleculeTypeName(moleculeType) {
         const names = this.state.metadata?.moleculeTypes;
         const name = names ? names[String(moleculeType)] : null;
-        const mapping = this.renderer?.detailedRenderer?.typeMapping;
-        if (!name || !mapping || mapping[name] === undefined) {
-            return null;
-        }
-        return mapping[name];
+        return name || null;
     }
 
     /**

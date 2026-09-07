@@ -34,7 +34,10 @@ import com.typesafe.config.Config;
  * }
  * </pre>
  * <p>
- * Entropy must be explicitly configured for each molecule type.
+ * Rules are per molecule type. A written type that has neither its own block nor a
+ * {@code _default} block is not priced by this policy: it costs no energy and dissipates
+ * no entropy. A rule that is present must configure entropy explicitly, through
+ * {@code entropy}, {@code entropy-permille} or both.
  */
 public class PokeThermodynamicPolicy implements IThermodynamicPolicy {
 
@@ -121,6 +124,13 @@ public class PokeThermodynamicPolicy implements IThermodynamicPolicy {
         }
     }
 
+    /**
+     * Reports the energy a write costs, resolved by the rule of the stored molecule's type.
+     *
+     * @param context The thermodynamic context of the executing instruction.
+     * @return The energy cost, or 0 when the write does not happen or the stored type has
+     *         neither its own rule nor a {@code _default} rule.
+     */
     @Override
     public int getEnergyCost(ThermodynamicContext context) {
         // A write that lost its conflict never happens and therefore costs nothing
@@ -134,7 +144,7 @@ public class PokeThermodynamicPolicy implements IThermodynamicPolicy {
             return 0;
         }
 
-        Molecule toWrite = getMoleculeToWrite(context.resolvedOperands());
+        Molecule toWrite = getMoleculeToWrite(context);
         if (toWrite != null) {
             Rule rule = typeRules.get(toWrite.type());
             if (rule == null) {
@@ -149,6 +159,14 @@ public class PokeThermodynamicPolicy implements IThermodynamicPolicy {
         return 0;
     }
 
+    /**
+     * Reports the entropy a write contributes, resolved by the rule of the stored molecule's type.
+     * Negative values dissipate entropy, positive values generate it.
+     *
+     * @param context The thermodynamic context of the executing instruction.
+     * @return The entropy delta, or 0 when the write does not happen or the stored type has
+     *         neither its own rule nor a {@code _default} rule.
+     */
     @Override
     public int getEntropyDelta(ThermodynamicContext context) {
         // POKE only dissipates entropy, does NOT generate entropy from energy cost.
@@ -166,7 +184,7 @@ public class PokeThermodynamicPolicy implements IThermodynamicPolicy {
             return 0;
         }
 
-        Molecule toWrite = getMoleculeToWrite(context.resolvedOperands());
+        Molecule toWrite = getMoleculeToWrite(context);
         if (toWrite != null) {
             Rule rule = typeRules.get(toWrite.type());
             if (rule == null) {
@@ -176,12 +194,9 @@ public class PokeThermodynamicPolicy implements IThermodynamicPolicy {
             if (rule != null) {
                 // Return only the configured entropy delta (negative = dissipation)
                 return rule.calculateEntropyDelta(toWrite);
-            } else {
-                // No rule found - entropy must be explicitly configured
-                throw new IllegalStateException("No entropy rule found for POKE instruction: moleculeType=" + toWrite.type() + ". Entropy must be explicitly configured in evochora.conf.");
             }
         }
-        
+
         return 0;
     }
     
@@ -200,13 +215,24 @@ public class PokeThermodynamicPolicy implements IThermodynamicPolicy {
         return context.targetInfo().isEmpty() || context.targetInfo().get().molecule().isEmpty();
     }
 
-    private Molecule getMoleculeToWrite(List<Operand> operands) {
+    /**
+     * Extracts the molecule a write instruction stores from its resolved operands.
+     * For POKE/POKI/POKS and PPK* instructions, the first operand contains the value to write.
+     * The value is converted into the form the environment stores it in
+     * ({@link Molecule#storedFormOfWrite(int, int)}), so that costs are resolved for the molecule
+     * that actually ends up in the cell.
+     *
+     * @param context The thermodynamic context of the executing instruction.
+     * @return The molecule as it is stored, or {@code null} if the operands carry no scalar value.
+     */
+    private Molecule getMoleculeToWrite(ThermodynamicContext context) {
+        List<Operand> operands = context.resolvedOperands();
         if (operands != null && !operands.isEmpty()) {
             // For POKE/POKI/POKS, the value to write is always the first operand.
             // For PPK*, the first operand is also the value to write (after the peek).
             Object value = operands.get(0).value();
             if (value instanceof Integer) {
-                return Molecule.fromInt((Integer) value);
+                return Molecule.fromInt(Molecule.storedFormOfWrite((Integer) value, context.organism().getMr()));
             }
         }
         return null;

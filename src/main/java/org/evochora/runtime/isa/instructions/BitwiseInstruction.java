@@ -141,7 +141,7 @@ public class BitwiseInstruction extends Instruction {
                             return;
                         }
                     } else {
-                        organism.getDataStack().push(result);
+                        organism.pushData(result);
                     }
                 } else {
                     organism.instructionFailed("NOT operations only support scalar values.");
@@ -168,14 +168,14 @@ public class BitwiseInstruction extends Instruction {
                     s2 = org.evochora.runtime.model.Molecule.fromInt(i2);
                 }
 
-                if (Config.STRICT_TYPING && s1.type() != s2.type()) {
-                    organism.instructionFailed("Operand types must match in strict mode for bitwise operations.");
+                if (Config.STRICT_TYPING && !Molecule.areValueCompatible(s1.type(), s2.type())) {
+                    organism.instructionFailed("Operand types must be compatible in strict mode for bitwise operations.");
                     return;
                 }
 
-                // For shifts, the second operand must be DATA type
-                if (opName.contains("SH") && s2.type() != Config.TYPE_DATA) {
-                    organism.instructionFailed("Shift amount must be of type DATA.");
+                // For shifts, the second operand must be a scalar that counts as DATA
+                if (opName.contains("SH") && !Molecule.areValueCompatible(s2.type(), Config.TYPE_DATA)) {
+                    organism.instructionFailed("Shift amount must be a DATA-compatible scalar.");
                     return;
                 }
 
@@ -205,7 +205,7 @@ public class BitwiseInstruction extends Instruction {
                         return;
                     }
                 } else {
-                    organism.getDataStack().push(result);
+                    organism.pushData(result);
                 }
 
             } else {
@@ -228,7 +228,7 @@ public class BitwiseInstruction extends Instruction {
             Molecule val = org.evochora.runtime.model.Molecule.fromInt((Integer) valObj);
             Molecule amt = org.evochora.runtime.model.Molecule.fromInt((Integer) amtObj);
             int rotated = rotate(val.toScalarValue(), amt.toScalarValue());
-            organism.getDataStack().push(new Molecule(val.type(), rotated).toInt());
+            organism.pushData(new Molecule(val.type(), rotated).toInt());
             return;
         }
 
@@ -273,7 +273,7 @@ public class BitwiseInstruction extends Instruction {
             if (!(srcObj instanceof Integer)) { organism.instructionFailed("PCNS requires scalar operand."); return; }
             Molecule src = org.evochora.runtime.model.Molecule.fromInt((Integer) srcObj);
             int cnt = Integer.bitCount(src.toScalarValue() & ((1 << Config.VALUE_BITS) - 1));
-            organism.getDataStack().push(new Molecule(src.type(), cnt).toInt());
+            organism.pushData(new Molecule(src.type(), cnt).toInt());
             return;
         }
 
@@ -303,7 +303,7 @@ public class BitwiseInstruction extends Instruction {
             int n = org.evochora.runtime.model.Molecule.fromInt((Integer) nObj).toScalarValue();
             int mask = bitScanNthMask(src.toScalarValue(), n);
             if (mask == 0) { organism.instructionFailed("BSN failed: invalid N or not enough set bits."); }
-            organism.getDataStack().push(new Molecule(src.type(), mask).toInt());
+            organism.pushData(new Molecule(src.type(), mask).toInt());
             return;
         }
 

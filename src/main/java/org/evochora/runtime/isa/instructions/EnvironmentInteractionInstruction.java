@@ -109,10 +109,7 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
                 organism.instructionFailed("POKE: Cannot write vectors to the world.");
                 return;
             }
-            Molecule toWriteRaw = org.evochora.runtime.model.Molecule.fromInt((Integer) valueToWrite);
-            // CODE:0 should always have marker=0 (represents empty cell)
-            int marker = (toWriteRaw.type() == Config.TYPE_CODE && toWriteRaw.value() == 0) ? 0 : organism.getMr();
-            Molecule toWrite = new Molecule(toWriteRaw.type(), toWriteRaw.value(), marker);
+            Molecule toWrite = Molecule.fromInt(Molecule.storedFormOfWrite((Integer) valueToWrite, organism.getMr()));
 
             // Energy costs and entropy dissipation are now handled by the thermodynamic policy in VirtualMachine
 
@@ -161,8 +158,8 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
 
         if (targetReg != -1) {
             writeOperand(targetReg, valueToStore);
-        } else {
-            organism.getDataStack().push(valueToStore);
+        } else if (!organism.pushData(valueToStore)) {
+            return;
         }
 
         environment.setMolecule(new Molecule(Config.TYPE_CODE, 0), targetCoordinate);
@@ -223,8 +220,8 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
             // Store the peeked value (or empty molecule if cell was empty)
             if (targetReg != -1) {
                 writeOperand(targetReg, valueToStore);
-            } else {
-                organism.getDataStack().push(valueToStore);
+            } else if (!organism.pushData(valueToStore)) {
+                return;
             }
 
             // Clear the cell (if it wasn't already empty)
@@ -238,10 +235,7 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
                 organism.instructionFailed("PPK: Cannot write vectors to the world.");
                 return;
             }
-            Molecule toWriteRaw = org.evochora.runtime.model.Molecule.fromInt((Integer) valueToWrite);
-            // CODE:0 should always have marker=0 (represents empty cell)
-            int marker = (toWriteRaw.type() == Config.TYPE_CODE && toWriteRaw.value() == 0) ? 0 : organism.getMr();
-            Molecule toWrite = new Molecule(toWriteRaw.type(), toWriteRaw.value(), marker);
+            Molecule toWrite = Molecule.fromInt(Molecule.storedFormOfWrite((Integer) valueToWrite, organism.getMr()));
 
             // Energy costs and entropy dissipation are now handled by the thermodynamic policy in VirtualMachine
 

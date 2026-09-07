@@ -616,4 +616,62 @@ public class VMControlFlowInstructionTest {
     void cleanup() {
         assertThat(org.isInstructionFailed()).as("Instruction failed: " + org.getFailureReason()).isFalse();
     }
+
+    /**
+     * Verifies that CALL fails with a call stack overflow when the call stack is at its depth
+     * limit, and that the call stack keeps the depth it had.
+     */
+    @Test
+    @Tag("unit")
+    void testCallStackOverflow() {
+        int[] labelPos = new int[]{30};
+        int labelHash = 33333 & Config.VALUE_MASK;
+        environment.setMolecule(new Molecule(Config.TYPE_LABEL, labelHash), labelPos);
+
+        for (int i = 0; i < Config.CALL_STACK_MAX_DEPTH; i++) {
+            org.getCallStack().push(new Organism.ProcFrame(labelHash, org.getIp(), org.getIp(), null));
+        }
+
+        placeInstruction("CALL", labelHash);
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).isTrue();
+        assertThat(org.getFailureReason()).contains("Call stack overflow");
+        assertThat(org.getCallStack()).hasSize(Config.CALL_STACK_MAX_DEPTH);
+
+        org.resetTickState();
+    }
+
+    /**
+     * Verifies that a CALL failing on a full call stack leaves the caller's persistent registers
+     * and its procedure context as they were: the frame goes on the stack before the persistent
+     * registers are switched, so nothing of the switch happens when the push fails.
+     */
+    @Test
+    @Tag("unit")
+    void testCallStackOverflowLeavesPersistentRegistersUntouched() {
+        int[] labelPos = new int[]{30};
+        int labelHash = 33333 & Config.VALUE_MASK;
+        environment.setMolecule(new Molecule(Config.TYPE_LABEL, labelHash), labelPos);
+        int persistentValue = new Molecule(Config.TYPE_DATA, 77).toInt();
+        org.writeOperand(RegisterBank.SDR.base, persistentValue);
+        assertThat(org.isPersistentDirty()).isTrue();
+        int procBefore = org.getCurrentProcLabelHash();
+
+        for (int i = 0; i < Config.CALL_STACK_MAX_DEPTH; i++) {
+            org.getCallStack().push(new Organism.ProcFrame(labelHash, org.getIp(), org.getIp(), null));
+        }
+
+        placeInstruction("CALL", labelHash);
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).isTrue();
+        assertThat(org.getFailureReason()).contains("Call stack overflow");
+        assertThat(org.getCallStack()).hasSize(Config.CALL_STACK_MAX_DEPTH);
+        assertThat(org.readOperand(RegisterBank.SDR.base)).isEqualTo(persistentValue);
+        assertThat(org.getCurrentProcLabelHash()).isEqualTo(procBefore);
+        assertThat(org.getPersistentRegisterState()).doesNotContainKey(labelHash);
+
+        org.resetTickState();
+    }
 }

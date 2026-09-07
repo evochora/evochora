@@ -171,6 +171,44 @@ public class VMStateInstructionAdvancedTest {
     }
 
     /**
+     * Type scans match types exactly. STATE is a type of its own, so a scan for DATA does not
+     * report a STATE neighbour, even though the two are value-compatible in computations.
+     */
+    @Test
+    @Tag("unit")
+    void testSntiForDataDoesNotReportAStateNeighbour() {
+        int[] dp = org.getActiveDp();
+        // The instruction's own argument cells are laid out along +X, so -X carries the test cell.
+        environment.setMolecule(new Molecule(Config.TYPE_STATE, 7), new int[]{dp[0] - 1, dp[1]});
+
+        placeInstruction("SNTI", 0, 0); // %DR0 (dest), DATA:0 as the scanned type
+        sim.tick();
+
+        int mask = Molecule.fromInt((Integer) org.readOperand(0)).toScalarValue();
+        assertThat(mask & (1 << 1)).isZero(); // -X (bit1)
+    }
+
+    /**
+     * A scan with a STATE literal is how the STATE cells of the neighbourhood are found.
+     */
+    @Test
+    @Tag("unit")
+    void testSntiWithAStateLiteralReportsAStateNeighbour() {
+        int[] dp = org.getActiveDp();
+        environment.setMolecule(new Molecule(Config.TYPE_STATE, 7), new int[]{dp[0] - 1, dp[1]});
+
+        placeInstruction("SNTI", 0, 0); // %DR0 (dest), placeholder immediate
+        // Overwrite the immediate argument cell with a correctly typed literal (STATE:0)
+        int[] arg1 = org.getNextInstructionPosition(org.getIp(), org.getDv(), environment);
+        int[] arg2 = org.getNextInstructionPosition(arg1, org.getDv(), environment);
+        environment.setMolecule(new Molecule(Config.TYPE_STATE, 0), arg2);
+        sim.tick();
+
+        int mask = Molecule.fromInt((Integer) org.readOperand(0)).toScalarValue();
+        assertThat(mask & (1 << 1)).isEqualTo(1 << 1); // -X (bit1)
+    }
+
+    /**
      * Tests that SNTS (Scan Neighbors by Type Stack) correctly identifies neighbors of a specific type.
      * This is a unit test for the VM's instruction logic.
      */

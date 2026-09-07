@@ -1,6 +1,5 @@
 package org.evochora.runtime.isa.instructions;
 
-import org.evochora.runtime.Config;
 import org.evochora.runtime.internal.services.ExecutionContext;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.isa.Variant;
@@ -61,16 +60,15 @@ public class StackInstruction extends Instruction {
             switch (opName) {
                 case "DUP":
                     if (ds.isEmpty()) { organism.instructionFailed("Stack Underflow for DUP."); return; }
-                    if (ds.size() >= Config.DS_MAX_DEPTH) { organism.instructionFailed("Stack Overflow for DUP."); return; }
-                    ds.push(ds.peek());
+                    if (!organism.pushData(ds.peek())) { return; }
                     break;
 
                 case "SWAP":
                     if (ds.size() < 2) { organism.instructionFailed("Stack Underflow for SWAP."); return; }
                     Object a = ds.pop();
                     Object b = ds.pop();
-                    ds.push(a);
-                    ds.push(b);
+                    if (!organism.pushData(a)) { return; }
+                    if (!organism.pushData(b)) { return; }
                     break;
 
                 case "DROP":
@@ -83,9 +81,9 @@ public class StackInstruction extends Instruction {
                     Object c = ds.pop();
                     Object b_rot = ds.pop();
                     Object a_rot = ds.pop();
-                    ds.push(b_rot);
-                    ds.push(c);
-                    ds.push(a_rot);
+                    if (!organism.pushData(b_rot)) { return; }
+                    if (!organism.pushData(c)) { return; }
+                    if (!organism.pushData(a_rot)) { return; }
                     break;
 
                 default:

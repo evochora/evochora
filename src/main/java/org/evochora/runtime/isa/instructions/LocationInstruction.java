@@ -97,15 +97,15 @@ public class LocationInstruction extends Instruction {
         switch (name) {
             case "DUPL": {
                 if (ls.isEmpty()) { org.instructionFailed("DUPL on empty LS"); return; }
-                if (ls.size() >= Config.LOCATION_STACK_MAX_DEPTH) { org.instructionFailed("Location Stack Overflow"); return; }
-                ls.push(ls.peek());
+                if (!org.pushLocation(ls.peek())) { return; }
                 break;
             }
             case "SWPL": {
                 if (ls.size() < 2) { org.instructionFailed("SWPL requires 2 elements on LS"); return; }
                 int[] a = ls.pop();
                 int[] b = ls.pop();
-                ls.push(a); ls.push(b);
+                if (!org.pushLocation(a)) { return; }
+                if (!org.pushLocation(b)) { return; }
                 break;
             }
             case "DRPL": {
@@ -118,7 +118,9 @@ public class LocationInstruction extends Instruction {
                 int[] a = ls.pop();
                 int[] b = ls.pop();
                 int[] c = ls.pop();
-                ls.push(b); ls.push(c); ls.push(a);
+                if (!org.pushLocation(b)) { return; }
+                if (!org.pushLocation(c)) { return; }
+                if (!org.pushLocation(a)) { return; }
                 break;
             }
             case "DPLR": {
@@ -127,8 +129,7 @@ public class LocationInstruction extends Instruction {
                 break;
             }
             case "DPLS": {
-                if (ls.size() >= Config.LOCATION_STACK_MAX_DEPTH) { org.instructionFailed("Location Stack Overflow"); return; }
-                ls.push(org.getActiveDp());
+                if (!org.pushLocation(org.getActiveDp())) { return; }
                 break;
             }
             case "SKLR": {
@@ -148,8 +149,7 @@ public class LocationInstruction extends Instruction {
                 if (ops.size() != 1) { org.instructionFailed("PUSL expects %LR<Index>"); return; }
                 Object val = org.readOperand(ops.get(0).rawSourceId());
                 if (org.isInstructionFailed()) { return; }
-                if (ls.size() >= Config.LOCATION_STACK_MAX_DEPTH) { org.instructionFailed("Location Stack Overflow"); return; }
-                ls.push((int[]) val);
+                if (!org.pushLocation((int[]) val)) { return; }
                 break;
             }
             case "POPL": {
@@ -170,7 +170,7 @@ public class LocationInstruction extends Instruction {
                 if (ops.size() != 1) { org.instructionFailed("LRDS expects %LR<Index>"); return; }
                 Object val = org.readOperand(ops.get(0).rawSourceId());
                 if (org.isInstructionFailed()) { return; }
-                org.getDataStack().push(val);
+                if (!org.pushData(val)) { return; }
                 break;
             }
             case "LSDR": {
@@ -183,8 +183,9 @@ public class LocationInstruction extends Instruction {
             }
             case "LSDS": {
                 if (ls.isEmpty()) { org.instructionFailed("LSDS on empty LS"); return; }
+                if (!org.requireDataStackRoom()) { return; }
                 int[] vec = ls.pop();
-                org.getDataStack().push(vec);
+                org.pushData(vec);
                 break;
             }
             case "LRLR": {
@@ -256,11 +257,7 @@ public class LocationInstruction extends Instruction {
                     return;
                 }
                 if (!validateOwnership(targetCoords, org, env, "PSLI")) return;
-                if (ls.size() >= Config.LOCATION_STACK_MAX_DEPTH) {
-                    org.instructionFailed("Location Stack Overflow");
-                    return;
-                }
-                ls.push(targetCoords);
+                if (!org.pushLocation(targetCoords)) { return; }
                 break;
             }
             case "LRLI": {

@@ -15,9 +15,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 @Tag("unit")
 public class EnvironmentBackgroundLayerTest {
 
-    private static final int EMPTY_COLOR = EnvironmentBackgroundLayer.CELL_COLORS[EnvironmentBackgroundLayer.TYPE_EMPTY];
-    private static final int ENERGY_COLOR = EnvironmentBackgroundLayer.CELL_COLORS[EnvironmentBackgroundLayer.TYPE_ENERGY];
-    private static final int CODE_COLOR = EnvironmentBackgroundLayer.CELL_COLORS[EnvironmentBackgroundLayer.TYPE_CODE];
+    private static final int EMPTY_COLOR = EnvironmentBackgroundLayer.COLOR_EMPTY;
+    private static final int ENERGY_COLOR = MoleculeTypeColors.colorOf(Config.TYPE_ENERGY);
+    private static final int CODE_COLOR = MoleculeTypeColors.colorOf(Config.TYPE_CODE);
 
     // ========================================================================
     // Cell type mapping
@@ -33,21 +33,21 @@ public class EnvironmentBackgroundLayerTest {
     void testGetCellTypeIndex_codeCell_returnsCode() {
         int codeMolecule = Config.TYPE_CODE | 42;
         assertThat(EnvironmentBackgroundLayer.getCellTypeIndex(codeMolecule))
-            .isEqualTo(EnvironmentBackgroundLayer.TYPE_CODE);
+            .isEqualTo(MoleculeTypeColors.slotOf(Config.TYPE_CODE));
     }
 
     @Test
     void testGetCellTypeIndex_energyCell_returnsEnergy() {
         int energyMolecule = Config.TYPE_ENERGY | 1;
         assertThat(EnvironmentBackgroundLayer.getCellTypeIndex(energyMolecule))
-            .isEqualTo(EnvironmentBackgroundLayer.TYPE_ENERGY);
+            .isEqualTo(MoleculeTypeColors.slotOf(Config.TYPE_ENERGY));
     }
 
     @Test
     void testGetCellTypeIndex_registerCell_returnsRegister() {
         int registerMolecule = Config.TYPE_REGISTER | 5;
         assertThat(EnvironmentBackgroundLayer.getCellTypeIndex(registerMolecule))
-            .isEqualTo(EnvironmentBackgroundLayer.TYPE_REGISTER);
+            .isEqualTo(MoleculeTypeColors.slotOf(Config.TYPE_REGISTER));
     }
 
     // ========================================================================

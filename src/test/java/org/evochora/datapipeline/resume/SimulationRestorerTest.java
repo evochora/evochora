@@ -12,6 +12,7 @@ import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.Vector;
 import org.evochora.junit.extensions.logging.AllowLog;
+import org.evochora.junit.extensions.logging.ExpectLog;
 import org.evochora.junit.extensions.logging.LogLevel;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
 import org.evochora.runtime.Config;
@@ -810,32 +811,46 @@ class SimulationRestorerTest {
                 .hasMessageContaining("reason");
     }
 
+    /**
+     * A stack deeper than the instruction set's limit is restored as the checkpoint holds it, so
+     * that the resumed run continues from exactly the state the original run had; the depth is
+     * reported as a warning that names the organism, the stack and the limit.
+     */
     @Test
-    void restore_DataStackBeyondLimit_Rejected() {
+    @ExpectLog(level = LogLevel.WARN, loggerPattern = ".*SimulationRestorer.*",
+            messagePattern = ".*Organism 1: data stack holds " + (Config.DS_MAX_DEPTH + 1)
+                    + " entries, above the limit of " + Config.DS_MAX_DEPTH + ".*")
+    void restore_DataStackBeyondLimit_RestoredWithWarning() {
         OrganismState.Builder builder = wellFormedOrganism();
         for (int i = 0; i <= Config.DS_MAX_DEPTH; i++) {
             builder.addDataStack(scalar(i));
         }
 
-        assertThatThrownBy(() -> restoreOrganism(builder.build()))
-                .isInstanceOf(ResumeException.class)
-                .hasMessageContaining(String.valueOf(Config.DS_MAX_DEPTH));
+        Organism org = restoreOrganism(builder.build()).simulation().getOrganisms().get(0);
+
+        assertThat(org.getDataStack()).hasSize(Config.DS_MAX_DEPTH + 1);
     }
 
     @Test
-    void restore_LocationStackBeyondLimit_Rejected() {
+    @ExpectLog(level = LogLevel.WARN, loggerPattern = ".*SimulationRestorer.*",
+            messagePattern = ".*Organism 1: location stack holds " + (Config.LOCATION_STACK_MAX_DEPTH + 1)
+                    + " entries, above the limit of " + Config.LOCATION_STACK_MAX_DEPTH + ".*")
+    void restore_LocationStackBeyondLimit_RestoredWithWarning() {
         OrganismState.Builder builder = wellFormedOrganism();
         for (int i = 0; i <= Config.LOCATION_STACK_MAX_DEPTH; i++) {
             builder.addLocationStack(createVector(1, 1));
         }
 
-        assertThatThrownBy(() -> restoreOrganism(builder.build()))
-                .isInstanceOf(ResumeException.class)
-                .hasMessageContaining(String.valueOf(Config.LOCATION_STACK_MAX_DEPTH));
+        Organism org = restoreOrganism(builder.build()).simulation().getOrganisms().get(0);
+
+        assertThat(org.getLocationStack()).hasSize(Config.LOCATION_STACK_MAX_DEPTH + 1);
     }
 
     @Test
-    void restore_CallStackBeyondLimit_Rejected() {
+    @ExpectLog(level = LogLevel.WARN, loggerPattern = ".*SimulationRestorer.*",
+            messagePattern = ".*Organism 1: call stack holds " + (Config.CALL_STACK_MAX_DEPTH + 1)
+                    + " entries, above the limit of " + Config.CALL_STACK_MAX_DEPTH + ".*")
+    void restore_CallStackBeyondLimit_RestoredWithWarning() {
         OrganismState.Builder builder = wellFormedOrganism();
         for (int i = 0; i <= Config.CALL_STACK_MAX_DEPTH; i++) {
             builder.addCallStack(org.evochora.datapipeline.api.contracts.ProcFrame.newBuilder()
@@ -845,9 +860,9 @@ class SimulationRestorerTest {
                 .build());
         }
 
-        assertThatThrownBy(() -> restoreOrganism(builder.build()))
-                .isInstanceOf(ResumeException.class)
-                .hasMessageContaining(String.valueOf(Config.CALL_STACK_MAX_DEPTH));
+        Organism org = restoreOrganism(builder.build()).simulation().getOrganisms().get(0);
+
+        assertThat(org.getCallStack()).hasSize(Config.CALL_STACK_MAX_DEPTH + 1);
     }
 
     @Test

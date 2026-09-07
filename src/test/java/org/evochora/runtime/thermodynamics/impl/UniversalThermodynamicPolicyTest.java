@@ -31,12 +31,22 @@ class UniversalThermodynamicPolicyTest {
      * containing the molecule to write.
      */
     private ThermodynamicContext writeContext(Molecule toWrite) {
+        return writeContext(toWrite, 0);
+    }
+
+    /**
+     * Creates a write context for an organism whose marker register holds the given value. The
+     * marker register decides the stored form of the written molecule, which is what the write
+     * rules are resolved for.
+     */
+    private ThermodynamicContext writeContext(Molecule toWrite, int markerRegister) {
         Instruction instruction = mock(Instruction.class);
         when(instruction.getConflictStatus()).thenReturn(ConflictResolutionStatus.NOT_APPLICABLE);
         when(instruction.getName()).thenReturn("POKE");
 
         Organism organism = mock(Organism.class);
         when(organism.getId()).thenReturn(1);
+        when(organism.getMr()).thenReturn(markerRegister);
 
         List<Operand> operands = List.of(new Operand(toWrite.toInt(), 0));
 
@@ -200,6 +210,29 @@ class UniversalThermodynamicPolicyTest {
         // CODE:42 falls back to type default: energy=5
         ThermodynamicContext ctx42 = writeContext(new Molecule(Config.TYPE_CODE, 42, 0));
         assertThat(policy.getEnergyCost(ctx42)).isEqualTo(5);
+    }
+
+    @Test
+    void writeOfDataIsPricedByTheRuleOfItsStoredForm() {
+        var policy = new UniversalThermodynamicPolicy();
+        policy.initialize(ConfigFactory.parseString("""
+            base-energy = 0
+            base-entropy = 0
+            write-rules: {
+              DATA:  { energy = 6, entropy = -60 }
+              STATE: { energy = 2, entropy = -20 }
+            }
+            """));
+
+        // With marker register 0 the DATA value is stored as STATE, so the STATE rule applies.
+        ThermodynamicContext ephemeral = writeContext(new Molecule(Config.TYPE_DATA, 50, 0), 0);
+        assertThat(policy.getEnergyCost(ephemeral)).isEqualTo(2);
+        assertThat(policy.getEntropyDelta(ephemeral)).isEqualTo(-20);
+
+        // With a non-zero marker register the molecule stays DATA and is priced by the DATA rule.
+        ThermodynamicContext durable = writeContext(new Molecule(Config.TYPE_DATA, 50, 0), 3);
+        assertThat(policy.getEnergyCost(durable)).isEqualTo(6);
+        assertThat(policy.getEntropyDelta(durable)).isEqualTo(-60);
     }
 
     /**

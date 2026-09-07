@@ -572,8 +572,120 @@ public class VMArithmeticInstructionTest {
         assertThat(org.getDataStack().pop()).isEqualTo(new Molecule(Config.TYPE_DATA, -1).toInt());
     }
 
+    // --- DATA/STATE value compatibility ---
+    /**
+     * Tests that ADDI accepts a DATA immediate on a STATE register and keeps the type of the
+     * first operand.
+     */
+    @Test
+    @Tag("unit")
+    void testAddiStateRegisterWithDataImmediate() {
+        org.writeOperand(0, new Molecule(Config.TYPE_STATE, 10).toInt());
+        placeInstruction("ADDI", 0, 5);
+        sim.tick();
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_STATE, 15).toInt());
+    }
+
+    /**
+     * Tests that ADDR combines a STATE register with a DATA register and keeps the type of the
+     * first operand.
+     */
+    @Test
+    @Tag("unit")
+    void testAddrStateRegisterWithDataRegister() {
+        org.writeOperand(0, new Molecule(Config.TYPE_STATE, 10).toInt());
+        org.writeOperand(1, new Molecule(Config.TYPE_DATA, 4).toInt());
+        placeInstruction("ADDR", 0, 1);
+        sim.tick();
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_STATE, 14).toInt());
+    }
+
+    /**
+     * Tests that SUBR combines a DATA register with a STATE register and keeps the type of the
+     * first operand, so the result is DATA.
+     */
+    @Test
+    @Tag("unit")
+    void testSubrDataRegisterWithStateRegister() {
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 10).toInt());
+        org.writeOperand(1, new Molecule(Config.TYPE_STATE, 6).toInt());
+        placeInstruction("SUBR", 0, 1);
+        sim.tick();
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 4).toInt());
+    }
+
+    /**
+     * Tests that MINR accepts a STATE register against a DATA register and keeps the type of the
+     * first operand.
+     */
+    @Test
+    @Tag("unit")
+    void testMinrStateRegisterWithDataRegister() {
+        org.writeOperand(0, new Molecule(Config.TYPE_STATE, 10).toInt());
+        org.writeOperand(1, new Molecule(Config.TYPE_DATA, 4).toInt());
+        placeInstruction("MINR", 0, 1);
+        sim.tick();
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_STATE, 4).toInt());
+    }
+
+    /**
+     * Tests that ADDR still fails on operand types that are not value-compatible.
+     */
+    @Test
+    @Tag("unit")
+    void testAddrFailsOnIncompatibleTypes() {
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 10).toInt());
+        org.writeOperand(1, new Molecule(Config.TYPE_ENERGY, 4).toInt());
+        placeInstruction("ADDR", 0, 1);
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).isTrue();
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 10).toInt());
+
+        org.resetTickState();
+    }
+
+    /**
+     * Tests that MAXR still fails on operand types that are not value-compatible.
+     */
+    @Test
+    @Tag("unit")
+    void testMaxrFailsOnIncompatibleTypes() {
+        org.writeOperand(0, new Molecule(Config.TYPE_STATE, 10).toInt());
+        org.writeOperand(1, new Molecule(Config.TYPE_STRUCTURE, 4).toInt());
+        placeInstruction("MAXR", 0, 1);
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).isTrue();
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_STATE, 10).toInt());
+
+        org.resetTickState();
+    }
+
     @org.junit.jupiter.api.AfterEach
     void assertNoInstructionFailure() {
         assertThat(org.isInstructionFailed()).as("Instruction failed: " + org.getFailureReason()).isFalse();
+    }
+
+    /**
+     * Verifies that ADDS fails with a data stack overflow when its two operands leave the stack at
+     * the depth limit, so that the sum finds no room and nothing is pushed.
+     */
+    @Test
+    @Tag("unit")
+    void testAddsDataStackOverflow() {
+        int filler = new Molecule(Config.TYPE_DATA, 1).toInt();
+        for (int i = 0; i < Config.DS_MAX_DEPTH + 2; i++) {
+            org.getDataStack().push(filler);
+        }
+
+        placeInstruction("ADDS");
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).isTrue();
+        assertThat(org.getFailureReason()).contains("Data stack overflow");
+        assertThat(org.getDataStack()).hasSize(Config.DS_MAX_DEPTH);
+
+        org.resetTickState();
     }
 }

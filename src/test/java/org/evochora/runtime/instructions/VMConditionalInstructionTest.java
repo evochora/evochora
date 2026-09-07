@@ -1422,4 +1422,98 @@ public class VMConditionalInstructionTest {
 
         assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
     }
+
+    // ===== DATA/STATE Value Compatibility Tests =====
+
+    /**
+     * Tests that IFI compares a STATE register against a DATA immediate by value and executes the
+     * next instruction when the values are equal.
+     */
+    @Test
+    @Tag("unit")
+    void testIfi_StateRegisterAgainstDataImmediate_ExecutesNext() {
+        org.writeOperand(0, new Molecule(Config.TYPE_STATE, 0).toInt());
+        placeInstruction("IFI", 0, 0);
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFI"), environment));
+
+        sim.tick();
+        sim.tick();
+
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_STATE, 1).toInt());
+        assertNoInstructionFailure();
+    }
+
+    /**
+     * Tests that GTI compares a STATE register against a DATA immediate by value and executes the
+     * next instruction when the register value is greater.
+     */
+    @Test
+    @Tag("unit")
+    void testGti_StateRegisterAgainstDataImmediate_ExecutesNext() {
+        org.writeOperand(0, new Molecule(Config.TYPE_STATE, 5).toInt());
+        placeInstruction("GTI", 0, 3);
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("GTI"), environment));
+
+        sim.tick();
+        sim.tick();
+
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_STATE, 6).toInt());
+        assertNoInstructionFailure();
+    }
+
+    /**
+     * Tests that IFR compares a STATE register against a DATA register by value and executes the
+     * next instruction when the values are equal.
+     */
+    @Test
+    @Tag("unit")
+    void testIfr_StateAndDataRegisters_ExecutesNext() {
+        org.writeOperand(0, new Molecule(Config.TYPE_STATE, 7).toInt());
+        org.writeOperand(1, new Molecule(Config.TYPE_DATA, 7).toInt());
+        placeInstruction("IFR", 0, 1);
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFR"), environment));
+
+        sim.tick();
+        sim.tick();
+
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_STATE, 8).toInt());
+        assertNoInstructionFailure();
+    }
+
+    /**
+     * Tests that IFTI compares types exactly: a STATE register does not match a DATA literal, so
+     * the next instruction is skipped.
+     */
+    @Test
+    @Tag("unit")
+    void testIfti_StateRegisterAgainstDataLiteral_SkipsNext() {
+        org.writeOperand(0, new Molecule(Config.TYPE_STATE, 5).toInt());
+        placeInstruction("IFTI", 0, 123);
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFTI"), environment));
+
+        sim.tick();
+        sim.tick();
+
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_STATE, 5).toInt());
+        assertNoInstructionFailure();
+    }
+
+    /**
+     * Tests that a value comparison between types that are not value-compatible is still false, so
+     * the next instruction is skipped.
+     */
+    @Test
+    @Tag("unit")
+    void testIfr_IncompatibleTypes_SkipsNext() {
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 7).toInt());
+        org.writeOperand(1, new Molecule(Config.TYPE_ENERGY, 7).toInt());
+        placeInstruction("IFR", 0, 1);
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFR"), environment));
+
+        sim.tick();
+        sim.tick();
+
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 7).toInt());
+        assertNoInstructionFailure();
+    }
 }

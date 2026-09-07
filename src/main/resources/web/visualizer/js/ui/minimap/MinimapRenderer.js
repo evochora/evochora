@@ -1,44 +1,90 @@
+import {
+    moleculeTypeEntry,
+    EMPTY_CELL_COLOR,
+    NO_DATA_COLOR,
+    UNKNOWN_TYPE_NAME
+} from '../../MoleculeTypePalette.js';
+
 /**
  * Renders minimap data onto a canvas using putImageData for optimal performance.
- * This class is stateless except for the canvas reference and color palette.
+ * This class is stateless except for the canvas reference and the resolved colour table.
+ *
+ * The server sends one byte per pixel: the raw index of a registered molecule type, or one of two
+ * sentinels for what is not a type. A raw index is resolved to a type name through the run
+ * metadata's `moleculeTypes` map, whose keys carry the type bits shifted by the metadata's
+ * `moleculeTypeShift`, and coloured from {@link MOLECULE_TYPE_PALETTE}, so grid and minimap show
+ * the same type in the same colour.
  *
  * @class MinimapRenderer
  */
 export class MinimapRenderer {
 
-    /**
-     * Color palette matching the main environment grid colors.
-     * Index corresponds to cell type: 0=CODE, 1=DATA, 2=ENERGY, 3=STRUCTURE, 4=LABEL,
-     * 5=LABELREF, 6=REGISTER, 7=EMPTY.
-     * Colors are stored as 0xRRGGBB integers for fast pixel manipulation.
-     */
-    static DEFAULT_PALETTE = {
-        0: 0x3c5078,   // CODE - blue-gray
-        1: 0x32323c,   // DATA - dark gray
-        2: 0xffe664,   // ENERGY - yellow
-        3: 0xff7878,   // STRUCTURE - red/pink (high visibility for organism boundaries)
-        4: 0xa0a0a8,   // LABEL - light gray
-        5: 0xa0a0a8,   // LABELREF - light gray (same as LABEL)
-        6: 0x506080,   // REGISTER - medium blue-gray
-        7: 0x1e1e28,   // EMPTY - slightly lighter than background (CODE with value 0)
-        empty: 0x14141e // Background (no cell data)
-    };
+    /** Minimap byte of a pixel holding no molecule. */
+    static BYTE_EMPTY = 255;
+
+    /** Minimap byte of a molecule whose type the server's registry does not know. */
+    static BYTE_UNKNOWN = 254;
 
     /**
      * Creates a new MinimapRenderer.
      *
+     * Until {@link setMoleculeTypes} has supplied the run's type map and shift, no molecule byte
+     * can be resolved to a type name and every one of them is drawn in the UNKNOWN colour; the two
+     * sentinels are coloured from the start.
+     *
      * @param {HTMLCanvasElement} canvas - The canvas element to render onto.
-     * @param {object} [palette=MinimapRenderer.DEFAULT_PALETTE] - Color palette for cell types.
      */
-    constructor(canvas, palette = MinimapRenderer.DEFAULT_PALETTE) {
+    constructor(canvas) {
         this.canvas = canvas;
         this.ctx = canvas.getContext('2d', { alpha: false });
-        this.palette = palette;
+        this.moleculeTypes = null;
+        this.typeShift = null;
+        this.colorByByte = this.buildColorTable();
         this.lastMinimapData = null;
 
         // Off-screen canvas for caching background (environment + organisms)
         this._cacheCanvas = document.createElement('canvas');
         this._cacheCtx = this._cacheCanvas.getContext('2d', { alpha: false });
+    }
+
+    /**
+     * Sets the run's molecule type map and the bit position its keys are shifted by, and rebuilds
+     * the colour table from them.
+     *
+     * @param {object|null|undefined} moleculeTypes - Metadata map of the shifted type constant,
+     *        as a string, to the type name, e.g. {"0": "CODE", "1048576": "DATA"}.
+     * @param {number|null|undefined} typeShift - The metadata's `moleculeTypeShift`, the bit
+     *        position of the type inside a packed molecule.
+     */
+    setMoleculeTypes(moleculeTypes, typeShift) {
+        this.moleculeTypes = moleculeTypes || null;
+        this.typeShift = Number.isInteger(typeShift) ? typeShift : null;
+        this.colorByByte = this.buildColorTable();
+        if (this.lastMinimapData) {
+            this.render(this.lastMinimapData);
+        }
+    }
+
+    /**
+     * Builds the colour of every possible minimap byte. A byte that names a type the metadata
+     * does not resolve is drawn in the UNKNOWN colour, so an unexpected type is visible.
+     *
+     * @returns {number[]} 256 colours as 0xRRGGBB integers, indexed by minimap byte.
+     * @private
+     */
+    buildColorTable() {
+        const unknownColor = moleculeTypeEntry(UNKNOWN_TYPE_NAME).bg;
+        const table = new Array(256).fill(unknownColor);
+        if (this.moleculeTypes && this.typeShift !== null) {
+            // Bytes 254 and 255 are the aggregator's sentinels for unknown and empty, never a type index.
+            for (let byte = 0; byte < MinimapRenderer.BYTE_UNKNOWN; byte++) {
+                const typeName = this.moleculeTypes[String(byte << this.typeShift)];
+                table[byte] = typeName ? moleculeTypeEntry(typeName).bg : unknownColor;
+            }
+        }
+        table[MinimapRenderer.BYTE_UNKNOWN] = unknownColor;
+        table[MinimapRenderer.BYTE_EMPTY] = EMPTY_CELL_COLOR;
+        return table;
     }
 
     /**
@@ -66,9 +112,7 @@ export class MinimapRenderer {
         const pixels = imageData.data;
 
         for (let i = 0; i < cellTypes.length; i++) {
-            const type = cellTypes[i];
-            // Check if type has a defined color in palette, otherwise use empty
-            const color = (type in this.palette) ? this.palette[type] : this.palette.empty;
+            const color = this.colorByByte[cellTypes[i]];
 
             const p = i << 2; // i * 4
             pixels[p]     = (color >> 16) & 0xFF; // R
@@ -160,7 +204,7 @@ export class MinimapRenderer {
      * Renders minimap with ownership coloring instead of cell type coloring.
      * Each pixel is colored by the dominant owner organism at that location.
      * Unowned pixels (ownerId=0) and pixels where the resolver returns -1
-     * (unknown/dead organism) use the empty/background color.
+     * (unknown/dead organism) use the no-data background color.
      *
      * @param {{width: number, height: number, ownerIds: number[]}} minimapData - Minimap data with owner IDs.
      * @param {function(number): number} colorResolverFn - Maps ownerId to 0xRRGGBB color integer, or -1 for unknown.
@@ -180,7 +224,7 @@ export class MinimapRenderer {
 
         const imageData = this.ctx.createImageData(width, height);
         const pixels = imageData.data;
-        const emptyColor = this.palette.empty;
+        const emptyColor = NO_DATA_COLOR;
 
         for (let i = 0; i < ownerIds.length; i++) {
             const ownerId = ownerIds[i];

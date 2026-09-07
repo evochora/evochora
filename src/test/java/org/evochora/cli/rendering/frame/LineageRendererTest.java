@@ -23,8 +23,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @Tag("unit")
 public class LineageRendererTest {
 
-    private static final int EMPTY_COLOR = EnvironmentBackgroundLayer.CELL_COLORS[EnvironmentBackgroundLayer.TYPE_EMPTY];
-    private static final int ENERGY_COLOR = EnvironmentBackgroundLayer.CELL_COLORS[EnvironmentBackgroundLayer.TYPE_ENERGY];
+    private static final int EMPTY_COLOR = EnvironmentBackgroundLayer.COLOR_EMPTY;
+    private static final int ENERGY_COLOR = MoleculeTypeColors.colorOf(Config.TYPE_ENERGY);
 
     private EnvironmentProperties envProps;
 

@@ -62,7 +62,7 @@ Scan for: population phases and crashes; birth-rate steps (see above); `genome_d
 failure rates. `generation_depth` is read from each organism and is therefore correct across
 indexer restarts; a drop to near zero in an older run is the restart artifact of #112, not biology.
 
-**Environment composition counts every cell**, so all ten columns are exact — including the small
+**Environment composition counts every cell**, so all eleven columns are exact — including the small
 ones. `energy_cells` rising means the population cannot consume the input, falling means the world
 is being eaten empty. `structure_cells`, `label_cells` and `register_cells` are small fractions of
 a large world and are usable in absolute numbers: a step in them marks a change in what the
@@ -111,7 +111,10 @@ never at the same time.
 *mutants* (different), and report every rate for mutants next to the same rate for clones. In the
 runs analysed so far, 59–64 % of the clones died at the same age without reproducing and only
 25–32 % of clones ever had a child: the baseline is a lottery set by the environment, and a
-mutant rate read without it is misread as a mutation effect.
+mutant rate read without it is misread as a mutation effect. Under the STATE-aware hash a
+substitution in a DATA operand — a threshold, a harvest period — makes the child a mutant, where
+the old hash counted it as a clone; the rates quoted here were measured under the old hash and
+describe those runs.
 
 **Fate classes** per child: *fertile* (has children); *acute lethal* (lifetime below ~1 000
 ticks); *entropy death* (lifetime below ~20 000); *sterile long-lived*; *alive at end*. Two
@@ -219,11 +222,12 @@ Clade membership is a proxy; the mutation is molecules in the world. Via the nod
   coordinates are `(initial + relative + size) % size`.
   `moleculeType` carries the `Config` type constant, i.e. the type bits at their position in the
   packed molecule (ENERGY is `2 << 20` = 2097152). The `moleculeTypes` map of
-  `/visualizer/api/simulations/{runId}/metadata` is keyed by exactly these values — look the type
-  up there, never normalize it by hand. A CODE cell's `moleculeValue` is its opcode; the same
-  metadata response carries the `opcodes` map.
+  `/visualizer/api/simulation/metadata?runId={runId}` is keyed by exactly these values — look
+  the type up there, never normalize it by hand. A CODE cell's `moleculeValue` is its opcode; the
+  same metadata response carries the `opcodes` map.
   Molecules with `marker` ≠ 0 are staged for handover to a child at the next reproduction and are
-  not part of the finished body — drop them when reading a genome.
+  not part of the finished body — drop them when reading a genome, together with the STATE cells,
+  which the organism wrote for itself and which are outside the genome.
 - Organism detail (`/visualizer/api/organisms/{tick}/{id}`) → `staticInfo.initialPosition` and the
   runtime state; the body endpoint above already carries the anchor, so this is only needed for the
   state itself.
@@ -242,9 +246,17 @@ Clade membership is a proxy; the mutation is molecules in the world. Via the nod
   needed (feature request: see the execution-coverage issue on GitHub).
 - **Founder mutations** of a clade: full-body diff against organism 1 at tick 0. Both bodies come
   from the body endpoint in the same relative coordinates, so the diff is a set operation without
-  shifting. Exclude DATA molecules (operand noise) and LABEL/LABELREF *values* (XOR-masked per
-  organism); compare several clade members — only shared differences are the inherited founder
-  mutation, the rest is ongoing per-individual mutation.
+  shifting. Exclude STATE molecules (written by the organism for itself); XOR-normalize
+  LABEL/LABELREF values with the anchor label as the hasher does (see Pitfalls) — excluding them
+  would hide an inherited label mutation; DATA operands stay in the diff, they are genome. Compare
+  several clade members — only shared differences are the inherited founder mutation, the rest is
+  ongoing per-individual mutation.
+
+**Which rule applies depends on the build that wrote the run.** A run written with the STATE type
+hashes the DATA operands and excludes STATE, and its body diffs drop STATE cells. A run from before
+the STATE type has no STATE cells at all: its state slots are DATA, its genome hash excluded every
+DATA cell, and its body diffs must drop DATA instead. Decide it before diffing — the `moleculeTypes`
+map of the run metadata lists STATE, and `environment_composition` carries a `state_cells` column.
 
 ### Older runs: the environment strip and protoc
 
@@ -293,11 +305,13 @@ JSON format. For those runs body forensics goes the old way:
 - Batch chunks carry their first recording in `snapshot`, not in `deltas` (step 1b).
 - The H2 index file is locked by a running node; the H2 shell then fails or, worse, the node
   does. Finish shell exports before starting a node.
-- The genome hash includes ENERGY cells and every owned cell whatever its marker (see
-  `GenomeHasher`). A child born owning an energy cell is a "mutant" with identical code. When
-  diffing bodies, drop DATA cells and cells with marker ≠ 0, and XOR-normalize LABEL and
-  LABELREF values with the value of the LABEL at the smallest relative position, as the hasher
-  does — otherwise every child differs from its parent in every label.
+- The genome hash is taken at birth, when the child owns no marker cells (FORK resets the marker
+  on every cell it hands over); it includes the DATA operands and the ENERGY cells and excludes
+  STATE (see `GenomeHasher`). A child born owning an energy cell is a "mutant" with identical
+  code. A body read later may contain the copy in progress for the next child, marked ≠ 0. When
+  diffing bodies, drop those cells and the STATE cells, and XOR-normalize LABEL and LABELREF
+  values with the value of the LABEL at the smallest relative position, as the hasher does —
+  otherwise every child differs from its parent in every label.
 - Empty cells (`CODE:0`) are unowned and absent from a body; inserted or duplicated code therefore
   appears as *new* cells, a deletion as *missing* cells.
 

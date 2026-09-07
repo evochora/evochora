@@ -83,6 +83,10 @@ public class SimulationTestUtils {
                         energy = 6
                         entropy-permille = -1000
                       }
+                      STATE {
+                        energy = 6
+                        entropy-permille = -1000
+                      }
                     }
                   }
                 }

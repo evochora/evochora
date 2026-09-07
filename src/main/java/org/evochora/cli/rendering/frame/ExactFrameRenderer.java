@@ -48,15 +48,9 @@ public class ExactFrameRenderer extends AbstractFrameRenderer {
             defaultValue = "4")
     private int scale;
 
-    // Colors (RGB with full alpha for TYPE_INT_RGB)
+    // Colors (RGB with full alpha for TYPE_INT_RGB). Molecule types are coloured by
+    // MoleculeTypeColors; empty cells and dead organisms are not types and are coloured here.
     private static final int COLOR_EMPTY = 0x000000;
-    private static final int COLOR_CODE = 0x3c5078;
-    private static final int COLOR_DATA = 0x32323c;
-    private static final int COLOR_STRUCTURE = 0xff7878;
-    private static final int COLOR_ENERGY = 0xffe664;
-    private static final int COLOR_LABEL = 0xa0a0a8;
-    private static final int COLOR_LABELREF = 0xa0a0a8;
-    private static final int COLOR_REGISTER = 0x506080;
     private static final int COLOR_DEAD = 0x555555;
 
     // Organism palette — keep in sync with MinimapFrameRenderer and AppController.ORGANISM_PALETTE
@@ -270,15 +264,7 @@ public class ExactFrameRenderer extends AbstractFrameRenderer {
 
     private int getCellColor(int moleculeInt) {
         if (moleculeInt == 0) return COLOR_EMPTY;
-        int moleculeType = moleculeInt & Config.TYPE_MASK;
-        if (moleculeType == Config.TYPE_CODE) return COLOR_CODE;
-        if (moleculeType == Config.TYPE_DATA) return COLOR_DATA;
-        if (moleculeType == Config.TYPE_ENERGY) return COLOR_ENERGY;
-        if (moleculeType == Config.TYPE_STRUCTURE) return COLOR_STRUCTURE;
-        if (moleculeType == Config.TYPE_LABEL) return COLOR_LABEL;
-        if (moleculeType == Config.TYPE_LABELREF) return COLOR_LABELREF;
-        if (moleculeType == Config.TYPE_REGISTER) return COLOR_REGISTER;
-        return COLOR_EMPTY;
+        return MoleculeTypeColors.colorOf(moleculeInt & Config.TYPE_MASK);
     }
 
     // ─────────────────────────────────────────────────────────────────────────────

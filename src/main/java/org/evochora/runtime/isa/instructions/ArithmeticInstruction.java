@@ -164,8 +164,8 @@ public class ArithmeticInstruction extends Instruction {
                     s2 = org.evochora.runtime.model.Molecule.fromInt(i2);
                 }
 
-                if (Config.STRICT_TYPING && s1.type() != s2.type()) {
-                    organism.instructionFailed("Operand types must match in strict mode.");
+                if (Config.STRICT_TYPING && !Molecule.areValueCompatible(s1.type(), s2.type())) {
+                    organism.instructionFailed("Operand types must be compatible in strict mode.");
                     return;
                 }
 
@@ -201,7 +201,7 @@ public class ArithmeticInstruction extends Instruction {
                     return;
                 }
             } else {
-                organism.getDataStack().push(result);
+                organism.pushData(result);
             }
 
         } catch (NoSuchElementException e) {
@@ -226,7 +226,7 @@ public class ArithmeticInstruction extends Instruction {
                     case "CRSS" -> cross2d(v1, v2);
                     default -> 0;
                 };
-                organism.getDataStack().push(new Molecule(Config.TYPE_DATA, result).toInt());
+                organism.pushData(new Molecule(Config.TYPE_DATA, result).toInt());
                 return;
             }
 
@@ -301,7 +301,7 @@ public class ArithmeticInstruction extends Instruction {
                 return;
             }
         } else { // Stack variant
-            organism.getDataStack().push(result);
+            organism.pushData(result);
         }
     }
 
@@ -330,8 +330,8 @@ public class ArithmeticInstruction extends Instruction {
             s2 = Molecule.fromInt(i2);
         }
 
-        if (Config.STRICT_TYPING && s1.type() != s2.type()) {
-            organism.instructionFailed("Operand types must match in strict mode.");
+        if (Config.STRICT_TYPING && !Molecule.areValueCompatible(s1.type(), s2.type())) {
+            organism.instructionFailed("Operand types must be compatible in strict mode.");
             return;
         }
 
@@ -353,7 +353,7 @@ public class ArithmeticInstruction extends Instruction {
                 return;
             }
         } else { // Stack variant
-            organism.getDataStack().push(result);
+            organism.pushData(result);
         }
     }
 

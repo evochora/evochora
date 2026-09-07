@@ -27,6 +27,12 @@ public class VMEnvironmentInteractionInstructionTest {
     private Simulation sim;
     private final int[] startPos = new int[]{5, 5};
 
+    /**
+     * The marker register the write tests run with. It is non-zero, so a written DATA molecule
+     * keeps its type: with marker register 0 the environment would store it as STATE.
+     */
+    private static final int WRITE_MARKER = 1;
+
     @BeforeAll
     static void init() {
         Instruction.init();
@@ -43,6 +49,15 @@ public class VMEnvironmentInteractionInstructionTest {
     private void placeInstruction(String name) {
         int opcode = Instruction.getInstructionIdByName(name);
         environment.setMolecule(new Molecule(Config.TYPE_CODE, opcode), org.getIp());
+    }
+
+    /**
+     * The form a molecule written under {@link #WRITE_MARKER} takes in the cell: the type and value
+     * are kept and the marker register is stamped into it.
+     */
+    private static int storedUnderWriteMarker(int moleculeInt) {
+        Molecule molecule = Molecule.fromInt(moleculeInt);
+        return new Molecule(molecule.type(), molecule.value(), WRITE_MARKER).toInt();
     }
 
     private void placeInstruction(String name, Integer... args) {
@@ -72,6 +87,7 @@ public class VMEnvironmentInteractionInstructionTest {
     void testPoke() {
         int[] vec = new int[]{0, 1};
         int payload = new Molecule(Config.TYPE_DATA, 77).toInt();
+        org.setMr(WRITE_MARKER);
         org.writeOperand(0, payload);
         org.writeOperand(1, vec);
 
@@ -80,7 +96,7 @@ public class VMEnvironmentInteractionInstructionTest {
         sim.tick();
 
         assertThat(org.isInstructionFailed()).as("Instruction failed: " + org.getFailureReason()).isFalse();
-        assertThat(environment.getMolecule(targetPos).toInt()).isEqualTo(payload);
+        assertThat(environment.getMolecule(targetPos).toInt()).isEqualTo(storedUnderWriteMarker(payload));
         // POKE(DATA) costs base 1 + 5
         assertThat(org.getEr()).isLessThanOrEqualTo(2000 - 1 - 5);
     }
@@ -93,6 +109,7 @@ public class VMEnvironmentInteractionInstructionTest {
     @Tag("unit")
     void testPoki() {
         int payload = new Molecule(Config.TYPE_DATA, 88).toInt();
+        org.setMr(WRITE_MARKER);
         org.writeOperand(0, payload);
 
         placeInstruction("POKI", 0, 0, 1);
@@ -101,7 +118,7 @@ public class VMEnvironmentInteractionInstructionTest {
         sim.tick();
 
         assertThat(org.isInstructionFailed()).as("Instruction failed: " + org.getFailureReason()).isFalse();
-        assertThat(environment.getMolecule(target).toInt()).isEqualTo(payload);
+        assertThat(environment.getMolecule(target).toInt()).isEqualTo(storedUnderWriteMarker(payload));
         // POKI(DATA) costs base 1 + 5
         assertThat(org.getEr()).isLessThanOrEqualTo(2000 - 1 - 5);
     }
@@ -115,6 +132,7 @@ public class VMEnvironmentInteractionInstructionTest {
     void testPoks() {
         int payload = new Molecule(Config.TYPE_DATA, 33).toInt();
         int[] vec = new int[]{0, 1};
+        org.setMr(WRITE_MARKER);
         org.getDataStack().push(vec);
         org.getDataStack().push(payload);
 
@@ -123,7 +141,7 @@ public class VMEnvironmentInteractionInstructionTest {
         sim.tick();
 
         assertThat(org.isInstructionFailed()).as("Instruction failed: " + org.getFailureReason()).isFalse();
-        assertThat(environment.getMolecule(target).toInt()).isEqualTo(payload);
+        assertThat(environment.getMolecule(target).toInt()).isEqualTo(storedUnderWriteMarker(payload));
         // POKS(DATA) costs base 1 + 5
         assertThat(org.getEr()).isLessThanOrEqualTo(2000 - 1 - 5);
     }
@@ -200,6 +218,7 @@ public class VMEnvironmentInteractionInstructionTest {
         environment.setMolecule(Molecule.fromInt(originalPayload), 999, targetPos); // Foreign owner ID 999
         
         // Set up registers: target reg, vector reg
+        org.setMr(WRITE_MARKER);
         org.writeOperand(0, newPayload); // register contains value to write, will receive peeked value
         org.writeOperand(1, vec); // vector register
 
@@ -210,7 +229,7 @@ public class VMEnvironmentInteractionInstructionTest {
 
         // Verify PPKR worked correctly: register contains peeked value, cell contains new value
         assertThat((int) org.readOperand(0)).isEqualTo(originalPayload).as("Register should contain DATA:99 (read from cell 0|1)");
-        assertThat(environment.getMolecule(targetPos).toInt()).isEqualTo(newPayload).as("Cell should contain DATA:111 (written from %DR0)");
+        assertThat(environment.getMolecule(targetPos).toInt()).isEqualTo(storedUnderWriteMarker(newPayload)).as("Cell should contain DATA:111 (written from %DR0)");
         
         // Verify energy costs: PPKR(DATA->DATA) costs peek 5 (foreign DATA) + poke 6 (DATA) = 11
         int expectedEnergy = 2000 - 5 - 6;
@@ -235,6 +254,7 @@ public class VMEnvironmentInteractionInstructionTest {
         
         
         // Set up register: contains value to write, will receive peeked value
+        org.setMr(WRITE_MARKER);
         org.writeOperand(0, newPayload); // register contains value to write
 
         int initialEr = org.getEr();
@@ -245,7 +265,7 @@ public class VMEnvironmentInteractionInstructionTest {
 
         // Verify PPKI worked correctly: register contains peeked value, cell contains new value
         assertThat((int) org.readOperand(0)).isEqualTo(originalPayload).as("Register should contain DATA:99 (read from cell 0|1)");
-        assertThat(environment.getMolecule(targetPos).toInt()).isEqualTo(newPayload).as("Cell should contain DATA:111 (written from %DR0)");
+        assertThat(environment.getMolecule(targetPos).toInt()).isEqualTo(storedUnderWriteMarker(newPayload)).as("Cell should contain DATA:111 (written from %DR0)");
         
         // Verify energy costs: PPKI(DATA->DATA) costs peek 5 (foreign DATA) + poke 6 (DATA) = 11
         int expectedEnergy = initialEr - 5 - 6;
@@ -268,6 +288,7 @@ public class VMEnvironmentInteractionInstructionTest {
         environment.setMolecule(Molecule.fromInt(originalPayload), 999, targetPos); // Foreign owner ID 999
         
         // Set up stack: new value and vector (PPKS reads vector from stack)
+        org.setMr(WRITE_MARKER);
         org.getDataStack().push(vec);
         org.getDataStack().push(newPayload);
 
@@ -278,7 +299,7 @@ public class VMEnvironmentInteractionInstructionTest {
         
         // Verify PPKS worked correctly: stack contains peeked value, cell contains new value
         assertThat(org.getDataStack().pop()).isEqualTo(originalPayload).as("Stack should contain DATA:99 (read from cell 0|1)");
-        assertThat(environment.getMolecule(targetPos).toInt()).isEqualTo(newPayload).as("Cell should contain DATA:111 (written from stack)");
+        assertThat(environment.getMolecule(targetPos).toInt()).isEqualTo(storedUnderWriteMarker(newPayload)).as("Cell should contain DATA:111 (written from stack)");
         
         // Verify energy costs: PPKS(DATA->DATA) costs peek 5 (foreign DATA) + poke 6 (DATA) = 11
         int expectedEnergy = 2000 - 5 - 6;
@@ -300,6 +321,7 @@ public class VMEnvironmentInteractionInstructionTest {
         int[] targetPos = org.getTargetCoordinate(org.getDp(0), vec, environment);
         
         // Set up registers
+        org.setMr(WRITE_MARKER);
         org.writeOperand(0, newPayload); // register contains value to write, will receive peeked value
         org.writeOperand(1, vec); // vector register
 
@@ -310,13 +332,81 @@ public class VMEnvironmentInteractionInstructionTest {
 
         // Verify PPKR on empty cell: register contains empty molecule, cell contains new value
         assertThat((int) org.readOperand(0)).isEqualTo(emptyMolecule).as("Register should contain empty molecule (CODE:0) when cell was empty");
-        assertThat(environment.getMolecule(targetPos).toInt()).isEqualTo(newPayload).as("Cell should contain the new molecule that was written");
+        assertThat(environment.getMolecule(targetPos).toInt()).isEqualTo(storedUnderWriteMarker(newPayload)).as("Cell should contain the new molecule that was written");
         
         // Verify energy costs: PPKR on empty cell: peek 0 (unowned empty) + poke 6 (DATA) = 6
         int expectedEnergy = 2000 - 0 - 6;
         assertThat(org.getEr()).isEqualTo(expectedEnergy).as("Energy should be consumed correctly: peek 0 + poke 6 = 6 (no peek costs on empty cell)");
     }
 
+
+    /**
+     * Places an instruction and its scalar arguments for an organism other than the one the test
+     * fixture creates.
+     */
+    private void placeInstructionFor(Organism organism, String name, Integer... args) {
+        int opcode = Instruction.getInstructionIdByName(name);
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, opcode), organism.getIp());
+        int[] currentPos = organism.getIp();
+        for (int arg : args) {
+            currentPos = organism.getNextInstructionPosition(currentPos, organism.getDv(), environment);
+            environment.setMolecule(new Molecule(Config.TYPE_DATA, arg), currentPos);
+        }
+    }
+
+    /**
+     * A DATA molecule written while the marker register is 0 is stored as STATE: what an organism
+     * writes in the ephemeral marker class is its own memory, not part of a genome.
+     */
+    @Test
+    @Tag("unit")
+    void testPokeStoresDataWrittenWithoutMarkerAsState() {
+        int[] vec = new int[]{0, 1};
+        int payload = new Molecule(Config.TYPE_DATA, 55).toInt();
+        org.writeOperand(0, payload);
+        org.writeOperand(1, vec);
+
+        placeInstruction("POKE", 0, 1);
+        int[] targetPos = org.getTargetCoordinate(org.getDp(0), vec, environment);
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).as("Instruction failed: " + org.getFailureReason()).isFalse();
+        Molecule stored = environment.getMolecule(targetPos);
+        assertThat(stored.type()).isEqualTo(Config.TYPE_STATE);
+        assertThat(stored.value()).isEqualTo(55);
+        assertThat(stored.marker()).isEqualTo(0);
+    }
+
+    /**
+     * The POKE path and the PPK swap path store the same form for the same written value: both
+     * resolve the stored molecule through the same rule.
+     */
+    @Test
+    @Tag("unit")
+    void testPokeAndPpkStoreTheSameFormForTheSameInput() {
+        int[] vec = new int[]{0, 1};
+        int payload = new Molecule(Config.TYPE_DATA, 64).toInt();
+
+        org.writeOperand(0, payload);
+        org.writeOperand(1, vec);
+        placeInstruction("POKE", 0, 1);
+        int[] pokeTarget = org.getTargetCoordinate(org.getDp(0), vec, environment);
+
+        Organism other = Organism.create(sim, new int[]{20, 20}, 2000);
+        sim.addOrganism(other);
+        other.writeOperand(0, payload);
+        int[] ppkTarget = other.getTargetCoordinate(other.getDp(0), vec, environment);
+        placeInstructionFor(other, "PPKI", 0, 0, 1);
+
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).as("POKE failed: " + org.getFailureReason()).isFalse();
+        assertThat(other.isInstructionFailed()).as("PPKI failed: " + other.getFailureReason()).isFalse();
+        assertThat(environment.getMolecule(ppkTarget).toInt())
+                .as("both write paths store the same form")
+                .isEqualTo(environment.getMolecule(pokeTarget).toInt());
+        assertThat(environment.getMolecule(pokeTarget).type()).isEqualTo(Config.TYPE_STATE);
+    }
 
     /**
      * Tests that POKE correctly uses the organism's MR (Molecule Marker Register)
@@ -395,6 +485,7 @@ public class VMEnvironmentInteractionInstructionTest {
         // Setup POKE to write DATA:50 to an empty cell
         int moleculeValue = 50;
         int[] vec = new int[]{0, 1};
+        org.setMr(WRITE_MARKER);
         org.writeOperand(0, new Molecule(Config.TYPE_DATA, moleculeValue).toInt());
         org.writeOperand(1, vec);
         placeInstruction("POKE", 0, 1);
@@ -417,5 +508,34 @@ public class VMEnvironmentInteractionInstructionTest {
     void assertNoInstructionFailure() {
         // Only assert no failure for tests that don't expect failures
         // Tests that expect failures (like testPpkrFailsOnEmptyCell) will handle their own assertions
+    }
+
+    /**
+     * Verifies that PEKS fails with a data stack overflow when its vector operand leaves the stack
+     * at the depth limit, and that the target cell keeps its molecule because the read is never
+     * committed.
+     */
+    @Test
+    @Tag("unit")
+    void testPeksDataStackOverflow() {
+        org.setDp(0, org.getIp());
+        int[] vec = new int[]{-1, 0};
+        int[] target = org.getTargetCoordinate(org.getDp(0), vec, environment);
+        int payload = new Molecule(Config.TYPE_DATA, 9).toInt();
+        environment.setMolecule(Molecule.fromInt(payload), target);
+
+        int filler = new Molecule(Config.TYPE_DATA, 1).toInt();
+        for (int i = 0; i < Config.DS_MAX_DEPTH; i++) {
+            org.getDataStack().push(filler);
+        }
+        org.getDataStack().push(vec);
+
+        placeInstruction("PEKS");
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).isTrue();
+        assertThat(org.getFailureReason()).contains("Data stack overflow");
+        assertThat(org.getDataStack()).hasSize(Config.DS_MAX_DEPTH);
+        assertThat(environment.getMolecule(target).toInt()).isEqualTo(payload);
     }
 }

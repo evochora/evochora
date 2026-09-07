@@ -536,4 +536,110 @@ public class VMBitwiseInstructionTest {
         // ORN(0000, 1111) = 0000 | ~1111 = ...0000
         assertThat(org.getDataStack().pop()).isEqualTo(new Molecule(Config.TYPE_DATA, ~0b1111).toInt());
     }
+
+    // --- DATA/STATE value compatibility ---
+    /**
+     * Tests that ANDR combines a STATE register with a DATA register and keeps the type of the
+     * first operand.
+     */
+    @Test
+    @Tag("unit")
+    void testAndrStateRegisterWithDataRegister() {
+        org.writeOperand(0, new Molecule(Config.TYPE_STATE, 0b1010).toInt());
+        org.writeOperand(1, new Molecule(Config.TYPE_DATA, 0b1100).toInt());
+        placeInstruction("ANDR", 0, 1);
+        sim.tick();
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_STATE, 0b1000).toInt());
+    }
+
+    /**
+     * Tests that ORR combines a DATA register with a STATE register and keeps the type of the
+     * first operand, so the result is DATA.
+     */
+    @Test
+    @Tag("unit")
+    void testOrrDataRegisterWithStateRegister() {
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 0b1010).toInt());
+        org.writeOperand(1, new Molecule(Config.TYPE_STATE, 0b0101).toInt());
+        placeInstruction("ORR", 0, 1);
+        sim.tick();
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0b1111).toInt());
+    }
+
+    /**
+     * Tests that SHLR accepts a shift amount held in a STATE register.
+     */
+    @Test
+    @Tag("unit")
+    void testShlrWithStateShiftAmount() {
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 1).toInt());
+        org.writeOperand(1, new Molecule(Config.TYPE_STATE, 3).toInt());
+        placeInstruction("SHLR", 0, 1);
+        sim.tick();
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1 << 3).toInt());
+    }
+
+    /**
+     * Tests that SHLI shifts a STATE value, where the immediate shift amount adopts the STATE type
+     * of the value operand.
+     */
+    @Test
+    @Tag("unit")
+    void testShliOnStateValueRegister() {
+        org.writeOperand(0, new Molecule(Config.TYPE_STATE, 1).toInt());
+        placeInstruction("SHLI", 0, 3);
+        sim.tick();
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_STATE, 1 << 3).toInt());
+    }
+
+    /**
+     * Tests that a bitwise operation still fails on operand types that are not value-compatible.
+     */
+    @Test
+    @Tag("unit")
+    void testAndrFailsOnIncompatibleTypes() {
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 0b1010).toInt());
+        org.writeOperand(1, new Molecule(Config.TYPE_ENERGY, 0b1100).toInt());
+        placeInstruction("ANDR", 0, 1);
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).isTrue();
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0b1010).toInt());
+    }
+
+    /**
+     * Tests that a shift still fails when the amount is neither DATA nor STATE.
+     */
+    @Test
+    @Tag("unit")
+    void testShlrFailsOnNonDataCompatibleShiftAmount() {
+        org.writeOperand(0, new Molecule(Config.TYPE_ENERGY, 1).toInt());
+        org.writeOperand(1, new Molecule(Config.TYPE_ENERGY, 3).toInt());
+        placeInstruction("SHLR", 0, 1);
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).isTrue();
+        assertThat(org.getFailureReason()).contains("Shift amount");
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_ENERGY, 1).toInt());
+    }
+
+    /**
+     * Verifies that NOTS fails with a data stack overflow when its operand leaves the stack at the
+     * depth limit, so that the result finds no room and nothing is pushed.
+     */
+    @Test
+    @Tag("unit")
+    void testNotsDataStackOverflow() {
+        int filler = new Molecule(Config.TYPE_DATA, 1).toInt();
+        for (int i = 0; i < Config.DS_MAX_DEPTH + 1; i++) {
+            org.getDataStack().push(filler);
+        }
+
+        placeInstruction("NOTS");
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).isTrue();
+        assertThat(org.getFailureReason()).contains("Data stack overflow");
+        assertThat(org.getDataStack()).hasSize(Config.DS_MAX_DEPTH);
+    }
 }

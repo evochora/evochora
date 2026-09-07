@@ -2,9 +2,12 @@ package org.evochora.runtime.worldgen;
 
 import com.typesafe.config.Config;
 import org.evochora.runtime.model.Molecule;
+import org.evochora.runtime.model.MoleculeTypeRegistry;
 import org.evochora.runtime.spi.DeathContext;
 import org.evochora.runtime.spi.IDeathHandler;
 import org.evochora.runtime.spi.IRandomProvider;
+
+import java.util.stream.Collectors;
 
 /**
  * A death handler that replaces all molecules of a dying organism with a configured molecule.
@@ -30,7 +33,7 @@ import org.evochora.runtime.spi.IRandomProvider;
  * </ul>
  *
  * <h2>Valid Types</h2>
- * CODE, DATA, ENERGY, STRUCTURE, LABEL, LABELREF, REGISTER
+ * Every molecule type registered in {@link MoleculeTypeRegistry}, named as it is registered there.
  *
  * <h2>Behavior</h2>
  * <ul>
@@ -108,18 +111,20 @@ public class DecayOnDeath implements IDeathHandler {
                 "Invalid value in molecule spec: '" + spec + "'. Value must be an integer.");
         }
 
-        int type = switch (typeStr) {
-            case "CODE" -> org.evochora.runtime.Config.TYPE_CODE;
-            case "DATA" -> org.evochora.runtime.Config.TYPE_DATA;
-            case "ENERGY" -> org.evochora.runtime.Config.TYPE_ENERGY;
-            case "STRUCTURE" -> org.evochora.runtime.Config.TYPE_STRUCTURE;
-            case "LABEL" -> org.evochora.runtime.Config.TYPE_LABEL;
-            case "LABELREF" -> org.evochora.runtime.Config.TYPE_LABELREF;
-            case "REGISTER" -> org.evochora.runtime.Config.TYPE_REGISTER;
-            default -> throw new IllegalArgumentException(
-                "Unknown molecule type: '" + typeStr + "'. Valid types: CODE, DATA, ENERGY, STRUCTURE, LABEL, LABELREF, REGISTER");
-        };
+        int type = Molecule.getTypeConstantByName(typeStr).orElseThrow(() -> new IllegalArgumentException(
+            "Unknown molecule type: '" + typeStr + "'. Valid types: " + registeredTypeNames()));
 
         return new Molecule(type, value);
+    }
+
+    /**
+     * Lists the names of all registered molecule types, in registration order.
+     *
+     * @return A comma-separated list of the type names accepted in a molecule specification
+     */
+    private static String registeredTypeNames() {
+        return MoleculeTypeRegistry.orderedTypes().stream()
+            .map(MoleculeTypeRegistry::typeToName)
+            .collect(Collectors.joining(", "));
     }
 }

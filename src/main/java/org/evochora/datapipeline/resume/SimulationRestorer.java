@@ -645,11 +645,11 @@ public class SimulationRestorer {
         builder.registers(regs);
 
         // Stacks
-        requireStackWithinLimit(organismId, "data stack",
+        warnIfStackBeyondLimit(organismId, "data stack",
                 state.getDataStackCount(), org.evochora.runtime.Config.DS_MAX_DEPTH);
-        requireStackWithinLimit(organismId, "location stack",
+        warnIfStackBeyondLimit(organismId, "location stack",
                 state.getLocationStackCount(), org.evochora.runtime.Config.LOCATION_STACK_MAX_DEPTH);
-        requireStackWithinLimit(organismId, "call stack",
+        warnIfStackBeyondLimit(organismId, "call stack",
                 state.getCallStackCount(), org.evochora.runtime.Config.CALL_STACK_MAX_DEPTH);
 
         if (state.getDataStackCount() > 0) {
@@ -746,26 +746,22 @@ public class SimulationRestorer {
     }
 
     /**
-     * Rejects a restored stack deeper than the instruction set allows. Such a depth describes a state
-     * no running organism can reach, because the instruction that would exceed the limit fails instead
-     * of pushing.
+     * Warns about a restored stack deeper than the instruction set's limit, and lets it through.
      * <p>
-     * {@code Organism.RestoreBuilder} checks the same limits for every caller that builds an organism.
-     * The two are deliberately separate rather than sharing a helper: this one speaks for the
-     * checkpoint and names it in the message, and a shared helper would have to live in one of the two
-     * packages — in {@code runtime}, which depends on nothing, or in {@code datapipeline}, which
-     * {@code runtime} must not depend on.
+     * The stack is restored as the checkpoint holds it, whatever its depth. Cutting it would continue
+     * from a state the original run never had, and a resume has to reproduce the run exactly. The
+     * warning names organism, stack, depth and limit, so that a depth beyond what the instruction set
+     * allows is seen rather than carried on silently.
      *
      * @param organismId the organism the stack belongs to
      * @param name the stack's name, for the message
      * @param depth the depth found in the snapshot
-     * @param limit the maximum depth the instruction set enforces
-     * @throws ResumeException if the depth exceeds the limit
+     * @param limit the maximum depth the instruction set allows
      */
-    private static void requireStackWithinLimit(int organismId, String name, int depth, int limit) {
+    private static void warnIfStackBeyondLimit(int organismId, String name, int depth, int limit) {
         if (depth > limit) {
-            throw new ResumeException("Organism " + organismId + ": " + name + " holds " + depth
-                    + " entries, above the limit of " + limit);
+            log.warn("Organism {}: {} holds {} entries, above the limit of {}; restored as stored",
+                    organismId, name, depth, limit);
         }
     }
 

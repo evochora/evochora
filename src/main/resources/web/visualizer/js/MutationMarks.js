@@ -48,12 +48,12 @@ const PACKED_TYPE_CODE = 0;
  * @param {object} options Options.
  * @param {number|string} options.organismId The selected organism, named in the warning when the
  *                                           answer exceeds {@link MAX_MARKED_CELLS}.
- * @param {function(number): (number|null)} options.resolveTypeId Maps a packed molecule type to the
+ * @param {function(number): (string|null)} options.resolveTypeName Maps a packed molecule type to the
  *                                           type id the grid holds in its cell data, or null for a
  *                                           type this run does not name.
  * @returns {Map<string, object>} Cell key `"x,y"` to the deciding mark.
  */
-export function buildMarkMap(events, { organismId, resolveTypeId }) {
+export function buildMarkMap(events, { organismId, resolveTypeName }) {
     const marks = new Map();
     if (!Array.isArray(events) || events.length === 0) {
         return marks;
@@ -68,7 +68,7 @@ export function buildMarkMap(events, { organismId, resolveTypeId }) {
             if (!Array.isArray(coordinates) || coordinates.length < 2) {
                 continue;
             }
-            const candidate = toMark(event, cell, coordinates, resolveTypeId);
+            const candidate = toMark(event, cell, coordinates, resolveTypeName);
             const key = `${candidate.x},${candidate.y}`;
             const standing = marks.get(key);
             if (!standing || isYounger(candidate, standing)) {
@@ -92,19 +92,19 @@ export function buildMarkMap(events, { organismId, resolveTypeId }) {
  * A cell the loaded region does not name is an empty cell and is passed as a type id of null.
  *
  * @param {object} mark The deciding mark of that cell, from {@link buildMarkMap}.
- * @param {number|null} typeId The type id of the cell's molecule, null when the cell holds nothing.
+ * @param {string|null} typeName The type name of the cell's molecule, null when the cell holds nothing.
  * @param {number} value The value of the cell's molecule.
  * @param {boolean} isEmptyCell Whether the cell is empty, as the renderers decide it.
  * @returns {boolean} True while the cell still holds what the mutation wrote.
  */
-export function isMarkPresent(mark, typeId, value, isEmptyCell) {
+export function isMarkPresent(mark, typeName, value, isEmptyCell) {
     if (mark.afterEmpty) {
         return isEmptyCell;
     }
-    if (typeId === null) {
+    if (typeName === null) {
         return false;
     }
-    return typeId === mark.afterTypeId && value === mark.afterValue;
+    return typeName === mark.afterTypeName && value === mark.afterValue;
 }
 
 /**
@@ -139,10 +139,10 @@ export function genomeEdges(events) {
  * @param {object} event The event the cell belongs to.
  * @param {object} cell The cell with the molecules before and after the write.
  * @param {number[]} coordinates Its absolute coordinates on the displayed body.
- * @param {function(number): (number|null)} resolveTypeId Maps a packed molecule type to a type id.
+ * @param {function(number): (string|null)} resolveTypeName Maps a packed molecule type to its name.
  * @returns {object} The mark of that cell.
  */
-function toMark(event, cell, coordinates, resolveTypeId) {
+function toMark(event, cell, coordinates, resolveTypeName) {
     const before = cell.before || {};
     const after = cell.after || {};
     return {
@@ -152,9 +152,9 @@ function toMark(event, cell, coordinates, resolveTypeId) {
         generation: event.originGeneration ?? 0,
         eventIndex: event.eventIndex ?? 0,
         genomeHash: event.originGenomeHash,
-        beforeTypeId: resolveTypeId(before.moleculeType),
+        beforeTypeName: resolveTypeName(before.moleculeType),
         beforeValue: before.moleculeValue ?? 0,
-        afterTypeId: resolveTypeId(after.moleculeType),
+        afterTypeName: resolveTypeName(after.moleculeType),
         afterValue: after.moleculeValue ?? 0,
         afterEmpty: after.moleculeType === PACKED_TYPE_CODE && after.moleculeValue === 0
     };
