@@ -297,6 +297,51 @@ message OrganismState {
   //   otherwise  - the parent's genome
   // Source: Organism.getParentGenomeHash(), written only when Organism.getParentId() is set
   optional int64 parent_genome_hash = 38;
+
+  // What the mutation plugins did to this organism at its birth, in the order they reported it.
+  // Source: Organism.getBirthMutations()
+  //
+  // Present only in the first recording after the organism's birth. An organism no plugin
+  // touched carries none at all, which is the common case.
+  repeated MutationEvent birth_mutations = 39;
+}
+
+// One mutation a plugin applied to a newborn organism, as the plugin held it while writing.
+//
+// The cells are absolute flat indices in the row-major numbering of the world, exactly as the
+// plugin held them: the runtime converts nothing for its consumers. A consumer that wants a
+// position relative to the organism converts the index with the world shape from the run metadata
+// and the organism's initial_position.
+message MutationEvent {
+  // Fully qualified class name of the plugin that reported this event
+  // Example: "org.evochora.runtime.worldgen.GeneSubstitutionPlugin"
+  // Same convention as PluginState.plugin_class
+  string plugin_class = 1;
+
+  // Short name the plugin chose for what it did, for example "substitution".
+  // Chosen by the plugin; nothing in the runtime interprets it.
+  string kind = 2;
+
+  // Absolute flat indices of the cells the plugin wrote or cleared, in the order it wrote them,
+  // which for the plugins that walk a scan line is their walk along dv.
+  // An event without cells changed no molecule.
+  repeated int32 cells = 3 [packed = true];
+
+  // The packed molecule at each cell before the write, parallel to cells.
+  // Same encoding as CellDataColumns.molecule_data.
+  repeated int32 old_values = 4 [packed = true];
+
+  // The packed molecule at each cell after the write, parallel to cells.
+  // Same encoding as CellDataColumns.molecule_data.
+  repeated int32 new_values = 5 [packed = true];
+
+  // Numbers whose meaning the reporting plugin documents. They keep what the written cells do not
+  // carry, such as where a copied block was read from.
+  repeated int64 params = 6 [packed = true];
+
+  // The newborn's direction vector while the plugin ran, one component per world dimension.
+  // Signed and small, hence sint32.
+  repeated sint32 dv = 7 [packed = true];
 }
 
 // Aggregated runtime state for organism indexing.

@@ -8,6 +8,7 @@ import org.evochora.runtime.isa.OpcodeId;
 import org.evochora.runtime.isa.RegisterBank;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
+import org.evochora.runtime.model.MutationRecord;
 import org.evochora.runtime.model.Organism;
 import org.evochora.runtime.spi.IRandomProvider;
 import org.evochora.runtime.thermodynamics.ThermodynamicPolicyManager;
@@ -21,6 +22,7 @@ import org.junit.jupiter.params.provider.MethodSource;
 
 import com.typesafe.config.ConfigFactory;
 
+import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
 
@@ -784,6 +786,81 @@ class GeneSubstitutionPluginTest {
             }
         }
         assertThat(mutated).as("Should mutate value while preserving marker").isTrue();
+    }
+
+    // ---- Mutation record tests ----
+
+    @Test
+    void aWriteIsRecordedWithItsCellAndTheMoleculesAroundIt() {
+        // The one changed cell, at a flat index the environment persists by
+        int flatIndex = environment.getProperties().toFlatIndex(new int[]{5, 5});
+        int mutatedSeed = -1;
+        int expectedOld = new Molecule(Config.TYPE_CODE, ADDR_OPCODE, 0).toInt();
+
+        for (int seed = 0; seed < 100 && mutatedSeed < 0; seed++) {
+            setUp();
+            placeCode(5, 5, ADDR_OPCODE);
+            GeneSubstitutionPlugin plugin = codeOnlyPlugin(new SeededRandomProvider(seed));
+            plugin.substitute(child, environment);
+            if (environment.getMolecule(5, 5).value() != ADDR_OPCODE) {
+                mutatedSeed = seed;
+            }
+        }
+        assertThat(mutatedSeed).as("at least one seed of 100 mutates the opcode").isNotNegative();
+
+        List<MutationRecord> records = child.getBirthMutations();
+        assertThat(records).hasSize(1);
+        MutationRecord record = records.get(0);
+        assertThat(record.pluginClass()).isEqualTo(GeneSubstitutionPlugin.class.getName());
+        assertThat(record.kind()).isEqualTo("substitution");
+        assertThat(record.cells()).containsExactly(flatIndex);
+        assertThat(record.oldValues()).containsExactly(expectedOld);
+        assertThat(record.newValues()).containsExactly(environment.getMolecule(5, 5).toInt());
+        assertThat(record.params()).isEmpty();
+        assertThat(record.dv()).isEqualTo(child.getDv());
+    }
+
+    @Test
+    void theRecordKeepsTheMarkerOfTheCellInBothValues() {
+        boolean recorded = false;
+        for (int seed = 0; seed < 50 && !recorded; seed++) {
+            setUp();
+            environment.setMolecule(new Molecule(Config.TYPE_DATA, 100, 5), child.getId(), new int[]{5, 5});
+            GeneSubstitutionPlugin plugin = dataOnlyPlugin(new SeededRandomProvider(seed));
+            plugin.substitute(child, environment);
+
+            List<MutationRecord> records = child.getBirthMutations();
+            if (records != null) {
+                MutationRecord record = records.get(0);
+                assertThat(Molecule.fromInt(record.oldValues()[0]).marker()).isEqualTo(5);
+                assertThat(Molecule.fromInt(record.newValues()[0]).marker()).isEqualTo(5);
+                assertThat(record.oldValues()[0]).isNotEqualTo(record.newValues()[0]);
+                recorded = true;
+            }
+        }
+        assertThat(recorded).as("at least one seed of 50 mutates the value").isTrue();
+    }
+
+    @Test
+    void aRunThatChangesNothingRecordsNothing() {
+        // A register outside every bank has no neighbour to move to, so the mutation returns the
+        // value it was given and the plugin writes nothing
+        placeRegister(5, 5, 200);
+        GeneSubstitutionPlugin plugin = registerOnlyPlugin(new SeededRandomProvider(42));
+
+        plugin.substitute(child, environment);
+
+        assertThat(environment.getMolecule(5, 5).value()).isEqualTo(200);
+        assertThat(child.getBirthMutations()).isNull();
+    }
+
+    @Test
+    void aRunThatFindsNothingToMutateRecordsNothing() {
+        GeneSubstitutionPlugin plugin = allTypesPlugin(new SeededRandomProvider(42));
+
+        plugin.substitute(child, environment);
+
+        assertThat(child.getBirthMutations()).isNull();
     }
 
     // ---- Configuration validation tests ----

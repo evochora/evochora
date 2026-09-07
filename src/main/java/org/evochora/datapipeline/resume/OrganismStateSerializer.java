@@ -1,12 +1,15 @@
 package org.evochora.datapipeline.resume;
 
+import java.util.List;
 import java.util.Map;
 
+import org.evochora.datapipeline.api.contracts.MutationEvent;
 import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.PersistentRegisterStore;
 import org.evochora.datapipeline.api.contracts.ProcedureRegisterSnapshot;
 import org.evochora.datapipeline.api.contracts.Vector;
 import org.evochora.runtime.isa.RegisterBank;
+import org.evochora.runtime.model.MutationRecord;
 import org.evochora.runtime.model.Organism;
 import org.evochora.runtime.model.Organism.ProcFrame;
 import org.slf4j.Logger;
@@ -39,6 +42,7 @@ public final class OrganismStateSerializer {
             org.evochora.datapipeline.api.contracts.ProcFrame.newBuilder();
     private final PersistentRegisterStore.Builder storeBuilder = PersistentRegisterStore.newBuilder();
     private final ProcedureRegisterSnapshot.Builder snapshotBuilder = ProcedureRegisterSnapshot.newBuilder();
+    private final MutationEvent.Builder mutationEventBuilder = MutationEvent.newBuilder();
 
 
     /**
@@ -153,6 +157,16 @@ public final class OrganismStateSerializer {
             organismStateBuilder.setParentGenomeHash(o.getParentGenomeHash());
         }
 
+        // What the mutation plugins did at this organism's birth. The flat indices are copied as
+        // the plugins held them: converting them to coordinates would need the world shape, and
+        // every consumer that wants a position has the shape in the run's metadata anyway.
+        List<MutationRecord> birthMutations = o.getBirthMutations();
+        if (birthMutations != null) {
+            for (MutationRecord record : birthMutations) {
+                organismStateBuilder.addBirthMutations(convertMutationRecord(record));
+            }
+        }
+
         // Persistent register state + dirty flags
         organismStateBuilder.setCurrentProcLabelHash(o.getCurrentProcLabelHash());
         organismStateBuilder.setStackSavedDirty(o.isStackSavedDirty());
@@ -175,6 +189,34 @@ public final class OrganismStateSerializer {
         return organismStateBuilder.build();
     }
     
+    /**
+     * Converts one mutation record into its Protobuf representation, reusing the event builder.
+     *
+     * @param record what one plugin did at the organism's birth
+     * @return the event message
+     */
+    private MutationEvent convertMutationRecord(MutationRecord record) {
+        mutationEventBuilder.clear();
+        mutationEventBuilder.setPluginClass(record.pluginClass());
+        mutationEventBuilder.setKind(record.kind());
+        for (int cell : record.cells()) {
+            mutationEventBuilder.addCells(cell);
+        }
+        for (int oldValue : record.oldValues()) {
+            mutationEventBuilder.addOldValues(oldValue);
+        }
+        for (int newValue : record.newValues()) {
+            mutationEventBuilder.addNewValues(newValue);
+        }
+        for (long param : record.params()) {
+            mutationEventBuilder.addParams(param);
+        }
+        for (int component : record.dv()) {
+            mutationEventBuilder.addDv(component);
+        }
+        return mutationEventBuilder.build();
+    }
+
     private static Vector convertVectorReuse(int[] components, Vector.Builder builder) {
         builder.clear();
         if (components != null) {

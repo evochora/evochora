@@ -150,6 +150,45 @@ public class EnvironmentProperties {
     }
 
     /**
+     * Offset of one coordinate component from an origin along the shortest path around the world.
+     * <p>
+     * This is the rule {@link GenomeHasher#computeGenomeHash} places its molecules by: on a torus
+     * the difference is pulled into {@code [-size/2, +size/2]}, and for an even size the two
+     * equidistant halves {@code -size/2} and {@code +size/2} are canonicalized to the positive
+     * one, so the offset does not depend on which way around the world the body happens to wrap.
+     * On a world that does not wrap the difference is returned as it is.
+     * <p>
+     * The rule is stated once here because an offset computed by it is comparable with the
+     * positions the genome hash was built from; a rule with the opposite tie-break would place a
+     * body spanning exactly half the world on the other side of its origin.
+     * <p>
+     * Both components are expected inside the world's bounds, as every coordinate the environment
+     * hands out is; the wrap is corrected by one world size, which is what a difference of two
+     * such components can be off by.
+     *
+     * @param absolute the coordinate component to place, inside {@code [0, size)}
+     * @param origin the coordinate component to place it against, inside {@code [0, size)}
+     * @param size the size of that dimension, at least 1
+     * @param isToroidal whether the world wraps in that dimension
+     * @return the offset from {@code origin} to {@code absolute}
+     */
+    public static int relativeOffset(int absolute, int origin, int size, boolean isToroidal) {
+        int diff = absolute - origin;
+        if (!isToroidal) {
+            return diff;
+        }
+        if (diff > size / 2) {
+            diff -= size;
+        } else if (diff < -(size / 2)) {
+            diff += size;
+        }
+        if (size % 2 == 0 && diff == -(size / 2)) {
+            diff = size / 2;
+        }
+        return diff;
+    }
+
+    /**
      * Calculates strides for flat index conversion.
      * <p>
      * Row-major order: stride[i] = product of all dimensions to the right of i.
