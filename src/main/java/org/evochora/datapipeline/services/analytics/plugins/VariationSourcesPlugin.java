@@ -243,10 +243,7 @@ public class VariationSourcesPlugin extends AbstractAnalyticsPlugin {
         ManifestEntry entry = new ManifestEntry();
         entry.id = metricId;
         entry.name = "Variation Sources";
-        entry.description = "The births of each time window split by what changed the genome at "
-            + "birth: one bar segment per mutation kind, one for genomes copied unchanged, one for "
-            + "newborns without a genome, one for the genomes that changed without any mutation "
-            + "plugin doing it, and 'multiple' for a birth two or more plugins changed.";
+        entry.description = "Births per time window, by what changed the genome at birth.";
 
         entry.dataSources = new HashMap<>();
         for (int level = 0; level < lodLevels; level++) {
