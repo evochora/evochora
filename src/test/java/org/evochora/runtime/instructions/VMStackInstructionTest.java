@@ -122,4 +122,26 @@ public class VMStackInstructionTest {
     void assertNoInstructionFailure() {
         assertThat(org.isInstructionFailed()).as("Instruction failed: " + org.getFailureReason()).isFalse();
     }
+
+    /**
+     * Verifies that DUP fails with a data stack overflow when the data stack is at its depth limit,
+     * and that the stack keeps the depth it had.
+     */
+    @Test
+    @Tag("unit")
+    void testDupDataStackOverflow() {
+        int filler = new Molecule(Config.TYPE_DATA, 1).toInt();
+        for (int i = 0; i < Config.DS_MAX_DEPTH; i++) {
+            org.getDataStack().push(filler);
+        }
+
+        placeInstruction("DUP");
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).isTrue();
+        assertThat(org.getFailureReason()).contains("Data stack overflow");
+        assertThat(org.getDataStack()).hasSize(Config.DS_MAX_DEPTH);
+
+        org.resetTickState();
+    }
 }

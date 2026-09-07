@@ -137,7 +137,6 @@ public class VectorInstruction extends Instruction {
             organism.instructionFailed("RTRS requires axis2, axis1, and a vector on the stack.");
             return;
         }
-        Deque<Object> ds = organism.getDataStack();
         Object axis2Obj = operands.get(0).value();
         Object axis1Obj = operands.get(1).value();
         Object vecObj = operands.get(2).value();
@@ -150,14 +149,14 @@ public class VectorInstruction extends Instruction {
         if (ax1Raw == null || ax2Raw == null) {
             organism.instructionFailed("RTRS axes must be scalars.");
             // Push original vector back to keep it unchanged as per spec
-            ds.push(vector);
+            organism.pushData(vector);
             return;
         }
         int axis1 = ax1Raw;
         int axis2 = ax2Raw;
         if (!validateAxes(axis1, axis2, vector.length)) {
             // Failure: push original vector back, unchanged
-            ds.push(vector);
+            organism.pushData(vector);
             return;
         }
         int[] rotated = Arrays.copyOf(vector, vector.length);
@@ -165,7 +164,7 @@ public class VectorInstruction extends Instruction {
         int vj = vector[axis2];
         rotated[axis1] = vj;
         rotated[axis2] = -vi;
-        ds.push(rotated);
+        organism.pushData(rotated);
     }
 
     private Integer extractScalar(Object obj) {
@@ -222,8 +221,7 @@ public class VectorInstruction extends Instruction {
             organism.instructionFailed("B2VS requires a single-bit direction mask.");
             return;
         }
-        Deque<Object> ds = organism.getDataStack();
-        ds.push(vec);
+        organism.pushData(vec);
     }
 
     private void handleVectorToBit(List<Operand> operands) {
@@ -253,8 +251,7 @@ public class VectorInstruction extends Instruction {
             organism.instructionFailed("V2BS requires a unit vector with single non-zero component of magnitude 1.");
             return;
         }
-        Deque<Object> ds = organism.getDataStack();
-        ds.push(new Molecule(Config.TYPE_DATA, mask).toInt());
+        organism.pushData(new Molecule(Config.TYPE_DATA, mask).toInt());
     }
 
     private int vectorToMask(Object vectorObj) {
@@ -340,8 +337,7 @@ public class VectorInstruction extends Instruction {
             return;
         }
 
-        Deque<Object> ds = organism.getDataStack();
-        ds.push(new Molecule(Config.TYPE_DATA, vector[index]).toInt());
+        organism.pushData(new Molecule(Config.TYPE_DATA, vector[index]).toInt());
     }
 
     private void handleVectorSet(List<Operand> operands) {
@@ -407,8 +403,7 @@ public class VectorInstruction extends Instruction {
 
         int[] newVector = Arrays.copyOf(vector, vector.length);
         newVector[index] = value;
-        Deque<Object> ds = organism.getDataStack();
-        ds.push(newVector);
+        organism.pushData(newVector);
     }
 
     private void handleVectorBuild(List<Operand> operands, int dims) {
@@ -456,6 +451,6 @@ public class VectorInstruction extends Instruction {
             newVector[i] = Molecule.fromInt(val).toScalarValue();
         }
 
-        ds.push(newVector);
+        organism.pushData(newVector);
     }
 }

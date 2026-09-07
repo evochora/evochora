@@ -509,4 +509,33 @@ public class VMEnvironmentInteractionInstructionTest {
         // Only assert no failure for tests that don't expect failures
         // Tests that expect failures (like testPpkrFailsOnEmptyCell) will handle their own assertions
     }
+
+    /**
+     * Verifies that PEKS fails with a data stack overflow when its vector operand leaves the stack
+     * at the depth limit, and that the target cell keeps its molecule because the read is never
+     * committed.
+     */
+    @Test
+    @Tag("unit")
+    void testPeksDataStackOverflow() {
+        org.setDp(0, org.getIp());
+        int[] vec = new int[]{-1, 0};
+        int[] target = org.getTargetCoordinate(org.getDp(0), vec, environment);
+        int payload = new Molecule(Config.TYPE_DATA, 9).toInt();
+        environment.setMolecule(Molecule.fromInt(payload), target);
+
+        int filler = new Molecule(Config.TYPE_DATA, 1).toInt();
+        for (int i = 0; i < Config.DS_MAX_DEPTH; i++) {
+            org.getDataStack().push(filler);
+        }
+        org.getDataStack().push(vec);
+
+        placeInstruction("PEKS");
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).isTrue();
+        assertThat(org.getFailureReason()).contains("Data stack overflow");
+        assertThat(org.getDataStack()).hasSize(Config.DS_MAX_DEPTH);
+        assertThat(environment.getMolecule(target).toInt()).isEqualTo(payload);
+    }
 }

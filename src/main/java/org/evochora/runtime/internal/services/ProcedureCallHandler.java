@@ -28,11 +28,6 @@ public final class ProcedureCallHandler {
         Organism organism = context.getOrganism();
         Environment environment = context.getWorld();
 
-        if (organism.getCallStack().size() >= Config.CALL_STACK_MAX_DEPTH) {
-            organism.instructionFailed("Call stack overflow");
-            return;
-        }
-
         int[] ipBeforeFetch = organism.getIpBeforeFetch();
 
         // CALL now only consumes 1 operand (label hash) instead of N (coordinate delta)
@@ -46,15 +41,26 @@ public final class ProcedureCallHandler {
                 ? organism.snapshotStackSavedRegisters()
                 : null;
 
-        if (organism.isPersistentDirty()) {
-            Map<Integer, Object[]> persistentState = organism.getPersistentRegisterState();
+        Map<Integer, Object[]> persistentState = organism.isPersistentDirty()
+                ? organism.getPersistentRegisterState()
+                : null;
 
-            // Check limit before saving — avoid unnecessary snapshot + put if limit exceeded
-            if (!persistentState.containsKey(labelHash) && persistentState.size() >= Config.PERSISTENT_STATE_MAX_PROCEDURES) {
-                organism.instructionFailed("Persistent register store limit exceeded");
-                return;
-            }
+        // Check limit before saving — avoid unnecessary snapshot + put if limit exceeded
+        if (persistentState != null
+                && !persistentState.containsKey(labelHash)
+                && persistentState.size() >= Config.PERSISTENT_STATE_MAX_PROCEDURES) {
+            organism.instructionFailed("Persistent register store limit exceeded");
+            return;
+        }
 
+        // The frame goes on the call stack before the persistent registers are switched, so that a
+        // full call stack fails the call with the caller's state untouched.
+        Organism.ProcFrame frame = new Organism.ProcFrame(labelHash, returnIp, ipBeforeFetch, savedRegisters);
+        if (!organism.pushCallFrame(frame)) {
+            return;
+        }
+
+        if (persistentState != null) {
             // Save caller's persistent register state
             persistentState.put(organism.getCurrentProcLabelHash(), organism.snapshotPersistentRegisters());
 
@@ -66,9 +72,6 @@ public final class ProcedureCallHandler {
                 organism.resetPersistentRegisters();
             }
         }
-
-        Organism.ProcFrame frame = new Organism.ProcFrame(labelHash, returnIp, ipBeforeFetch, savedRegisters);
-        organism.getCallStack().push(frame);
 
         // Always track which procedure is active (needed for correct save on RET after first dirty write)
         organism.setCurrentProcLabelHash(labelHash);

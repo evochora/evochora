@@ -666,4 +666,26 @@ public class VMArithmeticInstructionTest {
     void assertNoInstructionFailure() {
         assertThat(org.isInstructionFailed()).as("Instruction failed: " + org.getFailureReason()).isFalse();
     }
+
+    /**
+     * Verifies that ADDS fails with a data stack overflow when its two operands leave the stack at
+     * the depth limit, so that the sum finds no room and nothing is pushed.
+     */
+    @Test
+    @Tag("unit")
+    void testAddsDataStackOverflow() {
+        int filler = new Molecule(Config.TYPE_DATA, 1).toInt();
+        for (int i = 0; i < Config.DS_MAX_DEPTH + 2; i++) {
+            org.getDataStack().push(filler);
+        }
+
+        placeInstruction("ADDS");
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).isTrue();
+        assertThat(org.getFailureReason()).contains("Data stack overflow");
+        assertThat(org.getDataStack()).hasSize(Config.DS_MAX_DEPTH);
+
+        org.resetTickState();
+    }
 }

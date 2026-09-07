@@ -158,8 +158,8 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
 
         if (targetReg != -1) {
             writeOperand(targetReg, valueToStore);
-        } else {
-            organism.getDataStack().push(valueToStore);
+        } else if (!organism.pushData(valueToStore)) {
+            return;
         }
 
         environment.setMolecule(new Molecule(Config.TYPE_CODE, 0), targetCoordinate);
@@ -220,8 +220,8 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
             // Store the peeked value (or empty molecule if cell was empty)
             if (targetReg != -1) {
                 writeOperand(targetReg, valueToStore);
-            } else {
-                organism.getDataStack().push(valueToStore);
+            } else if (!organism.pushData(valueToStore)) {
+                return;
             }
 
             // Clear the cell (if it wasn't already empty)

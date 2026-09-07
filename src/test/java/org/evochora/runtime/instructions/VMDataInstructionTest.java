@@ -242,4 +242,40 @@ public class VMDataInstructionTest {
         assertThat((int[]) org.readOperand(0)).containsExactly(3, 4);
         assertThat((int[]) org.readOperand(1)).containsExactly(1, 2);
     }
+
+    /**
+     * Verifies that PUSH fails with a data stack overflow when the data stack is at its depth
+     * limit, and that the stack keeps the depth it had.
+     */
+    @Test
+    @Tag("unit")
+    void testPushDataStackOverflow() {
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 789).toInt());
+        int filler = new Molecule(Config.TYPE_DATA, 1).toInt();
+        for (int i = 0; i < Config.DS_MAX_DEPTH; i++) {
+            org.getDataStack().push(filler);
+        }
+
+        placeInstruction("PUSH", 0);
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).isTrue();
+        assertThat(org.getFailureReason()).contains("Data stack overflow");
+        assertThat(org.getDataStack()).hasSize(Config.DS_MAX_DEPTH);
+    }
+
+    /**
+     * Verifies that POP on an empty data stack fails with an underflow instead of reaching into
+     * the empty stack.
+     */
+    @Test
+    @Tag("unit")
+    void testPopOnEmptyDataStackFails() {
+        placeInstruction("POP", 0);
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).isTrue();
+        assertThat(org.getFailureReason()).contains("Data stack underflow");
+        assertThat(org.getDataStack()).isEmpty();
+    }
 }

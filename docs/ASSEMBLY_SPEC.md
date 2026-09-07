@@ -115,7 +115,7 @@ The Energy Register (`ER`) holds the organism's life force. Energy is consumed b
 
 * **Action-Specific Costs**: More complex actions may have additional costs based on their parameters. For example, `POKE` costs may depend on the molecule type and value being written, and `PEEK` costs may depend on the molecule type and ownership status. These costs are configured via thermodynamic policies.
 
-* **Error Penalty**: An invalid operation (like dividing by zero or a stack underflow) will cause the instruction to fail and incur an additional energy penalty, which is configurable in the simulation configuration.
+* **Error Penalty**: An invalid operation (like dividing by zero, or a stack underflow or overflow) will cause the instruction to fail and incur an additional energy penalty, which is configurable in the simulation configuration.
 
 * **Gaining Energy**: Organisms can replenish their energy by consuming `ENERGY` molecules from the environment using the `PEEK` instruction.
 

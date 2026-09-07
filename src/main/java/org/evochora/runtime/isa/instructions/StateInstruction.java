@@ -234,7 +234,7 @@ public class StateInstruction extends Instruction {
 
     private void handleNrg(String opName, List<Operand> operands) {
         if ("NRGS".equals(opName)) {
-            organism.getDataStack().push(new Molecule(Config.TYPE_DATA, organism.getEr()).toInt());
+            organism.pushData(new Molecule(Config.TYPE_DATA, organism.getEr()).toInt());
         } else {
             if (operands.size() != 1) { organism.instructionFailed("Invalid operands for NRG."); return; }
             int targetReg = operands.get(0).rawSourceId();
@@ -244,7 +244,7 @@ public class StateInstruction extends Instruction {
 
     private void handleNtr(String opName, List<Operand> operands) {
         if ("NTRS".equals(opName)) {
-            organism.getDataStack().push(new Molecule(Config.TYPE_DATA, organism.getSr()).toInt());
+            organism.pushData(new Molecule(Config.TYPE_DATA, organism.getSr()).toInt());
         } else {
             if (operands.size() != 1) { organism.instructionFailed("Invalid operands for NTR."); return; }
             int targetReg = operands.get(0).rawSourceId();
@@ -352,7 +352,7 @@ public class StateInstruction extends Instruction {
         int upperBound = org.evochora.runtime.model.Molecule.fromInt(ni).toScalarValue();
         if (upperBound <= 0) { organism.instructionFailed("RNDS upper bound must be > 0."); return; }
         int v = organism.getRandom().nextInt(upperBound);
-        organism.getDataStack().push(new Molecule(Config.TYPE_DATA, v).toInt());
+        organism.pushData(new Molecule(Config.TYPE_DATA, v).toInt());
     }
 
     private void handleRbit(String opName, List<Operand> operands) {
@@ -370,7 +370,7 @@ public class StateInstruction extends Instruction {
             Molecule srcMol = org.evochora.runtime.model.Molecule.fromInt((Integer) srcObj);
             int srcMask = srcMol.toScalarValue() & maskAll;
             int resultMask = chooseRandomSetBitMask(srcMask);
-            organism.getDataStack().push(new Molecule(srcMol.type(), resultMask).toInt());
+            organism.pushData(new Molecule(srcMol.type(), resultMask).toInt());
             return;
         }
 
@@ -526,7 +526,7 @@ public class StateInstruction extends Instruction {
         int[] target = organism.getTargetCoordinate(organism.getActiveDp(), vector, environment);
         Molecule s = environment.getMolecule(target);
         if (opName.endsWith("S")) {
-            organism.getDataStack().push(s.toInt());
+            organism.pushData(s.toInt());
         } else {
             writeOperand(targetReg, s.toInt());
         }
@@ -557,7 +557,7 @@ public class StateInstruction extends Instruction {
         for (int i = 0; i < currentIp.length; i++) {
             delta[i] = currentIp[i] - initialPosition[i];
         }
-        organism.getDataStack().push(delta);
+        organism.pushData(delta);
     }
 
     private void handleDifs() {
@@ -567,7 +567,7 @@ public class StateInstruction extends Instruction {
         for (int i = 0; i < ip.length; i++) {
             delta[i] = dp[i] - ip[i];
         }
-        organism.getDataStack().push(delta);
+        organism.pushData(delta);
     }
 
     private void handleActiveDp(String opName, List<Operand> operands) {
@@ -628,7 +628,7 @@ public class StateInstruction extends Instruction {
         }
 
         if ("SPNS".equals(opName)) {
-            organism.getDataStack().push(new Molecule(Config.TYPE_DATA, mask).toInt());
+            organism.pushData(new Molecule(Config.TYPE_DATA, mask).toInt());
         } else {
             if (operands.size() != 1) { organism.instructionFailed("SPNR requires one destination register."); return; }
             int dest = operands.get(0).rawSourceId();
@@ -685,7 +685,7 @@ public class StateInstruction extends Instruction {
         }
 
         if (toStack) {
-            organism.getDataStack().push(new Molecule(Config.TYPE_DATA, mask).toInt());
+            organism.pushData(new Molecule(Config.TYPE_DATA, mask).toInt());
         } else {
             writeOperand(destReg, new Molecule(Config.TYPE_DATA, mask).toInt());
         }
@@ -705,7 +705,7 @@ public class StateInstruction extends Instruction {
                 organism.instructionFailed("GDVS expects no operands."); 
                 return; 
             }
-            organism.getDataStack().push(currentDv);
+            organism.pushData(currentDv);
         } else {
             // GDVR
             if (operands.size() != 1) { 
@@ -783,7 +783,7 @@ public class StateInstruction extends Instruction {
                 organism.instructionFailed("GMRS expects no operands.");
                 return;
             }
-            organism.getDataStack().push(result.toInt());
+            organism.pushData(result.toInt());
         } else {
             // GMR - register variant
             if (operands.size() != 1) {

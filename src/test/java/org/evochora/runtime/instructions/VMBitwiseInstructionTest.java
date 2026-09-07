@@ -622,4 +622,24 @@ public class VMBitwiseInstructionTest {
         assertThat(org.getFailureReason()).contains("Shift amount");
         assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_ENERGY, 1).toInt());
     }
+
+    /**
+     * Verifies that NOTS fails with a data stack overflow when its operand leaves the stack at the
+     * depth limit, so that the result finds no room and nothing is pushed.
+     */
+    @Test
+    @Tag("unit")
+    void testNotsDataStackOverflow() {
+        int filler = new Molecule(Config.TYPE_DATA, 1).toInt();
+        for (int i = 0; i < Config.DS_MAX_DEPTH + 1; i++) {
+            org.getDataStack().push(filler);
+        }
+
+        placeInstruction("NOTS");
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).isTrue();
+        assertThat(org.getFailureReason()).contains("Data stack overflow");
+        assertThat(org.getDataStack()).hasSize(Config.DS_MAX_DEPTH);
+    }
 }

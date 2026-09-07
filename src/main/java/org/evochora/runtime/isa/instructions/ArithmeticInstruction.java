@@ -201,7 +201,7 @@ public class ArithmeticInstruction extends Instruction {
                     return;
                 }
             } else {
-                organism.getDataStack().push(result);
+                organism.pushData(result);
             }
 
         } catch (NoSuchElementException e) {
@@ -226,7 +226,7 @@ public class ArithmeticInstruction extends Instruction {
                     case "CRSS" -> cross2d(v1, v2);
                     default -> 0;
                 };
-                organism.getDataStack().push(new Molecule(Config.TYPE_DATA, result).toInt());
+                organism.pushData(new Molecule(Config.TYPE_DATA, result).toInt());
                 return;
             }
 
@@ -301,7 +301,7 @@ public class ArithmeticInstruction extends Instruction {
                 return;
             }
         } else { // Stack variant
-            organism.getDataStack().push(result);
+            organism.pushData(result);
         }
     }
 
@@ -353,7 +353,7 @@ public class ArithmeticInstruction extends Instruction {
                 return;
             }
         } else { // Stack variant
-            organism.getDataStack().push(result);
+            organism.pushData(result);
         }
     }
 

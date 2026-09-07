@@ -261,7 +261,7 @@ public class VMLocationInstructionTest {
         sim.tick();
 
         assertThat(org.isInstructionFailed()).isTrue();
-        assertThat(org.getFailureReason()).contains("Location Stack Overflow");
+        assertThat(org.getFailureReason()).contains("Location stack overflow");
         assertThat(ls.size()).isEqualTo(Config.LOCATION_STACK_MAX_DEPTH);
     }
 
@@ -280,7 +280,7 @@ public class VMLocationInstructionTest {
         sim.tick();
 
         assertThat(org.isInstructionFailed()).isTrue();
-        assertThat(org.getFailureReason()).contains("Location Stack Overflow");
+        assertThat(org.getFailureReason()).contains("Location stack overflow");
         assertThat(ls.size()).isEqualTo(Config.LOCATION_STACK_MAX_DEPTH);
     }
 
@@ -301,7 +301,7 @@ public class VMLocationInstructionTest {
         sim.tick();
 
         assertThat(org.isInstructionFailed()).isTrue();
-        assertThat(org.getFailureReason()).contains("Location Stack Overflow");
+        assertThat(org.getFailureReason()).contains("Location stack overflow");
         assertThat(ls.size()).isEqualTo(Config.LOCATION_STACK_MAX_DEPTH);
     }
 
@@ -768,7 +768,7 @@ public class VMLocationInstructionTest {
         sim.tick();
 
         assertThat(org.isInstructionFailed()).isTrue();
-        assertThat(org.getFailureReason()).contains("Location Stack Overflow");
+        assertThat(org.getFailureReason()).contains("Location stack overflow");
         assertThat(ls.size()).isEqualTo(Config.LOCATION_STACK_MAX_DEPTH);
     }
 
@@ -877,5 +877,29 @@ public class VMLocationInstructionTest {
 
         assertThat(org.isInstructionFailed()).isTrue();
         assertThat(org.getFailureReason()).contains("Invalid register ID");
+    }
+
+    /**
+     * Verifies that LSDS fails with a data stack overflow when the data stack is at its depth
+     * limit, and that the location stack still holds the vector it would have moved.
+     */
+    @Test
+    @Tag("unit")
+    void testLsdsDataStackOverflow() {
+        Deque<int[]> ls = org.getLocationStack();
+        int[] vec = new int[]{3, 4};
+        ls.push(vec);
+        int filler = new Molecule(Config.TYPE_DATA, 1).toInt();
+        for (int i = 0; i < Config.DS_MAX_DEPTH; i++) {
+            org.getDataStack().push(filler);
+        }
+
+        placeInstruction(org, "LSDS");
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).isTrue();
+        assertThat(org.getFailureReason()).contains("Data stack overflow");
+        assertThat(org.getDataStack()).hasSize(Config.DS_MAX_DEPTH);
+        assertThat(ls).containsExactly(vec);
     }
 }
