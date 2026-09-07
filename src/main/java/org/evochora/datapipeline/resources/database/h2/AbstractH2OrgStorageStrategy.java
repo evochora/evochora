@@ -109,18 +109,21 @@ public abstract class AbstractH2OrgStorageStrategy implements IH2OrgStorageStrat
             "MERGE INTO organism_tick_stats (tick_number, total_organisms_created) "
             + "KEY (tick_number) VALUES (?, ?)";
 
+    /**
+     * SQL for the static organism data, written by {@link #addOrganismMetadataBatch}.
+     * <p>
+     * Its columns are exactly those of {@link #createOrganismsTable(Statement)}, which is why both
+     * live here: a column added to the table without a place in this statement would never be
+     * written.
+     */
+    private static final String ORGANISMS_MERGE_SQL =
+            "MERGE INTO organisms ("
+            + "organism_id, parent_id, birth_tick, program_id, initial_position, genome_hash, "
+            + "generation, parent_genome_hash"
+            + ") KEY (organism_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+
     /** Per-connection sessions (thread-safe for competing consumers sharing this strategy instance). */
     private final ConcurrentHashMap<Connection, StreamingSession> sessions = new ConcurrentHashMap<>();
-
-    /**
-     * Returns the SQL string used for the organisms (static metadata) MERGE statement
-     * during streaming writes.
-     * <p>
-     * Called once per connection during lazy initialization of {@link StreamingSession}.
-     *
-     * @return SQL string for MERGE operation on organisms table
-     */
-    protected abstract String getStreamOrganismsMergeSql();
 
     /**
      * Returns the SQL string used for the per-tick state MERGE statement
@@ -150,7 +153,7 @@ public abstract class AbstractH2OrgStorageStrategy implements IH2OrgStorageStrat
             StreamingSession session = sessions.computeIfAbsent(conn, c -> {
                 try {
                     return new StreamingSession(
-                            c.prepareStatement(getStreamOrganismsMergeSql()),
+                            c.prepareStatement(ORGANISMS_MERGE_SQL),
                             c.prepareStatement(getStreamStatesMergeSql()),
                             c.prepareStatement(TICK_STATS_MERGE_SQL),
                             new HashSet<>()
@@ -210,6 +213,33 @@ public abstract class AbstractH2OrgStorageStrategy implements IH2OrgStorageStrat
                 stmt.addBatch();
             }
         }
+    }
+
+    /**
+     * Creates the static organism data table shared by all organism storage strategies.
+     * <p>
+     * One row per organism of the run, holding what does not change over its life. The per-tick
+     * data is what a strategy lays out differently; this table is the same for all of them, so it
+     * is defined here together with {@link #ORGANISMS_MERGE_SQL}, which writes it.
+     *
+     * @param stmt Statement on a connection with the run schema already set
+     * @throws SQLException if the DDL fails for a reason other than the object already existing
+     */
+    protected void createOrganismsTable(Statement stmt) throws SQLException {
+        H2SchemaUtil.executeDdlIfNotExists(
+            stmt,
+            "CREATE TABLE IF NOT EXISTS organisms (" +
+            "  organism_id INT PRIMARY KEY," +
+            "  parent_id INT NULL," +
+            "  birth_tick BIGINT NOT NULL," +
+            "  program_id TEXT NOT NULL," +
+            "  initial_position BYTEA NOT NULL," +
+            "  genome_hash BIGINT DEFAULT 0," +
+            "  generation INT DEFAULT 0," +
+            "  parent_genome_hash BIGINT NULL" +
+            ")",
+            "organisms"
+        );
     }
 
     /**

@@ -70,13 +70,6 @@ import com.typesafe.config.Config;
  */
 public class RowPerOrganismStrategy extends AbstractH2OrgStorageStrategy {
 
-    // Cached SQL strings (immutable after construction)
-    private static final String ORGANISMS_MERGE_SQL =
-            "MERGE INTO organisms (" +
-                    "organism_id, parent_id, birth_tick, program_id, initial_position, genome_hash, " +
-                    "generation, parent_genome_hash" +
-                    ") KEY (organism_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
-
     private static final String STATES_MERGE_SQL =
             "MERGE INTO organism_states (" +
                     "tick_number, organism_id, energy, ip, dv, data_pointers, active_dp_index, runtime_state_blob, entropy, molecule_marker" +
@@ -94,21 +87,7 @@ public class RowPerOrganismStrategy extends AbstractH2OrgStorageStrategy {
     @Override
     public void createTables(Connection conn) throws SQLException {
         try (Statement stmt = conn.createStatement()) {
-            // Static organism metadata table (same as SingleBlobOrgStrategy)
-            H2SchemaUtil.executeDdlIfNotExists(
-                    stmt,
-                    "CREATE TABLE IF NOT EXISTS organisms (" +
-                            "  organism_id INT PRIMARY KEY," +
-                            "  parent_id INT NULL," +
-                            "  birth_tick BIGINT NOT NULL," +
-                            "  program_id TEXT NOT NULL," +
-                            "  initial_position BYTEA NOT NULL," +
-                            "  genome_hash BIGINT DEFAULT 0," +
-                            "  generation INT DEFAULT 0," +
-                            "  parent_genome_hash BIGINT NULL" +
-                            ")",
-                    "organisms"
-            );
+            createOrganismsTable(stmt);
 
             // Per-tick organism state table (row-per-organism)
             H2SchemaUtil.executeDdlIfNotExists(
@@ -147,11 +126,6 @@ public class RowPerOrganismStrategy extends AbstractH2OrgStorageStrategy {
     // ========================================================================
     // Streaming write methods (per-tick addBatch / commit)
     // ========================================================================
-
-    @Override
-    protected String getStreamOrganismsMergeSql() {
-        return ORGANISMS_MERGE_SQL;
-    }
 
     @Override
     protected String getStreamStatesMergeSql() {
