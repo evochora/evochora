@@ -222,9 +222,9 @@ Clade membership is a proxy; the mutation is molecules in the world. Via the nod
   coordinates are `(initial + relative + size) % size`.
   `moleculeType` carries the `Config` type constant, i.e. the type bits at their position in the
   packed molecule (ENERGY is `2 << 20` = 2097152). The `moleculeTypes` map of
-  `/visualizer/api/simulations/{runId}/metadata` is keyed by exactly these values — look the type
-  up there, never normalize it by hand. A CODE cell's `moleculeValue` is its opcode; the same
-  metadata response carries the `opcodes` map.
+  `/visualizer/api/simulation/metadata?runId={runId}` is keyed by exactly these values — look
+  the type up there, never normalize it by hand. A CODE cell's `moleculeValue` is its opcode; the
+  same metadata response carries the `opcodes` map.
   Molecules with `marker` ≠ 0 are staged for handover to a child at the next reproduction and are
   not part of the finished body — drop them when reading a genome, together with the STATE cells,
   which the organism wrote for itself and which are outside the genome.
