@@ -12,15 +12,20 @@ import * as StackedAreaChart from './StackedAreaChart.js';
  * choice is therefore made while looking - clicking a band replaces it with its child clades,
  * leaving its siblings as they are, so a cascade of sweeps can be followed one level at a time.
  *
- * The chart reads two tables: its own rows of `(tick, genome_hash, count)` and, as a companion,
- * the lineage rows of `(genome_hash, parent_genome_hash, first_birth_tick)`. Genome hashes arrive
- * as text, because 64 bits do not survive a JavaScript number.
+ * The chart reads three tables: its own rows of `(tick, genome_hash, count)` and two companions,
+ * the lineage rows of `(genome_hash, parent_genome_hash, first_birth_tick)` and the mutation
+ * summary, one row per mutation event of a birth. Which companion is which is read from the
+ * visualization config, where the plugin writes the metric ids under `lineageMetric` and
+ * `causeMetric`. Genome hashes arrive as text, because 64 bits do not survive a JavaScript number.
  *
  * @module CladeAreaChart
  */
 
 /** Label of the band collecting the clades too small to get one of their own. */
 const OTHER = 'other';
+
+/** What a band says when its genome was founded by no mutation plugin. */
+const NO_EVENT = 'no plugin event';
 
 /**
  * Builds the parent lookup of the lineage.
@@ -266,18 +271,95 @@ function shortLabel(genome) {
 }
 
 /**
+ * Whether one carrier was born before another, the organism id deciding a tie.
+ *
+ * @param {{birth: number, organism: number}} one - A carrier
+ * @param {{birth: number, organism: number}} other - The carrier to place it against
+ * @returns {boolean} Whether `one` comes first
+ */
+function bornBefore(one, other) {
+    return one.birth !== other.birth ? one.birth < other.birth : one.organism < other.organism;
+}
+
+/**
+ * Collects, per genome, the mutation events of the organism that first carried it.
+ *
+ * A genome's founding mutation is what its first carrier received at birth. The summary is read
+ * row by row rather than condensed by a query: grouping by genome hash is a hash aggregation over
+ * an unsorted column, which the browser's DuckDB build does not survive, while the table carries
+ * one row per mutation event and is walked here in one pass. A genome that arose more than once
+ * keeps the earliest birth, and two carriers born in the same tick are decided by organism id, so
+ * that one founding is described and not a mixture of two.
+ *
+ * @param {Array<Object>} summaryRows - Rows with genome_hash, birth_tick, organism_id, event_index,
+ *        kind, cell_count, position
+ * @returns {Map<string, Array<Object>>} Genome to the events of its first carrier
+ */
+function foundingEvents(summaryRows) {
+    const founder = new Map();
+    const events = new Map();
+
+    for (const row of summaryRows) {
+        const genome = row.genome_hash;
+        if (genome == null) continue;
+
+        const carrier = {
+            birth: Number(row.birth_tick ?? 0),
+            organism: Number(row.organism_id ?? 0)
+        };
+        const known = founder.get(genome);
+        if (known && bornBefore(known, carrier)) {
+            continue;
+        }
+        if (!known || bornBefore(carrier, known)) {
+            founder.set(genome, carrier);
+            events.set(genome, []);
+        }
+        events.get(genome).push(row);
+    }
+
+    return events;
+}
+
+/**
+ * Names the mutation a genome was founded by.
+ *
+ * Events that wrote no cell - the label mask, which changes every label of a newborn by the same
+ * amount - changed nothing and are no cause, so a genome with only such events reads like one with
+ * no event at all: it arose from something other than a mutation plugin.
+ *
+ * @param {Array<Object>|undefined} events - The events of the genome's first carrier
+ * @returns {string} What founded the genome, per event in the order the plugins reported them
+ */
+function causeOf(events) {
+    const withCells = (events || []).filter(event => Number(event.cell_count ?? 0) > 0);
+    if (withCells.length === 0) {
+        return NO_EVENT;
+    }
+    return withCells
+        .sort((a, b) => Number(a.event_index ?? 0) - Number(b.event_index ?? 0))
+        .map(event => `${event.kind} ${Number(event.cell_count)} ${event.position}`)
+        .join(' + ');
+}
+
+/**
  * Builds the labels of the bands, marking those that stand for carriers only.
  *
+ * A label carries the genome and what founded it, so that the legend and the tooltip - which reads
+ * the same label - say what started the band without a second place to look.
+ *
  * @param {{clades: Set<string>, selves: Set<string>}} bands - Bands to label
+ * @param {Map<string, Array<Object>>} founding - Genome to the events of its first carrier
  * @returns {Map<string, string>} Band key to label
  */
-function labelBands(bands) {
+function labelBands(bands, founding) {
     const labels = new Map();
     for (const genome of bands.clades) {
-        labels.set(genome, shortLabel(genome));
+        labels.set(genome, `${shortLabel(genome)} · ${causeOf(founding.get(genome))}`);
     }
     for (const genome of bands.selves) {
-        labels.set(genome, `${shortLabel(genome)} (itself)`);
+        labels.set(genome,
+            `${shortLabel(genome)} (itself) · ${causeOf(founding.get(genome))}`);
     }
     return labels;
 }
@@ -359,15 +441,21 @@ function bandAt(chart, x, y) {
  *
  * @param {HTMLCanvasElement} canvas - Canvas element
  * @param {Array<Object>} data - Rows with tick, genome_hash, count
- * @param {Object} config - Visualization config; {@code maxBands} caps the named bands (default 8)
+ * @param {Object} config - Visualization config; {@code maxBands} caps the named bands (default 8),
+ *        {@code lineageMetric} and {@code causeMetric} name the companions to read
  * @param {Object} context - Render context with companion rows and view state
  * @returns {Chart|null} Chart.js instance, or null without a lineage to group by
  */
 export function render(canvas, data, config, context = {}) {
-    const lineage = context.companion;
+    const companions = context.companion || {};
+    const lineage = companions[config.lineageMetric];
     if (!lineage || lineage.length === 0) {
         return null;
     }
+
+    // A band still says which genome it is without the summary, so a missing one costs the cause
+    // and not the chart
+    const founding = foundingEvents(companions[config.causeMetric] || []);
 
     const onViewStateChange = context.onViewStateChange || (() => {});
 
@@ -384,7 +472,7 @@ export function render(canvas, data, config, context = {}) {
     }
 
     const bands = bandsFor(parents, children, openPath);
-    const labels = labelBands(bands);
+    const labels = labelBands(bands, founding);
 
     const genomes = new Set(data.map(row => row.genome_hash));
     const bandOf = mapToBands(genomes, parents, bands);

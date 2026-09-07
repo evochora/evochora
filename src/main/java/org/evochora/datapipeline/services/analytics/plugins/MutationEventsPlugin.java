@@ -15,7 +15,6 @@ import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.memory.MemoryEstimate;
 import org.evochora.datapipeline.api.memory.SimulationParameters;
 import org.evochora.datapipeline.utils.MetadataConfigHelper;
-import org.evochora.runtime.model.EnvironmentProperties;
 
 /**
  * Records what the mutation plugins did to each newborn, one row per changed molecule.
@@ -70,13 +69,10 @@ public class MutationEventsPlugin extends AbstractAnalyticsPlugin {
         .build();
 
     /**
-     * The world the run took place in, needed to turn a flat index into a coordinate. Derived once
+     * Turns the flat index of a written cell into an offset from the newborn's origin. Derived once
      * from the run metadata; {@code null} until a context carrying metadata has been supplied.
      */
-    private EnvironmentProperties environmentProperties;
-
-    /** Reused across rows so that turning a flat index into a coordinate allocates nothing. */
-    private int[] cellCoordinate;
+    private RelativeCellPositions positions;
 
     @Override
     protected Fixed fixedSamplingInterval() {
@@ -101,10 +97,8 @@ public class MutationEventsPlugin extends AbstractAnalyticsPlugin {
     public void initialize(IAnalyticsContext context) {
         super.initialize(context);
         if (context != null) {
-            this.environmentProperties = new EnvironmentProperties(
-                MetadataConfigHelper.getEnvironmentShape(context.getMetadata()),
-                MetadataConfigHelper.isEnvironmentToroidal(context.getMetadata()));
-            this.cellCoordinate = new int[environmentProperties.getDimensions()];
+            this.positions = new RelativeCellPositions(metricId,
+                MetadataConfigHelper.environmentProperties(context.getMetadata()));
         }
     }
 
@@ -164,30 +158,11 @@ public class MutationEventsPlugin extends AbstractAnalyticsPlugin {
      *         organism states an origin that does not fit that world
      */
     private String relativePosition(int flatIndex, OrganismState org) {
-        if (environmentProperties == null) {
+        if (positions == null) {
             throw new IllegalStateException("Metric '" + metricId + "': the world shape is "
                 + "unavailable because the plugin was initialized without an analytics context.");
         }
-        if (org.getInitialPosition().getComponentsCount() != cellCoordinate.length) {
-            throw new IllegalStateException("Metric '" + metricId + "': organism "
-                + org.getOrganismId() + " states an initial position with "
-                + org.getInitialPosition().getComponentsCount() + " components in a "
-                + cellCoordinate.length + "-dimensional world, so no offset can be computed for it");
-        }
-        environmentProperties.flatIndexToCoordinates(flatIndex, cellCoordinate);
-        StringBuilder text = new StringBuilder(2 + 4 * cellCoordinate.length);
-        text.append('[');
-        for (int d = 0; d < cellCoordinate.length; d++) {
-            if (d > 0) {
-                text.append(',');
-            }
-            text.append(EnvironmentProperties.relativeOffset(
-                cellCoordinate[d],
-                org.getInitialPosition().getComponents(d),
-                environmentProperties.getDimensionSize(d),
-                environmentProperties.isToroidal()));
-        }
-        return text.append(']').toString();
+        return positions.jsonOffsetOf(flatIndex, org);
     }
 
     /**
