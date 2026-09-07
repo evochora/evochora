@@ -344,6 +344,50 @@ message MutationEvent {
   repeated sint32 dv = 7 [packed = true];
 }
 
+// One mutation as the organism table holds it, with the cells placed relative to the organism.
+//
+// The same observation as MutationEvent, converted once by the indexer that stores it: a mutation
+// an ancestor received sits at the same offset from every descendant's origin, so an offset is
+// what lets the events of a whole lineage be laid over one displayed body.
+message StoredMutationEvent {
+  // Fully qualified class name of the plugin that reported this event
+  // Example: "org.evochora.runtime.worldgen.GeneSubstitutionPlugin"
+  string plugin_class = 1;
+
+  // Short name the plugin chose for what it did, for example "substitution".
+  string kind = 2;
+
+  // The touched cells relative to the organism's initial_position: dimensions components per
+  // cell, cell after cell, in the order the plugin wrote them. Each component is the offset
+  // along the shortest way around the world, the rule the genome hash places its molecules by,
+  // so a position here is comparable with the positions the hash was built from.
+  repeated sint32 relative_coordinates = 3 [packed = true];
+
+  // The packed molecule at each cell before the write, one per cell.
+  // Same encoding as CellDataColumns.molecule_data.
+  repeated int32 old_values = 4 [packed = true];
+
+  // The packed molecule at each cell after the write, one per cell.
+  // Same encoding as CellDataColumns.molecule_data.
+  repeated int32 new_values = 5 [packed = true];
+
+  // Numbers whose meaning the reporting plugin documents.
+  repeated int64 params = 6 [packed = true];
+
+  // The newborn's direction vector while the plugin ran, one component per world dimension.
+  repeated sint32 dv = 7 [packed = true];
+}
+
+// Every mutation one organism received at its birth, as stored in the organism table.
+message StoredMutationEvents {
+  // Number of world dimensions, which is how many components of relative_coordinates make one
+  // cell. Carried here so that the message can be read without the run's metadata.
+  int32 dimensions = 1;
+
+  // The events in the order the plugins reported them.
+  repeated StoredMutationEvent events = 2;
+}
+
 // Aggregated runtime state for organism indexing.
 // Used by OrganismIndexer to store sidebar-only data in a single BLOB.
 message OrganismRuntimeState {

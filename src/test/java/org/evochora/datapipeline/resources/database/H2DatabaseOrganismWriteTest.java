@@ -89,10 +89,10 @@ class H2DatabaseOrganismWriteTest {
             database.doCreateOrganismTables(conn);
 
             // First write
-            database.doWriteOrganismTick(conn, tick);
+            database.doWriteOrganismTick(conn, tick, java.util.Map.of());
             database.doCommitOrganismWrites(conn);
             // Idempotent second write
-            database.doWriteOrganismTick(conn, tick);
+            database.doWriteOrganismTick(conn, tick, java.util.Map.of());
             database.doCommitOrganismWrites(conn);
 
             // organisms: single row

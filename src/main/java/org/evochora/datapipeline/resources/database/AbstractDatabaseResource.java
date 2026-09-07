@@ -262,7 +262,7 @@ public abstract class AbstractDatabaseResource extends AbstractResource
     /**
      * Adds organism data from a single tick to the write session via the storage strategy.
      * <p>
-     * <strong>Capability:</strong> {@link org.evochora.datapipeline.api.resources.database.IOrganismDataWriter#writeOrganismTick(org.evochora.datapipeline.api.contracts.TickData)}
+     * <strong>Capability:</strong> {@link org.evochora.datapipeline.api.resources.database.IOrganismDataWriter#writeOrganismTick(org.evochora.datapipeline.api.contracts.TickData, java.util.Map)}
      * <p>
      * <strong>Transaction Handling:</strong> This method does NOT commit. The caller
      * accumulates multiple ticks and calls {@link #doCommitOrganismWrites(Object)}
@@ -270,10 +270,13 @@ public abstract class AbstractDatabaseResource extends AbstractResource
      *
      * @param connection Database connection (from {@link #acquireDedicatedConnection()})
      * @param tick Tick data containing organism states
+     * @param birthMutations serialized mutation events per organism id, for the organisms of this
+     *                       tick that carry any; empty when none does
      * @throws Exception if batch addition fails
      */
     protected abstract void doWriteOrganismTick(Object connection,
-            org.evochora.datapipeline.api.contracts.TickData tick) throws Exception;
+            org.evochora.datapipeline.api.contracts.TickData tick,
+            java.util.Map<Integer, byte[]> birthMutations) throws Exception;
 
     /**
      * Commits all organism data accumulated via {@link #doWriteOrganismTick}.

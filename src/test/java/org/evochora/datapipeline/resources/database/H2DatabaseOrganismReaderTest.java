@@ -76,7 +76,7 @@ class H2DatabaseOrganismReaderTest {
 
         try (Connection conn = getConnectionWithSchema("run-reader-1")) {
             database.doCreateOrganismTables(conn);
-            database.doWriteOrganismTick(conn, tick);
+            database.doWriteOrganismTick(conn, tick, java.util.Map.of());
             database.doCommitOrganismWrites(conn);
         }
 
@@ -107,7 +107,7 @@ class H2DatabaseOrganismReaderTest {
 
         try (Connection conn = getConnectionWithSchema("run-reader-2")) {
             database.doCreateOrganismTables(conn);
-            database.doWriteOrganismTick(conn, tick);
+            database.doWriteOrganismTick(conn, tick, java.util.Map.of());
             database.doCommitOrganismWrites(conn);
         }
 
@@ -127,7 +127,7 @@ class H2DatabaseOrganismReaderTest {
 
         try (Connection conn = getConnectionWithSchema("run-total-1")) {
             database.doCreateOrganismTables(conn);
-            database.doWriteOrganismTick(conn, tick);
+            database.doWriteOrganismTick(conn, tick, java.util.Map.of());
             database.doCommitOrganismWrites(conn);
         }
 
@@ -145,7 +145,7 @@ class H2DatabaseOrganismReaderTest {
 
         try (Connection conn = getConnectionWithSchema("run-total-2")) {
             database.doCreateOrganismTables(conn);
-            database.doWriteOrganismTick(conn, extinction);
+            database.doWriteOrganismTick(conn, extinction, java.util.Map.of());
             database.doCommitOrganismWrites(conn);
         }
 
@@ -165,10 +165,10 @@ class H2DatabaseOrganismReaderTest {
 
         try (Connection conn = getConnectionWithSchema("run-total-3")) {
             database.doCreateOrganismTables(conn);
-            database.doWriteOrganismTick(conn, tick);
+            database.doWriteOrganismTick(conn, tick, java.util.Map.of());
             database.doCommitOrganismWrites(conn);
             // At-least-once delivery: the same chunk can arrive again
-            database.doWriteOrganismTick(conn, tick);
+            database.doWriteOrganismTick(conn, tick, java.util.Map.of());
             database.doCommitOrganismWrites(conn);
         }
 
@@ -190,7 +190,7 @@ class H2DatabaseOrganismReaderTest {
 
         try (Connection conn = getConnectionWithSchema("run-total-overflow")) {
             database.doCreateOrganismTables(conn);
-            database.doWriteOrganismTick(conn, tick);
+            database.doWriteOrganismTick(conn, tick, java.util.Map.of());
             database.doCommitOrganismWrites(conn);
 
             try (Statement stmt = conn.createStatement()) {
@@ -216,7 +216,7 @@ class H2DatabaseOrganismReaderTest {
 
         try (Connection conn = getConnectionWithSchema("run-total-4")) {
             database.doCreateOrganismTables(conn);
-            database.doWriteOrganismTick(conn, tick);
+            database.doWriteOrganismTick(conn, tick, java.util.Map.of());
             database.doCommitOrganismWrites(conn);
         }
 
@@ -242,7 +242,7 @@ class H2DatabaseOrganismReaderTest {
 
         try (Connection conn = getConnectionWithSchema("run-reader-static")) {
             database.doCreateOrganismTables(conn);
-            database.doWriteOrganismTick(conn, tick);
+            database.doWriteOrganismTick(conn, tick, java.util.Map.of());
             database.doCommitOrganismWrites(conn);
 
             // The summary must be answerable from the stored state alone. Emptying the static
@@ -298,7 +298,7 @@ class H2DatabaseOrganismReaderTest {
                     metadataJson.replace("'", "''") + "')");
 
             database.doCreateOrganismTables(conn);
-            database.doWriteOrganismTick(conn, tick);
+            database.doWriteOrganismTick(conn, tick, java.util.Map.of());
             database.doCommitOrganismWrites(conn);
             conn.commit();
         }

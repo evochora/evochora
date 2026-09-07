@@ -953,7 +953,7 @@ class EnvironmentControllerIntegrationTest {
             .setTickNumber(tick)
             .setSimulationRunId(runId)
             .addOrganisms(organism)
-            .build());
+            .build(), Map.of());
         writer.commitOrganismWrites();
         ((AutoCloseable) writer).close();
     }

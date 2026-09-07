@@ -1,6 +1,7 @@
 package org.evochora.datapipeline.services.indexers;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 
 import java.nio.file.Path;
@@ -8,7 +9,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import org.evochora.datapipeline.api.contracts.MutationEvent;
 import org.evochora.datapipeline.api.contracts.OrganismState;
+import org.evochora.datapipeline.api.contracts.StoredMutationEvent;
+import org.evochora.datapipeline.api.contracts.StoredMutationEvents;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.contracts.TickDelta;
@@ -24,6 +28,7 @@ import org.evochora.datapipeline.api.resources.topics.IResourceTopicReader;
 import org.evochora.datapipeline.resources.database.H2Database;
 import org.evochora.datapipeline.resources.database.OrganismDataWriterWrapper;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
+import org.evochora.runtime.model.EnvironmentProperties;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -145,6 +150,79 @@ class OrganismIndexerTest {
         indexer.callCommitProcessedChunks();
 
         // Then: no exception thrown
+    }
+
+    @Test
+    void storedMutationEvents_placeEveryCellRelativeToTheOrganism() {
+        // A world that wraps, and an organism close to its origin, so that a cell behind the wrap
+        // is a few cells away and not almost a world away
+        EnvironmentProperties props = new EnvironmentProperties(new int[]{100, 50}, true);
+        OrganismState org = OrganismState.newBuilder()
+            .setOrganismId(3)
+            .setInitialPosition(Vector.newBuilder().addComponents(2).addComponents(3).build())
+            .addBirthMutations(MutationEvent.newBuilder()
+                .setPluginClass("org.evochora.runtime.worldgen.GeneDuplicationPlugin")
+                .setKind("duplication")
+                .addCells(5 * 50 + 7)
+                .addCells(98 * 50 + 48)
+                .addOldValues(0).addOldValues(0)
+                .addNewValues(11).addNewValues(12)
+                .addParams(4711L)
+                .addDv(1).addDv(0))
+            .build();
+
+        StoredMutationEvents stored = OrganismIndexer.storedMutationEvents(props, org);
+
+        assertThat(stored.getDimensions()).isEqualTo(2);
+        assertThat(stored.getEventsCount()).isEqualTo(1);
+        StoredMutationEvent event = stored.getEvents(0);
+        assertThat(event.getPluginClass())
+            .isEqualTo("org.evochora.runtime.worldgen.GeneDuplicationPlugin");
+        assertThat(event.getKind()).isEqualTo("duplication");
+        // (5,7) lies three columns and four rows past the origin; (98,48) lies four columns and
+        // five rows before it, across the wrap
+        assertThat(event.getRelativeCoordinatesList()).containsExactly(3, 4, -4, -5);
+        assertThat(event.getOldValuesList()).containsExactly(0, 0);
+        assertThat(event.getNewValuesList()).containsExactly(11, 12);
+        assertThat(event.getParamsList()).containsExactly(4711L);
+        assertThat(event.getDvList()).containsExactly(1, 0);
+    }
+
+    @Test
+    void storedMutationEvents_keepAnEventThatChangedNoCell() {
+        // The label mask is recorded as an event without cells; it carries no position and must
+        // survive the conversion all the same
+        EnvironmentProperties props = new EnvironmentProperties(new int[]{100, 50}, true);
+        OrganismState org = OrganismState.newBuilder()
+            .setOrganismId(3)
+            .setInitialPosition(Vector.newBuilder().addComponents(2).addComponents(3).build())
+            .addBirthMutations(MutationEvent.newBuilder()
+                .setPluginClass("org.evochora.runtime.worldgen.LabelRewritePlugin")
+                .setKind("label-rewrite")
+                .addParams(0x2A))
+            .build();
+
+        StoredMutationEvents stored = OrganismIndexer.storedMutationEvents(props, org);
+
+        assertThat(stored.getEventsCount()).isEqualTo(1);
+        assertThat(stored.getEvents(0).getRelativeCoordinatesList()).isEmpty();
+        assertThat(stored.getEvents(0).getParamsList()).containsExactly(0x2AL);
+    }
+
+    @Test
+    void storedMutationEvents_refuseAnOriginOfTheWrongLength() {
+        // Reading fewer components would give offsets that look plausible and point somewhere else
+        EnvironmentProperties props = new EnvironmentProperties(new int[]{100, 50}, true);
+        OrganismState org = OrganismState.newBuilder()
+            .setOrganismId(3)
+            .setInitialPosition(Vector.newBuilder().addComponents(2).build())
+            .addBirthMutations(MutationEvent.newBuilder().setKind("substitution").addCells(0)
+                .addOldValues(1).addNewValues(2))
+            .build();
+
+        assertThatThrownBy(() -> OrganismIndexer.storedMutationEvents(props, org))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("initial position");
     }
 
     // ========================================================================

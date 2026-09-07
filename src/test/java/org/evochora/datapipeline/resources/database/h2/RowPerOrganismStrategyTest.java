@@ -14,6 +14,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.List;
+import java.util.Map;
 
 import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.TickData;
@@ -154,7 +155,7 @@ class RowPerOrganismStrategyTest {
         TickData tick = createTickWithOrganisms(1000L, 3);
 
         // When: Add tick and commit
-        strategy.addOrganismTick(mockConnection, tick);
+        strategy.addOrganismTick(mockConnection, tick, Map.of());
         strategy.commitOrganismWrites(mockConnection);
 
         // Then: addBatch for 3 organism metadata + 1 tick statistics + 3 state rows = 7
@@ -173,9 +174,9 @@ class RowPerOrganismStrategyTest {
         TickData tick3 = createTickWithOrganisms(1002L, 1);
 
         // When: Add all ticks and commit
-        strategy.addOrganismTick(mockConnection, tick1);
-        strategy.addOrganismTick(mockConnection, tick2);
-        strategy.addOrganismTick(mockConnection, tick3);
+        strategy.addOrganismTick(mockConnection, tick1, Map.of());
+        strategy.addOrganismTick(mockConnection, tick2, Map.of());
+        strategy.addOrganismTick(mockConnection, tick3, Map.of());
         strategy.commitOrganismWrites(mockConnection);
 
         // Then: addBatch for 3 unique organism metadata (deduped) + 3 tick statistics
@@ -193,7 +194,7 @@ class RowPerOrganismStrategyTest {
         when(mockPreparedStatement.executeBatch()).thenThrow(new SQLException("Database error"));
 
         TickData tick = createTickWithOrganisms(1000L, 1);
-        strategy.addOrganismTick(mockConnection, tick);
+        strategy.addOrganismTick(mockConnection, tick, Map.of());
 
         // When/Then: commitOrganismWrites should propagate SQLException
         assertThatThrownBy(() -> strategy.commitOrganismWrites(mockConnection))
@@ -212,8 +213,8 @@ class RowPerOrganismStrategyTest {
         TickData tick2 = TickData.newBuilder().setTickNumber(2L).addOrganisms(org1).build();
 
         // When: Add both ticks
-        strategy.addOrganismTick(mockConnection, tick1);
-        strategy.addOrganismTick(mockConnection, tick2);
+        strategy.addOrganismTick(mockConnection, tick1, Map.of());
+        strategy.addOrganismTick(mockConnection, tick2, Map.of());
         strategy.commitOrganismWrites(mockConnection);
 
         // Then: addBatch 1 (organism metadata, deduped) + 2 (tick statistics)
@@ -237,8 +238,8 @@ class RowPerOrganismStrategyTest {
                 .addOrganisms(org2).addOrganisms(org3).build(); // org2 appears again
 
         // When: Add both ticks
-        strategy.addOrganismTick(mockConnection, tick1);
-        strategy.addOrganismTick(mockConnection, tick2);
+        strategy.addOrganismTick(mockConnection, tick1, Map.of());
+        strategy.addOrganismTick(mockConnection, tick2, Map.of());
         strategy.commitOrganismWrites(mockConnection);
 
         // Then: 3 unique organism metadata + 2 tick statistics + 4 state rows (2+2)

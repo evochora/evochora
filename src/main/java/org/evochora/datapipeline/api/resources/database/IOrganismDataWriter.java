@@ -3,6 +3,7 @@ package org.evochora.datapipeline.api.resources.database;
 import org.evochora.datapipeline.api.contracts.TickData;
 
 import java.sql.SQLException;
+import java.util.Map;
 
 /**
  * Database capability for writing indexed organism data for a single simulation run.
@@ -21,7 +22,8 @@ import java.sql.SQLException;
  *   parent_id        INT      NULL,
  *   birth_tick       BIGINT   NOT NULL,
  *   program_id       TEXT     NOT NULL,
- *   initial_position BYTEA    NOT NULL
+ *   initial_position BYTEA    NOT NULL,
+ *   birth_mutations  BYTEA    NULL
  * );
  * </pre>
  * <ul>
@@ -92,9 +94,13 @@ public interface IOrganismDataWriter extends ISchemaAwareDatabase, AutoCloseable
      * per write session (one connection = one thread).
      *
      * @param tick Tick data containing organism states (must not be null)
+     * @param birthMutations serialized mutation events per organism id, for the organisms of this
+     *                       tick that carry any; empty when none does (must not be null). The
+     *                       caller derives them from the same tick, so that the row a mutation
+     *                       belongs to is written by the same call
      * @throws SQLException if batch addition fails
      */
-    void writeOrganismTick(TickData tick) throws SQLException;
+    void writeOrganismTick(TickData tick, Map<Integer, byte[]> birthMutations) throws SQLException;
 
     /**
      * Executes all accumulated batches from previous {@link #writeOrganismTick} calls

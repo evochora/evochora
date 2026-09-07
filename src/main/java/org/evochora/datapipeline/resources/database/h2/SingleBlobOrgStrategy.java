@@ -12,6 +12,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.OrganismStateList;
@@ -104,9 +105,11 @@ public class SingleBlobOrgStrategy extends AbstractH2OrgStorageStrategy {
      * handled by {@link AbstractH2OrgStorageStrategy#addOrganismMetadataBatch(AbstractH2OrgStorageStrategy.StreamingSession, TickData)}.
      */
     @Override
-    public void addOrganismTick(Connection conn, TickData tick) throws SQLException {
+    public void addOrganismTick(Connection conn, TickData tick, Map<Integer, byte[]> birthMutations)
+            throws SQLException {
         StreamingSession session = ensureStreamingSession(conn);
         addOrganismMetadataBatch(session, tick);
+        addBirthMutationsBatch(session, tick, birthMutations);
         addTickStatsBatch(session, tick);
 
         // Per-tick BLOB (all organisms serialized + compressed)

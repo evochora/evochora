@@ -560,12 +560,15 @@ public class H2Database extends AbstractDatabaseResource
      *
      * @param connection JDBC connection (cast to {@link Connection})
      * @param tick       Tick data containing organism states
+     * @param birthMutations serialized mutation events per organism id, for the organisms of this
+     *                       tick that carry any; empty when none does
      * @throws SQLException if batch addition fails
      */
     @Override
-    protected void doWriteOrganismTick(Object connection, TickData tick) throws Exception {
+    protected void doWriteOrganismTick(Object connection, TickData tick,
+            java.util.Map<Integer, byte[]> birthMutations) throws Exception {
         Connection conn = (Connection) connection;
-        orgStorageStrategy.addOrganismTick(conn, tick);
+        orgStorageStrategy.addOrganismTick(conn, tick, birthMutations);
     }
 
     /**

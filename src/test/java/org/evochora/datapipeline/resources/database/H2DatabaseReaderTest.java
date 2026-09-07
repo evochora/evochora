@@ -279,7 +279,7 @@ class H2DatabaseReaderTest {
                     .addOrganisms(orgState)
                     .build();
 
-            database.doWriteOrganismTick(conn, tick);
+            database.doWriteOrganismTick(conn, tick, java.util.Map.of());
             database.doCommitOrganismWrites(conn);
         }
 

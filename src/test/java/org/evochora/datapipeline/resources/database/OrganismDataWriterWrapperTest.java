@@ -94,7 +94,7 @@ class OrganismDataWriterWrapperTest {
         TickData tick = buildTickWithOrganisms(0L, 2);
 
         // When
-        wrapper.writeOrganismTick(tick);
+        wrapper.writeOrganismTick(tick, Map.of());
         wrapper.commitOrganismWrites();
 
         // Then
@@ -113,8 +113,8 @@ class OrganismDataWriterWrapperTest {
         TickData tick2 = buildTickWithOrganisms(100L, 2);
 
         // When
-        wrapper.writeOrganismTick(tick1);
-        wrapper.writeOrganismTick(tick2);
+        wrapper.writeOrganismTick(tick1, Map.of());
+        wrapper.writeOrganismTick(tick2, Map.of());
         wrapper.commitOrganismWrites();
 
         // Then
@@ -144,7 +144,7 @@ class OrganismDataWriterWrapperTest {
         TickData tick = buildTickWithOrganisms(0L, 1);
 
         // When: writeOrganismTick triggers ensureOrganismTables internally
-        wrapper.writeOrganismTick(tick);
+        wrapper.writeOrganismTick(tick, Map.of());
         wrapper.commitOrganismWrites();
 
         // Then

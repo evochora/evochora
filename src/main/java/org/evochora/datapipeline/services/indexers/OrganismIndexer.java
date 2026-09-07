@@ -1,19 +1,28 @@
 package org.evochora.datapipeline.services.indexers;
 
+import java.sql.SQLException;
 import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import org.evochora.datapipeline.api.contracts.MutationEvent;
+import org.evochora.datapipeline.api.contracts.OrganismState;
+import org.evochora.datapipeline.api.contracts.StoredMutationEvent;
+import org.evochora.datapipeline.api.contracts.StoredMutationEvents;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.contracts.TickDelta;
+import org.evochora.datapipeline.api.contracts.Vector;
 import org.evochora.datapipeline.api.memory.IMemoryEstimatable;
 import org.evochora.datapipeline.api.memory.MemoryEstimate;
 import org.evochora.datapipeline.api.memory.SimulationParameters;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.storage.ChunkFieldFilter;
 import org.evochora.datapipeline.api.resources.database.IResourceSchemaAwareOrganismDataWriter;
+import org.evochora.datapipeline.utils.MetadataConfigHelper;
+import org.evochora.runtime.model.EnvironmentProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -44,6 +53,12 @@ public class OrganismIndexer<ACK> extends AbstractBatchIndexer<ACK> implements I
     private static final Logger log = LoggerFactory.getLogger(OrganismIndexer.class);
 
     private final IResourceSchemaAwareOrganismDataWriter database;
+
+    /**
+     * The world the run took place in, needed to turn the flat index of a mutated cell into a
+     * coordinate. Derived from the run metadata in {@link #prepareTables(String)}.
+     */
+    private EnvironmentProperties environmentProperties;
 
     /**
      * Creates a new OrganismIndexer.
@@ -79,13 +94,14 @@ public class OrganismIndexer<ACK> extends AbstractBatchIndexer<ACK> implements I
     }
 
     /**
-     * Prepares organism tables in the current run schema.
+     * Prepares organism tables in the current run schema and derives the world of the run.
      *
      * @param runId Simulation run ID (schema already set by AbstractIndexer)
      * @throws Exception if preparation fails
      */
     @Override
     protected void prepareTables(String runId) throws Exception {
+        this.environmentProperties = MetadataConfigHelper.environmentProperties(getMetadata());
         database.createOrganismTables();
         log.debug("Organism tables prepared for run '{}'", runId);
     }
@@ -103,7 +119,7 @@ public class OrganismIndexer<ACK> extends AbstractBatchIndexer<ACK> implements I
     @Override
     protected void processChunk(TickDataChunk chunk) throws Exception {
         // Snapshot tick
-        database.writeOrganismTick(chunk.getSnapshot());
+        writeTick(chunk.getSnapshot());
 
         // Delta ticks (converted to TickData — the database needs the tick number, the organisms
         // and the running organism total, which it stores per tick rather than deriving it)
@@ -113,8 +129,103 @@ public class OrganismIndexer<ACK> extends AbstractBatchIndexer<ACK> implements I
                 .addAllOrganisms(delta.getOrganismsList())
                 .setTotalOrganismsCreated(delta.getTotalOrganismsCreated())
                 .build();
-            database.writeOrganismTick(deltaAsTick);
+            writeTick(deltaAsTick);
         }
+    }
+
+    /**
+     * Writes one tick, together with the mutation events of the organisms that carry any.
+     *
+     * @param tick the tick to write
+     * @throws SQLException if the write fails
+     */
+    private void writeTick(TickData tick) throws SQLException {
+        database.writeOrganismTick(tick, birthMutations(tick));
+    }
+
+    /**
+     * Converts the mutation events of this tick's organisms into the form the organism table
+     * holds, one serialized message per organism that carries any.
+     * <p>
+     * The conversion belongs here and not in the database: it needs the world of the run, which
+     * the indexer reads from the metadata, and the storage strategy knows only its options, a
+     * connection and the tick data. What crosses that seam is bytes.
+     *
+     * @param tick the tick whose organisms are examined
+     * @return the serialized events per organism id, empty when no organism of the tick carries any
+     * @throws IllegalStateException if an organism carries events before the world of the run is
+     *         known, which would leave every offset undefined
+     */
+    private Map<Integer, byte[]> birthMutations(TickData tick) {
+        Map<Integer, byte[]> converted = null;
+        for (OrganismState org : tick.getOrganismsList()) {
+            if (org.getBirthMutationsCount() == 0) {
+                continue;
+            }
+            if (environmentProperties == null) {
+                throw new IllegalStateException("Organism " + org.getOrganismId()
+                    + " carries mutation events, but the world of the run is unknown because the "
+                    + "tables were never prepared, so no offset can be computed for them");
+            }
+            if (converted == null) {
+                converted = new HashMap<>();
+            }
+            converted.put(org.getOrganismId(),
+                storedMutationEvents(environmentProperties, org).toByteArray());
+        }
+        return converted == null ? Map.of() : converted;
+    }
+
+    /**
+     * Places the mutation events of one organism relative to its own origin.
+     * <p>
+     * The runtime reports a written cell as the absolute flat index the plugin held. The stored
+     * form carries the offset from the organism's initial position instead, because a mutation an
+     * ancestor received sits at the same offset from every descendant's origin, which is what lets
+     * the events of a whole lineage be laid over one displayed body. The offset is taken along the
+     * shortest way around the world, by the rule the genome hash is built with, so that the
+     * positions of an event and of the hash it accompanies agree.
+     *
+     * @param environmentProperties the world the run took place in
+     * @param org the organism state carrying the events and its initial position
+     * @return the events with their cells placed relative to the organism
+     * @throws IllegalStateException if the organism states an origin that does not fit that world
+     */
+    static StoredMutationEvents storedMutationEvents(EnvironmentProperties environmentProperties,
+                                                     OrganismState org) {
+        int dimensions = environmentProperties.getDimensions();
+        Vector origin = org.getInitialPosition();
+        if (origin.getComponentsCount() != dimensions) {
+            throw new IllegalStateException("Organism " + org.getOrganismId()
+                + " states an initial position with " + origin.getComponentsCount()
+                + " components in a " + dimensions + "-dimensional world, so no offset can be "
+                + "computed for its mutation events");
+        }
+
+        StoredMutationEvents.Builder events = StoredMutationEvents.newBuilder()
+            .setDimensions(dimensions);
+        int[] cellCoordinate = new int[dimensions];
+        for (MutationEvent event : org.getBirthMutationsList()) {
+            StoredMutationEvent.Builder stored = StoredMutationEvent.newBuilder()
+                .setPluginClass(event.getPluginClass())
+                .setKind(event.getKind())
+                .addAllOldValues(event.getOldValuesList())
+                .addAllNewValues(event.getNewValuesList())
+                .addAllParams(event.getParamsList())
+                .addAllDv(event.getDvList());
+            for (int i = 0; i < event.getCellsCount(); i++) {
+                environmentProperties.flatIndexToCoordinates(event.getCells(i), cellCoordinate);
+                for (int d = 0; d < dimensions; d++) {
+                    stored.addRelativeCoordinates(EnvironmentProperties.relativeOffset(
+                        cellCoordinate[d],
+                        origin.getComponents(d),
+                        environmentProperties.getDimensionSize(d),
+                        environmentProperties.isToroidal()));
+                }
+            }
+            events.addEvents(stored);
+        }
+        return events.build();
     }
 
     /**
