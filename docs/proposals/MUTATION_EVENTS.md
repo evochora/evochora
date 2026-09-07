@@ -53,8 +53,10 @@ fastutil primitive lists so that the plugins' write loops do not box:
 `cells` are listed in the order the plugin wrote them, which is its walk along `dv`.
 
 The core carries no list of mutation kinds and no per-plugin logic. A new plugin records itself by
-calling the same method and is complete: analytics groups by class name, the visualizer marks the
-cells it names.
+calling the same method and is complete: the analytics tables and charts group by `kind`, carry
+`plugin_class` beside it as the provenance, and the visualizer marks the cells the event names.
+A plugin is responsible for choosing `kind` names that no other plugin uses; the documentation
+of `recordBirthMutation` says so.
 
 ### Where the record lives
 
@@ -63,7 +65,11 @@ cells it names.
 is observation data on the organism, like `deathTick` and `parentGenomeHash`, for the same reason:
 the event belongs to the individual and is read out with its state.
 
-`Simulation.clearBirthMutationRecords()` clears the lists of all organisms. `SimulationEngine`
+`Simulation` keeps the newborns that carry a record in a small list, filled after the birth
+handlers of a tick have run (one null check per newborn), and
+`Simulation.clearBirthMutationRecords()` clears exactly those, so the clear costs the number of
+pending records, not the population, and the engine's memory figure counts what is actually
+held. `SimulationEngine`
 calls it in `captureSampledTick` after the chunk has been handed to the output successfully —
 after `tickDataOutput.put`, not before — so the engine, not the serializer, changes the runtime
 state, and the serializer remains an observer. Dead organisms stay in the list until the capture
@@ -87,10 +93,10 @@ checks that the organism has no records and the next recording emits none.
 The plugins do not touch the random source for this, so the trajectory of a run does not change.
 
 Recording once rather than in every state was weighed against the alternative. Keeping the events
-in every `OrganismState` would cost about 7 % of the organism bytes in every chunk and in
-`organism_ticks` for the lifetime of every mutated organism, 2 to 7 % of the organism
-serialization on every capture, and either a threefold write traffic on the static organism table
-or the same first-appearance rule the once-only design needs anyway. What it would buy is a
+in every `OrganismState` would cost, by estimate, about 7 % of the organism bytes in every chunk
+and in `organism_ticks` for the lifetime of every mutated organism, 2 to 7 % of the organism
+serialization on every capture, and either roughly threefold write traffic on the static
+organism table or the same first-appearance rule the once-only design needs anyway. What it would buy is a
 redundancy no consumer needs, because no indexer skips a recording.
 
 ### The contract
@@ -119,16 +125,16 @@ computed:
 message StoredMutationEvent {
   string plugin_class = 1;
   string kind = 2;
-  int32 dimensions = 3;
-  repeated sint32 relative_coordinates = 4 [packed = true];  // dimensions × cells
-  repeated int32 old_values = 5 [packed = true];
-  repeated int32 new_values = 6 [packed = true];
-  repeated int64 params = 7 [packed = true];
-  repeated sint32 dv = 8 [packed = true];
+  repeated sint32 relative_coordinates = 3 [packed = true];  // dimensions × cells
+  repeated int32 old_values = 4 [packed = true];
+  repeated int32 new_values = 5 [packed = true];
+  repeated int64 params = 6 [packed = true];
+  repeated sint32 dv = 7 [packed = true];
 }
 
 message StoredMutationEvents {
-  repeated StoredMutationEvent events = 1;
+  int32 dimensions = 1;
+  repeated StoredMutationEvent events = 2;
 }
 ```
 
@@ -158,23 +164,29 @@ be laid over the displayed body by adding its `initial_position`.
 | `GeneDuplicationPlugin` | `duplication` | the target cells that received a non-empty molecule | 0 / the copied molecule | flat index of the first source cell |
 | `GeneDeletionPlugin` | `deletion` | the label cell and every cleared cell | the removed molecule / 0 | occurrence count of the label hash in the genome |
 | `GeneInsertionPlugin`, instruction entry | `insertion` | the cells of the placed chain | 0 / the placed molecule | none |
-| `GeneInsertionPlugin`, label entry | `label-insertion` | the one label cell | 0 / the placed label | none |
+| `GeneInsertionPlugin`, label entry | `label-insertion` | the one label cell | 0 / the placed label | the label hash the new one was derived from, before the bit flips |
 | `GeneSubstitutionPlugin` | `substitution` | the one cell | old molecule / new molecule | none |
+| `LabelRewritePlugin` | `label-rewrite` | none | none | the XOR mask |
 
-`params` keep two things that are lost otherwise. The duplication's source position: from the
+`params` keep three things that are lost otherwise. The duplication's source position: from the
 copied values alone the source can only be searched for, and ambiguously. The deletion's label
 count: the weight that made the deletion choose this label, no longer readable from the child
-because the label is gone.
+because the label is gone. The label insertion's source hash: the new label is a sampled
+existing label with bits flipped, and which one is as unrecoverable by search as the
+duplication's source.
 
-`LabelRewritePlugin` records nothing: it changes every label and reference by the same mask, the
-genome hash normalizes that away, and it is not a mutation. A plugin that decides to do nothing —
-no NOP run large enough, a substitution whose new value equals the old — records nothing either.
-A newborn whose genome hash differs from the parent's and that carries no event therefore changed
-by something other than a mutation plugin.
+`LabelRewritePlugin` records its mask as an event of its own: `kind = "label-rewrite"`, no
+cells, `params = [mask]`. It is not a mutation — it changes every label and reference by the
+same mask and the genome hash normalizes that away — but the mask is what a consumer needs to
+compare a label value across generations: every newborn's labels are masked once, and every
+descendant's again, so the `newValues` a mutation plugin recorded for a LABEL or LABELREF cell
+never equal the value in any later body. An event without cells changes nothing; that is the
+generic rule by which the analytics leave it out of the per-molecule table and out of the
+variation sources, without naming the plugin.
 
-`LabelRewritePlugin` runs after the mutation plugins, so the `newValues` of a LABEL or LABELREF
-cell hold the value before the newborn's mask was applied, and every descendant applies a mask of
-its own. See the label rule under the display below.
+A plugin that decides to do nothing — no NOP run large enough, a substitution whose new value
+equals the old — records nothing. A newborn whose genome hash differs from the parent's and that
+carries no event with cells therefore changed by something other than a mutation plugin.
 
 ### Organism indexer
 
@@ -191,14 +203,40 @@ second prepared statement
 MERGE INTO organisms (organism_id, birth_mutations) KEY (organism_id) VALUES (?, ?)
 ```
 
-batched only for states that carry events and executed after the main organism batch of the same
-commit window, so the row exists. An H2 `MERGE ... KEY` writes the named columns only, so the main
-statement, which does not name the column, never clears it in later windows.
+batched only for states that carry events.
+
+Four things about the two statements:
+
+- **Order.** The main statement's batch executes first, the event statement's batch after it,
+  in the same commit window. A MERGE inserts the row when it does not exist yet; the event
+  statement run first would insert a row with only `organism_id` and `birth_mutations` set, and
+  `organisms` has `NOT NULL` columns (`birth_tick`, `program_id`, `initial_position`) on which
+  that insert fails. The strategy test of step 5 covers the order.
+- **Later windows.** The main statement runs again for every living organism in every commit
+  window, while the event stands in the data once. An H2 `MERGE ... KEY` writes the named
+  columns only and leaves the others as they are, and the main statement does not name the
+  column, so the value written once is never cleared.
+- **Competing consumers.** Both statements for one organism come from the same `OrganismState`
+  of the same recording, and a recording lies in exactly one batch, which exactly one consumer of
+  the group processes. The pair therefore always runs in one indexer, one session, one commit
+  window. The other indexer sees the organism only in later recordings, without events, and runs
+  only the main statement for it; whether that happens before or after the pair, the table ends
+  the same, because the main statement writes the same static values and leaves the column
+  alone. Two indexers merging the same row at once is what the static columns already do today;
+  H2 serializes it on the row lock, and the MERGE is idempotent.
+- **The single-statement alternative**, one `MERGE ... USING ... WHEN MATCHED THEN UPDATE SET
+  birth_mutations = COALESCE(?, organisms.birth_mutations)`, was weighed and not taken: it
+  rebuilds the main statement for every organism in every window for a value that a fraction of
+  the rows carries once.
 
 The conversion does not happen in the strategy. The strategy is a resource-layer serializer that
 knows only its options, a connection and the tick data; it stores bytes. `OrganismIndexer`
 derives the `EnvironmentProperties` from the run metadata in `prepareTables`, the way
-`EnvironmentIndexer.prepareTables` already does, converts the flat indices of each event to
+`EnvironmentIndexer.prepareTables` already does. That derivation exists three times today, in
+`EnvironmentIndexer`, `H2DatabaseReader` (with its own JSON parsing) and `EnvironmentController`;
+it becomes one factory `MetadataConfigHelper.environmentProperties(metadata)` in
+`datapipeline.utils`, next to the shape and topology accessors that already live there, and the
+three copies and the organism indexer call it. The indexer converts the flat indices of each event to
 relative coordinates with the organism's `initial_position` from the same state, builds the
 `StoredMutationEvents` message and hands the strategy its bytes for the column.
 
@@ -224,7 +262,7 @@ field is the signal; no deduplication is needed. One row per changed molecule:
 | `event_index` | INTEGER | ordinal of the event within this birth, in plugin order |
 | `plugin_class` | VARCHAR | the reporting plugin |
 | `kind` | VARCHAR | the plugin's kind |
-| `position` | VARCHAR | relative coordinate as text, components joined by `\|` |
+| `position` | VARCHAR | relative coordinate as a JSON list, `[13,4]`; DuckDB reads it as a typed list with `position::INTEGER[]` |
 | `old_value` | INTEGER | molecule int before |
 | `new_value` | INTEGER | molecule int after |
 
@@ -247,8 +285,8 @@ survive a hash aggregation over an unsorted column beyond a few thousand rows (s
 `GenomePopulationPlugin`), so the chart must not group `mutation_events` by genome hash. A
 second, small table `mutation_summary` therefore holds one row per event —
 `tick, birth_tick, organism_id, genome_hash, parent_genome_hash, event_index, plugin_class, kind,
-cell_count, position` (the smallest position), `dv` and `params` (both as text, components
-joined by `|`) — and the chart filters that table by the band's genome hash, a scan of a few
+cell_count, position` (the smallest position), `dv` and `params` (all three as JSON lists in
+text, read in DuckDB with a cast to `INTEGER[]` or `BIGINT[]`) — and the chart filters that table by the band's genome hash, a scan of a few
 thousand rows. An analytics plugin has exactly one schema and one metric id
 (`IAnalyticsPlugin.getSchema`, `AbstractAnalyticsPlugin.metricId`), so the table is written by a
 plugin of its own, `MutationSummaryPlugin`, which reads the same events; the position conversion
@@ -264,12 +302,17 @@ the one companion and the clade chart consumes it. Manifests written by an earli
 read by this one: data is always read with the build that produced it.
 
 **Variation sources per birth.** A second analytics plugin `VariationSourcesPlugin`, metric
-`variation_sources`, reading every recording like the events plugin. A newborn is a state whose
-`birth_tick` lies after the previous recording, the interval taken from the analytics context;
-dead newborns are in the recording too. One row per recording and source with the number of
+`variation_sources`, reading every recording like the events plugin. A newborn is a state with a
+parent whose `birth_tick` lies after the previous recording, `tick - interval`, the interval read
+with `MetadataConfigHelper.getSamplingInterval` from the metadata the analytics context carries;
+dead newborns are in the recording too. Recordings lie on a fixed grid that a pause or resume
+does not shift, so the rule needs no state: the first recording of a run sees only founders,
+which have no parent and are not births; the first recording after a resume sees exactly the
+births since the checkpoint. One row per recording and source with the number of
 births: source is `unchanged` (genome hash equals the parent's), `bodiless` (genome hash 0),
-`no-event` (hash differs, no event), or the kinds of the birth's events joined by `+` in plugin
-order, so that a birth counts exactly once and the shares of a recording sum to one. The manifest
+`no-event` (hash differs, no event with cells), or the kinds of the birth's events that carry
+cells, joined by `+` in plugin order, so that a birth counts exactly once and the shares of a
+recording sum to one; an event without cells, such as the label mask, is not a source. The manifest
 entry is a stacked area chart of the shares over ticks, like Clade Shares. It shows the copy
 channel and its episodes directly, and whether mutator lineages gain ground over a run.
 
@@ -279,7 +322,9 @@ notebook question over the join with `genome_lineage`.
 ### Controller
 
 A new route `GET /visualizer/api/organisms/{tick}/{organismId}/mutations?runId=...` answers with
-the events of the organism's whole lineage: for the organism and each ancestor along `parent_id`,
+the events of the organism's whole lineage. The answer does not depend on `{tick}`; the segment
+keeps the route apart from the two-segment detail route `{tick}/{organismId}` and is otherwise
+unused. The answer carries: for the organism and each ancestor along `parent_id`,
 every stored event with
 
 - the origin: `organismId`, `generation` and `genomeHash` of the organism that received the
@@ -289,6 +334,16 @@ every stored event with
   organism plus the relative offset, modulo the world shape), each with its molecule before and
   after in the form the environment API uses for cells — `moleculeType` and `moleculeValue`,
   split in the controller — so the grid compares fields and never a bit layout.
+
+For LABEL and LABELREF cells the controller translates the recorded values into the displayed
+organism's label namespace before answering. Label rewriting is core behaviour that happens to
+be implemented through the plugin interface, so the controller may know its event: walking the
+lineage from the origin of an event to the displayed organism, it XORs the masks of the
+`label-rewrite` events on the way, and within one birth it applies that birth's mask to an event
+only if the mask's `event_index` is the larger one, because such an event was recorded before
+the mask. The composition is one integer operation per generation and per label cell on data
+the one query already returned. The reason for this translation is documented at the controller
+and at the plugin.
 
 The reader extends the recursive query `readLineage` already runs over `organisms` — one
 `WITH RECURSIVE` round trip for the whole ancestry — by `birth_mutations` and `generation`, and
@@ -307,22 +362,19 @@ change, and the minimap does not change.
 - In the zoomed-out renderer, where a border cannot be drawn at one to four pixels per cell, the
   cell area is filled with that colour.
 
-Three rules decide which cells are marked. They are applied in the frontend, where the molecule
-of every visible cell is at hand, and they must be documented in the code beside the comparison:
+Two rules decide which cells are marked. They are applied in the frontend, where the molecule
+of every visible cell is at hand, and they must be documented in the code beside the comparison.
+Label values need no exception there, because the controller has already translated them into
+the displayed organism's namespace.
 
 1. A cell is marked only while it still holds what the mutation wrote: its molecule equals the
    event's `newValue`. A cell the organism itself has since overwritten with a different molecule
    carries no mark. A deletion's `newValue` is empty, so the cleared cell is marked while it stays
-   empty. Marker bits are not compared; they belong to the organism, not to the molecule.
+   empty, wherever the offset lands, inside or outside the displayed body: the mark shows where
+   the deletion happened, and a restriction to the body would hide that. Marker bits are not
+   compared; they belong to the organism, not to the molecule.
 2. Where two events of the lineage touch the same cell, the younger one decides: the event of the
-   more recent generation.
-3. **Label rule.** For LABEL and LABELREF cells only the molecule type is compared, never the
-   value. `LabelRewritePlugin` masks every label of a newborn after the mutation plugins have run,
-   and every descendant is masked again, so the stored `newValue` of a label cell never equals the
-   value in any body. Comparing values would hide every label mutation as "overwritten". The price
-   is that a label the organism later replaced by another label keeps its mark; organisms do not
-   rewrite labels at run time, so the price is small. This exception is documented in the
-   comparison code and in the controller.
+   more recent generation, and within one birth the event with the larger `event_index`.
 
 ### Memory estimates
 
@@ -347,7 +399,7 @@ which carry no genome and therefore no mutation.
 
 | | Amount | Basis |
 |---|---|---|
-| Tick hot path | none | only birth handlers are touched, and they run per newborn |
+| Tick hot path | none on the per-tick path; on the birth path the plugins fill three primitive lists inside the loops that write the cells, and the simulation adds one null check per newborn | birth handlers run per newborn, not per tick |
 | Birth handler | one record per applied mutation; the cell list is filled inside the loop that writes the cells | the plugins already hold every value |
 | Engine heap | records since the last recording, about 100 KB for 1,000 births per window at 0.3 events per birth; none in the detailed profile | estimate; the 240 MB the engine estimates for 10,000 organisms are unaffected |
 | Chunk storage | about 50 bytes fixed plus 8 to 20 bytes per cell per event, depending on the marker, as in `molecule_data`; a median duplication of 17 cells about 190 bytes; run `20260902`: about 5,000 events, under 1 MB against 3.8 GB; under 0.1 % in every profile | counted in the analysis of that run |
@@ -386,13 +438,23 @@ Every step in its own commit on the branch `mutation-events`.
    `prepareTables`). Tests: the indexer converts a state with events into the stored form with
    the right offsets; both strategy tests write the bytes and read the column back; a later
    window without events leaves it untouched.
-6. **Controller.** The route, the reader method walking the lineage, the DTOs and the JSON.
-   Tests: reader and controller.
-7. **Frontend.** The border and fill in the two renderers, the three rules with their
-   documentation, the fetch on selection. The concrete look is agreed with the maintainer before
-   this step.
-8. **Documentation.** The `analyze-run` skill: the table `mutation_events` in the genome layer, the
-   join, and the rule that a changed hash without an event is variation outside the plugins.
+6. **Controller.** The route; the new method on `IOrganismDataReader` — the dual-mode seam —
+   implemented in `H2DatabaseReader` by extending the recursive lineage query; the label
+   translation; the DTOs and the JSON. Tests: reader, translation across three generations with
+   masks, and controller.
+7. **Frontend.** The border and fill in the two renderers, the two rules with their
+   documentation, the fetch on selection. Three things this step must settle, found in review:
+   the browser holds the lineage answer, which for a deep lineage is tens of thousands of cells,
+   so its size is estimated and bounded; both renderers cache drawn cells (`cellObjects`,
+   `clearCache`), so a selection change invalidates and redraws the marked cells; and the lineage
+   colour of an extinct ancestor genome is computed from `_genomeParent`, which today is filled
+   only from the displayed tick's `genomeAncestors`, so the genome-to-parent edges of the lineage
+   answer are fed into it before the colours are computed, or an extinct ancestor gets an
+   unrelated root colour. The concrete look is agreed with the maintainer before this step.
+8. **Documentation.** The `analyze-run` skill: the tables `mutation_events` and
+   `mutation_summary` in the genome layer, the join, the `::INTEGER[]` cast for the list
+   columns, and the rule that a changed hash without an event with cells is variation outside
+   the plugins.
 9. **Gate.** `./gradlew check`.
 10. **Sight check** on a short run: event count against births times rates, one duplication opened
     in DuckDB and compared with the body, the marks of one lineage in the visualizer. The run is
