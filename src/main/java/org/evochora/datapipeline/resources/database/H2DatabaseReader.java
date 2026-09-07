@@ -251,8 +251,8 @@ public class H2DatabaseReader implements IDatabaseReader {
                 JOIN organisms o ON o.organism_id = a.org_id
                 WHERE o.parent_id IS NOT NULL
             )
-            SELECT o.organism_id, o.generation, o.genome_hash, o.birth_tick,
-                   o.initial_position, o.birth_mutations
+            SELECT o.organism_id, o.generation, o.genome_hash, o.parent_genome_hash,
+                   o.birth_tick, o.initial_position, o.birth_mutations
             FROM ancestors a
             JOIN organisms o ON o.organism_id = a.org_id
             ORDER BY a.depth ASC
@@ -277,10 +277,13 @@ public class H2DatabaseReader implements IDatabaseReader {
                                 + " are not a readable message", e);
                         }
                     }
+                    long parentGenome = rs.getLong("parent_genome_hash");
+                    Long parentGenomeHash = rs.wasNull() ? null : parentGenome;
                     chain.add(new LineageMutations(
                         id,
                         rs.getInt("generation"),
                         rs.getLong("genome_hash"),
+                        parentGenomeHash,
                         rs.getLong("birth_tick"),
                         OrganismStateConverter.decodeVector(rs.getBytes("initial_position")),
                         events));

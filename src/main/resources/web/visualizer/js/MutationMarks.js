@@ -1,0 +1,228 @@
+/**
+ * The rules that decide which cells of the environment grid carry the mark of a mutation.
+ *
+ * The mutations of a lineage are fetched once for the selected organism, while the molecules they
+ * are compared against change with every tick and every viewport move. The work is therefore split
+ * in two: {@link buildMarkMap} turns the answer into a map from cell key to the one event that
+ * decides that cell, which depends on the answer alone, and {@link isMarkPresent} answers for one
+ * cell whether the mark is there, which depends on the molecule the cell holds at the moment it is
+ * drawn.
+ *
+ * This module knows neither the DOM nor the renderer. It receives the molecule of a cell as the
+ * fields the grid already holds and gives back plain objects.
+ *
+ * @module MutationMarks
+ */
+
+/**
+ * Upper bound on the cells the marks of one lineage may cover.
+ *
+ * A mark holds a cell key and about a dozen numbers, in the order of 200 bytes, so the bound keeps
+ * the map at roughly 10 MB — the order of magnitude the grid's own cell objects already occupy. An
+ * answer that names more cells is marked for its youngest generations up to the bound: those are
+ * the mutations of the displayed body's most recent ancestry, and an older event that survived in
+ * the body is almost always overwritten by a younger one anyway.
+ */
+export const MAX_MARKED_CELLS = 50000;
+
+/**
+ * The packed molecule type of a CODE molecule, which is what an empty cell holds.
+ *
+ * The mutations endpoint reports a molecule as the type constant at its place in the packed
+ * molecule together with the signed value; CODE sits at zero, so a written molecule of type zero
+ * and value zero is what a deletion leaves behind.
+ */
+const PACKED_TYPE_CODE = 0;
+
+/**
+ * Builds the map from cell key to the mutation that decides the cell's mark.
+ *
+ * <p><strong>Rule 2.</strong> Where two events of the lineage touch the same cell, the younger one
+ * decides: the event of the more recent generation, and within one birth the event with the larger
+ * event index. That comparison depends on the events alone, never on what the cell holds, which is
+ * why it is settled here and once.
+ *
+ * An event without cells — the label mask is one — changed no molecule and produces no mark.
+ *
+ * @param {Array<object>} events The events of the lineage as the mutations endpoint reports them.
+ * @param {object} options Options.
+ * @param {number|string} options.organismId The selected organism, named in the warning when the
+ *                                           answer exceeds {@link MAX_MARKED_CELLS}.
+ * @param {function(number): (number|null)} options.resolveTypeId Maps a packed molecule type to the
+ *                                           type id the grid holds in its cell data, or null for a
+ *                                           type this run does not name.
+ * @returns {Map<string, object>} Cell key `"x,y"` to the deciding mark.
+ */
+export function buildMarkMap(events, { organismId, resolveTypeId }) {
+    const marks = new Map();
+    if (!Array.isArray(events) || events.length === 0) {
+        return marks;
+    }
+
+    for (const event of withinCellBound(events, organismId)) {
+        if (!Array.isArray(event.cells)) {
+            continue;
+        }
+        for (const cell of event.cells) {
+            const coordinates = cell.coordinates;
+            if (!Array.isArray(coordinates) || coordinates.length < 2) {
+                continue;
+            }
+            const candidate = toMark(event, cell, coordinates, resolveTypeId);
+            const key = `${candidate.x},${candidate.y}`;
+            const standing = marks.get(key);
+            if (!standing || isYounger(candidate, standing)) {
+                marks.set(key, candidate);
+            }
+        }
+    }
+    return marks;
+}
+
+/**
+ * Decides whether a cell carries its mark.
+ *
+ * <p><strong>Rule 1.</strong> A cell is marked only while it still holds what the mutation wrote:
+ * its molecule equals the event's new value. A cell the organism itself has since overwritten with
+ * a different molecule carries no mark. A deletion's new value is empty, so the cleared cell is
+ * marked while it stays empty, wherever the offset lands, inside or outside the displayed body:
+ * the mark shows where the deletion happened, and a restriction to the body would hide that.
+ * Marker bits are not compared; they belong to the organism, not to the molecule.
+ *
+ * A cell the loaded region does not name is an empty cell and is passed as a type id of null.
+ *
+ * @param {object} mark The deciding mark of that cell, from {@link buildMarkMap}.
+ * @param {number|null} typeId The type id of the cell's molecule, null when the cell holds nothing.
+ * @param {number} value The value of the cell's molecule.
+ * @param {boolean} isEmptyCell Whether the cell is empty, as the renderers decide it.
+ * @returns {boolean} True while the cell still holds what the mutation wrote.
+ */
+export function isMarkPresent(mark, typeId, value, isEmptyCell) {
+    if (mark.afterEmpty) {
+        return isEmptyCell;
+    }
+    if (typeId === null) {
+        return false;
+    }
+    return typeId === mark.afterTypeId && value === mark.afterValue;
+}
+
+/**
+ * Collects the genome to parent genome edges the answer carries.
+ *
+ * Every event names the genome the mutation arose in and that genome's parent. An ancestor genome
+ * that no living organism carries appears in no other answer of the view, so without these edges it
+ * would be coloured as a root of its own instead of as part of its lineage.
+ *
+ * @param {Array<object>} events The events of the lineage.
+ * @returns {Array<Array<string|null>>} Pairs of genome hash and parent genome hash, the parent null
+ *                                      for a genome whose organism had no parent.
+ */
+export function genomeEdges(events) {
+    const edges = new Map();
+    if (!Array.isArray(events)) {
+        return [];
+    }
+    for (const event of events) {
+        if (event.originGenomeHash == null) {
+            continue;
+        }
+        edges.set(String(event.originGenomeHash),
+            event.originParentGenomeHash != null ? String(event.originParentGenomeHash) : null);
+    }
+    return [...edges.entries()];
+}
+
+/**
+ * Builds one mark from one cell of one event.
+ *
+ * @param {object} event The event the cell belongs to.
+ * @param {object} cell The cell with the molecules before and after the write.
+ * @param {number[]} coordinates Its absolute coordinates on the displayed body.
+ * @param {function(number): (number|null)} resolveTypeId Maps a packed molecule type to a type id.
+ * @returns {object} The mark of that cell.
+ */
+function toMark(event, cell, coordinates, resolveTypeId) {
+    const before = cell.before || {};
+    const after = cell.after || {};
+    return {
+        x: coordinates[0],
+        y: coordinates[1],
+        kind: event.kind,
+        generation: event.originGeneration ?? 0,
+        eventIndex: event.eventIndex ?? 0,
+        genomeHash: event.originGenomeHash,
+        beforeTypeId: resolveTypeId(before.moleculeType),
+        beforeValue: before.moleculeValue ?? 0,
+        afterTypeId: resolveTypeId(after.moleculeType),
+        afterValue: after.moleculeValue ?? 0,
+        afterEmpty: after.moleculeType === PACKED_TYPE_CODE && after.moleculeValue === 0
+    };
+}
+
+/**
+ * Compares two marks of the same cell by rule 2.
+ *
+ * @param {object} candidate The mark offered for the cell.
+ * @param {object} standing The mark that holds the cell so far.
+ * @returns {boolean} True if the candidate arose in a younger birth, or later within the same one.
+ */
+function isYounger(candidate, standing) {
+    if (candidate.generation !== standing.generation) {
+        return candidate.generation > standing.generation;
+    }
+    return candidate.eventIndex > standing.eventIndex;
+}
+
+/**
+ * Keeps the events of the youngest generations up to {@link MAX_MARKED_CELLS} cells.
+ *
+ * The events of a lineage grow with its length, so an answer of a deep ancestry can name far more
+ * cells than a browser should hold in a map. Ordering by generation and taking events until the
+ * bound is reached keeps the mutations of the recent ancestry, which are the ones a body still
+ * carries.
+ *
+ * @param {Array<object>} events The events of the lineage.
+ * @param {number|string} organismId The selected organism, for the warning.
+ * @returns {Array<object>} The events to mark, the whole answer when it fits within the bound.
+ */
+function withinCellBound(events, organismId) {
+    let total = 0;
+    for (const event of events) {
+        total += cellCount(event);
+    }
+    if (total <= MAX_MARKED_CELLS) {
+        return events;
+    }
+
+    const youngestFirst = [...events].sort((a, b) =>
+        (b.originGeneration ?? 0) - (a.originGeneration ?? 0) || (b.eventIndex ?? 0) - (a.eventIndex ?? 0));
+
+    const kept = [];
+    let marked = 0;
+    let index = 0;
+    while (index < youngestFirst.length && marked + cellCount(youngestFirst[index]) <= MAX_MARKED_CELLS) {
+        marked += cellCount(youngestFirst[index]);
+        kept.push(youngestFirst[index]);
+        index++;
+    }
+
+    let dropped = 0;
+    for (let rest = index; rest < youngestFirst.length; rest++) {
+        dropped += cellCount(youngestFirst[rest]);
+    }
+    console.warn(`[MutationMarks] The lineage of organism ${organismId} names ${total} mutated cells. `
+        + `The ${marked} cells of its youngest generations are marked, ${dropped} cells of older `
+        + `generations are dropped at the bound of ${MAX_MARKED_CELLS}.`);
+    return kept;
+}
+
+/**
+ * Counts the cells one event names.
+ *
+ * @param {object} event The event.
+ * @returns {number} Its number of cells, zero for an event that changed no molecule.
+ */
+function cellCount(event) {
+    return Array.isArray(event.cells) ? event.cells.length : 0;
+}

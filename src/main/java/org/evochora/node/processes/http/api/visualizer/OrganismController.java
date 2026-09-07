@@ -269,7 +269,7 @@ public class OrganismController extends VisualizerBaseController {
      *   "events": [
      *     {
      *       "originOrganismId": 3, "originGeneration": 1, "originGenomeHash": "-4711",
-     *       "originBirthTick": 120, "eventIndex": 0,
+     *       "originParentGenomeHash": "815", "originBirthTick": 120, "eventIndex": 0,
      *       "pluginClass": "org.evochora.runtime.worldgen.GeneSubstitutionPlugin",
      *       "kind": "substitution", "dv": [0, 1], "params": [],
      *       "cells": [

@@ -655,6 +655,13 @@ body {
     margin: 0 4px;
 }
 
+/* Mutation of the selected organism's lineage that the cell still carries */
+.cell-tooltip .tooltip-mutation {
+    color: #e0e0e0;
+    display: block;
+    margin-top: 2px;
+}
+
 /* Organism info in tooltip */
 .cell-tooltip .tooltip-organism {
     display: block;

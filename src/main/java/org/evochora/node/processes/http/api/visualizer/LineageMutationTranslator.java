@@ -142,6 +142,7 @@ final class LineageMutationTranslator {
             entry.organismId(),
             entry.generation(),
             String.valueOf(entry.genomeHash()),
+            entry.parentGenomeHash() != null ? String.valueOf(entry.parentGenomeHash()) : null,
             entry.birthTick(),
             index,
             event.getPluginClass(),

@@ -115,14 +115,21 @@ class LineageMutationTranslatorTest {
         assertThat(events.get(1).kind()).isEqualTo(LabelRewritePlugin.MUTATION_KIND);
         assertThat(events.get(1).cells()).isEmpty();
         assertThat(events.get(1).params()).containsExactly(MASK_GENERATION_2);
+        // Every event names the genome it arose in and that genome's parent
+        assertThat(events.get(0).originGenomeHash()).isEqualTo("10");
+        assertThat(events.get(0).originParentGenomeHash()).isNull();
+        assertThat(events.get(1).originGenomeHash()).isEqualTo("20");
+        assertThat(events.get(1).originParentGenomeHash()).isEqualTo("10");
     }
 
     /**
      * Builds one organism of a chain, all of them starting at the same position so that the
-     * displayed body is the one at (2, 3).
+     * displayed body is the one at (2, 3). Its parent's genome is the genome of the organism one
+     * generation older, which is how the chain the reader returns is built.
      */
     private static LineageMutations entry(int organismId, int generation, StoredMutationEvents events) {
-        return new LineageMutations(organismId, generation, organismId * 10L, organismId,
+        return new LineageMutations(organismId, generation, organismId * 10L,
+                organismId > 1 ? (organismId - 1) * 10L : null, organismId,
                 new int[]{2, 3}, events);
     }
 

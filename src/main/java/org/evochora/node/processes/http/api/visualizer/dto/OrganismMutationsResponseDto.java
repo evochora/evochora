@@ -33,6 +33,11 @@ public record OrganismMutationsResponseDto(
      * @param originGeneration Its generation, zero for an organism placed at the start of the run
      * @param originGenomeHash Its genome hash at birth, as text because a 64-bit value loses
      *                         precision as a JSON number
+     * @param originParentGenomeHash The genome its parent carried at that birth, as text for the
+     *                               same reason, {@code null} for an organism without a parent.
+     *                               It carries the origin genome's place in the ancestry, which a
+     *                               display colouring a mutation by that genome needs and which no
+     *                               other answer holds once no organism carries the genome any more
      * @param originBirthTick The tick that birth happened at
      * @param eventIndex Ordinal of the event within that birth, in the order the plugins ran
      * @param pluginClass Fully qualified class name of the plugin that reported the event
@@ -45,6 +50,7 @@ public record OrganismMutationsResponseDto(
         int originOrganismId,
         int originGeneration,
         String originGenomeHash,
+        String originParentGenomeHash,
         long originBirthTick,
         int eventIndex,
         String pluginClass,

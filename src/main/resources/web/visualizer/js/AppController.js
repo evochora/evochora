@@ -2,6 +2,7 @@ import { EnvironmentApi, setTypeMappings } from './api/EnvironmentApi.js';
 import { OrganismApi } from './api/OrganismApi.js';
 import { SimulationApi } from './api/SimulationApi.js';
 import { EnvironmentGrid } from './EnvironmentGrid.js';
+import { buildMarkMap, genomeEdges } from './MutationMarks.js';
 import { MinimapView } from './ui/minimap/MinimapView.js';
 import { OrganismInstructionView } from './ui/organism/OrganismInstructionView.js';
 import { OrganismSourceView } from './ui/organism/OrganismSourceView.js';
@@ -37,6 +38,7 @@ export class AppController {
         this.simulationRequestController = null;
         this.organismSummaryRequestController = null;
         this.organismDetailsRequestController = null;
+        this.organismMutationsRequestController = null;
         
         // State
         const storedZoom = localStorage.getItem('evochora-zoom-state');
@@ -61,6 +63,10 @@ export class AppController {
         this._genomeParent = new Map();       // String(genomeHash) → String(parentGenomeHash) | null
         this._genomeColorCache = new Map();   // String(genomeHash) → int 0xRRGGBB
         this._genomeHslCache = new Map();     // String(genomeHash) → [h, s, l]
+        // Mutations of the selected organism's lineage: the organism they were fetched for, and the
+        // genome→parentGenome edges of the answer, which the tick's own closure does not carry
+        this._mutationsOrganismId = null;     // int | null
+        this._mutationGenomeEdges = null;     // [[String(genomeHash), String(parentGenomeHash) | null], ...]
         
         // Config for renderer
         const defaultConfig = {
@@ -167,6 +173,7 @@ export class AppController {
             this.state.selectedOrganismId = null;
             this.renderer?.setSelectedOrganism(null);
             this.minimapView?.setSelectedOrganism(null);
+            this._clearLineageMutations();
             this.state.previousTick = null;
             this.state.previousOrganisms = null;
             this.state.previousOrganismDetails = null;
@@ -287,10 +294,12 @@ export class AppController {
         this.minimapView?.setSelectedOrganism(this.state.selectedOrganismId);
 
         if (this.state.selectedOrganismId) {
-            // An organism is selected - load its details
+            // An organism is selected - load its lineage's mutations and its details
+            await this._ensureLineageMutations(numericId);
             await this.loadOrganismDetails(numericId);
         } else {
-            // No organism is selected (deselection) - clear details
+            // No organism is selected (deselection) - clear details and marks
+            this._clearLineageMutations();
             this.clearOrganismDetails();
         }
     }
@@ -907,6 +916,10 @@ export class AppController {
             const organisms = organismResult.organisms;
             this.state.totalOrganismCount = organismResult.totalOrganismCount;
             this._applyGenomeAncestors(organismResult.genomeAncestors);
+            // The genomes of the selected lineage's mutations are not part of the tick's closure,
+            // and every colour of this tick is computed from here on, so their edges go back in
+            // before the first of them is drawn.
+            this._mergeLineageGenomeEdges();
             this.updateOrganismPanel(organisms, isForwardStep);
             this.minimapView?.setOwnershipColorResolver(this._minimapOwnershipColorResolver(organisms));
             this.minimapView?.updateOrganisms(
@@ -921,9 +934,11 @@ export class AppController {
                 if (!isNaN(organismId)) {
                     const stillExists = organisms.some(o => String(o.organismId) === this.state.selectedOrganismId);
                     if (stillExists) {
+                        await this._ensureLineageMutations(organismId);
                         await this.loadOrganismDetails(organismId, isForwardStep);
                     } else {
                         this.state.selectedOrganismId = null;
+                        this._clearLineageMutations();
                         this.clearOrganismDetails();
                         this.updateOrganismListSelection();
                         this.renderer?.setSelectedOrganism(null);
@@ -1068,6 +1083,118 @@ export class AppController {
 
         const palette = AppController.ORGANISM_PALETTE;
         return palette[(organismId - 1) % palette.length];
+    }
+
+    /**
+     * Loads the mutations of an organism's lineage once and hands their marks to the grid.
+     *
+     * The answer describes births, not ticks: it is the same at every tick of the run, so it is
+     * fetched when the selection changes and kept until it changes again. The events themselves are
+     * not kept — what outlives the call is the map of marked cells the grid holds and the ancestry
+     * edges of the genomes the events name. A request that fails is not repeated for the same
+     * organism either, so a run whose route answers with an error costs one request per selection.
+     *
+     * @param {number} organismId - The selected organism.
+     * @returns {Promise<void>} A promise that resolves once the marks are handed over.
+     * @private
+     */
+    async _ensureLineageMutations(organismId) {
+        if (this._mutationsOrganismId === organismId) {
+            return;
+        }
+
+        this._clearLineageMutations();
+        this._mutationsOrganismId = organismId;
+        this.organismMutationsRequestController = new AbortController();
+        const signal = this.organismMutationsRequestController.signal;
+
+        try {
+            const answer = await this.organismApi.fetchOrganismMutations(
+                this.state.currentTick,
+                organismId,
+                this.state.runId,
+                { signal }
+            );
+
+            if (this.state.selectedOrganismId !== String(organismId)) {
+                return; // The selection moved on while the answer was on its way
+            }
+
+            const events = answer?.events || [];
+            this._mutationGenomeEdges = genomeEdges(events);
+            this._mergeLineageGenomeEdges();
+            this.renderer?.setMutationMarks(
+                buildMarkMap(events, {
+                    organismId,
+                    resolveTypeId: (moleculeType) => this._resolveMoleculeTypeId(moleculeType)
+                }),
+                (genomeHash) => this._genomeHashToLineageColor(genomeHash)
+            );
+        } catch (error) {
+            if (error.name === 'AbortError') {
+                return;
+            }
+            console.warn(`Failed to load the mutations of organism ${organismId}:`, error.message);
+        }
+    }
+
+    /**
+     * Drops the mutations of the lineage and the marks drawn from them.
+     * @private
+     */
+    _clearLineageMutations() {
+        if (this.organismMutationsRequestController) {
+            this.organismMutationsRequestController.abort();
+            this.organismMutationsRequestController = null;
+        }
+        this._mutationsOrganismId = null;
+        this._mutationGenomeEdges = null;
+        this.renderer?.setMutationMarks(null);
+    }
+
+    /**
+     * Adds the ancestry edges of the selected lineage's mutations to the genome ancestor map.
+     *
+     * A mutation is coloured by the genome it arose in, and that genome is often carried by no
+     * organism any more. Without its parent it would be coloured as a root of its own instead of as
+     * part of the lineage it belongs to, so its edge is added whenever the map has been replaced.
+     * @private
+     */
+    _mergeLineageGenomeEdges() {
+        if (!this._mutationGenomeEdges) {
+            return;
+        }
+        let added = false;
+        for (const [genomeHash, parentGenomeHash] of this._mutationGenomeEdges) {
+            if (this._genomeParent.get(genomeHash) === parentGenomeHash) continue;
+            this._genomeParent.set(genomeHash, parentGenomeHash);
+            added = true;
+        }
+        if (added) {
+            this._genomeColorCache.clear();
+            this._genomeHslCache.clear();
+        }
+    }
+
+    /**
+     * Resolves a packed molecule type to the type id the grid holds in its cell data.
+     *
+     * A cell of the environment reaches the grid with its type as a name, which the grid maps to
+     * its own id; a mutation reaches it as the type constant at its place in the packed molecule.
+     * The run's metadata names those constants, which is what joins the two.
+     *
+     * @param {number} moleculeType - The molecule type as the mutations endpoint reports it.
+     * @returns {number|null} The type id, or null for a type this run does not name.
+     * @private
+     */
+    _resolveMoleculeTypeId(moleculeType) {
+        const names = this.state.metadata?.moleculeTypes;
+        const name = names ? names[String(moleculeType)] : null;
+        const mapping = this.renderer?.detailedRenderer?.typeMapping;
+        if (!name || !mapping || mapping[name] === undefined) {
+            return null;
+        }
+        return mapping[name];
     }
 
     /**

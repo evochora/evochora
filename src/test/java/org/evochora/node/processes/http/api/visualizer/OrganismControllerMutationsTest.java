@@ -5,6 +5,7 @@ import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.Matchers.nullValue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.mock;
@@ -99,8 +100,8 @@ class OrganismControllerMutationsTest {
                 .build();
 
         when(reader.readLineageMutations(7)).thenReturn(List.of(
-                new LineageMutations(7, 2, 300L, 90L, new int[]{2, 3}, childEvents),
-                new LineageMutations(5, 1, 200L, 40L, new int[]{60, 70}, parentEvents)));
+                new LineageMutations(7, 2, 300L, 200L, 90L, new int[]{2, 3}, childEvents),
+                new LineageMutations(5, 1, 200L, null, 40L, new int[]{60, 70}, parentEvents)));
 
         given()
             .port(port)
@@ -115,6 +116,7 @@ class OrganismControllerMutationsTest {
             .body("events.originGeneration", contains(1, 1, 2))
             .body("events.eventIndex", contains(0, 1, 0))
             .body("events[0].originGenomeHash", equalTo("200"))
+            .body("events[0].originParentGenomeHash", nullValue())
             .body("events[0].originBirthTick", equalTo(40))
             .body("events[0].pluginClass", equalTo("org.evochora.runtime.worldgen.GeneSubstitutionPlugin"))
             .body("events[0].kind", equalTo("substitution"))
@@ -130,7 +132,8 @@ class OrganismControllerMutationsTest {
                 equalTo(RECORDED_LABEL_VALUE ^ MASK_PARENT ^ MASK_CHILD))
             .body("events[1].kind", equalTo(LabelRewritePlugin.MUTATION_KIND))
             .body("events[1].cells", empty())
-            .body("events[2].originOrganismId", equalTo(7));
+            .body("events[2].originOrganismId", equalTo(7))
+            .body("events[2].originParentGenomeHash", equalTo("200"));
     }
 
     @Test

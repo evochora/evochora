@@ -382,9 +382,9 @@ class H2DatabaseOrganismReaderTest {
         // Generation 1 receives no mutation, so the chain has to carry it without events
         TickData tick = TickData.newBuilder()
                 .setTickNumber(7L)
-                .addOrganisms(buildAncestorState(1, null, 0, 100L, 5, 6))
-                .addOrganisms(buildAncestorState(2, 1, 1, 200L, 7, 8))
-                .addOrganisms(buildAncestorState(3, 2, 2, 300L, 9, 10))
+                .addOrganisms(buildAncestorState(1, null, null, 0, 100L, 5, 6))
+                .addOrganisms(buildAncestorState(2, 1, 100L, 1, 200L, 7, 8))
+                .addOrganisms(buildAncestorState(3, 2, 200L, 2, 300L, 9, 10))
                 .build();
 
         try (Connection conn = getConnectionWithSchema("run-lineage-mutations")) {
@@ -402,6 +402,9 @@ class H2DatabaseOrganismReaderTest {
             assertThat(chain).extracting(LineageMutations::generation).containsExactly(2, 1, 0);
             assertThat(chain).extracting(LineageMutations::genomeHash)
                     .containsExactly(300L, 200L, 100L);
+            // The founder has no parent, so its parent genome stays absent rather than reading as 0
+            assertThat(chain).extracting(LineageMutations::parentGenomeHash)
+                    .containsExactly(200L, 100L, null);
             assertThat(chain).extracting(LineageMutations::birthTick).containsExactly(2L, 1L, 0L);
             assertThat(chain.get(0).initialPosition()).containsExactly(9, 10);
 
@@ -434,14 +437,15 @@ class H2DatabaseOrganismReaderTest {
      *
      * @param id the organism id
      * @param parentId the parent's id, or null for an organism placed at the start of the run
+     * @param parentGenomeHash the genome its parent carried, or null for such an organism
      * @param birthTick the tick the organism was born at
      * @param genomeHash its genome hash at birth
      * @param x first component of its initial position
      * @param y second component of its initial position
      * @return the state to write into the organism table
      */
-    private OrganismState buildAncestorState(int id, Integer parentId, long birthTick,
-                                             long genomeHash, int x, int y) {
+    private OrganismState buildAncestorState(int id, Integer parentId, Long parentGenomeHash,
+                                             long birthTick, long genomeHash, int x, int y) {
         OrganismState.Builder builder = OrganismState.newBuilder()
                 .setOrganismId(id)
                 .setBirthTick(birthTick)
@@ -454,6 +458,9 @@ class H2DatabaseOrganismReaderTest {
                 .setDv(Vector.newBuilder().addComponents(0).addComponents(1).build());
         if (parentId != null) {
             builder.setParentId(parentId);
+        }
+        if (parentGenomeHash != null) {
+            builder.setParentGenomeHash(parentGenomeHash);
         }
         return builder.build();
     }

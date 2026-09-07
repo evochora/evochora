@@ -88,6 +88,46 @@ export class OrganismApi {
     }
 
     /**
+     * Fetches every mutation the organism and its ancestors received at their births.
+     *
+     * The answer is the same at every tick of a run — a mutation is recorded once, at the birth of
+     * the organism that received it — so the tick segment the route requires is not read by the
+     * server and any tick of the run answers the same. The cells carry absolute coordinates on the
+     * body of the requested organism.
+     *
+     * @param {number} tick - The tick number the route requires; not read by the server.
+     * @param {number} organismId - The ID of the organism whose lineage to fetch.
+     * @param {string|null} [runId=null] - The specific run ID to query. Defaults to the latest run if null.
+     * @param {object} [options={}] - Optional parameters for the request.
+     * @param {AbortSignal|null} [options.signal=null] - An AbortSignal to allow for request cancellation.
+     * @returns {Promise<{organismId: number, events: Array<object>}>} A promise that resolves to the
+     *          lineage's events, oldest generation first.
+     * @throws {Error} If the network request fails or the server returns an error.
+     */
+    async fetchOrganismMutations(tick, organismId, runId = null, options = {}) {
+        const { signal = null } = options;
+        const params = new URLSearchParams();
+        if (runId) {
+            params.set('runId', runId);
+        }
+
+        const query = params.toString();
+        const url = `/visualizer/api/organisms/${tick}/${organismId}/mutations${query ? `?${query}` : ''}`;
+
+        const fetchOptions = {
+            method: 'GET',
+            headers: {
+                'Accept': 'application/json'
+            }
+        };
+        if (signal) {
+            fetchOptions.signal = signal;
+        }
+
+        return apiClient.fetch(url, fetchOptions);
+    }
+
+    /**
      * Fetches the available tick range (minTick, maxTick) for organism data.
      * Returns the ticks that have been indexed by the OrganismIndexer.
      * If no run ID is provided, the server will default to the latest available run.
