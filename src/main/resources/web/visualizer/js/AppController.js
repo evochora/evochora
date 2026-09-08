@@ -1115,6 +1115,11 @@ export class AppController {
                 return;
             }
             console.warn(`Failed to load the mutations of organism ${organismId}:`, error.message);
+            // Forget the organism so that selecting it again asks again, unless a newer request
+            // has taken the place of this one in the meantime.
+            if (this._mutationsOrganismId === organismId) {
+                this._mutationsOrganismId = null;
+            }
         }
     }
 
