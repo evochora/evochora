@@ -16,9 +16,16 @@ import java.util.List;
  *     .column("tick", ColumnType.BIGINT)
  *     .column("alive_count", ColumnType.INTEGER)
  *     .column("avg_energy", ColumnType.DOUBLE)
+ *     .column("births", ColumnType.INTEGER, Aggregation.SUM)
  *     .build();
  * }</pre>
- *
+ * <p>
+ * <strong>Aggregation.</strong> Every column says how it survives a coarser level of detail: a
+ * {@link Aggregation#SAMPLE} column, the default, keeps the value of the recording the level's row
+ * stands on, a {@link Aggregation#SUM} column the values of every recording of the level's window
+ * added up. Rows of a {@code SUM} column are read by adding those falling into a range, never by
+ * picking one, since a window reaching the end of a batch leaves its part as a row of its own.
+ * <p>
  * <strong>Thread Safety:</strong> Immutable after construction.
  */
 public final class ParquetSchema {
@@ -47,6 +54,31 @@ public final class ParquetSchema {
         return columns.size();
     }
     
+    /**
+     * Returns the positions of the columns declared {@link Aggregation#SUM}, in column order.
+     * <p>
+     * An empty result says that every column of this schema is sampled, which is the case that
+     * needs no accumulation at all.
+     *
+     * @return Indexes of the summed columns, empty if the schema has none
+     */
+    public int[] summedColumnIndexes() {
+        int count = 0;
+        for (Column column : columns) {
+            if (column.aggregation() == Aggregation.SUM) {
+                count++;
+            }
+        }
+        int[] indexes = new int[count];
+        int next = 0;
+        for (int i = 0; i < columns.size(); i++) {
+            if (columns.get(i).aggregation() == Aggregation.SUM) {
+                indexes[next++] = i;
+            }
+        }
+        return indexes;
+    }
+
     /**
      * Generates the DuckDB CREATE TABLE SQL statement for this schema.
      *
@@ -100,14 +132,17 @@ public final class ParquetSchema {
      *
      * @param name Column name (must be valid SQL identifier)
      * @param type Column data type
+     * @param aggregation How the column carries into a coarser level of detail
      */
-    public record Column(String name, ColumnType type) {
+    public record Column(String name, ColumnType type, Aggregation aggregation) {
         /**
          * Creates a new column definition.
          *
          * @param name Column name (must not be null or empty)
          * @param type Column type (must not be null)
-         * @throws IllegalArgumentException if name is null/empty or type is null
+         * @param aggregation Aggregation (must not be null)
+         * @throws IllegalArgumentException if name is null/empty, type or aggregation is null, or
+         *         a summed column has a type whose values cannot be added
          */
         public Column {
             if (name == null || name.isBlank()) {
@@ -115,6 +150,16 @@ public final class ParquetSchema {
             }
             if (type == null) {
                 throw new IllegalArgumentException("Column type must not be null");
+            }
+            if (aggregation == null) {
+                throw new IllegalArgumentException("Column aggregation must not be null");
+            }
+            // Summing a rate or an average produces a number nothing measures, and summing text
+            // or a flag produces nothing at all, so only whole numbers may be declared summed
+            if (aggregation == Aggregation.SUM && !type.isIntegral()) {
+                throw new IllegalArgumentException("Column '" + name + "' is declared "
+                    + Aggregation.SUM + " but has type " + type
+                    + "; a summed column counts events and must be INTEGER or BIGINT");
             }
         }
     }
@@ -128,14 +173,30 @@ public final class ParquetSchema {
         private Builder() {}
         
         /**
-         * Adds a column to the schema.
+         * Adds a sampled column to the schema, which keeps the value of the recording a coarser
+         * level's row stands on.
          *
          * @param name Column name
          * @param type Column type
          * @return This builder for chaining
          */
         public Builder column(String name, ColumnType type) {
-            columns.add(new Column(name, type));
+            return column(name, type, Aggregation.SAMPLE);
+        }
+
+        /**
+         * Adds a column to the schema, saying how it carries into a coarser level of detail.
+         *
+         * @param name Column name
+         * @param type Column type
+         * @param aggregation {@link Aggregation#SAMPLE} for a state or a rate,
+         *        {@link Aggregation#SUM} for a count of events
+         * @return This builder for chaining
+         * @throws IllegalArgumentException if a summed column has a type whose values cannot be
+         *         added
+         */
+        public Builder column(String name, ColumnType type, Aggregation aggregation) {
+            columns.add(new Column(name, type, aggregation));
             return this;
         }
         
