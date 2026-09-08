@@ -1,6 +1,8 @@
 # Mutation Events
 
-**Status: TO BE REVIEWED**
+**Status: ACCOMPLISHED — implemented on branch `mutation-events` (PR #162), 2026-09-08. Every
+decision of the two reviews is written into the text; the two rejected findings of the code review
+are recorded in the PR.**
 
 Related issues: #135 (mutation marks for the visualizer), #119 (execution coverage). This proposal
 records the ground truth #135 asks for and carries it to the visualizer; it does not touch #119.
