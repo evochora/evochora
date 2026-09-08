@@ -178,8 +178,9 @@ facts, not a reconstruction, and need no node:
   `plugin_class` (the plugin's class name), `kind` (what the plugin calls the operation),
   `position` (relative to the child's origin, along the shortest way around the world, as JSON
   text — cast it: `position::INTEGER[]`), `old_value` and `new_value` (packed molecule ints).
-- `mutation_summary` — one row per event with the same keys, `cell_count`, the `position` of the
-  first cell, `dv` and `params` as JSON text. The built-in kinds: `duplication` (`params`: flat
+- `mutation_summary` — one row per event with the same keys, `cell_count`, the smallest
+  `position` among its cells (independent of the direction the plugin walked), `dv` and `params`
+  as JSON text. The built-in kinds: `duplication` (`params`: flat
   index of the copied source), `deletion` (`params`: how many copies of the deleted label the body
   had), `insertion`, `label-insertion` (`params`: hash of the source label), `substitution`, and
   `label-rewrite` — the XOR mask every child's labels receive, with `cell_count` 0, `position`
