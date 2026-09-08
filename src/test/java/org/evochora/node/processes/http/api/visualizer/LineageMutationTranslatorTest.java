@@ -65,6 +65,31 @@ class LineageMutationTranslatorTest {
     }
 
     @Test
+    void translatesTheValueBeforeTheWriteLikeTheValueAfterIt() {
+        // A substitution over a label reference: the value it replaced stood in the same namespace
+        // as the one it wrote, so the visualizer shows both through the same masks.
+        int replacedLabel = new Molecule(Config.TYPE_LABELREF, 0x0abc).toInt();
+        StoredMutationEvents generation1 = StoredMutationEvents.newBuilder()
+                .setDimensions(2)
+                .addEvents(substitution(replacedLabel, RECORDED_LABEL, -5, 0))
+                .addEvents(labelRewrite(MASK_GENERATION_1))
+                .build();
+
+        List<MutationEventView> events = LineageMutationTranslator.translate(
+                List.of(
+                    entry(2, 2, mask(MASK_GENERATION_2)),
+                    entry(1, 1, generation1)),
+                WORLD);
+
+        MutationEventView substitution = events.get(0);
+        assertThat(substitution.cells().get(0).before().moleculeType()).isEqualTo(Config.TYPE_LABELREF);
+        assertThat(substitution.cells().get(0).before().moleculeValue())
+                .isEqualTo(0x0abc ^ MASK_GENERATION_1 ^ MASK_GENERATION_2);
+        assertThat(substitution.cells().get(0).after().moleculeValue())
+                .isEqualTo(0x1234 ^ MASK_GENERATION_1 ^ MASK_GENERATION_2);
+    }
+
+    @Test
     void leavesAnEventThatWasRecordedAfterTheMaskOfItsOwnBirthAlone() {
         StoredMutationEvents ownBirth = StoredMutationEvents.newBuilder()
                 .setDimensions(2)
@@ -146,12 +171,16 @@ class LineageMutationTranslatorTest {
     }
 
     private static StoredMutationEvent substitution(int newValue, int offsetX, int offsetY) {
+        return substitution(0, newValue, offsetX, offsetY);
+    }
+
+    private static StoredMutationEvent substitution(int oldValue, int newValue, int offsetX, int offsetY) {
         return StoredMutationEvent.newBuilder()
                 .setPluginClass("org.evochora.runtime.worldgen.GeneSubstitutionPlugin")
                 .setKind("substitution")
                 .addRelativeCoordinates(offsetX)
                 .addRelativeCoordinates(offsetY)
-                .addOldValues(0)
+                .addOldValues(oldValue)
                 .addNewValues(newValue)
                 .build();
     }
