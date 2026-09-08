@@ -221,7 +221,7 @@ class MutationSummaryPluginTest {
         assertThat(rows).hasSize(1);
         assertThat(rows.get(0)[7]).isEqualTo("label-rewrite");
         assertThat(rows.get(0)[8]).isEqualTo(0);
-        assertThat(rows.get(0)[9]).isEqualTo("");
+        assertThat(rows.get(0)[9]).isEqualTo("[]");
         assertThat(rows.get(0)[11]).isEqualTo("[42]");
     }
 

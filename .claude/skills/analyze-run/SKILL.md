@@ -182,8 +182,8 @@ facts, not a reconstruction, and need no node:
   first cell, `dv` and `params` as JSON text. The built-in kinds: `duplication` (`params`: flat
   index of the copied source), `deletion` (`params`: how many copies of the deleted label the body
   had), `insertion`, `label-insertion` (`params`: hash of the source label), `substitution`, and
-  `label-rewrite` — the XOR mask every child's labels receive, with `cell_count` 0 and the mask in
-  `params`; it changes no genome hash and is not a mutation.
+  `label-rewrite` — the XOR mask every child's labels receive, with `cell_count` 0, `position`
+  `[]` and the mask in `params`; it changes no genome hash and is not a mutation.
 - `variation_sources` — births per recording by what changed the genome: `unchanged`, `bodiless`
   (hash 0), `no_event`, one column per built-in kind, `multiple` (several kinds in one birth),
   `other` (a kind outside the built-in set). Its count columns are *summed* into the coarser LOD

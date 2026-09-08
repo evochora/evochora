@@ -73,8 +73,11 @@ public class MutationSummaryPlugin extends AbstractAnalyticsPlugin {
         .column("params", ColumnType.VARCHAR)
         .build();
 
-    /** The position an event without cells carries: it wrote nowhere, so it names no place. */
-    private static final String NO_POSITION = "";
+    /**
+     * The position an event without cells carries: it wrote nowhere, so it names no place. It is
+     * the empty JSON list, so that the column casts to a list in every row.
+     */
+    private static final String NO_POSITION = "[]";
 
     /**
      * Turns the flat index of a written cell into an offset from the newborn's origin. Derived once
@@ -170,7 +173,7 @@ public class MutationSummaryPlugin extends AbstractAnalyticsPlugin {
      *
      * @param event the event to place, with the cells as the reporting plugin held them
      * @param org the organism the event belongs to, for its initial position
-     * @return the smallest offset per dimension, for example {@code [13,4]}, or an empty string for
+     * @return the smallest offset per dimension, for example {@code [13,4]}, or an empty list for
      *         an event that wrote no cell
      * @throws IllegalStateException if the plugin has no world to convert the indices in, or the
      *         organism states an origin that does not fit that world
