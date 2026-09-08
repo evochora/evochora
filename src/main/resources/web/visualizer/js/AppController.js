@@ -3,6 +3,7 @@ import { OrganismApi } from './api/OrganismApi.js';
 import { SimulationApi } from './api/SimulationApi.js';
 import { EnvironmentGrid } from './EnvironmentGrid.js';
 import { buildMarkMap, genomeEdges } from './MutationMarks.js';
+import { moleculeTypeName } from './MoleculeTypePalette.js';
 import { MinimapView } from './ui/minimap/MinimapView.js';
 import { OrganismInstructionView } from './ui/organism/OrganismInstructionView.js';
 import { OrganismSourceView } from './ui/organism/OrganismSourceView.js';
@@ -1162,15 +1163,18 @@ export class AppController {
      * the type constant at its place in the packed molecule. The run's metadata names those
      * constants, which is what joins the two.
      *
+     * The name is the one the grid gives a cell of that type, so that a mark and the cell it sits
+     * on compare by the same name - also for a type the palette does not know.
+     *
      * @param {number} moleculeType - The molecule type as the mutations endpoint reports it.
-     * @returns {string|null} The type name the run metadata gives that type, null for a type this
+     * @returns {string|null} The type name the grid displays for that type, null for a type this
      *     run does not name.
      * @private
      */
     _resolveMoleculeTypeName(moleculeType) {
         const names = this.state.metadata?.moleculeTypes;
         const name = names ? names[String(moleculeType)] : null;
-        return name || null;
+        return name ? moleculeTypeName(name) : null;
     }
 
     /**
