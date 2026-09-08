@@ -6,6 +6,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -95,13 +96,17 @@ public abstract class AbstractH2OrgStorageStrategy implements IH2OrgStorageStrat
      * @param organismsStmt prepared MERGE for the static organism data, reused for every tick written on this connection
      * @param statesStmt prepared MERGE for the per-tick organism state
      * @param tickStatsStmt prepared MERGE for the per-tick statistics row
+     * @param birthMutationsStmt prepared MERGE for the birth mutations column, batched only for organisms that carry events
      * @param seenOrganisms organism ids already batched through {@code organismsStmt} in the current commit window, cleared on commit, so the static row is batched once per organism and commit
+     * @param seenBirthMutations organism ids already batched through {@code birthMutationsStmt} in the current commit window, cleared on commit
      */
     protected record StreamingSession(
             PreparedStatement organismsStmt,
             PreparedStatement statesStmt,
             PreparedStatement tickStatsStmt,
-            Set<Integer> seenOrganisms
+            PreparedStatement birthMutationsStmt,
+            Set<Integer> seenOrganisms,
+            Set<Integer> seenBirthMutations
     ) {}
 
     /** SQL for the per-tick statistics shared by all organism storage strategies. */
@@ -109,18 +114,36 @@ public abstract class AbstractH2OrgStorageStrategy implements IH2OrgStorageStrat
             "MERGE INTO organism_tick_stats (tick_number, total_organisms_created) "
             + "KEY (tick_number) VALUES (?, ?)";
 
-    /** Per-connection sessions (thread-safe for competing consumers sharing this strategy instance). */
-    private final ConcurrentHashMap<Connection, StreamingSession> sessions = new ConcurrentHashMap<>();
+    /**
+     * SQL for the static organism data, written by {@link #addOrganismMetadataBatch}.
+     * <p>
+     * Its columns are exactly those of {@link #createOrganismsTable(Statement)} that every
+     * organism has, which is why both live here: a column added to the table without a place in
+     * this statement would never be written. It deliberately does not name
+     * {@code birth_mutations}, which only a fraction of the organisms carry and which is written
+     * once: a MERGE writes the columns it names, so a later commit window that runs this
+     * statement again for a living organism leaves the events where they are.
+     */
+    private static final String ORGANISMS_MERGE_SQL =
+            "MERGE INTO organisms ("
+            + "organism_id, parent_id, birth_tick, program_id, initial_position, genome_hash, "
+            + "generation, parent_genome_hash"
+            + ") KEY (organism_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
 
     /**
-     * Returns the SQL string used for the organisms (static metadata) MERGE statement
-     * during streaming writes.
+     * SQL for the birth mutations of one organism, written by {@link #addBirthMutationsBatch}.
      * <p>
-     * Called once per connection during lazy initialization of {@link StreamingSession}.
-     *
-     * @return SQL string for MERGE operation on organisms table
+     * It names only {@code organism_id} and {@code birth_mutations} and therefore depends on the
+     * row already existing: run on its own it would insert a row without the values the table
+     * requires. {@link #commitOrganismWrites(Connection)} executes it after the static data of
+     * the same commit window.
      */
-    protected abstract String getStreamOrganismsMergeSql();
+    private static final String BIRTH_MUTATIONS_MERGE_SQL =
+            "MERGE INTO organisms (organism_id, birth_mutations) "
+            + "KEY (organism_id) VALUES (?, ?)";
+
+    /** Per-connection sessions (thread-safe for competing consumers sharing this strategy instance). */
+    private final ConcurrentHashMap<Connection, StreamingSession> sessions = new ConcurrentHashMap<>();
 
     /**
      * Returns the SQL string used for the per-tick state MERGE statement
@@ -150,9 +173,11 @@ public abstract class AbstractH2OrgStorageStrategy implements IH2OrgStorageStrat
             StreamingSession session = sessions.computeIfAbsent(conn, c -> {
                 try {
                     return new StreamingSession(
-                            c.prepareStatement(getStreamOrganismsMergeSql()),
+                            c.prepareStatement(ORGANISMS_MERGE_SQL),
                             c.prepareStatement(getStreamStatesMergeSql()),
                             c.prepareStatement(TICK_STATS_MERGE_SQL),
+                            c.prepareStatement(BIRTH_MUTATIONS_MERGE_SQL),
+                            new HashSet<>(),
                             new HashSet<>()
                     );
                 } catch (SQLException e) {
@@ -210,6 +235,72 @@ public abstract class AbstractH2OrgStorageStrategy implements IH2OrgStorageStrat
                 stmt.addBatch();
             }
         }
+    }
+
+    /**
+     * Adds the birth mutations of this tick's organisms to the batch.
+     * <p>
+     * Only organisms the caller named are batched, and each one once per commit window: an
+     * organism's events stand in exactly one recording, and writing them again would be the same
+     * bytes over the same row.
+     * <p>
+     * The events are opaque here. What they mean, and in which frame of reference their
+     * coordinates are given, is decided where the world of the run is known; a storage strategy
+     * knows its options, a connection and the tick data, and stores what it is handed.
+     *
+     * @param session The streaming session for the current connection
+     * @param tick Tick data whose organisms are looked up in {@code birthMutations}
+     * @param birthMutations serialized events per organism id, for the organisms of this tick that
+     *                       carry any; empty when none does
+     * @throws SQLException if parameter setting or addBatch fails
+     */
+    protected void addBirthMutationsBatch(StreamingSession session, TickData tick,
+                                          Map<Integer, byte[]> birthMutations) throws SQLException {
+        if (birthMutations.isEmpty()) {
+            return;
+        }
+        PreparedStatement stmt = session.birthMutationsStmt();
+        Set<Integer> seen = session.seenBirthMutations();
+        for (OrganismState org : tick.getOrganismsList()) {
+            int organismId = org.getOrganismId();
+            byte[] events = birthMutations.get(organismId);
+            if (events != null && seen.add(organismId)) {
+                stmt.setInt(1, organismId);
+                stmt.setBytes(2, events);
+                stmt.addBatch();
+            }
+        }
+    }
+
+    /**
+     * Creates the static organism data table shared by all organism storage strategies.
+     * <p>
+     * One row per organism of the run, holding what does not change over its life. The per-tick
+     * data is what a strategy lays out differently; this table is the same for all of them, so it
+     * is defined here together with {@link #ORGANISMS_MERGE_SQL}, which writes it.
+     * <p>
+     * {@code birth_mutations} holds a serialized {@code StoredMutationEvents} message and is null
+     * for every organism no mutation plugin touched, which is the common case.
+     *
+     * @param stmt Statement on a connection with the run schema already set
+     * @throws SQLException if the DDL fails for a reason other than the object already existing
+     */
+    protected void createOrganismsTable(Statement stmt) throws SQLException {
+        H2SchemaUtil.executeDdlIfNotExists(
+            stmt,
+            "CREATE TABLE IF NOT EXISTS organisms (" +
+            "  organism_id INT PRIMARY KEY," +
+            "  parent_id INT NULL," +
+            "  birth_tick BIGINT NOT NULL," +
+            "  program_id TEXT NOT NULL," +
+            "  initial_position BYTEA NOT NULL," +
+            "  genome_hash BIGINT DEFAULT 0," +
+            "  generation INT DEFAULT 0," +
+            "  parent_genome_hash BIGINT NULL," +
+            "  birth_mutations BYTEA NULL" +
+            ")",
+            "organisms"
+        );
     }
 
     /**
@@ -288,11 +379,19 @@ public abstract class AbstractH2OrgStorageStrategy implements IH2OrgStorageStrat
         if (!session.seenOrganisms().isEmpty()) {
             session.organismsStmt().executeBatch();
         }
+        // After the static data, never before it: a MERGE inserts the row when it does not exist,
+        // and a row holding only the organism id and its events violates the NOT NULL columns of
+        // the table. Both batches carry the states of the same commit window, so the row the
+        // second statement updates is always in the first one's batch.
+        if (!session.seenBirthMutations().isEmpty()) {
+            session.birthMutationsStmt().executeBatch();
+        }
         session.statesStmt().executeBatch();
         session.tickStatsStmt().executeBatch();
 
         // Reset per-commit state; statements stay open for reuse
         session.seenOrganisms().clear();
+        session.seenBirthMutations().clear();
     }
 
     /**
@@ -306,9 +405,7 @@ public abstract class AbstractH2OrgStorageStrategy implements IH2OrgStorageStrat
     public void resetStreamingState(Connection conn) {
         StreamingSession session = sessions.remove(conn);
         if (session != null) {
-            closeQuietly(session.organismsStmt());
-            closeQuietly(session.statesStmt());
-            closeQuietly(session.tickStatsStmt());
+            closeSessionStatements(session);
         }
     }
 
@@ -328,19 +425,27 @@ public abstract class AbstractH2OrgStorageStrategy implements IH2OrgStorageStrat
             }
             try {
                 if (c.isClosed()) {
-                    closeQuietly(entry.getValue().organismsStmt());
-                    closeQuietly(entry.getValue().statesStmt());
-                    closeQuietly(entry.getValue().tickStatsStmt());
+                    closeSessionStatements(entry.getValue());
                     return true;
                 }
             } catch (SQLException e) {
-                closeQuietly(entry.getValue().organismsStmt());
-                closeQuietly(entry.getValue().statesStmt());
-                closeQuietly(entry.getValue().tickStatsStmt());
+                closeSessionStatements(entry.getValue());
                 return true;
             }
             return false;
         });
+    }
+
+    /**
+     * Closes every statement of a session, suppressing any exceptions.
+     *
+     * @param session the session whose statements are no longer usable
+     */
+    private void closeSessionStatements(StreamingSession session) {
+        closeQuietly(session.organismsStmt());
+        closeQuietly(session.statesStmt());
+        closeQuietly(session.tickStatsStmt());
+        closeQuietly(session.birthMutationsStmt());
     }
 
     /**

@@ -103,6 +103,10 @@ export function render(canvas, data, config) {
         const xKey = config.x || 'tick';
         const yKeys = Array.isArray(config.y) ? config.y : (config.y ? [config.y] : []);
         const isPercentage = config.yAxisMode === 'percent';
+        // How the stacked quantity reads and what it is called, for bars that carry a quantity of
+        // their own rather than shares of one
+        const yFormat = config.yFormat || null;
+        const yLabel = config.yLabel || null;
         const y2Key = config.y2 || null;
         const y2Label = config.y2Label || formatLabel(y2Key || '');
         const y2PeakTickKey = config.y2PeakTick || null;
@@ -252,7 +256,7 @@ export function render(canvas, data, config) {
                                 if (context.parsed.y !== null) {
                                     // The second axis carries a rate whatever the bars show
                                     const percent = isPercentage || context.dataset.yAxisID === 'y2';
-                                    label += tooltipValue(context.parsed.y, percent ? 'percent' : null);
+                                    label += tooltipValue(context.parsed.y, percent ? 'percent' : yFormat);
                                     // Where a rate peaked, spelled out rather than shortened
                                     if (context.dataset.yAxisID === 'y2' && context.dataset.peakTicks) {
                                         const peakTick = context.dataset.peakTicks[context.dataIndex];
@@ -289,10 +293,12 @@ export function render(canvas, data, config) {
                         position: 'left',
                         // Start with max 100 (all categories visible)
                         max: isPercentage ? 100 : undefined,
-                        title: { display: false },
+                        title: yLabel
+                            ? { display: true, text: yLabel, color: '#888' }
+                            : { display: false },
                         ticks: {
                             color: '#888',
-                            ...axisTicks(isPercentage ? 'percent' : null)
+                            ...axisTicks(isPercentage ? 'percent' : yFormat)
                         },
                         grid: { color: '#333', drawBorder: false }
                     },

@@ -9,18 +9,24 @@ import io.javalin.openapi.OpenApi;
 import io.javalin.openapi.OpenApiContent;
 import io.javalin.openapi.OpenApiParam;
 import io.javalin.openapi.OpenApiResponse;
+import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.resources.database.IDatabaseReader;
+import org.evochora.datapipeline.api.resources.database.MetadataNotFoundException;
 import org.evochora.datapipeline.api.resources.database.OrganismNotFoundException;
+import org.evochora.datapipeline.api.resources.database.dto.LineageMutations;
 import org.evochora.datapipeline.api.resources.database.dto.OrganismTickDetails;
 import org.evochora.datapipeline.api.resources.database.TickNotFoundException;
 import org.evochora.datapipeline.api.resources.database.dto.OrganismTickSummary;
 import org.evochora.datapipeline.api.resources.database.dto.TickRange;
+import org.evochora.datapipeline.utils.MetadataConfigHelper;
+import org.evochora.runtime.model.EnvironmentProperties;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.evochora.node.processes.http.api.pipeline.dto.ErrorResponseDto;
 import org.evochora.node.processes.http.api.visualizer.dto.OrganismDetailsResponseDto;
+import org.evochora.node.processes.http.api.visualizer.dto.OrganismMutationsResponseDto;
 import org.evochora.node.processes.http.api.visualizer.dto.OrganismsResponseDto;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -64,15 +70,18 @@ public class OrganismController extends VisualizerBaseController {
     public void registerRoutes(final Javalin app, final String basePath) {
         final String listPath = (basePath + "/{tick}").replaceAll("//", "/");
         final String detailPath = (basePath + "/{tick}/{organismId}").replaceAll("//", "/");
+        final String mutationsPath = (basePath + "/{tick}/{organismId}/mutations").replaceAll("//", "/");
         final String ticksPath = (basePath + "/ticks").replaceAll("//", "/");
 
-        LOGGER.debug("Registering organism endpoints: list={}, detail={}, ticks={}", listPath, detailPath, ticksPath);
+        LOGGER.debug("Registering organism endpoints: list={}, detail={}, mutations={}, ticks={}",
+            listPath, detailPath, mutationsPath, ticksPath);
 
         // IMPORTANT: Register /ticks BEFORE /{tick} to avoid path parameter conflict
         // Javalin matches routes in registration order, so /ticks must come first
         app.get(ticksPath, this::getTicks);
         app.get(listPath, this::getOrganismsAtTick);
         app.get(detailPath, this::getOrganismDetails);
+        app.get(mutationsPath, this::getOrganismMutations);
 
         // Setup common exception handlers from base class
         setupExceptionHandlers(app);
@@ -236,6 +245,108 @@ public class OrganismController extends VisualizerBaseController {
         }
     }
 
+
+    /**
+     * Handles GET requests for the mutations of an organism's whole lineage.
+     * <p>
+     * Route: GET /visualizer/api/organisms/{tick}/{organismId}/mutations?runId=...
+     * <p>
+     * The answer does not depend on {@code {tick}} and the segment is not read: a mutation is
+     * recorded once, at the birth of the organism that received it, and the answer is the same at
+     * every tick of the run. The segment is there to keep this route apart from the two-segment
+     * detail route {@code {tick}/{organismId}}.
+     * <p>
+     * Every event of the organism and of each of its ancestors is reported once, with the birth it
+     * was recorded at as its origin. Cells carry absolute coordinates on the displayed body and
+     * their molecules split into type and value; label values are moved into the displayed
+     * organism's namespace by {@link LineageMutationTranslator}. Events without cells, such as the
+     * label mask itself, are reported with an empty cell list.
+     * <p>
+     * Response format:
+     * <pre>
+     * {
+     *   "organismId": 7,
+     *   "events": [
+     *     {
+     *       "originOrganismId": 3, "originGeneration": 1, "originGenomeHash": "-4711",
+     *       "originParentGenomeHash": "815", "originBirthTick": 120, "eventIndex": 0,
+     *       "pluginClass": "org.evochora.runtime.worldgen.GeneSubstitutionPlugin",
+     *       "kind": "substitution", "dv": [0, 1], "params": [],
+     *       "cells": [
+     *         {"coordinates": [12, 40],
+     *          "before": {"moleculeType": 0, "moleculeValue": 5},
+     *          "after": {"moleculeType": 0, "moleculeValue": 9}}
+     *       ]
+     *     }
+     *   ]
+     * }
+     * </pre>
+     *
+     * @param ctx The Javalin context containing request and response data.
+     * @throws IllegalArgumentException if the organismId is invalid
+     * @throws NoRunIdException if no run ID is available
+     * @throws OrganismNotFoundException if the organism is not indexed
+     * @throws SQLException if database operations fail
+     */
+    @OpenApi(
+        path = "{tick}/{organismId}/mutations",
+        methods = {HttpMethod.GET},
+        summary = "Get the mutations of an organism's lineage",
+        description = "Returns every mutation the organism and its ancestors received at their births, placed on the organism's body. The tick segment is not read: the answer is the same at every tick.",
+        tags = {"visualizer / organism"},
+        pathParams = {
+            @OpenApiParam(name = "tick", description = "Not read; keeps this route apart from the organism detail route", required = true, type = Long.class),
+            @OpenApiParam(name = "organismId", description = "The organism ID", required = true, type = Integer.class)
+        },
+        queryParams = {
+            @OpenApiParam(name = "runId", description = "Optional simulation run ID (defaults to latest run)", required = false)
+        },
+        responses = {
+            @OpenApiResponse(status = "200", description = "OK", content = @OpenApiContent(from = OrganismMutationsResponseDto.class)),
+            @OpenApiResponse(status = "304", description = "Not Modified (cached response, ETag matches)"),
+            @OpenApiResponse(status = "400", description = "Bad request (invalid organismId)", content = @OpenApiContent(from = ErrorResponseDto.class)),
+            @OpenApiResponse(status = "404", description = "Not found (organism or run ID not found)", content = @OpenApiContent(from = ErrorResponseDto.class)),
+            @OpenApiResponse(status = "429", description = "Too many requests (connection pool exhausted)", content = @OpenApiContent(from = ErrorResponseDto.class)),
+            @OpenApiResponse(status = "500", description = "Internal server error (database error)", content = @OpenApiContent(from = ErrorResponseDto.class))
+        }
+    )
+    void getOrganismMutations(final Context ctx) throws SQLException, OrganismNotFoundException {
+        final int organismId = parseOrganismId(ctx.pathParam("organismId"));
+        final String runId = resolveRunId(ctx);
+
+        LOGGER.debug("Retrieving lineage mutations: organismId={}, runId={}", organismId, runId);
+
+        final CacheConfig cacheConfig = CacheConfig.fromConfig(options, "organismMutations");
+
+        try (final IDatabaseReader reader = databaseProvider.createReader(runId)) {
+            // The organism is enough to identify the answer once indexing has finished: the events
+            // of a lineage are written once. While indexing runs, an ancestor's events can arrive
+            // after the descendant's, which is why the cache is off by default.
+            final String etag = "\"" + runId + "_" + organismId + "\"";
+
+            if (applyCacheHeaders(ctx, cacheConfig, etag)) {
+                return;
+            }
+
+            final List<LineageMutations> chain = reader.readLineageMutations(organismId);
+            final SimulationMetadata metadata = reader.getMetadata();
+            final EnvironmentProperties world = MetadataConfigHelper.environmentProperties(metadata);
+
+            ctx.status(HttpStatus.OK).json(new OrganismMutationsResponseDto(
+                organismId, LineageMutationTranslator.translate(chain, world)));
+        } catch (OrganismNotFoundException e) {
+            throw e;
+        } catch (MetadataNotFoundException e) {
+            throw new NoRunIdException("Metadata not found for run: " + runId, e);
+        } catch (RuntimeException e) {
+            handleDatabaseException(e, runId, "organism mutations");
+        } catch (SQLException e) {
+            if (isSchemaNotFound(e)) {
+                throw new NoRunIdException("Run ID not found: " + runId);
+            }
+            throw e;
+        }
+    }
 
     /**
      * Converts a genome ancestor map to string keys and values.

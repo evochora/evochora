@@ -80,6 +80,8 @@ public class Organism {
     private long deathTick = -1L; // Tick when organism died (-1 if alive)
     private int generation = 0; // Replications between a founding organism and this one
     private long parentGenomeHash = 0L; // Genome of the parent at this organism's birth
+    /** What the mutation plugins did to this organism at its birth; null until one reports. */
+    private List<MutationRecord> birthMutations = null;
     private final Object[] registers;
     private final Deque<Object> dataStack;
     private final Deque<int[]> locationStack;
@@ -1485,6 +1487,60 @@ public class Organism {
      * @return the parent's genome hash at this organism's birth, 0 if there was no parent
      */
     public long getParentGenomeHash() { return parentGenomeHash; }
+
+    /**
+     * Adds what a mutation plugin did to this organism at its birth.
+     * <p>
+     * This is observation data on the individual, like {@link #getDeathTick()} and
+     * {@link #getParentGenomeHash()}: it belongs to this organism and is read out with its state.
+     * The runtime interprets nothing in a record — it neither knows the kinds nor which plugin
+     * wrote which cell — so a plugin is responsible for choosing a kind name that no other plugin
+     * uses.
+     * <p>
+     * The list is created on the first record, so an organism no plugin touched carries no list at
+     * all. Records stay in the order the plugins reported them.
+     *
+     * @param record what one plugin did, never null
+     * @throws NullPointerException if the record is null
+     */
+    public void recordBirthMutation(MutationRecord record) {
+        java.util.Objects.requireNonNull(record, "record");
+        if (birthMutations == null) {
+            birthMutations = new ArrayList<>(1);
+        }
+        birthMutations.add(record);
+    }
+
+    /**
+     * What the mutation plugins did to this organism at its birth, in the order they reported it.
+     * <p>
+     * The records are held only until they have been recorded; {@link #clearBirthMutations()}
+     * removes them again. A {@code null} answer therefore means either that no plugin touched this
+     * organism or that its records have already been observed.
+     *
+     * @return an unmodifiable view of the records, or {@code null} if there are none
+     */
+    public List<MutationRecord> getBirthMutations() {
+        return birthMutations == null ? null : java.util.Collections.unmodifiableList(birthMutations);
+    }
+
+    /**
+     * Whether this organism holds birth mutation records that have not been observed yet.
+     *
+     * @return {@code true} if {@link #getBirthMutations()} would return records
+     */
+    public boolean hasBirthMutations() {
+        return birthMutations != null;
+    }
+
+    /**
+     * Drops the birth mutation records, returning the organism to the state of one no plugin
+     * touched. Called once the records have been written out, so that they are not held for the
+     * organism's whole life.
+     */
+    public void clearBirthMutations() {
+        birthMutations = null;
+    }
 
     /**
      * Records the ancestry facts a child inherits from its parent at the moment of replication.

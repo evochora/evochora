@@ -16,10 +16,12 @@ import java.util.concurrent.TimeUnit;
 
 import org.evochora.datapipeline.TestMetadataHelper;
 import org.evochora.datapipeline.api.contracts.BatchInfo;
+import org.evochora.datapipeline.api.contracts.MutationEvent;
 import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.ProcFrame;
 import org.evochora.datapipeline.api.contracts.RegisterValue;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
+import org.evochora.datapipeline.api.contracts.StoredMutationEvents;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.contracts.Vector;
@@ -55,6 +57,7 @@ import com.typesafe.config.ConfigFactory;
  *   <li>TickData batch written to storage + topic notification</li>
  *   <li>OrganismIndexer consuming from topic and writing to H2 database</li>
  *   <li>Idempotency on redelivery</li>
+ *   <li>Mutation events converted to the stored form and kept across later ticks</li>
  * </ul>
  */
 @Tag("integration")
@@ -128,12 +131,20 @@ class OrganismIndexerIntegrationTest {
 
         indexMetadata(runId, metadata);
 
-        // two ticks with same organism to test per-tick rows
+        // two ticks with same organism to test per-tick rows; only the first carries the
+        // organism's mutation events, as the engine reports them exactly once
         OrganismState organism = buildOrganismState(1);
         TickData tick1 = TickData.newBuilder()
                 .setTickNumber(1L)
                 .setSimulationRunId(runId)
-                .addOrganisms(organism)
+                .addOrganisms(organism.toBuilder()
+                        .addBirthMutations(MutationEvent.newBuilder()
+                                .setPluginClass("org.evochora.runtime.worldgen.GeneSubstitutionPlugin")
+                                .setKind("substitution")
+                                .addCells(2 * 10 + 3)
+                                .addOldValues(11)
+                                .addNewValues(12)
+                                .addDv(0).addDv(1)))
                 .build();
         TickData tick2 = TickData.newBuilder()
                 .setTickNumber(2L)
@@ -174,6 +185,18 @@ class OrganismIndexerIntegrationTest {
             try (var rs = conn.createStatement().executeQuery("SELECT COUNT(*) AS cnt FROM organism_ticks")) {
                 assertThat(rs.next()).isTrue();
                 assertThat(rs.getInt("cnt")).isEqualTo(2); // two ticks (each with all organisms in one BLOB)
+            }
+            // The events of the first tick stand in the static row, placed relative to the
+            // organism's origin, and the second tick without events has not cleared them
+            try (var rs = conn.createStatement().executeQuery(
+                    "SELECT birth_mutations FROM organisms WHERE organism_id = 1")) {
+                assertThat(rs.next()).isTrue();
+                StoredMutationEvents stored = StoredMutationEvents.parseFrom(rs.getBytes(1));
+                assertThat(stored.getDimensions()).isEqualTo(2);
+                assertThat(stored.getEventsCount()).isEqualTo(1);
+                assertThat(stored.getEvents(0).getKind()).isEqualTo("substitution");
+                assertThat(stored.getEvents(0).getRelativeCoordinatesList()).containsExactly(2, 3);
+                assertThat(stored.getEvents(0).getNewValuesList()).containsExactly(12);
             }
         }
     }

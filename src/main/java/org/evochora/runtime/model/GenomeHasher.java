@@ -59,6 +59,13 @@ public final class GenomeHasher {
      * Molecules are sorted by their relative position (to initialPosition) in lexicographic
      * order before hashing, ensuring the same genome produces the same hash regardless of
      * iteration order.
+     * <p>
+     * The relative position of a molecule is
+     * {@link EnvironmentProperties#relativeOffset(int, int, int, boolean)}, the same rule every
+     * consumer places a recorded cell by. A position computed differently would not be comparable
+     * with the hash it accompanies: two bodies whose molecules sit at the same offsets have the
+     * same hash, and a rule with the opposite tie-break would put a body spanning exactly half the
+     * world on the other side of its origin.
      *
      * @param environment The environment containing the cells
      * @param organismId The organism ID whose cells to hash
@@ -100,23 +107,8 @@ public final class GenomeHasher {
             // Create entry: [relPos0, relPos1, ..., relPosN, moleculeValue]
             long[] entry = new long[dims + 1];
             for (int d = 0; d < dims; d++) {
-                int diff = absCoord[d] - initialPosition[d];
-                // In toroidal worlds, use shortest distance to ensure identical genomes
-                // get the same hash regardless of world boundary wrapping
-                if (isToroidal) {
-                    int worldSize = shape[d];
-                    if (diff > worldSize / 2) {
-                        diff -= worldSize;
-                    } else if (diff < -worldSize / 2) {
-                        diff += worldSize;
-                    }
-                    // For even world sizes, ±worldSize/2 are equidistant.
-                    // Canonicalize to positive so the hash is independent of wrapping direction.
-                    if (worldSize % 2 == 0 && diff == -(worldSize / 2)) {
-                        diff = worldSize / 2;
-                    }
-                }
-                entry[d] = diff;
+                entry[d] = EnvironmentProperties.relativeOffset(
+                    absCoord[d], initialPosition[d], shape[d], isToroidal);
             }
             entry[dims] = moleculeInt;
             genomeMolecules.add(entry);

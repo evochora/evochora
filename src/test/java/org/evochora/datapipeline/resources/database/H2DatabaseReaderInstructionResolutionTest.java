@@ -300,7 +300,7 @@ class H2DatabaseReaderInstructionResolutionTest {
                     .addOrganisms(orgBuilder.build())
                     .build();
 
-            database.doWriteOrganismTick(conn, tick);
+            database.doWriteOrganismTick(conn, tick, java.util.Map.of());
             database.doCommitOrganismWrites(conn);
         }
     }
@@ -396,7 +396,7 @@ class H2DatabaseReaderInstructionResolutionTest {
                     .addOrganisms(orgBuilder.build())
                     .build();
 
-            database.doWriteOrganismTick(conn, tick);
+            database.doWriteOrganismTick(conn, tick, java.util.Map.of());
             database.doCommitOrganismWrites(conn);
         }
     }

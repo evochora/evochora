@@ -114,25 +114,28 @@ public class ManifestEntry {
     public Map<String, Integer> tickIntervals;
 
     /**
-     * Storage metric identifier of a second table this chart reads alongside its own (optional).
+     * The tables this chart reads alongside its own (optional).
      * <p>
-     * A metric whose rows only mean something next to another table names it here: the frontend
-     * loads both, runs {@link #generatedQuery} on this entry's data and {@link #companionQuery}
-     * on the companion, and hands the chart both results. The clade view uses it to read the
-     * population of each genome next to the lineage it descends in.
+     * A metric whose rows only mean something next to other tables names them here: the frontend
+     * loads all of them, runs {@link #generatedQuery} on this entry's data and each companion's
+     * query on its own, and hands the chart every result. The clade view uses it to read the
+     * population of each genome next to the lineage it descends in and next to the mutation that
+     * founded it.
      * <p>
-     * The companion is loaded at its own finest level of detail, not at the level chosen for this
+     * Every companion is loaded at its own finest level of detail, not at the level chosen for this
      * metric: a table that carries structure rather than a time series loses its meaning when
      * thinned out.
      * <p>
-     * If {@code null}, the chart reads only its own data, which is the common case.
+     * If {@code null} or empty, the chart reads only its own data, which is the common case.
      */
-    public String companionMetricId;
+    public java.util.List<Companion> companions;
 
     /**
-     * SQL query for the companion table, with the same {@code {table}} placeholder (optional).
-     * <p>
-     * Required when {@link #companionMetricId} is set.
+     * One table a chart reads alongside its own data.
+     *
+     * @param metricId storage metric identifier under which the table's Parquet files are found
+     * @param query    SQL query for that table, with the same {@code {table}} placeholder
+     *                 {@link #generatedQuery} uses
      */
-    public String companionQuery;
+    public record Companion(String metricId, String query) { }
 }

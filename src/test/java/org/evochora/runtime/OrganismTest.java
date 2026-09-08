@@ -1,13 +1,16 @@
 package org.evochora.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.Deque;
+import java.util.List;
 
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.isa.RegisterBank;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
+import org.evochora.runtime.model.MutationRecord;
 import org.evochora.runtime.model.Organism;
 import org.evochora.test.utils.SimulationTestUtils;
 import org.junit.jupiter.api.BeforeAll;
@@ -514,5 +517,58 @@ public class OrganismTest {
         org.resetTickState();
         org.skipNopCells(environment);
         assertThat(org.getIp()).isEqualTo(initialPos);
+    }
+
+    /**
+     * An organism no mutation plugin touched carries no list at all, so a consumer can tell
+     * "nothing happened" from "an empty list of things happened" without looking further.
+     */
+    @Test
+    @Tag("unit")
+    void birthMutationsAreAbsentUntilAPluginReportsOne() {
+        Organism org = Organism.create(sim, new int[]{10, 10}, 100);
+
+        assertThat(org.getBirthMutations()).isNull();
+    }
+
+    /**
+     * Records are read back in the order the plugins reported them, and clearing returns the
+     * organism to the state of one no plugin touched.
+     */
+    @Test
+    @Tag("unit")
+    void birthMutationsAreRecordedReadAndCleared() {
+        Organism org = Organism.create(sim, new int[]{10, 10}, 100);
+        MutationRecord first = new MutationRecord("org.example.First", "substitution",
+                new int[]{7}, new int[]{1}, new int[]{2}, new long[0], new int[]{1, 0});
+        MutationRecord second = new MutationRecord("org.example.Second", "duplication",
+                new int[]{8, 9}, new int[]{0, 0}, new int[]{3, 4}, new long[]{5L}, new int[]{1, 0});
+
+        org.recordBirthMutation(first);
+        org.recordBirthMutation(second);
+
+        assertThat(org.getBirthMutations()).containsExactly(first, second);
+
+        org.clearBirthMutations();
+
+        assertThat(org.getBirthMutations()).isNull();
+    }
+
+    /**
+     * The list is handed out for reading only: a consumer that could add to it would put records
+     * on an organism no plugin touched.
+     */
+    @Test
+    @Tag("unit")
+    void theRecordsHandedOutCannotBeAddedTo() {
+        Organism org = Organism.create(sim, new int[]{10, 10}, 100);
+        MutationRecord record = new MutationRecord("org.example.First", "substitution",
+                new int[]{7}, new int[]{1}, new int[]{2}, new long[0], new int[]{1, 0});
+        org.recordBirthMutation(record);
+
+        List<MutationRecord> handedOut = org.getBirthMutations();
+
+        assertThatThrownBy(() -> handedOut.add(record))
+                .isInstanceOf(UnsupportedOperationException.class);
     }
 }

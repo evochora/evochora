@@ -3,6 +3,7 @@ package org.evochora.datapipeline.resources.database.h2;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.List;
+import java.util.Map;
 
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.resources.database.TickNotFoundException;
@@ -22,7 +23,8 @@ import org.evochora.datapipeline.api.resources.database.dto.TickRange;
  * <p>
  * <strong>Static Table:</strong> The {@code organisms} table (static metadata)
  * is NOT affected by this strategy - it remains row-per-organism and is handled
- * separately in {@link #createTables(Connection)} and {@link #addOrganismTick(Connection, TickData)}.
+ * separately in {@link #createTables(Connection)} and
+ * {@link #addOrganismTick(Connection, TickData, Map)}.
  */
 public interface IH2OrgStorageStrategy {
     
@@ -67,9 +69,14 @@ public interface IH2OrgStorageStrategy {
      *
      * @param conn Database connection (autoCommit=false, transaction managed by caller)
      * @param tick Tick data containing organism states
+     * @param birthMutations serialized mutation events per organism id, for the organisms of this
+     *                       tick that carry any; empty when none does. The bytes are stored as
+     *                       they are: what they mean is decided by the caller, which knows the
+     *                       world of the run
      * @throws SQLException if batch addition fails
      */
-    void addOrganismTick(Connection conn, TickData tick) throws SQLException;
+    void addOrganismTick(Connection conn, TickData tick, Map<Integer, byte[]> birthMutations)
+            throws SQLException;
 
     /**
      * Executes all accumulated batches from previous {@link #addOrganismTick} calls.

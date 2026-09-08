@@ -6,6 +6,7 @@ import org.evochora.runtime.internal.services.SeededRandomProvider;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.isa.RegisterBank;
+import org.evochora.runtime.model.MutationRecord;
 import org.evochora.runtime.model.Organism;
 import org.evochora.runtime.thermodynamics.ThermodynamicPolicyManager;
 import org.junit.jupiter.api.BeforeEach;
@@ -280,6 +281,47 @@ class LabelRewritePluginTest {
 
         // loadState should not throw
         plugin.loadState(new byte[0]);
+    }
+
+    // ---- Mutation record tests ----
+
+    @Test
+    void aRewriteIsRecordedWithItsMaskAndNoCells() {
+        int labelValue = 12345;
+        environment.setMolecule(new Molecule(Config.TYPE_LABEL, labelValue), child.getId(), new int[]{0, 0});
+
+        LabelRewritePlugin plugin = new LabelRewritePlugin(new SeededRandomProvider(42L));
+        plugin.onBirth(child, environment);
+
+        int mask = labelValue ^ (environment.getMolecule(0, 0).value() & Config.VALUE_MASK);
+        List<MutationRecord> records = child.getBirthMutations();
+        assertThat(records).hasSize(1);
+        MutationRecord record = records.get(0);
+        assertThat(record.pluginClass()).isEqualTo(LabelRewritePlugin.class.getName());
+        assertThat(record.kind()).isEqualTo("label-rewrite");
+        assertThat(record.cells()).as("the mask changes no molecule of its own").isEmpty();
+        assertThat(record.oldValues()).isEmpty();
+        assertThat(record.newValues()).isEmpty();
+        assertThat(record.params()).containsExactly(mask);
+        assertThat(record.dv()).isEqualTo(child.getDv());
+    }
+
+    @Test
+    void aGenomeWithoutLabelsRecordsNothing() {
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, 42), child.getId(), new int[]{0, 0});
+
+        LabelRewritePlugin plugin = new LabelRewritePlugin(new SeededRandomProvider(42L));
+        plugin.onBirth(child, environment);
+
+        assertThat(child.getBirthMutations()).isNull();
+    }
+
+    @Test
+    void anOrganismWithoutCellsRecordsNothing() {
+        LabelRewritePlugin plugin = new LabelRewritePlugin(new SeededRandomProvider(42L));
+        plugin.onBirth(child, environment);
+
+        assertThat(child.getBirthMutations()).isNull();
     }
 
     @Test

@@ -61,24 +61,45 @@ public class GenomePopulationPlugin extends AbstractAnalyticsPlugin {
     /** Metric holding the lineage the clade view reads alongside these counts. */
     private String lineageMetricId = "genome_lineage";
 
+    /** Metric holding the mutation events a band's founding mutation is named from. */
+    private String mutationSummaryMetricId = "mutation_summary";
+
     /**
      * {@inheritDoc}
      *
-     * @throws IllegalArgumentException if {@code lineageMetricId} is configured empty, which would
-     *         leave the chart looking for a table under no name and showing nothing
+     * @throws IllegalArgumentException if {@code lineageMetricId} or {@code mutationSummaryMetricId}
+     *         is configured empty, which would leave the chart looking for a table under no name
+     *         and showing nothing
      */
     @Override
     public void configure(Config config) {
         super.configure(config);
-        if (config.hasPath("lineageMetricId")) {
-            String configured = config.getString("lineageMetricId").trim();
-            if (configured.isEmpty()) {
-                throw new IllegalArgumentException("Metric '" + metricId
-                    + "': lineageMetricId names the metric holding the lineage this chart is read"
-                    + " next to, and cannot be empty.");
-            }
-            this.lineageMetricId = configured;
+        this.lineageMetricId = companionMetricId(config, "lineageMetricId",
+            "the lineage this chart groups the population by", lineageMetricId);
+        this.mutationSummaryMetricId = companionMetricId(config, "mutationSummaryMetricId",
+            "the mutation events a band's founding mutation is named from", mutationSummaryMetricId);
+    }
+
+    /**
+     * Reads the name of a table this chart is read next to.
+     *
+     * @param config the plugin's configuration
+     * @param option the option naming the metric
+     * @param holds what the named table holds, for the message
+     * @param fallback the name to keep when the option is absent
+     * @return the metric id to load that table under
+     * @throws IllegalArgumentException if the option is configured empty
+     */
+    private String companionMetricId(Config config, String option, String holds, String fallback) {
+        if (!config.hasPath(option)) {
+            return fallback;
         }
+        String configured = config.getString(option).trim();
+        if (configured.isEmpty()) {
+            throw new IllegalArgumentException("Metric '" + metricId + "': " + option
+                + " names the metric holding " + holds + ", and cannot be empty.");
+        }
+        return configured;
     }
 
     @Override
@@ -134,6 +155,12 @@ public class GenomePopulationPlugin extends AbstractAnalyticsPlugin {
      * followed one level at a time. Shares stay shares of the population, so entering a small
      * clade shows a small band, not a full one.
      * <p>
+     * A band also says what started it. Every genome has its founding mutation in the events of
+     * its first carrier, so the chart reads the mutation summary next to the lineage and names
+     * kind, number of cells and position on the band. A band whose genome has no event with cells
+     * arose from something other than a mutation plugin, which the chart says instead of leaving
+     * the question open.
+     * <p>
      * Genome hashes travel as text. They are 64 bit, and a JavaScript number keeps 53 of them -
      * two genomes would silently become one, and the tree would join branches that never met.
      */
@@ -156,20 +183,28 @@ public class GenomePopulationPlugin extends AbstractAnalyticsPlugin {
             + "FROM {table} ORDER BY tick";
         entry.outputColumns = List.of("tick", "genome_hash", "count");
 
-        entry.companionMetricId = lineageMetricId;
-        // The lineage arrives as written, one row per genome and recording it appeared in. It is
-        // not condensed here: which of several edges of a genome counts is a question the chart
-        // answers anyway - the earliest one - and grouping by genome hash is a hash aggregation
-        // over an unsorted column, which the browser's DuckDB build does not survive beyond a
-        // few thousand rows. Every query that works today groups by tick, along which the files
-        // are ordered.
-        entry.companionQuery = "SELECT genome_hash::VARCHAR AS genome_hash, "
-            + "parent_genome_hash::VARCHAR AS parent_genome_hash, first_birth_tick FROM {table}";
+        // Both companions arrive as written, row for row. Neither is condensed here: which of
+        // several rows of a genome counts is a question the chart answers anyway - the earliest
+        // one - and grouping by genome hash is a hash aggregation over an unsorted column, which
+        // the browser's DuckDB build does not survive beyond a few thousand rows. Every query that
+        // works today groups by tick, along which the files are ordered. Both tables carry one
+        // row per genome and per mutation event rather than per recording, so the chart walks
+        // them once per redraw.
+        entry.companions = List.of(
+            new ManifestEntry.Companion(lineageMetricId,
+                "SELECT genome_hash::VARCHAR AS genome_hash, "
+                    + "parent_genome_hash::VARCHAR AS parent_genome_hash, first_birth_tick "
+                    + "FROM {table}"),
+            new ManifestEntry.Companion(mutationSummaryMetricId,
+                "SELECT genome_hash::VARCHAR AS genome_hash, birth_tick, organism_id, "
+                    + "event_index, kind, cell_count, position FROM {table}"));
 
         entry.visualization = VisualizationHint.chart("clade-area-chart", "tick")
             .with("groupBy", "genome_hash")
             .with("y", "count")
-            .with("yFormat", "percent");
+            .with("yFormat", "percent")
+            .with("lineageMetric", lineageMetricId)
+            .with("causeMetric", mutationSummaryMetricId);
 
         return entry;
     }

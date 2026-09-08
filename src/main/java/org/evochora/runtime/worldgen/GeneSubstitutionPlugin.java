@@ -14,6 +14,7 @@ import org.evochora.runtime.isa.OpcodeId;
 import org.evochora.runtime.isa.RegisterBank;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
+import org.evochora.runtime.model.MutationRecord;
 import org.evochora.runtime.model.MoleculeTypeRegistry;
 import org.evochora.runtime.model.Organism;
 import org.evochora.runtime.spi.IBirthHandler;
@@ -52,7 +53,13 @@ import org.slf4j.LoggerFactory;
  * through the environment's cell views in a single reservoir-sampling pass (no list collection),
  * the reservoir state and the coordinate of the chosen cell live in reusable fields, and CODE
  * mutation uses pre-computed O(1) lookup tables. The only per-call allocations are the visitor
- * lambda and one {@link Molecule} record for the write-back.
+ * lambda and, when a molecule actually changes, one {@link Molecule} record for the write-back and
+ * the {@link MutationRecord} handed to the newborn.
+ * <p>
+ * <strong>What it records:</strong> a write reports itself on the newborn as a
+ * {@link MutationRecord} of kind {@code "substitution"} naming the one changed cell, the molecule
+ * before and after, and no parameters. A run that changes nothing - no alternative opcode, a value
+ * that came out equal - records nothing, so a record always stands for a molecule that differs.
  * <p>
  * <strong>Thread Safety:</strong> Not thread-safe. Runs in the sequential post-Execute phase of
  * {@code Simulation.tick()}.
@@ -68,6 +75,9 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
     /** Maximum label hash value (19-bit unsigned). */
     private static final int LABEL_HASH_BITS = 19;
     private static final int LABEL_HASH_MAX = (1 << LABEL_HASH_BITS) - 1;
+
+    /** The kind this plugin reports its writes under. */
+    private static final String MUTATION_KIND = "substitution";
 
     /** Exponent used for a value-carrying type whose configuration block names none. */
     private static final double DEFAULT_EXPONENT = 0.7;
@@ -116,10 +126,14 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
     private int chosenRawValue;
     /** Marker of the candidate cell. */
     private int chosenMarker;
+    /** Packed molecule of the candidate cell, kept for the record of what stood there before. */
+    private int chosenMoleculeInt;
     /** Sum of the weights seen so far during the weighted reservoir walk. */
     private double weightSum;
     /** Coordinate of the candidate cell; sized from the world's dimension count on first use. */
     private int[] chosen;
+    /** Collects the record of a write; reused so that a birth allocates only the record itself. */
+    private final MutationRecord.Builder recordBuilder = new MutationRecord.Builder();
 
     /**
      * Creates a gene substitution plugin from configuration.
@@ -284,6 +298,7 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
                 chosenType = moleculeInt & Config.TYPE_MASK;
                 chosenRawValue = moleculeInt & Config.VALUE_MASK;
                 chosenMarker = (moleculeInt & Config.MARKER_MASK) >>> Config.MARKER_SHIFT;
+                chosenMoleculeInt = moleculeInt;
             }
         });
 
@@ -313,7 +328,16 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
             return;
         }
 
-        env.setMoleculeAt(chosen, new Molecule(selectedType, newValue, chosenMarker));
+        Molecule written = new Molecule(selectedType, newValue, chosenMarker);
+        env.setMoleculeAt(chosen, written);
+
+        // The one changed cell, as the flat index the environment persists cells by. A run that
+        // decided to change nothing has already returned above, so every record here names a
+        // molecule that actually differs.
+        child.recordBirthMutation(recordBuilder
+                .start(getClass().getName(), MUTATION_KIND, child.getDv())
+                .cell(env.getProperties().toFlatIndex(chosen), chosenMoleculeInt, written.toInt())
+                .build());
 
         if (LOG.isDebugEnabled()) {
             String typeName = MoleculeTypeRegistry.typeToName(selectedType);

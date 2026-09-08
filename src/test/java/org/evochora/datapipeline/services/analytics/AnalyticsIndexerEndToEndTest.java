@@ -9,6 +9,10 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.ResultSet;
+import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -863,6 +867,219 @@ class AnalyticsIndexerEndToEndTest {
             "metadata", List.of(wrappedDatabase),
             "topic", List.of(wrappedTopic),
             "analyticsOutput", List.of(refusingStorage.getWrappedResource(analyticsContext))
+        );
+
+        return new AnalyticsIndexer<>(name, config, resources);
+    }
+
+    // ========== Summed columns over a level's window ==========
+
+    /**
+     * A summed column of a coarser level carries the whole window, not one recording of it, and
+     * what a window has accumulated when the batch ends is a row of its own.
+     */
+    @Test
+    void aCoarserLevelSumsTheRecordingsOfItsWindow() throws Exception {
+        String runId = "20251201-180000-" + UUID.randomUUID();
+        indexMetadata(runId, createTestMetadata(runId, 1));
+
+        // 25 recordings, ticks 1..25; lod1 takes every tenth of them
+        StoragePath key = writeChunkBatch(runId, createTestTicksWithOrganisms(runId, 1, 25), 1, 25);
+        indexer = createSummingIndexer("test-indexer", runId, 25, 2, "");
+        indexer.start();
+        await().atMost(5, TimeUnit.SECONDS)
+            .until(() -> indexer.getCurrentState() == IService.State.RUNNING);
+
+        sendBatchInfoToTopic(runId, key.asString(), 1, 25);
+
+        await().atMost(10, TimeUnit.SECONDS)
+            .until(() -> findParquetFiles(runId, "counted").size() >= 2);
+
+        assertEquals(25, readRows(runId, "counted", "lod0").size(),
+            "lod0 holds every recording as the plugin wrote it");
+        assertEquals(List.of(
+                // the recordings 1..10 summed, with the sampled value of recording 10
+                List.of(10L, 55L, 1000L),
+                List.of(20L, 155L, 2000L),
+                // the window still open when the batch ended, at the tick that last fed it
+                List.of(25L, 115L, 2500L)),
+            readRows(runId, "counted", "lod1"),
+            "a lod1 row carries the sum of its window and the sampled value of its recording");
+    }
+
+    /**
+     * A window straddling a batch boundary is written as two rows whose sums add up to it: the
+     * next batch may reach another indexer, so nothing is carried across one.
+     */
+    @Test
+    void aWindowAcrossABatchBoundaryYieldsTwoPartialRows() throws Exception {
+        String runId = "20251201-181000-" + UUID.randomUUID();
+        indexMetadata(runId, createTestMetadata(runId, 1));
+
+        StoragePath first = writeChunkBatch(runId, createTestTicksWithOrganisms(runId, 1, 15), 1, 15);
+        StoragePath second = writeChunkBatch(runId, createTestTicksWithOrganisms(runId, 16, 15), 16, 30);
+
+        indexer = createSummingIndexer("test-indexer", runId, 15, 2, "");
+        indexer.start();
+        await().atMost(5, TimeUnit.SECONDS)
+            .until(() -> indexer.getCurrentState() == IService.State.RUNNING);
+
+        sendBatchInfoToTopic(runId, first.asString(), 1, 15);
+        sendBatchInfoToTopic(runId, second.asString(), 16, 30);
+
+        await().atMost(15, TimeUnit.SECONDS)
+            .until(() -> findParquetFiles(runId, "counted").size() >= 4);
+
+        assertEquals(List.of(
+                List.of(10L, 55L, 1000L),
+                // the first batch ends inside the window 11..20 and leaves its part here
+                List.of(15L, 65L, 1500L),
+                List.of(20L, 90L, 2000L),
+                List.of(30L, 255L, 3000L)),
+            readRows(runId, "counted", "lod1"),
+            "a window across the boundary is split into two rows");
+        assertEquals(465L, sumOfEvents(readRows(runId, "counted", "lod1")),
+            "the split loses nothing: the rows of lod1 add up to the events of ticks 1..30");
+        assertEquals(sumOfEvents(readRows(runId, "counted", "lod0")),
+            sumOfEvents(readRows(runId, "counted", "lod1")),
+            "every level holds the same events");
+    }
+
+    /**
+     * A recording the plugin reports nothing for adds nothing, and a level's tick without a
+     * recording of its own writes what the window holds so far.
+     */
+    @Test
+    void aRecordingWithoutARowAddsNothing() throws Exception {
+        String runId = "20251201-182000-" + UUID.randomUUID();
+        indexMetadata(runId, createTestMetadata(runId, 1));
+
+        // Ticks 10 and 20 produce no row, which is where lod1 would close its window
+        StoragePath key = writeChunkBatch(runId, createTestTicksWithOrganisms(runId, 1, 25), 1, 25);
+        indexer = createSummingIndexer("test-indexer", runId, 25, 2, "skipMultiplesOf = 10");
+        indexer.start();
+        await().atMost(5, TimeUnit.SECONDS)
+            .until(() -> indexer.getCurrentState() == IService.State.RUNNING);
+
+        sendBatchInfoToTopic(runId, key.asString(), 1, 25);
+
+        await().atMost(10, TimeUnit.SECONDS)
+            .until(() -> findParquetFiles(runId, "counted").size() >= 2);
+
+        assertEquals(23, readRows(runId, "counted", "lod0").size(),
+            "the two recordings without a row are in no level");
+        assertEquals(List.of(
+                // 1..9, closed at tick 10, which reported nothing itself
+                List.of(9L, 45L, 900L),
+                List.of(19L, 135L, 1900L),
+                List.of(25L, 115L, 2500L)),
+            readRows(runId, "counted", "lod1"),
+            "a window is written with the last recording that fed it");
+        assertEquals(sumOfEvents(readRows(runId, "counted", "lod0")),
+            sumOfEvents(readRows(runId, "counted", "lod1")),
+            "the skipped recordings are missing from both levels alike");
+    }
+
+    /**
+     * A metric whose columns are summed over a window writes at most one row per recording: the
+     * sampled columns of a summed row are those of a single recording, and several rows leave no
+     * such recording.
+     */
+    @Test
+    @AllowLog(level = LogLevel.WARN, messagePattern = ".*failed to extract rows.*")
+    void aSummedPluginReportingSeveralRowsPerRecordingIsRefused() throws Exception {
+        String runId = "20251201-183000-" + UUID.randomUUID();
+        indexMetadata(runId, createTestMetadata(runId, 1));
+
+        StoragePath key = writeChunkBatch(runId, createTestTicksWithOrganisms(runId, 1, 5), 1, 5);
+        indexer = createSummingIndexer("test-indexer", runId, 5, 1, "rowsPerRecording = 2");
+        indexer.start();
+        await().atMost(5, TimeUnit.SECONDS)
+            .until(() -> indexer.getCurrentState() == IService.State.RUNNING);
+
+        sendBatchInfoToTopic(runId, key.asString(), 1, 5);
+
+        await().atMost(10, TimeUnit.SECONDS).until(() -> hasError("PLUGIN_EXTRACT_ERROR"));
+
+        assertTrue(findParquetFiles(runId, "counted").isEmpty(),
+            "a refused recording writes no row, not even to lod0");
+    }
+
+    /** The events all rows of a level carry, added up. */
+    private static long sumOfEvents(List<List<Long>> rows) {
+        return rows.stream().mapToLong(row -> row.get(1)).sum();
+    }
+
+    /**
+     * Reads one level of a metric back from the Parquet files written for it, as rows of
+     * {@code tick, events, alive} ordered by tick.
+     */
+    private List<List<Long>> readRows(String runId, String metricId, String lodLevel) throws Exception {
+        Path dir = tempStorageDir.resolve(runId).resolve("analytics").resolve(metricId).resolve(lodLevel);
+        String glob = dir.toAbsolutePath().toString().replace("\\", "/") + "/**/*.parquet";
+        Class.forName("org.duckdb.DuckDBDriver");
+        List<List<Long>> rows = new ArrayList<>();
+        try (Connection connection = DriverManager.getConnection("jdbc:duckdb:");
+             Statement statement = connection.createStatement();
+             ResultSet result = statement.executeQuery(
+                 "SELECT tick, events, alive FROM read_parquet('" + glob + "') ORDER BY tick")) {
+            while (result.next()) {
+                rows.add(List.of(result.getLong(1), result.getLong(2), result.getLong(3)));
+            }
+        }
+        return rows;
+    }
+
+    /**
+     * Wires an indexer running the plugin whose rows follow from the tick, with the given number
+     * of levels of detail and any further plugin options.
+     */
+    private AnalyticsIndexer<?> createSummingIndexer(String name, String runId, int insertBatchSize,
+            int lodLevels, String pluginOptions) {
+        Config config = ConfigFactory.parseString("""
+            runId = "%s"
+            metadataPollIntervalMs = 100
+            metadataMaxPollDurationMs = 10000
+            insertBatchSize = %d
+            flushTimeoutMs = 30000
+            tempDirectory = "%s"
+            folderStructure {
+                levels = [100000000, 100000]
+            }
+            plugins = [
+                {
+                    className = "org.evochora.datapipeline.services.analytics.SummedCountsTestPlugin"
+                    options {
+                        metricId = "counted"
+                        samplingInterval = 1
+                        lodFactor = 10
+                        lodLevels = %d
+                        %s
+                    }
+                }
+            ]
+            """.formatted(runId, insertBatchSize,
+                tempAnalyticsDir.toAbsolutePath().toString().replace("\\", "/"),
+                lodLevels, pluginOptions));
+
+        ResourceContext dbContext = new ResourceContext(
+            name, "metadata", "db-meta-read", "test-db", Collections.emptyMap());
+        IResource wrappedDatabase = testDatabase.getWrappedResource(dbContext);
+
+        ResourceContext topicContext = new ResourceContext(
+            name, "topic", "topic-read", "batch-topic",
+            Map.of("consumerGroup", "test-analytics-" + UUID.randomUUID()));
+        IResource wrappedTopic = testBatchTopic.getWrappedResource(topicContext);
+
+        ResourceContext analyticsContext = new ResourceContext(
+            name, "analyticsOutput", "analytics-write", "test-storage", Collections.emptyMap());
+        IResource wrappedAnalyticsStorage = testStorage.getWrappedResource(analyticsContext);
+
+        Map<String, List<IResource>> resources = Map.of(
+            "storage", List.of(testStorage),
+            "metadata", List.of(wrappedDatabase),
+            "topic", List.of(wrappedTopic),
+            "analyticsOutput", List.of(wrappedAnalyticsStorage)
         );
 
         return new AnalyticsIndexer<>(name, config, resources);

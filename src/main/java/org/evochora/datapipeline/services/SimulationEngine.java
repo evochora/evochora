@@ -754,6 +754,11 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
 
         // Prune dead organisms after they have been serialized for their final appearance
         simulation.pruneDeadOrganisms();
+        // The states of this recording are captured by the encoder above, so the birth mutation
+        // records they carried are not needed any more. They are dropped here, per recording, and
+        // not when the chunk is sent: a chunk is sent only once every few hundred recordings, and
+        // records kept until then would reappear in every recording of the chunk.
+        simulation.clearBirthMutationRecords();
 
         if (chunk.isPresent()) {
             tickDataOutput.put(chunk.get());
@@ -1168,6 +1173,26 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
             MemoryEstimate.Category.SERVICE_BATCH
         ));
         
+        // 3b. Birth mutation records waiting for the next recording
+        // A record is held from the birth that produced it until the next recording has captured
+        // it. 500 bytes stands for one median duplication - about 17 cells with their flat
+        // index and their molecule before and after, the two names and the list objects around
+        // them - on every organism the window could hold.
+        // The absolute bound is far higher and is deliberately not declared: an event may span a
+        // whole scan line of the world's width, which for a 7680-wide world is about 90 KB for a
+        // single organism. Declaring that would mean assuming every organism of a window duplicates
+        // a full scan line, which needs an empty line of that length and a birth rate equal to the
+        // population. The 500 bytes are a realistic figure in the same way the 24 KB per organism
+        // above are.
+        long mutationRecordBytes = (long) params.maxOrganisms() * 500;
+        estimates.add(new MemoryEstimate(
+            serviceName + " (Birth mutation records)",
+            mutationRecordBytes,
+            String.format("%d max organisms × ~500 bytes (one median duplication per organism born in the window)",
+                params.maxOrganisms()),
+            MemoryEstimate.Category.SERVICE_BATCH
+        ));
+
         // 3. Compiled programs cache - estimate ~100KB per unique program
         long compiledProgramsBytes = (long) programArtifactsById.size() * 100 * 1024;
         if (compiledProgramsBytes > 0) {

@@ -1,5 +1,6 @@
 package org.evochora.datapipeline.api.resources.database;
 
+import org.evochora.datapipeline.api.resources.database.dto.LineageMutations;
 import org.evochora.datapipeline.api.resources.database.dto.OrganismTickDetails;
 import org.evochora.datapipeline.api.resources.database.dto.OrganismTickSummary;
 
@@ -93,6 +94,30 @@ public interface IOrganismDataReader {
      * @throws SQLException if database read fails.
      */
     Map<Long, Long> readGenomeAncestors(Collection<Long> genomeHashes) throws SQLException;
+
+    /**
+     * Reads the birth mutations of one organism and of every ancestor along {@code parent_id}.
+     * <p>
+     * A mutation is recorded at the birth of the organism that received it and stays there; a
+     * descendant carries it in its body without carrying the record. Reading the whole chain is
+     * therefore what it takes to see everything a displayed body was shaped by, and it is one
+     * request per selected organism, not one per tick — which is why the chain is expected in a
+     * single round trip rather than one query per ancestor.
+     * <p>
+     * <strong>What the result contains.</strong> One entry per organism of the chain, the given
+     * organism first and the oldest ancestor last, so that walking the list is walking from a
+     * descendant towards its ancestors. Every organism of the chain is present; one that received
+     * no mutation at its birth carries the default instance of its event message. An implementation
+     * returns the entries in that order and never an empty list — an organism that is not indexed
+     * is reported as missing instead.
+     *
+     * @param organismId Organism to start the chain at (must be &gt;= 0).
+     * @return The chain, given organism first, oldest ancestor last. Never null, never empty.
+     * @throws SQLException if database read fails, or the stored events cannot be decoded.
+     * @throws OrganismNotFoundException if no organism with that id is indexed.
+     */
+    List<LineageMutations> readLineageMutations(int organismId)
+            throws SQLException, OrganismNotFoundException;
 }
 
 

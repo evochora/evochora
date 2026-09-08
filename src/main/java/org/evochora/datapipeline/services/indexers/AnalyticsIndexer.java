@@ -70,6 +70,15 @@ import com.typesafe.config.ConfigObject;
  *       storage, and the DuckDB session is closed and reset for the next window.</li>
  * </ol>
  * <p>
+ * <strong>Levels of detail:</strong> A coarser level writes one row per {@code lodFactor^level}
+ * recordings. A column the plugin declared {@link org.evochora.datapipeline.api.analytics.Aggregation#SAMPLE}
+ * takes that row's value from the recording the row stands on; a column declared
+ * {@link org.evochora.datapipeline.api.analytics.Aggregation#SUM} takes the values of every
+ * recording of the window added up, so a count of events keeps every event at every level. The
+ * window of a level ends where the batch ends, since a batch is all an indexer sees and competing
+ * indexers take the batches of a run in any order: what a window has accumulated by then is
+ * written as a row of its own, and a reader adds the rows of a range rather than picking one.
+ * <p>
  * <strong>Error Handling:</strong> A failing plugin does not stop the others from writing their
  * files, but the commit fails once they are done. The batch is then left unacknowledged and the
  * topic redelivers it; a failure that persists moves it to the dead letter queue after the
@@ -112,6 +121,12 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
     /**
      * Internal record for tracking plugin processing tasks.
      * Groups a plugin with its LOD configuration and database statement.
+     *
+     * @param summedColumns the positions of the plugin's summed columns, or {@code null} if it
+     *        declares none
+     * @param window the running sums of this level's window, or {@code null} where none is needed:
+     *        for a plugin without summed columns, and for lod0, whose window is the single
+     *        recording its row already carries
      */
     private record PluginLodTask(
         IAnalyticsPlugin plugin,
@@ -120,8 +135,104 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
         int samplingInterval,
         PreparedStatement statement,
         ParquetSchema schema,
-        boolean needsEnvironment
+        boolean needsEnvironment,
+        int[] summedColumns,
+        SumWindow window
     ) {}
+
+    /**
+     * The running sums of one level's window, together with the row whose sampled values complete
+     * them.
+     * <p>
+     * A row is added for every recording the plugin reports since the last row this level wrote;
+     * the row written at the end of the window carries the sums and the sampled values of the last
+     * recording that fed them.
+     * <p>
+     * <strong>Thread Safety:</strong> Not thread-safe. One instance belongs to one plugin/LOD task
+     * of one DuckDB session and is touched only by the indexer's own thread.
+     */
+    private static final class SumWindow {
+
+        private final String metricId;
+        private final List<ParquetSchema.Column> columns;
+        private final int[] summedColumns;
+        private final long[] totals;
+        /** The totals with the row being added, taken over only once every column fits. */
+        private final long[] next;
+        private Object[] lastRow;
+
+        private SumWindow(String metricId, ParquetSchema schema, int[] summedColumns) {
+            this.metricId = metricId;
+            this.columns = schema.getColumns();
+            this.summedColumns = summedColumns;
+            this.totals = new long[summedColumns.length];
+            this.next = new long[summedColumns.length];
+        }
+
+        /**
+         * Adds one recording's row to the window.
+         * <p>
+         * The row is kept as a copy, so that a plugin handing out the same array again does not
+         * change what the window will write. A row is added whole or not at all: a column that
+         * overflows leaves the totals as they were, so that the window never carries part of a row.
+         *
+         * @param row the plugin's row for this recording
+         * @throws IllegalStateException if a total leaves the range of a long, which would
+         *         otherwise wrap around and reach the file as a wrong number
+         */
+        private void add(Object[] row) {
+            for (int i = 0; i < summedColumns.length; i++) {
+                Object value = row[summedColumns[i]];
+                next[i] = totals[i];
+                if (value != null) {
+                    try {
+                        next[i] = Math.addExact(totals[i], ((Number) value).longValue());
+                    } catch (ArithmeticException e) {
+                        throw new IllegalStateException("Metric '" + metricId + "': the sum of column '"
+                            + columns.get(summedColumns[i]).name() + "' over one window exceeds the"
+                            + " range of a 64-bit integer.", e);
+                    }
+                }
+            }
+            System.arraycopy(next, 0, totals, 0, totals.length);
+            lastRow = row.clone();
+        }
+
+        /**
+         * Whether no recording has fed this window since it last wrote a row.
+         *
+         * @return {@code true} if there is nothing to write
+         */
+        private boolean isEmpty() {
+            return lastRow == null;
+        }
+
+        /**
+         * Takes the row this window has accumulated and starts a new one.
+         *
+         * @return the last row that fed the window, its summed columns replaced by the totals
+         * @throws IllegalStateException if a total does not fit the column it belongs to, which
+         *         would otherwise reach the file as a silently truncated number
+         */
+        private Object[] takeRow() {
+            for (int i = 0; i < summedColumns.length; i++) {
+                ParquetSchema.Column column = columns.get(summedColumns[i]);
+                if (column.type() == ColumnType.INTEGER
+                        && (totals[i] > Integer.MAX_VALUE || totals[i] < Integer.MIN_VALUE)) {
+                    throw new IllegalStateException("Metric '" + metricId + "': the sum of column '"
+                        + column.name() + "' over one window is " + totals[i]
+                        + ", which does not fit its type INTEGER. Declare the column BIGINT.");
+                }
+            }
+            Object[] row = lastRow;
+            for (int i = 0; i < summedColumns.length; i++) {
+                row[summedColumns[i]] = totals[i];
+                totals[i] = 0L;
+            }
+            lastRow = null;
+            return row;
+        }
+    }
 
     /**
      * Creates a new AnalyticsIndexer.
@@ -355,6 +466,15 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
             for (PluginLodTask task : sessionTasks) {
                 Path tempFile = null;
                 try {
+                    // What a level's window has accumulated leaves with this batch: the next batch
+                    // may be read by another indexer, and a window carried across would either be
+                    // lost or counted twice. Its partial sums are a row of their own, carrying the
+                    // tick of the last recording that fed them
+                    SumWindow window = task.window();
+                    if (window != null && !window.isEmpty()) {
+                        writeRow(task, window.takeRow(), sessionRowsPerTask);
+                    }
+
                     int totalRows = sessionRowsPerTask.get(task);
                     if (totalRows == 0) continue;
 
@@ -427,21 +547,29 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
         for (IAnalyticsPlugin plugin : plugins) {
             try {
                 boolean needsEnv = plugin.needsEnvironmentData();
+                ParquetSchema schema = plugin.getSchema();
+                int[] summed = schema.summedColumnIndexes();
+                int[] summedColumns = summed.length == 0 ? null : summed;
 
                 for (int level = 0; level < plugin.getLodLevels(); level++) {
                     String lodLevel = "lod" + level;
                     int effectiveSamplingInterval = plugin.getEffectiveSamplingInterval(level);
 
-                    ParquetSchema schema = plugin.getSchema();
                     String tableName = plugin.getMetricId() + "_" + lodLevel;
 
                     try (Statement stmt = duckDbConn.createStatement()) {
                         stmt.execute(schema.toCreateTableSql(tableName));
                     }
 
+                    // lod0 holds one recording per row, so its window is the plugin's row itself
+                    // and the rows go to the statement the way they come
+                    SumWindow window = (summedColumns != null && level > 0)
+                        ? new SumWindow(plugin.getMetricId(), schema, summedColumns)
+                        : null;
+
                     PreparedStatement ps = duckDbConn.prepareStatement(schema.toInsertSql(tableName));
                     PluginLodTask task = new PluginLodTask(plugin, plugin.getMetricId(), lodLevel,
-                        effectiveSamplingInterval, ps, schema, needsEnv);
+                        effectiveSamplingInterval, ps, schema, needsEnv, summedColumns, window);
                     sessionTasks.add(task);
                     sessionRowsPerTask.put(task, 0);
                 }
@@ -604,26 +732,76 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
             // Extract rows ONCE from the plugin
             try {
                 List<Object[]> rows = plugin.extractRows(tick, cells);
-                
+                requireOneRowPerRecording(finestMatchingTask, rows, tickNumber);
+
                 // Distribute the same rows to ALL matching LOD levels
                 for (PluginLodTask task : pluginTasks) {
-                    if (tickNumber % task.samplingInterval() == 0) {
-                        for (Object[] row : rows) {
-                            bindRow(task.statement(), task.schema(), row);
-                            task.statement().addBatch();
-                            rowsWrittenPerTask.compute(task, (k, v) -> v + 1);
+                    SumWindow window = task.window();
+                    if (window == null) {
+                        if (tickNumber % task.samplingInterval() == 0) {
+                            for (Object[] row : rows) {
+                                writeRow(task, row, rowsWrittenPerTask);
+                            }
                         }
+                        continue;
+                    }
+                    // A recording the plugin reports nothing for adds nothing to the window, and
+                    // one that falls on the level's tick closes it - unless nothing has fed it
+                    // since its last row, which is a window with no recording to sum
+                    for (Object[] row : rows) {
+                        window.add(row);
+                    }
+                    if (tickNumber % task.samplingInterval() == 0 && !window.isEmpty()) {
+                        writeRow(task, window.takeRow(), rowsWrittenPerTask);
                     }
                 }
             } catch (Exception e) {
-                log.warn("Plugin {} failed to extract rows for tick {}. Skipping row.", 
-                    plugin.getMetricId(), tickNumber);
-                recordError("PLUGIN_EXTRACT_ERROR", "Plugin failed during row extraction", 
+                log.warn("Plugin {} failed to extract rows for tick {}. Skipping row: {}",
+                    plugin.getMetricId(), tickNumber, e.getMessage());
+                recordError("PLUGIN_EXTRACT_ERROR", "Plugin failed during row extraction",
                     String.format("Plugin: %s, Tick: %d", plugin.getMetricId(), tickNumber));
             }
         }
     }
     
+    /**
+     * Refuses a recording for which a plugin with summed columns produced more than one row.
+     * <p>
+     * Summing over a window carries one row per recording forward, so the sampled columns of a
+     * level's row are the ones of a single recording. Where a plugin reports several rows for one
+     * recording there is no such row, and the sums would be attached to whichever of them came
+     * last - a metric that counts events therefore writes at most one row per recording. The
+     * plugin's own schema is what says this, so a schema of sampled columns keeps every shape.
+     *
+     * @param task the plugin's finest task, which carries the columns its schema declared summed
+     * @param rows the rows the plugin produced for this recording
+     * @param tickNumber the recording, for the message
+     * @throws IllegalStateException if a plugin with summed columns produced more than one row
+     */
+    private void requireOneRowPerRecording(PluginLodTask task, List<Object[]> rows, long tickNumber) {
+        if (task.summedColumns() != null && rows.size() > 1) {
+            throw new IllegalStateException("Metric '" + task.metricId() + "' declares summed "
+                + "columns and produced " + rows.size() + " rows for the recording at tick "
+                + tickNumber + "; a metric whose columns are summed over a window writes at most "
+                + "one row per recording.");
+        }
+    }
+
+    /**
+     * Adds one row to a task's DuckDB batch and counts it.
+     *
+     * @param task the plugin/LOD task the row belongs to
+     * @param row the values, in the order of the task's schema
+     * @param rowsWrittenPerTask counter for rows written per task
+     * @throws Exception if the row does not fit the schema or the statement refuses it
+     */
+    private void writeRow(PluginLodTask task, Object[] row,
+            Map<PluginLodTask, Integer> rowsWrittenPerTask) throws Exception {
+        bindRow(task.statement(), task.schema(), row);
+        task.statement().addBatch();
+        rowsWrittenPerTask.compute(task, (k, v) -> v + 1);
+    }
+
     /**
      * Calculates the hierarchical folder path based on tick number.
      * <p>

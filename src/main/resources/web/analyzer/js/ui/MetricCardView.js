@@ -141,7 +141,7 @@ export function getAllCards() {
  * @param {Object} card - Card instance
  * @param {Array<Object>} data - Data for the chart
  * @param {Object} [context] - Optional render context
- * @param {Array<Object>|null} [context.companion] - Rows of the metric's companion table, if it has one
+ * @param {Object<string, Array<Object>>|null} [context.companion] - Rows per companion metric id, if the metric has companions
  * @param {Object|null} [context.viewState] - The view state this chart last asked for
  * @param {Function} [context.onViewStateChange] - Called with a new view state to redraw
  *

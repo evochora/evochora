@@ -17,6 +17,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.List;
+import java.util.Map;
 
 import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.OrganismStateList;
@@ -142,7 +143,7 @@ class SingleBlobOrgStrategyTest {
         TickData tick = createTickWithOrganisms(1000L, 3);
 
         // When: Add tick and commit
-        strategy.addOrganismTick(mockConnection, tick);
+        strategy.addOrganismTick(mockConnection, tick, Map.of());
         strategy.commitOrganismWrites(mockConnection);
 
         // Then: addBatch called for 3 organism metadata + 1 tick statistics + 1 state blob = 5
@@ -162,9 +163,9 @@ class SingleBlobOrgStrategyTest {
         TickData tick3 = createTickWithOrganisms(1002L, 1);
 
         // When: Add all ticks and commit
-        strategy.addOrganismTick(mockConnection, tick1);
-        strategy.addOrganismTick(mockConnection, tick2);
-        strategy.addOrganismTick(mockConnection, tick3);
+        strategy.addOrganismTick(mockConnection, tick1, Map.of());
+        strategy.addOrganismTick(mockConnection, tick2, Map.of());
+        strategy.addOrganismTick(mockConnection, tick3, Map.of());
         strategy.commitOrganismWrites(mockConnection);
 
         // Then: addBatch for 3 unique organism metadata (deduped) + 3 tick statistics
@@ -182,7 +183,7 @@ class SingleBlobOrgStrategyTest {
         TickData tick = createTickWithOrganisms(1000L, 2);
 
         // When: Add tick
-        strategy.addOrganismTick(mockConnection, tick);
+        strategy.addOrganismTick(mockConnection, tick, Map.of());
 
         // Then: Should serialize organisms to protobuf (no compression = raw protobuf)
         ArgumentCaptor<byte[]> blobCaptor = ArgumentCaptor.forClass(byte[].class);
@@ -221,7 +222,7 @@ class SingleBlobOrgStrategyTest {
         TickData tick = createTickWithOrganisms(1000L, 5);
 
         // When: Add tick
-        strategy.addOrganismTick(mockConnection, tick);
+        strategy.addOrganismTick(mockConnection, tick, Map.of());
 
         // Then: Should serialize and compress organisms
         ArgumentCaptor<byte[]> blobCaptor = ArgumentCaptor.forClass(byte[].class);
@@ -245,7 +246,7 @@ class SingleBlobOrgStrategyTest {
             .build(); // No organisms
 
         // When: Add empty tick and commit
-        strategy.addOrganismTick(mockConnection, emptyTick);
+        strategy.addOrganismTick(mockConnection, emptyTick, Map.of());
         strategy.commitOrganismWrites(mockConnection);
 
         // Then: no organism metadata and no state blob, but the tick statistics are still
@@ -264,7 +265,7 @@ class SingleBlobOrgStrategyTest {
         when(mockPreparedStatement.executeBatch()).thenThrow(new SQLException("Database error"));
 
         TickData tick = createTickWithOrganisms(1000L, 1);
-        strategy.addOrganismTick(mockConnection, tick);
+        strategy.addOrganismTick(mockConnection, tick, Map.of());
 
         // When/Then: commitOrganismWrites should propagate SQLException
         assertThatThrownBy(() -> strategy.commitOrganismWrites(mockConnection))
@@ -283,8 +284,8 @@ class SingleBlobOrgStrategyTest {
         TickData tick2 = TickData.newBuilder().setTickNumber(2L).addOrganisms(org1).build();
 
         // When: Add both ticks
-        strategy.addOrganismTick(mockConnection, tick1);
-        strategy.addOrganismTick(mockConnection, tick2);
+        strategy.addOrganismTick(mockConnection, tick1, Map.of());
+        strategy.addOrganismTick(mockConnection, tick2, Map.of());
         strategy.commitOrganismWrites(mockConnection);
 
         // Then: addBatch called 1 (organism metadata, deduped) + 2 (tick statistics)

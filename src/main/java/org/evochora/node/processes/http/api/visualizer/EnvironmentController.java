@@ -498,7 +498,7 @@ public class EnvironmentController extends VisualizerBaseController {
         return envPropsCache.get(runId, key -> {
             try (final IDatabaseReader reader = databaseProvider.createReader(runId)) {
                 final SimulationMetadata metadata = reader.getMetadata();
-                return extractEnvironmentProperties(metadata);
+                return MetadataConfigHelper.environmentProperties(metadata);
             } catch (SQLException | MetadataNotFoundException e) {
                 throw new RuntimeException("Failed to load environment properties for " + runId, e);
             }
@@ -680,16 +680,6 @@ public class EnvironmentController extends VisualizerBaseController {
             }
             return true;
         }
-    }
-    
-    /**
-     * Extracts environment properties from metadata.
-     */
-    private EnvironmentProperties extractEnvironmentProperties(final SimulationMetadata metadata) {
-        return new EnvironmentProperties(
-            MetadataConfigHelper.getEnvironmentShape(metadata),
-            MetadataConfigHelper.isEnvironmentToroidal(metadata)
-        );
     }
     
     /**

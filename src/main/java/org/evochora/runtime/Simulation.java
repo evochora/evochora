@@ -49,6 +49,12 @@ public class Simulation {
      */
     public boolean paused = true;
     private final List<Organism> newOrganismsThisTick = new ArrayList<>();
+    /**
+     * The newborns whose birth mutation records have not been written out yet. Holding them
+     * separately keeps {@link #clearBirthMutationRecords()} proportional to the number of
+     * records rather than to the population.
+     */
+    private final List<Organism> newbornsWithBirthMutations = new ArrayList<>();
     private final List<ITickPlugin> tickPlugins = new ArrayList<>();
     private final List<IInstructionInterceptor> instructionInterceptors = new ArrayList<>();
     private final List<IDeathHandler> deathHandlers = new ArrayList<>();
@@ -319,6 +325,22 @@ public class Simulation {
     }
 
     /**
+     * Drops the birth mutation records of every organism that still carries them.
+     * <p>
+     * A record is written out with the organism's state and is not needed afterwards. The
+     * simulation keeps the organisms that carry one in a list of their own, so this costs the
+     * number of pending records and not the size of the population.
+     * <p>
+     * Called by whoever recorded the states, once the recording has captured them.
+     */
+    public void clearBirthMutationRecords() {
+        for (Organism organism : newbornsWithBirthMutations) {
+            organism.clearBirthMutations();
+        }
+        newbornsWithBirthMutations.clear();
+    }
+
+    /**
      * Returns the next available unique ID for an organism.
      * @return A unique organism ID.
      */
@@ -417,6 +439,9 @@ public class Simulation {
                     LOG.warn("Birth handler '{}' failed for organism {}: {}",
                             handler.getClass().getSimpleName(), newborn.getId(), e.getMessage());
                 }
+            }
+            if (newborn.hasBirthMutations()) {
+                newbornsWithBirthMutations.add(newborn);
             }
             long hash = GenomeHasher.computeGenomeHash(
                     environment, newborn.getId(), newborn.getInitialPosition());

@@ -5,6 +5,7 @@ import org.evochora.runtime.Simulation;
 import org.evochora.runtime.internal.services.SeededRandomProvider;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
+import org.evochora.runtime.model.MutationRecord;
 import org.evochora.runtime.model.Organism;
 import org.evochora.runtime.spi.IRandomProvider;
 import org.evochora.runtime.thermodynamics.ThermodynamicPolicyManager;
@@ -14,6 +15,7 @@ import org.junit.jupiter.api.Test;
 
 import com.typesafe.config.ConfigFactory;
 
+import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -316,6 +318,78 @@ class GeneDeletionPluginTest {
 
         // Energy molecule should be deleted too
         assertThat(environment.getMolecule(4, 5).isEmpty()).isTrue();
+    }
+
+    // ---- Mutation record tests ----
+
+    /** The flat index the environment persists the cell at the given coordinate by. */
+    private int flatIndex(int x, int y) {
+        return environment.getProperties().toFlatIndex(new int[]{x, y});
+    }
+
+    @Test
+    void anAppliedDeletionIsRecordedWithTheLabelAndEveryClearedCell() {
+        // The only label at x=2, its gene up to the STRUCTURE at x=10
+        placeLabel(2, 5, LABEL_HASH_A);
+        placeCode(3, 5);
+        placeCode(4, 5);
+        placeData(5, 5);
+        placeStructure(10, 5);
+
+        int labelInt = environment.getMolecule(2, 5).toInt();
+        int codeInt = environment.getMolecule(3, 5).toInt();
+        int dataInt = environment.getMolecule(5, 5).toInt();
+
+        IRandomProvider rng = new SeededRandomProvider(42L);
+        GeneDeletionPlugin plugin = new GeneDeletionPlugin(rng, 1.0, 2.0);
+        plugin.delete(child, environment);
+
+        List<MutationRecord> records = child.getBirthMutations();
+        assertThat(records).hasSize(1);
+        MutationRecord record = records.get(0);
+        assertThat(record.pluginClass()).isEqualTo(GeneDeletionPlugin.class.getName());
+        assertThat(record.kind()).isEqualTo("deletion");
+        assertThat(record.cells()).containsExactly(
+                flatIndex(2, 5), flatIndex(3, 5), flatIndex(4, 5), flatIndex(5, 5));
+        assertThat(record.oldValues()).containsExactly(labelInt, codeInt, codeInt, dataInt);
+        assertThat(record.newValues()).containsExactly(0, 0, 0, 0);
+        assertThat(record.params())
+                .as("the chosen label's hash occurs once in the genome")
+                .containsExactly(1L);
+        assertThat(record.dv()).isEqualTo(child.getDv());
+        for (int x = 2; x <= 5; x++) {
+            assertThat(environment.getMolecule(x, 5).isEmpty())
+                    .as("Cell (%d,5) should be cleared", x).isTrue();
+        }
+    }
+
+    @Test
+    void theRecordCarriesHowOftenTheChosenLabelOccurs() {
+        // Three copies of one hash, each alone on its scan line: whichever is chosen, the count is 3
+        placeLabel(0, 2, LABEL_HASH_A);
+        placeLabel(0, 4, LABEL_HASH_A);
+        placeLabel(0, 6, LABEL_HASH_A);
+
+        IRandomProvider rng = new SeededRandomProvider(42L);
+        GeneDeletionPlugin plugin = new GeneDeletionPlugin(rng, 1.0, 2.0);
+        plugin.delete(child, environment);
+
+        List<MutationRecord> records = child.getBirthMutations();
+        assertThat(records).hasSize(1);
+        assertThat(records.get(0).params()).containsExactly(3L);
+        assertThat(records.get(0).cells()).hasSize(1);
+    }
+
+    @Test
+    void anOrganismWithoutLabelsRecordsNothing() {
+        placeCode(2, 5);
+        placeCode(3, 5);
+
+        IRandomProvider rng = new SeededRandomProvider(42L);
+        GeneDeletionPlugin plugin = new GeneDeletionPlugin(rng, 1.0, 2.0);
+        plugin.delete(child, environment);
+
+        assertThat(child.getBirthMutations()).isNull();
     }
 
     @Test

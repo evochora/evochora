@@ -7,6 +7,7 @@ import org.evochora.runtime.isa.Instruction.OperandSource;
 import org.evochora.runtime.isa.RegisterBank;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
+import org.evochora.runtime.model.MutationRecord;
 import org.evochora.runtime.model.Organism;
 import org.evochora.runtime.spi.IBirthHandler;
 import org.evochora.runtime.spi.IRandomProvider;
@@ -46,7 +47,17 @@ import java.util.Random;
  * through the environment's cell views, and reusable coordinate buffers, ScanLineInfo pooling,
  * in-place DV advancement, and reservoir sampling (instead of list collection) minimize GC
  * pressure. The only per-call allocations are one {@code getShape()} defensive copy, the two
- * visitor lambdas (one per owned-cell pass) and 1-4 {@link Molecule} records for the chain.
+ * visitor lambdas (one per owned-cell pass), 1-4 {@link Molecule} records for the chain and, when
+ * a chain is placed, the {@link MutationRecord} handed to the newborn.
+ * <p>
+ * <strong>What it records:</strong> a placed chain reports itself on the newborn as a
+ * {@link MutationRecord} naming the cells of the chain in placement order, with the empty cell as
+ * the old value and the placed molecule as the new one. An instruction chain reports the kind
+ * {@code "insertion"} and no parameters. A label reports the kind {@code "label-insertion"} and,
+ * as its one parameter, the hash the new label was derived from before the bits were flipped —
+ * either the sampled existing label or, when the genome carries none, the hash that was drawn at
+ * random — because which label a new one grew out of cannot be recovered by searching for it. A
+ * run that finds no NOP run long enough places nothing and records nothing.
  * <p>
  * <strong>Thread Safety:</strong> Not thread-safe. Runs in the sequential post-Execute phase of
  * {@code Simulation.tick()}.
@@ -62,6 +73,12 @@ public class GeneInsertionPlugin implements IBirthHandler {
     /** Maximum label hash value (19-bit unsigned). */
     private static final int LABEL_HASH_BITS = 19;
     private static final int LABEL_HASH_MAX = (1 << LABEL_HASH_BITS) - 1;
+
+    /** The kind an inserted instruction chain is reported under. */
+    private static final String INSTRUCTION_KIND = "insertion";
+
+    /** The kind an inserted label is reported under. */
+    private static final String LABEL_KIND = "label-insertion";
 
     // --- Immutable config ---
     private final Random random;
@@ -90,6 +107,12 @@ public class GeneInsertionPlugin implements IBirthHandler {
 
     // --- Chain buffer (cleared per mutate() call) ---
     private final List<Molecule> chainBuffer = new ArrayList<>();
+
+    /** The hash a label chain was derived from, before its bits were flipped. */
+    private int labelSourceHash;
+
+    /** Collects the record of a placed chain; reused so that a birth allocates only the record itself. */
+    private final MutationRecord.Builder recordBuilder = new MutationRecord.Builder();
 
     // --- DV coordinate collector for shortest-arc computation (reused) ---
     private int[] dvCoordCollector;
@@ -398,7 +421,7 @@ public class GeneInsertionPlugin implements IBirthHandler {
      * <p>
      * Builds scan lines from owned cells (with concurrent label hash reservoir sampling),
      * selects a mutation entry, generates the molecule chain, finds a suitable NOP area
-     * via scan-line walk, and places the chain.
+     * via scan-line walk, and places the chain. A chain that is placed is recorded on the child.
      *
      * @param child The newborn organism.
      * @param env The simulation environment.
@@ -449,7 +472,14 @@ public class GeneInsertionPlugin implements IBirthHandler {
         if (dvStep < 0) {
             selectedNopDvStart = (selectedNopDvStart + chainBuffer.size() - 1) % shape[dvDim];
         }
+        // A label carries the hash it grew out of, which no search over the child can recover
+        if (entry instanceof LabelEntry) {
+            recordBuilder.start(getClass().getName(), LABEL_KIND, dv).param(labelSourceHash);
+        } else {
+            recordBuilder.start(getClass().getName(), INSTRUCTION_KIND, dv);
+        }
         placeChain(env, childId, dvDim, dvStep, shape[dvDim]);
+        child.recordBirthMutation(recordBuilder.build());
         if (LOG.isDebugEnabled()) {
             env.properties.flatIndexToCoordinates(selectedNopScanLine.sampleFlatIndex, coordBuffer);
             coordBuffer[dvDim] = selectedNopDvStart;
@@ -542,7 +572,8 @@ public class GeneInsertionPlugin implements IBirthHandler {
      * <p>
      * Derives a hash from an existing LABEL in the genome (sampled during
      * {@link #buildScanLines}), or generates a random 19-bit hash if none exist.
-     * Then flips the configured number of random bits.
+     * Then flips the configured number of random bits. The hash before the flips is kept in
+     * {@link #labelSourceHash}, as the parameter of the record a placed label reports.
      *
      * @param entry The label entry.
      */
@@ -550,6 +581,7 @@ public class GeneInsertionPlugin implements IBirthHandler {
         int hash = reservoirLabelHash >= 0
                 ? reservoirLabelHash
                 : random.nextInt(LABEL_HASH_MAX + 1);
+        labelSourceHash = hash;
         hash = flipBits(hash, entry.bitflips());
         chainBuffer.add(new Molecule(Config.TYPE_LABEL, hash));
     }
@@ -806,6 +838,10 @@ public class GeneInsertionPlugin implements IBirthHandler {
      * Places the molecule chain from {@link #chainBuffer} into the environment,
      * starting at the selected NOP area and advancing in the DV direction.
      * Uses in-place coordinate advancement with toroidal wrap.
+     * <p>
+     * Every cell is appended to {@link #recordBuilder} before it is written, so the record names
+     * the chain in placement order with the molecule that stood there before. The caller has
+     * started the builder with the kind that belongs to the entry.
      *
      * @param env The simulation environment.
      * @param childId The child organism's ID.
@@ -818,6 +854,8 @@ public class GeneInsertionPlugin implements IBirthHandler {
         walkPos[dvDim] = selectedNopDvStart;
 
         for (Molecule mol : chainBuffer) {
+            recordBuilder.cell(env.properties.toFlatIndex(walkPos),
+                    env.getMoleculeIntAt(walkPos), mol.toInt());
             env.setMolecule(mol, childId, walkPos);
             walkPos[dvDim] += dvStep;
             if (walkPos[dvDim] >= shapeDvDim) {

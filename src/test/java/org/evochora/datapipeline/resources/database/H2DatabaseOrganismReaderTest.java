@@ -15,11 +15,14 @@ import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.ProcFrame;
 import org.evochora.datapipeline.api.contracts.RegisterValue;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
+import org.evochora.datapipeline.api.contracts.StoredMutationEvent;
+import org.evochora.datapipeline.api.contracts.StoredMutationEvents;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.Vector;
 import org.evochora.datapipeline.api.resources.database.IDatabaseReader;
 import org.evochora.datapipeline.api.resources.database.OrganismNotFoundException;
 import org.evochora.datapipeline.api.resources.database.TickNotFoundException;
+import org.evochora.datapipeline.api.resources.database.dto.LineageMutations;
 import org.evochora.datapipeline.api.resources.database.dto.OrganismRuntimeView;
 import org.evochora.datapipeline.api.resources.database.dto.OrganismTickDetails;
 import org.evochora.datapipeline.api.resources.database.dto.OrganismTickSummary;
@@ -76,7 +79,7 @@ class H2DatabaseOrganismReaderTest {
 
         try (Connection conn = getConnectionWithSchema("run-reader-1")) {
             database.doCreateOrganismTables(conn);
-            database.doWriteOrganismTick(conn, tick);
+            database.doWriteOrganismTick(conn, tick, java.util.Map.of());
             database.doCommitOrganismWrites(conn);
         }
 
@@ -107,7 +110,7 @@ class H2DatabaseOrganismReaderTest {
 
         try (Connection conn = getConnectionWithSchema("run-reader-2")) {
             database.doCreateOrganismTables(conn);
-            database.doWriteOrganismTick(conn, tick);
+            database.doWriteOrganismTick(conn, tick, java.util.Map.of());
             database.doCommitOrganismWrites(conn);
         }
 
@@ -127,7 +130,7 @@ class H2DatabaseOrganismReaderTest {
 
         try (Connection conn = getConnectionWithSchema("run-total-1")) {
             database.doCreateOrganismTables(conn);
-            database.doWriteOrganismTick(conn, tick);
+            database.doWriteOrganismTick(conn, tick, java.util.Map.of());
             database.doCommitOrganismWrites(conn);
         }
 
@@ -145,7 +148,7 @@ class H2DatabaseOrganismReaderTest {
 
         try (Connection conn = getConnectionWithSchema("run-total-2")) {
             database.doCreateOrganismTables(conn);
-            database.doWriteOrganismTick(conn, extinction);
+            database.doWriteOrganismTick(conn, extinction, java.util.Map.of());
             database.doCommitOrganismWrites(conn);
         }
 
@@ -165,10 +168,10 @@ class H2DatabaseOrganismReaderTest {
 
         try (Connection conn = getConnectionWithSchema("run-total-3")) {
             database.doCreateOrganismTables(conn);
-            database.doWriteOrganismTick(conn, tick);
+            database.doWriteOrganismTick(conn, tick, java.util.Map.of());
             database.doCommitOrganismWrites(conn);
             // At-least-once delivery: the same chunk can arrive again
-            database.doWriteOrganismTick(conn, tick);
+            database.doWriteOrganismTick(conn, tick, java.util.Map.of());
             database.doCommitOrganismWrites(conn);
         }
 
@@ -190,7 +193,7 @@ class H2DatabaseOrganismReaderTest {
 
         try (Connection conn = getConnectionWithSchema("run-total-overflow")) {
             database.doCreateOrganismTables(conn);
-            database.doWriteOrganismTick(conn, tick);
+            database.doWriteOrganismTick(conn, tick, java.util.Map.of());
             database.doCommitOrganismWrites(conn);
 
             try (Statement stmt = conn.createStatement()) {
@@ -216,7 +219,7 @@ class H2DatabaseOrganismReaderTest {
 
         try (Connection conn = getConnectionWithSchema("run-total-4")) {
             database.doCreateOrganismTables(conn);
-            database.doWriteOrganismTick(conn, tick);
+            database.doWriteOrganismTick(conn, tick, java.util.Map.of());
             database.doCommitOrganismWrites(conn);
         }
 
@@ -242,7 +245,7 @@ class H2DatabaseOrganismReaderTest {
 
         try (Connection conn = getConnectionWithSchema("run-reader-static")) {
             database.doCreateOrganismTables(conn);
-            database.doWriteOrganismTick(conn, tick);
+            database.doWriteOrganismTick(conn, tick, java.util.Map.of());
             database.doCommitOrganismWrites(conn);
 
             // The summary must be answerable from the stored state alone. Emptying the static
@@ -298,7 +301,7 @@ class H2DatabaseOrganismReaderTest {
                     metadataJson.replace("'", "''") + "')");
 
             database.doCreateOrganismTables(conn);
-            database.doWriteOrganismTick(conn, tick);
+            database.doWriteOrganismTick(conn, tick, java.util.Map.of());
             database.doCommitOrganismWrites(conn);
             conn.commit();
         }
@@ -356,6 +359,110 @@ class H2DatabaseOrganismReaderTest {
             assertThrows(OrganismNotFoundException.class, () ->
                     reader.readOrganismDetails(0L, 1));
         }
+    }
+
+    @Test
+    void readLineageMutations_returnsTheOrganismAndItsAncestorsWithDecodedEvents() throws Exception {
+        StoredMutationEvents founderEvents = StoredMutationEvents.newBuilder()
+                .setDimensions(2)
+                .addEvents(StoredMutationEvent.newBuilder()
+                        .setPluginClass("org.evochora.runtime.worldgen.GeneSubstitutionPlugin")
+                        .setKind("substitution")
+                        .addRelativeCoordinates(1).addRelativeCoordinates(2)
+                        .addOldValues(11).addNewValues(12))
+                .build();
+        StoredMutationEvents childEvents = StoredMutationEvents.newBuilder()
+                .setDimensions(2)
+                .addEvents(StoredMutationEvent.newBuilder()
+                        .setPluginClass("org.evochora.runtime.worldgen.LabelRewritePlugin")
+                        .setKind("label-rewrite")
+                        .addParams(0x2A))
+                .build();
+
+        // Generation 1 receives no mutation, so the chain has to carry it without events
+        TickData tick = TickData.newBuilder()
+                .setTickNumber(7L)
+                .addOrganisms(buildAncestorState(1, null, null, 0, 100L, 5, 6))
+                .addOrganisms(buildAncestorState(2, 1, 100L, 1, 200L, 7, 8))
+                .addOrganisms(buildAncestorState(3, 2, 200L, 2, 300L, 9, 10))
+                .build();
+
+        try (Connection conn = getConnectionWithSchema("run-lineage-mutations")) {
+            database.doCreateOrganismTables(conn);
+            database.doWriteOrganismTick(conn, tick, java.util.Map.of(
+                    1, founderEvents.toByteArray(),
+                    3, childEvents.toByteArray()));
+            database.doCommitOrganismWrites(conn);
+        }
+
+        try (IDatabaseReader reader = database.createReader("run-lineage-mutations")) {
+            List<LineageMutations> chain = reader.readLineageMutations(3);
+
+            assertThat(chain).extracting(LineageMutations::organismId).containsExactly(3, 2, 1);
+            assertThat(chain).extracting(LineageMutations::generation).containsExactly(2, 1, 0);
+            assertThat(chain).extracting(LineageMutations::genomeHash)
+                    .containsExactly(300L, 200L, 100L);
+            // The founder has no parent, so its parent genome stays absent rather than reading as 0
+            assertThat(chain).extracting(LineageMutations::parentGenomeHash)
+                    .containsExactly(200L, 100L, null);
+            assertThat(chain).extracting(LineageMutations::birthTick).containsExactly(2L, 1L, 0L);
+            assertThat(chain.get(0).initialPosition()).containsExactly(9, 10);
+
+            assertThat(chain.get(0).events()).isEqualTo(childEvents);
+            assertThat(chain.get(1).events().getEventsCount()).isZero();
+            assertThat(chain.get(2).events()).isEqualTo(founderEvents);
+        }
+    }
+
+    @Test
+    void readLineageMutations_reportsAnOrganismThatIsNotIndexed() throws Exception {
+        TickData tick = TickData.newBuilder()
+                .setTickNumber(1L)
+                .addOrganisms(buildOrganismState(1))
+                .build();
+
+        try (Connection conn = getConnectionWithSchema("run-lineage-missing")) {
+            database.doCreateOrganismTables(conn);
+            database.doWriteOrganismTick(conn, tick, java.util.Map.of());
+            database.doCommitOrganismWrites(conn);
+        }
+
+        try (IDatabaseReader reader = database.createReader("run-lineage-missing")) {
+            assertThrows(OrganismNotFoundException.class, () -> reader.readLineageMutations(42));
+        }
+    }
+
+    /**
+     * Builds a state that carries the static fields the lineage query reads.
+     *
+     * @param id the organism id
+     * @param parentId the parent's id, or null for an organism placed at the start of the run
+     * @param parentGenomeHash the genome its parent carried, or null for such an organism
+     * @param birthTick the tick the organism was born at
+     * @param genomeHash its genome hash at birth
+     * @param x first component of its initial position
+     * @param y second component of its initial position
+     * @return the state to write into the organism table
+     */
+    private OrganismState buildAncestorState(int id, Integer parentId, Long parentGenomeHash,
+                                             long birthTick, long genomeHash, int x, int y) {
+        OrganismState.Builder builder = OrganismState.newBuilder()
+                .setOrganismId(id)
+                .setBirthTick(birthTick)
+                .setGeneration((int) birthTick)
+                .setGenomeHash(genomeHash)
+                .setProgramId("prog-" + id)
+                .setInitialPosition(Vector.newBuilder().addComponents(x).addComponents(y).build())
+                .setEnergy(1)
+                .setIp(Vector.newBuilder().addComponents(0).addComponents(0).build())
+                .setDv(Vector.newBuilder().addComponents(0).addComponents(1).build());
+        if (parentId != null) {
+            builder.setParentId(parentId);
+        }
+        if (parentGenomeHash != null) {
+            builder.setParentGenomeHash(parentGenomeHash);
+        }
+        return builder.build();
     }
 
     private Connection getConnectionWithSchema(String runId) throws SQLException {

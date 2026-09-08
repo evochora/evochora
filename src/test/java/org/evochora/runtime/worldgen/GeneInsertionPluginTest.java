@@ -8,6 +8,7 @@ import org.evochora.runtime.isa.Instruction.OperandSource;
 import org.evochora.runtime.isa.RegisterBank;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
+import org.evochora.runtime.model.MutationRecord;
 import org.evochora.runtime.model.Organism;
 import org.evochora.runtime.spi.IRandomProvider;
 import org.evochora.runtime.thermodynamics.ThermodynamicPolicyManager;
@@ -666,6 +667,78 @@ class GeneInsertionPluginTest {
             assertThat(environment.getMolecule(x, Y).isEmpty())
                     .as("Cell (%d,%d) outside scan line should be empty", x, Y).isTrue();
         }
+    }
+
+    // ---- Mutation record tests ----
+
+    /** The flat index the environment persists the cell at the given coordinate by. */
+    private int flatIndex(int x, int y) {
+        return environment.getProperties().toFlatIndex(new int[]{x, y});
+    }
+
+    @Test
+    void aPlacedInstructionChainIsRecordedInPlacementOrder() {
+        // The NOP gap between the two boundary cells is the only run, so the chain of three
+        // molecules starts right behind the left boundary
+        createScanLine(LEFT, RIGHT, Y);
+
+        IRandomProvider rng = new SeededRandomProvider(42L);
+        GeneInsertionPlugin plugin = new GeneInsertionPlugin(rng, 1.0, List.of(createSetiEntry()));
+        plugin.mutate(child, environment);
+
+        List<MutationRecord> records = child.getBirthMutations();
+        assertThat(records).hasSize(1);
+        MutationRecord record = records.get(0);
+        assertThat(record.pluginClass()).isEqualTo(GeneInsertionPlugin.class.getName());
+        assertThat(record.kind()).isEqualTo("insertion");
+        assertThat(record.cells()).containsExactly(
+                flatIndex(LEFT + 1, Y), flatIndex(LEFT + 2, Y), flatIndex(LEFT + 3, Y));
+        assertThat(record.oldValues()).containsExactly(0, 0, 0);
+        assertThat(record.newValues()).containsExactly(
+                environment.getMolecule(LEFT + 1, Y).toInt(),
+                environment.getMolecule(LEFT + 2, Y).toInt(),
+                environment.getMolecule(LEFT + 3, Y).toInt());
+        assertThat(record.params()).isEmpty();
+        assertThat(record.dv()).isEqualTo(child.getDv());
+    }
+
+    @Test
+    void aPlacedLabelIsRecordedWithTheHashItGrewOutOf() {
+        placeLabel(LEFT, Y, LABEL_HASH_A);
+        placeCode(RIGHT, Y);
+
+        IRandomProvider rng = new SeededRandomProvider(42L);
+        GeneInsertionPlugin plugin = new GeneInsertionPlugin(rng, 1.0, List.of(new LabelEntry(1.0, 2)));
+        plugin.mutate(child, environment);
+
+        List<MutationRecord> records = child.getBirthMutations();
+        assertThat(records).hasSize(1);
+        MutationRecord record = records.get(0);
+        assertThat(record.pluginClass()).isEqualTo(GeneInsertionPlugin.class.getName());
+        assertThat(record.kind()).isEqualTo("label-insertion");
+        assertThat(record.cells()).containsExactly(flatIndex(LEFT + 1, Y));
+        assertThat(record.oldValues()).containsExactly(0);
+        assertThat(record.newValues()).containsExactly(environment.getMolecule(LEFT + 1, Y).toInt());
+        assertThat(record.params())
+                .as("the sampled label the new one was derived from, before the bit flips")
+                .containsExactly(LABEL_HASH_A);
+        assertThat(record.dv()).isEqualTo(child.getDv());
+        assertThat(Integer.bitCount(environment.getMolecule(LEFT + 1, Y).value() ^ LABEL_HASH_A))
+                .as("the placed label differs from the recorded source by the flipped bits")
+                .isEqualTo(2);
+    }
+
+    @Test
+    void aRunWithoutANopAreaRecordsNothing() {
+        for (int x = 0; x < 25; x++) {
+            placeCode(x, Y);
+        }
+
+        IRandomProvider rng = new SeededRandomProvider(42L);
+        GeneInsertionPlugin plugin = new GeneInsertionPlugin(rng, 1.0, List.of(createSetiEntry()));
+        plugin.mutate(child, environment);
+
+        assertThat(child.getBirthMutations()).isNull();
     }
 
     /**

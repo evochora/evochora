@@ -15,9 +15,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import org.evochora.datapipeline.TestMetadataHelper;
 import org.evochora.datapipeline.api.contracts.BatchInfo;
-import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.database.IResourceSchemaAwareEnvironmentDataWriter;
 import org.evochora.datapipeline.api.resources.database.IResourceSchemaAwareMetadataReader;
@@ -28,7 +26,6 @@ import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.api.resources.topics.IResourceTopicReader;
 import org.evochora.datapipeline.api.resources.topics.TopicMessage;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
-import org.evochora.runtime.model.EnvironmentProperties;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -178,130 +175,6 @@ class EnvironmentIndexerTest {
         method.invoke(indexer);
 
         verify(mockDatabase).commitRawChunks();
-    }
-
-    // ==================== Environment Properties Extraction ====================
-
-    @Test
-    void testExtractEnvironmentProperties_ToroidalTopology() throws Exception {
-        SimulationMetadata metadata = SimulationMetadata.newBuilder()
-            .setSimulationRunId("test-run")
-            .setResolvedConfigJson(TestMetadataHelper.builder()
-                .shape(100, 100)
-                .toroidal(true)
-                .build())
-            .build();
-
-        EnvironmentIndexer<?> indexer = new EnvironmentIndexer<>("test-indexer", config, resources);
-        java.lang.reflect.Method extractMethod = EnvironmentIndexer.class.getDeclaredMethod(
-            "extractEnvironmentProperties", SimulationMetadata.class);
-        extractMethod.setAccessible(true);
-        EnvironmentProperties props = (EnvironmentProperties) extractMethod.invoke(indexer, metadata);
-
-        assertThat(props.getWorldShape()).containsExactly(100, 100);
-        assertThat(props.isToroidal()).isTrue();
-    }
-
-    @Test
-    void testExtractEnvironmentProperties_EuclideanTopology() throws Exception {
-        String customJson = """
-            {
-                "environment": {
-                    "shape": [10, 10, 10],
-                    "topology": "BOUNDED"
-                },
-                "samplingInterval": 1,
-                "accumulatedDeltaInterval": 100,
-                "snapshotInterval": 10,
-                "chunkInterval": 1,
-                "plugins": [],
-                "organisms": [],
-                "runtime": {
-                    "organism": {
-                        "max-energy": 32767,
-                        "max-entropy": 8191,
-                        "error-penalty-cost": 10
-                    },
-                    "thermodynamics": {
-                        "default": {
-                            "className": "org.evochora.runtime.thermodynamics.impl.UniversalThermodynamicPolicy",
-                            "options": {
-                                "base-energy": 1,
-                                "base-entropy": 1
-                            }
-                        },
-                        "overrides": {
-                            "instructions": {},
-                            "families": {}
-                        }
-                    }
-                }
-            }
-            """;
-        SimulationMetadata metadata = SimulationMetadata.newBuilder()
-            .setSimulationRunId("test-run")
-            .setResolvedConfigJson(customJson)
-            .build();
-
-        EnvironmentIndexer<Object> indexer = new EnvironmentIndexer<>("test-indexer", config, resources);
-        java.lang.reflect.Method extractMethod = EnvironmentIndexer.class.getDeclaredMethod(
-            "extractEnvironmentProperties", SimulationMetadata.class);
-        extractMethod.setAccessible(true);
-        EnvironmentProperties props = (EnvironmentProperties) extractMethod.invoke(indexer, metadata);
-
-        assertThat(props.getWorldShape()).containsExactly(10, 10, 10);
-        assertThat(props.isToroidal()).isFalse();
-    }
-
-    @Test
-    void testExtractEnvironmentProperties_1D() throws Exception {
-        String customJson = """
-            {
-                "environment": {
-                    "shape": [1000],
-                    "topology": "TORUS"
-                },
-                "samplingInterval": 1,
-                "accumulatedDeltaInterval": 100,
-                "snapshotInterval": 10,
-                "chunkInterval": 1,
-                "plugins": [],
-                "organisms": [],
-                "runtime": {
-                    "organism": {
-                        "max-energy": 32767,
-                        "max-entropy": 8191,
-                        "error-penalty-cost": 10
-                    },
-                    "thermodynamics": {
-                        "default": {
-                            "className": "org.evochora.runtime.thermodynamics.impl.UniversalThermodynamicPolicy",
-                            "options": {
-                                "base-energy": 1,
-                                "base-entropy": 1
-                            }
-                        },
-                        "overrides": {
-                            "instructions": {},
-                            "families": {}
-                        }
-                    }
-                }
-            }
-            """;
-        SimulationMetadata metadata = SimulationMetadata.newBuilder()
-            .setSimulationRunId("test-run")
-            .setResolvedConfigJson(customJson)
-            .build();
-
-        EnvironmentIndexer<Object> indexer = new EnvironmentIndexer<>("test-indexer", config, resources);
-        java.lang.reflect.Method extractMethod = EnvironmentIndexer.class.getDeclaredMethod(
-            "extractEnvironmentProperties", SimulationMetadata.class);
-        extractMethod.setAccessible(true);
-        EnvironmentProperties props = (EnvironmentProperties) extractMethod.invoke(indexer, metadata);
-
-        assertThat(props.getWorldShape()).containsExactly(1000);
-        assertThat(props.isToroidal()).isTrue();
     }
 
     // ==================== Helper Methods ====================

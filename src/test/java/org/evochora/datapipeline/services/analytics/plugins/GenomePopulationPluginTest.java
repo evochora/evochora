@@ -1,6 +1,7 @@
 package org.evochora.datapipeline.services.analytics.plugins;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.List;
 import java.util.Map;
@@ -133,45 +134,95 @@ class GenomePopulationPluginTest {
     }
 
     @Test
-    void theChartReadsTheLineageAlongsideTheCounts() {
+    void theChartReadsTheLineageAndTheMutationsAlongsideTheCounts() {
         ManifestEntry entry = plugin.getManifestEntry();
 
         assertThat(entry.id).isEqualTo("genome_clades");
         assertThat(entry.storageMetricId).isEqualTo("genome_population");
         assertThat(entry.visualization.type).isEqualTo("clade-area-chart");
-        assertThat(entry.companionMetricId).isEqualTo("genome_lineage");
-        assertThat(entry.companionQuery).contains("parent_genome_hash");
+        assertThat(entry.companions).hasSize(2);
+        assertThat(entry.companions.get(0).metricId()).isEqualTo("genome_lineage");
+        assertThat(entry.companions.get(0).query()).contains("parent_genome_hash");
+        assertThat(entry.companions.get(1).metricId()).isEqualTo("mutation_summary");
     }
 
     @Test
-    void theLineageIsNotCondensedByTheQuery() {
+    void theChartFindsAFoundingMutationFromTheColumnsItAsksFor() {
+        // The founding mutation of a genome is what its first carrier received, and the chart
+        // picks that carrier itself - so the birth and the organism it is decided by have to be
+        // in the answer, next to what the band shows of the event
+        String query = plugin.getManifestEntry().companions.get(1).query();
+
+        assertThat(query)
+            .contains("birth_tick")
+            .contains("organism_id")
+            .contains("event_index")
+            .contains("kind")
+            .doesNotContain("plugin_class")
+            .contains("cell_count")
+            .contains("position");
+    }
+
+    @Test
+    void neitherCompanionIsCondensedByItsQuery() {
         // Grouping by genome hash is a hash aggregation over an unsorted column, which the
         // browser's DuckDB build fails at beyond a few thousand rows. The chart picks the
-        // earliest edge of a genome itself, so the query has nothing to condense.
-        assertThat(plugin.getManifestEntry().companionQuery)
-            .doesNotContainIgnoringCase("group by")
-            .doesNotContainIgnoringCase("min(");
+        // earliest edge and the first carrier of a genome itself, so the queries have nothing
+        // to condense.
+        for (ManifestEntry.Companion companion : plugin.getManifestEntry().companions) {
+            assertThat(companion.query())
+                .doesNotContainIgnoringCase("group by")
+                .doesNotContainIgnoringCase("min(");
+        }
     }
 
     @Test
-    void genomeHashesLeaveAsTextInBothQueries() {
+    void genomeHashesLeaveAsTextInEveryQuery() {
         // 64 bits do not survive a JavaScript number: two genomes would silently become one
         ManifestEntry entry = plugin.getManifestEntry();
 
         assertThat(entry.generatedQuery).contains("genome_hash::VARCHAR");
-        assertThat(entry.companionQuery)
+        assertThat(entry.companions.get(0).query())
             .contains("genome_hash::VARCHAR")
             .contains("parent_genome_hash::VARCHAR");
+        assertThat(entry.companions.get(1).query()).contains("genome_hash::VARCHAR");
     }
 
     @Test
-    void theLineageMetricCanBeNamedInConfiguration() {
+    void theChartIsToldWhichCompanionIsWhich() {
+        // The chart reads its companions by metric id, so it does not depend on the order the
+        // manifest lists them in
+        ManifestEntry entry = plugin.getManifestEntry();
+
+        assertThat(entry.visualization.config.get("lineageMetric")).isEqualTo("genome_lineage");
+        assertThat(entry.visualization.config.get("causeMetric")).isEqualTo("mutation_summary");
+    }
+
+    @Test
+    void theCompanionMetricsCanBeNamedInConfiguration() {
         GenomePopulationPlugin configured = new GenomePopulationPlugin();
         configured.configure(ConfigFactory.parseMap(Map.of(
             "metricId", "genome_population",
-            "lineageMetricId", "other_lineage")));
+            "lineageMetricId", "other_lineage",
+            "mutationSummaryMetricId", "other_summary")));
 
-        assertThat(configured.getManifestEntry().companionMetricId).isEqualTo("other_lineage");
+        ManifestEntry entry = configured.getManifestEntry();
+
+        assertThat(entry.companions.get(0).metricId()).isEqualTo("other_lineage");
+        assertThat(entry.companions.get(1).metricId()).isEqualTo("other_summary");
+        assertThat(entry.visualization.config.get("lineageMetric")).isEqualTo("other_lineage");
+        assertThat(entry.visualization.config.get("causeMetric")).isEqualTo("other_summary");
+    }
+
+    @Test
+    void aCompanionMetricCannotBeNamedEmpty() {
+        GenomePopulationPlugin configured = new GenomePopulationPlugin();
+
+        assertThatThrownBy(() -> configured.configure(ConfigFactory.parseMap(Map.of(
+                "metricId", "genome_population",
+                "mutationSummaryMetricId", "  "))))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("mutationSummaryMetricId");
     }
 
     @Test

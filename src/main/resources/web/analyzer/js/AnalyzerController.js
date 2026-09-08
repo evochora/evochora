@@ -482,12 +482,16 @@ export async function loadDashboard(runId) {
     }
 
     /**
-     * Loads the companion table of a metric, or returns null when it has none.
+     * Loads the companion tables of a metric, or returns null when it has none.
      *
-     * The companion is read at its finest level of detail: it carries structure, and a thinned-out
+     * The rows arrive keyed by the metric id of the table they came from, which is how a chart
+     * asks for the one it means: the ids stand in its visualization config, so a chart reading two
+     * companions never depends on the order the manifest happens to list them in.
+     *
+     * A companion is read at its finest level of detail: it carries structure, and a thinned-out
      * structure is not a coarser view of it but a wrong one - a lineage missing edges turns
-     * descendants into roots. It is read again whenever the metric is loaded, because a running
-     * simulation keeps adding to it, and a tree that stops growing loses every genome born after
+     * descendants into roots. They are read again whenever the metric is loaded, because a running
+     * simulation keeps adding to them, and a tree that stops growing loses every genome born after
      * it was read.
      *
      * Scrolling is not such a moment. It moves the window inside the tick range that was known
@@ -497,19 +501,25 @@ export async function loadDashboard(runId) {
      *
      * @param {Object} metric - Manifest entry of the metric being loaded
      * @param {AbortSignal} signal - Signal aborting the fetch
-     * @returns {Promise<Array<Object>|null>} Companion rows, or null if the metric has none
+     * @returns {Promise<Object<string, Array<Object>>|null>} Rows per companion metric id, or null
+     *          if the metric has none
      */
     async function loadCompanionData(metric, signal) {
-        if (!metric.companionMetricId || !metric.companionQuery) {
+        if (!metric.companions || metric.companions.length === 0) {
             return null;
         }
 
-        const blobKey = `companion_${metric.id}`;
-        const { blob } = await AnalyticsApi.fetchParquetBlob(
-            metric.companionMetricId, currentRunId, 'lod0', signal
-        );
-        await DuckDBClient.registerParquetBlob(blobKey, blob);
-        return DuckDBClient.queryRegisteredBlob(blobKey, metric.companionQuery);
+        const rowsByMetric = {};
+        for (const companion of metric.companions) {
+            const blobKey = `companion_${metric.id}_${companion.metricId}`;
+            const { blob } = await AnalyticsApi.fetchParquetBlob(
+                companion.metricId, currentRunId, 'lod0', signal
+            );
+            await DuckDBClient.registerParquetBlob(blobKey, blob);
+            rowsByMetric[companion.metricId] =
+                await DuckDBClient.queryRegisteredBlob(blobKey, companion.query);
+        }
+        return rowsByMetric;
     }
 
     /**

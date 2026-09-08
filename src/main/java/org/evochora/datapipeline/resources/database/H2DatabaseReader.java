@@ -12,7 +12,10 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import com.google.protobuf.InvalidProtocolBufferException;
+
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
+import org.evochora.datapipeline.api.contracts.StoredMutationEvents;
 import org.evochora.datapipeline.api.resources.database.PendingChunkRead;
 import org.evochora.datapipeline.api.resources.database.IDatabaseReader;
 import org.evochora.datapipeline.api.resources.database.OrganismNotFoundException;
@@ -20,19 +23,19 @@ import org.evochora.datapipeline.api.resources.database.TickNotFoundException;
 import org.evochora.datapipeline.api.resources.database.dto.InstructionView;
 import org.evochora.datapipeline.api.resources.database.dto.InstructionsView;
 import org.evochora.datapipeline.api.resources.database.dto.LineageEntry;
+import org.evochora.datapipeline.api.resources.database.dto.LineageMutations;
 import org.evochora.datapipeline.api.resources.database.dto.OrganismRuntimeView;
 import org.evochora.datapipeline.api.resources.database.dto.OrganismStaticInfo;
 import org.evochora.datapipeline.api.resources.database.dto.OrganismTickDetails;
 import org.evochora.datapipeline.api.resources.database.dto.OrganismTickSummary;
 import org.evochora.datapipeline.resources.database.h2.IH2EnvStorageStrategy;
 import org.evochora.datapipeline.resources.database.h2.IH2OrgStorageStrategy;
+import org.evochora.datapipeline.utils.MetadataConfigHelper;
 
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.typesafe.config.Config;
-import com.typesafe.config.ConfigFactory;
 
 /**
  * Per-request database reader for H2.
@@ -87,18 +90,6 @@ public class H2DatabaseReader implements IDatabaseReader {
         return envStrategy.prepareChunkRead(connection, tickNumber);
     }
     
-    private EnvironmentProperties extractEnvironmentProperties(SimulationMetadata metadata) {
-        // Parse environment config from resolvedConfigJson
-        Config resolvedConfig = ConfigFactory.parseString(metadata.getResolvedConfigJson());
-
-        int[] shape = resolvedConfig.getIntList("environment.shape").stream()
-            .mapToInt(i -> i).toArray();
-        boolean isToroidal = "TORUS".equalsIgnoreCase(
-            resolvedConfig.getString("environment.topology"));
-
-        return new EnvironmentProperties(shape, isToroidal);
-    }
-
     /**
      * Looks up the label-hash-to-name map of the program an organism descends from.
      * <p>
@@ -229,6 +220,83 @@ public class H2DatabaseReader implements IDatabaseReader {
         return ancestors;
     }
 
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Walks {@code organisms} upwards in one {@code WITH RECURSIVE} statement, the same shape the
+     * ancestry chain of the detail view is read with, seeded at the requested organism instead of
+     * at its parent so that its own birth is part of the answer. The recursion ends at the
+     * organism without a parent, and the ordering by recursion depth is what puts the requested
+     * organism first.
+     * <p>
+     * Not thread-safe — each {@link H2DatabaseReader} instance holds a dedicated connection
+     * and must not be shared across threads.
+     */
+    @Override
+    public List<LineageMutations> readLineageMutations(int organismId)
+            throws SQLException, OrganismNotFoundException {
+        ensureNotClosed();
+
+        if (organismId < 0) {
+            throw new IllegalArgumentException("organismId must be non-negative");
+        }
+
+        String sql = """
+            WITH RECURSIVE ancestors(org_id, depth) AS (
+                SELECT organism_id, 0
+                FROM organisms WHERE organism_id = ?
+                UNION ALL
+                SELECT o.parent_id, a.depth + 1
+                FROM ancestors a
+                JOIN organisms o ON o.organism_id = a.org_id
+                WHERE o.parent_id IS NOT NULL
+            )
+            SELECT o.organism_id, o.generation, o.genome_hash, o.parent_genome_hash,
+                   o.birth_tick, o.initial_position, o.birth_mutations
+            FROM ancestors a
+            JOIN organisms o ON o.organism_id = a.org_id
+            ORDER BY a.depth ASC
+            """;
+
+        List<LineageMutations> chain = new ArrayList<>();
+        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
+            stmt.setInt(1, organismId);
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    int id = rs.getInt("organism_id");
+                    byte[] storedEvents = rs.getBytes("birth_mutations");
+                    StoredMutationEvents events;
+                    if (storedEvents == null) {
+                        events = StoredMutationEvents.getDefaultInstance();
+                    } else {
+                        try {
+                            events = StoredMutationEvents.parseFrom(storedEvents);
+                        } catch (InvalidProtocolBufferException e) {
+                            throw new SQLException(
+                                "Birth mutations of organism " + id + " of run " + runId
+                                + " are not a readable message", e);
+                        }
+                    }
+                    long parentGenome = rs.getLong("parent_genome_hash");
+                    Long parentGenomeHash = rs.wasNull() ? null : parentGenome;
+                    chain.add(new LineageMutations(
+                        id,
+                        rs.getInt("generation"),
+                        rs.getLong("genome_hash"),
+                        parentGenomeHash,
+                        rs.getLong("birth_tick"),
+                        OrganismStateConverter.decodeVector(rs.getBytes("initial_position")),
+                        events));
+                }
+            }
+        }
+
+        if (chain.isEmpty()) {
+            throw new OrganismNotFoundException("No organism metadata for id " + organismId);
+        }
+        return chain;
+    }
+
     @Override
     public OrganismTickDetails readOrganismDetails(long tickNumber, int organismId)
             throws SQLException, OrganismNotFoundException {
@@ -253,7 +321,7 @@ public class H2DatabaseReader implements IDatabaseReader {
         } catch (org.evochora.datapipeline.api.resources.database.MetadataNotFoundException e) {
             throw new SQLException("Metadata not found for runId: " + runId, e);
         }
-        EnvironmentProperties envProps = extractEnvironmentProperties(metadata);
+        EnvironmentProperties envProps = MetadataConfigHelper.environmentProperties(metadata);
         int[] envDimensions = envProps.getWorldShape();
 
         // Read organism state from strategy (BLOB-based for SingleBlobOrgStrategy)

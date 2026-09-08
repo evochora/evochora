@@ -1,4 +1,5 @@
 import { loadingManager } from './ui/LoadingManager.js';
+import { isMarkPresent } from './MutationMarks.js';
 import { moleculeTypeEntry, moleculeTypeName, NO_DATA_COLOR } from './MoleculeTypePalette.js';
 
 /**
@@ -61,6 +62,11 @@ export class EnvironmentGrid {
         this._rawCells = null;      // Raw cells from API (for async cellData building)
         this._cellDataReady = false; // Flag: true when cellData map is fully built
         this._buildId = 0;          // Monotonic counter to cancel stale async builds
+
+        // --- Mutation marks of the selected organism's lineage ---
+        this.mutationMarks = null;   // key "x,y" -> the mutation that decides that cell's mark
+        this._markBounds = null;     // smallest rectangle the marked cells lie in
+        this._markColorOf = null;    // genome hash -> its lineage colour as 0xRRGGBB
 
         // --- Prefetch Management ---
         this._prefetchAbortController = null;  // Separate controller for background prefetch
@@ -731,6 +737,103 @@ export class EnvironmentGrid {
     }
 
     /**
+     * Takes the mutation marks of the selected organism's lineage, or drops them.
+     *
+     * Every cell that is marked before or after the change is drawn again, so a mark appears,
+     * changes its colour or disappears with the selection while the rest of what is on screen
+     * stays untouched. The zoomed-out renderer paints a whole region into one texture and keeps no
+     * cell data to draw from, so it drops its cache instead and paints the region again from the
+     * data of the next load.
+     *
+     * @param {Map<string, object>|null} marks - Cell key "x,y" to the mutation deciding that cell,
+     *                                          null when no organism is selected.
+     * @param {function(string): number|null} [colorOf=null] - Lineage colour of a genome hash as
+     *                                          a packed RGB integer.
+     */
+    setMutationMarks(marks, colorOf = null) {
+        const affected = new Set();
+        if (this.mutationMarks) {
+            for (const key of this.mutationMarks.keys()) affected.add(key);
+        }
+        if (marks) {
+            for (const key of marks.keys()) affected.add(key);
+        }
+
+        this.mutationMarks = (marks && marks.size > 0) ? marks : null;
+        this._markColorOf = colorOf;
+        this._markBounds = this._computeMarkBounds();
+
+        if (affected.size === 0) return;
+
+        this.detailedRenderer.refreshMarks(affected);
+        this.zoomedOutRenderer.clearCache();
+        if (this.isZoomedOut) {
+            this.requestViewportLoad();
+        }
+    }
+
+    /**
+     * Computes the smallest rectangle the marked cells lie in.
+     *
+     * The rectangle is what makes the marks affordable for the zoomed-out renderer, which walks
+     * millions of cells: a cell outside it is settled by four comparisons and never builds a key.
+     *
+     * @returns {{x1: number, y1: number, x2: number, y2: number}|null} The bounds, null without marks.
+     * @private
+     */
+    _computeMarkBounds() {
+        if (!this.mutationMarks) return null;
+        let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
+        for (const mark of this.mutationMarks.values()) {
+            if (mark.x < x1) x1 = mark.x;
+            if (mark.x > x2) x2 = mark.x;
+            if (mark.y < y1) y1 = mark.y;
+            if (mark.y > y2) y2 = mark.y;
+        }
+        return { x1, y1, x2, y2 };
+    }
+
+    /**
+     * Tells whether a cell can carry a mark at all.
+     *
+     * @param {number} x - The cell's X coordinate.
+     * @param {number} y - The cell's Y coordinate.
+     * @returns {boolean} True if marks exist and the cell lies within their bounds.
+     */
+    isInMarkBounds(x, y) {
+        const bounds = this._markBounds;
+        return bounds !== null && x >= bounds.x1 && x <= bounds.x2 && y >= bounds.y1 && y <= bounds.y2;
+    }
+
+    /**
+     * Returns the mark a cell carries with the molecule it currently holds.
+     *
+     * @param {number} x - The cell's X coordinate.
+     * @param {number} y - The cell's Y coordinate.
+     * @param {string|null} typeName - The type name of its molecule, null when the cell holds nothing.
+     * @param {number} value - The value of its molecule.
+     * @param {boolean} isEmptyCell - Whether the cell is empty.
+     * @returns {object|null} The mark, or null when the cell carries none.
+     */
+    markAt(x, y, typeName, value, isEmptyCell) {
+        if (!this.isInMarkBounds(x, y)) return null;
+        const mark = this.mutationMarks.get(`${x},${y}`);
+        if (!mark) return null;
+        return isMarkPresent(mark, typeName, value, isEmptyCell) ? mark : null;
+    }
+
+    /**
+     * Returns the colour a mark is drawn in: the lineage colour of the genome the mutation arose in.
+     *
+     * @param {object} mark - The mark to colour.
+     * @returns {number} A packed RGB integer, white when no colour is available.
+     */
+    markColor(mark) {
+        const color = this._markColorOf ? this._markColorOf(mark.genomeHash) : null;
+        return typeof color === 'number' ? color : 0xffffff;
+    }
+
+    /**
      * Sets or clears the selected organism, starting/stopping the pulse ring animation.
      * @param {string|null} organismId - The selected organism ID, or null to deselect
      */
@@ -1315,6 +1418,8 @@ export class EnvironmentGrid {
             cellInfo = `<span class="tooltip-coords">[${gridX}|${gridY}]</span>`;
         }
 
+        cellInfo += this._mutationTooltipLine(cell, gridX, gridY);
+
         let organismInfo = '';
         for (const entry of nearbyOrganisms) {
             const { organism, type, position } = entry;
@@ -1342,6 +1447,30 @@ export class EnvironmentGrid {
         this.tooltip.style.left = `${left}px`;
         this.tooltip.style.top = `${top}px`;
         this.tooltip.classList.add('show');
+    }
+
+    /**
+     * Builds the tooltip line of a cell that carries a mutation mark.
+     *
+     * @param {object|null} cell - The cell's data, null when the cell holds nothing.
+     * @param {number} gridX - The cell's X coordinate.
+     * @param {number} gridY - The cell's Y coordinate.
+     * @returns {string} The line as HTML, empty when the cell carries no mark.
+     * @private
+     */
+    _mutationTooltipLine(cell, gridX, gridY) {
+        const isEmpty = !cell
+            || (cell.type === 'CODE' && cell.value === 0 && cell.ownerId === 0);
+        const mark = this.markAt(gridX, gridY, cell ? cell.type : null, cell ? cell.value : 0, isEmpty);
+        if (!mark) return '';
+
+        const before = `${moleculeTypeName(mark.beforeTypeName)}:${mark.beforeValue}`;
+        const after = `${moleculeTypeName(mark.afterTypeName)}:${mark.afterValue}`;
+        // The kind is a name the reporting plugin chose and reaches the page as data
+        const kind = String(mark.kind ?? '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
+        return `
+                <span class="tooltip-mutation">Mutation: ${kind}, generation ${mark.generation}, ${before} \u2192 ${after}</span>
+            `;
     }
 
     /**
@@ -1482,12 +1611,17 @@ class DetailedRendererStrategy extends BaseRendererStrategy {
     /** Maximum number of cells to keep in memory (LRU eviction budget) */
     static MAX_CELLS = 100_000;
 
+    /** Width in pixels of the border that marks a mutated cell. */
+    static MARK_BORDER_WIDTH = 2;
+
     constructor(grid) {
         super(grid);
         this.cellObjects = new Map();
         this.ipGraphics = new Map();
         this.dpGraphics = new Map();
 
+        // What a cell holds that the loaded region does not name: nothing at all
+        this.emptyCell = { type: 'CODE', value: 0, ownerId: 0, opcodeName: null, marker: 0 };
         this.cellFont = {
             fontFamily: 'Monospaced, "Courier New"',
             fontSize: this.config.cellSize * 0.4,
@@ -1554,6 +1688,14 @@ class DetailedRendererStrategy extends BaseRendererStrategy {
             for (let cx = x1; cx < x2; cx++) {
                 const key = `${cx},${cy}`;
                 if (updatedKeys.has(key)) continue;
+
+                // A cell the response does not name is empty, and an empty cell a deletion of the
+                // lineage cleared keeps its mark on the empty background.
+                if (this.grid.markAt(cx, cy, null, 0, true)) {
+                    this.drawCell(this.emptyCell, [cx, cy]);
+                    this._cellAccessTime.set(key, now);
+                    continue;
+                }
 
                 const entry = this.cellObjects.get(key);
                 if (entry) {
@@ -1624,7 +1766,50 @@ class DetailedRendererStrategy extends BaseRendererStrategy {
             text = null;
         }
 
-        this.cellObjects.set(key, { background, text });
+        // A mutation of the selected organism's lineage that this cell still holds is drawn as a
+        // border inside the cell's edge, over the background and under the text.
+        const mark = this.grid.markAt(pos[0], pos[1], cell.type, cell.value, isEmpty);
+        if (mark) {
+            const width = DetailedRendererStrategy.MARK_BORDER_WIDTH;
+            background.rect(width / 2, width / 2, cellSize - width, cellSize - width);
+            background.stroke({ width, color: this.grid.markColor(mark) });
+        }
+
+        // The cell's molecule stays with its graphics so that a changed selection can draw the
+        // cell again without fetching the region a second time.
+        this.cellObjects.set(key, { background, text, cell });
+    }
+
+    /**
+     * Draws the given cells again after the mutation marks have changed.
+     *
+     * A cell whose graphics are still on screen is drawn from the molecule they were drawn with. A
+     * marked cell without graphics inside a loaded region holds nothing — the response named it
+     * nowhere — and is drawn as an empty cell so that the mark of a deletion appears on the empty
+     * background.
+     *
+     * @param {Iterable<string>} keys - The cell keys to draw again.
+     */
+    refreshMarks(keys) {
+        const now = performance.now();
+        const worldWidth = this.grid.worldWidthCells;
+
+        for (const key of keys) {
+            const entry = this.cellObjects.get(key);
+            if (entry) {
+                this.drawCell(entry.cell, key.split(',').map(Number));
+                continue;
+            }
+
+            if (!this._loadedMask || !worldWidth) continue;
+            const [x, y] = key.split(',').map(Number);
+            if (Number.isNaN(x) || Number.isNaN(y)) continue;
+            if (this._loadedMask[y * worldWidth + x] !== 1) continue;
+            if (!this.grid.markAt(x, y, null, 0, true)) continue;
+
+            this.drawCell(this.emptyCell, [x, y]);
+            this._cellAccessTime.set(key, now);
+        }
     }
 
     /**
@@ -2037,6 +2222,27 @@ class ZoomedOutRendererStrategy extends BaseRendererStrategy {
         // --- Step 2: Draw cells into pixel buffer ---
         const getColor = (typeName) => this.grid.detailedRenderer.getBackgroundColorForType(typeName);
 
+        const fillCell = (cellX, cellY, colorPixel) => {
+            // Position relative to region origin, scaled
+            const localX = (cellX - clampedX1) * scale;
+            const localY = (cellY - clampedY1) * scale;
+
+            // Draw scale×scale pixels for this cell using bulk row fills
+            for (let dy = 0; dy < scale; dy++) {
+                const rowStart = (localY + dy) * textureWidth + localX;
+                uint32View.fill(colorPixel, rowStart, rowStart + scale);
+            }
+        };
+        const asPixel = (color) => {
+            const rgb = this._hexToRgb(color);
+            return (255 << 24) | (rgb.b << 16) | (rgb.g << 8) | rgb.r;
+        };
+
+        // A border cannot be seen at one to four pixels per cell, so a marked cell is filled with
+        // the mark's colour instead of its own. Cells that the response names are collected while
+        // they are drawn, so that a marked cell it does not name can be recognized as empty below.
+        const named = this.grid.mutationMarks ? new Set() : null;
+
         for (let i = 0; i < cells.length; i++) {
             const cell = cells[i];
             const coords = cell.coordinates;
@@ -2050,19 +2256,30 @@ class ZoomedOutRendererStrategy extends BaseRendererStrategy {
 
             const typeName = moleculeTypeName(cell.moleculeType);
             const isEmpty = typeName === 'CODE' && cell.moleculeValue === 0 && cell.ownerId === 0;
+
+            let mark = null;
+            if (named !== null && this.grid.isInMarkBounds(cellX, cellY)) {
+                named.add(cellY * worldWidth + cellX);
+                mark = this.grid.markAt(cellX, cellY, typeName, cell.moleculeValue, isEmpty);
+            }
+
+            if (mark) {
+                fillCell(cellX, cellY, asPixel(this.grid.markColor(mark)));
+                continue;
+            }
             if (isEmpty) continue; // Already filled with empty color
 
-            const color = this._hexToRgb(getColor(typeName));
-            const colorPixel = (255 << 24) | (color.b << 16) | (color.g << 8) | color.r;
+            fillCell(cellX, cellY, asPixel(getColor(typeName)));
+        }
 
-            // Position relative to region origin, scaled
-            const localX = (cellX - clampedX1) * scale;
-            const localY = (cellY - clampedY1) * scale;
-
-            // Draw scale×scale pixels for this cell using bulk row fills
-            for (let dy = 0; dy < scale; dy++) {
-                const rowStart = (localY + dy) * textureWidth + localX;
-                uint32View.fill(colorPixel, rowStart, rowStart + scale);
+        // A cell the response does not name is empty, and an empty cell a deletion of the lineage
+        // cleared carries its mark there as much as anywhere else.
+        if (named !== null) {
+            for (const mark of this.grid.mutationMarks.values()) {
+                if (!mark.afterEmpty) continue;
+                if (mark.x < clampedX1 || mark.x >= clampedX2 || mark.y < clampedY1 || mark.y >= clampedY2) continue;
+                if (named.has(mark.y * worldWidth + mark.x)) continue;
+                fillCell(mark.x, mark.y, asPixel(this.grid.markColor(mark)));
             }
         }
 

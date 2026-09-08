@@ -45,5 +45,14 @@ public enum ColumnType {
     public String getSqlType() {
         return sqlType;
     }
+
+    /**
+     * Whether values of this type are whole numbers that can be added without losing anything.
+     *
+     * @return {@code true} for {@link #BIGINT} and {@link #INTEGER}, {@code false} otherwise
+     */
+    public boolean isIntegral() {
+        return this == BIGINT || this == INTEGER;
+    }
 }
 

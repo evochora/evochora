@@ -130,17 +130,22 @@ value):
 Children with genome hash 0 are futile forks (no cells handed over); they die in the first class.
 
 **The acute-lethal class is invisible in body data**: its members die before the first recording
-after their birth, so no body endpoint ever shows them. Count them from the life table, or as the
-deficit between births expected from the plugin rates and the genomes actually observed.
+after their birth, so no body endpoint ever shows them. Their mutations are not invisible: the
+event tables of step 2 hold every birth, because a dead child stays in the recording that first
+sees it. Count the class from the life table, or as the deficit between births expected from the
+plugin rates and the genomes actually observed.
 
 **Mutant does not mean mutated by a plugin.** A child's genome hash differs from its parent's
 whenever the copy differs from the parent's *birth* genome — also when the parent lost or gained
-cells during its life (damage inherited through copying) or when the parent's copy routine itself
-is defective. Find them: parents with ≥ 5 children none of which carries the parent's genome. Then
-fetch the parent's body (step 3) at its first and at its last recording and diff the two — a
-changed body is inherited damage, an unchanged one a defective copier. In the run where this was
-first measured, such parents produced 16 % of all births, their children reproduced half as often
-as other mutants, and the only adaptive sweep of the run came from this channel, not from a plugin.
+cells during its life (damage inherited through copying), when the parent's copy routine itself
+is defective, or when a neighbour wrote into the child. A run with the mutation event tables
+names these births directly: a mutant birth without an event that changed a cell (the rule in
+step 2), counted per recording in `variation_sources.no_event`. Without the tables, find them as
+parents with ≥ 5 children none of which carries the parent's genome. Either way, fetch the
+parent's body (step 3) at its first and at its last recording and diff the two — a changed body
+is inherited damage, an unchanged one a defective copier. In the run where this was first
+measured, such parents produced 16 % of all births, their children reproduced half as often as
+other mutants, and the only adaptive sweep of the run came from this channel, not from a plugin.
 
 **Generation time** = median (child birth − parent birth) over all children of the life table.
 
@@ -164,6 +169,43 @@ Reading the three states of `parent_genome_hash` correctly matters:
   but a different one: the genome did not descend from another genome.
 - otherwise - the parent genome. A genome can have several parents when the same mutation arose
   more than once; the table keeps every edge and leaves the choice to the analysis.
+
+**What made a genome.** Three metrics record what the mutation plugins wrote at birth. They are
+facts, not a reconstruction, and need no node:
+
+- `mutation_events` — one row per changed molecule: `birth_tick`, `organism_id`, `parent_id`,
+  `genome_hash`, `parent_genome_hash`, `event_index` (order of the events of one birth),
+  `plugin_class` (the plugin's class name), `kind` (what the plugin calls the operation),
+  `position` (relative to the child's origin, along the shortest way around the world, as JSON
+  text — cast it: `position::INTEGER[]`), `old_value` and `new_value` (packed molecule ints).
+- `mutation_summary` — one row per event with the same keys, `cell_count`, the smallest
+  `position` among its cells (independent of the direction the plugin walked), `dv` and `params`
+  as JSON text. The built-in kinds: `duplication` (`params`: flat
+  index of the copied source), `deletion` (`params`: how many copies of the deleted label the body
+  had), `insertion`, `label-insertion` (`params`: hash of the source label), `substitution`, and
+  `label-rewrite` — the XOR mask every child's labels receive, with `cell_count` 0, `position`
+  `[]` and the mask in `params`; it changes no genome hash and is not a mutation.
+- `variation_sources` — births per recording by what changed the genome: `unchanged`, `bodiless`
+  (hash 0), `no_event`, one column per built-in kind, `multiple` (several kinds in one birth),
+  `other` (a kind outside the built-in set). Its count columns are *summed* into the coarser LOD
+  levels, and a tick can carry two rows where an indexer batch ended — add the rows of a tick,
+  never pick one.
+
+`tick` is the recording a birth was first seen in, `birth_tick` the birth itself. Two rules:
+
+- **A genome's founding mutation** is what its first carrier received: the `mutation_summary`
+  rows with its `genome_hash` at the smallest `birth_tick` (ties: smallest `organism_id`). That
+  is what the *Clade Shares* chart prints in a band's label; a genome that arose more than once
+  keeps its later origins as further rows.
+- **A mutant birth without an event that changed a cell is variation outside the plugins**: a
+  child whose `genome_hash` differs from `parent_genome_hash`, is not 0, and has no
+  `mutation_summary` row with `cell_count > 0`. Its cause is in the parent's body or in a
+  neighbour, never in a plugin — the channel step 1b describes. Check the claim before repeating
+  it: `variation_sources.no_event` summed over the run against the same count from the life table.
+
+The two event tables are written once per birth, with the child's first recording, and nothing is
+skipped. A mutation an ancestor received sits at the same offset from every descendant's origin,
+which is why `position` is an offset: the events of a lineage compare by offset, never by cell.
 
 **Sweep detection:** the Analyzer's *Clade Shares* chart does this by itself — it reads
 `genome_population` next to `genome_lineage` and stacks each branch's share of the population.
@@ -320,6 +362,9 @@ JSON format. For those runs body forensics goes the old way:
 - No `death_lifetimes`: fetch organism snapshots for a few ticks in the suspect window and build the
   lifetime histogram by hand from `deathTick − birthTick` of the entries marked dead. Expensive and
   it only sees the deaths of the sampled ticks, which is exactly why the metric exists.
+- No `mutation_events`, `mutation_summary`, `variation_sources`: what a mutation did has to be
+  reconstructed by diffing the child's body against the parent's (step 3), and births outside the
+  plugins are found by the ≥ 5-children heuristic of step 1b.
 - No `population.bodied_count`: sum the per-genome counts in `genome.genome_data`, the JSON column
   older runs carry instead of the `genome_population` table. It holds the top genomes plus an
   `other` bucket, and the plugin that wrote it skipped hash-0 organisms, so the sum is the same

@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.google.protobuf.ByteString;
 import org.evochora.datapipeline.TestMetadataHelper;
 import org.evochora.datapipeline.api.contracts.CellDataColumns;
+import org.evochora.datapipeline.api.contracts.MutationEvent;
 import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
@@ -1060,6 +1061,36 @@ class SimulationRestorerTest {
         var tokenMap = state.programArtifacts().get("test-program").tokenMap();
         assertThat(tokenMap).hasSize(1);
         return tokenMap.values().iterator().next();
+    }
+
+    @Test
+    void restore_OrganismCarryingMutationEvents_HasNoRecords() {
+        // Every checkpoint is a recording, and the records were emitted and dropped at it. A
+        // restored organism therefore starts where the uninterrupted run stood after that
+        // capture: with nothing pending.
+        SimulationMetadata metadata = createMinimalMetadata();
+        OrganismState orgState = createOrganismState(1, 500).toBuilder()
+            .addBirthMutations(MutationEvent.newBuilder()
+                .setPluginClass("org.example.Substitution")
+                .setKind("substitution")
+                .addCells(4711).addOldValues(100).addNewValues(200)
+                .addDv(1).addDv(0))
+            .build();
+        TickData snapshot = TickData.newBuilder()
+            .setSimulationRunId(TEST_RUN_ID)
+            .setTickNumber(1000)
+            .setCaptureTimeMs(System.currentTimeMillis())
+            .setTotalOrganismsCreated(1)
+            .setCellColumns(CellDataColumns.newBuilder().build())
+            .setRngState(validRngState())
+            .addOrganisms(orgState)
+            .build();
+
+        SimulationRestorer.RestoredState state = SimulationRestorer.restore(
+            new ResumeCheckpoint(metadata, snapshot), randomProvider, 1);
+
+        Organism restored = state.simulation().getOrganisms().get(0);
+        assertThat(restored.getBirthMutations()).isNull();
     }
 
     private SimulationMetadata createMinimalMetadata() {

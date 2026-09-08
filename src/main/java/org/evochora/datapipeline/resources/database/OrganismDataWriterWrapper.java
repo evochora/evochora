@@ -78,13 +78,15 @@ public class OrganismDataWriterWrapper extends AbstractDatabaseWrapper implement
      * JDBC batch buffers without committing.
      *
      * @param tick Tick data containing organism states
+     * @param birthMutations serialized mutation events per organism id, for the organisms of this
+     *                       tick that carry any; empty when none does
      * @throws SQLException if table creation or batch addition fails
      */
     @Override
-    public void writeOrganismTick(TickData tick) throws SQLException {
+    public void writeOrganismTick(TickData tick, Map<Integer, byte[]> birthMutations) throws SQLException {
         try {
             ensureOrganismTables();
-            database.doWriteOrganismTick(ensureConnection(), tick);
+            database.doWriteOrganismTick(ensureConnection(), tick, birthMutations);
 
             organismsWritten.addAndGet(tick.getOrganismsCount());
             organismThroughput.recordSum(tick.getOrganismsCount());
