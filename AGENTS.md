@@ -243,6 +243,8 @@ runtime      →  (nothing)
 - **Monitoring**: All services and resources expose operational state via `IMonitorable`
 - **Competing Consumers**: All services except SimulationEngine must have the capability to operate as competing consumers
 - **Atomic Artifacts**: All created artifacts must be created atomically to ensure resume functionality can always start from final artifacts
+- **No Migrations**: Persisted data is read or resumed only by the build that wrote it. Formats carry no version and are never migrated; a run written by an older build is analysed with that build
+- **The engine emits, the pipeline aggregates**: the counters the runtime keeps today (deaths, genomes) stay; a new counter or observation field in the engine for an indexer's sake needs the maintainer's approval. What an indexer or chart needs is derived in the pipeline from the recorded data
 
 **Error Handling & Logging**:
 - **Transient Errors** (service/resource continues): `log.warn("msg", args)` + `recordError(code, msg, details)` - throw only if the caller must handle the failed operation

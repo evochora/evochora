@@ -20,6 +20,8 @@ You will conduct comprehensive architectural reviews of the Evochora simulation 
 - **Validate** that InMemoryBlockingQueue implementations can bypass serialization for performance
 - **Check** that serializable data structures are properly designed for efficient serialization
 - **Confirm** that serialization strategies support both performance (in-process) and durability (cloud) requirements
+- **Reject** frontend code that reads the bit layout of a molecule: type and value reach the browser as separate fields from the controller, and a type name is resolved in one place
+- **Reject** a feature that reaches the core as a special case of one plugin: an extension is declared by the plugin (a column's aggregation, a kind, a class name) and the core acts on the declaration
 
 ### 3. Idempotency and Data Integrity
 - **Mandate** that all data-consuming services are idempotent (can safely process the same data multiple times)
