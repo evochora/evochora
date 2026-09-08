@@ -155,7 +155,7 @@ class EnvironmentPropertiesTest {
         for (int x = 0; x < 100; x++) {
             for (int y = 0; y < 51; y++) {
                 int[] relative = props.getRelativeVector(new int[]{0, 0}, new int[]{x, y});
-                assertTrue(relative[0] >= -50 && relative[0] <= 50, "x out of range: " + relative[0]);
+                assertTrue(relative[0] > -50 && relative[0] <= 50, "x out of range: " + relative[0]);
                 assertTrue(relative[1] >= -25 && relative[1] <= 25, "y out of range: " + relative[1]);
             }
         }
