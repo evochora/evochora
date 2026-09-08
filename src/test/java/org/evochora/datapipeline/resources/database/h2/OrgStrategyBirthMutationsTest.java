@@ -80,7 +80,8 @@ class OrgStrategyBirthMutationsTest {
                 Map.of(ORGANISM_ID, events().toByteArray()));
 
             assertThatThrownBy(() -> session.birthMutationsStmt().executeBatch())
-                .isInstanceOf(SQLException.class);
+                .isInstanceOf(SQLException.class)
+                .hasMessageContaining("NULL not allowed for column");
             conn.rollback();
             strategy.resetStreamingState(conn);
 
