@@ -173,12 +173,20 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
          * change what the window will write.
          *
          * @param row the plugin's row for this recording
+         * @throws IllegalStateException if a total leaves the range of a long, which would
+         *         otherwise wrap around and reach the file as a wrong number
          */
         private void add(Object[] row) {
             for (int i = 0; i < summedColumns.length; i++) {
                 Object value = row[summedColumns[i]];
                 if (value != null) {
-                    totals[i] += ((Number) value).longValue();
+                    try {
+                        totals[i] = Math.addExact(totals[i], ((Number) value).longValue());
+                    } catch (ArithmeticException e) {
+                        throw new IllegalStateException("Metric '" + metricId + "': the sum of column '"
+                            + columns.get(summedColumns[i]).name() + "' over one window exceeds the"
+                            + " range of a 64-bit integer.", e);
+                    }
                 }
             }
             lastRow = row.clone();
