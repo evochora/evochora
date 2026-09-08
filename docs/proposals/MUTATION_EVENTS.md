@@ -327,12 +327,28 @@ births rather than shares: recording is sparse, so a bar stands on a handful of 
 share turns single births into a band jumping between halves and thirds — the height of the bar
 carries the episode itself, and a burst of the copy channel is a block whatever the population
 does around it. Under sparse recording a single recording holds a handful of births at most, so a
-bar per recording would show nothing; and a coarser level of detail keeps every tenth recording
-and with it a tenth of the births, so the metric has one level only. The chart's query, run in
+bar per recording would show nothing. The chart's query, run in
 the browser over the loaded rows the way `InstructionUsagePlugin`'s is, cuts the ticks into fifty
 buckets and sums the counts of the recordings in each, so a bar carries the births of a
 window. The chart shows the copy channel and its episodes directly, and whether mutator lineages
 gain ground over a run.
+
+A level of detail is a sample in this pipeline — the rows of every `lodFactor^k`-th recording —
+which is right for a state and wrong for a count: a coarser level would keep every tenth recording
+and with it a tenth of the births. `ParquetSchema` therefore carries an aggregation per column,
+`SAMPLE` — the default, today's behaviour — or `SUM`, which a column must be an integer type to
+declare. For a plugin declaring one, the `AnalyticsIndexer` keeps per level of detail a running sum
+over the rows since that level last wrote and writes it where the level's tick falls, together with
+the sampled columns of that recording. What a window has accumulated when the batch ends is written
+as well, with the tick of the last recording that fed it: batches reach competing indexers in
+arbitrary order, so nothing may be carried across one, and a window straddling a batch boundary
+yields two rows with partial sums instead of one. The rows of a window are therefore added rather
+than one of them picked, which is what the bucketing query does anyway. Level 0 keeps writing the
+plugin's row as it comes, and a plugin whose columns are all `SAMPLE` keeps exactly today's path. A
+plugin with a `SUM` column that reports more than one row for one recording is refused at that
+recording, since the sampled columns of a summed row are those of a single one. The ten counts of
+`variation_sources` are declared `SUM`, so the metric has levels of detail like the other metrics,
+each of them holding all the births of the run.
 
 What is not a chart: mutation class against fate. That needs the newborn's future and stays a
 notebook question over the join with `genome_lineage`.

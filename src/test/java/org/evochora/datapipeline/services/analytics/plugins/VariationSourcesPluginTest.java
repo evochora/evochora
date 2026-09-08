@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 
 import org.evochora.datapipeline.TestMetadataHelper;
+import org.evochora.datapipeline.api.analytics.Aggregation;
 import org.evochora.datapipeline.api.analytics.ColumnType;
 import org.evochora.datapipeline.api.analytics.IAnalyticsContext;
 import org.evochora.datapipeline.api.analytics.ManifestEntry;
@@ -76,6 +77,18 @@ class VariationSourcesPluginTest {
         assertThat(columns.subList(1, columns.size()))
             .extracting(ParquetSchema.Column::type)
             .containsOnly(ColumnType.INTEGER);
+    }
+
+    @Test
+    void theCountsAreSummedIntoACoarserLevelAndTheRecordingIsSampled() {
+        // Births happen between two recordings, so a coarser level has to add the recordings of
+        // its window; the tick names the row and is taken from the recording it stands on
+        List<ParquetSchema.Column> columns = plugin.getSchema().getColumns();
+
+        assertThat(columns.get(0).aggregation()).isEqualTo(Aggregation.SAMPLE);
+        assertThat(columns.subList(1, columns.size()))
+            .extracting(ParquetSchema.Column::aggregation)
+            .containsOnly(Aggregation.SUM);
     }
 
     @Test
@@ -258,7 +271,8 @@ class VariationSourcesPluginTest {
 
         assertThat(entry.id).isEqualTo("variation_sources");
         assertThat(entry.name).isEqualTo("Variation Sources");
-        assertThat(entry.description).isNotEmpty();
+        assertThat(entry.description)
+            .isEqualTo("Births per time window, by what changed the genome at birth.");
         assertThat(entry.dataSources).containsOnlyKeys("lod0");
         assertThat(entry.visualization.type).isEqualTo("stacked-bar-chart");
         assertThat(entry.visualization.config)
@@ -282,14 +296,17 @@ class VariationSourcesPluginTest {
     }
 
     @Test
-    void levelsOfDetailCannotBeConfigured() {
-        // A coarser level would keep every tenth recording and a tenth of the births
-        assertThatThrownBy(() -> new VariationSourcesPlugin().configure(ConfigFactory.parseMap(
-                Map.of("metricId", "m", "lodLevels", 3))))
-            .isInstanceOf(IllegalArgumentException.class)
-            .hasMessageContaining("lodLevels")
-            .hasMessageContaining("tenth of the births");
-        assertThat(plugin.getLodLevels()).isEqualTo(1);
+    void levelsOfDetailAreConfiguredLikeForTheOtherMetrics() {
+        // The counts are summed over a level's window rather than sampled from it, so a coarser
+        // level holds all the births of the run and the metric needs no level of its own
+        VariationSourcesPlugin configured = new VariationSourcesPlugin();
+        configured.configure(ConfigFactory.parseMap(
+            Map.of("metricId", "variation_sources", "lodLevels", 3, "lodFactor", 10)));
+
+        assertThat(configured.getLodLevels()).isEqualTo(3);
+        assertThat(configured.getLodFactor()).isEqualTo(10);
+        assertThat(configured.getManifestEntry().dataSources)
+            .containsOnlyKeys("lod0", "lod1", "lod2");
     }
 
     @Test

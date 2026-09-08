@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Map;
 
 import org.evochora.datapipeline.api.analytics.AbstractAnalyticsPlugin;
+import org.evochora.datapipeline.api.analytics.Aggregation;
 import org.evochora.datapipeline.api.analytics.ColumnType;
 import org.evochora.datapipeline.api.analytics.IAnalyticsContext;
 import org.evochora.datapipeline.api.analytics.ManifestEntry;
@@ -62,11 +63,15 @@ import org.evochora.datapipeline.utils.MetadataConfigHelper;
  * <p>
  * <strong>Why it must see every recording.</strong> A birth appears as a newborn in exactly one
  * recording, and an organism's mutation events are written with that recording and dropped
- * afterwards. A plugin that skips it does not see those births later - it never sees them. Levels
- * of detail select whole recordings after the fact, so a coarser level would keep every tenth
- * recording and with it a tenth of the births; the metric therefore has one level, and the chart
- * sums the rows of that level over time buckets in the browser, so that a bar carries the births
- * of a window and not of one recording.
+ * afterwards. A plugin that skips it does not see those births later - it never sees them.
+ * <p>
+ * <strong>What a coarser level holds.</strong> The counts are declared
+ * {@link Aggregation#SUM}, so a coarser level adds the recordings of its window into one row
+ * instead of keeping one of them: every level holds all the births of the run, and only the width
+ * of a row's window grows. A window that reaches the end of a batch leaves its part as a row of
+ * its own, so the rows of a range are added rather than one of them picked - which is what the
+ * chart's query does anyway when it sums the loaded rows into time buckets, so that a bar carries
+ * the births of a window and not of one recording.
  * <p>
  * A recording without births produces no row: a row of zeros would read as a recording whose
  * births came from nowhere rather than as one that had none.
@@ -123,7 +128,9 @@ public class VariationSourcesPlugin extends AbstractAnalyticsPlugin {
     private static ParquetSchema buildSchema() {
         ParquetSchema.Builder builder = ParquetSchema.builder().column("tick", ColumnType.BIGINT);
         for (String column : COUNT_COLUMNS) {
-            builder.column(column, ColumnType.INTEGER);
+            // Births are events between two recordings, not a state at one of them: a coarser
+            // level has to add the recordings of its window, or it would show a tenth of them
+            builder.column(column, ColumnType.INTEGER, Aggregation.SUM);
         }
         return builder.build();
     }
@@ -133,13 +140,6 @@ public class VariationSourcesPlugin extends AbstractAnalyticsPlugin {
         return new Fixed(1, "a birth is reported as a newborn in exactly one recording, so a "
             + "skipped recording loses its births for good - births are events, not a state that "
             + "can be sampled");
-    }
-
-    @Override
-    protected Fixed fixedLodLevels() {
-        return new Fixed(1, "a coarser level keeps every tenth recording and with it a tenth of "
-            + "the births; the chart sums the one level over time buckets instead, so the births "
-            + "of a window are counted, not sampled");
     }
 
     /**
