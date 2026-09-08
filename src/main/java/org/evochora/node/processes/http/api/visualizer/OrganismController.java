@@ -319,8 +319,9 @@ public class OrganismController extends VisualizerBaseController {
         final CacheConfig cacheConfig = CacheConfig.fromConfig(options, "organismMutations");
 
         try (final IDatabaseReader reader = databaseProvider.createReader(runId)) {
-            // The organism is enough to identify the answer: the events of a lineage are written
-            // once and never change afterwards.
+            // The organism is enough to identify the answer once indexing has finished: the events
+            // of a lineage are written once. While indexing runs, an ancestor's events can arrive
+            // after the descendant's, which is why the cache is off by default.
             final String etag = "\"" + runId + "_" + organismId + "\"";
 
             if (applyCacheHeaders(ctx, cacheConfig, etag)) {
