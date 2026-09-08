@@ -1525,6 +1525,15 @@ public class Organism {
     }
 
     /**
+     * Whether this organism holds birth mutation records that have not been observed yet.
+     *
+     * @return {@code true} if {@link #getBirthMutations()} would return records
+     */
+    public boolean hasBirthMutations() {
+        return birthMutations != null;
+    }
+
+    /**
      * Drops the birth mutation records, returning the organism to the state of one no plugin
      * touched. Called once the records have been written out, so that they are not held for the
      * organism's whole life.

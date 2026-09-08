@@ -440,7 +440,7 @@ public class Simulation {
                             handler.getClass().getSimpleName(), newborn.getId(), e.getMessage());
                 }
             }
-            if (newborn.getBirthMutations() != null) {
+            if (newborn.hasBirthMutations()) {
                 newbornsWithBirthMutations.add(newborn);
             }
             long hash = GenomeHasher.computeGenomeHash(
