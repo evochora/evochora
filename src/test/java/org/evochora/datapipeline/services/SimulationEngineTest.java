@@ -260,6 +260,18 @@ class SimulationEngineTest {
     }
 
     @Test
+    void estimateWorstCaseMemory_declaresTheBirthMutationRecords() {
+        SimulationEngine engine = new SimulationEngine("test-engine", createValidConfig(), resources);
+        SimulationParameters params = SimulationParameters.of(new int[]{32, 32}, 10);
+
+        MemoryEstimate records = engine.estimateWorstCaseMemory(params).stream()
+                .filter(e -> e.componentName().endsWith("(Birth mutation records)"))
+                .findFirst().orElseThrow();
+        assertEquals(params.maxOrganisms() * 500L, records.estimatedBytes());
+        assertTrue(records.explanation().contains("500 bytes"), records.explanation());
+    }
+
+    @Test
     void constructor_shouldRejectEveryRunOptionOutsideItsRange() {
         assertRejected("accumulatedDeltaInterval", 0, "accumulatedDeltaInterval must be >= 1");
         assertRejected("snapshotInterval", 0, "snapshotInterval must be >= 1");

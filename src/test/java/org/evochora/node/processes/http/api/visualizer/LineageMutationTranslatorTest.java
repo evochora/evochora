@@ -1,6 +1,7 @@
 package org.evochora.node.processes.http.api.visualizer;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.List;
 
@@ -145,6 +146,46 @@ class LineageMutationTranslatorTest {
         assertThat(events.get(0).originParentGenomeHash()).isNull();
         assertThat(events.get(1).originGenomeHash()).isEqualTo("20");
         assertThat(events.get(1).originParentGenomeHash()).isEqualTo("10");
+    }
+
+    @Test
+    void refusesAnOrganismWhoseOriginDoesNotFitTheWorld() {
+        LineageMutations flat = new LineageMutations(1, 1, 10L, null, 1L, new int[]{2}, mask(MASK_GENERATION_1));
+
+        assertThatThrownBy(() -> LineageMutationTranslator.translate(List.of(flat), WORLD))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("no initial position in 2 dimensions");
+    }
+
+    @Test
+    void refusesAnEventWhoseCellsDoNotAddUp() {
+        StoredMutationEvent twoValuesOneCoordinate = StoredMutationEvent.newBuilder()
+                .setPluginClass("org.evochora.runtime.worldgen.GeneSubstitutionPlugin")
+                .setKind("substitution")
+                .addRelativeCoordinates(-5)
+                .addOldValues(0).addOldValues(0)
+                .addNewValues(RECORDED_LABEL).addNewValues(RECORDED_LABEL)
+                .build();
+        StoredMutationEvents events = StoredMutationEvents.newBuilder()
+                .setDimensions(2).addEvents(twoValuesOneCoordinate).build();
+
+        assertThatThrownBy(() -> LineageMutationTranslator.translate(List.of(entry(1, 1, events)), WORLD))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("describes 2 cells, but carries 2 old values and 1 coordinate components");
+    }
+
+    @Test
+    void refusesAMaskThatCarriesNoValue() {
+        StoredMutationEvent maskWithoutValue = StoredMutationEvent.newBuilder()
+                .setPluginClass(LabelRewritePlugin.class.getName())
+                .setKind(LabelRewritePlugin.MUTATION_KIND)
+                .build();
+        StoredMutationEvents events = StoredMutationEvents.newBuilder()
+                .setDimensions(2).addEvents(maskWithoutValue).build();
+
+        assertThatThrownBy(() -> LineageMutationTranslator.translate(List.of(entry(1, 1, events)), WORLD))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("carries no mask");
     }
 
     /**
