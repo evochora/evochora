@@ -157,6 +157,8 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
         private final List<ParquetSchema.Column> columns;
         private final int[] summedColumns;
         private final long[] totals;
+        /** The totals with the row being added, taken over only once every column fits. */
+        private final long[] next;
         private Object[] lastRow;
 
         private SumWindow(String metricId, ParquetSchema schema, int[] summedColumns) {
@@ -164,13 +166,15 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
             this.columns = schema.getColumns();
             this.summedColumns = summedColumns;
             this.totals = new long[summedColumns.length];
+            this.next = new long[summedColumns.length];
         }
 
         /**
          * Adds one recording's row to the window.
          * <p>
          * The row is kept as a copy, so that a plugin handing out the same array again does not
-         * change what the window will write.
+         * change what the window will write. A row is added whole or not at all: a column that
+         * overflows leaves the totals as they were, so that the window never carries part of a row.
          *
          * @param row the plugin's row for this recording
          * @throws IllegalStateException if a total leaves the range of a long, which would
@@ -179,9 +183,10 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
         private void add(Object[] row) {
             for (int i = 0; i < summedColumns.length; i++) {
                 Object value = row[summedColumns[i]];
+                next[i] = totals[i];
                 if (value != null) {
                     try {
-                        totals[i] = Math.addExact(totals[i], ((Number) value).longValue());
+                        next[i] = Math.addExact(totals[i], ((Number) value).longValue());
                     } catch (ArithmeticException e) {
                         throw new IllegalStateException("Metric '" + metricId + "': the sum of column '"
                             + columns.get(summedColumns[i]).name() + "' over one window exceeds the"
@@ -189,6 +194,7 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
                     }
                 }
             }
+            System.arraycopy(next, 0, totals, 0, totals.length);
             lastRow = row.clone();
         }
 
