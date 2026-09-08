@@ -15,17 +15,6 @@
  */
 
 /**
- * Upper bound on the cells the marks of one lineage may cover.
- *
- * A mark holds a cell key and about a dozen numbers, in the order of 200 bytes, so the bound keeps
- * the map at roughly 10 MB — the order of magnitude the grid's own cell objects already occupy. An
- * answer that names more cells is marked for its youngest generations up to the bound: those are
- * the mutations of the displayed body's most recent ancestry, and an older event that survived in
- * the body is almost always overwritten by a younger one anyway.
- */
-export const MAX_MARKED_CELLS = 50000;
-
-/**
  * The packed molecule type of a CODE molecule, which is what an empty cell holds.
  *
  * The mutations endpoint reports a molecule as the type constant at its place in the packed
@@ -46,20 +35,18 @@ const PACKED_TYPE_CODE = 0;
  *
  * @param {Array<object>} events The events of the lineage as the mutations endpoint reports them.
  * @param {object} options Options.
- * @param {number|string} options.organismId The selected organism, named in the warning when the
- *                                           answer exceeds {@link MAX_MARKED_CELLS}.
  * @param {function(number): (string|null)} options.resolveTypeName Maps a packed molecule type to the
  *                                           type id the grid holds in its cell data, or null for a
  *                                           type this run does not name.
  * @returns {Map<string, object>} Cell key `"x,y"` to the deciding mark.
  */
-export function buildMarkMap(events, { organismId, resolveTypeName }) {
+export function buildMarkMap(events, { resolveTypeName }) {
     const marks = new Map();
     if (!Array.isArray(events) || events.length === 0) {
         return marks;
     }
 
-    for (const event of withinCellBound(events, organismId)) {
+    for (const event of events) {
         if (!Array.isArray(event.cells)) {
             continue;
         }
@@ -174,55 +161,3 @@ function isYounger(candidate, standing) {
     return candidate.eventIndex > standing.eventIndex;
 }
 
-/**
- * Keeps the events of the youngest generations up to {@link MAX_MARKED_CELLS} cells.
- *
- * The events of a lineage grow with its length, so an answer of a deep ancestry can name far more
- * cells than a browser should hold in a map. Ordering by generation and taking events until the
- * bound is reached keeps the mutations of the recent ancestry, which are the ones a body still
- * carries.
- *
- * @param {Array<object>} events The events of the lineage.
- * @param {number|string} organismId The selected organism, for the warning.
- * @returns {Array<object>} The events to mark, the whole answer when it fits within the bound.
- */
-function withinCellBound(events, organismId) {
-    let total = 0;
-    for (const event of events) {
-        total += cellCount(event);
-    }
-    if (total <= MAX_MARKED_CELLS) {
-        return events;
-    }
-
-    const youngestFirst = [...events].sort((a, b) =>
-        (b.originGeneration ?? 0) - (a.originGeneration ?? 0) || (b.eventIndex ?? 0) - (a.eventIndex ?? 0));
-
-    const kept = [];
-    let marked = 0;
-    let index = 0;
-    while (index < youngestFirst.length && marked + cellCount(youngestFirst[index]) <= MAX_MARKED_CELLS) {
-        marked += cellCount(youngestFirst[index]);
-        kept.push(youngestFirst[index]);
-        index++;
-    }
-
-    let dropped = 0;
-    for (let rest = index; rest < youngestFirst.length; rest++) {
-        dropped += cellCount(youngestFirst[rest]);
-    }
-    console.warn(`[MutationMarks] The lineage of organism ${organismId} names ${total} mutated cells. `
-        + `The ${marked} cells of its youngest generations are marked, ${dropped} cells of older `
-        + `generations are dropped at the bound of ${MAX_MARKED_CELLS}.`);
-    return kept;
-}
-
-/**
- * Counts the cells one event names.
- *
- * @param {object} event The event.
- * @returns {number} Its number of cells, zero for an event that changed no molecule.
- */
-function cellCount(event) {
-    return Array.isArray(event.cells) ? event.cells.length : 0;
-}

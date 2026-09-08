@@ -1105,7 +1105,6 @@ export class AppController {
             this._mergeLineageGenomeEdges();
             this.renderer?.setMutationMarks(
                 buildMarkMap(events, {
-                    organismId,
                     resolveTypeName: (moleculeType) => this._resolveMoleculeTypeName(moleculeType)
                 }),
                 (genomeHash) => this._genomeHashToLineageColor(genomeHash)

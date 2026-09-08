@@ -487,8 +487,10 @@ and `./gradlew check`, and is shown to the maintainer on a short run before the 
    translation; the DTOs and the JSON. Tests: reader, translation across three generations with
    masks, controller. Runnable: `curl` returns the events of a lineage.
 5. **The environment grid.** The border and fill in the two renderers, the two rules with their
-   documentation, the fetch on selection; the browser heap of the lineage answer estimated and
-   bounded; the render caches (`cellObjects`, `clearCache`) invalidated on a selection change; the
+   documentation, the fetch on selection; the browser heap of the lineage answer estimated (a
+   bound was built and removed again: a lineage names a few thousand cells, and the browser holds
+   the organism list and the environment without a bound as well); the render caches
+   (`cellObjects`, `clearCache`) invalidated on a selection change; the
    genome-to-parent edges of the lineage answer fed into `_genomeParent` before the colours are
    computed, so an extinct ancestor genome keeps its lineage colour. The concrete look is agreed
    with the maintainer before this slice. Runnable: the marks of one lineage in the visualizer.
