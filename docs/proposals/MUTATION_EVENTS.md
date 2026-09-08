@@ -281,8 +281,9 @@ than add to it. The plugin carries no manifest entry of its own; the two charts 
 
 **The cause on the clade band.** The Clade Shares chart shows a sweep as a rising band but not
 what started it. Every genome has its founding mutation in the events of its first carrier, so
-the chart names it in the band's legend and tooltip: plugin, kind, number of cells and the first
-position — or "no plugin event", which is the copy channel. The browser's DuckDB build does not
+the chart names it in the band's legend and tooltip: kind, number of cells and the smallest
+position — or "no plugin event", which is the copy channel. The plugin stays in the table for the
+analyst; on the band it would repeat the kind for every built-in plugin. The browser's DuckDB build does not
 survive a hash aggregation over an unsorted column beyond a few thousand rows (see
 `GenomePopulationPlugin`), so the chart must not group `mutation_events` by genome hash. A
 second, small table `mutation_summary` therefore holds one row per event —

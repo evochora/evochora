@@ -158,7 +158,7 @@ class GenomePopulationPluginTest {
             .contains("organism_id")
             .contains("event_index")
             .contains("kind")
-            .contains("plugin_class")
+            .doesNotContain("plugin_class")
             .contains("cell_count")
             .contains("position");
     }

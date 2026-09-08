@@ -197,7 +197,7 @@ public class GenomePopulationPlugin extends AbstractAnalyticsPlugin {
                     + "FROM {table}"),
             new ManifestEntry.Companion(mutationSummaryMetricId,
                 "SELECT genome_hash::VARCHAR AS genome_hash, birth_tick, organism_id, "
-                    + "event_index, kind, plugin_class, cell_count, position FROM {table}"));
+                    + "event_index, kind, cell_count, position FROM {table}"));
 
         entry.visualization = VisualizationHint.chart("clade-area-chart", "tick")
             .with("groupBy", "genome_hash")
