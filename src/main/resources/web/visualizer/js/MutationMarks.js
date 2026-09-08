@@ -51,6 +51,8 @@ export function buildMarkMap(events, { resolveTypeName }) {
             continue;
         }
         for (const cell of event.cells) {
+            // The answer carries one coordinate per dimension of the world; the grid is the
+            // two-dimensional party and draws the first two, as it does for every cell.
             const coordinates = cell.coordinates;
             if (!Array.isArray(coordinates) || coordinates.length < 2) {
                 continue;
