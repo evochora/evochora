@@ -94,10 +94,13 @@ public interface IOrganismDataWriter extends ISchemaAwareDatabase, AutoCloseable
      * per write session (one connection = one thread).
      *
      * @param tick Tick data containing organism states (must not be null)
-     * @param birthMutations serialized mutation events per organism id, for the organisms of this
-     *                       tick that carry any; empty when none does (must not be null). The
-     *                       caller derives them from the same tick, so that the row a mutation
-     *                       belongs to is written by the same call
+     * @param birthMutations the mutation events per organism id, for the organisms of this tick
+     *                       that carry any; empty when none does (must not be null). Each value is
+     *                       a serialized {@code StoredMutationEvents} message, stored as given and
+     *                       handed back by {@link IOrganismDataReader#readLineageMutations} parsed;
+     *                       an implementation stores the bytes and does not read them. The caller
+     *                       derives them from the same tick, so that the row a mutation belongs to
+     *                       is written by the same call
      * @throws SQLException if batch addition fails
      */
     void writeOrganismTick(TickData tick, Map<Integer, byte[]> birthMutations) throws SQLException;
