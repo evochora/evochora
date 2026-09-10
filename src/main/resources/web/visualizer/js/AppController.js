@@ -301,6 +301,7 @@ export class AppController {
         this.sourceView.setProgram(null);
         this.stateView.setProgram(null);
         this.instructionView.setProgram(null);
+        this.instructionView.setLabelNamespaceMask(0);
         this.state.previousOrganismDetails = null;
     }
     
@@ -457,6 +458,7 @@ export class AppController {
                     : null;
                 this.stateView.setProgram(artifact);
                 this.instructionView.setProgram(artifact);
+                this.instructionView.setLabelNamespaceMask(staticInfo.labelNamespaceMask);
                 this.sourceView.setProgram(artifact);
 
                 // Update instruction view with last and next instructions

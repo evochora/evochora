@@ -7,13 +7,13 @@ import java.util.List;
 import org.evochora.datapipeline.api.contracts.StoredMutationEvent;
 import org.evochora.datapipeline.api.contracts.StoredMutationEvents;
 import org.evochora.datapipeline.api.resources.database.dto.LineageMutations;
+import org.evochora.datapipeline.utils.LabelNamespaceMask;
 import org.evochora.node.processes.http.api.visualizer.dto.OrganismMutationsResponseDto.MoleculeView;
 import org.evochora.node.processes.http.api.visualizer.dto.OrganismMutationsResponseDto.MutationCellView;
 import org.evochora.node.processes.http.api.visualizer.dto.OrganismMutationsResponseDto.MutationEventView;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.runtime.model.Molecule;
-import org.evochora.runtime.worldgen.LabelRewritePlugin;
 
 /**
  * Turns the stored mutations of an ancestry chain into the events of one displayed body.
@@ -23,25 +23,16 @@ import org.evochora.runtime.worldgen.LabelRewritePlugin;
  * received it, so the displayed organism's own initial position turns them into world
  * coordinates. The second is the label namespace.
  * <p>
- * <strong>Why label values are translated.</strong> Every newborn's LABEL and LABELREF molecules
- * are XOR-masked once at birth, after the mutation plugins have run
- * ({@link LabelRewritePlugin}), and every descendant's again at its own birth. The value a
- * mutation plugin recorded for such a cell therefore equals the value in no later body: between
- * the record and the body stand one mask per birth. Composing those masks is what makes the two
- * comparable, and XOR composes them exactly — the masks are their own inverse and commute, so the
- * value as it stands in the displayed body is the recorded value XORed with the masks of every
- * birth from the recording organism down to the displayed one. Within the recording birth itself
- * only the masks recorded after the mutation apply: a mask with a smaller event index ran before
- * the mutation plugin, and the value the plugin then wrote already carries it.
+ * <strong>Why label values are translated.</strong> The value a mutation plugin recorded for a
+ * LABEL or LABELREF cell equals the value in no later body: between the record and the body stand
+ * the label masks of one birth after another. {@link LabelNamespaceMask} composes them, and
+ * {@link LabelNamespaceMask#recordedAfter} is the composition a record needs — the masks of the
+ * recording birth that were applied after the plugin wrote.
  * <p>
  * A mask touches only the value bits of a molecule — it is drawn from
  * {@link Config#LABEL_VALUE_MASK}, which is narrower than the value field — so it is applied to
  * the packed molecule directly. Molecules of any other type pass through untouched: they were
  * never masked.
- * <p>
- * Label rewriting is core behaviour that happens to be implemented through the birth handler
- * interface, which is why this one kind of event is known here while every other kind is carried
- * through as the plugin reported it.
  * <p>
  * <strong>Thread Safety:</strong> Stateless; all methods are static and operate only on their
  * arguments.
@@ -80,9 +71,10 @@ final class LineageMutationTranslator {
         for (final LineageMutations entry : chain) {
             final StoredMutationEvents events = entry.events();
             for (int index = 0; index < events.getEventsCount(); index++) {
-                views.add(view(entry, index, descendantMasks ^ laterMasks(events, index), anchor, world));
+                views.add(view(entry, index,
+                    descendantMasks ^ LabelNamespaceMask.recordedAfter(events, index), anchor, world));
             }
-            descendantMasks ^= allMasks(events);
+            descendantMasks ^= LabelNamespaceMask.ofBirth(events);
         }
 
         views.sort(Comparator.comparingInt(MutationEventView::originGeneration)
@@ -150,54 +142,6 @@ final class LineageMutationTranslator {
             dv,
             params,
             cells);
-    }
-
-    /**
-     * Composes the label masks of one birth that were recorded after a given event.
-     *
-     * @param events The events of that birth
-     * @param index Ordinal of the event the masks are composed for
-     * @return The composed mask, zero when no later event of that birth is a label mask
-     */
-    private static int laterMasks(final StoredMutationEvents events, final int index) {
-        int composed = 0;
-        for (int i = index + 1; i < events.getEventsCount(); i++) {
-            composed ^= maskOf(events.getEvents(i));
-        }
-        return composed;
-    }
-
-    /**
-     * Composes every label mask of one birth.
-     *
-     * @param events The events of that birth
-     * @return The composed mask, zero when the birth recorded no label mask
-     */
-    private static int allMasks(final StoredMutationEvents events) {
-        int composed = 0;
-        for (final StoredMutationEvent event : events.getEventsList()) {
-            composed ^= maskOf(event);
-        }
-        return composed;
-    }
-
-    /**
-     * Reads the mask an event carries, or zero if it is not a label mask.
-     *
-     * @param event The event to read
-     * @return The mask, narrowed to the bits a label value may use
-     * @throws IllegalStateException if a label mask event carries no mask
-     */
-    private static int maskOf(final StoredMutationEvent event) {
-        if (!LabelRewritePlugin.MUTATION_KIND.equals(event.getKind())) {
-            return 0;
-        }
-        if (event.getParamsCount() == 0) {
-            throw new IllegalStateException("An event of kind '" + LabelRewritePlugin.MUTATION_KIND
-                + "' reported by " + event.getPluginClass() + " carries no mask, so no label value"
-                + " of its lineage can be placed in a later namespace");
-        }
-        return (int) (event.getParams(0) & Config.LABEL_VALUE_MASK);
     }
 
     /**

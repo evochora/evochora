@@ -127,21 +127,30 @@ public final class OrganismStateConverter {
     /**
      * Converts a Protobuf ProcFrame to a ProcFrameView DTO.
      * <p>
-     * The procedure name is resolved from the frame's label hash. A hash the map does not contain
-     * yields an empty name, and that is the correct result rather than a fallback: an organism
-     * inherits its program ID from its ancestor while its code mutates, so a call may target a hash
-     * the original program never held. The name must never be replaced by a placeholder — callers
-     * distinguish named from unnamed frames by emptiness.
+     * The procedure name is resolved from the frame's label hash. The hash stands in the
+     * organism's own label namespace, which is why the mask turns it back into the value the
+     * program was compiled with before the artifact is asked; without that step only a founding
+     * organism would ever resolve a name.
+     * <p>
+     * A hash the map does not contain even then yields an empty name, and that is the correct
+     * result rather than a fallback: an organism inherits its program ID from its ancestor while
+     * its code mutates, so a call may target a hash the original program never held. The name must
+     * never be replaced by a placeholder — callers distinguish named from unnamed frames by
+     * emptiness.
      *
      * @param frame The Protobuf ProcFrame
      * @param labelValueToName Label hash to procedure name, from the run's program artifact;
      *                         may be empty, in which case every name is empty
+     * @param labelNamespaceMask The organism's label namespace, from its static info; zero for an
+     *                           ancestry that never rewrote a label
      * @return ProcFrameView DTO
      */
     public static ProcFrameView convertProcFrame(
             org.evochora.datapipeline.api.contracts.ProcFrame frame,
-            Map<Integer, String> labelValueToName) {
-        String procName = labelValueToName.getOrDefault(frame.getLabelHash(), "");
+            Map<Integer, String> labelValueToName,
+            int labelNamespaceMask) {
+        String procName = labelValueToName.getOrDefault(
+                frame.getLabelHash() ^ labelNamespaceMask, "");
         int[] absReturnIp = vectorToArray(frame.getAbsoluteReturnIp());
         int[] absCallIp = frame.hasAbsoluteCallIp() ? vectorToArray(frame.getAbsoluteCallIp()) : null;
 

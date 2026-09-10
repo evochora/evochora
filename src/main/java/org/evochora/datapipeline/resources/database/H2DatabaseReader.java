@@ -264,19 +264,8 @@ public class H2DatabaseReader implements IDatabaseReader {
             try (ResultSet rs = stmt.executeQuery()) {
                 while (rs.next()) {
                     int id = rs.getInt("organism_id");
-                    byte[] storedEvents = rs.getBytes("birth_mutations");
-                    StoredMutationEvents events;
-                    if (storedEvents == null) {
-                        events = StoredMutationEvents.getDefaultInstance();
-                    } else {
-                        try {
-                            events = StoredMutationEvents.parseFrom(storedEvents);
-                        } catch (InvalidProtocolBufferException e) {
-                            throw new SQLException(
-                                "Birth mutations of organism " + id + " of run " + runId
-                                + " are not a readable message", e);
-                        }
-                    }
+                    StoredMutationEvents events =
+                        decodeBirthMutations(id, rs.getBytes("birth_mutations"));
                     long parentGenome = rs.getLong("parent_genome_hash");
                     Long parentGenomeHash = rs.wasNull() ? null : parentGenome;
                     chain.add(new LineageMutations(
@@ -335,7 +324,8 @@ public class H2DatabaseReader implements IDatabaseReader {
         
         // Convert OrganismState to OrganismRuntimeView (includes both last and next instruction from protobuf)
         Map<Integer, String> labelValueToName = extractLabelValueToName(metadata, orgState.getProgramId());
-        OrganismRuntimeView state = convertOrganismStateToRuntimeView(orgState, envDimensions, labelValueToName);
+        OrganismRuntimeView state = convertOrganismStateToRuntimeView(
+                orgState, envDimensions, labelValueToName, staticInfo.labelNamespaceMask);
 
         return new OrganismTickDetails(organismId, tickNumber, staticInfo, state);
     }
@@ -348,13 +338,16 @@ public class H2DatabaseReader implements IDatabaseReader {
      *
      * @param orgState OrganismState Protobuf object
      * @param envDimensions Environment dimensions for instruction resolution
+     * @param labelValueToName Compiled label values to names, from the run's program artifact
+     * @param labelNamespaceMask The organism's label namespace, which its own label values stand in
      * @return OrganismRuntimeView DTO
      * @throws SQLException if conversion fails
      */
     private OrganismRuntimeView convertOrganismStateToRuntimeView(
             org.evochora.datapipeline.api.contracts.OrganismState orgState,
             int[] envDimensions,
-            Map<Integer, String> labelValueToName) throws SQLException {
+            Map<Integer, String> labelValueToName,
+            int labelNamespaceMask) throws SQLException {
         
         int energy = orgState.getEnergy();
         int[] ip = OrganismStateConverter.vectorToArray(orgState.getIp());
@@ -389,13 +382,13 @@ public class H2DatabaseReader implements IDatabaseReader {
         java.util.List<org.evochora.datapipeline.api.resources.database.dto.ProcFrameView> callStack = 
                 new java.util.ArrayList<>();
         for (var frame : orgState.getCallStackList()) {
-            callStack.add(OrganismStateConverter.convertProcFrame(frame, labelValueToName));
+            callStack.add(OrganismStateConverter.convertProcFrame(frame, labelValueToName, labelNamespaceMask));
         }
         
         java.util.List<org.evochora.datapipeline.api.resources.database.dto.ProcFrameView> failureStack = 
                 new java.util.ArrayList<>();
         for (var frame : orgState.getFailureCallStackList()) {
-            failureStack.add(OrganismStateConverter.convertProcFrame(frame, labelValueToName));
+            failureStack.add(OrganismStateConverter.convertProcFrame(frame, labelValueToName, labelNamespaceMask));
         }
         
         // Resolve instruction
@@ -456,69 +449,75 @@ public class H2DatabaseReader implements IDatabaseReader {
         );
     }
 
-    private OrganismStaticInfo readOrganismStaticInfo(int organismId) throws SQLException {
+    /**
+     * Reads what does not change over an organism's life.
+     * <p>
+     * The ancestry is read through {@link #readLineageMutations(int)}, which walks the chain once
+     * and brings each birth's recorded events along. That one walk answers both things this view
+     * needs from the ancestry: the chain itself, and the label namespace the organism's body
+     * stands in, which {@link #labelNamespaceMaskOf} composes from those births.
+     *
+     * @param organismId The organism to describe
+     * @return The static view, or null if the organism has no row
+     * @throws SQLException if a query fails
+     * @throws OrganismNotFoundException if the ancestry walk finds no row for the organism
+     */
+    private OrganismStaticInfo readOrganismStaticInfo(int organismId)
+            throws SQLException, OrganismNotFoundException {
         String sql = """
             SELECT parent_id, birth_tick, program_id, initial_position
             FROM organisms
             WHERE organism_id = ?
             """;
 
+        Integer parentId;
+        long birthTick;
+        String programId;
+        int[] initialPos;
         try (PreparedStatement stmt = connection.prepareStatement(sql)) {
             stmt.setInt(1, organismId);
             try (ResultSet rs = stmt.executeQuery()) {
                 if (!rs.next()) {
                     return null;
                 }
-
-                Integer parentId = rs.getObject("parent_id") != null
-                        ? rs.getInt("parent_id")
-                        : null;
-                long birthTick = rs.getLong("birth_tick");
-                String programId = rs.getString("program_id");
-                byte[] initialPosBytes = rs.getBytes("initial_position");
-                int[] initialPos = OrganismStateConverter.decodeVector(initialPosBytes);
-
-                List<LineageEntry> lineage = readLineage(organismId);
-                return new OrganismStaticInfo(parentId, birthTick, programId, initialPos, lineage);
+                parentId = rs.getObject("parent_id") != null ? rs.getInt("parent_id") : null;
+                birthTick = rs.getLong("birth_tick");
+                programId = rs.getString("program_id");
+                initialPos = OrganismStateConverter.decodeVector(rs.getBytes("initial_position"));
             }
         }
+
+        // The organism itself is the first entry of the chain; the lineage names only its ancestors
+        List<LineageMutations> chain = readLineageMutations(organismId);
+        List<LineageEntry> lineage = new ArrayList<>(chain.size() - 1);
+        for (LineageMutations ancestor : chain.subList(1, chain.size())) {
+            lineage.add(new LineageEntry(ancestor.organismId(), ancestor.genomeHash()));
+        }
+        int labelNamespaceMask = labelNamespaceMaskOf(chain);
+
+        return new OrganismStaticInfo(parentId, birthTick, programId, initialPos, lineage,
+                labelNamespaceMask);
     }
 
     /**
-     * Reads the ancestry chain for an organism via recursive CTE.
-     * Returns direct parent first, oldest ancestor last. Empty list for initial organisms.
+     * Reads the birth mutations of one organism from the column they are stored in.
      *
-     * @param organismId The organism to trace ancestry for.
-     * @return Ancestry chain (never null).
-     * @throws SQLException if database query fails.
+     * @param organismId The organism the row belongs to, for the error message
+     * @param stored     The stored message, null for an organism no mutation plugin touched
+     * @return The events, empty when the column holds nothing
+     * @throws SQLException if the column does not hold a readable message
      */
-    private List<LineageEntry> readLineage(int organismId) throws SQLException {
-        String sql = """
-            WITH RECURSIVE ancestors(org_id, depth) AS (
-                SELECT parent_id, 1
-                FROM organisms WHERE organism_id = ?
-                UNION ALL
-                SELECT o.parent_id, a.depth + 1
-                FROM ancestors a
-                JOIN organisms o ON o.organism_id = a.org_id
-                WHERE o.parent_id IS NOT NULL
-            )
-            SELECT o.organism_id, o.genome_hash
-            FROM ancestors a
-            JOIN organisms o ON o.organism_id = a.org_id
-            ORDER BY a.depth ASC
-            """;
-
-        List<LineageEntry> lineage = new ArrayList<>();
-        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
-            stmt.setInt(1, organismId);
-            try (ResultSet rs = stmt.executeQuery()) {
-                while (rs.next()) {
-                    lineage.add(new LineageEntry(rs.getInt("organism_id"), rs.getLong("genome_hash")));
-                }
-            }
+    private StoredMutationEvents decodeBirthMutations(int organismId, byte[] stored)
+            throws SQLException {
+        if (stored == null) {
+            return StoredMutationEvents.getDefaultInstance();
         }
-        return lineage;
+        try {
+            return StoredMutationEvents.parseFrom(stored);
+        } catch (InvalidProtocolBufferException e) {
+            throw new SQLException("Birth mutations of organism " + organismId + " of run " + runId
+                + " are not a readable message", e);
+        }
     }
 
     @Override
