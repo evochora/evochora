@@ -73,7 +73,7 @@ Registers are the primary working memory of the organism. They can hold either s
 
 The register architecture uses 8 banks organized by scope (Global, Proc-Local, Formal, Static) and type (Data, Location). 
 
-Data registers (`*DR`) can hold any value — scalars or vectors. Location registers (`*LR`) hold only vectors and have dedicated location instructions (`SKLR`, `DPLR`, `PUSL`, etc.) that can move the active Data Pointer directly to the stored position. These instructions enforce ownership checks — the DP can only jump to previously visited positions or label-known positions.
+Data registers (`*DR`) can hold any value — scalars or vectors. Location registers (`*LR`) hold a position or are empty, and have dedicated location instructions (`SKLR`, `DPLR`, `PUSL`, etc.) that can move the active Data Pointer directly to the stored position. A register starts out empty and `CRLR` empties it again. The DP can only reach positions the organism has visited or that a label named.
 
 **Global Registers** — persist across procedure calls, always available:
 * **Data Registers (`%DRx`)**: 8 general-purpose registers (`%DR0` to `%DR7`).
@@ -212,7 +212,7 @@ EXPORT MY_ENTRY_POINT:
   ...
 ```
 
-Exported labels can be referenced from other files using qualified names (similar to procedures). If a module is included with `.REQUIRE "lib.evo" AS LIB`, its exported labels can be accessed as `LIB.LABEL_NAME`.
+Exported labels can be referenced from other files using qualified names (similar to procedures). If a module is imported with `.IMPORT "lib.evo" AS LIB`, its exported labels can be accessed as `LIB.LABEL_NAME`.
 
 ```
 # In lib.evo
@@ -220,8 +220,7 @@ EXPORT DATA_TABLE:
   .PLACE DATA:42 0|0
 
 # In main.evo
-.REQUIRE "lib.evo" AS LIB
-.INCLUDE "lib.evo"
+.IMPORT "lib.evo" AS LIB
 
 START:
   JMPI LIB.DATA_TABLE  # Jump to the exported label
@@ -428,6 +427,7 @@ Operands are values — register contents, the top of the stack, or literals —
 * `GTR %REG1 %REG2`, `GTI %REG1 <Literal>`, `GTS`: If value of first argument is greater than second.
 * `IFTR %REG1 %REG2`, `IFTI %REG1 <Literal>`, `IFTS`: If molecule types are equal.
 * `IFER`: If the previous instruction failed. Takes no operands. The "previous instruction" refers to the instruction executed in the immediately preceding tick, not the preceding instruction in spatial layout.
+* `IFSL %LOC_REG`: If the location register holds a position.
 
 #### Cell tests
 
@@ -449,6 +449,7 @@ Value comparisons:
 * `LETR %REG1 %REG2`, `LETI %REG1 <Literal>`, `LETS`: If value of first argument is **less than or equal to** second.
 * `INTR %REG1 %REG2`, `INTI %REG1 <Literal>`, `INTS`: If molecule types are **not** equal.
 * `INER`: If the previous instruction did **not** fail. Takes no operands. The negated form of `IFER`.
+* `INSL %LOC_REG`: If the location register is empty. The negated form of `IFSL`.
 
 Cell tests:
 
@@ -501,21 +502,23 @@ Note on conflicts: If a world interaction loses conflict resolution for its targ
 
 These instructions manage the Location Stack (`LS`) and location registers. All instructions that accept a location register operand work with any location bank (`%LRx`, `%PLRx`, `%FLRx`, `%SLRx`).
 
+An `LS` entry holds a position or is empty, like a location register.
+
 * `DUPL`, `SWPL`, `DRPL`, `ROTL`: Standard stack operations (Duplicate, Swap, Drop, Rotate) for the `LS`.
 * `DPLS`: Pushes the active `DP` onto the `LS`.
-* `SKLS`: Pops a vector from `LS` and sets it as the active `DP`.
-* `LSDS`: Pops a vector from `LS` and pushes it onto the `DS`.
+* `SKLS`: Pops a position from `LS` and sets it as the active `DP`.
+* `LSDS`: Pops a position from `LS` and pushes it onto the `DS`.
 * `DPLR %LOC_REG`: Copies the active `DP` into the location register.
-* `SKLR %LOC_REG`: Sets the active `DP` to the vector stored in the location register.
-* `PUSL %LOC_REG`: Pushes the vector from the location register onto the `LS`.
+* `SKLR %LOC_REG`: Sets the active `DP` to the position stored in the location register.
+* `PUSL %LOC_REG`: Pushes the contents of the location register onto the `LS`.
 * `PSLI <Label>`: Resolves a label position via fuzzy matching and pushes it onto the `LS`. Target must be unowned or owned by self.
-* `POPL %LOC_REG`: Pops a vector from `LS` into the location register.
-* `LRDR %DEST_REG %LOC_REG`: Copies the vector from the location register into the data register.
-* `LRDS %LOC_REG`: Pushes the vector from the location register onto the `DS`.
-* `LSDR %DEST_REG`: Copies the top vector from `LS` into the data register without popping.
-* `LRLR %LOC_DEST %LOC_SRC`: Copies the vector from one location register to another.
+* `POPL %LOC_REG`: Pops an entry from `LS` into the location register.
+* `LRDR %DEST_REG %LOC_REG`: Copies the position from the location register into the data register.
+* `LRDS %LOC_REG`: Pushes the position from the location register onto the `DS`.
+* `LSDR %DEST_REG`: Copies the top position from `LS` into the data register without popping.
+* `LRLR %LOC_DEST %LOC_SRC`: Copies the contents of one location register to another.
 * `LRLI %LOC_REG <Label>`: Resolves a label position via fuzzy matching and stores it in the location register. Target must be unowned or owned by self.
-* `CRLR %LOC_REG`: Clears the location register to `[0, 0]`.
+* `CRLR %LOC_REG`: Empties the location register.
 * `SKJI <Label>`, `SKJR %REG`, `SKJS`: Sets the active `DP` to a label position using fuzzy matching (like `JMPI`). Target must be unowned or owned by self.
 
 ### Vector Component Operations
@@ -580,7 +583,7 @@ Directives are special commands that instruct the compiler on how to assemble th
 
 ### Layout Control
 
-* `.ORG <Vector>`: Sets the starting coordinate for the following code. In the main source file, this coordinate is absolute. Inside a file included via `.INCLUDE`, the coordinate is **relative** to the position where the `.INCLUDE` directive was invoked.
+* `.ORG <Vector>`: Sets the starting coordinate for the following code. In the main source file, this coordinate is absolute. Inside a file brought in with `.IMPORT` or `.SOURCE`, the coordinate is **relative** to the position where that directive was invoked.
 * `.DIR <Vector>`: Sets the direction in which the compiler places subsequent instructions. This is always an absolute direction vector. When an included file finishes, the direction is restored to what it was before the include.
 * `.PLACE <Literal> <Placement> [, <Placement> ...]`: Places one or more molecules with the specified `<Literal>` value at various coordinates. The coordinates are relative to the current origin (`.ORG`). Multiple placements can be specified on a single line, separated by commas. A `<Placement>` can be one of the following:
   * **Vector Literal**: A standard vector like `10|20` places a single molecule.
@@ -776,17 +779,6 @@ The `USING M AS MATH` clause tells the compiler: "the module that `utils.evo` kn
 START:
   SETI %DR0 MAX_ENERGY    # Uses the constant from the sourced file
   SETV %DR1 STEP_SIZE
-```
-
-### Scopes
-
-* `.SCOPE <Name> / .ENDS`: Defines a named scope. Labels defined inside a scope are only visible within that scope, preventing name collisions.
-
-```
-.SCOPE INNER
-  LOOP: NOP
-  JMPI LOOP      # Refers to INNER.LOOP
-.ENDS
 ```
 
 ---
