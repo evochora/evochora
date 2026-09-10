@@ -343,7 +343,7 @@ and nothing calls it, so the hot-path cost is known before five slices are commi
 | Zero vector maps to a fixed vector (+axis 0) | Introduces a direction that comes from nowhere and drifts every organism towards one axis |
 | Zero displacement also answered by the DV | Treats an offset of none as missing information when it is a complete statement, and ties every zeroed world-interaction operand to the direction of travel |
 | Zero vector of a child DV snapped against the child | The child carries its constructor default at that moment, which is the fixed-vector alternative under another name |
-| Compute the true angle with square root and arc cosine | Mathematically identical result at far higher cost; `|v|` cancels out |
+| Compute the true angle with square root and arc cosine | Mathematically identical result at far higher cost; the length of the vector is the same for every candidate and cancels out |
 | Snap in `resolveOperands` instead of the role handlers | Would silently change `SETV`, `PUSV` and `RTR*`, which take non-unit vectors legitimately |
 | Compiler rejects non-unit vector literals | Would need the ISA signature to distinguish which VECTOR operands demand a unit vector; decided against — the compiler checks no more than today |
 | Wrong component count throws instead of being logged | The global catch-all in `VirtualMachine` (`:232`) turns any exception into an ordinary instruction failure without a log line, so throwing would be strictly worse than logging at ERROR with a stack trace |

@@ -637,8 +637,50 @@ public class VMConditionalInstructionTest {
     }
 
     /**
-     * A condition without a displacement asks about the cell the data pointer stands on — something
-     * no vector could express before.
+     * The passability test maps its vector like the ownership test does. Two axes are equally near
+     * for 1|-1, and the one negative component among them selects the negative second axis; a cell
+     * another organism holds is not passable, so the following instruction is skipped.
+     */
+    @Test
+    @Tag("unit")
+    void testIfpr_NonUnitVector_EvaluatesAtTheNearestNeighbour() {
+        org.writeOperand(1, new int[]{1, -1});
+        int[] nearest = org.getTargetCoordinate(org.getDp(0), new int[]{0, -1}, environment);
+        environment.setMolecule(new Molecule(Config.TYPE_STRUCTURE, 1), 4242, nearest);
+
+        placeInstruction("IFPR", 1);
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFPR"), environment));
+        sim.tick();
+        sim.tick();
+
+        assertThat(org.readOperand(0))
+                .as("the cell is held by someone else, so the next instruction is skipped")
+                .isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
+        assertNoInstructionFailure();
+    }
+
+    /**
+     * The counterpart: with the cell the mapping selects left empty, the same condition holds and
+     * the following instruction runs.
+     */
+    @Test
+    @Tag("unit")
+    void testIfpr_NonUnitVector_HoldsWhenTheNearestNeighbourIsEmpty() {
+        org.writeOperand(1, new int[]{1, -1});
+
+        placeInstruction("IFPR", 1);
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFPR"), environment));
+        sim.tick();
+        sim.tick();
+
+        assertThat(org.readOperand(0))
+                .as("an empty cell is passable, so the next instruction runs")
+                .isNotEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
+        assertNoInstructionFailure();
+    }
+
+    /**
+     * A condition without a displacement asks about the cell the data pointer stands on.
      */
     @Test
     @Tag("unit")
