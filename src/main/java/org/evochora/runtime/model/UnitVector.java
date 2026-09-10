@@ -34,7 +34,7 @@ final class UnitVector {
      * Private constructor to prevent instantiation of this utility class.
      */
     private UnitVector() {
-        throw new AssertionError("Utility class - cannot be instantiated");
+        // Utility class - prevent instantiation
     }
 
     /**

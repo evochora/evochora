@@ -76,7 +76,7 @@ public final class MoleculeTypeRegistry {
      * Private constructor to prevent instantiation.
      */
     private MoleculeTypeRegistry() {
-        throw new AssertionError("Utility class - cannot be instantiated");
+        // Utility class - prevent instantiation
     }
     
     /**
