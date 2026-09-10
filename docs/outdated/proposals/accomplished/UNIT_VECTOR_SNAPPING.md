@@ -1,6 +1,6 @@
 # Snapping Every Vector to a Unit Vector
 
-**Status: ACCOMPLISHED — implemented on branch `unit-vector-snapping`, 2026-09-10.
+**Status: ACCOMPLISHED — implemented on branch `unit-vector-snapping` (PR #169), 2026-09-10.
 Every decision was taken with the maintainer and is listed at the end.**
 
 ## Problem
