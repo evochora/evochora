@@ -7,7 +7,10 @@ import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.isa.RegisterBank;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
+import org.evochora.runtime.model.LocationValue;
 import org.evochora.runtime.model.Organism;
+import org.evochora.junit.extensions.logging.ExpectLog;
+import org.evochora.junit.extensions.logging.LogLevel;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -108,9 +111,9 @@ public class VMLocationInstructionTest {
     @Test
     @Tag("unit")
     void testLocationRegisterInitialization() {
-        // LRs should be initialized to zero vectors
+        // LRs hold no position until one is stored in them
         for (int i = 0; i < Config.NUM_LOCATION_REGISTERS; i++) {
-            assertThat((int[]) org.readOperand(RegisterBank.LR.base + i)).containsExactly(0, 0);
+            assertThat(LocationValue.isNone((int[]) org.readOperand(RegisterBank.LR.base + i))).isTrue();
         }
     }
 
@@ -579,12 +582,12 @@ public class VMLocationInstructionTest {
     }
 
     /**
-     * Tests the CRLR instruction (clear LR register to [0,0]).
+     * Tests the CRLR instruction (set the location register to no position).
      */
     @Test
     @Tag("unit")
     void testCrlrInstruction() {
-        // Set LR1 to some non-zero value
+        // Set LR1 to some position
         int[] originalValue = {5, 7};
         org.writeLocationOperand(RegisterBank.LR.base + 1, originalValue);
         assertThat((int[]) org.readOperand(RegisterBank.LR.base + 1)).isEqualTo(originalValue);
@@ -594,9 +597,184 @@ public class VMLocationInstructionTest {
         placeInstruction(org, "CRLR", lr1);
         sim.tick();
 
-        // Verify LR1 is now [0,0]
-        assertThat((int[]) org.readOperand(RegisterBank.LR.base + 1)).isEqualTo(new int[]{0, 0});
+        // Verify LR1 holds no position
+        assertThat(LocationValue.isNone((int[]) org.readOperand(RegisterBank.LR.base + 1))).isTrue();
         assertThat(org.isInstructionFailed()).isFalse();
+    }
+
+    /**
+     * Verifies that a location register holds no position from birth, which is what CRLR restores.
+     */
+    @Test
+    @Tag("unit")
+    void testLocationRegisterHoldsNoPositionFromBirth() {
+        assertThat(LocationValue.isNone((int[]) org.readOperand(RegisterBank.LR.base))).isTrue();
+    }
+
+    /**
+     * Verifies that the world origin is an ordinary position: it can be stored in a location
+     * register and jumped to, and is not confused with the state that means no position.
+     */
+    @Test
+    @Tag("unit")
+    void testZeroVectorIsAnOrdinaryPosition() {
+        org.writeLocationOperand(RegisterBank.LR.base, new int[]{0, 0});
+        assertThat(LocationValue.isNone((int[]) org.readOperand(RegisterBank.LR.base))).isFalse();
+
+        int lr0 = new Molecule(Config.TYPE_REGISTER, RegisterBank.LR.base).toInt();
+        placeInstruction(org, "SKLR", lr0);
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).isFalse();
+        assertThat(org.getActiveDp()).isEqualTo(new int[]{0, 0});
+    }
+
+    /**
+     * Verifies that SKLR fails on a register that holds no position and leaves the DP where it is.
+     */
+    @Test
+    @Tag("unit")
+    void testSklrFailsWhenRegisterHoldsNoPosition() {
+        int[] dpBefore = org.getActiveDp();
+        int lr0 = new Molecule(Config.TYPE_REGISTER, RegisterBank.LR.base).toInt();
+        placeInstruction(org, "SKLR", lr0);
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).isTrue();
+        assertThat(org.getActiveDp()).isEqualTo(dpBefore);
+    }
+
+    /**
+     * Verifies that SKLS fails on a top entry that holds no position, and that the entry stays on
+     * the stack: a failed instruction changes nothing.
+     */
+    @Test
+    @Tag("unit")
+    void testSklsFailsAndLeavesTheStackWhenTopHoldsNoPosition() {
+        int[] dpBefore = org.getActiveDp();
+        Deque<int[]> ls = org.getLocationStack();
+        ls.push(LocationValue.NONE);
+
+        placeInstruction(org, "SKLS");
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).isTrue();
+        assertThat(ls).hasSize(1);
+        assertThat(org.getActiveDp()).isEqualTo(dpBefore);
+    }
+
+    /**
+     * Verifies that LRDR refuses to hand the state out as a vector.
+     */
+    @Test
+    @Tag("unit")
+    void testLrdrFailsWhenRegisterHoldsNoPosition() {
+        int lr0 = new Molecule(Config.TYPE_REGISTER, RegisterBank.LR.base).toInt();
+        placeInstruction(org, "LRDR", 3, lr0);
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).isTrue();
+    }
+
+    /**
+     * Verifies that LRDS refuses to hand the state out onto the data stack.
+     */
+    @Test
+    @Tag("unit")
+    void testLrdsFailsWhenRegisterHoldsNoPosition() {
+        int lr0 = new Molecule(Config.TYPE_REGISTER, RegisterBank.LR.base).toInt();
+        placeInstruction(org, "LRDS", lr0);
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).isTrue();
+        assertThat(org.getDataStack()).isEmpty();
+    }
+
+    /**
+     * Verifies that LSDR refuses a top entry that holds no position.
+     */
+    @Test
+    @Tag("unit")
+    void testLsdrFailsWhenTopHoldsNoPosition() {
+        org.getLocationStack().push(LocationValue.NONE);
+        placeInstruction(org, "LSDR", 4);
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).isTrue();
+    }
+
+    /**
+     * Verifies that LSDS refuses a top entry that holds no position and leaves the stack as it was.
+     */
+    @Test
+    @Tag("unit")
+    void testLsdsFailsAndLeavesTheStackWhenTopHoldsNoPosition() {
+        Deque<int[]> ls = org.getLocationStack();
+        ls.push(LocationValue.NONE);
+
+        placeInstruction(org, "LSDS");
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).isTrue();
+        assertThat(ls).hasSize(1);
+        assertThat(org.getDataStack()).isEmpty();
+    }
+
+    /**
+     * Verifies that the state travels through the location stack, which is how a procedure's
+     * location parameters are passed.
+     */
+    @Test
+    @Tag("unit")
+    void testPuslAndPoplCarryTheStateThroughTheStack() {
+        int lr0 = new Molecule(Config.TYPE_REGISTER, RegisterBank.LR.base).toInt();
+        int lr1 = new Molecule(Config.TYPE_REGISTER, RegisterBank.LR.base + 1).toInt();
+        org.writeLocationOperand(RegisterBank.LR.base + 1, new int[]{4, 9});
+
+        placeInstruction(org, "PUSL", lr0);
+        sim.tick();
+        assertThat(org.isInstructionFailed()).isFalse();
+        assertThat(org.getLocationStack()).hasSize(1);
+
+        placeInstruction(org, "POPL", lr1);
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).isFalse();
+        assertThat(LocationValue.isNone((int[]) org.readOperand(RegisterBank.LR.base + 1))).isTrue();
+    }
+
+    /**
+     * Verifies that a register-to-register copy copies the state as well.
+     */
+    @Test
+    @Tag("unit")
+    void testLrlrCarriesTheState() {
+        org.writeLocationOperand(RegisterBank.LR.base + 1, new int[]{4, 9});
+        int lr0 = new Molecule(Config.TYPE_REGISTER, RegisterBank.LR.base).toInt();
+        int lr1 = new Molecule(Config.TYPE_REGISTER, RegisterBank.LR.base + 1).toInt();
+
+        placeInstruction(org, "LRLR", lr1, lr0);
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).isFalse();
+        assertThat(LocationValue.isNone((int[]) org.readOperand(RegisterBank.LR.base + 1))).isTrue();
+    }
+
+    /**
+     * Verifies that a value that is neither a position nor the state is refused where it would
+     * enter the organism.
+     */
+    @Test
+    @Tag("unit")
+    @ExpectLog(level = LogLevel.ERROR, messagePattern = ".*holds a vector of 3 components.*")
+    @ExpectLog(level = LogLevel.ERROR, messagePattern = ".*holds a vector of 1 components.*")
+    void testWriteGatesRejectAWrongLength() {
+        assertThat(org.writeLocationOperand(RegisterBank.LR.base, new int[]{1, 2, 3})).isFalse();
+        assertThat(org.isInstructionFailed()).isTrue();
+        assertThat(LocationValue.isNone((int[]) org.readOperand(RegisterBank.LR.base))).isTrue();
+
+        assertThat(org.pushLocation(new int[]{1})).isFalse();
+        assertThat(org.getLocationStack()).isEmpty();
     }
 
     /**
@@ -632,15 +810,15 @@ public class VMLocationInstructionTest {
 
         placeInstruction(org, "CRLR", lr1);
         sim.tick();
-        assertThat((int[]) org.readOperand(RegisterBank.LR.base + 1)).isEqualTo(new int[]{0, 0});
+        assertThat(LocationValue.isNone((int[]) org.readOperand(RegisterBank.LR.base + 1))).isTrue();
         assertThat((int[]) org.readOperand(RegisterBank.LR.base)).isEqualTo(new int[]{1, 2}); // Should remain unchanged
         assertThat((int[]) org.readOperand(RegisterBank.LR.base + 2)).isEqualTo(new int[]{5, 6}); // Should remain unchanged
         
         placeInstruction(org, "CRLR", lr2);
         sim.tick();
-        assertThat((int[]) org.readOperand(RegisterBank.LR.base + 2)).isEqualTo(new int[]{0, 0});
+        assertThat(LocationValue.isNone((int[]) org.readOperand(RegisterBank.LR.base + 2))).isTrue();
         assertThat((int[]) org.readOperand(RegisterBank.LR.base)).isEqualTo(new int[]{1, 2}); // Should remain unchanged
-        assertThat((int[]) org.readOperand(RegisterBank.LR.base + 1)).isEqualTo(new int[]{0, 0}); // Should remain cleared
+        assertThat(LocationValue.isNone((int[]) org.readOperand(RegisterBank.LR.base + 1))).isTrue(); // Should remain cleared
     }
 
     // --- SKJ* (Seek Jump) Tests ---

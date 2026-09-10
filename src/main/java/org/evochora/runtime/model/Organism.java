@@ -168,7 +168,7 @@ public class Organism {
         this.registers = new Object[RegisterBank.TOTAL_REGISTER_COUNT];
         for (RegisterBank bank : RegisterBank.values()) {
             for (int i = 0; i < bank.count; i++) {
-                registers[bank.slotOffset() + i] = bank.isLocation ? new int[startIp.length] : 0;
+                registers[bank.slotOffset() + i] = bank.isLocation ? LocationValue.NONE : 0;
             }
         }
         this.persistentRegisterState.put(MAIN_LEVEL_LABEL_HASH, snapshotPersistentRegisters());
@@ -239,7 +239,6 @@ public class Organism {
 
         // Build flat register array
         this.registers = new Object[RegisterBank.TOTAL_REGISTER_COUNT];
-        int dims = b.ip.length;
         if (b.flatRegisters != null) {
             System.arraycopy(b.flatRegisters, 0, this.registers, 0, b.flatRegisters.length);
         }
@@ -247,7 +246,7 @@ public class Organism {
         for (int i = 0; i < this.registers.length; i++) {
             if (this.registers[i] == null) {
                 RegisterBank bank = RegisterBank.SLOT_TO_BANK[i];
-                this.registers[i] = bank != null && bank.isLocation ? new int[dims] : 0;
+                this.registers[i] = bank != null && bank.isLocation ? LocationValue.NONE : 0;
             }
         }
 
@@ -1792,11 +1791,22 @@ public class Organism {
     /**
      * Gets a reference to the Location Stack (LS).
      * <p>
-     * It holds vectors of one component per world dimension, the head being the top. Whether a
-     * value stands for an absolute position or for a relative displacement is decided by the
-     * program alone: the instructions move these vectors between the stack, the location
+     * It holds location values, the head being the top: a position of one component per world
+     * dimension, or {@link LocationValue#NONE} for no position, the same two states a location register
+     * has. The stack is how a location register's contents travel — {@code PUSL} and {@code POPL}
+     * move them, and the compiler marshals a procedure's location parameters through it — so it
+     * carries whichever of the two the register held. The instructions that read an entry as a
+     * coordinate refuse the state; those that only move it pass it on.
+     * <p>
+     * Whether a position stands for an absolute place or for a relative displacement is decided by
+     * the program alone: the instructions move these vectors between the stack, the location
      * registers, the data stack and the data pointers without distinguishing the two, and
      * {@link #setActiveDp(int[])} accepts whatever it is given.
+     * <p>
+     * Entries are shared, not copied: {@code DUPL} pushes the same array a second time, and a
+     * snapshot hands out the register's own array. That holds because nothing writes into a stored
+     * vector, and {@link LocationValue#NONE} — shared by every register that holds no position — makes
+     * that ordinary rather than exceptional.
      *
      * @return the live stack, not a copy; pushing goes through {@link #pushLocation(int[])}, which
      *         holds the stack to {@link org.evochora.runtime.Config#LOCATION_STACK_MAX_DEPTH}
@@ -1806,13 +1816,16 @@ public class Organism {
     }
 
     /**
-     * Pushes a vector onto the location stack, or fails the current instruction if the stack is
-     * full.
+     * Pushes a location value onto the location stack, or fails the current instruction if the
+     * stack is full or the value is neither a position nor {@link LocationValue#NONE}.
      *
-     * @param vector the vector to push
-     * @return {@code true} if the vector was pushed, {@code false} if the instruction has been failed
+     * @param vector the position to push, or {@link LocationValue#NONE}
+     * @return {@code true} if the value was pushed, {@code false} if the instruction has been failed
      */
     public boolean pushLocation(int[] vector) {
+        if (!LocationValue.isNone(vector) && !hasWorldDimensions(vector)) {
+            return false;
+        }
         if (this.locationStack.size() >= Config.LOCATION_STACK_MAX_DEPTH) {
             this.instructionFailed("Location stack overflow");
             return false;
@@ -1908,19 +1921,27 @@ public class Organism {
     }
 
     /**
-     * Writes a vector value to a location register using its full numeric ID.
+     * Writes a location value to a location register using its full numeric ID.
      * Only accepts location register banks — data register writes are rejected.
+     * <p>
+     * A location register holds a position of one component per world dimension, or
+     * {@link LocationValue#NONE} for no position. Any other length is neither and is rejected here
+     * through {@link #hasWorldDimensions(int[])}, at the boundary where a value enters the
+     * register, rather than left to be discovered by a reader that finds a vector it cannot use.
      * <p>
      * A {@code null} value indicates a defect in the calling instruction and is rejected for the
      * same reason as in {@link #writeOperand(int, Object)}.
      *
      * @param id the full ID of the location register
-     * @param value the vector value to write
+     * @param value the position to write, or {@link LocationValue#NONE}
      * @return {@code true} if the write was successful
      */
     public boolean writeLocationOperand(int id, int[] value) {
         if (value == null) {
             this.instructionFailed("Null value for location register write");
+            return false;
+        }
+        if (!LocationValue.isNone(value) && !hasWorldDimensions(value)) {
             return false;
         }
         if (id < 0 || id >= RegisterBank.TABLE_SIZE) {
@@ -1987,14 +2008,14 @@ public class Organism {
     }
 
     /**
-     * Resets all STACK_SAVED register values to their defaults (0 for data, zero-vector for location).
+     * Resets all STACK_SAVED register values to their defaults (0 for data, no position for location).
      * Used when a callee modified STACK_SAVED registers but no snapshot was taken at CALL time
      * (because the caller had never written to any STACK_SAVED register).
      */
     public void resetStackSavedRegisters() {
         for (RegisterBank bank : RegisterBank.allSavedOnCall()) {
             for (int i = 0; i < bank.count; i++) {
-                registers[bank.slotOffset() + i] = bank.isLocation ? new int[ip.length] : 0;
+                registers[bank.slotOffset() + i] = bank.isLocation ? LocationValue.NONE : 0;
             }
         }
     }
@@ -2046,12 +2067,12 @@ public class Organism {
 
     /**
      * Resets all PERSISTENT register slots to type-dependent defaults
-     * (0 for data banks, zero-vector for location banks).
+     * (0 for data banks, no position for location banks).
      */
     public void resetPersistentRegisters() {
         for (RegisterBank bank : RegisterBank.allPersistent()) {
             for (int i = 0; i < bank.count; i++) {
-                registers[bank.slotOffset() + i] = bank.isLocation ? new int[ip.length] : 0;
+                registers[bank.slotOffset() + i] = bank.isLocation ? LocationValue.NONE : 0;
             }
         }
     }

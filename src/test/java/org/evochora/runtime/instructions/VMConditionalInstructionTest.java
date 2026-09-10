@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.isa.RegisterBank;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
@@ -1270,6 +1271,86 @@ public class VMConditionalInstructionTest {
         sim.tick();
         sim.tick();
         assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
+        assertNoInstructionFailure();
+    }
+
+    // ===== Location Register State Tests (IFSL, INSL) =====
+
+    @Test
+    @Tag("unit")
+    void testIfsl_Set_ExecutesNext() {
+        org.writeLocationOperand(RegisterBank.LR.base, new int[]{3, 4});
+        placeInstruction("IFSL", RegisterBank.LR.base);
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFSL"), environment));
+        sim.tick();
+        sim.tick();
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
+        assertNoInstructionFailure();
+    }
+
+    @Test
+    @Tag("unit")
+    void testIfsl_NoPosition_SkipsNext() {
+        placeInstruction("IFSL", RegisterBank.LR.base);
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFSL"), environment));
+        sim.tick();
+        sim.tick();
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
+        assertNoInstructionFailure();
+    }
+
+    @Test
+    @Tag("unit")
+    void testInsl_NoPosition_ExecutesNext() {
+        placeInstruction("INSL", RegisterBank.LR.base);
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INSL"), environment));
+        sim.tick();
+        sim.tick();
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
+        assertNoInstructionFailure();
+    }
+
+    @Test
+    @Tag("unit")
+    void testInsl_Set_SkipsNext() {
+        org.writeLocationOperand(RegisterBank.LR.base, new int[]{3, 4});
+        placeInstruction("INSL", RegisterBank.LR.base);
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INSL"), environment));
+        sim.tick();
+        sim.tick();
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
+        assertNoInstructionFailure();
+    }
+
+    /**
+     * The zero vector is an ordinary position, so a register holding it counts as set.
+     */
+    @Test
+    @Tag("unit")
+    void testIfsl_ZeroVector_CountsAsSet() {
+        org.writeLocationOperand(RegisterBank.LR.base, new int[]{0, 0});
+        placeInstruction("IFSL", RegisterBank.LR.base);
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFSL"), environment));
+        sim.tick();
+        sim.tick();
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
+        assertNoInstructionFailure();
+    }
+
+    /**
+     * The stack-to-stack equality conditionals keep their meaning next to the new pair, whose name
+     * shares their prefix.
+     */
+    @Test
+    @Tag("unit")
+    void testIfs_StillComparesTwoStackValues() {
+        org.getDataStack().push(new Molecule(Config.TYPE_DATA, 7).toInt());
+        org.getDataStack().push(new Molecule(Config.TYPE_DATA, 7).toInt());
+        placeInstruction("IFS");
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFS"), environment));
+        sim.tick();
+        sim.tick();
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
         assertNoInstructionFailure();
     }
 

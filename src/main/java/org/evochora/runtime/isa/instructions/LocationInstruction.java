@@ -6,6 +6,7 @@ import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.isa.Variant;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
+import org.evochora.runtime.model.LocationValue;
 import org.evochora.runtime.model.Organism;
 
 import java.util.Deque;
@@ -136,12 +137,24 @@ public class LocationInstruction extends Instruction {
                 if (ops.size() != 1) { org.instructionFailed("SKLR expects %LR<Index>"); return; }
                 Object val = org.readOperand(ops.get(0).rawSourceId());
                 if (org.isInstructionFailed()) { return; }
-                org.setActiveDp((int[]) val);
+                int[] target = (int[]) val;
+                if (LocationValue.isNone(target)) {
+                    org.instructionFailed("SKLR: location register holds no position");
+                    return;
+                }
+                org.setActiveDp(target);
                 break;
             }
             case "SKLS": {
                 if (ls.isEmpty()) { org.instructionFailed("SKLS on empty LS"); return; }
-                int[] target = ls.pop();
+                // Read before popping: an entry that holds no position leaves the stack as it is,
+                // so the value is still there for a program that reacts to the failure.
+                int[] target = ls.peek();
+                if (LocationValue.isNone(target)) {
+                    org.instructionFailed("SKLS: top of LS holds no position");
+                    return;
+                }
+                ls.pop();
                 org.setActiveDp(target);
                 break;
             }
@@ -163,6 +176,10 @@ public class LocationInstruction extends Instruction {
                 if (ops.size() != 2) { org.instructionFailed("LRDR expects <Dest_Reg>, %LR<Index>"); return; }
                 Object val = org.readOperand(ops.get(1).rawSourceId());
                 if (org.isInstructionFailed()) { return; }
+                if (LocationValue.isNone((int[]) val)) {
+                    org.instructionFailed("LRDR: location register holds no position");
+                    return;
+                }
                 if (!writeOperand(ops.get(0).rawSourceId(), val)) { return; }
                 break;
             }
@@ -170,6 +187,10 @@ public class LocationInstruction extends Instruction {
                 if (ops.size() != 1) { org.instructionFailed("LRDS expects %LR<Index>"); return; }
                 Object val = org.readOperand(ops.get(0).rawSourceId());
                 if (org.isInstructionFailed()) { return; }
+                if (LocationValue.isNone((int[]) val)) {
+                    org.instructionFailed("LRDS: location register holds no position");
+                    return;
+                }
                 if (!org.pushData(val)) { return; }
                 break;
             }
@@ -178,14 +199,24 @@ public class LocationInstruction extends Instruction {
                 int destReg = ops.get(0).rawSourceId();
                 if (ls.isEmpty()) { org.instructionFailed("LSDR on empty LS"); return; }
                 int[] vec = ls.peek();
+                if (LocationValue.isNone(vec)) {
+                    org.instructionFailed("LSDR: top of LS holds no position");
+                    return;
+                }
                 if (!writeOperand(destReg, vec)) { return; }
                 break;
             }
             case "LSDS": {
                 if (ls.isEmpty()) { org.instructionFailed("LSDS on empty LS"); return; }
+                // Every check comes before the pop, so a failure leaves the stack as it was.
+                int[] vec = ls.peek();
+                if (LocationValue.isNone(vec)) {
+                    org.instructionFailed("LSDS: top of LS holds no position");
+                    return;
+                }
                 if (!org.requireDataStackRoom()) { return; }
-                int[] vec = ls.pop();
-                org.pushData(vec);
+                ls.pop();
+                if (!org.pushData(vec)) { return; }
                 break;
             }
             case "LRLR": {
@@ -198,7 +229,7 @@ public class LocationInstruction extends Instruction {
             }
             case "CRLR": {
                 if (ops.size() != 1) { org.instructionFailed("CRLR expects <LR>"); return; }
-                if (!writeLocationOperand(ops.get(0).rawSourceId(), new int[env.properties.getDimensions()])) { return; }
+                if (!writeLocationOperand(ops.get(0).rawSourceId(), LocationValue.NONE)) { return; }
                 break;
             }
             case "SKJI":

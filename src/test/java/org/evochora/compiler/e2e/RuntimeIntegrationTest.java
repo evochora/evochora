@@ -5,6 +5,7 @@ import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.Simulation;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
+import org.evochora.runtime.model.LocationValue;
 import org.evochora.runtime.model.Organism;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.isa.RegisterBank;
@@ -320,11 +321,12 @@ public class RuntimeIntegrationTest {
 
         assertThat(org.isInstructionFailed()).as("Failure: " + org.getFailureReason()).isFalse();
 
-        // LR0 was [5,7] before CALL (from DPLR). CLEAR_POS sets FLR0 to [0,0].
-        // LREF write-back copies FLR0 back to LR0. So LR0 should be [0,0], not [5,7].
+        // LR0 was [5,7] before CALL (from DPLR). CLEAR_POS sets FLR0 to no position.
+        // LREF write-back copies FLR0 back to LR0, so LR0 holds no position rather than [5,7].
         int[] lr0Value = (int[]) org.readOperand(RegisterBank.LR.base);
-        assertThat(lr0Value).as("LR0 should be [0,0] after LREF write-back from CLEAR_POS (was [5,7] before CALL)")
-                .isEqualTo(new int[]{0, 0});
+        assertThat(LocationValue.isNone(lr0Value))
+                .as("LR0 should hold no position after LREF write-back from CLEAR_POS (was [5,7] before CALL)")
+                .isTrue();
     }
 
     /**
@@ -379,8 +381,9 @@ public class RuntimeIntegrationTest {
                 .as("DR1 must be 42 after the REF write-back (raw=%d)", dr1Raw).isEqualTo(42);
 
         int[] lr0Value = (int[]) org.readOperand(RegisterBank.LR.base);
-        assertThat(lr0Value).as("LR0 must be [0,0] after the LREF write-back (was [5,7] before the CALL)")
-                .isEqualTo(new int[]{0, 0});
+        assertThat(LocationValue.isNone(lr0Value))
+                .as("LR0 must hold no position after the LREF write-back (was [5,7] before the CALL)")
+                .isTrue();
     }
 
     /**

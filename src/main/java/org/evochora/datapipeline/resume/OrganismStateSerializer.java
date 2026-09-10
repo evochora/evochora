@@ -10,6 +10,7 @@ import org.evochora.datapipeline.api.contracts.ProcedureRegisterSnapshot;
 import org.evochora.datapipeline.api.contracts.Vector;
 import org.evochora.runtime.isa.RegisterBank;
 import org.evochora.runtime.model.MutationRecord;
+import org.evochora.runtime.model.LocationValue;
 import org.evochora.runtime.model.Organism;
 import org.evochora.runtime.model.Organism.ProcFrame;
 import org.slf4j.Logger;
@@ -244,13 +245,13 @@ public final class OrganismStateSerializer {
      *
      * @param slot flat register array index whose value was missing
      * @param o the organism being serialized
-     * @return {@code 0} for data banks, a zero vector for location banks
+     * @return {@code 0} for data banks, {@link LocationValue#NONE} for location banks
      */
     private Object defaultForRegisterSlot(int slot, Organism o) {
         RegisterBank bank = RegisterBank.SLOT_TO_BANK[slot];
         log.warn("Null register at slot {} ({}) for organism {} — substituting default for serialization",
                 slot, bank != null ? bank.name() : "UNKNOWN", o.getId());
-        return bank != null && bank.isLocation ? new int[o.getIp().length] : 0;
+        return bank != null && bank.isLocation ? LocationValue.NONE : 0;
     }
 
     /**
