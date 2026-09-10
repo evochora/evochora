@@ -428,7 +428,7 @@ public class StateInstruction extends Instruction {
         int[] targetCoordinate = organism.getTargetCoordinate(organism.getActiveDp(), vector, environment);
 
         Molecule moleculeAtTarget = environment.getMolecule(targetCoordinate);
-        int ownerIdAtTarget = environment.getOwnerId(targetCoordinate[0], targetCoordinate[1]);
+        int ownerIdAtTarget = environment.getOwnerIdAt(targetCoordinate);
         if (moleculeAtTarget.isEmpty() || organism.isCellAccessible(ownerIdAtTarget)) {
             organism.setActiveDp(targetCoordinate);
         } else {
