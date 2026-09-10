@@ -17,6 +17,7 @@ table carries the whole order.
 
 | Document / Issue | Status | Summary |
 |---|---|---|
+| [LOCATION_REGISTER_UNSET_STATE](LOCATION_REGISTER_UNSET_STATE.md) | TO BE REVIEWED | A location register has no state for "holds no position", so `CRLR` clears it to the zero vector and the world origin doubles as a sentinel a mutated guard sends the data pointer to; a real unset state, an `IFSL`/`INSL` pair to ask for it, and the #159 rule inside the location family |
 | [PERSISTED_FORMAT_VERSIONING](PERSISTED_FORMAT_VERSIONING.md) | TO BE REVIEWED | Storage batches, run database and run metadata carry no format version, so data written by an incompatible build is read silently or fails without naming the cause; one version constant plus fail-fast reads |
 | [DEPENDENCY_UPDATE](DEPENDENCY_UPDATE.md) | TO BE REVIEWED | 24 of 32 dependencies behind, six by a major version; removal of the unused JLine pair, three build hygiene fixes, and a staged update procedure derived from what the test suite can and cannot verify |
 
