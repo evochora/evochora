@@ -45,7 +45,6 @@ public final class OrganismStateSerializer {
     private final ProcedureRegisterSnapshot.Builder snapshotBuilder = ProcedureRegisterSnapshot.newBuilder();
     private final MutationEvent.Builder mutationEventBuilder = MutationEvent.newBuilder();
 
-
     /**
      * Serializes the complete state of an organism, including the execution data of its last
      * instruction and a preview of its next one.

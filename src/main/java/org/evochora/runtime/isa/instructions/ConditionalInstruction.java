@@ -274,7 +274,6 @@ public class ConditionalInstruction extends Instruction {
             Operand op2 = operands.get(1);
             boolean conditionMet = false;
 
-
             if (opName.startsWith("IFT") || opName.startsWith("INT")) { // Type comparison
                 int type1 = (op1.value() instanceof Integer i) ? org.evochora.runtime.model.Molecule.fromInt(i).type() : -1; // -1 for vectors
                 int type2 = (op2.value() instanceof Integer i) ? Molecule.fromInt(i).type() : -1;
