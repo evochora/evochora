@@ -103,6 +103,7 @@ public class LocationInstruction extends Instruction {
             }
             case "SWPL": {
                 if (ls.size() < 2) { org.instructionFailed("SWPL requires 2 elements on LS"); return; }
+                if (!org.requireLocationStackWithinLimit()) { return; }
                 int[] a = ls.pop();
                 int[] b = ls.pop();
                 if (!org.pushLocation(a)) { return; }
@@ -116,6 +117,7 @@ public class LocationInstruction extends Instruction {
             }
             case "ROTL": {
                 if (ls.size() < 3) { org.instructionFailed("ROTL requires 3 elements on LS"); return; }
+                if (!org.requireLocationStackWithinLimit()) { return; }
                 int[] a = ls.pop();
                 int[] b = ls.pop();
                 int[] c = ls.pop();
@@ -168,8 +170,10 @@ public class LocationInstruction extends Instruction {
             case "POPL": {
                 if (ops.size() != 1) { org.instructionFailed("POPL expects %LR<Index>"); return; }
                 if (ls.isEmpty()) { org.instructionFailed("POPL on empty LS"); return; }
-                int[] vec = ls.pop();
+                // The entry is taken only once it has a register to go to.
+                int[] vec = ls.peek();
                 if (!writeLocationOperand(ops.get(0).rawSourceId(), vec)) { return; }
+                ls.pop();
                 break;
             }
             case "LRDR": {

@@ -1816,6 +1816,25 @@ public class Organism {
     }
 
     /**
+     * Fails the current instruction if the location stack holds more entries than its limit allows.
+     * <p>
+     * An instruction that pops entries and pushes as many back leaves the stack the size it was, so
+     * it can only run out of room on a stack that is already above the limit — which a restored one
+     * may be, because a state is restored as it was stored. Asking here, before the first pop, is
+     * what keeps such an instruction from consuming entries it cannot put back.
+     *
+     * @return {@code true} if the entries on the stack fit within its limit, {@code false} if the
+     *         instruction has been failed
+     */
+    public boolean requireLocationStackWithinLimit() {
+        if (this.locationStack.size() > Config.LOCATION_STACK_MAX_DEPTH) {
+            this.instructionFailed("Location stack overflow");
+            return false;
+        }
+        return true;
+    }
+
+    /**
      * Pushes a location value onto the location stack, or fails the current instruction if the
      * stack is full or the value is neither a position nor {@link LocationValue#NONE}.
      *

@@ -761,6 +761,70 @@ public class VMLocationInstructionTest {
     }
 
     /**
+     * Verifies that `SWPL` refuses a stack that is above its limit instead of popping entries it
+     * cannot push back. A restored stack may be above the limit, because a state is restored as it
+     * was stored.
+     */
+    @Test
+    @Tag("unit")
+    void testSwplRefusesAnOverfullStackWithoutConsumingIt() {
+        Deque<int[]> ls = org.getLocationStack();
+        for (int i = 0; i <= Config.LOCATION_STACK_MAX_DEPTH; i++) {
+            ls.push(new int[]{i, 0});
+        }
+        int sizeBefore = ls.size();
+        int[] topBefore = ls.peek();
+
+        placeInstruction(org, "SWPL");
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).isTrue();
+        assertThat(ls).hasSize(sizeBefore);
+        assertThat(ls.peek()).isEqualTo(topBefore);
+    }
+
+    /**
+     * The same for `ROTL`, which takes three entries instead of two.
+     */
+    @Test
+    @Tag("unit")
+    void testRotlRefusesAnOverfullStackWithoutConsumingIt() {
+        Deque<int[]> ls = org.getLocationStack();
+        for (int i = 0; i <= Config.LOCATION_STACK_MAX_DEPTH; i++) {
+            ls.push(new int[]{i, 0});
+        }
+        int sizeBefore = ls.size();
+        int[] topBefore = ls.peek();
+
+        placeInstruction(org, "ROTL");
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).isTrue();
+        assertThat(ls).hasSize(sizeBefore);
+        assertThat(ls.peek()).isEqualTo(topBefore);
+    }
+
+    /**
+     * Verifies that `POPL` keeps the entry when it has nowhere to put it — a mutated operand that
+     * names a data register instead of a location register.
+     */
+    @Test
+    @Tag("unit")
+    void testPoplKeepsTheEntryWhenTheTargetIsNoLocationRegister() {
+        Deque<int[]> ls = org.getLocationStack();
+        int[] position = {3, 4};
+        ls.push(position);
+
+        int dataRegister = new Molecule(Config.TYPE_REGISTER, 0).toInt();
+        placeInstruction(org, "POPL", dataRegister);
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).isTrue();
+        assertThat(ls).hasSize(1);
+        assertThat(ls.peek()).isEqualTo(position);
+    }
+
+    /**
      * Verifies that a value that is neither a position nor the state is refused where it would
      * enter the organism.
      */
