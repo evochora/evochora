@@ -8,7 +8,7 @@ When organisms fail instructions in a live run, the analytics show **that** they
 **at what**. Verified state:
 
 - `Organism.instructionFailed()` records a failure flag and a free-text reason string
-  ("Invalid register ID: …", "not a unit vector", "No matching label found for hash …",
+  ("Invalid register ID: …", "requires a vector operand", "No matching label found for hash …",
   "Max skips exceeded", stack underflow/overflow, division by zero, type mismatches, …).
 - `InstructionUsagePlugin` already aggregates the failure *rate* (`failure_count` column,
   rendered as a secondary axis), but no analytics plugin aggregates the failure *reason*.
@@ -18,9 +18,10 @@ Why this matters for the fitness-landscape work: the failure-cause distribution 
 counterpart of the [MUTATIONAL_ROBUSTNESS_ASSAY](MUTATIONAL_ROBUSTNESS_ASSAY.md). The assay measures
 the landscape around the primordial under controlled conditions; the cause histogram shows what the
 *evolved population* actually fails at in a real run — i.e. which cliff is currently under selection.
-Example: a high share of "not a unit vector" failures would be the live signature of the defect
-described in [DATA_MUTATION_SIGN_FIX](../DATA_MUTATION_SIGN_FIX.md); its disappearance after the fix
-would be the confirmation.
+Example: a high share of one operand-shaped cause would be the live signature of a cliff that
+mutation runs into. The cause "not a unit vector" used to be such a signature and no longer occurs:
+every vector operand is now mapped to one the instruction can use, so what remains of that class are
+operands that are not vectors at all.
 
 ## Idea
 

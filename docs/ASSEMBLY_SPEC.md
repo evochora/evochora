@@ -483,14 +483,14 @@ Note on conflicts: If a world interaction loses conflict resolution for its targ
 
 * `NOP`: No operation.
 * `SYNC`: Sets active `DP` = `IP`.
-* `TURN %VEC_REG`, `TRNI <Vector>`, `TRNS`: Sets `DV` to the unit vector nearest to the specified vector.
+* `TURN %VEC_REG`, `TRNI <Vector>`, `TRNS`: Sets `DV` to the unit vector nearest to the specified vector. A vector with no non-zero component names no direction and leaves `DV` unchanged.
 * `POS %REG`, `POSS`: Stores the organism's position relative to its start (`IP` - `InitialIP`) in `<%REG>` or on the stack.
 * `DIFF %REG`, `DIFS`: Stores the vector `DP` - `IP` in `<%REG>` or on the stack.
 * `NRG %REG`, `NRGS`: Stores current `ER` in `<%REG>` or on the stack.
 * `NTR %REG`, `NTRS`: Stores current `SR` in `<%REG>` or on the stack.
 * `RAND %REG`, `RNDS`: Stores a random number [0, `<%REG>`) back into `<%REG>` or on the stack.
 * `GDVR %VEC_REG`, `GDVS`: Stores current `DV` in `<%VEC_REG>` or on the stack.
-* `FORK %DP_VEC_REG %NRG_REG %DV_VEC_REG`: Creates a child organism at `DP` + delta vector. The delta is a displacement, as in a world interaction: it places the child on the cell the `DP` stands on or one adjacent to it, and a vector that would reach further is mapped to the nearest adjacent cell. After the child is created, all molecules owned by the parent that have a marker value equal to the parent's current `MR` are transferred to the child, and their markers are reset to 0. Additional energy may be consumed based on the energy amount transferred to the child. The instruction fails when `MR` is 0, before any energy is taken and before the child is created: marker 0 is the ephemeral class and hands nothing on.
+* `FORK %DP_VEC_REG %NRG_REG %DV_VEC_REG`: Creates a child organism at `DP` + delta vector. The delta is a displacement, as in a world interaction: it places the child on the cell the `DP` stands on or one adjacent to it, and a vector that would reach further is mapped to the nearest adjacent cell. The child's direction vector is mapped like any other direction, to the unit vector nearest to it; one that names no direction gives the child the parent's own. After the child is created, all molecules owned by the parent that have a marker value equal to the parent's current `MR` are transferred to the child, and their markers are reset to 0. Additional energy may be consumed based on the energy amount transferred to the child. The instruction fails when `MR` is 0, before any energy is taken and before the child is created: marker 0 is the ephemeral class and hands nothing on.
 * `FRKI <DP_Vec> <NRG_Lit> <DV_Vec>`, `FRKS`: Creates a child organism (immediate/stack variants). Same ownership transfer behavior as `FORK`, including the failure with `MR` 0.
 * `ADPR %REG`, `ADPI <Literal>`, `ADPS`: Sets the active Data Pointer index.
 * `SMR %REG`, `SMRI <Literal>`, `SMRS`: Sets the Molecule Marker Register (`MR`) to the value from the register, literal, or stack. The operand must be of type `DATA` or `STATE`; otherwise, the instruction fails. The value is masked to 4 bits (0-15).

@@ -1306,11 +1306,27 @@ public class Organism {
 
     /**
      * Sets the Direction Vector (DV).
+     * <p>
+     * The direction is kept as a copy, so that an organism never shares it with whoever passed it —
+     * a caller may hand the same vector to a child, and two organisms must not turn together.
+     * <p>
+     * What a vector means is decided before it gets here: an instruction maps its operand to the
+     * nearest unit vector and answers one that names no direction with the direction of the
+     * organism whose instruction is running, which for a fork is the parent's. This method only
+     * holds the invariant every reader of the DV relies on — exactly one component ±1. A violation
+     * cannot come from a program, only from a path that forgot to map its operand, so it is logged
+     * as the defect it is and the current direction is kept.
      *
-     * @param newDv The new direction vector.
+     * @param newDv The new direction vector, which must be a unit vector.
      */
-    public void setDv(int[] newDv) { 
-        this.dv = newDv; 
+    public void setDv(int[] newDv) {
+        if (UnitVector.nearest(newDv) != newDv) {
+            LOG.error("Organism {} was given the direction {}, which names no single axis",
+                    id, Arrays.toString(newDv),
+                    new IllegalStateException("Direction vector invariant violated"));
+            return;
+        }
+        this.dv = Arrays.copyOf(newDv, newDv.length);
     }
 
     /**

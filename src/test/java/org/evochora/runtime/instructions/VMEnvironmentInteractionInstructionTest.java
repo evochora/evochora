@@ -124,6 +124,29 @@ public class VMEnvironmentInteractionInstructionTest {
     }
 
     /**
+     * Tests the POKS instruction (write from stack to location specified by stack vector).
+     * This is a unit test for the VM's instruction logic.
+     */
+    @Test
+    @Tag("unit")
+    void testPoks() {
+        int payload = new Molecule(Config.TYPE_DATA, 33).toInt();
+        int[] vec = new int[]{0, 1};
+        org.setMr(WRITE_MARKER);
+        org.getDataStack().push(vec);
+        org.getDataStack().push(payload);
+
+        placeInstruction("POKS");
+        int[] target = org.getTargetCoordinate(org.getDp(0), vec, environment);
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).as("Instruction failed: " + org.getFailureReason()).isFalse();
+        assertThat(environment.getMolecule(target).toInt()).isEqualTo(storedUnderWriteMarker(payload));
+        // POKS(DATA) costs base 1 + 5
+        assertThat(org.getEr()).isLessThanOrEqualTo(2000 - 1 - 5);
+    }
+
+    /**
      * A write may only reach a cell adjacent to the data pointer. A vector that names no neighbour
      * is mapped to the nearest one, and the write lands there; the cell the unmapped vector pointed
      * at stays untouched, because only a claimed neighbour takes part in conflict resolution.
@@ -198,6 +221,26 @@ public class VMEnvironmentInteractionInstructionTest {
         assertThat(org.isInstructionFailed()).as(org.getFailureReason()).isFalse();
         assertThat(environment.getMolecule(underPointer).toInt())
                 .isEqualTo(storedUnderWriteMarker(payload));
+    }
+
+    /**
+     * A register may hold a scalar as well as a vector, so an operand that should name where to
+     * write can hold a number instead. The instruction cannot act on that, and it says so: a
+     * program checking with IFER learns that its write did not happen, and the failure appears in
+     * the statistics like any other.
+     */
+    @Test
+    @Tag("unit")
+    void pokeWithAScalarWhereTheVectorBelongsFails() {
+        org.setMr(WRITE_MARKER);
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 88).toInt());
+        org.writeOperand(1, new Molecule(Config.TYPE_DATA, 5).toInt());
+
+        placeInstruction("POKE", 0, 1);
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).isTrue();
+        assertThat(org.getFailureReason()).contains("requires a vector operand");
     }
 
     /**

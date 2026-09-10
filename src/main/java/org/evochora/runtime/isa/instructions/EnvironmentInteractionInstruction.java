@@ -93,14 +93,11 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
         if (organism.isInstructionFailed()) {
             return;
         }
-        Object valueToWrite;
-
-        if ("POKS".equals(getName())) {
-            if (operands.size() < 2) { organism.instructionFailed("Invalid operands for POKS."); return; }
-        } else {
-            if (operands.size() < 2) { organism.instructionFailed("Invalid operands for POKE/POKI."); return; }
+        if (operands.size() < 2) {
+            organism.instructionFailed("Invalid operands for " + getName() + ".");
+            return;
         }
-        valueToWrite = operands.get(0).value();
+        Object valueToWrite = operands.get(0).value();
 
         if (targetCoordinate(environment) == null) {
             return;
@@ -181,21 +178,13 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
         if (organism.isInstructionFailed()) {
             return;
         }
-        int targetReg;
-        Object valueToWrite;
-
-        if ("PPKS".equals(getName())) {
-            if (operands.size() < 2) { organism.instructionFailed("Invalid operands for PPKS."); return; }
-            targetReg = -1; // Stack operation
-        } else if ("PPKI".equals(getName())) {
-            if (operands.size() < 2) { organism.instructionFailed("Invalid operands for PPKI."); return; }
-            targetReg = operands.get(0).rawSourceId();
-        } else {
-            if (operands.size() < 2) { organism.instructionFailed("Invalid operands for PPKR."); return; }
-            targetReg = operands.get(0).rawSourceId();
+        if (operands.size() < 2) {
+            organism.instructionFailed("Invalid operands for " + getName() + ".");
+            return;
         }
-        // The register read and the value written back are the same operand in every variant.
-        valueToWrite = operands.get(0).value();
+        // The stack variant writes back to the stack, the others to the register they read from.
+        int targetReg = "PPKS".equals(getName()) ? -1 : operands.get(0).rawSourceId();
+        Object valueToWrite = operands.get(0).value();
 
         if (targetCoordinate(environment) == null) {
             return;
@@ -261,9 +250,11 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
      * or one adjacent to it. The result is derived once and kept in {@code this.targetCoordinate},
      * which is what makes conflict resolution and execution address the same cell.
      * <p>
-     * Operands that hold no vector at all leave the coordinate underived. That is not decided here:
-     * the handler reports what is wrong with its own operands, and conflict resolution reads an
-     * instruction without a target as one that runs and fails on its own.
+     * Two things leave the coordinate underived, and they are answered differently. An operand that
+     * is not a vector — a register or a stack slot may hold a scalar — names no cell, and that is
+     * failed here, because nothing else would. Too few operands is left to the handler, which knows
+     * what its own variant expected. Conflict resolution reads an instruction without a target as
+     * one that runs and fails on its own.
      *
      * @param environment The environment the coordinate is resolved in.
      * @return The target coordinate, or {@code null} when the operands name no direction.
@@ -274,8 +265,14 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
         }
         // resolveOperands is idempotent; in the plan phase it has already run.
         List<Operand> operands = resolveOperands(environment);
-        if (operands.isEmpty()
-                || !(operands.get(operands.size() - 1).value() instanceof int[] vector)) {
+        if (operands.isEmpty()) {
+            // Too few operands to hold a vector at all. The handler names what its variant expected.
+            return null;
+        }
+        if (!(operands.get(operands.size() - 1).value() instanceof int[] vector)) {
+            // A register or a stack slot may hold a scalar, and then the operand names no cell.
+            // Nobody has booked that yet, so it is booked here rather than passing silently.
+            organism.instructionFailed(getName() + " requires a vector operand.");
             return null;
         }
         int[] displacement = organism.toDisplacement(vector);
