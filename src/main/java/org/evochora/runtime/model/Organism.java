@@ -1113,29 +1113,6 @@ public class Organism {
     }
 
     /**
-     * Validates if a given vector is a unit vector (sum of absolute components is 1).
-     *
-     * @param vector The vector to check.
-     * @return {@code true} if it is a unit vector, otherwise {@code false}.
-     */
-    public boolean isUnitVector(int[] vector) {
-        int expected = this.simulation.getEnvironment().getShape().length;
-        if (vector.length != expected) {
-            this.instructionFailed("Vector has incorrect dimensions: expected " + expected + ", got " + vector.length);
-            return false;
-        }
-        int distance = 0;
-        for (int component : vector) {
-            distance += Math.abs(component);
-        }
-        if (distance != 1) {
-            this.instructionFailed("Vector is not a unit vector (sum of abs components is " + distance + ")");
-            return false;
-        }
-        return true;
-    }
-
-    /**
      * Maps a vector operand to the unit vector nearest to it in angle.
      * <p>
      * Instructions that set a direction of travel or form a direction mask need a unit vector.

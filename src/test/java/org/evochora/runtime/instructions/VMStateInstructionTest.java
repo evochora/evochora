@@ -308,6 +308,55 @@ public class VMStateInstructionTest {
     }
 
     /**
+     * The delta of a fork displaces the child from the data pointer, so a vector that names no
+     * neighbour places the child at the nearest one rather than sterilising the parent. Two axes are
+     * equally near for 1|1, and with no negative component among them the first axis wins.
+     */
+    @Test
+    @Tag("unit")
+    void testFrkiSnapsTheDelta() {
+        org.addEr(1000);
+        org.setMr(1);
+        org.setDp(0, org.getIp());
+        int[] expected = org.getTargetCoordinate(org.getDp(0), new int[]{1, 0}, environment);
+
+        placeInstruction("FRKI", 1, 1, 100, 1, 0);
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).as(org.getFailureReason()).isFalse();
+        assertThat(sim.getOrganisms()).hasSize(2);
+        Organism child = sim.getOrganisms().stream()
+                .filter(o -> o.getId() != org.getId())
+                .findFirst()
+                .orElseThrow();
+        assertThat(child.getInitialPosition()).isEqualTo(expected);
+    }
+
+    /**
+     * A delta of none places the child where the data pointer stands, which is a cell like any other
+     * the fork may reach.
+     */
+    @Test
+    @Tag("unit")
+    void testFrkiWithoutADeltaPlacesTheChildUnderTheDataPointer() {
+        org.addEr(1000);
+        org.setMr(1);
+        org.setDp(0, new int[]{org.getIp()[0], org.getIp()[1] + 1});
+        int[] underPointer = org.getDp(0).clone();
+
+        placeInstruction("FRKI", 0, 0, 100, 1, 0);
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).as(org.getFailureReason()).isFalse();
+        assertThat(sim.getOrganisms()).hasSize(2);
+        Organism child = sim.getOrganisms().stream()
+                .filter(o -> o.getId() != org.getId())
+                .findFirst()
+                .orElseThrow();
+        assertThat(child.getInitialPosition()).isEqualTo(underPointer);
+    }
+
+    /**
      * A child asked to travel two steps at a time travels one: the direction operand is mapped to
      * the nearest unit vector, which is what the instruction pointer is advanced along.
      */

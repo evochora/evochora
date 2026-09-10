@@ -267,8 +267,8 @@ public class StateInstruction extends Instruction {
     private void handleFork(List<Operand> operands, Simulation simulation) {
         if (!requireNonZeroMarkerRegister("FORK")) { return; }
         if (operands.size() != 3) { organism.instructionFailed("Invalid operands for FORK."); return; }
-        int[] delta = (int[]) operands.get(0).value();
-        if (!organism.isUnitVector(delta)) {
+        int[] delta = organism.toDisplacement((int[]) operands.get(0).value());
+        if (delta == null) {
             return;
         }
         int energy = org.evochora.runtime.model.Molecule.fromInt((Integer) operands.get(1).value()).toScalarValue();
@@ -452,8 +452,8 @@ public class StateInstruction extends Instruction {
         if (!requireNonZeroMarkerRegister(opName)) { return; }
         if ("FRKI".equals(opName)) {
             if (operands.size() != 3) { organism.instructionFailed("FRKI expects <Vec>, <Lit>, <Vec>."); return; }
-            int[] delta = (int[]) operands.get(0).value();
-            if (!organism.isUnitVector(delta)) {
+            int[] delta = organism.toDisplacement((int[]) operands.get(0).value());
+            if (delta == null) {
                 return;
             }
             int energy = org.evochora.runtime.model.Molecule.fromInt((Integer) operands.get(1).value()).toScalarValue();
@@ -487,15 +487,14 @@ public class StateInstruction extends Instruction {
                 organism.instructionFailed("FRKS stack contents invalid.");
                 return;
             }
-            if (!organism.isUnitVector(delta)) {
-                return;
-            }
+            int[] displacement = organism.toDisplacement(delta);
+            if (displacement == null) { return; }
             int[] snappedChildDv = organism.toUnitVector(childDv);
             if (snappedChildDv == null) { return; }
             int energy = org.evochora.runtime.model.Molecule.fromInt(ei).toScalarValue();
             // The VirtualMachine already deducted the base cost (1), now we need to deduct the energy given to child
             if (energy > 0 && organism.getEr() >= energy) {
-                int[] childIp = organism.getTargetCoordinate(organism.getActiveDp(), delta, environment);
+                int[] childIp = organism.getTargetCoordinate(organism.getActiveDp(), displacement, environment);
                 organism.takeEr(energy); // Deduct the energy given to the child
                 Organism child = Organism.create(simulation, childIp, energy);
                 child.setDv(snappedChildDv);
