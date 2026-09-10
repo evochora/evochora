@@ -255,13 +255,21 @@ and nothing calls it, so the hot-path cost is known before five slices are commi
   which is part of the serialised organism state. `getTargetCoordinates` runs in `resolveConflicts`,
   sequentially after the parallel wave, so the DV it reads is stable and order-independent, and no
   random provider is touched.
-- **Performance improves.** `isUnitVector` reads the dimension count as
-  `simulation.getEnvironment().getShape().length`, and `getShape()` returns `Arrays.copyOf`
-  (`Environment.java:524`) — every one of the thirteen checks allocates an `int[dims]` today just to
-  read `.length`. The replacement takes the count from `this.ip.length`. The fast path stays exactly
-  what `isUnitVector` does: sum the magnitudes, return the argument when the sum is 1. Maximum,
-  candidate count and negative candidates are computed in a second pass that runs only when snapping
-  is needed. To be confirmed by the JMH measurements in slices 1 and 6.
+- **Performance: the common case is unchanged, snapping costs more, and how much more is open.**
+  Measured with a throwaway JMH benchmark on the development machine, which is not known to be
+  quiet. A vector that already is a unit vector costs 2.66 ns against 2.57 ns for the check it
+  replaces — the same within the noise. `isUnitVector` reads the dimension count through
+  `Environment.getShape()`, which hands out a defensive copy (`Environment.java:524`), but that
+  allocation does not show up in the measurement; the escape analysis of the JIT removes it. Taking
+  the count from `this.ip.length` instead is hygiene, not a saving. The fast path stays exactly what
+  `isUnitVector` does: sum the magnitudes, return the argument when the sum is 1; maximum, candidate
+  count and negative candidates are computed in a second pass that runs only when snapping is
+  needed. Snapping costs 4.31 ns with one candidate and 5.67 ns with two, so 1.6 to 3 ns more than
+  the common case. **That path is not rare by construction.** This change keeps a mutated vector in
+  circulation instead of failing the instruction that uses it, so a mutated `SEKI 1|1` in a main loop
+  is snapped at every execution, and its share grows with the mutation load and the length of a run.
+  What those nanoseconds are worth against a whole instruction execution, with its environment access
+  and its thermodynamics, is what the tick benchmark in slice 6 has to answer.
 - **The DV invariant becomes enforced** on every path including resume, which closes the unchecked
   child-DV path that exists today.
 - **`GeneInsertionPlugin`'s unit-vector mode loses its reason.** `generateUnitVector` (`:603`) and
