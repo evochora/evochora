@@ -469,7 +469,7 @@ Note on conflicts: If a world interaction loses conflict resolution for its targ
 
 * `NOP`: No operation.
 * `SYNC`: Sets active `DP` = `IP`.
-* `TURN %VEC_REG`, `TRNI <Vector>`, `TRNS`: Sets `DV` to the specified vector. The instruction will fail if the vector is not a unit vector.
+* `TURN %VEC_REG`, `TRNI <Vector>`, `TRNS`: Sets `DV` to the unit vector nearest to the specified vector.
 * `POS %REG`, `POSS`: Stores the organism's position relative to its start (`IP` - `InitialIP`) in `<%REG>` or on the stack.
 * `DIFF %REG`, `DIFS`: Stores the vector `DP` - `IP` in `<%REG>` or on the stack.
 * `NRG %REG`, `NRGS`: Stores current `ER` in `<%REG>` or on the stack.

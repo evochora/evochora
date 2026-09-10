@@ -240,6 +240,97 @@ public class VMStateInstructionTest {
     }
 
     /**
+     * A direction longer than one step still names an axis, and the organism turns along it instead
+     * of failing.
+     */
+    @Test
+    @Tag("unit")
+    void testTrniSnapsALongVector() {
+        placeInstructionWithVectorOnly("TRNI", new int[]{2, 0});
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).as(org.getFailureReason()).isFalse();
+        assertThat(org.getDv()).isEqualTo(new int[]{1, 0});
+    }
+
+    /**
+     * Two axes of equal magnitude are separated by the number of negative components among them, so
+     * a direction of 1|-1 turns the organism along the negative second axis.
+     */
+    @Test
+    @Tag("unit")
+    void testTrniSnapsATiedVector() {
+        placeInstructionWithVectorOnly("TRNI", new int[]{1, -1});
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).as(org.getFailureReason()).isFalse();
+        assertThat(org.getDv()).isEqualTo(new int[]{0, -1});
+    }
+
+    /**
+     * A vector without components names no direction at all, and the organism keeps the one it is
+     * already travelling in.
+     */
+    @Test
+    @Tag("unit")
+    void testTrniWithoutADirectionKeepsTheCurrentOne() {
+        int[] before = org.getDv();
+        placeInstructionWithVectorOnly("TRNI", new int[]{0, 0});
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).as(org.getFailureReason()).isFalse();
+        assertThat(org.getDv()).isEqualTo(before);
+    }
+
+    /**
+     * The direction a fork gives its child is mapped like any other vector. Asked for none, the
+     * child inherits the parent's, so it travels in a direction that exists rather than in the one
+     * an unchecked operand would have left it with.
+     */
+    @Test
+    @Tag("unit")
+    void testFrkiGivesTheChildTheParentsDirectionWhenTheOperandNamesNone() {
+        org.addEr(1000);
+        org.setMr(1);
+        org.setDp(0, org.getIp());
+        int[] parentDv = org.getDv();
+
+        placeInstruction("FRKI", 1, 0, 100, 0, 0);
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).as(org.getFailureReason()).isFalse();
+        assertThat(sim.getOrganisms()).hasSize(2);
+        Organism child = sim.getOrganisms().stream()
+                .filter(o -> o.getId() != org.getId())
+                .findFirst()
+                .orElseThrow();
+        assertThat(child.getDv()).isEqualTo(parentDv);
+    }
+
+    /**
+     * A child asked to travel two steps at a time travels one: the direction operand is mapped to
+     * the nearest unit vector, which is what the instruction pointer is advanced along.
+     */
+    @Test
+    @Tag("unit")
+    void testFrkiSnapsTheChildsDirection() {
+        org.addEr(1000);
+        org.setMr(1);
+        org.setDp(0, org.getIp());
+
+        placeInstruction("FRKI", 1, 0, 100, 2, 0);
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).as(org.getFailureReason()).isFalse();
+        assertThat(sim.getOrganisms()).hasSize(2);
+        Organism child = sim.getOrganisms().stream()
+                .filter(o -> o.getId() != org.getId())
+                .findFirst()
+                .orElseThrow();
+        assertThat(child.getDv()).isEqualTo(new int[]{1, 0});
+    }
+
+    /**
      * Tests the POSS instruction (push current position to stack).
      * This is a unit test for the VM's instruction logic.
      */
