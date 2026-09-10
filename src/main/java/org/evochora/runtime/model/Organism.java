@@ -417,8 +417,10 @@ public class Organism {
         /**
          * Sets the direction vector.
          * <p>
-         * The DV must be set, and must have as many components as the IP. The runtime relies on it
-         * being a unit vector — exactly one component ±1, the rest 0 — when it advances the IP.
+         * The DV must be set, must have as many components as the IP, and must be a unit vector —
+         * exactly one component ±1, the rest 0 — because that is what the instruction pointer is
+         * advanced along. Every runtime path that sets a direction snaps it to one, so a state
+         * carrying anything else describes an organism no run could have produced and is rejected.
          *
          * @param dv the direction along which the instruction pointer advances
          * @return this builder
@@ -783,6 +785,12 @@ public class Organism {
                 throw new InvalidRestoreState("Active data pointer index " + activeDpIndex
                         + " lies outside the " + dps.size() + " data pointers");
             }
+            // A unit vector is its own nearest unit vector, so the mapping hands the argument back
+            // unchanged. Anything else never leaves a running organism, because every path that
+            // sets a direction snaps it first.
+            if (UnitVector.nearest(dv) != dv) {
+                throw new InvalidRestoreState("DV must be a unit vector, got " + Arrays.toString(dv));
+            }
         }
     }
 
@@ -804,6 +812,10 @@ public class Organism {
 
     /**
      * Advances the Instruction Pointer by a given number of steps along the current direction vector.
+     * <p>
+     * The step is taken along the one axis the direction vector names. That there is exactly one is
+     * an invariant, not an assumption: every path that sets a direction — a turn, the birth of a
+     * child, a restore — maps it to a unit vector first.
      *
      * @param steps The number of steps to advance.
      * @param environment The simulation environment.
@@ -812,7 +824,8 @@ public class Organism {
         EnvironmentProperties props = environment.properties;
         boolean isToroidal = props.isToroidal();
 
-        // DV is a unit vector: exactly one component is ±1, rest 0
+        // The DV is a unit vector, so the first non-zero component is the only one, and its value
+        // is the ±1 that decides the direction along that axis.
         int dim = 0;
         int sign = 1;
         for (int i = 0; i < dvBeforeFetch.length; i++) {
@@ -867,7 +880,8 @@ public class Organism {
         int argCount = instructionLength - 1;
         if (argCount <= 0) return EMPTY_INT_ARRAY;
 
-        // DV is a unit vector: exactly one component is ±1, rest 0
+        // The DV is a unit vector, so the first non-zero component is the only one, and its value
+        // is the ±1 that decides the direction along that axis.
         int dim = 0;
         int sign = 1;
         for (int i = 0; i < withDv.length; i++) {
@@ -983,7 +997,8 @@ public class Organism {
         EnvironmentProperties props = environment.properties;
         boolean isToroidal = props.isToroidal();
 
-        // Determine active dimension and sign from dvBeforeFetch (unit vector: exactly one component is ±1)
+        // The DV is a unit vector, so the first non-zero component is the only one, and its value
+        // is the ±1 that decides the direction along that axis.
         int dim = 0;
         int sign = 1;
         for (int i = 0; i < dvBeforeFetch.length; i++) {
@@ -1099,26 +1114,87 @@ public class Organism {
     }
 
     /**
-     * Validates if a given vector is a unit vector (sum of absolute components is 1).
+     * Maps a vector operand to the unit vector nearest to it in angle.
+     * <p>
+     * Instructions that set a direction of travel or form a direction mask need a unit vector.
+     * Rather than rejecting anything else, they take the nearest one: a mutated vector then sends an
+     * organism in a slightly different direction instead of failing the instruction that uses it
+     * from then on. {@link UnitVector} holds the rule and how a tie between equally near candidates
+     * is settled.
+     * <p>
+     * The zero vector names no direction, and this organism's own direction of travel answers for
+     * it. The result is a copy in that case, because a caller may hand it to another organism — the
+     * direction vector of a child, say — and two organisms must not share one array.
+     * <p>
+     * This is the mapping for a vector that names a direction. A vector that displaces the data
+     * pointer goes through {@link #toDisplacement(int[])} instead, where a vector without components
+     * keeps its own meaning.
      *
-     * @param vector The vector to check.
-     * @return {@code true} if it is a unit vector, otherwise {@code false}.
+     * @param vector The vector operand to map. Not modified
+     * @return The nearest unit vector, which is the argument itself when it already is one, or
+     *         {@code null} when the component count does not match the world, in which case the
+     *         instruction has been marked failed
      */
-    public boolean isUnitVector(int[] vector) {
-        int expected = this.simulation.getEnvironment().getShape().length;
-        if (vector.length != expected) {
-            this.instructionFailed("Vector has incorrect dimensions: expected " + expected + ", got " + vector.length);
-            return false;
+    public int[] toUnitVector(int[] vector) {
+        if (!hasWorldDimensions(vector)) {
+            return null;
         }
-        int distance = 0;
-        for (int component : vector) {
-            distance += Math.abs(component);
+        int[] nearest = UnitVector.nearest(vector);
+        return nearest != null ? nearest : Arrays.copyOf(dv, dv.length);
+    }
+
+    /**
+     * Maps a vector operand that displaces the data pointer to one that reaches a cell.
+     * <p>
+     * Instructions that read, write or test a cell take their vector as an offset from the data
+     * pointer, and they may reach the cell it stands on or one adjacent to it. Anything further is
+     * mapped to the nearest unit vector, so a mutated operand moves the reach by a cell instead of
+     * failing the instruction that uses it from then on. {@link UnitVector} holds the rule.
+     * <p>
+     * A vector without components is a displacement of none, and it stays one: the instruction then
+     * acts on the cell the data pointer already stands on. That is a direction fewer than the
+     * {@code 2 · dimensions} neighbours, not one more — the reach never grows beyond adjacency.
+     * <p>
+     * A vector whose component count does not match the world is a defect in this code rather than a
+     * fault of the program being executed, and it is logged as one before the instruction is failed.
+     *
+     * @param vector The vector operand to map. Not modified
+     * @return The displacement to use, which is the argument itself when it already reaches a cell,
+     *         or {@code null} when the component count does not match the world, in which case the
+     *         instruction has been marked failed
+     */
+    public int[] toDisplacement(int[] vector) {
+        if (!hasWorldDimensions(vector)) {
+            return null;
         }
-        if (distance != 1) {
-            this.instructionFailed("Vector is not a unit vector (sum of abs components is " + distance + ")");
-            return false;
+        int[] nearest = UnitVector.nearest(vector);
+        return nearest != null ? nearest : vector;
+    }
+
+    /**
+     * Whether a vector operand has one component per world dimension, failing the instruction and
+     * logging the violation when it does not.
+     * <p>
+     * No runtime path produces a mismatch: an operand is filled into an array sized from the world,
+     * and every instruction that builds a vector is handed the world's dimensionality. A mismatch is
+     * therefore a defect here, which is why it is logged with a stack trace rather than merely
+     * booked as a failure of the program.
+     *
+     * @param vector The vector operand to check.
+     * @return {@code true} when the count matches, {@code false} when the instruction has been
+     *         marked failed because it does not
+     */
+    private boolean hasWorldDimensions(int[] vector) {
+        int dimensions = this.ip.length;
+        if (vector.length == dimensions) {
+            return true;
         }
-        return true;
+        LOG.error("Organism {} holds a vector of {} components in a world of {}",
+                id, vector.length, dimensions,
+                new IllegalStateException("Vector component count invariant violated"));
+        this.instructionFailed("Vector has incorrect dimensions: expected " + dimensions
+                + ", got " + vector.length);
+        return false;
     }
 
     /**
@@ -1230,11 +1306,27 @@ public class Organism {
 
     /**
      * Sets the Direction Vector (DV).
+     * <p>
+     * The direction is kept as a copy, so that an organism never shares it with whoever passed it —
+     * a caller may hand the same vector to a child, and two organisms must not turn together.
+     * <p>
+     * What a vector means is decided before it gets here: an instruction maps its operand to the
+     * nearest unit vector and answers one that names no direction with the direction of the
+     * organism whose instruction is running, which for a fork is the parent's. This method only
+     * holds the invariant every reader of the DV relies on — exactly one component ±1. A violation
+     * cannot come from a program, only from a path that forgot to map its operand, so it is logged
+     * as the defect it is and the current direction is kept.
      *
-     * @param newDv The new direction vector.
+     * @param newDv The new direction vector, which must be a unit vector.
      */
-    public void setDv(int[] newDv) { 
-        this.dv = newDv; 
+    public void setDv(int[] newDv) {
+        if (UnitVector.nearest(newDv) != newDv) {
+            LOG.error("Organism {} was given the direction {}, which names no single axis",
+                    id, Arrays.toString(newDv),
+                    new IllegalStateException("Direction vector invariant violated"));
+            return;
+        }
+        this.dv = Arrays.copyOf(newDv, newDv.length);
     }
 
     /**
@@ -1598,8 +1690,9 @@ public class Organism {
     public String getFailureReason() { return failureReason; }
     /**
      * The direction the instruction pointer travels in: a unit vector, exactly one component ±1 and
-     * the rest 0, with one component per environment dimension. Because a copy is handed out,
-     * writing into the returned array does not turn the organism — use {@link #setDv(int[])}.
+     * the rest 0, with one component per environment dimension. Every path that sets it maps its
+     * argument to a unit vector, so it is one whatever a program asked for. Because a copy is handed
+     * out, writing into the returned array does not turn the organism — use {@link #setDv(int[])}.
      *
      * @return A copy of the current Direction Vector (DV).
      */

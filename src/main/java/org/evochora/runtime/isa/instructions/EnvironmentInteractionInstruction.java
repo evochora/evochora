@@ -87,21 +87,20 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
         Organism organism = context.getOrganism();
         Environment environment = context.getWorld();
         List<Operand> operands = resolveOperands(environment);
-        Object valueToWrite;
-        int[] vector;
-
-        if ("POKS".equals(getName())) {
-            if (operands.size() < 2) { organism.instructionFailed("Invalid operands for POKS."); return; }
-            valueToWrite = operands.get(0).value();
-            vector = (int[]) operands.get(1).value();
-        } else {
-            if (operands.size() < 2) { organism.instructionFailed("Invalid operands for POKE/POKI."); return; }
-            valueToWrite = operands.get(0).value();
-            vector = (int[]) operands.get(1).value();
+        // An instruction the planning phase already failed claims no cell in conflict resolution,
+        // so it must not reach the environment: its write would bypass the arbitration that every
+        // other write goes through.
+        if (organism.isInstructionFailed()) {
+            return;
         }
+        if (operands.size() < 2) {
+            organism.instructionFailed("Invalid operands for " + getName() + ".");
+            return;
+        }
+        Object valueToWrite = operands.get(0).value();
 
-        if (this.targetCoordinate == null) {
-            this.targetCoordinate = organism.getTargetCoordinate(organism.getActiveDp(), vector, environment);
+        if (targetCoordinate(environment) == null) {
+            return;
         }
 
         if (getConflictStatus() == ConflictResolutionStatus.WON_EXECUTION || getConflictStatus() == ConflictResolutionStatus.NOT_APPLICABLE) {
@@ -128,21 +127,24 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
         Organism organism = context.getOrganism();
         Environment environment = context.getWorld();
         List<Operand> operands = resolveOperands(environment);
+        // An instruction the planning phase already failed claims no cell in conflict resolution,
+        // so it must not reach the environment: its write would bypass the arbitration that every
+        // other write goes through.
+        if (organism.isInstructionFailed()) {
+            return;
+        }
         int targetReg;
-        int[] vector;
 
         if (getName().endsWith("S")) {
             if (operands.size() != 1) { organism.instructionFailed("Invalid operands for " + getName()); return; }
-            vector = (int[]) operands.get(0).value();
             targetReg = -1;
         } else {
             if (operands.size() != 2) { organism.instructionFailed("Invalid operands for " + getName()); return; }
             targetReg = operands.get(0).rawSourceId();
-            vector = (int[]) operands.get(1).value();
         }
 
-        if (this.targetCoordinate == null) {
-            this.targetCoordinate = organism.getTargetCoordinate(organism.getActiveDp(), vector, environment);
+        if (targetCoordinate(environment) == null) {
+            return;
         }
 
         Molecule s = environment.getMolecule(targetCoordinate);
@@ -170,32 +172,24 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
         Organism organism = context.getOrganism();
         Environment environment = context.getWorld();
         List<Operand> operands = resolveOperands(environment);
-        int targetReg;
-        Object valueToWrite;
-        int[] vector;
+        // An instruction the planning phase already failed claims no cell in conflict resolution,
+        // so it must not reach the environment: its write would bypass the arbitration that every
+        // other write goes through.
+        if (organism.isInstructionFailed()) {
+            return;
+        }
+        if (operands.size() < 2) {
+            organism.instructionFailed("Invalid operands for " + getName() + ".");
+            return;
+        }
+        // The stack variant writes back to the stack, the others to the register they read from.
+        int targetReg = "PPKS".equals(getName()) ? -1 : operands.get(0).rawSourceId();
+        Object valueToWrite = operands.get(0).value();
 
-        if ("PPKS".equals(getName())) {
-            if (operands.size() < 2) { organism.instructionFailed("Invalid operands for PPKS."); return; }
-            targetReg = -1; // Stack operation
-            valueToWrite = operands.get(0).value();
-            vector = (int[]) operands.get(1).value();
-        } else if ("PPKI".equals(getName())) {
-            if (operands.size() < 2) { organism.instructionFailed("Invalid operands for PPKI."); return; }
-            targetReg = operands.get(0).rawSourceId();
-            valueToWrite = operands.get(0).value(); // Same register for read/write
-            vector = (int[]) operands.get(1).value(); // Read vector from operands
-        } else {
-            if (operands.size() < 2) { organism.instructionFailed("Invalid operands for PPKR."); return; }
-            targetReg = operands.get(0).rawSourceId();
-            valueToWrite = operands.get(0).value(); // Same register for read/write
-            vector = (int[]) operands.get(1).value();
+        if (targetCoordinate(environment) == null) {
+            return;
         }
 
-
-        if (this.targetCoordinate == null) {
-            this.targetCoordinate = organism.getTargetCoordinate(organism.getActiveDp(), vector, environment);
-        }
-        
 
         if (getConflictStatus() == ConflictResolutionStatus.WON_EXECUTION || getConflictStatus() == ConflictResolutionStatus.NOT_APPLICABLE) {
             
@@ -248,57 +242,70 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
 
 
     /**
-     * Returns the target coordinates for conflict resolution.
+     * The cell this instruction addresses: the active data pointer displaced by the direction its
+     * operands name.
      * <p>
-     * <b>Caching Behavior:</b> The target coordinate is computed on first call and cached
-     * in {@code this.targetCoordinate}. Subsequent calls return the cached value without
-     * re-reading operands. This is a performance optimization for conflict resolution
-     * which may call this method multiple times.
+     * Every variant of this family takes its vector as the last operand, and that vector is mapped
+     * to a displacement the instruction may use, so the cell is the one the data pointer stands on
+     * or one adjacent to it. The result is derived once and kept in {@code this.targetCoordinate},
+     * which is what makes conflict resolution and execution address the same cell.
      * <p>
-     * <b>Invocation Order Dependency:</b> This method reads from the cached operands
-     * (populated by {@code resolveOperands()} in the Plan phase). If an
-     * {@link org.evochora.runtime.spi.IInstructionInterceptor} modifies operands,
-     * it must do so BEFORE this method is called. The current tick cycle guarantees this:
+     * Two things leave the coordinate underived, and they are answered differently. An operand that
+     * is not a vector — a register or a stack slot may hold a scalar — names no cell, and that is
+     * failed here, because nothing else would. Too few operands is left to the handler, which knows
+     * what its own variant expected. Conflict resolution reads an instruction without a target as
+     * one that runs and fails on its own.
+     *
+     * @param environment The environment the coordinate is resolved in.
+     * @return The target coordinate, or {@code null} when the operands name no direction.
+     */
+    private int[] targetCoordinate(Environment environment) {
+        if (this.targetCoordinate != null) {
+            return this.targetCoordinate;
+        }
+        // resolveOperands is idempotent; in the plan phase it has already run.
+        List<Operand> operands = resolveOperands(environment);
+        if (operands.isEmpty()) {
+            // Too few operands to hold a vector at all. The handler names what its variant expected.
+            return null;
+        }
+        if (!(operands.get(operands.size() - 1).value() instanceof int[] vector)) {
+            // A register or a stack slot may hold a scalar, and then the operand names no cell.
+            // Nobody has booked that yet, so it is booked here rather than passing silently.
+            organism.instructionFailed(getName() + " requires a vector operand.");
+            return null;
+        }
+        int[] displacement = organism.toDisplacement(vector);
+        if (displacement == null) {
+            return null;
+        }
+        this.targetCoordinate = organism.getTargetCoordinate(organism.getActiveDp(), displacement, environment);
+        return this.targetCoordinate;
+    }
+
+    /**
+     * Returns the target coordinate for conflict resolution, as a list of the one cell this
+     * instruction claims, or an empty list when its operands name no direction.
+     * <p>
+     * <b>Invocation Order Dependency:</b> The coordinate is derived from the operands resolved in
+     * the plan phase and kept from then on. If an
+     * {@link org.evochora.runtime.spi.IInstructionInterceptor} modifies operands, it must do so
+     * BEFORE this method is called. The current tick cycle guarantees this:
      * <ol>
      *   <li>Plan phase: {@code vm.plan()} calls {@code resolveOperands()}</li>
      *   <li>Interception: Interceptors may modify operands</li>
-     *   <li>Conflict resolution: {@code resolveConflicts()} calls this method (first call, caches result)</li>
-     *   <li>Execute phase: Instruction executes with final operand values</li>
+     *   <li>Conflict resolution: {@code resolveConflicts()} calls this method, which derives and keeps the coordinate</li>
+     *   <li>Execute phase: the instruction executes against that same coordinate</li>
      * </ol>
      * <p>
      * <b>Warning:</b> Do not call this method before interceptors have run, as operand
-     * modifications after caching will not affect the target coordinate.
+     * modifications afterwards will not affect the target coordinate.
      *
-     * @return List containing the single target coordinate, or empty list if invalid
+     * @return List containing the single target coordinate, or empty list when there is none
      */
     @Override
     public List<int[]> getTargetCoordinates() {
-        if (this.targetCoordinate != null) {
-            return List.of(this.targetCoordinate);
-        }
-
-        // Use operands resolved during Plan phase (resolveOperands is idempotent)
-        Environment environment = organism.getSimulation().getEnvironment();
-        List<Operand> operands = resolveOperands(environment);
-        if (operands.isEmpty()) {
-            return List.of();
-        }
-
-        // Find vector: the last operand that is an int[] (convention for all variants)
-        int[] vector = null;
-        for (int i = operands.size() - 1; i >= 0; i--) {
-            Object value = operands.get(i).value();
-            if (value instanceof int[]) {
-                vector = (int[]) value;
-                break;
-            }
-        }
-
-        if (vector == null || !organism.isUnitVector(vector)) {
-            return List.of();
-        }
-
-        this.targetCoordinate = organism.getTargetCoordinate(organism.getActiveDp(), vector, environment);
-        return List.of(this.targetCoordinate);
+        int[] coordinate = targetCoordinate(organism.getSimulation().getEnvironment());
+        return coordinate == null ? List.of() : List.of(coordinate);
     }
 }

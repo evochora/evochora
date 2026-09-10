@@ -147,6 +147,125 @@ public class VMEnvironmentInteractionInstructionTest {
     }
 
     /**
+     * A write may only reach a cell adjacent to the data pointer. A vector that names no neighbour
+     * is mapped to the nearest one, and the write lands there; the cell the unmapped vector pointed
+     * at stays untouched, because only a claimed neighbour takes part in conflict resolution.
+     */
+    @Test
+    @Tag("unit")
+    void pokiWithNonUnitVectorWritesToTheNearestNeighbour() {
+        int payload = new Molecule(Config.TYPE_DATA, 88).toInt();
+        org.setMr(WRITE_MARKER);
+        org.writeOperand(0, payload);
+        // Away from the row the instruction itself occupies, so the neighbour it writes to is empty.
+        org.setDp(0, new int[]{startPos[0], startPos[1] + 1});
+
+        int[] diagonal = org.getTargetCoordinate(org.getDp(0), new int[]{1, 1}, environment);
+        int[] neighbour = org.getTargetCoordinate(org.getDp(0), new int[]{1, 0}, environment);
+
+        placeInstruction("POKI", 0, 1, 1);
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).as(org.getFailureReason()).isFalse();
+        assertThat(environment.getMolecule(neighbour).toInt())
+                .as("the write lands on the nearest neighbour")
+                .isEqualTo(storedUnderWriteMarker(payload));
+        assertThat(environment.getMolecule(diagonal).isEmpty())
+                .as("the cell two steps away is never addressed")
+                .isTrue();
+    }
+
+    /**
+     * The reading counterpart: the molecule comes from the nearest neighbour, and the cell the
+     * unmapped vector pointed at keeps what it holds.
+     */
+    @Test
+    @Tag("unit")
+    void pekiWithNonUnitVectorReadsTheNearestNeighbour() {
+        org.setDp(0, new int[]{startPos[0], startPos[1] + 1});
+        int[] diagonal = org.getTargetCoordinate(org.getDp(0), new int[]{1, 1}, environment);
+        int[] neighbour = org.getTargetCoordinate(org.getDp(0), new int[]{1, 0}, environment);
+        int inDiagonal = new Molecule(Config.TYPE_DATA, 11).toInt();
+        int inNeighbour = new Molecule(Config.TYPE_DATA, 22).toInt();
+        environment.setMolecule(Molecule.fromInt(inDiagonal), diagonal);
+        environment.setMolecule(Molecule.fromInt(inNeighbour), neighbour);
+
+        placeInstructionWithVector("PEKI", 0, new int[]{1, 1});
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).as(org.getFailureReason()).isFalse();
+        assertThat((int) org.readOperand(0))
+                .as("the molecule comes from the nearest neighbour")
+                .isEqualTo(inNeighbour);
+        assertThat(environment.getMolecule(diagonal).toInt())
+                .as("the cell two steps away keeps its molecule")
+                .isEqualTo(inDiagonal);
+    }
+
+    /**
+     * A write without a displacement lands on the cell the data pointer stands on. The vector of a
+     * world interaction is an offset, and an offset of none is a cell like any other it may reach.
+     */
+    @Test
+    @Tag("unit")
+    void pokiWithoutADisplacementWritesUnderTheDataPointer() {
+        int payload = new Molecule(Config.TYPE_DATA, 88).toInt();
+        org.setMr(WRITE_MARKER);
+        org.writeOperand(0, payload);
+        org.setDp(0, new int[]{startPos[0], startPos[1] + 1});
+        int[] underPointer = org.getDp(0).clone();
+
+        placeInstruction("POKI", 0, 0, 0);
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).as(org.getFailureReason()).isFalse();
+        assertThat(environment.getMolecule(underPointer).toInt())
+                .isEqualTo(storedUnderWriteMarker(payload));
+    }
+
+    /**
+     * A register may hold a scalar as well as a vector, so an operand that should name where to
+     * write can hold a number instead. The instruction cannot act on that, and it says so: a
+     * program checking with IFER learns that its write did not happen, and the failure appears in
+     * the statistics like any other.
+     */
+    @Test
+    @Tag("unit")
+    void pokeWithAScalarWhereTheVectorBelongsFails() {
+        org.setMr(WRITE_MARKER);
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 88).toInt());
+        org.writeOperand(1, new Molecule(Config.TYPE_DATA, 5).toInt());
+
+        placeInstruction("POKE", 0, 1);
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).isTrue();
+        assertThat(org.getFailureReason()).contains("requires a vector operand");
+    }
+
+    /**
+     * An instruction whose operands already failed never reaches the environment. Conflict
+     * resolution skips an instruction that claims no cell, so a write getting through would be one
+     * that no arbitration ever saw.
+     */
+    @Test
+    @Tag("unit")
+    void pokeWithAnUnreadableRegisterWritesNothing() {
+        org.setMr(WRITE_MARKER);
+        org.writeOperand(1, new int[]{0, 1});
+        int[] target = org.getTargetCoordinate(org.getDp(0), new int[]{0, 1}, environment);
+
+        // 4096 lies outside the register table, so resolving the first operand fails the instruction.
+        placeInstruction("POKE", 4096, 1);
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).isTrue();
+        assertThat(environment.getMolecule(target).isEmpty())
+                .as("nothing is written on behalf of an instruction that already failed")
+                .isTrue();
+    }
+
+    /**
      * Tests the PEEK instruction (read to register from location specified by register vector).
      * This is a unit test for the VM's instruction logic.
      */

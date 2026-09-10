@@ -419,33 +419,47 @@ Scans axis-aligned neighbors around the active DP and returns a bitmask indicati
 
 These instructions skip the next instruction if the condition is false.
 
+#### Value comparisons
+
+Operands are values — register contents, the top of the stack, or literals — and a value may be a scalar or a vector.
+
 * `IFR %REG1 %REG2`, `IFI %REG1 <Literal>`, `IFS`: If values are equal.
 * `LTR %REG1 %REG2`, `LTI %REG1 <Literal>`, `LTS`: If value of first argument is less than second.
 * `GTR %REG1 %REG2`, `GTI %REG1 <Literal>`, `GTS`: If value of first argument is greater than second.
 * `IFTR %REG1 %REG2`, `IFTI %REG1 <Literal>`, `IFTS`: If molecule types are equal.
-* `IFMR %VEC_REG`, `IFMI <Vector>`, `IFMS`: If cell at `DP` + vector is owned by self. The vector must be a unit vector.
-* `IFPR %VEC_REG`, `IFPI <Vector>`, `IFPS`: If cell at `DP` + vector is passable (empty or owned by self). The vector must be a unit vector.
-* `IFFR %VEC_REG`, `IFFI <Vector>`, `IFFS`: If cell at `DP` + vector is owned by a foreign organism (ownerId != 0 && ownerId != self.id). The vector must be a unit vector.
-* `IFVR %VEC_REG`, `IFVI <Vector>`, `IFVS`: If cell at `DP` + vector is vacant (has no owner, ownerId == 0). The vector must be a unit vector. Note: "Vacant" refers to ownership status, not whether the cell contains a molecule. A cell can have a molecule and still be vacant.
 * `IFER`: If the previous instruction failed. Takes no operands. The "previous instruction" refers to the instruction executed in the immediately preceding tick, not the preceding instruction in spatial layout.
+
+#### Cell tests
+
+The vector is a displacement from the active `DP`, as in a world interaction: it addresses the cell the `DP` stands on, or one adjacent to it. A vector that would reach further is mapped to the nearest adjacent cell.
+
+* `IFMR %VEC_REG`, `IFMI <Vector>`, `IFMS`: If cell at `DP` + vector is owned by self.
+* `IFPR %VEC_REG`, `IFPI <Vector>`, `IFPS`: If cell at `DP` + vector is passable (empty or owned by self).
+* `IFFR %VEC_REG`, `IFFI <Vector>`, `IFFS`: If cell at `DP` + vector is owned by a foreign organism (ownerId != 0 && ownerId != self.id).
+* `IFVR %VEC_REG`, `IFVI <Vector>`, `IFVS`: If cell at `DP` + vector is vacant (has no owner, ownerId == 0). Note: "Vacant" refers to ownership status, not whether the cell contains a molecule. A cell can have a molecule and still be vacant.
 
 #### Negated Conditional Instructions
 
-These instructions are the logical opposites of the standard conditional instructions. They skip the next instruction if the original condition is met.
+These instructions are the logical opposites of the standard conditional instructions. They skip the next instruction if the original condition is met. Their operands follow the same two kinds.
+
+Value comparisons:
 
 * `INR %REG1 %REG2`, `INI %REG1 <Literal>`, `INS`: If values are **not** equal.
 * `GETR %REG1 %REG2`, `GETI %REG1 <Literal>`, `GETS`: If value of first argument is **greater than or equal to** second.
 * `LETR %REG1 %REG2`, `LETI %REG1 <Literal>`, `LETS`: If value of first argument is **less than or equal to** second.
 * `INTR %REG1 %REG2`, `INTI %REG1 <Literal>`, `INTS`: If molecule types are **not** equal.
-* `INMR %VEC_REG`, `INMI <Vector>`, `INMS`: If cell at `DP` + vector is **not** owned by self. The vector must be a unit vector.
-* `INPR %VEC_REG`, `INPI <Vector>`, `INPS`: If cell at `DP` + vector is **not** passable (not empty and not owned by self). The vector must be a unit vector.
-* `INFR %VEC_REG`, `INFI <Vector>`, `INFS`: If cell at `DP` + vector is **not** owned by a foreign organism (ownerId == 0 || ownerId == self.id). The vector must be a unit vector.
-* `INVR %VEC_REG`, `INVI <Vector>`, `INVS`: If cell at `DP` + vector is **not** vacant (has an owner, ownerId != 0). The vector must be a unit vector.
 * `INER`: If the previous instruction did **not** fail. Takes no operands. The negated form of `IFER`.
+
+Cell tests:
+
+* `INMR %VEC_REG`, `INMI <Vector>`, `INMS`: If cell at `DP` + vector is **not** owned by self.
+* `INPR %VEC_REG`, `INPI <Vector>`, `INPS`: If cell at `DP` + vector is **not** passable (not empty and not owned by self).
+* `INFR %VEC_REG`, `INFI <Vector>`, `INFS`: If cell at `DP` + vector is **not** owned by a foreign organism (ownerId == 0 || ownerId == self.id).
+* `INVR %VEC_REG`, `INVI <Vector>`, `INVS`: If cell at `DP` + vector is **not** vacant (has an owner, ownerId != 0).
 
 ### World Interaction
 
-These instructions interact with the environment grid relative to the **active Data Pointer (`DP`)**. The vector argument must be a unit vector, meaning these instructions can only target adjacent cells.
+These instructions interact with the environment grid relative to the **active Data Pointer (`DP`)**. The vector argument is a displacement: it addresses the cell the `DP` stands on, or one adjacent to it. A vector that would reach further is mapped to the nearest adjacent cell.
 Note on conflicts: If a world interaction loses conflict resolution for its target, its energy cost may be waived depending on the thermodynamic policy configuration.
 
 * `PEEK %DEST_REG %VEC_REG`, `PEKI %DEST_REG <Vector>`, `PEKS`: Reads and consumes molecule at `DP` + vector, then clears ownership on that cell.
@@ -469,14 +483,14 @@ Note on conflicts: If a world interaction loses conflict resolution for its targ
 
 * `NOP`: No operation.
 * `SYNC`: Sets active `DP` = `IP`.
-* `TURN %VEC_REG`, `TRNI <Vector>`, `TRNS`: Sets `DV` to the specified vector. The instruction will fail if the vector is not a unit vector.
+* `TURN %VEC_REG`, `TRNI <Vector>`, `TRNS`: Sets `DV` to the unit vector nearest to the specified vector. A vector with no non-zero component names no direction and leaves `DV` unchanged.
 * `POS %REG`, `POSS`: Stores the organism's position relative to its start (`IP` - `InitialIP`) in `<%REG>` or on the stack.
 * `DIFF %REG`, `DIFS`: Stores the vector `DP` - `IP` in `<%REG>` or on the stack.
 * `NRG %REG`, `NRGS`: Stores current `ER` in `<%REG>` or on the stack.
 * `NTR %REG`, `NTRS`: Stores current `SR` in `<%REG>` or on the stack.
 * `RAND %REG`, `RNDS`: Stores a random number [0, `<%REG>`) back into `<%REG>` or on the stack.
 * `GDVR %VEC_REG`, `GDVS`: Stores current `DV` in `<%VEC_REG>` or on the stack.
-* `FORK %DP_VEC_REG %NRG_REG %DV_VEC_REG`: Creates a child organism at `DP` + delta vector. After the child is created, all molecules owned by the parent that have a marker value equal to the parent's current `MR` are transferred to the child, and their markers are reset to 0. Additional energy may be consumed based on the energy amount transferred to the child. The instruction fails when `MR` is 0, before any energy is taken and before the child is created: marker 0 is the ephemeral class and hands nothing on.
+* `FORK %DP_VEC_REG %NRG_REG %DV_VEC_REG`: Creates a child organism at `DP` + delta vector. The delta is a displacement, as in a world interaction: it places the child on the cell the `DP` stands on or one adjacent to it, and a vector that would reach further is mapped to the nearest adjacent cell. The child's direction vector is mapped like any other direction, to the unit vector nearest to it; one that names no direction gives the child the parent's own. After the child is created, all molecules owned by the parent that have a marker value equal to the parent's current `MR` are transferred to the child, and their markers are reset to 0. Additional energy may be consumed based on the energy amount transferred to the child. The instruction fails when `MR` is 0, before any energy is taken and before the child is created: marker 0 is the ephemeral class and hands nothing on.
 * `FRKI <DP_Vec> <NRG_Lit> <DV_Vec>`, `FRKS`: Creates a child organism (immediate/stack variants). Same ownership transfer behavior as `FORK`, including the failure with `MR` 0.
 * `ADPR %REG`, `ADPI <Literal>`, `ADPS`: Sets the active Data Pointer index.
 * `SMR %REG`, `SMRI <Literal>`, `SMRS`: Sets the Molecule Marker Register (`MR`) to the value from the register, literal, or stack. The operand must be of type `DATA` or `STATE`; otherwise, the instruction fails. The value is masked to 4 bits (0-15).
@@ -527,7 +541,7 @@ Converts a single-bit direction mask into an n-dimensional unit vector using the
 Converts an n-dimensional unit vector into a single-bit direction mask using the same convention as `B2V`: for dimension d, bit 2·d = +1 direction, bit 2·d+1 = −1 direction. **Supports up to bitmask size limitations.**
 
 * `V2BR %MASK_REG %VEC_REG`, `V2BI %MASK_REG <Vector>`, `V2BS`
-  - Fails if the vector is not a unit vector with exactly one non-zero component of magnitude 1.
+  - The vector is mapped to the nearest unit vector, as a turn is; a vector naming no direction yields the mask of the current `DV`. The instruction fails only if the operand is not a vector, or if its axis lies beyond the mask, which covers `Config.VALUE_BITS / 2` axes.
   - Register variants write a `DATA`-typed mask into `%MASK_REG`; stack variant pops the vector and pushes the mask.
 
 #### Rotate Right in Plane (RTR*)

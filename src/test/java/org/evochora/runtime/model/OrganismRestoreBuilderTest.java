@@ -215,6 +215,38 @@ class OrganismRestoreBuilderTest {
             .hasMessageContaining("IP must be set");
     }
 
+    /**
+     * Every runtime path that sets a direction maps it to a unit vector, so a stored direction that
+     * is not one describes an organism no run of this build could have produced. Restoring it would
+     * advance an instruction pointer in steps of more than one cell, or in a direction the state
+     * does not name at all.
+     */
+    @Test
+    @Tag("unit")
+    void testRestoreBuilder_NonUnitDv_ThrowsException() {
+        assertThatThrownBy(() ->
+            Organism.restore(1, 0L)
+                .ip(new int[]{0, 0})
+                .dv(new int[]{1, 1})
+                .initialPosition(new int[]{0, 0})
+                .build(simulation)
+        )
+            .as("two axes at once is no direction of travel")
+            .isInstanceOf(Organism.InvalidRestoreState.class)
+            .hasMessageContaining("unit vector");
+
+        assertThatThrownBy(() ->
+            Organism.restore(1, 0L)
+                .ip(new int[]{0, 0})
+                .dv(new int[]{2, 0})
+                .initialPosition(new int[]{0, 0})
+                .build(simulation)
+        )
+            .as("a step of two cells is no direction of travel")
+            .isInstanceOf(Organism.InvalidRestoreState.class)
+            .hasMessageContaining("unit vector");
+    }
+
     @Test
     @Tag("unit")
     void testRestoreBuilder_MissingDv_ThrowsException() {

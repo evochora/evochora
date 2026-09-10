@@ -240,6 +240,146 @@ public class VMStateInstructionTest {
     }
 
     /**
+     * A direction longer than one step still names an axis, and the organism turns along it instead
+     * of failing.
+     */
+    @Test
+    @Tag("unit")
+    void testTrniSnapsALongVector() {
+        placeInstructionWithVectorOnly("TRNI", new int[]{2, 0});
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).as(org.getFailureReason()).isFalse();
+        assertThat(org.getDv()).isEqualTo(new int[]{1, 0});
+    }
+
+    /**
+     * Two axes of equal magnitude are separated by the number of negative components among them, so
+     * a direction of 1|-1 turns the organism along the negative second axis.
+     */
+    @Test
+    @Tag("unit")
+    void testTrniSnapsATiedVector() {
+        placeInstructionWithVectorOnly("TRNI", new int[]{1, -1});
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).as(org.getFailureReason()).isFalse();
+        assertThat(org.getDv()).isEqualTo(new int[]{0, -1});
+    }
+
+    /**
+     * A vector without components names no direction at all, and the organism keeps the one it is
+     * already travelling in.
+     */
+    @Test
+    @Tag("unit")
+    void testTrniWithoutADirectionKeepsTheCurrentOne() {
+        int[] before = org.getDv();
+        placeInstructionWithVectorOnly("TRNI", new int[]{0, 0});
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).as(org.getFailureReason()).isFalse();
+        assertThat(org.getDv()).isEqualTo(before);
+    }
+
+    /**
+     * The direction a fork gives its child is mapped like any other vector. Asked for none, the
+     * child inherits the parent's, so it travels in a direction that exists rather than in the one
+     * an unchecked operand would have left it with.
+     */
+    @Test
+    @Tag("unit")
+    void testFrkiGivesTheChildTheParentsDirectionWhenTheOperandNamesNone() {
+        org.addEr(1000);
+        org.setMr(1);
+        org.setDp(0, org.getIp());
+        int[] parentDv = org.getDv();
+
+        placeInstruction("FRKI", 1, 0, 100, 0, 0);
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).as(org.getFailureReason()).isFalse();
+        assertThat(sim.getOrganisms()).hasSize(2);
+        Organism child = sim.getOrganisms().stream()
+                .filter(o -> o.getId() != org.getId())
+                .findFirst()
+                .orElseThrow();
+        assertThat(child.getDv()).isEqualTo(parentDv);
+    }
+
+    /**
+     * The delta of a fork displaces the child from the data pointer, so a vector that names no
+     * neighbour places the child at the nearest one rather than sterilising the parent. Two axes are
+     * equally near for 1|1, and with no negative component among them the first axis wins.
+     */
+    @Test
+    @Tag("unit")
+    void testFrkiSnapsTheDelta() {
+        org.addEr(1000);
+        org.setMr(1);
+        org.setDp(0, org.getIp());
+        int[] expected = org.getTargetCoordinate(org.getDp(0), new int[]{1, 0}, environment);
+
+        placeInstruction("FRKI", 1, 1, 100, 1, 0);
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).as(org.getFailureReason()).isFalse();
+        assertThat(sim.getOrganisms()).hasSize(2);
+        Organism child = sim.getOrganisms().stream()
+                .filter(o -> o.getId() != org.getId())
+                .findFirst()
+                .orElseThrow();
+        assertThat(child.getInitialPosition()).isEqualTo(expected);
+    }
+
+    /**
+     * A delta of none places the child where the data pointer stands, which is a cell like any other
+     * the fork may reach.
+     */
+    @Test
+    @Tag("unit")
+    void testFrkiWithoutADeltaPlacesTheChildUnderTheDataPointer() {
+        org.addEr(1000);
+        org.setMr(1);
+        org.setDp(0, new int[]{org.getIp()[0], org.getIp()[1] + 1});
+        int[] underPointer = org.getDp(0).clone();
+
+        placeInstruction("FRKI", 0, 0, 100, 1, 0);
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).as(org.getFailureReason()).isFalse();
+        assertThat(sim.getOrganisms()).hasSize(2);
+        Organism child = sim.getOrganisms().stream()
+                .filter(o -> o.getId() != org.getId())
+                .findFirst()
+                .orElseThrow();
+        assertThat(child.getInitialPosition()).isEqualTo(underPointer);
+    }
+
+    /**
+     * A child asked to travel two steps at a time travels one: the direction operand is mapped to
+     * the nearest unit vector, which is what the instruction pointer is advanced along.
+     */
+    @Test
+    @Tag("unit")
+    void testFrkiSnapsTheChildsDirection() {
+        org.addEr(1000);
+        org.setMr(1);
+        org.setDp(0, org.getIp());
+
+        placeInstruction("FRKI", 1, 0, 100, 2, 0);
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).as(org.getFailureReason()).isFalse();
+        assertThat(sim.getOrganisms()).hasSize(2);
+        Organism child = sim.getOrganisms().stream()
+                .filter(o -> o.getId() != org.getId())
+                .findFirst()
+                .orElseThrow();
+        assertThat(child.getDv()).isEqualTo(new int[]{1, 0});
+    }
+
+    /**
      * Tests the POSS instruction (push current position to stack).
      * This is a unit test for the VM's instruction logic.
      */
@@ -402,6 +542,63 @@ public class VMStateInstructionTest {
 
         assertThat(org.readOperand(0)).isEqualTo(payload);
         assertThat(environment.getMolecule(target).toInt()).isEqualTo(payload);
+    }
+
+    /**
+     * A scan reads a neighbouring cell, so a vector that names no neighbour is mapped to the nearest
+     * one and the scan reads there. Two equally near axes are separated by the number of negative
+     * components among them, which sends 1|1 along the first axis.
+     */
+    @Test
+    @Tag("unit")
+    void testScniSnapsANonUnitVector() {
+        // Beside the row the instruction occupies, so the neighbour it scans holds what is placed.
+        org.setDp(0, new int[]{org.getIp()[0], org.getIp()[1] + 1});
+        int[] neighbour = org.getTargetCoordinate(org.getDp(0), new int[]{1, 0}, environment);
+        int payload = new Molecule(Config.TYPE_CODE, 42).toInt();
+        environment.setMolecule(Molecule.fromInt(payload), neighbour);
+
+        placeInstructionWithVector("SCNI", 0, new int[]{1, 1});
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).as(org.getFailureReason()).isFalse();
+        assertThat(org.readOperand(0)).isEqualTo(payload);
+    }
+
+    /**
+     * A vector without components displaces the data pointer by nothing, so it stays where it is
+     * instead of the instruction failing.
+     */
+    @Test
+    @Tag("unit")
+    void testSekiWithoutADisplacementLeavesTheDataPointerWhereItIs() {
+        // Beside the row the instruction occupies, so the cell the pointer stands on is empty.
+        org.setDp(0, new int[]{org.getIp()[0], org.getIp()[1] + 1});
+        int[] before = org.getDp(0).clone();
+
+        placeInstructionWithVectorOnly("SEKI", new int[]{0, 0});
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).as(org.getFailureReason()).isFalse();
+        assertThat(org.getDp(0)).isEqualTo(before);
+    }
+
+    /**
+     * A scan without a displacement reads the cell the data pointer stands on. That cell is never
+     * foreign in a way the neighbours are not: the reach is one cell smaller than a step, not larger.
+     */
+    @Test
+    @Tag("unit")
+    void testScniWithoutADisplacementReadsTheCellUnderTheDataPointer() {
+        org.setDp(0, new int[]{org.getIp()[0], org.getIp()[1] + 1});
+        int payload = new Molecule(Config.TYPE_CODE, 42).toInt();
+        environment.setMolecule(Molecule.fromInt(payload), org.getDp(0));
+
+        placeInstructionWithVector("SCNI", 0, new int[]{0, 0});
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).as(org.getFailureReason()).isFalse();
+        assertThat(org.readOperand(0)).isEqualTo(payload);
     }
 
     /**

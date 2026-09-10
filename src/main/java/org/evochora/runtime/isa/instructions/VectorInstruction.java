@@ -230,10 +230,8 @@ public class VectorInstruction extends Instruction {
             return;
         }
         int destReg = operands.get(0).rawSourceId();
-        Object src = operands.get(1).value();
-        int mask = vectorToMask(src);
+        int mask = maskOfDirection(operands.get(1).value(), "V2B");
         if (mask == -1) {
-            organism.instructionFailed("V2B requires a unit vector with single non-zero component of magnitude 1.");
             return;
         }
         writeOperand(destReg, new Molecule(Config.TYPE_DATA, mask).toInt());
@@ -245,32 +243,47 @@ public class VectorInstruction extends Instruction {
             organism.instructionFailed("V2BS requires a vector on the stack.");
             return;
         }
-        Object top = operands.get(0).value();
-        int mask = vectorToMask(top);
+        int mask = maskOfDirection(operands.get(0).value(), "V2BS");
         if (mask == -1) {
-            organism.instructionFailed("V2BS requires a unit vector with single non-zero component of magnitude 1.");
             return;
         }
         organism.pushData(new Molecule(Config.TYPE_DATA, mask).toInt());
     }
 
-    private int vectorToMask(Object vectorObj) {
+    /**
+     * The bit of the direction a vector operand names, by the convention this family uses: bit
+     * {@code 2·d} for the positive direction along axis {@code d}, bit {@code 2·d + 1} for the
+     * negative one.
+     * <p>
+     * The operand is mapped to the nearest unit vector first, so any vector names a direction and
+     * only two things can go wrong: the operand is not a vector at all, or its axis lies beyond the
+     * mask, which covers {@code VALUE_BITS / 2} axes. Both fail the instruction with a message that
+     * says which of the two it was.
+     *
+     * @param vectorObj The operand to read the direction from.
+     * @param opName The instruction's name, for the failure message.
+     * @return The mask with one bit set, or -1 when the instruction has been marked failed.
+     */
+    private int maskOfDirection(Object vectorObj, String opName) {
         if (!(vectorObj instanceof int[] vector)) {
+            organism.instructionFailed(opName + " requires a vector operand.");
             return -1;
         }
-        int nonZeroIndex = -1;
-        for (int i = 0; i < vector.length; i++) {
-            int v = vector[i];
-            if (v == 0) continue;
-            if (Math.abs(v) != 1) return -1;
-            if (nonZeroIndex != -1) return -1;
-            nonZeroIndex = i;
+        int[] direction = organism.toUnitVector(vector);
+        if (direction == null) {
+            return -1;
         }
-        if (nonZeroIndex == -1) return -1;
-        boolean positive = vector[nonZeroIndex] > 0;
-        int bitIndex = nonZeroIndex * 2 + (positive ? 0 : 1);
-        if (nonZeroIndex >= Config.VALUE_BITS / 2) return -1;
-        return 1 << bitIndex;
+        int axis = 0;
+        while (direction[axis] == 0) {
+            axis++;
+        }
+        int axisLimit = Config.VALUE_BITS / 2;
+        if (axis >= axisLimit) {
+            organism.instructionFailed(opName + ": axis " + axis + " has no bit in a mask covering "
+                    + axisLimit + " axes.");
+            return -1;
+        }
+        return 1 << (axis * 2 + (direction[axis] > 0 ? 0 : 1));
     }
 
     private int[] maskToUnitVector(int rawMask, int dims) {

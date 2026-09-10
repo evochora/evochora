@@ -592,17 +592,111 @@ public class VMConditionalInstructionTest {
     }
 
     /**
-     * Tests that IFMR fails if the provided register does not contain a valid unit vector.
-     * This is a unit test for the VM's error handling.
+     * A vector that names no neighbour is a displacement like any other: it is mapped to the nearest
+     * cell and the condition is evaluated there, rather than the instruction failing. Two axes are
+     * equally near for 1|-1, and the one negative component among them sends it to the negative
+     * second axis. The cell there belongs to nobody, so the condition does not hold and the
+     * following instruction is skipped.
      */
     @Test
     @Tag("unit")
-    void testIfmr_InvalidVector_Fails() {
-        org.writeOperand(1, new int[]{1, 1}); // not a unit vector
+    void testIfmr_NonUnitVector_EvaluatesAtTheNearestNeighbour() {
+        org.writeOperand(1, new int[]{1, -1});
         placeInstruction("IFMR", 1);
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFMR"), environment));
         sim.tick();
-        assertThat(org.isInstructionFailed()).isTrue();
-        assertThat(org.getFailureReason()).contains("not a unit vector");
+        sim.tick();
+
+        assertThat(org.readOperand(0))
+                .as("the condition does not hold, so the next instruction is skipped")
+                .isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
+        assertNoInstructionFailure();
+    }
+
+    /**
+     * The counterpart: with the cell the mapping selects owned by the organism, the same condition
+     * holds and the following instruction runs. Together with the previous test this shows the
+     * condition is evaluated at that cell rather than merely not failing.
+     */
+    @Test
+    @Tag("unit")
+    void testIfmr_NonUnitVector_HoldsWhenTheNearestNeighbourIsOwned() {
+        org.writeOperand(1, new int[]{1, -1});
+        int[] nearest = org.getTargetCoordinate(org.getDp(0), new int[]{0, -1}, environment);
+        environment.setOwnerId(org.getId(), nearest);
+
+        placeInstruction("IFMR", 1);
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFMR"), environment));
+        sim.tick();
+        sim.tick();
+
+        assertThat(org.readOperand(0))
+                .as("the condition holds, so the next instruction runs")
+                .isNotEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
+        assertNoInstructionFailure();
+    }
+
+    /**
+     * The passability test maps its vector like the ownership test does. Two axes are equally near
+     * for 1|-1, and the one negative component among them selects the negative second axis; a cell
+     * another organism holds is not passable, so the following instruction is skipped.
+     */
+    @Test
+    @Tag("unit")
+    void testIfpr_NonUnitVector_EvaluatesAtTheNearestNeighbour() {
+        org.writeOperand(1, new int[]{1, -1});
+        int[] nearest = org.getTargetCoordinate(org.getDp(0), new int[]{0, -1}, environment);
+        environment.setMolecule(new Molecule(Config.TYPE_STRUCTURE, 1), 4242, nearest);
+
+        placeInstruction("IFPR", 1);
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFPR"), environment));
+        sim.tick();
+        sim.tick();
+
+        assertThat(org.readOperand(0))
+                .as("the cell is held by someone else, so the next instruction is skipped")
+                .isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
+        assertNoInstructionFailure();
+    }
+
+    /**
+     * The counterpart: with the cell the mapping selects left empty, the same condition holds and
+     * the following instruction runs.
+     */
+    @Test
+    @Tag("unit")
+    void testIfpr_NonUnitVector_HoldsWhenTheNearestNeighbourIsEmpty() {
+        org.writeOperand(1, new int[]{1, -1});
+
+        placeInstruction("IFPR", 1);
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFPR"), environment));
+        sim.tick();
+        sim.tick();
+
+        assertThat(org.readOperand(0))
+                .as("an empty cell is passable, so the next instruction runs")
+                .isNotEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
+        assertNoInstructionFailure();
+    }
+
+    /**
+     * A condition without a displacement asks about the cell the data pointer stands on.
+     */
+    @Test
+    @Tag("unit")
+    void testIfmr_WithoutADisplacement_TestsTheCellUnderTheDataPointer() {
+        org.writeOperand(1, new int[]{0, 0});
+        environment.setOwnerId(org.getId(), org.getDp(0));
+
+        placeInstruction("IFMR", 1);
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFMR"), environment));
+        sim.tick();
+        sim.tick();
+
+        assertThat(org.readOperand(0))
+                .as("the organism owns the cell it stands on, so the next instruction runs")
+                .isNotEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
+        assertNoInstructionFailure();
     }
 
     /**

@@ -35,7 +35,7 @@ public final class MoleculeTypeColors {
      * Private constructor to prevent instantiation.
      */
     private MoleculeTypeColors() {
-        throw new AssertionError("Utility class - cannot be instantiated");
+        // Utility class - prevent instantiation
     }
 
     /**

@@ -222,10 +222,9 @@ public class StateInstruction extends Instruction {
 
     private void handleTurn(List<Operand> operands) {
         if (operands.size() != 1) { organism.instructionFailed("Invalid operands for TURN."); return; }
-        int[] newDv = (int[]) operands.get(0).value();
-        if (organism.isUnitVector(newDv)) {
-            organism.setDv(newDv);
-        }
+        int[] newDv = organism.toUnitVector((int[]) operands.get(0).value());
+        if (newDv == null) { return; }
+        organism.setDv(newDv);
     }
 
     private void handleSync() {
@@ -260,18 +259,21 @@ public class StateInstruction extends Instruction {
      * an organism's own memory and never leave it. The check runs before energy is taken and before
      * a child organism is created, because organism IDs feed the per-tick conflict priority.
      *
-     * @param operands Three operands: unit delta vector, energy scalar, child DV vector.
+     * @param operands Three operands: the delta that displaces the child from the data pointer, an
+     *        energy scalar, and the direction the child is to travel in, which is mapped to the
+     *        nearest unit vector — the parent's own direction when the operand names none.
      * @param simulation The simulation for coordinate resolution and organism registration.
      */
     private void handleFork(List<Operand> operands, Simulation simulation) {
         if (!requireNonZeroMarkerRegister("FORK")) { return; }
         if (operands.size() != 3) { organism.instructionFailed("Invalid operands for FORK."); return; }
-        int[] delta = (int[]) operands.get(0).value();
-        if (!organism.isUnitVector(delta)) {
+        int[] delta = organism.toDisplacement((int[]) operands.get(0).value());
+        if (delta == null) {
             return;
         }
         int energy = org.evochora.runtime.model.Molecule.fromInt((Integer) operands.get(1).value()).toScalarValue();
-        int[] childDv = (int[]) operands.get(2).value();
+        int[] childDv = organism.toUnitVector((int[]) operands.get(2).value());
+        if (childDv == null) { return; }
         // The VirtualMachine already deducted the base cost (10), now we need to deduct the energy given to child
         if (energy > 0 && organism.getEr() >= energy) {
             int[] childIp = organism.getTargetCoordinate(organism.getActiveDp(), delta, simulation.getEnvironment());
@@ -419,14 +421,14 @@ public class StateInstruction extends Instruction {
             organism.instructionFailed("Invalid operands for SEEK variant.");
             return;
         }
-        int[] vector = (int[]) operands.get(0).value();
-        if (!organism.isUnitVector(vector)) {
+        int[] vector = organism.toDisplacement((int[]) operands.get(0).value());
+        if (vector == null) {
             return;
         }
         int[] targetCoordinate = organism.getTargetCoordinate(organism.getActiveDp(), vector, environment);
 
         Molecule moleculeAtTarget = environment.getMolecule(targetCoordinate);
-        int ownerIdAtTarget = environment.getOwnerId(targetCoordinate[0], targetCoordinate[1]);
+        int ownerIdAtTarget = environment.getOwnerId(targetCoordinate);
         if (moleculeAtTarget.isEmpty() || organism.isCellAccessible(ownerIdAtTarget)) {
             organism.setActiveDp(targetCoordinate);
         } else {
@@ -437,9 +439,10 @@ public class StateInstruction extends Instruction {
     /**
      * Handles the extended FORK variants (FRKI / FRKS).
      * FRKI takes immediate operands; FRKS pops delta, energy, and child DV from the data stack.
-     * Otherwise identical to {@link #handleFork}: requires a non-zero marker register, validates
-     * the delta as a unit vector, transfers energy, creates a child organism, and transfers
-     * marker-matching ownership.
+     * Otherwise identical to {@link #handleFork}: requires a non-zero marker register, places the
+     * child by the delta as a displacement, gives it the direction it was asked for as the nearest
+     * unit vector, transfers energy, creates a child organism, and transfers marker-matching
+     * ownership.
      *
      * @param opName "FRKI" (immediate) or "FRKS" (stack).
      * @param operands Resolved operands for the instruction.
@@ -450,12 +453,13 @@ public class StateInstruction extends Instruction {
         if (!requireNonZeroMarkerRegister(opName)) { return; }
         if ("FRKI".equals(opName)) {
             if (operands.size() != 3) { organism.instructionFailed("FRKI expects <Vec>, <Lit>, <Vec>."); return; }
-            int[] delta = (int[]) operands.get(0).value();
-            if (!organism.isUnitVector(delta)) {
+            int[] delta = organism.toDisplacement((int[]) operands.get(0).value());
+            if (delta == null) {
                 return;
             }
             int energy = org.evochora.runtime.model.Molecule.fromInt((Integer) operands.get(1).value()).toScalarValue();
-            int[] childDv = (int[]) operands.get(2).value();
+            int[] childDv = organism.toUnitVector((int[]) operands.get(2).value());
+            if (childDv == null) { return; }
             // The VirtualMachine already deducted the base cost (1), now we need to deduct the energy given to child
             if (energy > 0 && organism.getEr() >= energy) {
                 int[] childIp = organism.getTargetCoordinate(organism.getActiveDp(), delta, environment);
@@ -484,16 +488,17 @@ public class StateInstruction extends Instruction {
                 organism.instructionFailed("FRKS stack contents invalid.");
                 return;
             }
-            if (!organism.isUnitVector(delta)) {
-                return;
-            }
+            int[] displacement = organism.toDisplacement(delta);
+            if (displacement == null) { return; }
+            int[] snappedChildDv = organism.toUnitVector(childDv);
+            if (snappedChildDv == null) { return; }
             int energy = org.evochora.runtime.model.Molecule.fromInt(ei).toScalarValue();
             // The VirtualMachine already deducted the base cost (1), now we need to deduct the energy given to child
             if (energy > 0 && organism.getEr() >= energy) {
-                int[] childIp = organism.getTargetCoordinate(organism.getActiveDp(), delta, environment);
+                int[] childIp = organism.getTargetCoordinate(organism.getActiveDp(), displacement, environment);
                 organism.takeEr(energy); // Deduct the energy given to the child
                 Organism child = Organism.create(simulation, childIp, energy);
-                child.setDv(childDv);
+                child.setDv(snappedChildDv);
                 child.inheritFrom(organism);
                 child.setBirthTick(simulation.getCurrentTick());
                 child.setProgramId(organism.getProgramId());
@@ -520,7 +525,8 @@ public class StateInstruction extends Instruction {
             targetReg = operands.get(0).rawSourceId();
             vector = (int[]) operands.get(1).value();
         }
-        if (!organism.isUnitVector(vector)) {
+        vector = organism.toDisplacement(vector);
+        if (vector == null) {
             return;
         }
         int[] target = organism.getTargetCoordinate(organism.getActiveDp(), vector, environment);
@@ -534,10 +540,9 @@ public class StateInstruction extends Instruction {
 
     private void handleTrni(List<Operand> operands) {
         if (operands.size() != 1) { organism.instructionFailed("Invalid operands for TRNI."); return; }
-        int[] newDv = (int[]) operands.get(0).value();
-        if (organism.isUnitVector(newDv)) {
-            organism.setDv(newDv);
-        }
+        int[] newDv = organism.toUnitVector((int[]) operands.get(0).value());
+        if (newDv == null) { return; }
+        organism.setDv(newDv);
     }
 
     private void handleTrns(List<Operand> operands) {
@@ -545,9 +550,9 @@ public class StateInstruction extends Instruction {
         if (operands.isEmpty()) { organism.instructionFailed("TRNS requires vector on stack."); return; }
         Object top = operands.get(0).value();
         if (!(top instanceof int[] vec)) { organism.instructionFailed("TRNS requires vector on stack."); return; }
-        if (organism.isUnitVector(vec)) {
-            organism.setDv(vec);
-        }
+        int[] newDv = organism.toUnitVector(vec);
+        if (newDv == null) { return; }
+        organism.setDv(newDv);
     }
 
     private void handlePoss() {

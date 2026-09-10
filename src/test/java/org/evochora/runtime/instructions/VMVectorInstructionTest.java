@@ -132,6 +132,58 @@ public class VMVectorInstructionTest {
     }
 
     /**
+     * A mask names a direction, so a vector that names none precisely is mapped to the nearest one
+     * and yields that direction's bit. With two axes equally near, the one negative component among
+     * them sends 1|-1 to the negative second axis, whose bit is 2·1 + 1.
+     */
+    @Test
+    @Tag("unit")
+    void testV2brSnapsANonUnitVector() {
+        org.writeOperand(1, new int[]{1, -1});
+        placeInstruction("V2BR", 0, 1);
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).as(org.getFailureReason()).isFalse();
+        int result = Molecule.fromInt((Integer) org.readOperand(0)).toScalarValue();
+        assertThat(result).isEqualTo(1 << 3);
+    }
+
+    /**
+     * A vector without components names no direction either, and the organism's own direction of
+     * travel answers for it — the same rule that applies when a turn is asked for no direction.
+     */
+    @Test
+    @Tag("unit")
+    void testV2brWithoutADirectionYieldsTheDirectionOfTravel() {
+        org.writeOperand(1, new int[]{0, 0});
+        placeInstruction("V2BR", 0, 1);
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).as(org.getFailureReason()).isFalse();
+        int result = Molecule.fromInt((Integer) org.readOperand(0)).toScalarValue();
+        assertThat(result).as("the default direction of travel is +axis 0").isEqualTo(1 << 0);
+    }
+
+    /**
+     * An operand that is not a vector at all is the one shape a mask cannot be made from, and it
+     * says so rather than reporting a unit vector that was never required.
+     */
+    @Test
+    @Tag("unit")
+    void testV2brWithAScalarOperandSaysWhatIsWrong() {
+        org.writeOperand(1, new Molecule(Config.TYPE_DATA, 7).toInt());
+        placeInstruction("V2BR", 0, 1);
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).isTrue();
+        assertThat(org.getFailureReason()).contains("requires a vector operand");
+
+        // This class asserts after every test that no instruction failed; this one provokes a
+        // failure deliberately and clears it again.
+        org.resetTickState();
+    }
+
+    /**
      * Tests the V2BS (Vector to Bitmask Stack) instruction.
      * This is a unit test for the VM's instruction logic.
      */
