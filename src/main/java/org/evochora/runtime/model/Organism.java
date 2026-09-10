@@ -1138,20 +1138,19 @@ public class Organism {
     /**
      * Maps a vector operand to the unit vector nearest to it in angle.
      * <p>
-     * Instructions that address a neighbouring cell, set a direction of travel, place a child or
-     * form a direction mask need a unit vector. Rather than rejecting anything else, they take the
-     * nearest one: a mutated vector then moves an organism in a slightly different direction instead
-     * of failing the instruction that uses it from then on. {@link UnitVector} holds the rule and
-     * how a tie between equally near candidates is settled.
+     * Instructions that set a direction of travel or form a direction mask need a unit vector.
+     * Rather than rejecting anything else, they take the nearest one: a mutated vector then sends an
+     * organism in a slightly different direction instead of failing the instruction that uses it
+     * from then on. {@link UnitVector} holds the rule and how a tie between equally near candidates
+     * is settled.
      * <p>
      * The zero vector names no direction, and this organism's own direction of travel answers for
      * it. The result is a copy in that case, because a caller may hand it to another organism — the
      * direction vector of a child, say — and two organisms must not share one array.
      * <p>
-     * A vector whose component count does not match the world cannot arise: an operand is filled
-     * into an array sized from the world, and every instruction that builds a vector is handed the
-     * world's dimensionality. Such a vector is therefore a defect in this code rather than a fault
-     * of the program being executed, and it is logged as one before the instruction is failed.
+     * This is the mapping for a vector that names a direction. A vector that displaces the data
+     * pointer goes through {@link #toDisplacement(int[])} instead, where a vector without components
+     * keeps its own meaning.
      *
      * @param vector The vector operand to map. Not modified
      * @return The nearest unit vector, which is the argument itself when it already is one, or
@@ -1159,17 +1158,65 @@ public class Organism {
      *         instruction has been marked failed
      */
     public int[] toUnitVector(int[] vector) {
-        int dimensions = this.ip.length;
-        if (vector.length != dimensions) {
-            LOG.error("Organism {} holds a vector of {} components in a world of {}",
-                    id, vector.length, dimensions,
-                    new IllegalStateException("Vector component count invariant violated"));
-            this.instructionFailed("Vector has incorrect dimensions: expected " + dimensions
-                    + ", got " + vector.length);
+        if (!hasWorldDimensions(vector)) {
             return null;
         }
         int[] nearest = UnitVector.nearest(vector);
         return nearest != null ? nearest : Arrays.copyOf(dv, dv.length);
+    }
+
+    /**
+     * Maps a vector operand that displaces the data pointer to one that reaches a cell.
+     * <p>
+     * Instructions that read, write or test a cell take their vector as an offset from the data
+     * pointer, and they may reach the cell it stands on or one adjacent to it. Anything further is
+     * mapped to the nearest unit vector, so a mutated operand moves the reach by a cell instead of
+     * failing the instruction that uses it from then on. {@link UnitVector} holds the rule.
+     * <p>
+     * A vector without components is a displacement of none, and it stays one: the instruction then
+     * acts on the cell the data pointer already stands on. That is a direction fewer than the
+     * {@code 2 · dimensions} neighbours, not one more — the reach never grows beyond adjacency.
+     * <p>
+     * A vector whose component count does not match the world is a defect in this code rather than a
+     * fault of the program being executed, and it is logged as one before the instruction is failed.
+     *
+     * @param vector The vector operand to map. Not modified
+     * @return The displacement to use, which is the argument itself when it already reaches a cell,
+     *         or {@code null} when the component count does not match the world, in which case the
+     *         instruction has been marked failed
+     */
+    public int[] toDisplacement(int[] vector) {
+        if (!hasWorldDimensions(vector)) {
+            return null;
+        }
+        int[] nearest = UnitVector.nearest(vector);
+        return nearest != null ? nearest : vector;
+    }
+
+    /**
+     * Whether a vector operand has one component per world dimension, failing the instruction and
+     * logging the violation when it does not.
+     * <p>
+     * No runtime path produces a mismatch: an operand is filled into an array sized from the world,
+     * and every instruction that builds a vector is handed the world's dimensionality. A mismatch is
+     * therefore a defect here, which is why it is logged with a stack trace rather than merely
+     * booked as a failure of the program.
+     *
+     * @param vector The vector operand to check.
+     * @return {@code true} when the count matches, {@code false} when the instruction has been
+     *         marked failed because it does not
+     */
+    private boolean hasWorldDimensions(int[] vector) {
+        int dimensions = this.ip.length;
+        if (vector.length == dimensions) {
+            return true;
+        }
+        LOG.error("Organism {} holds a vector of {} components in a world of {}",
+                id, vector.length, dimensions,
+                new IllegalStateException("Vector component count invariant violated"));
+        this.instructionFailed("Vector has incorrect dimensions: expected " + dimensions
+                + ", got " + vector.length);
+        return false;
     }
 
     /**

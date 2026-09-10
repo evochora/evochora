@@ -421,8 +421,8 @@ public class StateInstruction extends Instruction {
             organism.instructionFailed("Invalid operands for SEEK variant.");
             return;
         }
-        int[] vector = (int[]) operands.get(0).value();
-        if (!organism.isUnitVector(vector)) {
+        int[] vector = organism.toDisplacement((int[]) operands.get(0).value());
+        if (vector == null) {
             return;
         }
         int[] targetCoordinate = organism.getTargetCoordinate(organism.getActiveDp(), vector, environment);
@@ -525,7 +525,8 @@ public class StateInstruction extends Instruction {
             targetReg = operands.get(0).rawSourceId();
             vector = (int[]) operands.get(1).value();
         }
-        if (!organism.isUnitVector(vector)) {
+        vector = organism.toDisplacement(vector);
+        if (vector == null) {
             return;
         }
         int[] target = organism.getTargetCoordinate(organism.getActiveDp(), vector, environment);

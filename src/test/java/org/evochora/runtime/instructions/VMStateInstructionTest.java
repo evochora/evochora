@@ -496,6 +496,63 @@ public class VMStateInstructionTest {
     }
 
     /**
+     * A scan reads a neighbouring cell, so a vector that names no neighbour is mapped to the nearest
+     * one and the scan reads there. Two equally near axes are separated by the number of negative
+     * components among them, which sends 1|1 along the first axis.
+     */
+    @Test
+    @Tag("unit")
+    void testScniSnapsANonUnitVector() {
+        // Beside the row the instruction occupies, so the neighbour it scans holds what is placed.
+        org.setDp(0, new int[]{org.getIp()[0], org.getIp()[1] + 1});
+        int[] neighbour = org.getTargetCoordinate(org.getDp(0), new int[]{1, 0}, environment);
+        int payload = new Molecule(Config.TYPE_CODE, 42).toInt();
+        environment.setMolecule(Molecule.fromInt(payload), neighbour);
+
+        placeInstructionWithVector("SCNI", 0, new int[]{1, 1});
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).as(org.getFailureReason()).isFalse();
+        assertThat(org.readOperand(0)).isEqualTo(payload);
+    }
+
+    /**
+     * A vector without components displaces the data pointer by nothing, so it stays where it is
+     * instead of the instruction failing.
+     */
+    @Test
+    @Tag("unit")
+    void testSekiWithoutADisplacementLeavesTheDataPointerWhereItIs() {
+        // Beside the row the instruction occupies, so the cell the pointer stands on is empty.
+        org.setDp(0, new int[]{org.getIp()[0], org.getIp()[1] + 1});
+        int[] before = org.getDp(0).clone();
+
+        placeInstructionWithVectorOnly("SEKI", new int[]{0, 0});
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).as(org.getFailureReason()).isFalse();
+        assertThat(org.getDp(0)).isEqualTo(before);
+    }
+
+    /**
+     * A scan without a displacement reads the cell the data pointer stands on. That cell is never
+     * foreign in a way the neighbours are not: the reach is one cell smaller than a step, not larger.
+     */
+    @Test
+    @Tag("unit")
+    void testScniWithoutADisplacementReadsTheCellUnderTheDataPointer() {
+        org.setDp(0, new int[]{org.getIp()[0], org.getIp()[1] + 1});
+        int payload = new Molecule(Config.TYPE_CODE, 42).toInt();
+        environment.setMolecule(Molecule.fromInt(payload), org.getDp(0));
+
+        placeInstructionWithVector("SCNI", 0, new int[]{0, 0});
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).as(org.getFailureReason()).isFalse();
+        assertThat(org.readOperand(0)).isEqualTo(payload);
+    }
+
+    /**
      * Tests the SCNS instruction (scan with stack vector).
      * This is a unit test for the VM's instruction logic.
      */

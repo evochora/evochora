@@ -445,7 +445,7 @@ These instructions are the logical opposites of the standard conditional instruc
 
 ### World Interaction
 
-These instructions interact with the environment grid relative to the **active Data Pointer (`DP`)**. The vector argument must be a unit vector, meaning these instructions can only target adjacent cells.
+These instructions interact with the environment grid relative to the **active Data Pointer (`DP`)**. The vector argument is a displacement: it addresses the cell the `DP` stands on, or one adjacent to it. A vector that would reach further is mapped to the nearest adjacent cell.
 Note on conflicts: If a world interaction loses conflict resolution for its target, its energy cost may be waived depending on the thermodynamic policy configuration.
 
 * `PEEK %DEST_REG %VEC_REG`, `PEKI %DEST_REG <Vector>`, `PEKS`: Reads and consumes molecule at `DP` + vector, then clears ownership on that cell.

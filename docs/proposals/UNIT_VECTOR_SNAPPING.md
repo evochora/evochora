@@ -114,23 +114,34 @@ in higher dimensions. And `k = 2` is the case that arises from a single mutation
 one component ±1, and raising a second one to ±1 produces exactly two candidates. Larger `k` needs
 several mutations of the same vector.
 
-### 3. The zero vector
+### 3. The zero vector, and the two roles a vector operand plays
 
-A zero vector has no direction, so no angle can be nearest. It maps to the current DV of **the
-organism whose instruction is executing**. For the child DV of a fork that is the parent, so a
-child born with a zeroed DV operand inherits the parent's heading; snapping against the child would
-yield its constructor default `+axis 0` (`Organism.java:166–167`), a direction that comes from
-nowhere.
+A vector operand is either a **displacement** or a **direction**, and the zero vector means
+something different in each.
 
-The DV is a unit vector by invariant, is part of the serialised organism state and therefore
-survives a resume, and yields something meaningful in every role: `TURN` keeps its direction,
-`SEEK`, `SCAN` and `PEEK` address the neighbour ahead, `FORK` places the child ahead, `V2B` yields
-the mask of the direction of travel.
+- **Displacement** — `PEEK`, `POKE`, `PPK`, `SCAN`, `SEEK`, the `IF*` / `IN*` family, and the fork
+  delta. The vector is an offset from the data pointer. An offset of none is a complete statement:
+  the cell the pointer already stands on. It is therefore kept, and the instruction acts there. This
+  reaches one cell *fewer* than a step, never one further, so the adjacency rule is not weakened —
+  and a wall of STRUCTURE keeps a foreign data pointer out exactly as before, because that defence
+  works through `SEEK` refusing to enter, not through what can be reached from where the pointer is.
+- **Direction** — `TURN`, `TRNI`, `TRNS`, the child DV of a fork, and `V2B`. The vector says where
+  to travel, and there is no travelling nowhere. The zero vector is answered by the current DV of
+  **the organism whose instruction is executing**; for a child DV that is the parent, so a child
+  born with a zeroed operand inherits the parent's heading. Snapping against the child would yield
+  its constructor default `+axis 0` (`Organism.java:166–167`), a direction that comes from nowhere.
+  The DV is a unit vector by invariant and part of the serialised organism state, so a resume takes
+  the same branch.
+
+Both roles map everything else to the nearest unit vector by the rule above.
 
 ### 4. Scope
 
-The rule applies to the four roles a vector operand plays — neighbour access, direction of travel,
-fork delta and bit mask — and to the child DV of the three fork instructions.
+The rule covers every vector operand of the instructions named in the two roles, the child DV of
+the three fork instructions included.
+
+The two roles are two methods on `Organism`, so that a call site says which it means rather than
+leaving it to a comment: `toUnitVector` for a direction, `toDisplacement` for an offset.
 
 **The snap lives in the role handlers, not in `resolveOperands`.** `SETV` and `PUSV` take `VECTOR`
 operands that legitimately carry large, non-unit values, and `RTR*` explicitly does not require a
@@ -284,12 +295,14 @@ and nothing calls it, so the hot-path cost is known before five slices are commi
   vector jumps by 90° or stays where it was. It removes the cliff, it does not produce small angular
   variation. Variation proportional to the mutation would need an operator that sees a vector as a
   unit, which needs a molecule type for vector components — considered and rejected.
-- **A zeroed operand is correlated with the DV, not independent of it.** Every vector operand that a
-  mutation zeroes snaps to the same direction within one organism at one moment. In a program that
-  holds its DV constant over long stretches, the fallback behaves like a fixed direction. The rule
-  introduces no preference for any axis over a population, but it does not spread a zeroed operand
-  over the directions either. This path is as frequent as the tie path: `1|0 → 0|0` is one of the
-  two effective outcomes of a mutation hitting the non-zero component.
+- **A zeroed direction operand is correlated with the DV, not independent of it.** Where the vector
+  names a direction — `TURN`, the child DV, `V2B` — every operand a mutation zeroes is answered with
+  the same direction within one organism at one moment. In a program that holds its DV constant over
+  long stretches, the fallback behaves there like a fixed direction. The rule introduces no
+  preference for any axis over a population, but it does not spread a zeroed direction over the
+  directions either. This path is as frequent as the tie path: `1|0 → 0|0` is one of the two
+  effective outcomes of a mutation hitting the non-zero component. For a displacement operand the
+  question does not arise, because a zero displacement keeps its own meaning.
 - **Ties with `k ≥ 3` are not perfectly balanced.** In three dimensions the eight sign combinations
   of three candidates yield the outcomes `(1,0,0)`:1, `(-1,0,0)`:1, `(0,1,0)`:2, `(0,-1,0)`:1,
   `(0,0,1)`:1, `(0,0,-1)`:2 — uneven across signs, not only across axes. Three components of equal
@@ -316,6 +329,7 @@ and nothing calls it, so the hot-path cost is known before five slices are commi
 | Tie decided by a hash of the components with an avalanche finaliser | Statistically even, but the balance can no longer be verified by hand and depends on a magic constant; the counting rule is provably balanced where it matters |
 | Tie fails the instruction | Drift-free, but leaves three of four mutation outcomes lethal, which is most of the cliff |
 | Zero vector maps to a fixed vector (+axis 0) | Introduces a direction that comes from nowhere and drifts every organism towards one axis |
+| Zero displacement also answered by the DV | Treats an offset of none as missing information when it is a complete statement, and ties every zeroed world-interaction operand to the direction of travel |
 | Zero vector of a child DV snapped against the child | The child carries its constructor default at that moment, which is the fixed-vector alternative under another name |
 | Compute the true angle with square root and arc cosine | Mathematically identical result at far higher cost; `|v|` cancels out |
 | Snap in `resolveOperands` instead of the role handlers | Would silently change `SETV`, `PUSV` and `RTR*`, which take non-unit vectors legitimately |
@@ -330,8 +344,9 @@ and nothing calls it, so the hot-path cost is known before five slices are commi
   for the shape of its vector any more.
 - Nearest means the axis with the largest absolute component, carrying that component's sign.
 - A tie is decided by the number of negative components among the tied axes, modulo their count.
-- The zero vector maps to the DV of the organism whose instruction is executing — for a child DV
-  therefore to the parent's.
+- A vector operand is a displacement or a direction. A zero displacement is kept and addresses the
+  cell under the data pointer; a zero direction is answered by the DV of the organism whose
+  instruction is executing, for a child DV therefore by the parent's.
 - The rule covers all four roles and the child DV of the fork instructions; the snap lives in the
   role handlers, never in `resolveOperands`.
 - `B2V`/`B2VS` stay out of scope.
