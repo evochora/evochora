@@ -124,6 +124,51 @@ public class VMEnvironmentInteractionInstructionTest {
     }
 
     /**
+     * A write may only reach a cell adjacent to the data pointer. With a vector that is not a unit
+     * vector the instruction fails, and the cell the vector points at has to stay untouched: such an
+     * instruction claims no cell in conflict resolution, so a write reaching the environment would
+     * be a write no arbitration ever saw.
+     */
+    @Test
+    @Tag("unit")
+    void pokiWithNonUnitVectorLeavesTheTargetUntouched() {
+        int payload = new Molecule(Config.TYPE_DATA, 88).toInt();
+        org.setMr(WRITE_MARKER);
+        org.writeOperand(0, payload);
+
+        int[] diagonal = org.getTargetCoordinate(org.getDp(0), new int[]{1, 1}, environment);
+        placeInstruction("POKI", 0, 1, 1);
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).as("a non-unit vector fails the instruction").isTrue();
+        assertThat(environment.getMolecule(diagonal).isEmpty())
+                .as("the cell two steps away must not be written")
+                .isTrue();
+    }
+
+    /**
+     * The reading counterpart: a PEEK variant with a vector that is not a unit vector fails, and the
+     * cell the vector points at keeps its molecule. Consuming it would remove a molecule from a cell
+     * the instruction never claimed.
+     */
+    @Test
+    @Tag("unit")
+    void pekiWithNonUnitVectorLeavesTheTargetUntouched() {
+        org.setDp(0, org.getIp());
+        int[] diagonal = org.getTargetCoordinate(org.getDp(0), new int[]{1, 1}, environment);
+        int payload = new Molecule(Config.TYPE_DATA, 11).toInt();
+        environment.setMolecule(Molecule.fromInt(payload), diagonal);
+
+        placeInstructionWithVector("PEKI", 0, new int[]{1, 1});
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).as("a non-unit vector fails the instruction").isTrue();
+        assertThat(environment.getMolecule(diagonal).toInt())
+                .as("the cell two steps away must keep its molecule")
+                .isEqualTo(payload);
+    }
+
+    /**
      * Tests the POKS instruction (write from stack to location specified by stack vector).
      * This is a unit test for the VM's instruction logic.
      */

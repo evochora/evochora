@@ -87,6 +87,12 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
         Organism organism = context.getOrganism();
         Environment environment = context.getWorld();
         List<Operand> operands = resolveOperands(environment);
+        // An instruction the planning phase already failed claims no cell in conflict resolution,
+        // so it must not reach the environment: its write would bypass the arbitration that every
+        // other write goes through.
+        if (organism.isInstructionFailed()) {
+            return;
+        }
         Object valueToWrite;
         int[] vector;
 
@@ -128,6 +134,12 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
         Organism organism = context.getOrganism();
         Environment environment = context.getWorld();
         List<Operand> operands = resolveOperands(environment);
+        // An instruction the planning phase already failed claims no cell in conflict resolution,
+        // so it must not reach the environment: its write would bypass the arbitration that every
+        // other write goes through.
+        if (organism.isInstructionFailed()) {
+            return;
+        }
         int targetReg;
         int[] vector;
 
@@ -170,6 +182,12 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
         Organism organism = context.getOrganism();
         Environment environment = context.getWorld();
         List<Operand> operands = resolveOperands(environment);
+        // An instruction the planning phase already failed claims no cell in conflict resolution,
+        // so it must not reach the environment: its write would bypass the arbitration that every
+        // other write goes through.
+        if (organism.isInstructionFailed()) {
+            return;
+        }
         int targetReg;
         Object valueToWrite;
         int[] vector;
