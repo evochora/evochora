@@ -1646,9 +1646,10 @@ public class Organism {
 
     /**
      * All registers of every bank in one array, addressed by slot rather than by register ID; a
-     * data bank's slot holds an {@code Integer}, a location bank's an {@code int[]}. The array is a
-     * copy, so replacing an entry leaves the organism unchanged, but the values in it are the
-     * organism's own: the coordinate array of a location register must not be written into.
+     * data bank's slot holds an {@code Integer}, a location bank's an {@code int[]}: a position, or
+     * {@link LocationValue#NONE}. The array is a copy, so replacing an entry leaves the organism
+     * unchanged, but the values in it are the organism's own: the coordinate array of a location
+     * register must not be written into, the more so as every empty one shares the same array.
      *
      * @return A copy of the flat register array in RegisterBank slot order.
      */
