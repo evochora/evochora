@@ -880,7 +880,8 @@ public class Organism {
         int argCount = instructionLength - 1;
         if (argCount <= 0) return EMPTY_INT_ARRAY;
 
-        // DV is a unit vector: exactly one component is ±1, rest 0
+        // The DV is a unit vector, so the first non-zero component is the only one, and its value
+        // is the ±1 that decides the direction along that axis.
         int dim = 0;
         int sign = 1;
         for (int i = 0; i < withDv.length; i++) {

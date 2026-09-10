@@ -259,9 +259,9 @@ public class StateInstruction extends Instruction {
      * an organism's own memory and never leave it. The check runs before energy is taken and before
      * a child organism is created, because organism IDs feed the per-tick conflict priority.
      *
-     * @param operands Three operands: unit delta vector, energy scalar, and the direction the child
-     *        is to travel in, which is mapped to the nearest unit vector — the parent's own
-     *        direction when the operand names none.
+     * @param operands Three operands: the delta that displaces the child from the data pointer, an
+     *        energy scalar, and the direction the child is to travel in, which is mapped to the
+     *        nearest unit vector — the parent's own direction when the operand names none.
      * @param simulation The simulation for coordinate resolution and organism registration.
      */
     private void handleFork(List<Operand> operands, Simulation simulation) {
@@ -439,9 +439,10 @@ public class StateInstruction extends Instruction {
     /**
      * Handles the extended FORK variants (FRKI / FRKS).
      * FRKI takes immediate operands; FRKS pops delta, energy, and child DV from the data stack.
-     * Otherwise identical to {@link #handleFork}: requires a non-zero marker register, validates
-     * the delta as a unit vector, gives the child the direction it was asked for as the nearest unit
-     * vector, transfers energy, creates a child organism, and transfers marker-matching ownership.
+     * Otherwise identical to {@link #handleFork}: requires a non-zero marker register, places the
+     * child by the delta as a displacement, gives it the direction it was asked for as the nearest
+     * unit vector, transfers energy, creates a child organism, and transfers marker-matching
+     * ownership.
      *
      * @param opName "FRKI" (immediate) or "FRKS" (stack).
      * @param operands Resolved operands for the instruction.
