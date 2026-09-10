@@ -1,6 +1,7 @@
 # Snapping Every Vector to a Unit Vector
 
-**Status: PROPOSED. Every decision is taken with the maintainer and listed at the end.**
+**Status: ACCOMPLISHED — implemented on branch `unit-vector-snapping`, 2026-09-10.
+Every decision was taken with the maintainer and is listed at the end.**
 
 ## Problem
 
@@ -279,8 +280,19 @@ and nothing calls it, so the hot-path cost is known before five slices are commi
   the common case. **That path is not rare by construction.** This change keeps a mutated vector in
   circulation instead of failing the instruction that uses it, so a mutated `SEKI 1|1` in a main loop
   is snapped at every execution, and its share grows with the mutation load and the length of a run.
-  What those nanoseconds are worth against a whole instruction execution, with its environment access
-  and its thermodynamics, is what the tick benchmark in slice 6 has to answer.
+- **The tick benchmark shows no regression.** JMH on the benchmark host, `REALISTIC` at three
+  population sizes, decision profile, base `caff2999` against the branch: +1.15 %, −1.68 % and
+  −2.30 %, every one of them within the combined error, so by the rule of `docs/BENCHMARKING.md` the
+  change is neutral. Two limits of that measurement are worth stating. `REALISTIC` carries three
+  vector operands among roughly twenty instructions, so an effect of well under a percent would sit
+  below the noise; and the candidate's error at 2000 organisms was ±5.8 % against the base's ±1.9 %,
+  which is wider than the difference it is supposed to resolve. A gross regression is ruled out; a
+  small one is not measurable this way.
+- **A run with many mutated vectors does more work per tick than before.** Not because of the
+  mapping, but because instructions now execute where they previously aborted: a rejected vector
+  used to end its instruction before the environment was touched. This is the intended effect of the
+  change and not a regression, but it is capacity that grows with the mutation rate, and no benchmark
+  of intact programs can show it.
 - **The DV invariant becomes enforced** on every path including resume, which closes the unchecked
   child-DV path that exists today.
 - **`GeneInsertionPlugin`'s unit-vector mode loses its reason.** `generateUnitVector` (`:603`) and
