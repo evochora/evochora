@@ -139,8 +139,8 @@ public class ConditionalInstruction extends Instruction {
                     organism.instructionFailed(opName + " requires a vector argument.");
                     return;
                 }
-                int[] vector = (int[]) op.value();
-                if (!organism.isUnitVector(vector)) {
+                int[] vector = organism.toDisplacement((int[]) op.value());
+                if (vector == null) {
                     return;
                 }
                 int[] targetCoordinate = organism.getTargetCoordinate(organism.getActiveDp(), vector, environment);
@@ -166,8 +166,8 @@ public class ConditionalInstruction extends Instruction {
                     organism.instructionFailed(opName + " requires a vector argument.");
                     return;
                 }
-                int[] vector = (int[]) op.value();
-                if (!organism.isUnitVector(vector)) {
+                int[] vector = organism.toDisplacement((int[]) op.value());
+                if (vector == null) {
                     return;
                 }
                 int[] targetCoordinate = organism.getTargetCoordinate(organism.getActiveDp(), vector, environment);
@@ -195,8 +195,8 @@ public class ConditionalInstruction extends Instruction {
                     organism.instructionFailed(opName + " requires a vector argument.");
                     return;
                 }
-                int[] vector = (int[]) op.value();
-                if (!organism.isUnitVector(vector)) {
+                int[] vector = organism.toDisplacement((int[]) op.value());
+                if (vector == null) {
                     return;
                 }
                 int[] targetCoordinate = organism.getTargetCoordinate(organism.getActiveDp(), vector, environment);
@@ -223,8 +223,8 @@ public class ConditionalInstruction extends Instruction {
                     organism.instructionFailed(opName + " requires a vector argument.");
                     return;
                 }
-                int[] vector = (int[]) op.value();
-                if (!organism.isUnitVector(vector)) {
+                int[] vector = organism.toDisplacement((int[]) op.value());
+                if (vector == null) {
                     return;
                 }
                 int[] targetCoordinate = organism.getTargetCoordinate(organism.getActiveDp(), vector, environment);
