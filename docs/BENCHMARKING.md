@@ -18,6 +18,10 @@ with `organisms` copies of one assembly program and runs ticks back to back.
 | `parallelism` | `4` (default) | Threads executing the parallel wave of a tick, the main thread included (`1` = main thread alone). Override on the command line (see below). |
 | `selectionSpread` | `0` (default) | Selection spread of the label-matching strategy. `0` picks the closest own label deterministically; a positive value (production default `50`) enables weighted-random selection among own exact matches and draws one random number per jump or call, exercising the organism's random source on the control-flow path. Override on the command line, e.g. `-p selectionSpread=0,50`. |
 
+`ARITHMETIC`, `ENVIRONMENT` and `LOCATION` are defined but outside the default set; select
+one with `-p assembly=LOCATION`. `LOCATION` executes nothing but location-register and
+location-stack instructions, which no other program touches.
+
 The benchmark deliberately isolates the instruction-execution hot path:
 
 - Thermodynamic costs are zero, so no organism dies during a measurement.

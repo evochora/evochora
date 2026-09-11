@@ -141,6 +141,17 @@ public class SimulationBenchmark {
                       SCNI %DR4 0|-1
                       JMPI MAIN
                     """,
+            "LOCATION", """
+                    MAIN:
+                      DPLR %LR0
+                      PUSL %LR0
+                      POPL %LR1
+                      LRLR %LR2 %LR0
+                      SKLR %LR0
+                      LRDR %DR0 %LR0
+                      CRLR %LR2
+                      JMPI MAIN
+                    """,
             "PROC_CALL", """
                     .PROC WORK REF rA VAL vB
                       ADDI rA DATA:1
@@ -158,7 +169,7 @@ public class SimulationBenchmark {
     );
 
     /** Assembly program to execute. */
-    @Param({/* "ARITHMETIC", "ENVIRONMENT", */ "REALISTIC", "PROC_CALL"})
+    @Param({/* "ARITHMETIC", "ENVIRONMENT", "LOCATION", */ "REALISTIC", "PROC_CALL"})
     private String assembly;
 
     /** Number of organisms in the simulation. */
