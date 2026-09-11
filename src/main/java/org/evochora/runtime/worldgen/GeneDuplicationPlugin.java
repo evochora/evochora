@@ -9,6 +9,7 @@ import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.MutationRecord;
 import org.evochora.runtime.model.Organism;
+import org.evochora.runtime.model.ScanLineArc;
 import org.evochora.runtime.spi.IBirthHandler;
 import org.evochora.runtime.spi.IRandomProvider;
 import org.slf4j.Logger;
@@ -72,8 +73,11 @@ public class GeneDuplicationPlugin implements IBirthHandler {
     private final ArrayList<ScanLineInfo> scanLinePool = new ArrayList<>();
     private int poolIndex;
 
-    // DV coordinate collector for shortest-arc computation (reused)
+    // DV coordinate collector for arc resolution (reused)
     private int[] dvCoordCollector;
+
+    /** Receives the ends of a scan line's arc; reused so that resolving a line allocates nothing. */
+    private final ScanLineArc.Result arc = new ScanLineArc.Result();
 
     /** Collects the record of a copy; reused so that a birth allocates only the record itself. */
     private final MutationRecord.Builder recordBuilder = new MutationRecord.Builder();
@@ -91,9 +95,9 @@ public class GeneDuplicationPlugin implements IBirthHandler {
         int sampleFlatIndex;
         /** Number of owned cells on this scan line. */
         int count;
-        /** Start of the shortest arc containing all owned cells (inclusive). */
+        /** Start of the arc this line's owned cells span (inclusive), see {@link ScanLineArc}. */
         int walkStart;
-        /** End of the shortest arc containing all owned cells (inclusive). */
+        /** End of the arc this line's owned cells span (inclusive), see {@link ScanLineArc}. */
         int walkEnd;
         /** Start of this line's segment in the shared DV coordinate buffer while walk ranges are resolved. */
         int segmentStart;
@@ -417,7 +421,7 @@ public class GeneDuplicationPlugin implements IBirthHandler {
      * Scans a scan line for the largest contiguous run of empty cells (CODE:0, marker:0).
      * Results are stored in the ScanLineInfo's bestNopStart/bestNopLength fields.
      * <p>
-     * Walks along the scan line's shortest arc ({@link ScanLineInfo#walkStart} to
+     * Walks along the scan line's arc ({@link ScanLineInfo#walkStart} to
      * {@link ScanLineInfo#walkEnd}), correctly handling toroidal wrapping.
      * Uses the shared coordBuffer (caller must have initialized it via flatIndexToCoordinates
      * with the scan line's sampleFlatIndex before calling).
@@ -466,13 +470,13 @@ public class GeneDuplicationPlugin implements IBirthHandler {
     }
 
     /**
-     * Computes the shortest toroidal arc for each scan line's walk range.
+     * Determines the walk range of each scan line, the arc the newborn spans on that line.
      * <p>
-     * For scan lines where the raw span (maxDv - minDv + 1) does not exceed half the axis size,
-     * the shortest arc is trivially minDv to maxDv. For scan lines that span more than half the
-     * axis, the organism wraps around the world boundary. In that case, this method collects the
-     * DV coordinates of owned cells on that scan line, sorts them, and finds the largest gap to
-     * determine the correct shortest arc.
+     * A line whose owned cells cannot reach around the world edge spans the arc from its smallest
+     * to its largest DV coordinate, which the grouping pass already knows. Only a line that can
+     * reach around it needs the coordinates in between: for those this method collects the DV
+     * coordinates of the owned cells, sorts them and hands them to {@link ScanLineArc}, which
+     * decides where the body ends and the outside begins.
      *
      * @param childId The newborn whose owned cells were grouped into scan lines.
      * @param env The simulation environment.
@@ -480,11 +484,12 @@ public class GeneDuplicationPlugin implements IBirthHandler {
      * @param shapeDvDim The environment size along the DV dimension.
      */
     private void resolveWalkRanges(int childId, Environment env, int dvDim, int shapeDvDim) {
+        boolean toroidal = true;
         boolean anyWrapping = false;
         for (ScanLineInfo line : scanLineMap.values()) {
             line.walkStart = line.minDv;
             line.walkEnd = line.maxDv;
-            if (line.maxDv - line.minDv + 1 > shapeDvDim / 2) {
+            if (ScanLineArc.largestGapRuleApplies(line.minDv, line.maxDv, shapeDvDim, toroidal)) {
                 anyWrapping = true;
             }
         }
@@ -510,30 +515,15 @@ public class GeneDuplicationPlugin implements IBirthHandler {
         });
 
         for (ScanLineInfo line : scanLineMap.values()) {
-            if (line.maxDv - line.minDv + 1 <= shapeDvDim / 2) {
+            if (!ScanLineArc.largestGapRuleApplies(line.minDv, line.maxDv, shapeDvDim, toroidal)) {
                 continue;
             }
             int from = line.segmentStart;
             int count = line.count;
             Arrays.sort(dvCoordCollector, from, from + count);
-
-            int largestGap = 0;
-            int gapAfterIdx = 0;
-            for (int i = 1; i < count; i++) {
-                int gap = dvCoordCollector[from + i] - dvCoordCollector[from + i - 1];
-                if (gap > largestGap) {
-                    largestGap = gap;
-                    gapAfterIdx = i;
-                }
-            }
-
-            int wrapGap = dvCoordCollector[from] + shapeDvDim - dvCoordCollector[from + count - 1];
-            if (wrapGap > largestGap) {
-                gapAfterIdx = 0;
-            }
-
-            line.walkStart = dvCoordCollector[from + gapAfterIdx];
-            line.walkEnd = dvCoordCollector[from + (gapAfterIdx - 1 + count) % count];
+            ScanLineArc.resolve(dvCoordCollector, from, count, shapeDvDim, toroidal, arc);
+            line.walkStart = arc.start;
+            line.walkEnd = arc.end;
         }
     }
 
