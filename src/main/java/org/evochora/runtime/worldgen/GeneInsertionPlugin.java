@@ -9,6 +9,7 @@ import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.MutationRecord;
 import org.evochora.runtime.model.Organism;
+import org.evochora.runtime.model.ScanLineArc;
 import org.evochora.runtime.spi.IBirthHandler;
 import org.evochora.runtime.spi.IRandomProvider;
 import org.slf4j.Logger;
@@ -38,8 +39,8 @@ import java.util.Random;
  * jump targets that are close in Hamming distance to existing ones.
  * <p>
  * <strong>NOP Area Search:</strong> Groups owned cells by scan line (perpendicular to DV),
- * tracks the DV extent per scan line, and walks between minDv and maxDv checking for empty
- * cells ({@code moleculeInt == 0}). This correctly handles the fact that empty cells have
+ * tracks the DV extent per scan line, and walks the arc the owned cells span on it (see
+ * {@link ScanLineArc}) checking for empty cells ({@code moleculeInt == 0}). This correctly handles the fact that empty cells have
  * no owner and thus never appear among the owned cells. A qualifying run is selected
  * uniformly at random via reservoir sampling across all scan lines.
  * <p>
@@ -114,8 +115,11 @@ public class GeneInsertionPlugin implements IBirthHandler {
     /** Collects the record of a placed chain; reused so that a birth allocates only the record itself. */
     private final MutationRecord.Builder recordBuilder = new MutationRecord.Builder();
 
-    // --- DV coordinate collector for shortest-arc computation (reused) ---
+    // --- DV coordinate collector for arc resolution (reused) ---
     private int[] dvCoordCollector;
+
+    /** Receives the ends of a scan line's arc; reused so that resolving a line allocates nothing. */
+    private final ScanLineArc.Result arc = new ScanLineArc.Result();
 
     // --- Entry types ---
 
@@ -199,9 +203,9 @@ public class GeneInsertionPlugin implements IBirthHandler {
         int sampleFlatIndex;
         /** Number of owned cells on this scan line. */
         int count;
-        /** Start of the shortest arc containing all owned cells (inclusive). */
+        /** Start of the arc this line's owned cells span (inclusive), see {@link ScanLineArc}. */
         int walkStart;
-        /** End of the shortest arc containing all owned cells (inclusive). */
+        /** End of the arc this line's owned cells span (inclusive), see {@link ScanLineArc}. */
         int walkEnd;
         /** Start of this line's segment in the shared DV coordinate buffer while walk ranges are resolved. */
         int segmentStart;
@@ -684,13 +688,13 @@ public class GeneInsertionPlugin implements IBirthHandler {
     }
 
     /**
-     * Computes the shortest toroidal arc for each scan line's walk range.
+     * Determines the walk range of each scan line, the arc the newborn spans on that line.
      * <p>
-     * For scan lines where the raw span (maxDv - minDv + 1) does not exceed half the axis size,
-     * the shortest arc is trivially minDv to maxDv. For scan lines that span more than half the
-     * axis, the organism wraps around the world boundary. In that case, this method collects the
-     * DV coordinates of owned cells on that scan line, sorts them, and finds the largest gap to
-     * determine the correct shortest arc.
+     * A line whose owned cells cannot reach around the world edge spans the arc from its smallest
+     * to its largest DV coordinate, which the grouping pass already knows. Only a line that can
+     * reach around it needs the coordinates in between: for those this method collects the DV
+     * coordinates of the owned cells, sorts them and hands them to {@link ScanLineArc}, which
+     * decides where the body ends and the outside begins.
      *
      * @param childId The child whose owned cells are grouped, visited in index order.
      * @param env The simulation environment.
@@ -698,11 +702,12 @@ public class GeneInsertionPlugin implements IBirthHandler {
      * @param shapeDvDim The environment size along the DV dimension.
      */
     private void resolveWalkRanges(int childId, Environment env, int dvDim, int shapeDvDim) {
+        boolean toroidal = true;
         boolean anyWrapping = false;
         for (ScanLineInfo line : scanLineMap.values()) {
             line.walkStart = line.minDv;
             line.walkEnd = line.maxDv;
-            if (line.maxDv - line.minDv + 1 > shapeDvDim / 2) {
+            if (ScanLineArc.largestGapRuleApplies(line.minDv, line.maxDv, shapeDvDim, toroidal)) {
                 anyWrapping = true;
             }
         }
@@ -728,30 +733,15 @@ public class GeneInsertionPlugin implements IBirthHandler {
         });
 
         for (ScanLineInfo line : scanLineMap.values()) {
-            if (line.maxDv - line.minDv + 1 <= shapeDvDim / 2) {
+            if (!ScanLineArc.largestGapRuleApplies(line.minDv, line.maxDv, shapeDvDim, toroidal)) {
                 continue;
             }
             int from = line.segmentStart;
             int count = line.count;
             Arrays.sort(dvCoordCollector, from, from + count);
-
-            int largestGap = 0;
-            int gapAfterIdx = 0;
-            for (int i = 1; i < count; i++) {
-                int gap = dvCoordCollector[from + i] - dvCoordCollector[from + i - 1];
-                if (gap > largestGap) {
-                    largestGap = gap;
-                    gapAfterIdx = i;
-                }
-            }
-
-            int wrapGap = dvCoordCollector[from] + shapeDvDim - dvCoordCollector[from + count - 1];
-            if (wrapGap > largestGap) {
-                gapAfterIdx = 0;
-            }
-
-            line.walkStart = dvCoordCollector[from + gapAfterIdx];
-            line.walkEnd = dvCoordCollector[from + (gapAfterIdx - 1 + count) % count];
+            ScanLineArc.resolve(dvCoordCollector, from, count, shapeDvDim, toroidal, arc);
+            line.walkStart = arc.start;
+            line.walkEnd = arc.end;
         }
     }
 
@@ -769,7 +759,7 @@ public class GeneInsertionPlugin implements IBirthHandler {
     /**
      * Selects a NOP run of at least {@code minLength} via reservoir sampling across all scan lines.
      * <p>
-     * Walks each scan line along its shortest arc ({@link ScanLineInfo#walkStart} to
+     * Walks each scan line along its arc ({@link ScanLineInfo#walkStart} to
      * {@link ScanLineInfo#walkEnd}), checking for empty cells ({@code moleculeInt == 0}).
      * Each qualifying run is a candidate; one is selected uniformly at random. The result is stored
      * in {@link #selectedNopScanLine} and {@link #selectedNopDvStart}.
