@@ -6,6 +6,7 @@ import java.util.Random;
 
 import org.evochora.runtime.Config;
 import org.evochora.runtime.model.Environment;
+import org.evochora.runtime.model.GenomeFrame;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.MutationRecord;
 import org.evochora.runtime.model.Organism;
@@ -21,9 +22,21 @@ import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
  * Gene duplication birth handler inspired by Ohno's (1970) model of evolution through gene duplication.
  * <p>
  * Called once per newborn organism in the post-Execute phase of each tick. With configurable probability,
- * copies a code block starting at a randomly selected LABEL into an empty (CODE:0) region within the
- * organism's body. The duplicated block is immediately neutral (redundant) but provides raw material
+ * copies whole blocks starting at a randomly selected LABEL into an empty (CODE:0) region within the
+ * organism's body. The duplicated blocks are immediately neutral (redundant) but provide raw material
  * for later divergence through point mutation.
+ * <p>
+ * <strong>What a block is:</strong> the stretch from one of the newborn's LABEL cells along the
+ * direction vector to the next of its LABEL cells on the same scan line, or, where no further label
+ * follows, to the end of the newborn's extent on that line. A LABEL cell opens a block only where it
+ * is an entry point in the machine's reading frame ({@link GenomeFrame}); a LABEL molecule standing
+ * in another instruction's operand list is that instruction's argument and opens no block.
+ * <p>
+ * <strong>What a copy holds:</strong> whole blocks only. The copy starts at the chosen label and
+ * takes as many consecutive blocks as the target's empty run holds. Where the rest of the source
+ * line fits into that run, it is copied as it stands, a trailing instruction included; otherwise
+ * the copy is cut back to the last block boundary that fits entirely, never inside a block. A run
+ * that cannot hold even the first block is not written to at all.
  * <p>
  * The algorithm groups owned cells by scan lines perpendicular to the organism's direction vector (DV),
  * ensuring equal selection probability for each scan line regardless of cell density. A random scan line
@@ -33,18 +46,19 @@ import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
  * <strong>Performance:</strong> Near-zero allocation after warmup. The owned cells are visited
  * through the environment's cell views; reusable coordinate buffers, ScanLineInfo pooling and direct
  * bit extraction from packed molecule ints minimize GC pressure. The only per-call allocations are
- * one {@code getShape()} defensive copy, the two visitor lambdas (one per owned-cell pass) and,
- * when a copy is applied, the {@link MutationRecord} handed to the newborn.
- * The owned-cell iteration is O(n) where n is typically 1000-3000, running at most a few times
- * per tick.
+ * one {@code getShape()} defensive copy, the two visitor lambdas (one per owned-cell pass), when a
+ * copy is applied the {@link MutationRecord} handed to the newborn, and, only where a copy has to
+ * be cut back to a block boundary, the defensive copy of the newborn's initial position together
+ * with what one {@link GenomeFrame} build costs. The owned-cell iteration is O(n) where n is
+ * typically 1000-3000, running at most a few times per tick.
  * <p>
  * <strong>What it records:</strong> an applied duplication reports itself on the newborn as a
  * {@link MutationRecord} of kind {@code "duplication"}. Its cells are the target cells that
  * received a non-empty molecule, in the order the copy loop wrote them; the old value is what
  * stood at the target cell before the write, the new value the copied molecule. Its one parameter
  * is the flat index of the first source cell, which is the chosen label, because the source of a
- * copy cannot be recovered from the copied values alone. A run that finds no label or no NOP run
- * long enough writes nothing and records nothing.
+ * copy cannot be recovered from the copied values alone. A run that finds no label, no NOP run
+ * long enough, or no run that holds the first block writes nothing and records nothing.
  * <p>
  * <strong>Thread Safety:</strong> Not thread-safe. Runs in the sequential post-Execute phase of
  * {@code Simulation.tick()}.
@@ -81,6 +95,12 @@ public class GeneDuplicationPlugin implements IBirthHandler {
 
     /** Collects the record of a copy; reused so that a birth allocates only the record itself. */
     private final MutationRecord.Builder recordBuilder = new MutationRecord.Builder();
+
+    /**
+     * The newborn's genome in the machine's reading frame; built only where a copy has to be cut
+     * back to a block boundary, and kept so that such a build reuses the buffers of the one before.
+     */
+    private final GenomeFrame frame = new GenomeFrame();
 
     /**
      * Mutable scan line info for grouping owned cells by perpendicular coordinates.
@@ -158,7 +178,8 @@ public class GeneDuplicationPlugin implements IBirthHandler {
      *
      * @param randomProvider Source of randomness.
      * @param duplicationRate Probability of duplication per newborn (0.0 to 1.0).
-     * @param minNopSize Minimum contiguous empty cells required as duplication target.
+     * @param minNopSize Minimum contiguous empty cells required as duplication target; a run that
+     *                   does not hold the first whole block is left unwritten however long it is.
      */
     GeneDuplicationPlugin(IRandomProvider randomProvider, double duplicationRate, int minNopSize) {
         this.random = randomProvider.asJavaRandom();
@@ -179,8 +200,9 @@ public class GeneDuplicationPlugin implements IBirthHandler {
      * Performs gene duplication for a single newborn organism.
      * <p>
      * Groups owned cells by scan line, selects a random LABEL via reservoir sampling,
-     * finds the largest NOP area on a random scan line, and copies the code block
-     * starting at the label into the NOP area. A copy that is applied is recorded on the child.
+     * finds the largest NOP area on a random scan line, and copies the blocks starting at the label
+     * into the NOP area, as many whole blocks as that area holds. A copy that is applied is
+     * recorded on the child.
      *
      * @param child The newborn organism.
      * @param env The simulation environment.
@@ -305,17 +327,27 @@ public class GeneDuplicationPlugin implements IBirthHandler {
         } else {
             availableSource = toroidalForwardDistance(labelLine.walkStart, selectedLabelDvCoord, shapeDvDim);
         }
-        int copyLength = Math.min(availableSource, targetLine.bestNopLength);
-
-        if (copyLength <= 0) {
-            return;
-        }
-
-        // --- Step 5: Copy ---
         // Build source position from label's scan line
         env.properties.flatIndexToCoordinates(labelLine.sampleFlatIndex, sourcePos);
         sourcePos[dvDimFinal] = selectedLabelDvCoord;
 
+        int room = targetLine.bestNopLength;
+        int copyLength;
+        if (availableSource <= room) {
+            copyLength = availableSource;
+        } else {
+            // The room ends inside the source, so the copy is cut back to a whole number of blocks
+            frame.build(env, childId, child.getInitialPosition(), dv);
+            copyLength = lastBlockBoundaryWithin(env, childId, room, dvStep, dvDimFinal, shapeDvDim);
+            sourcePos[dvDimFinal] = selectedLabelDvCoord;
+            if (copyLength == 0) {
+                LOG.debug("tick={} Organism {} selected for duplication: NOP run of {} cells does not hold the first block — skipping",
+                        child.getBirthTick(), childId, room);
+                return;
+            }
+        }
+
+        // --- Step 5: Copy ---
         // Build target position from target scan line, adjusting start for DV direction
         env.properties.flatIndexToCoordinates(targetLine.sampleFlatIndex, targetPos);
         if (dvStep < 0) {
@@ -367,6 +399,52 @@ public class GeneDuplicationPlugin implements IBirthHandler {
             LOG.debug("tick={} Organism {} gene duplication: copied {} molecules from {} to {}",
                     child.getBirthTick(), childId, copyLength, Arrays.toString(sourcePos), Arrays.toString(targetPos));
         }
+    }
+
+    /**
+     * Reports how many cells of the source hold whole blocks and fit into the target's room.
+     * <p>
+     * The source is walked from the chosen label, whose coordinates the caller has put into the
+     * source buffer, along the direction vector up to and including the first cell past the room,
+     * because a block that ends exactly where the room ends has its successor's label there. The
+     * answer is the offset of the last block start found on the way, which is the length of the
+     * stretch of whole blocks before it, and zero where the room does not even hold the first block. A block
+     * start is a LABEL cell the newborn owns that the reading frame does not read as part of an
+     * instruction; a LABEL cell standing in an operand list is read as that operand and passed over.
+     * <p>
+     * The walk leaves the source buffer standing on the last cell it looked at; the caller restores
+     * it to the chosen label.
+     *
+     * @param env The simulation environment.
+     * @param childId The newborn whose cells and whose reading frame the blocks belong to.
+     * @param room The number of cells the target's empty run offers.
+     * @param dvStep The step along the DV dimension, {@code +1} or {@code -1}.
+     * @param dvDim The DV dimension index.
+     * @param shapeDvDim The environment size along the DV dimension.
+     * @return The number of cells to copy, or {@code 0} if no block fits.
+     */
+    private int lastBlockBoundaryWithin(Environment env, int childId, int room, int dvStep, int dvDim, int shapeDvDim) {
+        int boundary = 0;
+        int dvPos = sourcePos[dvDim];
+        for (int offset = 1; offset <= room; offset++) {
+            dvPos += dvStep;
+            if (dvPos >= shapeDvDim) {
+                dvPos -= shapeDvDim;
+            } else if (dvPos < 0) {
+                dvPos += shapeDvDim;
+            }
+            sourcePos[dvDim] = dvPos;
+            if ((env.getMoleculeIntAt(sourcePos) & Config.TYPE_MASK) != Config.TYPE_LABEL) {
+                continue;
+            }
+            if (env.getOwnerIdAt(sourcePos) != childId) {
+                continue;
+            }
+            if (frame.slot(env.properties.toFlatIndex(sourcePos)) == GenomeFrame.Slot.NONE) {
+                boundary = offset;
+            }
+        }
+        return boundary;
     }
 
     /**
