@@ -14,7 +14,7 @@
 # Constants
 # ----------------------------
 .DEFINE REPRODUCTION_CONTINUE_THRESHOLD DATA:50000         # reproduce for certain from here on, below with probability ER / 50000
-.DEFINE ENTROPY_REPRODUCTION_CONTINUE_THRESHOLD DATA:5000    # reproduce for certain from here on, below with probability SR / 5000
+.DEFINE ENTROPY_REPRODUCTION_CONTINUE_THRESHOLD DATA:50000   # reproduce for certain from here on, below with probability SR / 50000
 
 # ----------------------------
 # STRUCTURE Shell (102x87)

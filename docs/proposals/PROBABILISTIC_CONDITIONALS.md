@@ -172,7 +172,7 @@ decides, with the existing constants and no new ones:
 
 ```
 .DEFINE REPRODUCTION_CONTINUE_THRESHOLD DATA:50000          # was 100000
-.DEFINE ENTROPY_REPRODUCTION_CONTINUE_THRESHOLD DATA:5000   # unchanged
+.DEFINE ENTROPY_REPRODUCTION_CONTINUE_THRESHOLD DATA:50000  # was 5000; half of the new maximum entropy
 ```
 
 | Site | Today | Afterwards |
@@ -187,10 +187,10 @@ copier would not pause, harvest otherwise. Below 50 000 the gate opens with p = 
 attempts bounce off the pause threshold inside `REPRODUCE.CONTINUE`. Raising the scale by mutation
 makes the policy buffering (start copying later, pause less); lowering it changes nothing that
 selection could see, because from 50 000 on the gate is already certain and below it an attempt
-only bounces. The entropy scale keeps its old threshold as the point of certainty: certain at
-5 000 entropy, half at 2 500. The translation rule is the same at both sites: a hard threshold T
-becomes a soft gate with B = T. This is why the entropy constant keeps 5 000 rather than the
-organism's maximum entropy: with B = 10 000 the gate would only become certain at death.
+only bounces. The entropy scale is half of the organism's maximum entropy, as it was before (5 000 of 10 000):
+with the maximum at 99 999 it becomes 50 000, certain there, half at 25 000. The translation rule
+is the same at both sites: a hard threshold T becomes a soft gate with B = T; a scale at the
+maximum itself would only become certain at death.
 
 `MAIN_LOOP_ENERGY_CHECK` is removed rather than softened. It decided after a reproduction whether
 to continue or to harvest, which is what `MAIN_LOOP` now decides with the same constants; and its
@@ -363,9 +363,10 @@ overrides only.
 | `operands` | — | — | scalar 2.0, vector 1.0 | Part 4 |
 | `ENERGY`, `STRUCTURE`, `STATE` blocks | weight 0 | absent from `evochora.conf` | present with weight 0 | the template shows the defaults; a block inside a list element replaces rather than merges |
 | write-rules `STATE.entropy` | −500 | −500 | 0 | below |
-| seed energy | 0.0025 × 10 000 | 0.002 × 10 000 | 0.02 × 1 000 | same input as the run, ten times the packets |
-| solar radiation | 0.02 × 10 000 | 0.005 × 10 000 | 0.05 × 1 000 | same input as the run, ten times the packets |
-| geyser | 0.0002 × 10 000, radius 3 | 0.0001 × 10 000, radius 0 | as in the run | unchanged |
+| `max-entropy` | 10 000 | 10 000 | 99 999 | below: the clock of the refill phase; five digits keep it readable in the visualizer |
+| seed energy | 0.0025 × 10 000 | 0.002 × 10 000 | 0.01 × 5 000 | packets of 5 000: the regime of the fourth smoke run, below |
+| solar radiation | 0.02 × 10 000 | 0.005 × 10 000 | 0.05 × 5 000 | five times the input of the run in half-size packets |
+| geyser | 0.0002 × 10 000, radius 3 | 0.0001 × 10 000, radius 0 | 0.0001 × 5 000, radius 0 | half-size packets |
 | `deletionRate`, `duplicationRate` | 0.025, 0.1 | 0.01, 0.1 | as in the run | unchanged |
 
 Rates per birth under the new default, against run `20260907`: opcode flips 0.0073 (was 0.0041),
@@ -389,15 +390,28 @@ the state store. A copier that lost its `SMRI DATA:1` would write its child as S
 viable child, and today live on the entropy those writes dissipate; with the rule at 0 it dies on
 the clock. The rule closes that case rather than opening it.
 
-The change is not free. An adult below 50 000 energy has, after it, no entropy relief until it
-copies again: harvesting dissipates nothing, bouncing dissipates nothing, and the soft gate makes
-it bounce (about ten instructions each after the pause-check move) with probability
-p / (1 − p) per harvest entry — nine times at 45 000 energy. Whether the 10 000 budget covers the
-refill from 30 000 to 50 000 at the new packet density is not known from any run. The smoke run
-after step 3 decides it before the long run; if adults die in the refill phase, the countermeasure
-is a higher `max-entropy`, derived from the measured refill cycle, not a reversal of the rule.
-Children are unaffected either way: their entropy register is clamped at 0 at birth, so the 1 000
-they dissipate today is lost anyway, which is why they die at exactly 10 010 ticks.
+**What the smoke runs showed.** The maintainer ran four short runs on the 7680 × 4320 world
+(seed 42, substitution rate 0.02) while the primordial was being changed:
+
+| Run | Configuration | At 6 M ticks: alive / born | Deaths by energy / entropy | Children that reproduce |
+|---|---|---|---|---|
+| 1 | soft gates; bounced attempts still store state (−1 000 entropy each); max-entropy 10 000 | 298 / 792 | 387 / 1 192 | 30.6 % |
+| 2 | as 1, but the copier refuses before touching anything | extinct after 1.1 M ticks, 5 born | 0 / 4 | — |
+| 3 | as 2, max-entropy 100 000 | 62 / 418 | 1 151 / 5 | 30.7 % |
+| 4 | as 3 with max-entropy 99 999, STATE write entropy 0, entropy scale 50 000, energy in packets of 5 000 | 290 / 2 039 | 1 704 / 155 | 40.3 %, generation time 401 000 ticks |
+
+Run 1 was the largest population the platform had produced, and it lived on a loophole: an
+attempt bounced below the pause threshold wrote two STATE cells and dissipated 1 000 entropy, so
+the soft gate, which sends organisms below 50 000 into that bounce again and again, was an entropy
+sink during harvesting. Run 2 removed the sink and showed what the STATE rule would have done at
+a budget of 10 000: every adult died of entropy at 41 000–44 000 energy, refilling toward the
+threshold. The entropy clock had never been "replication only"; it was carried by the state writes.
+Run 3 raised the budget and energy became the only binding quantity; run 4, with the rule at 0
+and half-size packets, reproduces twice as many children per tick as run 1 at the same
+population, with the shortest generation time measured so far, and its deaths are starvation, not
+the clock. Run 4 is the regime of this package: energy binds, the clock is a bounded backstop
+against copiers that never replicate (they die after 99 999 instructions rather than 10 000),
+and children die by the availability of energy near them, in about 30 000 ticks when none is.
 
 `docs/SCIENTIFIC_OVERVIEW.md`, section 2.3, says that writing molecules via POKE reduces the
 organism's entropy register; with this rule that is true of every type but STATE, and the sentence
@@ -412,7 +426,7 @@ in the step that caused it. `pgrep -af "^java.*jmh"` before every Gradle invocat
 |---|---|---|---|---|
 | 1 | ISA opcodes and vector semantics | `ConditionalInstruction.java`, `docs/ASSEMBLY_SPEC.md`, `evochora.tmLanguage.json` | new tests in `VMConditionalInstructionTest`: hit rate of `PGTI` with A = 50 000, B = 100 000 over 10 000 draws at a fixed seed within 0.50 ± 0.02, 0 at A = 0, 1 at A ≥ B; `PGTI`/`PLEI` at B = 1 are exact complements on every A; B ≤ 0 gives the hard tests against 0 for all four; two vectors compare by magnitude for the eight order operations, hard and soft, and `GTR`/`LETR` are complements; a vector against a scalar compares magnitude against scalar for equality and order; `ConditionalNegationTest`: the four pairs both ways; `ConditionalInstructionCompilerTest`: `PGTI %DR0 DATA:5` compiles to three cells; `GeneSubstitutionPluginTest`: the operation-flip alternatives of `GTI` contain `PGTI`; the determinism suite with a test program that executes `PGTI` in a loop. `./gradlew test --tests '*Conditional*' --tests '*GeneSubstitution*' --tests '*Determinism*'` | twelve opcodes registered and specified with the authors' section, all listed tests green |
 | 2 | Configuration, part 1 | `reference.conf`, `config/evochora.conf`, `docs/SCIENTIFIC_OVERVIEW.md` (one sentence, approved hunk) | STATE write rule, energy plugins, rates, weights, exponent, the three zero blocks (the `operands` block waits for step 6, because the plugin rejects unknown keys); the diff between `evochora.conf` and the defaults reviewed by eye; `config/local.conf` adjusted on the maintainer's machine. `./gradlew test --tests '*Config*'` | the two tracked files agree with each other in the reviewed diff |
-| 3 | Primordial | `assembly/primordial/main.evo`, `lib/reproduce.evo` (pause check moved, own commit) | `AssemblyProgramsCompileTest` (compiles the primordial, so the new opcodes are exercised); **the smoke run**, proposed separately with purpose, duration, resources and data directory: a short run with the new primordial and the STATE rule, read for reproduction of the eager primordial, for entropy deaths of adults with at least one child and energy below 50 000 against the same class of run `20260907`, and for the children's lifetimes. There is no per-primordial simulation test in the suite; primordials are experiments | compiles; the smoke run read and the `max-entropy` decision taken |
+| 3 | Primordial | `assembly/primordial/main.evo`, `lib/reproduce.evo` (pause check moved, own commit) | `AssemblyProgramsCompileTest` (compiles the primordial, so the new opcodes are exercised); the four smoke runs of Part 5, run by the maintainer on the branch, read for reproduction, death causes and generation time. There is no per-primordial simulation test in the suite; primordials are experiments | compiles; the regime of run 4 taken into the defaults |
 | 4 | `ScanLineArc` | `runtime/model/ScanLineArc.java`, `GeneDuplicationPlugin.java`, `ScanLineArcTest` | hand-built cases (no random bodies): a line inside the world, a line whose arc crosses the toroidal edge, a span over half the world resolved by the largest gap, a bounded world without wrapping, a gap inside the arc; the duplication plugin's existing tests unchanged and green; the determinism suite. `./gradlew test --tests '*ScanLineArc*' --tests '*GeneDuplication*' --tests '*Determinism*'` | one definition of the extent, the duplication plugin on it, bounded-world correction as its own commit |
 | 5 | `GenomeFrame` | `runtime/model/GenomeFrame.java`, `GenomeFrameTest` | hand-built grids: a straight instruction sequence gives slot and instruction per cell; a vector operand gives component indices; `SETI %T CODE:0` followed by a vector is parsed correctly (the `CODE:0` is an immediate, not a gap); a label inside an operand list marks its cells ambiguous; a cell no walk reaches is outside any instruction; a foreign cell inside the line is walked; an unregistered opcode is one cell; the line ends at the arc; the same grid gives the same frame twice. `./gradlew test --tests '*GenomeFrame*'` | class with Javadoc, all listed tests green, no user yet |
 | 6 | Substitution by slot, configuration part 2 | `GeneSubstitutionPlugin.java`, the two tracked config files, `MutationSummaryPlugin` Javadoc | a configuration without `operands`, with a missing key, or with an unknown key in any block is rejected with a message naming block and key; with `vector = 0` and `scalar = 1` only cells in scalar slots change over many births of a test genome, and the reverse; every record carries the slot code; the family flip of `PGTI` is not empty and stays within the variant; the frame is built after the rate gate; the existing plugin tests updated for the parameter. `./gradlew test --tests '*GeneSubstitution*'` | slots weighted and recorded, family flip redefined, defaults in both tracked files |
@@ -445,11 +459,11 @@ so its baseline is its own, not run `20260907`'s.
    make no sense soft. A soft twin with high fertility somewhere else is a surprise worth a look.
    Vector components, which the snapping turns from a cliff into a neutral or a rotation, are
    read as their own class against the clone baseline.
-5. **The STATE rule is separated** through the class it touches: entropy deaths of organisms with
-   at least one child, entropy at maximum, energy below 50 000, and, as the second observable,
-   substitutions or deletions at the two `SMRI` cells of the copier with their fertility, which
-   should be zero under the rule. The smoke run decides the `max-entropy` question before the long
-   run; the long run confirms it.
+5. **Entropy stays a backstop.** Deaths are by energy; entropy deaths stay a small minority
+   (run 4: 155 of 1 859), and no organism with at least one child dies of entropy while refilling
+   below 50 000. As the second observable, substitutions or deletions at the two `SMRI` cells of
+   the copier and their fertility, which should be zero under the rule. A rise of entropy deaths
+   into the range of the energy deaths refutes the budget, not the rule.
 6. **Regime.** No boom from stored energy; the population grows straight into the carrying
    capacity. Generation time and clone fertility are recorded as the baseline for later packages,
    not as a criterion for this one.
@@ -520,9 +534,9 @@ so its baseline is its own, not run `20260907`'s.
 11. **The copier checks the pause threshold at its entry** and returns before touching anything,
     so a bounced attempt costs about ten instructions and no walk to the corner.
 12. **No harvest abort this round**: made unnecessary by the eager start value.
-13. **STATE write rule in this package**, with the smoke run after step 3 as the gate and a higher
-    `max-entropy` as the countermeasure if adults die in the refill phase; not a separate run, and
-    not a reversal of the rule.
+13. **STATE write rule in this package, with `max-entropy` 99 999 and the entropy scale 50 000.**
+    Four smoke runs by the maintainer decided it: the rule at a budget of 10 000 is extinction
+    (run 2), the budget raised keeps both constraints with energy binding (runs 3 and 4).
 14. **Energy in smaller packets, not less energy**: the maintainer's configuration; a smaller
     amount per cell rather than fewer cells if scarcity is to be tightened later, because the
     density sets the walk length.
