@@ -427,6 +427,25 @@ and children die by the availability of energy near them, in about 30 000 ticks 
 organism's entropy register; with this rule that is true of every type but STATE, and the sentence
 is adjusted with the maintainer's approval of the hunk.
 
+## Part 6: The operators, read against the data
+
+The runs read for this proposal showed three defects in the mutation operators that have nothing
+to do with the conditionals but stand between a variant and its selection: 43 % of duplications
+were fragments cut inside an instruction, a label insertion placed a jump target with no code
+behind it, and a substitution that hit a register operand tore a data flow. The frame that Part 3
+introduces for the substitution makes all three addressable, so they are taken into this package
+rather than left as follow-ups: duplication copies whole blocks, label to label, and cuts back to a
+block boundary (decision 29); the label entry of the insertion places a detour — a label with the
+value of an existing one, one instruction, and a jump to where the code behind the original label
+goes on (decision 30); a register operand swaps with the neighbouring register operand of its
+instruction instead of stepping to another register (decision 27); and the deletion draws only
+among labels the body holds at least twice (decision 28). What was not changed, and why: label bit
+flips stay below the tolerance of the label matching, so that labels drift and a copied label can
+take over its original's jumps (decision 31); the variant flip is left to the polymorphic operand
+cell (#173); a deletion of single instructions waits for a run that shows inserted instructions
+accumulating. The pre-registered expectations stand; the spectrum they are read against now
+includes these operators.
+
 ## Implementation steps and verification
 
 One commit per step, in this order; every step builds and tests on its own, so a failure is found
@@ -497,10 +516,10 @@ so its baseline is its own, not run `20260907`'s.
   examined and dropped: a runtime direction change is a property of the reader, not of a cell, and
   register-based or conditional turns stay outside any canonical structure. The operators act along
   the birth direction; the maintainer decided not to document this as a contract in this package.
-- **Duplication of whole instructions** (43 % of copies in run `20260902` were fragments cut at the
-  NOP boundary) and **insertion with deliberate targets** (80 % land in the small gaps between
-  instructions of the execution path, 20 % in the padding behind a row's last jump, chosen
-  uniformly) are follow-ups on the frame.
+- **Insertion with deliberate targets** (80 % land in the small gaps between instructions of the
+  execution path, 20 % in the padding behind a row's last jump, chosen uniformly): the frame tells
+  a gap between instructions from a cell inside an operand list, but not the padding behind a
+  row's last jump, because a walk does not end at a jump; a follow-up on the frame.
 - **Generation time** (0.93 M ticks before the sweep of run `20260907`, 4 M after) is dominated by
   the harvest walk, not by copying (~30 000 ticks per child by instruction count); its lever is
   harvest logic and sensing range, a later package.
@@ -595,3 +614,19 @@ so its baseline is its own, not run `20260907`'s.
     what was done** — value perturbation, the three opcode flips, register step, register swap,
     label and label-reference bit flip — so that a run's fertility per action is a grouping, not a
     reconstruction from cell values.
+28. **Deletion draws only among labels the body holds at least `minLabelCount` times**, default 2:
+    it removes only what exists twice, and is neutral by construction — the counterpart of
+    duplication and of the detour, whose label copies the value of an existing one.
+    `minLabelCount = 1` restores the draw over every label.
+29. **Duplication copies whole blocks only**: from the chosen label as many consecutive blocks as
+    the target's empty run holds, cut back to a block boundary, nothing when the first block does
+    not fit. A block is the stretch from a label to the next label on its line or to the end of
+    the extent; the word "gene" is not used for it.
+30. **The label entry of the insertion places a detour**: a label with the value of an existing
+    one, one instruction generated as for an instruction entry, and `JMPI` to where the code behind
+    the original label goes on — its first label reference, else the next block's label on the
+    line, else another label of the body — each accepted only outside the tolerance of the label
+    matching, so the detour cannot catch its own jump. The instruction entry stays, reported as
+    `instruction-insertion`.
+31. **Label and label-reference bit flips stay at one bit**, below the tolerance of the label
+    matching: labels drift, and a copied label can come to be preferred over its original.
