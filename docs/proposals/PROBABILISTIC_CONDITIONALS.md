@@ -207,12 +207,12 @@ gate unconditional changes nothing from 50 000 on and, below it, turns dice into
 that bounce, each costing about forty instructions. That is a small cost without benefit; the break
 was only better than a gate *closed* at 100 000.
 
-**Also changed, as its own small commit:** the pause check in `REPRODUCE.CONTINUE` moves before
-the `SIDEVEC` computation, so a bounced attempt (an attempt below the pause threshold with a saved
-continue position) costs about half of today's forty instructions; the continue-position check
-itself is one instruction (`IFSL`) since PR #171. The first attempt after a
-completed child still pays the walk to the corner (about 1 500 instructions) before the check; that
-is today's behaviour and not touched.
+**Also changed, as its own small commit:** `REPRODUCE.CONTINUE` checks the pause threshold first
+thing, before it loads its state, sets the marker or saves a pointer, and returns with a plain
+`RET` when the energy is below it, because nothing has been touched yet. A bounced attempt then
+costs about ten instructions instead of forty, and the first attempt after a completed child no
+longer walks to the corner (about 1 500 instructions) only to bounce there. The check inside the
+copy loop stays; it pauses a copy whose energy runs out between rows.
 
 **Not changed:** the copier's pause (`LTI ER REPRODUCTION_PAUSE_THRESHOLD`, 50 000, hard). It
 protects against dying in the middle of a copy and is the floor the energy gate stands on. **Not
@@ -391,7 +391,7 @@ the clock. The rule closes that case rather than opening it.
 
 The change is not free. An adult below 50 000 energy has, after it, no entropy relief until it
 copies again: harvesting dissipates nothing, bouncing dissipates nothing, and the soft gate makes
-it bounce (about forty instructions each, half after the pause-check move) with probability
+it bounce (about ten instructions each after the pause-check move) with probability
 p / (1 − p) per harvest entry — nine times at 45 000 energy. Whether the 10 000 budget covers the
 refill from 30 000 to 50 000 at the new packet density is not known from any run. The smoke run
 after step 3 decides it before the long run; if adults die in the refill phase, the countermeasure
@@ -517,7 +517,8 @@ so its baseline is its own, not run `20260907`'s.
    no run has to rediscover the trivial sweep before anything else can be selected.
 10. **`MAIN_LOOP_ENERGY_CHECK` removed, not softened**: no hard gate remains on the decision path,
     and two soft gates in a row would compound.
-11. **The copier's pause check moves before the `SIDEVEC` computation**, halving a bounced attempt.
+11. **The copier checks the pause threshold at its entry** and returns before touching anything,
+    so a bounced attempt costs about ten instructions and no walk to the corner.
 12. **No harvest abort this round**: made unnecessary by the eager start value.
 13. **STATE write rule in this package**, with the smoke run after step 3 as the gate and a higher
     `max-entropy` as the countermeasure if adults die in the refill phase; not a separate run, and
