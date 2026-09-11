@@ -1,6 +1,7 @@
 # The Unset State of a Location Register
 
-**Status: TO BE REVIEWED — the decisions are taken; what is deliberately left out is at the end.**
+**Status: ACCOMPLISHED — implemented on branch `location-register-unset-state` (PR #171, 2026-09-11);
+what is deliberately left out is at the end.**
 
 ## Problem
 
