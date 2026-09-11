@@ -702,7 +702,7 @@ public class GeneInsertionPlugin implements IBirthHandler {
      * @param shapeDvDim The environment size along the DV dimension.
      */
     private void resolveWalkRanges(int childId, Environment env, int dvDim, int shapeDvDim) {
-        boolean toroidal = true;
+        boolean toroidal = env.properties.isToroidal();
         boolean anyWrapping = false;
         for (ScanLineInfo line : scanLineMap.values()) {
             line.walkStart = line.minDv;
