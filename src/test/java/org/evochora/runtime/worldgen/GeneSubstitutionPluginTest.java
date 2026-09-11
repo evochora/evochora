@@ -23,8 +23,10 @@ import org.junit.jupiter.params.provider.MethodSource;
 
 import com.typesafe.config.ConfigFactory;
 
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -280,6 +282,32 @@ class GeneSubstitutionPluginTest {
             }
         }
         assertThat(verified).as("Should verify at least some variant flips").isGreaterThan(0);
+    }
+
+    /**
+     * A hard comparison and its probabilistic twin are conditionals of the same variant, so one
+     * operation flip turns the one into the other.
+     */
+    @Test
+    void operationFlipOfAComparisonReachesItsProbabilisticTwin() {
+        int gti = Instruction.getInstructionIdByName("GTI");
+        Set<Integer> reached = new HashSet<>();
+        for (int seed = 0; seed < 200; seed++) {
+            setUp();
+            placeCode(5, 5, gti);
+            GeneSubstitutionPlugin plugin = new GeneSubstitutionPlugin(
+                    new SeededRandomProvider(seed), 1.0,
+                    1.0, 0.0, 0.0, 0.0, 0.0,
+                    1.0, 0.0, 0.0,  // only operation flip
+                    0.5, 1, 1);
+            plugin.substitute(child, environment);
+
+            reached.add(environment.getMolecule(5, 5).value());
+        }
+
+        assertThat(reached)
+                .as("opcodes an operation flip of GTI reaches")
+                .contains(Instruction.getInstructionIdByName("PGTI"));
     }
 
     @Test
