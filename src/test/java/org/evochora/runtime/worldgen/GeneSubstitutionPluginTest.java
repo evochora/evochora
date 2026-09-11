@@ -23,6 +23,7 @@ import org.junit.jupiter.params.provider.MethodSource;
 
 import com.typesafe.config.ConfigFactory;
 
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -226,31 +227,116 @@ class GeneSubstitutionPluginTest {
         assertThat(verified).as("Should verify at least some operation flips").isGreaterThan(0);
     }
 
+    /**
+     * A family flip keeps the variant, and with it the signature the operands are written for, and
+     * takes an opcode of another family whatever its operation number is.
+     */
     @Test
-    void familyFlipPreservesOperationAndVariant() {
+    void familyFlipPreservesTheVariantAndLeavesTheFamily() {
         int verified = 0;
         for (int seed = 0; seed < 200; seed++) {
             setUp();
             placeCode(5, 5, ADDR_OPCODE);
-            // Only family flip
-            GeneSubstitutionPlugin plugin = new GeneSubstitutionPlugin(
-                    new SeededRandomProvider(seed), 1.0,
-                    1.0, 0.0, 0.0, 0.0, 0.0,
-                    0.0, 1.0, 0.0,  // only family flip
-                    0.5, 1, 1);
+            GeneSubstitutionPlugin plugin = familyFlipOnlyPlugin(new SeededRandomProvider(seed));
             plugin.substitute(child, environment);
 
             int newValue = environment.getMolecule(5, 5).value();
             if (newValue != ADDR_OPCODE) {
-                int origOperation = OpcodeId.extractOperation(ADDR_OPCODE);
                 int origVariant = OpcodeId.extractVariant(ADDR_OPCODE);
-                assertThat(OpcodeId.extractOperation(newValue)).isEqualTo(origOperation);
                 assertThat(OpcodeId.extractVariant(newValue)).isEqualTo(origVariant);
                 assertThat(OpcodeId.extractFamily(newValue)).isNotEqualTo(OpcodeId.extractFamily(ADDR_OPCODE));
                 verified++;
             }
         }
         assertThat(verified).as("Should verify at least some family flips").isGreaterThan(0);
+    }
+
+    /**
+     * The family flip leaves the family it starts in, so no flip of a conditional reaches another
+     * conditional: turning a hard gate into a soft one is the operation flip's business.
+     */
+    @Test
+    void familyFlipOfAProbabilisticComparisonLeavesTheConditionalFamily() {
+        int pgti = Instruction.getInstructionIdByName("PGTI");
+        int conditionalFamily = OpcodeId.extractFamily(pgti);
+        int variant = OpcodeId.extractVariant(pgti);
+
+        Set<Integer> reached = familyFlipsOf(pgti);
+
+        assertThat(reached).as("PGTI has family alternatives").isNotEmpty();
+        for (int opcodeId : reached) {
+            assertThat(OpcodeId.extractFamily(opcodeId))
+                    .as("family of %s", Instruction.getAllInstructions().get(opcodeId))
+                    .isNotEqualTo(conditionalFamily);
+            assertThat(OpcodeId.extractVariant(opcodeId))
+                    .as("variant of %s", Instruction.getAllInstructions().get(opcodeId))
+                    .isEqualTo(variant);
+        }
+    }
+
+    @Test
+    void familyFlipOfAHardComparisonLeavesTheConditionalFamily() {
+        int gti = Instruction.getInstructionIdByName("GTI");
+        int conditionalFamily = OpcodeId.extractFamily(gti);
+
+        Set<Integer> reached = familyFlipsOf(gti);
+
+        assertThat(reached).as("GTI has family alternatives").isNotEmpty();
+        assertThat(reached).doesNotContain(Instruction.getInstructionIdByName("PGTI"));
+        for (int opcodeId : reached) {
+            assertThat(OpcodeId.extractFamily(opcodeId))
+                    .as("family of %s", Instruction.getAllInstructions().get(opcodeId))
+                    .isNotEqualTo(conditionalFamily);
+        }
+    }
+
+    /**
+     * An opcode whose variant no other family uses has nowhere to flip to, and the plugin leaves
+     * it as it stands instead of writing something of another signature.
+     */
+    @Test
+    void anOpcodeWhoseVariantNoOtherFamilyUsesHasNoFamilyFlip() {
+        Map<Integer, String> allOpcodes = Instruction.getAllInstructions();
+        Map<Integer, Set<Integer>> familiesByVariant = new HashMap<>();
+        for (int opcodeId : allOpcodes.keySet()) {
+            familiesByVariant
+                    .computeIfAbsent(OpcodeId.extractVariant(opcodeId), k -> new HashSet<>())
+                    .add(OpcodeId.extractFamily(opcodeId));
+        }
+
+        int solitary = -1;
+        for (int opcodeId : allOpcodes.keySet()) {
+            // NOP has the value 0, which is the empty cell, so it is never selected
+            if (opcodeId != NOP_OPCODE && familiesByVariant.get(OpcodeId.extractVariant(opcodeId)).size() == 1) {
+                solitary = opcodeId;
+                break;
+            }
+        }
+        assertThat(solitary).as("an opcode whose variant only its own family uses").isNotNegative();
+
+        assertThat(familyFlipsOf(solitary))
+                .as("%s keeps its value", allOpcodes.get(solitary))
+                .containsExactly(solitary);
+    }
+
+    /** Creates a plugin whose CODE mutation performs nothing but family flips. */
+    private GeneSubstitutionPlugin familyFlipOnlyPlugin(IRandomProvider rng) {
+        return new GeneSubstitutionPlugin(rng, 1.0,
+                1.0, 0.0, 0.0, 0.0, 0.0,
+                0.0, 1.0, 0.0,
+                0.5, 1, 1);
+    }
+
+    /** Collects the opcodes a family flip of one opcode reaches over many seeds. */
+    private Set<Integer> familyFlipsOf(int opcodeId) {
+        Set<Integer> reached = new HashSet<>();
+        for (int seed = 0; seed < 200; seed++) {
+            setUp();
+            placeCode(5, 5, opcodeId);
+            familyFlipOnlyPlugin(new SeededRandomProvider(seed)).substitute(child, environment);
+            reached.add(environment.getMolecule(5, 5).value());
+        }
+        return reached;
     }
 
     @Test
@@ -845,7 +931,8 @@ class GeneSubstitutionPluginTest {
         assertThat(record.cells()).containsExactly(flatIndex);
         assertThat(record.oldValues()).containsExactly(expectedOld);
         assertThat(record.newValues()).containsExactly(environment.getMolecule(5, 5).toInt());
-        assertThat(record.params()).isEmpty();
+        // The cell stands on a line no walk reaches, so it is in neither kind of operand slot
+        assertThat(record.params()).containsExactly(0L);
         assertThat(record.dv()).isEqualTo(child.getDv());
     }
 
@@ -961,6 +1048,7 @@ class GeneSubstitutionPluginTest {
             }
             text.append(" }\n");
         }
+        text.append("operands { scalar = 1.0, vector = 1.0 }\n");
         return text.toString();
     }
 
@@ -1031,6 +1119,7 @@ class GeneSubstitutionPluginTest {
         com.typesafe.config.Config config = ConfigFactory.parseString("""
                 substitutionRate = 1.0
                 CODE { weight = 1.0, operationFlipWeight = 0.7, familyFlipWeight = 0.2, variantFlipWeight = 0.1 }
+                operands { scalar = 1.0, vector = 1.0 }
                 """);
 
         for (int seed = 0; seed < 50; seed++) {
@@ -1056,6 +1145,7 @@ class GeneSubstitutionPluginTest {
         com.typesafe.config.Config config = ConfigFactory.parseString("""
                 substitutionRate = 1.0
                 DATTA { weight = 1.0 }
+                operands { scalar = 1.0, vector = 1.0 }
                 """);
 
         assertThatThrownBy(() -> new GeneSubstitutionPlugin(new SeededRandomProvider(1), config))
@@ -1101,6 +1191,7 @@ class GeneSubstitutionPluginTest {
         com.typesafe.config.Config config = ConfigFactory.parseString("""
                 substitutionRate = 1.0
                 STATE { weight = 1.0 }
+                operands { scalar = 1.0, vector = 1.0 }
                 """);
 
         boolean steppedBeyondOne = false;
@@ -1124,6 +1215,228 @@ class GeneSubstitutionPluginTest {
         assertThat(steppedBeyondOne)
                 .as("the default exponent produces a scale-proportional step")
                 .isTrue();
+    }
+
+    // ---- Operand slot tests ----
+
+    /**
+     * A configuration in which only DATA carries weight, with the given operand multipliers, so
+     * that the slot a DATA cell stands in decides alone which cell is selected.
+     */
+    private static com.typesafe.config.Config dataConfigWithOperands(double scalar, double vector) {
+        return ConfigFactory.parseString("""
+                substitutionRate = 1.0
+                DATA { weight = 1.0, exponent = 0.9 }
+                operands { scalar = %s, vector = %s }
+                """.formatted(scalar, vector));
+    }
+
+    /**
+     * Places a body along the newborn's direction vector, starting at its initial position: a
+     * label, a SETI with its register and its literal, and a SEKI with the two components of its
+     * vector operand.
+     */
+    private void placeBodyWithLiteralAndVector() {
+        placeLabel(0, 0, 12345);
+        placeCode(1, 0, Instruction.getInstructionIdByName("SETI"));
+        placeRegister(2, 0, 0);
+        placeData(3, 0, 42);
+        placeCode(4, 0, Instruction.getInstructionIdByName("SEKI"));
+        placeData(5, 0, 1);
+        placeData(6, 0, 0);
+    }
+
+    @Test
+    void aScalarMultiplierDrawsTheSubstitutionToTheLiteral() {
+        com.typesafe.config.Config config = dataConfigWithOperands(1000.0, 0.0);
+        int literal = environment.getProperties().toFlatIndex(new int[]{3, 0});
+
+        int written = 0;
+        for (int seed = 0; seed < 20; seed++) {
+            setUp();
+            placeBodyWithLiteralAndVector();
+            new GeneSubstitutionPlugin(new SeededRandomProvider(seed), config)
+                    .substitute(child, environment);
+
+            List<MutationRecord> records = child.getBirthMutations();
+            if (records == null) {
+                continue; // the perturbation drew an offset of zero and wrote nothing
+            }
+            MutationRecord record = records.get(0);
+            assertThat(record.cells()).as("seed=%d", seed).containsExactly(literal);
+            assertThat(record.params()).as("seed=%d: the literal stands in a scalar slot", seed)
+                    .containsExactly(1L);
+            written++;
+        }
+        assertThat(written).as("the literal is hit and changed for at least one seed").isPositive();
+    }
+
+    @Test
+    void aVectorMultiplierDrawsTheSubstitutionToAVectorComponent() {
+        com.typesafe.config.Config config = dataConfigWithOperands(0.0, 1000.0);
+        int firstComponent = environment.getProperties().toFlatIndex(new int[]{5, 0});
+        int secondComponent = environment.getProperties().toFlatIndex(new int[]{6, 0});
+
+        int written = 0;
+        for (int seed = 0; seed < 20; seed++) {
+            setUp();
+            placeBodyWithLiteralAndVector();
+            new GeneSubstitutionPlugin(new SeededRandomProvider(seed), config)
+                    .substitute(child, environment);
+
+            List<MutationRecord> records = child.getBirthMutations();
+            if (records == null) {
+                continue; // the perturbation drew an offset of zero and wrote nothing
+            }
+            MutationRecord record = records.get(0);
+            assertThat(record.cells()).as("seed=%d", seed)
+                    .containsAnyOf(firstComponent, secondComponent).hasSize(1);
+            assertThat(record.params()).as("seed=%d: the cell stands in a vector slot", seed)
+                    .containsExactly(2L);
+            written++;
+        }
+        assertThat(written).as("a vector component is hit and changed for at least one seed").isPositive();
+    }
+
+    /**
+     * A cell in neither kind of operand slot weighs its type weight, so it stays selectable while
+     * both multipliers are zero and the whole body around it is switched off.
+     */
+    @Test
+    void aCellOutsideEveryInstructionKeepsItsTypeWeight() {
+        com.typesafe.config.Config config = dataConfigWithOperands(0.0, 0.0);
+        int outside = environment.getProperties().toFlatIndex(new int[]{10, 5});
+
+        int written = 0;
+        for (int seed = 0; seed < 20; seed++) {
+            setUp();
+            placeBodyWithLiteralAndVector();
+            placeData(10, 5, 100);
+            new GeneSubstitutionPlugin(new SeededRandomProvider(seed), config)
+                    .substitute(child, environment);
+
+            List<MutationRecord> records = child.getBirthMutations();
+            if (records == null) {
+                continue; // the perturbation drew an offset of zero and wrote nothing
+            }
+            MutationRecord record = records.get(0);
+            assertThat(record.cells()).as("seed=%d", seed).containsExactly(outside);
+            assertThat(record.params()).as("seed=%d: the cell stands in no operand slot", seed)
+                    .containsExactly(0L);
+            written++;
+        }
+        assertThat(written).as("the cell outside every instruction is hit and changed").isPositive();
+    }
+
+    // ---- Operand block configuration tests ----
+
+    @Test
+    void aMissingOperandsBlockIsRejected() {
+        com.typesafe.config.Config config = ConfigFactory.parseString("""
+                substitutionRate = 1.0
+                DATA { weight = 1.0 }
+                """);
+
+        assertThatThrownBy(() -> new GeneSubstitutionPlugin(new SeededRandomProvider(1), config))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("operands")
+                .hasMessageContaining("scalar")
+                .hasMessageContaining("vector");
+    }
+
+    @Test
+    void anOperandsBlockMissingAMultiplierIsRejected() {
+        com.typesafe.config.Config config = ConfigFactory.parseString("""
+                substitutionRate = 1.0
+                DATA { weight = 1.0 }
+                operands { scalar = 2.0 }
+                """);
+
+        assertThatThrownBy(() -> new GeneSubstitutionPlugin(new SeededRandomProvider(1), config))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("operands")
+                .hasMessageContaining("vector");
+    }
+
+    @Test
+    void anUnknownKeyInTheOperandsBlockIsRejected() {
+        com.typesafe.config.Config config = ConfigFactory.parseString("""
+                substitutionRate = 1.0
+                DATA { weight = 1.0 }
+                operands { scalar = 2.0, vector = 1.0, foo = 1 }
+                """);
+
+        assertThatThrownBy(() -> new GeneSubstitutionPlugin(new SeededRandomProvider(1), config))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("operands")
+                .hasMessageContaining("foo");
+    }
+
+    /**
+     * A misspelt key inside a type block is read by nothing, and a misspelt weight would leave the
+     * type at weight 0 without saying so, so it is rejected instead of ignored.
+     */
+    @Test
+    void aMisspeltKeyInATypeBlockIsRejected() {
+        com.typesafe.config.Config config = ConfigFactory.parseString("""
+                substitutionRate = 1.0
+                DATA { weight = 1.0, wieght = 2.0 }
+                operands { scalar = 1.0, vector = 1.0 }
+                """);
+
+        assertThatThrownBy(() -> new GeneSubstitutionPlugin(new SeededRandomProvider(1), config))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("DATA")
+                .hasMessageContaining("wieght")
+                .hasMessageContaining("weight");
+    }
+
+    /**
+     * REGISTER moves within its bank instead of being perturbed proportionally, so an exponent in
+     * its block would be read by nothing.
+     */
+    @Test
+    void anExponentInABlockWithoutTheValueStrategyIsRejected() {
+        com.typesafe.config.Config config = ConfigFactory.parseString("""
+                substitutionRate = 1.0
+                REGISTER { weight = 1.0, exponent = 0.5 }
+                operands { scalar = 1.0, vector = 1.0 }
+                """);
+
+        assertThatThrownBy(() -> new GeneSubstitutionPlugin(new SeededRandomProvider(1), config))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("REGISTER")
+                .hasMessageContaining("exponent");
+    }
+
+    @Test
+    void aNegativeOperandMultiplierIsRejected() {
+        com.typesafe.config.Config config = ConfigFactory.parseString("""
+                substitutionRate = 1.0
+                DATA { weight = 1.0 }
+                operands { scalar = -1.0, vector = 1.0 }
+                """);
+
+        assertThatThrownBy(() -> new GeneSubstitutionPlugin(new SeededRandomProvider(1), config))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("scalar");
+    }
+
+    /**
+     * NaN compares false to every bound, so a negated range check would let it through and leave
+     * the cells of that slot silently unselectable.
+     */
+    @Test
+    void aNaNOperandMultiplierIsRejected() {
+        com.typesafe.config.Config config = ConfigFactory.parseMap(Map.of(
+                "substitutionRate", 1.0,
+                "DATA.weight", 1.0,
+                "operands.scalar", Double.NaN,
+                "operands.vector", 1.0));
+
+        assertThatThrownBy(() -> new GeneSubstitutionPlugin(new SeededRandomProvider(1), config))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("scalar");
     }
 
     // ---- Plugin contract tests ----

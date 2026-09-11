@@ -79,6 +79,7 @@ class MutationInsertionOrderIndependenceTest {
                 DATA { weight = 1.0, exponent = 0.7 }
                 LABEL { weight = 1.0, bitflips = 1 }
                 LABELREF { weight = 1.0, bitflips = 1 }
+                operands { scalar = 1.0, vector = 1.0 }
                 """)));
     }
 

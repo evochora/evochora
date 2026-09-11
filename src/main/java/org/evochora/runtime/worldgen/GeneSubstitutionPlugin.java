@@ -13,6 +13,8 @@ import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.isa.OpcodeId;
 import org.evochora.runtime.isa.RegisterBank;
 import org.evochora.runtime.model.Environment;
+import org.evochora.runtime.model.EnvironmentProperties;
+import org.evochora.runtime.model.GenomeFrame;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.MutationRecord;
 import org.evochora.runtime.model.MoleculeTypeRegistry;
@@ -43,23 +45,36 @@ import org.slf4j.LoggerFactory;
  * a configuration block, and a type of a molecule the registry does not know, has weight 0 and is
  * never selected.
  * <p>
+ * <strong>Where a cell stands:</strong> the type says what a molecule is, the operand slot says
+ * where it stands. Before the selection pass the newborn's genome is read in the machine's reading
+ * frame ({@link GenomeFrame}), and the weight of a cell is its type weight times the multiplier of
+ * the slot it stands in: {@code operands.scalar} for a cell in an immediate slot, which is a
+ * literal, {@code operands.vector} for one component of a vector operand, and one for every other
+ * cell — opcodes, register and label slots, labels, cells outside any instruction and cells the
+ * frame finds ambiguous. A multiplier of zero takes its cells out of the selection entirely.
+ * <p>
  * <strong>CODE Mutation:</strong> At init time, three lookup tables are pre-computed from
  * the registered instruction set. Each table maps an opcode ID to an array of valid alternative
- * opcodes for one flip mode (operation, family, or variant). Variant flips are constrained to
- * the same arity group (0-arg, 1-arg, 2-arg, 3-arg), so instruction length never changes.
- * Every mutation result is guaranteed to be a registered opcode.
+ * opcodes for one flip mode: an operation flip keeps family and variant, a family flip keeps the
+ * variant and with it the signature and takes any operation of another family, and a variant flip
+ * keeps family and operation and stays within the same arity group (0-arg, 1-arg, 2-arg, 3-arg),
+ * so instruction length never changes. Every mutation result is guaranteed to be a registered
+ * opcode.
  * <p>
  * <strong>Performance:</strong> Near-zero allocation after warmup. The owned cells are visited
  * through the environment's cell views in a single reservoir-sampling pass (no list collection),
- * the reservoir state and the coordinate of the chosen cell live in reusable fields, and CODE
- * mutation uses pre-computed O(1) lookup tables. The only per-call allocations are the visitor
- * lambda and, when a molecule actually changes, one {@link Molecule} record for the write-back and
- * the {@link MutationRecord} handed to the newborn.
+ * the reservoir state and the coordinate of the chosen cell live in reusable fields, the reading
+ * frame keeps its buffers between builds, and CODE mutation uses pre-computed O(1) lookup tables.
+ * The only per-call allocations are the visitor lambdas, the copies of the newborn's initial
+ * position and direction vector the frame is built from and, when a molecule actually changes, one
+ * {@link Molecule} record for the write-back and the {@link MutationRecord} handed to the newborn.
  * <p>
  * <strong>What it records:</strong> a write reports itself on the newborn as a
  * {@link MutationRecord} of kind {@code "substitution"} naming the one changed cell, the molecule
- * before and after, and no parameters. A run that changes nothing - no alternative opcode, a value
- * that came out equal - records nothing, so a record always stands for a molecule that differs.
+ * before and after, and one parameter: the slot code of the changed cell, 0 for a cell in neither
+ * kind of operand slot, 1 for a scalar immediate slot and 2 for a vector slot. A run that changes
+ * nothing - no alternative opcode, a value that came out equal - records nothing, so a record
+ * always stands for a molecule that differs.
  * <p>
  * <strong>Thread Safety:</strong> Not thread-safe. Runs in the sequential post-Execute phase of
  * {@code Simulation.tick()}.
@@ -82,6 +97,21 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
     /** Exponent used for a value-carrying type whose configuration block names none. */
     private static final double DEFAULT_EXPONENT = 0.7;
 
+    /** Slot code of a cell standing in neither a scalar nor a vector operand slot. */
+    private static final int SLOT_CODE_NONE = 0;
+
+    /** Slot code of a cell standing in a scalar immediate slot. */
+    private static final int SLOT_CODE_SCALAR = 1;
+
+    /** Slot code of a cell holding one component of a vector operand. */
+    private static final int SLOT_CODE_VECTOR = 2;
+
+    /** Name of the configuration block carrying the operand slot multipliers. */
+    private static final String OPERANDS_BLOCK = "operands";
+
+    /** The keys the operand block carries, both mandatory. */
+    private static final String[] OPERAND_KEYS = {"scalar", "vector"};
+
     /**
      * Length of the per-type lookup arrays: one slot for every raw type index a registered type
      * can produce, so the highest registered index is still addressable.
@@ -102,6 +132,12 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
     private final double totalFlipWeight;
     private final int labelBitflips;
     private final int labelrefBitflips;
+
+    /** Multiplier on the type weight of a cell standing in a scalar immediate slot. */
+    private final double operandsScalar;
+
+    /** Multiplier on the type weight of a cell holding one component of a vector operand. */
+    private final double operandsVector;
 
     /** Selection weight per type, indexed by raw type index. Length {@link #TYPE_TABLE_SIZE}. */
     private final double[] typeWeights;
@@ -132,26 +168,41 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
     private double weightSum;
     /** Coordinate of the candidate cell; sized from the world's dimension count on first use. */
     private int[] chosen;
+    /** Slot code of the candidate cell: 0 for neither kind of slot, 1 for scalar, 2 for vector. */
+    private int chosenSlotCode;
     /** Collects the record of a write; reused so that a birth allocates only the record itself. */
     private final MutationRecord.Builder recordBuilder = new MutationRecord.Builder();
+    /** The newborn's genome in the machine's reading frame; rebuilt for every substitution. */
+    private final GenomeFrame frame = new GenomeFrame();
 
     /**
      * Creates a gene substitution plugin from configuration.
      * <p>
-     * The configuration carries {@code substitutionRate} and one block per molecule type, named
-     * after the type. A type with a block contributes its {@code weight}, and, if it uses the
-     * general value strategy, its {@code exponent} or {@value #DEFAULT_EXPONENT} when the block
-     * names none. A type without a block gets weight 0. Any other key is rejected.
+     * The configuration carries {@code substitutionRate}, the mandatory {@code operands} block
+     * with the multipliers {@code scalar} and {@code vector}, and one block per molecule type,
+     * named after the type. A type with a block contributes its {@code weight}, and, if it uses
+     * the general value strategy, its {@code exponent} or {@value #DEFAULT_EXPONENT} when the
+     * block names none. A type without a block gets weight 0. Any other key, at the top level or
+     * inside a block, is rejected.
      *
      * @param randomProvider Source of randomness.
-     * @param config Configuration containing substitutionRate and one block per mutable type.
-     * @throws IllegalArgumentException if the configuration carries a key that is neither
-     *         {@code substitutionRate} nor the name of a registered molecule type
+     * @param config Configuration containing substitutionRate, the operands block and one block
+     *               per mutable type.
+     * @throws IllegalArgumentException if the configuration carries a key that names no setting of
+     *         this plugin, if the {@code operands} block or one of its keys is missing, or if a
+     *         value lies outside its range
      */
     public GeneSubstitutionPlugin(IRandomProvider randomProvider, com.typesafe.config.Config config) {
         requireKnownKeys(config);
+        requireKnownBlockKeys(config);
         this.random = randomProvider.asJavaRandom();
         this.substitutionRate = config.getDouble("substitutionRate");
+
+        com.typesafe.config.Config operandsConfig = requireOperandsBlock(config);
+        this.operandsScalar = operandsConfig.getDouble("scalar");
+        this.operandsVector = operandsConfig.getDouble("vector");
+        requireMultiplier("scalar", this.operandsScalar);
+        requireMultiplier("vector", this.operandsVector);
 
         this.typeWeights = new double[TYPE_TABLE_SIZE];
         this.typeExponents = new double[TYPE_TABLE_SIZE];
@@ -192,7 +243,8 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
      * Convenience constructor for tests.
      * <p>
      * Covers the five types with a non-zero default weight. Every other registered type gets
-     * weight 0, and every type that uses the general value strategy gets the given exponent.
+     * weight 0, every type that uses the general value strategy gets the given exponent, and both
+     * operand multipliers are one, so that a cell weighs its type weight wherever it stands.
      *
      * @param randomProvider Source of randomness.
      * @param substitutionRate Probability of substitution per newborn (0.0 to 1.0).
@@ -221,6 +273,8 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
         this.totalFlipWeight = operationFlipWeight + familyFlipWeight + variantFlipWeight;
         this.labelBitflips = labelBitflips;
         this.labelrefBitflips = labelrefBitflips;
+        this.operandsScalar = 1.0;
+        this.operandsVector = 1.0;
 
         this.typeWeights = new double[TYPE_TABLE_SIZE];
         this.typeWeights[rawIndex(Config.TYPE_CODE)] = codeWeight;
@@ -255,9 +309,11 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
     /**
      * Performs gene substitution for a single newborn organism.
      * <p>
-     * Iterates the child's owned cells via weighted reservoir sampling to select one random
-     * non-empty code-encoding molecule, then applies a type-specific mutation and writes
-     * the new value back via {@link Environment#setMoleculeAt(int[], Molecule)}.
+     * Reads the child's genome in the machine's reading frame, iterates its owned cells via
+     * weighted reservoir sampling to select one random non-empty code-encoding molecule — each
+     * cell weighted by its type and by the operand slot it stands in — then applies a type-specific
+     * mutation and writes the new value back via
+     * {@link Environment#setMoleculeAt(int[], Molecule)}.
      *
      * @param child The newborn organism.
      * @param env The simulation environment.
@@ -269,12 +325,14 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
             return;
         }
 
-        int dims = env.getProperties().getDimensions();
+        EnvironmentProperties props = env.getProperties();
+        int dims = props.getDimensions();
         if (chosen == null || chosen.length != dims) {
             chosen = new int[dims];
         }
         cellChosen = false;
         weightSum = 0.0;
+        frame.build(env, childId, child.getInitialPosition(), child.getDv());
 
         // Weighted reservoir sampling over the owned cells.
         // The visit runs in flat-index order: the reservoir choice below must not depend on write history
@@ -287,9 +345,14 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
             if (typeIdx >= TYPE_TABLE_SIZE) {
                 return; // no registered type has this index, so its weight is 0
             }
-            double w = typeWeights[typeIdx];
-            if (w <= 0.0) {
+            double typeWeight = typeWeights[typeIdx];
+            if (typeWeight <= 0.0) {
                 return; // type disabled
+            }
+            int slotCode = slotCode(frame.slot(props.toFlatIndex(cell.coordinate())));
+            double w = typeWeight * slotMultiplier(slotCode);
+            if (w <= 0.0) {
+                return; // the slot this cell stands in is switched off
             }
             weightSum += w;
             if (random.nextDouble() * weightSum < w) {
@@ -299,6 +362,7 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
                 chosenRawValue = moleculeInt & Config.VALUE_MASK;
                 chosenMarker = (moleculeInt & Config.MARKER_MASK) >>> Config.MARKER_SHIFT;
                 chosenMoleculeInt = moleculeInt;
+                chosenSlotCode = slotCode;
             }
         });
 
@@ -331,12 +395,13 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
         Molecule written = new Molecule(selectedType, newValue, chosenMarker);
         env.setMoleculeAt(chosen, written);
 
-        // The one changed cell, as the flat index the environment persists cells by. A run that
-        // decided to change nothing has already returned above, so every record here names a
-        // molecule that actually differs.
+        // The one changed cell, as the flat index the environment persists cells by, and the slot
+        // code it stood in. A run that decided to change nothing has already returned above, so
+        // every record here names a molecule that actually differs.
         child.recordBirthMutation(recordBuilder
                 .start(getClass().getName(), MUTATION_KIND, child.getDv())
-                .cell(env.getProperties().toFlatIndex(chosen), chosenMoleculeInt, written.toInt())
+                .cell(props.toFlatIndex(chosen), chosenMoleculeInt, written.toInt())
+                .param(chosenSlotCode)
                 .build());
 
         if (LOG.isDebugEnabled()) {
@@ -348,14 +413,49 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
         }
     }
 
+    /**
+     * Reports the slot code a cell of the given role is recorded and weighted under.
+     *
+     * @param slot The role the reading frame gives the cell.
+     * @return {@link #SLOT_CODE_SCALAR} for an immediate slot, {@link #SLOT_CODE_VECTOR} for a
+     *         component of a vector operand, {@link #SLOT_CODE_NONE} for every other role.
+     */
+    private static int slotCode(GenomeFrame.Slot slot) {
+        if (slot == GenomeFrame.Slot.SCALAR) {
+            return SLOT_CODE_SCALAR;
+        }
+        if (slot == GenomeFrame.Slot.VECTOR) {
+            return SLOT_CODE_VECTOR;
+        }
+        return SLOT_CODE_NONE;
+    }
+
+    /**
+     * Returns the factor the type weight of a cell in this slot is multiplied by.
+     *
+     * @param slotCode The cell's slot code.
+     * @return The configured multiplier of the slot; one for a cell in neither kind of slot.
+     */
+    private double slotMultiplier(int slotCode) {
+        if (slotCode == SLOT_CODE_SCALAR) {
+            return operandsScalar;
+        }
+        if (slotCode == SLOT_CODE_VECTOR) {
+            return operandsVector;
+        }
+        return 1.0;
+    }
+
     // ---- Per-type mutation methods ----
 
     /**
      * Mutates a CODE molecule's opcode value by flipping to a random valid alternative.
      * <p>
-     * Selects a flip mode (operation, family, or variant) based on configured weights,
-     * then picks a random alternative from the pre-computed lookup table. If no alternatives
-     * exist for the selected mode, returns the original value unchanged.
+     * Selects a flip mode based on configured weights, then picks a random alternative from the
+     * pre-computed lookup table of that mode: an operation flip keeps family and variant, a family
+     * flip keeps the variant and takes any operation of another family, and a variant flip keeps
+     * family and operation within the arity group. If no alternatives exist for the selected mode,
+     * returns the original value unchanged.
      *
      * @param opcodeValue The current opcode value (bare, without TYPE_CODE bits).
      * @return The mutated opcode value, or the original if no alternative exists.
@@ -460,8 +560,14 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
     /**
      * Builds the pre-computed opcode alternative tables for the three flip modes.
      * <p>
-     * Groups all registered opcodes by shared components, then for each opcode stores
-     * the list of valid alternatives (same group, minus self) as an {@code int[]}.
+     * Groups all registered opcodes by the components a flip keeps, then for each opcode stores
+     * the list of valid alternatives of each mode as an {@code int[]}. The operation flip keeps
+     * family and variant and takes another operation; the variant flip keeps family and operation
+     * and takes another variant of the same arity group; the family flip keeps only the variant,
+     * and with it the signature the operands are written for, and takes any operation of another
+     * family. Its group therefore excludes every opcode of the opcode's own family, not only the
+     * opcode itself: an operation number carries no meaning across families, so requiring the same
+     * one would leave the flip empty for every opcode whose operation number no other family uses.
      * This is called once at construction time; the resulting tables provide O(1)
      * lookup during mutation.
      */
@@ -482,8 +588,7 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
             int opKey = family * 64 + variant;
             opGroups.computeIfAbsent(opKey, k -> new IntArrayList()).add(opcodeId);
 
-            int famKey = operation * 64 + variant;
-            famGroups.computeIfAbsent(famKey, k -> new IntArrayList()).add(opcodeId);
+            famGroups.computeIfAbsent(variant, k -> new IntArrayList()).add(opcodeId);
 
             int varKey = family * 256 + operation * 4 + ag;
             varGroups.computeIfAbsent(varKey, k -> new IntArrayList()).add(opcodeId);
@@ -498,7 +603,7 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
             operationFlipAlternatives.put(opcodeId,
                     filterSelf(opGroups.get(family * 64 + variant), opcodeId));
             familyFlipAlternatives.put(opcodeId,
-                    filterSelf(famGroups.get(operation * 64 + variant), opcodeId));
+                    filterFamily(famGroups.get(variant), family));
             variantFlipAlternatives.put(opcodeId,
                     filterSelf(varGroups.get(family * 256 + operation * 4 + ag), opcodeId));
         }
@@ -520,6 +625,31 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
         for (int i = 0; i < group.size(); i++) {
             int id = group.getInt(i);
             if (id != selfId) {
+                result[idx++] = id;
+            }
+        }
+        if (idx == 0) {
+            return null;
+        }
+        return idx == result.length ? result : Arrays.copyOf(result, idx);
+    }
+
+    /**
+     * Filters a group list to the opcodes outside one family, returning an array of alternatives.
+     *
+     * @param group The group of opcodes sharing a common key.
+     * @param selfFamily The family to exclude, which is the family of the opcode being flipped.
+     * @return An array of alternative opcodes, or {@code null} if no alternatives exist.
+     */
+    private static int[] filterFamily(IntArrayList group, int selfFamily) {
+        if (group == null) {
+            return null;
+        }
+        int[] result = new int[group.size()];
+        int idx = 0;
+        for (int i = 0; i < group.size(); i++) {
+            int id = group.getInt(i);
+            if (OpcodeId.extractFamily(id) != selfFamily) {
                 result[idx++] = id;
             }
         }
@@ -618,11 +748,12 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
     }
 
     /**
-     * Rejects a configuration key that names neither the substitution rate nor a molecule type.
+     * Rejects a configuration key that names neither a setting of the plugin nor a molecule type.
      * <p>
-     * Every block of this plugin's options is the configuration of one molecule type and is read
-     * under the type's name as {@link MoleculeTypeRegistry} spells it. A key that names no
-     * registered type is read by nothing, so its weight and exponent would have no effect at all.
+     * Besides the substitution rate and the operand multipliers, every block of this plugin's
+     * options is the configuration of one molecule type and is read under the type's name as
+     * {@link MoleculeTypeRegistry} spells it. A key that names no registered type is read by
+     * nothing, so its weight and exponent would have no effect at all.
      *
      * @param config The plugin configuration.
      * @throws IllegalArgumentException if the configuration carries an unaccepted key
@@ -630,6 +761,7 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
     private static void requireKnownKeys(com.typesafe.config.Config config) {
         List<String> accepted = new ArrayList<>();
         accepted.add("substitutionRate");
+        accepted.add(OPERANDS_BLOCK);
         for (int type : MoleculeTypeRegistry.orderedTypes()) {
             accepted.add(MoleculeTypeRegistry.typeToName(type));
         }
@@ -638,6 +770,106 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
                 throw new IllegalArgumentException("GeneSubstitutionPlugin has no setting '" + key
                         + "'; accepted names are " + String.join(", ", accepted) + ".");
             }
+        }
+    }
+
+    /**
+     * Rejects a key inside a type block that the block has no setting for.
+     * <p>
+     * A block carries a weight, and beyond that only what its type's strategy reads: an exponent
+     * where the general value perturbation applies, the three flip weights for CODE, the number of
+     * bit flips for LABEL and LABELREF. Every other key would be read by nothing, and a misspelt
+     * weight that is silently ignored leaves the type at weight 0.
+     *
+     * @param config The plugin configuration.
+     * @throws IllegalArgumentException if a type block carries an unaccepted key
+     */
+    private static void requireKnownBlockKeys(com.typesafe.config.Config config) {
+        for (int type : MoleculeTypeRegistry.orderedTypes()) {
+            String name = MoleculeTypeRegistry.typeToName(type);
+            com.typesafe.config.Config block = blockOrNull(config, name);
+            if (block == null) {
+                continue;
+            }
+            List<String> accepted = new ArrayList<>();
+            accepted.add("weight");
+            if (usesValueStrategy(type)) {
+                accepted.add("exponent");
+            }
+            if (type == Config.TYPE_CODE) {
+                accepted.add("operationFlipWeight");
+                accepted.add("familyFlipWeight");
+                accepted.add("variantFlipWeight");
+            }
+            if (type == Config.TYPE_LABEL || type == Config.TYPE_LABELREF) {
+                accepted.add("bitflips");
+            }
+            requireBlockKeys(block, name, accepted);
+        }
+    }
+
+    /**
+     * Returns the operand block, which every configuration must carry with both its multipliers.
+     * <p>
+     * The multipliers decide how much of the substitution pressure falls on the literals and on
+     * the vector components of a genome, so a configuration that leaves them out would silently
+     * run at a weighting nobody chose.
+     *
+     * @param config The plugin configuration.
+     * @return The operand block.
+     * @throws IllegalArgumentException if the block is missing, carries an unaccepted key, or does
+     *         not name both multipliers
+     */
+    private static com.typesafe.config.Config requireOperandsBlock(com.typesafe.config.Config config) {
+        com.typesafe.config.Config block = blockOrNull(config, OPERANDS_BLOCK);
+        if (block == null) {
+            throw new IllegalArgumentException("GeneSubstitutionPlugin needs the block '"
+                    + OPERANDS_BLOCK + "' with the settings " + String.join(", ", OPERAND_KEYS) + ".");
+        }
+        requireBlockKeys(block, OPERANDS_BLOCK, Arrays.asList(OPERAND_KEYS));
+        for (String key : OPERAND_KEYS) {
+            if (!block.hasPath(key)) {
+                throw new IllegalArgumentException("GeneSubstitutionPlugin block '" + OPERANDS_BLOCK
+                        + "' is missing the setting '" + key + "'.");
+            }
+        }
+        return block;
+    }
+
+    /**
+     * Rejects a key of a block that is not among the ones the block is read for.
+     *
+     * @param block The block to check.
+     * @param blockName The block's name, as the configuration spells it.
+     * @param accepted The keys the block is read for.
+     * @throws IllegalArgumentException if the block carries any other key
+     */
+    private static void requireBlockKeys(com.typesafe.config.Config block, String blockName,
+                                         List<String> accepted) {
+        for (String key : block.root().keySet()) {
+            if (!accepted.contains(key)) {
+                throw new IllegalArgumentException("GeneSubstitutionPlugin block '" + blockName
+                        + "' has no setting '" + key + "'; accepted names are "
+                        + String.join(", ", accepted) + ".");
+            }
+        }
+    }
+
+    /**
+     * Rejects an operand multiplier that is not a factor a weight can be multiplied by.
+     * <p>
+     * The condition is written positively, because {@code NaN} compares {@code false} to every
+     * bound and would pass a negated form; it would make every weighted comparison of the
+     * reservoir false and leave the cells of that slot unselectable without saying so.
+     *
+     * @param key The multiplier's key inside the operand block.
+     * @param multiplier The configured multiplier.
+     * @throws IllegalArgumentException if the multiplier is negative or not a number
+     */
+    private static void requireMultiplier(String key, double multiplier) {
+        if (!(multiplier >= 0.0)) {
+            throw new IllegalArgumentException(OPERANDS_BLOCK + "." + key
+                    + " must be >= 0.0, got: " + multiplier);
         }
     }
 
