@@ -334,11 +334,11 @@ class OrganismRestoreBuilderTest {
     }
 
     /**
-     * A register the state left unset is filled with the state by the constructor, so it passes.
+     * A location register that holds no position is one of the two shapes, so it passes.
      */
     @Test
     @Tag("unit")
-    void testRestoreBuilder_LocationRegisterLeftUnset_IsAccepted() {
+    void testRestoreBuilder_LocationRegisterHoldingNoPosition_IsAccepted() {
         Object[] registers = new Object[RegisterBank.TOTAL_REGISTER_COUNT];
         registers[RegisterBank.LR.slotOffset()] = LocationValue.NONE;
 
