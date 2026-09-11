@@ -460,7 +460,9 @@ public class H2DatabaseReader implements IDatabaseReader {
      * @param organismId The organism to describe
      * @return The static view, or null if the organism has no row
      * @throws SQLException if a query fails
-     * @throws OrganismNotFoundException if the ancestry walk finds no row for the organism
+     * @throws OrganismNotFoundException if the ancestry walk finds no row for the organism, which
+     *         the lookup above has already answered with null unless the row was removed between
+     *         the two queries
      */
     private OrganismStaticInfo readOrganismStaticInfo(int organismId)
             throws SQLException, OrganismNotFoundException {
