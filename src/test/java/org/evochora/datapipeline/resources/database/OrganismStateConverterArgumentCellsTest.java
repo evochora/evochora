@@ -26,11 +26,13 @@ import org.junit.jupiter.api.Test;
 class OrganismStateConverterArgumentCellsTest {
 
     private static int setiId;
+    private static int jmpiId;
 
     @BeforeAll
     static void registerInstructionSet() {
         Instruction.init();
         setiId = Instruction.getInstructionIdByName("SETI");
+        jmpiId = Instruction.getInstructionIdByName("JMPI");
     }
 
     /** SETI takes a register and a literal, so a complete record holds two cells. */
@@ -64,6 +66,25 @@ class OrganismStateConverterArgumentCellsTest {
         assertThat(view.arguments).hasSize(2);
         assertThat(view.arguments.get(1).moleculeType).isEqualTo("ENERGY");
         assertThat(view.arguments.get(1).value).isEqualTo(42);
+    }
+
+    /**
+     * A label operand is one cell holding the hash of the label the jump was compiled against.
+     * It reaches the view as its own kind, with the molecule type it is stored as, so that a cell
+     * carrying something else than the compiler wrote there is visible as such.
+     */
+    @Test
+    void resolvesTheLabelOperandOfAJump() {
+        InstructionView view = OrganismStateConverter.resolveInstructionView(
+                jmpiId, List.of(new Molecule(Config.TYPE_DATA, 4711).toInt()),
+                0, 0, new int[]{1, 2}, new int[]{1, 0},
+                false, null, List.of(), new int[]{100, 100}, null);
+
+        assertThat(view.opcodeName).isEqualTo("JMPI");
+        assertThat(view.argumentTypes).containsExactly("LABEL");
+        assertThat(view.arguments).hasSize(1);
+        assertThat(view.arguments.get(0).moleculeType).isEqualTo("DATA");
+        assertThat(view.arguments.get(0).value).isEqualTo(4711);
     }
 
     /** A record that ends before the signature does is a defect and says so. */
