@@ -8,11 +8,14 @@ import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasSize;
 
 import java.io.IOException;
+import java.lang.management.ManagementFactory;
+import java.lang.management.ThreadInfo;
 import java.net.ServerSocket;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
+import org.awaitility.core.ConditionTimeoutException;
 import org.evochora.junit.extensions.logging.AllowLog;
 import org.evochora.junit.extensions.logging.LogLevel;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
@@ -162,11 +165,43 @@ class NodeIntegrationTest {
         // because which one it stopped at is the whole answer: RUNNING means the stop is still
         // under way, while ERROR means a service thread survived its interrupt and the status will
         // never become STOPPED, however long this waits.
-        await().atMost(5, TimeUnit.SECONDS).untilAsserted(() -> {
-            final String status = given().get(BASE_PATH + "/status")
-                .then().extract().path("status");
-            assertThat("pipeline status after /stop", status, equalTo("STOPPED"));
-        });
+        try {
+            await().atMost(5, TimeUnit.SECONDS).untilAsserted(() -> {
+                final String status = given().get(BASE_PATH + "/status")
+                    .then().extract().path("status");
+                assertThat("pipeline status after /stop", status, equalTo("STOPPED"));
+            });
+        } catch (final ConditionTimeoutException e) {
+            throw new AssertionError(e.getMessage() + System.lineSeparator() + threadDump(), e);
+        }
+    }
+
+    /**
+     * Every thread with its full stack and the monitor it holds or waits for.
+     *
+     * <p>The wait above can run out for two reasons that its own message cannot tell apart. Either
+     * the status kept coming back as something other than STOPPED, which the message then names,
+     * or a status request never returned at all, in which case the assertion is never reached and
+     * the message carries no status. Only the stacks say which thread is stuck and on what.
+     *
+     * @return a printable dump of all live threads.
+     */
+    private static String threadDump() {
+        final StringBuilder dump = new StringBuilder("Thread dump:");
+        for (final ThreadInfo info : ManagementFactory.getThreadMXBean().dumpAllThreads(true, true)) {
+            dump.append(System.lineSeparator())
+                .append('"').append(info.getThreadName()).append("\" ").append(info.getThreadState());
+            if (info.getLockName() != null) {
+                dump.append(" on ").append(info.getLockName());
+            }
+            if (info.getLockOwnerName() != null) {
+                dump.append(" owned by \"").append(info.getLockOwnerName()).append('"');
+            }
+            for (final StackTraceElement frame : info.getStackTrace()) {
+                dump.append(System.lineSeparator()).append("\tat ").append(frame);
+            }
+        }
+        return dump.toString();
     }
 
     @Test
