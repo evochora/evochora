@@ -14,7 +14,9 @@ public final class InstructionArgumentView {
 
     // For REGISTER type
     /**
-     * Register ID (e.g., 0 for %DR0).
+     * Register id in the whole register space, the same id every bank is addressed by: 0 for
+     * {@code %DR0}, 256 for {@code %LR0}, 512 for {@code %PDR0}. The index within a bank is the id
+     * minus that bank's base, which {@link #registerType} names.
      * Only present for REGISTER type.
      */
     public final Integer registerId;
@@ -26,10 +28,11 @@ public final class InstructionArgumentView {
     public final RegisterValueView registerValue;
 
     /**
-     * Register type name: "DR", "PDR", "FDR", or "LR".
+     * Name of the bank the register belongs to, one of {@code RegisterBank}'s names, or "UNKNOWN"
+     * when the cell holds a value that is no register id at all, which is what an overwritten
+     * operand looks like. It names the bank {@link #registerId} falls into, so a reader need not
+     * derive it from the id.
      * Only present for REGISTER type.
-     * This is needed because DR and LR share the same index range (0-3),
-     * so we need to explicitly indicate which register type it is.
      */
     public final String registerType;
 
@@ -80,9 +83,9 @@ public final class InstructionArgumentView {
     /**
      * Creates an argument view for a REGISTER type.
      *
-     * @param registerId    Register ID (e.g., 0 for %DR0)
+     * @param registerId    Register id in the whole register space, not the index within its bank
      * @param registerValue Register value resolved from organism state
-     * @param registerType  Register type: "DR", "PDR", "FDR", or "LR"
+     * @param registerType  Name of the bank the id falls into, or "UNKNOWN" for no register id
      * @return InstructionArgumentView for REGISTER type
      */
     public static InstructionArgumentView register(int registerId, RegisterValueView registerValue, String registerType) {

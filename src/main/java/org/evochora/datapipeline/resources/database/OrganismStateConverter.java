@@ -318,8 +318,7 @@ public final class OrganismStateConverter {
                     ? registerValuesBefore.get(registerId)
                     : null;
 
-                int index = locBank != null ? registerId - locBank.base : registerId;
-                resolvedArgs.add(InstructionArgumentView.register(index, registerValue, registerType));
+                resolvedArgs.add(InstructionArgumentView.register(registerId, registerValue, registerType));
                 argIndex++;
             } else if (argType == org.evochora.runtime.isa.InstructionArgumentType.LITERAL) {
                 // LITERAL: Decode molecule type and value (shown as IMMEDIATE in view)
