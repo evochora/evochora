@@ -69,7 +69,7 @@ Five parts, one pull request, each part its own commit or commits.
    extracted into a class both can share.
 4. **Substitution by operand slot.** The substitution plugin weights cells in a scalar immediate
    slot and in a vector slot with configurable multipliers on top of the type weights, records the
-   slot in the mutation event, and gets a family flip that is never empty.
+   slot in the mutation event, and gets a family flip that is never empty for a comparison.
 5. **Configuration.** A substitution rate at which threshold tuning becomes measurable, the STATE
    write rule set so that only replication dissipates entropy, and a template that shows the
    defaults.
@@ -328,17 +328,21 @@ that asserts an empty parameter list for a CODE substitution asserts the code 0 
 
 ### The family flip
 
-The plugin flips an opcode in three ways: operation (same family, same variant, another
+The plugin flips an opcode in three ways: operation (same family, same operand list, another
 operation), family and variant. The family flip today requires the *same operation number* in
 another family. Operation numbers carry no meaning across families (operation 3 is `GT` in the
 conditional family and something unrelated elsewhere), and the requirement makes the flip empty
 for every opcode whose operation number no other family uses — today `INER` (operation 17) and `IFSL`/`INSL` (18 and 19), after
 this change all twelve soft comparisons (20 to 23). An empty flip returns the old value and
 `substitute` returns without a record: a fifth of the substitutions landing on a soft gate would
-do nothing and leave no trace. The family flip is therefore redefined as **same variant, another
-family, any operation**: what it preserves is the signature, and that is stated. The variant flip
-(same family and operation, another variant within the arity group) and the weights
-0.7 / 0.2 / 0.1 are unchanged. Measured on run `20260908-12095286` (29 M ticks, 41 533 births,
+do nothing and leave no trace. The family flip is therefore redefined as **same operand list,
+another family, any operation**: what it preserves is what the cells behind the opcode are read
+as, and that is stated. It is never empty for a comparison, hard or soft; an opcode whose operand
+list no other family uses, such as `FRKI`, still has none. The variant flip (same family and
+operation, another operand list of the same length) and the weights 0.7 / 0.2 / 0.1 are
+unchanged. The three groupings are read from the instruction registry, which records family,
+operation and operand list of every opcode; the opcode id itself carries no structure a flip
+could be derived from (decision 26). Measured on run `20260908-12095286` (29 M ticks, 41 533 births,
 clone baseline 14.1 %): operation flips reproduce at 15.5 % (n = 110), family flips at 5.3 %
 (n = 19), variant flips at 6.3 % (n = 16). Rewriting the operands on a variant flip so that they
 fit the new signature is issue #167.
@@ -566,8 +570,8 @@ so its baseline is its own, not run `20260907`'s.
     users' template, and only its state in the repository has to match.
 20. **The slot code on every substitution record**, fixed arity 1, so that `params[1]` means the
     same thing on every record of the kind.
-21. **Family flip redefined as same variant, another family, any operation**, never empty;
-    weights unchanged; variant-flip operand rewriting is issue #167.
+21. **Family flip redefined as same operand list, another family, any operation**, never empty
+    for a comparison; weights unchanged; variant-flip operand rewriting is issue #167.
 22. **`TURN`, `.DIR` and the `FORK` direction operand stay**, and the operators' birth-direction
     behaviour is not documented as a contract in this package; a claim that organisms depending on a
     second reading direction are selected away is not made.
@@ -578,3 +582,10 @@ so its baseline is its own, not run `20260907`'s.
     scalar follows the value-compatibility rule of two scalars instead of bypassing it: against
     `DATA` or `STATE` the numbers decide, against any other type the comparison is not satisfied.
     Strict typing means that types carry meaning, and one pairing must not be exempt from it.
+26. **The instruction registry is the only source of an instruction's family, operation and
+    operand list.** The opcode id is the family in its lowest five bits and an explicit index
+    within the family above them, stated in every registration and never renumbered, so that a
+    stable program format can build on the ids; the bits above are reserved. The variant field
+    and the structured id were a second description of the operand shape next to the registry,
+    and a wrong one where one variant stood for a label in one instruction and a location
+    register in another; both are removed rather than corrected.
