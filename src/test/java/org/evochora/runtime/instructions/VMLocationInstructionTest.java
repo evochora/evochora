@@ -105,7 +105,7 @@ public class VMLocationInstructionTest {
     // --- Location Register (LR) Tests ---
 
     /**
-     * Verifies that all Location Registers (LRs) are correctly initialized to a zero vector.
+     * Verifies that every location register holds no position when an organism is born.
      * This is a unit test for the Organism's initial state.
      */
     @Test
@@ -826,8 +826,8 @@ public class VMLocationInstructionTest {
     }
 
     /**
-     * Verifies that the stack operations move the state like any other entry: the table of this
-     * change says it travels through copies, and these four are the copies the stack itself makes.
+     * Verifies that DUPL, SWPL, DRPL and ROTL carry an entry that holds no position exactly as they
+     * carry a position: the stack copies what it moves without reading it.
      */
     @Test
     @Tag("unit")

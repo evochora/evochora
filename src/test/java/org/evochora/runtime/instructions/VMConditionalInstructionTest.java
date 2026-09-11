@@ -1338,9 +1338,9 @@ public class VMConditionalInstructionTest {
     }
 
     /**
-     * The value comparison that the new pair is matched ahead of keeps its meaning. INS is the one
-     * at risk: the path below the new block reads any name beginning with "IN" as a negated
-     * comparison, so a pair placed after it would be read as one.
+     * INS compares the two top values of the data stack. The generic path reads any name beginning
+     * with "IN" as a negated comparison, so an instruction whose name starts the same way and means
+     * something else has to be matched by its full name before that path is reached.
      */
     @Test
     @Tag("unit")

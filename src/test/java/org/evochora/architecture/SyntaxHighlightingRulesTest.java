@@ -22,9 +22,9 @@ import java.util.stream.Collectors;
  * Holds the editor extension's opcode list to the instruction set.
  * <p>
  * The list in {@code evochora.tmLanguage.json} names every instruction a second time, and nothing
- * in the build reads it, so an instruction added to the instruction set stays unhighlighted until
- * someone notices — which is how the list came to be missing 47 of them. This rule makes the
- * duplication visible at build time instead of in an editor.
+ * else in the build reads it, so an instruction the registry holds but the list does not stays
+ * unhighlighted until someone notices in an editor. This rule makes that duplication visible at
+ * build time instead.
  * <p>
  * Only the instruction names are checked. Directives and register banks are named in the same file
  * and have no registry to compare against; they are read and corrected by hand.
