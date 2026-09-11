@@ -29,8 +29,9 @@ import org.evochora.datapipeline.utils.MetadataConfigHelper;
  *   <li>{@code bodiless} - newborn without a genome at all</li>
  *   <li>{@code no_event} - genome differs and no plugin claims it: a defective copy, or cells
  *       another organism overwrote</li>
- *   <li>{@code duplication}, {@code deletion}, {@code insertion}, {@code label_insertion},
- *       {@code substitution} - the birth carries events of exactly this one kind</li>
+ *   <li>{@code duplication}, {@code deletion}, {@code instruction_insertion},
+ *       {@code label_insertion}, {@code substitution} - the birth carries events of exactly this
+ *       one kind</li>
  *   <li>{@code multiple} - the birth carries events of two or more kinds, so two or more plugins
  *       changed this genome</li>
  *   <li>{@code other} - the birth carries events of exactly one kind, and that kind is none of the
@@ -89,7 +90,7 @@ public class VariationSourcesPlugin extends AbstractAnalyticsPlugin {
         "no_event",
         "duplication",
         "deletion",
-        "insertion",
+        "instruction_insertion",
         "label_insertion",
         "substitution",
         "multiple",
@@ -112,7 +113,7 @@ public class VariationSourcesPlugin extends AbstractAnalyticsPlugin {
     private static final Map<String, Integer> COLUMN_OF_KIND = Map.of(
         "duplication", COUNT_COLUMNS.indexOf("duplication"),
         "deletion", COUNT_COLUMNS.indexOf("deletion"),
-        "insertion", COUNT_COLUMNS.indexOf("insertion"),
+        "instruction-insertion", COUNT_COLUMNS.indexOf("instruction_insertion"),
         "label-insertion", COUNT_COLUMNS.indexOf("label_insertion"),
         "substitution", COUNT_COLUMNS.indexOf("substitution"));
 

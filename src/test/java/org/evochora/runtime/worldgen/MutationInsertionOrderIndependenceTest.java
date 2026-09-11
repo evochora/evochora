@@ -65,7 +65,9 @@ class MutationInsertionOrderIndependenceTest {
                   { instructions = "*", weight = 3,
                     args { REGISTER { range = [0, 7] }, LOCATION_REGISTER { range = [0, 3] },
                            DATA { min = 0, max = 255 }, LABELREF = "existing", VECTOR = "unit" } }
-                  { type = "label", weight = 1, bitflips = 2 }
+                  { type = "label", weight = 1, instructions = "*",
+                    args { REGISTER { range = [0, 7] }, LOCATION_REGISTER { range = [0, 3] },
+                           DATA { min = 0, max = 255 }, LABELREF = "existing", VECTOR = "unit" } }
                 ]
                 """)));
     }

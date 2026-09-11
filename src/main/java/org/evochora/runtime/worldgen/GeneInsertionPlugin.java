@@ -6,6 +6,7 @@ import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.isa.Instruction.OperandSource;
 import org.evochora.runtime.isa.RegisterBank;
 import org.evochora.runtime.model.Environment;
+import org.evochora.runtime.model.GenomeFrame;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.MutationRecord;
 import org.evochora.runtime.model.Organism;
@@ -23,7 +24,7 @@ import java.util.Random;
 
 /**
  * Gene insertion birth handler that inserts syntactically correct instruction chains
- * or mutated labels into NOP (empty) regions of newborn organisms.
+ * or label detours into NOP (empty) regions of newborn organisms.
  * <p>
  * Called once per newborn organism in the post-Execute phase of each tick. With configurable
  * probability, selects a mutation entry via weighted random choice and inserts the resulting
@@ -34,9 +35,16 @@ import java.util.Random;
  * instruction's {@link OperandSource} list. This ensures inserted code is syntactically
  * valid, making most mutations neutral or functional rather than immediately lethal.
  * <p>
- * Label entries derive a hash from an existing LABEL in the organism's genome (or generate
- * a random one if none exist) and flip a configurable number of random bits, creating new
- * jump targets that are close in Hamming distance to existing ones.
+ * <strong>What a label entry builds.</strong> A label entry places a detour: a LABEL carrying the
+ * value of one of the newborn's existing labels A, one instruction generated exactly as an
+ * instruction entry generates it, and a {@code JMPI} to a value X. Because the fuzzy label match
+ * finds the copy of A as readily as the original, code that jumped to A may land in the detour;
+ * the jump at its end sends control on to where the original code would have gone. X is the value
+ * of the first LABELREF in a label operand slot in the stretch A heads, otherwise the value of the
+ * next block start on A's line, otherwise one of the newborn's other labels, drawn uniformly. Every
+ * candidate must differ from A by more than the label index's Hamming tolerance, or the detour's
+ * own jump would match its own label and loop. A newborn without a label, and one for which no
+ * candidate clears the tolerance, receives nothing.
  * <p>
  * <strong>NOP Area Search:</strong> Groups owned cells by scan line (perpendicular to DV),
  * tracks the DV extent per scan line, and walks the arc the owned cells span on it (see
@@ -49,16 +57,19 @@ import java.util.Random;
  * in-place DV advancement, and reservoir sampling (instead of list collection) minimize GC
  * pressure. The only per-call allocations are one {@code getShape()} defensive copy, the two
  * visitor lambdas (one per owned-cell pass), 1-4 {@link Molecule} records for the chain and, when
- * a chain is placed, the {@link MutationRecord} handed to the newborn.
+ * a chain is placed, the {@link MutationRecord} handed to the newborn. A label entry adds the
+ * defensive copy of the newborn's initial position together with what one {@link GenomeFrame}
+ * build costs, the two further {@link Molecule} records of the jump, and, only where the search
+ * falls back to the newborn's other labels, one more visitor lambda.
  * <p>
  * <strong>What it records:</strong> a placed chain reports itself on the newborn as a
  * {@link MutationRecord} naming the cells of the chain in placement order, with the empty cell as
  * the old value and the placed molecule as the new one. An instruction chain reports the kind
- * {@code "insertion"} and no parameters. A label reports the kind {@code "label-insertion"} and,
- * as its one parameter, the hash the new label was derived from before the bits were flipped —
- * either the sampled existing label or, when the genome carries none, the hash that was drawn at
- * random — because which label a new one grew out of cannot be recovered by searching for it. A
- * run that finds no NOP run long enough places nothing and records nothing.
+ * {@code "instruction-insertion"} and no parameters. A detour reports the kind
+ * {@code "label-insertion"} and, as its two parameters, the label value A it copies and the value
+ * X it jumps to — neither of which can be told from the written cells alone, because the same two
+ * values could have been chosen for any number of reasons. A run that finds no NOP run long enough
+ * places nothing and records nothing.
  * <p>
  * <strong>Thread Safety:</strong> Not thread-safe. Runs in the sequential post-Execute phase of
  * {@code Simulation.tick()}.
@@ -76,16 +87,28 @@ public class GeneInsertionPlugin implements IBirthHandler {
     private static final int LABEL_HASH_MAX = (1 << LABEL_HASH_BITS) - 1;
 
     /** The kind an inserted instruction chain is reported under. */
-    private static final String INSTRUCTION_KIND = "insertion";
+    private static final String INSTRUCTION_KIND = "instruction-insertion";
 
-    /** The kind an inserted label is reported under. */
+    /** The kind an inserted detour is reported under. */
     private static final String LABEL_KIND = "label-insertion";
+
+    /** The instruction a detour ends with, an unconditional jump to a label value. */
+    private static final String JUMP_INSTRUCTION = "JMPI";
+
+    /** The settings an instruction entry is read for. */
+    private static final List<String> INSTRUCTION_ENTRY_KEYS = List.of("instructions", "weight", "args");
+
+    /** The settings a label entry is read for. */
+    private static final List<String> LABEL_ENTRY_KEYS = List.of("type", "instructions", "weight", "args");
 
     // --- Immutable config ---
     private final Random random;
     private final double mutationRate;
     private final List<MutationEntry> entries;
     private final double totalWeight;
+
+    /** Opcode of the jump a detour ends with. */
+    private final int jumpOpcodeId;
 
     // --- Reusable buffers (lazy-initialized on first mutate() call) ---
     private int[] coordBuffer;
@@ -100,6 +123,13 @@ public class GeneInsertionPlugin implements IBirthHandler {
     // --- Reservoir sampling state (reset per mutate() call) ---
     private int reservoirLabelHash;
     private int reservoirLabelCount;
+    private int reservoirLabelPerpKey;
+    private int reservoirLabelDvCoord;
+
+    // --- Jump target search state (reset per detour) ---
+    private int detourJumpTarget;
+    private int fallbackTargetValue;
+    private int fallbackTargetCount;
 
     // --- NOP run selection state (reset per mutate() call) ---
     private ScanLineInfo selectedNopScanLine;
@@ -109,11 +139,14 @@ public class GeneInsertionPlugin implements IBirthHandler {
     // --- Chain buffer (cleared per mutate() call) ---
     private final List<Molecule> chainBuffer = new ArrayList<>();
 
-    /** The hash a label chain was derived from, before its bits were flipped. */
-    private int labelSourceHash;
-
     /** Collects the record of a placed chain; reused so that a birth allocates only the record itself. */
     private final MutationRecord.Builder recordBuilder = new MutationRecord.Builder();
+
+    /**
+     * The newborn's genome in the machine's reading frame; built only for a detour, and kept so
+     * that such a build reuses the buffers of the one before.
+     */
+    private final GenomeFrame frame = new GenomeFrame();
 
     // --- DV coordinate collector for arc resolution (reused) ---
     private int[] dvCoordCollector;
@@ -147,15 +180,20 @@ public class GeneInsertionPlugin implements IBirthHandler {
     ) implements MutationEntry {}
 
     /**
-     * Label entry: derives a label hash from an existing label or generates a random one,
-     * then flips a configurable number of bits.
+     * Label entry: inserts a detour of a copied label, one instruction and a jump onwards.
+     * The instruction is drawn from the same kind of description an instruction entry carries,
+     * so that the body of a detour is code of the same shape as a plain insertion.
      *
+     * @param opcodeIds Resolved opcode IDs of the instruction in the detour's middle.
+     * @param operandSourcesByOpcode Cached operand sources per opcode, parallel to opcodeIds.
      * @param weight Selection weight.
-     * @param bitflips Number of random bits to flip in the hash.
+     * @param argConfig Argument generation configuration.
      */
     record LabelEntry(
+            List<Integer> opcodeIds,
+            List<List<OperandSource>> operandSourcesByOpcode,
             double weight,
-            int bitflips
+            ArgumentConfig argConfig
     ) implements MutationEntry {}
 
     /**
@@ -245,6 +283,7 @@ public class GeneInsertionPlugin implements IBirthHandler {
      */
     public GeneInsertionPlugin(IRandomProvider randomProvider, com.typesafe.config.Config config) {
         this.random = randomProvider.asJavaRandom();
+        this.jumpOpcodeId = resolveJumpOpcode();
         this.mutationRate = config.getDouble("mutationRate");
         if (mutationRate < 0.0 || mutationRate > 1.0) {
             throw new IllegalArgumentException("mutationRate must be in [0.0, 1.0], got: " + mutationRate);
@@ -274,6 +313,7 @@ public class GeneInsertionPlugin implements IBirthHandler {
      */
     GeneInsertionPlugin(IRandomProvider randomProvider, double mutationRate, List<MutationEntry> entries) {
         this.random = randomProvider.asJavaRandom();
+        this.jumpOpcodeId = resolveJumpOpcode();
         this.mutationRate = mutationRate;
         this.entries = new ArrayList<>(entries);
         double w = 0.0;
@@ -284,27 +324,55 @@ public class GeneInsertionPlugin implements IBirthHandler {
     }
 
     /**
+     * Resolves the opcode of the jump a detour ends with.
+     *
+     * @return The opcode ID of {@value #JUMP_INSTRUCTION}.
+     * @throws IllegalStateException if the instruction set does not carry that instruction, which
+     *                               means the registry was not initialized.
+     */
+    private static int resolveJumpOpcode() {
+        Integer id = Instruction.getInstructionIdByName(JUMP_INSTRUCTION);
+        if (id == null) {
+            throw new IllegalStateException("The instruction set carries no " + JUMP_INSTRUCTION
+                    + ", which a label entry's detour ends with");
+        }
+        return id;
+    }
+
+    /**
      * Parses a single entry from HOCON config.
+     * <p>
+     * Both entry types describe the instruction they generate the same way, through
+     * {@code instructions} and {@code args}; a label entry is marked by {@code type = "label"} and
+     * wraps that instruction in a detour. A setting the entry type does not know is rejected, so
+     * that a stale name fails loudly instead of being ignored.
      *
      * @param entryConfig The entry configuration.
      * @return The parsed mutation entry.
+     * @throws IllegalArgumentException if the entry names an unknown type, carries an unaccepted
+     *                                  key, or lacks a setting its type requires.
      */
     private MutationEntry parseEntry(com.typesafe.config.Config entryConfig) {
+        boolean isLabelEntry = false;
+        if (entryConfig.hasPath("type")) {
+            String type = entryConfig.getString("type");
+            if (!"label".equals(type)) {
+                throw new IllegalArgumentException("Insertion entry has no type '" + type
+                        + "'; the only named type is 'label'.");
+            }
+            isLabelEntry = true;
+        }
+        requireEntryKeys(entryConfig, isLabelEntry ? LABEL_ENTRY_KEYS : INSTRUCTION_ENTRY_KEYS);
+
         double weight = entryConfig.getDouble("weight");
         if (weight <= 0.0) {
             throw new IllegalArgumentException("Entry weight must be positive, got: " + weight);
         }
-
-        // Label entry
-        if (entryConfig.hasPath("type") && "label".equals(entryConfig.getString("type"))) {
-            int bitflips = entryConfig.getInt("bitflips");
-            if (bitflips < 0 || bitflips > LABEL_HASH_BITS) {
-                throw new IllegalArgumentException("bitflips must be in [0, " + LABEL_HASH_BITS + "], got: " + bitflips);
-            }
-            return new LabelEntry(weight, bitflips);
+        if (!entryConfig.hasPath("instructions") || !entryConfig.hasPath("args")) {
+            throw new IllegalArgumentException("Insertion entry needs 'instructions' and "
+                    + "'args' to generate its instruction from.");
         }
 
-        // Instruction entry
         List<Integer> opcodeIds;
         List<List<OperandSource>> operandSourcesByOpcode;
 
@@ -336,7 +404,25 @@ public class GeneInsertionPlugin implements IBirthHandler {
         }
 
         ArgumentConfig argConfig = parseArgumentConfig(entryConfig.getConfig("args"));
-        return new InstructionEntry(opcodeIds, operandSourcesByOpcode, weight, argConfig);
+        return isLabelEntry
+                ? new LabelEntry(opcodeIds, operandSourcesByOpcode, weight, argConfig)
+                : new InstructionEntry(opcodeIds, operandSourcesByOpcode, weight, argConfig);
+    }
+
+    /**
+     * Requires that an entry carries no setting its type does not read.
+     *
+     * @param entryConfig The entry configuration.
+     * @param accepted The keys the entry type is read for.
+     * @throws IllegalArgumentException if the entry carries an unaccepted key.
+     */
+    private static void requireEntryKeys(com.typesafe.config.Config entryConfig, List<String> accepted) {
+        for (String key : entryConfig.root().keySet()) {
+            if (!accepted.contains(key)) {
+                throw new IllegalArgumentException("Insertion entry has no setting '" + key
+                        + "'; accepted names are " + String.join(", ", accepted) + ".");
+            }
+        }
     }
 
     /**
@@ -426,6 +512,13 @@ public class GeneInsertionPlugin implements IBirthHandler {
      * Builds scan lines from owned cells (with concurrent label hash reservoir sampling),
      * selects a mutation entry, generates the molecule chain, finds a suitable NOP area
      * via scan-line walk, and places the chain. A chain that is placed is recorded on the child.
+     * <p>
+     * <strong>Draw order.</strong> The label reservoir runs first, over the owned cells in
+     * flat-index order; then the entry is drawn by weight. An instruction entry then draws its
+     * opcode and its operands. A label entry first determines the value the detour jumps to, which
+     * draws only where the search falls back to the newborn's other labels, and then draws the
+     * opcode and operands of the instruction in the detour's middle. The NOP run is drawn last,
+     * by a reservoir over the runs in the order the scan lines are walked.
      *
      * @param child The newborn organism.
      * @param env The simulation environment.
@@ -455,12 +548,16 @@ public class GeneInsertionPlugin implements IBirthHandler {
         chainBuffer.clear();
 
         if (entry instanceof InstructionEntry ie) {
-            if (!buildInstructionChain(ie, dims)) {
+            if (!appendInstruction(ie.opcodeIds(), ie.operandSourcesByOpcode(), ie.argConfig(), dims)) {
                 LOG.debug("tick={} Organism {} gene insertion: chain build failed (missing arg config)", child.getBirthTick(), childId);
+                chainBuffer.clear();
                 return;
             }
         } else if (entry instanceof LabelEntry le) {
-            buildLabelChain(le);
+            if (!buildDetourChain(le, child, env, dv, dvDim, shape[dvDim], dims)) {
+                chainBuffer.clear();
+                return;
+            }
         }
 
         if (chainBuffer.isEmpty()) {
@@ -476,9 +573,12 @@ public class GeneInsertionPlugin implements IBirthHandler {
         if (dvStep < 0) {
             selectedNopDvStart = (selectedNopDvStart + chainBuffer.size() - 1) % shape[dvDim];
         }
-        // A label carries the hash it grew out of, which no search over the child can recover
+        // A detour carries the label it copies and the value it jumps to, neither of which the
+        // written cells alone say anything about
         if (entry instanceof LabelEntry) {
-            recordBuilder.start(getClass().getName(), LABEL_KIND, dv).param(labelSourceHash);
+            recordBuilder.start(getClass().getName(), LABEL_KIND, dv)
+                    .param(reservoirLabelHash)
+                    .param(detourJumpTarget);
         } else {
             recordBuilder.start(getClass().getName(), INSTRUCTION_KIND, dv);
         }
@@ -510,41 +610,46 @@ public class GeneInsertionPlugin implements IBirthHandler {
     }
 
     /**
-     * Builds a syntactically correct instruction chain in {@link #chainBuffer}.
+     * Appends a syntactically correct instruction to {@link #chainBuffer}.
      * <p>
-     * Picks a random opcode from the entry and generates type-correct argument molecules
-     * according to the entry's argument configuration and the instruction's operand sources.
+     * Picks a random opcode from the list and generates type-correct argument molecules
+     * according to the argument configuration and the instruction's operand sources.
      *
-     * @param entry The instruction entry.
+     * @param opcodeIds The opcodes one is drawn from.
+     * @param operandSourcesByOpcode The operand sources per opcode, parallel to {@code opcodeIds}.
+     * @param argConfig How the arguments are generated.
      * @param dims Number of environment dimensions (for VECTOR operands).
-     * @return {@code true} if the chain was built successfully, {@code false} if the entry's
-     *         argument config does not cover a required operand type.
+     * @return {@code true} if the instruction was appended, {@code false} if the argument config
+     *         does not cover a required operand type.
      */
-    private boolean buildInstructionChain(InstructionEntry entry, int dims) {
-        int opcodeIndex = random.nextInt(entry.opcodeIds().size());
-        int opcodeId = entry.opcodeIds().get(opcodeIndex);
-        List<OperandSource> sources = entry.operandSourcesByOpcode().get(opcodeIndex);
+    private boolean appendInstruction(List<Integer> opcodeIds,
+                                      List<List<OperandSource>> operandSourcesByOpcode,
+                                      ArgumentConfig argConfig,
+                                      int dims) {
+        int opcodeIndex = random.nextInt(opcodeIds.size());
+        int opcodeId = opcodeIds.get(opcodeIndex);
+        List<OperandSource> sources = operandSourcesByOpcode.get(opcodeIndex);
 
         chainBuffer.add(new Molecule(Config.TYPE_CODE, opcodeId & Config.VALUE_MASK));
 
         for (OperandSource source : sources) {
             switch (source) {
                 case REGISTER -> {
-                    RegisterConfig rc = entry.argConfig().register();
+                    RegisterConfig rc = argConfig.register();
                     if (rc == null) {
                         return false;
                     }
                     chainBuffer.add(generateRegisterMolecule(rc));
                 }
                 case IMMEDIATE -> {
-                    DataConfig dc = entry.argConfig().data();
+                    DataConfig dc = argConfig.data();
                     if (dc == null) {
                         return false;
                     }
                     chainBuffer.add(new Molecule(Config.TYPE_DATA, randomInRange(dc.min(), dc.max())));
                 }
                 case LABEL -> {
-                    if (entry.argConfig().labelRef() == null) {
+                    if (argConfig.labelRef() == null) {
                         return false;
                     }
                     int hash = reservoirLabelHash >= 0
@@ -553,14 +658,14 @@ public class GeneInsertionPlugin implements IBirthHandler {
                     chainBuffer.add(new Molecule(Config.TYPE_LABELREF, hash));
                 }
                 case LOCATION_REGISTER -> {
-                    RegisterConfig lrc = entry.argConfig().locationRegister();
+                    RegisterConfig lrc = argConfig.locationRegister();
                     if (lrc == null) {
                         return false;
                     }
                     chainBuffer.add(generateRegisterMolecule(lrc));
                 }
                 case VECTOR -> {
-                    if (entry.argConfig().vector() == null) {
+                    if (argConfig.vector() == null) {
                         return false;
                     }
                     generateUnitVector(dims);
@@ -572,22 +677,192 @@ public class GeneInsertionPlugin implements IBirthHandler {
     }
 
     /**
-     * Builds a label chain in {@link #chainBuffer}.
+     * Builds a detour in {@link #chainBuffer}: the value of an existing label, one instruction and
+     * a jump onwards.
      * <p>
-     * Derives a hash from an existing LABEL in the genome (sampled during
-     * {@link #buildScanLines}), or generates a random 19-bit hash if none exist.
-     * Then flips the configured number of random bits. The hash before the flips is kept in
-     * {@link #labelSourceHash}, as the parameter of the record a placed label reports.
+     * The label value is the one the reservoir of {@link #buildScanLines} sampled; the value the
+     * jump carries is chosen by {@link #selectJumpTarget} and kept in {@link #detourJumpTarget}, as
+     * the second parameter of the record a placed detour reports. A newborn without a label and one
+     * for which no jump target qualifies receive nothing.
      *
      * @param entry The label entry.
+     * @param child The newborn organism.
+     * @param env The simulation environment.
+     * @param dv The newborn's direction vector.
+     * @param dvDim The DV dimension index.
+     * @param shapeDvDim The environment size along the DV dimension.
+     * @param dims Number of environment dimensions.
+     * @return {@code true} if the chain was built, {@code false} if nothing is to be placed.
      */
-    private void buildLabelChain(LabelEntry entry) {
-        int hash = reservoirLabelHash >= 0
-                ? reservoirLabelHash
-                : random.nextInt(LABEL_HASH_MAX + 1);
-        labelSourceHash = hash;
-        hash = flipBits(hash, entry.bitflips());
-        chainBuffer.add(new Molecule(Config.TYPE_LABEL, hash));
+    private boolean buildDetourChain(LabelEntry entry, Organism child, Environment env, int[] dv,
+                                     int dvDim, int shapeDvDim, int dims) {
+        if (reservoirLabelHash < 0) {
+            LOG.debug("tick={} Organism {} insertion: no label to build a detour from",
+                    child.getBirthTick(), child.getId());
+            return false;
+        }
+
+        int target = selectJumpTarget(child, env, dv, dvDim, shapeDvDim);
+        if (target < 0) {
+            LOG.debug("tick={} Organism {} insertion: no jump target outside the tolerance of label {}",
+                    child.getBirthTick(), child.getId(), reservoirLabelHash);
+            return false;
+        }
+        detourJumpTarget = target;
+
+        chainBuffer.add(new Molecule(Config.TYPE_LABEL, reservoirLabelHash));
+        if (!appendInstruction(entry.opcodeIds(), entry.operandSourcesByOpcode(), entry.argConfig(), dims)) {
+            LOG.debug("tick={} Organism {} insertion: detour build failed (missing arg config)",
+                    child.getBirthTick(), child.getId());
+            return false;
+        }
+        chainBuffer.add(new Molecule(Config.TYPE_CODE, jumpOpcodeId & Config.VALUE_MASK));
+        chainBuffer.add(new Molecule(Config.TYPE_LABELREF, target));
+        return true;
+    }
+
+    /**
+     * Chooses the value a detour's jump carries, so that control leaves the detour for where the
+     * code behind the copied label goes on.
+     * <p>
+     * Three sources are tried in order, and the first candidate that clears
+     * {@link #acceptsAsJumpTarget} wins:
+     * <ol>
+     *   <li>the value of the first LABELREF standing in a label operand slot in the stretch the
+     *       sampled label heads — the walk runs along the direction vector from that label to the
+     *       next block start on its line or to the end of the newborn's extent on it, and the
+     *       reading frame says which cells are operand slots and which LABEL cells open a block;</li>
+     *   <li>the value of that next block start, where the code behind the label falls through to;</li>
+     *   <li>one of the newborn's other labels, drawn uniformly by one reservoir pass over the
+     *       owned cells in flat-index order.</li>
+     * </ol>
+     *
+     * @param child The newborn organism.
+     * @param env The simulation environment.
+     * @param dv The newborn's direction vector.
+     * @param dvDim The DV dimension index.
+     * @param shapeDvDim The environment size along the DV dimension.
+     * @return The chosen value, or {@code -1} if no candidate qualifies.
+     */
+    private int selectJumpTarget(Organism child, Environment env, int[] dv, int dvDim, int shapeDvDim) {
+        ScanLineInfo line = scanLineMap.get(reservoirLabelPerpKey);
+        if (line == null) {
+            return -1;
+        }
+        int childId = child.getId();
+        int sourceHash = reservoirLabelHash;
+        int tolerance = env.getLabelIndex().getStrategy().getTolerance();
+        int dvStep = dv[dvDim];
+
+        frame.build(env, childId, child.getInitialPosition(), dv);
+
+        // The cells of the stretch, the sampled label itself included
+        int available = (dvStep > 0)
+                ? toroidalForwardDistance(reservoirLabelDvCoord, line.walkEnd, shapeDvDim)
+                : toroidalForwardDistance(line.walkStart, reservoirLabelDvCoord, shapeDvDim);
+
+        env.properties.flatIndexToCoordinates(line.sampleFlatIndex, walkPos);
+        int dvPos = reservoirLabelDvCoord;
+        int labelRefValue = -1;
+        int nextBlockStart = -1;
+
+        for (int offset = 1; offset < available; offset++) {
+            dvPos += dvStep;
+            if (dvPos >= shapeDvDim) {
+                dvPos -= shapeDvDim;
+            } else if (dvPos < 0) {
+                dvPos += shapeDvDim;
+            }
+            walkPos[dvDim] = dvPos;
+            int moleculeInt = env.getMoleculeIntAt(walkPos);
+            int type = moleculeInt & Config.TYPE_MASK;
+            if (type != Config.TYPE_LABEL && type != Config.TYPE_LABELREF) {
+                continue;
+            }
+            GenomeFrame.Slot slot = frame.slot(env.properties.toFlatIndex(walkPos));
+            if (type == Config.TYPE_LABEL
+                    && slot == GenomeFrame.Slot.NONE
+                    && env.getOwnerIdAt(walkPos) == childId) {
+                nextBlockStart = moleculeInt & Config.VALUE_MASK;
+                break;
+            }
+            if (type == Config.TYPE_LABELREF && slot == GenomeFrame.Slot.LABEL && labelRefValue < 0) {
+                labelRefValue = moleculeInt & Config.VALUE_MASK;
+            }
+        }
+
+        if (labelRefValue >= 0 && acceptsAsJumpTarget(labelRefValue, sourceHash, tolerance)) {
+            return labelRefValue;
+        }
+        if (nextBlockStart >= 0 && acceptsAsJumpTarget(nextBlockStart, sourceHash, tolerance)) {
+            return nextBlockStart;
+        }
+        return drawOtherLabel(env, childId, sourceHash, tolerance);
+    }
+
+    /**
+     * Draws one of the newborn's labels that can serve as a detour's jump target.
+     * <p>
+     * One reservoir pass over the owned cells in flat-index order, so that the draw does not depend
+     * on the order in which the genome's cells were written.
+     *
+     * @param env The simulation environment.
+     * @param childId The newborn whose labels are considered.
+     * @param sourceHash The label value the detour copies.
+     * @param tolerance The label index's Hamming tolerance.
+     * @return The drawn value, or {@code -1} if no label qualifies.
+     */
+    private int drawOtherLabel(Environment env, int childId, int sourceHash, int tolerance) {
+        fallbackTargetValue = -1;
+        fallbackTargetCount = 0;
+        env.visitCellsOwnedBy(childId, cell -> {
+            int moleculeInt = cell.moleculeInt();
+            if ((moleculeInt & Config.TYPE_MASK) != Config.TYPE_LABEL) {
+                return;
+            }
+            int value = moleculeInt & Config.VALUE_MASK;
+            if (!acceptsAsJumpTarget(value, sourceHash, tolerance)) {
+                return;
+            }
+            fallbackTargetCount++;
+            if (random.nextInt(fallbackTargetCount) == 0) {
+                fallbackTargetValue = value;
+            }
+        });
+        return fallbackTargetValue;
+    }
+
+    /**
+     * Reports whether a value can be a detour's jump target for a given copied label.
+     * <p>
+     * The jump has to leave the detour, and the label match is fuzzy: a value the index would
+     * resolve to the detour's own label would turn the detour into a loop. The candidate must
+     * therefore lie further from the copied label than the index's tolerance reaches.
+     *
+     * @param candidate The value considered as a jump target.
+     * @param sourceHash The label value the detour copies.
+     * @param tolerance The label index's Hamming tolerance.
+     * @return {@code true} if the candidate is a different value far enough from the copied label.
+     */
+    private static boolean acceptsAsJumpTarget(int candidate, int sourceHash, int tolerance) {
+        return candidate != sourceHash && Integer.bitCount(candidate ^ sourceHash) > tolerance;
+    }
+
+    /**
+     * Computes the number of cells from one coordinate to another in the direction of rising
+     * coordinates on a toroidal axis, both ends included.
+     *
+     * @param from Start coordinate.
+     * @param to End coordinate.
+     * @param axisSize Size of the axis.
+     * @return The forward distance including both endpoints.
+     */
+    private static int toroidalForwardDistance(int from, int to, int axisSize) {
+        int d = to - from;
+        if (d < 0) {
+            d += axisSize;
+        }
+        return d + 1;
     }
 
     /**
@@ -618,27 +893,6 @@ public class GeneInsertionPlugin implements IBirthHandler {
         }
     }
 
-    /**
-     * Flips a specified number of random bits in a label hash.
-     * Uses a bitmask to track selected positions (zero allocation).
-     *
-     * @param hash The original hash.
-     * @param bitflips Number of bits to flip.
-     * @return The hash with flipped bits, masked to 19-bit range.
-     */
-    int flipBits(int hash, int bitflips) {
-        int selectedBits = 0;
-        for (int i = 0; i < bitflips; i++) {
-            int bit;
-            do {
-                bit = random.nextInt(LABEL_HASH_BITS);
-            } while ((selectedBits & (1 << bit)) != 0);
-            selectedBits |= (1 << bit);
-            hash ^= (1 << bit);
-        }
-        return hash & LABEL_HASH_MAX;
-    }
-
     // ---- Scan line infrastructure ----
 
     /**
@@ -646,7 +900,9 @@ public class GeneInsertionPlugin implements IBirthHandler {
      * <p>
      * Groups owned (non-empty) cells by perpendicular coordinate, tracking minDv/maxDv
      * per scan line. Also scans for TYPE_LABEL molecules via reservoir sampling, storing
-     * the result in {@link #reservoirLabelHash}.
+     * the sampled label's value in {@link #reservoirLabelHash} and where it stands in
+     * {@link #reservoirLabelPerpKey} and {@link #reservoirLabelDvCoord}, because a detour walks
+     * the code from there.
      *
      * @param childId The child whose owned cells are grouped, visited in index order.
      * @param env The simulation environment.
@@ -682,6 +938,8 @@ public class GeneInsertionPlugin implements IBirthHandler {
                 reservoirLabelCount++;
                 if (random.nextInt(reservoirLabelCount) == 0) {
                     reservoirLabelHash = moleculeInt & Config.VALUE_MASK;
+                    reservoirLabelPerpKey = perpKey;
+                    reservoirLabelDvCoord = dvCoord;
                 }
             }
         });

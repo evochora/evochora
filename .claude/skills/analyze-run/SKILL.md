@@ -182,7 +182,9 @@ facts, not a reconstruction, and need no node:
   `position` among its cells (independent of the direction the plugin walked), `dv` and `params`
   as JSON text. The built-in kinds: `duplication` (`params`: flat
   index of the copied source), `deletion` (`params`: how many copies of the deleted label the body
-  had), `insertion`, `label-insertion` (`params`: hash of the source label), `substitution`, and
+  had), `instruction-insertion`, `label-insertion` (a detour of a copied label, one instruction
+  and a jump onwards; `params`: the copied label's value and the value the jump carries),
+  `substitution`, and
   `label-rewrite` — the XOR mask every child's labels receive, with `cell_count` 0, `position`
   `[]` and the mask in `params`; it changes no genome hash and is not a mutation.
 - `variation_sources` — births per recording by what changed the genome: `unchanged`, `bodiless`

@@ -48,7 +48,7 @@ class VariationSourcesPluginTest {
         "no_event",
         "duplication",
         "deletion",
-        "insertion",
+        "instruction_insertion",
         "label_insertion",
         "substitution",
         "multiple",
@@ -198,7 +198,7 @@ class VariationSourcesPluginTest {
                 .addBirthMutations(event("substitution", 1)))
             .addOrganisms(newborn(10).setGenomeHash(0x9999L)
                 .addBirthMutations(event("deletion", 2))
-                .addBirthMutations(event("insertion", 5)))
+                .addBirthMutations(event("instruction-insertion", 5)))
             .build();
 
         List<Object[]> rows = plugin.extractRows(tick);
