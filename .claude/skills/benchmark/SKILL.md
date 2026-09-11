@@ -54,13 +54,20 @@ jump); the default `0` is deterministic and does not exercise the organism's ran
 The node starts with two services only: the simulation engine and `TickHashConsumer`
 (`tools/bench-server/consumer/`), which drains every chunk from an in-memory queue and folds its
 bytes — run id and capture times cleared — into a running FNV-1a hash. Nothing is persisted. The
-engine pauses itself at `pauseTicks`, so every variant does identical work. Two results per
+engine pauses itself at `pauseTicks`, so every variant does identical work. Three results per
 variant: the wall seconds between the log lines `SimulationEngine started` and
-`auto-paused at tick`, and the last `TICKHASH` line.
+`auto-paused at tick`, the `orgticks` of the last `TICKHASH` line — the ticks the organisms
+executed, one instruction each — and that line's hash.
 
 **Identical hashes on both sides are the proof that the change is behaviour-preserving.**
 Different hashes mean the change altered the simulation — a bug, or an intended semantic change
 that must be named as such — and the timing comparison is meaningless until that is understood.
+
+When a change alters behaviour on purpose, the two populations drift apart and wall seconds stop
+comparing: the side with fewer organisms does less work and finishes earlier for that reason alone.
+Divide wall seconds by `orgticks` instead — the consumer sums every organism's lifespan from its
+birth tick to its death tick — and compare the rates. The side with the lower rate is slower per
+executed instruction, whatever its population did.
 
 Setup on the host, under `~/bench/cmp/`:
 
