@@ -82,9 +82,7 @@ EXPORT .PROC CONTINUE REF ER
 
   CONTINUE_SIDEVEC_DONE: NOP^4
     # Check if we have a valid continue coordinate
-    LRDS %CONTCORD; NOP^4                     # Push continue coordinate to data stack
-    PUSV 0|0; NOP^4                           # Push zero vector for comparison
-    INS                                       # If not same (coordinate is valid)...
+    IFSL %CONTCORD; NOP^4                     # If the continue coordinate holds a position...
       JMPI CONTINUE_LOOP; NOP^4               # ...resume from saved position
     JMPI CONTINUE_BORDERMOVE; NOP^4; JMPI CONTINUE_BORDERMOVE
 
@@ -132,10 +130,8 @@ EXPORT .PROC CONTINUE REF ER
     LTI ER REPRODUCTION_PAUSE_THRESHOLD;      # If energy < threshold...
       JMPI CONTINUE_SAVE_AND_RET; NOP^4       # ...save state and return
 
-    # Defensive check: Is %CONTCORD valid (not 0|0)?
-    LRDS %CONTCORD; NOP^4                     # Push continue coordinate
-    PUSV 0|0                                  # Push zero for comparison
-    IFS                                       # If same (= 0|0)...
+    # Defensive check: does %CONTCORD hold a position?
+    INSL %CONTCORD; NOP^4                     # If it holds none...
       JMPI CONTINUE_BORDERMOVE                # ...restart navigation
 
     # Save DP0 and DP1, then move to continue position

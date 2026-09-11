@@ -176,6 +176,18 @@ class GridLayoutTest {
         assertThat(layout.contains(new int[]{1, 2})).isTrue();
     }
 
+    /**
+     * A world with no dimensions would have one cell whose coordinate has no components — and a
+     * vector without components is what a location register holds when it holds no position. The
+     * two are kept apart by there being no such world.
+     */
+    @Test
+    void rejectsAWorldWithoutDimensions() {
+        assertThatThrownBy(() -> layout(new int[]{}, true, 32))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("A world has at least one dimension, but the shape has none");
+    }
+
     @Test
     void rejectsAWorldDimensionSmallerThanOneCell() {
         assertThatThrownBy(() -> layout(new int[]{64, 0}, true, 32))

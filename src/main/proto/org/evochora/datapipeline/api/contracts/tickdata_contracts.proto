@@ -140,7 +140,8 @@ message OrganismState {
 
   // Flat register array in RegisterBank enum order.
   // Slot layout matches RegisterBank.slotOffset().
-  // Location registers use the RegisterValue.vector variant.
+  // Location registers use the RegisterValue.vector variant. A location register that holds no
+  // position carries a vector with no components; a position has one component per dimension.
   // Source: Organism flat register array
   repeated RegisterValue registers = 11;
 
@@ -152,6 +153,7 @@ message OrganismState {
 
   // Location stack for temporary coordinate vectors
   // Source: Organism.getLocationStack()
+  // An entry that holds no position carries a vector with no components.
   repeated Vector location_stack = 13;
 
   // Call stack for procedure invocations
@@ -394,9 +396,11 @@ message StoredMutationEvents {
 message OrganismRuntimeState {
   // Flat register array in RegisterBank enum order.
   // Slot layout matches RegisterBank.slotOffset().
-  // Location registers use the RegisterValue.vector variant.
+  // Location registers use the RegisterValue.vector variant. A location register that holds no
+  // position carries a vector with no components; a position has one component per dimension.
   repeated RegisterValue registers = 1;
   repeated RegisterValue data_stack = 2;
+  // An entry that holds no position carries a vector with no components.
   repeated Vector        location_stack = 3;
   repeated ProcFrame     call_stack = 4;
   bool                   instruction_failed = 5;
@@ -444,7 +448,8 @@ message ProcFrame {
   Vector absolute_return_ip = 3;
 
   // Saved registers from caller's context (compact array in RegisterBank.allSavedOnCall() order).
-  // Location registers use the RegisterValue.vector variant.
+  // Location registers use the RegisterValue.vector variant. A location register that holds no
+  // position carries a vector with no components; a position has one component per dimension.
   repeated RegisterValue saved_registers = 4;
 
   // Frames carry no parameter bindings: the machine code binds parameters through the PUSH/POP

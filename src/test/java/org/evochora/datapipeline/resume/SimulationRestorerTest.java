@@ -17,6 +17,7 @@ import org.evochora.junit.extensions.logging.LogLevel;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
+import org.evochora.runtime.model.LocationValue;
 import org.evochora.runtime.internal.services.SeededRandomProvider;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Organism;
@@ -1146,6 +1147,39 @@ class SimulationRestorerTest {
             .setInitialSeed(42)
             .setResolvedConfigJson(mergedJson)
             .build();
+    }
+
+    /**
+     * The read side of what {@code OrganismStateSerializerTest} pins for the write side: a vector
+     * with no components comes back as a location value that holds no position, in a register and
+     * on the location stack. Together the two say that the state survives a checkpoint without the
+     * format carrying a case of its own for it.
+     */
+    @Test
+    void restore_LocationValuesWithoutComponents_HoldNoPosition() {
+        OrganismState organism = createOrganismState(1, 500).toBuilder()
+                .addLocationStack(Vector.newBuilder().build())
+                .build();
+        TickData snapshot = TickData.newBuilder()
+                .setSimulationRunId(TEST_RUN_ID)
+                .setTickNumber(1000)
+                .setCaptureTimeMs(System.currentTimeMillis())
+                .setTotalOrganismsCreated(100)
+                .setCellColumns(CellDataColumns.newBuilder().build())
+                .setRngState(validRngState())
+                .addOrganisms(organism)
+                .build();
+
+        SimulationRestorer.RestoredState state = SimulationRestorer.restore(
+                new ResumeCheckpoint(createMinimalMetadata(), snapshot), randomProvider, 1);
+        Organism restored = state.simulation().getOrganisms().get(0);
+
+        assertThat(LocationValue.isNone((int[]) restored.readOperand(RegisterBank.LR.base)))
+                .as("a location register the checkpoint wrote without components")
+                .isTrue();
+        assertThat(LocationValue.isNone(restored.getLocationStack().peek()))
+                .as("an entry of the location stack the checkpoint wrote without components")
+                .isTrue();
     }
 
     private TickData createSnapshot(long tick, long totalOrganisms) {

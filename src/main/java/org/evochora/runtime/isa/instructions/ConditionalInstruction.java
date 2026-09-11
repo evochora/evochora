@@ -4,6 +4,7 @@ import org.evochora.runtime.Config;
 import org.evochora.runtime.internal.services.ExecutionContext;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.isa.Variant;
+import org.evochora.runtime.model.LocationValue;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
 import org.evochora.runtime.model.Environment;
@@ -73,6 +74,8 @@ public class ConditionalInstruction extends Instruction {
         regPair(14, 15, Variant.S, "IFVS", "INVS", STACK);
         // Operations 16 and 17: previous instruction failed / did not fail
         regPair(16, 17, Variant.NONE, "IFER", "INER");
+        // Operations 18 and 19: location register holds a position / holds none
+        regPair(18, 19, Variant.L, "IFSL", "INSL", LOCATION_REGISTER);
     }
 
     /**
@@ -117,6 +120,29 @@ public class ConditionalInstruction extends Instruction {
         Environment environment = context.getWorld();
         try {
             String opName = getName();
+            // Matched by full name ahead of everything below, which ends in a path that expects
+            // two operands and reads a name beginning with "IN" as a negated comparison — INSL
+            // among them.
+            if ("IFSL".equals(opName) || "INSL".equals(opName)) {
+                List<Operand> operands = resolveOperands(environment);
+                if (organism.isInstructionFailed()) {
+                    return;
+                }
+                if (operands.size() != 1) {
+                    organism.instructionFailed("Invalid operand count for " + opName);
+                    return;
+                }
+                Object value = organism.readOperand(operands.get(0).rawSourceId());
+                if (organism.isInstructionFailed()) {
+                    return;
+                }
+                boolean holdsPosition = !LocationValue.isNone((int[]) value);
+                boolean conditionMet = "IFSL".equals(opName) ? holdsPosition : !holdsPosition;
+                if (!conditionMet) {
+                    organism.skipNextInstruction(environment);
+                }
+                return;
+            }
             if ("IFER".equals(opName) || "INER".equals(opName)) {
                 boolean prevFailed = organism.wasPreviousInstructionFailed();
                 boolean conditionMet = "IFER".equals(opName) ? prevFailed : !prevFailed;
@@ -248,7 +274,6 @@ public class ConditionalInstruction extends Instruction {
             Operand op1 = operands.get(0);
             Operand op2 = operands.get(1);
             boolean conditionMet = false;
-
 
             if (opName.startsWith("IFT") || opName.startsWith("INT")) { // Type comparison
                 int type1 = (op1.value() instanceof Integer i) ? org.evochora.runtime.model.Molecule.fromInt(i).type() : -1; // -1 for vectors

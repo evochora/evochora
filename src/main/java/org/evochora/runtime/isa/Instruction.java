@@ -324,6 +324,13 @@ public abstract class Instruction {
                     // never produce it themselves. The operand carries only the id, because
                     // location registers are read and written by the instruction itself.
                     organism.readOperand(regId);
+                    // And it names a location register, which is what makes the id enough: every
+                    // instruction that takes this operand reads a position from it. A compiler
+                    // never emits another bank here, but a mutated argument cell can, and the
+                    // scalar it would hand out is no position for any of them.
+                    if (!organism.isInstructionFailed() && !RegisterBank.IS_LOCATION_BY_ID[regId]) {
+                        organism.instructionFailed("Location operand is not a location register: " + regId);
+                    }
                     resolved.add(new Operand(null, regId));
                 }
                 case VECTOR -> {

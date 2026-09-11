@@ -7,7 +7,9 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Deque;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.evochora.runtime.Config;
 import org.evochora.runtime.isa.RegisterBank;
@@ -104,10 +106,13 @@ class OrganismRestoreBuilderTest {
         locationStack.push(new int[]{7, 8});
 
         Deque<Organism.ProcFrame> callStack = new ArrayDeque<>();
-        // Compact savedRegisters: PDR values (8 slots) + FDR values (8 slots) in enum order
-        Object[] savedRegisters = new Object[Config.NUM_PDR_REGISTERS + Config.NUM_FDR_REGISTERS];
-        savedRegisters[0] = 1; savedRegisters[1] = 2; // PDR0, PDR1
-        savedRegisters[Config.NUM_PDR_REGISTERS] = 3; savedRegisters[Config.NUM_PDR_REGISTERS + 1] = 4; // FDR0, FDR1
+        // Compact savedRegisters: every bank a CALL saves, in enum order, holding its default
+        Object[] savedRegisters = defaultSnapshot(RegisterBank.allSavedOnCall(),
+                RegisterBank.STACK_SAVED_SNAPSHOT_SIZE);
+        int pdr = snapshotOffsetOf(RegisterBank.allSavedOnCall(), RegisterBank.PDR);
+        int fdr = snapshotOffsetOf(RegisterBank.allSavedOnCall(), RegisterBank.FDR);
+        savedRegisters[pdr] = 1; savedRegisters[pdr + 1] = 2;
+        savedRegisters[fdr] = 3; savedRegisters[fdr + 1] = 4;
         callStack.push(new Organism.ProcFrame(
             0,
             new int[]{50, 50},
@@ -201,6 +206,150 @@ class OrganismRestoreBuilderTest {
             .as("a builder called without a simulation")
             .isInstanceOf(IllegalStateException.class)
             .isNotInstanceOf(Organism.InvalidRestoreState.class);
+    }
+
+    /**
+     * A location value enters a restored organism without passing the write gates every running
+     * instruction goes through, so the builder holds it to the same two shapes: a position of one
+     * component per world dimension, or none at all. Everything that reads a location register
+     * afterwards relies on that.
+     */
+    @Test
+    @Tag("unit")
+    void testRestoreBuilder_LocationRegisterOfWrongLength_IsRejected() {
+        Object[] registers = new Object[RegisterBank.TOTAL_REGISTER_COUNT];
+        registers[RegisterBank.LR.slotOffset()] = new int[]{1, 2, 3};
+
+        assertThatThrownBy(() ->
+            Organism.restore(1, 0L)
+                .ip(new int[]{0, 0})
+                .dv(new int[]{1, 0})
+                .initialPosition(new int[]{0, 0})
+                .registers(registers)
+                .build(simulation)
+        )
+            .isInstanceOf(Organism.InvalidRestoreState.class)
+            .hasMessageContaining("must hold a position of 2 components or none");
+    }
+
+    /**
+     * A procedure frame carries the proc-local and formal registers of its caller, and a RET copies
+     * them back into the registers wholesale. A location value stored there is held to the same two
+     * shapes, or it would become a live location register that no reader can use.
+     */
+    @Test
+    @Tag("unit")
+    void testRestoreBuilder_SavedLocationRegisterOfWrongLength_IsRejected() {
+        Object[] savedRegisters = defaultSnapshot(RegisterBank.allSavedOnCall(),
+                RegisterBank.STACK_SAVED_SNAPSHOT_SIZE);
+        savedRegisters[snapshotOffsetOf(RegisterBank.allSavedOnCall(), RegisterBank.PLR)] = new int[]{1, 2, 3};
+
+        Deque<Organism.ProcFrame> callStack = new ArrayDeque<>();
+        callStack.push(new Organism.ProcFrame(1, new int[]{0, 0}, new int[]{0, 0}, savedRegisters));
+
+        assertThatThrownBy(() ->
+            Organism.restore(1, 0L)
+                .ip(new int[]{0, 0})
+                .dv(new int[]{1, 0})
+                .initialPosition(new int[]{0, 0})
+                .callStack(callStack)
+                .build(simulation)
+        )
+            .isInstanceOf(Organism.InvalidRestoreState.class)
+            .hasMessageContaining("%PLR0")
+            .hasMessageContaining("neither a position of 2 components nor none");
+    }
+
+    /**
+     * The same for the static registers, which a procedure switch swaps in from their per-procedure
+     * backing store rather than from a frame.
+     */
+    @Test
+    @Tag("unit")
+    void testRestoreBuilder_PersistentLocationRegisterOfWrongLength_IsRejected() {
+        Object[] snapshot = defaultSnapshot(RegisterBank.allPersistent(),
+                RegisterBank.PERSISTENT_SNAPSHOT_SIZE);
+        snapshot[snapshotOffsetOf(RegisterBank.allPersistent(), RegisterBank.SLR)] = new int[]{4};
+
+        Map<Integer, Object[]> persistentState = new HashMap<>();
+        persistentState.put(0, snapshot);
+
+        assertThatThrownBy(() ->
+            Organism.restore(1, 0L)
+                .ip(new int[]{0, 0})
+                .dv(new int[]{1, 0})
+                .initialPosition(new int[]{0, 0})
+                .persistentRegisterState(persistentState)
+                .build(simulation)
+        )
+            .isInstanceOf(Organism.InvalidRestoreState.class)
+            .hasMessageContaining("%SLR0")
+            .hasMessageContaining("neither a position of 2 components nor none");
+    }
+
+    /** Builds a snapshot of the given banks that holds the default of every register. */
+    private static Object[] defaultSnapshot(List<RegisterBank> banks, int size) {
+        Object[] snapshot = new Object[size];
+        int offset = 0;
+        for (RegisterBank bank : banks) {
+            for (int i = 0; i < bank.count; i++) {
+                snapshot[offset + i] = bank.isLocation ? LocationValue.NONE : 0;
+            }
+            offset += bank.count;
+        }
+        return snapshot;
+    }
+
+    /** Returns where the first register of one bank sits in a snapshot of the given banks. */
+    private static int snapshotOffsetOf(List<RegisterBank> banks, RegisterBank wanted) {
+        int offset = 0;
+        for (RegisterBank bank : banks) {
+            if (bank == wanted) {
+                return offset;
+            }
+            offset += bank.count;
+        }
+        throw new IllegalArgumentException(wanted + " is not among " + banks);
+    }
+
+    /**
+     * The same for an entry of the location stack, which is restored the same way.
+     */
+    @Test
+    @Tag("unit")
+    void testRestoreBuilder_LocationStackEntryOfWrongLength_IsRejected() {
+        java.util.Deque<int[]> locationStack = new java.util.ArrayDeque<>();
+        locationStack.addLast(new int[]{7});
+
+        assertThatThrownBy(() ->
+            Organism.restore(1, 0L)
+                .ip(new int[]{0, 0})
+                .dv(new int[]{1, 0})
+                .initialPosition(new int[]{0, 0})
+                .locationStack(locationStack)
+                .build(simulation)
+        )
+            .isInstanceOf(Organism.InvalidRestoreState.class)
+            .hasMessageContaining("Location stack entry must hold a position of 2 components or none");
+    }
+
+    /**
+     * A location register that holds no position is one of the two shapes, so it passes.
+     */
+    @Test
+    @Tag("unit")
+    void testRestoreBuilder_LocationRegisterHoldingNoPosition_IsAccepted() {
+        Object[] registers = new Object[RegisterBank.TOTAL_REGISTER_COUNT];
+        registers[RegisterBank.LR.slotOffset()] = LocationValue.NONE;
+
+        Organism restored = Organism.restore(1, 0L)
+                .ip(new int[]{0, 0})
+                .dv(new int[]{1, 0})
+                .initialPosition(new int[]{0, 0})
+                .registers(registers)
+                .build(simulation);
+
+        assertThat(LocationValue.isNone((int[]) restored.readOperand(RegisterBank.LR.base))).isTrue();
     }
 
     @Test

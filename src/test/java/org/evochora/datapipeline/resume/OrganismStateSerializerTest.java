@@ -8,6 +8,8 @@ import org.evochora.runtime.Simulation;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.MutationRecord;
+import org.evochora.runtime.isa.RegisterBank;
+import org.evochora.runtime.model.LocationValue;
 import org.evochora.runtime.model.Organism;
 import org.evochora.test.utils.SimulationTestUtils;
 import org.junit.jupiter.api.BeforeAll;
@@ -69,6 +71,29 @@ class OrganismStateSerializerTest {
         assertThat(second.getNewValuesList()).containsExactly(11, 12);
         assertThat(second.getParamsList()).containsExactly(64L);
         assertThat(second.getDvList()).containsExactly(-1, 0);
+    }
+
+    /**
+     * A location register without a position, and an entry of the location stack that holds none,
+     * are written as a vector with no components — the same shape the runtime uses, which is why
+     * the format needs no case of its own for the state.
+     */
+    @Test
+    void aLocationValueWithoutAPositionIsWrittenAsAVectorWithoutComponents() {
+        Organism org = Organism.create(sim, new int[]{10, 10}, 100);
+        sim.addOrganism(org);
+        org.pushLocation(LocationValue.NONE);
+
+        OrganismState state = serializer.serialize(org);
+
+        var locationRegister = state.getRegisters(RegisterBank.LR.slotOffset());
+        assertThat(locationRegister.hasVector())
+                .as("the oneof case is set, so the value is not read as corrupt")
+                .isTrue();
+        assertThat(locationRegister.getVector().getComponentsCount()).isZero();
+
+        assertThat(state.getLocationStackCount()).isEqualTo(1);
+        assertThat(state.getLocationStack(0).getComponentsCount()).isZero();
     }
 
     @Test

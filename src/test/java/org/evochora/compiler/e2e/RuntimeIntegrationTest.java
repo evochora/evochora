@@ -5,6 +5,7 @@ import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.Simulation;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
+import org.evochora.runtime.model.LocationValue;
 import org.evochora.runtime.model.Organism;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.isa.RegisterBank;
@@ -165,7 +166,7 @@ public class RuntimeIntegrationTest {
                 ".ORG 0|3",
                 "EXPORT .PROC PROC_B",
                 "  .REG %TMP %PLR0",     // Alias for readability
-                "  CRLR %TMP",           // Clear PLR0 to [0,0] — overwrites caller's value
+                "  CRLR %TMP",           // Empty PLR0 — overwrites caller's value
                 "  RET",
                 ".ENDP"
         );
@@ -200,7 +201,7 @@ public class RuntimeIntegrationTest {
         // restored to [3,3] (saved before CALL PROC_B), then the active DP moved to [3,3].
         // The DP is not affected by the outer RET, so we can check it after all returns.
         assertThat(org.getActiveDp())
-                .as("Active DP should be [3,3] — SKLR used the restored PLR0, not PROC_B's [0,0]")
+                .as("Active DP should be [3,3] — SKLR used the restored PLR0, not the one PROC_B emptied")
                 .isEqualTo(new int[]{3, 3});
     }
 
@@ -274,21 +275,21 @@ public class RuntimeIntegrationTest {
 
     /**
      * Verifies LREF location parameter passing: a procedure receives a location register
-     * by reference, modifies it (clears to [0,0]), and the modified value is written back
-     * to the caller's source register after RET.
+     * by reference, empties it, and the emptied register is written back to the caller's
+     * source register after RET.
      */
     @Test
     @Tag("integration")
     void lrefLocationParameterPassingAndWriteBack() throws Exception {
         String source = String.join("\n",
-                // Main: save DP to LR0, call CLEAR_POS LREF %LR0, check LR0 is [0,0]
+                // Main: save DP to LR0, call CLEAR_POS LREF %LR0, check LR0 holds no position
                 "DPLR %LR0",                    // LR0 = current DP (non-zero position)
                 "CALL CLEAR_POS LREF %LR0",     // Pass LR0 by location reference
                 "WAIT",
-                // CLEAR_POS clears the passed location to [0,0]
+                // CLEAR_POS empties the passed location
                 ".ORG 0|1",
                 "EXPORT .PROC CLEAR_POS LREF lPos",
-                "  CRLR lPos",                  // Clear FLR0 to [0,0]
+                "  CRLR lPos",                  // Empty FLR0
                 "  RET",
                 ".ENDP"
         );
@@ -320,11 +321,12 @@ public class RuntimeIntegrationTest {
 
         assertThat(org.isInstructionFailed()).as("Failure: " + org.getFailureReason()).isFalse();
 
-        // LR0 was [5,7] before CALL (from DPLR). CLEAR_POS sets FLR0 to [0,0].
-        // LREF write-back copies FLR0 back to LR0. So LR0 should be [0,0], not [5,7].
+        // LR0 was [5,7] before CALL (from DPLR). CLEAR_POS sets FLR0 to no position.
+        // LREF write-back copies FLR0 back to LR0, so LR0 holds no position rather than [5,7].
         int[] lr0Value = (int[]) org.readOperand(RegisterBank.LR.base);
-        assertThat(lr0Value).as("LR0 should be [0,0] after LREF write-back from CLEAR_POS (was [5,7] before CALL)")
-                .isEqualTo(new int[]{0, 0});
+        assertThat(LocationValue.isNone(lr0Value))
+                .as("LR0 should hold no position after LREF write-back from CLEAR_POS (was [5,7] before CALL)")
+                .isTrue();
     }
 
     /**
@@ -343,7 +345,7 @@ public class RuntimeIntegrationTest {
                 ".ORG 0|1",
                 "EXPORT .PROC MIX REF a LREF lPos",
                 "  ADDI a DATA:1",                    // FDR0 = 42
-                "  CRLR lPos",                        // FLR0 = [0,0]
+                "  CRLR lPos",                        // FLR0 holds no position
                 "  RET",
                 ".ENDP"
         );
@@ -379,8 +381,9 @@ public class RuntimeIntegrationTest {
                 .as("DR1 must be 42 after the REF write-back (raw=%d)", dr1Raw).isEqualTo(42);
 
         int[] lr0Value = (int[]) org.readOperand(RegisterBank.LR.base);
-        assertThat(lr0Value).as("LR0 must be [0,0] after the LREF write-back (was [5,7] before the CALL)")
-                .isEqualTo(new int[]{0, 0});
+        assertThat(LocationValue.isNone(lr0Value))
+                .as("LR0 must hold no position after the LREF write-back (was [5,7] before the CALL)")
+                .isTrue();
     }
 
     /**

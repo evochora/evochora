@@ -56,16 +56,20 @@ final class GridLayout {
      * @param properties the world's shape and topology; its row-major numbering is the persisted
      *                   index this layout converts to
      * @param tileSide   cells per tile along each dimension; a power of two, at least 1
-     * @throws IllegalArgumentException if the tile side is not a power of two, if a world dimension
-     *                                  is not a multiple of the tile side, if a tile would hold more
-     *                                  cells than an {@code int} can index, or if the world holds
-     *                                  more cells than an {@code int} can index
+     * @throws IllegalArgumentException if the world has no dimensions, if the tile side is not a
+     *                                  power of two, if a world dimension is not a multiple of the
+     *                                  tile side, if a tile would hold more cells than an
+     *                                  {@code int} can index, or if the world holds more cells than
+     *                                  an {@code int} can index
      */
     GridLayout(EnvironmentProperties properties, int tileSide) {
         if (tileSide < 1 || Integer.bitCount(tileSide) != 1) {
             throw new IllegalArgumentException("Tile side must be a power of two, got " + tileSide);
         }
         this.shape = properties.getWorldShape();
+        if (shape.length < 1) {
+            throw new IllegalArgumentException("A world has at least one dimension, but the shape has none");
+        }
         this.flatStrides = new int[shape.length];
         for (int i = 0; i < shape.length; i++) {
             flatStrides[i] = properties.getStride(i);
