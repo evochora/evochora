@@ -52,15 +52,17 @@ reach is one pair wider.
 
 ### A location register is either a position or nothing
 
-`NO_LOCATION` is a shared, immutable `int[]` with no components. A position in an n-dimensional
+`LocationValue.NONE` is a shared, immutable `int[]` with no components. A position in an n-dimensional
 world has exactly n components, so an array without components is not a position and cannot be
 confused with one — including with `0|0`, which stays an ordinary position that can be stored,
 handed out and jumped to like any other. The state is recognised by length rather than by identity,
 because `LRLR` copies a register with `clone()` and a cloned empty array is a different instance.
-The predicate is named once, as `Organism.isUnsetLocation(int[])`, so that `length == 0` appears in
-no call site.
+The predicate is named once, as `LocationValue.isNone(int[])`, so that `length == 0` appears in no
+call site. Both live in `org.evochora.runtime.model.LocationValue`, next to `UnitVector`, which
+makes the same kind of statement about a vector: the state is a property of a location value, not
+of the organism that holds one.
 
-A location register carries `NO_LOCATION` from birth and after `CRLR`. `CRLR` remains the only
+A location register carries `LocationValue.NONE` from birth and after `CRLR`. `CRLR` remains the only
 instruction that produces it. Today `CRLR` allocates a fresh `int[]` on every execution
 (`LocationInstruction.java:201`); writing the shared constant removes that allocation.
 
@@ -69,7 +71,7 @@ vector whose length is neither zero nor the world's dimension count — one comp
 already performs four bounds checks. Without it, a wrong-length write would produce a value that is
 neither a position nor the state, and nothing would notice.
 
-| Instruction | Behaviour on `NO_LOCATION` |
+| Instruction | Behaviour on `LocationValue.NONE` |
 |---|---|
 | `LRLR`, `PUSL`, `POPL` | carry the state through — a copy copies what is there |
 | `LRDR`, `LRDS`, `LSDR`, `LSDS` | fail: no instruction hands the state out as a vector |
@@ -81,7 +83,7 @@ consumed, the data pointer stays where it is.
 
 Refusing the four instructions that hand a vector out is what keeps the state inside the organism.
 `Organism.hasWorldDimensions` logs an error with a stack trace for any vector whose component count
-does not match the world, so a `NO_LOCATION` that escaped into a data register would surface far
+does not match the world, so a `LocationValue.NONE` that escaped into a data register would surface far
 from its origin, as noise in the log of a world interaction.
 
 The location stack carries the state as well. It has to: procedure parameters of a location register
@@ -153,7 +155,7 @@ the error penalty. Five places in `LocationInstruction` change something before 
 * `SKLS` pops and then sets the data pointer — it must read the top, check it, and pop only when the
   jump happens.
 * `LSDS` checks for room on the data stack and then pops, without ever inspecting the value; it must
-  look before it pops, because refusing `NO_LOCATION` is a decision about the value.
+  look before it pops, because refusing `LocationValue.NONE` is a decision about the value.
 * `POPL` pops and then writes the register.
 * `SWPL` and `ROTL` pop two or three entries and then push them back.
 
@@ -169,7 +171,7 @@ The code says this in its own words. Comments name the behaviour, never the issu
 
 ### A world has at least one dimension
 
-`NO_LOCATION` rests on positions having at least one component. `GridLayout` validates the world
+`LocationValue.NONE` rests on positions having at least one component. `GridLayout` validates the world
 shape today — tile side, index bounds — but not that a shape has any dimensions at all; its
 per-dimension loop simply does not run, and a dimensionless world is accepted as a one-cell world
 whose only coordinate is `int[0]`. It gains the check, and its constructor's `@throws` list gains
@@ -211,27 +213,34 @@ primordial change land together.
 ### Documentation the change falsifies
 
 Existing JavaDoc states the invariant that is being replaced and is corrected with it:
-`Organism.getLocationStack` (`:1795-1803`, "vectors of one component per world dimension"),
-`Organism.writeLocationOperand` (`:1911-1920`), `Organism.getRegisters` (`:1650-1655`),
-`resetStackSavedRegisters` (`:1990-1993`) and `resetPersistentRegisters` (`:2046-2050`), which both
-promise a zero vector for location banks, `SimulationRestorer.convertRegisterValue` (`:783-797`),
-whose reasoning rests on what the write side can produce, and `OrganismStateSerializer`'s
-`defaultForRegisterSlot` (`:243-253`) and `convertRegisterValueReuse` (`:256-263`).
+`Organism.getLocationStack` ("vectors of one component per world dimension"),
+`Organism.writeLocationOperand`, `Organism.getRegisters`, `resetStackSavedRegisters` and
+`resetPersistentRegisters`, which both promise a zero vector for location banks, and
+`OrganismStateSerializer.defaultForRegisterSlot`, which substitutes one.
+
+Two neighbours were checked and stay as they are, so that the next reader does not take them for
+forgotten. `SimulationRestorer.convertRegisterValue` rests its corruption check on the write side
+being unable to produce an empty `oneof`; that holds, because an array without components still
+goes out through `setVector` and sets the case. `OrganismStateSerializer.convertRegisterValueReuse`
+says a register value is either an `Integer` or an `int[]`; that holds too.
 
 `DUPL` pushes the same array reference twice (`LocationInstruction.java:100`), and `getRegisters`
 hands out the register's own array. That is safe because nothing writes into a stored vector, and
-`NO_LOCATION` makes a shared stored array ordinary rather than exceptional; the policy is stated
+`LocationValue.NONE` makes a shared stored array ordinary rather than exceptional; the policy is stated
 where the stack is documented.
 
 ## Implementation
 
 1. **The state, the guards, and the primordial** — one commit, because the two cannot be separated.
-   `Organism`: the `NO_LOCATION` constant, the `isUnsetLocation` predicate, the four sites that
+   `LocationValue`: the `NONE` constant and the `isNone` predicate. `Organism`: the four sites that
    initialise a location register (`:171`, `:250`, `:1997` and `:2054`, the last of which resets the
    persistent bank on `CALL`, `RET` and stall recovery), and the length check in
    `writeLocationOperand` and `pushLocation`. `LocationInstruction`: `CRLR` writes the state,
    `SKLR`, `SKLS`, `LRDR`, `LRDS`, `LSDR`, `LSDS` refuse it, `LRLR`, `PUSL`, `POPL` carry it.
    `OrganismStateSerializer.defaultForRegisterSlot` substitutes the state instead of a zero vector.
+   `Organism.Builder.validateStateInvariants` holds a restored location register and a restored
+   location stack entry to the same two shapes, next to the check it already makes for the data
+   pointers.
    `assembly/primordial/lib/reproduce.evo`: the two guards and their padding.
    Verified by new cases in `VMLocationInstructionTest`, each written red first, and by reading the
    changed primordial rows.
@@ -297,9 +306,10 @@ of failing. Rejected.
 
 **What the chosen design costs.** "No components means no position" is a rule about an `int[]`, not
 a promise of the type system: a future call site that builds a location vector of the wrong length
-would produce something that is neither. The length check in the write gates catches that at the two
-places where a location value enters the organism, and the `GridLayout` guard keeps the two kinds
-disjoint by making a dimensionless world impossible; between them the rule holds, but it holds by
+would produce something that is neither. A location value enters an organism at three places, and
+each rejects such a value: the two write gates fail the instruction, and a state restored from a
+checkpoint is refused as one this build could not have produced. The `GridLayout` guard keeps the
+two kinds disjoint by making a dimensionless world impossible; between them the rule holds, but it holds by
 construction and not by the compiler. The second cost is the fitness change named above: six
 instructions become fallible on a cleared register.
 

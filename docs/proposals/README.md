@@ -34,7 +34,7 @@ resolves it.
 | 1 | [RELATIVE_ORG_DIR](compiler-enhancements/RELATIVE_ORG_DIR.md) | TO BE REVIEWED | `~` prefix for relative `.ORG` offsets and `.DIR` rotation; bounds checking for non-toroidal grids. Step 1 is an independent bug fix (silently discarded out-of-bounds placement) |
 | 2 | [CONDITIONAL_COMPILATION](compiler-enhancements/CONDITIONAL_COMPILATION.md) | TO BE REVIEWED | `.IFDEF` / `.ELSEDEF` / `.ENDDEF` preprocessor conditionals; renames `.DEFINE` → `.CONST` and `.ENDP`/`.ENDM`/`.ENDR` → `.ENDPROC`/`.ENDMACRO`/`.ENDREPEAT` |
 | 3 | [CONTROL_FLOW_DIRECTIVES](compiler-enhancements/CONTROL_FLOW_DIRECTIVES.WIP.md) | **WORK IN PROGRESS** | `.IF`/`.ELSEIF`/`.ELSE`/`.ENDIF` specified; `.WHILE`/`.FOR`/`.BREAK`/`.CONTINUE` still to be written |
-| 4 | [CONDITIONAL_BRANCH_ISA](compiler-enhancements/CONDITIONAL_BRANCH_ISA.md) | TO BE REVIEWED | Branch variants (BFI, BNR, BLE…) for all 18 conditional operations — condition test and jump in one instruction |
+| 4 | [CONDITIONAL_BRANCH_ISA](compiler-enhancements/CONDITIONAL_BRANCH_ISA.md) | TO BE REVIEWED | Branch variants (BFI, BNR, BLE…) for all 20 conditional operations — condition test and jump in one instruction |
 
 Dependencies:
 
