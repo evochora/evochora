@@ -21,7 +21,7 @@ import java.util.Random;
  * <p>
  * Called once per newborn organism in the post-Execute phase of each tick. With configurable
  * probability, selects a LABEL molecule and deletes everything in the organism's DV direction
- * until hitting the next LABEL (gene boundary), STRUCTURE (shell boundary), or a foreign molecule.
+ * until hitting the next LABEL (block boundary), STRUCTURE (shell boundary), or a foreign molecule.
  * <p>
  * Labels that appear multiple times (from gene duplication) are selected with higher probability,
  * controlled by a configurable exponent: weight = count^exponent. With exponent=2.0 (default),
@@ -29,8 +29,8 @@ import java.util.Random;
  * the probability of deletion through misalignment grows as O(N²) with repeat count.
  * <p>
  * The thermodynamic cost system (value-dependent POKE costs) provides the counterweight to
- * genome bloat from duplication. This plugin provides variation: redundant genes (from duplication)
- * are preferentially deleted (neutral), while unique genes are rarely hit (lethal, filtered by selection).
+ * genome bloat from duplication. This plugin provides variation: redundant blocks (from duplication)
+ * are preferentially deleted (neutral), while unique blocks are rarely hit (lethal, filtered by selection).
  * <p>
  * <strong>What it records:</strong> an applied deletion reports itself on the newborn as a
  * {@link MutationRecord} of kind {@code "deletion"}. Its cells are the label cell and every cleared
@@ -199,7 +199,7 @@ public class GeneDeletionPlugin implements IBirthHandler {
             int type = mol.type();
 
             if (type == Config.TYPE_LABEL) {
-                break; // next gene boundary
+                break; // next block boundary
             }
             if (type == Config.TYPE_STRUCTURE) {
                 break; // shell boundary
