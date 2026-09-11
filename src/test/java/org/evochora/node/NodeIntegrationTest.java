@@ -2,6 +2,7 @@ package org.evochora.node;
 
 import static io.restassured.RestAssured.given;
 import static org.awaitility.Awaitility.await;
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasSize;
@@ -156,10 +157,16 @@ class NodeIntegrationTest {
     void resetServicesToStopped() {
         // This ensures each test starts from a clean, predictable state.
         given().post(BASE_PATH + "/stop").then().statusCode(202);
-        // Allow sufficient time for services to stop, especially during high system load
-        await().atMost(5, TimeUnit.SECONDS).untilAsserted(() ->
-            given().get(BASE_PATH + "/status").then().body("status", equalTo("STOPPED"))
-        );
+        // The stop runs on the request thread, so every service has already been stopped when the
+        // 202 arrives and the first poll should see STOPPED. The status is named in the failure,
+        // because which one it stopped at is the whole answer: RUNNING means the stop is still
+        // under way, while ERROR means a service thread survived its interrupt and the status will
+        // never become STOPPED, however long this waits.
+        await().atMost(5, TimeUnit.SECONDS).untilAsserted(() -> {
+            final String status = given().get(BASE_PATH + "/status")
+                .then().extract().path("status");
+            assertThat("pipeline status after /stop", status, equalTo("STOPPED"));
+        });
     }
 
     @Test
