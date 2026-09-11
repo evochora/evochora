@@ -805,12 +805,13 @@ public class VMLocationInstructionTest {
     }
 
     /**
-     * Verifies that `POPL` keeps the entry when it has nowhere to put it — a mutated operand that
-     * names a data register instead of a location register.
+     * Verifies that an operand naming a data register where a location register belongs — which a
+     * mutated argument cell produces — fails the instruction while it is still being planned, so
+     * the location stack is not touched and no reader has to cope with a scalar.
      */
     @Test
     @Tag("unit")
-    void testPoplKeepsTheEntryWhenTheTargetIsNoLocationRegister() {
+    void testALocationOperandNamingADataRegisterFails() {
         Deque<int[]> ls = org.getLocationStack();
         int[] position = {3, 4};
         ls.push(position);
@@ -825,19 +826,61 @@ public class VMLocationInstructionTest {
     }
 
     /**
+     * Verifies that the stack operations move the state like any other entry: the table of this
+     * change says it travels through copies, and these four are the copies the stack itself makes.
+     */
+    @Test
+    @Tag("unit")
+    void testStackOperationsCarryTheStateLikeAnyOtherEntry() {
+        Deque<int[]> ls = org.getLocationStack();
+        int[] position = {4, 9};
+        ls.push(position);
+        ls.push(LocationValue.NONE);
+
+        placeInstruction(org, "DUPL");
+        sim.tick();
+        assertThat(org.isInstructionFailed()).isFalse();
+        assertThat(ls).hasSize(3);
+        assertThat(LocationValue.isNone(ls.peek())).isTrue();
+
+        placeInstruction(org, "SWPL");
+        sim.tick();
+        assertThat(org.isInstructionFailed()).isFalse();
+        assertThat(LocationValue.isNone(ls.peek())).isTrue();
+
+        placeInstruction(org, "DRPL");
+        sim.tick();
+        assertThat(org.isInstructionFailed()).isFalse();
+        assertThat(ls).hasSize(2);
+
+        placeInstruction(org, "ROTL");
+        sim.tick();
+        assertThat(org.isInstructionFailed())
+                .as("ROTL needs three entries and two are left")
+                .isTrue();
+    }
+
+    /**
      * Verifies that a value that is neither a position nor the state is refused where it would
      * enter the organism.
      */
     @Test
     @Tag("unit")
     @ExpectLog(level = LogLevel.ERROR, messagePattern = ".*holds a vector of 3 components.*")
-    @ExpectLog(level = LogLevel.ERROR, messagePattern = ".*holds a vector of 1 components.*")
-    void testWriteGatesRejectAWrongLength() {
+    void testTheRegisterGateRejectsAWrongLength() {
         assertThat(org.writeLocationOperand(RegisterBank.LR.base, new int[]{1, 2, 3})).isFalse();
         assertThat(org.isInstructionFailed()).isTrue();
         assertThat(LocationValue.isNone((int[]) org.readOperand(RegisterBank.LR.base))).isTrue();
+    }
 
+    @Test
+    @Tag("unit")
+    @ExpectLog(level = LogLevel.ERROR, messagePattern = ".*holds a vector of 1 components.*")
+    void testTheStackGateRejectsAWrongLength() {
         assertThat(org.pushLocation(new int[]{1})).isFalse();
+        assertThat(org.isInstructionFailed())
+                .as("the gate books the failure rather than returning quietly")
+                .isTrue();
         assertThat(org.getLocationStack()).isEmpty();
     }
 

@@ -150,7 +150,9 @@ public class LocationInstruction extends Instruction {
             case "SKLS": {
                 if (ls.isEmpty()) { org.instructionFailed("SKLS on empty LS"); return; }
                 // Read before popping: an entry that holds no position leaves the stack as it is,
-                // so the value is still there for a program that reacts to the failure.
+                // so the value is still there for a program that reacts to the failure. Setting the
+                // data pointer afterwards cannot fail — its index was checked where it was set —
+                // so the pop has nothing left to risk.
                 int[] target = ls.peek();
                 if (LocationValue.isNone(target)) {
                     org.instructionFailed("SKLS: top of LS holds no position");

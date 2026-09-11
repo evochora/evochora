@@ -759,10 +759,47 @@ public class Organism {
          * @throws InvalidRestoreState if a set value contradicts this build's register banks,
          *                               data pointer count, coordinate dimension or stack limits
          */
+        /** Whether a restored location value is a position of this organism's world or the state. */
+        private boolean isLocationValue(int[] value) {
+            return value.length == ip.length || LocationValue.isNone(value);
+        }
+
+        /** Names a rejected location value in a failure message. */
+        private static String describeLocationValue(Object value) {
+            if (value == null) {
+                return "null";
+            }
+            return value instanceof int[] v ? v.length + " components" : value.getClass().getSimpleName();
+        }
+
         private void validateStateInvariants() {
             if (flatRegisters != null && flatRegisters.length != RegisterBank.TOTAL_REGISTER_COUNT) {
                 throw new InvalidRestoreState("Register array must hold "
                         + RegisterBank.TOTAL_REGISTER_COUNT + " values, got " + flatRegisters.length);
+            }
+            // A location register holds a position of one component per world dimension, or
+            // LocationValue.NONE. Restored state is the one way such a value enters an organism
+            // without passing writeLocationOperand or pushLocation, and everything that reads one
+            // afterwards relies on it being one of the two. A slot left unset is filled with the
+            // state by the constructor and passes here.
+            if (flatRegisters != null) {
+                for (int slot = 0; slot < flatRegisters.length; slot++) {
+                    RegisterBank bank = RegisterBank.SLOT_TO_BANK[slot];
+                    if (bank == null || !bank.isLocation || flatRegisters[slot] == null) {
+                        continue;
+                    }
+                    if (!(flatRegisters[slot] instanceof int[] location) || !isLocationValue(location)) {
+                        throw new InvalidRestoreState("Location register in slot " + slot
+                                + " must hold a position of " + ip.length + " components or none, got "
+                                + describeLocationValue(flatRegisters[slot]));
+                    }
+                }
+            }
+            for (int[] entry : locationStack) {
+                if (entry == null || !isLocationValue(entry)) {
+                    throw new InvalidRestoreState("Location stack entry must hold a position of "
+                            + ip.length + " components or none, got " + describeLocationValue(entry));
+                }
             }
             if (!dps.isEmpty()) {
                 if (dps.size() != Config.NUM_DATA_POINTERS) {
@@ -1838,11 +1875,20 @@ public class Organism {
     /**
      * Pushes a location value onto the location stack, or fails the current instruction if the
      * stack is full or the value is neither a position nor {@link LocationValue#NONE}.
+     * <p>
+     * A {@code null} value indicates a defect in the calling instruction and is rejected for the
+     * same reason as in {@link #writeLocationOperand(int, int[])}: {@link #readOperand(int)} hands
+     * out {@code null} for an invalid register id, and an instruction that passes that on without
+     * checking for the failure first would otherwise leave the defect to be found far from here.
      *
      * @param vector the position to push, or {@link LocationValue#NONE}
      * @return {@code true} if the value was pushed, {@code false} if the instruction has been failed
      */
     public boolean pushLocation(int[] vector) {
+        if (vector == null) {
+            this.instructionFailed("Null value for location stack push");
+            return false;
+        }
         if (!LocationValue.isNone(vector) && !hasWorldDimensions(vector)) {
             return false;
         }

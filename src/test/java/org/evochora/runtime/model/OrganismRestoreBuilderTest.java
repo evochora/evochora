@@ -203,6 +203,70 @@ class OrganismRestoreBuilderTest {
             .isNotInstanceOf(Organism.InvalidRestoreState.class);
     }
 
+    /**
+     * A location value enters a restored organism without passing the write gates every running
+     * instruction goes through, so the builder holds it to the same two shapes: a position of one
+     * component per world dimension, or none at all. Everything that reads a location register
+     * afterwards relies on that.
+     */
+    @Test
+    @Tag("unit")
+    void testRestoreBuilder_LocationRegisterOfWrongLength_IsRejected() {
+        Object[] registers = new Object[RegisterBank.TOTAL_REGISTER_COUNT];
+        registers[RegisterBank.LR.slotOffset()] = new int[]{1, 2, 3};
+
+        assertThatThrownBy(() ->
+            Organism.restore(1, 0L)
+                .ip(new int[]{0, 0})
+                .dv(new int[]{1, 0})
+                .initialPosition(new int[]{0, 0})
+                .registers(registers)
+                .build(simulation)
+        )
+            .isInstanceOf(Organism.InvalidRestoreState.class)
+            .hasMessageContaining("must hold a position of 2 components or none");
+    }
+
+    /**
+     * The same for an entry of the location stack, which is restored the same way.
+     */
+    @Test
+    @Tag("unit")
+    void testRestoreBuilder_LocationStackEntryOfWrongLength_IsRejected() {
+        java.util.Deque<int[]> locationStack = new java.util.ArrayDeque<>();
+        locationStack.addLast(new int[]{7});
+
+        assertThatThrownBy(() ->
+            Organism.restore(1, 0L)
+                .ip(new int[]{0, 0})
+                .dv(new int[]{1, 0})
+                .initialPosition(new int[]{0, 0})
+                .locationStack(locationStack)
+                .build(simulation)
+        )
+            .isInstanceOf(Organism.InvalidRestoreState.class)
+            .hasMessageContaining("Location stack entry must hold a position of 2 components or none");
+    }
+
+    /**
+     * A register the state left unset is filled with the state by the constructor, so it passes.
+     */
+    @Test
+    @Tag("unit")
+    void testRestoreBuilder_LocationRegisterLeftUnset_IsAccepted() {
+        Object[] registers = new Object[RegisterBank.TOTAL_REGISTER_COUNT];
+        registers[RegisterBank.LR.slotOffset()] = LocationValue.NONE;
+
+        Organism restored = Organism.restore(1, 0L)
+                .ip(new int[]{0, 0})
+                .dv(new int[]{1, 0})
+                .initialPosition(new int[]{0, 0})
+                .registers(registers)
+                .build(simulation);
+
+        assertThat(LocationValue.isNone((int[]) restored.readOperand(RegisterBank.LR.base))).isTrue();
+    }
+
     @Test
     @Tag("unit")
     void testRestoreBuilder_MissingIp_ThrowsException() {
