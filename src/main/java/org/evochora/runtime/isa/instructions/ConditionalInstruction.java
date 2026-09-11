@@ -120,8 +120,9 @@ public class ConditionalInstruction extends Instruction {
         Environment environment = context.getWorld();
         try {
             String opName = getName();
-            // Matched by full name before the prefix tests below, which would read the "IFS" of
-            // IFSL as the stack-to-stack equality they select on.
+            // Matched by full name ahead of everything below, which ends in a path that expects
+            // two operands and reads a name beginning with "IN" as a negated comparison — INSL
+            // among them.
             if ("IFSL".equals(opName) || "INSL".equals(opName)) {
                 List<Operand> operands = resolveOperands(environment);
                 if (organism.isInstructionFailed()) {

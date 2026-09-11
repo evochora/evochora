@@ -1338,19 +1338,22 @@ public class VMConditionalInstructionTest {
     }
 
     /**
-     * The stack-to-stack equality conditionals keep their meaning next to the new pair, whose name
-     * shares their prefix.
+     * The value comparison that the new pair is matched ahead of keeps its meaning. INS is the one
+     * at risk: the path below the new block reads any name beginning with "IN" as a negated
+     * comparison, so a pair placed after it would be read as one.
      */
     @Test
     @Tag("unit")
-    void testIfs_StillComparesTwoStackValues() {
+    void testIns_StillComparesTwoStackValues() {
         org.getDataStack().push(new Molecule(Config.TYPE_DATA, 7).toInt());
-        org.getDataStack().push(new Molecule(Config.TYPE_DATA, 7).toInt());
-        placeInstruction("IFS");
-        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFS"), environment));
+        org.getDataStack().push(new Molecule(Config.TYPE_DATA, 8).toInt());
+        placeInstruction("INS");
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INS"), environment));
         sim.tick();
         sim.tick();
-        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
+        assertThat(org.readOperand(0))
+                .as("INS executes the next instruction when the two values differ")
+                .isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
         assertNoInstructionFailure();
     }
 
