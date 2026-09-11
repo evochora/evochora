@@ -27,10 +27,12 @@ export class ProcedureTokenHandler {
      * @param {object} tokenInfo Metadata about the token.
      * @param {object} organismState The current state of the organism (not used for hash lookup).
      * @param {object} artifact The program artifact containing `labelNameToValue` map.
+     * @param {number} labelNamespaceMask The organism's label namespace; the compiled value
+     *        XORed with it is the value that stands in this organism's body.
      * @returns {object} An annotation object `{ annotationText, kind }`.
      * @throws {Error} If the procedure hash cannot be resolved.
      */
-    analyze(tokenText, tokenInfo, organismState, artifact) {
+    analyze(tokenText, tokenInfo, organismState, artifact, labelNamespaceMask) {
         // Resolve procedure name to hash value for display (using qualified name for lookup)
         const hashValue = AnnotationUtils.resolveLabelNameToHash(tokenText, artifact, tokenInfo.qualifiedName);
 
@@ -44,7 +46,7 @@ export class ProcedureTokenHandler {
 
         // Format hash value as decimal with # prefix (e.g., "[#12345]")
         return {
-            annotationText: `[#${hashValue}]`,
+            annotationText: `[#${hashValue ^ labelNamespaceMask}]`,
             kind: 'proc'
         };
     }

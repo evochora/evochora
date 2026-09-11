@@ -36,9 +36,11 @@ export class SourceAnnotator {
      * @param {string} fileName The name of the source file being annotated.
      * @param {string} sourceLine The raw text of the source code line.
      * @param {number} lineNumber The 1-based line number.
+     * @param {number} labelNamespaceMask The organism's label namespace, which turns a compiled
+     *        label value into the value that stands in its body.
      * @returns {Array<object>} A list of annotation spans ready for rendering.
      */
-    annotate(organismState, artifact, fileName, sourceLine, lineNumber) {
+    annotate(organismState, artifact, fileName, sourceLine, lineNumber, labelNamespaceMask) {
         if (!artifact || !organismState || !fileName) return [];
 
         const tokenLookup = artifact.tokenLookup;
@@ -108,7 +110,7 @@ export class SourceAnnotator {
                         const handler = this.findHandler(tokenText, tokenInfo);
                         if (handler) {
                             try {
-                            const result = handler.analyze(tokenText, tokenInfo, organismState, artifact);
+                            const result = handler.analyze(tokenText, tokenInfo, organismState, artifact, labelNamespaceMask);
                             if (result) {
                                 annotations.push({
                                     tokenText: tokenText,

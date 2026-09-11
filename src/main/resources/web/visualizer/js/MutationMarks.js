@@ -97,32 +97,6 @@ export function isMarkPresent(mark, typeName, value, isEmptyCell) {
 }
 
 /**
- * Collects the genome to parent genome edges the answer carries.
- *
- * Every event names the genome the mutation arose in and that genome's parent. An ancestor genome
- * that no living organism carries appears in no other answer of the view, so without these edges it
- * would be coloured as a root of its own instead of as part of its lineage.
- *
- * @param {Array<object>} events The events of the lineage.
- * @returns {Array<Array<string|null>>} Pairs of genome hash and parent genome hash, the parent null
- *                                      for a genome whose organism had no parent.
- */
-export function genomeEdges(events) {
-    const edges = new Map();
-    if (!Array.isArray(events)) {
-        return [];
-    }
-    for (const event of events) {
-        if (event.originGenomeHash == null) {
-            continue;
-        }
-        edges.set(String(event.originGenomeHash),
-            event.originParentGenomeHash != null ? String(event.originParentGenomeHash) : null);
-    }
-    return [...edges.entries()];
-}
-
-/**
  * Builds one mark from one cell of one event.
  *
  * @param {object} event The event the cell belongs to.
@@ -140,6 +114,7 @@ function toMark(event, cell, coordinates, resolveTypeName) {
         kind: event.kind,
         generation: event.originGeneration ?? 0,
         eventIndex: event.eventIndex ?? 0,
+        originOrganismId: event.originOrganismId,
         genomeHash: event.originGenomeHash,
         beforeTypeName: resolveTypeName(before.moleculeType),
         beforeValue: before.moleculeValue ?? 0,

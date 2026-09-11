@@ -72,11 +72,11 @@ export class OrganismSourceView {
         if (!this.artifact || !this.dom.section) return;
 
         const activeLocation = this.calculateActiveLocation(organismState, staticInfo);
-        
-        // 1. Handle Status Bar (Errors/Warnings including mutation detection)
-        this.updateStatusBar(activeLocation, organismState);
 
-        // 2. Auto-switch file if execution moved to a different file
+        // 1. Auto-switch file if execution moved to a different file. This comes first because the
+        // re-render replaces the whole source view, the status bar with it: a warning written
+        // before it would be thrown away again, which is why one only ever appeared when execution
+        // happened to stay in the file already on display.
         if (activeLocation && activeLocation.fileName) {
             const fileExists = this.artifact.sources && this.artifact.sources[activeLocation.fileName];
             if (fileExists && this.selectedFile !== activeLocation.fileName) {
@@ -85,6 +85,9 @@ export class OrganismSourceView {
                 this.renderSourceStructure(); // Re-render needed because file content changed
             }
         }
+
+        // 2. Handle Status Bar (Errors/Warnings including mutation detection)
+        this.updateStatusBar(activeLocation, organismState);
 
         // 3. Update Line Highlighting (DOM manipulation only, no re-render)
         const activeLineNumber = activeLocation ? activeLocation.lineNumber : null;
@@ -367,7 +370,8 @@ export class OrganismSourceView {
             initialPosition: staticInfo.initialPosition ? { components: staticInfo.initialPosition } : undefined
         };
 
-        const annotations = this.annotator.annotate(fullState, this.artifact, fileName, originalLine, lineNumber);
+        const annotations = this.annotator.annotate(fullState, this.artifact, fileName, originalLine,
+            lineNumber, staticInfo.labelNamespaceMask);
         if (!annotations || annotations.length === 0) {
             // Ensure clean state just in case
             lineElement.textContent = originalLine;
@@ -480,7 +484,7 @@ export class OrganismSourceView {
     updateStatusBar(activeLocation, organismState) {
         if (!this.dom.status) return;
 
-        // Collect warning message (location error, opcode mismatch, or unknown procedure)
+        // Collect warning message (location error or opcode mismatch)
         let warning = null;
 
         if (activeLocation && activeLocation.error) {
@@ -489,13 +493,6 @@ export class OrganismSourceView {
             const mismatch = this.detectOpcodeMismatch(activeLocation, organismState);
             if (mismatch) {
                 warning = `Opcode mismatch: expected ${mismatch.expected}, found ${mismatch.actual}`;
-            }
-        }
-
-        if (!warning) {
-            const unknownProc = this.detectUnknownProcedure(organismState);
-            if (unknownProc) {
-                warning = unknownProc;
             }
         }
 
@@ -541,34 +538,6 @@ export class OrganismSourceView {
             return { expected: expectedInstruction.opcode, actual: actualOpcode };
         }
         return null;
-    }
-
-    /**
-     * Detects if the organism is inside a procedure that is not in the compiled artifact.
-     *
-     * @param {object|null} organismState - The organism state with callStack.
-     * @returns {string|null} Warning message or null if all procedures are known.
-     * @private
-     */
-    detectUnknownProcedure(organismState) {
-        if (!organismState?.callStack || !Array.isArray(organismState.callStack) || organismState.callStack.length === 0) return null;
-        if (!this.artifact?.procNameToParamNames) return null;
-
-        const topFrame = organismState.callStack[0];
-        if (!topFrame) return null;
-
-        const procName = topFrame.procName || '';
-        const procNameUpper = procName.toUpperCase();
-
-        if (procNameUpper && this.artifact.procNameToParamNames[procNameUpper]) return null;
-
-        const callIp = topFrame.absoluteCallIp;
-        const posStr = (callIp && Array.isArray(callIp)) ? ` called at [${callIp.join('|')}]` : '';
-
-        if (procName) {
-            return `Unknown procedure: ${procName}${posStr}`;
-        }
-        return `Unknown procedure${posStr}`;
     }
 
     /**

@@ -2,7 +2,7 @@ import { EnvironmentApi, setTypeMappings } from './api/EnvironmentApi.js';
 import { OrganismApi } from './api/OrganismApi.js';
 import { SimulationApi } from './api/SimulationApi.js';
 import { EnvironmentGrid } from './EnvironmentGrid.js';
-import { buildMarkMap, genomeEdges } from './MutationMarks.js';
+import { buildMarkMap } from './MutationMarks.js';
 import { moleculeTypeName } from './MoleculeTypePalette.js';
 import { MinimapView } from './ui/minimap/MinimapView.js';
 import { OrganismInstructionView } from './ui/organism/OrganismInstructionView.js';
@@ -64,11 +64,11 @@ export class AppController {
         this._genomeParent = new Map();       // String(genomeHash) → String(parentGenomeHash) | null
         this._genomeColorCache = new Map();   // String(genomeHash) → int 0xRRGGBB
         this._genomeHslCache = new Map();     // String(genomeHash) → [h, s, l]
-        // Mutations of the selected organism's lineage: the organism they were fetched for, and the
-        // genome→parentGenome edges of the answer, which the tick's own closure does not carry
+        // The organism the mutations of the selected lineage were fetched for
         this._mutationsOrganismId = null;     // int | null
-        this._mutationGenomeEdges = null;     // [[String(genomeHash), String(parentGenomeHash) | null], ...]
-        
+        // How many generations each ancestor lies back from the organism whose details were loaded
+        this._lineageDistances = null;        // { organismId: int, distances: Map<int, int> } | null
+
         // Config for renderer
         const defaultConfig = {
             worldSize: [100, 30],
@@ -301,6 +301,7 @@ export class AppController {
         this.sourceView.setProgram(null);
         this.stateView.setProgram(null);
         this.instructionView.setProgram(null);
+        this.instructionView.setLabelNamespaceMask(0);
         this.state.previousOrganismDetails = null;
     }
     
@@ -457,7 +458,18 @@ export class AppController {
                     : null;
                 this.stateView.setProgram(artifact);
                 this.instructionView.setProgram(artifact);
+                this.instructionView.setLabelNamespaceMask(staticInfo.labelNamespaceMask);
                 this.sourceView.setProgram(artifact);
+
+                // The ancestry chain names the parent first, so an ancestor's place in it is how
+                // many generations it lies back; the tooltip of a mutated cell shows that distance.
+                this._lineageDistances = {
+                    organismId,
+                    distances: new Map([
+                        [organismId, 0],
+                        ...(staticInfo.lineage || []).map((entry, index) => [entry.organismId, index + 1])
+                    ])
+                };
 
                 // Update instruction view with last and next instructions
                 if (state && state.instructions) {
@@ -896,10 +908,6 @@ export class AppController {
             const organisms = organismResult.organisms;
             this.state.totalOrganismCount = organismResult.totalOrganismCount;
             this._applyGenomeAncestors(organismResult.genomeAncestors);
-            // The genomes of the selected lineage's mutations are not part of the tick's closure,
-            // and every colour of this tick is computed from here on, so their edges go back in
-            // before the first of them is drawn.
-            this._mergeLineageGenomeEdges();
             this.updateOrganismPanel(organisms, isForwardStep);
             this.minimapView?.setOwnershipColorResolver(this._minimapOwnershipColorResolver(organisms));
             this.minimapView?.updateOrganisms(
@@ -1101,13 +1109,15 @@ export class AppController {
             }
 
             const events = answer?.events || [];
-            this._mutationGenomeEdges = genomeEdges(events);
-            this._mergeLineageGenomeEdges();
             this.renderer?.setMutationMarks(
                 buildMarkMap(events, {
                     resolveTypeName: (moleculeType) => this._resolveMoleculeTypeName(moleculeType)
                 }),
-                (genomeHash) => this._genomeHashToLineageColor(genomeHash)
+                {
+                    colorOf: (genomeHash) => this._genomeHashToLineageColor(genomeHash),
+                    generationsBackOf: (originOrganismId) => this._generationsBack(originOrganismId),
+                    opcodeNameOf: (opcodeId) => this.state.metadata?.opcodes?.[String(opcodeId)] ?? null
+                }
             );
         } catch (error) {
             if (error.name === 'AbortError') {
@@ -1123,7 +1133,8 @@ export class AppController {
     }
 
     /**
-     * Drops the mutations of the lineage and the marks drawn from them.
+     * Drops the mutations of the lineage, the marks drawn from them and the generation distances
+     * their tooltips name.
      * @private
      */
     _clearLineageMutations() {
@@ -1132,32 +1143,8 @@ export class AppController {
             this.organismMutationsRequestController = null;
         }
         this._mutationsOrganismId = null;
-        this._mutationGenomeEdges = null;
+        this._lineageDistances = null;
         this.renderer?.setMutationMarks(null);
-    }
-
-    /**
-     * Adds the ancestry edges of the selected lineage's mutations to the genome ancestor map.
-     *
-     * A mutation is coloured by the genome it arose in, and that genome is often carried by no
-     * organism any more. Without its parent it would be coloured as a root of its own instead of as
-     * part of the lineage it belongs to, so its edge is added whenever the map has been replaced.
-     * @private
-     */
-    _mergeLineageGenomeEdges() {
-        if (!this._mutationGenomeEdges) {
-            return;
-        }
-        let added = false;
-        for (const [genomeHash, parentGenomeHash] of this._mutationGenomeEdges) {
-            if (this._genomeParent.get(genomeHash) === parentGenomeHash) continue;
-            this._genomeParent.set(genomeHash, parentGenomeHash);
-            added = true;
-        }
-        if (added) {
-            this._genomeColorCache.clear();
-            this._genomeHslCache.clear();
-        }
     }
 
     /**
@@ -1179,6 +1166,26 @@ export class AppController {
         const names = this.state.metadata?.moleculeTypes;
         const name = names ? names[String(moleculeType)] : null;
         return name ? moleculeTypeName(name) : null;
+    }
+
+    /**
+     * Tells how many generations back an organism of the selected lineage lies.
+     *
+     * The distances come with the organism details, whose ancestry chain is read the same way as
+     * the lineage's mutations. They count only while they belong to the organism the marks were
+     * built for.
+     *
+     * @param {number} organismId - An organism of the lineage, the selected one included.
+     * @returns {number|null} Zero for the selected organism, one for its parent and so on; null
+     *     while the details of the organism the marks belong to have not arrived.
+     * @private
+     */
+    _generationsBack(organismId) {
+        const lineage = this._lineageDistances;
+        if (!lineage || lineage.organismId !== this._mutationsOrganismId) {
+            return null;
+        }
+        return lineage.distances.get(organismId) ?? null;
     }
 
     /**

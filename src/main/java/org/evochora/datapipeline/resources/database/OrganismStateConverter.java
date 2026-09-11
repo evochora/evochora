@@ -125,23 +125,64 @@ public final class OrganismStateConverter {
     }
     
     /**
+     * Makes sure the cells of an instruction's next operand were recorded before they are read.
+     * <p>
+     * How many cells an instruction occupies and which operands it has are built from one list at
+     * registration: {@code Instruction} derives the length table and the signature from the same
+     * operand sources. The runtime reads cells by that length and fills every one of them, a cell
+     * outside a bounded world included. A record that is shorter than the signature therefore does
+     * not describe an organism whose code was overwritten — its cells would be recorded with other
+     * contents, not with fewer entries — but a disagreement between those two derivations, which
+     * is a defect of ours.
+     * <p>
+     * Failing here rather than resolving the operands that happen to be present keeps such a record
+     * from reaching a reader as a plausible-looking instruction with one operand quietly missing.
+     *
+     * @param argIndex      Index of the next unread cell
+     * @param needed        Number of cells the current operand occupies
+     * @param rawArguments  The instruction's recorded argument cells
+     * @param opcodeId      Opcode of the instruction, for the message
+     * @param opcodeName    Name of the instruction, for the message
+     * @param argumentCount Number of operands the signature declares, for the message
+     * @throws IllegalStateException if the record ends before the operand does
+     */
+    private static void requireArgumentCells(int argIndex, int needed, List<Integer> rawArguments,
+                                             int opcodeId, String opcodeName, int argumentCount) {
+        if (argIndex + needed > rawArguments.size()) {
+            throw new IllegalStateException(String.format(
+                "Instruction %d (%s) declares %d operands, but its recorded cells end after %d:"
+                + " the operand at cell %d needs %d more.",
+                opcodeId, opcodeName, argumentCount, rawArguments.size(), argIndex, needed));
+        }
+    }
+
+    /**
      * Converts a Protobuf ProcFrame to a ProcFrameView DTO.
      * <p>
-     * The procedure name is resolved from the frame's label hash. A hash the map does not contain
-     * yields an empty name, and that is the correct result rather than a fallback: an organism
-     * inherits its program ID from its ancestor while its code mutates, so a call may target a hash
-     * the original program never held. The name must never be replaced by a placeholder — callers
-     * distinguish named from unnamed frames by emptiness.
+     * The procedure name is resolved from the frame's label hash. The hash stands in the
+     * organism's own label namespace, which is why the mask turns it back into the value the
+     * program was compiled with before the artifact is asked; without that step only a founding
+     * organism would ever resolve a name.
+     * <p>
+     * A hash the map does not contain even then yields an empty name, and that is the correct
+     * result rather than a fallback: an organism inherits its program ID from its ancestor while
+     * its code mutates, so a call may target a hash the original program never held. The name must
+     * never be replaced by a placeholder — callers distinguish named from unnamed frames by
+     * emptiness.
      *
      * @param frame The Protobuf ProcFrame
      * @param labelValueToName Label hash to procedure name, from the run's program artifact;
      *                         may be empty, in which case every name is empty
+     * @param labelNamespaceMask The organism's label namespace, from its static info; zero for an
+     *                           ancestry that never rewrote a label
      * @return ProcFrameView DTO
      */
     public static ProcFrameView convertProcFrame(
             org.evochora.datapipeline.api.contracts.ProcFrame frame,
-            Map<Integer, String> labelValueToName) {
-        String procName = labelValueToName.getOrDefault(frame.getLabelHash(), "");
+            Map<Integer, String> labelValueToName,
+            int labelNamespaceMask) {
+        String procName = labelValueToName.getOrDefault(
+                frame.getLabelHash() ^ labelNamespaceMask, "");
         int[] absReturnIp = vectorToArray(frame.getAbsoluteReturnIp());
         int[] absCallIp = frame.hasAbsoluteCallIp() ? vectorToArray(frame.getAbsoluteCallIp()) : null;
 
@@ -269,33 +310,29 @@ public final class OrganismStateConverter {
             if (argType == org.evochora.runtime.isa.InstructionArgumentType.REGISTER) {
                 // REGISTER: Extract register ID from raw argument
                 argumentTypesList.add("REGISTER");
-                if (argIndex < rawArguments.size()) {
-                    int rawArg = rawArguments.get(argIndex);
-                    Molecule molecule = Molecule.fromInt(rawArg);
-                    int registerId = molecule.toScalarValue();
-                    
-                    // Determine register type via RegisterBank lookup
-                    RegisterBank regBank = RegisterBank.forId(registerId);
-                    String registerType = regBank != null ? regBank.name() : "UNKNOWN";
-                    
-                    // Resolve register value: use value BEFORE execution (null if unavailable)
-                    RegisterValueView registerValue = (registerValuesBefore != null)
-                        ? registerValuesBefore.get(registerId)
-                        : null;
-                    
-                    resolvedArgs.add(InstructionArgumentView.register(registerId, registerValue, registerType));
-                    argIndex++;
-                }
+                requireArgumentCells(argIndex, 1, rawArguments, opcodeId, opcodeName, argTypes.size());
+                int rawArg = rawArguments.get(argIndex);
+                Molecule molecule = Molecule.fromInt(rawArg);
+                int registerId = molecule.toScalarValue();
+
+                // A cell that holds no valid register id names no bank, and the view says so: the
+                // operand was overwritten, and a reader is meant to see that
+                RegisterBank regBank = RegisterBank.forId(registerId);
+                String registerType = regBank != null ? regBank.name() : "UNKNOWN";
+
+                // Resolve register value: use value BEFORE execution (null if unavailable)
+                RegisterValueView registerValue = (registerValuesBefore != null)
+                    ? registerValuesBefore.get(registerId)
+                    : null;
+
+                resolvedArgs.add(InstructionArgumentView.register(registerId, registerValue, registerType));
+                argIndex++;
             } else if (argType == org.evochora.runtime.isa.InstructionArgumentType.LOCATION_REGISTER) {
                 // LOCATION_REGISTER: Extract register ID from raw argument
-                argumentTypesList.add("REGISTER"); // Frontend zeigt als REGISTER mit registerType="LR"
-                if (argIndex >= rawArguments.size()) {
-                    throw new IllegalStateException(
-                        String.format("LOCATION_REGISTER argument missing for instruction %d (%s). " +
-                            "Expected %d arguments but only %d available in rawArguments.",
-                            opcodeId, opcodeName, argTypes.size(), rawArguments.size()));
-                }
-                
+                // A location register reaches the view as a REGISTER whose registerType names its bank
+                argumentTypesList.add("REGISTER");
+                requireArgumentCells(argIndex, 1, rawArguments, opcodeId, opcodeName, argTypes.size());
+
                 int rawArg = rawArguments.get(argIndex);
                 Molecule molecule = Molecule.fromInt(rawArg);
                 int registerId = molecule.toScalarValue();
@@ -309,53 +346,48 @@ public final class OrganismStateConverter {
                     ? registerValuesBefore.get(registerId)
                     : null;
 
-                int index = locBank != null ? registerId - locBank.base : registerId;
-                resolvedArgs.add(InstructionArgumentView.register(index, registerValue, registerType));
+                resolvedArgs.add(InstructionArgumentView.register(registerId, registerValue, registerType));
                 argIndex++;
             } else if (argType == org.evochora.runtime.isa.InstructionArgumentType.LITERAL) {
                 // LITERAL: Decode molecule type and value (shown as IMMEDIATE in view)
                 argumentTypesList.add("IMMEDIATE");
-                if (argIndex < rawArguments.size()) {
-                    int rawArg = rawArguments.get(argIndex);
-                    Molecule molecule = Molecule.fromInt(rawArg);
-                    int typeId = molecule.type();
-                    String moleculeType = MoleculeTypeRegistry.typeToName(typeId);
-                    int value = molecule.toScalarValue();
-                    
-                    resolvedArgs.add(InstructionArgumentView.immediate(rawArg, moleculeType, value));
-                    argIndex++;
-                }
+                requireArgumentCells(argIndex, 1, rawArguments, opcodeId, opcodeName, argTypes.size());
+                int rawArg = rawArguments.get(argIndex);
+                Molecule molecule = Molecule.fromInt(rawArg);
+                String moleculeType = MoleculeTypeRegistry.typeToName(molecule.type());
+                int value = molecule.toScalarValue();
+
+                resolvedArgs.add(InstructionArgumentView.immediate(rawArg, moleculeType, value));
+                argIndex++;
             } else if (argType == org.evochora.runtime.isa.InstructionArgumentType.VECTOR) {
                 // VECTOR: Group multiple arguments into int[] array
                 argumentTypesList.add("VECTOR");
-                int dims = envDimensions != null ? envDimensions.length : 2;
+                int dims = envDimensions.length;
+                requireArgumentCells(argIndex, dims, rawArguments, opcodeId, opcodeName, argTypes.size());
                 int[] components = new int[dims];
-                boolean hasComponents = false;
-                
-                for (int dim = 0; dim < dims && argIndex < rawArguments.size(); dim++) {
-                    int rawArg = rawArguments.get(argIndex);
-                    Molecule molecule = Molecule.fromInt(rawArg);
-                    components[dim] = molecule.toScalarValue();
-                    hasComponents = true;
+                for (int dim = 0; dim < dims; dim++) {
+                    components[dim] = Molecule.fromInt(rawArguments.get(argIndex)).toScalarValue();
                     argIndex++;
                 }
-                
-                if (hasComponents) {
-                    resolvedArgs.add(InstructionArgumentView.vector(components));
-                }
+                resolvedArgs.add(InstructionArgumentView.vector(components));
             } else if (argType == org.evochora.runtime.isa.InstructionArgumentType.LABEL) {
                 // LABEL: Single scalar hash value (20-bit) since fuzzy jumps refactoring
                 // Formatted like IMMEDIATE with molecule type (typically DATA)
                 argumentTypesList.add("LABEL");
-                if (argIndex < rawArguments.size()) {
-                    int rawArg = rawArguments.get(argIndex);
-                    Molecule molecule = Molecule.fromInt(rawArg);
-                    int typeId = molecule.type();
-                    String moleculeType = MoleculeTypeRegistry.typeToName(typeId);
-                    int hashValue = molecule.toScalarValue();
-                    resolvedArgs.add(InstructionArgumentView.label(rawArg, moleculeType, hashValue));
-                    argIndex++;
-                }
+                requireArgumentCells(argIndex, 1, rawArguments, opcodeId, opcodeName, argTypes.size());
+                int rawArg = rawArguments.get(argIndex);
+                Molecule molecule = Molecule.fromInt(rawArg);
+                String moleculeType = MoleculeTypeRegistry.typeToName(molecule.type());
+                int hashValue = molecule.toScalarValue();
+                resolvedArgs.add(InstructionArgumentView.label(rawArg, moleculeType, hashValue));
+                argIndex++;
+            } else {
+                // An operand kind the instruction set declares and this conversion does not know
+                // would leave a gap between argumentTypes and the resolved arguments, and a reader
+                // comparing the two would read that gap as something the organism did
+                throw new IllegalStateException(String.format(
+                    "Instruction %d (%s) has an operand of kind %s, which this conversion does not"
+                    + " know.", opcodeId, opcodeName, argType));
             }
         }
         

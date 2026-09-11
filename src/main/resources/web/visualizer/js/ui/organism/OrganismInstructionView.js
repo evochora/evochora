@@ -17,6 +17,7 @@ export class OrganismInstructionView {
     constructor(root) {
         this.root = root;
         this.artifact = null;
+        this.labelNamespaceMask = 0;
     }
 
     /**
@@ -26,6 +27,16 @@ export class OrganismInstructionView {
      */
     setProgram(artifact) {
         this.artifact = artifact;
+    }
+
+    /**
+     * Sets the label namespace of the organism whose instructions are shown.
+     * A label value in its body is the compiled value XORed with this mask, so the mask turns the
+     * value an operand carries back into the one the artifact knows a name for.
+     * @param {number} labelNamespaceMask - The organism's mask, 0 if its ancestry rewrote no label.
+     */
+    setLabelNamespaceMask(labelNamespaceMask) {
+        this.labelNamespaceMask = labelNamespaceMask;
     }
     
     /**
@@ -202,8 +213,13 @@ export class OrganismInstructionView {
                     const molecule = { kind: 'MOLECULE', type: arg.moleculeType, value: arg.value };
                     formatted = ValueFormatter.format(molecule);
                 }
-                // Annotate with label name if artifact is available
-                const labelName = AnnotationUtils.resolveLabelHashToName(arg.value, this.artifact);
+                // Annotate with label name if artifact is available. The mask is applied only to a
+                // value that is there: XOR would turn a missing one into the mask itself, which
+                // resolves to whatever label sits at that value rather than to nothing.
+                const labelName = (arg.value === null || arg.value === undefined)
+                    ? null
+                    : AnnotationUtils.resolveLabelHashToName(
+                        arg.value ^ this.labelNamespaceMask, this.artifact);
                 if (labelName) {
                     return `${formatted}<span class="annotation">=${labelName}</span>`;
                 }
