@@ -83,7 +83,19 @@ class GeneSubstitutionPluginTest {
      * @param initialPosition the position the newborn started at
      */
     private void setUpWith(int[] dv, int[] initialPosition) {
-        environment = new Environment(new int[]{32, 32}, true);
+        setUpWith(dv, initialPosition, true);
+    }
+
+    /**
+     * Builds the environment, toroidal or bounded, and a newborn whose reading frame starts at the
+     * given position and runs along the given direction vector.
+     *
+     * @param dv the newborn's direction vector
+     * @param initialPosition the position the newborn started at
+     * @param toroidal whether the world wraps around at its edges
+     */
+    private void setUpWith(int[] dv, int[] initialPosition, boolean toroidal) {
+        environment = new Environment(new int[]{32, 32}, toroidal);
 
         String thermoConfigStr = """
             default {
@@ -699,6 +711,45 @@ class GeneSubstitutionPluginTest {
         List<MutationRecord> records = child.getBirthMutations();
         assertThat(records).hasSize(1);
         assertThat(records.get(0).cells()).containsExactly(flatIndex(1, 0));
+        assertThat(records.get(0).params()).containsExactly(0L, 4L);
+    }
+
+    /**
+     * In a toroidal world the register operand beside the selected one may lie across the world
+     * edge, and the swap reaches it there.
+     */
+    @Test
+    void aRegisterOperandSwapsWithItsNeighbourAcrossTheWorldEdge() {
+        setUpWith(new int[]{1, 0}, new int[]{30, 0});
+        placeCode(30, 0, GTR_OPCODE);
+        placeRegister(31, 0, 0);
+        placeRegister(0, 0, 1);
+
+        registerOnlyPlugin(new SeededRandomProvider(5)).substitute(child, environment);
+
+        assertThat(environment.getMolecule(31, 0).value()).isEqualTo(1);
+        assertThat(environment.getMolecule(0, 0).value()).isEqualTo(0);
+        List<MutationRecord> records = child.getBirthMutations();
+        assertThat(records).hasSize(1);
+        assertThat(records.get(0).cells()).containsExactlyInAnyOrder(flatIndex(31, 0), flatIndex(0, 0));
+        assertThat(records.get(0).params()).containsExactly(0L, 5L);
+    }
+
+    /**
+     * In a bounded world there is no cell beyond the edge: a register operand on the last cell of
+     * the axis with an opcode before it has no partner and takes the register step.
+     */
+    @Test
+    void aRegisterOperandAtTheEdgeOfABoundedWorldHasNoPartnerBeyondIt() {
+        setUpWith(new int[]{1, 0}, new int[]{30, 0}, false);
+        placeCode(30, 0, PUSH_OPCODE);
+        placeRegister(31, 0, 3);
+
+        registerOnlyPlugin(new SeededRandomProvider(5)).substitute(child, environment);
+
+        List<MutationRecord> records = child.getBirthMutations();
+        assertThat(records).hasSize(1);
+        assertThat(records.get(0).cells()).containsExactly(flatIndex(31, 0));
         assertThat(records.get(0).params()).containsExactly(0L, 4L);
     }
 

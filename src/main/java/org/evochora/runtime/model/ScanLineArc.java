@@ -76,6 +76,18 @@ public final class ScanLineArc {
      * {@code sortedCoordinates[from + count - 1]} and must be sorted ascending; duplicates are
      * harmless. The result is written into {@code out}, which is left holding an end smaller than
      * its start when the arc crosses the world edge.
+     * <p>
+     * The arc starts at the coordinate after the gap that counts as the outside and ends at the
+     * coordinate before it, which is the previous entry of the sorted coordinates, or the last
+     * entry when the outside is the gap across the edge. Two examples on an axis of size 12, where
+     * any span wider than 6 lets the rule decide:
+     * <ul>
+     *   <li>coordinates 2, 4, 8: the gaps inside are 2 and 4, the gap across the edge is 6 and
+     *       wider than both, so the edge is the outside and the arc runs from 2 to 8;</li>
+     *   <li>coordinates 0, 5, 10: the gaps inside are 5 and 5, the gap across the edge is 2, so
+     *       the first widest gap inside, between 0 and 5, is the outside and the arc runs from 5
+     *       across the edge to 0 — reported as start 5, end 0.</li>
+     * </ul>
      *
      * @param sortedCoordinates Array holding the owned coordinates along the line, sorted ascending.
      * @param from Index of the first coordinate to read.

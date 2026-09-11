@@ -384,14 +384,16 @@ public class ConditionalInstruction extends Instruction {
     /**
      * Tells whether an operand may take part in a comparison against a vector's magnitude.
      * <p>
-     * The magnitude is a DATA value, so a scalar on the other side has to be value-compatible with
-     * DATA, as it would have to be against a DATA scalar; a vector operand always may.
+     * The magnitude is a DATA value, so under strict typing a scalar on the other side has to be
+     * value-compatible with DATA, as it would have to be against a DATA scalar; a vector operand
+     * always may.
      *
      * @param value the value of an operand, a molecule or a vector
      * @return {@code true} if the operand can be compared with a magnitude
      */
     private static boolean comparableWithMagnitude(Object value) {
         return !(value instanceof Integer scalar)
+                || !Config.STRICT_TYPING
                 || Molecule.areValueCompatible(Config.TYPE_DATA, Molecule.fromInt(scalar).type());
     }
 

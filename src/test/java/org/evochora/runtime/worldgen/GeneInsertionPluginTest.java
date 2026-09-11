@@ -414,6 +414,56 @@ class GeneInsertionPluginTest {
         assertDetourAt(record, 5, LABEL_HASH_A, LABEL_HASH_X);
     }
 
+    /**
+     * An instruction in the middle of a detour that takes a label operand refers to the detour's
+     * target, never to the detour's own label: a jump to its own label would loop on itself.
+     */
+    @Test
+    void aJumpInTheMiddleOfADetourRefersToTheDetourTarget() {
+        placeLabel(2, Y, LABEL_HASH_A);
+        place(3, Y, Config.TYPE_CODE, jmpiId());
+        place(4, Y, Config.TYPE_LABELREF, LABEL_HASH_X);
+        placeCode(15, Y);
+        int jmpi = jmpiId();
+        LabelEntry entry = new LabelEntry(
+                List.of(jmpi),
+                List.of(Instruction.getOperandSourcesById(jmpi)),
+                1.0,
+                new ArgumentConfig(null, null, null, "existing", null));
+        GeneInsertionPlugin plugin = new GeneInsertionPlugin(new SeededRandomProvider(42L), 1.0, List.of(entry));
+
+        plugin.mutate(child, environment);
+
+        // The chain LABEL A, JMPI, LABELREF, JMPI, LABELREF starts at x=5; both references carry X
+        List<MutationRecord> records = child.getBirthMutations();
+        assertThat(records).hasSize(1);
+        assertThat(records.get(0).params()).containsExactly(LABEL_HASH_A, LABEL_HASH_X);
+        assertThat(environment.getMolecule(5, Y).value()).isEqualTo(LABEL_HASH_A);
+        assertThat(environment.getMolecule(7, Y).type()).isEqualTo(Config.TYPE_LABELREF);
+        assertThat(environment.getMolecule(7, Y).value()).as("the middle jump's target").isEqualTo(LABEL_HASH_X);
+        assertThat(environment.getMolecule(9, Y).value()).as("the trailing jump's target").isEqualTo(LABEL_HASH_X);
+    }
+
+    /**
+     * The search for the detour's target follows the direction vector around the world edge, as
+     * the code it reads does: a jump behind the edge is still the first jump of A's stretch.
+     */
+    @Test
+    void aDetourFindsTheJumpBehindTheWorldEdge() {
+        // A at x=30, its jump at x=31 with the reference at x=0; the body continues to x=1 and
+        // owns a cell at x=12, so the arc runs from 30 around the edge to 12 and the empty run
+        // x=2..11 inside it holds the chain.
+        placeLabel(30, Y, LABEL_HASH_A);
+        place(31, Y, Config.TYPE_CODE, jmpiId());
+        place(0, Y, Config.TYPE_LABELREF, LABEL_HASH_X);
+        placeCode(1, Y);
+        placeCode(12, Y);
+
+        MutationRecord record = insertDetour(42L);
+
+        assertDetourAt(record, 2, LABEL_HASH_A, LABEL_HASH_X);
+    }
+
     @Test
     void aDetourWithoutAJumpInItsStretchTakesTheNextBlockStart() {
         // Nothing in A's stretch jumps, so the detour goes where A's code falls through to: B.

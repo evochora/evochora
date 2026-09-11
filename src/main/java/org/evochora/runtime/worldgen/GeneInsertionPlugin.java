@@ -548,7 +548,7 @@ public class GeneInsertionPlugin implements IBirthHandler {
         chainBuffer.clear();
 
         if (entry instanceof InstructionEntry ie) {
-            if (!appendInstruction(ie.opcodeIds(), ie.operandSourcesByOpcode(), ie.argConfig(), dims)) {
+            if (!appendInstruction(ie.opcodeIds(), ie.operandSourcesByOpcode(), ie.argConfig(), dims, -1)) {
                 LOG.debug("tick={} Organism {} gene insertion: chain build failed (missing arg config)", child.getBirthTick(), childId);
                 chainBuffer.clear();
                 return;
@@ -619,13 +619,18 @@ public class GeneInsertionPlugin implements IBirthHandler {
      * @param operandSourcesByOpcode The operand sources per opcode, parallel to {@code opcodeIds}.
      * @param argConfig How the arguments are generated.
      * @param dims Number of environment dimensions (for VECTOR operands).
+     * @param labelOperand The value a LABEL operand receives, or {@code -1} to take the label the
+     *                     reservoir sampled, or a random value when the body has none. A detour
+     *                     passes the target its trailing jump was validated for, so that an
+     *                     instruction in the middle of it never refers to the detour's own label.
      * @return {@code true} if the instruction was appended, {@code false} if the argument config
      *         does not cover a required operand type.
      */
     private boolean appendInstruction(List<Integer> opcodeIds,
                                       List<List<OperandSource>> operandSourcesByOpcode,
                                       ArgumentConfig argConfig,
-                                      int dims) {
+                                      int dims,
+                                      int labelOperand) {
         int opcodeIndex = random.nextInt(opcodeIds.size());
         int opcodeId = opcodeIds.get(opcodeIndex);
         List<OperandSource> sources = operandSourcesByOpcode.get(opcodeIndex);
@@ -652,9 +657,14 @@ public class GeneInsertionPlugin implements IBirthHandler {
                     if (argConfig.labelRef() == null) {
                         return false;
                     }
-                    int hash = reservoirLabelHash >= 0
-                            ? reservoirLabelHash
-                            : random.nextInt(LABEL_HASH_MAX + 1);
+                    int hash;
+                    if (labelOperand >= 0) {
+                        hash = labelOperand;
+                    } else if (reservoirLabelHash >= 0) {
+                        hash = reservoirLabelHash;
+                    } else {
+                        hash = random.nextInt(LABEL_HASH_MAX + 1);
+                    }
                     chainBuffer.add(new Molecule(Config.TYPE_LABELREF, hash));
                 }
                 case LOCATION_REGISTER -> {
@@ -711,7 +721,7 @@ public class GeneInsertionPlugin implements IBirthHandler {
         detourJumpTarget = target;
 
         chainBuffer.add(new Molecule(Config.TYPE_LABEL, reservoirLabelHash));
-        if (!appendInstruction(entry.opcodeIds(), entry.operandSourcesByOpcode(), entry.argConfig(), dims)) {
+        if (!appendInstruction(entry.opcodeIds(), entry.operandSourcesByOpcode(), entry.argConfig(), dims, target)) {
             LOG.debug("tick={} Organism {} insertion: detour build failed (missing arg config)",
                     child.getBirthTick(), child.getId());
             return false;

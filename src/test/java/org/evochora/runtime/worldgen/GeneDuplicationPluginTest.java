@@ -729,4 +729,37 @@ class GeneDuplicationPluginTest {
         // loadState should not throw
         plugin.loadState(new byte[0]);
     }
+
+    /**
+     * A body whose blocks run across the world edge: the walk that cuts a copy back to a block
+     * boundary follows the direction vector around the edge like the copy itself, and every copy
+     * it allows is a whole block.
+     */
+    @Test
+    void aCutBackToABlockBoundaryFollowsTheWalkAroundTheWorldEdge() {
+        int id = child.getId();
+        int copies = 0;
+        for (int seed = 0; seed < 20; seed++) {
+            setUp();
+            // Three blocks on y=2: x=26..29, x=30,31,0,1 across the edge, and x=2..5; the arc runs
+            // from 26 around the edge to 5. The target run on y=4 holds six cells, so a copy that
+            // starts at the first or the second label is cut back at a boundary beyond the edge.
+            placeRisingBlock(id, 26, 2);
+            place(id, 30, 2, label());
+            place(id, 31, 2, opcode(ADDR_OPCODE));
+            place(id, 0, 2, reg());
+            place(id, 1, 2, reg());
+            placeRisingBlock(id, 2, 2);
+            placeTargetRow(id, 4, 6);
+
+            new GeneDuplicationPlugin(new SeededRandomProvider(seed), 1.0, 4).onBirth(child, environment);
+
+            List<MutationRecord> records = child.getBirthMutations();
+            assertThat(records).as("seed=%d", seed).hasSize(1);
+            assertThat(records.get(0).cells()).as("seed=%d: one whole block", seed).hasSize(4);
+            assertBlockAt(0, 4);
+            copies++;
+        }
+        assertThat(copies).isEqualTo(20);
+    }
 }
