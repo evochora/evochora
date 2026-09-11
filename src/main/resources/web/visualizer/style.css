@@ -650,11 +650,6 @@ body {
     color: #e0e0e0;
 }
 
-.cell-tooltip .tooltip-separator {
-    color: #555;
-    margin: 0 4px;
-}
-
 /* Mutation of the selected organism's lineage that the cell still carries */
 .cell-tooltip .tooltip-mutation {
     color: #e0e0e0;

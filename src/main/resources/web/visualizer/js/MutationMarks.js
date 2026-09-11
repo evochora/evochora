@@ -114,6 +114,7 @@ function toMark(event, cell, coordinates, resolveTypeName) {
         kind: event.kind,
         generation: event.originGeneration ?? 0,
         eventIndex: event.eventIndex ?? 0,
+        originOrganismId: event.originOrganismId,
         genomeHash: event.originGenomeHash,
         beforeTypeName: resolveTypeName(before.moleculeType),
         beforeValue: before.moleculeValue ?? 0,

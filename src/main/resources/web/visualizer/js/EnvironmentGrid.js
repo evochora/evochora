@@ -1,6 +1,29 @@
 import { loadingManager } from './ui/LoadingManager.js';
 import { isMarkPresent } from './MutationMarks.js';
 import { moleculeTypeEntry, moleculeTypeName, NO_DATA_COLOR } from './MoleculeTypePalette.js';
+import { AnnotationUtils } from './annotator/AnnotationUtils.js';
+import { ValueFormatter } from './utils/ValueFormatter.js';
+
+/**
+ * Writes a molecule in the short form of the cell tooltip: an instruction as its opcode name, a
+ * register operand as its register name, and any other molecule as the abbreviation of its type
+ * with its value. An instruction whose opcode has no name keeps the abbreviated form, so that its
+ * number stays visible.
+ *
+ * @param {string|null} typeName - The type name of the molecule, null for a type the run does not name.
+ * @param {number} value - The value of the molecule.
+ * @param {string|null} opcodeName - The opcode name of an instruction, null or '??' when it has none.
+ * @returns {string} The molecule as the tooltip shows it.
+ */
+function formatTooltipMolecule(typeName, value, opcodeName) {
+    if (typeName === 'CODE' && opcodeName && opcodeName !== '??') {
+        return opcodeName;
+    }
+    if (typeName === 'REGISTER') {
+        return AnnotationUtils.formatRegisterName(value);
+    }
+    return `${moleculeTypeEntry(typeName).abbr}:${value}`;
+}
 
 /**
  * Manages the PIXI.js-based rendering of the simulation environment grid.
@@ -67,6 +90,8 @@ export class EnvironmentGrid {
         this.mutationMarks = null;   // key "x,y" -> the mutation that decides that cell's mark
         this._markBounds = null;     // smallest rectangle the marked cells lie in
         this._markColorOf = null;    // genome hash -> its lineage colour as 0xRRGGBB
+        this._markGenerationsBackOf = null; // organism id -> generations it lies back from the selected organism
+        this._markOpcodeNameOf = null;      // opcode id -> opcode name
 
         // --- Prefetch Management ---
         this._prefetchAbortController = null;  // Separate controller for background prefetch
@@ -747,10 +772,16 @@ export class EnvironmentGrid {
      *
      * @param {Map<string, object>|null} marks - Cell key "x,y" to the mutation deciding that cell,
      *                                          null when no organism is selected.
-     * @param {function(string): number|null} [colorOf=null] - Lineage colour of a genome hash as
+     * @param {object} [lookups={}] - What the marks are drawn and described through.
+     * @param {function(string): number|null} [lookups.colorOf] - Lineage colour of a genome hash as
      *                                          a packed RGB integer.
+     * @param {function(number): number|null} [lookups.generationsBackOf] - How many generations the
+     *                                          organism with the given id lies back from the selected
+     *                                          one, null while that is not known.
+     * @param {function(number): string|null} [lookups.opcodeNameOf] - Name of an opcode id, null for
+     *                                          an id without a name.
      */
-    setMutationMarks(marks, colorOf = null) {
+    setMutationMarks(marks, { colorOf = null, generationsBackOf = null, opcodeNameOf = null } = {}) {
         const affected = new Set();
         if (this.mutationMarks) {
             for (const key of this.mutationMarks.keys()) affected.add(key);
@@ -761,6 +792,8 @@ export class EnvironmentGrid {
 
         this.mutationMarks = (marks && marks.size > 0) ? marks : null;
         this._markColorOf = colorOf;
+        this._markGenerationsBackOf = generationsBackOf;
+        this._markOpcodeNameOf = opcodeNameOf;
         this._markBounds = this._computeMarkBounds();
 
         if (affected.size === 0) return;
@@ -1394,41 +1427,28 @@ export class EnvironmentGrid {
     showTooltip(event, cell, gridX, gridY, nearbyOrganisms) {
         if (!this.tooltip) return;
 
-        let cellInfo = '';
+        let cellInfo = `<span class="tooltip-coords">[${gridX}|${gridY}]</span>`;
         if (cell) {
-            const typeName = cell.type;
-            // For unknown opcodes (??), show full ID in tooltip
-            let opcodeInfo = '';
-            if (cell.opcodeName && (cell.ownerId !== 0 || cell.value !== 0)) {
-                if (cell.opcodeName === '??' && cell.opcodeId >= 0) {
-                    opcodeInfo = `(Unknown: ${cell.opcodeId})`;
-                } else {
-                    opcodeInfo = `(${cell.opcodeName})`;
-                }
+            cellInfo += ` <span class="tooltip-type">${formatTooltipMolecule(cell.type, cell.value, cell.opcodeName)}</span>`;
+            // Owner and marker are named only where they are set; one left out is zero
+            const ownership = [
+                cell.ownerId ? `#${cell.ownerId}` : '',
+                cell.marker ? `M${cell.marker}` : ''
+            ].filter(Boolean).join(' ');
+            if (ownership) {
+                cellInfo += ` <span class="tooltip-owner">${ownership}</span>`;
             }
-            const markerInfo = cell.marker ? ` M:${cell.marker}` : '';
-
-            cellInfo = `
-                <span class="tooltip-coords">[${gridX}|${gridY}]</span>
-                <span class="tooltip-type">${typeName}:${cell.value}${opcodeInfo}</span>
-                <span class="tooltip-separator">•</span>
-                <span class="tooltip-owner">Owner: ${cell.ownerId || 0}${markerInfo}</span>
-            `;
-        } else {
-            cellInfo = `<span class="tooltip-coords">[${gridX}|${gridY}]</span>`;
         }
 
         cellInfo += this._mutationTooltipLine(cell, gridX, gridY);
 
         let organismInfo = '';
-        for (const entry of nearbyOrganisms) {
-            const { organism, type, position } = entry;
-            organismInfo += `
-                <div class="tooltip-organism">
-                    <span class="tooltip-coords">[${position[0]}|${position[1]}]</span>
-                    <span class="tooltip-org-info">Org #${organism.organismId} ${type}</span>
-                </div>
-            `;
+        for (const { organism, type, position } of nearbyOrganisms) {
+            // A pointer's coordinates are named only where they differ from the hovered cell
+            const coordinates = (position[0] === gridX && position[1] === gridY)
+                ? ''
+                : `<span class="tooltip-coords">[${position[0]}|${position[1]}]</span> `;
+            organismInfo += `<div class="tooltip-organism">${coordinates}<span class="tooltip-org-info">#${organism.organismId} ${type}</span></div>`;
         }
 
         this.tooltip.innerHTML = cellInfo + organismInfo;
@@ -1464,13 +1484,22 @@ export class EnvironmentGrid {
         const mark = this.markAt(gridX, gridY, cell ? cell.type : null, cell ? cell.value : 0, isEmpty);
         if (!mark) return '';
 
-        const before = `${moleculeTypeName(mark.beforeTypeName)}:${mark.beforeValue}`;
-        const after = `${moleculeTypeName(mark.afterTypeName)}:${mark.afterValue}`;
+        const opcodeName = (typeName, value) =>
+            (typeName === 'CODE' && this._markOpcodeNameOf) ? this._markOpcodeNameOf(value) : null;
+        const before = formatTooltipMolecule(mark.beforeTypeName, mark.beforeValue,
+            opcodeName(mark.beforeTypeName, mark.beforeValue));
+        const after = formatTooltipMolecule(mark.afterTypeName, mark.afterValue,
+            opcodeName(mark.afterTypeName, mark.afterValue));
         // The kind is a name the reporting plugin chose and reaches the page as data
         const kind = String(mark.kind ?? '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
-        return `
-                <span class="tooltip-mutation">Mutation: ${kind}, generation ${mark.generation}, ${before} \u2192 ${after}</span>
-            `;
+        // G0 is the selected organism's own birth, G-n a birth n generations back; the distance
+        // is left out while it is not known
+        const back = this._markGenerationsBackOf ? this._markGenerationsBackOf(mark.originOrganismId) : null;
+        const generation = back === null ? '' : (back === 0 ? ' G0' : ` G-${back}`);
+        // The genome the mutation arose in is written in the colour its mark is drawn in
+        const color = `#${this.markColor(mark).toString(16).padStart(6, '0')}`;
+        const genome = ValueFormatter.formatGenomeHash(mark.genomeHash);
+        return `<span class="tooltip-mutation">${kind} ${before}\u2192${after} <span style="color:${color}">${genome}</span>${generation}</span>`;
     }
 
     /**
