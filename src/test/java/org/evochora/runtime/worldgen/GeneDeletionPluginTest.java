@@ -19,6 +19,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * Unit tests for {@link GeneDeletionPlugin}.
@@ -31,6 +32,15 @@ class GeneDeletionPluginTest {
 
     private static final int LABEL_HASH_A = 11111;
     private static final int LABEL_HASH_B = 22222;
+
+    /** Three hashes the body carries once each, and one it carries twice. */
+    private static final int UNIQUE_HASH_1 = 33333;
+    private static final int UNIQUE_HASH_2 = 44444;
+    private static final int UNIQUE_HASH_3 = 55555;
+    private static final int PAIR_HASH = 66666;
+
+    /** The minimum that lets every label of the body be a candidate. */
+    private static final int EVERY_LABEL = 1;
 
     @BeforeEach
     void setUp() {
@@ -112,7 +122,7 @@ class GeneDeletionPluginTest {
         placeLabel(8, 5, LABEL_HASH_B);
 
         IRandomProvider rng = new SeededRandomProvider(42L);
-        GeneDeletionPlugin plugin = new GeneDeletionPlugin(rng, 1.0, 0.0); // exponent=0 → uniform
+        GeneDeletionPlugin plugin = new GeneDeletionPlugin(rng, 1.0, 0.0, EVERY_LABEL); // exponent=0 → uniform
         plugin.delete(child, environment);
 
         // One of the labels was selected and its block deleted
@@ -147,7 +157,7 @@ class GeneDeletionPluginTest {
         placeStructure(10, 5);
 
         IRandomProvider rng = new SeededRandomProvider(42L);
-        GeneDeletionPlugin plugin = new GeneDeletionPlugin(rng, 1.0, 2.0);
+        GeneDeletionPlugin plugin = new GeneDeletionPlugin(rng, 1.0, 2.0, EVERY_LABEL);
         plugin.delete(child, environment);
 
         // Label and all code should be deleted
@@ -168,7 +178,7 @@ class GeneDeletionPluginTest {
         environment.setMolecule(new Molecule(Config.TYPE_CODE, 42), 99, new int[]{5, 5});
 
         IRandomProvider rng = new SeededRandomProvider(42L);
-        GeneDeletionPlugin plugin = new GeneDeletionPlugin(rng, 1.0, 2.0);
+        GeneDeletionPlugin plugin = new GeneDeletionPlugin(rng, 1.0, 2.0, EVERY_LABEL);
         plugin.delete(child, environment);
 
         // Label and code should be deleted
@@ -186,7 +196,7 @@ class GeneDeletionPluginTest {
         placeCode(4, 5);
 
         IRandomProvider rng = new SeededRandomProvider(42L);
-        GeneDeletionPlugin plugin = new GeneDeletionPlugin(rng, 1.0, 2.0);
+        GeneDeletionPlugin plugin = new GeneDeletionPlugin(rng, 1.0, 2.0, EVERY_LABEL);
         plugin.delete(child, environment);
 
         // Code should remain untouched
@@ -202,7 +212,7 @@ class GeneDeletionPluginTest {
         placeCode(4, 5);
 
         IRandomProvider rng = new SeededRandomProvider(42L);
-        GeneDeletionPlugin plugin = new GeneDeletionPlugin(rng, 0.0, 2.0);
+        GeneDeletionPlugin plugin = new GeneDeletionPlugin(rng, 0.0, 2.0, EVERY_LABEL);
         plugin.onBirth(child, environment);
 
         // Everything should remain
@@ -229,7 +239,7 @@ class GeneDeletionPluginTest {
             environment.setMolecule(new Molecule(Config.TYPE_LABEL, LABEL_HASH_B), child.getId(), new int[]{0, 8});
 
             IRandomProvider rng = new SeededRandomProvider(seed);
-            GeneDeletionPlugin plugin = new GeneDeletionPlugin(rng, 1.0, 2.0);
+            GeneDeletionPlugin plugin = new GeneDeletionPlugin(rng, 1.0, 2.0, EVERY_LABEL);
             plugin.delete(child, environment);
 
             // Check which label was deleted
@@ -256,7 +266,7 @@ class GeneDeletionPluginTest {
         placeStructure(5, 5); // structure in the path
 
         IRandomProvider rng = new SeededRandomProvider(42L);
-        GeneDeletionPlugin plugin = new GeneDeletionPlugin(rng, 1.0, 2.0);
+        GeneDeletionPlugin plugin = new GeneDeletionPlugin(rng, 1.0, 2.0, EVERY_LABEL);
         plugin.delete(child, environment);
 
         // Structure should be preserved (deletion stops before it)
@@ -272,7 +282,7 @@ class GeneDeletionPluginTest {
         placeStructure(8, 5);
 
         IRandomProvider rng = new SeededRandomProvider(42L);
-        GeneDeletionPlugin plugin = new GeneDeletionPlugin(rng, 1.0, 2.0);
+        GeneDeletionPlugin plugin = new GeneDeletionPlugin(rng, 1.0, 2.0, EVERY_LABEL);
         plugin.delete(child, environment);
 
         // All deleted cells should have owner=0
@@ -293,7 +303,7 @@ class GeneDeletionPluginTest {
         placeStructure(12, 5);
 
         IRandomProvider rng = new SeededRandomProvider(42L);
-        GeneDeletionPlugin plugin = new GeneDeletionPlugin(rng, 1.0, 2.0);
+        GeneDeletionPlugin plugin = new GeneDeletionPlugin(rng, 1.0, 2.0, EVERY_LABEL);
         plugin.delete(child, environment);
 
         // All owned molecules between label and structure should be deleted
@@ -313,7 +323,7 @@ class GeneDeletionPluginTest {
         placeStructure(8, 5);
 
         IRandomProvider rng = new SeededRandomProvider(42L);
-        GeneDeletionPlugin plugin = new GeneDeletionPlugin(rng, 1.0, 2.0);
+        GeneDeletionPlugin plugin = new GeneDeletionPlugin(rng, 1.0, 2.0, EVERY_LABEL);
         plugin.delete(child, environment);
 
         // Energy molecule should be deleted too
@@ -341,7 +351,7 @@ class GeneDeletionPluginTest {
         int dataInt = environment.getMolecule(5, 5).toInt();
 
         IRandomProvider rng = new SeededRandomProvider(42L);
-        GeneDeletionPlugin plugin = new GeneDeletionPlugin(rng, 1.0, 2.0);
+        GeneDeletionPlugin plugin = new GeneDeletionPlugin(rng, 1.0, 2.0, EVERY_LABEL);
         plugin.delete(child, environment);
 
         List<MutationRecord> records = child.getBirthMutations();
@@ -371,7 +381,7 @@ class GeneDeletionPluginTest {
         placeLabel(0, 6, LABEL_HASH_A);
 
         IRandomProvider rng = new SeededRandomProvider(42L);
-        GeneDeletionPlugin plugin = new GeneDeletionPlugin(rng, 1.0, 2.0);
+        GeneDeletionPlugin plugin = new GeneDeletionPlugin(rng, 1.0, 2.0, EVERY_LABEL);
         plugin.delete(child, environment);
 
         List<MutationRecord> records = child.getBirthMutations();
@@ -386,7 +396,7 @@ class GeneDeletionPluginTest {
         placeCode(3, 5);
 
         IRandomProvider rng = new SeededRandomProvider(42L);
-        GeneDeletionPlugin plugin = new GeneDeletionPlugin(rng, 1.0, 2.0);
+        GeneDeletionPlugin plugin = new GeneDeletionPlugin(rng, 1.0, 2.0, EVERY_LABEL);
         plugin.delete(child, environment);
 
         assertThat(child.getBirthMutations()).isNull();
@@ -395,12 +405,139 @@ class GeneDeletionPluginTest {
     @Test
     void isStateless() {
         IRandomProvider rng = new SeededRandomProvider(42L);
-        GeneDeletionPlugin plugin = new GeneDeletionPlugin(rng, 0.02, 2.0);
+        GeneDeletionPlugin plugin = new GeneDeletionPlugin(rng, 0.02, 2.0, EVERY_LABEL);
 
         byte[] state = plugin.saveState();
         assertThat(state).isEmpty();
 
         // loadState should not throw
         plugin.loadState(new byte[0]);
+    }
+
+    // ---- Candidate rule: a label is drawn from only where the body holds its value often enough ----
+
+    /**
+     * Places five blocks, each alone on its scan line so that a deletion on one leaves the others
+     * untouched: three labels whose values the body carries once, and two carrying one and the
+     * same value.
+     */
+    private void placeThreeUniqueLabelsAndOnePair() {
+        placeLabel(0, 2, UNIQUE_HASH_1);
+        placeCode(1, 2);
+        placeLabel(0, 4, UNIQUE_HASH_2);
+        placeCode(1, 4);
+        placeLabel(0, 6, UNIQUE_HASH_3);
+        placeCode(1, 6);
+        placeLabel(0, 8, PAIR_HASH);
+        placeCode(1, 8);
+        placeLabel(0, 10, PAIR_HASH);
+        placeCode(1, 10);
+    }
+
+    /** True where the label of one of the three blocks the body carries once is gone. */
+    private boolean aUniqueLabelIsGone() {
+        return environment.getMolecule(0, 2).isEmpty()
+                || environment.getMolecule(0, 4).isEmpty()
+                || environment.getMolecule(0, 6).isEmpty();
+    }
+
+    @Test
+    void deletionTakesOnlyABlockWhoseLabelTheBodyCarriesTwice() {
+        for (int seed = 0; seed < 20; seed++) {
+            placeThreeUniqueLabelsAndOnePair();
+
+            IRandomProvider rng = new SeededRandomProvider(seed);
+            GeneDeletionPlugin plugin = new GeneDeletionPlugin(rng, 1.0, 2.0, 2);
+            plugin.delete(child, environment);
+
+            assertThat(aUniqueLabelIsGone())
+                    .as("seed %d: a label the body carries once is no candidate", seed).isFalse();
+            assertThat(environment.getMolecule(0, 8).isEmpty() || environment.getMolecule(0, 10).isEmpty())
+                    .as("seed %d: one of the two blocks of the duplicated label is gone", seed).isTrue();
+        }
+
+        List<MutationRecord> records = child.getBirthMutations();
+        assertThat(records).hasSize(20);
+        assertThat(records).allSatisfy(record -> assertThat(record.params())
+                .as("the chosen label's value occurs twice")
+                .containsExactly(2L));
+    }
+
+    @Test
+    void aMinimumOfOneLetsTheDeletionTakeAUniqueBlockAgain() {
+        boolean uniqueBlockTaken = false;
+        for (int seed = 0; seed < 20; seed++) {
+            placeThreeUniqueLabelsAndOnePair();
+
+            IRandomProvider rng = new SeededRandomProvider(seed);
+            GeneDeletionPlugin plugin = new GeneDeletionPlugin(rng, 1.0, 2.0, EVERY_LABEL);
+            plugin.delete(child, environment);
+
+            uniqueBlockTaken |= aUniqueLabelIsGone();
+        }
+
+        assertThat(uniqueBlockTaken)
+                .as("with every label a candidate, a block the body carries once is taken too").isTrue();
+    }
+
+    @Test
+    void aBodyOfUniqueLabelsLosesNothing() {
+        placeLabel(0, 2, UNIQUE_HASH_1);
+        placeCode(1, 2);
+        placeLabel(0, 4, UNIQUE_HASH_2);
+        placeCode(1, 4);
+        placeLabel(0, 6, UNIQUE_HASH_3);
+        placeCode(1, 6);
+
+        IRandomProvider rng = new SeededRandomProvider(42L);
+        GeneDeletionPlugin plugin = new GeneDeletionPlugin(rng, 1.0, 2.0, 2);
+        plugin.delete(child, environment);
+
+        for (int y = 2; y <= 6; y += 2) {
+            assertThat(environment.getMolecule(0, y).type()).isEqualTo(Config.TYPE_LABEL);
+            assertThat(environment.getMolecule(1, y).type()).isEqualTo(Config.TYPE_CODE);
+        }
+        assertThat(child.getBirthMutations()).isNull();
+    }
+
+    @Test
+    void aPairIsNoCandidateWhereThreeCopiesAreAsked() {
+        placeLabel(0, 8, PAIR_HASH);
+        placeCode(1, 8);
+        placeLabel(0, 10, PAIR_HASH);
+        placeCode(1, 10);
+
+        IRandomProvider rng = new SeededRandomProvider(42L);
+        GeneDeletionPlugin plugin = new GeneDeletionPlugin(rng, 1.0, 2.0, 3);
+        plugin.delete(child, environment);
+
+        for (int y = 8; y <= 10; y += 2) {
+            assertThat(environment.getMolecule(0, y).type()).isEqualTo(Config.TYPE_LABEL);
+            assertThat(environment.getMolecule(1, y).type()).isEqualTo(Config.TYPE_CODE);
+        }
+        assertThat(child.getBirthMutations()).isNull();
+    }
+
+    // ---- Configuration ----
+
+    @Test
+    void aConfigurationWithoutTheMinimumIsRejected() {
+        IRandomProvider rng = new SeededRandomProvider(42L);
+        com.typesafe.config.Config options = ConfigFactory.parseMap(
+                Map.of("deletionRate", 0.01, "countExponent", 2.0));
+
+        assertThatThrownBy(() -> new GeneDeletionPlugin(rng, options))
+                .hasMessageContaining("minLabelCount");
+    }
+
+    @Test
+    void aMinimumBelowOneIsRejected() {
+        IRandomProvider rng = new SeededRandomProvider(42L);
+        com.typesafe.config.Config options = ConfigFactory.parseMap(
+                Map.of("deletionRate", 0.01, "countExponent", 2.0, "minLabelCount", 0));
+
+        assertThatThrownBy(() -> new GeneDeletionPlugin(rng, options))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("minLabelCount");
     }
 }

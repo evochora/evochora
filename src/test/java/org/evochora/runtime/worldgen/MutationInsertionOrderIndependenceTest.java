@@ -53,8 +53,10 @@ class MutationInsertionOrderIndependenceTest {
 
     @Test
     void geneDeletion_isIndependentOfCellInsertionOrder() {
+        // Every label of this body is a candidate, so the operator finds a site although almost
+        // all of the label values here occur only once.
         assertSameOutcome(rng -> new GeneDeletionPlugin(rng, ConfigFactory.parseMap(Map.of(
-                "deletionRate", 1.0, "countExponent", 2.0))));
+                "deletionRate", 1.0, "countExponent", 2.0, "minLabelCount", 1))));
     }
 
     @Test

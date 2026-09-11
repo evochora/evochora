@@ -75,7 +75,7 @@ final class ResumeNeutralityHarness {
               { "className": "org.evochora.runtime.worldgen.GeneDuplicationPlugin",
                 "options": { "duplicationRate": %1$s, "minNopSize": 8 } },
               { "className": "org.evochora.runtime.worldgen.GeneDeletionPlugin",
-                "options": { "deletionRate": %1$s, "countExponent": 2.0 } },
+                "options": { "deletionRate": %1$s, "countExponent": 2.0, "minLabelCount": 1 } },
               { "className": "org.evochora.runtime.worldgen.GeneInsertionPlugin",
                 "options": { "mutationRate": %1$s,
                              "entries": [
