@@ -130,7 +130,11 @@ class NodeIntegrationTest {
 
         await().atMost(30, TimeUnit.SECONDS).until(() -> {
             try {
-                given().when().get(BASE_PATH + "/status").then().statusCode(200);
+                // The status is read through a JSON path although only the answer counts here. The
+                // first JSON path a JVM evaluates compiles Groovy, which takes the better part of a
+                // second on an idle machine and more under load; paid here, it stays out of the
+                // five-second wait after each /stop.
+                given().when().get(BASE_PATH + "/status").then().statusCode(200).extract().path("status");
                 return true;
             } catch (final Exception e) {
                 return false;

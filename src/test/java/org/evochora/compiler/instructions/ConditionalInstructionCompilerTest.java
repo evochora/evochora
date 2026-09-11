@@ -51,7 +51,8 @@ class ConditionalInstructionCompilerTest extends CompilerTestBase {
                 "IFVR %DR0",
                 "IFVI 1|0",
                 "IFVS",
-                "IFER"
+                "IFER",
+                "IFSL %LR0"
         );
         List<String> lines = List.of(source.split("\n"));
         assertDoesNotThrow(() -> {
@@ -88,7 +89,8 @@ class ConditionalInstructionCompilerTest extends CompilerTestBase {
                 "INVR %DR0",
                 "INVI 1|0",
                 "INVS",
-                "INER"
+                "INER",
+                "INSL %LR0"
         );
         List<String> lines = List.of(source.split("\n"));
         assertDoesNotThrow(() -> {

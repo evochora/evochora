@@ -66,7 +66,9 @@ export class AppController {
         this._genomeHslCache = new Map();     // String(genomeHash) → [h, s, l]
         // The organism the mutations of the selected lineage were fetched for
         this._mutationsOrganismId = null;     // int | null
-        
+        // How many generations each ancestor lies back from the organism whose details were loaded
+        this._lineageDistances = null;        // { organismId: int, distances: Map<int, int> } | null
+
         // Config for renderer
         const defaultConfig = {
             worldSize: [100, 30],
@@ -458,6 +460,16 @@ export class AppController {
                 this.instructionView.setProgram(artifact);
                 this.instructionView.setLabelNamespaceMask(staticInfo.labelNamespaceMask);
                 this.sourceView.setProgram(artifact);
+
+                // The ancestry chain names the parent first, so an ancestor's place in it is how
+                // many generations it lies back; the tooltip of a mutated cell shows that distance.
+                this._lineageDistances = {
+                    organismId,
+                    distances: new Map([
+                        [organismId, 0],
+                        ...(staticInfo.lineage || []).map((entry, index) => [entry.organismId, index + 1])
+                    ])
+                };
 
                 // Update instruction view with last and next instructions
                 if (state && state.instructions) {
@@ -1101,7 +1113,11 @@ export class AppController {
                 buildMarkMap(events, {
                     resolveTypeName: (moleculeType) => this._resolveMoleculeTypeName(moleculeType)
                 }),
-                (genomeHash) => this._genomeHashToLineageColor(genomeHash)
+                {
+                    colorOf: (genomeHash) => this._genomeHashToLineageColor(genomeHash),
+                    generationsBackOf: (originOrganismId) => this._generationsBack(originOrganismId),
+                    opcodeNameOf: (opcodeId) => this.state.metadata?.opcodes?.[String(opcodeId)] ?? null
+                }
             );
         } catch (error) {
             if (error.name === 'AbortError') {
@@ -1117,7 +1133,8 @@ export class AppController {
     }
 
     /**
-     * Drops the mutations of the lineage and the marks drawn from them.
+     * Drops the mutations of the lineage, the marks drawn from them and the generation distances
+     * their tooltips name.
      * @private
      */
     _clearLineageMutations() {
@@ -1126,6 +1143,7 @@ export class AppController {
             this.organismMutationsRequestController = null;
         }
         this._mutationsOrganismId = null;
+        this._lineageDistances = null;
         this.renderer?.setMutationMarks(null);
     }
 
@@ -1148,6 +1166,26 @@ export class AppController {
         const names = this.state.metadata?.moleculeTypes;
         const name = names ? names[String(moleculeType)] : null;
         return name ? moleculeTypeName(name) : null;
+    }
+
+    /**
+     * Tells how many generations back an organism of the selected lineage lies.
+     *
+     * The distances come with the organism details, whose ancestry chain is read the same way as
+     * the lineage's mutations. They count only while they belong to the organism the marks were
+     * built for.
+     *
+     * @param {number} organismId - An organism of the lineage, the selected one included.
+     * @returns {number|null} Zero for the selected organism, one for its parent and so on; null
+     *     while the details of the organism the marks belong to have not arrived.
+     * @private
+     */
+    _generationsBack(organismId) {
+        const lineage = this._lineageDistances;
+        if (!lineage || lineage.organismId !== this._mutationsOrganismId) {
+            return null;
+        }
+        return lineage.distances.get(organismId) ?? null;
     }
 
     /**

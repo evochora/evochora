@@ -235,6 +235,11 @@ tasks.test {
     // task. Gradle decides that per task, not per test class: touching a program reruns the
     // suite, which is the price for the examples and the primordial staying compilable.
     inputs.dir("assembly").withPropertyName("assemblyPrograms")
+    // The editor extension's grammar is checked against the instruction set by a test. It lives
+    // outside the source sets, so without this the suite stays up to date when the grammar
+    // changes and the rule that guards it never runs.
+    inputs.file("extensions/vscode/src/extension/syntaxes/evochora.tmLanguage.json")
+        .withPropertyName("editorGrammar")
     maxHeapSize = "2g" // Increase heap size for tests
     jvmArgs("-Duser.language=en", "-Duser.country=US")
     jvmArgs("-XX:+EnableDynamicAgentLoading")

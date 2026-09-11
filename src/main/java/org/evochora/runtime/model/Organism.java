@@ -168,7 +168,7 @@ public class Organism {
         this.registers = new Object[RegisterBank.TOTAL_REGISTER_COUNT];
         for (RegisterBank bank : RegisterBank.values()) {
             for (int i = 0; i < bank.count; i++) {
-                registers[bank.slotOffset() + i] = bank.isLocation ? new int[startIp.length] : 0;
+                registers[bank.slotOffset() + i] = bank.isLocation ? LocationValue.NONE : 0;
             }
         }
         this.persistentRegisterState.put(MAIN_LEVEL_LABEL_HASH, snapshotPersistentRegisters());
@@ -239,7 +239,6 @@ public class Organism {
 
         // Build flat register array
         this.registers = new Object[RegisterBank.TOTAL_REGISTER_COUNT];
-        int dims = b.ip.length;
         if (b.flatRegisters != null) {
             System.arraycopy(b.flatRegisters, 0, this.registers, 0, b.flatRegisters.length);
         }
@@ -247,7 +246,7 @@ public class Organism {
         for (int i = 0; i < this.registers.length; i++) {
             if (this.registers[i] == null) {
                 RegisterBank bank = RegisterBank.SLOT_TO_BANK[i];
-                this.registers[i] = bank != null && bank.isLocation ? new int[dims] : 0;
+                this.registers[i] = bank != null && bank.isLocation ? LocationValue.NONE : 0;
             }
         }
 
@@ -760,10 +759,93 @@ public class Organism {
          * @throws InvalidRestoreState if a set value contradicts this build's register banks,
          *                               data pointer count, coordinate dimension or stack limits
          */
+        /** Whether a restored location value is a position of this organism's world or the state. */
+        private boolean isLocationValue(int[] value) {
+            return value.length == ip.length || LocationValue.isNone(value);
+        }
+
+        /** Names a rejected location value in a failure message. */
+        private static String describeLocationValue(Object value) {
+            if (value == null) {
+                return "null";
+            }
+            return value instanceof int[] v ? v.length + " components" : value.getClass().getSimpleName();
+        }
+
+        /**
+         * Rejects a location value in a register snapshot that is neither a position of the world's
+         * dimensions nor none. A RET and a procedure switch copy a snapshot back into the registers
+         * wholesale, so a value wrong here becomes a live location register later.
+         *
+         * @param snapshot the snapshot to check, or {@code null} where none was taken
+         * @param banks the register banks it covers, in the order it stores them
+         * @param expectedSize the number of values the layout of those banks produces
+         * @param source what the snapshot belongs to, for the message of a rejection
+         */
+        private void validateSnapshotLocations(Object[] snapshot, List<RegisterBank> banks,
+                                               int expectedSize, String source) {
+            if (snapshot == null) {
+                return;
+            }
+            if (snapshot.length != expectedSize) {
+                throw new InvalidRestoreState(source + " snapshot must hold " + expectedSize
+                        + " values, got " + snapshot.length);
+            }
+            int offset = 0;
+            for (RegisterBank bank : banks) {
+                if (bank.isLocation) {
+                    for (int i = 0; i < bank.count; i++) {
+                        Object value = snapshot[offset + i];
+                        if (!(value instanceof int[] location) || !isLocationValue(location)) {
+                            throw new InvalidRestoreState(source + " holds a " + bank.prefix + i
+                                    + " that is neither a position of " + ip.length
+                                    + " components nor none, got " + describeLocationValue(value));
+                        }
+                    }
+                }
+                offset += bank.count;
+            }
+        }
+
         private void validateStateInvariants() {
             if (flatRegisters != null && flatRegisters.length != RegisterBank.TOTAL_REGISTER_COUNT) {
                 throw new InvalidRestoreState("Register array must hold "
                         + RegisterBank.TOTAL_REGISTER_COUNT + " values, got " + flatRegisters.length);
+            }
+            // A location register holds a position of one component per world dimension, or
+            // LocationValue.NONE, and everything that reads one relies on it being one of the two.
+            // Restored state reaches the registers without passing writeLocationOperand or
+            // pushLocation, in three places: the register file here, the location stack below, and
+            // the snapshots a RET or a procedure switch copies back wholesale. A slot left unset is
+            // filled with the state by the constructor and passes here.
+            if (flatRegisters != null) {
+                for (int slot = 0; slot < flatRegisters.length; slot++) {
+                    RegisterBank bank = RegisterBank.SLOT_TO_BANK[slot];
+                    if (bank == null || !bank.isLocation || flatRegisters[slot] == null) {
+                        continue;
+                    }
+                    if (!(flatRegisters[slot] instanceof int[] location) || !isLocationValue(location)) {
+                        throw new InvalidRestoreState("Location register in slot " + slot
+                                + " must hold a position of " + ip.length + " components or none, got "
+                                + describeLocationValue(flatRegisters[slot]));
+                    }
+                }
+            }
+            for (int[] entry : locationStack) {
+                if (entry == null || !isLocationValue(entry)) {
+                    throw new InvalidRestoreState("Location stack entry must hold a position of "
+                            + ip.length + " components or none, got " + describeLocationValue(entry));
+                }
+            }
+            for (ProcFrame frame : callStack) {
+                validateSnapshotLocations(frame.savedRegisters(), RegisterBank.allSavedOnCall(),
+                        RegisterBank.STACK_SAVED_SNAPSHOT_SIZE, "Call stack frame");
+            }
+            if (persistentRegisterState != null) {
+                for (Object[] snapshot : persistentRegisterState.values()) {
+                    validateSnapshotLocations(snapshot, RegisterBank.allPersistent(),
+                            RegisterBank.PERSISTENT_SNAPSHOT_SIZE, "Persistent register state");
+                }
             }
             if (!dps.isEmpty()) {
                 if (dps.size() != Config.NUM_DATA_POINTERS) {
@@ -1647,9 +1729,10 @@ public class Organism {
 
     /**
      * All registers of every bank in one array, addressed by slot rather than by register ID; a
-     * data bank's slot holds an {@code Integer}, a location bank's an {@code int[]}. The array is a
-     * copy, so replacing an entry leaves the organism unchanged, but the values in it are the
-     * organism's own: the coordinate array of a location register must not be written into.
+     * data bank's slot holds an {@code Integer}, a location bank's an {@code int[]}: a position, or
+     * {@link LocationValue#NONE}. The array is a copy, so replacing an entry leaves the organism
+     * unchanged, but the values in it are the organism's own: the coordinate array of a location
+     * register must not be written into, the more so as every empty one shares the same array.
      *
      * @return A copy of the flat register array in RegisterBank slot order.
      */
@@ -1792,11 +1875,22 @@ public class Organism {
     /**
      * Gets a reference to the Location Stack (LS).
      * <p>
-     * It holds vectors of one component per world dimension, the head being the top. Whether a
-     * value stands for an absolute position or for a relative displacement is decided by the
-     * program alone: the instructions move these vectors between the stack, the location
+     * It holds location values, the head being the top: a position of one component per world
+     * dimension, or {@link LocationValue#NONE} for no position, the same two states a location register
+     * has. The stack is how a location register's contents travel — {@code PUSL} and {@code POPL}
+     * move them, and the compiler marshals a procedure's location parameters through it — so it
+     * carries whichever of the two the register held. The instructions that read an entry as a
+     * coordinate refuse the state; those that only move it pass it on.
+     * <p>
+     * Whether a position stands for an absolute place or for a relative displacement is decided by
+     * the program alone: the instructions move these vectors between the stack, the location
      * registers, the data stack and the data pointers without distinguishing the two, and
      * {@link #setActiveDp(int[])} accepts whatever it is given.
+     * <p>
+     * Entries are shared, not copied: {@code DUPL} pushes the same array a second time, and a
+     * snapshot hands out the register's own array. That holds because nothing writes into a stored
+     * vector, and {@link LocationValue#NONE} — shared by every register that holds no position — makes
+     * that ordinary rather than exceptional.
      *
      * @return the live stack, not a copy; pushing goes through {@link #pushLocation(int[])}, which
      *         holds the stack to {@link org.evochora.runtime.Config#LOCATION_STACK_MAX_DEPTH}
@@ -1806,13 +1900,44 @@ public class Organism {
     }
 
     /**
-     * Pushes a vector onto the location stack, or fails the current instruction if the stack is
-     * full.
+     * Fails the current instruction if the location stack holds more entries than its limit allows.
+     * <p>
+     * An instruction that pops entries and pushes as many back leaves the stack the size it was, so
+     * it can only run out of room on a stack that is already above the limit — which a restored one
+     * may be, because a state is restored as it was stored. Asking here, before the first pop, is
+     * what keeps such an instruction from consuming entries it cannot put back.
      *
-     * @param vector the vector to push
-     * @return {@code true} if the vector was pushed, {@code false} if the instruction has been failed
+     * @return {@code true} if the entries on the stack fit within its limit, {@code false} if the
+     *         instruction has been failed
+     */
+    public boolean requireLocationStackWithinLimit() {
+        if (this.locationStack.size() > Config.LOCATION_STACK_MAX_DEPTH) {
+            this.instructionFailed("Location stack overflow");
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * Pushes a location value onto the location stack, or fails the current instruction if the
+     * stack is full or the value is neither a position nor {@link LocationValue#NONE}.
+     * <p>
+     * A {@code null} value indicates a defect in the calling instruction and is rejected for the
+     * same reason as in {@link #writeLocationOperand(int, int[])}: {@link #readOperand(int)} hands
+     * out {@code null} for an invalid register id, and an instruction that passes that on without
+     * checking for the failure first would otherwise leave the defect to be found far from here.
+     *
+     * @param vector the position to push, or {@link LocationValue#NONE}
+     * @return {@code true} if the value was pushed, {@code false} if the instruction has been failed
      */
     public boolean pushLocation(int[] vector) {
+        if (vector == null) {
+            this.instructionFailed("Null value for location stack push");
+            return false;
+        }
+        if (!LocationValue.isNone(vector) && !hasWorldDimensions(vector)) {
+            return false;
+        }
         if (this.locationStack.size() >= Config.LOCATION_STACK_MAX_DEPTH) {
             this.instructionFailed("Location stack overflow");
             return false;
@@ -1908,19 +2033,27 @@ public class Organism {
     }
 
     /**
-     * Writes a vector value to a location register using its full numeric ID.
+     * Writes a location value to a location register using its full numeric ID.
      * Only accepts location register banks — data register writes are rejected.
+     * <p>
+     * A location register holds a position of one component per world dimension, or
+     * {@link LocationValue#NONE} for no position. Any other length is neither and is rejected here
+     * through {@link #hasWorldDimensions(int[])}, at the boundary where a value enters the
+     * register, rather than left to be discovered by a reader that finds a vector it cannot use.
      * <p>
      * A {@code null} value indicates a defect in the calling instruction and is rejected for the
      * same reason as in {@link #writeOperand(int, Object)}.
      *
      * @param id the full ID of the location register
-     * @param value the vector value to write
+     * @param value the position to write, or {@link LocationValue#NONE}
      * @return {@code true} if the write was successful
      */
     public boolean writeLocationOperand(int id, int[] value) {
         if (value == null) {
             this.instructionFailed("Null value for location register write");
+            return false;
+        }
+        if (!LocationValue.isNone(value) && !hasWorldDimensions(value)) {
             return false;
         }
         if (id < 0 || id >= RegisterBank.TABLE_SIZE) {
@@ -1987,14 +2120,14 @@ public class Organism {
     }
 
     /**
-     * Resets all STACK_SAVED register values to their defaults (0 for data, zero-vector for location).
+     * Resets all STACK_SAVED register values to their defaults (0 for data, no position for location).
      * Used when a callee modified STACK_SAVED registers but no snapshot was taken at CALL time
      * (because the caller had never written to any STACK_SAVED register).
      */
     public void resetStackSavedRegisters() {
         for (RegisterBank bank : RegisterBank.allSavedOnCall()) {
             for (int i = 0; i < bank.count; i++) {
-                registers[bank.slotOffset() + i] = bank.isLocation ? new int[ip.length] : 0;
+                registers[bank.slotOffset() + i] = bank.isLocation ? LocationValue.NONE : 0;
             }
         }
     }
@@ -2046,12 +2179,12 @@ public class Organism {
 
     /**
      * Resets all PERSISTENT register slots to type-dependent defaults
-     * (0 for data banks, zero-vector for location banks).
+     * (0 for data banks, no position for location banks).
      */
     public void resetPersistentRegisters() {
         for (RegisterBank bank : RegisterBank.allPersistent()) {
             for (int i = 0; i < bank.count; i++) {
-                registers[bank.slotOffset() + i] = bank.isLocation ? new int[ip.length] : 0;
+                registers[bank.slotOffset() + i] = bank.isLocation ? LocationValue.NONE : 0;
             }
         }
     }

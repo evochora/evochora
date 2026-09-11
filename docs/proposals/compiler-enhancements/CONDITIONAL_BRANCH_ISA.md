@@ -10,7 +10,7 @@
 
 ## Problem
 
-All 18 conditional operations (IF, IN, LT, GT, LET, GET, IFT, INT, IFM, INM, IFP, INP, IFF, INF, IFV, INV, IER, INE) use skip-next semantics: they skip the next instruction if the condition is not met. To implement a conditional branch, the programmer must write a skip-next + JMP pair:
+All 20 conditional operations (IF, IN, LT, GT, LET, GET, IFT, INT, IFM, INM, IFP, INP, IFF, INF, IFV, INV, IER, INE, IFSL, INSL) use skip-next semantics: they skip the next instruction if the condition is not met. To implement a conditional branch, the programmer must write a skip-next + JMP pair:
 
 ```
 IFI %DR0 DATA:10     ; skip next if NOT equal
@@ -26,7 +26,7 @@ Conditional branch instructions combine the condition test and the branch into a
 
 ## Solution
 
-Add new **branch variants** to all 18 existing conditional operations. Each branch variant has the same comparison operands as its skip-next counterpart, plus an additional LABEL operand as branch target. The branch variant jumps to the label (via fuzzy matching) if the condition **is** met — same polarity as skip-next, matching universal convention (x86 JE, MIPS BEQ, ARM BEQ, RISC-V BEQ).
+Add new **branch variants** to all 20 existing conditional operations. Each branch variant has the same comparison operands as its skip-next counterpart, plus an additional LABEL operand as branch target. The branch variant jumps to the label (via fuzzy matching) if the condition **is** met — same polarity as skip-next, matching universal convention (x86 JE, MIPS BEQ, ARM BEQ, RISC-V BEQ).
 
 Both skip-next and branch use the same polarity: the condition name describes when the instruction acts. IFI executes the next instruction when equal. BFI branches to the label when equal.
 
@@ -71,6 +71,13 @@ Replace the leading `I` with `B` for I-starting instructions. For non-I-starting
 | 16 | Error | IFER | BFER |
 | 17 | No Error | INER | BNER |
 
+#### Location Register State (Operations 18-19)
+
+| Op | Semantics | Skip-Next (existing) | Branch (new) |
+|---|---|---|---|
+| 18 | Holds a position | IFSL | BFSL |
+| 19 | Holds none | INSL | BNSL |
+
 **Total: 52 new instructions** (matching the 52 existing skip-next instructions).
 
 ### New Variant Constants
@@ -85,6 +92,7 @@ public static final int SL_LABEL = 42;  // Stack + Label
 
 // 1-Argument Variants (16-31) — new entry
 public static final int LABEL = 21;     // Label only (for BFER, BNER)
+// Location register + Label, for BFSL and BNSL — name and slot still to be chosen
 
 // 3-Argument Variants (48-63) — new entries
 public static final int RRL = 53;       // Register + Register + Label
