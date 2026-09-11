@@ -113,7 +113,10 @@ scalar. Both are replaced by one rule for the whole comparison family, hard and 
 - two scalars: as today;
 - two vectors: equality (IF/IN) componentwise, as today; order (GT, LET, LT, GET and their soft
   forms) by the Manhattan magnitudes, the sum of the components' absolute values;
-- a vector and a scalar: the vector's magnitude against the scalar, for equality and order;
+- a vector and a scalar: the vector's magnitude, which counts as a `DATA` value, against the
+  scalar, for equality and order, under the value-compatibility rule that applies to two scalars:
+  against `DATA` or `STATE` the comparison is decided by the numbers, against any other type it is
+  not satisfied, as `DATA` against that type is not;
 - a location register that holds no position (`LocationValue.NONE`) has magnitude 0 and is equal
   only to itself; a program that wants to ask whether a register holds a position has `IFSL`.
 
@@ -570,3 +573,7 @@ so its baseline is its own, not run `20260907`'s.
 23. **`config/local.conf` is adjusted locally and is not part of the pull request.**
 24. **Rejected: "do nothing".** Every future run would begin with the same switch sweep and the
     same twenty-fold boom before selection could act on anything else.
+25. **A vector's magnitude counts as a `DATA` value.** The mixed comparison of a vector against a
+    scalar follows the value-compatibility rule of two scalars instead of bypassing it: against
+    `DATA` or `STATE` the numbers decide, against any other type the comparison is not satisfied.
+    Strict typing means that types carry meaning, and one pairing must not be exempt from it.

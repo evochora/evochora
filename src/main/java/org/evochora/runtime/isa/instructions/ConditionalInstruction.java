@@ -313,7 +313,7 @@ public class ConditionalInstruction extends Instruction {
                         && op1.value() instanceof int[] v1 && op2.value() instanceof int[] v2) {
                     boolean areEqual = Arrays.equals(v1, v2);
                     conditionMet = opName.startsWith("IN") ? !areEqual : areEqual;
-                } else {
+                } else if (comparableWithMagnitude(op1.value()) && comparableWithMagnitude(op2.value())) {
                     conditionMet = compare(opName, magnitudeOf(op1.value()), magnitudeOf(op2.value()), organism);
                 }
             }
@@ -379,6 +379,20 @@ public class ConditionalInstruction extends Instruction {
      */
     private static int drawBelow(Organism organism, int bound) {
         return bound > 0 ? organism.getRandom().nextInt(bound) : 0;
+    }
+
+    /**
+     * Tells whether an operand may take part in a comparison against a vector's magnitude.
+     * <p>
+     * The magnitude is a DATA value, so a scalar on the other side has to be value-compatible with
+     * DATA, as it would have to be against a DATA scalar; a vector operand always may.
+     *
+     * @param value the value of an operand, a molecule or a vector
+     * @return {@code true} if the operand can be compared with a magnitude
+     */
+    private static boolean comparableWithMagnitude(Object value) {
+        return !(value instanceof Integer scalar)
+                || Molecule.areValueCompatible(Config.TYPE_DATA, Molecule.fromInt(scalar).type());
     }
 
     /**

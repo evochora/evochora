@@ -1749,6 +1749,25 @@ public class VMConditionalInstructionTest {
     }
 
     /**
+     * The magnitude of a vector is a DATA value: a scalar it is compared with has to be
+     * value-compatible with DATA, and against any other type the comparison is never satisfied,
+     * whatever the comparison asks.
+     */
+    @Test
+    @Tag("unit")
+    void testValueComparisons_VectorAgainstScalar_FollowsTheValueCompatibilityOfData() {
+        int[] three = new int[]{2, -1};
+        int energyThree = new Molecule(Config.TYPE_ENERGY, 3).toInt();
+        int stateThree = new Molecule(Config.TYPE_STATE, 3).toInt();
+
+        assertThat(holds("IFR", Map.of(1, three, 3, stateThree), 1, 3)).as("STATE is compatible with DATA").isTrue();
+        assertThat(holds("IFR", Map.of(1, three, 3, energyThree), 1, 3)).as("ENERGY:3 == |(2,-1)|").isFalse();
+        assertThat(holds("INR", Map.of(1, three, 3, energyThree), 1, 3)).as("ENERGY:3 != |(2,-1)|").isFalse();
+        assertThat(holds("GTR", Map.of(1, three, 3, energyThree), 1, 3)).as("|(2,-1)| > ENERGY:3").isFalse();
+        assertThat(holds("LETR", Map.of(1, energyThree, 3, three), 1, 3)).as("ENERGY:3 <= |(2,-1)|").isFalse();
+    }
+
+    /**
      * A location value that holds no position has no components: its magnitude is 0 and it equals
      * only another location value that holds no position, the zero position included.
      */

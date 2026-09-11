@@ -466,6 +466,8 @@ Cell tests:
 
 A value comparison reduces each operand to one number: a scalar contributes its own value, a vector its **Manhattan magnitude**, the sum of the absolute values of its components. The comparison then runs on those two numbers, whether the operands are two scalars, two vectors, or one of each. No combination of operand types fails.
 
+The magnitude of a vector is a `DATA` value and follows the rule of *Types in value operations*: against `DATA` or `STATE` the numbers decide, against any other type the comparison is never satisfied.
+
 The equality tests `IFR`/`IFI`/`IFS` and `INR`/`INI`/`INS` are the exception for two vector operands: they compare component by component, so that two positions are equal only if they are the same position. A vector compared against a scalar is compared by its magnitude here as well.
 
 A location register that holds no position has no components and therefore the magnitude 0; it is equal only to another location value that holds no position. The question whether a location register holds a position at all is `IFSL`.
