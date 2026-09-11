@@ -2,7 +2,7 @@ import { EnvironmentApi, setTypeMappings } from './api/EnvironmentApi.js';
 import { OrganismApi } from './api/OrganismApi.js';
 import { SimulationApi } from './api/SimulationApi.js';
 import { EnvironmentGrid } from './EnvironmentGrid.js';
-import { buildMarkMap, genomeEdges } from './MutationMarks.js';
+import { buildMarkMap } from './MutationMarks.js';
 import { moleculeTypeName } from './MoleculeTypePalette.js';
 import { MinimapView } from './ui/minimap/MinimapView.js';
 import { OrganismInstructionView } from './ui/organism/OrganismInstructionView.js';
@@ -64,10 +64,8 @@ export class AppController {
         this._genomeParent = new Map();       // String(genomeHash) → String(parentGenomeHash) | null
         this._genomeColorCache = new Map();   // String(genomeHash) → int 0xRRGGBB
         this._genomeHslCache = new Map();     // String(genomeHash) → [h, s, l]
-        // Mutations of the selected organism's lineage: the organism they were fetched for, and the
-        // genome→parentGenome edges of the answer, which the tick's own closure does not carry
+        // The organism the mutations of the selected lineage were fetched for
         this._mutationsOrganismId = null;     // int | null
-        this._mutationGenomeEdges = null;     // [[String(genomeHash), String(parentGenomeHash) | null], ...]
         
         // Config for renderer
         const defaultConfig = {
@@ -301,6 +299,7 @@ export class AppController {
         this.sourceView.setProgram(null);
         this.stateView.setProgram(null);
         this.instructionView.setProgram(null);
+        this.instructionView.setLabelNamespaceMask(0);
         this.state.previousOrganismDetails = null;
     }
     
@@ -457,6 +456,7 @@ export class AppController {
                     : null;
                 this.stateView.setProgram(artifact);
                 this.instructionView.setProgram(artifact);
+                this.instructionView.setLabelNamespaceMask(staticInfo.labelNamespaceMask);
                 this.sourceView.setProgram(artifact);
 
                 // Update instruction view with last and next instructions
@@ -896,10 +896,6 @@ export class AppController {
             const organisms = organismResult.organisms;
             this.state.totalOrganismCount = organismResult.totalOrganismCount;
             this._applyGenomeAncestors(organismResult.genomeAncestors);
-            // The genomes of the selected lineage's mutations are not part of the tick's closure,
-            // and every colour of this tick is computed from here on, so their edges go back in
-            // before the first of them is drawn.
-            this._mergeLineageGenomeEdges();
             this.updateOrganismPanel(organisms, isForwardStep);
             this.minimapView?.setOwnershipColorResolver(this._minimapOwnershipColorResolver(organisms));
             this.minimapView?.updateOrganisms(
@@ -1101,8 +1097,6 @@ export class AppController {
             }
 
             const events = answer?.events || [];
-            this._mutationGenomeEdges = genomeEdges(events);
-            this._mergeLineageGenomeEdges();
             this.renderer?.setMutationMarks(
                 buildMarkMap(events, {
                     resolveTypeName: (moleculeType) => this._resolveMoleculeTypeName(moleculeType)
@@ -1132,32 +1126,7 @@ export class AppController {
             this.organismMutationsRequestController = null;
         }
         this._mutationsOrganismId = null;
-        this._mutationGenomeEdges = null;
         this.renderer?.setMutationMarks(null);
-    }
-
-    /**
-     * Adds the ancestry edges of the selected lineage's mutations to the genome ancestor map.
-     *
-     * A mutation is coloured by the genome it arose in, and that genome is often carried by no
-     * organism any more. Without its parent it would be coloured as a root of its own instead of as
-     * part of the lineage it belongs to, so its edge is added whenever the map has been replaced.
-     * @private
-     */
-    _mergeLineageGenomeEdges() {
-        if (!this._mutationGenomeEdges) {
-            return;
-        }
-        let added = false;
-        for (const [genomeHash, parentGenomeHash] of this._mutationGenomeEdges) {
-            if (this._genomeParent.get(genomeHash) === parentGenomeHash) continue;
-            this._genomeParent.set(genomeHash, parentGenomeHash);
-            added = true;
-        }
-        if (added) {
-            this._genomeColorCache.clear();
-            this._genomeHslCache.clear();
-        }
     }
 
     /**

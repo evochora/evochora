@@ -9,8 +9,9 @@ public final class ProcFrameView {
 
     /**
      * Name of the called procedure, resolved from the frame's label hash via the run's program
-     * artifact. Empty when the hash is not in that artifact, which happens for a call target
-     * created by code mutation; callers distinguish named from unnamed frames by emptiness.
+     * artifact, after the organism's label namespace has been taken out of the hash. Empty when the
+     * artifact holds no such label even then, which happens for a call target created by code
+     * mutation; callers distinguish named from unnamed frames by emptiness.
      */
     public final String procName;
     /** Absolute coordinates execution resumes at once the procedure returns. */

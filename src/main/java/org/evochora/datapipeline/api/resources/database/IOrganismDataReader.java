@@ -1,6 +1,7 @@
 package org.evochora.datapipeline.api.resources.database;
 
 import org.evochora.datapipeline.api.resources.database.dto.LineageMutations;
+import org.evochora.datapipeline.utils.LabelNamespaceMask;
 import org.evochora.datapipeline.api.resources.database.dto.OrganismTickDetails;
 import org.evochora.datapipeline.api.resources.database.dto.OrganismTickSummary;
 
@@ -118,6 +119,28 @@ public interface IOrganismDataReader {
      */
     List<LineageMutations> readLineageMutations(int organismId)
             throws SQLException, OrganismNotFoundException;
+
+    /**
+     * The label namespace the body of the organism at the head of a chain stands in.
+     * <p>
+     * Every newborn's LABEL and LABELREF values are XOR-masked at birth, cumulatively down the
+     * lineage, so a label value in a body is the compiled value XORed with this mask. Anything that
+     * holds a body's label value against the program it descends from — a procedure name, a jump
+     * target, a comparison with the compiled code — has to take the mask out first.
+     * <p>
+     * It is a default method rather than something each implementation works out for itself,
+     * because getting it wrong is silent: a mask that is zero when it should not be resolves every
+     * label of every descendant to nothing, which looks exactly like an organism that has none.
+     * Composing it from the chain an implementation already returns leaves one definition of the
+     * rule and nothing for a new implementation to remember.
+     *
+     * @param chain The chain as {@link #readLineageMutations(int)} returns it, the organism first
+     * @return The composed mask, zero for an ancestry that never rewrote a label
+     * @throws IllegalStateException if a recorded label mask carries no mask value
+     */
+    default int labelNamespaceMaskOf(List<LineageMutations> chain) {
+        return LabelNamespaceMask.ofChain(chain.stream().map(LineageMutations::events).toList());
+    }
 }
 
 

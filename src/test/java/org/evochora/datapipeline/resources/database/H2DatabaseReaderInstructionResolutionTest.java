@@ -168,7 +168,10 @@ class H2DatabaseReaderInstructionResolutionTest {
             assertThat(details.state.instructions.last.opcodeName).isEqualTo("DPLR");
             assertThat(details.state.instructions.last.arguments).hasSize(1);
             assertThat(details.state.instructions.last.arguments.get(0).type).isEqualTo("REGISTER");
-            assertThat(details.state.instructions.last.arguments.get(0).registerId).isEqualTo(0);
+            // The id names the register in the whole register space, as it does for a data register,
+            // so that a reader derives the index within the bank the same way for both
+            assertThat(details.state.instructions.last.arguments.get(0).registerId)
+                    .isEqualTo(org.evochora.runtime.isa.RegisterBank.LR.base);
             assertThat(details.state.instructions.last.arguments.get(0).registerType).isEqualTo("LR");
             assertThat(details.state.instructions.last.arguments.get(0).registerValue).isNotNull();
             assertThat(details.state.instructions.last.arguments.get(0).registerValue.kind).isEqualTo(org.evochora.datapipeline.api.resources.database.dto.RegisterValueView.Kind.VECTOR);
