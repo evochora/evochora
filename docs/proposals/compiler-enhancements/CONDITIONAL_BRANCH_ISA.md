@@ -11,7 +11,7 @@
 > **Note (2026-09-11):** Opcode ids no longer carry a structure: an id is the family in its lowest
 > five bits and an explicit index within the family, and `Variant` and `OpcodeId` no longer
 > exist. Family, operation and operand list of an instruction are recorded by the registry, which
-> is what the mutation flips read (`docs/proposals/PROBABILISTIC_CONDITIONALS.md`, decision 26).
+> is what the mutation flips read (`docs/outdated/proposals/accomplished/PROBABILISTIC_CONDITIONALS.md`, decision 26).
 > The variant constants and the mutation-pool reasoning below are written against the removed
 > encoding and have to be redone against the registry before this design is taken up.
 

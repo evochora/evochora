@@ -17,7 +17,6 @@ table carries the whole order.
 
 | Document / Issue | Status | Summary |
 |---|---|---|
-| [PROBABILISTIC_CONDITIONALS](PROBABILISTIC_CONDITIONALS.md) | DECIDED | Twelve probabilistic comparison opcodes (PGT/PLE/PLT/PGE) and magnitude comparison for vector operands, the primordial's reproduction gates as soft dials starting at the policy the sweeps reached, a genome frame that tells scalar literals from vector components for the substitution plugin, and the configuration that makes threshold tuning measurable |
 | [PERSISTED_FORMAT_VERSIONING](PERSISTED_FORMAT_VERSIONING.md) | TO BE REVIEWED | Storage batches, run database and run metadata carry no format version, so data written by an incompatible build is read silently or fails without naming the cause; one version constant plus fail-fast reads |
 | [DEPENDENCY_UPDATE](DEPENDENCY_UPDATE.md) | TO BE REVIEWED | 24 of 32 dependencies behind, six by a major version; removal of the unused JLine pair, three build hygiene fixes, and a staged update procedure derived from what the test suite can and cannot verify |
 

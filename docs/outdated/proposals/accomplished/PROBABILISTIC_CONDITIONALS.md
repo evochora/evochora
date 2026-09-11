@@ -1,8 +1,8 @@
 # Probabilistic Conditionals: Decisions as Dials for Evolvable Programs
 
-**Status: DECIDED — reviewed against the architecture guidelines in two review rounds; to be
-implemented on branch `probabilistic-conditionals`. Decisions taken with the maintainer are listed
-at the end.**
+**Status: ACCOMPLISHED — implemented on branch `probabilistic-conditionals` (PR #174),
+2026-09-12. Decisions taken with the maintainer, the review rounds included, are listed at the
+end; the operators read against the data are Part 6.**
 
 ## Problem
 
@@ -555,7 +555,8 @@ so its baseline is its own, not run `20260907`'s.
    vectors).
 7. **Names PGT/PLE/PLT/PGE**, four letters with the variant last; PLET/PGET are impossible.
 8. **Existing constants reused**, values changed: energy 50 000 (the point the sweeps reached),
-   entropy 5 000 (the old threshold as the point of certainty, not 10 000, which is death).
+   entropy 5 000 at first (the old threshold as the point of certainty, not 10 000, which was
+   death), raised to 50 000 with the regime of the fourth smoke run (Part 5, decision 13).
 9. **The primordial uses the instructions immediately** rather than waiting for the flip, so that
    no run has to rediscover the trivial sweep before anything else can be selected.
 10. **`MAIN_LOOP_ENERGY_CHECK` removed, not softened**: no hard gate remains on the decision path,
