@@ -1,7 +1,6 @@
 # The Unset State of a Location Register
 
-**Status: TO BE REVIEWED — the decisions are taken; the alternatives they were taken against are at
-the end, together with what is deliberately left out.**
+**Status: TO BE REVIEWED — the decisions are taken; what is deliberately left out is at the end.**
 
 ## Problem
 
@@ -271,47 +270,6 @@ Tests whose meaning changes and which are adjusted with the step that changes th
 asserted as `[0,0]` today), and `StatefulProgram.java:61`, which feeds the resume-neutrality tests.
 
 Verified overall by `./gradlew check`.
-
-## Alternatives, and what they cost
-
-**Do nothing, and correct only the specification.** The false sentence at `:76` goes, the sentinel
-stays. Costs nothing and leaves the defect: a mutation that drops a guard still sends the data
-pointer to the world origin, and every organism that loses its guard still arrives at the same cell.
-Rejected because the convention has no backing in the physics and the collision is a property of the
-world, not of one program.
-
-**Drop the idea.** Same as above without the specification fix, and the specification then keeps a
-guarantee the runtime never made. Rejected for that reason alone.
-
-**`null` as the state.** Costs nothing to write and is the obvious first thought. It collides with
-two things: `ArrayDeque` rejects `null`, so the location stack would need a different container, and
-both write gates reject `null` deliberately, with the documented reasoning that a null register
-surfaces far from its origin. Rejected.
-
-**A dedicated value type for location content.** Expresses the two states in the type system, so no
-convention can be broken by a wrong-length write. Costs one small object per location value on a
-path that runs on every procedure call with location parameters — `PUSL` and `POPL` marshal each
-location argument four times — where the chosen design allocates nothing and `CRLR` even allocates
-less than today. It would also change the signatures of the location stack and the write gates and
-the roughly thirty test sites that use them. Rejected on the allocation, with the length check in
-the write gates buying back most of what the type would have guaranteed.
-
-**A dedicated message type, or `RegisterValue`, for the location stack in the format.** Both were
-considered and both are unnecessary: a `Vector` with no components already expresses the state.
-`RegisterValue` would additionally widen a field that cannot express a scalar today, force a
-bank-aware acceptance rule into the restorer to keep the corruption check it has, change the DTO the
-visualizer reads, and — because `Vector.components` and `RegisterValue.scalar` share field number 1
-with different wire types — make data from an older build decode silently into the new state instead
-of failing. Rejected.
-
-**What the chosen design costs.** "No components means no position" is a rule about an `int[]`, not
-a promise of the type system: a future call site that builds a location vector of the wrong length
-would produce something that is neither. A location value enters an organism at three places, and
-each rejects such a value: the two write gates fail the instruction, and a state restored from a
-checkpoint is refused as one this build could not have produced. The `GridLayout` guard keeps the
-two kinds disjoint by making a dimensionless world impossible; between them the rule holds, but it holds by
-construction and not by the compiler. The second cost is the fitness change named above: six
-instructions become fallible on a cleared register.
 
 ## Decided, and deliberately not part of this work
 
