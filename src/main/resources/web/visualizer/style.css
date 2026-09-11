@@ -646,10 +646,6 @@ body {
     color: #888;
 }
 
-.cell-tooltip .tooltip-opcode {
-    color: #e0e0e0;
-}
-
 /* Mutation of the selected organism's lineage that the cell still carries */
 .cell-tooltip .tooltip-mutation {
     color: #e0e0e0;
