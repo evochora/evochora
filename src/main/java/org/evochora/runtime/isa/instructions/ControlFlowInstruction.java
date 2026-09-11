@@ -4,7 +4,6 @@ import org.evochora.runtime.Config;
 import org.evochora.runtime.internal.services.ExecutionContext;
 import org.evochora.runtime.internal.services.ProcedureCallHandler;
 import org.evochora.runtime.isa.Instruction;
-import org.evochora.runtime.isa.Variant;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Organism;
 
@@ -29,17 +28,17 @@ public class ControlFlowInstruction extends Instruction {
     public static void register(int f) {
         family = f;
         // Operation 0: JMP (Jump)
-        reg(0, Variant.R, "JMPR", REGISTER);
-        reg(0, Variant.S, "JMPS", STACK);
-        reg(0, Variant.L, "JMPI", LABEL);
+        reg(0, 0, "JMPR", REGISTER);
+        reg(0, 1, "JMPS", STACK);
+        reg(0, 2, "JMPI", LABEL);
         // Operation 1: CALL (Call subroutine)
-        reg(1, Variant.L, "CALL", LABEL);
+        reg(1, 3, "CALL", LABEL);
         // Operation 2: RET (Return from subroutine)
-        reg(2, Variant.NONE, "RET");
+        reg(2, 4, "RET");
     }
 
-    private static void reg(int op, int variant, String name, OperandSource... sources) {
-        Instruction.registerOp(ControlFlowInstruction.class, ControlFlowInstruction::new, family, op, variant, name, true, sources);
+    private static void reg(int op, int index, String name, OperandSource... sources) {
+        Instruction.registerOp(ControlFlowInstruction.class, ControlFlowInstruction::new, family, op, index, name, true, sources);
     }
 
     /**

@@ -71,8 +71,9 @@ public class OrganismTest {
     void testPlanTickUnknownOpcodeProducesNop() {
         Organism org = Organism.create(sim, new int[]{0, 0}, 100);
         sim.addOrganism(org);
-        // Place a CODE opcode that doesn't exist (e.g., 999)
-        environment.setMolecule(new Molecule(Config.TYPE_CODE, 999), org.getIp());
+        // Place a CODE opcode one past the highest id the opcode layout can express (five family
+        // bits, eight index bits), so no instruction can ever be registered for it
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, 8192), org.getIp());
 
         Instruction planned = sim.getVirtualMachine().plan(org);
         assertThat(planned).isNotNull();

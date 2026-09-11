@@ -3,7 +3,6 @@ package org.evochora.runtime.isa.instructions;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.internal.services.ExecutionContext;
 import org.evochora.runtime.isa.Instruction;
-import org.evochora.runtime.isa.Variant;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
@@ -29,58 +28,58 @@ public class ArithmeticInstruction extends Instruction {
     public static void register(int f) {
         family = f;
         // Operation 0: ADD
-        reg(0, Variant.RR, "ADDR", REGISTER, REGISTER);
-        reg(0, Variant.RI, "ADDI", REGISTER, IMMEDIATE);
-        reg(0, Variant.SS, "ADDS", STACK, STACK);
+        reg(0, 0, "ADDR", REGISTER, REGISTER);
+        reg(0, 1, "ADDI", REGISTER, IMMEDIATE);
+        reg(0, 2, "ADDS", STACK, STACK);
         // Operation 1: SUB
-        reg(1, Variant.RR, "SUBR", REGISTER, REGISTER);
-        reg(1, Variant.RI, "SUBI", REGISTER, IMMEDIATE);
-        reg(1, Variant.SS, "SUBS", STACK, STACK);
+        reg(1, 3, "SUBR", REGISTER, REGISTER);
+        reg(1, 4, "SUBI", REGISTER, IMMEDIATE);
+        reg(1, 5, "SUBS", STACK, STACK);
         // Operation 2: MUL
-        reg(2, Variant.RR, "MULR", REGISTER, REGISTER);
-        reg(2, Variant.RI, "MULI", REGISTER, IMMEDIATE);
-        reg(2, Variant.SS, "MULS", STACK, STACK);
+        reg(2, 6, "MULR", REGISTER, REGISTER);
+        reg(2, 7, "MULI", REGISTER, IMMEDIATE);
+        reg(2, 8, "MULS", STACK, STACK);
         // Operation 3: DIV
-        reg(3, Variant.RR, "DIVR", REGISTER, REGISTER);
-        reg(3, Variant.RI, "DIVI", REGISTER, IMMEDIATE);
-        reg(3, Variant.SS, "DIVS", STACK, STACK);
+        reg(3, 9, "DIVR", REGISTER, REGISTER);
+        reg(3, 10, "DIVI", REGISTER, IMMEDIATE);
+        reg(3, 11, "DIVS", STACK, STACK);
         // Operation 4: MOD
-        reg(4, Variant.RR, "MODR", REGISTER, REGISTER);
-        reg(4, Variant.RI, "MODI", REGISTER, IMMEDIATE);
-        reg(4, Variant.SS, "MODS", STACK, STACK);
+        reg(4, 12, "MODR", REGISTER, REGISTER);
+        reg(4, 13, "MODI", REGISTER, IMMEDIATE);
+        reg(4, 14, "MODS", STACK, STACK);
         // Operation 5: NEG (negation)
-        reg(5, Variant.R, "NEGR", REGISTER);
-        reg(5, Variant.S, "NEGS", STACK);
+        reg(5, 15, "NEGR", REGISTER);
+        reg(5, 16, "NEGS", STACK);
         // Operation 6: ABS (absolute value)
-        reg(6, Variant.R, "ABSR", REGISTER);
-        reg(6, Variant.S, "ABSS", STACK);
+        reg(6, 17, "ABSR", REGISTER);
+        reg(6, 18, "ABSS", STACK);
         // Operation 7: INC (increment)
-        reg(7, Variant.R, "INCR", REGISTER);
-        reg(7, Variant.S, "INCS", STACK);
+        reg(7, 19, "INCR", REGISTER);
+        reg(7, 20, "INCS", STACK);
         // Operation 8: DEC (decrement)
-        reg(8, Variant.R, "DECR", REGISTER);
-        reg(8, Variant.S, "DECS", STACK);
+        reg(8, 21, "DECR", REGISTER);
+        reg(8, 22, "DECS", STACK);
         // Operation 9: MIN (minimum)
-        reg(9, Variant.RR, "MINR", REGISTER, REGISTER);
-        reg(9, Variant.RI, "MINI", REGISTER, IMMEDIATE);
-        reg(9, Variant.SS, "MINS", STACK, STACK);
+        reg(9, 23, "MINR", REGISTER, REGISTER);
+        reg(9, 24, "MINI", REGISTER, IMMEDIATE);
+        reg(9, 25, "MINS", STACK, STACK);
         // Operation 10: MAX (maximum)
-        reg(10, Variant.RR, "MAXR", REGISTER, REGISTER);
-        reg(10, Variant.RI, "MAXI", REGISTER, IMMEDIATE);
-        reg(10, Variant.SS, "MAXS", STACK, STACK);
+        reg(10, 26, "MAXR", REGISTER, REGISTER);
+        reg(10, 27, "MAXI", REGISTER, IMMEDIATE);
+        reg(10, 28, "MAXS", STACK, STACK);
         // Operation 11: SGN (sign)
-        reg(11, Variant.R, "SGNR", REGISTER);
-        reg(11, Variant.S, "SGNS", STACK);
+        reg(11, 29, "SGNR", REGISTER);
+        reg(11, 30, "SGNS", STACK);
         // Operation 12: DOT (dot product)
-        reg(12, Variant.RRR, "DOTR", REGISTER, REGISTER, REGISTER);
-        reg(12, Variant.SS, "DOTS", STACK, STACK);
+        reg(12, 31, "DOTR", REGISTER, REGISTER, REGISTER);
+        reg(12, 32, "DOTS", STACK, STACK);
         // Operation 13: CRS (cross product)
-        reg(13, Variant.RRR, "CRSR", REGISTER, REGISTER, REGISTER);
-        reg(13, Variant.SS, "CRSS", STACK, STACK);
+        reg(13, 33, "CRSR", REGISTER, REGISTER, REGISTER);
+        reg(13, 34, "CRSS", STACK, STACK);
     }
 
-    private static void reg(int op, int variant, String name, OperandSource... sources) {
-        Instruction.registerOp(ArithmeticInstruction.class, ArithmeticInstruction::new, family, op, variant, name, true, sources);
+    private static void reg(int op, int index, String name, OperandSource... sources) {
+        Instruction.registerOp(ArithmeticInstruction.class, ArithmeticInstruction::new, family, op, index, name, true, sources);
     }
 
     /**

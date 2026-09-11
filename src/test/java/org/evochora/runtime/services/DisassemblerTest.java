@@ -38,7 +38,7 @@ class DisassemblerTest {
         Disassembler disassembler = new Disassembler();
         MockEnvironmentReader mockReader = new MockEnvironmentReader();
 
-        // Get the actual opcode ID for SETI (structured ID scheme)
+        // Get the actual opcode ID for SETI from the instruction registry
         int setiOpcodeId = Instruction.getInstructionIdByName("SETI") & ~Config.TYPE_CODE;
 
         // Mock: SETI instruction with 1 argument
@@ -71,15 +71,17 @@ class DisassemblerTest {
         Disassembler disassembler = new Disassembler();
         MockEnvironmentReader mockReader = new MockEnvironmentReader();
         
-        // Mock: Unknown opcode (999)
-        mockReader.setMoleculeAt(new int[]{0, 0}, new Molecule(Config.TYPE_CODE, 999));
+        // One past the highest id the opcode layout can express (five family bits, eight index
+        // bits), so no instruction can ever be registered for it
+        int unknownOpcodeId = 8192;
+        mockReader.setMoleculeAt(new int[]{0, 0}, new Molecule(Config.TYPE_CODE, unknownOpcodeId));
         
         // Act
         DisassemblyData result = disassembler.disassemble(mockReader, new int[]{0, 0});
         
         // Assert
         assertThat(result).isNotNull();
-        assertThat(result.opcodeId()).isEqualTo(999);
+        assertThat(result.opcodeId()).isEqualTo(unknownOpcodeId);
         assertThat(result.opcodeName()).startsWith("UNKNOWN_OP");
         assertThat(result.args()).isEmpty();
         assertThat(result.argPositions()).isEmpty();
@@ -121,7 +123,7 @@ class DisassemblerTest {
         Disassembler disassembler = new Disassembler();
         MockEnvironmentReader mockReader = new MockEnvironmentReader();
 
-        // Get the actual opcode ID for SETI (structured ID scheme)
+        // Get the actual opcode ID for SETI from the instruction registry
         int setiOpcodeId = Instruction.getInstructionIdByName("SETI") & ~Config.TYPE_CODE;
 
         // Mock: SETI instruction but missing argument

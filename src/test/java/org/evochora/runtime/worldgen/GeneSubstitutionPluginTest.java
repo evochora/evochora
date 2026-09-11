@@ -4,7 +4,6 @@ import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
 import org.evochora.runtime.internal.services.SeededRandomProvider;
 import org.evochora.runtime.isa.Instruction;
-import org.evochora.runtime.isa.OpcodeId;
 import org.evochora.runtime.isa.RegisterBank;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
@@ -46,9 +45,10 @@ class GeneSubstitutionPluginTest {
     private Environment environment;
     private Organism child;
 
-    /** ADDR opcode: ARITHMETIC, operation=0, variant=RR (two registers). */
+    /** ADDR opcode: ARITHMETIC family, addition, two register operands. */
     private static int ADDR_OPCODE;
-/** NOP opcode: SPECIAL, operation=0, variant=NONE (no operands). */
+
+    /** NOP opcode: SPECIAL family, no operands, and the value of an empty cell. */
     private static int NOP_OPCODE;
 
     @BeforeAll
@@ -201,7 +201,7 @@ class GeneSubstitutionPluginTest {
     }
 
     @Test
-    void operationFlipPreservesFamilyAndVariant() {
+    void operationFlipKeepsFamilyAndSignature() {
         int verified = 0;
         for (int seed = 0; seed < 200; seed++) {
             setUp();
@@ -216,11 +216,12 @@ class GeneSubstitutionPluginTest {
 
             int newValue = environment.getMolecule(5, 5).value();
             if (newValue != ADDR_OPCODE) {
-                int origFamily = OpcodeId.extractFamily(ADDR_OPCODE);
-                int origVariant = OpcodeId.extractVariant(ADDR_OPCODE);
-                assertThat(OpcodeId.extractFamily(newValue)).isEqualTo(origFamily);
-                assertThat(OpcodeId.extractVariant(newValue)).isEqualTo(origVariant);
-                assertThat(OpcodeId.extractOperation(newValue)).isNotEqualTo(OpcodeId.extractOperation(ADDR_OPCODE));
+                assertThat(Instruction.getFamilyById(newValue))
+                        .isEqualTo(Instruction.getFamilyById(ADDR_OPCODE));
+                assertThat(Instruction.getOperandSourcesById(newValue))
+                        .isEqualTo(Instruction.getOperandSourcesById(ADDR_OPCODE));
+                assertThat(Instruction.getOperationById(newValue))
+                        .isNotEqualTo(Instruction.getOperationById(ADDR_OPCODE));
                 verified++;
             }
         }
@@ -228,11 +229,11 @@ class GeneSubstitutionPluginTest {
     }
 
     /**
-     * A family flip keeps the variant, and with it the signature the operands are written for, and
-     * takes an opcode of another family whatever its operation number is.
+     * A family flip keeps the operand sources, and with them the meaning of the cells behind the
+     * opcode, and takes an opcode of another family whatever its operation number is.
      */
     @Test
-    void familyFlipPreservesTheVariantAndLeavesTheFamily() {
+    void familyFlipKeepsTheSignatureAndLeavesTheFamily() {
         int verified = 0;
         for (int seed = 0; seed < 200; seed++) {
             setUp();
@@ -242,9 +243,10 @@ class GeneSubstitutionPluginTest {
 
             int newValue = environment.getMolecule(5, 5).value();
             if (newValue != ADDR_OPCODE) {
-                int origVariant = OpcodeId.extractVariant(ADDR_OPCODE);
-                assertThat(OpcodeId.extractVariant(newValue)).isEqualTo(origVariant);
-                assertThat(OpcodeId.extractFamily(newValue)).isNotEqualTo(OpcodeId.extractFamily(ADDR_OPCODE));
+                assertThat(Instruction.getOperandSourcesById(newValue))
+                        .isEqualTo(Instruction.getOperandSourcesById(ADDR_OPCODE));
+                assertThat(Instruction.getFamilyById(newValue))
+                        .isNotEqualTo(Instruction.getFamilyById(ADDR_OPCODE));
                 verified++;
             }
         }
@@ -258,61 +260,98 @@ class GeneSubstitutionPluginTest {
     @Test
     void familyFlipOfAProbabilisticComparisonLeavesTheConditionalFamily() {
         int pgti = Instruction.getInstructionIdByName("PGTI");
-        int conditionalFamily = OpcodeId.extractFamily(pgti);
-        int variant = OpcodeId.extractVariant(pgti);
+        int conditionalFamily = Instruction.getFamilyById(pgti);
+        List<Instruction.OperandSource> sources = Instruction.getOperandSourcesById(pgti);
 
         Set<Integer> reached = familyFlipsOf(pgti);
 
         assertThat(reached).as("PGTI has family alternatives").isNotEmpty();
         for (int opcodeId : reached) {
-            assertThat(OpcodeId.extractFamily(opcodeId))
+            assertThat(Instruction.getFamilyById(opcodeId))
                     .as("family of %s", Instruction.getAllInstructions().get(opcodeId))
                     .isNotEqualTo(conditionalFamily);
-            assertThat(OpcodeId.extractVariant(opcodeId))
-                    .as("variant of %s", Instruction.getAllInstructions().get(opcodeId))
-                    .isEqualTo(variant);
+            assertThat(Instruction.getOperandSourcesById(opcodeId))
+                    .as("operand sources of %s", Instruction.getAllInstructions().get(opcodeId))
+                    .isEqualTo(sources);
         }
     }
 
     @Test
     void familyFlipOfAHardComparisonLeavesTheConditionalFamily() {
         int gti = Instruction.getInstructionIdByName("GTI");
-        int conditionalFamily = OpcodeId.extractFamily(gti);
+        int conditionalFamily = Instruction.getFamilyById(gti);
 
         Set<Integer> reached = familyFlipsOf(gti);
 
         assertThat(reached).as("GTI has family alternatives").isNotEmpty();
         assertThat(reached).doesNotContain(Instruction.getInstructionIdByName("PGTI"));
         for (int opcodeId : reached) {
-            assertThat(OpcodeId.extractFamily(opcodeId))
+            assertThat(Instruction.getFamilyById(opcodeId))
                     .as("family of %s", Instruction.getAllInstructions().get(opcodeId))
                     .isNotEqualTo(conditionalFamily);
         }
     }
 
     /**
-     * An opcode whose variant no other family uses has nowhere to flip to, and the plugin leaves
-     * it as it stands instead of writing something of another signature.
+     * The cell behind {@code JMPI} holds a label hash, so the only opcodes a family flip may reach
+     * are those that read their one operand as a label too. There are exactly two outside the
+     * control family: the fuzzy jump of the data pointer and the push of a resolved label.
      */
     @Test
-    void anOpcodeWhoseVariantNoOtherFamilyUsesHasNoFamilyFlip() {
+    void familyFlipOfAJumpToALabelReachesOnlyTheOtherLabelOpcodes() {
+        int jmpi = Instruction.getInstructionIdByName("JMPI");
+
+        assertThat(familyFlipsOf(jmpi))
+                .as("opcodes a family flip of JMPI reaches")
+                .containsExactlyInAnyOrder(
+                        Instruction.getInstructionIdByName("SKJI"),
+                        Instruction.getInstructionIdByName("PSLI"));
+    }
+
+    /**
+     * The cell behind {@code IFSL} names a location register, and a label hash written into that
+     * slot would name a register by accident. The flip therefore never reaches an opcode that
+     * reads its operand as a label, although both read a single operand from one cell.
+     */
+    @Test
+    void familyFlipOfALocationRegisterConditionalNeverReachesALabelOperand() {
+        int ifsl = Instruction.getInstructionIdByName("IFSL");
+
+        Set<Integer> reached = familyFlipsOf(ifsl);
+
+        assertThat(reached).as("IFSL has family alternatives").isNotEmpty();
+        for (int opcodeId : reached) {
+            assertThat(Instruction.getOperandSourcesById(opcodeId))
+                    .as("operand sources of %s", Instruction.getAllInstructions().get(opcodeId))
+                    .doesNotContain(Instruction.OperandSource.LABEL)
+                    .isEqualTo(Instruction.getOperandSourcesById(ifsl));
+        }
+    }
+
+    /**
+     * An opcode whose operand sources no other family uses has nowhere to flip to, and the plugin
+     * leaves it as it stands instead of writing something the operands behind it do not fit.
+     */
+    @Test
+    void anOpcodeWhoseSignatureNoOtherFamilyUsesHasNoFamilyFlip() {
         Map<Integer, String> allOpcodes = Instruction.getAllInstructions();
-        Map<Integer, Set<Integer>> familiesByVariant = new HashMap<>();
+        Map<List<Instruction.OperandSource>, Set<Integer>> familiesBySignature = new HashMap<>();
         for (int opcodeId : allOpcodes.keySet()) {
-            familiesByVariant
-                    .computeIfAbsent(OpcodeId.extractVariant(opcodeId), k -> new HashSet<>())
-                    .add(OpcodeId.extractFamily(opcodeId));
+            familiesBySignature
+                    .computeIfAbsent(Instruction.getOperandSourcesById(opcodeId), k -> new HashSet<>())
+                    .add(Instruction.getFamilyById(opcodeId));
         }
 
         int solitary = -1;
         for (int opcodeId : allOpcodes.keySet()) {
             // NOP has the value 0, which is the empty cell, so it is never selected
-            if (opcodeId != NOP_OPCODE && familiesByVariant.get(OpcodeId.extractVariant(opcodeId)).size() == 1) {
+            if (opcodeId != NOP_OPCODE
+                    && familiesBySignature.get(Instruction.getOperandSourcesById(opcodeId)).size() == 1) {
                 solitary = opcodeId;
                 break;
             }
         }
-        assertThat(solitary).as("an opcode whose variant only its own family uses").isNotNegative();
+        assertThat(solitary).as("an opcode whose operand sources only its own family uses").isNotNegative();
 
         assertThat(familyFlipsOf(solitary))
                 .as("%s keeps its value", allOpcodes.get(solitary))
@@ -339,8 +378,12 @@ class GeneSubstitutionPluginTest {
         return reached;
     }
 
+    /**
+     * A variant flip keeps what an instruction does and changes how its operands are supplied, so
+     * family and operation stay and the number of operands does not change.
+     */
     @Test
-    void variantFlipStaysInArityGroup() {
+    void variantFlipKeepsFamilyOperationAndOperandCount() {
         int verified = 0;
         for (int seed = 0; seed < 200; seed++) {
             setUp();
@@ -355,15 +398,13 @@ class GeneSubstitutionPluginTest {
 
             int newValue = environment.getMolecule(5, 5).value();
             if (newValue != ADDR_OPCODE) {
-                int origFamily = OpcodeId.extractFamily(ADDR_OPCODE);
-                int origOperation = OpcodeId.extractOperation(ADDR_OPCODE);
-                int origVariant = OpcodeId.extractVariant(ADDR_OPCODE);
-                assertThat(OpcodeId.extractFamily(newValue)).isEqualTo(origFamily);
-                assertThat(OpcodeId.extractOperation(newValue)).isEqualTo(origOperation);
-                int newVariant = OpcodeId.extractVariant(newValue);
-                assertThat(GeneSubstitutionPlugin.arityGroup(newVariant))
-                        .as("New variant %d must be in same arity group as %d", newVariant, origVariant)
-                        .isEqualTo(GeneSubstitutionPlugin.arityGroup(origVariant));
+                assertThat(Instruction.getFamilyById(newValue))
+                        .isEqualTo(Instruction.getFamilyById(ADDR_OPCODE));
+                assertThat(Instruction.getOperationById(newValue))
+                        .isEqualTo(Instruction.getOperationById(ADDR_OPCODE));
+                assertThat(Instruction.getOperandSourcesById(newValue))
+                        .as("operand count of %s", Instruction.getAllInstructions().get(newValue))
+                        .hasSameSizeAs(Instruction.getOperandSourcesById(ADDR_OPCODE));
                 verified++;
             }
         }
@@ -371,8 +412,8 @@ class GeneSubstitutionPluginTest {
     }
 
     /**
-     * A hard comparison and its probabilistic twin are conditionals of the same variant, so one
-     * operation flip turns the one into the other.
+     * A hard comparison and its probabilistic twin are conditionals that read their operands the
+     * same way, so one operation flip turns the one into the other.
      */
     @Test
     void operationFlipOfAComparisonReachesItsProbabilisticTwin() {
@@ -398,8 +439,8 @@ class GeneSubstitutionPluginTest {
 
     @Test
     void codeSkipsWhenNoAlternatives() {
-        // NOP is unique: SPECIAL family, operation 0, variant NONE (0-arg group).
-        // No other opcode shares any of its components in a useful way.
+        // NOP is the only opcode of its family that takes no operands, so no flip mode has an
+        // alternative for it.
         placeCode(5, 5, NOP_OPCODE);
         GeneSubstitutionPlugin plugin = codeOnlyPlugin(new SeededRandomProvider(42));
         plugin.substitute(child, environment);

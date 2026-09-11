@@ -2,6 +2,7 @@ package org.evochora.runtime.worldgen;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
@@ -10,7 +11,6 @@ import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.isa.Instruction;
-import org.evochora.runtime.isa.OpcodeId;
 import org.evochora.runtime.isa.RegisterBank;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.EnvironmentProperties;
@@ -53,13 +53,15 @@ import org.slf4j.LoggerFactory;
  * cell — opcodes, register and label slots, labels, cells outside any instruction and cells the
  * frame finds ambiguous. A multiplier of zero takes its cells out of the selection entirely.
  * <p>
- * <strong>CODE Mutation:</strong> At init time, three lookup tables are pre-computed from
- * the registered instruction set. Each table maps an opcode ID to an array of valid alternative
- * opcodes for one flip mode: an operation flip keeps family and variant, a family flip keeps the
- * variant and with it the signature and takes any operation of another family, and a variant flip
- * keeps family and operation and stays within the same arity group (0-arg, 1-arg, 2-arg, 3-arg),
- * so instruction length never changes. Every mutation result is guaranteed to be a registered
- * opcode.
+ * <strong>CODE Mutation:</strong> At init time, three lookup tables are pre-computed from the
+ * registered instruction set. Each table maps an opcode ID to an array of valid alternative
+ * opcodes for one flip mode. What an opcode is comparable to is read from the registry alone —
+ * its family, its operation and its operand sources, the list that says what the cells behind the
+ * opcode are read as. An operation flip keeps family and operand sources and changes what is done
+ * with the operands; a family flip keeps the operand sources and leaves the family, so the cells
+ * behind the opcode keep their meaning; a variant flip keeps family and operation and takes an
+ * opcode with the same number of operands, changing how they are supplied. Every mutation result
+ * is guaranteed to be a registered opcode.
  * <p>
  * <strong>Performance:</strong> Near-zero allocation after warmup. The owned cells are visited
  * through the environment's cell views in a single reservoir-sampling pass (no list collection),
@@ -117,11 +119,6 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
      * can produce, so the highest registered index is still addressable.
      */
     private static final int TYPE_TABLE_SIZE = typeTableSize();
-
-    /** Arity group boundaries from {@link org.evochora.runtime.isa.Variant}. */
-    private static final int ARITY_0_MAX = 15;
-    private static final int ARITY_1_MAX = 31;
-    private static final int ARITY_2_MAX = 47;
 
     // --- Immutable config ---
     private final Random random;
@@ -452,10 +449,10 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
      * Mutates a CODE molecule's opcode value by flipping to a random valid alternative.
      * <p>
      * Selects a flip mode based on configured weights, then picks a random alternative from the
-     * pre-computed lookup table of that mode: an operation flip keeps family and variant, a family
-     * flip keeps the variant and takes any operation of another family, and a variant flip keeps
-     * family and operation within the arity group. If no alternatives exist for the selected mode,
-     * returns the original value unchanged.
+     * pre-computed lookup table of that mode: an operation flip keeps family and operand sources,
+     * a family flip keeps the operand sources and leaves the family, and a variant flip keeps
+     * family and operation and takes an opcode with the same number of operands. If no
+     * alternatives exist for the selected mode, returns the original value unchanged.
      *
      * @param opcodeValue The current opcode value (bare, without TYPE_CODE bits).
      * @return The mutated opcode value, or the original if no alternative exists.
@@ -560,54 +557,77 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
     /**
      * Builds the pre-computed opcode alternative tables for the three flip modes.
      * <p>
-     * Groups all registered opcodes by the components a flip keeps, then for each opcode stores
-     * the list of valid alternatives of each mode as an {@code int[]}. The operation flip keeps
-     * family and variant and takes another operation; the variant flip keeps family and operation
-     * and takes another variant of the same arity group; the family flip keeps only the variant,
-     * and with it the signature the operands are written for, and takes any operation of another
-     * family. Its group therefore excludes every opcode of the opcode's own family, not only the
-     * opcode itself: an operation number carries no meaning across families, so requiring the same
-     * one would leave the flip empty for every opcode whose operation number no other family uses.
-     * This is called once at construction time; the resulting tables provide O(1)
-     * lookup during mutation.
+     * Everything a flip needs to know about an opcode comes from the instruction registry: the
+     * family it belongs to, the operation it implements within that family, and its operand
+     * sources, the list that says what the cells behind the opcode are read as. Two opcodes have
+     * the same signature when those lists are equal element by element.
+     * <ul>
+     *   <li><b>Operation flip:</b> same family, same signature, another opcode. The operands keep
+     *       their meaning and the instruction keeps its length; only what is done with them
+     *       changes.</li>
+     *   <li><b>Family flip:</b> same signature, another family. The group excludes every opcode of
+     *       the opcode's own family, not only the opcode itself, because an operation number
+     *       carries no meaning across families.</li>
+     *   <li><b>Variant flip:</b> same family, same operation, another opcode whose signature has
+     *       the same number of operands. The operation stays and the way its operands are supplied
+     *       changes — a register form for an immediate one, a stack form for a register one.</li>
+     * </ul>
+     * This is called once at construction time; the resulting tables provide O(1) lookup during
+     * mutation.
      */
     private void buildCodeAlternatives() {
         Map<Integer, String> allOpcodes = Instruction.getAllInstructions();
 
-        // Intermediate grouping maps
-        Int2ObjectOpenHashMap<IntArrayList> opGroups = new Int2ObjectOpenHashMap<>();
-        Int2ObjectOpenHashMap<IntArrayList> famGroups = new Int2ObjectOpenHashMap<>();
-        Int2ObjectOpenHashMap<IntArrayList> varGroups = new Int2ObjectOpenHashMap<>();
+        // Intermediate grouping maps, keyed by what the respective flip keeps unchanged.
+        Map<FamilySignature, IntArrayList> opGroups = new HashMap<>();
+        Map<List<Instruction.OperandSource>, IntArrayList> famGroups = new HashMap<>();
+        Map<FamilyOperationArity, IntArrayList> varGroups = new HashMap<>();
 
         for (int opcodeId : allOpcodes.keySet()) {
-            int family = OpcodeId.extractFamily(opcodeId);
-            int operation = OpcodeId.extractOperation(opcodeId);
-            int variant = OpcodeId.extractVariant(opcodeId);
-            int ag = arityGroup(variant);
+            List<Instruction.OperandSource> sources = Instruction.getOperandSourcesById(opcodeId);
+            int family = Instruction.getFamilyById(opcodeId);
+            int operation = Instruction.getOperationById(opcodeId);
 
-            int opKey = family * 64 + variant;
-            opGroups.computeIfAbsent(opKey, k -> new IntArrayList()).add(opcodeId);
-
-            famGroups.computeIfAbsent(variant, k -> new IntArrayList()).add(opcodeId);
-
-            int varKey = family * 256 + operation * 4 + ag;
-            varGroups.computeIfAbsent(varKey, k -> new IntArrayList()).add(opcodeId);
+            opGroups.computeIfAbsent(new FamilySignature(family, sources), k -> new IntArrayList()).add(opcodeId);
+            famGroups.computeIfAbsent(sources, k -> new IntArrayList()).add(opcodeId);
+            varGroups.computeIfAbsent(new FamilyOperationArity(family, operation, sources.size()),
+                    k -> new IntArrayList()).add(opcodeId);
         }
 
         for (int opcodeId : allOpcodes.keySet()) {
-            int family = OpcodeId.extractFamily(opcodeId);
-            int operation = OpcodeId.extractOperation(opcodeId);
-            int variant = OpcodeId.extractVariant(opcodeId);
-            int ag = arityGroup(variant);
+            List<Instruction.OperandSource> sources = Instruction.getOperandSourcesById(opcodeId);
+            int family = Instruction.getFamilyById(opcodeId);
+            int operation = Instruction.getOperationById(opcodeId);
 
             operationFlipAlternatives.put(opcodeId,
-                    filterSelf(opGroups.get(family * 64 + variant), opcodeId));
+                    filterSelf(opGroups.get(new FamilySignature(family, sources)), opcodeId));
             familyFlipAlternatives.put(opcodeId,
-                    filterFamily(famGroups.get(variant), family));
+                    filterFamily(famGroups.get(sources), family));
             variantFlipAlternatives.put(opcodeId,
-                    filterSelf(varGroups.get(family * 256 + operation * 4 + ag), opcodeId));
+                    filterSelf(varGroups.get(new FamilyOperationArity(family, operation, sources.size())),
+                            opcodeId));
         }
     }
+
+    /**
+     * Grouping key of the operation flip: the opcodes a flip may choose between are those of one
+     * family whose operands are read the same way.
+     *
+     * @param family the instruction family
+     * @param sources the operand sources in the order they are taken
+     */
+    private record FamilySignature(int family, List<Instruction.OperandSource> sources) {}
+
+    /**
+     * Grouping key of the variant flip: the opcodes a flip may choose between are those of one
+     * operation of one family that take the same number of operands, so the operation stays and
+     * only the way its operands are supplied changes.
+     *
+     * @param family the instruction family
+     * @param operation the operation within that family
+     * @param operandCount the number of operand sources, stack operands included
+     */
+    private record FamilyOperationArity(int family, int operation, int operandCount) {}
 
     /**
      * Filters a group list to exclude the given opcode, returning an array of alternatives.
@@ -649,7 +669,7 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
         int idx = 0;
         for (int i = 0; i < group.size(); i++) {
             int id = group.getInt(i);
-            if (OpcodeId.extractFamily(id) != selfFamily) {
+            if (Instruction.getFamilyById(id) != selfFamily) {
                 result[idx++] = id;
             }
         }
@@ -657,21 +677,6 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
             return null;
         }
         return idx == result.length ? result : Arrays.copyOf(result, idx);
-    }
-
-    /**
-     * Returns the arity group (0-3) for a variant ID.
-     * <p>
-     * Arity groups: 0-15 → 0-arg, 16-31 → 1-arg, 32-47 → 2-arg, 48-63 → 3-arg.
-     *
-     * @param variant The variant ID.
-     * @return The arity group (0, 1, 2, or 3).
-     */
-    static int arityGroup(int variant) {
-        if (variant <= ARITY_0_MAX) return 0;
-        if (variant <= ARITY_1_MAX) return 1;
-        if (variant <= ARITY_2_MAX) return 2;
-        return 3;
     }
 
     // ---- Utilities ----

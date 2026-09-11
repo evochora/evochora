@@ -103,9 +103,11 @@ class StateInstructionCompilerTest extends CompilerTestBase {
             ProgramArtifact artifact = compiler.compile(lines, "smr_auto.s", testEnvProps);
             assertThat(artifact).isNotNull();
             assertThat(artifact.machineCodeLayout()).isNotEmpty();
-            // Verify correct opcodes are generated (using structured IDs: STATE=7, operation=15)
-            // SMR=R(16), SMRI=I(17), SMRS=S(18) -> 7*4096 + 15*64 + variant
-            assertThat(artifact.machineCodeLayout().values()).contains(29648, 29649, 29650);
+            // Verify that the three SMR opcodes of the instruction registry are the ones emitted
+            assertThat(artifact.machineCodeLayout().values()).contains(
+                    Instruction.getInstructionIdByName("SMR"),
+                    Instruction.getInstructionIdByName("SMRI"),
+                    Instruction.getInstructionIdByName("SMRS"));
         });
     }
 }

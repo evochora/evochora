@@ -184,7 +184,7 @@ class H2DatabaseOrganismWriteTest {
         Vector dvBeforeFetch = Vector.newBuilder().addComponents(0).addComponents(1).build();
 
         // SETI %DR0, DATA:42 instruction
-        // Opcode: SETI (ID 1) | TYPE_CODE
+        // Opcode: SETI, taken from the instruction registry
         int setiOpcode = Instruction.getInstructionIdByName("SETI") | Config.TYPE_CODE;
         // Register argument: %DR0 encoded as DATA:0
         int regArg = new Molecule(Config.TYPE_DATA, 0).toInt();

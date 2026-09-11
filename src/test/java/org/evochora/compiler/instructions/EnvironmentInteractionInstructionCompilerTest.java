@@ -4,7 +4,6 @@ import org.evochora.compiler.Compiler;
 import org.evochora.compiler.CompilerTestBase;
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.isa.Instruction;
-import org.evochora.runtime.isa.OpcodeId;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -13,8 +12,6 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
-import static org.evochora.runtime.isa.Family.ENVIRONMENT;
-import static org.evochora.runtime.isa.Variant.*;
 
 @Tag("unit")
 class EnvironmentInteractionInstructionCompilerTest extends CompilerTestBase {
@@ -62,7 +59,7 @@ class EnvironmentInteractionInstructionCompilerTest extends CompilerTestBase {
             
             // Verify that PPKR instruction was compiled
             var machineCode = artifact.machineCodeLayout();
-            assertThat(machineCode.values()).contains(OpcodeId.compute(ENVIRONMENT, 2, RR)); // PPKR instruction ID
+            assertThat(machineCode.values()).contains(Instruction.getInstructionIdByName("PPKR")); // PPKR instruction ID
             
             // After PPKR execution: DR0 should contain DATA:99 (read from cell 0|1), DR1 unchanged
             // Cell 0|1 should contain STATE:111: a DATA value written with marker register 0 is
@@ -86,7 +83,7 @@ class EnvironmentInteractionInstructionCompilerTest extends CompilerTestBase {
             
             // Verify that PPKI instruction was compiled
             var machineCode = artifact.machineCodeLayout();
-            assertThat(machineCode.values()).contains(OpcodeId.compute(ENVIRONMENT, 2, RV)); // PPKI instruction ID
+            assertThat(machineCode.values()).contains(Instruction.getInstructionIdByName("PPKI")); // PPKI instruction ID
             
             // After PPKI execution: DR0 should contain DATA:99 (read from cell 0|1)
             // Cell 0|1 should contain STATE:111: a DATA value written with marker register 0 is
@@ -112,7 +109,7 @@ class EnvironmentInteractionInstructionCompilerTest extends CompilerTestBase {
             
             // Verify that PPKS instruction was compiled
             var machineCode = artifact.machineCodeLayout();
-            assertThat(machineCode.values()).contains(OpcodeId.compute(ENVIRONMENT, 2, SS)); // PPKS instruction ID
+            assertThat(machineCode.values()).contains(Instruction.getInstructionIdByName("PPKS")); // PPKS instruction ID
             
             // After PPKS execution: DR0 should contain DATA:99 (read from cell 0|1)
             // Cell 0|1 should contain STATE:111: a DATA value written with marker register 0 is

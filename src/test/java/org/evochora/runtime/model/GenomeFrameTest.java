@@ -81,12 +81,14 @@ class GenomeFrameTest {
 
     /** An opcode value no instruction is registered under. */
     private static int unregisteredOpcodeValue() {
-        for (int value = 1; value < 4096; value++) {
+        // 8192 is one past the highest id the opcode layout can express: five family bits and
+        // eight index bits.
+        for (int value = 1; value < 8192; value++) {
             if (Instruction.getPlannerById(value) == null) {
                 return value;
             }
         }
-        throw new IllegalStateException("Every opcode value below 4096 is registered");
+        throw new IllegalStateException("Every opcode value the layout can express is registered");
     }
 
     /**

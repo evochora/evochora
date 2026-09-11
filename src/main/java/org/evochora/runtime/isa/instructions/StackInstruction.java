@@ -2,7 +2,6 @@ package org.evochora.runtime.isa.instructions;
 
 import org.evochora.runtime.internal.services.ExecutionContext;
 import org.evochora.runtime.isa.Instruction;
-import org.evochora.runtime.isa.Variant;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Organism;
 
@@ -21,24 +20,25 @@ public class StackInstruction extends Instruction {
     /**
      * Registers all stack manipulation instructions with the instruction registry.
      * <p>
-     * Note: Stack operations share the DATA family ID, continuing from DataInstruction's operations.
+     * Note: Stack operations share the DATA family ID, continuing both the operation numbers and
+     * the indices within the family from DataInstruction.
      *
      * @param f the family ID for this instruction family (should be DATA family)
      */
     public static void register(int f) {
         family = f;
         // Operation 3: DUP (duplicate top of stack)
-        reg(3, Variant.NONE, "DUP");
+        reg(3, 8, "DUP");
         // Operation 4: SWAP (swap top two stack values)
-        reg(4, Variant.NONE, "SWAP");
+        reg(4, 9, "SWAP");
         // Operation 5: DROP (discard top of stack)
-        reg(5, Variant.NONE, "DROP");
+        reg(5, 10, "DROP");
         // Operation 6: ROT (stack rotate)
-        reg(6, Variant.NONE, "ROT");
+        reg(6, 11, "ROT");
     }
 
-    private static void reg(int op, int variant, String name, OperandSource... sources) {
-        Instruction.registerOp(StackInstruction.class, StackInstruction::new, family, op, variant, name, true, sources);
+    private static void reg(int op, int index, String name, OperandSource... sources) {
+        Instruction.registerOp(StackInstruction.class, StackInstruction::new, family, op, index, name, true, sources);
     }
 
     /**
