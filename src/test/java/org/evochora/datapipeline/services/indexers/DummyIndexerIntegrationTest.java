@@ -523,11 +523,13 @@ class DummyIndexerIntegrationTest {
         sendBatchInfoToTopic(runId, key2.asString(), 100, 199);
         sendBatchInfoToTopic(runId, key3.asString(), 200, 299);
         
-        // Wait for first flush (2 chunks = 200 ticks)
+        // Wait until the indexer has claimed all three batches. It handles them one after the
+        // other, so by then the first two are committed (2 chunks = 200 ticks) and the third is
+        // being read into the buffer. A stop that interrupts this read can still abort the third
+        // batch, because the indexer reads in shutdown phase WAITING (see #172).
         await().atMost(10, TimeUnit.SECONDS)
-            .until(() -> indexer.getMetrics().get("ticks_processed").longValue() >= 200);
-        
-        // At this point: 1 chunk (100 ticks) remains in buffer
+            .until(() -> testBatchTopic.getMetrics().get("messages_received").longValue() >= 3);
+
         // Stop service (triggers final flush of remaining chunk)
         indexer.stop();
         await().atMost(5, TimeUnit.SECONDS)
