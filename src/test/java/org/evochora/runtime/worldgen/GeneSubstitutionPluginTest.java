@@ -51,15 +51,38 @@ class GeneSubstitutionPluginTest {
     /** NOP opcode: SPECIAL family, no operands, and the value of an empty cell. */
     private static int NOP_OPCODE;
 
+    /** GTR opcode: a conditional over two register operands. */
+    private static int GTR_OPCODE;
+
+    /** DOTR opcode: an arithmetic instruction over three register operands. */
+    private static int DOTR_OPCODE;
+
+    /** PUSH opcode: one register operand. */
+    private static int PUSH_OPCODE;
+
     @BeforeAll
     static void initInstructions() {
         Instruction.init();
         ADDR_OPCODE = Instruction.getInstructionIdByName("ADDR");
         NOP_OPCODE = Instruction.getInstructionIdByName("NOP");
+        GTR_OPCODE = Instruction.getInstructionIdByName("GTR");
+        DOTR_OPCODE = Instruction.getInstructionIdByName("DOTR");
+        PUSH_OPCODE = Instruction.getInstructionIdByName("PUSH");
     }
 
     @BeforeEach
     void setUp() {
+        setUpWith(new int[]{1, 0}, new int[]{0, 0});
+    }
+
+    /**
+     * Builds the environment and a newborn whose reading frame starts at the given position and
+     * runs along the given direction vector.
+     *
+     * @param dv the newborn's direction vector
+     * @param initialPosition the position the newborn started at
+     */
+    private void setUpWith(int[] dv, int[] initialPosition) {
         environment = new Environment(new int[]{32, 32}, true);
 
         String thermoConfigStr = """
@@ -91,9 +114,9 @@ class GeneSubstitutionPluginTest {
 
         child = Organism.restore(2, 9)
                 .parentId(parent.getId())
-                .ip(new int[]{0, 0})
-                .dv(new int[]{1, 0})
-                .initialPosition(new int[]{0, 0})
+                .ip(initialPosition.clone())
+                .dv(dv.clone())
+                .initialPosition(initialPosition.clone())
                 .energy(5000)
                 .build(simulation);
         simulation.addOrganism(child);
@@ -616,6 +639,241 @@ class GeneSubstitutionPluginTest {
         assertThat(sawClampHigh).as("Should see DR7 clamped at boundary").isTrue();
     }
 
+    // ---- REGISTER swap tests ----
+
+    /** The flat index the environment persists the cell at these coordinates by. */
+    private int flatIndex(int x, int y) {
+        return environment.getProperties().toFlatIndex(new int[]{x, y});
+    }
+
+    /**
+     * Both operands of a two-register instruction stand in register slots, so whichever of them the
+     * reservoir picks, the two exchange their molecules and the record names both cells with the
+     * selected one first.
+     */
+    @Test
+    void aRegisterOperandSwapsWithTheOtherOperandOfItsInstruction() {
+        Set<Integer> selectedCells = new HashSet<>();
+        for (int seed = 0; seed < 20; seed++) {
+            setUp();
+            placeCode(0, 0, GTR_OPCODE);
+            placeRegister(1, 0, 0);
+            placeRegister(2, 0, 1);
+            int firstOperand = flatIndex(1, 0);
+            int secondOperand = flatIndex(2, 0);
+
+            registerOnlyPlugin(new SeededRandomProvider(seed)).substitute(child, environment);
+
+            assertThat(environment.getMolecule(1, 0).value()).as("seed=%d", seed).isEqualTo(1);
+            assertThat(environment.getMolecule(2, 0).value()).as("seed=%d", seed).isEqualTo(0);
+
+            List<MutationRecord> records = child.getBirthMutations();
+            assertThat(records).as("seed=%d", seed).hasSize(1);
+            MutationRecord record = records.get(0);
+            assertThat(record.cells()).as("seed=%d", seed)
+                    .containsExactlyInAnyOrder(firstOperand, secondOperand);
+            assertThat(record.params()).as("seed=%d: a register swap in no operand slot", seed)
+                    .containsExactly(0L, 5L);
+            assertThat(record.oldValues()[0]).as("seed=%d", seed).isEqualTo(record.newValues()[1]);
+            assertThat(record.oldValues()[1]).as("seed=%d", seed).isEqualTo(record.newValues()[0]);
+            selectedCells.add(record.cells()[0]);
+        }
+        assertThat(selectedCells).as("either operand can be the selected cell")
+                .containsExactlyInAnyOrder(flatIndex(1, 0), flatIndex(2, 0));
+    }
+
+    /**
+     * The reading frame walks over a cell another organism owns as the machine does, but the plugin
+     * writes only what the newborn owns: a foreign register operand is no swap partner, and the
+     * selected cell takes the register step instead.
+     */
+    @Test
+    void aForeignRegisterOperandIsNoSwapPartner() {
+        placeCode(0, 0, GTR_OPCODE);
+        placeRegister(1, 0, 0);
+        environment.setMolecule(new Molecule(Config.TYPE_REGISTER, 1), child.getId() + 1, new int[]{2, 0});
+
+        registerOnlyPlugin(new SeededRandomProvider(3)).substitute(child, environment);
+
+        assertThat(environment.getMolecule(2, 0).value()).as("the foreign cell is untouched").isEqualTo(1);
+        List<MutationRecord> records = child.getBirthMutations();
+        assertThat(records).hasSize(1);
+        assertThat(records.get(0).cells()).containsExactly(flatIndex(1, 0));
+        assertThat(records.get(0).params()).containsExactly(0L, 4L);
+    }
+
+    /**
+     * The frame reads the genome along the direction vector, so an instruction laid out against the
+     * rising coordinates is read the same way and its operands swap the same way.
+     */
+    @Test
+    void aRegisterOperandSwapsAgainstTheRisingCoordinatesToo() {
+        Set<Integer> selectedCells = new HashSet<>();
+        for (int seed = 0; seed < 20; seed++) {
+            setUpWith(new int[]{-1, 0}, new int[]{5, 0});
+            placeCode(5, 0, GTR_OPCODE);
+            placeRegister(4, 0, 0);
+            placeRegister(3, 0, 1);
+
+            registerOnlyPlugin(new SeededRandomProvider(seed)).substitute(child, environment);
+
+            assertThat(environment.getMolecule(4, 0).value()).as("seed=%d", seed).isEqualTo(1);
+            assertThat(environment.getMolecule(3, 0).value()).as("seed=%d", seed).isEqualTo(0);
+
+            List<MutationRecord> records = child.getBirthMutations();
+            assertThat(records).as("seed=%d", seed).hasSize(1);
+            MutationRecord record = records.get(0);
+            assertThat(record.cells()).as("seed=%d", seed)
+                    .containsExactlyInAnyOrder(flatIndex(4, 0), flatIndex(3, 0));
+            assertThat(record.params()).as("seed=%d", seed).containsExactly(0L, 5L);
+            selectedCells.add(record.cells()[0]);
+        }
+        assertThat(selectedCells).as("either operand can be the selected cell")
+                .containsExactlyInAnyOrder(flatIndex(4, 0), flatIndex(3, 0));
+    }
+
+    /**
+     * Where both neighbours of the selected cell are register slots, the cell in the direction of
+     * the direction vector is the one taken.
+     */
+    @Test
+    void aRegisterOperandBetweenTwoOthersSwapsWithTheOneAhead() {
+        int middle = flatIndex(2, 0);
+        int verified = 0;
+        for (int seed = 0; seed < 20; seed++) {
+            setUp();
+            placeCode(0, 0, DOTR_OPCODE);
+            placeRegister(1, 0, 0);
+            placeRegister(2, 0, 1);
+            placeRegister(3, 0, 2);
+
+            registerOnlyPlugin(new SeededRandomProvider(seed)).substitute(child, environment);
+
+            MutationRecord record = child.getBirthMutations().get(0);
+            if (record.cells()[0] != middle) {
+                continue;
+            }
+            assertThat(record.cells()[1]).as("seed=%d: the cell ahead is taken", seed)
+                    .isEqualTo(flatIndex(3, 0));
+            assertThat(environment.getMolecule(2, 0).value()).as("seed=%d", seed).isEqualTo(2);
+            assertThat(environment.getMolecule(3, 0).value()).as("seed=%d", seed).isEqualTo(1);
+            assertThat(environment.getMolecule(1, 0).value()).as("seed=%d", seed).isEqualTo(0);
+            verified++;
+        }
+        assertThat(verified).as("the middle operand is selected for at least one seed").isPositive();
+    }
+
+    /**
+     * An instruction with a single register operand has no second one to swap with, so the operand
+     * moves within its bank as a cell outside every instruction does.
+     */
+    @Test
+    void aLoneRegisterOperandStepsWithinItsBank() {
+        for (int seed = 0; seed < 20; seed++) {
+            setUp();
+            placeCode(0, 0, PUSH_OPCODE);
+            placeRegister(1, 0, 2);
+
+            registerOnlyPlugin(new SeededRandomProvider(seed)).substitute(child, environment);
+
+            assertThat(environment.getMolecule(0, 0).value()).as("seed=%d", seed).isEqualTo(PUSH_OPCODE);
+            assertThat(environment.getMolecule(1, 0).value()).as("seed=%d", seed).isBetween(1, 3);
+            MutationRecord record = child.getBirthMutations().get(0);
+            assertThat(record.cells()).as("seed=%d", seed).containsExactly(flatIndex(1, 0));
+            assertThat(record.params()).as("seed=%d: a register step in no operand slot", seed)
+                    .containsExactly(0L, 4L);
+        }
+    }
+
+    /** A REGISTER molecule that no walk reaches has no operand slot beside it either. */
+    @Test
+    void aRegisterOutsideEveryInstructionStepsWithinItsBank() {
+        for (int seed = 0; seed < 20; seed++) {
+            setUp();
+            placeRegister(5, 5, 3);
+            placeRegister(6, 5, 5);
+
+            registerOnlyPlugin(new SeededRandomProvider(seed)).substitute(child, environment);
+
+            MutationRecord record = child.getBirthMutations().get(0);
+            assertThat(record.cells()).as("seed=%d", seed).hasSize(1);
+            assertThat(record.params()).as("seed=%d", seed).containsExactly(0L, 4L);
+        }
+    }
+
+    /** Two equal molecules have nothing to exchange, so the swap writes nothing at all. */
+    @Test
+    void aSwapOfTwoEqualMoleculesWritesNothing() {
+        for (int seed = 0; seed < 20; seed++) {
+            setUp();
+            placeCode(0, 0, GTR_OPCODE);
+            placeRegister(1, 0, 4);
+            placeRegister(2, 0, 4);
+
+            registerOnlyPlugin(new SeededRandomProvider(seed)).substitute(child, environment);
+
+            assertThat(environment.getMolecule(1, 0).value()).as("seed=%d", seed).isEqualTo(4);
+            assertThat(environment.getMolecule(2, 0).value()).as("seed=%d", seed).isEqualTo(4);
+            assertThat(child.getBirthMutations()).as("seed=%d", seed).isNull();
+        }
+    }
+
+    // ---- Action code tests ----
+
+    /**
+     * Runs the plugin until one of the seeds produces a record and returns that record's action
+     * code, the second parameter of every substitution record.
+     *
+     * @param plugins one plugin per seed, built by the caller
+     * @param placement places the molecule the plugin is to select
+     * @return the action code of the first record seen
+     */
+    private long actionCodeOf(java.util.function.IntFunction<GeneSubstitutionPlugin> plugins,
+                              Runnable placement) {
+        for (int seed = 0; seed < 100; seed++) {
+            setUp();
+            placement.run();
+            plugins.apply(seed).substitute(child, environment);
+            List<MutationRecord> records = child.getBirthMutations();
+            if (records != null) {
+                assertThat(records.get(0).params()).hasSize(2);
+                return records.get(0).params()[1];
+            }
+        }
+        throw new AssertionError("no seed of 100 produced a record");
+    }
+
+    @Test
+    void aValuePerturbationIsRecordedAsActionZero() {
+        assertThat(actionCodeOf(seed -> dataOnlyPlugin(new SeededRandomProvider(seed)),
+                () -> placeData(5, 5, 100))).isZero();
+    }
+
+    @Test
+    void theThreeOpcodeFlipsAreRecordedAsTheirOwnActions() {
+        assertThat(actionCodeOf(seed -> new GeneSubstitutionPlugin(new SeededRandomProvider(seed),
+                        1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.5, 1, 1),
+                () -> placeCode(5, 5, ADDR_OPCODE)))
+                .as("operation flip").isEqualTo(1L);
+        assertThat(actionCodeOf(seed -> familyFlipOnlyPlugin(new SeededRandomProvider(seed)),
+                () -> placeCode(5, 5, ADDR_OPCODE)))
+                .as("family flip").isEqualTo(2L);
+        assertThat(actionCodeOf(seed -> new GeneSubstitutionPlugin(new SeededRandomProvider(seed),
+                        1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.5, 1, 1),
+                () -> placeCode(5, 5, ADDR_OPCODE)))
+                .as("variant flip").isEqualTo(3L);
+    }
+
+    @Test
+    void theTwoLabelBitFlipsAreRecordedAsTheirOwnActions() {
+        assertThat(actionCodeOf(seed -> labelOnlyPlugin(new SeededRandomProvider(seed)),
+                () -> placeLabel(5, 5, 12345)))
+                .as("LABEL bit flip").isEqualTo(6L);
+        assertThat(actionCodeOf(seed -> labelrefOnlyPlugin(new SeededRandomProvider(seed)),
+                () -> placeLabelref(5, 5, 12345)))
+                .as("LABELREF bit flip").isEqualTo(7L);
+    }
+
     // ---- DATA mutation tests ----
 
     @Test
@@ -972,8 +1230,11 @@ class GeneSubstitutionPluginTest {
         assertThat(record.cells()).containsExactly(flatIndex);
         assertThat(record.oldValues()).containsExactly(expectedOld);
         assertThat(record.newValues()).containsExactly(environment.getMolecule(5, 5).toInt());
-        // The cell stands on a line no walk reaches, so it is in neither kind of operand slot
-        assertThat(record.params()).containsExactly(0L);
+        // The cell stands on a line no walk reaches, so it is in neither kind of operand slot, and
+        // the action is one of the three opcode flips
+        assertThat(record.params()).hasSize(2);
+        assertThat(record.params()[0]).isZero();
+        assertThat(record.params()[1]).isBetween(1L, 3L);
         assertThat(record.dv()).isEqualTo(child.getDv());
     }
 
@@ -1305,8 +1566,8 @@ class GeneSubstitutionPluginTest {
             }
             MutationRecord record = records.get(0);
             assertThat(record.cells()).as("seed=%d", seed).containsExactly(literal);
-            assertThat(record.params()).as("seed=%d: the literal stands in a scalar slot", seed)
-                    .containsExactly(1L);
+            assertThat(record.params()).as("seed=%d: a value perturbation in a scalar slot", seed)
+                    .containsExactly(1L, 0L);
             written++;
         }
         assertThat(written).as("the literal is hit and changed for at least one seed").isPositive();
@@ -1332,8 +1593,8 @@ class GeneSubstitutionPluginTest {
             MutationRecord record = records.get(0);
             assertThat(record.cells()).as("seed=%d", seed)
                     .containsAnyOf(firstComponent, secondComponent).hasSize(1);
-            assertThat(record.params()).as("seed=%d: the cell stands in a vector slot", seed)
-                    .containsExactly(2L);
+            assertThat(record.params()).as("seed=%d: a value perturbation in a vector slot", seed)
+                    .containsExactly(2L, 0L);
             written++;
         }
         assertThat(written).as("a vector component is hit and changed for at least one seed").isPositive();
@@ -1362,8 +1623,8 @@ class GeneSubstitutionPluginTest {
             }
             MutationRecord record = records.get(0);
             assertThat(record.cells()).as("seed=%d", seed).containsExactly(outside);
-            assertThat(record.params()).as("seed=%d: the cell stands in no operand slot", seed)
-                    .containsExactly(0L);
+            assertThat(record.params()).as("seed=%d: a value perturbation in no operand slot", seed)
+                    .containsExactly(0L, 0L);
             written++;
         }
         assertThat(written).as("the cell outside every instruction is hit and changed").isPositive();

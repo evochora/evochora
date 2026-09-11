@@ -184,7 +184,11 @@ facts, not a reconstruction, and need no node:
   index of the copied source), `deletion` (`params`: how many copies of the deleted label the body
   had), `instruction-insertion`, `label-insertion` (a detour of a copied label, one instruction
   and a jump onwards; `params`: the copied label's value and the value the jump carries),
-  `substitution`, and
+  `substitution` (`params`: the slot code of the selected cell — 0 neither, 1 a scalar immediate
+  slot, 2 a vector slot — and the action code: 0 value perturbation, 1, 2, 3 an opcode flip of the
+  operation, family, variant, 4 a register step, 5 a register swap with the adjacent register
+  operand, 6 a LABEL bit flip, 7 a LABELREF bit flip; a swap names two cells, every other action
+  one), and
   `label-rewrite` — the XOR mask every child's labels receive, with `cell_count` 0, `position`
   `[]` and the mask in `params`; it changes no genome hash and is not a mutation.
 - `variation_sources` — births per recording by what changed the genome: `unchanged`, `bodiless`

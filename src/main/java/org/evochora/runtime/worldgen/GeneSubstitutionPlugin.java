@@ -33,9 +33,10 @@ import org.slf4j.LoggerFactory;
  * sampling and applies the strategy that belongs to the molecule's type.
  * <p>
  * <strong>Strategies:</strong> Types whose value is an identifier have their own strategy — CODE
- * flips to a different registered opcode (operation, family or variant mode), REGISTER moves ±1
- * within its bank boundaries (DR stays DR, PDR stays PDR), LABEL and LABELREF flip N random bits
- * of the 19-bit hash. Every other type carries a plain number and uses the general strategy:
+ * flips to a different registered opcode (operation, family or variant mode), REGISTER swaps with
+ * the register operand beside it and moves ±1 within its bank boundaries where there is none (DR
+ * stays DR, PDR stays PDR), LABEL and LABELREF flip N random bits of the 19-bit hash. Every other
+ * type carries a plain number and uses the general strategy:
  * scale-proportional perturbation of the signed value, {@code delta = max(1,
  * round(|value|^exponent))} with the type's own exponent, a result leaving the 20-bit range
  * wrapping.
@@ -63,20 +64,32 @@ import org.slf4j.LoggerFactory;
  * opcode with the same number of operands, changing how they are supplied. Every mutation result
  * is guaranteed to be a registered opcode.
  * <p>
+ * <strong>REGISTER Mutation:</strong> A selected REGISTER cell looks at the two cells beside it
+ * along the newborn's direction vector and asks the reading frame what they are. Where the cell
+ * after it in that direction stands in a register operand slot, the two cells exchange their
+ * molecules; otherwise the cell before it is taken if that one does. Two adjacent register slots
+ * belong to one instruction, because an opcode cell stands between two instructions, so a swap
+ * exchanges two operands of the same instruction and leaves the instruction's shape intact. A cell
+ * with no register operand beside it moves ±1 within its bank instead.
+ * <p>
  * <strong>Performance:</strong> Near-zero allocation after warmup. The owned cells are visited
  * through the environment's cell views in a single reservoir-sampling pass (no list collection),
  * the reservoir state and the coordinate of the chosen cell live in reusable fields, the reading
  * frame keeps its buffers between builds, and CODE mutation uses pre-computed O(1) lookup tables.
  * The only per-call allocations are the visitor lambdas, the copies of the newborn's initial
  * position and direction vector the frame is built from and, when a molecule actually changes, one
- * {@link Molecule} record for the write-back and the {@link MutationRecord} handed to the newborn.
+ * {@link Molecule} record per written cell and the {@link MutationRecord} handed to the newborn.
  * <p>
  * <strong>What it records:</strong> a write reports itself on the newborn as a
- * {@link MutationRecord} of kind {@code "substitution"} naming the one changed cell, the molecule
- * before and after, and one parameter: the slot code of the changed cell, 0 for a cell in neither
- * kind of operand slot, 1 for a scalar immediate slot and 2 for a vector slot. A run that changes
- * nothing - no alternative opcode, a value that came out equal - records nothing, so a record
- * always stands for a molecule that differs.
+ * {@link MutationRecord} of kind {@code "substitution"} naming the changed cells, the molecule
+ * before and after at each of them, and two parameters. The first is the slot code of the selected
+ * cell: 0 for a cell in neither kind of operand slot, 1 for a scalar immediate slot and 2 for a
+ * vector slot. The second is the action code, which names what was done: 0 for a value
+ * perturbation, 1, 2 and 3 for an opcode flip of the operation, family and variant mode, 4 for a
+ * register step, 5 for a register swap, 6 for a LABEL bit flip and 7 for a LABELREF bit flip.
+ * Every action but the swap names one cell; the swap names two, the selected cell first. A run
+ * that changes nothing - no alternative opcode, a value that came out equal, a swap of two equal
+ * molecules - records nothing, so a record always stands for molecules that differ.
  * <p>
  * <strong>Thread Safety:</strong> Not thread-safe. Runs in the sequential post-Execute phase of
  * {@code Simulation.tick()}.
@@ -107,6 +120,30 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
 
     /** Slot code of a cell holding one component of a vector operand. */
     private static final int SLOT_CODE_VECTOR = 2;
+
+    /** Action code of the scale-proportional perturbation of a value-carrying molecule. */
+    private static final int ACTION_VALUE_PERTURBATION = 0;
+
+    /** Action code of an opcode flip that keeps family and operand sources and changes the operation. */
+    private static final int ACTION_OPCODE_OPERATION_FLIP = 1;
+
+    /** Action code of an opcode flip that keeps the operand sources and leaves the family. */
+    private static final int ACTION_OPCODE_FAMILY_FLIP = 2;
+
+    /** Action code of an opcode flip that keeps family and operation and changes the operand form. */
+    private static final int ACTION_OPCODE_VARIANT_FLIP = 3;
+
+    /** Action code of a register moved by ±1 within its bank. */
+    private static final int ACTION_REGISTER_STEP = 4;
+
+    /** Action code of a register cell exchanged with the register operand beside it. */
+    private static final int ACTION_REGISTER_SWAP = 5;
+
+    /** Action code of a bit flip in a LABEL hash. */
+    private static final int ACTION_LABEL_BITFLIP = 6;
+
+    /** Action code of a bit flip in a LABELREF hash. */
+    private static final int ACTION_LABELREF_BITFLIP = 7;
 
     /** Name of the configuration block carrying the operand slot multipliers. */
     private static final String OPERANDS_BLOCK = "operands";
@@ -167,6 +204,10 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
     private int[] chosen;
     /** Slot code of the candidate cell: 0 for neither kind of slot, 1 for scalar, 2 for vector. */
     private int chosenSlotCode;
+    /** Action code of the flip mode the last CODE mutation drew. */
+    private int codeFlipAction;
+    /** Coordinate of the cell a register swap exchanges with; sized like {@link #chosen}. */
+    private int[] swapPartner;
     /** Collects the record of a write; reused so that a birth allocates only the record itself. */
     private final MutationRecord.Builder recordBuilder = new MutationRecord.Builder();
     /** The newborn's genome in the machine's reading frame; rebuilt for every substitution. */
@@ -309,8 +350,8 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
      * Reads the child's genome in the machine's reading frame, iterates its owned cells via
      * weighted reservoir sampling to select one random non-empty code-encoding molecule — each
      * cell weighted by its type and by the operand slot it stands in — then applies a type-specific
-     * mutation and writes the new value back via
-     * {@link Environment#setMoleculeAt(int[], Molecule)}.
+     * mutation and writes the result back via {@link Environment#setMoleculeAt(int[], Molecule)}:
+     * one cell, or the two cells a register swap exchanges.
      *
      * @param child The newborn organism.
      * @param env The simulation environment.
@@ -326,6 +367,7 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
         int dims = props.getDimensions();
         if (chosen == null || chosen.length != dims) {
             chosen = new int[dims];
+            swapPartner = new int[dims];
         }
         cellChosen = false;
         weightSum = 0.0;
@@ -370,18 +412,33 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
 
         int selectedType = chosenType;
         int selectedRawValue = chosenRawValue;
+
+        if (selectedType == Config.TYPE_REGISTER) {
+            int partnerFlatIndex = adjacentRegisterSlot(env, childId, child.getDv());
+            if (partnerFlatIndex >= 0) {
+                swapWithRegisterSlot(child, env, props, partnerFlatIndex);
+                return;
+            }
+        }
+
         int newValue;
+        int actionCode;
 
         if (selectedType == Config.TYPE_CODE) {
             newValue = mutateCode(selectedRawValue);
+            actionCode = codeFlipAction;
         } else if (selectedType == Config.TYPE_REGISTER) {
             newValue = mutateRegister(selectedRawValue);
+            actionCode = ACTION_REGISTER_STEP;
         } else if (selectedType == Config.TYPE_LABEL) {
             newValue = mutateLabelHash(selectedRawValue, labelBitflips);
+            actionCode = ACTION_LABEL_BITFLIP;
         } else if (selectedType == Config.TYPE_LABELREF) {
             newValue = mutateLabelHash(selectedRawValue, labelrefBitflips);
+            actionCode = ACTION_LABELREF_BITFLIP;
         } else {
             newValue = mutateValue(selectedRawValue, typeExponents[rawIndex(selectedType)]);
+            actionCode = ACTION_VALUE_PERTURBATION;
         }
 
         if (newValue == selectedRawValue) {
@@ -392,13 +449,14 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
         Molecule written = new Molecule(selectedType, newValue, chosenMarker);
         env.setMoleculeAt(chosen, written);
 
-        // The one changed cell, as the flat index the environment persists cells by, and the slot
-        // code it stood in. A run that decided to change nothing has already returned above, so
-        // every record here names a molecule that actually differs.
+        // The one changed cell, as the flat index the environment persists cells by, the slot code
+        // it stood in and what was done to it. A run that decided to change nothing has already
+        // returned above, so every record here names a molecule that actually differs.
         child.recordBirthMutation(recordBuilder
                 .start(getClass().getName(), MUTATION_KIND, child.getDv())
                 .cell(props.toFlatIndex(chosen), chosenMoleculeInt, written.toInt())
                 .param(chosenSlotCode)
+                .param(actionCode)
                 .build());
 
         if (LOG.isDebugEnabled()) {
@@ -407,6 +465,103 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
                     child.getBirthTick(), childId, typeName,
                     displayValueForLog(selectedType, selectedRawValue),
                     displayValueForLog(selectedType, newValue), Arrays.toString(chosen));
+        }
+    }
+
+    /**
+     * Finds the register operand slot a selected REGISTER cell exchanges its molecule with.
+     * <p>
+     * The two cells beside the selected one along the newborn's direction vector are asked of the
+     * reading frame. The cell in the direction of the vector is preferred; the cell before the
+     * selected one is taken when the cell after it is no register slot. A neighbour outside the
+     * world exists only where the world is toroidal, and there it is the cell on the opposite edge.
+     * A neighbour the newborn does not own is no partner: the reading frame walks over foreign
+     * cells as the machine does, but this plugin writes only what the newborn owns.
+     * <p>
+     * The coordinate of the answer is left in {@link #swapPartner}.
+     *
+     * @param env The simulation environment, asked for the owner of a neighbour.
+     * @param childId The newborn whose cells may be written.
+     * @param dv The newborn's direction vector.
+     * @return The flat index of the neighbouring register slot, or {@code -1} when neither
+     *         neighbour stands in one that the newborn owns.
+     */
+    private int adjacentRegisterSlot(Environment env, int childId, int[] dv) {
+        EnvironmentProperties props = env.getProperties();
+        int forward = neighbourFlatIndex(props, dv, 1);
+        if (forward >= 0 && frame.slot(forward) == GenomeFrame.Slot.REGISTER
+                && env.getOwnerIdAt(swapPartner) == childId) {
+            return forward;
+        }
+        int backward = neighbourFlatIndex(props, dv, -1);
+        if (backward >= 0 && frame.slot(backward) == GenomeFrame.Slot.REGISTER
+                && env.getOwnerIdAt(swapPartner) == childId) {
+            return backward;
+        }
+        return -1;
+    }
+
+    /**
+     * Computes the cell one step from the selected cell along the direction vector.
+     *
+     * @param props The properties of the world the cells lie in.
+     * @param dv The newborn's direction vector.
+     * @param sign {@code 1} for the cell after the selected one, {@code -1} for the cell before it.
+     * @return The neighbour's flat index, or {@code -1} when the step leaves a world that does not
+     *         wrap; the neighbour's coordinate is left in {@link #swapPartner}.
+     */
+    private int neighbourFlatIndex(EnvironmentProperties props, int[] dv, int sign) {
+        for (int i = 0; i < swapPartner.length; i++) {
+            int coordinate = chosen[i] + sign * dv[i];
+            int size = props.getDimensionSize(i);
+            if (coordinate < 0 || coordinate >= size) {
+                if (!props.isToroidal()) {
+                    return -1;
+                }
+                coordinate = Math.floorMod(coordinate, size);
+            }
+            swapPartner[i] = coordinate;
+        }
+        return props.toFlatIndex(swapPartner);
+    }
+
+    /**
+     * Exchanges the molecules of the selected cell and a neighbouring register operand slot.
+     * <p>
+     * Each molecule keeps its marker and moves to the other cell as it stands. Two cells holding
+     * the same molecule would exchange nothing, so nothing is written and nothing is recorded; the
+     * record of a swap names both cells, the selected one first.
+     *
+     * @param child The newborn organism.
+     * @param env The simulation environment.
+     * @param props The properties the flat indices are computed with.
+     * @param partnerFlatIndex The flat index of the cell to swap with, whose coordinate stands in
+     *                         {@link #swapPartner}.
+     */
+    private void swapWithRegisterSlot(Organism child, Environment env, EnvironmentProperties props,
+                                      int partnerFlatIndex) {
+        int partnerMoleculeInt = env.getMoleculeIntAt(swapPartner);
+        if (partnerMoleculeInt == chosenMoleculeInt) {
+            LOG.debug("tick={} Organism {} gene substitution: no-op (equal register molecules)",
+                    child.getBirthTick(), child.getId());
+            return;
+        }
+
+        env.setMoleculeAt(chosen, Molecule.fromInt(partnerMoleculeInt));
+        env.setMoleculeAt(swapPartner, Molecule.fromInt(chosenMoleculeInt));
+
+        child.recordBirthMutation(recordBuilder
+                .start(getClass().getName(), MUTATION_KIND, child.getDv())
+                .cell(props.toFlatIndex(chosen), chosenMoleculeInt, partnerMoleculeInt)
+                .cell(partnerFlatIndex, partnerMoleculeInt, chosenMoleculeInt)
+                .param(chosenSlotCode)
+                .param(ACTION_REGISTER_SWAP)
+                .build());
+
+        if (LOG.isDebugEnabled()) {
+            LOG.debug("tick={} Organism {} gene substitution: register swap {} <-> {}",
+                    child.getBirthTick(), child.getId(), Arrays.toString(chosen),
+                    Arrays.toString(swapPartner));
         }
     }
 
@@ -453,6 +608,9 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
      * a family flip keeps the operand sources and leaves the family, and a variant flip keeps
      * family and operation and takes an opcode with the same number of operands. If no
      * alternatives exist for the selected mode, returns the original value unchanged.
+     * <p>
+     * The mode that was drawn is left in {@link #codeFlipAction}, which is the action code the
+     * record of the write carries.
      *
      * @param opcodeValue The current opcode value (bare, without TYPE_CODE bits).
      * @return The mutated opcode value, or the original if no alternative exists.
@@ -461,10 +619,13 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
         double r = random.nextDouble() * totalFlipWeight;
         int[] alternatives;
         if (r < operationFlipWeight) {
+            codeFlipAction = ACTION_OPCODE_OPERATION_FLIP;
             alternatives = operationFlipAlternatives.get(opcodeValue);
         } else if (r < operationFlipWeight + familyFlipWeight) {
+            codeFlipAction = ACTION_OPCODE_FAMILY_FLIP;
             alternatives = familyFlipAlternatives.get(opcodeValue);
         } else {
+            codeFlipAction = ACTION_OPCODE_VARIANT_FLIP;
             alternatives = variantFlipAlternatives.get(opcodeValue);
         }
 
@@ -477,6 +638,9 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
 
     /**
      * Mutates a REGISTER molecule's value by ±1, clamped within the register bank.
+     * <p>
+     * This is what a REGISTER cell with no register operand slot beside it does; a cell that has
+     * one exchanges its molecule with that cell instead.
      * <p>
      * Bank detection uses {@link RegisterBank} base addresses in descending order.
      *

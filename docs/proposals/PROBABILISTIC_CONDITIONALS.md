@@ -319,12 +319,14 @@ the block and the key named.
 
 ### The slot in the mutation event
 
-Every substitution record carries one parameter, the slot code: 0 for neither kind of slot, 1 for
-a scalar immediate slot, 2 for a vector slot. The kind keeps a fixed arity like every other kind
-(duplication, deletion, label insertion and label rewrite carry one parameter each, insertion
-none), which is what a reader of `mutation_summary` — where the parameters travel as a JSON list —
-relies on. The plugin's Javadoc, which says "no parameters" today, documents the code; the test
-that asserts an empty parameter list for a CODE substitution asserts the code 0 instead.
+Every substitution record carries two parameters, the slot code and the action code. The slot code
+is 0 for neither kind of slot, 1 for a scalar immediate slot, 2 for a vector slot. The action code
+names what was done: 0 value perturbation, 1 opcode flip of the operation, 2 opcode flip of the
+family, 3 opcode flip of the variant, 4 register step, 5 register swap with the adjacent register
+operand, 6 LABEL bit flip, 7 LABELREF bit flip. The kind keeps a fixed arity like every other kind
+(duplication, deletion and label rewrite carry one parameter each, label insertion two,
+instruction insertion none), which is what a reader of `mutation_summary` — where the parameters travel as a JSON list —
+relies on. The plugin's Javadoc documents both codes, and the tests assert them.
 
 ### The family flip
 
@@ -589,3 +591,7 @@ so its baseline is its own, not run `20260907`'s.
     and the structured id were a second description of the operand shape next to the registry,
     and a wrong one where one variant stood for a label in one instruction and a location
     register in another; both are removed rather than corrected.
+27. **Every substitution record carries two parameters: the slot code and an action code naming
+    what was done** — value perturbation, the three opcode flips, register step, register swap,
+    label and label-reference bit flip — so that a run's fertility per action is a grouping, not a
+    reconstruction from cell values.
