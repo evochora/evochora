@@ -72,11 +72,11 @@ export class OrganismSourceView {
         if (!this.artifact || !this.dom.section) return;
 
         const activeLocation = this.calculateActiveLocation(organismState, staticInfo);
-        
-        // 1. Handle Status Bar (Errors/Warnings including mutation detection)
-        this.updateStatusBar(activeLocation, organismState);
 
-        // 2. Auto-switch file if execution moved to a different file
+        // 1. Auto-switch file if execution moved to a different file. This comes first because the
+        // re-render replaces the whole source view, the status bar with it: a warning written
+        // before it would be thrown away again, which is why one only ever appeared when execution
+        // happened to stay in the file already on display.
         if (activeLocation && activeLocation.fileName) {
             const fileExists = this.artifact.sources && this.artifact.sources[activeLocation.fileName];
             if (fileExists && this.selectedFile !== activeLocation.fileName) {
@@ -85,6 +85,9 @@ export class OrganismSourceView {
                 this.renderSourceStructure(); // Re-render needed because file content changed
             }
         }
+
+        // 2. Handle Status Bar (Errors/Warnings including mutation detection)
+        this.updateStatusBar(activeLocation, organismState);
 
         // 3. Update Line Highlighting (DOM manipulation only, no re-render)
         const activeLineNumber = activeLocation ? activeLocation.lineNumber : null;
