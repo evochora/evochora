@@ -1717,6 +1717,31 @@ public class VMConditionalInstructionTest {
         assertThat(holds("LETR", Map.of(1, four, 3, five), 1, 3)).as("4 <= 5").isTrue();
         assertThat(holds("GTR", Map.of(1, new int[]{2, 2}, 3, four), 1, 3)).as("4 > 4").isFalse();
         assertThat(holds("LETR", Map.of(1, new int[]{2, 2}, 3, four), 1, 3)).as("4 <= 4").isTrue();
+        assertThat(holds("LTR", Map.of(1, four, 3, five), 1, 3)).as("4 < 5").isTrue();
+        assertThat(holds("LTR", Map.of(1, five, 3, four), 1, 3)).as("5 < 4").isFalse();
+        assertThat(holds("GETR", Map.of(1, five, 3, four), 1, 3)).as("5 >= 4").isTrue();
+        assertThat(holds("GETR", Map.of(1, four, 3, five), 1, 3)).as("4 >= 5").isFalse();
+        assertThat(holds("GETR", Map.of(1, new int[]{2, 2}, 3, four), 1, 3)).as("4 >= 4").isTrue();
+    }
+
+    /**
+     * The soft order comparisons take two vectors by magnitude as well: the first magnitude is
+     * compared against a draw below the second one, so a first magnitude at or above the second is
+     * decided without regard to the draw, and a first magnitude of zero likewise.
+     */
+    @Test
+    @Tag("unit")
+    void testSoftOrderComparisons_TwoVectors_OrderThemByManhattanMagnitude() {
+        int[] five = new int[]{3, -2};
+        int[] four = new int[]{0, 4};
+        int[] none = new int[]{0, 0};
+
+        assertThat(holds("PGTR", Map.of(1, five, 3, four), 1, 3)).as("5 > U from [0, 4)").isTrue();
+        assertThat(holds("PLER", Map.of(1, five, 3, four), 1, 3)).as("5 <= U from [0, 4)").isFalse();
+        assertThat(holds("PLTR", Map.of(1, five, 3, four), 1, 3)).as("5 < U from [0, 4)").isFalse();
+        assertThat(holds("PGER", Map.of(1, five, 3, four), 1, 3)).as("5 >= U from [0, 4)").isTrue();
+        assertThat(holds("PGTR", Map.of(1, none, 3, four), 1, 3)).as("0 > U from [0, 4)").isFalse();
+        assertThat(holds("PLER", Map.of(1, none, 3, four), 1, 3)).as("0 <= U from [0, 4)").isTrue();
     }
 
     /**
