@@ -117,8 +117,9 @@ scalar. Both are replaced by one rule for the whole comparison family, hard and 
   scalar, for equality and order, under the value-compatibility rule that applies to two scalars:
   against `DATA` or `STATE` the comparison is decided by the numbers, against any other type it is
   not satisfied, as `DATA` against that type is not;
-- a location register that holds no position (`LocationValue.NONE`) has magnitude 0 and is equal
-  only to itself; a program that wants to ask whether a register holds a position has `IFSL`.
+- a location register that holds no position (`LocationValue.NONE`) has magnitude 0: against
+  another location value it is equal only to one that holds no position either, against a scalar
+  it enters with 0; a program that wants to ask whether a register holds a position has `IFSL`.
 
 The Manhattan magnitude is an integer, costs one addition per dimension, and is the metric the
 platform uses elsewhere (label matching measures toroidal Manhattan distance). No type-mismatch
@@ -368,7 +369,7 @@ overrides only.
 | write-rules `STATE.entropy` | −500 | −500 | 0 | below |
 | `max-entropy` | 10 000 | 10 000 | 99 999 | below: the clock of the refill phase; five digits keep it readable in the visualizer |
 | seed energy | 0.0025 × 10 000 | 0.002 × 10 000 | 0.01 × 5 000 | packets of 5 000: the regime of the fourth smoke run, below |
-| solar radiation | 0.02 × 10 000 | 0.005 × 10 000 | 0.05 × 5 000 | five times the input of the run in half-size packets |
+| solar radiation | 0.02 × 10 000, radius 1 | 0.005 × 10 000, radius 0 | 0.05 × 5 000, radius 0 | five times the input of the run in half-size packets |
 | geyser | 0.0002 × 10 000, radius 3 | 0.0001 × 10 000, radius 0 | 0.0001 × 5 000, radius 0 | half-size packets |
 | `deletionRate`, `duplicationRate` | 0.025, 0.1 | 0.01, 0.1 | as in the run | unchanged |
 

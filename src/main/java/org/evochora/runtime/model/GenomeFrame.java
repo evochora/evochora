@@ -62,7 +62,8 @@ import it.unimi.dsi.fastutil.ints.IntArrayList;
  *   <li>the role of every other cell — opcode, register, label reference — so that a selection
  *       weight or a perturbation can depend on where a molecule stands, not only on what it is;
  *       a CODE molecule in a literal slot, for instance, is a value there, not an opcode;</li>
- *   <li>which cells no walk reaches, so that an operator can leave them alone or seek them out;</li>
+ *   <li>which cells belong to no instruction — labels, no-operation cells and cells no walk
+ *       reaches — so that an operator can leave them alone or seek them out;</li>
  *   <li>the component index of a vector cell, so that an operator can act on a vector as a whole
  *       — rotate or mirror it — rather than on one of its cells;</li>
  *   <li>where an instruction begins and ends, so that a duplication can copy whole instructions

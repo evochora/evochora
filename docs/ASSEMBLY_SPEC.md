@@ -470,7 +470,7 @@ The magnitude of a vector is a `DATA` value and follows the rule of *Types in va
 
 The equality tests `IFR`/`IFI`/`IFS` and `INR`/`INI`/`INS` are the exception for two vector operands: they compare component by component, so that two positions are equal only if they are the same position. A vector compared against a scalar is compared by its magnitude here as well.
 
-A location register that holds no position has no components and therefore the magnitude 0; it is equal only to another location value that holds no position. The question whether a location register holds a position at all is `IFSL`.
+A location register that holds no position has no components and therefore the magnitude 0: against another location value it is equal only to one that holds no position either, against a scalar it enters with 0. The question whether a location register holds a position at all is `IFSL`.
 
 The type comparisons `IFT*` and `INT*` are not affected by this rule: they compare molecule types, not values.
 
