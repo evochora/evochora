@@ -772,16 +772,52 @@ public class Organism {
             return value instanceof int[] v ? v.length + " components" : value.getClass().getSimpleName();
         }
 
+        /**
+         * Rejects a location value in a register snapshot that is neither a position of the world's
+         * dimensions nor none. A RET and a procedure switch copy a snapshot back into the registers
+         * wholesale, so a value wrong here becomes a live location register later.
+         *
+         * @param snapshot the snapshot to check, or {@code null} where none was taken
+         * @param banks the register banks it covers, in the order it stores them
+         * @param expectedSize the number of values the layout of those banks produces
+         * @param source what the snapshot belongs to, for the message of a rejection
+         */
+        private void validateSnapshotLocations(Object[] snapshot, List<RegisterBank> banks,
+                                               int expectedSize, String source) {
+            if (snapshot == null) {
+                return;
+            }
+            if (snapshot.length != expectedSize) {
+                throw new InvalidRestoreState(source + " snapshot must hold " + expectedSize
+                        + " values, got " + snapshot.length);
+            }
+            int offset = 0;
+            for (RegisterBank bank : banks) {
+                if (bank.isLocation) {
+                    for (int i = 0; i < bank.count; i++) {
+                        Object value = snapshot[offset + i];
+                        if (!(value instanceof int[] location) || !isLocationValue(location)) {
+                            throw new InvalidRestoreState(source + " holds a " + bank.prefix + i
+                                    + " that is neither a position of " + ip.length
+                                    + " components nor none, got " + describeLocationValue(value));
+                        }
+                    }
+                }
+                offset += bank.count;
+            }
+        }
+
         private void validateStateInvariants() {
             if (flatRegisters != null && flatRegisters.length != RegisterBank.TOTAL_REGISTER_COUNT) {
                 throw new InvalidRestoreState("Register array must hold "
                         + RegisterBank.TOTAL_REGISTER_COUNT + " values, got " + flatRegisters.length);
             }
             // A location register holds a position of one component per world dimension, or
-            // LocationValue.NONE. Restored state is the one way such a value enters an organism
-            // without passing writeLocationOperand or pushLocation, and everything that reads one
-            // afterwards relies on it being one of the two. A slot left unset is filled with the
-            // state by the constructor and passes here.
+            // LocationValue.NONE, and everything that reads one relies on it being one of the two.
+            // Restored state reaches the registers without passing writeLocationOperand or
+            // pushLocation, in three places: the register file here, the location stack below, and
+            // the snapshots a RET or a procedure switch copies back wholesale. A slot left unset is
+            // filled with the state by the constructor and passes here.
             if (flatRegisters != null) {
                 for (int slot = 0; slot < flatRegisters.length; slot++) {
                     RegisterBank bank = RegisterBank.SLOT_TO_BANK[slot];
@@ -799,6 +835,16 @@ public class Organism {
                 if (entry == null || !isLocationValue(entry)) {
                     throw new InvalidRestoreState("Location stack entry must hold a position of "
                             + ip.length + " components or none, got " + describeLocationValue(entry));
+                }
+            }
+            for (ProcFrame frame : callStack) {
+                validateSnapshotLocations(frame.savedRegisters(), RegisterBank.allSavedOnCall(),
+                        RegisterBank.STACK_SAVED_SNAPSHOT_SIZE, "Call stack frame");
+            }
+            if (persistentRegisterState != null) {
+                for (Object[] snapshot : persistentRegisterState.values()) {
+                    validateSnapshotLocations(snapshot, RegisterBank.allPersistent(),
+                            RegisterBank.PERSISTENT_SNAPSHOT_SIZE, "Persistent register state");
                 }
             }
             if (!dps.isEmpty()) {
