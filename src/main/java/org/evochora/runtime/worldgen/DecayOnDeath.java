@@ -7,8 +7,6 @@ import org.evochora.runtime.spi.DeathContext;
 import org.evochora.runtime.spi.IDeathHandler;
 import org.evochora.runtime.spi.IRandomProvider;
 
-import java.util.stream.Collectors;
-
 /**
  * A death handler that replaces all molecules of a dying organism with a configured molecule.
  * <p>
@@ -53,9 +51,10 @@ public class DecayOnDeath implements IDeathHandler {
      *
      * @param randomProvider Source of randomness (unused, required by plugin interface)
      * @param config Configuration containing {@code replacement} in format "TYPE:VALUE"
+     * @throws IllegalArgumentException if {@code replacement} is not a valid molecule specification
      */
     public DecayOnDeath(IRandomProvider randomProvider, Config config) {
-        this.replacementMolecule = parseMolecule(config.getString("replacement"));
+        this.replacementMolecule = Molecule.parse(config.getString("replacement"));
     }
 
     /**
@@ -86,45 +85,5 @@ public class DecayOnDeath implements IDeathHandler {
     @Override
     public void loadState(byte[] state) {
         // Stateless - nothing to restore
-    }
-
-    /**
-     * Parses a molecule specification string in format "TYPE:VALUE".
-     *
-     * @param spec The molecule specification (e.g., "ENERGY:100", "CODE:0")
-     * @return The parsed Molecule
-     * @throws IllegalArgumentException if the format is invalid or type is unknown
-     */
-    private static Molecule parseMolecule(String spec) {
-        String[] parts = spec.split(":");
-        if (parts.length != 2) {
-            throw new IllegalArgumentException(
-                "Invalid molecule format: '" + spec + "'. Expected 'TYPE:VALUE' (e.g., 'ENERGY:100')");
-        }
-
-        String typeStr = parts[0].toUpperCase().trim();
-        int value;
-        try {
-            value = Integer.parseInt(parts[1].trim());
-        } catch (NumberFormatException e) {
-            throw new IllegalArgumentException(
-                "Invalid value in molecule spec: '" + spec + "'. Value must be an integer.");
-        }
-
-        int type = Molecule.getTypeConstantByName(typeStr).orElseThrow(() -> new IllegalArgumentException(
-            "Unknown molecule type: '" + typeStr + "'. Valid types: " + registeredTypeNames()));
-
-        return new Molecule(type, value);
-    }
-
-    /**
-     * Lists the names of all registered molecule types, in registration order.
-     *
-     * @return A comma-separated list of the type names accepted in a molecule specification
-     */
-    private static String registeredTypeNames() {
-        return MoleculeTypeRegistry.orderedTypes().stream()
-            .map(MoleculeTypeRegistry::typeToName)
-            .collect(Collectors.joining(", "));
     }
 }

@@ -300,11 +300,16 @@ Clade membership is a proxy; the mutation is molecules in the world. Via the nod
   several clade members — only shared differences are the inherited founder mutation, the rest is
   ongoing per-individual mutation.
 
-**Which rule applies depends on the build that wrote the run.** A run written with the STATE type
-hashes the DATA operands and excludes STATE, and its body diffs drop STATE cells. A run from before
-the STATE type has no STATE cells at all: its state slots are DATA, its genome hash excluded every
-DATA cell, and its body diffs must drop DATA instead. Decide it before diffing — the `moleculeTypes`
-map of the run metadata lists STATE, and `environment_composition` carries a `state_cells` column.
+**Which molecules are excluded is a parameter of the run.** The `genome-exclude` list in the
+`organism` block of the run's resolved configuration says it — read it from `raw/metadata.pb.zst`,
+field `resolved_config_json`, at `runtime.organism.genome-exclude`. Each entry is a molecule type
+name, which excludes every molecule of that type, or `TYPE:VALUE`, which excludes only that value of
+it; the default is `["STATE", "STRUCTURE:100"]` (the organism's own working memory, and the
+structural shell the primordial program builds around itself). A body diff must drop exactly those
+molecules, nothing more and nothing less. A run from before the STATE type has no STATE cells at
+all: its state slots are DATA, its genome hash excluded every DATA cell, and its body diffs must
+drop DATA instead. Decide it before diffing — the `moleculeTypes` map of the run metadata lists
+STATE, and `environment_composition` carries a `state_cells` column.
 
 ### Older runs: the environment strip and protoc
 
@@ -354,10 +359,12 @@ JSON format. For those runs body forensics goes the old way:
 - The H2 index file is locked by a running node; the H2 shell then fails or, worse, the node
   does. Finish shell exports before starting a node.
 - The genome hash is taken at birth, when the child owns no marker cells (FORK resets the marker
-  on every cell it hands over); it includes the DATA operands and the ENERGY cells and excludes
-  STATE (see `GenomeHasher`). A child born owning an energy cell is a "mutant" with identical
+  on every cell it hands over); it includes the DATA operands and the ENERGY cells and excludes the
+  molecules the run's `genome-exclude` list names — by default STATE and STRUCTURE:100 (see
+  `GenomeRule` and `GenomeHasher`, and read the run's own list from `resolved_config_json` in
+  `raw/metadata.pb.zst`). A child born owning an energy cell is a "mutant" with identical
   code. A body read later may contain the copy in progress for the next child, marked ≠ 0. When
-  diffing bodies, drop those cells and the STATE cells, and XOR-normalize LABEL and LABELREF
+  diffing bodies, drop those cells and the excluded molecules, and XOR-normalize LABEL and LABELREF
   values with the value of the LABEL at the smallest relative position, as the hasher does —
   otherwise every child differs from its parent in every label.
 - Empty cells (`CODE:0`) are unowned and absent from a body; inserted or duplicated code therefore

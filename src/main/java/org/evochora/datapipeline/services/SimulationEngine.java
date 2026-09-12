@@ -594,7 +594,8 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
             long genomeHash = GenomeHasher.computeGenomeHash(
                 simulation.getEnvironment(),
                 organism.getId(),
-                organism.getInitialPosition()
+                organism.getInitialPosition(),
+                simulation.getGenomeRule()
             );
             organism.setGenomeHash(genomeHash);
             simulation.registerGenomeHash(genomeHash);

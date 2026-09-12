@@ -11,6 +11,7 @@ import org.evochora.runtime.model.Organism;
 import org.evochora.runtime.model.OrganismRandom;
 import org.evochora.runtime.model.SplitMix64;
 import org.evochora.runtime.model.GenomeHasher;
+import org.evochora.runtime.model.GenomeRule;
 import org.evochora.runtime.spi.DeathContext;
 import org.evochora.runtime.spi.IBirthHandler;
 import org.evochora.runtime.spi.IDeathHandler;
@@ -41,6 +42,7 @@ public class Simulation {
     private final Environment environment;
     private final ThermodynamicPolicyManager policyManager;
     private final Config organismConfig;
+    private final GenomeRule genomeRule;
     private final VirtualMachine vm;
     private final List<Organism> organisms;
     private long currentTick = 0L;
@@ -104,14 +106,18 @@ public class Simulation {
      *                    1 = single-threaded (sequential code path, useful for debugging),
      *                    N &gt; 1 = exactly N threads via {@link TickWorkerPool}.
      *                    Determinism is guaranteed in every mode.
-     * @throws IllegalArgumentException if {@code parallelism} is negative. The thread count is
-     *                                  resolved while the simulation is built, so a rejected value
-     *                                  fails here and not at the first tick.
+     * @throws IllegalArgumentException if {@code parallelism} is negative, or if the
+     *                                  {@code genome-exclude} list of the organism configuration
+     *                                  carries an entry that names no molecule type or no readable
+     *                                  value. Both are resolved while the simulation is built, so a
+     *                                  rejected value fails here and not at the first tick.
      */
     public Simulation(Environment environment, ThermodynamicPolicyManager policyManager, Config organismConfig, int parallelism) {
         this.environment = environment;
         this.policyManager = policyManager;
         this.organismConfig = organismConfig;
+        this.genomeRule = new GenomeRule(organismConfig.hasPath(GenomeRule.CONFIG_KEY)
+                ? organismConfig.getStringList(GenomeRule.CONFIG_KEY) : GenomeRule.DEFAULT_ENTRIES);
         this.organisms = new ArrayList<>();
         this.vm = new VirtualMachine(this);
         this.effectiveParallelism = resolveParallelism(parallelism);
@@ -186,6 +192,18 @@ public class Simulation {
      */
     public Config getOrganismConfig() {
         return organismConfig;
+    }
+
+    /**
+     * Returns the rule deciding which of an organism's molecules the genome hash leaves out. It is
+     * built once from the {@code genome-exclude} key of the organism configuration, so that every
+     * genome hash of a run — the initial organisms as well as every newborn — is taken under the
+     * same rule.
+     *
+     * @return the genome rule of this simulation
+     */
+    public GenomeRule getGenomeRule() {
+        return genomeRule;
     }
 
     /**
@@ -444,7 +462,7 @@ public class Simulation {
                 newbornsWithBirthMutations.add(newborn);
             }
             long hash = GenomeHasher.computeGenomeHash(
-                    environment, newborn.getId(), newborn.getInitialPosition());
+                    environment, newborn.getId(), newborn.getInitialPosition(), genomeRule);
             newborn.setGenomeHash(hash);
             registerGenomeHash(hash);
         }

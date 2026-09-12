@@ -13,12 +13,9 @@ import java.util.List;
  * Computes genome hash for organisms based on their owned molecules.
  * <p>
  * The genome hash uniquely identifies an organism's genetic material independent of
- * its absolute position in the environment. It includes every molecule the organism owns
- * except STATE. A STATE cell is what an organism wrote for itself while running: the
- * environment stores a value written with marker register 0 as STATE, and its content varies
- * between copies of the same genome, because the copy loop carries the parent's state cells
- * into the child as they stand at copy time. Including them would make every birth look like a
- * mutation.
+ * its absolute position in the environment. It includes every molecule the organism owns that the
+ * run's {@link GenomeRule} does not leave out — by default an organism's own working memory and the
+ * structural shell the primordial program builds around itself.
  * <p>
  * LABEL and LABELREF values are normalized before hashing: all values are XOR-ed with
  * the value of the LABEL molecule at the smallest relative position (the "anchor label"). This
@@ -53,8 +50,8 @@ public final class GenomeHasher {
     /**
      * Computes the genome hash for cells owned by the given organism.
      * <p>
-     * The genome includes all molecule types except STATE, the type an organism's own runtime
-     * memory is stored as: CODE, DATA, LABEL, LABELREF, REGISTER, STRUCTURE, ENERGY.
+     * The genome consists of every owned cell that {@code genomeRule} does not exclude. Which
+     * molecules that is, is a parameter of the run rather than a property of the hasher.
      * <p>
      * Molecules are sorted by their relative position (to initialPosition) in lexicographic
      * order before hashing, ensuring the same genome produces the same hash regardless of
@@ -70,9 +67,11 @@ public final class GenomeHasher {
      * @param environment The environment containing the cells
      * @param organismId The organism ID whose cells to hash
      * @param initialPosition The organism's initial position (for relative coordinate calculation)
+     * @param genomeRule The rule deciding which owned molecules are not part of the genome
      * @return 64-bit hash of the genome, or 0L if no genome molecules found
      */
-    public static long computeGenomeHash(Environment environment, int organismId, int[] initialPosition) {
+    public static long computeGenomeHash(Environment environment, int organismId, int[] initialPosition,
+                                         GenomeRule genomeRule) {
         IntOpenHashSet ownedCells = environment.getCellsOwnedBy(organismId);
         if (ownedCells == null || ownedCells.isEmpty()) {
             return 0L;
@@ -89,18 +88,16 @@ public final class GenomeHasher {
         int anchorLabelValue = -1;
         int anchorEntryIndex = -1;
 
-        // Collect all non-STATE molecules with their relative positions. The set iterates in an
-        // order that follows the environment's layout indices, and so its memory layout; the
+        // Collect the molecules the rule keeps, with their relative positions. The set iterates in
+        // an order that follows the environment's layout indices, and so its memory layout; the
         // sort by relative position below removes that order, and it is total because two cells
         // never share a position, so the hash cannot depend on the layout.
         for (int layoutIndex : ownedCells) {
             int moleculeInt = environment.getMoleculeInt(layoutIndex);
-            int type = moleculeInt & Config.TYPE_MASK;
-
-            // Skip STATE molecules - they hold what the organism wrote for itself while running
-            if (type == Config.TYPE_STATE) {
+            if (genomeRule.excludes(moleculeInt)) {
                 continue;
             }
+            int type = moleculeInt & Config.TYPE_MASK;
 
             int[] absCoord = environment.getCoordinateFromIndex(layoutIndex);
 

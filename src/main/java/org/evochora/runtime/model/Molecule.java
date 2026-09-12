@@ -145,7 +145,8 @@ public record Molecule(int type, int value, int marker) {
      *   <li>{@link Config#TYPE_DATA} written while the marker register is 0 is stored as
      *       {@link Config#TYPE_STATE} with the same value: marker 0 is the ephemeral class, and
      *       what an organism writes in it is its own working memory rather than genetic material.
-     *       {@code STATE} cells are excluded from the genome hash.</li>
+     *       Which molecules the genome hash leaves out is a parameter of the run; {@code STATE}
+     *       is one of them unless the run configures otherwise (see {@link GenomeRule}).</li>
      *   <li>Every other molecule keeps its type; the marker register is stamped into it.</li>
      * </ul>
      * The value is carried over unchanged, so a stored molecule differs from the written one at
@@ -256,6 +257,53 @@ public record Molecule(int type, int value, int marker) {
      */
     public static java.util.Optional<Integer> getTypeConstantByName(String typeName) {
         return MoleculeTypeRegistry.findType(typeName);
+    }
+
+    /**
+     * Parses a molecule specification in the literal form {@code TYPE:VALUE}.
+     * <p>
+     * This is the syntax in which configuration names a concrete molecule, for example
+     * {@code "ENERGY:100"} or {@code "CODE:0"}. The type name is case-insensitive and must be one
+     * of the names registered in {@link MoleculeTypeRegistry}; the value is a decimal integer and
+     * may be negative. The resulting molecule carries marker 0.
+     *
+     * @param spec The molecule specification, e.g. {@code "ENERGY:100"}.
+     * @return The molecule the specification denotes.
+     * @throws IllegalArgumentException if the specification is not of the form {@code TYPE:VALUE},
+     *                                  if the value is not an integer, or if the type name is not
+     *                                  registered.
+     */
+    public static Molecule parse(String spec) {
+        String[] parts = spec.split(":");
+        if (parts.length != 2) {
+            throw new IllegalArgumentException(
+                "Invalid molecule format: '" + spec + "'. Expected 'TYPE:VALUE' (e.g., 'ENERGY:100')");
+        }
+
+        String typeStr = parts[0].toUpperCase().trim();
+        int value;
+        try {
+            value = Integer.parseInt(parts[1].trim());
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException(
+                "Invalid value in molecule spec: '" + spec + "'. Value must be an integer.");
+        }
+
+        int type = getTypeConstantByName(typeStr).orElseThrow(() -> new IllegalArgumentException(
+            "Unknown molecule type: '" + typeStr + "'. Valid types: " + registeredTypeNames()));
+
+        return new Molecule(type, value);
+    }
+
+    /**
+     * Lists the names of all registered molecule types, in registration order.
+     *
+     * @return A comma-separated list of the type names accepted in a molecule specification.
+     */
+    private static String registeredTypeNames() {
+        return MoleculeTypeRegistry.orderedTypes().stream()
+            .map(MoleculeTypeRegistry::typeToName)
+            .collect(java.util.stream.Collectors.joining(", "));
     }
 
     @Override
