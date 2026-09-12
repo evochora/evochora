@@ -326,6 +326,42 @@ JSON format. For those runs body forensics goes the old way:
   and parse cell blocks tolerantly: protobuf omits fields holding their default value, so a cell
   with `owner_id` 0 carries no `owner_id` line at all.
 
+## 3b · Recipes for questions a run raises
+
+**Is the regime search-limited, and do geysers matter?** Geysers are `STRUCTURE:-1` cells; read
+their positions from the tick-0 snapshot, the initial positions of the fertile organisms from the
+raw records, and the distance from each body's box (about 115 × 90 cells) to the nearest geyser.
+Report the share of bodies touching a geyser and the first-child latency with and without contact.
+At one geyser per 10 000 cells two thirds of all bodies touch one and the world lives from geysers
+whatever the solar rate says.
+
+**Where does an organism spend its time, and why do copies fail?** Every sampled record carries the
+IP; its row relative to the origin names the module (this primordial: main loop rows 0–7, harvest
+8–30, copier 31–80, copy loop 49–66). Consecutive samples in the copy loop are one copy episode.
+Between episodes read the write pointer `DP1`: continuing where it stood is a pause for energy,
+back at the start is an abort. Episodes per child, resumes and restarts per child, and the module
+shares are the numbers; in the search-limited run they were 78 % of the time in the copier, 2.5
+pauses and 1.2 aborts per child.
+
+**Does a genome reproduce faster than others?** First heritability: the share of its carriers'
+children that carry the genome — a genome no child inherits is birth damage, not a variant. Then
+three separate measures, never children per lifetime (it rewards dying after the first child):
+latency to the first child, interval between children, lifetime. Compare against all fertile
+organisms born in the same 5 M window (the baseline drifts) and against the carriers of the parent
+genome in that window (else the lineage's background is measured), with a bootstrap interval.
+
+**Who produces bodiless children, and what do children die of?** Carry the last `failure_reason`,
+`energy` and `entropy_register` of the death record in the life table. Count bodiless children
+per parent: a few parents with thousands each are futile forkers, recognisable by `DP1` on their
+own origin and energy just below the copier's pause threshold. Failure reasons by class name the
+mechanism — bodiless children die of the skip budget and of the ownership check on jumps.
+
+**Where are the cliffs?** For births with exactly one event: kind, action code, the opcode hit,
+the module of the position; the share dying within 1 000 ticks and the share fertile, against the
+clone baseline; the failure reason per kind. A group far above the clone share in acute deaths or
+far below it in fertility is a cliff, and its module says whether it is the primordial's or the
+world's.
+
 ## 4 · Interpretation discipline
 
 - Validate clade→genotype on several directly read bodies before using clade shares as genotype.
