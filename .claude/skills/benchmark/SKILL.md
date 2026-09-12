@@ -75,8 +75,18 @@ Setup on the host, under `~/bench/cmp/`:
 trees/<variant>/       build/install/evochora of a clean checkout (./gradlew installDist)
 consumer-classes/      javac -cp "<tree>/lib/*" -d consumer-classes tools/bench-server/consumer/*.java
 config/                perf_server.conf + the evochora.conf it includes (same for all variants)
+config/<variant>/      the same pair for one variant, only when the variants cannot share one
+                       configuration (a key one side rejects); the script prefers it when present
 run-comparison.sh      tools/bench-server/run-comparison.sh
 ```
+
+`perf_server.conf` includes `evochora.conf` with `include required(...)`, resolved next to
+itself, and sets the `sparse` tuning profile. Keep both: a silently skipped include measures
+the defaults of `reference.conf` (its program path does not even compile in the tree), and the
+`detailed` profile of the shipped `evochora.conf` samples every tick, so the consumer's hashing,
+not the simulation, dominates the wall time — a 10 M tick run then takes over an hour instead
+of minutes. Check the first `SimulationEngine started` line of a log for `sampling=10000` and
+the first `TICKHASH` line for `lastTick` counting in thousands before trusting a run.
 
 Run all variants in one invocation, then again in the opposite order:
 

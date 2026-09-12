@@ -1,12 +1,14 @@
 package org.evochora.runtime.instructions;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.within;
 
 import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.isa.RegisterBank;
 import org.evochora.runtime.model.Environment;
+import org.evochora.runtime.model.LocationValue;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
 import org.evochora.test.utils.SimulationTestUtils;
@@ -14,6 +16,8 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+
+import java.util.Map;
 
 /**
  * Contains low-level unit tests for the execution of conditional instructions by the virtual machine.
@@ -1693,5 +1697,326 @@ public class VMConditionalInstructionTest {
 
         assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 7).toInt());
         assertNoInstructionFailure();
+    }
+
+    // ===== Vector Operands in Value Comparisons =====
+
+    /**
+     * Two vectors are ordered by their Manhattan magnitudes, so the greater-than test and its
+     * negation are complements on them.
+     */
+    @Test
+    @Tag("unit")
+    void testGtrAndLetr_TwoVectors_OrderThemByManhattanMagnitude() {
+        int[] five = new int[]{3, -2};
+        int[] four = new int[]{0, 4};
+
+        assertThat(holds("GTR", Map.of(1, five, 3, four), 1, 3)).as("5 > 4").isTrue();
+        assertThat(holds("LETR", Map.of(1, five, 3, four), 1, 3)).as("5 <= 4").isFalse();
+        assertThat(holds("GTR", Map.of(1, four, 3, five), 1, 3)).as("4 > 5").isFalse();
+        assertThat(holds("LETR", Map.of(1, four, 3, five), 1, 3)).as("4 <= 5").isTrue();
+        assertThat(holds("GTR", Map.of(1, new int[]{2, 2}, 3, four), 1, 3)).as("4 > 4").isFalse();
+        assertThat(holds("LETR", Map.of(1, new int[]{2, 2}, 3, four), 1, 3)).as("4 <= 4").isTrue();
+        assertThat(holds("LTR", Map.of(1, four, 3, five), 1, 3)).as("4 < 5").isTrue();
+        assertThat(holds("LTR", Map.of(1, five, 3, four), 1, 3)).as("5 < 4").isFalse();
+        assertThat(holds("GETR", Map.of(1, five, 3, four), 1, 3)).as("5 >= 4").isTrue();
+        assertThat(holds("GETR", Map.of(1, four, 3, five), 1, 3)).as("4 >= 5").isFalse();
+        assertThat(holds("GETR", Map.of(1, new int[]{2, 2}, 3, four), 1, 3)).as("4 >= 4").isTrue();
+    }
+
+    /**
+     * The soft order comparisons take two vectors by magnitude as well: the first magnitude is
+     * compared against a draw below the second one, so a first magnitude at or above the second is
+     * decided without regard to the draw, and a first magnitude of zero likewise.
+     */
+    @Test
+    @Tag("unit")
+    void testSoftOrderComparisons_TwoVectors_OrderThemByManhattanMagnitude() {
+        int[] five = new int[]{3, -2};
+        int[] four = new int[]{0, 4};
+        int[] none = new int[]{0, 0};
+
+        assertThat(holds("PGTR", Map.of(1, five, 3, four), 1, 3)).as("5 > U from [0, 4)").isTrue();
+        assertThat(holds("PLER", Map.of(1, five, 3, four), 1, 3)).as("5 <= U from [0, 4)").isFalse();
+        assertThat(holds("PLTR", Map.of(1, five, 3, four), 1, 3)).as("5 < U from [0, 4)").isFalse();
+        assertThat(holds("PGER", Map.of(1, five, 3, four), 1, 3)).as("5 >= U from [0, 4)").isTrue();
+        assertThat(holds("PGTR", Map.of(1, none, 3, four), 1, 3)).as("0 > U from [0, 4)").isFalse();
+        assertThat(holds("PLER", Map.of(1, none, 3, four), 1, 3)).as("0 <= U from [0, 4)").isTrue();
+    }
+
+    /**
+     * Two vectors of an equality test are compared component by component, so two positions of the
+     * same magnitude are not equal unless they are the same position.
+     */
+    @Test
+    @Tag("unit")
+    void testIfr_TwoVectors_ComparesComponentwise() {
+        assertThat(holds("IFR", Map.of(1, new int[]{1, 2}, 3, new int[]{1, 2}), 1, 3)).isTrue();
+        assertThat(holds("IFR", Map.of(1, new int[]{1, 2}, 3, new int[]{2, 1}), 1, 3)).isFalse();
+        assertThat(holds("INR", Map.of(1, new int[]{1, 2}, 3, new int[]{2, 1}), 1, 3)).isTrue();
+    }
+
+    /**
+     * A vector against a scalar enters the comparison with its magnitude, for equality as for
+     * order, in either operand position.
+     */
+    @Test
+    @Tag("unit")
+    void testValueComparisons_VectorAgainstScalar_CompareMagnitudeAgainstTheScalar() {
+        int[] three = new int[]{2, -1};
+
+        assertThat(holds("IFR", Map.of(1, three, 3, molecule(3)), 1, 3)).as("|(2,-1)| == 3").isTrue();
+        assertThat(holds("IFR", Map.of(1, three, 3, molecule(4)), 1, 3)).as("|(2,-1)| == 4").isFalse();
+        assertThat(holds("GTR", Map.of(1, three, 3, molecule(2)), 1, 3)).as("|(2,-1)| > 2").isTrue();
+        assertThat(holds("GTR", Map.of(1, molecule(2), 3, three), 1, 3)).as("2 > |(2,-1)|").isFalse();
+        assertThat(holds("LTR", Map.of(1, molecule(2), 3, three), 1, 3)).as("2 < |(2,-1)|").isTrue();
+        assertThat(holds("LTR", Map.of(1, three, 3, molecule(3)), 1, 3)).as("|(2,-1)| < 3").isFalse();
+    }
+
+    /**
+     * The magnitude of a vector is a DATA value: a scalar it is compared with has to be
+     * value-compatible with DATA, and against any other type the comparison is never satisfied,
+     * whatever the comparison asks.
+     */
+    @Test
+    @Tag("unit")
+    void testValueComparisons_VectorAgainstScalar_FollowsTheValueCompatibilityOfData() {
+        int[] three = new int[]{2, -1};
+        int energyThree = new Molecule(Config.TYPE_ENERGY, 3).toInt();
+        int stateThree = new Molecule(Config.TYPE_STATE, 3).toInt();
+
+        assertThat(holds("IFR", Map.of(1, three, 3, stateThree), 1, 3)).as("STATE is compatible with DATA").isTrue();
+        assertThat(holds("IFR", Map.of(1, three, 3, energyThree), 1, 3)).as("ENERGY:3 == |(2,-1)|").isFalse();
+        assertThat(holds("INR", Map.of(1, three, 3, energyThree), 1, 3)).as("ENERGY:3 != |(2,-1)|").isFalse();
+        assertThat(holds("GTR", Map.of(1, three, 3, energyThree), 1, 3)).as("|(2,-1)| > ENERGY:3").isFalse();
+        assertThat(holds("LETR", Map.of(1, energyThree, 3, three), 1, 3)).as("ENERGY:3 <= |(2,-1)|").isFalse();
+    }
+
+    /**
+     * A location value that holds no position has no components: its magnitude is 0 and it equals
+     * only another location value that holds no position, the zero position included.
+     */
+    @Test
+    @Tag("unit")
+    void testValueComparisons_LocationValueWithoutPosition_IsZeroInMagnitudeAndEqualsOnlyItself() {
+        int locationOne = RegisterBank.LR.base;
+        int locationTwo = RegisterBank.LR.base + 1;
+
+        assertThat(holds("IFR", Map.of(locationOne, LocationValue.NONE, locationTwo, LocationValue.NONE),
+                locationOne, locationTwo)).as("no position equals no position").isTrue();
+        assertThat(holds("IFR", Map.of(locationOne, LocationValue.NONE, locationTwo, new int[]{0, 0}),
+                locationOne, locationTwo)).as("no position equals the zero position").isFalse();
+        assertThat(holds("INR", Map.of(locationOne, LocationValue.NONE, locationTwo, new int[]{0, 0}),
+                locationOne, locationTwo)).as("no position differs from the zero position").isTrue();
+        assertThat(holds("LTR", Map.of(locationOne, LocationValue.NONE, locationTwo, new int[]{0, 1}),
+                locationOne, locationTwo)).as("magnitude 0 < magnitude 1").isTrue();
+        assertThat(holds("IFR", Map.of(locationOne, LocationValue.NONE, 3, molecule(0)),
+                locationOne, 3)).as("magnitude 0 equals the scalar 0").isTrue();
+    }
+
+    // ===== Probabilistic Conditional Instructions (PGT*, PLE*, PLT*, PGE*) =====
+
+    /**
+     * A probabilistic conditional holds with the probability its operands describe. The rate is
+     * measured over ten thousand executions at the fixed seed of the test simulation, which keeps
+     * the tolerance of two percentage points about four standard deviations wide.
+     */
+    @Test
+    @Tag("unit")
+    void testPgti_ValueAtHalfTheBound_HoldsInHalfOfTheExecutions() {
+        int hits = countHits("PGTI", Map.of(1, molecule(50_000)), 100_000, HIT_RATE_SAMPLES);
+
+        assertThat(hits / (double) HIT_RATE_SAMPLES)
+                .as("PGTI with A = 50000 and B = 100000 holds with probability A / B")
+                .isCloseTo(0.5, within(0.02));
+    }
+
+    /**
+     * The draw is never negative, so a value of zero is never greater than it.
+     */
+    @Test
+    @Tag("unit")
+    void testPgti_ValueZero_NeverHolds() {
+        assertThat(countHits("PGTI", Map.of(1, molecule(0)), 100_000, 200)).isZero();
+    }
+
+    /**
+     * The draw stays below the bound, so a value at or above the bound is greater than every draw.
+     */
+    @Test
+    @Tag("unit")
+    void testPgti_ValueAtOrAboveTheBound_AlwaysHolds() {
+        assertThat(countHits("PGTI", Map.of(1, molecule(100_000)), 100_000, 200)).isEqualTo(200);
+        assertThat(countHits("PGTI", Map.of(1, molecule(150_000)), 100_000, 200)).isEqualTo(200);
+    }
+
+    /**
+     * With the bound at one the draw is always zero, which makes a probabilistic conditional and
+     * its negation decide oppositely on every value.
+     */
+    @Test
+    @Tag("unit")
+    void testPgtiAndPlei_BoundOne_AreExactComplements() {
+        for (int value : new int[]{-1, 0, 1, 5}) {
+            boolean greater = holds("PGTI", Map.of(1, molecule(value)), 1, 1);
+            assertThat(greater).as("PGTI holds for A = %d against bound 1", value).isEqualTo(value > 0);
+            assertThat(holds("PLEI", Map.of(1, molecule(value)), 1, 1))
+                    .as("PLEI is the complement of PGTI at A = %d", value)
+                    .isNotEqualTo(greater);
+        }
+    }
+
+    /**
+     * A bound of zero or less takes no draw and leaves the comparison against zero.
+     */
+    @Test
+    @Tag("unit")
+    void testProbabilisticConditionals_BoundZeroOrLess_CompareAgainstZero() {
+        for (int bound : new int[]{0, -5}) {
+            for (int value : new int[]{-3, 0, 4}) {
+                assertThat(holds("PGTI", Map.of(1, molecule(value)), 1, bound))
+                        .as("PGTI with A = %d and B = %d tests A > 0", value, bound).isEqualTo(value > 0);
+                assertThat(holds("PLEI", Map.of(1, molecule(value)), 1, bound))
+                        .as("PLEI with A = %d and B = %d tests A <= 0", value, bound).isEqualTo(value <= 0);
+                assertThat(holds("PLTI", Map.of(1, molecule(value)), 1, bound))
+                        .as("PLTI with A = %d and B = %d tests A < 0", value, bound).isEqualTo(value < 0);
+                assertThat(holds("PGEI", Map.of(1, molecule(value)), 1, bound))
+                        .as("PGEI with A = %d and B = %d tests A >= 0", value, bound).isEqualTo(value >= 0);
+            }
+        }
+    }
+
+    /**
+     * With two vector operands the draw is taken below the magnitude of the second one, and the
+     * magnitude of the first one is what it is compared against.
+     */
+    @Test
+    @Tag("unit")
+    void testPgtr_TwoVectors_DrawsBelowTheMagnitudeOfTheSecond() {
+        int hits = countHits("PGTR", Map.of(1, new int[]{1, 0}, 3, new int[]{0, -4}), 3, HIT_RATE_SAMPLES);
+
+        assertThat(hits / (double) HIT_RATE_SAMPLES)
+                .as("magnitude 1 against a draw from [0, 4) holds with probability 1/4")
+                .isCloseTo(0.25, within(0.02));
+    }
+
+    // ===== Helpers for the comparison and probability tests =====
+
+    /** Number of executions the hit-rate tests average a probability over. */
+    private static final int HIT_RATE_SAMPLES = 10_000;
+
+    /** The side length of the world the hit-rate runs live on. */
+    private static final int LOOP_WORLD_SIDE = 96;
+
+    /**
+     * The cells one program of a hit-rate run occupies: three instructions of three cells each and
+     * three empty cells, which the instruction pointer walks over without spending a tick, so that
+     * the programs tile the row exactly.
+     */
+    private static final int LOOP_PROGRAM_CELLS = 12;
+
+    /** The integer representation of a DATA molecule, the form a data register holds a scalar in. */
+    private static int molecule(int value) {
+        return new Molecule(Config.TYPE_DATA, value).toInt();
+    }
+
+    /** The scalar value behind the contents of a data register. */
+    private static int scalarOf(Object registerValue) {
+        return Molecule.fromInt((Integer) registerValue).toScalarValue();
+    }
+
+    /** Writes the given values into the registers named by the map keys. */
+    private static void installRegisters(Organism target, Map<Integer, Object> registers) {
+        registers.forEach((id, value) -> {
+            if (Organism.isLocationBank(id)) {
+                target.writeLocationOperand(id, (int[]) value);
+            } else {
+                target.writeOperand(id, value);
+            }
+        });
+    }
+
+    /**
+     * Executes one conditional once on a fresh world and reports whether its condition held.
+     * <p>
+     * The instruction is followed by {@code ADDI %DR0 DATA:1}, so the marker register carries 1
+     * exactly when the condition held and the following instruction was not skipped.
+     *
+     * @param opName    the conditional to execute
+     * @param registers the register values to install before the execution, by register ID
+     * @param arguments the contents of the instruction's argument cells: register IDs for the
+     *                  register variants, a literal in the last cell for the immediate variants
+     * @return {@code true} if the condition held
+     */
+    private boolean holds(String opName, Map<Integer, Object> registers, Integer... arguments) {
+        setUp();
+        installRegisters(org, registers);
+        placeInstruction(opName, arguments);
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName(opName), environment));
+
+        sim.tick();
+        sim.tick();
+
+        assertNoInstructionFailure();
+        return scalarOf(org.readOperand(0)) == 1;
+    }
+
+    /**
+     * Executes one two-operand conditional repeatedly and counts how often its condition held.
+     * <p>
+     * The organism runs a line of {@code <conditional> %DR1 <second argument>},
+     * {@code ADDI %DR0 DATA:1} and {@code ADDI %DR2 DATA:1} that wraps around the row it lives on:
+     * the first counter is reached only when the condition holds, the second one counts the
+     * executions. Every execution falls into a tick of its own, so each draw of a probabilistic
+     * conditional comes from a different stream of the organism's random source.
+     *
+     * @param opName         the conditional to execute
+     * @param registers      the register values to install before the run, by register ID
+     * @param secondArgument the content of the conditional's second argument cell: a literal for an
+     *                       immediate variant, a register ID for a register variant
+     * @param samples        the number of executions to run
+     * @return how often the condition held
+     */
+    private int countHits(String opName, Map<Integer, Object> registers, int secondArgument, int samples) {
+        Environment loopWorld = new Environment(new int[]{LOOP_WORLD_SIDE, LOOP_WORLD_SIDE}, true);
+        Simulation loopSim = SimulationTestUtils.createSimulation(loopWorld, 1_000_000, 1_000_000, 10);
+        Organism runner = Organism.create(loopSim, new int[]{0, 0}, 1_000_000);
+        loopSim.addOrganism(runner);
+        runner.writeOperand(0, molecule(0));
+        runner.writeOperand(2, molecule(0));
+        installRegisters(runner, registers);
+
+        int conditional = Instruction.getInstructionIdByName(opName);
+        int addi = Instruction.getInstructionIdByName("ADDI");
+        int[] position = runner.getIp();
+        for (int program = 0; program < LOOP_WORLD_SIDE / LOOP_PROGRAM_CELLS; program++) {
+            position = place(loopWorld, runner, position, Config.TYPE_CODE, conditional);
+            position = place(loopWorld, runner, position, Config.TYPE_DATA, 1);
+            position = place(loopWorld, runner, position, Config.TYPE_DATA, secondArgument);
+            position = place(loopWorld, runner, position, Config.TYPE_CODE, addi);
+            position = place(loopWorld, runner, position, Config.TYPE_DATA, 0);
+            position = place(loopWorld, runner, position, Config.TYPE_DATA, 1);
+            position = place(loopWorld, runner, position, Config.TYPE_CODE, addi);
+            position = place(loopWorld, runner, position, Config.TYPE_DATA, 2);
+            position = place(loopWorld, runner, position, Config.TYPE_DATA, 1);
+            for (int empty = 0; empty < 3; empty++) {
+                position = runner.getNextInstructionPosition(position, runner.getDv(), loopWorld);
+            }
+        }
+
+        int executions = 0;
+        for (int tick = 0; tick < samples * 6 && executions < samples; tick++) {
+            loopSim.tick();
+            executions = scalarOf(runner.readOperand(2));
+        }
+        assertThat(runner.isInstructionFailed()).as("Instruction failed: " + runner.getFailureReason()).isFalse();
+        assertThat(executions).as("executions of %s", opName).isEqualTo(samples);
+        return scalarOf(runner.readOperand(0));
+    }
+
+    /** Writes one molecule of a program and returns the position of the next cell. */
+    private static int[] place(Environment world, Organism runner, int[] position, int type, int value) {
+        world.setMolecule(new Molecule(type, value), position);
+        return runner.getNextInstructionPosition(position, runner.getDv(), world);
     }
 }

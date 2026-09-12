@@ -7,7 +7,6 @@ import org.evochora.runtime.Config;
 import org.evochora.runtime.internal.services.ExecutionContext;
 import org.evochora.runtime.isa.IEnvironmentModifyingInstruction;
 import org.evochora.runtime.isa.Instruction;
-import org.evochora.runtime.isa.Variant;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
@@ -31,22 +30,22 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
     public static void register(int f) {
         family = f;
         // Operation 0: PEEK (read value from environment cell)
-        reg(0, Variant.RR, "PEEK", REGISTER, REGISTER);
-        reg(0, Variant.RV, "PEKI", REGISTER, VECTOR);
-        reg(0, Variant.S, "PEKS", STACK);
+        reg(0, 0, "PEEK", REGISTER, REGISTER);
+        reg(0, 1, "PEKI", REGISTER, VECTOR);
+        reg(0, 2, "PEKS", STACK);
         // Operation 1: POKE (write value to environment cell)
-        reg(1, Variant.RR, "POKE", REGISTER, REGISTER);
-        reg(1, Variant.RV, "POKI", REGISTER, VECTOR);
-        reg(1, Variant.SS, "POKS", STACK, STACK);
+        reg(1, 3, "POKE", REGISTER, REGISTER);
+        reg(1, 4, "POKI", REGISTER, VECTOR);
+        reg(1, 5, "POKS", STACK, STACK);
         // Operation 2: PPK (combined PEEK+POKE)
-        reg(2, Variant.RR, "PPKR", REGISTER, REGISTER);
-        reg(2, Variant.RV, "PPKI", REGISTER, VECTOR);
-        reg(2, Variant.SS, "PPKS", STACK, STACK);
+        reg(2, 6, "PPKR", REGISTER, REGISTER);
+        reg(2, 7, "PPKI", REGISTER, VECTOR);
+        reg(2, 8, "PPKS", STACK, STACK);
     }
 
-    private static void reg(int op, int variant, String name, OperandSource... sources) {
+    private static void reg(int op, int index, String name, OperandSource... sources) {
         Instruction.registerOp(EnvironmentInteractionInstruction.class, EnvironmentInteractionInstruction::new,
-                family, op, variant, name, false, sources);
+                family, op, index, name, false, sources);
     }
 
     private int[] targetCoordinate;

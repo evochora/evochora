@@ -6,7 +6,6 @@ import java.util.NoSuchElementException;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.internal.services.ExecutionContext;
 import org.evochora.runtime.isa.Instruction;
-import org.evochora.runtime.isa.Variant;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
@@ -30,63 +29,63 @@ public class BitwiseInstruction extends Instruction {
     public static void register(int f) {
         family = f;
         // Operation 0: AND
-        reg(0, Variant.RR, "ANDR", REGISTER, REGISTER);
-        reg(0, Variant.RI, "ANDI", REGISTER, IMMEDIATE);
-        reg(0, Variant.SS, "ANDS", STACK, STACK);
+        reg(0, 0, "ANDR", REGISTER, REGISTER);
+        reg(0, 1, "ANDI", REGISTER, IMMEDIATE);
+        reg(0, 2, "ANDS", STACK, STACK);
         // Operation 1: OR
-        reg(1, Variant.RR, "ORR", REGISTER, REGISTER);
-        reg(1, Variant.RI, "ORI", REGISTER, IMMEDIATE);
-        reg(1, Variant.SS, "ORS", STACK, STACK);
+        reg(1, 3, "ORR", REGISTER, REGISTER);
+        reg(1, 4, "ORI", REGISTER, IMMEDIATE);
+        reg(1, 5, "ORS", STACK, STACK);
         // Operation 2: XOR
-        reg(2, Variant.RR, "XORR", REGISTER, REGISTER);
-        reg(2, Variant.RI, "XORI", REGISTER, IMMEDIATE);
-        reg(2, Variant.SS, "XORS", STACK, STACK);
+        reg(2, 6, "XORR", REGISTER, REGISTER);
+        reg(2, 7, "XORI", REGISTER, IMMEDIATE);
+        reg(2, 8, "XORS", STACK, STACK);
         // Operation 3: NAD (NAND)
-        reg(3, Variant.RR, "NADR", REGISTER, REGISTER);
-        reg(3, Variant.RI, "NADI", REGISTER, IMMEDIATE);
-        reg(3, Variant.SS, "NADS", STACK, STACK);
+        reg(3, 9, "NADR", REGISTER, REGISTER);
+        reg(3, 10, "NADI", REGISTER, IMMEDIATE);
+        reg(3, 11, "NADS", STACK, STACK);
         // Operation 4: NOR
-        reg(4, Variant.RR, "NORR", REGISTER, REGISTER);
-        reg(4, Variant.RI, "NORI", REGISTER, IMMEDIATE);
-        reg(4, Variant.SS, "NORS", STACK, STACK);
+        reg(4, 12, "NORR", REGISTER, REGISTER);
+        reg(4, 13, "NORI", REGISTER, IMMEDIATE);
+        reg(4, 14, "NORS", STACK, STACK);
         // Operation 5: EQU (XNOR / Equivalence)
-        reg(5, Variant.RR, "EQUR", REGISTER, REGISTER);
-        reg(5, Variant.RI, "EQUI", REGISTER, IMMEDIATE);
-        reg(5, Variant.SS, "EQUS", STACK, STACK);
+        reg(5, 15, "EQUR", REGISTER, REGISTER);
+        reg(5, 16, "EQUI", REGISTER, IMMEDIATE);
+        reg(5, 17, "EQUS", STACK, STACK);
         // Operation 6: ADN (AND-NOT: a & ~b)
-        reg(6, Variant.RR, "ADNR", REGISTER, REGISTER);
-        reg(6, Variant.RI, "ADNI", REGISTER, IMMEDIATE);
-        reg(6, Variant.SS, "ADNS", STACK, STACK);
+        reg(6, 18, "ADNR", REGISTER, REGISTER);
+        reg(6, 19, "ADNI", REGISTER, IMMEDIATE);
+        reg(6, 20, "ADNS", STACK, STACK);
         // Operation 7: ORN (OR-NOT: a | ~b)
-        reg(7, Variant.RR, "ORNR", REGISTER, REGISTER);
-        reg(7, Variant.RI, "ORNI", REGISTER, IMMEDIATE);
-        reg(7, Variant.SS, "ORNS", STACK, STACK);
+        reg(7, 21, "ORNR", REGISTER, REGISTER);
+        reg(7, 22, "ORNI", REGISTER, IMMEDIATE);
+        reg(7, 23, "ORNS", STACK, STACK);
         // Operation 8: NOT
-        reg(8, Variant.R, "NOT", REGISTER);
-        reg(8, Variant.S, "NOTS", STACK);
+        reg(8, 24, "NOT", REGISTER);
+        reg(8, 25, "NOTS", STACK);
         // Operation 9: SHL (Shift Left)
-        reg(9, Variant.RR, "SHLR", REGISTER, REGISTER);
-        reg(9, Variant.RI, "SHLI", REGISTER, IMMEDIATE);
-        reg(9, Variant.SS, "SHLS", STACK, STACK);
+        reg(9, 26, "SHLR", REGISTER, REGISTER);
+        reg(9, 27, "SHLI", REGISTER, IMMEDIATE);
+        reg(9, 28, "SHLS", STACK, STACK);
         // Operation 10: SHR (Shift Right)
-        reg(10, Variant.RR, "SHRR", REGISTER, REGISTER);
-        reg(10, Variant.RI, "SHRI", REGISTER, IMMEDIATE);
-        reg(10, Variant.SS, "SHRS", STACK, STACK);
+        reg(10, 29, "SHRR", REGISTER, REGISTER);
+        reg(10, 30, "SHRI", REGISTER, IMMEDIATE);
+        reg(10, 31, "SHRS", STACK, STACK);
         // Operation 11: ROT (Rotate)
-        reg(11, Variant.RR, "ROTR", REGISTER, REGISTER);
-        reg(11, Variant.RI, "ROTI", REGISTER, IMMEDIATE);
-        reg(11, Variant.SS, "ROTS", STACK, STACK);
+        reg(11, 32, "ROTR", REGISTER, REGISTER);
+        reg(11, 33, "ROTI", REGISTER, IMMEDIATE);
+        reg(11, 34, "ROTS", STACK, STACK);
         // Operation 12: PCN (Population Count)
-        reg(12, Variant.RR, "PCNR", REGISTER, REGISTER);
-        reg(12, Variant.S, "PCNS", STACK);
+        reg(12, 35, "PCNR", REGISTER, REGISTER);
+        reg(12, 36, "PCNS", STACK);
         // Operation 13: BSN (Bit Scan N-th)
-        reg(13, Variant.RRR, "BSNR", REGISTER, REGISTER, REGISTER);
-        reg(13, Variant.RRI, "BSNI", REGISTER, REGISTER, IMMEDIATE);
-        reg(13, Variant.SS, "BSNS", STACK, STACK);
+        reg(13, 37, "BSNR", REGISTER, REGISTER, REGISTER);
+        reg(13, 38, "BSNI", REGISTER, REGISTER, IMMEDIATE);
+        reg(13, 39, "BSNS", STACK, STACK);
     }
 
-    private static void reg(int op, int variant, String name, OperandSource... sources) {
-        Instruction.registerOp(BitwiseInstruction.class, BitwiseInstruction::new, family, op, variant, name, true, sources);
+    private static void reg(int op, int index, String name, OperandSource... sources) {
+        Instruction.registerOp(BitwiseInstruction.class, BitwiseInstruction::new, family, op, index, name, true, sources);
     }
 
     /**

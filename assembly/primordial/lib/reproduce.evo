@@ -32,11 +32,17 @@ EXPORT .PROC CONTINUE REF ER
   # INITIALIZATION PHASE
   # ===========================================================================
   .ORG 0|4
-  CONTINUE_INIT:                              # Load state from persistent storage
-    STATIC2_LOAD CONTINUE_STATE %DIRMASK %SIDEVEC; NOP
+  CONTINUE_INIT:                              # Nothing is touched before the energy is known
+    NRG ER; NOP^4                             # Read energy register
+    LTI ER REPRODUCTION_PAUSE_THRESHOLD;      # If energy < threshold...
+      JMPI CONTINUE_PAUSED; NOP^4             # ...return before any state, marker or pointer changes
+    STATIC2_LOAD CONTINUE_STATE %DIRMASK %SIDEVEC; NOP   # Load state from persistent storage
     SMRI DATA:1; NOP^2                        # Set marker to 1 for ownership transfer during FORK
     SMRI DATA:1; NOP^2                        # Redundancy
     JMPI CONTINUE_INIT2; NOP^11; JMPI CONTINUE_INIT2
+
+  CONTINUE_PAUSED: NOP^4                      # Called below the pause threshold: return as called
+    NOP^4; RET; NOP^4; RET
 
   .ORG 0|6
   CONTINUE_INIT2:                             # Acquire shell molecule as terminator symbol

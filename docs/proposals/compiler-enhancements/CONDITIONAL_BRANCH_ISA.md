@@ -8,6 +8,13 @@
 > branch variants share those slots (and thus the mutation pool) or get their own. Also fix the
 > Performance section: the label is resolved when the condition **is** met, not when it is not.
 
+> **Note (2026-09-11):** Opcode ids no longer carry a structure: an id is the family in its lowest
+> five bits and an explicit index within the family, and `Variant` and `OpcodeId` no longer
+> exist. Family, operation and operand list of an instruction are recorded by the registry, which
+> is what the mutation flips read (`docs/outdated/proposals/accomplished/PROBABILISTIC_CONDITIONALS.md`, decision 26).
+> The variant constants and the mutation-pool reasoning below are written against the removed
+> encoding and have to be redone against the registry before this design is taken up.
+
 ## Problem
 
 All 20 conditional operations (IF, IN, LT, GT, LET, GET, IFT, INT, IFM, INM, IFP, INP, IFF, INF, IFV, INV, IER, INE, IFSL, INSL) use skip-next semantics: they skip the next instruction if the condition is not met. To implement a conditional branch, the programmer must write a skip-next + JMP pair:

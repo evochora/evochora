@@ -54,9 +54,9 @@ public abstract class Instruction {
      */
     protected final Organism organism;
     /**
-     * The opcode ID this instance was created for: an ID composed by {@link OpcodeId} from family,
-     * operation and variant, combined with {@link Config#TYPE_CODE}. It is the key the instruction
-     * is registered under and the index into the array registries, so every lookup range-checks it
+     * The opcode ID this instance was created for: the id the instruction was allocated at
+     * registration, combined with {@link Config#TYPE_CODE}. It is the key the instruction is
+     * registered under and the index into the array registries, so every lookup range-checks it
      * first — an organism can execute an arbitrary value read from the environment, and a value
      * outside the registered range must fall back rather than fail.
      */
@@ -145,10 +145,46 @@ public abstract class Instruction {
     protected static final Map<Integer, List<OperandSource>> OPERAND_SOURCES = new HashMap<>();
     private static final Map<Integer, InstructionSignature> SIGNATURES_BY_ID = new HashMap<>();
     private static final Map<Integer, Boolean> PARALLEL_EXECUTE_SAFE_MAP = new HashMap<>();
+    /**
+     * The family every registered instruction belongs to, keyed by full opcode ID. Written while
+     * the instruction set is registered and read on cold paths only — mutation plugins and
+     * introspection — so a map is enough.
+     */
+    private static final Map<Integer, Integer> FAMILY_BY_ID = new HashMap<>();
+    /**
+     * The operation number of every registered instruction, keyed by full opcode ID. The operation
+     * is what ties the opcodes that do the same thing with different operands together, such as
+     * {@code GTR}, {@code GTI} and {@code GTS}. Read on cold paths only, like {@link #FAMILY_BY_ID}.
+     */
+    private static final Map<Integer, Integer> OPERATION_BY_ID = new HashMap<>();
 
-    // Array-based registries for O(1) hot-path lookups (populated from HashMaps during init())
-    // Opcode range: Family 0-9, max opcode = 9*4096 + 63*64 + 63 = 40959
-    private static final int REGISTRY_SIZE = 41000;
+    // ========== Opcode ID layout ==========
+
+    /**
+     * Number of bits the family occupies at the bottom of an opcode ID. The family sits at the
+     * bottom so that each family can allocate its indices from zero upwards without a shared
+     * counter.
+     */
+    private static final int FAMILY_BITS = 5;
+
+    /** Highest family ID the opcode layout can express. */
+    private static final int MAX_FAMILY = (1 << FAMILY_BITS) - 1;
+
+    /** Highest index an instruction can carry within its family. */
+    private static final int MAX_INDEX = 255;
+
+    /**
+     * Highest opcode ID the layout can express. The bits above it are reserved and are zero in
+     * every registered ID, because an ID is composed from a family and an index alone.
+     */
+    private static final int MAX_OPCODE_ID = (MAX_INDEX << FAMILY_BITS) | MAX_FAMILY;
+
+    /**
+     * Length of the array registries, sized from the opcode layout so that every ID the layout can
+     * express is addressable. Indexed by full opcode ID, which is the opcode ID combined with
+     * {@link Config#TYPE_CODE}; that type adds no bits, so the two coincide.
+     */
+    private static final int REGISTRY_SIZE = MAX_OPCODE_ID + 1;
     private static InstructionFactory[] PLANNERS_ARRAY = new InstructionFactory[0];
     @SuppressWarnings("unchecked")
     private static List<OperandSource>[] OPERAND_SOURCES_ARRAY = new List[0];
@@ -483,6 +519,12 @@ public abstract class Instruction {
                 return;
             }
 
+            // Registration defines the instruction set rather than adding to it, so a pass starts
+            // from empty registries. That is what lets a registration reject an opcode ID or a name
+            // that is already taken: within one pass, a second claim on either is a collision
+            // between two instructions, never the same instruction registering again.
+            clearRegistries();
+
             NopInstruction.register(SPECIAL);
             ArithmeticInstruction.register(ARITHMETIC);
             BitwiseInstruction.register(BITWISE);
@@ -503,6 +545,25 @@ public abstract class Instruction {
             // that thread a registry still being filled.
             initialized = true;
         }
+    }
+
+    /**
+     * Empties the registration maps so that a registration pass starts from nothing.
+     * <p>
+     * Called from {@link #init()} while it holds the lock and before any instruction registers.
+     * The array registries the virtual machine reads are not touched here: they are replaced
+     * wholesale by {@link #buildArrayRegistries()} once registration is complete.
+     */
+    private static void clearRegistries() {
+        REGISTERED_INSTRUCTIONS_BY_ID.clear();
+        NAME_TO_ID.clear();
+        ID_TO_NAME.clear();
+        REGISTERED_PLANNERS_BY_ID.clear();
+        SIGNATURES_BY_ID.clear();
+        FAMILY_BY_ID.clear();
+        OPERATION_BY_ID.clear();
+        OPERAND_SOURCES.clear();
+        PARALLEL_EXECUTE_SAFE_MAP.clear();
     }
 
     /**
@@ -572,53 +633,91 @@ public abstract class Instruction {
     // ========== Registration API for Instruction Subclasses ==========
 
     /**
-     * Registers an instruction opcode with explicit parallel-execute safety.
-     * Instructions marked as unsafe are environment-modifying and will be executed sequentially.
+     * Registers one instruction opcode. Called by instruction subclasses in their register() method.
+     * <p>
+     * The opcode ID is composed from the family and the instruction's index within that family:
+     * {@code (index << 5) | family}, with the bits above that reserved and zero. The ID says
+     * nothing else. What an instruction belongs to and what it reads is what is recorded here —
+     * family, operation, name and operand sources — and this registry is the only place that
+     * answers it.
+     * <p>
+     * <b>Every call states its index literally</b>, the way a protobuf field number is written out.
+     * Indices are allocated densely from zero in registration order, an instruction added later
+     * takes the next free index of its family, and an index already in use is never given to
+     * another instruction: the IDs are meant to stay stable when the instruction set grows, so that
+     * a stable program format can be built on them.
      * <p>
      * <b>Thread safety:</b> Must only be called during single-threaded initialization ({@link #init()}).
      *
      * @param familyClass the instruction class (e.g., ArithmeticInstruction.class)
      * @param factory the factory for creating instruction instances (e.g., {@code ArithmeticInstruction::new})
      * @param family the family ID from {@link Family}
-     * @param operation the operation number within the family
-     * @param variant the variant from {@link Variant}
+     * @param operation the operation number within the family, shared by the opcodes that do the
+     *                  same thing with different operands (such as {@code GTR}, {@code GTI}, {@code GTS})
+     * @param index the instruction's index within its family
      * @param name the instruction mnemonic (e.g., "ADDR")
      * @param parallelExecuteSafe whether this instruction can safely execute in parallel (no shared environment writes)
      * @param sources the operand sources for this instruction
-     * @throws IllegalArgumentException if family, operation, or variant values are out of range
+     * @throws IllegalArgumentException if family or index lies outside the opcode layout
+     * @throws IllegalStateException if the opcode ID or the name is already registered
      */
     protected static void registerOp(Class<? extends Instruction> familyClass, InstructionFactory factory,
-                                     int family, int operation,
-                                     int variant, String name,
+                                     int family, int operation, int index, String name,
                                      boolean parallelExecuteSafe, OperandSource... sources) {
-        int fullId = OpcodeId.compute(family, operation, variant) | Config.TYPE_CODE;
+        int fullId = opcodeIdOf(family, index) | Config.TYPE_CODE;
+        String upperCaseName = name.toUpperCase();
+        // Checked before anything is written, so a rejected registration leaves the registry as it was.
+        if (REGISTERED_INSTRUCTIONS_BY_ID.containsKey(fullId)) {
+            throw new IllegalStateException("Opcode " + fullId + " is already registered as "
+                    + ID_TO_NAME.get(fullId) + ", cannot register " + name);
+        }
+        if (NAME_TO_ID.containsKey(upperCaseName)) {
+            throw new IllegalStateException("Instruction name " + upperCaseName + " is already registered");
+        }
+
+        List<OperandSource> sourceList = List.of(sources);
+        REGISTERED_INSTRUCTIONS_BY_ID.put(fullId, familyClass);
+        NAME_TO_ID.put(upperCaseName, fullId);
+        ID_TO_NAME.put(fullId, name);
+        REGISTERED_PLANNERS_BY_ID.put(fullId, factory);
+        SIGNATURES_BY_ID.put(fullId, signatureOf(sourceList));
+        FAMILY_BY_ID.put(fullId, family);
+        OPERATION_BY_ID.put(fullId, operation);
+        OPERAND_SOURCES.put(fullId, sourceList);
         PARALLEL_EXECUTE_SAFE_MAP.put(fullId, parallelExecuteSafe);
-        registerOp(familyClass, factory, family, operation, variant, name, sources);
     }
 
     /**
-     * Registers an instruction opcode. Called by instruction subclasses in their register() method.
-     * Defaults to parallel-execute unsafe ({@code false}). Use the explicit overload to mark safe instructions.
+     * Composes an opcode ID from a family and an index within that family.
+     * <p>
+     * Both components are range-checked, which is what keeps the reserved bits above the ID zero
+     * and the family bits equal to the family the instruction registers under.
      *
-     * @param familyClass the instruction class (e.g., ArithmeticInstruction.class)
-     * @param factory the factory for creating instruction instances (e.g., {@code ArithmeticInstruction::new})
      * @param family the family ID from {@link Family}
-     * @param operation the operation number within the family
-     * @param variant the variant from {@link Variant}
-     * @param name the instruction mnemonic (e.g., "ADDR")
-     * @param sources the operand sources for this instruction
+     * @param index the instruction's index within its family
+     * @return the opcode ID {@code (index << 5) | family}
+     * @throws IllegalArgumentException if family or index lies outside the opcode layout
      */
-    protected static void registerOp(Class<? extends Instruction> familyClass, InstructionFactory factory,
-                                     int family, int operation,
-                                     int variant, String name, OperandSource... sources) {
-        int opcodeId = OpcodeId.compute(family, operation, variant);
-        int fullId = opcodeId | Config.TYPE_CODE;
-        PARALLEL_EXECUTE_SAFE_MAP.putIfAbsent(fullId, false);
-        registerFamily(familyClass, factory, java.util.Map.of(opcodeId, name), java.util.List.of(sources));
+    static int opcodeIdOf(int family, int index) {
+        if (family < 0 || family > MAX_FAMILY) {
+            throw new IllegalArgumentException(
+                    "Family must be between 0 and " + MAX_FAMILY + ", got: " + family);
+        }
+        if (index < 0 || index > MAX_INDEX) {
+            throw new IllegalArgumentException(
+                    "Index within a family must be between 0 and " + MAX_INDEX + ", got: " + index);
+        }
+        return (index << FAMILY_BITS) | family;
     }
 
-    private static void registerFamily(Class<? extends Instruction> familyClass, InstructionFactory factory,
-                                       Map<Integer, String> variants, List<OperandSource> sources) {
+    /**
+     * Derives the compiler-facing signature of an instruction from its operand sources.
+     * A STACK operand takes no argument slot and therefore does not appear in the signature.
+     *
+     * @param sources the operand sources of the instruction, in the order they are taken
+     * @return the signature the compiler checks the written operands against
+     */
+    private static InstructionSignature signatureOf(List<OperandSource> sources) {
         List<InstructionArgumentType> argTypesForSignature = new ArrayList<>();
         for (OperandSource s : sources) {
             switch (s) {
@@ -630,23 +729,7 @@ public abstract class Instruction {
                 case STACK -> { /* STACK operands don't appear in signature */ }
             }
         }
-        InstructionSignature signature = new InstructionSignature(argTypesForSignature);
-
-        for (Map.Entry<Integer, String> entry : variants.entrySet()) {
-            registerInstruction(familyClass, entry.getKey(), entry.getValue(), factory, signature);
-            OPERAND_SOURCES.put(entry.getKey() | Config.TYPE_CODE, sources);
-        }
-    }
-
-    private static void registerInstruction(Class<? extends Instruction> instructionClass, int id, String name,
-                                            InstructionFactory factory, InstructionSignature signature) {
-        String upperCaseName = name.toUpperCase();
-        int fullId = id | Config.TYPE_CODE;
-        REGISTERED_INSTRUCTIONS_BY_ID.put(fullId, instructionClass);
-        NAME_TO_ID.put(upperCaseName, fullId);
-        ID_TO_NAME.put(fullId, name);
-        REGISTERED_PLANNERS_BY_ID.put(fullId, factory);
-        SIGNATURES_BY_ID.put(fullId, signature);
+        return new InstructionSignature(argTypesForSignature);
     }
 
     /**
@@ -785,6 +868,35 @@ public abstract class Instruction {
     public static List<OperandSource> getOperandSourcesById(int opcodeId) {
         List<OperandSource> sources = OPERAND_SOURCES.get(opcodeId);
         return sources != null ? Collections.unmodifiableList(sources) : List.of();
+    }
+
+    /**
+     * Gets the family an instruction belongs to.
+     * <p>
+     * The family is what the instruction registered under, not something read off the opcode ID:
+     * the registry is the only place that says what an instruction is.
+     *
+     * @param opcodeId The instruction opcode ID (including TYPE_CODE bits).
+     * @return The family ID from {@link Family}, or {@code -1} if the opcode is not registered.
+     */
+    public static int getFamilyById(int opcodeId) {
+        Integer family = FAMILY_BY_ID.get(opcodeId);
+        return family != null ? family : -1;
+    }
+
+    /**
+     * Gets the operation number an instruction implements within its family.
+     * <p>
+     * The operation is what ties the opcodes that do the same thing with different operands
+     * together, such as {@code GTR}, {@code GTI} and {@code GTS}. It has no meaning across
+     * families: the same number in two families names two unrelated operations.
+     *
+     * @param opcodeId The instruction opcode ID (including TYPE_CODE bits).
+     * @return The operation number, or {@code -1} if the opcode is not registered.
+     */
+    public static int getOperationById(int opcodeId) {
+        Integer operation = OPERATION_BY_ID.get(opcodeId);
+        return operation != null ? operation : -1;
     }
 
     /**

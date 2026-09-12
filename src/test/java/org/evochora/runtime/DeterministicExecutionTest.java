@@ -30,6 +30,7 @@ import org.junit.jupiter.api.Test;
  * <ul>
  *   <li>stochastic label selection under a fixed thread count and across thread counts,</li>
  *   <li>organism randomness ({@code RAND}) and label selection across a resume,</li>
+ *   <li>the draw a probabilistic conditional takes while deciding,</li>
  *   <li>visibility of same-tick environment writes across thread counts,</li>
  *   <li>rejection of shared randomness inside the parallel wave.</li>
  * </ul>
@@ -41,6 +42,9 @@ class DeterministicExecutionTest {
     private static final int LABEL_HASH = 0b1011_0110_0101_1001_1010 & Config.VALUE_MASK;
     private static final int JUMPERS = 16;
     private static final int JUMP_TICKS = 40;
+    private static final int SOFT_GATE_TICKS = 40;
+    private static final int SOFT_GATE_VALUE = 500;
+    private static final int SOFT_GATE_BOUND = 1000;
 
     private final List<Simulation> simulations = new ArrayList<>();
 
@@ -157,6 +161,63 @@ class DeterministicExecutionTest {
         assertThat(randValues(rowMajor.sim, rowMajor.organism(), pairs * 2))
                 .as("RAND values under the row-major layout must equal those under the production tiles")
                 .isEqualTo(randValues(tiled.sim, tiled.organism(), pairs * 2));
+    }
+
+    // ===================================================================================
+    // Organism randomness inside a conditional (PGTI)
+    // ===================================================================================
+
+    @Test
+    void softGate_sameSeed_isReproducible() {
+        List<int[][]> first = runSoftGates(Environment.TILE_SIDE);
+        List<int[][]> second = runSoftGates(Environment.TILE_SIDE);
+
+        assertSameTrajectory(first, second, "two runs of a probabilistic conditional with identical seed");
+    }
+
+    @Test
+    void softGate_isLayoutInvariant() {
+        List<int[][]> tiled = runSoftGates(Environment.TILE_SIDE);
+        List<int[][]> rowMajor = runSoftGates(1);
+
+        assertSameTrajectory(tiled, rowMajor, "tile side " + Environment.TILE_SIDE + " vs 1");
+    }
+
+    // ===================================================================================
+    // Scenario: one organism running a line of probabilistic conditionals
+    // ===================================================================================
+
+    /**
+     * A single organism on a line of {@code PGTI %DR0 DATA:1000; WAIT} pairs, with {@code DR0} at
+     * half the bound. Each conditional holds with probability one half, and a condition that holds
+     * costs the tick of the {@code WAIT} that a failing one skips, so the instruction pointer
+     * sequence follows the organism's draws.
+     *
+     * @param tileSide the side length of the grid's memory tiles
+     * @return the simulation, laid out and ready to tick
+     */
+    private Simulation newSoftGateWorld(int tileSide) {
+        Environment env = new Environment(new EnvironmentProperties(new int[]{64}, true),
+                new PreExpandedHammingStrategy(), tileSide);
+        Simulation sim = SimulationTestUtils.createSimulation(env, 1);
+        simulations.add(sim);
+        sim.setRandomProvider(new SeededRandomProvider(SEED));
+        Organism organism = Organism.create(sim, new int[]{0}, 10_000);
+        sim.addOrganism(organism);
+        organism.writeOperand(0, new Molecule(Config.TYPE_DATA, SOFT_GATE_VALUE).toInt());
+        int pgti = Instruction.getInstructionIdByName("PGTI");
+        int wait = Instruction.getInstructionIdByName("WAIT");
+        for (int x = 0; x + 4 <= 64; x += 4) {
+            env.setMolecule(new Molecule(Config.TYPE_CODE, pgti), organism.getId(), new int[]{x});
+            env.setMolecule(new Molecule(Config.TYPE_DATA, 0), organism.getId(), new int[]{x + 1});
+            env.setMolecule(new Molecule(Config.TYPE_DATA, SOFT_GATE_BOUND), organism.getId(), new int[]{x + 2});
+            env.setMolecule(new Molecule(Config.TYPE_CODE, wait), organism.getId(), new int[]{x + 3});
+        }
+        return sim;
+    }
+
+    private List<int[][]> runSoftGates(int tileSide) {
+        return tick(newSoftGateWorld(tileSide), SOFT_GATE_TICKS);
     }
 
     // ===================================================================================

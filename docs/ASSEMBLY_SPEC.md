@@ -425,6 +425,8 @@ Operands are values — register contents, the top of the stack, or literals —
 * `IFR %REG1 %REG2`, `IFI %REG1 <Literal>`, `IFS`: If values are equal.
 * `LTR %REG1 %REG2`, `LTI %REG1 <Literal>`, `LTS`: If value of first argument is less than second.
 * `GTR %REG1 %REG2`, `GTI %REG1 <Literal>`, `GTS`: If value of first argument is greater than second.
+* `PGTR %REG1 %REG2`, `PGTI %REG1 <Literal>`, `PGTS`: If value of first argument is greater than a random value drawn below the second. See "Probabilistic conditionals".
+* `PLTR %REG1 %REG2`, `PLTI %REG1 <Literal>`, `PLTS`: If value of first argument is less than a random value drawn below the second. See "Probabilistic conditionals".
 * `IFTR %REG1 %REG2`, `IFTI %REG1 <Literal>`, `IFTS`: If molecule types are equal.
 * `IFER`: If the previous instruction failed. Takes no operands. The "previous instruction" refers to the instruction executed in the immediately preceding tick, not the preceding instruction in spatial layout.
 * `IFSL %LOC_REG`: If the location register holds a position.
@@ -447,6 +449,8 @@ Value comparisons:
 * `INR %REG1 %REG2`, `INI %REG1 <Literal>`, `INS`: If values are **not** equal.
 * `GETR %REG1 %REG2`, `GETI %REG1 <Literal>`, `GETS`: If value of first argument is **greater than or equal to** second.
 * `LETR %REG1 %REG2`, `LETI %REG1 <Literal>`, `LETS`: If value of first argument is **less than or equal to** second.
+* `PLER %REG1 %REG2`, `PLEI %REG1 <Literal>`, `PLES`: If value of first argument is **less than or equal to** a random value drawn below the second. The negated form of `PGT*`.
+* `PGER %REG1 %REG2`, `PGEI %REG1 <Literal>`, `PGES`: If value of first argument is **greater than or equal to** a random value drawn below the second. The negated form of `PLT*`.
 * `INTR %REG1 %REG2`, `INTI %REG1 <Literal>`, `INTS`: If molecule types are **not** equal.
 * `INER`: If the previous instruction did **not** fail. Takes no operands. The negated form of `IFER`.
 * `INSL %LOC_REG`: If the location register is empty. The negated form of `IFSL`.
@@ -457,6 +461,48 @@ Cell tests:
 * `INPR %VEC_REG`, `INPI <Vector>`, `INPS`: If cell at `DP` + vector is **not** passable (not empty and not owned by self).
 * `INFR %VEC_REG`, `INFI <Vector>`, `INFS`: If cell at `DP` + vector is **not** owned by a foreign organism (ownerId == 0 || ownerId == self.id).
 * `INVR %VEC_REG`, `INVI <Vector>`, `INVS`: If cell at `DP` + vector is **not** vacant (has an owner, ownerId != 0).
+
+#### Vector operands in value comparisons
+
+A value comparison reduces each operand to one number: a scalar contributes its own value, a vector its **Manhattan magnitude**, the sum of the absolute values of its components. The comparison then runs on those two numbers, whether the operands are two scalars, two vectors, or one of each. No combination of operand types fails.
+
+The magnitude of a vector is a `DATA` value and follows the rule of *Types in value operations*: against `DATA` or `STATE` the numbers decide, against any other type the comparison is never satisfied.
+
+The equality tests `IFR`/`IFI`/`IFS` and `INR`/`INI`/`INS` are the exception for two vector operands: they compare component by component, so that two positions are equal only if they are the same position. A vector compared against a scalar is compared by its magnitude here as well.
+
+A location register that holds no position has no components and therefore the magnitude 0: against another location value it is equal only to one that holds no position either, against a scalar it enters with 0. The question whether a location register holds a position at all is `IFSL`.
+
+The type comparisons `IFT*` and `INT*` are not affected by this rule: they compare molecule types, not values.
+
+#### Probabilistic conditionals
+
+`PGT`, `PLE`, `PLT` and `PGE` compare like `GT`, `LET`, `LT` and `GET`, with one difference: the second operand B is not the value compared against but the bound of a uniformly distributed random draw U from `[0, B)`, and the comparison runs between the first value A and U. The draw comes from the organism's own random source, the one `RAND` and `RBIR` draw from, and one draw is taken per execution.
+
+| Instruction | Condition | Probability that it holds |
+|---|---|---|
+| `PGT*` | A > U | clamp(A / B, 0, 1) |
+| `PLE*` | A ≤ U | 1 − clamp(A / B, 0, 1) |
+| `PLT*` | A < U | 1 − clamp((A + 1) / B, 0, 1) |
+| `PGE*` | A ≥ U | clamp((A + 1) / B, 0, 1) |
+
+`PGT`/`PLE` and `PLT`/`PGE` are exact negation pairs. A negative A satisfies neither `PGT` nor `PGE`, because U is never negative.
+
+**A bound of zero or less yields U = 0.** `PGT` then tests A > 0, `PLE` tests A ≤ 0, `PLT` tests A < 0 and `PGE` tests A ≥ 0. This differs from `RAND`, which fails for an upper bound of zero or less: a scale that has shrunk to nothing leaves a comparison against zero here, not a failing instruction.
+
+A vector operand enters with its magnitude, as in every other value comparison: for a vector B the draw is taken from `[0, |B|)`.
+
+#### Writing a decision as a probability
+
+A hard comparison becomes a soft one with the same operand: `GTI %ER DATA:50000` holds from 50 000 on and never below, `PGTI %ER DATA:50000` holds with certainty from 50 000 on and with probability ER / 50 000 below it. The second operand stays the point of certainty and becomes, below it, the slope.
+
+A soft comparison holds with some probability at every positive value. A decision that must not be taken below a minimum is composed like every conjunction, from the negated hard test and a jump away before the soft one:
+
+```
+LETI %ER MINIMUM       # at or below the minimum ...
+JMPI SKIP              # ... the decision is not taken
+PGTI %ER SCALE         # above it, chance decides
+JMPI TAKE
+```
 
 ### World Interaction
 

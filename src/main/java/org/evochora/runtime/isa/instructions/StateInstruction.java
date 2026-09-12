@@ -6,7 +6,6 @@ import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
 import org.evochora.runtime.internal.services.ExecutionContext;
 import org.evochora.runtime.isa.Instruction;
-import org.evochora.runtime.isa.Variant;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
@@ -31,76 +30,76 @@ public class StateInstruction extends Instruction {
     public static void register(int f) {
         family = f;
         // Operation 0: SCAN (scan environment in direction)
-        reg(0, Variant.RR, "SCAN", REGISTER, REGISTER);
-        reg(0, Variant.RV, "SCNI", REGISTER, VECTOR);
-        reg(0, Variant.S, "SCNS", STACK);
+        reg(0, 0, "SCAN", REGISTER, REGISTER);
+        reg(0, 1, "SCNI", REGISTER, VECTOR);
+        reg(0, 2, "SCNS", STACK);
         // Operation 1: SEEK (set active data pointer direction)
-        reg(1, Variant.R, "SEEK", REGISTER);
-        reg(1, Variant.V, "SEKI", VECTOR);
-        reg(1, Variant.S, "SEKS", STACK);
+        reg(1, 3, "SEEK", REGISTER);
+        reg(1, 4, "SEKI", VECTOR);
+        reg(1, 5, "SEKS", STACK);
         // Operation 2: TURN (turn/rotate direction)
-        reg(2, Variant.R, "TURN", REGISTER);
-        reg(2, Variant.V, "TRNI", VECTOR);
-        reg(2, Variant.S, "TRNS", STACK);
+        reg(2, 6, "TURN", REGISTER);
+        reg(2, 7, "TRNI", VECTOR);
+        reg(2, 8, "TRNS", STACK);
         // Operation 3: SYNC (synchronize/wait)
-        reg(3, Variant.NONE, "SYNC");
+        reg(3, 9, "SYNC");
         // Operation 4: NRG (get energy)
-        reg(4, Variant.R, "NRG", REGISTER);
-        reg(4, Variant.NONE, "NRGS");
+        reg(4, 10, "NRG", REGISTER);
+        reg(4, 11, "NRGS");
         // Operation 5: NTR (get entropy)
-        reg(5, Variant.R, "NTR", REGISTER);
-        reg(5, Variant.NONE, "NTRS");
+        reg(5, 12, "NTR", REGISTER);
+        reg(5, 13, "NTRS");
         // Operation 6: DIFF (get difficulty/thermodynamic gradient)
-        reg(6, Variant.R, "DIFF", REGISTER);
-        reg(6, Variant.NONE, "DIFS");
+        reg(6, 14, "DIFF", REGISTER);
+        reg(6, 15, "DIFS");
         // Operation 7: POS (get position)
-        reg(7, Variant.R, "POS", REGISTER);
-        reg(7, Variant.NONE, "POSS");
+        reg(7, 16, "POS", REGISTER);
+        reg(7, 17, "POSS");
         // Operation 8: RAND (random number)
-        reg(8, Variant.R, "RAND", REGISTER);
-        reg(8, Variant.S, "RNDS", STACK);
+        reg(8, 18, "RAND", REGISTER);
+        reg(8, 19, "RNDS", STACK);
         // Operation 9: FORK (replicate organism) — writes to shared environment
-        regUnsafe(9, Variant.RRR, "FORK", REGISTER, REGISTER, REGISTER);
-        regUnsafe(9, Variant.VIV, "FRKI", VECTOR, IMMEDIATE, VECTOR);
-        regUnsafe(9, Variant.SSS, "FRKS", STACK, STACK, STACK);
+        regUnsafe(9, 20, "FORK", REGISTER, REGISTER, REGISTER);
+        regUnsafe(9, 21, "FRKI", VECTOR, IMMEDIATE, VECTOR);
+        regUnsafe(9, 22, "FRKS", STACK, STACK, STACK);
         // Operation 10: ADP (active data pointer selection)
-        reg(10, Variant.R, "ADPR", REGISTER);
-        reg(10, Variant.I, "ADPI", IMMEDIATE);
-        reg(10, Variant.S, "ADPS", STACK);
+        reg(10, 23, "ADPR", REGISTER);
+        reg(10, 24, "ADPI", IMMEDIATE);
+        reg(10, 25, "ADPS", STACK);
         // Operation 11: SPN (scan passable neighbors)
-        reg(11, Variant.R, "SPNR", REGISTER);
-        reg(11, Variant.NONE, "SPNS");
+        reg(11, 26, "SPNR", REGISTER);
+        reg(11, 27, "SPNS");
         // Operation 12: SNT (scan neighbors by type)
-        reg(12, Variant.RR, "SNTR", REGISTER, REGISTER);
-        reg(12, Variant.RI, "SNTI", REGISTER, IMMEDIATE);
-        reg(12, Variant.S, "SNTS", STACK);
+        reg(12, 28, "SNTR", REGISTER, REGISTER);
+        reg(12, 29, "SNTI", REGISTER, IMMEDIATE);
+        reg(12, 30, "SNTS", STACK);
         // Operation 13: RBI (random bit from mask)
-        reg(13, Variant.RR, "RBIR", REGISTER, REGISTER);
-        reg(13, Variant.RI, "RBII", REGISTER, IMMEDIATE);
-        reg(13, Variant.S, "RBIS", STACK);
+        reg(13, 31, "RBIR", REGISTER, REGISTER);
+        reg(13, 32, "RBII", REGISTER, IMMEDIATE);
+        reg(13, 33, "RBIS", STACK);
         // Operation 14: GDV (get DV value)
-        reg(14, Variant.R, "GDVR", REGISTER);
-        reg(14, Variant.NONE, "GDVS");
+        reg(14, 34, "GDVR", REGISTER);
+        reg(14, 35, "GDVS");
         // Operation 15: SMR (set molecule marker register)
-        reg(15, Variant.R, "SMR", REGISTER);
-        reg(15, Variant.I, "SMRI", IMMEDIATE);
-        reg(15, Variant.S, "SMRS", STACK);
+        reg(15, 36, "SMR", REGISTER);
+        reg(15, 37, "SMRI", IMMEDIATE);
+        reg(15, 38, "SMRS", STACK);
         // Operation 16: GMR (get molecule marker register)
-        reg(16, Variant.R, "GMR", REGISTER);
-        reg(16, Variant.NONE, "GMRS");
+        reg(16, 39, "GMR", REGISTER);
+        reg(16, 40, "GMRS");
         // Operation 17: CMR (clear markers - remove own molecules with matching marker) — writes to shared environment
-        regUnsafe(17, Variant.R, "CMR", REGISTER);
-        regUnsafe(17, Variant.I, "CMRI", IMMEDIATE);
-        regUnsafe(17, Variant.S, "CMRS", STACK);
+        regUnsafe(17, 41, "CMR", REGISTER);
+        regUnsafe(17, 42, "CMRI", IMMEDIATE);
+        regUnsafe(17, 43, "CMRS", STACK);
     }
 
-    private static void reg(int op, int variant, String name, OperandSource... sources) {
-        Instruction.registerOp(StateInstruction.class, StateInstruction::new, family, op, variant, name, true, sources);
+    private static void reg(int op, int index, String name, OperandSource... sources) {
+        Instruction.registerOp(StateInstruction.class, StateInstruction::new, family, op, index, name, true, sources);
     }
 
-    private static void regUnsafe(int op, int variant, String name, OperandSource... sources) {
+    private static void regUnsafe(int op, int index, String name, OperandSource... sources) {
         Instruction.registerOp(StateInstruction.class, StateInstruction::new,
-                family, op, variant, name, false, sources);
+                family, op, index, name, false, sources);
     }
 
     /**

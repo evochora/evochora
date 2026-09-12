@@ -13,8 +13,8 @@
 # ----------------------------
 # Constants
 # ----------------------------
-.DEFINE REPRODUCTION_CONTINUE_THRESHOLD DATA:100000
-.DEFINE ENTROPY_REPRODUCTION_CONTINUE_THRESHOLD DATA:5000
+.DEFINE REPRODUCTION_CONTINUE_THRESHOLD DATA:50000         # reproduce for certain from here on, below with probability ER / 50000
+.DEFINE ENTROPY_REPRODUCTION_CONTINUE_THRESHOLD DATA:50000   # reproduce for certain from here on, below with probability SR / 50000
 
 # ----------------------------
 # STRUCTURE Shell (102x87)
@@ -52,30 +52,21 @@ MAIN_LOOP:
   NRG %ER; NOP^4                          # Read current energy level
   NTR %SR; NOP^4                          # Read current entropy level
 
-  # Check if conditions are met for reproduction
-  GTI %ER REPRODUCTION_CONTINUE_THRESHOLD; NOP^4  # Energy above threshold?
+  # Decide between reproduction and harvesting; both gates are dials, not switches
+  PGTI %ER REPRODUCTION_CONTINUE_THRESHOLD; NOP^4  # Energy against a draw below the threshold?
     JMPI MAIN_REPRODUCE; NOP^4            # ...reproduce
-  GTI %SR ENTROPY_REPRODUCTION_CONTINUE_THRESHOLD; NOP^4  # Entropy above threshold?
+  PGTI %SR ENTROPY_REPRODUCTION_CONTINUE_THRESHOLD; NOP^4  # Entropy against a draw below the threshold?
     JMPI MAIN_REPRODUCE; NOP^4            # ...reproduce to dissipate entropy
   JMPI MAIN_HARVEST; NOP^4; JMPI MAIN_HARVEST
 
 MAIN_REPRODUCE: NOP^4
   CALL REPRODUCE.CONTINUE REF %ER; NOP^4  # Call reproduction procedure
-  JMPI MAIN_LOOP_ENERGY_CHECK; NOP^4; JMPI MAIN_LOOP_ENERGY_CHECK
+  JMPI MAIN_LOOP; NOP^4; JMPI MAIN_LOOP   # Decide again
 
 .ORG 0|6
 MAIN_HARVEST: NOP^4
   CALL ENERGY.HARVEST; NOP^4              # Call energy harvesting procedure
   JMPI MAIN_LOOP; NOP^4
-
-# Energy check after reproduction - decide whether to continue or harvest
-MAIN_LOOP_ENERGY_CHECK: NOP^4
-  NRG %ER; NOP^4                          # Read current energy level
-  GTI %ER REPRODUCTION_CONTINUE_THRESHOLD # Enough energy?
-    JMPI MAIN_LOOP; NOP^4                 # ...continue reproducing
-  GTI %ER REPRODUCTION_CONTINUE_THRESHOLD # Redundancy check
-    JMPI MAIN_LOOP; NOP^4                 # ...continue reproducing
-  JMPI MAIN_HARVEST; NOP^4                # Low energy -> harvest
 
 # Redundant safety jumps (in case mutation causes execution to fall through here)
 JMPI MAIN_LOOP; NOP^12; JMPI MAIN_LOOP

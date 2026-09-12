@@ -1,74 +1,52 @@
 package org.evochora.runtime.isa;
 
 /**
- * Constants defining instruction family IDs for the structured opcode scheme.
+ * The instruction families an opcode can belong to.
  *
- * <p>Each family groups semantically related instructions and has a range of 4096 opcode IDs
- * (64 operations x 64 variants). Family IDs are used with {@link OpcodeId#compute(int, int, int)}
- * to generate structured opcode IDs.
+ * <p>A family groups semantically related instructions. Which family an instruction belongs to is
+ * recorded by {@link Instruction} when the instruction registers and is answered by
+ * {@link Instruction#getFamilyById(int)}; the family value also forms the lowest five bits of the
+ * opcode id, which is how the ids are allocated without a central counter.
  *
- * <p>Family ranges:
- * <ul>
- *   <li>SPECIAL (0): 0-4095 - NOP and reserved instructions</li>
- *   <li>ARITHMETIC (1): 4096-8191 - ADD, SUB, MUL, DIV, etc.</li>
- *   <li>BITWISE (2): 8192-12287 - AND, OR, XOR, NOT, shifts</li>
- *   <li>DATA (3): 12288-16383 - SET, PUSH, POP, stack operations</li>
- *   <li>CONDITIONAL (4): 16384-20479 - IF, comparisons</li>
- *   <li>CONTROL (5): 20480-24575 - JMP, CALL, RET</li>
- *   <li>ENVIRONMENT (6): 24576-28671 - PEEK, POKE</li>
- *   <li>STATE (7): 28672-32767 - SCAN, SEEK, FORK, etc.</li>
- *   <li>LOCATION (8): 32768-36863 - Location stack/register operations</li>
- *   <li>VECTOR (9): 36864-40959 - Vector manipulation</li>
- * </ul>
+ * <p>The values are part of the opcode allocation and never change: a family renumbered here would
+ * give every one of its instructions a different opcode id, and the ids are meant to stay stable
+ * so that a stable program format can be built on them.
  *
- * <p>This class is thread-safe as it contains only static constants and methods.
+ * <p>This class is thread-safe as it contains only static constants.
  */
 public final class Family {
 
-    /** NOP and reserved instructions. Range: 0-1023. */
+    /** NOP and reserved instructions. */
     public static final int SPECIAL = 0;
 
-    /** Arithmetic operations: ADD, SUB, MUL, DIV, etc. Range: 1024-2047. */
+    /** Arithmetic operations: ADD, SUB, MUL, DIV, etc. */
     public static final int ARITHMETIC = 1;
 
-    /** Bitwise operations: AND, OR, XOR, NOT, shifts. Range: 2048-3071. */
+    /** Bitwise operations: AND, OR, XOR, NOT, shifts. */
     public static final int BITWISE = 2;
 
-    /** Data operations: SET, PUSH, POP, stack ops. Range: 3072-4095. */
+    /** Data operations: SET, PUSH, POP, stack ops. */
     public static final int DATA = 3;
 
-    /** Conditional operations: IF, comparisons. Range: 4096-5119. */
+    /** Conditional operations: IF, comparisons. */
     public static final int CONDITIONAL = 4;
 
-    /** Control flow operations: JMP, CALL, RET. Range: 5120-6143. */
+    /** Control flow operations: JMP, CALL, RET. */
     public static final int CONTROL = 5;
 
-    /** Environment operations: PEEK, POKE. Range: 6144-7167. */
+    /** Environment operations: PEEK, POKE. */
     public static final int ENVIRONMENT = 6;
 
-    /** State operations: SCAN, SEEK, FORK, etc. Range: 28672-32767. */
+    /** State operations: SCAN, SEEK, FORK, etc. */
     public static final int STATE = 7;
 
-    /** Location operations: Location stack/register ops. Range: 32768-36863. */
+    /** Location operations: Location stack/register ops. */
     public static final int LOCATION = 8;
 
-    /** Vector operations: Vector manipulation. Range: 36864-40959. */
+    /** Vector operations: Vector manipulation. */
     public static final int VECTOR = 9;
 
     private Family() {
         // Utility class - prevent instantiation
-    }
-
-    /**
-     * Returns the base opcode ID for the given family.
-     *
-     * <p>The base ID is the first opcode ID in the family's range, calculated as
-     * {@code family * OpcodeId.FAMILY_MULTIPLIER}.
-     *
-     * @param family the family ID (0-9)
-     * @return the base opcode ID for that family
-     */
-    public static int baseId(int family) {
-        return family * OpcodeId.FAMILY_MULTIPLIER;
     }
 }

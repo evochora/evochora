@@ -8,7 +8,6 @@ import java.util.NoSuchElementException;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.internal.services.ExecutionContext;
 import org.evochora.runtime.isa.Instruction;
-import org.evochora.runtime.isa.Variant;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
 
@@ -30,32 +29,32 @@ public class VectorInstruction extends Instruction {
     public static void register(int f) {
         family = f;
         // Operation 0: VGT (Vector get)
-        reg(0, Variant.RRR, "VGTR", REGISTER, REGISTER, REGISTER);
-        reg(0, Variant.RRI, "VGTI", REGISTER, REGISTER, IMMEDIATE);
-        reg(0, Variant.SS, "VGTS", STACK, STACK);  // index, vector
+        reg(0, 0, "VGTR", REGISTER, REGISTER, REGISTER);
+        reg(0, 1, "VGTI", REGISTER, REGISTER, IMMEDIATE);
+        reg(0, 2, "VGTS", STACK, STACK);  // index, vector
         // Operation 1: VST (Vector set)
-        reg(1, Variant.RRR, "VSTR", REGISTER, REGISTER, REGISTER);
-        reg(1, Variant.RII, "VSTI", REGISTER, IMMEDIATE, IMMEDIATE);
-        reg(1, Variant.SSS, "VSTS", STACK, STACK, STACK);  // value, index, vector
+        reg(1, 3, "VSTR", REGISTER, REGISTER, REGISTER);
+        reg(1, 4, "VSTI", REGISTER, IMMEDIATE, IMMEDIATE);
+        reg(1, 5, "VSTS", STACK, STACK, STACK);  // value, index, vector
         // Operation 2: VBL (Vector build)
-        reg(2, Variant.R, "VBLD", REGISTER);
-        reg(2, Variant.NONE, "VBLS");
+        reg(2, 6, "VBLD", REGISTER);
+        reg(2, 7, "VBLS");
         // Operation 3: B2V (Bytes to vector)
-        reg(3, Variant.RR, "B2VR", REGISTER, REGISTER);
-        reg(3, Variant.RI, "B2VI", REGISTER, IMMEDIATE);
-        reg(3, Variant.S, "B2VS", STACK);  // mask
+        reg(3, 8, "B2VR", REGISTER, REGISTER);
+        reg(3, 9, "B2VI", REGISTER, IMMEDIATE);
+        reg(3, 10, "B2VS", STACK);  // mask
         // Operation 4: V2B (Vector to bytes)
-        reg(4, Variant.RR, "V2BR", REGISTER, REGISTER);
-        reg(4, Variant.RV, "V2BI", REGISTER, VECTOR);
-        reg(4, Variant.S, "V2BS", STACK);  // vector
+        reg(4, 11, "V2BR", REGISTER, REGISTER);
+        reg(4, 12, "V2BI", REGISTER, VECTOR);
+        reg(4, 13, "V2BS", STACK);  // vector
         // Operation 5: RTR (Retarget / Rotate Right by 90 degrees in plane of two axes)
-        reg(5, Variant.RRR, "RTRR", REGISTER, REGISTER, REGISTER);
-        reg(5, Variant.RII, "RTRI", REGISTER, IMMEDIATE, IMMEDIATE);
-        reg(5, Variant.SSS, "RTRS", STACK, STACK, STACK);  // axis2, axis1, vector
+        reg(5, 14, "RTRR", REGISTER, REGISTER, REGISTER);
+        reg(5, 15, "RTRI", REGISTER, IMMEDIATE, IMMEDIATE);
+        reg(5, 16, "RTRS", STACK, STACK, STACK);  // axis2, axis1, vector
     }
 
-    private static void reg(int op, int variant, String name, OperandSource... sources) {
-        Instruction.registerOp(VectorInstruction.class, VectorInstruction::new, family, op, variant, name, true, sources);
+    private static void reg(int op, int index, String name, OperandSource... sources) {
+        Instruction.registerOp(VectorInstruction.class, VectorInstruction::new, family, op, index, name, true, sources);
     }
 
     /**

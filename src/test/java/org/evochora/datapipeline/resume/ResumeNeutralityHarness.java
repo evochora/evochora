@@ -75,7 +75,7 @@ final class ResumeNeutralityHarness {
               { "className": "org.evochora.runtime.worldgen.GeneDuplicationPlugin",
                 "options": { "duplicationRate": %1$s, "minNopSize": 8 } },
               { "className": "org.evochora.runtime.worldgen.GeneDeletionPlugin",
-                "options": { "deletionRate": %1$s, "countExponent": 2.0 } },
+                "options": { "deletionRate": %1$s, "countExponent": 2.0, "minLabelCount": 1 } },
               { "className": "org.evochora.runtime.worldgen.GeneInsertionPlugin",
                 "options": { "mutationRate": %1$s,
                              "entries": [
@@ -85,7 +85,12 @@ final class ResumeNeutralityHarness {
                                            "DATA": { "min": 0, "max": 255 },
                                            "LABELREF": "existing",
                                            "VECTOR": "unit" } },
-                               { "type": "label", "weight": 1, "bitflips": 2 }
+                               { "type": "label", "weight": 1, "instructions": "*",
+                                 "args": { "REGISTER": { "range": [0, 7] },
+                                           "LOCATION_REGISTER": { "range": [0, 3] },
+                                           "DATA": { "min": 0, "max": 255 },
+                                           "LABELREF": "existing",
+                                           "VECTOR": "unit" } }
                              ] } },
               { "className": "org.evochora.runtime.worldgen.GeneSubstitutionPlugin",
                 "options": { "substitutionRate": %1$s,
@@ -94,7 +99,8 @@ final class ResumeNeutralityHarness {
                              "REGISTER": { "weight": 1.0 },
                              "DATA": { "weight": 1.0, "exponent": 0.7 },
                              "LABEL": { "weight": 1.0, "bitflips": 1 },
-                             "LABELREF": { "weight": 1.0, "bitflips": 1 } } }
+                             "LABELREF": { "weight": 1.0, "bitflips": 1 },
+                             "operands": { "scalar": 1.0, "vector": 1.0 } } }
             ]
             """.formatted(mutationRate);
     }

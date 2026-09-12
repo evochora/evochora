@@ -2,6 +2,11 @@
 
 **Status: IDEA — not decided. No design decisions made yet; open questions at the end.**
 
+> **Note (2026-09-11):** Opcode ids no longer carry a family/operation/variant structure; family,
+> operation and operand list of an instruction come from the registry
+> (`docs/outdated/proposals/accomplished/PROBABILISTIC_CONDITIONALS.md`, decision 26). Where this idea speaks of the
+> structure of `OpcodeId` as a measure of nearness, the registry's groupings are what is available.
+
 `docs/SCIENTIFIC_OVERVIEW.md` §4.3 already names the target mechanisms as open goals:
 environment-driven mutation ("cosmic radiation"), copy-error mutation tied to POKE, and somatic
 mutation — and calls them "architecturally straightforward". Architecturally that is true (the

@@ -2,7 +2,6 @@ package org.evochora.runtime.isa.instructions;
 
 import org.evochora.runtime.internal.services.ExecutionContext;
 import org.evochora.runtime.isa.Instruction;
-import org.evochora.runtime.isa.Variant;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Organism;
 
@@ -26,21 +25,21 @@ public class DataInstruction extends Instruction {
     public static void register(int f) {
         family = f;
         // Operation 0: SET (copy value to register)
-        reg(0, Variant.RR, "SETR", REGISTER, REGISTER);
-        reg(0, Variant.RI, "SETI", REGISTER, IMMEDIATE);
-        reg(0, Variant.RV, "SETV", REGISTER, VECTOR);
+        reg(0, 0, "SETR", REGISTER, REGISTER);
+        reg(0, 1, "SETI", REGISTER, IMMEDIATE);
+        reg(0, 2, "SETV", REGISTER, VECTOR);
         // Operation 1: PUSH (push value onto stack)
-        reg(1, Variant.R, "PUSH", REGISTER);
-        reg(1, Variant.I, "PUSI", IMMEDIATE);
-        reg(1, Variant.V, "PUSV", VECTOR);
+        reg(1, 3, "PUSH", REGISTER);
+        reg(1, 4, "PUSI", IMMEDIATE);
+        reg(1, 5, "PUSV", VECTOR);
         // Operation 2: POP (pop value from stack)
-        reg(2, Variant.R, "POP", REGISTER);
+        reg(2, 6, "POP", REGISTER);
         // Operation 7: XCHG (exchange registers)
-        reg(7, Variant.RR, "XCHG", REGISTER, REGISTER);
+        reg(7, 7, "XCHG", REGISTER, REGISTER);
     }
 
-    private static void reg(int op, int variant, String name, OperandSource... sources) {
-        Instruction.registerOp(DataInstruction.class, DataInstruction::new, family, op, variant, name, true, sources);
+    private static void reg(int op, int index, String name, OperandSource... sources) {
+        Instruction.registerOp(DataInstruction.class, DataInstruction::new, family, op, index, name, true, sources);
     }
 
     /**

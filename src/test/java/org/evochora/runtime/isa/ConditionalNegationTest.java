@@ -63,6 +63,27 @@ class ConditionalNegationTest {
         }
     }
 
+    /**
+     * The probabilistic comparisons pair the way their conditions do: a draw is either below a
+     * value or not, and either above or equal to it or not. Which name carries which condition is
+     * not visible to the generic rules above, so the four pairs are named here.
+     */
+    @Test
+    void theProbabilisticComparisonsPairGreaterWithLessOrEqual() {
+        Map<String, String> expected = Map.of(
+                "PGTR", "PLER",
+                "PGTI", "PLEI",
+                "PGTS", "PLES",
+                "PLTR", "PGER",
+                "PLTI", "PGEI",
+                "PLTS", "PGES");
+
+        expected.forEach((name, negation) -> {
+            assertThat(ConditionalInstruction.negationOf(name)).as("negation of %s", name).contains(negation);
+            assertThat(ConditionalInstruction.negationOf(negation)).as("negation of %s", negation).contains(name);
+        });
+    }
+
     @Test
     void anInstructionThatIsNoConditionalHasNoNegation() {
         assertThat(ConditionalInstruction.negationOf("NOP")).isEmpty();

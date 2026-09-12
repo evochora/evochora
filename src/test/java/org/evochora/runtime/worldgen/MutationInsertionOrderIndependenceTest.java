@@ -53,8 +53,10 @@ class MutationInsertionOrderIndependenceTest {
 
     @Test
     void geneDeletion_isIndependentOfCellInsertionOrder() {
+        // Every label of this body is a candidate, so the operator finds a site although almost
+        // all of the label values here occur only once.
         assertSameOutcome(rng -> new GeneDeletionPlugin(rng, ConfigFactory.parseMap(Map.of(
-                "deletionRate", 1.0, "countExponent", 2.0))));
+                "deletionRate", 1.0, "countExponent", 2.0, "minLabelCount", 1))));
     }
 
     @Test
@@ -65,7 +67,9 @@ class MutationInsertionOrderIndependenceTest {
                   { instructions = "*", weight = 3,
                     args { REGISTER { range = [0, 7] }, LOCATION_REGISTER { range = [0, 3] },
                            DATA { min = 0, max = 255 }, LABELREF = "existing", VECTOR = "unit" } }
-                  { type = "label", weight = 1, bitflips = 2 }
+                  { type = "label", weight = 1, instructions = "*",
+                    args { REGISTER { range = [0, 7] }, LOCATION_REGISTER { range = [0, 3] },
+                           DATA { min = 0, max = 255 }, LABELREF = "existing", VECTOR = "unit" } }
                 ]
                 """)));
     }
@@ -79,6 +83,7 @@ class MutationInsertionOrderIndependenceTest {
                 DATA { weight = 1.0, exponent = 0.7 }
                 LABEL { weight = 1.0, bitflips = 1 }
                 LABELREF { weight = 1.0, bitflips = 1 }
+                operands { scalar = 1.0, vector = 1.0 }
                 """)));
     }
 

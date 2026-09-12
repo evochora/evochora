@@ -21,23 +21,30 @@ import java.util.Random;
  * <p>
  * Called once per newborn organism in the post-Execute phase of each tick. With configurable
  * probability, selects a LABEL molecule and deletes everything in the organism's DV direction
- * until hitting the next LABEL (gene boundary), STRUCTURE (shell boundary), or a foreign molecule.
+ * until hitting the next LABEL (block boundary), STRUCTURE (shell boundary), or a foreign molecule.
  * <p>
- * Labels that appear multiple times (from gene duplication) are selected with higher probability,
- * controlled by a configurable exponent: weight = count^exponent. With exponent=2.0 (default),
- * this yields quadratic scaling — biologically motivated by tandem repeat instability where
- * the probability of deletion through misalignment grows as O(N²) with repeat count.
+ * <strong>Which labels are candidates:</strong> only those whose value the newborn's body holds at
+ * least {@code minLabelCount} times among its LABEL cells. At the default of 2 the deletion removes
+ * only a block the body carries twice, so what it takes away stands elsewhere and the deletion is
+ * neutral by construction — the counterpart of duplication and of the label insertion's detour,
+ * whose label copies the value of an existing one. A label occurring fewer times is not drawn from
+ * at all; {@code minLabelCount = 1} makes every label a candidate again.
+ * <p>
+ * Among the candidates a label is drawn with weight = count^exponent, count being how often its
+ * value occurs and the exponent configurable. With exponent=2.0 (default) this yields quadratic
+ * scaling — biologically motivated by tandem repeat instability where the probability of deletion
+ * through misalignment grows as O(N²) with repeat count.
  * <p>
  * The thermodynamic cost system (value-dependent POKE costs) provides the counterweight to
- * genome bloat from duplication. This plugin provides variation: redundant genes (from duplication)
- * are preferentially deleted (neutral), while unique genes are rarely hit (lethal, filtered by selection).
+ * genome bloat from duplication. This plugin provides the matching variation: the redundant blocks
+ * duplication and detour insertion leave behind are the ones that can be taken away again.
  * <p>
  * <strong>What it records:</strong> an applied deletion reports itself on the newborn as a
  * {@link MutationRecord} of kind {@code "deletion"}. Its cells are the label cell and every cleared
  * cell, in the order they are cleared; the old value is the removed molecule, the new value the
  * empty cell. Its one parameter is how often the chosen label's hash occurs in the genome, the
  * weight that made the deletion choose this label and the one thing the child no longer shows,
- * because the label is gone. A run that finds no label deletes nothing and records nothing.
+ * because the label is gone. A run that finds no candidate label deletes nothing and records nothing.
  * <p>
  * <strong>Thread Safety:</strong> Not thread-safe. Runs in the sequential post-Execute phase of
  * {@code Simulation.tick()}.
@@ -55,6 +62,7 @@ public class GeneDeletionPlugin implements IBirthHandler {
     private final Random random;
     private final double deletionRate;
     private final double countExponent;
+    private final int minLabelCount;
 
     // Reusable collections (cleared before each use)
     private final IntArrayList labelFlatIndices = new IntArrayList();
@@ -68,17 +76,22 @@ public class GeneDeletionPlugin implements IBirthHandler {
      * Creates a gene deletion plugin from configuration.
      *
      * @param randomProvider Source of randomness.
-     * @param config Configuration containing deletionRate and countExponent.
+     * @param config Configuration containing deletionRate, countExponent and minLabelCount; each
+     *               key is mandatory, and a missing or malformed one is reported by name.
      */
     public GeneDeletionPlugin(IRandomProvider randomProvider, com.typesafe.config.Config config) {
         this.random = randomProvider.asJavaRandom();
         this.deletionRate = config.getDouble("deletionRate");
         this.countExponent = config.getDouble("countExponent");
+        this.minLabelCount = config.getInt("minLabelCount");
         if (deletionRate < 0.0 || deletionRate > 1.0) {
             throw new IllegalArgumentException("deletionRate must be in [0.0, 1.0], got: " + deletionRate);
         }
         if (countExponent < 0.0) {
             throw new IllegalArgumentException("countExponent must be non-negative, got: " + countExponent);
+        }
+        if (minLabelCount < 1) {
+            throw new IllegalArgumentException("minLabelCount must be at least 1, got: " + minLabelCount);
         }
     }
 
@@ -88,11 +101,14 @@ public class GeneDeletionPlugin implements IBirthHandler {
      * @param randomProvider Source of randomness.
      * @param deletionRate Probability of deletion per newborn (0.0 to 1.0).
      * @param countExponent Exponent for duplicate label weighting.
+     * @param minLabelCount How often a label's value must occur in the body for its blocks to be
+     *                      candidates; 1 makes every label a candidate.
      */
-    GeneDeletionPlugin(IRandomProvider randomProvider, double deletionRate, double countExponent) {
+    GeneDeletionPlugin(IRandomProvider randomProvider, double deletionRate, double countExponent, int minLabelCount) {
         this.random = randomProvider.asJavaRandom();
         this.deletionRate = deletionRate;
         this.countExponent = countExponent;
+        this.minLabelCount = minLabelCount;
     }
 
     /** {@inheritDoc} */
@@ -107,7 +123,8 @@ public class GeneDeletionPlugin implements IBirthHandler {
     /**
      * Performs gene deletion for a single newborn organism.
      * <p>
-     * Collects all LABEL molecules owned by the child, selects one using weighted reservoir
+     * Collects all LABEL molecules owned by the child, keeps those whose value occurs at least
+     * {@code minLabelCount} times as candidates, selects one of them using weighted reservoir
      * sampling (weight = hashCount^countExponent), then walks in DV direction deleting all
      * molecules until hitting the next LABEL, STRUCTURE, or a foreign molecule. A deletion that is
      * applied is recorded on the child.
@@ -143,17 +160,28 @@ public class GeneDeletionPlugin implements IBirthHandler {
             return;
         }
 
-        // --- Phase 2: Weighted reservoir sampling ---
+        // --- Phase 2: Weighted reservoir sampling over the candidates ---
+        // A label whose value the body holds fewer than minLabelCount times is passed over, so
+        // that a deletion takes away only what the body still carries elsewhere.
         double totalWeight = 0.0;
-        int selectedIdx = 0;
+        int selectedIdx = -1;
 
         for (int i = 0; i < labelFlatIndices.size(); i++) {
-            int hash = labelHashes.getInt(i);
-            double weight = Math.pow(hashCounts.get(hash), countExponent);
+            int count = hashCounts.get(labelHashes.getInt(i));
+            if (count < minLabelCount) {
+                continue;
+            }
+            double weight = Math.pow(count, countExponent);
             totalWeight += weight;
             if (random.nextDouble() * totalWeight < weight) {
                 selectedIdx = i;
             }
+        }
+
+        if (selectedIdx < 0) {
+            LOG.debug("tick={} Organism {} selected for deletion but has no label occurring at least {} times",
+                    child.getBirthTick(), childId, minLabelCount);
+            return;
         }
 
         // --- Phase 3: Walk & Delete ---
@@ -199,7 +227,7 @@ public class GeneDeletionPlugin implements IBirthHandler {
             int type = mol.type();
 
             if (type == Config.TYPE_LABEL) {
-                break; // next gene boundary
+                break; // next block boundary
             }
             if (type == Config.TYPE_STRUCTURE) {
                 break; // shell boundary

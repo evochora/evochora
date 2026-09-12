@@ -2,7 +2,6 @@ package org.evochora.runtime.isa.instructions;
 
 import org.evochora.runtime.internal.services.ExecutionContext;
 import org.evochora.runtime.isa.Instruction;
-import static org.evochora.runtime.isa.Variant.NONE;
 import org.evochora.runtime.model.Organism;
 import org.evochora.runtime.model.Environment;
 
@@ -20,12 +19,12 @@ public class NopInstruction extends Instruction {
      */
     public static void register(int f) {
         family = f;
-        reg(0, NONE, "NOP");
-        reg(1, NONE, "WAIT");
+        reg(0, 0, "NOP");
+        reg(1, 1, "WAIT");
     }
 
-    private static void reg(int op, int variant, String name, OperandSource... sources) {
-        Instruction.registerOp(NopInstruction.class, NopInstruction::new, family, op, variant, name, true, sources);
+    private static void reg(int op, int index, String name, OperandSource... sources) {
+        Instruction.registerOp(NopInstruction.class, NopInstruction::new, family, op, index, name, true, sources);
     }
 
     /**

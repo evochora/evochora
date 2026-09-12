@@ -3,7 +3,6 @@ package org.evochora.runtime.isa.instructions;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.internal.services.ExecutionContext;
 import org.evochora.runtime.isa.Instruction;
-import org.evochora.runtime.isa.Variant;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.LocationValue;
@@ -33,45 +32,45 @@ public class LocationInstruction extends Instruction {
     public static void register(int f) {
         family = f;
         // Operation 0: DPL (Duplicate location)
-        reg(0, Variant.S, "DPLS");
-        reg(0, Variant.L, "DPLR", LOCATION_REGISTER);
+        reg(0, 0, "DPLS");
+        reg(0, 1, "DPLR", LOCATION_REGISTER);
         // Operation 1: SKL (Skip location)
-        reg(1, Variant.S, "SKLS");
-        reg(1, Variant.L, "SKLR", LOCATION_REGISTER);
+        reg(1, 2, "SKLS");
+        reg(1, 3, "SKLR", LOCATION_REGISTER);
         // Operation 2: LRD (Location register displacement)
-        reg(2, Variant.L, "LRDS", LOCATION_REGISTER);
-        reg(2, Variant.RL, "LRDR", REGISTER, LOCATION_REGISTER);
+        reg(2, 4, "LRDS", LOCATION_REGISTER);
+        reg(2, 5, "LRDR", REGISTER, LOCATION_REGISTER);
         // Operation 3: LSD (Location stack displacement)
-        reg(3, Variant.NONE, "LSDS");
-        reg(3, Variant.R, "LSDR", REGISTER);
+        reg(3, 6, "LSDS");
+        reg(3, 7, "LSDR", REGISTER);
         // Operation 4: PUSL (Push location)
-        reg(4, Variant.L, "PUSL", LOCATION_REGISTER);
+        reg(4, 8, "PUSL", LOCATION_REGISTER);
         // Operation 5: POPL (Pop location)
-        reg(5, Variant.L, "POPL", LOCATION_REGISTER);
+        reg(5, 9, "POPL", LOCATION_REGISTER);
         // Operation 6: DUPL (Duplicate top of location stack)
-        reg(6, Variant.NONE, "DUPL");
+        reg(6, 10, "DUPL");
         // Operation 7: SWPL (Swap location stack)
-        reg(7, Variant.NONE, "SWPL");
+        reg(7, 11, "SWPL");
         // Operation 8: DRPL (Drop from location stack)
-        reg(8, Variant.NONE, "DRPL");
+        reg(8, 12, "DRPL");
         // Operation 9: ROTL (Rotate location stack)
-        reg(9, Variant.NONE, "ROTL");
+        reg(9, 13, "ROTL");
         // Operation 10: CRL (Clear location register)
-        reg(10, Variant.L, "CRLR", LOCATION_REGISTER);
+        reg(10, 14, "CRLR", LOCATION_REGISTER);
         // Operation 11: LRL (Load location register)
-        reg(11, Variant.LL, "LRLR", LOCATION_REGISTER, LOCATION_REGISTER);
+        reg(11, 15, "LRLR", LOCATION_REGISTER, LOCATION_REGISTER);
         // Operation 12: SKJ (Seek Jump - DP fuzzy jump to label)
-        reg(12, Variant.L, "SKJI", LABEL);
-        reg(12, Variant.R, "SKJR", REGISTER);
-        reg(12, Variant.S, "SKJS", STACK);
+        reg(12, 16, "SKJI", LABEL);
+        reg(12, 17, "SKJR", REGISTER);
+        reg(12, 18, "SKJS", STACK);
         // Operation 13: PSL (Push Location from Label — resolve label via fuzzy matching, push position onto LS)
-        reg(13, Variant.L, "PSLI", LABEL);
+        reg(13, 19, "PSLI", LABEL);
         // Operation 14: LRI (Location Register from Label Immediate — resolve label, write position to location register)
-        reg(14, Variant.LL, "LRLI", LOCATION_REGISTER, LABEL);
+        reg(14, 20, "LRLI", LOCATION_REGISTER, LABEL);
     }
 
-    private static void reg(int op, int variant, String name, OperandSource... sources) {
-        Instruction.registerOp(LocationInstruction.class, LocationInstruction::new, family, op, variant, name, true, sources);
+    private static void reg(int op, int index, String name, OperandSource... sources) {
+        Instruction.registerOp(LocationInstruction.class, LocationInstruction::new, family, op, index, name, true, sources);
     }
 
     /**
