@@ -143,8 +143,8 @@ class ResumeForkNeutralityTest {
             assertThat(tiled.plugins().stream().map(plugin -> plugin.getClass().getSimpleName()).toList())
                     .as("every production plugin takes part, so that none can depend on the layout unnoticed")
                     .containsExactlyInAnyOrder("SeedEnergyCreator", "GeyserCreator", "SolarRadiationCreator",
-                            "DecayOnDeath", "LabelRewritePlugin", "GeneDuplicationPlugin", "GeneDeletionPlugin",
-                            "GeneInsertionPlugin", "GeneSubstitutionPlugin");
+                            "EnergyVaultCreator", "DecayOnDeath", "LabelRewritePlugin", "GeneDuplicationPlugin",
+                            "GeneDeletionPlugin", "GeneInsertionPlugin", "GeneSubstitutionPlugin");
             List<List<String>> expected = ResumeNeutralityHarness.tick(tiled.sim(), tiled.plugins(), totalTicks, true);
             ResumeNeutralityHarness.Fixture rowMajor = newWorld(parallelism, 1);
             List<List<String>> actual = ResumeNeutralityHarness.tick(rowMajor.sim(), rowMajor.plugins(), totalTicks, true);
