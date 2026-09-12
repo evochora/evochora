@@ -264,6 +264,7 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
         this.familyFlipWeight = codeConfig == null ? 0.0 : codeConfig.getDouble("familyFlipWeight");
         this.variantFlipWeight = codeConfig == null ? 0.0 : codeConfig.getDouble("variantFlipWeight");
         this.totalFlipWeight = operationFlipWeight + familyFlipWeight + variantFlipWeight;
+        requireFlipWeights(this.typeWeights[rawIndex(Config.TYPE_CODE)], this.totalFlipWeight);
 
         com.typesafe.config.Config labelConfig = blockOrNull(config, "LABEL");
         this.labelBitflips = labelConfig == null ? 0 : labelConfig.getInt("bitflips");
@@ -309,6 +310,7 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
         this.familyFlipWeight = familyFlipWeight;
         this.variantFlipWeight = variantFlipWeight;
         this.totalFlipWeight = operationFlipWeight + familyFlipWeight + variantFlipWeight;
+        requireFlipWeights(codeWeight, this.totalFlipWeight);
         this.labelBitflips = labelBitflips;
         this.labelrefBitflips = labelrefBitflips;
         this.operandsScalar = 1.0;
@@ -872,6 +874,26 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
                 throw new IllegalArgumentException(MoleculeTypeRegistry.typeToName(type)
                         + " exponent must be in [0.0, 1.0], got: " + exponent);
             }
+        }
+    }
+
+    /**
+     * Rejects a CODE weight that could select a cell for which no flip mode carries any weight.
+     * <p>
+     * The flip mode is drawn in proportion to the three flip weights; with all three at zero the
+     * draw has nothing to decide between, and a selected CODE cell would be flipped in a mode
+     * nobody configured. A CODE block that is never selected, weight zero, may leave the flip
+     * weights at zero.
+     *
+     * @param codeWeight The selection weight of CODE cells.
+     * @param totalFlipWeight The sum of the three flip weights.
+     * @throws IllegalArgumentException if CODE cells can be selected but no flip mode has weight
+     */
+    private static void requireFlipWeights(double codeWeight, double totalFlipWeight) {
+        if (codeWeight > 0.0 && !(totalFlipWeight > 0.0)) {
+            throw new IllegalArgumentException("CODE has weight " + codeWeight
+                    + " but no flip mode has weight; at least one of operationFlipWeight, "
+                    + "familyFlipWeight, variantFlipWeight must be positive.");
         }
     }
 

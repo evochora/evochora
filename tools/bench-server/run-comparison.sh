@@ -9,7 +9,7 @@
 #   config/perf_server.conf the comparison configuration (+ the evochora.conf it includes)
 #   config/<variant>/       the same pair for one variant, when the variants need different
 #                           configurations (a config key one side does not accept); a variant
-#                           without its own directory uses config/perf_server.conf
+#                           without its own perf_server.conf uses config/perf_server.conf
 #   logs/<variant>.log      node output of each run
 #   progress.txt            one line per variant: seconds and final TICKHASH
 #
@@ -28,7 +28,7 @@ for v in "$@"; do
     awk -v l="$load" -v m="$MAX_LOAD" 'BEGIN { exit (l > m) ? 1 : 0 }' \
         || { echo "$v SKIPPED host busy load=$load" >> "$CMP/progress.txt"; continue; }
     log="$CMP/logs/$v.log"; mkdir -p "$CMP/logs"; rm -rf "$CMP/perf-data" "$log"
-    conf="/cmp/config/perf_server.conf"; [ -d "$CMP/config/$v" ] && conf="/cmp/config/$v/perf_server.conf"
+    conf="/cmp/config/perf_server.conf"; [ -f "$CMP/config/$v/perf_server.conf" ] && conf="/cmp/config/$v/perf_server.conf"
     docker run --rm -u "$(id -u):$(id -g)" -v "$CMP:/cmp" -w "/cmp/trees/$v" --name benchcmp "$IMAGE" \
         java -Xms4g -Xmx4g -XX:+AlwaysPreTouch -cp "/cmp/consumer-classes:lib/*" \
         org.evochora.cli.CommandLineInterface --config "$conf" node run > "$log" 2>&1 &

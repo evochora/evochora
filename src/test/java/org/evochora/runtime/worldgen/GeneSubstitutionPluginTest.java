@@ -1726,6 +1726,31 @@ class GeneSubstitutionPluginTest {
     }
 
     /**
+     * A CODE weight without any flip weight would flip a selected opcode in a mode nobody chose,
+     * so the configuration is rejected; a CODE block that is never selected may leave them at zero.
+     */
+    @Test
+    void aCodeWeightWithoutAnyFlipWeightIsRejected() {
+        com.typesafe.config.Config config = ConfigFactory.parseString("""
+                substitutionRate = 1.0
+                CODE { weight = 1.0, operationFlipWeight = 0.0, familyFlipWeight = 0.0, variantFlipWeight = 0.0 }
+                operands { scalar = 1.0, vector = 1.0 }
+                """);
+
+        assertThatThrownBy(() -> new GeneSubstitutionPlugin(new SeededRandomProvider(1), config))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("flip");
+
+        com.typesafe.config.Config unselected = ConfigFactory.parseString("""
+                substitutionRate = 1.0
+                CODE { weight = 0.0, operationFlipWeight = 0.0, familyFlipWeight = 0.0, variantFlipWeight = 0.0 }
+                DATA { weight = 1.0 }
+                operands { scalar = 1.0, vector = 1.0 }
+                """);
+        new GeneSubstitutionPlugin(new SeededRandomProvider(1), unselected);
+    }
+
+    /**
      * A misspelt key inside a type block is read by nothing, and a misspelt weight would leave the
      * type at weight 0 without saying so, so it is rejected instead of ignored.
      */

@@ -24,7 +24,10 @@ import static org.evochora.runtime.isa.Instruction.OperandSource.*;
  * The value comparisons work on a scalar per operand: a scalar operand contributes its own value,
  * a vector operand its Manhattan magnitude, the sum of the absolute values of its components. Two
  * vector operands of an equality test are compared component by component instead, so that two
- * positions count as equal only if they are the same position.
+ * positions count as equal only if they are the same position. A magnitude is a DATA value, so a
+ * scalar it is compared with has to be value-compatible with DATA under strict typing; where it is
+ * not, the condition is not met and the instruction does not fail, exactly as for two scalars of
+ * incompatible types.
  * <p>
  * The probabilistic operations (PGT, PLE, PLT, PGE) replace the second value B by a uniformly
  * distributed draw U from {@code [0, B)} taken from the organism's own random source, and then
