@@ -125,7 +125,8 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
     private final int maxCellsPerOrganism;
     private final int metricsWindowSeconds;
 
-    private final List<Long> pauseTicks;
+    /** Ticks after which the service pauses itself, ascending; a primitive array so the per-tick check boxes nothing. */
+    private final long[] pauseTicks;
     private final String runId;
     private final DeltaCodec.Encoder chunkEncoder;
     private final Simulation simulation;
@@ -317,13 +318,15 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
 
         // A fork pauses after the last tick of its window, as if that tick were configured
         List<Long> configuredPauseTicks = options.hasPath("pauseTicks") ? options.getLongList("pauseTicks") : Collections.emptyList();
-        if (this.forkOrigin != null) {
-            List<Long> withWindowEnd = new ArrayList<>(configuredPauseTicks);
-            withWindowEnd.add(this.forkOrigin.getLastTick());
-            this.pauseTicks = Collections.unmodifiableList(withWindowEnd);
-        } else {
-            this.pauseTicks = configuredPauseTicks;
+        long[] pauseAt = new long[configuredPauseTicks.size() + (this.forkOrigin != null ? 1 : 0)];
+        for (int i = 0; i < configuredPauseTicks.size(); i++) {
+            pauseAt[i] = configuredPauseTicks.get(i);
         }
+        if (this.forkOrigin != null) {
+            pauseAt[pauseAt.length - 1] = this.forkOrigin.getLastTick();
+        }
+        Arrays.sort(pauseAt);
+        this.pauseTicks = pauseAt;
 
         // Apply initialized state
         this.simulation = state.simulation();
@@ -865,7 +868,14 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         metrics.put("ticks_per_second", ticksPerSecond);
     }
 
-    private boolean shouldAutoPause(long tick) { return pauseTicks.contains(tick); }
+    private boolean shouldAutoPause(long tick) {
+        for (long pauseTick : pauseTicks) {
+            if (pauseTick == tick) {
+                return true;
+            }
+        }
+        return false;
+    }
 
     /**
      * Captures the current simulation state for a sampled tick.
