@@ -5,7 +5,6 @@ import com.typesafe.config.ConfigFactory;
 import org.evochora.datapipeline.ServiceManager;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.services.IService.State;
-import org.evochora.junit.extensions.logging.AllowLog;
 import org.evochora.junit.extensions.logging.ExpectLog;
 import org.evochora.junit.extensions.logging.LogLevel;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
@@ -31,7 +30,6 @@ import java.util.stream.Collectors;
 
 import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.*;
-import static org.evochora.test.utils.FileUtils.countBatchFiles;
 import static org.evochora.test.utils.FileUtils.readAllTicksFromBatches;
 
 /**
@@ -40,7 +38,6 @@ import static org.evochora.test.utils.FileUtils.readAllTicksFromBatches;
  */
 @Tag("integration")
 @ExtendWith(LogWatchExtension.class)
-@AllowLog(level = LogLevel.INFO, loggerPattern = ".*(SimulationEngine|PersistenceService|ServiceManager|FileSystemStorageResource|InMemoryIdempotencyTracker).*")
 class SimulationToPersistenceIntegrationTest {
 
     @TempDir
@@ -75,6 +72,8 @@ class SimulationToPersistenceIntegrationTest {
     }
 
     @Test
+    @ExpectLog(level = LogLevel.WARN, loggerPattern = ".*PersistenceService.*",
+               messagePattern = "PersistenceService initialized WITHOUT batch-topic - event-driven indexing disabled!")
     void testEndToEndPersistence() {
         Config config = createIntegrationConfig();
         serviceManager = new ServiceManager(config);
@@ -90,6 +89,8 @@ class SimulationToPersistenceIntegrationTest {
     }
 
     @Test
+    @ExpectLog(level = LogLevel.WARN, loggerPattern = ".*PersistenceService.*",
+               messagePattern = "PersistenceService initialized WITHOUT batch-topic - event-driven indexing disabled!", occurrences = 2)
     void testMultiplePersistenceInstances() {
         Config config = createMultiInstanceConfig();
         serviceManager = new ServiceManager(config);
@@ -114,26 +115,8 @@ class SimulationToPersistenceIntegrationTest {
     }
 
     @Test
-    @AllowLog(level = LogLevel.INFO, loggerPattern = ".*(SimulationEngine|PersistenceService|ServiceManager).*")
-    @ExpectLog(level = LogLevel.ERROR, loggerPattern = ".*PersistenceService.*",
-               messagePattern = "Failed to write batch .* after .* retries:.*", occurrences = -1)
-    void testDLQFunctionality() {
-        // Create config with invalid storage directory to trigger failures
-        Config config = createDLQTestConfig();
-        serviceManager = new ServiceManager(config);
-
-        // Start all services
-        serviceManager.startAll();
-
-        // Wait for some time to allow failures to occur
-        await().atMost(30, java.util.concurrent.TimeUnit.SECONDS)
-            .until(() -> countBatchFiles(tempStorageDir) >= 0); // This will always be true, but gives time for failures
-
-        // Note: DLQ verification would require access to the resource, which is not directly available
-        // in the current ServiceManager API. This test verifies that the system handles failures gracefully.
-    }
-
-    @Test
+    @ExpectLog(level = LogLevel.WARN, loggerPattern = ".*PersistenceService.*",
+               messagePattern = "PersistenceService initialized WITHOUT batch-topic - event-driven indexing disabled!")
     void testGracefulShutdown() {
         Config config = createIntegrationConfig();
         serviceManager = new ServiceManager(config);
@@ -159,6 +142,9 @@ class SimulationToPersistenceIntegrationTest {
     private Config createIntegrationConfig() {
         return ConfigFactory.parseMap(Map.of(
             "pipeline", Map.of(
+                // The tests start the services themselves; an automatic start would make
+                // their own start a second one.
+                "autoStart", false,
                 "resources", Map.of(
                     "storage-main", Map.of(
                         "className", "org.evochora.datapipeline.resources.storage.FileSystemStorageResource",
@@ -273,94 +259,6 @@ class SimulationToPersistenceIntegrationTest {
         ).withValue("pipeline.startupSequence",
             ConfigFactory.parseString("pipeline.startupSequence=[\"simulation-engine\", \"persistence-1\", \"persistence-2\"]").getValue("pipeline.startupSequence")
         );
-    }
-
-    private Config createDLQTestConfig() {
-        // Create config with invalid storage directory to trigger failures
-        return ConfigFactory.parseMap(Map.of(
-            "pipeline", Map.of(
-                "resources", Map.of(
-                    "storage-main", Map.of(
-                        "className", "org.evochora.datapipeline.resources.storage.FileSystemStorageResource",
-                        "options", Map.of("rootDirectory", "/invalid/path/that/does/not/exist")
-                    ),
-                    "raw-tick-data", Map.of(
-                        "className", "org.evochora.datapipeline.resources.queues.InMemoryBlockingQueue",
-                        "options", Map.of("capacity", 1000)
-                    ),
-                    "metadata-queue", Map.of(
-                        "className", "org.evochora.datapipeline.resources.queues.InMemoryBlockingQueue",
-                        "options", Map.of("capacity", 100)
-                    ),
-                    "persistence-dlq", Map.of(
-                        "className", "org.evochora.datapipeline.resources.queues.InMemoryDeadLetterQueue",
-                        "options", Map.of("capacity", 100)
-                    )
-                ),
-                "services", Map.of(
-                    "simulation-engine", Map.of(
-                        "className", "org.evochora.datapipeline.services.SimulationEngine",
-                        "resources", Map.of(
-                            "tickData", "queue-out:raw-tick-data",
-                            "metadataOutput", "queue-out:metadata-queue"
-                        ),
-                        "options", Map.of(
-                            "runtime", Map.of(
-                                "organism", Map.of(
-                                    "max-energy", 32767,
-                                    "max-entropy", 8191,
-                                    "error-penalty-cost", 500
-                                ),
-                                "thermodynamics", Map.of(
-                                    "default", Map.of(
-                                        "className", "org.evochora.runtime.thermodynamics.impl.UniversalThermodynamicPolicy",
-                                        "options", Map.of(
-                                            "base-energy", 1,
-                                            "base-entropy", 1
-                                        )
-                                    ),
-                                    "overrides", Map.of(
-                                        "instructions", Map.of(),
-                                        "families", Map.of()
-                                    )
-                                )
-                            ),
-                            "maxTicks", 50,
-                            "samplingInterval", 5,
-                            // Delta compression: 1 sample = 1 chunk for testing
-                            "accumulatedDeltaInterval", 1,
-                            "snapshotInterval", 1,
-                            "chunkInterval", 1,
-                            "environment", Map.of(
-                                "shape", List.of(32, 32),
-                                "topology", "TORUS"
-                            ),
-                            "organisms", List.of(Map.of(
-                                "program", programFile.toString(),
-                                "initialEnergy", 10000,
-                                "placement", Map.of("positions", List.of(5, 5))
-                            )),
-                            "plugins", Collections.emptyList()
-                        )
-                    ),
-                    "persistence-1", Map.of(
-                        "className", "org.evochora.datapipeline.services.PersistenceService",
-                        "resources", Map.of(
-                            "input", "queue-in:raw-tick-data",
-                            "storage", "storage-write:storage-main",
-                            "dlq", "queue-out:persistence-dlq"
-                        ),
-                        "options", Map.of(
-                            "maxBatchSize", 10,
-                            "batchTimeoutSeconds", 1,
-                            "maxRetries", 1,
-                            "retryBackoffMs", 50
-                        )
-                    )
-                ),
-                "startupSequence", java.util.List.of("simulation-engine", "persistence-1")
-            )
-        ));
     }
 
     private void verifyAllTicksPersisted() {

@@ -18,6 +18,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
+import org.evochora.BuildInfo;
 import org.evochora.datapipeline.api.contracts.MetadataInfo;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.resources.IResource;
@@ -27,7 +28,6 @@ import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.api.resources.topics.IResourceTopicReader;
 import org.evochora.datapipeline.api.resources.topics.TopicMessage;
 import org.evochora.datapipeline.api.services.IService;
-import org.evochora.junit.extensions.logging.AllowLog;
 import org.evochora.junit.extensions.logging.ExpectLog;
 import org.evochora.junit.extensions.logging.LogLevel;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
@@ -78,7 +78,6 @@ class MetadataIndexerTest {
     }
 
     @Test
-    @AllowLog(level = LogLevel.INFO, loggerPattern = ".*") // Allow info logs for success case
     void successfulPath_processesMessageAndStops() throws Exception {
         // Arrange
         Config config = ConfigFactory.parseString("runId = \"" + testRunId + "\"");
@@ -94,7 +93,8 @@ class MetadataIndexerTest {
         when(mockTopic.poll(anyLong(), any(TimeUnit.class))).thenReturn(mockMessage);
         
         // Mock storage to return metadata
-        SimulationMetadata metadata = SimulationMetadata.newBuilder().setSimulationRunId(testRunId).build();
+        SimulationMetadata metadata = SimulationMetadata.newBuilder()
+            .setSimulationRunId(testRunId).setBuildRevision(BuildInfo.revision()).build();
         when(mockStorage.readMessage(any(StoragePath.class), any())).thenReturn(metadata);
 
         // Act
@@ -118,8 +118,9 @@ class MetadataIndexerTest {
     }
 
     @Test
-    @AllowLog(level = LogLevel.INFO, loggerPattern = ".*")
-    @ExpectLog(level = LogLevel.ERROR, messagePattern = ".*Indexing failed.*")
+    @ExpectLog(level = LogLevel.ERROR, messagePattern = "Failed to index metadata for run: test-run-123")
+    @ExpectLog(level = LogLevel.ERROR, messagePattern = "Indexing failed for run: test-run-123")
+    @ExpectLog(level = LogLevel.ERROR, messagePattern = "MetadataIndexer stopped with ERROR due to RuntimeException")
     void databaseFailure_entersErrorState() throws Exception {
         // Arrange
         Config config = ConfigFactory.parseString("runId = \"" + testRunId + "\"");
@@ -135,7 +136,8 @@ class MetadataIndexerTest {
         when(mockTopic.poll(anyLong(), any(TimeUnit.class))).thenReturn(mockMessage);
         
         // Mock storage to return metadata
-        SimulationMetadata metadata = SimulationMetadata.newBuilder().setSimulationRunId(testRunId).build();
+        SimulationMetadata metadata = SimulationMetadata.newBuilder()
+            .setSimulationRunId(testRunId).setBuildRevision(BuildInfo.revision()).build();
         when(mockStorage.readMessage(any(StoragePath.class), any())).thenReturn(metadata);
         
         // Mock database to throw error on insert
@@ -162,8 +164,9 @@ class MetadataIndexerTest {
     }
 
     @Test
-    @AllowLog(level = LogLevel.INFO, loggerPattern = ".*")
-    @ExpectLog(level = LogLevel.ERROR, messagePattern = ".*Metadata notification did not arrive.*")
+    @ExpectLog(level = LogLevel.ERROR, messagePattern = "Metadata notification did not arrive within \\d+ms for run: test-run-123")
+    @ExpectLog(level = LogLevel.ERROR, messagePattern = "Indexing timeout for run: test-run-123")
+    @ExpectLog(level = LogLevel.ERROR, messagePattern = "MetadataIndexer stopped with ERROR due to RuntimeException")
     void topicPollTimeout_entersErrorState() throws Exception {
         // Arrange
         Config config = ConfigFactory.parseString("runId = \"" + testRunId + "\", topicPollTimeoutMs = 100");
@@ -191,8 +194,9 @@ class MetadataIndexerTest {
     }
 
     @Test
-    @AllowLog(level = LogLevel.INFO, loggerPattern = ".*")
-    @ExpectLog(level = LogLevel.ERROR, messagePattern = ".*Metadata notification did not arrive.*")
+    @ExpectLog(level = LogLevel.ERROR, messagePattern = "Metadata notification did not arrive within \\d+ms for run: test-run-123")
+    @ExpectLog(level = LogLevel.ERROR, messagePattern = "Indexing timeout for run: test-run-123")
+    @ExpectLog(level = LogLevel.ERROR, messagePattern = "MetadataIndexer stopped with ERROR due to RuntimeException")
     void errorTracking_recordsErrorsOnTimeout() throws Exception {
         // Arrange: Topic poll returns null (timeout scenario)
         when(mockTopic.poll(anyLong(), any(TimeUnit.class))).thenReturn(null);

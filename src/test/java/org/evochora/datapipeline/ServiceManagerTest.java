@@ -25,7 +25,6 @@ import static org.junit.jupiter.api.Assertions.*;
 
 @Tag("integration")
 @ExtendWith(LogWatchExtension.class)
-@AllowLog(level = LogLevel.INFO, loggerPattern = ".*")
 public class ServiceManagerTest {
 
     private Config createTestConfig(boolean longRunning) {
@@ -306,7 +305,8 @@ public class ServiceManagerTest {
     }
 
     @Test
-    @AllowLog(level = LogLevel.ERROR, messagePattern = "Failed to instantiate service '.*': .* Skipping this service\\.")
+    @ExpectLog(level = LogLevel.ERROR, messagePattern = "Failed to build factory for service 'test': Service 'test' references unknown resource 'non-existent-queue' for port 'input'\\. Skipping this service\\.")
+    @ExpectLog(level = LogLevel.ERROR, messagePattern = "Failed to build factory for service 'test': com\\.example\\.NonExistent\\. Skipping this service\\.")
     void testErrorHandling() {
         Config badResourceConfig = ConfigFactory.parseString("""
              pipeline.services.test {
@@ -393,7 +393,11 @@ public class ServiceManagerTest {
     @Test
     @FailOnLog(level = LogLevel.INFO)
     @ExpectLog(level = LogLevel.INFO, messagePattern = "Initializing ServiceManager\\.\\.\\.")
+    @ExpectLog(level = LogLevel.INFO, messagePattern = ".*========== Resource Initialization ==========.*")
     @ExpectLog(level = LogLevel.INFO, messagePattern = "Instantiated resource 'test-queue' of type .*")
+    @ExpectLog(level = LogLevel.INFO, messagePattern = "Instantiated resource 'consumer-dlq' of type .*")
+    @ExpectLog(level = LogLevel.INFO, messagePattern = "Instantiated resource 'consumer-idempotency-tracker' of type .*")
+    @ExpectLog(level = LogLevel.INFO, messagePattern = ".*========== Service Initialization ==========.*")
     @ExpectLog(level = LogLevel.INFO, messagePattern = "Built factory for service 'producer' of type .*")
     @ExpectLog(level = LogLevel.INFO, messagePattern = "Built factory for service 'consumer' of type .*")
     @ExpectLog(level = LogLevel.INFO, messagePattern = "ServiceManager initialized with 3 resources and 2 service factories\\.")

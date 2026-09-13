@@ -2,9 +2,11 @@ package org.evochora.runtime.model;
 
 import org.evochora.junit.extensions.logging.ExpectLog;
 import org.evochora.junit.extensions.logging.LogLevel;
+import org.evochora.junit.extensions.logging.LogWatchExtension;
 import org.evochora.runtime.Config;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -16,6 +18,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * other molecule's type untouched.
  */
 @Tag("unit")
+@ExtendWith(LogWatchExtension.class)
 class MoleculeStoredFormTest {
 
     private static Molecule stored(Molecule written, int markerRegister) {

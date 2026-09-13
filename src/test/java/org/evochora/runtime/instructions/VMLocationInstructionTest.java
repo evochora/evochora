@@ -11,8 +11,10 @@ import org.evochora.runtime.model.LocationValue;
 import org.evochora.runtime.model.Organism;
 import org.evochora.junit.extensions.logging.ExpectLog;
 import org.evochora.junit.extensions.logging.LogLevel;
+import org.evochora.junit.extensions.logging.LogWatchExtension;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.Deque;
@@ -24,6 +26,7 @@ import org.junit.jupiter.api.Tag;
  * Data Pointers (DPs), Location Registers (LRs), and the Location Stack (LS).
  * These tests use an in-memory simulation and do not require external resources.
  */
+@ExtendWith(LogWatchExtension.class)
 public class VMLocationInstructionTest {
 
     private Simulation sim;

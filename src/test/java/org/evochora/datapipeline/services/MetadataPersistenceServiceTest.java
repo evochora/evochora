@@ -16,6 +16,7 @@ import org.evochora.datapipeline.api.services.IService.State;
 import org.evochora.junit.extensions.logging.AllowLog;
 import org.evochora.junit.extensions.logging.ExpectLog;
 import org.evochora.junit.extensions.logging.LogLevel;
+import org.evochora.junit.extensions.logging.LogWatchExtension;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -43,6 +44,7 @@ import static org.mockito.Mockito.*;
  */
 @Tag("unit")
 @ExtendWith(MockitoExtension.class)
+@ExtendWith(LogWatchExtension.class)
 class MetadataPersistenceServiceTest {
 
     @Mock
@@ -77,7 +79,6 @@ class MetadataPersistenceServiceTest {
     // ========== Constructor Tests ==========
 
     @Test
-    @AllowLog(level = LogLevel.INFO, loggerPattern = ".*MetadataPersistenceService.*")
     void testConstructorWithRequiredResources() {
         service = new MetadataPersistenceService("test-metadata-persistence", config, resources);
 
@@ -88,7 +89,6 @@ class MetadataPersistenceServiceTest {
     }
 
     @Test
-    @AllowLog(level = LogLevel.INFO, loggerPattern = ".*MetadataPersistenceService.*")
     void testConstructorWithOptionalDLQ() {
         resources.put("dlq", Collections.singletonList(mockDLQ));
 
@@ -132,7 +132,6 @@ class MetadataPersistenceServiceTest {
     }
 
     @Test
-    @AllowLog(level = LogLevel.INFO, loggerPattern = ".*MetadataPersistenceService.*")
     void testConstructorWithMissingStorageResource() {
         resources.remove("storage");
 
@@ -144,7 +143,6 @@ class MetadataPersistenceServiceTest {
     }
 
     @Test
-    @AllowLog(level = LogLevel.INFO, loggerPattern = ".*MetadataPersistenceService.*")
     @AllowLog(level = LogLevel.WARN, messagePattern = "MetadataPersistenceService initialized WITHOUT topic.*")
     void testConstructorWithMissingTopicResource() {
         resources.remove("topic");
@@ -156,7 +154,6 @@ class MetadataPersistenceServiceTest {
     }
 
     @Test
-    @AllowLog(level = LogLevel.INFO, loggerPattern = ".*MetadataPersistenceService.*")
     void testConstructorWithDefaultConfiguration() {
         Config emptyConfig = ConfigFactory.parseMap(Map.of());
 
@@ -169,7 +166,6 @@ class MetadataPersistenceServiceTest {
     // ========== Message Processing Tests ==========
 
     @Test
-    @AllowLog(level = LogLevel.INFO, loggerPattern = ".*MetadataPersistenceService.*")
     void testSuccessfulMetadataWrite() throws Exception {
         service = new MetadataPersistenceService("test-metadata-persistence", config, resources);
 
@@ -208,7 +204,6 @@ class MetadataPersistenceServiceTest {
     }
 
     @Test
-    @AllowLog(level = LogLevel.INFO, loggerPattern = ".*MetadataPersistenceService.*")
     void testStorageKeyGeneration() throws Exception {
         service = new MetadataPersistenceService("test-metadata-persistence", config, resources);
 
@@ -229,7 +224,6 @@ class MetadataPersistenceServiceTest {
     // ========== Validation Tests ==========
 
     @Test
-    @AllowLog(level = LogLevel.INFO, loggerPattern = ".*MetadataPersistenceService.*")
     @ExpectLog(level = LogLevel.WARN, loggerPattern = ".*MetadataPersistenceService.*",
                messagePattern = ".*empty or null simulationRunId.*")
     void testEmptySimulationRunId() throws Exception {
@@ -263,7 +257,6 @@ class MetadataPersistenceServiceTest {
     }
 
     @Test
-    @AllowLog(level = LogLevel.INFO, loggerPattern = ".*MetadataPersistenceService.*")
     @ExpectLog(level = LogLevel.WARN, loggerPattern = ".*MetadataPersistenceService.*",
                messagePattern = ".*empty or null simulationRunId.*")
     void testNullSimulationRunId() throws Exception {
@@ -290,7 +283,6 @@ class MetadataPersistenceServiceTest {
     // ========== Retry Logic Tests ==========
 
     @Test
-    @AllowLog(level = LogLevel.INFO, loggerPattern = ".*MetadataPersistenceService.*")
     @AllowLog(level = LogLevel.WARN, loggerPattern = ".*MetadataPersistenceService.*",
               messagePattern = ".*Failed to write metadata.*retrying.*")
     void testRetryOnTransientFailure() throws Exception {
@@ -319,7 +311,6 @@ class MetadataPersistenceServiceTest {
     }
 
     @Test
-    @AllowLog(level = LogLevel.INFO, loggerPattern = ".*MetadataPersistenceService.*")
     @ExpectLog(level = LogLevel.WARN, loggerPattern = ".*MetadataPersistenceService.*",
                messagePattern = ".*Failed to write metadata .* after .* retries, sending to DLQ")
     void testAllRetriesExhausted() throws Exception {
@@ -352,7 +343,6 @@ class MetadataPersistenceServiceTest {
     // ========== DLQ Tests ==========
 
     @Test
-    @AllowLog(level = LogLevel.INFO, loggerPattern = ".*MetadataPersistenceService.*")
     @ExpectLog(level = LogLevel.WARN, loggerPattern = ".*MetadataPersistenceService.*",
                messagePattern = ".*Failed to write metadata .* after .* retries, sending to DLQ")
     void testDLQWithConfiguredQueue() throws Exception {
@@ -382,7 +372,8 @@ class MetadataPersistenceServiceTest {
     }
 
     @Test
-    @AllowLog(level = LogLevel.INFO, loggerPattern = ".*MetadataPersistenceService.*")
+    @ExpectLog(level = LogLevel.WARN, loggerPattern = ".*MetadataPersistenceService.*",
+               messagePattern = "Failed to write metadata sim-789/raw/metadata\\.pb after 2 retries, sending to DLQ")
     @ExpectLog(level = LogLevel.WARN, loggerPattern = ".*MetadataPersistenceService.*",
                messagePattern = ".*Failed metadata has no DLQ configured.*")
     void testDLQNotConfigured() throws Exception {
@@ -404,7 +395,8 @@ class MetadataPersistenceServiceTest {
     }
 
     @Test
-    @AllowLog(level = LogLevel.INFO, loggerPattern = ".*MetadataPersistenceService.*")
+    @ExpectLog(level = LogLevel.WARN, loggerPattern = ".*MetadataPersistenceService.*",
+               messagePattern = "Failed to write metadata sim-full/raw/metadata\\.pb after 2 retries, sending to DLQ")
     @ExpectLog(level = LogLevel.WARN, loggerPattern = ".*MetadataPersistenceService.*",
                messagePattern = ".*DLQ is full.*")
     void testDLQFull() throws Exception {
@@ -431,7 +423,6 @@ class MetadataPersistenceServiceTest {
     // ========== Shutdown Tests ==========
 
     @Test
-    @AllowLog(level = LogLevel.INFO, loggerPattern = ".*MetadataPersistenceService.*")
     void testGracefulShutdownBeforeMessageReceived() throws Exception {
         service = new MetadataPersistenceService("test-metadata-persistence", config, resources);
 
@@ -457,7 +448,6 @@ class MetadataPersistenceServiceTest {
     // ========== Metrics Tests ==========
 
     @Test
-    @AllowLog(level = LogLevel.INFO, loggerPattern = ".*MetadataPersistenceService.*")
     void testMetricsAccuracy() throws Exception {
         service = new MetadataPersistenceService("test-metadata-persistence", config, resources);
 

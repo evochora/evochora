@@ -20,10 +20,12 @@ import java.util.UUID;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.junit.extensions.logging.ExpectLog;
 import org.evochora.junit.extensions.logging.LogLevel;
+import org.evochora.junit.extensions.logging.LogWatchExtension;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
@@ -34,6 +36,7 @@ import com.typesafe.config.ConfigFactory;
  * Tests focus on schema name sanitization logic without requiring actual database operations.
  */
 @Tag("unit")
+@ExtendWith(LogWatchExtension.class)
 class H2DatabaseTest {
 
     private H2Database database;
