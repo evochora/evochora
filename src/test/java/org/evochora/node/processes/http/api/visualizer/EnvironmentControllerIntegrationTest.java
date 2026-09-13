@@ -29,6 +29,7 @@ import org.evochora.datapipeline.api.contracts.EnvironmentHttpResponse;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
+import org.evochora.datapipeline.api.contracts.TickDelta;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.contracts.OrganismState;
@@ -687,9 +688,6 @@ class EnvironmentControllerIntegrationTest {
 
     private void writeBatchAndNotifyWithTopic(String runId, List<TickData> ticks, H2TopicResource<BatchInfo> topic) throws Exception {
         // Convert each tick to its own chunk (each chunk has tickCount=1)
-        long firstTick = ticks.get(0).getTickNumber();
-        long lastTick = ticks.get(ticks.size() - 1).getTickNumber();
-        
         List<TickDataChunk> chunks = new ArrayList<>();
         for (TickData tick : ticks) {
             TickDataChunk chunk = TickDataChunk.newBuilder()
@@ -701,7 +699,19 @@ class EnvironmentControllerIntegrationTest {
                 .build();
             chunks.add(chunk);
         }
-        
+
+        writeChunksAndNotify(runId, chunks, topic);
+    }
+
+    /**
+     * Writes the given chunks as one batch and announces it, the way the simulation hands a batch
+     * over to the indexer.
+     */
+    private void writeChunksAndNotify(String runId, List<TickDataChunk> chunks,
+                                      H2TopicResource<BatchInfo> topic) throws Exception {
+        long firstTick = chunks.get(0).getFirstTick();
+        long lastTick = chunks.get(chunks.size() - 1).getLastTick();
+
         // Write chunk batch to storage
         ResourceContext storageWriteContext = new ResourceContext("test", "storage-port", "storage-write", "test-storage", Map.of("simulationRunId", runId));
         var storageWriter = testStorage.getWrappedResource(storageWriteContext);
@@ -731,40 +741,29 @@ class EnvironmentControllerIntegrationTest {
 
     @Test
     void getTicks_returnsTickRange() throws Exception {
-        // Given: Test run with multiple ticks
+        // Given: Test run recording every tenth tick from 10 to 30 in one chunk
         String runId = "test-run-" + UUID.randomUUID();
         SimulationMetadata metadata = createMetadata(runId, new int[]{10, 10}, false);
 
         indexMetadata(runId, metadata);
 
-        // Write ticks 10, 20, 30
-        List<TickData> batches = List.of(
-            TickData.newBuilder()
+        TickDataChunk chunk = TickDataChunk.newBuilder()
+            .setSimulationRunId(runId)
+            .setFirstTick(10L)
+            .setLastTick(30L)
+            .setTickCount(3)
+            .setSnapshot(TickData.newBuilder()
                 .setTickNumber(10L)
                 .setSimulationRunId(runId)
                 .setCellColumns(CellStateTestHelper.createColumnsFromCells(List.of(
                     CellStateTestHelper.createCellStateBuilder(0, 100, 1, 50, 0).build()
                 )))
-                .build(),
-            TickData.newBuilder()
-                .setTickNumber(20L)
-                .setSimulationRunId(runId)
-                .setCellColumns(CellStateTestHelper.createColumnsFromCells(List.of(
-                    CellStateTestHelper.createCellStateBuilder(0, 101, 1, 60, 0).build()
-                )))
-                .build(),
-            TickData.newBuilder()
-                .setTickNumber(30L)
-                .setSimulationRunId(runId)
-                .setCellColumns(CellStateTestHelper.createColumnsFromCells(List.of(
-                    CellStateTestHelper.createCellStateBuilder(0, 102, 1, 70, 0).build()
-                )))
-                .build()
-        );
+                .build())
+            .addDeltas(TickDelta.newBuilder().setTickNumber(20L).build())
+            .addDeltas(TickDelta.newBuilder().setTickNumber(30L).build())
+            .build();
 
-        for (TickData batch : batches) {
-            writeBatchAndNotify(runId, List.of(batch));
-        }
+        writeChunksAndNotify(runId, List.of(chunk), testBatchTopic);
 
         Config config = ConfigFactory.parseString("""
             runId = "%s"
@@ -798,11 +797,15 @@ class EnvironmentControllerIntegrationTest {
             .queryParam("runId", runId)
             .get("/ticks");
 
-        // Then: Verify tick range response
+        // Then: Verify the bounds and the one range they are made of
         resp.then()
             .statusCode(200)
             .body("minTick", equalTo(10))
-            .body("maxTick", equalTo(30));
+            .body("maxTick", equalTo(30))
+            .body("ranges.size()", equalTo(1))
+            .body("ranges[0].first", equalTo(10))
+            .body("ranges[0].last", equalTo(30))
+            .body("ranges[0].step", equalTo(10));
     }
 
     @Test

@@ -2,9 +2,12 @@ package org.evochora.datapipeline.resources.database.h2;
 
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.util.List;
 
 import org.evochora.datapipeline.api.resources.database.PendingChunkRead;
 import org.evochora.datapipeline.api.resources.database.TickNotFoundException;
+import org.evochora.datapipeline.api.resources.database.dto.ChunkIndexSummary;
+import org.evochora.datapipeline.api.resources.database.dto.SampledTickRange;
 
 /**
  * H2-specific strategy interface for storing and reading environment data as chunks.
@@ -129,4 +132,38 @@ public interface IH2EnvStorageStrategy {
      */
     PendingChunkRead prepareChunkRead(Connection conn, long tickNumber)
             throws SQLException, TickNotFoundException;
+
+    /**
+     * Reads how much of the run is indexed: the number of chunks and the highest tick they reach.
+     * <p>
+     * One aggregate query over the index, cheap enough to answer on every request. A caller that
+     * derived something from the whole index earlier can compare this summary with the one it saw
+     * then and read the index again only when it has changed.
+     *
+     * @param conn Database connection (schema already set)
+     * @return The chunk count and the highest last tick; a count of zero when nothing is indexed
+     * @throws SQLException if the database read fails
+     */
+    ChunkIndexSummary readChunkIndexSummary(Connection conn) throws SQLException;
+
+    /**
+     * Reads the stretches of ticks the run has recorded, ordered by their first tick.
+     * <p>
+     * A chunk holding several ticks states its step itself,
+     * {@code (last_tick - first_tick) / (tick_count - 1)}; a chunk holding a single tick takes it
+     * from its neighbours - the distance to the chunk after it, or the step of the chunk before it
+     * where it is the last one. A chunk continues the stretch before it when it carries the same
+     * step and starts exactly one step past it; otherwise it opens a new one. What comes back is
+     * therefore the coarsest description of where the run's ticks are: ranges a viewer can step
+     * along, with nothing recorded between them.
+     *
+     * @param conn Database connection (schema already set)
+     * @param runId Simulation run the connection points at, named in error messages
+     * @return The ranges ordered by first tick; empty when nothing is indexed
+     * @throws SQLException if the database read fails
+     * @throws IllegalStateException if two chunks overlap, if a chunk's span does not fit the
+     *                               number of ticks it holds, or if the run's only chunk holds a
+     *                               single tick and so leaves no step anywhere
+     */
+    List<SampledTickRange> readTickRanges(Connection conn, String runId) throws SQLException;
 }

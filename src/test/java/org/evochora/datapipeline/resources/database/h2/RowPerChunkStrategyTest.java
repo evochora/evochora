@@ -38,6 +38,8 @@ import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.delta.ChunkCorruptedException;
 import org.evochora.datapipeline.api.resources.database.TickNotFoundException;
+import org.evochora.datapipeline.api.resources.database.dto.ChunkIndexSummary;
+import org.evochora.datapipeline.api.resources.database.dto.SampledTickRange;
 import org.evochora.datapipeline.utils.delta.DeltaCodec;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
@@ -139,11 +141,12 @@ class RowPerChunkStrategyTest {
         List<String> executedSql = sqlCaptor.getAllValues();
         assertThat(executedSql).hasSize(2);
 
-        // CREATE TABLE: only first_tick and last_tick, no BLOB
+        // CREATE TABLE: the chunk's bounds and how many ticks it holds, no BLOB
         assertThat(executedSql.get(0))
             .contains("CREATE TABLE IF NOT EXISTS environment_chunks")
             .contains("first_tick BIGINT PRIMARY KEY")
             .contains("last_tick BIGINT NOT NULL")
+            .contains("tick_count INT NOT NULL")
             .doesNotContain("chunk_blob")
             .doesNotContain("BYTEA");
 
@@ -162,7 +165,175 @@ class RowPerChunkStrategyTest {
             .contains("MERGE INTO environment_chunks")
             .contains("first_tick")
             .contains("last_tick")
+            .contains("tick_count")
             .doesNotContain("chunk_blob");
+    }
+
+    // ========================================================================
+    // Tick ranges derived from the chunk index
+    // ========================================================================
+
+    @Test
+    void writeRawChunk_storesHowManyTicksTheChunkHolds() throws Exception {
+        strategy = new RowPerChunkStrategy(configWithChunkDir());
+
+        try (Connection conn = inMemoryDatabase()) {
+            strategy.createTables(conn, 2);
+            strategy.writeRawChunk(conn, 100L, 140L, 5, createChunkWithSnapshot(100L).toByteArray());
+            strategy.commitRawChunks(conn);
+
+            try (Statement stmt = conn.createStatement();
+                 ResultSet rs = stmt.executeQuery(
+                         "SELECT first_tick, last_tick, tick_count FROM environment_chunks")) {
+                assertThat(rs.next()).isTrue();
+                assertThat(rs.getLong("first_tick")).isEqualTo(100L);
+                assertThat(rs.getLong("last_tick")).isEqualTo(140L);
+                assertThat(rs.getInt("tick_count")).isEqualTo(5);
+            }
+        }
+    }
+
+    @Test
+    void readTickRanges_derivesTheStepOfASingleChunk() throws Exception {
+        try (Connection conn = indexWith(chunk(0L, 90L, 10))) {
+            assertThat(strategy.readTickRanges(conn, "run-a"))
+                    .containsExactly(new SampledTickRange(0L, 90L, 10L));
+        }
+    }
+
+    @Test
+    void readTickRanges_joinsChunksThatContinueEachOther() throws Exception {
+        try (Connection conn = indexWith(chunk(0L, 90L, 10), chunk(100L, 190L, 10), chunk(200L, 290L, 10))) {
+            assertThat(strategy.readTickRanges(conn, "run-a"))
+                    .containsExactly(new SampledTickRange(0L, 290L, 10L));
+        }
+    }
+
+    @Test
+    void readTickRanges_splitsWhereTheRecordingHasAGap() throws Exception {
+        try (Connection conn = indexWith(chunk(0L, 90L, 10), chunk(500L, 590L, 10))) {
+            assertThat(strategy.readTickRanges(conn, "run-a"))
+                    .containsExactly(
+                            new SampledTickRange(0L, 90L, 10L),
+                            new SampledTickRange(500L, 590L, 10L));
+        }
+    }
+
+    @Test
+    void readTickRanges_startsWhereTheRunStarts() throws Exception {
+        // A run forked from another begins at the fork's first tick, not at 0
+        try (Connection conn = indexWith(chunk(4000L, 4090L, 10), chunk(4100L, 4190L, 10))) {
+            assertThat(strategy.readTickRanges(conn, "run-a"))
+                    .containsExactly(new SampledTickRange(4000L, 4190L, 10L));
+        }
+    }
+
+    @Test
+    void readTickRanges_separatesStretchesRecordedAtDifferentSteps() throws Exception {
+        // The second stretch follows the first without a gap but holds its ten ticks one apart
+        // instead of ten, so stepping along it needs its own step
+        try (Connection conn = indexWith(chunk(0L, 90L, 10), chunk(100L, 109L, 10))) {
+            assertThat(strategy.readTickRanges(conn, "run-a"))
+                    .containsExactly(
+                            new SampledTickRange(0L, 90L, 10L),
+                            new SampledTickRange(100L, 109L, 1L));
+        }
+    }
+
+    @Test
+    void readTickRanges_isEmptyWhileNothingIsIndexed() throws Exception {
+        try (Connection conn = indexWith()) {
+            assertThat(strategy.readTickRanges(conn, "run-a")).isEmpty();
+        }
+    }
+
+    @Test
+    void readTickRanges_rejectsOverlappingChunks() throws Exception {
+        try (Connection conn = indexWith(chunk(0L, 90L, 10), chunk(50L, 140L, 10))) {
+            assertThatThrownBy(() -> strategy.readTickRanges(conn, "run-a"))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("run-a")
+                    .hasMessageContaining("50")
+                    .hasMessageContaining("140")
+                    .hasMessageContaining("0")
+                    .hasMessageContaining("90");
+        }
+    }
+
+    @Test
+    void readTickRanges_takesTheStepOfSingleTickChunksFromTheirNeighbours() throws Exception {
+        // Every tick its own chunk: what each one holds says nothing, the distance between them does
+        try (Connection conn = indexWith(chunk(0L, 0L, 1), chunk(1L, 1L, 1), chunk(2L, 2L, 1), chunk(3L, 3L, 1))) {
+            assertThat(strategy.readTickRanges(conn, "run-a"))
+                    .containsExactly(new SampledTickRange(0L, 3L, 1L));
+        }
+    }
+
+    @Test
+    void readTickRanges_readsTheSamplingOfSingleTickChunksFromTheirDistance() throws Exception {
+        try (Connection conn = indexWith(chunk(0L, 0L, 1), chunk(4L, 4L, 1), chunk(8L, 8L, 1))) {
+            assertThat(strategy.readTickRanges(conn, "run-a"))
+                    .containsExactly(new SampledTickRange(0L, 8L, 4L));
+        }
+    }
+
+    @Test
+    void readTickRanges_letsASingleTickChunkContinueTheRangeBeforeIt() throws Exception {
+        // The last chunk has no successor to measure against and takes the step of the one before it
+        try (Connection conn = indexWith(chunk(0L, 90L, 10), chunk(100L, 100L, 1))) {
+            assertThat(strategy.readTickRanges(conn, "run-a"))
+                    .containsExactly(new SampledTickRange(0L, 100L, 10L));
+        }
+    }
+
+    @Test
+    void readTickRanges_rejectsALoneChunkHoldingASingleTick() throws Exception {
+        try (Connection conn = indexWith(chunk(0L, 0L, 1))) {
+            assertThatThrownBy(() -> strategy.readTickRanges(conn, "run-a"))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("run-a")
+                    .hasMessageContaining("no neighbour");
+        }
+    }
+
+    @Test
+    void readTickRanges_rejectsASpanThatDoesNotFitTheTicksItHolds() throws Exception {
+        // Four ticks leave three gaps, and 10 does not divide into three whole steps
+        try (Connection conn = indexWith(chunk(0L, 10L, 4))) {
+            assertThatThrownBy(() -> strategy.readTickRanges(conn, "run-a"))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("run-a")
+                    .hasMessageContaining("0")
+                    .hasMessageContaining("10")
+                    .hasMessageContaining("no whole step");
+        }
+    }
+
+    @Test
+    void readTickRanges_rejectsSeveralTicksInOneTicksSpan() throws Exception {
+        try (Connection conn = indexWith(chunk(40L, 40L, 3))) {
+            assertThatThrownBy(() -> strategy.readTickRanges(conn, "run-a"))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("run-a")
+                    .hasMessageContaining("40")
+                    .hasMessageContaining("in one tick's span");
+        }
+    }
+
+    @Test
+    void readChunkIndexSummary_countsTheChunksAndHowFarTheyReach() throws Exception {
+        try (Connection conn = indexWith(chunk(0L, 90L, 10), chunk(500L, 590L, 10))) {
+            assertThat(strategy.readChunkIndexSummary(conn))
+                    .isEqualTo(new ChunkIndexSummary(2L, 590L));
+        }
+    }
+
+    @Test
+    void readChunkIndexSummary_countsNothingWhileNothingIsIndexed() throws Exception {
+        try (Connection conn = indexWith()) {
+            assertThat(strategy.readChunkIndexSummary(conn))
+                    .isEqualTo(new ChunkIndexSummary(0L, 0L));
+        }
     }
 
     // ========================================================================
@@ -222,6 +393,7 @@ class RowPerChunkStrategyTest {
         // Verify H2 batch parameters
         verify(mockPreparedStatement).setLong(eq(1), eq(1000L));
         verify(mockPreparedStatement).setLong(eq(2), eq(1000L));
+        verify(mockPreparedStatement).setInt(eq(3), eq(1));
         verify(mockPreparedStatement).addBatch();
     }
 
@@ -434,6 +606,43 @@ class RowPerChunkStrategyTest {
     // ========================================================================
     // Helper methods
     // ========================================================================
+
+    /**
+     * One row of the chunk index: the chunk's bounds and how many ticks it holds.
+     */
+    private record IndexedChunk(long firstTick, long lastTick, int tickCount) {}
+
+    private static IndexedChunk chunk(long firstTick, long lastTick, int tickCount) {
+        return new IndexedChunk(firstTick, lastTick, tickCount);
+    }
+
+    /**
+     * Opens a database of its own, so that rows written by one test cannot reach another.
+     */
+    private Connection inMemoryDatabase() throws SQLException {
+        return java.sql.DriverManager.getConnection(
+                "jdbc:h2:mem:rowperchunk-" + java.util.UUID.randomUUID(), "sa", "");
+    }
+
+    /**
+     * Creates the chunk index and fills it with the given chunks, leaving the chunk files out:
+     * everything the tick ranges are derived from stands in the index.
+     */
+    private Connection indexWith(IndexedChunk... chunks) throws SQLException {
+        strategy = new RowPerChunkStrategy(configWithChunkDir());
+        Connection conn = inMemoryDatabase();
+        strategy.createTables(conn, 2);
+
+        try (PreparedStatement stmt = conn.prepareStatement(strategy.getMergeSql())) {
+            for (IndexedChunk c : chunks) {
+                stmt.setLong(1, c.firstTick());
+                stmt.setLong(2, c.lastTick());
+                stmt.setInt(3, c.tickCount());
+                stmt.executeUpdate();
+            }
+        }
+        return conn;
+    }
 
     /**
      * Writes a compressed chunk file to the schema directory with subdirectory

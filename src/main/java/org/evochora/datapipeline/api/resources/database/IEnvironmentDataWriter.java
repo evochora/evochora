@@ -33,12 +33,14 @@ public interface IEnvironmentDataWriter extends AutoCloseable {
     /**
      * Creates the environment_chunks table idempotently.
      * <p>
-     * Table schema supports chunk storage:
+     * The table indexes the chunks of the run: where each one begins and ends, and how many ticks
+     * it holds, which together give the step it was recorded at. Where the chunk data itself is
+     * kept is the storage strategy's business.
      * <pre>
      * CREATE TABLE environment_chunks (
      *   first_tick BIGINT PRIMARY KEY,
      *   last_tick BIGINT NOT NULL,
-     *   chunk_blob BYTEA NOT NULL
+     *   tick_count INT NOT NULL
      * )
      * </pre>
      * <p>
