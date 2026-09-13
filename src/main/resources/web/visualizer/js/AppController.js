@@ -728,10 +728,14 @@ export class AppController {
      */
     async _refreshTickRanges() {
         const [envTicks, orgTickRange] = await Promise.all([
-            this.environmentApi.fetchTickRange(this.state.runId).catch(() => null),
-            this.organismApi.fetchTickRange(this.state.runId).catch(() => null)
+            this.environmentApi.fetchTickRange(this.state.runId).catch(e => this._tickRangeMiss('environment', e)),
+            this.organismApi.fetchTickRange(this.state.runId).catch(e => this._tickRangeMiss('organism', e))
         ]);
-        if (!envTicks || !Array.isArray(envTicks.ranges)) {
+        if (!envTicks) {
+            return false;
+        }
+        if (!Array.isArray(envTicks.ranges)) {
+            console.warn('The environment ticks endpoint answered without ranges; keeping the known ones', envTicks);
             return false;
         }
         let maxTick = envTicks.maxTick;
@@ -747,6 +751,22 @@ export class AppController {
             this._refreshStepInfo();
         }
         return changed;
+    }
+
+    /**
+     * Turns a failed tick-range fetch into "nothing known". A 404 means the index holds nothing
+     * yet, which is a state and not worth a word; anything else is a fault of the server or the
+     * connection and is written to the console, where the node's own log has the cause as well.
+     * @param {string} index - Which index was asked.
+     * @param {Error} error - What the fetch threw.
+     * @returns {null}
+     * @private
+     */
+    _tickRangeMiss(index, error) {
+        if (error?.status !== 404) {
+            console.warn(`Fetching the ${index} ticks of run ${this.state.runId} failed; keeping the known ranges:`, error);
+        }
+        return null;
     }
 
     /**

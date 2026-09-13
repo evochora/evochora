@@ -29,7 +29,9 @@ export class ApiClient {
             if (!response.ok) {
                 const errorData = await response.json().catch(() => ({}));
                 const errorMessage = errorData.message || `HTTP ${response.status}: ${response.statusText}`;
-                throw new Error(errorMessage);
+                const error = new Error(errorMessage);
+                error.status = response.status;
+                throw error;
             }
 
             if (response.status === 204) {

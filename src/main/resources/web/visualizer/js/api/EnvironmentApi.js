@@ -211,7 +211,9 @@ export class EnvironmentApi {
             const response = await fetch(url);
             if (!response.ok) {
                 const errorData = await response.json().catch(() => ({}));
-                throw new Error(errorData.message || `HTTP ${response.status}`);
+                const error = new Error(errorData.message || `HTTP ${response.status}`);
+                error.status = response.status;
+                throw error;
             }
             return await response.json();
         } finally {
