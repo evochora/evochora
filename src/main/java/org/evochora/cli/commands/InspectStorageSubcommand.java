@@ -1,6 +1,5 @@
 package org.evochora.cli.commands;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -95,8 +94,8 @@ public class InspectStorageSubcommand implements Callable<Integer> {
             DeltaCodec.Decoder decoder = new DeltaCodec.Decoder(totalCells);
             
             // Find batch file containing the tick
-            StoragePath batchPath = findBatchContainingTick(storage, runId, tickNumber);
-            
+            StoragePath batchPath = storage.findBatchFileContaining(runId + "/raw/", tickNumber).orElse(null);
+
             if (batchPath == null) {
                 spec.commandLine().getOut().println("No batch file found containing tick " + tickNumber + " for run " + runId);
                 return 1;
@@ -196,49 +195,6 @@ public class InspectStorageSubcommand implements Callable<Integer> {
             .newInstance(storageName, options);
         
         return storage;
-    }
-
-    private StoragePath findBatchContainingTick(IBatchStorageRead storage, String runId, long tickNumber) throws IOException {
-        // Search in the raw directory specifically to narrow down the search
-        String prefix = runId + "/raw/";
-        String continuationToken = null;
-        
-        do {
-            var result = storage.listBatchFiles(prefix, continuationToken, 10000);
-            
-            for (StoragePath path : result.getFilenames()) {
-                String fullPath = path.asString();
-                String filename = new java.io.File(fullPath).getName();
-                
-                if (filename.startsWith("batch_")) {
-                    String[] parts = filename.split("_");
-                    if (parts.length >= 3) {
-                        try {
-                            long startTick = Long.parseLong(parts[1]);
-                            
-                            String endTickPart = parts[2];
-                            int firstDot = endTickPart.indexOf('.');
-                            if (firstDot > 0) {
-                                endTickPart = endTickPart.substring(0, firstDot);
-                            }
-                            
-                            long endTick = Long.parseLong(endTickPart);
-                            
-                            if (tickNumber >= startTick && tickNumber <= endTick) {
-                                return path;
-                            }
-                        } catch (NumberFormatException e) {
-                            continue;
-                        }
-                    }
-                }
-            }
-            
-            continuationToken = result.getNextContinuationToken();
-            
-        } while (continuationToken != null);
-        
-        return null;
     }
 
     private void printChunkRanges(List<String> chunkRanges) {

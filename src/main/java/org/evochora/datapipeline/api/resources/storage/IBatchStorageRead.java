@@ -29,7 +29,7 @@ import java.util.Optional;
  * "storage-read:resourceName" to ensure type safety and proper metric isolation.
  *
  * <h2>Implementor contract</h2>
- * Implementations must provide these 6 abstract methods:
+ * Implementations must provide these 7 abstract methods:
  * <ol>
  *   <li>{@link #forEachRawChunk} — streaming raw-byte read (the primary read primitive)</li>
  *   <li>{@link #readMessage} — single protobuf message read (metadata, configs)</li>
@@ -37,6 +37,7 @@ import java.util.Optional;
  *   <li>{@link #listRunIds} — run discovery</li>
  *   <li>{@link #findMetadataPath} — metadata file lookup</li>
  *   <li>{@link #findLastBatchFile} — last batch file lookup for resume</li>
+ *   <li>{@link #findBatchFileContaining} — lookup of the batch file covering one tick</li>
  * </ol>
  * All other methods are default convenience overloads that delegate to these primitives.
  * <p>
@@ -65,8 +66,10 @@ public interface IBatchStorageRead extends IResource {
 
         /**
          * Sort batch files by tick number in descending order (newest first).
-         * Use this when only the most recent files are needed, such as finding
-         * the last checkpoint for resume.
+         * <p>
+         * A descending listing reads every batch file name under the prefix before it returns,
+         * so its cost grows with the run - see
+         * {@link #listBatchFiles(String, String, int, SortOrder)}.
          */
         DESCENDING
     }
@@ -212,6 +215,14 @@ public interface IBatchStorageRead extends IResource {
      * <p>
      * Delegates to {@link #listBatchFiles(String, String, int, long, long, SortOrder)}
      * with no tick filtering.
+     * <p>
+     * <strong>The price of {@link SortOrder#DESCENDING}:</strong> it lists every batch file under
+     * the prefix before it returns, because the listing primitive delivers ascending only, so the
+     * last files can only be known after all of them were seen. The cost grows with the run,
+     * hundreds of thousands of names for a run of 10^9 ticks, and a descending listing takes no
+     * continuation token and hands out none. Use it for one-off lookups only; for the last batch
+     * file use {@link #findLastBatchFile}, which descends the folder tree instead, and for the
+     * file covering one tick {@link #findBatchFileContaining}.
      *
      * @param prefix Filter prefix (e.g., "sim123/" for specific simulation, "" for all)
      * @param continuationToken Token from previous call, or null for first page
@@ -296,6 +307,29 @@ public interface IBatchStorageRead extends IResource {
      * @throws IllegalArgumentException If runIdPrefix is null
      */
     Optional<StoragePath> findLastBatchFile(String runIdPrefix) throws IOException;
+
+    /**
+     * Finds the batch file whose tick range covers the given tick.
+     * <p>
+     * A batch file covers the ticks between its first and its last tick, both inclusive, and the
+     * ranges of a run do not overlap. The result is therefore the one file in which a reader can
+     * find the tick, or empty when no file covers it — because the tick lies beyond the recorded
+     * data, or in a gap the run never wrote.
+     * <p>
+     * The tick-range filter of {@link #listBatchFiles(String, String, int, long, long, SortOrder)}
+     * cannot express this lookup: it selects files by their <em>first</em> tick, so a file that
+     * starts before the tick and ends after it is not what that filter answers with.
+     * <p>
+     * <strong>Primary use case:</strong> reading one recorded tick, and loading the chunk
+     * snapshot a run is continued from when the continuation starts at a chosen tick.
+     *
+     * @param runIdPrefix The run prefix to search (e.g., "runId/raw/")
+     * @param tick The tick the batch file must cover
+     * @return Optional containing the path to the covering batch file, empty if no file covers the tick
+     * @throws IOException If storage access fails
+     * @throws IllegalArgumentException If runIdPrefix is null or tick is negative
+     */
+    Optional<StoragePath> findBatchFileContaining(String runIdPrefix, long tick) throws IOException;
 
     /**
      * Streams raw chunk bytes from a batch file one at a time.

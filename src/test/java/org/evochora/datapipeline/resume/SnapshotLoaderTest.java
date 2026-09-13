@@ -9,6 +9,7 @@ import static org.mockito.Mockito.when;
 
 import java.io.IOException;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.evochora.datapipeline.TestMetadataHelper;
 import org.evochora.datapipeline.api.contracts.CellDataColumns;
@@ -120,6 +121,92 @@ class SnapshotLoaderTest {
         assertThat(checkpoint.getResumeFromTick()).isEqualTo(1201);
     }
 
+    // ==================== Checkpoint For A Chosen Tick ====================
+
+    @Test
+    void loadCheckpointContaining_TickInFirstChunk_ReturnsItsSnapshotAndStopsThere() throws Exception {
+        stubMetadata();
+
+        StoragePath batchPath = StoragePath.of(TEST_RUN_ID + "/raw/000/000/batch_0000000000000001000_0000000000000001199.pb");
+        when(storageRead.findBatchFileContaining(TEST_RUN_ID + "/raw/", 1050L)).thenReturn(Optional.of(batchPath));
+        AtomicInteger chunksRead = stubChunkRead(batchPath,
+            chunk(1000, 1099), chunk(1100, 1199));
+
+        ResumeCheckpoint checkpoint = loader.loadCheckpointContaining(TEST_RUN_ID, 1050);
+
+        assertThat(checkpoint.getCheckpointTick()).isEqualTo(1000);
+        assertThat(chunksRead).hasValue(1);
+    }
+
+    @Test
+    void loadCheckpointContaining_TickInLaterChunk_ReturnsThatChunksSnapshot() throws Exception {
+        stubMetadata();
+
+        StoragePath batchPath = StoragePath.of(TEST_RUN_ID + "/raw/000/000/batch_0000000000000001000_0000000000000001299.pb");
+        when(storageRead.findBatchFileContaining(TEST_RUN_ID + "/raw/", 1250L)).thenReturn(Optional.of(batchPath));
+        stubChunkRead(batchPath, chunk(1000, 1099), chunk(1100, 1199), chunk(1200, 1299));
+
+        ResumeCheckpoint checkpoint = loader.loadCheckpointContaining(TEST_RUN_ID, 1250);
+
+        assertThat(checkpoint.getCheckpointTick()).isEqualTo(1200);
+        assertThat(checkpoint.getResumeFromTick()).isEqualTo(1201);
+    }
+
+    @Test
+    void loadCheckpointContaining_TickOnChunkFirstTick_ReturnsThatChunksSnapshot() throws Exception {
+        stubMetadata();
+
+        StoragePath batchPath = StoragePath.of(TEST_RUN_ID + "/raw/000/000/batch_0000000000000001000_0000000000000001199.pb");
+        when(storageRead.findBatchFileContaining(TEST_RUN_ID + "/raw/", 1100L)).thenReturn(Optional.of(batchPath));
+        stubChunkRead(batchPath, chunk(1000, 1099), chunk(1100, 1199));
+
+        ResumeCheckpoint checkpoint = loader.loadCheckpointContaining(TEST_RUN_ID, 1100);
+
+        assertThat(checkpoint.getCheckpointTick()).isEqualTo(1100);
+    }
+
+    @Test
+    void loadCheckpointContaining_TickOnChunkLastTick_ReturnsThatChunksSnapshot() throws Exception {
+        stubMetadata();
+
+        StoragePath batchPath = StoragePath.of(TEST_RUN_ID + "/raw/000/000/batch_0000000000000001000_0000000000000001199.pb");
+        when(storageRead.findBatchFileContaining(TEST_RUN_ID + "/raw/", 1099L)).thenReturn(Optional.of(batchPath));
+        stubChunkRead(batchPath, chunk(1000, 1099), chunk(1100, 1199));
+
+        ResumeCheckpoint checkpoint = loader.loadCheckpointContaining(TEST_RUN_ID, 1099);
+
+        assertThat(checkpoint.getCheckpointTick()).isEqualTo(1000);
+    }
+
+    @Test
+    void loadCheckpointContaining_TickBeyondRecordedData_NamesLastCoveredTick() throws Exception {
+        stubMetadata();
+
+        when(storageRead.findBatchFileContaining(TEST_RUN_ID + "/raw/", 5000L)).thenReturn(Optional.empty());
+
+        StoragePath lastBatchPath = StoragePath.of(TEST_RUN_ID + "/raw/000/000/batch_0000000000000001000_0000000000000001199.pb");
+        when(storageRead.findLastBatchFile(TEST_RUN_ID + "/raw/")).thenReturn(Optional.of(lastBatchPath));
+        stubChunkRead(lastBatchPath, chunk(1000, 1099), chunk(1100, 1199));
+
+        assertThatThrownBy(() -> loader.loadCheckpointContaining(TEST_RUN_ID, 5000))
+            .isInstanceOf(ResumeException.class)
+            .hasMessageContaining("tick 5000")
+            .hasMessageContaining(TEST_RUN_ID)
+            .hasMessageContaining("ends at tick 1199");
+    }
+
+    @Test
+    void loadCheckpointContaining_NoBatchFiles_ThrowsResumeException() throws Exception {
+        stubMetadata();
+
+        when(storageRead.findBatchFileContaining(TEST_RUN_ID + "/raw/", 100L)).thenReturn(Optional.empty());
+        when(storageRead.findLastBatchFile(TEST_RUN_ID + "/raw/")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> loader.loadCheckpointContaining(TEST_RUN_ID, 100))
+            .isInstanceOf(ResumeException.class)
+            .hasMessageContaining("No tick data found");
+    }
+
     // ==================== Error Cases ====================
 
     @Test
@@ -178,6 +265,39 @@ class SnapshotLoaderTest {
     }
 
     // ==================== Helper Methods ====================
+
+    private void stubMetadata() throws IOException {
+        StoragePath metadataPath = StoragePath.of(TEST_RUN_ID + "/raw/metadata.pb");
+        when(storageRead.findMetadataPath(TEST_RUN_ID)).thenReturn(Optional.of(metadataPath));
+        when(storageRead.readMessage(eq(metadataPath), any())).thenReturn(createMetadata(TEST_RUN_ID));
+    }
+
+    private TickDataChunk chunk(long firstTick, long lastTick) {
+        return TickDataChunk.newBuilder()
+            .setFirstTick(firstTick)
+            .setLastTick(lastTick)
+            .setTickCount((int) (lastTick - firstTick + 1))
+            .setSnapshot(createSnapshot(firstTick))
+            .build();
+    }
+
+    /**
+     * Hands the given chunks to the snapshot-only read of the batch file, in order.
+     *
+     * @return counter of the chunks the caller actually consumed
+     */
+    private AtomicInteger stubChunkRead(StoragePath path, TickDataChunk... chunks) throws Exception {
+        AtomicInteger consumed = new AtomicInteger();
+        doAnswer(invocation -> {
+            CheckedConsumer<TickDataChunk> consumer = invocation.getArgument(2);
+            for (TickDataChunk chunk : chunks) {
+                consumed.incrementAndGet();
+                consumer.accept(chunk);
+            }
+            return null;
+        }).when(storageRead).forEachChunk(eq(path), eq(ChunkFieldFilter.SNAPSHOT_ONLY), any());
+        return consumed;
+    }
 
     private void stubSnapshotRead(StoragePath path, TickData snapshot) throws Exception {
         TickDataChunk chunk = TickDataChunk.newBuilder()

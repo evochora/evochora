@@ -276,6 +276,14 @@ class SimulationEngineResumeTest {
         }
 
         @Override
+        public Optional<StoragePath> findBatchFileContaining(String runIdPrefix, long tick) {
+            if (chunk == null || tick < chunk.getFirstTick() || tick > chunk.getLastTick()) {
+                return Optional.empty();
+            }
+            return Optional.ofNullable(batchPath);
+        }
+
+        @Override
         @SuppressWarnings("unchecked")
         public <T extends com.google.protobuf.MessageLite> T readMessage(StoragePath path,
                 com.google.protobuf.Parser<T> parser) {
