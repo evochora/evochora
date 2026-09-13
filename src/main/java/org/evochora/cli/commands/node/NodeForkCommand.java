@@ -96,15 +96,13 @@ public class NodeForkCommand implements Callable<Integer> {
         }
 
         final String parentRunId;
-        if (runId != null) {
-            parentRunId = runId;
-        } else {
-            try {
-                parentRunId = LatestRun.runId(plainConfig, storageName);
-            } catch (Exception e) {
-                spec.commandLine().getErr().println(e.getMessage());
-                return 1;
-            }
+        try {
+            parentRunId = runId != null
+                ? RunLookup.existing(plainConfig, storageName, runId)
+                : RunLookup.newest(plainConfig, storageName);
+        } catch (Exception e) {
+            spec.commandLine().getErr().println(e.getMessage());
+            return 1;
         }
 
         final Config config = cli.getConfig(overrides(parentRunId));

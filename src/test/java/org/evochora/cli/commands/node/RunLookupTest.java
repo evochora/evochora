@@ -22,7 +22,7 @@ import com.typesafe.config.ConfigUtil;
  * the command line names no run.
  */
 @Tag("integration")
-class LatestRunTest {
+class RunLookupTest {
 
     private static final String OLDER_RUN = "20260101-12000000-1111aaaa";
     private static final String NEWER_RUN = "20260102-09301500-2222bbbb";
@@ -35,7 +35,7 @@ class LatestRunTest {
         writeMetadata(OLDER_RUN);
         writeMetadata(NEWER_RUN);
 
-        assertThat(LatestRun.runId(storageConfig("tick-storage"), "tick-storage")).isEqualTo(NEWER_RUN);
+        assertThat(RunLookup.newest(storageConfig("tick-storage"), "tick-storage")).isEqualTo(NEWER_RUN);
     }
 
     @Test
@@ -43,20 +43,37 @@ class LatestRunTest {
         writeMetadata(NEWER_RUN);
         writeMetadata(OLDER_RUN);
 
-        assertThat(LatestRun.runId(storageConfig("tick-storage"), "tick-storage")).isEqualTo(NEWER_RUN);
+        assertThat(RunLookup.newest(storageConfig("tick-storage"), "tick-storage")).isEqualTo(NEWER_RUN);
     }
 
     @Test
     void aStorageWithoutRunsIsReportedAsSuch() {
-        assertThatThrownBy(() -> LatestRun.runId(storageConfig("tick-storage"), "tick-storage"))
+        assertThatThrownBy(() -> RunLookup.newest(storageConfig("tick-storage"), "tick-storage"))
             .isInstanceOf(IllegalStateException.class)
             .hasMessageContaining("holds no simulation run")
             .hasMessageContaining("--run");
     }
 
     @Test
+    void aNamedRunThatTheStorageHoldsIsAccepted() throws Exception {
+        writeMetadata(OLDER_RUN);
+
+        assertThat(RunLookup.existing(storageConfig("tick-storage"), "tick-storage", OLDER_RUN)).isEqualTo(OLDER_RUN);
+    }
+
+    @Test
+    void aNamedRunThatTheStorageDoesNotHoldIsReportedAsSuch() throws Exception {
+        writeMetadata(OLDER_RUN);
+
+        assertThatThrownBy(() -> RunLookup.existing(storageConfig("tick-storage"), "tick-storage", "20260101-00000000-typo"))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("20260101-00000000-typo")
+            .hasMessageContaining("tick-storage");
+    }
+
+    @Test
     void aStorageNameThatIsNotConfiguredIsReportedAsSuch() {
-        assertThatThrownBy(() -> LatestRun.runId(storageConfig("tick-storage"), "no-such-storage"))
+        assertThatThrownBy(() -> RunLookup.newest(storageConfig("tick-storage"), "no-such-storage"))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("no-such-storage");
     }

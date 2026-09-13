@@ -51,15 +51,13 @@ public class NodeResumeCommand implements Callable<Integer> {
         final CommandLineInterface cli = parent.getParent();
 
         final String targetRunId;
-        if (runId != null) {
-            targetRunId = runId;
-        } else {
-            try {
-                targetRunId = LatestRun.runId(cli.getConfig(), storageName);
-            } catch (Exception e) {
-                spec.commandLine().getErr().println(e.getMessage());
-                return 1;
-            }
+        try {
+            targetRunId = runId != null
+                ? RunLookup.existing(cli.getConfig(), storageName, runId)
+                : RunLookup.newest(cli.getConfig(), storageName);
+        } catch (Exception e) {
+            spec.commandLine().getErr().println(e.getMessage());
+            return 1;
         }
 
         final Config config = cli.getConfig(overrides(targetRunId));
