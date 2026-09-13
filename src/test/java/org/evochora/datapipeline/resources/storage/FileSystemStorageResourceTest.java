@@ -554,7 +554,7 @@ class FileSystemStorageResourceTest {
     }
 
     @Test
-    @ExpectLog(level = LogLevel.WARN, loggerPattern = ".*FileSystemStorageResource.*",
+    @ExpectLog(level = LogLevel.WARN, loggerPattern = ".*AbstractBatchStorageResource.*",
                messagePattern = ".*Duplicate batch files for firstTick.*")
     void testFindLastBatchFile_Deduplication_PrefersSmallerLastTick() throws IOException {
         // Write a normal batch file
@@ -728,7 +728,7 @@ class FileSystemStorageResourceTest {
     }
 
     @Test
-    @ExpectLog(level = LogLevel.WARN, loggerPattern = ".*FileSystemStorageResource.*",
+    @ExpectLog(level = LogLevel.WARN, loggerPattern = ".*AbstractBatchStorageResource.*",
                messagePattern = ".*Duplicate batch files for firstTick.*")
     void testFindLastBatchFile_MultipleFolders_DeduplicatesInLeaf() throws IOException {
         storage.writeChunkBatchStreaming(List.of(createChunk(0, 9, 10)).iterator());

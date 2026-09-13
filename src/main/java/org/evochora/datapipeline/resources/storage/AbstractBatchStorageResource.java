@@ -98,11 +98,6 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
      */
     private static final int LISTING_PAGE_SIZE = 1000;
 
-    /**
-     * Logger carrying the name of the concrete storage backend, used where a message reports on
-     * the files of a run as the backend that listed them found them.
-     */
-    private final Logger backendLog = LoggerFactory.getLogger(getClass());
 
     // Configuration
     /**
@@ -1327,7 +1322,7 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
             return java.util.Optional.empty();
         }
 
-        backendLog.debug("Batch file covering tick {}: {}", tick, path);
+        log.debug("Batch file covering tick {}: {}", tick, path);
         return java.util.Optional.of(StoragePath.of(path));
     }
 
@@ -1352,7 +1347,7 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
             return java.util.Optional.empty();
         }
 
-        backendLog.debug("Found last batch file: {}", candidate.get());
+        log.debug("Found last batch file: {}", candidate.get());
         return java.util.Optional.of(StoragePath.of(candidate.get()));
     }
 
@@ -1505,7 +1500,7 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
                 }
                 long lastTick = parseBatchEndTick(path);
                 if (lastTick < bestLastTick) {
-                    backendLog.warn("Duplicate batch files for firstTick {}: keeping {} (lastTick={}) over {} (lastTick={})",
+                    log.warn("Duplicate batch files for firstTick {}: keeping {} (lastTick={}) over {} (lastTick={})",
                             selectedFirstTick, path, lastTick, selected, bestLastTick);
                     selected = path;
                     bestLastTick = lastTick;
