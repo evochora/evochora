@@ -46,6 +46,8 @@ export class AppController {
         const storedZoom = localStorage.getItem('evochora-zoom-state');
         const initialZoom = storedZoom !== null ? storedZoom === 'true' : true; // Default zoomed out
         
+        // Counts the tick-range requests sent, so a late answer to an earlier one is recognised
+        this._tickRangeRequest = 0;
         this.state = {
             currentTick: 0,
             maxTick: null,
@@ -727,10 +729,17 @@ export class AppController {
      * @private
      */
     async _refreshTickRanges() {
+        // An answer is applied only if it is for the run still shown and no later request was
+        // sent meanwhile: a run change or a faster later poll makes it stale
+        const runId = this.state.runId;
+        const request = ++this._tickRangeRequest;
         const [envTicks, orgTickRange] = await Promise.all([
-            this.environmentApi.fetchTickRange(this.state.runId).catch(e => this._tickRangeMiss('environment', e)),
-            this.organismApi.fetchTickRange(this.state.runId).catch(e => this._tickRangeMiss('organism', e))
+            this.environmentApi.fetchTickRange(runId).catch(e => this._tickRangeMiss('environment', e)),
+            this.organismApi.fetchTickRange(runId).catch(e => this._tickRangeMiss('organism', e))
         ]);
+        if (runId !== this.state.runId || request !== this._tickRangeRequest) {
+            return false;
+        }
         if (!envTicks) {
             return false;
         }
