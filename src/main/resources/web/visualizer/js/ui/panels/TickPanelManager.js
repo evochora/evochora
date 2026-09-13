@@ -1,9 +1,15 @@
 import { TimelineLoadingOverlay } from '../TimelineLoadingOverlay.js';
+import * as TickGrid from '../../TickGrid.js';
 
 /**
  * Manages the timeline panel with interactive canvas track, tick input, and keyboard shortcuts.
- * The canvas displays sampled tick marks, a current-tick marker, and a hover preview.
+ * The canvas displays the recorded ticks, a current-tick marker, and a hover preview.
  * Uses callback injection for loose coupling (no direct controller reference).
+ * <p>
+ * Every step and every snap goes over the ticks the run holds, the ranges in the state: a small
+ * step is the next recorded tick, a large step moves by the multiplier times the local step and
+ * lands on a recorded tick, and the track spans the first to the last recorded tick. A run that
+ * does not start at zero, or holds stretches of different step, is navigated like any other.
  *
  * @class TickPanelManager
  */
@@ -27,7 +33,7 @@ export class TickPanelManager {
      * @param {HTMLElement} options.multiplierWrapper - Wrapper for multiplier (for visibility)
      * @param {HTMLElement} options.multiplierSuffix - Element showing "x1" etc.
      * @param {Function} options.onNavigate - Callback when navigating: (targetTick) => void
-     * @param {Function} options.getState - Callback to get current state: () => { currentTick, maxTick, runId, samplingInterval }
+     * @param {Function} options.getState - Callback to get current state: () => { currentTick, maxTick, runId, ranges, samplingInterval }
      */
     constructor({
         panel,
@@ -192,33 +198,37 @@ export class TickPanelManager {
         if (w === 0 || h === 0) return;
 
         const state = this.getState();
-        const maxTick = state.maxTick;
+        const ranges = state.ranges || [];
         const currentTick = this._pendingTick !== null ? this._pendingTick : (state.currentTick || 0);
-        const samplingInterval = state.samplingInterval || 1;
 
         // Clear and fill background
         ctx.clearRect(0, 0, w, h);
         ctx.fillStyle = '#1a1a24';
         ctx.fillRect(0, 0, w, h);
 
-        if (!maxTick || maxTick <= 0) return;
+        if (ranges.length === 0) return;
 
-        // Draw sampled tick marks
-        const numSamples = Math.floor(maxTick / samplingInterval) + 1;
+        // Draw the recorded ticks; a gap between ranges keeps the background
+        const numSamples = TickGrid.sampleCount(ranges);
         const pixelsPerSample = w / Math.max(1, numSamples - 1);
 
         if (pixelsPerSample >= 3 && numSamples <= 10000) {
             // Individual marks visible
             ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
-            for (let i = 0; i < numSamples; i++) {
-                const tick = i * samplingInterval;
-                const x = this._tickToPosition(tick);
-                ctx.fillRect(Math.round(x), 0, 1, h);
+            for (const range of ranges) {
+                for (let tick = range.first; tick <= range.last; tick += range.step) {
+                    const x = this._tickToPosition(tick);
+                    ctx.fillRect(Math.round(x), 0, 1, h);
+                }
             }
         } else {
-            // Marks too dense — render as continuous filled area
+            // Marks too dense — render each range as a continuous filled area
             ctx.fillStyle = 'rgba(255, 255, 255, 0.12)';
-            ctx.fillRect(0, 0, w, h);
+            for (const range of ranges) {
+                const from = Math.round(this._tickToPosition(range.first));
+                const to = Math.round(this._tickToPosition(range.last));
+                ctx.fillRect(from, 0, Math.max(1, to - from), h);
+            }
         }
 
         // Hover marker (behind progress fill)
@@ -303,9 +313,10 @@ export class TickPanelManager {
      */
     _positionToTick(x) {
         const w = this._canvasWidth || 1;
-        const state = this.getState();
-        const maxTick = state.maxTick || 0;
-        return (x / w) * maxTick;
+        const ranges = this.getState().ranges || [];
+        const first = TickGrid.firstTick(ranges) ?? 0;
+        const last = TickGrid.lastTick(ranges) ?? 0;
+        return first + (x / w) * (last - first);
     }
 
     /**
@@ -316,23 +327,23 @@ export class TickPanelManager {
      */
     _tickToPosition(tick) {
         const w = this._canvasWidth || 1;
-        const state = this.getState();
-        const maxTick = state.maxTick || 1;
-        return (tick / maxTick) * w;
+        const ranges = this.getState().ranges || [];
+        const first = TickGrid.firstTick(ranges) ?? 0;
+        const last = TickGrid.lastTick(ranges) ?? 0;
+        const span = Math.max(1, last - first);
+        return ((tick - first) / span) * w;
     }
 
     /**
-     * Snaps a tick value to the nearest sampled tick, clamped to [0, maxTick].
+     * Snaps a tick value to the nearest recorded tick. Before anything is recorded the value is
+     * only kept from going below zero.
      * @param {number} tick - The raw tick value.
-     * @returns {number} The nearest sampled tick.
+     * @returns {number} The nearest recorded tick.
      * @private
      */
     _snapToSampledTick(tick) {
-        const state = this.getState();
-        const samplingInterval = state.samplingInterval || 1;
-        const maxTick = state.maxTick || 0;
-        const snapped = Math.round(tick / samplingInterval) * samplingInterval;
-        return Math.max(0, Math.min(maxTick, snapped));
+        const ranges = this.getState().ranges || [];
+        return TickGrid.snap(ranges, Math.round(tick)) ?? Math.max(0, Math.round(tick));
     }
 
     // ─────────────────────────────────────────────────────────────────────────────
@@ -340,15 +351,19 @@ export class TickPanelManager {
     // ─────────────────────────────────────────────────────────────────────────────
 
     /**
-     * Navigates one small step (by sampling interval).
+     * Navigates one small step: to the next or the previous recorded tick. At either end the
+     * step stays where it is.
      * @param {('forward'|'backward')} direction - The direction to navigate.
      * @param {boolean} [debounce=false] - If true, debounce the data load.
      */
     navigateSmallStep(direction, debounce = false) {
         const state = this.getState();
-        const step = state.samplingInterval || 1;
+        const ranges = state.ranges || [];
         const baseTick = this._pendingTick !== null ? this._pendingTick : state.currentTick;
-        const targetTick = direction === 'forward' ? baseTick + step : baseTick - step;
+        const neighbour = direction === 'forward'
+            ? TickGrid.next(ranges, baseTick)
+            : TickGrid.previous(ranges, baseTick);
+        const targetTick = neighbour ?? baseTick;
         if (debounce) {
             this._navigateDebounced(targetTick);
         } else {
@@ -357,17 +372,18 @@ export class TickPanelManager {
     }
 
     /**
-     * Navigates a large step (by multiplier × sampling interval).
+     * Navigates a large step: by the multiplier times the local step, landing on a recorded
+     * tick in the direction of travel, and at either end on that end.
      * @param {('forward'|'backward')} direction - The direction to navigate.
      * @param {boolean} [debounce=false] - If true, debounce the data load.
      */
     navigateLargeStep(direction, debounce = false) {
         const state = this.getState();
-        const samplingInterval = state.samplingInterval || 1;
-        const multiplier = this.getMultiplier();
-        const largeStep = multiplier * samplingInterval;
+        const ranges = state.ranges || [];
         const baseTick = this._pendingTick !== null ? this._pendingTick : state.currentTick;
-        const targetTick = direction === 'forward' ? baseTick + largeStep : baseTick - largeStep;
+        const largeStep = this.getMultiplier() * this._localStep(baseTick);
+        const targetTick = TickGrid.jump(ranges, baseTick, direction === 'forward' ? largeStep : -largeStep)
+            ?? baseTick;
         if (debounce) {
             this._navigateDebounced(targetTick);
         } else {
@@ -382,17 +398,9 @@ export class TickPanelManager {
      */
     _navigateDebounced(targetTick) {
         const state = this.getState();
-        const samplingInterval = state.samplingInterval || 1;
         const maxTick = state.maxTick || 0;
 
-        // Clamp and snap
-        let clamped = Math.max(0, targetTick);
-        if (samplingInterval > 1) {
-            clamped = Math.round(clamped / samplingInterval) * samplingInterval;
-        }
-        if (maxTick > 0) {
-            clamped = Math.min(clamped, maxTick);
-        }
+        const clamped = this._snapToSampledTick(targetTick);
 
         this._pendingTick = clamped;
 
@@ -430,16 +438,15 @@ export class TickPanelManager {
     }
 
     /**
-     * Calculates the default multiplier based on sampling interval.
-     * Target: multiplier × samplingInterval ≈ 100,000 ticks
+     * Calculates the default multiplier from the local step at the current tick.
+     * Target: multiplier × step ≈ 100,000 ticks
      * Result is always a power of 10 (1, 10, 100, 1000, 10000, etc.)
      * @returns {number}
      */
     getDefaultMultiplier() {
         const state = this.getState();
-        const samplingInterval = state.samplingInterval || 1;
         const targetStep = 100000;
-        const rawMultiplier = targetStep / samplingInterval;
+        const rawMultiplier = targetStep / this._localStep(state.currentTick);
 
         // Round to nearest power of 10
         const exponent = Math.round(Math.log10(rawMultiplier));
@@ -672,6 +679,8 @@ export class TickPanelManager {
             if (typeof maxTick === 'number' && maxTick > 0) {
                 tickInput.max = String(Math.max(0, maxTick));
             }
+            const first = TickGrid.firstTick(this.getState().ranges || []);
+            tickInput.min = String(first ?? 0);
         }
 
         if (tickSuffix) {
@@ -682,25 +691,37 @@ export class TickPanelManager {
     }
 
     /**
-     * Updates the sampling interval display and shows the multiplier.
-     * @param {number} samplingInterval
+     * Shows the step the multiplier is applied to and shows the multiplier.
+     * @param {number} step - The step the run is recorded at around the current tick.
      */
-    updateSamplingInfo(samplingInterval) {
+    updateStepInfo(step) {
         const { multiplierWrapper, multiplierSuffix } = this.elements;
 
         if (multiplierWrapper) {
             multiplierWrapper.style.display = 'inline-flex';
         }
         if (multiplierSuffix) {
-            multiplierSuffix.textContent = `x${samplingInterval}`;
+            multiplierSuffix.textContent = `x${step}`;
         }
 
         this._renderTimeline();
     }
 
     /**
+     * The step the run is recorded at around a tick; the configured sampling interval before
+     * anything is recorded.
+     * @param {number} tick
+     * @returns {number}
+     * @private
+     */
+    _localStep(tick) {
+        const state = this.getState();
+        return TickGrid.stepAt(state.ranges || [], tick) ?? state.samplingInterval ?? 1;
+    }
+
+    /**
      * Loads the multiplier from localStorage for a specific run.
-     * Uses smart default: multiplier × samplingInterval ≈ 10,000 ticks.
+     * Uses smart default: multiplier × local step ≈ 100,000 ticks.
      * @param {string} runId
      */
     loadMultiplierForRun(runId) {
@@ -726,12 +747,12 @@ export class TickPanelManager {
     }
 
     /**
-     * Updates navigation button tooltips with current multiplier and sampling interval.
+     * Updates navigation button tooltips with the current multiplier and the local step.
      */
     updateTooltips() {
         const { prevLargeBtn, prevSmallBtn, nextSmallBtn, nextLargeBtn } = this.elements;
         const state = this.getState();
-        const interval = state.samplingInterval || 1;
+        const interval = this._localStep(state.currentTick);
         const multiplier = this.getMultiplier();
         const largeStep = multiplier * interval;
 

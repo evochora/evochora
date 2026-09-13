@@ -10,6 +10,7 @@ import { OrganismSourceView } from './ui/organism/OrganismSourceView.js';
 import { OrganismStateView } from './ui/organism/OrganismStateView.js';
 import { OrganismPanelManager } from './ui/panels/OrganismPanelManager.js';
 import { TickPanelManager } from './ui/panels/TickPanelManager.js';
+import * as TickGrid from './TickGrid.js';
 import { loadingManager } from './ui/LoadingManager.js';
 import { WaitingOverlay } from './ui/WaitingOverlay.js';
 
@@ -48,6 +49,7 @@ export class AppController {
         this.state = {
             currentTick: 0,
             maxTick: null,
+            ranges: [],
             worldShape: null,
             runId: null,
             selectedOrganismId: null, // Track selected organism across tick changes
@@ -160,6 +162,7 @@ export class AppController {
             this._genomeHslCache.clear();
             this.minimapView?.organismOverlay?.clearSpriteCache();
             this.state.maxTick = null;
+            this.state.ranges = [];
             this.state.organisms = [];
             this.programArtifactCache.clear();
 
@@ -183,7 +186,7 @@ export class AppController {
             this.minimapView?.setMoleculeTypes(metadata?.moleculeTypes, metadata?.moleculeTypeShift);
 
             // Update UI components that depend on metadata
-            this.tickPanelManager?.updateSamplingInfo(metadata?.samplingInterval || 1);
+            this._refreshStepInfo();
             this.tickPanelManager?.loadMultiplierForRun(this.state.runId); // Load after metadata is ready
             this.tickPanelManager?.updateTooltips();
 
@@ -215,20 +218,7 @@ export class AppController {
                 this.organismPanelManager.setMetadata(metadata);
             }
 
-            // Fetch tick ranges from both environment and organism APIs
-            const [envTickRange, orgTickRange] = await Promise.all([
-                this.environmentApi.fetchTickRange(this.state.runId).catch(() => null),
-                this.organismApi.fetchTickRange(this.state.runId).catch(() => null)
-            ]);
-            
-            // Use minimum of both maxTicks
-            if (envTickRange?.maxTick !== undefined && orgTickRange?.maxTick !== undefined) {
-                this.state.maxTick = Math.min(envTickRange.maxTick, orgTickRange.maxTick);
-            } else if (envTickRange?.maxTick !== undefined) {
-                this.state.maxTick = envTickRange.maxTick;
-            } else if (orgTickRange?.maxTick !== undefined) {
-                this.state.maxTick = orgTickRange.maxTick;
-            }
+            await this._refreshTickRanges();
             this.tickPanelManager.updateTickDisplay(this.state.currentTick, this.state.maxTick);
 
             // Load initial tick for new run
@@ -386,6 +376,7 @@ export class AppController {
                 currentTick: this.state.currentTick,
                 maxTick: this.state.maxTick,
                 runId: this.state.runId,
+                ranges: this.state.ranges,
                 samplingInterval: this.state.metadata?.samplingInterval || 1
             })
         });
@@ -619,7 +610,7 @@ export class AppController {
                 this.minimapView?.setMoleculeTypes(metadata?.moleculeTypes, metadata?.moleculeTypeShift);
 
                 // Update sampling info in the UI
-                this.tickPanelManager?.updateSamplingInfo(metadata?.samplingInterval || 1);
+                this._refreshStepInfo();
                 this.tickPanelManager?.loadMultiplierForRun(this.state.runId);
                 this.tickPanelManager?.updateTooltips();
                 
@@ -658,20 +649,9 @@ export class AppController {
                 }
             }
             
-            // Load tick range for maxTick (minimum of environment and organism ranges)
+            // Load which ticks the run holds
             loadingManager.update('Loading tick range', 30);
-            const [envTickRange, orgTickRange] = await Promise.all([
-                this.environmentApi.fetchTickRange(this.state.runId).catch(() => null),
-                this.organismApi.fetchTickRange(this.state.runId).catch(() => null)
-            ]);
-            
-            if (envTickRange?.maxTick !== undefined && orgTickRange?.maxTick !== undefined) {
-                this.state.maxTick = Math.min(envTickRange.maxTick, orgTickRange.maxTick);
-            } else if (envTickRange?.maxTick !== undefined) {
-                this.state.maxTick = envTickRange.maxTick;
-            } else if (orgTickRange?.maxTick !== undefined) {
-                this.state.maxTick = orgTickRange.maxTick;
-            }
+            await this._refreshTickRanges();
             this.tickPanelManager.updateTickDisplay(this.state.currentTick, this.state.maxTick);
 
             // If no tick data is available yet, wait for the simulation to produce data
@@ -728,30 +708,56 @@ export class AppController {
      */
     async updateMaxTick() {
         try {
-            // Fetch both environment and organism tick ranges in parallel
-            const [envTickRange, orgTickRange] = await Promise.all([
-                this.environmentApi.fetchTickRange(this.state.runId).catch(() => null),
-                this.organismApi.fetchTickRange(this.state.runId).catch(() => null)
-            ]);
-            
-            // Calculate effective maxTick as the minimum of both (where available)
-            let newMaxTick = null;
-            if (envTickRange?.maxTick !== undefined && orgTickRange?.maxTick !== undefined) {
-                newMaxTick = Math.min(envTickRange.maxTick, orgTickRange.maxTick);
-            } else if (envTickRange?.maxTick !== undefined) {
-                newMaxTick = envTickRange.maxTick;
-            } else if (orgTickRange?.maxTick !== undefined) {
-                newMaxTick = orgTickRange.maxTick;
-            }
-            
-            if (newMaxTick !== null && newMaxTick !== this.state.maxTick) {
-                this.state.maxTick = newMaxTick;
+            if (await this._refreshTickRanges()) {
                 this.tickPanelManager.updateTickDisplay(this.state.currentTick, this.state.maxTick);
             }
         } catch (error) {
             // Silently fail - don't interrupt navigation if update fails
             console.debug('Failed to update maxTick:', error);
         }
+    }
+
+    /**
+     * Reloads which ticks the run holds: the ranges the environment index reports, cut down to
+     * the last tick the organism index has reached as well, so that navigation never asks for a
+     * tick one of the indexes has not seen. When the environment index cannot be asked, what was
+     * known before is kept.
+     *
+     * @returns {Promise<boolean>} Whether maxTick or the ranges changed.
+     * @private
+     */
+    async _refreshTickRanges() {
+        const [envTicks, orgTickRange] = await Promise.all([
+            this.environmentApi.fetchTickRange(this.state.runId).catch(() => null),
+            this.organismApi.fetchTickRange(this.state.runId).catch(() => null)
+        ]);
+        if (!envTicks || !Array.isArray(envTicks.ranges)) {
+            return false;
+        }
+        let maxTick = envTicks.maxTick;
+        if (orgTickRange?.maxTick !== undefined) {
+            maxTick = Math.min(maxTick, orgTickRange.maxTick);
+        }
+        const ranges = TickGrid.clip(envTicks.ranges, maxTick);
+        const changed = maxTick !== this.state.maxTick
+            || JSON.stringify(ranges) !== JSON.stringify(this.state.ranges);
+        this.state.maxTick = maxTick;
+        this.state.ranges = ranges;
+        if (changed) {
+            this._refreshStepInfo();
+        }
+        return changed;
+    }
+
+    /**
+     * Shows the step the run is recorded at around the current tick. Before any tick is
+     * recorded the step comes from the run's configured sampling interval.
+     * @private
+     */
+    _refreshStepInfo() {
+        const step = TickGrid.stepAt(this.state.ranges, this.state.currentTick)
+            ?? this.state.metadata?.samplingInterval ?? 1;
+        this.tickPanelManager?.updateStepInfo(step);
     }
 
     /**
@@ -787,13 +793,9 @@ export class AppController {
         // First, always update maxTick from the server to get the latest value.
         await this.updateMaxTick();
 
-        const samplingInterval = this.state.metadata?.samplingInterval || 1;
-        let target = Math.max(0, tick); // Ensure we don't go below zero
-        
-        // Round down to the nearest sampling interval, unless it's 1
-        if (samplingInterval > 1) {
-            target = Math.floor(target / samplingInterval) * samplingInterval;
-        }
+        // Land on a recorded tick: the nearest one the run holds. Before anything is recorded
+        // there is nothing to land on, and the tick is only kept from going below zero.
+        let target = TickGrid.snap(this.state.ranges, tick) ?? Math.max(0, tick);
 
         // If maxTick is known, clamp the target to the new maximum.
         if (this.state.maxTick !== null) {
@@ -818,6 +820,7 @@ export class AppController {
         
         // Update headerbar with current values
         this.tickPanelManager.updateTickDisplay(this.state.currentTick, this.state.maxTick);
+        this._refreshStepInfo();
 
         // Update URL state
         this.updateUrlState();
