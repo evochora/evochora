@@ -15,6 +15,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
+import com.typesafe.config.ConfigUtil;
 
 /**
  * Tests for the lookup of the newest run, which {@code node resume} and {@code node fork} use when
@@ -71,9 +72,9 @@ class LatestRunTest {
         return ConfigFactory.parseString("""
             pipeline.resources."%s" {
               className = "org.evochora.datapipeline.resources.storage.FileSystemStorageResource"
-              options.rootDirectory = "%s"
+              options.rootDirectory = %s
             }
-            """.formatted(name, storageDir.toAbsolutePath()));
+            """.formatted(name, ConfigUtil.quoteString(storageDir.toAbsolutePath().toString())));
     }
 
     /**
@@ -85,7 +86,7 @@ class LatestRunTest {
     private void writeMetadata(final String runId) throws IOException {
         Files.createDirectories(storageDir);
         FileSystemStorageResource storage = new FileSystemStorageResource("tick-storage",
-            ConfigFactory.parseString("rootDirectory = \"" + storageDir.toAbsolutePath() + "\""));
+            ConfigFactory.parseString("rootDirectory = " + ConfigUtil.quoteString(storageDir.toAbsolutePath().toString())));
         storage.writeMessage(runId + "/raw/metadata.pb",
             SimulationMetadata.newBuilder().setSimulationRunId(runId).build());
     }
