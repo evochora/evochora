@@ -15,8 +15,6 @@ import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.contracts.TickDelta;
 import org.evochora.datapipeline.api.resources.storage.StoragePath;
-import org.evochora.junit.extensions.logging.AllowLog;
-import org.evochora.junit.extensions.logging.LogLevel;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -33,7 +31,6 @@ import com.typesafe.config.ConfigFactory;
 @Tag("integration")
 @DisplayName("FileSystemStorageResource Compression Integration Tests")
 @ExtendWith(LogWatchExtension.class)
-@AllowLog(level = LogLevel.INFO, messagePattern = ".*using compression.*")
 class FileSystemStorageResourceCompressionTest {
 
     @TempDir

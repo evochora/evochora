@@ -99,7 +99,7 @@ class DeltaCodecCompressionTest {
     void createChunk_snapshotOnly_buildsValidChunk() {
         TickData snapshot = createSnapshot(0L);
         
-        TickDataChunk chunk = DeltaCodec.createChunk(RUN_ID, snapshot, List.of());
+        TickDataChunk chunk = DeltaCodec.createChunk(RUN_ID, 1, snapshot, List.of());
         
         assertEquals(RUN_ID, chunk.getSimulationRunId());
         assertEquals(0L, chunk.getFirstTick());
@@ -118,10 +118,11 @@ class DeltaCodecCompressionTest {
         DeltaCapture delta3 = createDeltaCapture(300L, DeltaType.ACCUMULATED);
         
         TickDataChunk chunk = DeltaCodec.createChunk(
-                RUN_ID, snapshot, List.of(delta1, delta2, delta3));
-        
+                RUN_ID, 100, snapshot, List.of(delta1, delta2, delta3));
+
         assertEquals(0L, chunk.getFirstTick());
         assertEquals(300L, chunk.getLastTick());
+        assertEquals(100, chunk.getSamplingInterval());
         assertEquals(4, chunk.getTickCount());
         assertEquals(3, chunk.getDeltasCount());
         
@@ -134,14 +135,14 @@ class DeltaCodecCompressionTest {
     @Test
     void createChunk_nullSnapshot_throws() {
         assertThrows(IllegalArgumentException.class, () ->
-                DeltaCodec.createChunk(RUN_ID, null, List.of()));
+                DeltaCodec.createChunk(RUN_ID, 1, null, List.of()));
     }
     
     @Test
     void createChunk_nullDeltas_throws() {
         TickData snapshot = createSnapshot(0L);
         assertThrows(IllegalArgumentException.class, () ->
-                DeltaCodec.createChunk(RUN_ID, snapshot, null));
+                DeltaCodec.createChunk(RUN_ID, 1, snapshot, null));
     }
     
     // ========================================================================

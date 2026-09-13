@@ -9,8 +9,6 @@ import java.util.concurrent.TimeUnit;
 
 import org.evochora.datapipeline.ServiceManager;
 import org.evochora.datapipeline.api.services.IService;
-import org.evochora.junit.extensions.logging.AllowLog;
-import org.evochora.junit.extensions.logging.LogLevel;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Tag;
@@ -38,7 +36,6 @@ class DummyWriterReaderIntegrationTest {
     }
 
     @Test
-    @AllowLog(level = LogLevel.INFO, loggerPattern = ".*")
     void testWriterAndReaderWorkTogether() {
         // Each write produces chunksPerWrite chunks, each chunk containing ticksPerChunk ticks
         final int chunksPerWrite = 10;

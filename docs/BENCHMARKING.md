@@ -123,7 +123,7 @@ over the JMH parameters:
 
 ```bash
 ./gradlew jmhJar --no-daemon
-java -Xmx8g -jar build/libs/evochora-latest-jmh.jar SimulationBenchmark.tick \
+java -Xmx8g -jar build/libs/evochora-jmh.jar SimulationBenchmark.tick \
     -p parallelism=1,4 -rf json -rff results.json
 ```
 

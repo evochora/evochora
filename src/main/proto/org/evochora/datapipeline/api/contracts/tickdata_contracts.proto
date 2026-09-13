@@ -655,6 +655,17 @@ message TickDataChunk {
   // Total number of ticks in this chunk (1 snapshot + N deltas)
   int32 tick_count = 4;
 
+  // Simulation ticks between two recorded ticks of this chunk.
+  //
+  // Every chunk carries it: the contract lets a run hold stretches recorded at different steps,
+  // and a chunk that holds a single tick cannot say its step in any other way. A reader takes
+  // the step from here rather than dividing the chunk's span by the ticks it holds.
+  //
+  // Protobuf writes fields in ascending field number, so the numbers keep the chunk's
+  // description - which run, which ticks, how many, how far apart - ahead of the delta directory
+  // and the deltas; between them lies only the snapshot, which a reader skips as one block.
+  int32 sampling_interval = 6;
+
   // === Content ===
 
   // Complete state at first_tick (self-contained, enables any tick reconstruction)
@@ -671,7 +682,6 @@ message TickDataChunk {
   //
   // A reader that keeps a delta's payload must verify the directory against what the delta
   // itself states - the directory is a promise, not an authority.
-  reserved 6;   // was: repeated TickDelta deltas
 
   repeated int64 delta_ticks = 7 [packed = true];
   repeated DeltaType delta_types = 8 [packed = true];

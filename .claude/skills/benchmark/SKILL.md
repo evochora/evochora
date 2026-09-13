@@ -36,7 +36,7 @@ Build each side from a clean checkout — `git archive <commit> | tar -x -C <dir
 
 ```bash
 BENCH_JMH_ARGS="SimulationBenchmark.tick -p parallelism=4 -f 3 -wi 3 -i 8 -jvmArgsAppend -Xms8g" \
-    tools/bench-server/run-benchmark.sh <side>/build/libs/evochora-latest-jmh.jar <side>.json
+    tools/bench-server/run-benchmark.sh <side>/build/libs/evochora-jmh.jar <side>.json
 ```
 
 That is the decision profile (three forks, eight iterations, pre-sized heap, ≈13 min); the class

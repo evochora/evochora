@@ -128,13 +128,13 @@ class EnvironmentIndexerTest {
         byte[] chunkData = new byte[]{10, 20, 30};
         doAnswer(invocation -> {
             CheckedConsumer<RawChunk> consumer = invocation.getArgument(1);
-            consumer.accept(new RawChunk(0, 99, 100, chunkData));
+            consumer.accept(new RawChunk(0, 99, 100, 1, chunkData));
             return null;
         }).when(mockStorage).forEachRawChunk(any(), any());
 
         invokeReadAndProcessChunks(indexer, "test/batch.pb", "batch-1");
 
-        verify(mockDatabase).writeRawChunk(0, 99, 100, chunkData);
+        verify(mockDatabase).writeRawChunk(0, 99, 100, 1, chunkData);
     }
 
     @Test
@@ -148,9 +148,9 @@ class EnvironmentIndexerTest {
 
         doAnswer(invocation -> {
             CheckedConsumer<RawChunk> consumer = invocation.getArgument(1);
-            consumer.accept(new RawChunk(0, 99, 100, data1));
-            consumer.accept(new RawChunk(100, 199, 100, data2));
-            consumer.accept(new RawChunk(200, 299, 100, data3));
+            consumer.accept(new RawChunk(0, 99, 100, 1, data1));
+            consumer.accept(new RawChunk(100, 199, 100, 1, data2));
+            consumer.accept(new RawChunk(200, 299, 100, 1, data3));
             return null;
         }).when(mockStorage).forEachRawChunk(any(), any());
 
@@ -160,10 +160,11 @@ class EnvironmentIndexerTest {
             org.mockito.ArgumentMatchers.anyLong(),
             org.mockito.ArgumentMatchers.anyLong(),
             org.mockito.ArgumentMatchers.anyInt(),
+            org.mockito.ArgumentMatchers.anyInt(),
             any(byte[].class));
-        verify(mockDatabase).writeRawChunk(0, 99, 100, data1);
-        verify(mockDatabase).writeRawChunk(100, 199, 100, data2);
-        verify(mockDatabase).writeRawChunk(200, 299, 100, data3);
+        verify(mockDatabase).writeRawChunk(0, 99, 100, 1, data1);
+        verify(mockDatabase).writeRawChunk(100, 199, 100, 1, data2);
+        verify(mockDatabase).writeRawChunk(200, 299, 100, 1, data3);
     }
 
     @Test

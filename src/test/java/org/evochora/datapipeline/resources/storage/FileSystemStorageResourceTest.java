@@ -27,6 +27,7 @@ import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.contracts.TickDelta;
 import org.evochora.datapipeline.api.resources.storage.BatchFileListResult;
+import org.evochora.datapipeline.api.resources.storage.IBatchStorageRead;
 import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.junit.extensions.logging.ExpectLog;
 import org.evochora.junit.extensions.logging.LogLevel;
@@ -553,7 +554,7 @@ class FileSystemStorageResourceTest {
     }
 
     @Test
-    @ExpectLog(level = LogLevel.WARN, loggerPattern = ".*FileSystemStorageResource.*",
+    @ExpectLog(level = LogLevel.WARN, loggerPattern = ".*AbstractBatchStorageResource.*",
                messagePattern = ".*Duplicate batch files for firstTick.*")
     void testFindLastBatchFile_Deduplication_PrefersSmallerLastTick() throws IOException {
         // Write a normal batch file
@@ -596,5 +597,300 @@ class FileSystemStorageResourceTest {
         assertTrue(found.isPresent(), "Should find batch file");
         assertEquals(normalPath.asString(), found.get().asString(),
             "Should ignore .tmp files and return valid batch file");
+    }
+
+    // ========================================================================
+    // findBatchFileContaining Tests
+    // ========================================================================
+
+    @Test
+    void testFindBatchFileContaining_TickInsideRange_ReturnsThatBatch() throws IOException {
+        storage.writeChunkBatchStreaming(List.of(createChunk(0, 9, 10)).iterator());
+        StoragePath middlePath = storage.writeChunkBatchStreaming(List.of(createChunk(10, 19, 10)).iterator()).path();
+        storage.writeChunkBatchStreaming(List.of(createChunk(20, 29, 10)).iterator());
+
+        java.util.Optional<StoragePath> found = storage.findBatchFileContaining("test-sim/raw/", 15);
+
+        assertTrue(found.isPresent(), "Should find the batch covering tick 15");
+        assertEquals(middlePath.asString(), found.get().asString());
+    }
+
+    @Test
+    void testFindBatchFileContaining_TickOnRangeBounds_ReturnsThatBatch() throws IOException {
+        storage.writeChunkBatchStreaming(List.of(createChunk(0, 9, 10)).iterator());
+        StoragePath secondPath = storage.writeChunkBatchStreaming(List.of(createChunk(10, 19, 10)).iterator()).path();
+
+        assertEquals(secondPath.asString(),
+            storage.findBatchFileContaining("test-sim/raw/", 10).orElseThrow().asString(),
+            "First tick of a batch is covered by that batch");
+        assertEquals(secondPath.asString(),
+            storage.findBatchFileContaining("test-sim/raw/", 19).orElseThrow().asString(),
+            "Last tick of a batch is covered by that batch");
+    }
+
+    @Test
+    void testFindBatchFileContaining_TickInGapBetweenBatches_ReturnsEmpty() throws IOException {
+        storage.writeChunkBatchStreaming(List.of(createChunk(0, 9, 10)).iterator());
+        storage.writeChunkBatchStreaming(List.of(createChunk(20, 29, 10)).iterator());
+
+        java.util.Optional<StoragePath> found = storage.findBatchFileContaining("test-sim/raw/", 15);
+
+        assertFalse(found.isPresent(), "No batch covers a tick between two recorded ranges");
+    }
+
+    @Test
+    void testFindBatchFileContaining_TickBeforeFirstBatch_ReturnsEmpty() throws IOException {
+        // A run forked from another begins where its window begins; nothing precedes it
+        storage.writeChunkBatchStreaming(List.of(createChunk(150_000, 150_009, 10)).iterator());
+
+        java.util.Optional<StoragePath> found = storage.findBatchFileContaining("test-sim/raw/", 0);
+
+        assertFalse(found.isPresent(), "No batch covers a tick before the run's first batch");
+    }
+
+    @Test
+    void testFindBatchFileContaining_TickBeyondLastBatch_ReturnsEmpty() throws IOException {
+        storage.writeChunkBatchStreaming(List.of(createChunk(0, 9, 10)).iterator());
+
+        java.util.Optional<StoragePath> found = storage.findBatchFileContaining("test-sim/raw/", 1000);
+
+        assertFalse(found.isPresent(), "No batch covers a tick beyond the recorded data");
+    }
+
+    @Test
+    void testFindBatchFileContaining_MultipleFolders_ReturnsBatchFromMatchingFolder() throws IOException {
+        storage.writeChunkBatchStreaming(List.of(createChunk(0, 9, 10)).iterator());
+        StoragePath higherPath = storage.writeChunkBatchStreaming(
+            List.of(createChunk(100_000_000, 100_000_009, 10)).iterator()).path();
+
+        java.util.Optional<StoragePath> found = storage.findBatchFileContaining("test-sim/raw/", 100_000_005);
+
+        assertTrue(found.isPresent(), "Should find the batch across folder levels");
+        assertEquals(higherPath.asString(), found.get().asString());
+    }
+
+    @Test
+    void testFindBatchFileContaining_NonExistentRun_ReturnsEmpty() throws IOException {
+        assertFalse(storage.findBatchFileContaining("non-existent-run/raw/", 5).isPresent(),
+            "Should return empty for a run without storage");
+    }
+
+    @Test
+    void testFindBatchFileContaining_InvalidArguments_ThrowsException() {
+        assertThrows(IllegalArgumentException.class,
+            () -> storage.findBatchFileContaining(null, 5),
+            "Should throw IllegalArgumentException for null runIdPrefix");
+        assertThrows(IllegalArgumentException.class,
+            () -> storage.findBatchFileContaining("test-sim/raw/", -1),
+            "Should throw IllegalArgumentException for a negative tick");
+    }
+
+    @Test
+    void testFindBatchFileContaining_BatchStartsInPrecedingFolder_StepsBack() throws IOException {
+        // The batch starts in folder 000/000 and reaches into the tick range of folder 000/001
+        StoragePath spanningPath = storage.writeChunkBatchStreaming(
+            List.of(createChunk(99_990, 100_010, 21)).iterator()).path();
+        storage.writeChunkBatchStreaming(List.of(createChunk(100_020, 100_029, 10)).iterator());
+
+        java.util.Optional<StoragePath> found = storage.findBatchFileContaining("test-sim/raw/", 100_005);
+
+        assertTrue(found.isPresent(), "Should step back into the preceding folder");
+        assertEquals(spanningPath.asString(), found.get().asString());
+    }
+
+    @Test
+    void testFindBatchFileContaining_FolderHoldsOnlyLaterBatches_ReturnsEmpty() throws IOException {
+        storage.writeChunkBatchStreaming(List.of(createChunk(99_990, 100_010, 21)).iterator());
+        storage.writeChunkBatchStreaming(List.of(createChunk(100_020, 100_029, 10)).iterator());
+
+        java.util.Optional<StoragePath> found = storage.findBatchFileContaining("test-sim/raw/", 100_015);
+
+        assertFalse(found.isPresent(), "No batch covers a tick between the recorded ranges");
+    }
+
+    @Test
+    void testFindBatchFileContaining_FolderStructureDoesNotMatchRun_Throws() throws IOException {
+        storage.writeChunkBatchStreaming(List.of(createChunk(0, 9, 10)).iterator());
+
+        FileSystemStorageResource deeperStorage = new FileSystemStorageResource("deeper-storage",
+            ConfigFactory.parseString("folderStructure { levels = [100000000, 100000, 1000] }")
+                .withFallback(config));
+
+        IllegalStateException containing = assertThrows(IllegalStateException.class,
+            () -> deeperStorage.findBatchFileContaining("test-sim/raw/", 5));
+        assertTrue(containing.getMessage().contains("test-sim/raw/"), "Message should name the run prefix");
+        assertTrue(containing.getMessage().contains("tick 5"), "Message should name the requested tick");
+        assertTrue(containing.getMessage().contains("1000"), "Message should name the configured levels");
+
+        IllegalStateException last = assertThrows(IllegalStateException.class,
+            () -> deeperStorage.findLastBatchFile("test-sim/raw/"));
+        assertTrue(last.getMessage().contains("test-sim/raw/"), "Message should name the run prefix");
+    }
+
+    @Test
+    @ExpectLog(level = LogLevel.WARN, loggerPattern = ".*AbstractBatchStorageResource.*",
+               messagePattern = ".*Duplicate batch files for firstTick.*")
+    void testFindLastBatchFile_MultipleFolders_DeduplicatesInLeaf() throws IOException {
+        storage.writeChunkBatchStreaming(List.of(createChunk(0, 9, 10)).iterator());
+        StoragePath completePath = storage.writeChunkBatchStreaming(
+            List.of(createChunk(100_000_000, 100_000_009, 10)).iterator()).path();
+
+        // A crash during a write leaves a second file with the same first tick
+        File batchDir = new File(tempDir.toFile(), "test-sim/raw/001/000");
+        File duplicateFile = new File(batchDir, "batch_0000000000100000000_0000000000100000019.pb");
+        try (java.io.OutputStream out = Files.newOutputStream(duplicateFile.toPath())) {
+            createChunk(100_000_000, 100_000_019, 20).writeDelimitedTo(out);
+        }
+
+        java.util.Optional<StoragePath> found = storage.findLastBatchFile("test-sim/raw/");
+
+        assertTrue(found.isPresent(), "Should find the last batch file across folder levels");
+        assertEquals(completePath.asString(), found.get().asString(),
+            "Should keep the complete file with the smaller lastTick");
+    }
+
+    @Test
+    void testFindBatchFileContaining_EmptyLeavesBeforeTarget_StepsBackToTheFile() throws IOException {
+        // Folder levels of 1000 and 100 put every hundred ticks into their own leaf
+        FileSystemStorageResource smallFolders = new FileSystemStorageResource("small-folders",
+            ConfigFactory.parseString("folderStructure { levels = [1000, 100] }").withFallback(config));
+
+        // One batch in leaf 000/000, reaching into the tick range of leaf 000/003
+        StoragePath spanningPath = smallFolders.writeChunkBatchStreaming(
+            List.of(createChunk(90, 350, 261)).iterator()).path();
+
+        // A crash between creating a folder and writing its file leaves a leaf without one
+        new File(tempDir.toFile(), "test-sim/raw/000/001").mkdirs();
+        new File(tempDir.toFile(), "test-sim/raw/000/002").mkdirs();
+        new File(tempDir.toFile(), "test-sim/raw/000/003").mkdirs();
+
+        java.util.Optional<StoragePath> found = smallFolders.findBatchFileContaining("test-sim/raw/", 320);
+
+        assertTrue(found.isPresent(), "Should step back over the empty leaves");
+        assertEquals(spanningPath.asString(), found.get().asString());
+    }
+
+    @Test
+    void testFindLastBatchFile_EmptyLeavesAfterLastBatch_StepsBackToTheFile() throws IOException {
+        StoragePath batchPath = storage.writeChunkBatchStreaming(List.of(createChunk(0, 9, 10)).iterator()).path();
+
+        new File(tempDir.toFile(), "test-sim/raw/000/001").mkdirs();
+        new File(tempDir.toFile(), "test-sim/raw/000/002").mkdirs();
+
+        java.util.Optional<StoragePath> found = storage.findLastBatchFile("test-sim/raw/");
+
+        assertTrue(found.isPresent(), "Should step back over the empty leaves");
+        assertEquals(batchPath.asString(), found.get().asString());
+    }
+
+    // ========================================================================
+    // listBatchFiles Sort Order Tests
+    // ========================================================================
+
+    @Test
+    void testListBatchFiles_Descending_SingleResult_ReturnsLastBatch() throws IOException {
+        for (int i = 0; i < 10; i++) {
+            storage.writeChunkBatchStreaming(List.of(createChunk(i * 10, i * 10 + 9, 10)).iterator());
+        }
+
+        BatchFileListResult result = storage.listBatchFiles("test-sim/", null, 1,
+            IBatchStorageRead.SortOrder.DESCENDING);
+
+        assertEquals(1, result.getFilenames().size(), "Should return one file");
+        assertTrue(result.getFilenames().get(0).asString().contains("batch_0000000000000000090_"),
+            "Should return the batch with the highest ticks, was: " + result.getFilenames().get(0).asString());
+    }
+
+    @Test
+    void testListBatchFiles_Descending_ReturnsLastFilesNewestFirst() throws IOException {
+        for (int i = 0; i < 10; i++) {
+            storage.writeChunkBatchStreaming(List.of(createChunk(i * 10, i * 10 + 9, 10)).iterator());
+        }
+
+        BatchFileListResult result = storage.listBatchFiles("test-sim/", null, 3,
+            IBatchStorageRead.SortOrder.DESCENDING);
+
+        assertEquals(3, result.getFilenames().size(), "Should return three files");
+        assertTrue(result.getFilenames().get(0).asString().contains("batch_0000000000000000090_"),
+            "First should be the highest, was: " + result.getFilenames().get(0).asString());
+        assertTrue(result.getFilenames().get(1).asString().contains("batch_0000000000000000080_"),
+            "Second should follow descending, was: " + result.getFilenames().get(1).asString());
+        assertTrue(result.getFilenames().get(2).asString().contains("batch_0000000000000000070_"),
+            "Third should follow descending, was: " + result.getFilenames().get(2).asString());
+    }
+
+    @Test
+    void testListBatchFiles_Descending_PagesNewestFirst() throws IOException {
+        for (int i = 0; i < 10; i++) {
+            storage.writeChunkBatchStreaming(List.of(createChunk(i * 10, i * 10 + 9, 10)).iterator());
+        }
+
+        BatchFileListResult firstPage = storage.listBatchFiles("test-sim/", null, 3,
+            IBatchStorageRead.SortOrder.DESCENDING);
+        assertTrue(firstPage.isTruncated(), "Seven files follow the first three");
+        BatchFileListResult secondPage = storage.listBatchFiles("test-sim/", firstPage.getNextContinuationToken(), 3,
+            IBatchStorageRead.SortOrder.DESCENDING);
+
+        assertEquals(3, secondPage.getFilenames().size(), "The second page holds three files");
+        assertTrue(secondPage.getFilenames().get(0).asString().contains("batch_0000000000000000060_"),
+            "The second page continues behind the first, was: " + secondPage.getFilenames().get(0).asString());
+        assertTrue(secondPage.getFilenames().get(2).asString().contains("batch_0000000000000000040_"),
+            "The second page keeps the descending order, was: " + secondPage.getFilenames().get(2).asString());
+        assertTrue(secondPage.isTruncated(), "Four files still follow");
+    }
+
+    // ========================================================================
+    // Folder Structure Limit Tests
+    // ========================================================================
+
+    @Test
+    void testConstructor_LevelRatioTooLarge_Throws() {
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
+            () -> new FileSystemStorageResource("too-wide-storage",
+                ConfigFactory.parseString("folderStructure { levels = [1000000, 100] }").withFallback(config)),
+            "A level holding 10000 folders should be rejected");
+        assertTrue(thrown.getMessage().contains("1000000"), "Message should name the configured levels");
+    }
+
+    @Test
+    void testWriteChunkBatch_TickBeyondFolderLevels_Throws() {
+        FileSystemStorageResource smallFolders = new FileSystemStorageResource("small-folders",
+            ConfigFactory.parseString("folderStructure { levels = [1000, 100] }").withFallback(config));
+
+        IllegalStateException thrown = assertThrows(IllegalStateException.class,
+            () -> smallFolders.writeChunkBatchStreaming(
+                List.of(createChunk(1_000_000, 1_000_009, 10)).iterator()),
+            "A tick of 1000 times the outermost divisor has no folder name");
+        assertTrue(thrown.getMessage().contains("1000000"), "Message should name the tick");
+        assertTrue(thrown.getMessage().contains("configure a further level"),
+            "Message should name the way out");
+    }
+
+    @Test
+    void testFindLastBatchFile_FullLevelOfThousandFolders_IsAccepted() throws IOException {
+        // The first 10^8 ticks fill the second level completely: folders 000 to 999
+        for (int folder = 0; folder < 999; folder++) {
+            assertTrue(new File(tempDir.toFile(), String.format("test-sim/raw/000/%03d", folder)).mkdirs(),
+                "Should create the folder");
+        }
+        storage.writeChunkBatchStreaming(List.of(createChunk(99_900_000L, 99_900_009L, 10)).iterator());
+
+        java.util.Optional<StoragePath> last = storage.findLastBatchFile("test-sim/raw/");
+
+        assertTrue(last.isPresent(), "A level of exactly 1000 folders is the full width of a 3-digit name");
+        assertTrue(last.get().asString().contains("000/999/"), "The last folder should hold the last batch");
+    }
+
+    @Test
+    void testFindLastBatchFile_LevelHoldsTooManyFolders_Throws() throws IOException {
+        for (int folder = 0; folder <= 1000; folder++) {
+            assertTrue(new File(tempDir.toFile(), String.format("wide-run/raw/%04d", folder)).mkdirs(),
+                "Should create the folder");
+        }
+
+        IllegalStateException thrown = assertThrows(IllegalStateException.class,
+            () -> storage.findLastBatchFile("wide-run/raw/"),
+            "A level of 1001 folders should be rejected");
+        assertTrue(thrown.getMessage().contains("wide-run/raw/"), "Message should name the folder");
     }
 }

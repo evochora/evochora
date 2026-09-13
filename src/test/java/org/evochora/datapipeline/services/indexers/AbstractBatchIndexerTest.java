@@ -59,6 +59,7 @@ import com.typesafe.config.ConfigFactory;
  */
 @Tag("unit")
 @ExtendWith(LogWatchExtension.class)
+@AllowLog(level = LogLevel.WARN, loggerPattern = ".*AbstractBatchIndexerTest\\$StreamingTestBatchIndexer", messagePattern = "Run .* was written by build .* and is read by build .*")
 class AbstractBatchIndexerTest {
 
     private IResourceTopicReader<BatchInfo, String> mockTopic;
@@ -579,6 +580,7 @@ class AbstractBatchIndexerTest {
                 .setFirstTick(chunkStartTick)
                 .setLastTick(chunkStartTick)
                 .setTickCount(1)  // Each chunk contains 1 tick (snapshot only)
+                .setSamplingInterval(1)
                 .setSnapshot(snapshot)
                 .build());
         }

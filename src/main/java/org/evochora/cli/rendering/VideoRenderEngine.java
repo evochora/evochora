@@ -24,8 +24,11 @@ import org.evochora.datapipeline.api.contracts.TickDelta;
 import org.evochora.datapipeline.api.resources.storage.BatchFileListResult;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageRead;
 import org.evochora.datapipeline.api.resources.storage.StoragePath;
+import org.evochora.datapipeline.utils.BuildRevisionCheck;
 import org.evochora.datapipeline.utils.MetadataConfigHelper;
 import org.evochora.runtime.model.EnvironmentProperties;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigException;
@@ -39,6 +42,8 @@ import org.evochora.cli.config.ConfigLoader;
  * and single/multi-threaded rendering loops with optimized sampling support.
  */
 public class VideoRenderEngine {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(VideoRenderEngine.class);
 
     private final VideoRenderOptions options;
     private final IVideoFrameRenderer frameRenderer;
@@ -721,6 +726,7 @@ public class VideoRenderEngine {
         }
 
         SimulationMetadata metadata = storage.readMessage(metaPath.get(), SimulationMetadata.parser());
+        BuildRevisionCheck.warnIfWrittenByAnotherBuild(metadata, LOGGER);
         EnvironmentProperties envProps = new EnvironmentProperties(
             MetadataConfigHelper.getEnvironmentShape(metadata),
             MetadataConfigHelper.isEnvironmentToroidal(metadata));

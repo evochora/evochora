@@ -77,6 +77,28 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
 
     private static final Logger log = LoggerFactory.getLogger(AbstractBatchStorageResource.class);
 
+    /**
+     * Digits of a folder name. The width is fixed: it keeps every directory listing below the page
+     * size an object store answers with, and it makes the lexicographic order of the names their
+     * tick order - which holds only as long as no level exceeds {@link #FOLDERS_PER_LEVEL}
+     * folders. A run that needs more ticks than the levels cover gets a further level above them,
+     * never wider names.
+     */
+    private static final int FOLDER_NAME_DIGITS = 3;
+
+    /** Format of a folder name, derived from {@link #FOLDER_NAME_DIGITS}. */
+    private static final String FOLDER_NAME_FORMAT = "%0" + FOLDER_NAME_DIGITS + "d";
+
+    /** Folders a level can hold and still order them by name: ten to the power of the name width. */
+    private static final int FOLDERS_PER_LEVEL = (int) Math.pow(10, FOLDER_NAME_DIGITS);
+
+    /**
+     * File names per page where a listing is read to its end. The pages are followed until the
+     * listing is exhausted, so the size only trades listing calls against the names held at once.
+     */
+    private static final int LISTING_PAGE_SIZE = 1000;
+
+
     // Configuration
     /**
      * Tick counts per directory level, outermost first. The folder of a batch is derived from its
@@ -142,8 +164,10 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
      * @param options resource configuration; read here are the compression settings,
      *                {@code folderStructure.levels} (default {@code [100000000, 100000]}) and
      *                {@code metricsWindowSeconds} (default 30)
-     * @throws IllegalArgumentException if {@code folderStructure.levels} is present but empty, or
-     *                                  contains a level that is not positive
+     * @throws IllegalArgumentException if {@code folderStructure.levels} is present but empty,
+     *                                  contains a level that is not positive, or holds a level
+     *                                  that does not divide the one above it into at most 1000
+     *                                  folders
      * @throws IllegalStateException    if the compression codec cannot be created or validated
      */
     protected AbstractBatchStorageResource(String name, Config options) {
@@ -177,6 +201,16 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
         for (Long level : folderLevels) {
             if (level <= 0) {
                 throw new IllegalArgumentException("All folder levels must be positive");
+            }
+        }
+        for (int i = 1; i < folderLevels.size(); i++) {
+            long outer = folderLevels.get(i - 1);
+            long inner = folderLevels.get(i);
+            if (outer % inner != 0 || outer / inner > FOLDERS_PER_LEVEL) {
+                throw new IllegalArgumentException(String.format(
+                    "folderStructure.levels %s: level %d must divide level %d into at most %d folders, "
+                        + "because a folder name holds %d digits",
+                    folderLevels, inner, outer, FOLDERS_PER_LEVEL, FOLDER_NAME_DIGITS));
             }
         }
 
@@ -255,8 +289,8 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
      * <p>
      * Efficient implementation that reads raw protobuf bytes without full parsing.
      * For each chunk in the batch file, reads the raw message bytes and extracts only
-     * the three metadata fields (firstTick, lastTick, tickCount) via partial parse.
-     * Peak heap: one raw chunk (~25 MB for 4000x3000 environment).
+     * the four metadata fields (firstTick, lastTick, tickCount, samplingInterval) via
+     * partial parse. Peak heap: one raw chunk (~25 MB for 4000x3000 environment).
      * <p>
      * <strong>Thread Safety:</strong> Thread-safe. Multiple callers can read concurrently.
      */
@@ -300,8 +334,12 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
     }
 
     /**
-     * Extracts firstTick, lastTick, and tickCount from raw protobuf bytes via partial parse.
-     * Scans only the top-level fields, skipping snapshot and delta data entirely.
+     * Extracts firstTick, lastTick, tickCount and the sampling interval from raw protobuf bytes
+     * via partial parse.
+     * <p>
+     * The four carry the lowest field numbers of the chunk and therefore arrive before its delta
+     * directory and its deltas, so the scan ends as soon as it has them; of the payload it steps
+     * over only the snapshot, as one block.
      *
      * @param rawBytes raw protobuf bytes of a single TickDataChunk message
      * @return RawChunk with metadata and the original raw bytes
@@ -312,9 +350,10 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
         long firstTick = 0;
         long lastTick = 0;
         int tickCount = 0;
+        int samplingInterval = 0;
         int fieldsFound = 0;
 
-        while (fieldsFound < 3) {
+        while (fieldsFound < 4) {
             int tag = cis.readTag();
             if (tag == 0) break;
 
@@ -331,13 +370,17 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
                     tickCount = cis.readInt32();
                     fieldsFound++;
                     break;
+                case TickDataChunk.SAMPLING_INTERVAL_FIELD_NUMBER:
+                    samplingInterval = cis.readInt32();
+                    fieldsFound++;
+                    break;
                 default:
                     cis.skipField(tag);
                     break;
             }
         }
 
-        return new RawChunk(firstTick, lastTick, tickCount, rawBytes);
+        return new RawChunk(firstTick, lastTick, tickCount, samplingInterval, rawBytes);
     }
 
     /**
@@ -452,6 +495,9 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
                     break;
                 case TickDataChunk.TICK_COUNT_FIELD_NUMBER:
                     builder.setTickCount(input.readInt32());
+                    break;
+                case TickDataChunk.SAMPLING_INTERVAL_FIELD_NUMBER:
+                    builder.setSamplingInterval(input.readInt32());
                     break;
                 case TickDataChunk.SNAPSHOT_FIELD_NUMBER: {
                     int length = input.readRawVarint32();
@@ -996,6 +1042,15 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
      *   <li>Tick 123,456,789 → "001/234/"</li>
      *   <li>Tick 5,000,000,000 → "050/000/"</li>
      * </ul>
+     * <p>
+     * The name of a folder is its tick bucket in {@link #FOLDER_NAME_DIGITS} digits, so a bucket
+     * of {@link #FOLDERS_PER_LEVEL} or more has no name that keeps the order. The levels below the
+     * outermost one are bounded by the configuration check; the outermost one is bounded by the
+     * tick, which is why this is checked here.
+     *
+     * @param tick The tick the folder holds
+     * @return The folder path below the run, levels separated by a slash
+     * @throws IllegalStateException If the tick lies beyond the ticks the configured levels cover
      */
     private String calculateFolderPath(long tick) {
         StringBuilder path = new StringBuilder();
@@ -1005,8 +1060,14 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
             long divisor = folderLevels.get(i);
             long bucket = remaining / divisor;
 
-            // Format with 3 digits (supports up to 999 per level)
-            path.append(String.format("%03d", bucket));
+            if (bucket >= FOLDERS_PER_LEVEL) {
+                throw new IllegalStateException(String.format(
+                    "Tick %d needs folder %d on the level dividing by %d, and a folder name holds "
+                        + "%d digits: configure a further level above %d to reach these ticks",
+                    tick, bucket, divisor, FOLDER_NAME_DIGITS, folderLevels.get(0)));
+            }
+
+            path.append(String.format(FOLDER_NAME_FORMAT, bucket));
 
             if (i < folderLevels.size() - 1) {
                 path.append("/");
@@ -1072,8 +1133,11 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
      * file that was being written when the crash occurred.
      * <p>
      * <strong>Sort Order:</strong> Results can be sorted in ascending (oldest first) or descending
-     * (newest first) order. Use {@link IBatchStorageRead.SortOrder#DESCENDING} with maxResults=1
-     * to efficiently get only the last batch file for resume operations.
+     * (newest first) order. Ascending reads one page of the listing primitive per call. Descending
+     * reads every batch file name under the prefix before it returns, because the primitive
+     * delivers ascending only and the last names are known only once all of them have been seen;
+     * its cost therefore grows with the run. For the last batch file use
+     * {@link #findLastBatchFile}, which descends the folder tree instead.
      *
      * @param prefix Filter prefix (e.g., "sim123/" for specific simulation)
      * @param continuationToken Token from previous call, or null for first page
@@ -1093,14 +1157,16 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
         if (maxResults <= 0) {
             throw new IllegalArgumentException("maxResults must be > 0");
         }
-        if (sortOrder == IBatchStorageRead.SortOrder.DESCENDING && continuationToken != null) {
-            throw new IllegalArgumentException(
-                "continuationToken is not supported with DESCENDING sortOrder (underlying storage only paginates ascending)");
-        }
 
-        // Delegate to subclass to get all files with prefix
-        // listRaw returns PHYSICAL paths (with compression extensions)
-        List<String> allPhysicalFiles = listRaw(prefix, false, continuationToken, (maxResults + 1) * 2, startTick, endTick);
+        // Delegate to subclass to get the files with prefix
+        // listRaw returns PHYSICAL paths (with compression extensions), ascending
+        List<String> allPhysicalFiles;
+        if (sortOrder == IBatchStorageRead.SortOrder.DESCENDING) {
+            // The last names are the ones asked for, and they stand at the end of the ascending listing
+            allPhysicalFiles = listAllRaw(prefix, startTick, endTick);
+        } else {
+            allPhysicalFiles = listRaw(prefix, false, continuationToken, (maxResults + 1) * 2, startTick, endTick);
+        }
 
         // Filter to batch files and sort lexicographically (ascending tick order)
         List<String> batchFilePaths = allPhysicalFiles.stream()
@@ -1147,6 +1213,14 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
 
         if (sortOrder == IBatchStorageRead.SortOrder.DESCENDING) {
             Collections.reverse(sortedPaths);
+            // The whole listing is at hand, so a page continues behind the token in this order;
+            // the ascending listing had the primitive apply the token
+            if (continuationToken != null) {
+                int behindToken = sortedPaths.indexOf(continuationToken);
+                sortedPaths = behindToken < 0
+                    ? sortedPaths.stream().filter(path -> path.compareTo(continuationToken) < 0).toList()
+                    : sortedPaths.subList(behindToken + 1, sortedPaths.size());
+            }
         }
 
         // Convert to StoragePath list with limit
@@ -1161,6 +1235,31 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
         String nextToken = truncated ? resultFiles.get(resultFiles.size() - 1).asString() : null;
 
         return new BatchFileListResult(resultFiles, nextToken, truncated);
+    }
+
+    /**
+     * Reads every page of the listing primitive under a prefix.
+     *
+     * @param prefix Filter prefix (e.g., "sim123/" for specific simulation)
+     * @param startTick Minimum start tick (nullable - null means no lower bound)
+     * @param endTick Maximum start tick (nullable - null means no upper bound)
+     * @return All physical paths under the prefix that pass the tick filter, ascending
+     * @throws IOException If storage access fails
+     */
+    private List<String> listAllRaw(String prefix, Long startTick, Long endTick) throws IOException {
+        List<String> paths = new ArrayList<>();
+        String continuationToken = null;
+
+        while (true) {
+            List<String> page = listRaw(prefix, false, continuationToken, LISTING_PAGE_SIZE, startTick, endTick);
+            paths.addAll(page);
+            if (page.size() < LISTING_PAGE_SIZE) {
+                break;
+            }
+            continuationToken = page.get(page.size() - 1);
+        }
+
+        return paths;
     }
 
     @Override
@@ -1184,7 +1283,373 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
         return java.util.Optional.of(StoragePath.of(files.get(0)));
     }
 
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Answered by a descent through the folder tree, which carries the tick order in its names:
+     * a batch file sits in the folder its first tick maps to, and both the folder names and the
+     * file names sort in tick order. The descent takes, on every level, the greatest folder whose
+     * name does not exceed the target folder of the tick, and in the leaf the last file whose
+     * first tick does not exceed the tick. When the target leaf holds no such file, the file is
+     * the last one of the nearest preceding leaf that holds a file, which the descent walks back
+     * to.
+     * <p>
+     * The answer is exact, not an approximation: the tree is sorted, so the file found this way
+     * is the one with the greatest first tick at or below the tick, and it covers the tick exactly
+     * when its last tick reaches it. The lookup costs one listing per folder level plus the files
+     * of one leaf, and the same again for the walk back plus one listing per folder it steps over
+     * — independent of how many batch files the run holds.
+     * <p>
+     * A tick beyond the ticks the configured folder levels cover has no folder to look in and
+     * fails with an {@link IllegalStateException}, as does a level holding more folders than their
+     * names can order.
+     */
+    @Override
+    public java.util.Optional<StoragePath> findBatchFileContaining(String runIdPrefix, long tick) throws IOException {
+        if (runIdPrefix == null) {
+            throw new IllegalArgumentException("runIdPrefix cannot be null");
+        }
+        if (tick < 0) {
+            throw new IllegalArgumentException("tick must be >= 0");
+        }
+
+        String basePrefix = withTrailingSlash(runIdPrefix);
+        java.util.Optional<String> candidate = descendToBatchFile(basePrefix, tick);
+        if (candidate.isEmpty()) {
+            requireFolderStructureReachesRun(basePrefix, tick);
+            return java.util.Optional.empty();
+        }
+
+        String path = candidate.get();
+        if (parseBatchEndTick(path) < tick) {
+            // The tick lies behind the file that precedes it, in a gap or beyond the recorded data
+            return java.util.Optional.empty();
+        }
+
+        log.debug("Batch file covering tick {}: {}", tick, path);
+        return java.util.Optional.of(StoragePath.of(path));
+    }
+
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Answered by the same descent as {@link #findBatchFileContaining}, with the greatest tick as
+     * its target: the last folder on every level and the last file of the leaf. Folders left
+     * behind without a file - a folder is created before the file in it is written - are stepped
+     * over, down to the nearest preceding leaf that holds one.
+     */
+    @Override
+    public java.util.Optional<StoragePath> findLastBatchFile(String runIdPrefix) throws IOException {
+        if (runIdPrefix == null) {
+            throw new IllegalArgumentException("runIdPrefix cannot be null");
+        }
+
+        String basePrefix = withTrailingSlash(runIdPrefix);
+        java.util.Optional<String> candidate = descendToBatchFile(basePrefix, null);
+        if (candidate.isEmpty()) {
+            requireFolderStructureReachesRun(basePrefix, null);
+            return java.util.Optional.empty();
+        }
+
+        log.debug("Found last batch file: {}", candidate.get());
+        return java.util.Optional.of(StoragePath.of(candidate.get()));
+    }
+
+    /**
+     * Descends the folder tree to the batch file with the greatest first tick at or below the
+     * given tick, or to the last batch file of the run when no tick is given.
+     *
+     * @param basePrefix The run prefix to descend from, ending with a slash
+     * @param tick The tick the file's first tick must not exceed, or null for the last file
+     * @return The physical path of the file, empty if the tree holds none
+     * @throws IOException If storage access fails
+     */
+    private java.util.Optional<String> descendToBatchFile(String basePrefix, Long tick) throws IOException {
+        String[] targetFolders = (tick == null) ? null : calculateFolderPath(tick).split("/");
+
+        List<String> parentPrefixes = new ArrayList<>();
+        List<List<String>> levelFolders = new ArrayList<>();
+        List<Integer> chosenIndexes = new ArrayList<>();
+
+        String prefix = basePrefix;
+        boolean onTarget = targetFolders != null;
+
+        for (int level = 0; level < folderLevels.size(); level++) {
+            List<String> folders = listFolderNames(prefix);
+            parentPrefixes.add(prefix);
+            levelFolders.add(folders);
+
+            int index;
+            if (onTarget) {
+                index = lastFolderAtMost(folders, targetFolders[level]);
+                if (index >= 0 && !folders.get(index).equals(targetFolders[level])) {
+                    // Below the target folder, so every deeper level takes its last folder
+                    onTarget = false;
+                }
+            } else {
+                index = folders.size() - 1;
+            }
+
+            if (index < 0) {
+                return stepBackToPrecedingLeaf(parentPrefixes, levelFolders, chosenIndexes, tick);
+            }
+
+            chosenIndexes.add(index);
+            prefix = prefix + folders.get(index) + "/";
+        }
+
+        java.util.Optional<String> file = selectBatchFile(prefix, tick);
+        if (file.isPresent()) {
+            return file;
+        }
+        return stepBackToPrecedingLeaf(parentPrefixes, levelFolders, chosenIndexes, tick);
+    }
+
+    /**
+     * Walks back to the nearest preceding leaf that holds a file, and returns that file.
+     * <p>
+     * The walk goes back one folder at a time on the deepest level that still has one before it,
+     * and takes the last folder on every level below. A leaf without a file is stepped over: it
+     * holds nothing, so the first leaf before it that does hold one carries the greatest first
+     * tick below the leaf the descent ended in. The walk stops at that file, or when no leaf
+     * precedes the current one.
+     *
+     * @param parentPrefixes The prefix each level was listed under
+     * @param levelFolders The folders found on each level, in ascending order
+     * @param chosenIndexes The folder the descent took on each level
+     * @param tick The tick the file's first tick must not exceed, or null for the last file
+     * @return The physical path of the file, empty if no preceding leaf holds one
+     * @throws IOException If storage access fails
+     */
+    private java.util.Optional<String> stepBackToPrecedingLeaf(List<String> parentPrefixes,
+                                                               List<List<String>> levelFolders,
+                                                               List<Integer> chosenIndexes,
+                                                               Long tick) throws IOException {
+        for (int level = chosenIndexes.size() - 1; level >= 0; level--) {
+            List<String> folders = levelFolders.get(level);
+            for (int index = chosenIndexes.get(level) - 1; index >= 0; index--) {
+                java.util.Optional<String> file = lastBatchFileInSubtree(
+                    parentPrefixes.get(level) + folders.get(index) + "/", level + 1, tick);
+                if (file.isPresent()) {
+                    return file;
+                }
+            }
+        }
+
+        return java.util.Optional.empty();
+    }
+
+    /**
+     * Returns the last matching batch file of a subtree, taking the last folder of every level and
+     * stepping over folders that hold nothing.
+     *
+     * @param prefix The folder the subtree starts at, ending with a slash
+     * @param level The folder level the prefix stands on; the leaf is reached at the level count
+     * @param tick The tick the file's first tick must not exceed, or null for the last file
+     * @return The physical path of the file, empty if the subtree holds none
+     * @throws IOException If storage access fails
+     */
+    private java.util.Optional<String> lastBatchFileInSubtree(String prefix, int level, Long tick) throws IOException {
+        if (level >= folderLevels.size()) {
+            return selectBatchFile(prefix, tick);
+        }
+
+        List<String> folders = listFolderNames(prefix);
+        for (int index = folders.size() - 1; index >= 0; index--) {
+            java.util.Optional<String> file = lastBatchFileInSubtree(
+                prefix + folders.get(index) + "/", level + 1, tick);
+            if (file.isPresent()) {
+                return file;
+            }
+        }
+
+        return java.util.Optional.empty();
+    }
+
+    /**
+     * Returns the last batch file of a folder whose first tick does not exceed the given tick, or
+     * the last batch file of the folder when no tick is given.
+     * <p>
+     * Batch files that share a first tick are a crash during a write: the file with the smallest
+     * last tick is the complete one and wins, as it does in every listing.
+     *
+     * @param folderPrefix The folder to read, ending with a slash
+     * @param tick The tick the file's first tick must not exceed, or null for the last file
+     * @return The physical path of the file, empty if the folder holds no matching file
+     * @throws IOException If storage access fails
+     */
+    private java.util.Optional<String> selectBatchFile(String folderPrefix, Long tick) throws IOException {
+        List<String> paths = listBatchFilePaths(folderPrefix);
+
+        String selected = null;
+        for (String path : paths) {
+            long firstTick = parseBatchStartTick(path);
+            if (tick != null && (firstTick < 0 || firstTick > tick)) {
+                continue;
+            }
+            // Ascending order, so the last file that qualifies is the one with the greatest first tick
+            selected = path;
+        }
+
+        if (selected == null) {
+            return java.util.Optional.empty();
+        }
+
+        long selectedFirstTick = parseBatchStartTick(selected);
+        if (selectedFirstTick >= 0) {
+            long bestLastTick = parseBatchEndTick(selected);
+            for (String path : paths) {
+                if (parseBatchStartTick(path) != selectedFirstTick) {
+                    continue;
+                }
+                long lastTick = parseBatchEndTick(path);
+                if (lastTick < bestLastTick) {
+                    log.warn("Duplicate batch files for firstTick {}: keeping {} (lastTick={}) over {} (lastTick={})",
+                            selectedFirstTick, path, lastTick, selected, bestLastTick);
+                    selected = path;
+                    bestLastTick = lastTick;
+                }
+            }
+        }
+
+        return java.util.Optional.of(selected);
+    }
+
+    /**
+     * Lists the names of the folders directly under a prefix, in ascending order.
+     * <p>
+     * A {@code superseded} folder is not part of the tick order and is left out. A level holds at
+     * most {@link #FOLDERS_PER_LEVEL} folders, {@code 000} to {@code 999}, and the listing runs
+     * page by page until one folder beyond that limit has been seen or the level ends - so a
+     * level that is within the limit is read out completely, and one that is not is recognised as
+     * such however many {@code superseded} folders lie among its entries.
+     *
+     * @param prefix The folder to list, ending with a slash
+     * @return The folder names without their path, ascending
+     * @throws IllegalStateException If the level holds more folders than their names can order
+     * @throws IOException If storage access fails
+     */
+    private List<String> listFolderNames(String prefix) throws IOException {
+        List<String> names = new ArrayList<>();
+        String continuationToken = null;
+
+        while (names.size() <= FOLDERS_PER_LEVEL) {
+            List<String> page = listRaw(prefix, true, continuationToken, LISTING_PAGE_SIZE, null, null);
+            for (String entry : page) {
+                String path = entry.endsWith("/") ? entry.substring(0, entry.length() - 1) : entry;
+                String name = path.substring(path.lastIndexOf('/') + 1);
+                if (!"superseded".equals(name)) {
+                    names.add(name);
+                }
+            }
+            if (page.size() < LISTING_PAGE_SIZE) {
+                break;
+            }
+            continuationToken = page.get(page.size() - 1);
+        }
+
+        if (names.size() > FOLDERS_PER_LEVEL) {
+            throw new IllegalStateException(String.format(
+                "Folder '%s' holds more than %d folders, and a level carries at most that many: "
+                    + "folder names hold %d digits and a wider name would break their tick order",
+                prefix, FOLDERS_PER_LEVEL, FOLDER_NAME_DIGITS));
+        }
+
+        Collections.sort(names);
+        return names;
+    }
+
+    /**
+     * Lists the physical paths of the batch files under a prefix, in ascending order.
+     *
+     * @param prefix The folder to list, ending with a slash
+     * @return The batch file paths, ascending
+     * @throws IOException If storage access fails
+     */
+    private List<String> listBatchFilePaths(String prefix) throws IOException {
+        List<String> paths = new ArrayList<>();
+        String continuationToken = null;
+
+        while (true) {
+            List<String> page = listRaw(prefix, false, continuationToken, LISTING_PAGE_SIZE, null, null);
+            for (String path : page) {
+                String filename = path.substring(path.lastIndexOf('/') + 1);
+                if (filename.startsWith("batch_") && filename.contains(".pb")) {
+                    paths.add(path);
+                }
+            }
+            if (page.size() < LISTING_PAGE_SIZE) {
+                break;
+            }
+            continuationToken = page.get(page.size() - 1);
+        }
+
+        Collections.sort(paths);
+        return paths;
+    }
+
+    /**
+     * Returns the index of the last folder whose name does not exceed the target name, or -1 if
+     * every folder lies behind it.
+     *
+     * @param folders Folder names in ascending order
+     * @param targetFolder The name the result must not exceed
+     * @return The index in {@code folders}, or -1
+     */
+    private static int lastFolderAtMost(List<String> folders, String targetFolder) {
+        for (int i = folders.size() - 1; i >= 0; i--) {
+            if (folders.get(i).compareTo(targetFolder) <= 0) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    /**
+     * Rejects a run whose batch files lie outside the folder structure this resource is
+     * configured with.
+     * <p>
+     * The folder levels come from the configuration of the reading resource, not from the run, so
+     * a run written under different levels is unreachable for the descent. Batch files under the
+     * prefix that the descent does not reach are exactly that case, and reporting the run as empty
+     * would hide it. A tick before the run's first batch file is not that case: a run that was
+     * forked from another begins where its window begins, and nothing precedes it.
+     *
+     * @param basePrefix The run prefix that was searched, ending with a slash
+     * @param tick The tick that was searched for, or null if the search was for the last file
+     * @throws IllegalStateException If the run holds batch files the descent does not reach
+     * @throws IOException If storage access fails
+     */
+    private void requireFolderStructureReachesRun(String basePrefix, Long tick) throws IOException {
+        List<StoragePath> first = listBatchFiles(basePrefix, null, 1).getFilenames();
+        if (first.isEmpty()) {
+            return;
+        }
+        if (tick != null && tick < parseBatchStartTick(first.get(0).asString())) {
+            return;
+        }
+
+        throw new IllegalStateException(String.format(
+            "Run '%s' holds batch files outside the configured folder levels %s "
+                + "(searched for %s); the run was written with a different folder structure",
+            basePrefix, folderLevels, tick == null ? "its last batch file" : "tick " + tick));
+    }
+
+    /**
+     * Returns the prefix with the trailing slash that a folder prefix carries.
+     *
+     * @param prefix The prefix to normalize
+     * @return The prefix ending with a slash, or empty if it was empty
+     */
+    private static String withTrailingSlash(String prefix) {
+        if (prefix.isEmpty() || prefix.endsWith("/")) {
+            return prefix;
+        }
+        return prefix + "/";
+    }
+
     // ===== IResource implementation =====
+
 
     /**
      * Returns the current operational state for the specified usage type.

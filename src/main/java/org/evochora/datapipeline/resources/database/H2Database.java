@@ -498,9 +498,10 @@ public class H2Database extends AbstractDatabaseResource
     @Override
     protected void doWriteRawEnvironmentChunk(Object connection,
                                               long firstTick, long lastTick,
-                                              int tickCount, byte[] rawProtobufData) throws SQLException {
+                                              int tickCount, int samplingInterval,
+                                              byte[] rawProtobufData) throws SQLException {
         Connection conn = (Connection) connection;
-        getEnvStrategy().writeRawChunk(conn, firstTick, lastTick, tickCount, rawProtobufData);
+        getEnvStrategy().writeRawChunk(conn, firstTick, lastTick, tickCount, samplingInterval, rawProtobufData);
     }
 
     /**
@@ -1105,47 +1106,106 @@ public class H2Database extends AbstractDatabaseResource
     }
 
     /**
-     * Gets the range of available ticks for a specific run.
+     * Reads how much of a run's environment data is indexed.
      * <p>
-     * Queries the environment_chunks table to find the minimum and maximum tick numbers.
-     * Returns null if no chunks are available.
+     * Delegates to {@link IH2EnvStorageStrategy#readChunkIndexSummary(Connection)}. A run whose
+     * chunk index does not exist yet reads as an empty index, the same as one with no chunks.
      *
      * @param conn The database connection (schema already set)
-     * @param runId The simulation run ID (for logging/debugging, schema already contains this run)
-     * @return TickRange with minTick and maxTick, or null if no chunks exist
-     * @throws SQLException if database query fails
+     * @return The chunk count and the highest last tick; a count of zero when nothing is indexed
+     * @throws SQLException if the database query fails
      */
-    org.evochora.datapipeline.api.resources.database.dto.TickRange getTickRangeInternal(
-            Connection conn, String runId) throws SQLException {
-        try (PreparedStatement stmt = conn.prepareStatement(
-                "SELECT MIN(first_tick) as min_tick, MAX(last_tick) as max_tick " +
-                "FROM environment_chunks")) {
-            try (ResultSet rs = stmt.executeQuery()) {
-                queriesExecuted.incrementAndGet();
-
-                if (!rs.next()) {
-                    return null;
-                }
-
-                long minTick = rs.getLong("min_tick");
-                long maxTick = rs.getLong("max_tick");
-
-                if (rs.wasNull()) {
-                    return null;
-                }
-
-                return new org.evochora.datapipeline.api.resources.database.dto.TickRange(minTick, maxTick);
-            }
+    org.evochora.datapipeline.api.resources.database.dto.ChunkIndexSummary getChunkIndexSummaryInternal(
+            Connection conn) throws SQLException {
+        try {
+            queriesExecuted.incrementAndGet();
+            return getEnvStrategy().readChunkIndexSummary(conn);
         } catch (SQLException e) {
-            // Table doesn't exist yet (no chunks written)
-            if (e.getErrorCode() == 42104 || e.getErrorCode() == 42102 ||
-                (e.getMessage().contains("Table") && e.getMessage().contains("not found"))) {
-                return null; // No ticks available
+            if (isMissingTable(e)) {
+                return new org.evochora.datapipeline.api.resources.database.dto.ChunkIndexSummary(0L, 0L, 0L);
             }
-            throw e; // Other SQL errors
+            throw e;
         }
     }
-    
+
+    /**
+     * Reads the stretches of ticks a run has recorded.
+     * <p>
+     * Delegates to {@link IH2EnvStorageStrategy#readTickRanges(Connection, String)}. A run whose
+     * chunk index does not exist yet has recorded no ticks and reads as an empty list.
+     *
+     * @param conn The database connection (schema already set)
+     * @param runId The simulation run ID, named in the error messages of the range check
+     * @return The ranges ordered by first tick and what the read took in; empty when nothing is
+     *         indexed
+     * @throws SQLException if the database query fails
+     */
+    org.evochora.datapipeline.api.resources.database.dto.TickRangeExtension getTickRangesInternal(
+            Connection conn, String runId) throws SQLException {
+        try {
+            queriesExecuted.incrementAndGet();
+            return getEnvStrategy().readTickRanges(conn, runId);
+        } catch (SQLException e) {
+            if (isMissingTable(e)) {
+                return emptyTickRanges();
+            }
+            throw e;
+        }
+    }
+
+    /**
+     * Continues known tick ranges with the chunks indexed since they were read.
+     * <p>
+     * Delegates to {@link IH2EnvStorageStrategy#extendTickRanges(Connection, String, java.util.List, long)}.
+     * A run whose chunk index does not exist yet continues nothing.
+     *
+     * @param conn The database connection (schema already set)
+     * @param runId The simulation run ID, named in the error messages of the range check
+     * @param known The ranges of the earlier read, ordered by first tick
+     * @param afterFirstTick First tick of the last chunk the earlier read saw
+     * @return The extended ranges and what this read took in; empty where the index no longer
+     *         continues the known ranges
+     * @throws SQLException if the database query fails
+     */
+    java.util.Optional<org.evochora.datapipeline.api.resources.database.dto.TickRangeExtension>
+            extendTickRangesInternal(
+            Connection conn, String runId,
+            java.util.List<org.evochora.datapipeline.api.resources.database.dto.SampledTickRange> known,
+            long afterFirstTick) throws SQLException {
+        try {
+            queriesExecuted.incrementAndGet();
+            return getEnvStrategy().extendTickRanges(conn, runId, known, afterFirstTick);
+        } catch (SQLException e) {
+            if (isMissingTable(e)) {
+                return java.util.Optional.empty();
+            }
+            throw e;
+        }
+    }
+
+    /**
+     * The answer for a run that has no chunk index to read.
+     *
+     * @return An extension holding no ranges and having taken nothing in
+     */
+    private static org.evochora.datapipeline.api.resources.database.dto.TickRangeExtension emptyTickRanges() {
+        return new org.evochora.datapipeline.api.resources.database.dto.TickRangeExtension(
+                java.util.List.of(), 0L, 0L, Long.MIN_VALUE);
+    }
+
+    /**
+     * Tells whether a failed query failed because the table it reads is not there.
+     * <p>
+     * A run that has been discovered but not yet indexed has no chunk index, which is a state of
+     * the run rather than a fault; every other failure stays a failure.
+     *
+     * @param e The failure reported by the query
+     * @return true if the table the query names does not exist
+     */
+    private static boolean isMissingTable(SQLException e) {
+        return e.getErrorCode() == 42104 || e.getErrorCode() == 42102;
+    }
+
     /**
      * Queries the organism table to find the minimum and maximum tick numbers.
      * Returns null if no ticks exist.

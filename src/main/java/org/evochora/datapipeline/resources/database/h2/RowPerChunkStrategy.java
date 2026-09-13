@@ -13,6 +13,9 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -23,6 +26,9 @@ import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.contracts.TickDelta;
 import org.evochora.datapipeline.api.resources.database.PendingChunkRead;
 import org.evochora.datapipeline.api.resources.database.TickNotFoundException;
+import org.evochora.datapipeline.api.resources.database.dto.ChunkIndexSummary;
+import org.evochora.datapipeline.api.resources.database.dto.SampledTickRange;
+import org.evochora.datapipeline.api.resources.database.dto.TickRangeExtension;
 import org.evochora.datapipeline.utils.H2SchemaUtil;
 import org.evochora.datapipeline.utils.compression.CompressionCodecFactory;
 import org.evochora.datapipeline.utils.compression.ICompressionCodec;
@@ -56,9 +62,15 @@ import com.typesafe.config.Config;
  * <pre>
  * CREATE TABLE environment_chunks (
  *   first_tick BIGINT PRIMARY KEY,
- *   last_tick BIGINT NOT NULL
+ *   last_tick BIGINT NOT NULL,
+ *   tick_count INT NOT NULL,
+ *   step INT NOT NULL
  * )
  * </pre>
+ * <p>
+ * {@code tick_count} is how many ticks the chunk holds and {@code step} how many simulation ticks
+ * lie between two of them, both as the chunk states them. They are what
+ * {@link #readTickRanges(Connection, String)} builds the run's tick ranges from.
  * <p>
  * <strong>Write safety:</strong> Files are written via temp file + atomic rename to
  * prevent corrupt partial files on crash. Files are written before the H2 MERGE so
@@ -77,6 +89,7 @@ public class RowPerChunkStrategy extends AbstractH2EnvStorageStrategy {
     private static final int CHUNK_FIRST_TICK = TickDataChunk.FIRST_TICK_FIELD_NUMBER;
     private static final int CHUNK_LAST_TICK = TickDataChunk.LAST_TICK_FIELD_NUMBER;
     private static final int CHUNK_TICK_COUNT = TickDataChunk.TICK_COUNT_FIELD_NUMBER;
+    private static final int CHUNK_SAMPLING_INTERVAL = TickDataChunk.SAMPLING_INTERVAL_FIELD_NUMBER;
     private static final int CHUNK_SNAPSHOT = TickDataChunk.SNAPSHOT_FIELD_NUMBER;
     private static final int CHUNK_DELTA_TICKS = TickDataChunk.DELTA_TICKS_FIELD_NUMBER;
     private static final int CHUNK_DELTA_TYPES = TickDataChunk.DELTA_TYPES_FIELD_NUMBER;
@@ -167,7 +180,9 @@ public class RowPerChunkStrategy extends AbstractH2EnvStorageStrategy {
                 stmt,
                 "CREATE TABLE IF NOT EXISTS environment_chunks (" +
                 "  first_tick BIGINT PRIMARY KEY," +
-                "  last_tick BIGINT NOT NULL" +
+                "  last_tick BIGINT NOT NULL," +
+                "  tick_count INT NOT NULL," +
+                "  step INT NOT NULL" +
                 ")",
                 "environment_chunks"
             );
@@ -179,8 +194,8 @@ public class RowPerChunkStrategy extends AbstractH2EnvStorageStrategy {
             );
         }
 
-        this.mergeSql = "MERGE INTO environment_chunks (first_tick, last_tick) " +
-                       "KEY (first_tick) VALUES (?, ?)";
+        this.mergeSql = "MERGE INTO environment_chunks (first_tick, last_tick, tick_count, step) " +
+                       "KEY (first_tick) VALUES (?, ?, ?, ?)";
 
         log.debug("Environment chunk tables created for {} dimensions", dimensions);
     }
@@ -275,6 +290,253 @@ public class RowPerChunkStrategy extends AbstractH2EnvStorageStrategy {
     }
 
     /**
+     * {@inheritDoc}
+     * <p>
+     * One aggregate over the index table; no chunk file is touched.
+     */
+    @Override
+    public ChunkIndexSummary readChunkIndexSummary(Connection conn) throws SQLException {
+        String sql = "SELECT COUNT(*) AS chunk_count, MAX(last_tick) AS max_last_tick,"
+                + " SUM(tick_count) AS sample_count FROM environment_chunks";
+
+        try (PreparedStatement stmt = conn.prepareStatement(sql);
+             ResultSet rs = stmt.executeQuery()) {
+            if (!rs.next()) {
+                return new ChunkIndexSummary(0L, 0L, 0L);
+            }
+            long chunkCount = rs.getLong("chunk_count");
+            // MAX and SUM over no rows are NULL, which getLong reports as 0
+            long maxLastTick = rs.getLong("max_last_tick");
+            maxLastTick = rs.wasNull() ? 0L : maxLastTick;
+            long sampleCount = rs.getLong("sample_count");
+            sampleCount = rs.wasNull() ? 0L : sampleCount;
+            return new ChunkIndexSummary(chunkCount, maxLastTick, sampleCount);
+        }
+    }
+
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Reads every chunk of the index in one pass and builds the ranges from nothing; no row is
+     * held beyond the moment it is folded into a range, so the size of the index does not
+     * matter to the heap.
+     */
+    @Override
+    public TickRangeExtension readTickRanges(Connection conn, String runId) throws SQLException {
+        RangeAccumulator ranges = new RangeAccumulator(runId, List.of(), Long.MIN_VALUE);
+        forEachChunkFrom(conn, Long.MIN_VALUE, chunk -> {
+            ranges.add(chunk);
+            return true;
+        });
+        return ranges.finish();
+    }
+
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Reads from the last known chunk onwards, so that the chunk the known ranges end on is seen
+     * again and can be held against them before anything is appended to it.
+     */
+    @Override
+    public Optional<TickRangeExtension> extendTickRanges(Connection conn, String runId,
+                                                         List<SampledTickRange> known, long afterFirstTick)
+            throws SQLException {
+        if (known.isEmpty()) {
+            return Optional.empty();
+        }
+        SampledTickRange open = known.get(known.size() - 1);
+        RangeAccumulator ranges = new RangeAccumulator(runId, known, afterFirstTick);
+        boolean[] boundaryHolds = {false};
+        boolean[] first = {true};
+
+        forEachChunkFrom(conn, afterFirstTick, chunk -> {
+            if (first[0]) {
+                // The first row read is the chunk the known ranges end on. Where it is gone, or
+                // no longer ends where it did, what is known about the index no longer describes
+                // it, and appending to it would carry that on
+                first[0] = false;
+                boundaryHolds[0] = chunk.firstTick() == afterFirstTick
+                        && chunk.lastTick() == open.last()
+                        && chunk.step() == open.step();
+                return boundaryHolds[0];
+            }
+            ranges.add(chunk);
+            return true;
+        });
+
+        return boundaryHolds[0] ? Optional.of(ranges.finish()) : Optional.empty();
+    }
+
+    /**
+     * Reads the index rows from a given first tick onwards, in the order the ranges are built
+     * from, and hands each to the visitor until it declines the next.
+     * <p>
+     * The bound is inclusive, so a caller that continues from the last chunk it knows sees that
+     * chunk again and can hold the index against what it knows before it appends to it.
+     *
+     * @param conn Database connection (schema already set)
+     * @param fromFirstTick Only chunks beginning at or past this tick are read
+     * @param visitor Receives each chunk and returns whether the next one is wanted
+     * @throws SQLException if the database read fails
+     */
+    private void forEachChunkFrom(Connection conn, long fromFirstTick, ChunkVisitor visitor) throws SQLException {
+        String sql = "SELECT first_tick, last_tick, tick_count, step FROM environment_chunks"
+                + " WHERE first_tick >= ? ORDER BY first_tick";
+
+        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setLong(1, fromFirstTick);
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    IndexedChunk chunk = new IndexedChunk(rs.getLong("first_tick"), rs.getLong("last_tick"),
+                            rs.getInt("tick_count"), rs.getInt("step"));
+                    if (!visitor.visit(chunk)) {
+                        return;
+                    }
+                }
+            }
+        }
+    }
+
+    /** Receives the rows of the chunk index one at a time. */
+    @FunctionalInterface
+    private interface ChunkVisitor {
+        /**
+         * @param chunk The row read
+         * @return Whether the next row is wanted
+         */
+        boolean visit(IndexedChunk chunk);
+    }
+
+    /**
+     * Folds chunks into ranges as they are read.
+     * <p>
+     * The chunks arrive in order of their first tick, each with the step it states: a chunk
+     * continues the open range when it carries the same step and begins exactly one step past it,
+     * and opens a new range otherwise. The last of the known ranges is the open one the first new
+     * chunk meets, so a run that is still being indexed grows its last range instead of being read
+     * again from the start. Only the open range is held between two chunks.
+     */
+    private final class RangeAccumulator {
+        private final String runId;
+        private final List<SampledTickRange> ranges;
+        private long rangeFirst;
+        private long rangeLast;
+        private long rangeStep;
+        private long previousFirst;
+        private boolean inRange;
+        private long addedChunks;
+        private long addedSamples;
+        private long lastFirstTick;
+
+        /**
+         * @param runId Simulation run the chunks belong to, named in error messages
+         * @param known Ranges an earlier read left behind, ordered by first tick; empty to build anew
+         * @param afterFirstTick First tick of the last chunk the known ranges cover, or
+         *                       {@link Long#MIN_VALUE} when there are none
+         */
+        RangeAccumulator(String runId, List<SampledTickRange> known, long afterFirstTick) {
+            this.runId = runId;
+            this.ranges = new ArrayList<>(known);
+            this.previousFirst = afterFirstTick;
+            this.lastFirstTick = afterFirstTick;
+            this.inRange = !ranges.isEmpty();
+            if (inRange) {
+                // The last known range is still open: a chunk continuing it lengthens it rather
+                // than starting a range of its own
+                SampledTickRange open = ranges.remove(ranges.size() - 1);
+                rangeFirst = open.first();
+                rangeLast = open.last();
+                rangeStep = open.step();
+            }
+        }
+
+        /**
+         * Folds one more chunk in.
+         *
+         * @param chunk The chunk, later than every chunk folded in before it and not yet known
+         * @throws IllegalStateException if the chunk overlaps the one before it, or its step does
+         *                               not describe it
+         */
+        void add(IndexedChunk chunk) {
+            long chunkStep = checkedStep(runId, chunk);
+            addedChunks++;
+            addedSamples += chunk.tickCount();
+
+            if (inRange && chunk.firstTick() <= rangeLast) {
+                throw new IllegalStateException(String.format(
+                        "Run %s: chunk %d..%d overlaps the preceding chunk %d..%d",
+                        runId, chunk.firstTick(), chunk.lastTick(), previousFirst, rangeLast));
+            }
+
+            if (inRange && chunkStep == rangeStep && chunk.firstTick() == rangeLast + rangeStep) {
+                rangeLast = chunk.lastTick();
+            } else {
+                if (inRange) {
+                    ranges.add(new SampledTickRange(rangeFirst, rangeLast, rangeStep));
+                }
+                rangeFirst = chunk.firstTick();
+                rangeLast = chunk.lastTick();
+                rangeStep = chunkStep;
+                inRange = true;
+            }
+            previousFirst = chunk.firstTick();
+            lastFirstTick = chunk.firstTick();
+        }
+
+        /**
+         * Closes the open range and returns everything folded in.
+         *
+         * @return The ranges and what the read took in
+         */
+        TickRangeExtension finish() {
+            if (inRange) {
+                ranges.add(new SampledTickRange(rangeFirst, rangeLast, rangeStep));
+            }
+            return new TickRangeExtension(List.copyOf(ranges), addedChunks, addedSamples, lastFirstTick);
+        }
+    }
+
+    /**
+     * Returns the step a chunk states, having checked that it describes the chunk.
+     * <p>
+     * A chunk's first tick, its step and the number of ticks it holds determine its last tick.
+     * Where they do not agree, one of the three is wrong, and every range built from the chunk
+     * would be wrong with it.
+     *
+     * @param runId Simulation run the chunk belongs to, named in error messages
+     * @param chunk The chunk as the index holds it
+     * @return The step, at least 1
+     * @throws IllegalStateException if the step is less than 1, or the span does not match the
+     *                               step and the number of ticks
+     */
+    private long checkedStep(String runId, IndexedChunk chunk) {
+        if (chunk.step() < 1) {
+            throw new IllegalStateException(String.format(
+                    "Run %s: chunk %d..%d states a step of %d, which is no step at all",
+                    runId, chunk.firstTick(), chunk.lastTick(), chunk.step()));
+        }
+        long expectedSpan = (long) (chunk.tickCount() - 1) * chunk.step();
+        if (chunk.lastTick() - chunk.firstTick() != expectedSpan) {
+            throw new IllegalStateException(String.format(
+                    "Run %s: chunk %d..%d holds %d tick(s) at a step of %d, which would end at %d",
+                    runId, chunk.firstTick(), chunk.lastTick(), chunk.tickCount(), chunk.step(),
+                    chunk.firstTick() + expectedSpan));
+        }
+        return chunk.step();
+    }
+
+    /**
+     * One row of the chunk index: where a chunk begins and ends, how many ticks it holds, and the
+     * step it was recorded at.
+     *
+     * @param firstTick First recorded tick of the chunk
+     * @param lastTick Last recorded tick of the chunk
+     * @param tickCount Number of ticks the chunk holds
+     * @param step Simulation ticks between two of its recorded ticks
+     */
+    private record IndexedChunk(long firstTick, long lastTick, int tickCount, int step) {}
+
+    /**
      * Works out where the chunk file lies, using the persisted {@code .chunk_meta} to determine
      * the subdirectory.
      * <p>
@@ -350,20 +612,17 @@ public class RowPerChunkStrategy extends AbstractH2EnvStorageStrategy {
     }
 
     /**
-     * Ensures the {@code .chunk_meta} file exists, computing {@code chunkTickStep}
-     * from raw metadata fields (firstTick, lastTick, tickCount).
+     * Ensures the {@code .chunk_meta} file exists, taking the ticks a chunk spans from the first
+     * chunk written: its sample count times the sampling interval it was recorded at.
      *
      * @param schemaDir the schema-specific directory
-     * @param firstTick first tick of the first chunk
-     * @param lastTick last tick of the first chunk
      * @param tickCount sampled tick count of the first chunk
+     * @param samplingInterval simulation ticks between two samples of the first chunk
      * @return the ticksPerSubdirectory value
      * @throws SQLException if metadata cannot be written or read
      */
-    private long ensureChunkMetadataFromRaw(Path schemaDir, long firstTick,
-                                            long lastTick, int tickCount) throws SQLException {
-        long chunkTickStep = estimateChunkTickStepFromRaw(firstTick, lastTick, tickCount);
-        return ensureChunkMetadataWithStep(schemaDir, chunkTickStep);
+    private long ensureChunkMetadataFromRaw(Path schemaDir, int tickCount, int samplingInterval) throws SQLException {
+        return ensureChunkMetadataWithStep(schemaDir, (long) tickCount * samplingInterval);
     }
 
     /**
@@ -433,26 +692,6 @@ public class RowPerChunkStrategy extends AbstractH2EnvStorageStrategy {
         log.debug("Created chunk metadata: ticksPerSubdirectory={} (maxFiles={} × chunkTickStep={})",
                 ticksPerSubdir, maxFilesPerDirectory, chunkTickStep);
         return ticksPerSubdir;
-    }
-
-    /**
-     * Estimates chunk tick step from raw metadata fields.
-     * <p>
-     * Equivalent to {@link #estimateChunkTickStep(TickDataChunk)} but uses
-     * pre-extracted firstTick/lastTick/tickCount instead of a parsed chunk.
-     *
-     * @param firstTick first tick of the chunk
-     * @param lastTick last tick of the chunk
-     * @param tickCount sampled tick count
-     * @return estimated tick step between consecutive chunks
-     */
-    private long estimateChunkTickStepFromRaw(long firstTick, long lastTick, int tickCount) {
-        int tc = Math.max(tickCount, 1);
-        if (tc <= 1 || firstTick == lastTick) {
-            return tc;
-        }
-        long samplingInterval = (lastTick - firstTick) / (tc - 1);
-        return tc * Math.max(samplingInterval, 1);
     }
 
     /**
@@ -538,10 +777,15 @@ public class RowPerChunkStrategy extends AbstractH2EnvStorageStrategy {
      */
     @Override
     public void writeRawChunk(Connection conn, long firstTick, long lastTick,
-                              int tickCount, byte[] rawProtobufData) throws SQLException {
+                              int tickCount, int samplingInterval, byte[] rawProtobufData) throws SQLException {
         if (mergeSql == null) {
             throw new IllegalStateException(
                 "createTables() must be called before writeRawChunk()");
+        }
+        if (samplingInterval < 1) {
+            throw new IllegalStateException("chunk " + firstTick + ".." + lastTick
+                + " states no sampling interval; it was written by an older build,"
+                + " which is the build to read it with");
         }
         // Get or create PreparedStatement for this connection
         PreparedStatement stmt;
@@ -571,7 +815,7 @@ public class RowPerChunkStrategy extends AbstractH2EnvStorageStrategy {
         }
 
         // Ensure metadata (cached per schema directory after first call)
-        long ticksPerSubdir = ensureChunkMetadataFromRaw(schemaDir, firstTick, lastTick, tickCount);
+        long ticksPerSubdir = ensureChunkMetadataFromRaw(schemaDir, tickCount, samplingInterval);
 
         // Compress raw protobuf bytes
         byte[] compressed = compressRawBytes(rawProtobufData);
@@ -589,6 +833,8 @@ public class RowPerChunkStrategy extends AbstractH2EnvStorageStrategy {
         // Add to JDBC batch
         stmt.setLong(1, firstTick);
         stmt.setLong(2, lastTick);
+        stmt.setInt(3, tickCount);
+        stmt.setInt(4, samplingInterval);
         stmt.addBatch();
     }
 
@@ -711,6 +957,7 @@ public class RowPerChunkStrategy extends AbstractH2EnvStorageStrategy {
                 case CHUNK_FIRST_TICK -> builder.setFirstTick(cis.readInt64());
                 case CHUNK_LAST_TICK -> builder.setLastTick(cis.readInt64());
                 case CHUNK_TICK_COUNT -> builder.setTickCount(cis.readInt32());
+                case CHUNK_SAMPLING_INTERVAL -> builder.setSamplingInterval(cis.readInt32());
                 case CHUNK_SNAPSHOT -> {
                     int length = cis.readRawVarint32();
                     int oldLimit = cis.pushLimit(length);

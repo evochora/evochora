@@ -191,11 +191,12 @@ export class EnvironmentApi {
     }
 
     /**
-     * Fetches the available tick range (minTick, maxTick) for environment data.
+     * Fetches which ticks a run holds: the outer bounds and the contiguous ranges of recorded
+     * ticks, each with the step it was recorded at. Only the ticks the ranges name exist.
      * This remains on the main thread as it's a small JSON payload.
      *
      * @param {string|null} [runId=null] - The specific run ID to fetch the tick range for.
-     * @returns {Promise<{minTick: number, maxTick: number}>} A promise that resolves to an object containing the min and max tick.
+     * @returns {Promise<{minTick: number, maxTick: number, ranges: Array<{first: number, last: number, step: number}>}>} A promise that resolves to the bounds and the ranges.
      * @throws {Error} If the network request fails or the server returns an error.
      */
     async fetchTickRange(runId = null) {
@@ -211,7 +212,9 @@ export class EnvironmentApi {
             const response = await fetch(url);
             if (!response.ok) {
                 const errorData = await response.json().catch(() => ({}));
-                throw new Error(errorData.message || `HTTP ${response.status}`);
+                const error = new Error(errorData.message || `HTTP ${response.status}`);
+                error.status = response.status;
+                throw error;
             }
             return await response.json();
         } finally {

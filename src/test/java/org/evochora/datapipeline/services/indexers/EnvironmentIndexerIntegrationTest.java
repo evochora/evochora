@@ -30,6 +30,8 @@ import org.evochora.datapipeline.api.services.IService;
 import org.evochora.datapipeline.resources.database.H2Database;
 import org.evochora.datapipeline.resources.storage.FileSystemStorageResource;
 import org.evochora.datapipeline.resources.topics.H2TopicResource;
+import org.evochora.junit.extensions.logging.AllowLog;
+import org.evochora.junit.extensions.logging.LogLevel;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -47,6 +49,7 @@ import com.typesafe.config.ConfigFactory;
  */
 @Tag("integration")
 @ExtendWith(LogWatchExtension.class)
+@AllowLog(level = LogLevel.WARN, loggerPattern = ".*EnvironmentIndexer.*", messagePattern = "Run .* was written by build .* and is read by build .*")
 class EnvironmentIndexerIntegrationTest {
     
     private H2Database testDatabase;
@@ -512,6 +515,7 @@ class EnvironmentIndexerIntegrationTest {
                 .setFirstTick(tick.getTickNumber())
                 .setLastTick(tick.getTickNumber())
                 .setTickCount(1)  // Each chunk contains exactly 1 tick
+                .setSamplingInterval(1)
                 .setSnapshot(tick)
                 .build();
             chunks.add(chunk);

@@ -92,6 +92,11 @@ public class MonitoredBatchStorageReader implements IResourceBatchStorageRead, I
         return delegate.findLastBatchFile(runIdPrefix);
     }
 
+    @Override
+    public java.util.Optional<StoragePath> findBatchFileContaining(String runIdPrefix, long tick) throws IOException {
+        return delegate.findBatchFileContaining(runIdPrefix, tick);
+    }
+
     /**
      * {@inheritDoc}
      * <p>

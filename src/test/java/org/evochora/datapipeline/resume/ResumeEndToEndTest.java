@@ -52,11 +52,7 @@ import com.typesafe.config.ConfigFactory;
  */
 @Tag("integration")
 @ExtendWith(LogWatchExtension.class)
-@AllowLog(level = LogLevel.INFO, loggerPattern = ".*SimulationEngine.*")
-@AllowLog(level = LogLevel.INFO, loggerPattern = ".*SnapshotLoader.*")
-@AllowLog(level = LogLevel.INFO, loggerPattern = ".*SimulationRestorer.*")
-@AllowLog(level = LogLevel.INFO, loggerPattern = ".*FileSystemStorageResource.*")
-@AllowLog(level = LogLevel.INFO, loggerPattern = ".*AbstractBatchStorageResource.*")
+@AllowLog(level = LogLevel.WARN, loggerPattern = ".*SimulationEngine.*", messagePattern = "Run .* was written by build .* and is read by build .*")
 class ResumeEndToEndTest {
 
     // Test-friendly intervals - much smaller than production values

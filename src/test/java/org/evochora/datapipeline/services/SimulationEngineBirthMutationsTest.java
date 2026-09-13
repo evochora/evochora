@@ -10,8 +10,6 @@ import org.evochora.datapipeline.api.contracts.TickDelta;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.queues.StreamingBatch;
 import org.evochora.datapipeline.resources.queues.InMemoryBlockingQueue;
-import org.evochora.junit.extensions.logging.AllowLog;
-import org.evochora.junit.extensions.logging.LogLevel;
 import org.evochora.runtime.isa.Instruction;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
@@ -42,8 +40,6 @@ import static org.awaitility.Awaitility.await;
  * and reads back where the records appear.
  */
 @Tag("integration")
-@AllowLog(level = LogLevel.INFO, loggerPattern = "org.evochora.datapipeline.services.SimulationEngine")
-@AllowLog(level = LogLevel.INFO, loggerPattern = "org.evochora.datapipeline.services.AbstractService")
 class SimulationEngineBirthMutationsTest {
 
     /** Recordings per chunk; the birth and the recordings after it must share one chunk. */

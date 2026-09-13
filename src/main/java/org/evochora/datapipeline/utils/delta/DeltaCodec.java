@@ -34,7 +34,7 @@ import java.util.function.LongPredicate;
  * <p>
  * <strong>Usage (Encoding):</strong>
  * <pre>{@code
- * DeltaCodec.Encoder encoder = new DeltaCodec.Encoder(runId, totalCells, 5, 20, 1);
+ * DeltaCodec.Encoder encoder = new DeltaCodec.Encoder(runId, samplingInterval, 5, 20, 1);
  * Optional<TickDataChunk> chunk = encoder.captureTick(tick, env, organisms, ...);
  * }</pre>
  * <p>
@@ -70,7 +70,7 @@ public final class DeltaCodec {
      * <p>
      * <strong>Usage:</strong>
      * <pre>{@code
-     * DeltaCodec.Encoder encoder = new DeltaCodec.Encoder(runId, 5, 20, 1);
+     * DeltaCodec.Encoder encoder = new DeltaCodec.Encoder(runId, samplingInterval, 5, 20, 1);
      * 
      * // For each sampled tick:
      * Optional<TickDataChunk> chunk = encoder.captureTick(
@@ -97,6 +97,7 @@ public final class DeltaCodec {
         
         private final String runId;
         private final int accumulatedDeltaInterval;
+        private final int samplingInterval;
 
         // Derived values
         private final int samplesPerSnapshot;
@@ -114,13 +115,19 @@ public final class DeltaCodec {
          * Creates a new Encoder for a new simulation.
          *
          * @param runId simulation run ID for chunk metadata
+         * @param samplingInterval simulation ticks between two recorded ticks (must be >= 1);
+         *                         every chunk carries it, so that a reader knows the run's step
+         *                         without deriving it from the chunk's span
          * @param accumulatedDeltaInterval samples between accumulated deltas (must be >= 1)
          * @param snapshotInterval accumulated deltas between snapshots (must be >= 1)
          * @param chunkInterval snapshots per chunk (must be >= 1)
          * @throws IllegalArgumentException if any interval is less than 1
          */
-        public Encoder(String runId,
+        public Encoder(String runId, int samplingInterval,
                        int accumulatedDeltaInterval, int snapshotInterval, int chunkInterval) {
+            if (samplingInterval < 1) {
+                throw new IllegalArgumentException("samplingInterval must be >= 1, got: " + samplingInterval);
+            }
             if (accumulatedDeltaInterval < 1) {
                 throw new IllegalArgumentException("accumulatedDeltaInterval must be >= 1, got: " + accumulatedDeltaInterval);
             }
@@ -132,6 +139,7 @@ public final class DeltaCodec {
             }
 
             this.runId = runId;
+            this.samplingInterval = samplingInterval;
             this.accumulatedDeltaInterval = accumulatedDeltaInterval;
 
             this.samplesPerSnapshot = accumulatedDeltaInterval * snapshotInterval;
@@ -146,18 +154,20 @@ public final class DeltaCodec {
          *
          * @param resumeSnapshot checkpoint snapshot (must not be null)
          * @param runId simulation run ID for chunk metadata
+         * @param samplingInterval simulation ticks between two recorded ticks (must be >= 1)
          * @param accumulatedDeltaInterval samples between accumulated deltas (must be >= 1)
          * @param snapshotInterval accumulated deltas between snapshots (must be >= 1)
          * @param chunkInterval snapshots per chunk (must be >= 1)
          * @return encoder initialized with the checkpoint snapshot
          * @throws IllegalArgumentException if resumeSnapshot is null or any interval is less than 1
          */
-        public static Encoder forResume(TickData resumeSnapshot, String runId,
+        public static Encoder forResume(TickData resumeSnapshot, String runId, int samplingInterval,
                                         int accumulatedDeltaInterval, int snapshotInterval, int chunkInterval) {
             if (resumeSnapshot == null) {
                 throw new IllegalArgumentException("resumeSnapshot cannot be null");
             }
-            Encoder encoder = new Encoder(runId, accumulatedDeltaInterval, snapshotInterval, chunkInterval);
+            Encoder encoder = new Encoder(runId, samplingInterval,
+                    accumulatedDeltaInterval, snapshotInterval, chunkInterval);
             encoder.currentSnapshot = resumeSnapshot;
             encoder.samplesSinceSnapshot = 1;  // Snapshot counts as sample 0, next tick is sample 1
             return encoder;
@@ -291,7 +301,7 @@ public final class DeltaCodec {
         // ========================================================================
         
         private TickDataChunk buildAndResetChunk() {
-            TickDataChunk chunk = createChunk(runId, currentSnapshot, currentDeltas);
+            TickDataChunk chunk = createChunk(runId, samplingInterval, currentSnapshot, currentDeltas);
             
             // Reset state for next chunk
             currentSnapshot = null;
@@ -853,25 +863,27 @@ public final class DeltaCodec {
 
     static TickDataChunk createChunk(
             String simulationRunId,
+            int samplingInterval,
             TickData snapshot,
             List<DeltaCapture> deltas) {
-        
+
         if (snapshot == null) {
             throw new IllegalArgumentException("snapshot must not be null");
         }
         if (deltas == null) {
             throw new IllegalArgumentException("deltas must not be null (use empty list)");
         }
-        
+
         long firstTick = snapshot.getTickNumber();
         long lastTick = deltas.isEmpty() ? firstTick : deltas.get(deltas.size() - 1).tickNumber();
         int tickCount = 1 + deltas.size();
-        
+
         TickDataChunk.Builder builder = TickDataChunk.newBuilder()
                 .setSimulationRunId(simulationRunId)
                 .setFirstTick(firstTick)
                 .setLastTick(lastTick)
                 .setTickCount(tickCount)
+                .setSamplingInterval(samplingInterval)
                 .setSnapshot(snapshot);
         
         // The directory precedes the deltas on the wire, so a reader knows which of them a

@@ -45,6 +45,32 @@ message SimulationMetadata {
   //   - samplingInterval, accumulatedDeltaInterval, snapshotInterval, chunkInterval
   //   - metadata (user-provided key-value pairs)
   string resolved_config_json = 5;
+
+  // Revision of the build that wrote this run, as the build recorded it: the git commit,
+  // suffixed with "-dirty" when the working tree had uncommitted changes, or "unknown" when
+  // the build ran outside a git checkout. A run is only reproduced exactly by the build that
+  // wrote it; a reader that runs another build says so.
+  string build_revision = 6;
+
+  // Present when this run was forked from another run: it starts from the state of the
+  // parent at a chunk boundary and records a window of the parent's trajectory again,
+  // usually at a denser sampling. Absent for a run that started from its configuration.
+  ForkOrigin fork = 7;
+}
+
+// Where a forked run comes from: the parent run and the window it was asked to record.
+// The forked run's own ticks are numbered as in the parent, so first_tick is also the
+// first tick the forked run holds. The run may be continued past last_tick afterwards.
+message ForkOrigin {
+  // The run the state was taken from
+  string parent_run_id = 1;
+
+  // First tick of the window: the start of the parent's chunk that holds the requested first tick
+  int64 first_tick = 2;
+
+  // Last tick the window records: the last sample before the parent's chunk boundary at or
+  // beyond the requested last tick
+  int64 last_tick = 3;
 }
 
 // Configuration for organism runtime behavior.

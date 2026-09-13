@@ -11,8 +11,6 @@ import org.evochora.datapipeline.utils.MetadataConfigHelper;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.queues.StreamingBatch;
 import org.evochora.datapipeline.resources.queues.InMemoryBlockingQueue;
-import org.evochora.junit.extensions.logging.AllowLog;
-import org.evochora.junit.extensions.logging.LogLevel;
 import org.evochora.runtime.isa.Instruction;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -41,8 +39,6 @@ import static org.junit.jupiter.api.Assertions.*;
  * These tests use awaitility for reliable async testing without Thread.sleep.
  */
 @Tag("integration")
-@AllowLog(level = LogLevel.INFO, loggerPattern = "org.evochora.datapipeline.services.SimulationEngine")
-@AllowLog(level = LogLevel.INFO, loggerPattern = "org.evochora.datapipeline.services.AbstractService")
 class SimulationEngineIntegrationTest {
 
     private Map<String, List<IResource>> resources;

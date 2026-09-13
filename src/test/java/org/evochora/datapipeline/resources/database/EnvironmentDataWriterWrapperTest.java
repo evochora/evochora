@@ -83,7 +83,7 @@ class EnvironmentDataWriterWrapperTest {
         byte[] rawBytes = TickDataChunk.newBuilder()
             .setFirstTick(1L).setLastTick(1L).setTickCount(1)
             .setSnapshot(snapshot).build().toByteArray();
-        wrapper.writeRawChunk(1L, 1L, 1, rawBytes);
+        wrapper.writeRawChunk(1L, 1L, 1, 1, rawBytes);
         wrapper.commitRawChunks();
 
         // When: Get metrics
@@ -128,7 +128,7 @@ class EnvironmentDataWriterWrapperTest {
         byte[] rawBytes = chunk.toByteArray();
 
         // When: Write raw chunk and commit
-        wrapper.writeRawChunk(1L, 1L, 1, rawBytes);
+        wrapper.writeRawChunk(1L, 1L, 1, 1, rawBytes);
         wrapper.commitRawChunks();
 
         // Then: Metrics reflect the write
@@ -164,8 +164,8 @@ class EnvironmentDataWriterWrapperTest {
             .setSnapshot(snap2).build().toByteArray();
 
         // When: Write 2 raw chunks and commit
-        wrapper.writeRawChunk(0L, 0L, 1, raw1);
-        wrapper.writeRawChunk(100L, 100L, 1, raw2);
+        wrapper.writeRawChunk(0L, 0L, 1, 1, raw1);
+        wrapper.writeRawChunk(100L, 100L, 1, 1, raw2);
         wrapper.commitRawChunks();
 
         // Then: 2 chunks written, 1 batch committed
@@ -192,7 +192,7 @@ class EnvironmentDataWriterWrapperTest {
             .setSnapshot(snapshot).build().toByteArray();
 
         // When
-        wrapper.writeRawChunk(1L, 1L, 1, rawBytes);
+        wrapper.writeRawChunk(1L, 1L, 1, 1, rawBytes);
 
         // Then: Latency should be recorded
         Map<String, Number> metrics = wrapper.getMetrics();
@@ -224,7 +224,7 @@ class EnvironmentDataWriterWrapperTest {
         byte[] rawBytes = TickDataChunk.newBuilder()
             .setFirstTick(1L).setLastTick(1L).setTickCount(1)
             .setSnapshot(snapshot).build().toByteArray();
-        wrapper.writeRawChunk(1L, 1L, 1, rawBytes);
+        wrapper.writeRawChunk(1L, 1L, 1, 1, rawBytes);
         wrapper.commitRawChunks();
     }
 }

@@ -278,7 +278,7 @@ runtime      →  (nothing)
 - **Entry Point**: `CommandLineInterface.main()`
 - **PicoCLI**: Use PicoCLI annotations for commands and options
 - **Command Pattern**: Each command implements `Callable<Integer>` with exit codes (0=success, 1=error, 2=system error)
-- **Subcommands**: `node run`, `compile`, `inspect`, `video`, `cleanup`
+- **Subcommands**: `node run`, `node resume`, `node fork`, `node show`, `compile`, `inspect`, `video`, `cleanup`
 - **Help System**: Support `--help`, `help [command]` for all commands
 
 ## Architectural Review
@@ -465,6 +465,11 @@ throw new InterruptedException();
 
 **Flagship documents:**
 - `README.md` and `docs/SCIENTIFIC_OVERVIEW.md` are the project's public face. Edits derive from the document's structure and purpose, never from "a place where it fits"; exact wording is proposed before editing and approved hunk by hunk; links point to durable targets only, never to proposals; index entries are timeless; claims stay scientifically restrained
+
+**User documentation (`docs/*.md` beyond the flagship documents, comments in `config/*.conf`):**
+- A new section takes the form and the depth of the sections around it: the same heading level, the same parts (examples, parameter list, a few sentences), and no more detail than the neighbours give. What a reader needs beyond that lives in the command's help text, in error messages and in the configuration comments, not in the guide
+- A document uses only terms it has already introduced or that a reader knows without the code. A term that would be new is explained in one clause or left out; internal names such as chunk, checkpoint, indexer, service or metadata stay out of a user-facing document that has not explained them
+- Describe what the software does for the reader, not how it does it
 
 **Template Methods:**
 - Document subclass responsibilities clearly

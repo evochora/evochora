@@ -68,6 +68,7 @@ import com.typesafe.config.ConfigFactory;
  */
 @Tag("integration")
 @ExtendWith(LogWatchExtension.class)
+@AllowLog(level = LogLevel.WARN, loggerPattern = ".*AnalyticsIndexer.*", messagePattern = "Run .* was written by build .* and is read by build .*")
 class AnalyticsIndexerEndToEndTest {
 
     private H2Database testDatabase;
@@ -700,6 +701,7 @@ class AnalyticsIndexerEndToEndTest {
                 .setFirstTick(tick.getTickNumber())
                 .setLastTick(tick.getTickNumber())
                 .setTickCount(1)  // Each chunk contains exactly 1 tick
+                .setSamplingInterval(1)
                 .setSnapshot(tick)
                 .build();
             chunks.add(chunk);

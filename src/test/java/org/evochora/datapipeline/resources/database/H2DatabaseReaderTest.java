@@ -8,7 +8,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-import org.evochora.datapipeline.CellStateTestHelper;
 import org.evochora.datapipeline.TestMetadataHelper;
 import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.RegisterValue;
@@ -18,8 +17,9 @@ import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.Vector;
 import org.evochora.datapipeline.api.resources.database.IDatabaseReader;
 import org.evochora.datapipeline.api.resources.database.IDatabaseReaderProvider;
+import org.evochora.datapipeline.api.resources.database.dto.ChunkIndexSummary;
 import org.evochora.datapipeline.api.resources.database.dto.OrganismTickDetails;
-import org.evochora.datapipeline.api.resources.database.dto.TickRange;
+import org.evochora.datapipeline.api.resources.database.dto.SampledTickRange;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.resources.database.h2.RowPerChunkStrategy;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
@@ -37,13 +37,12 @@ import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 
 /**
- * Unit tests for H2DatabaseReader.getTickRange() method.
+ * Tests for H2DatabaseReader.
  * <p>
- * Tests tick range queries:
+ * Covers what the reader answers about a run:
  * <ul>
- *   <li>Successful query with ticks</li>
- *   <li>Null when no ticks available</li>
- *   <li>Correct min/max calculation</li>
+ *   <li>The recorded tick ranges and the state of the chunk index they come from</li>
+ *   <li>Organism details with resolved instructions, and the genome ancestor walk</li>
  * </ul>
  */
 @Tag("integration")
@@ -88,129 +87,83 @@ class H2DatabaseReaderTest {
     }
 
     @Test
-    void getTickRange_returnsCorrectRange() throws Exception {
-        // Given: Create schema and write chunks
-        Object connObj = database.acquireDedicatedConnection();
-        try (Connection conn = (Connection) connObj) {
-            // Set schema
-            conn.createStatement().execute("CREATE SCHEMA IF NOT EXISTS \"SIM_" + runId.toUpperCase().replaceAll("[^A-Z0-9_]", "_") + "\"");
-            conn.createStatement().execute("SET SCHEMA \"SIM_" + runId.toUpperCase().replaceAll("[^A-Z0-9_]", "_") + "\"");
+    void getTickRanges_reportsTheStretchesTheRunRecorded() throws Exception {
+        // Two chunks continue each other at a step of 10, a third starts again after a gap
+        writeChunkIndex(chunkOf(10L, 30L, 3, 10), chunkOf(40L, 60L, 3, 10), chunkOf(200L, 220L, 3, 10));
 
-            // Create tables using strategy
-            RowPerChunkStrategy strategy = new RowPerChunkStrategy(ConfigFactory.parseString(
-                    "chunkDirectory = \"" + tempChunkDir.toString().replace("\\", "/") + "\""));
-            strategy.createTables(conn, 2);
-
-            // Write chunk spanning ticks 10-30
-            TickData snapshot = TickData.newBuilder()
-                .setTickNumber(10L)
-                .setSimulationRunId(runId)
-                .setCellColumns(CellStateTestHelper.createColumnsFromCells(List.of(
-                    CellStateTestHelper.createCellStateBuilder(0, 100, 1, 50, 0).build()
-                )))
-                .build();
-            
-            TickDataChunk chunk = TickDataChunk.newBuilder()
-                .setFirstTick(10L).setLastTick(30L).setTickCount(3)
-                .setSnapshot(snapshot)
-                .addDeltas(org.evochora.datapipeline.api.contracts.TickDelta.newBuilder().setTickNumber(20L).build())
-                .addDeltas(org.evochora.datapipeline.api.contracts.TickDelta.newBuilder().setTickNumber(30L).build())
-                .build();
-
-            strategy.writeRawChunk(conn, 10L, 30L, 3, chunk.toByteArray());
-            strategy.commitRawChunks(conn);
-            conn.commit();
-        }
-
-        // When: Query tick range
         try (IDatabaseReader reader = provider.createReader(runId)) {
-            TickRange range = reader.getTickRange();
-
-            // Then: Should return correct range
-            assertThat(range).isNotNull();
-            assertThat(range.minTick()).isEqualTo(10L);
-            assertThat(range.maxTick()).isEqualTo(30L);
+            assertThat(reader.getTickRanges().ranges()).containsExactly(
+                new SampledTickRange(10L, 60L, 10L),
+                new SampledTickRange(200L, 220L, 10L));
         }
     }
 
     @Test
-    void getTickRange_returnsNullWhenNoTicks() throws Exception {
-        // Given: Create schema but no chunks
-        Object connObj = database.acquireDedicatedConnection();
-        try (Connection conn = (Connection) connObj) {
-            conn.createStatement().execute("CREATE SCHEMA IF NOT EXISTS \"SIM_" + runId.toUpperCase().replaceAll("[^A-Z0-9_]", "_") + "\"");
-            conn.createStatement().execute("SET SCHEMA \"SIM_" + runId.toUpperCase().replaceAll("[^A-Z0-9_]", "_") + "\"");
-
-            RowPerChunkStrategy strategy = new RowPerChunkStrategy(ConfigFactory.parseString(
-                    "chunkDirectory = \"" + tempChunkDir.toString().replace("\\", "/") + "\""));
-            strategy.createTables(conn, 2);
-        }
-
-        // When: Query tick range
-        try (IDatabaseReader reader = provider.createReader(runId)) {
-            TickRange range = reader.getTickRange();
-
-            // Then: Should return null
-            assertThat(range).isNull();
-        }
-    }
-
-    @Test
-    void getTickRange_returnsNullWhenTableNotExists() throws Exception {
+    void getTickRanges_isEmptyWhenTableNotExists() throws Exception {
         // Given: Create schema but no environment_chunks table
         Object connObj = database.acquireDedicatedConnection();
         try (Connection conn = (Connection) connObj) {
-            conn.createStatement().execute("CREATE SCHEMA IF NOT EXISTS \"SIM_" + runId.toUpperCase().replaceAll("[^A-Z0-9_]", "_") + "\"");
+            conn.createStatement().execute("CREATE SCHEMA IF NOT EXISTS \"" + schemaName() + "\"");
         }
 
-        // When: Query tick range
         try (IDatabaseReader reader = provider.createReader(runId)) {
-            TickRange range = reader.getTickRange();
-
-            // Then: Should return null (table doesn't exist)
-            assertThat(range).isNull();
+            assertThat(reader.getTickRanges().ranges()).isEmpty();
+            assertThat(reader.getChunkIndexSummary()).isEqualTo(new ChunkIndexSummary(0L, 0L, 0L));
         }
     }
 
     @Test
-    void getTickRange_handlesSingleTick() throws Exception {
-        // Given: Create schema and write single chunk with single tick
+    void getChunkIndexSummary_countsTheChunksAndHowFarTheyReach() throws Exception {
+        writeChunkIndex(chunkOf(10L, 30L, 3, 10), chunkOf(40L, 60L, 3, 10));
+
+        try (IDatabaseReader reader = provider.createReader(runId)) {
+            assertThat(reader.getChunkIndexSummary()).isEqualTo(new ChunkIndexSummary(2L, 60L, 6L));
+        }
+    }
+
+    /**
+     * The bounds, tick count and step of one chunk, as the index records them.
+     */
+    private record IndexedChunk(long firstTick, long lastTick, int tickCount, int step) {}
+
+    private static IndexedChunk chunkOf(long firstTick, long lastTick, int tickCount, int step) {
+        return new IndexedChunk(firstTick, lastTick, tickCount, step);
+    }
+
+    private String schemaName() {
+        return "SIM_" + runId.toUpperCase().replaceAll("[^A-Z0-9_]", "_");
+    }
+
+    /**
+     * Indexes the given chunks for the run, writing each chunk's file along with its index row.
+     */
+    private void writeChunkIndex(IndexedChunk... chunks) throws Exception {
         Object connObj = database.acquireDedicatedConnection();
         try (Connection conn = (Connection) connObj) {
-            conn.createStatement().execute("CREATE SCHEMA IF NOT EXISTS \"SIM_" + runId.toUpperCase().replaceAll("[^A-Z0-9_]", "_") + "\"");
-            conn.createStatement().execute("SET SCHEMA \"SIM_" + runId.toUpperCase().replaceAll("[^A-Z0-9_]", "_") + "\"");
+            conn.createStatement().execute("CREATE SCHEMA IF NOT EXISTS \"" + schemaName() + "\"");
+            conn.createStatement().execute("SET SCHEMA \"" + schemaName() + "\"");
 
             RowPerChunkStrategy strategy = new RowPerChunkStrategy(ConfigFactory.parseString(
                     "chunkDirectory = \"" + tempChunkDir.toString().replace("\\", "/") + "\""));
             strategy.createTables(conn, 2);
 
-            // Write single chunk with single tick (no deltas)
-            TickData snapshot = TickData.newBuilder()
-                .setTickNumber(42L)
-                .setSimulationRunId(runId)
-                .setCellColumns(CellStateTestHelper.createColumnsFromCells(List.of(
-                    CellStateTestHelper.createCellStateBuilder(0, 100, 1, 50, 0).build()
-                )))
-                .build();
-            
-            TickDataChunk chunk = TickDataChunk.newBuilder()
-                .setFirstTick(42L).setLastTick(42L).setTickCount(1)
-                .setSnapshot(snapshot)
-                .build();
-
-            strategy.writeRawChunk(conn, 42L, 42L, 1, chunk.toByteArray());
+            for (IndexedChunk c : chunks) {
+                TickDataChunk chunk = TickDataChunk.newBuilder()
+                    .setSimulationRunId(runId)
+                    .setFirstTick(c.firstTick())
+                    .setLastTick(c.lastTick())
+                    .setTickCount(c.tickCount())
+                    .setSamplingInterval(c.step())
+                    .setSnapshot(TickData.newBuilder()
+                        .setTickNumber(c.firstTick())
+                        .setSimulationRunId(runId)
+                        .build())
+                    .build();
+                strategy.writeRawChunk(conn, c.firstTick(), c.lastTick(), c.tickCount(), c.step(),
+                        chunk.toByteArray());
+            }
             strategy.commitRawChunks(conn);
             conn.commit();
-        }
-
-        // When: Query tick range
-        try (IDatabaseReader reader = provider.createReader(runId)) {
-            TickRange range = reader.getTickRange();
-
-            // Then: minTick and maxTick should be the same
-            assertThat(range).isNotNull();
-            assertThat(range.minTick()).isEqualTo(42L);
-            assertThat(range.maxTick()).isEqualTo(42L);
         }
     }
 

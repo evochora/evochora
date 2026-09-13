@@ -99,13 +99,13 @@ class H2DatabaseEnvIntegrationTest {
             .build();
         
         byte[] rawBytes = TickDataChunk.newBuilder()
-            .setFirstTick(1L).setLastTick(1L).setTickCount(1)
+            .setFirstTick(1L).setLastTick(1L).setTickCount(1).setSamplingInterval(1)
             .setSnapshot(snapshot).build().toByteArray();
 
         Object conn = database.acquireDedicatedConnection();
         try {
             database.doCreateEnvironmentDataTable(conn, 2);
-            database.doWriteRawEnvironmentChunk(conn, 1L, 1L, 1, rawBytes);
+            database.doWriteRawEnvironmentChunk(conn, 1L, 1L, 1, 1, rawBytes);
             database.doCommitRawEnvironmentChunks(conn);
         } finally {
             if (conn instanceof java.sql.Connection) {

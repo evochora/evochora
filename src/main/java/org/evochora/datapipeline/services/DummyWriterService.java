@@ -123,6 +123,7 @@ public class DummyWriterService extends AbstractService {
             .setFirstTick(startTick)
             .setLastTick(startTick + tickCount - 1)
             .setTickCount(tickCount)
+            .setSamplingInterval(1)
             .setSnapshot(snapshot);
 
         // A chunk holds one snapshot and one delta per further tick. Announcing more ticks than

@@ -34,6 +34,8 @@ import org.evochora.datapipeline.api.resources.topics.ITopicWriter;
 import org.evochora.datapipeline.resources.database.H2Database;
 import org.evochora.datapipeline.resources.storage.FileSystemStorageResource;
 import org.evochora.datapipeline.resources.topics.H2TopicResource;
+import org.evochora.junit.extensions.logging.AllowLog;
+import org.evochora.junit.extensions.logging.LogLevel;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
 import org.evochora.test.utils.ProtoTestUtils;
 import org.evochora.runtime.isa.Instruction;
@@ -62,6 +64,7 @@ import com.typesafe.config.ConfigFactory;
  */
 @Tag("integration")
 @ExtendWith(LogWatchExtension.class)
+@AllowLog(level = LogLevel.WARN, loggerPattern = ".*OrganismIndexer.*", messagePattern = "Run .* was written by build .* and is read by build .*")
 class OrganismIndexerIntegrationTest {
 
     private H2Database testDatabase;

@@ -82,11 +82,12 @@ public class EnvironmentDataWriterWrapper extends AbstractDatabaseWrapper implem
     }
 
     @Override
-    public void writeRawChunk(long firstTick, long lastTick, int tickCount,
+    public void writeRawChunk(long firstTick, long lastTick, int tickCount, int samplingInterval,
                               byte[] rawProtobufData) throws SQLException {
         long startNanos = System.nanoTime();
         try {
-            database.doWriteRawEnvironmentChunk(ensureConnection(), firstTick, lastTick, tickCount, rawProtobufData);
+            database.doWriteRawEnvironmentChunk(ensureConnection(), firstTick, lastTick, tickCount,
+                    samplingInterval, rawProtobufData);
             chunksWritten.incrementAndGet();
             chunkThroughput.recordCount();
             writeLatency.record(System.nanoTime() - startNanos);

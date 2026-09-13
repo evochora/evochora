@@ -2,9 +2,14 @@ package org.evochora.datapipeline.resources.database.h2;
 
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.util.List;
+import java.util.Optional;
 
 import org.evochora.datapipeline.api.resources.database.PendingChunkRead;
 import org.evochora.datapipeline.api.resources.database.TickNotFoundException;
+import org.evochora.datapipeline.api.resources.database.dto.ChunkIndexSummary;
+import org.evochora.datapipeline.api.resources.database.dto.SampledTickRange;
+import org.evochora.datapipeline.api.resources.database.dto.TickRangeExtension;
 
 /**
  * H2-specific strategy interface for storing and reading environment data as chunks.
@@ -78,11 +83,15 @@ public interface IH2EnvStorageStrategy {
      * @param firstTick First tick number in the chunk
      * @param lastTick Last tick number in the chunk
      * @param tickCount Number of sampled ticks in the chunk
+     * @param samplingInterval Simulation ticks between two recorded ticks of the chunk, as the
+     *                         chunk states it
      * @param rawProtobufData Uncompressed protobuf bytes of one TickDataChunk message
      * @throws SQLException if file I/O or statement preparation fails
+     * @throws IllegalStateException if the chunk states no sampling interval, which a build that
+     *                               did not yet record it wrote and only that build can read
      */
     void writeRawChunk(Connection conn, long firstTick, long lastTick,
-                       int tickCount, byte[] rawProtobufData) throws SQLException;
+                       int tickCount, int samplingInterval, byte[] rawProtobufData) throws SQLException;
 
     /**
      * Executes the accumulated JDBC batch from preceding {@link #writeRawChunk} calls.
@@ -129,4 +138,61 @@ public interface IH2EnvStorageStrategy {
      */
     PendingChunkRead prepareChunkRead(Connection conn, long tickNumber)
             throws SQLException, TickNotFoundException;
+
+    /**
+     * Reads how much of the run is indexed: the number of chunks and the highest tick they reach.
+     * <p>
+     * One aggregate query over the index, cheap enough to answer on every request. A caller that
+     * derived something from the whole index earlier can compare this summary with the one it saw
+     * then and read the index again only when it has changed.
+     *
+     * @param conn Database connection (schema already set)
+     * @return The chunk count and the highest last tick; a count of zero when nothing is indexed
+     * @throws SQLException if the database read fails
+     */
+    ChunkIndexSummary readChunkIndexSummary(Connection conn) throws SQLException;
+
+    /**
+     * Reads the stretches of ticks the run has recorded, ordered by their first tick.
+     * <p>
+     * Every chunk states the step it was recorded at, so nothing is inferred: a chunk continues
+     * the stretch before it when it carries the same step and starts exactly one step past it,
+     * and opens a new one otherwise. What comes back is therefore the coarsest description of
+     * where the run's ticks are: ranges a viewer can step along, with nothing recorded between
+     * them.
+     *
+     * @param conn Database connection (schema already set)
+     * @param runId Simulation run the connection points at, named in error messages
+     * @return The ranges ordered by first tick and what the read took in; the ranges are empty
+     *         when nothing is indexed
+     * @throws SQLException if the database read fails
+     * @throws IllegalStateException if two chunks overlap, or a chunk's span does not match the
+     *                               step and the number of ticks it states
+     */
+    TickRangeExtension readTickRanges(Connection conn, String runId) throws SQLException;
+
+    /**
+     * Continues ranges an earlier read left behind with the chunks that were indexed since.
+     * <p>
+     * The read starts at the chunk the known ranges end on, so that chunk is seen again and held
+     * against them: where it is gone, or no longer ends where the ranges say, nothing is appended
+     * and the answer is empty - the caller then reads the index in full. Otherwise the last of the
+     * known ranges is treated as still open, and a chunk that carries its step and begins one step
+     * past it lengthens it. Everything else follows {@link #readTickRanges(Connection, String)},
+     * whose result this reproduces as long as the chunks before {@code afterFirstTick} are
+     * unchanged - which the caller establishes by checking the growth against
+     * {@link #readChunkIndexSummary(Connection)}.
+     *
+     * @param conn Database connection (schema already set)
+     * @param runId Simulation run the connection points at, named in error messages
+     * @param known The ranges of the earlier read, ordered by first tick
+     * @param afterFirstTick First tick of the last chunk the earlier read saw
+     * @return The extended ranges and what this read took in, which counts the boundary chunk
+     *         neither as a chunk nor as ticks; empty where the index no longer continues what the
+     *         caller knows
+     * @throws SQLException if the database read fails
+     * @throws IllegalStateException on the same contradictions as {@link #readTickRanges(Connection, String)}
+     */
+    Optional<TickRangeExtension> extendTickRanges(Connection conn, String runId,
+                                                  List<SampledTickRange> known, long afterFirstTick) throws SQLException;
 }

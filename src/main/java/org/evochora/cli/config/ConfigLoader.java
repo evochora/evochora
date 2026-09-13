@@ -14,6 +14,8 @@ import java.security.ProtectionDomain;
  * Composes HOCON configuration from multiple sources with the following precedence
  * (highest to lowest):
  * <ol>
+ *   <li>Override layer supplied by the caller (see
+ *       {@link #resolve(File, Config, ConfigMessageHandler)}); empty unless a caller passes one</li>
  *   <li>Java system properties ({@code -Dkey=value})</li>
  *   <li>Environment variables (raw names, available for {@code ${?ENV_VAR}} substitutions)</li>
  *   <li>User configuration file (e.g., {@code config/evochora.conf} or {@code config/local.conf})</li>
@@ -94,6 +96,38 @@ public final class ConfigLoader {
      * @throws com.typesafe.config.ConfigException     if the configuration cannot be parsed or resolved.
      */
     public static Config resolve(final File explicitConfigFile, final ConfigMessageHandler handler) {
+        return resolve(explicitConfigFile, ConfigFactory.empty(), handler);
+    }
+
+    /**
+     * Resolves configuration through the same cascade as
+     * {@link #resolve(File, ConfigMessageHandler)}, with one additional layer on top of every
+     * other source.
+     * <p>
+     * The overrides sit above the system properties in whichever branch of the cascade is taken,
+     * so a value given there wins over the system properties, the environment, the user
+     * configuration file and {@code reference.conf} alike. The overrides are merged before
+     * substitutions are resolved, which has two consequences: a value they set is seen by every
+     * {@code ${...}} reference to it further down (an override of {@code pipeline.runId} reaches
+     * {@code pipeline.services.simulation-engine.options.resume.runId}), and the overrides may
+     * themselves carry substitutions that point into the lower layers (setting
+     * {@code pipeline.tuning = ${profiles.sampled}} selects a profile defined in
+     * {@code reference.conf}).
+     * <p>
+     * The overrides must therefore be <em>unresolved</em>, as
+     * {@link ConfigFactory#parseString(String)} returns them; a config that has already been
+     * resolved carries no substitutions to resolve here.
+     *
+     * @param explicitConfigFile config file from CLI option, or {@code null} for auto-discovery.
+     * @param overrides          the layer placed above every other source; empty for none.
+     * @param handler            callback for resolution progress messages (must not be {@code null}).
+     * @return the fully resolved application {@link Config}.
+     * @throws IllegalArgumentException                if an explicitly specified config file
+     *                                                 (via parameter or {@code -Dconfig.file}) does not exist.
+     * @throws com.typesafe.config.ConfigException     if the configuration cannot be parsed or resolved.
+     */
+    public static Config resolve(final File explicitConfigFile, final Config overrides,
+                                 final ConfigMessageHandler handler) {
         // 1) Explicit CLI option --config
         if (explicitConfigFile != null) {
             if (!explicitConfigFile.exists()) {
@@ -102,7 +136,7 @@ public final class ConfigLoader {
             }
             handler.log(MessageLevel.INFO,
                     "Using configuration file specified via --config: " + explicitConfigFile.getAbsolutePath());
-            return loadFromFile(explicitConfigFile);
+            return loadFromFile(explicitConfigFile, overrides);
         }
 
         // 2) Standard Typesafe Config system property -Dconfig.file
@@ -120,7 +154,7 @@ public final class ConfigLoader {
             handler.log(MessageLevel.INFO,
                     "Using configuration file specified via -Dconfig.file: "
                             + systemConfigFile.getAbsolutePath());
-            return loadFromFile(systemConfigFile);
+            return loadFromFile(systemConfigFile, overrides);
         }
 
         // 3) config/evochora.conf in the current working directory
@@ -129,7 +163,7 @@ public final class ConfigLoader {
             handler.log(MessageLevel.INFO,
                     "Using configuration file found in current directory: "
                             + cwdConfigFile.getAbsolutePath());
-            return loadFromFile(cwdConfigFile);
+            return loadFromFile(cwdConfigFile, overrides);
         }
 
         // 4) APP_HOME/config/evochora.conf inferred from the running JAR
@@ -138,7 +172,7 @@ public final class ConfigLoader {
             handler.log(MessageLevel.INFO,
                     "Using configuration file from installation directory: "
                             + installationConfigFile.getAbsolutePath());
-            return loadFromFile(installationConfigFile);
+            return loadFromFile(installationConfigFile, overrides);
         }
 
         // 5) Fall back to classpath defaults only
@@ -146,7 +180,7 @@ public final class ConfigLoader {
                 "No '" + CONFIG_DIR + "/" + CONFIG_FILE_NAME
                         + "' found in current directory or installation directory. "
                         + "Using default configuration from classpath.");
-        return loadDefaults();
+        return loadDefaults(overrides);
     }
 
     /**
@@ -156,7 +190,20 @@ public final class ConfigLoader {
      * @return the fully resolved application {@link Config}.
      */
     static Config loadFromFile(final File configFile) {
-        return ConfigFactory.systemProperties()
+        return loadFromFile(configFile, ConfigFactory.empty());
+    }
+
+    /**
+     * Loads configuration from a file, merged with classpath defaults, with an override layer
+     * above the system properties.
+     *
+     * @param configFile the configuration file to load.
+     * @param overrides  the layer placed above every other source; empty for none.
+     * @return the fully resolved application {@link Config}.
+     */
+    static Config loadFromFile(final File configFile, final Config overrides) {
+        return overrides
+            .withFallback(ConfigFactory.systemProperties())
             .withFallback(ConfigFactory.systemEnvironment())
             .withFallback(ConfigFactory.parseFile(configFile))
             .withFallback(ConfigFactory.defaultReferenceUnresolved())
@@ -169,7 +216,19 @@ public final class ConfigLoader {
      * @return the fully resolved application {@link Config}.
      */
     static Config loadDefaults() {
-        return ConfigFactory.systemProperties()
+        return loadDefaults(ConfigFactory.empty());
+    }
+
+    /**
+     * Loads configuration from classpath defaults only (no user config file), with an override
+     * layer above the system properties.
+     *
+     * @param overrides the layer placed above every other source; empty for none.
+     * @return the fully resolved application {@link Config}.
+     */
+    static Config loadDefaults(final Config overrides) {
+        return overrides
+            .withFallback(ConfigFactory.systemProperties())
             .withFallback(ConfigFactory.systemEnvironment())
             .withFallback(ConfigFactory.defaultReferenceUnresolved())
             .resolve();

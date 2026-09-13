@@ -214,7 +214,7 @@ public abstract class AbstractDatabaseResource extends AbstractResource
     /**
      * Writes a single raw environment chunk to the database via the storage strategy.
      * <p>
-     * <strong>Capability:</strong> {@link org.evochora.datapipeline.api.resources.database.IEnvironmentDataWriter#writeRawChunk(long, long, int, byte[])}
+     * <strong>Capability:</strong> {@link org.evochora.datapipeline.api.resources.database.IEnvironmentDataWriter#writeRawChunk(long, long, int, int, byte[])}
      * <p>
      * <strong>Transaction Handling:</strong> This method does NOT commit. The caller
      * accumulates multiple chunks and calls {@link #doCommitRawEnvironmentChunks(Object)}
@@ -224,11 +224,13 @@ public abstract class AbstractDatabaseResource extends AbstractResource
      * @param firstTick First tick number in the chunk
      * @param lastTick Last tick number in the chunk
      * @param tickCount Number of sampled ticks in the chunk
+     * @param samplingInterval Simulation ticks between two recorded ticks of the chunk
      * @param rawProtobufData Uncompressed protobuf bytes of one TickDataChunk message
      * @throws SQLException if write fails
      */
     protected abstract void doWriteRawEnvironmentChunk(Object connection,
-            long firstTick, long lastTick, int tickCount, byte[] rawProtobufData) throws SQLException;
+            long firstTick, long lastTick, int tickCount, int samplingInterval,
+            byte[] rawProtobufData) throws SQLException;
 
     /**
      * Commits all raw environment chunks accumulated via {@link #doWriteRawEnvironmentChunk}.
