@@ -57,8 +57,8 @@ class MonitoredBatchStorageReaderTest {
 
         doAnswer(invocation -> {
             CheckedConsumer<RawChunk> consumer = invocation.getArgument(1);
-            consumer.accept(new RawChunk(0, 99, 100, new byte[1024]));
-            consumer.accept(new RawChunk(100, 199, 100, new byte[2048]));
+            consumer.accept(new RawChunk(0, 99, 100, 1, new byte[1024]));
+            consumer.accept(new RawChunk(100, 199, 100, 1, new byte[2048]));
             return null;
         }).when(mockDelegate).forEachRawChunk(any(), any());
 
@@ -74,8 +74,8 @@ class MonitoredBatchStorageReaderTest {
 
         doAnswer(invocation -> {
             CheckedConsumer<RawChunk> consumer = invocation.getArgument(1);
-            consumer.accept(new RawChunk(0, 99, 100, new byte[1024]));
-            consumer.accept(new RawChunk(100, 199, 100, new byte[2048]));
+            consumer.accept(new RawChunk(0, 99, 100, 1, new byte[1024]));
+            consumer.accept(new RawChunk(100, 199, 100, 1, new byte[2048]));
             return null;
         }).when(mockDelegate).forEachRawChunk(any(), any());
 
@@ -166,7 +166,7 @@ class MonitoredBatchStorageReaderTest {
     void multipleCalls_accumulateMetrics() throws Exception {
         doAnswer(invocation -> {
             CheckedConsumer<RawChunk> consumer = invocation.getArgument(1);
-            consumer.accept(new RawChunk(0, 99, 100, new byte[500]));
+            consumer.accept(new RawChunk(0, 99, 100, 1, new byte[500]));
             return null;
         }).when(mockDelegate).forEachRawChunk(any(), any());
 

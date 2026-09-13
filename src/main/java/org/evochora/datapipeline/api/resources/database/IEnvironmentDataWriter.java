@@ -33,14 +33,15 @@ public interface IEnvironmentDataWriter extends AutoCloseable {
     /**
      * Creates the environment_chunks table idempotently.
      * <p>
-     * The table indexes the chunks of the run: where each one begins and ends, and how many ticks
-     * it holds, which together give the step it was recorded at. Where the chunk data itself is
-     * kept is the storage strategy's business.
+     * The table indexes the chunks of the run: where each one begins and ends, how many ticks it
+     * holds, and the step it was recorded at. Where the chunk data itself is kept is the storage
+     * strategy's business.
      * <pre>
      * CREATE TABLE environment_chunks (
      *   first_tick BIGINT PRIMARY KEY,
      *   last_tick BIGINT NOT NULL,
-     *   tick_count INT NOT NULL
+     *   tick_count INT NOT NULL,
+     *   step INT NOT NULL
      * )
      * </pre>
      * <p>
@@ -72,10 +73,14 @@ public interface IEnvironmentDataWriter extends AutoCloseable {
      * @param firstTick First tick number in the chunk
      * @param lastTick Last tick number in the chunk
      * @param tickCount Number of sampled ticks in the chunk
+     * @param samplingInterval Simulation ticks between two recorded ticks of the chunk, as the
+     *                         chunk states it
      * @param rawProtobufData Uncompressed protobuf bytes of one TickDataChunk message
      * @throws SQLException if write fails
+     * @throws IllegalStateException if the chunk states no sampling interval, which a build that
+     *                               did not yet record it wrote and only that build can read
      */
-    void writeRawChunk(long firstTick, long lastTick, int tickCount,
+    void writeRawChunk(long firstTick, long lastTick, int tickCount, int samplingInterval,
                        byte[] rawProtobufData) throws SQLException;
 
     /**

@@ -62,13 +62,14 @@ import com.typesafe.config.Config;
  * CREATE TABLE environment_chunks (
  *   first_tick BIGINT PRIMARY KEY,
  *   last_tick BIGINT NOT NULL,
- *   tick_count INT NOT NULL
+ *   tick_count INT NOT NULL,
+ *   step INT NOT NULL
  * )
  * </pre>
  * <p>
- * {@code tick_count} is how many ticks the chunk holds. Together with its bounds it gives the step
- * the chunk was sampled at, which is what {@link #readTickRanges(Connection, String)} builds the
- * run's tick ranges from.
+ * {@code tick_count} is how many ticks the chunk holds and {@code step} how many simulation ticks
+ * lie between two of them, both as the chunk states them. They are what
+ * {@link #readTickRanges(Connection, String)} builds the run's tick ranges from.
  * <p>
  * <strong>Write safety:</strong> Files are written via temp file + atomic rename to
  * prevent corrupt partial files on crash. Files are written before the H2 MERGE so
@@ -87,6 +88,7 @@ public class RowPerChunkStrategy extends AbstractH2EnvStorageStrategy {
     private static final int CHUNK_FIRST_TICK = TickDataChunk.FIRST_TICK_FIELD_NUMBER;
     private static final int CHUNK_LAST_TICK = TickDataChunk.LAST_TICK_FIELD_NUMBER;
     private static final int CHUNK_TICK_COUNT = TickDataChunk.TICK_COUNT_FIELD_NUMBER;
+    private static final int CHUNK_SAMPLING_INTERVAL = TickDataChunk.SAMPLING_INTERVAL_FIELD_NUMBER;
     private static final int CHUNK_SNAPSHOT = TickDataChunk.SNAPSHOT_FIELD_NUMBER;
     private static final int CHUNK_DELTA_TICKS = TickDataChunk.DELTA_TICKS_FIELD_NUMBER;
     private static final int CHUNK_DELTA_TYPES = TickDataChunk.DELTA_TYPES_FIELD_NUMBER;
@@ -178,7 +180,8 @@ public class RowPerChunkStrategy extends AbstractH2EnvStorageStrategy {
                 "CREATE TABLE IF NOT EXISTS environment_chunks (" +
                 "  first_tick BIGINT PRIMARY KEY," +
                 "  last_tick BIGINT NOT NULL," +
-                "  tick_count INT NOT NULL" +
+                "  tick_count INT NOT NULL," +
+                "  step INT NOT NULL" +
                 ")",
                 "environment_chunks"
             );
@@ -190,8 +193,8 @@ public class RowPerChunkStrategy extends AbstractH2EnvStorageStrategy {
             );
         }
 
-        this.mergeSql = "MERGE INTO environment_chunks (first_tick, last_tick, tick_count) " +
-                       "KEY (first_tick) VALUES (?, ?, ?)";
+        this.mergeSql = "MERGE INTO environment_chunks (first_tick, last_tick, tick_count, step) " +
+                       "KEY (first_tick) VALUES (?, ?, ?, ?)";
 
         log.debug("Environment chunk tables created for {} dimensions", dimensions);
     }
@@ -335,11 +338,11 @@ public class RowPerChunkStrategy extends AbstractH2EnvStorageStrategy {
     /**
      * Extends the given ranges by the chunks that begin past {@code afterFirstTick}.
      * <p>
-     * The chunks are read first - three numbers each - because a chunk holding a single tick takes
-     * its step from its neighbours, and are then walked in order: a chunk continues the open range
-     * when it carries the same step and begins exactly one step past it, and opens a new range
-     * otherwise. The last of the known ranges is the open one the first new chunk meets, so a run
-     * that is still being indexed grows its last range instead of being read again from the start.
+     * The chunks are walked in order of their first tick, each with the step it states: a chunk
+     * continues the open range when it carries the same step and begins exactly one step past it,
+     * and opens a new range otherwise. The last of the known ranges is the open one the first new
+     * chunk meets, so a run that is still being indexed grows its last range instead of being read
+     * again from the start.
      *
      * @param conn Database connection (schema already set)
      * @param runId Simulation run the chunks belong to, named in error messages
@@ -348,6 +351,8 @@ public class RowPerChunkStrategy extends AbstractH2EnvStorageStrategy {
      *                       reads all of them
      * @return The extended ranges and what the read took in
      * @throws SQLException if the database read fails
+     * @throws IllegalStateException if two chunks overlap, or a chunk's span does not match the
+     *                               step and the number of ticks it states
      */
     private TickRangeExtension buildRanges(Connection conn, String runId,
                                            List<SampledTickRange> known, long afterFirstTick)
@@ -359,23 +364,20 @@ public class RowPerChunkStrategy extends AbstractH2EnvStorageStrategy {
         long rangeLast = 0L;
         long rangeStep = 0L;
         long previousFirst = afterFirstTick;
-        long previousStep = 0L;
         boolean inRange = !ranges.isEmpty();
 
         if (inRange) {
             // The last known range is still open: a chunk continuing it lengthens it rather than
-            // starting a range of its own, and its step is what a single-tick chunk falls back on
+            // starting a range of its own
             SampledTickRange open = ranges.remove(ranges.size() - 1);
             rangeFirst = open.first();
             rangeLast = open.last();
             rangeStep = open.step();
-            previousStep = open.step();
         }
 
         long addedSamples = 0L;
-        for (int i = 0; i < chunks.size(); i++) {
-            IndexedChunk chunk = chunks.get(i);
-            long chunkStep = deriveStep(runId, chunks, i, previousStep);
+        for (IndexedChunk chunk : chunks) {
+            long chunkStep = checkedStep(runId, chunk);
             addedSamples += chunk.tickCount();
 
             if (inRange && chunk.firstTick() <= rangeLast) {
@@ -396,7 +398,6 @@ public class RowPerChunkStrategy extends AbstractH2EnvStorageStrategy {
                 inRange = true;
             }
             previousFirst = chunk.firstTick();
-            previousStep = chunkStep;
         }
 
         if (inRange) {
@@ -418,7 +419,7 @@ public class RowPerChunkStrategy extends AbstractH2EnvStorageStrategy {
      * @throws SQLException if the database read fails
      */
     private List<IndexedChunk> readChunkIndex(Connection conn, long afterFirstTick) throws SQLException {
-        String sql = "SELECT first_tick, last_tick, tick_count FROM environment_chunks"
+        String sql = "SELECT first_tick, last_tick, tick_count, step FROM environment_chunks"
                 + " WHERE first_tick > ? ORDER BY first_tick";
 
         List<IndexedChunk> chunks = new ArrayList<>();
@@ -426,8 +427,8 @@ public class RowPerChunkStrategy extends AbstractH2EnvStorageStrategy {
             stmt.setLong(1, afterFirstTick);
             try (ResultSet rs = stmt.executeQuery()) {
                 while (rs.next()) {
-                    chunks.add(new IndexedChunk(
-                            rs.getLong("first_tick"), rs.getLong("last_tick"), rs.getInt("tick_count")));
+                    chunks.add(new IndexedChunk(rs.getLong("first_tick"), rs.getLong("last_tick"),
+                            rs.getInt("tick_count"), rs.getInt("step")));
                 }
             }
         }
@@ -435,61 +436,44 @@ public class RowPerChunkStrategy extends AbstractH2EnvStorageStrategy {
     }
 
     /**
-     * Works out the step one chunk was recorded at.
+     * Returns the step a chunk states, having checked that it describes the chunk.
      * <p>
-     * A chunk holding several ticks says it itself: its span divided by the gaps between its
-     * ticks. A chunk holding a single tick says nothing on its own and is read from its
-     * neighbours - the distance to the chunk after it, or, where it is the last one, the step of
-     * the chunk before it.
+     * A chunk's first tick, its step and the number of ticks it holds determine its last tick.
+     * Where they do not agree, one of the three is wrong, and every range built from the chunk
+     * would be wrong with it.
      *
-     * @param runId Simulation run the chunks belong to, named in error messages
-     * @param chunks All chunks of the run, ordered by first tick
-     * @param index Position of the chunk whose step is wanted
-     * @param previousStep Step of the chunk before it, or 0 when it is the first
+     * @param runId Simulation run the chunk belongs to, named in error messages
+     * @param chunk The chunk as the index holds it
      * @return The step, at least 1
-     * @throws IllegalStateException if the chunk's span does not fit the number of ticks it
-     *                               holds, or if a lone chunk holding a single tick leaves no
-     *                               neighbour to take a step from
+     * @throws IllegalStateException if the step is less than 1, or the span does not match the
+     *                               step and the number of ticks
      */
-    private long deriveStep(String runId, List<IndexedChunk> chunks, int index, long previousStep) {
-        IndexedChunk chunk = chunks.get(index);
-
-        if (chunk.tickCount() >= 2) {
-            long span = chunk.lastTick() - chunk.firstTick();
-            int gaps = chunk.tickCount() - 1;
-            if (span % gaps != 0) {
-                throw new IllegalStateException(String.format(
-                        "Run %s: chunk %d..%d spans %d tick(s) across %d gap(s), which is no whole step",
-                        runId, chunk.firstTick(), chunk.lastTick(), span, gaps));
-            }
-            long step = span / gaps;
-            if (step < 1) {
-                throw new IllegalStateException(String.format(
-                        "Run %s: chunk %d..%d holds %d ticks in one tick's span, so it has no step",
-                        runId, chunk.firstTick(), chunk.lastTick(), chunk.tickCount()));
-            }
-            return step;
+    private long checkedStep(String runId, IndexedChunk chunk) {
+        if (chunk.step() < 1) {
+            throw new IllegalStateException(String.format(
+                    "Run %s: chunk %d..%d states a step of %d, which is no step at all",
+                    runId, chunk.firstTick(), chunk.lastTick(), chunk.step()));
         }
-
-        if (index + 1 < chunks.size()) {
-            return chunks.get(index + 1).firstTick() - chunk.firstTick();
+        long expectedSpan = (long) (chunk.tickCount() - 1) * chunk.step();
+        if (chunk.lastTick() - chunk.firstTick() != expectedSpan) {
+            throw new IllegalStateException(String.format(
+                    "Run %s: chunk %d..%d holds %d tick(s) at a step of %d, which would end at %d",
+                    runId, chunk.firstTick(), chunk.lastTick(), chunk.tickCount(), chunk.step(),
+                    chunk.firstTick() + expectedSpan));
         }
-        if (previousStep > 0) {
-            return previousStep;
-        }
-        throw new IllegalStateException(String.format(
-                "Run %s: chunk %d..%d holds a single tick and has no neighbour to take a step from",
-                runId, chunk.firstTick(), chunk.lastTick()));
+        return chunk.step();
     }
 
     /**
-     * One row of the chunk index: where a chunk begins and ends, and how many ticks it holds.
+     * One row of the chunk index: where a chunk begins and ends, how many ticks it holds, and the
+     * step it was recorded at.
      *
      * @param firstTick First recorded tick of the chunk
      * @param lastTick Last recorded tick of the chunk
      * @param tickCount Number of ticks the chunk holds
+     * @param step Simulation ticks between two of its recorded ticks
      */
-    private record IndexedChunk(long firstTick, long lastTick, int tickCount) {}
+    private record IndexedChunk(long firstTick, long lastTick, int tickCount, int step) {}
 
     /**
      * Works out where the chunk file lies, using the persisted {@code .chunk_meta} to determine
@@ -755,10 +739,15 @@ public class RowPerChunkStrategy extends AbstractH2EnvStorageStrategy {
      */
     @Override
     public void writeRawChunk(Connection conn, long firstTick, long lastTick,
-                              int tickCount, byte[] rawProtobufData) throws SQLException {
+                              int tickCount, int samplingInterval, byte[] rawProtobufData) throws SQLException {
         if (mergeSql == null) {
             throw new IllegalStateException(
                 "createTables() must be called before writeRawChunk()");
+        }
+        if (samplingInterval < 1) {
+            throw new IllegalStateException("chunk " + firstTick + ".." + lastTick
+                + " carries no sampling interval; it was written by an older build,"
+                + " which is the build to read it with");
         }
         // Get or create PreparedStatement for this connection
         PreparedStatement stmt;
@@ -807,6 +796,7 @@ public class RowPerChunkStrategy extends AbstractH2EnvStorageStrategy {
         stmt.setLong(1, firstTick);
         stmt.setLong(2, lastTick);
         stmt.setInt(3, tickCount);
+        stmt.setInt(4, samplingInterval);
         stmt.addBatch();
     }
 
@@ -929,6 +919,7 @@ public class RowPerChunkStrategy extends AbstractH2EnvStorageStrategy {
                 case CHUNK_FIRST_TICK -> builder.setFirstTick(cis.readInt64());
                 case CHUNK_LAST_TICK -> builder.setLastTick(cis.readInt64());
                 case CHUNK_TICK_COUNT -> builder.setTickCount(cis.readInt32());
+                case CHUNK_SAMPLING_INTERVAL -> builder.setSamplingInterval(cis.readInt32());
                 case CHUNK_SNAPSHOT -> {
                     int length = cis.readRawVarint32();
                     int oldLimit = cis.pushLimit(length);

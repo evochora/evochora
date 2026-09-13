@@ -89,7 +89,7 @@ class H2DatabaseReaderTest {
     @Test
     void getTickRanges_reportsTheStretchesTheRunRecorded() throws Exception {
         // Two chunks continue each other at a step of 10, a third starts again after a gap
-        writeChunkIndex(chunkOf(10L, 30L, 3), chunkOf(40L, 60L, 3), chunkOf(200L, 220L, 3));
+        writeChunkIndex(chunkOf(10L, 30L, 3, 10), chunkOf(40L, 60L, 3, 10), chunkOf(200L, 220L, 3, 10));
 
         try (IDatabaseReader reader = provider.createReader(runId)) {
             assertThat(reader.getTickRanges().ranges()).containsExactly(
@@ -114,7 +114,7 @@ class H2DatabaseReaderTest {
 
     @Test
     void getChunkIndexSummary_countsTheChunksAndHowFarTheyReach() throws Exception {
-        writeChunkIndex(chunkOf(10L, 30L, 3), chunkOf(40L, 60L, 3));
+        writeChunkIndex(chunkOf(10L, 30L, 3, 10), chunkOf(40L, 60L, 3, 10));
 
         try (IDatabaseReader reader = provider.createReader(runId)) {
             assertThat(reader.getChunkIndexSummary()).isEqualTo(new ChunkIndexSummary(2L, 60L, 6L));
@@ -122,12 +122,12 @@ class H2DatabaseReaderTest {
     }
 
     /**
-     * The bounds and sample count of one chunk, as the index records them.
+     * The bounds, tick count and step of one chunk, as the index records them.
      */
-    private record IndexedChunk(long firstTick, long lastTick, int tickCount) {}
+    private record IndexedChunk(long firstTick, long lastTick, int tickCount, int step) {}
 
-    private static IndexedChunk chunkOf(long firstTick, long lastTick, int tickCount) {
-        return new IndexedChunk(firstTick, lastTick, tickCount);
+    private static IndexedChunk chunkOf(long firstTick, long lastTick, int tickCount, int step) {
+        return new IndexedChunk(firstTick, lastTick, tickCount, step);
     }
 
     private String schemaName() {
@@ -153,12 +153,14 @@ class H2DatabaseReaderTest {
                     .setFirstTick(c.firstTick())
                     .setLastTick(c.lastTick())
                     .setTickCount(c.tickCount())
+                    .setSamplingInterval(c.step())
                     .setSnapshot(TickData.newBuilder()
                         .setTickNumber(c.firstTick())
                         .setSimulationRunId(runId)
                         .build())
                     .build();
-                strategy.writeRawChunk(conn, c.firstTick(), c.lastTick(), c.tickCount(), chunk.toByteArray());
+                strategy.writeRawChunk(conn, c.firstTick(), c.lastTick(), c.tickCount(), c.step(),
+                        chunk.toByteArray());
             }
             strategy.commitRawChunks(conn);
             conn.commit();

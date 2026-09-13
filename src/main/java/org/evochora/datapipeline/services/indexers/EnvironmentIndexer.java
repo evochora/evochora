@@ -122,7 +122,7 @@ public class EnvironmentIndexer<ACK> extends AbstractBatchIndexer<ACK> implement
     protected void readAndProcessChunks(StoragePath path, String batchId) throws Exception {
         storage.forEachRawChunk(path, rawChunk -> {
             database.writeRawChunk(rawChunk.firstTick(), rawChunk.lastTick(),
-                                   rawChunk.tickCount(), rawChunk.data());
+                                   rawChunk.tickCount(), rawChunk.samplingInterval(), rawChunk.data());
             onChunkStreamed(batchId, rawChunk.tickCount());
         });
     }

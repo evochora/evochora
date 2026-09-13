@@ -15,6 +15,8 @@ package org.evochora.datapipeline.api.resources.storage;
  * @param lastTick  last tick number in this chunk
  * @param tickCount number of ticks in this chunk (cannot be derived from firstTick/lastTick
  *                  because the sampling interval may be greater than 1)
+ * @param samplingInterval simulation ticks between two recorded ticks of this chunk, as the chunk
+ *                  states it; 0 when the chunk was written by a build that did not record it
  * @param data      uncompressed protobuf bytes of the TickDataChunk message
  */
-public record RawChunk(long firstTick, long lastTick, int tickCount, byte[] data) {}
+public record RawChunk(long firstTick, long lastTick, int tickCount, int samplingInterval, byte[] data) {}

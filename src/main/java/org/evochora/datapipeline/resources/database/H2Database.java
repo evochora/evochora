@@ -498,9 +498,10 @@ public class H2Database extends AbstractDatabaseResource
     @Override
     protected void doWriteRawEnvironmentChunk(Object connection,
                                               long firstTick, long lastTick,
-                                              int tickCount, byte[] rawProtobufData) throws SQLException {
+                                              int tickCount, int samplingInterval,
+                                              byte[] rawProtobufData) throws SQLException {
         Connection conn = (Connection) connection;
-        getEnvStrategy().writeRawChunk(conn, firstTick, lastTick, tickCount, rawProtobufData);
+        getEnvStrategy().writeRawChunk(conn, firstTick, lastTick, tickCount, samplingInterval, rawProtobufData);
     }
 
     /**

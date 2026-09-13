@@ -339,8 +339,9 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
     }
 
     /**
-     * Extracts firstTick, lastTick, and tickCount from raw protobuf bytes via partial parse.
-     * Scans only the top-level fields, skipping snapshot and delta data entirely.
+     * Extracts firstTick, lastTick, tickCount and the sampling interval from raw protobuf bytes
+     * via partial parse. Scans only the top-level fields; snapshot and delta payloads are skipped
+     * over as whole blocks rather than read.
      *
      * @param rawBytes raw protobuf bytes of a single TickDataChunk message
      * @return RawChunk with metadata and the original raw bytes
@@ -351,9 +352,10 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
         long firstTick = 0;
         long lastTick = 0;
         int tickCount = 0;
+        int samplingInterval = 0;
         int fieldsFound = 0;
 
-        while (fieldsFound < 3) {
+        while (fieldsFound < 4) {
             int tag = cis.readTag();
             if (tag == 0) break;
 
@@ -370,13 +372,17 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
                     tickCount = cis.readInt32();
                     fieldsFound++;
                     break;
+                case TickDataChunk.SAMPLING_INTERVAL_FIELD_NUMBER:
+                    samplingInterval = cis.readInt32();
+                    fieldsFound++;
+                    break;
                 default:
                     cis.skipField(tag);
                     break;
             }
         }
 
-        return new RawChunk(firstTick, lastTick, tickCount, rawBytes);
+        return new RawChunk(firstTick, lastTick, tickCount, samplingInterval, rawBytes);
     }
 
     /**
@@ -491,6 +497,9 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
                     break;
                 case TickDataChunk.TICK_COUNT_FIELD_NUMBER:
                     builder.setTickCount(input.readInt32());
+                    break;
+                case TickDataChunk.SAMPLING_INTERVAL_FIELD_NUMBER:
+                    builder.setSamplingInterval(input.readInt32());
                     break;
                 case TickDataChunk.SNAPSHOT_FIELD_NUMBER: {
                     int length = input.readRawVarint32();

@@ -82,11 +82,15 @@ public interface IH2EnvStorageStrategy {
      * @param firstTick First tick number in the chunk
      * @param lastTick Last tick number in the chunk
      * @param tickCount Number of sampled ticks in the chunk
+     * @param samplingInterval Simulation ticks between two recorded ticks of the chunk, as the
+     *                         chunk states it
      * @param rawProtobufData Uncompressed protobuf bytes of one TickDataChunk message
      * @throws SQLException if file I/O or statement preparation fails
+     * @throws IllegalStateException if the chunk states no sampling interval, which a build that
+     *                               did not yet record it wrote and only that build can read
      */
     void writeRawChunk(Connection conn, long firstTick, long lastTick,
-                       int tickCount, byte[] rawProtobufData) throws SQLException;
+                       int tickCount, int samplingInterval, byte[] rawProtobufData) throws SQLException;
 
     /**
      * Executes the accumulated JDBC batch from preceding {@link #writeRawChunk} calls.
@@ -150,22 +154,19 @@ public interface IH2EnvStorageStrategy {
     /**
      * Reads the stretches of ticks the run has recorded, ordered by their first tick.
      * <p>
-     * A chunk holding several ticks states its step itself,
-     * {@code (last_tick - first_tick) / (tick_count - 1)}; a chunk holding a single tick takes it
-     * from its neighbours - the distance to the chunk after it, or the step of the chunk before it
-     * where it is the last one. A chunk continues the stretch before it when it carries the same
-     * step and starts exactly one step past it; otherwise it opens a new one. What comes back is
-     * therefore the coarsest description of where the run's ticks are: ranges a viewer can step
-     * along, with nothing recorded between them.
+     * Every chunk states the step it was recorded at, so nothing is inferred: a chunk continues
+     * the stretch before it when it carries the same step and starts exactly one step past it,
+     * and opens a new one otherwise. What comes back is therefore the coarsest description of
+     * where the run's ticks are: ranges a viewer can step along, with nothing recorded between
+     * them.
      *
      * @param conn Database connection (schema already set)
      * @param runId Simulation run the connection points at, named in error messages
      * @return The ranges ordered by first tick and what the read took in; the ranges are empty
      *         when nothing is indexed
      * @throws SQLException if the database read fails
-     * @throws IllegalStateException if two chunks overlap, if a chunk's span does not fit the
-     *                               number of ticks it holds, or if the run's only chunk holds a
-     *                               single tick and so leaves no step anywhere
+     * @throws IllegalStateException if two chunks overlap, or a chunk's span does not match the
+     *                               step and the number of ticks it states
      */
     TickRangeExtension readTickRanges(Connection conn, String runId) throws SQLException;
 
@@ -174,10 +175,10 @@ public interface IH2EnvStorageStrategy {
      * <p>
      * Only chunks beginning past {@code afterFirstTick} are read, and the last of the known ranges
      * is treated as still open: a chunk that carries its step and begins one step past it
-     * lengthens it, and a chunk holding a single tick may take that step as its own. Everything
-     * else follows {@link #readTickRanges(Connection, String)}, whose result this reproduces as
-     * long as the chunks before {@code afterFirstTick} are unchanged - which is for the caller to
-     * establish, by checking the growth against {@link #readChunkIndexSummary(Connection)}.
+     * lengthens it. Everything else follows {@link #readTickRanges(Connection, String)}, whose
+     * result this reproduces as long as the chunks before {@code afterFirstTick} are unchanged -
+     * which is for the caller to establish, by checking the growth against
+     * {@link #readChunkIndexSummary(Connection)}.
      *
      * @param conn Database connection (schema already set)
      * @param runId Simulation run the connection points at, named in error messages

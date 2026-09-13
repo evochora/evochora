@@ -580,6 +580,7 @@ class AbstractBatchIndexerTest {
                 .setFirstTick(chunkStartTick)
                 .setLastTick(chunkStartTick)
                 .setTickCount(1)  // Each chunk contains 1 tick (snapshot only)
+                .setSamplingInterval(1)
                 .setSnapshot(snapshot)
                 .build());
         }

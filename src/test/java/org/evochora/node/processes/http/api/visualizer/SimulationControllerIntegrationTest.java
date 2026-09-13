@@ -371,6 +371,7 @@ class SimulationControllerIntegrationTest {
                 .setFirstTick(tick.getTickNumber())
                 .setLastTick(tick.getTickNumber())
                 .setTickCount(1)  // Each chunk contains exactly 1 tick
+                .setSamplingInterval(1)
                 .setSnapshot(tick)
                 .build();
             chunks.add(chunk);

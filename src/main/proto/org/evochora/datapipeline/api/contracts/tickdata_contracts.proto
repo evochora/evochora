@@ -681,4 +681,15 @@ message TickDataChunk {
   // Deltas for subsequent ticks (tick_count - 1 entries)
   // Ordered by tick_number ascending.
   repeated TickDelta deltas = 10;
+
+  // Simulation ticks between two recorded ticks of this chunk.
+  //
+  // Every chunk carries it, because a run may hold stretches recorded at different intervals -
+  // a resumed run may record more densely than the run it continues - and because the interval
+  // cannot be recovered from a chunk that holds a single tick. A reader takes the interval from
+  // here rather than dividing the chunk's span by its ticks.
+  //
+  // The number is 11 and not 6: 6 is reserved for the deltas that used to sit there, and 9 is
+  // kept free for the delta directory to grow into.
+  int32 sampling_interval = 11;
 }

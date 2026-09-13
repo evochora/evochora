@@ -70,8 +70,8 @@ public interface IDatabaseReader extends IEnvironmentDataReader,
      *         when the run has recorded nothing
      * @throws SQLException if database query fails
      * @throws IllegalStateException if the stored chunks contradict each other - they overlap, or
-     *                               one spans a stretch that does not fit the number of ticks it
-     *                               holds - or if nothing in the run says what step it recorded at
+     *                               one states a step and a number of ticks that do not add up to
+     *                               the stretch it spans
      */
     TickRangeExtension getTickRanges() throws SQLException;
 

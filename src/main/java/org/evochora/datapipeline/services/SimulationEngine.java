@@ -406,11 +406,11 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         if (resumeSnapshot != null) {
             log.debug("Creating encoder with checkpoint snapshot at tick {}", resumeSnapshot.getTickNumber());
             return DeltaCodec.Encoder.forResume(
-                resumeSnapshot, this.runId,
+                resumeSnapshot, this.runId, this.samplingInterval,
                 this.accumulatedDeltaInterval, this.snapshotInterval, this.chunkInterval);
         }
         return new DeltaCodec.Encoder(
-            this.runId,
+            this.runId, this.samplingInterval,
             this.accumulatedDeltaInterval, this.snapshotInterval, this.chunkInterval);
     }
 

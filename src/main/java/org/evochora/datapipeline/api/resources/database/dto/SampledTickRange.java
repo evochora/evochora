@@ -4,10 +4,12 @@ package org.evochora.datapipeline.api.resources.database.dto;
  * One contiguous stretch of recorded ticks, sampled at a single step.
  * <p>
  * A run does not record every tick: it records {@code first}, {@code first + step},
- * {@code first + 2 × step} and so on up to {@code last}. Nothing between those ticks exists in
- * the run, and nothing outside the stretch is promised by it - a run forked from another starts
- * at the fork's first tick rather than at 0, and a run may hold several stretches of different
- * step. A viewer navigates from range to range and must not assume any other tick is there.
+ * {@code first + 2 × step} and so on up to {@code last}. The step is the sampling interval the
+ * chunks of the stretch were recorded at, which each of them states. Nothing between those ticks
+ * exists in the run, and nothing outside the stretch is promised by it - a run forked from another
+ * starts at the fork's first tick rather than at 0, and a run may hold several stretches of
+ * different step. A viewer navigates from range to range and must not assume any other tick is
+ * there.
  *
  * @param first The first recorded tick of the stretch (inclusive)
  * @param last The last recorded tick of the stretch (inclusive)

@@ -695,6 +695,7 @@ class EnvironmentControllerIntegrationTest {
                 .setFirstTick(tick.getTickNumber())
                 .setLastTick(tick.getTickNumber())
                 .setTickCount(1)  // Each chunk contains exactly 1 tick
+                .setSamplingInterval(1)
                 .setSnapshot(tick)
                 .build();
             chunks.add(chunk);
@@ -752,6 +753,7 @@ class EnvironmentControllerIntegrationTest {
             .setFirstTick(10L)
             .setLastTick(30L)
             .setTickCount(3)
+            .setSamplingInterval(10)
             .setSnapshot(TickData.newBuilder()
                 .setTickNumber(10L)
                 .setSimulationRunId(runId)

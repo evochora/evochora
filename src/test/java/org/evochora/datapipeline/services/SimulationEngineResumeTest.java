@@ -393,7 +393,7 @@ class SimulationEngineResumeTest {
             if (chunk != null) {
                 consumer.accept(new RawChunk(
                     chunk.getFirstTick(), chunk.getLastTick(),
-                    chunk.getTickCount(), chunk.toByteArray()));
+                    chunk.getTickCount(), chunk.getSamplingInterval(), chunk.toByteArray()));
             }
         }
 
