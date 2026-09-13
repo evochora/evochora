@@ -14,8 +14,8 @@ import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 
 /**
- * A run read by another build gets a warning through the caller's logger, a run written by this
- * build gets none.
+ * A run read by another build, or one whose revision is unknown on either side, gets a warning
+ * through the caller's logger; a run written by this build, with both revisions known, gets none.
  */
 @Tag("unit")
 class BuildRevisionCheckTest {

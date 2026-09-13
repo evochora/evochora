@@ -148,6 +148,7 @@ class RowPerChunkStrategyTest {
             .contains("first_tick BIGINT PRIMARY KEY")
             .contains("last_tick BIGINT NOT NULL")
             .contains("tick_count INT NOT NULL")
+            .contains("step INT NOT NULL")
             .doesNotContain("chunk_blob")
             .doesNotContain("BYTEA");
 
@@ -167,6 +168,7 @@ class RowPerChunkStrategyTest {
             .contains("first_tick")
             .contains("last_tick")
             .contains("tick_count")
+            .contains("step")
             .doesNotContain("chunk_blob");
     }
 
@@ -491,6 +493,7 @@ class RowPerChunkStrategyTest {
         verify(mockPreparedStatement).setLong(eq(1), eq(1000L));
         verify(mockPreparedStatement).setLong(eq(2), eq(1000L));
         verify(mockPreparedStatement).setInt(eq(3), eq(1));
+        verify(mockPreparedStatement).setInt(eq(4), eq(1));
         verify(mockPreparedStatement).addBatch();
     }
 
