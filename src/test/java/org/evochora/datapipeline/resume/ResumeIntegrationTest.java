@@ -19,8 +19,6 @@ import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.contracts.TickDelta;
 import org.evochora.datapipeline.resources.storage.FileSystemStorageResource;
-import org.evochora.junit.extensions.logging.AllowLog;
-import org.evochora.junit.extensions.logging.LogLevel;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
 import org.evochora.runtime.internal.services.SeededRandomProvider;
 import org.evochora.runtime.isa.Instruction;
@@ -51,10 +49,6 @@ import org.evochora.test.utils.ProtoTestUtils;
  */
 @Tag("integration")
 @ExtendWith(LogWatchExtension.class)
-@AllowLog(level = LogLevel.INFO, loggerPattern = ".*SnapshotLoader.*")
-@AllowLog(level = LogLevel.INFO, loggerPattern = ".*SimulationRestorer.*")
-@AllowLog(level = LogLevel.INFO, loggerPattern = ".*FileSystemStorageResource.*")
-@AllowLog(level = LogLevel.INFO, loggerPattern = ".*AbstractBatchStorageResource.*")
 class ResumeIntegrationTest {
 
     private static final long TEST_SEED = 12345L;

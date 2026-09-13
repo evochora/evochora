@@ -20,8 +20,6 @@ import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.queues.IOutputQueueResource;
-import org.evochora.junit.extensions.logging.AllowLog;
-import org.evochora.junit.extensions.logging.LogLevel;
 import org.evochora.runtime.isa.Instruction;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -41,7 +39,6 @@ import com.typesafe.config.ConfigValueFactory;
  * These tests are fast and isolated from actual simulation execution.
  */
 @Tag("unit")
-@AllowLog(level = LogLevel.INFO, loggerPattern = ".*")
 class SimulationEngineTest {
 
     private Map<String, List<IResource>> resources;

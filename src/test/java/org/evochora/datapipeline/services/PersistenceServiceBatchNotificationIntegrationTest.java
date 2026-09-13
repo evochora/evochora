@@ -8,8 +8,6 @@ import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.topics.ITopicReader;
 import org.evochora.datapipeline.api.resources.topics.TopicMessage;
 import org.evochora.datapipeline.resources.topics.H2TopicResource;
-import org.evochora.junit.extensions.logging.AllowLog;
-import org.evochora.junit.extensions.logging.LogLevel;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
 import org.evochora.runtime.isa.Instruction;
 import org.junit.jupiter.api.AfterEach;
@@ -40,7 +38,6 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 @Tag("integration")
 @ExtendWith(LogWatchExtension.class)
-@AllowLog(level = LogLevel.INFO, loggerPattern = ".*(SimulationEngine|PersistenceService|ServiceManager|FileSystemStorageResource|H2TopicResource).*")
 class PersistenceServiceBatchNotificationIntegrationTest {
     
     @TempDir

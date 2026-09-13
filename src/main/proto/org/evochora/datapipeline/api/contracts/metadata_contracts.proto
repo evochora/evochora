@@ -65,10 +65,11 @@ message ForkOrigin {
   // The run the state was taken from
   string parent_run_id = 1;
 
-  // First tick of the window: the start of the parent's chunk that holds the requested tick
+  // First tick of the window: the start of the parent's chunk that holds the requested first tick
   int64 first_tick = 2;
 
-  // Last tick the window records: the end of the parent's chunk that holds the requested tick
+  // Last tick the window records: the last sample before the parent's chunk boundary at or
+  // beyond the requested last tick
   int64 last_tick = 3;
 }
 

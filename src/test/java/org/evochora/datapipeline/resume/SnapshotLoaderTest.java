@@ -22,8 +22,6 @@ import org.evochora.datapipeline.api.resources.storage.BatchFileListResult;
 import org.evochora.datapipeline.api.resources.storage.ChunkFieldFilter;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageRead;
 import org.evochora.datapipeline.api.resources.storage.StoragePath;
-import org.evochora.junit.extensions.logging.AllowLog;
-import org.evochora.junit.extensions.logging.LogLevel;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -43,7 +41,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @Tag("unit")
 @ExtendWith(LogWatchExtension.class)
 @ExtendWith(MockitoExtension.class)
-@AllowLog(level = LogLevel.INFO, loggerPattern = ".*SnapshotLoader.*")
 class SnapshotLoaderTest {
 
     private static final String TEST_RUN_ID = "20250127-123456-test-run";

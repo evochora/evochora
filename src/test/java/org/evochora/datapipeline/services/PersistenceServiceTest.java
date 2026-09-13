@@ -94,7 +94,6 @@ class PersistenceServiceTest {
     // ========== Constructor Tests ==========
 
     @Test
-    @AllowLog(level = LogLevel.INFO, loggerPattern = ".*PersistenceService.*")
     void testConstructorWithRequiredResources() {
         service = new PersistenceService("test-persistence", config, resources);
 
@@ -105,7 +104,6 @@ class PersistenceServiceTest {
     }
 
     @Test
-    @AllowLog(level = LogLevel.INFO, loggerPattern = ".*PersistenceService.*")
     void testConstructorWithOptionalResources() {
         resources.put("idempotencyTracker", Collections.singletonList(mockIdempotencyTracker));
 
@@ -116,7 +114,6 @@ class PersistenceServiceTest {
     }
 
     @Test
-    @AllowLog(level = LogLevel.INFO, loggerPattern = ".*PersistenceService.*")
     void testConstructorWithInvalidMaxBatchSize() {
         Config invalidConfig = ConfigFactory.parseMap(Map.of("maxBatchSize", 0));
 
@@ -150,7 +147,6 @@ class PersistenceServiceTest {
     }
 
     @Test
-    @AllowLog(level = LogLevel.INFO, loggerPattern = ".*PersistenceService.*")
     void testConstructorWithMissingStorageResource() {
         resources.remove("storage");
 
@@ -164,7 +160,6 @@ class PersistenceServiceTest {
     // ========== Streaming Write Tests ==========
 
     @Test
-    @AllowLog(level = LogLevel.INFO, loggerPattern = ".*PersistenceService.*")
     void testSuccessfulStreamingWrite() throws Exception {
         service = new PersistenceService("test-persistence", config, resources);
 
@@ -292,7 +287,6 @@ class PersistenceServiceTest {
     }
 
     @Test
-    @AllowLog(level = LogLevel.INFO, loggerPattern = ".*PersistenceService.*")
     void testGracefulShutdown() throws Exception {
         service = new PersistenceService("test-persistence", config, resources);
 
@@ -313,7 +307,6 @@ class PersistenceServiceTest {
     }
 
     @Test
-    @AllowLog(level = LogLevel.INFO, loggerPattern = ".*PersistenceService.*")
     void testHealthCheckReflectsServiceState() throws Exception {
         service = new PersistenceService("test-persistence", config, resources);
 

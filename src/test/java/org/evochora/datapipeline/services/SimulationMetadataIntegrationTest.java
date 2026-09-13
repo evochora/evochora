@@ -41,7 +41,6 @@ import com.typesafe.config.ConfigFactory;
  */
 @Tag("integration")
 @ExtendWith(LogWatchExtension.class)
-@AllowLog(level = LogLevel.INFO, loggerPattern = ".*(SimulationEngine|MetadataPersistenceService|ServiceManager|FileSystemStorageResource).*")
 class SimulationMetadataIntegrationTest {
 
     @TempDir
@@ -78,7 +77,6 @@ class SimulationMetadataIntegrationTest {
     }
 
     @Test
-    @AllowLog(level = LogLevel.INFO, loggerPattern = ".*(SimulationEngine|MetadataPersistenceService|ServiceManager|FileSystemStorageResource).*")
     @AllowLog(level = LogLevel.WARN, messagePattern = "PersistenceService initialized WITHOUT batch-topic - event-driven indexing disabled!")
     void testEndToEndMetadataPersistence() throws IOException {
         Config config = createIntegrationConfig();
@@ -107,7 +105,6 @@ class SimulationMetadataIntegrationTest {
     }
 
     @Test
-    @AllowLog(level = LogLevel.INFO, loggerPattern = ".*(SimulationEngine|MetadataPersistenceService|ServiceManager|FileSystemStorageResource).*")
     @AllowLog(level = LogLevel.WARN, messagePattern = "PersistenceService initialized WITHOUT batch-topic - event-driven indexing disabled!")
     void testMetadataCorrelatesWithTickData() throws IOException {
         Config config = createIntegrationConfig();
@@ -148,7 +145,6 @@ class SimulationMetadataIntegrationTest {
     }
 
     @Test
-    @AllowLog(level = LogLevel.INFO, loggerPattern = ".*(SimulationEngine|MetadataPersistenceService|ServiceManager|FileSystemStorageResource).*")
     @AllowLog(level = LogLevel.WARN, messagePattern = "PersistenceService initialized WITHOUT batch-topic - event-driven indexing disabled!")
     void testServiceStopsAfterProcessing() {
         Config config = createIntegrationConfig();
@@ -175,7 +171,6 @@ class SimulationMetadataIntegrationTest {
     }
 
     @Test
-    @AllowLog(level = LogLevel.INFO, loggerPattern = ".*(SimulationEngine|MetadataPersistenceService|ServiceManager|FileSystemStorageResource).*")
     @AllowLog(level = LogLevel.WARN, messagePattern = "PersistenceService initialized WITHOUT batch-topic - event-driven indexing disabled!")
     void testMetadataContentCompleteness() throws IOException {
         Config config = createIntegrationConfig();
@@ -209,7 +204,6 @@ class SimulationMetadataIntegrationTest {
     }
 
     @Test
-    @AllowLog(level = LogLevel.INFO, loggerPattern = ".*(SimulationEngine|MetadataPersistenceService|ServiceManager).*")
     @AllowLog(level = LogLevel.WARN, messagePattern = "PersistenceService initialized WITHOUT batch-topic - event-driven indexing disabled!")
     void testGracefulShutdown() {
         Config config = createIntegrationConfig();

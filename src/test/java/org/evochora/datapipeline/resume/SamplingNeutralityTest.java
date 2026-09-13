@@ -31,8 +31,6 @@ import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.queues.IOutputQueueResource;
 import org.evochora.datapipeline.services.SimulationEngine;
 import org.evochora.datapipeline.utils.delta.DeltaCodec;
-import org.evochora.junit.extensions.logging.AllowLog;
-import org.evochora.junit.extensions.logging.LogLevel;
 import org.evochora.runtime.isa.Instruction;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -91,7 +89,6 @@ import com.typesafe.config.ConfigFactory;
  * so all three fields take part in the comparison at every compared tick.
  */
 @Tag("integration")
-@AllowLog(level = LogLevel.INFO, loggerPattern = ".*SimulationEngine.*")
 class SamplingNeutralityTest {
 
     /** Edge length of the square world. Wide enough for the program to lie in a single row. */

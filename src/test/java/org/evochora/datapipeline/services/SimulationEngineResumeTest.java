@@ -49,9 +49,6 @@ import org.evochora.test.utils.ProtoTestUtils;
  */
 @Tag("unit")
 @ExtendWith(LogWatchExtension.class)
-@AllowLog(level = LogLevel.INFO, loggerPattern = ".*SimulationEngine.*")
-@AllowLog(level = LogLevel.INFO, loggerPattern = ".*SnapshotLoader.*")
-@AllowLog(level = LogLevel.INFO, loggerPattern = ".*SimulationRestorer.*")
 @AllowLog(level = LogLevel.WARN, loggerPattern = ".*SimulationEngine.*", messagePattern = "Run .* was written by build .* and is read by build .*")
 class SimulationEngineResumeTest {
 
