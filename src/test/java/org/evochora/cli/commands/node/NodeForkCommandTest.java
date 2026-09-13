@@ -41,6 +41,16 @@ class NodeForkCommandTest {
     }
 
     @Test
+    void aParentRunIdWithHoconSpecialCharactersIsCarriedVerbatim() {
+        NodeForkCommand command = CommandLine.populateCommand(new NodeForkCommand(), "--from", "10", "--to", "20");
+
+        Config overrides = command.overrides("odd\"id # with = \\ and ${braces}");
+
+        assertThat(overrides.getString("pipeline.services.simulation-engine.options.resume.runId"))
+            .isEqualTo("odd\"id # with = \\ and ${braces}");
+    }
+
+    @Test
     void indexersStayUnpinnedSoTheyFindTheNewRun() {
         NodeForkCommand command = CommandLine.populateCommand(
             new NodeForkCommand(), "--from", "0", "--to", "10");

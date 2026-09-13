@@ -29,6 +29,16 @@ class NodeResumeCommandTest {
     }
 
     @Test
+    void aRunIdWithHoconSpecialCharactersIsCarriedVerbatim() {
+        NodeResumeCommand command = CommandLine.populateCommand(new NodeResumeCommand());
+
+        Config overrides = command.overrides("odd\"id # with = \\ and ${braces}");
+
+        assertThat(overrides.getString("pipeline.runId")).isEqualTo("odd\"id # with = \\ and ${braces}");
+        assertThat(overrides.getBoolean("pipeline.autoStart")).isTrue();
+    }
+
+    @Test
     void theRunReachesTheEngineAndTheIndexers() {
         NodeResumeCommand command = CommandLine.populateCommand(new NodeResumeCommand(), "--run", "20260101-12000000-a-run");
 

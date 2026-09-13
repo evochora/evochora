@@ -7,6 +7,7 @@ import org.evochora.cli.CommandLineInterface;
 
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
+import com.typesafe.config.ConfigUtil;
 
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Model.CommandSpec;
@@ -175,14 +176,14 @@ public class NodeForkCommand implements Callable<Integer> {
             .append("pipeline.autoStart = true\n")
             .append("pipeline.services.\"simulation-engine\".options.resume {\n")
             .append("  enabled = true\n")
-            .append("  runId = \"").append(parentRunId).append("\"\n")
+            .append("  runId = ").append(ConfigUtil.quoteString(parentRunId)).append("\n")
             .append("  fork {\n")
             .append("    fromTick = ").append(fromTick).append("\n")
             .append("    toTick = ").append(toTick).append("\n")
             .append("  }\n")
             .append("}\n");
         if (profile != null) {
-            document.append("pipeline.tuning = ${profiles.\"").append(profile).append("\"}\n");
+            document.append("pipeline.tuning = ${profiles.").append(ConfigUtil.quoteString(profile)).append("}\n");
         }
         if (samplingInterval != null) {
             document.append("pipeline.tuning.samplingInterval = ").append(samplingInterval).append("\n");

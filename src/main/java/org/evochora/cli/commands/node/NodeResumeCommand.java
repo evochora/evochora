@@ -6,6 +6,7 @@ import org.evochora.cli.CommandLineInterface;
 
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
+import com.typesafe.config.ConfigUtil;
 
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Model.CommandSpec;
@@ -80,9 +81,9 @@ public class NodeResumeCommand implements Callable<Integer> {
      */
     Config overrides(final String targetRunId) {
         return ConfigFactory.parseString("""
-            pipeline.runId = "%s"
+            pipeline.runId = %s
             pipeline.autoStart = true
             pipeline.services."simulation-engine".options.resume.enabled = true
-            """.formatted(targetRunId));
+            """.formatted(ConfigUtil.quoteString(targetRunId)));
     }
 }
