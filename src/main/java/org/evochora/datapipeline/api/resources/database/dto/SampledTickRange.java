@@ -17,9 +17,11 @@ package org.evochora.datapipeline.api.resources.database.dto;
  */
 public record SampledTickRange(long first, long last, long step) {
     /**
-     * Validates that the stretch runs forward and that its step can be stepped along.
+     * Validates that the stretch runs forward, that its step can be stepped along, and that the
+     * last tick lies on the grid the first tick and the step define.
      *
-     * @throws IllegalArgumentException if first is greater than last, or step is less than 1
+     * @throws IllegalArgumentException if first is greater than last, step is less than 1, or
+     *                                  last is not first plus a whole number of steps
      */
     public SampledTickRange {
         if (first > last) {
@@ -30,6 +32,11 @@ public record SampledTickRange(long first, long last, long step) {
         if (step < 1) {
             throw new IllegalArgumentException(
                 String.format("step must be at least 1, got %d for ticks %d..%d", step, first, last)
+            );
+        }
+        if ((last - first) % step != 0) {
+            throw new IllegalArgumentException(
+                String.format("last (%d) is not first (%d) plus a whole number of steps of %d", last, first, step)
             );
         }
     }
