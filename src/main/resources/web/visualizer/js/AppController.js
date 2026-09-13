@@ -787,6 +787,7 @@ export class AppController {
         const step = TickGrid.stepAt(this.state.ranges, this.state.currentTick)
             ?? this.state.metadata?.samplingInterval ?? 1;
         this.tickPanelManager?.updateStepInfo(step);
+        this.tickPanelManager?.updateTooltips();
     }
 
     /**

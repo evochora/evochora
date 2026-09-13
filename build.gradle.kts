@@ -212,9 +212,14 @@ val buildRevision: String = run {
     // Absent in source archives and container builds; in a worktree it is a file, not a directory.
     val head = if (rootProject.file(".git").exists()) gitOutput("git", "rev-parse", "HEAD") else null
     if (!head.isNullOrBlank()) {
-        // Only tracked files count: an untracked file is not part of the sources a checkout yields
+        // Only tracked files count: an untracked file is not part of the sources a checkout yields.
+        // A status that cannot be taken leaves the tree's state unknown, not clean.
         val status = gitOutput("git", "status", "--porcelain", "--untracked-files=no")
-        if (status.isNullOrBlank()) head else head + "-dirty"
+        when {
+            status == null -> "unknown"
+            status.isBlank() -> head
+            else -> head + "-dirty"
+        }
     } else {
         val shipped = rootProject.file("GIT_REVISION")
         val recorded = if (shipped.isFile) shipped.readText().trim() else ""

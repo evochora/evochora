@@ -43,7 +43,7 @@ public final class BuildRevisionCheck {
      */
     private static String howToGetTheSources(String recorded) {
         if (BuildInfo.UNKNOWN.equals(recorded)) {
-            return "the run does not say which sources that was";
+            return "the run does not name its sources";
         }
         if (recorded.endsWith(BuildInfo.DIRTY_SUFFIX)) {
             return "those sources carried uncommitted changes and cannot be checked out again";

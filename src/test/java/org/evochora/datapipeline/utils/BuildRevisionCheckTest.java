@@ -29,7 +29,7 @@ class BuildRevisionCheckTest {
         BuildRevisionCheck.warnIfWrittenByAnotherBuild(metadata, log);
 
         verify(log).warn(anyString(), eq("run-a"), eq(BuildInfo.UNKNOWN), eq(BuildInfo.revision()),
-            eq("the run does not say which sources that was"));
+            eq("the run does not name its sources"));
     }
 
     @Test

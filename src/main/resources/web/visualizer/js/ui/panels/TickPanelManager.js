@@ -747,19 +747,22 @@ export class TickPanelManager {
     }
 
     /**
-     * Updates navigation button tooltips with the current multiplier and the local step.
+     * Updates the navigation button tooltips with the distance each button actually moves from
+     * the current tick: the same targets the buttons navigate to, so a tooltip at a gap or at the
+     * end of the recorded ticks says what the step will really be.
      */
     updateTooltips() {
         const { prevLargeBtn, prevSmallBtn, nextSmallBtn, nextLargeBtn } = this.elements;
         const state = this.getState();
-        const interval = this._localStep(state.currentTick);
-        const multiplier = this.getMultiplier();
-        const largeStep = multiplier * interval;
+        const ranges = state.ranges || [];
+        const base = state.currentTick || 0;
+        const largeStep = this.getMultiplier() * this._localStep(base);
+        const distance = (target) => target === null ? 0 : Math.abs(target - base);
 
-        if (prevSmallBtn) prevSmallBtn.title = `Previous sample: −${interval} (↓)`;
-        if (nextSmallBtn) nextSmallBtn.title = `Next sample: +${interval} (↑)`;
-        if (prevLargeBtn) prevLargeBtn.title = `Back: −${this.formatNumber(largeStep)} (PgDn)`;
-        if (nextLargeBtn) nextLargeBtn.title = `Forward: +${this.formatNumber(largeStep)} (PgUp)`;
+        if (prevSmallBtn) prevSmallBtn.title = `Previous sample: −${distance(TickGrid.previous(ranges, base))} (↓)`;
+        if (nextSmallBtn) nextSmallBtn.title = `Next sample: +${distance(TickGrid.next(ranges, base))} (↑)`;
+        if (prevLargeBtn) prevLargeBtn.title = `Back: −${this.formatNumber(distance(TickGrid.jump(ranges, base, -largeStep)))} (PgDn)`;
+        if (nextLargeBtn) nextLargeBtn.title = `Forward: +${this.formatNumber(distance(TickGrid.jump(ranges, base, largeStep)))} (PgUp)`;
     }
 
     // ─────────────────────────────────────────────────────────────────────────────
