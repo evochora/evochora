@@ -22,6 +22,7 @@ import org.evochora.compiler.api.SourceRoot;
 import org.evochora.datapipeline.api.contracts.CallSiteBinding;
 import org.evochora.datapipeline.api.contracts.ColumnTokenLookup;
 import org.evochora.datapipeline.api.contracts.FileTokenLookup;
+import org.evochora.datapipeline.api.contracts.ForkOrigin;
 import org.evochora.datapipeline.api.contracts.InstructionMapping;
 import org.evochora.datapipeline.api.contracts.LineTokenLookup;
 import org.evochora.datapipeline.api.contracts.LinearAddressToCoord;
@@ -48,6 +49,8 @@ import org.evochora.datapipeline.resume.OrganismStateSerializer;
 import org.evochora.datapipeline.resume.ResumeCheckpoint;
 import org.evochora.datapipeline.resume.SimulationRestorer;
 import org.evochora.datapipeline.resume.SnapshotLoader;
+import org.evochora.BuildInfo;
+import org.evochora.datapipeline.utils.BuildRevisionCheck;
 import org.evochora.datapipeline.utils.delta.DeltaCodec;
 import org.evochora.runtime.Simulation;
 import org.evochora.runtime.internal.services.SeededRandomProvider;
@@ -66,6 +69,7 @@ import org.evochora.runtime.thermodynamics.ThermodynamicPolicyManager;
 import com.google.protobuf.ByteString;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigRenderOptions;
+import com.typesafe.config.ConfigValueFactory;
 
 /**
  * Runs a simulation and publishes its sampled state to the data pipeline.
@@ -84,7 +88,14 @@ import com.typesafe.config.ConfigRenderOptions;
  * {@code resume.enabled} the simulation is restored from the latest checkpoint of an existing
  * run instead; the seed and the sampling, delta, snapshot and chunk intervals then come from
  * that run's metadata rather than from the current configuration, and no metadata message is
- * sent because it already exists.
+ * sent because it already exists. With {@code resume.fork} as well, the run is forked: the
+ * simulation is restored from the checkpoint of the parent's chunk that holds
+ * {@code resume.fork.fromTick}, but recorded as a new run with its own ID and metadata, whose
+ * sampling, delta, snapshot and chunk intervals come from the current configuration. The
+ * fork's chunks must divide the parent's, so that the window ends on a boundary of the parent's
+ * chunks: it is rounded outwards to whole parent chunks, and the service pauses itself after the
+ * last tick of the window, from where it can be continued like any paused run. The metadata of a
+ * forked run names the parent and the window it recorded.
  * <p>
  * <strong>Threading:</strong> the simulation, the chunk encoder and the organism serializer are
  * owned by the service thread and are not thread-safe. Metrics are requested from a monitoring
@@ -125,7 +136,11 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
     private final List<BirthHandlerWithConfig> birthHandlers;
     private final long seed;
     private final long startTimeMs;
-    private final boolean isResume;
+    private final Mode mode;
+    /** The configuration written into this run's metadata; null when the metadata already exists. */
+    private final Config recordedConfig;
+    /** Where this run was forked from; null unless the run is a fork. */
+    private final ForkOrigin forkOrigin;
     private final SimulationParameters simulationParameters;
     private final AtomicLong currentTick = new AtomicLong(-1);
     private final AtomicLong messagesSent = new AtomicLong(0);
@@ -143,6 +158,22 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
     private record InterceptorWithConfig(IInstructionInterceptor interceptor, Config config) {}
     private record DeathHandlerWithConfig(IDeathHandler handler, Config config) {}
     private record BirthHandlerWithConfig(IBirthHandler handler, Config config) {}
+
+    /** How the run the engine drives came to be. */
+    private enum Mode {
+        /** Built from the configured programs and placements, with a new run ID. */
+        NEW,
+        /** Restored from the latest checkpoint of an existing run and continued under its ID. */
+        RESUME,
+        /** Restored from a chosen checkpoint of an existing run and recorded as a new run. */
+        FORK
+    }
+
+    /**
+     * The window a fork was asked to record, as configured under {@code resume.fork}: the ticks
+     * from {@code fromTick} to {@code toTick} inclusive must be part of the recording.
+     */
+    private record ForkRequest(long fromTick, long toTick) {}
 
     /**
      * The delta-compression intervals and estimation assumptions of a run, read and validated
@@ -204,6 +235,10 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
      * @param resumeSnapshot checkpoint snapshot for resume mode (null for new simulations).
      *                       When present, the encoder is initialized with this snapshot so
      *                       subsequent ticks are treated as deltas within the same chunk.
+     * @param recordedConfig the configuration the run's metadata carries: the current options for
+     *                       a new run, the parent's configuration with the current recording
+     *                       options for a fork, null for a resume whose metadata already exists
+     * @param forkOrigin the parent and window of a fork, null otherwise
      */
     private record InitializedState(
         Simulation simulation,
@@ -224,7 +259,9 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         double organismDensityFactor,
         int maxCellsPerOrganism,
         double estimatedDeltaRatio,
-        TickData resumeSnapshot
+        TickData resumeSnapshot,
+        Config recordedConfig,
+        ForkOrigin forkOrigin
     ) {}
 
     /**
@@ -269,13 +306,24 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         // Common configuration (intervals come from InitializedState to support resume from metadata)
         this.metricsWindowSeconds = readInt(options, "metricsWindowSeconds", 1);
 
-        this.pauseTicks = options.hasPath("pauseTicks") ? options.getLongList("pauseTicks") : Collections.emptyList();
-
         // Mode-specific initialization
-        this.isResume = options.hasPath("resume.enabled") && options.getBoolean("resume.enabled");
-        InitializedState state = this.isResume
+        boolean resume = options.hasPath("resume.enabled") && options.getBoolean("resume.enabled");
+        InitializedState state = resume
             ? initializeFromCheckpoint(options)
             : initializeNewSimulation(options);
+        this.mode = !resume ? Mode.NEW : state.forkOrigin() != null ? Mode.FORK : Mode.RESUME;
+        this.recordedConfig = state.recordedConfig();
+        this.forkOrigin = state.forkOrigin();
+
+        // A fork pauses after the last tick of its window, as if that tick were configured
+        List<Long> configuredPauseTicks = options.hasPath("pauseTicks") ? options.getLongList("pauseTicks") : Collections.emptyList();
+        if (this.forkOrigin != null) {
+            List<Long> withWindowEnd = new ArrayList<>(configuredPauseTicks);
+            withWindowEnd.add(this.forkOrigin.getLastTick());
+            this.pauseTicks = Collections.unmodifiableList(withWindowEnd);
+        } else {
+            this.pauseTicks = configuredPauseTicks;
+        }
 
         // Apply initialized state
         this.simulation = state.simulation();
@@ -367,37 +415,45 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
     }
 
     /**
-     * Initializes simulation state from a checkpoint for resume mode.
+     * Initializes simulation state from a checkpoint, for a resume or a fork.
      * <p>
      * All simulation-affecting configuration is read from the metadata's resolvedConfigJson
-     * to ensure deterministic continuation of the original simulation.
+     * to ensure deterministic continuation of the original simulation. A resume takes the
+     * latest checkpoint and the recording options of the original run; a fork takes the
+     * checkpoint of the chunk that holds the requested first tick and the recording options of
+     * the current configuration, and is recorded under a new run ID.
      */
     private InitializedState initializeFromCheckpoint(Config options) {
-        log.debug("Initializing from checkpoint (resume mode)");
-
         if (!options.hasPath("resume.runId")) {
             throw new IllegalArgumentException(
                 "resume.runId is required when resume.enabled=true");
         }
-        String runId = options.getString("resume.runId");
+        String parentRunId = options.getString("resume.runId");
+        ForkRequest forkRequest = options.hasPath("resume.fork") ? readForkRequest(options.getConfig("resume.fork")) : null;
+        log.debug("Initializing from checkpoint ({} mode)", forkRequest == null ? "resume" : "fork");
 
         // Get storage resource (read-only, no write needed since we don't truncate)
         IBatchStorageRead storageRead = (IBatchStorageRead) getRequiredResource("resumeStorage", IBatchStorageRead.class);
 
         try {
-            // Load checkpoint (always from last complete chunk's snapshot)
             SnapshotLoader snapshotLoader = new SnapshotLoader(storageRead);
-            ResumeCheckpoint checkpoint = snapshotLoader.loadLatestCheckpoint(runId);
-            log.debug("Loaded checkpoint at tick {}, will resume from tick {}",
+            ResumeCheckpoint checkpoint = forkRequest == null
+                ? snapshotLoader.loadLatestCheckpoint(parentRunId)
+                : snapshotLoader.loadCheckpointContaining(parentRunId, forkRequest.fromTick());
+            log.debug("Loaded checkpoint at tick {}, will continue from tick {}",
                 checkpoint.getCheckpointTick(), checkpoint.getResumeFromTick());
 
             // Parse original config from metadata
             SimulationMetadata metadata = checkpoint.metadata();
+            BuildRevisionCheck.warnIfWrittenByAnotherBuild(metadata, log);
             Config originalConfig = com.typesafe.config.ConfigFactory.parseString(
                 metadata.getResolvedConfigJson());
             // Intervals and estimation parameters must match the original simulation; read them
             // before the restore so that an invalid value fails before the state is rebuilt
-            RunOptions runOptions = readRunOptions(originalConfig);
+            RunOptions parentOptions = readRunOptions(originalConfig);
+            RunOptions runOptions = forkRequest == null ? parentOptions : readRunOptions(options);
+            ForkOrigin forkOrigin = forkRequest == null ? null
+                : forkWindow(parentRunId, forkRequest, checkpoint.getCheckpointTick(), parentOptions, runOptions);
 
             // Parallelism is deployment-specific, read from current options (not checkpoint metadata)
             Config currentRuntimeConfig = options.hasPath("runtime") ? options.getConfig("runtime") : com.typesafe.config.ConfigFactory.empty();
@@ -437,9 +493,9 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                 deathHandlersList,
                 birthHandlersList,
                 restored.programArtifacts(),
-                runId,
+                forkOrigin == null ? parentRunId : newRunId(),
                 seed,
-                metadata.getStartTimeMs(),
+                forkOrigin == null ? metadata.getStartTimeMs() : System.currentTimeMillis(),
                 checkpoint.getResumeFromTick() - 1,
                 runOptions.samplingInterval(),
                 runOptions.accumulatedDeltaInterval(),
@@ -448,11 +504,93 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                 runOptions.organismDensityFactor(),
                 runOptions.maxCellsPerOrganism(),
                 runOptions.estimatedDeltaRatio(),
-                checkpoint.snapshot()  // Pass snapshot to prime the encoder
+                checkpoint.snapshot(),  // Pass snapshot to prime the encoder
+                forkOrigin == null ? null : withRecordingOptions(originalConfig, runOptions),
+                forkOrigin
             );
         } catch (IOException e) {
             throw new IllegalArgumentException("Failed to load checkpoint: " + e.getMessage(), e);
         }
+    }
+
+    private ForkRequest readForkRequest(Config fork) {
+        if (!fork.hasPath("fromTick") || !fork.hasPath("toTick")) {
+            throw new IllegalArgumentException("resume.fork requires fromTick and toTick");
+        }
+        long fromTick = fork.getLong("fromTick");
+        long toTick = fork.getLong("toTick");
+        if (fromTick < 0) {
+            throw new IllegalArgumentException("resume.fork.fromTick must be >= 0, got " + fromTick);
+        }
+        if (toTick < fromTick) {
+            throw new IllegalArgumentException(
+                "resume.fork.toTick must not lie before fromTick, got fromTick=" + fromTick + " toTick=" + toTick);
+        }
+        return new ForkRequest(fromTick, toTick);
+    }
+
+    /**
+     * Rounds the requested window outwards to whole chunks of the parent.
+     * <p>
+     * The window begins at the checkpoint, which is the start of the parent's chunk that holds
+     * the requested first tick, and ends with the last tick the fork records before the next
+     * boundary of the parent's chunks at or beyond the requested last tick. The fork's chunks
+     * must divide the parent's for that boundary to be a boundary of the fork's chunks as well,
+     * so a later recording can lay the fork's chunks over the parent's without overlap.
+     *
+     * @param parentRunId the run the state is taken from
+     * @param request the ticks the fork must record
+     * @param checkpointTick the first tick of the parent's chunk that holds the requested first tick
+     * @param parent the recording options of the parent run
+     * @param fork the recording options of the fork
+     * @return the parent and the rounded window
+     * @throws IllegalArgumentException if the fork's chunk length does not divide the parent's
+     */
+    private static ForkOrigin forkWindow(String parentRunId, ForkRequest request, long checkpointTick,
+                                         RunOptions parent, RunOptions fork) {
+        long parentTicksPerChunk = ticksPerChunk(parent);
+        long forkTicksPerChunk = ticksPerChunk(fork);
+        if (parentTicksPerChunk % forkTicksPerChunk != 0) {
+            throw new IllegalArgumentException(String.format(
+                "A fork's chunks must divide the parent's: the fork records %d ticks per chunk "
+                    + "(samplingInterval %d × accumulatedDeltaInterval %d × snapshotInterval %d × chunkInterval %d), "
+                    + "the parent run %s records %d",
+                forkTicksPerChunk, fork.samplingInterval(), fork.accumulatedDeltaInterval(),
+                fork.snapshotInterval(), fork.chunkInterval(), parentRunId, parentTicksPerChunk));
+        }
+        long parentChunks = Math.ceilDiv(request.toTick() - checkpointTick + 1, parentTicksPerChunk);
+        long boundary = checkpointTick + parentChunks * parentTicksPerChunk;
+        return ForkOrigin.newBuilder()
+            .setParentRunId(parentRunId)
+            .setFirstTick(checkpointTick)
+            .setLastTick(boundary - fork.samplingInterval())
+            .build();
+    }
+
+    private static long ticksPerChunk(RunOptions options) {
+        return (long) options.samplingInterval() * options.accumulatedDeltaInterval()
+            * options.snapshotInterval() * options.chunkInterval();
+    }
+
+    /**
+     * Returns the parent's configuration with the recording options of the fork in place of the
+     * parent's, which is what a forked run's metadata carries: the physics, organisms and
+     * plugins of the parent, and the sampling under which the fork was recorded.
+     */
+    private static Config withRecordingOptions(Config parentConfig, RunOptions fork) {
+        return parentConfig
+            .withValue("samplingInterval", ConfigValueFactory.fromAnyRef(fork.samplingInterval()))
+            .withValue("accumulatedDeltaInterval", ConfigValueFactory.fromAnyRef(fork.accumulatedDeltaInterval()))
+            .withValue("snapshotInterval", ConfigValueFactory.fromAnyRef(fork.snapshotInterval()))
+            .withValue("chunkInterval", ConfigValueFactory.fromAnyRef(fork.chunkInterval()))
+            .withValue("organismDensityFactor", ConfigValueFactory.fromAnyRef(fork.organismDensityFactor()))
+            .withValue("maxCellsPerOrganism", ConfigValueFactory.fromAnyRef(fork.maxCellsPerOrganism()))
+            .withValue("estimatedDeltaRatio", ConfigValueFactory.fromAnyRef(fork.estimatedDeltaRatio()));
+    }
+
+    private static String newRunId() {
+        return LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmssSS"))
+            + "-" + UUID.randomUUID().toString();
     }
 
     /**
@@ -601,12 +739,8 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
             simulation.registerGenomeHash(genomeHash);
         }
 
-        // Generate run ID
-        String runId = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmssSS"))
-            + "-" + UUID.randomUUID().toString();
-
         return new InitializedState(
-            simulation, randomProvider, tickPluginsList, interceptorsList, deathHandlersList, birthHandlersList, compiledPrograms, runId, seed, startTimeMs, -1,
+            simulation, randomProvider, tickPluginsList, interceptorsList, deathHandlersList, birthHandlersList, compiledPrograms, newRunId(), seed, startTimeMs, -1,
             runOptions.samplingInterval(),
             runOptions.accumulatedDeltaInterval(),
             runOptions.snapshotInterval(),
@@ -614,7 +748,9 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
             runOptions.organismDensityFactor(),
             runOptions.maxCellsPerOrganism(),
             runOptions.estimatedDeltaRatio(),
-            null  // No resume snapshot for new simulations
+            null,  // No resume snapshot for new simulations
+            options,
+            null
         );
     }
 
@@ -630,7 +766,11 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         int ticksPerChunk = chunkEncoder.getSamplesPerChunk();
         int parallelism = simulation.getEffectiveParallelism();
         String parallelismStr = parallelism > 1 ? parallelism + " workers" : "sequential";
-        if (isResume) {
+        if (mode == Mode.FORK) {
+            log.info("SimulationEngine FORKED: world=[{}, {}], organisms={}, tickPlugins={} ({}), seed={}, sampling={}, ticksPerChunk={}, parallelism={}, runId={}, parent={}, window=[{}, {}]",
+                    worldDims, topology, simulation.getOrganisms().size(), tickPlugins.size(), pluginNames, seed, samplingInterval, ticksPerChunk, parallelismStr, runId,
+                    forkOrigin.getParentRunId(), forkOrigin.getFirstTick(), forkOrigin.getLastTick());
+        } else if (mode == Mode.RESUME) {
             log.info("SimulationEngine RESUMED: world=[{}, {}], organisms={}, tickPlugins={} ({}), seed={}, sampling={}, ticksPerChunk={}, parallelism={}, runId={}, resumeFromTick={}",
                     worldDims, topology, simulation.getOrganisms().size(), tickPlugins.size(), pluginNames, seed, samplingInterval, ticksPerChunk, parallelismStr, runId, currentTick.get() + 1);
         } else {
@@ -641,8 +781,8 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
 
     @Override
     protected void run() throws InterruptedException {
-        // Only send metadata for fresh runs, not for resume (metadata already exists)
-        if (!isResume) {
+        // A resume continues a run whose metadata already exists; a new run and a fork announce theirs
+        if (mode != Mode.RESUME) {
             try {
                 metadataOutput.put(buildMetadataMessage());
             } catch (InterruptedException e) {
@@ -837,6 +977,8 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
      *   <li>runId, startTimeMs - runtime-generated identifiers</li>
      *   <li>seed - the actual seed used (important when auto-generated)</li>
      *   <li>programs - compiled artifacts with machine code</li>
+     *   <li>buildRevision - the sources this build was made from</li>
+     *   <li>fork - the parent and window, when this run is a fork</li>
      *   <li>resolvedConfigJson - all other configuration</li>
      * </ul>
      */
@@ -845,13 +987,17 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         builder.setSimulationRunId(this.runId);
         builder.setStartTimeMs(this.startTimeMs);
         builder.setInitialSeed(this.seed);
+        builder.setBuildRevision(BuildInfo.revision());
+        if (this.forkOrigin != null) {
+            builder.setFork(this.forkOrigin);
+        }
 
         // Add compiled programs (cannot be derived from config)
         programArtifactsById.values().forEach(artifact ->
             builder.addPrograms(convertProgramArtifact(artifact)));
 
         // Store complete config - all other values are read from here during resume
-        builder.setResolvedConfigJson(options.root().render(ConfigRenderOptions.concise()));
+        builder.setResolvedConfigJson(recordedConfig.root().render(ConfigRenderOptions.concise()));
 
         return builder.build();
     }

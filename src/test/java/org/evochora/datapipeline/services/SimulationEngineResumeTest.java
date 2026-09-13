@@ -52,6 +52,7 @@ import org.evochora.test.utils.ProtoTestUtils;
 @AllowLog(level = LogLevel.INFO, loggerPattern = ".*SimulationEngine.*")
 @AllowLog(level = LogLevel.INFO, loggerPattern = ".*SnapshotLoader.*")
 @AllowLog(level = LogLevel.INFO, loggerPattern = ".*SimulationRestorer.*")
+@AllowLog(level = LogLevel.WARN, loggerPattern = ".*SimulationEngine.*", messagePattern = "Run .* was written by build .* and is read by build .*")
 class SimulationEngineResumeTest {
 
     private static final String TEST_RUN_ID = "20250127-123456-test-run";
@@ -124,6 +125,77 @@ class SimulationEngineResumeTest {
         assertThatThrownBy(() -> new SimulationEngine("test-engine", options, resources))
             .isInstanceOf(ResumeException.class)
             .hasMessageContaining("Metadata not found");
+    }
+
+    @Test
+    void forkMode_TickInsideCheckpointChunk_InitializesFromThatCheckpoint() throws IOException {
+        setupValidCheckpoint(1000);
+
+        Config options = createForkOptions(TEST_RUN_ID, 1050, 1100, 100);
+
+        SimulationEngine engine = new SimulationEngine("test-engine", options, resources);
+
+        assertThat(engine.getCurrentState()).isEqualTo(AbstractService.State.STOPPED);
+    }
+
+    @Test
+    void forkMode_TickBeyondRecordedData_NamesWhereTheDataEnds() throws IOException {
+        setupValidCheckpoint(1000);
+
+        Config options = createForkOptions(TEST_RUN_ID, 5000, 6000, 100);
+
+        assertThatThrownBy(() -> new SimulationEngine("test-engine", options, resources))
+            .isInstanceOf(ResumeException.class)
+            .hasMessageContaining("tick 5000")
+            .hasMessageContaining("ends at tick 1099");
+    }
+
+    @Test
+    void forkMode_WindowEndBeforeStart_ThrowsException() throws IOException {
+        setupValidCheckpoint(1000);
+
+        Config options = createForkOptions(TEST_RUN_ID, 1100, 1050, 100);
+
+        assertThatThrownBy(() -> new SimulationEngine("test-engine", options, resources))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("toTick");
+    }
+
+    @Test
+    void forkMode_WithoutWindowEnd_ThrowsException() throws IOException {
+        setupValidCheckpoint(1000);
+
+        Config options = ConfigFactory.parseString("""
+            resume {
+                enabled = true
+                runId = "%s"
+                fork { fromTick = 1050 }
+            }
+            samplingInterval = 1
+            accumulatedDeltaInterval = 40
+            snapshotInterval = 1000
+            chunkInterval = 100
+            metricsWindowSeconds = 1
+            pauseTicks = []
+            """.formatted(TEST_RUN_ID));
+
+        assertThatThrownBy(() -> new SimulationEngine("test-engine", options, resources))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("fromTick and toTick");
+    }
+
+    @Test
+    void forkMode_ChunksNotDividingTheParents_ThrowsException() throws IOException {
+        setupValidCheckpoint(1000);
+
+        // The checkpoint's run records 1 × 40 × 1000 × 100 ticks per chunk; 1 × 40 × 1000 × 3 does not divide that
+        Config options = createForkOptions(TEST_RUN_ID, 1050, 1100, 3);
+
+        assertThatThrownBy(() -> new SimulationEngine("test-engine", options, resources))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("must divide the parent's")
+            .hasMessageContaining("120000")
+            .hasMessageContaining("4000000");
     }
 
     // ==================== Helper Methods ====================
@@ -228,6 +300,25 @@ class SimulationEngineResumeTest {
             metricsWindowSeconds = 1
             pauseTicks = []
             """.formatted(runId));
+    }
+
+    private Config createForkOptions(String runId, long fromTick, long toTick, int chunkInterval) {
+        return ConfigFactory.parseString("""
+            resume {
+                enabled = true
+                runId = "%s"
+                fork {
+                    fromTick = %d
+                    toTick = %d
+                }
+            }
+            samplingInterval = 1
+            accumulatedDeltaInterval = 40
+            snapshotInterval = 1000
+            chunkInterval = %d
+            metricsWindowSeconds = 1
+            pauseTicks = []
+            """.formatted(runId, fromTick, toTick, chunkInterval));
     }
 
     /**

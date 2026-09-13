@@ -57,6 +57,7 @@ import com.typesafe.config.ConfigFactory;
 @AllowLog(level = LogLevel.INFO, loggerPattern = ".*SimulationRestorer.*")
 @AllowLog(level = LogLevel.INFO, loggerPattern = ".*FileSystemStorageResource.*")
 @AllowLog(level = LogLevel.INFO, loggerPattern = ".*AbstractBatchStorageResource.*")
+@AllowLog(level = LogLevel.WARN, loggerPattern = ".*SimulationEngine.*", messagePattern = "Run .* was written by build .* and is read by build .*")
 class ResumeEndToEndTest {
 
     // Test-friendly intervals - much smaller than production values
