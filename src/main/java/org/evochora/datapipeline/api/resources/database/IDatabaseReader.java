@@ -8,6 +8,7 @@ import org.evochora.datapipeline.api.resources.database.dto.TickRangeExtension;
 
 import java.sql.SQLException;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Per-request database reader bundling all read capabilities.
@@ -78,20 +79,24 @@ public interface IDatabaseReader extends IEnvironmentDataReader,
     /**
      * Continues ranges read earlier with the chunks the run has indexed since.
      * <p>
-     * Reads only the chunks beginning past {@code afterFirstTick} and lengthens the last of the
-     * known ranges with them where they continue it, which is what a run that is still being
-     * indexed does with every batch. The result equals a full {@link #getTickRanges()} as long as
-     * the chunks before that tick are unchanged; the caller establishes that by comparing the
-     * chunks and ticks taken in against the growth {@link #getChunkIndexSummary()} reports, and
-     * reads again in full where they do not add up.
+     * Reads from the chunk the known ranges end on and lengthens the last of them with what
+     * follows, which is what a run that is still being indexed does with every batch. That
+     * boundary chunk is held against the known ranges first; where it is gone or no longer ends
+     * where they say, the answer is empty and the caller reads the index in full instead. The
+     * result equals a full {@link #getTickRanges()} as long as the chunks before that tick are
+     * unchanged; the caller establishes that by comparing the chunks and ticks taken in against
+     * the growth {@link #getChunkIndexSummary()} reports, and reads again in full where they do
+     * not add up.
      *
      * @param known The ranges of the earlier read, ordered by first tick
      * @param afterFirstTick First tick of the last chunk the earlier read saw
-     * @return The extended ranges and what this read took in
+     * @return The extended ranges and what this read took in, the boundary chunk counting for
+     *         neither; empty where the index no longer continues what the caller knows
      * @throws SQLException if database query fails
      * @throws IllegalStateException on the same contradictions as {@link #getTickRanges()}
      */
-    TickRangeExtension extendTickRanges(List<SampledTickRange> known, long afterFirstTick) throws SQLException;
+    Optional<TickRangeExtension> extendTickRanges(List<SampledTickRange> known, long afterFirstTick)
+            throws SQLException;
 
     /**
      * Gets the range of available organism ticks for the run this reader was created for.

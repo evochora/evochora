@@ -345,8 +345,9 @@ class RowPerChunkStrategyTest {
             TickRangeExtension known = strategy.readTickRanges(conn, "run-a");
             insertChunks(conn, chunk(200L, 290L, 10, 10));
 
-            TickRangeExtension extended =
-                    strategy.extendTickRanges(conn, "run-a", known.ranges(), known.lastFirstTick());
+            TickRangeExtension extended = strategy
+                    .extendTickRanges(conn, "run-a", known.ranges(), known.lastFirstTick())
+                    .orElseThrow();
 
             assertThat(extended.ranges()).containsExactly(new SampledTickRange(0L, 290L, 10L));
             assertThat(extended.addedChunks()).isEqualTo(1L);
@@ -361,8 +362,9 @@ class RowPerChunkStrategyTest {
             TickRangeExtension known = strategy.readTickRanges(conn, "run-a");
             insertChunks(conn, chunk(100L, 109L, 10, 1));
 
-            TickRangeExtension extended =
-                    strategy.extendTickRanges(conn, "run-a", known.ranges(), known.lastFirstTick());
+            TickRangeExtension extended = strategy
+                    .extendTickRanges(conn, "run-a", known.ranges(), known.lastFirstTick())
+                    .orElseThrow();
 
             assertThat(extended.ranges()).containsExactly(
                     new SampledTickRange(0L, 90L, 10L),
@@ -379,10 +381,39 @@ class RowPerChunkStrategyTest {
             assertThat(known.ranges()).containsExactly(new SampledTickRange(0L, 4L, 4L));
             insertChunks(conn, chunk(8L, 8L, 1, 4));
 
-            TickRangeExtension extended =
-                    strategy.extendTickRanges(conn, "run-a", known.ranges(), known.lastFirstTick());
+            TickRangeExtension extended = strategy
+                    .extendTickRanges(conn, "run-a", known.ranges(), known.lastFirstTick())
+                    .orElseThrow();
 
             assertThat(extended.ranges()).containsExactly(new SampledTickRange(0L, 8L, 4L));
+        }
+    }
+
+    @Test
+    void extendTickRanges_refusesWhenTheChunkItContinuesFromWasWrittenAgain() throws Exception {
+        try (Connection conn = indexWith(chunk(0L, 90L, 10, 10), chunk(100L, 190L, 10, 10))) {
+            TickRangeExtension known = strategy.readTickRanges(conn, "run-a");
+
+            // The chunk the known ranges end on is indexed again and now reaches further, so what
+            // the ranges say about it no longer holds and nothing may be appended to them
+            insertChunks(conn, chunk(100L, 290L, 20, 10));
+
+            assertThat(strategy.extendTickRanges(conn, "run-a", known.ranges(), known.lastFirstTick()))
+                    .isEmpty();
+        }
+    }
+
+    @Test
+    void extendTickRanges_refusesWhenTheChunkItContinuesFromIsGone() throws Exception {
+        try (Connection conn = indexWith(chunk(0L, 90L, 10, 10), chunk(100L, 190L, 10, 10))) {
+            TickRangeExtension known = strategy.readTickRanges(conn, "run-a");
+
+            try (Statement stmt = conn.createStatement()) {
+                stmt.executeUpdate("DELETE FROM environment_chunks WHERE first_tick = 100");
+            }
+
+            assertThat(strategy.extendTickRanges(conn, "run-a", known.ranges(), known.lastFirstTick()))
+                    .isEmpty();
         }
     }
 
@@ -391,8 +422,9 @@ class RowPerChunkStrategyTest {
         try (Connection conn = indexWith(chunk(0L, 90L, 10, 10))) {
             TickRangeExtension known = strategy.readTickRanges(conn, "run-a");
 
-            TickRangeExtension extended =
-                    strategy.extendTickRanges(conn, "run-a", known.ranges(), known.lastFirstTick());
+            TickRangeExtension extended = strategy
+                    .extendTickRanges(conn, "run-a", known.ranges(), known.lastFirstTick())
+                    .orElseThrow();
 
             assertThat(extended.ranges()).isEqualTo(known.ranges());
             assertThat(extended.addedChunks()).isZero();

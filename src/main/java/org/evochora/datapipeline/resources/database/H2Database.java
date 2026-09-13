@@ -1157,16 +1157,18 @@ public class H2Database extends AbstractDatabaseResource
      * Continues known tick ranges with the chunks indexed since they were read.
      * <p>
      * Delegates to {@link IH2EnvStorageStrategy#extendTickRanges(Connection, String, java.util.List, long)}.
-     * A run whose chunk index does not exist yet has nothing to add.
+     * A run whose chunk index does not exist yet continues nothing.
      *
      * @param conn The database connection (schema already set)
      * @param runId The simulation run ID, named in the error messages of the range check
      * @param known The ranges of the earlier read, ordered by first tick
      * @param afterFirstTick First tick of the last chunk the earlier read saw
-     * @return The extended ranges and what this read took in
+     * @return The extended ranges and what this read took in; empty where the index no longer
+     *         continues the known ranges
      * @throws SQLException if the database query fails
      */
-    org.evochora.datapipeline.api.resources.database.dto.TickRangeExtension extendTickRangesInternal(
+    java.util.Optional<org.evochora.datapipeline.api.resources.database.dto.TickRangeExtension>
+            extendTickRangesInternal(
             Connection conn, String runId,
             java.util.List<org.evochora.datapipeline.api.resources.database.dto.SampledTickRange> known,
             long afterFirstTick) throws SQLException {
@@ -1175,8 +1177,7 @@ public class H2Database extends AbstractDatabaseResource
             return getEnvStrategy().extendTickRanges(conn, runId, known, afterFirstTick);
         } catch (SQLException e) {
             if (isMissingTable(e)) {
-                return new org.evochora.datapipeline.api.resources.database.dto.TickRangeExtension(
-                        known, 0L, 0L, afterFirstTick);
+                return java.util.Optional.empty();
             }
             throw e;
         }

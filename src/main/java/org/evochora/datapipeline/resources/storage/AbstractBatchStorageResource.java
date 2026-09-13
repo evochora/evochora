@@ -289,8 +289,8 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
      * <p>
      * Efficient implementation that reads raw protobuf bytes without full parsing.
      * For each chunk in the batch file, reads the raw message bytes and extracts only
-     * the three metadata fields (firstTick, lastTick, tickCount) via partial parse.
-     * Peak heap: one raw chunk (~25 MB for 4000x3000 environment).
+     * the four metadata fields (firstTick, lastTick, tickCount, samplingInterval) via
+     * partial parse. Peak heap: one raw chunk (~25 MB for 4000x3000 environment).
      * <p>
      * <strong>Thread Safety:</strong> Thread-safe. Multiple callers can read concurrently.
      */
@@ -335,8 +335,11 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
 
     /**
      * Extracts firstTick, lastTick, tickCount and the sampling interval from raw protobuf bytes
-     * via partial parse. Scans only the top-level fields; snapshot and delta payloads are skipped
-     * over as whole blocks rather than read.
+     * via partial parse.
+     * <p>
+     * The four carry the lowest field numbers of the chunk and therefore arrive before its delta
+     * directory and its deltas, so the scan ends as soon as it has them; of the payload it steps
+     * over only the snapshot, as one block.
      *
      * @param rawBytes raw protobuf bytes of a single TickDataChunk message
      * @return RawChunk with metadata and the original raw bytes
@@ -1514,10 +1517,11 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
     /**
      * Lists the names of the folders directly under a prefix, in ascending order.
      * <p>
-     * A {@code superseded} folder is not part of the tick order and is left out. One listing
-     * covers a level, which holds at most {@link #FOLDERS_PER_LEVEL} folders, {@code 000} to
-     * {@code 999}; two more than that are asked for, so that one folder beyond the limit is seen
-     * even when a {@code superseded} folder is among the entries.
+     * A {@code superseded} folder is not part of the tick order and is left out. A level holds at
+     * most {@link #FOLDERS_PER_LEVEL} folders, {@code 000} to {@code 999}, and the listing runs
+     * page by page until one folder beyond that limit has been seen or the level ends - so a
+     * level that is within the limit is read out completely, and one that is not is recognised as
+     * such however many {@code superseded} folders lie among its entries.
      *
      * @param prefix The folder to list, ending with a slash
      * @return The folder names without their path, ascending
@@ -1526,13 +1530,23 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
      */
     private List<String> listFolderNames(String prefix) throws IOException {
         List<String> names = new ArrayList<>();
-        for (String entry : listRaw(prefix, true, null, FOLDERS_PER_LEVEL + 2, null, null)) {
-            String path = entry.endsWith("/") ? entry.substring(0, entry.length() - 1) : entry;
-            String name = path.substring(path.lastIndexOf('/') + 1);
-            if (!"superseded".equals(name)) {
-                names.add(name);
+        String continuationToken = null;
+
+        while (names.size() <= FOLDERS_PER_LEVEL) {
+            List<String> page = listRaw(prefix, true, continuationToken, LISTING_PAGE_SIZE, null, null);
+            for (String entry : page) {
+                String path = entry.endsWith("/") ? entry.substring(0, entry.length() - 1) : entry;
+                String name = path.substring(path.lastIndexOf('/') + 1);
+                if (!"superseded".equals(name)) {
+                    names.add(name);
+                }
             }
+            if (page.size() < LISTING_PAGE_SIZE) {
+                break;
+            }
+            continuationToken = page.get(page.size() - 1);
         }
+
         if (names.size() > FOLDERS_PER_LEVEL) {
             throw new IllegalStateException(String.format(
                 "Folder '%s' holds more than %d folders, and a level carries at most that many: "

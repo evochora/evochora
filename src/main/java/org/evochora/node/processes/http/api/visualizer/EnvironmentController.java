@@ -4,6 +4,7 @@ import java.sql.SQLException;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 import org.evochora.datapipeline.api.contracts.CellHttpResponse;
 import org.evochora.datapipeline.api.contracts.EnvironmentHttpResponse;
@@ -102,10 +103,10 @@ public class EnvironmentController extends VisualizerBaseController {
      * Cache for the tick ranges of a run, per runId.
      * <p>
      * Deriving the ranges reads the run's chunk index, while the visualizer asks for them on every
-     * navigation and keeps asking while a run is being indexed. The cached entry carries the index
-     * summary it was derived from, so an unchanged index is answered from one aggregate query, and
-     * it carries where the index was left off, so a grown index is caught up on by reading only
-     * the chunks that are new.
+     * navigation and keeps asking while a run is being indexed. The cached entry says which piece
+     * of the index its ranges cover, so an index that still holds exactly that is answered from
+     * one aggregate query, and it says where the ranges end, so a grown index is caught up on by
+     * reading only the chunks that follow.
      */
     private final Cache<String, CachedTickRanges> tickRangesCache;
 
@@ -115,13 +116,13 @@ public class EnvironmentController extends VisualizerBaseController {
     private final MinimapAggregator minimapAggregator;
 
     /**
-     * The tick ranges of one run together with the state of the chunk index they were read from.
+     * The tick ranges of one run together with the piece of chunk index they cover.
      *
-     * @param summary The chunk index as it stood when the ranges were read
-     * @param response The response derived from that index
+     * @param covered The chunks, the highest tick and the ticks the ranges account for
+     * @param response The response derived from those chunks
      * @param lastFirstTick First tick of the last chunk that went into the ranges
      */
-    private record CachedTickRanges(ChunkIndexSummary summary, TickRangesResponseDto response,
+    private record CachedTickRanges(ChunkIndexSummary covered, TickRangesResponseDto response,
                                     long lastFirstTick) {}
 
     /**
@@ -879,11 +880,14 @@ public class EnvironmentController extends VisualizerBaseController {
      * Returns the run's recorded ticks, reading of the chunk index only what the cached answer
      * does not already cover.
      * <p>
-     * An unchanged index is answered from the cache. A changed one is first caught up on by
-     * reading the chunks past the last one the cached answer saw; that catch-up is kept only when
-     * the chunks and ticks it took in account for the whole growth the summary reports, because
-     * only then did the index grow at its end alone. Otherwise a chunk that was already there was
-     * written again, and the ranges are built anew from the whole index.
+     * The cached entry says what its ranges cover, not what a summary reported when they were
+     * read: a chunk that arrives between the summary and the read is part of the ranges, and
+     * saying so keeps the next request on the cache. An index that still holds exactly what the
+     * ranges cover is therefore answered without reading it. Otherwise the ranges are caught up
+     * on from the chunk they end on; that catch-up is kept only when the chunks and ticks it took
+     * in account for the whole difference, because only then did the index grow at its end alone.
+     * Otherwise a chunk that was already there was written again, and the ranges are built anew
+     * from the whole index.
      *
      * @param runId The run being asked about
      * @param summary The chunk index as this request found it
@@ -895,26 +899,28 @@ public class EnvironmentController extends VisualizerBaseController {
     private TickRangesResponseDto getOrLoadTickRanges(final String runId, final ChunkIndexSummary summary,
                                                       final IDatabaseReader reader) throws SQLException {
         final CachedTickRanges cached = tickRangesCache.getIfPresent(runId);
-        if (cached != null && cached.summary().equals(summary)) {
+        if (cached != null && cached.covered().equals(summary)) {
             return cached.response();
         }
 
         TickRangeExtension extension = null;
+        ChunkIndexSummary covered = null;
         if (cached != null) {
-            final TickRangeExtension appended =
+            final Optional<TickRangeExtension> appended =
                 reader.extendTickRanges(cached.response().ranges(), cached.lastFirstTick());
-            if (accountsForTheGrowth(cached.summary(), appended, summary)) {
-                extension = appended;
+            if (appended.isPresent() && accountsForTheGrowth(cached.covered(), appended.get(), summary)) {
+                extension = appended.get();
+                covered = coveredBy(cached.covered(), extension);
             } else {
-                LOGGER.debug("Rebuilding tick ranges of run {}: {} known chunks with {} ticks plus {} appended"
-                    + " chunks with {} ticks do not account for the {} chunks with {} ticks the index holds",
-                    runId, cached.summary().chunkCount(), cached.summary().sampleCount(),
-                    appended.addedChunks(), appended.addedSamples(),
+                LOGGER.debug("Rebuilding tick ranges of run {}: the {} chunks with {} ticks the ranges cover"
+                    + " plus what follows them do not add up to the {} chunks with {} ticks the index holds",
+                    runId, cached.covered().chunkCount(), cached.covered().sampleCount(),
                     summary.chunkCount(), summary.sampleCount());
             }
         }
         if (extension == null) {
             extension = reader.getTickRanges();
+            covered = coveredBy(new ChunkIndexSummary(0L, 0L, 0L), extension);
         }
 
         final List<SampledTickRange> ranges = extension.ranges();
@@ -926,28 +932,49 @@ public class EnvironmentController extends VisualizerBaseController {
 
         final TickRangesResponseDto response = new TickRangesResponseDto(
             ranges.get(0).first(), ranges.get(ranges.size() - 1).last(), ranges);
-        tickRangesCache.put(runId, new CachedTickRanges(summary, response, extension.lastFirstTick()));
+        tickRangesCache.put(runId, new CachedTickRanges(covered, response, extension.lastFirstTick()));
         return response;
+    }
+
+    /**
+     * Describes the piece of chunk index that a read's ranges cover.
+     * <p>
+     * A read takes in what it read on top of what its caller already knew, and the ranges reach as
+     * far as their last tick. Together that is the same shape as a summary of the index, which is
+     * what makes the two comparable.
+     *
+     * @param before What the ranges covered before this read, all zero for a read from nothing
+     * @param extension The read and its ranges
+     * @return The chunks, the highest tick and the ticks the ranges now cover
+     */
+    private static ChunkIndexSummary coveredBy(final ChunkIndexSummary before,
+                                               final TickRangeExtension extension) {
+        final List<SampledTickRange> ranges = extension.ranges();
+        final long maxLastTick = ranges.isEmpty() ? 0L : ranges.get(ranges.size() - 1).last();
+        return new ChunkIndexSummary(
+            before.chunkCount() + extension.addedChunks(),
+            maxLastTick,
+            before.sampleCount() + extension.addedSamples());
     }
 
     /**
      * Tells whether what a catch-up read took in is exactly what the index gained.
      * <p>
      * An indexer that only appends leaves every chunk before the catch-up untouched, so the chunks
-     * and the ticks the index now holds are the known ones plus the appended ones. Any other
+     * and the ticks the index now holds are the covered ones plus the appended ones. Any other
      * outcome means a chunk that was already counted has changed, and what was known about it no
      * longer holds.
      *
-     * @param known The summary the cached ranges were derived from
+     * @param covered What the cached ranges cover
      * @param appended What the catch-up read took in
      * @param current The summary this request found
-     * @return true if the catch-up describes the whole difference between the two summaries
+     * @return true if the catch-up describes the whole difference between the two
      */
-    private static boolean accountsForTheGrowth(final ChunkIndexSummary known,
+    private static boolean accountsForTheGrowth(final ChunkIndexSummary covered,
                                                 final TickRangeExtension appended,
                                                 final ChunkIndexSummary current) {
-        return known.chunkCount() + appended.addedChunks() == current.chunkCount()
-            && known.sampleCount() + appended.addedSamples() == current.sampleCount();
+        return covered.chunkCount() + appended.addedChunks() == current.chunkCount()
+            && covered.sampleCount() + appended.addedSamples() == current.sampleCount();
     }
 
 }

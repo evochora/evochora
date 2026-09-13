@@ -186,6 +186,13 @@ public class SnapshotLoader {
             });
         }
 
+        if (firstCoveredTick[0] < 0) {
+            // The first batch file held no snapshot to take a first tick from; what the last one
+            // reaches is then all that can be said about the run
+            return String.format(
+                "No chunk covering tick %d in run '%s': the recorded data ends at tick %d",
+                tick, runId, lastCoveredTick[0]);
+        }
         return String.format(
             "No chunk covering tick %d in run '%s': the recorded data covers ticks %d to %d",
             tick, runId, firstCoveredTick[0], lastCoveredTick[0]);

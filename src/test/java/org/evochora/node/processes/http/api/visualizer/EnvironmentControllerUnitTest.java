@@ -17,6 +17,7 @@ import static org.mockito.Mockito.when;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import io.javalin.http.Context;
 import io.javalin.http.HttpStatus;
 import org.evochora.datapipeline.api.resources.database.IDatabaseReader;
@@ -245,8 +246,8 @@ class EnvironmentControllerUnitTest {
                 .thenReturn(new ChunkIndexSummary(3L, 290L, 30L));
             when(reader.getTickRanges()).thenReturn(
                 extensionOf(List.of(new SampledTickRange(0L, 190L, 10L)), 2L, 20L, 100L));
-            when(reader.extendTickRanges(anyList(), anyLong())).thenReturn(
-                extensionOf(List.of(new SampledTickRange(0L, 290L, 10L)), 1L, 10L, 200L));
+            when(reader.extendTickRanges(anyList(), anyLong())).thenReturn(Optional.of(
+                extensionOf(List.of(new SampledTickRange(0L, 290L, 10L)), 1L, 10L, 200L)));
             EnvironmentController controller = controllerReading(reader);
 
             callGetTicks(controller);
@@ -254,6 +255,48 @@ class EnvironmentControllerUnitTest {
 
             verify(reader, times(1)).getTickRanges();
             verify(reader).extendTickRanges(List.of(new SampledTickRange(0L, 190L, 10L)), 100L);
+            assertThat(second.maxTick()).isEqualTo(290L);
+        }
+
+        @Test
+        @DisplayName("Should keep ranges that already cover more than the summary reported")
+        void keepsRangesThatOvertookTheSummary() throws Exception {
+            // The summary is read before the ranges, so a chunk can arrive in between: the ranges
+            // then cover three chunks while the summary counted two, and the entry says so
+            IDatabaseReader reader = mock(IDatabaseReader.class);
+            when(reader.getChunkIndexSummary())
+                .thenReturn(new ChunkIndexSummary(2L, 190L, 20L))
+                .thenReturn(new ChunkIndexSummary(3L, 290L, 30L));
+            when(reader.getTickRanges()).thenReturn(
+                extensionOf(List.of(new SampledTickRange(0L, 290L, 10L)), 3L, 30L, 200L));
+            EnvironmentController controller = controllerReading(reader);
+
+            callGetTicks(controller);
+            TickRangesResponseDto second = callGetTicks(controller);
+
+            verify(reader, times(1)).getTickRanges();
+            verify(reader, never()).extendTickRanges(anyList(), anyLong());
+            assertThat(second.maxTick()).isEqualTo(290L);
+        }
+
+        @Test
+        @DisplayName("Should build the ranges anew where the chunk the ranges end on has changed")
+        void readsEverythingAgainWhenTheIndexNoLongerContinues() throws Exception {
+            IDatabaseReader reader = mock(IDatabaseReader.class);
+            when(reader.getChunkIndexSummary())
+                .thenReturn(new ChunkIndexSummary(2L, 190L, 20L))
+                .thenReturn(new ChunkIndexSummary(2L, 290L, 30L));
+            when(reader.getTickRanges())
+                .thenReturn(extensionOf(List.of(new SampledTickRange(0L, 190L, 10L)), 2L, 20L, 100L))
+                .thenReturn(extensionOf(List.of(new SampledTickRange(0L, 290L, 10L)), 2L, 30L, 100L));
+            // The reader refuses to continue: the chunk the ranges end on is not what it was
+            when(reader.extendTickRanges(anyList(), anyLong())).thenReturn(Optional.empty());
+            EnvironmentController controller = controllerReading(reader);
+
+            callGetTicks(controller);
+            TickRangesResponseDto second = callGetTicks(controller);
+
+            verify(reader, times(2)).getTickRanges();
             assertThat(second.maxTick()).isEqualTo(290L);
         }
 
@@ -269,8 +312,8 @@ class EnvironmentControllerUnitTest {
             when(reader.getTickRanges())
                 .thenReturn(extensionOf(List.of(new SampledTickRange(0L, 190L, 10L)), 2L, 20L, 100L))
                 .thenReturn(extensionOf(List.of(new SampledTickRange(0L, 190L, 5L)), 2L, 25L, 100L));
-            when(reader.extendTickRanges(anyList(), anyLong())).thenReturn(
-                extensionOf(List.of(new SampledTickRange(0L, 190L, 10L)), 0L, 0L, 100L));
+            when(reader.extendTickRanges(anyList(), anyLong())).thenReturn(Optional.of(
+                extensionOf(List.of(new SampledTickRange(0L, 190L, 10L)), 0L, 0L, 100L)));
             EnvironmentController controller = controllerReading(reader);
 
             callGetTicks(controller);
@@ -289,8 +332,8 @@ class EnvironmentControllerUnitTest {
                 .thenReturn(new ChunkIndexSummary(2L, 190L, 25L));
             when(reader.getTickRanges()).thenReturn(
                 extensionOf(List.of(new SampledTickRange(0L, 190L, 10L)), 2L, 20L, 100L));
-            when(reader.extendTickRanges(anyList(), anyLong())).thenReturn(
-                extensionOf(List.of(new SampledTickRange(0L, 190L, 10L)), 0L, 0L, 100L));
+            when(reader.extendTickRanges(anyList(), anyLong())).thenReturn(Optional.of(
+                extensionOf(List.of(new SampledTickRange(0L, 190L, 10L)), 0L, 0L, 100L)));
             Config withETag = ConfigFactory.parseString(
                 "http-cache { ticks { enabled = true, maxAge = 5, useETag = true } }");
             EnvironmentController controller = controllerReading(reader, withETag);

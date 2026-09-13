@@ -203,11 +203,15 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource
                 return Collections.emptyList();
             }
             
+            // The continuation token is the last entry of the preceding page, as in the file
+            // branch: a caller that pages through a level relies on the listing continuing behind
+            // it rather than starting over
             return java.util.Arrays.stream(dirs)
                 .map(d -> rootPath.relativize(d.toPath()).toString())
                 .map(s -> s.replace(File.separatorChar, '/'))
                 .map(s -> s.endsWith("/") ? s : s + "/")  // Ensure trailing slash
                 .sorted()
+                .filter(s -> continuationToken == null || s.compareTo(continuationToken) > 0)
                 .limit(maxResults)
                 .collect(java.util.stream.Collectors.toList());
         }

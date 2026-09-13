@@ -15,6 +15,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -320,23 +321,44 @@ public class RowPerChunkStrategy extends AbstractH2EnvStorageStrategy {
      */
     @Override
     public TickRangeExtension readTickRanges(Connection conn, String runId) throws SQLException {
-        return buildRanges(conn, runId, List.of(), Long.MIN_VALUE);
+        return buildRanges(runId, List.of(), Long.MIN_VALUE, readChunkIndex(conn, Long.MIN_VALUE));
     }
 
     /**
      * {@inheritDoc}
      * <p>
-     * Reads only the chunks past the given one and continues the last known range with them.
+     * Reads from the last known chunk onwards, so that the chunk the known ranges end on is seen
+     * again and can be held against them before anything is appended to it.
      */
     @Override
-    public TickRangeExtension extendTickRanges(Connection conn, String runId,
-                                               List<SampledTickRange> known, long afterFirstTick)
+    public Optional<TickRangeExtension> extendTickRanges(Connection conn, String runId,
+                                                         List<SampledTickRange> known, long afterFirstTick)
             throws SQLException {
-        return buildRanges(conn, runId, known, afterFirstTick);
+        if (known.isEmpty()) {
+            return Optional.empty();
+        }
+        List<IndexedChunk> chunks = readChunkIndex(conn, afterFirstTick);
+        SampledTickRange open = known.get(known.size() - 1);
+
+        // The first row read is the chunk the known ranges end on. Where it is gone, or no longer
+        // ends where it did, what is known about the index no longer describes it, and appending
+        // to it would carry that on
+        if (chunks.isEmpty()) {
+            return Optional.empty();
+        }
+        IndexedChunk boundary = chunks.get(0);
+        if (boundary.firstTick() != afterFirstTick
+                || boundary.lastTick() != open.last()
+                || boundary.step() != open.step()) {
+            return Optional.empty();
+        }
+
+        return Optional.of(buildRanges(runId, known, afterFirstTick,
+                chunks.subList(1, chunks.size())));
     }
 
     /**
-     * Extends the given ranges by the chunks that begin past {@code afterFirstTick}.
+     * Extends the given ranges by the chunks that follow them.
      * <p>
      * The chunks are walked in order of their first tick, each with the step it states: a chunk
      * continues the open range when it carries the same step and begins exactly one step past it,
@@ -344,21 +366,18 @@ public class RowPerChunkStrategy extends AbstractH2EnvStorageStrategy {
      * chunk meets, so a run that is still being indexed grows its last range instead of being read
      * again from the start.
      *
-     * @param conn Database connection (schema already set)
      * @param runId Simulation run the chunks belong to, named in error messages
      * @param known Ranges an earlier read left behind, ordered by first tick; empty to build anew
-     * @param afterFirstTick Only chunks beginning past this tick are read; {@link Long#MIN_VALUE}
-     *                       reads all of them
+     * @param afterFirstTick First tick of the last chunk the known ranges cover, or
+     *                       {@link Long#MIN_VALUE} when there are none
+     * @param chunks The chunks to extend by, ordered by first tick and none of them known
      * @return The extended ranges and what the read took in
-     * @throws SQLException if the database read fails
      * @throws IllegalStateException if two chunks overlap, or a chunk's span does not match the
      *                               step and the number of ticks it states
      */
-    private TickRangeExtension buildRanges(Connection conn, String runId,
-                                           List<SampledTickRange> known, long afterFirstTick)
-            throws SQLException {
-        List<IndexedChunk> chunks = readChunkIndex(conn, afterFirstTick);
-
+    private TickRangeExtension buildRanges(String runId,
+                                           List<SampledTickRange> known, long afterFirstTick,
+                                           List<IndexedChunk> chunks) {
         List<SampledTickRange> ranges = new ArrayList<>(known);
         long rangeFirst = 0L;
         long rangeLast = 0L;
@@ -411,20 +430,24 @@ public class RowPerChunkStrategy extends AbstractH2EnvStorageStrategy {
     }
 
     /**
-     * Reads the index rows past a given first tick, in the order the ranges are built from.
+     * Reads the index rows from a given first tick onwards, in the order the ranges are built
+     * from.
+     * <p>
+     * The bound is inclusive, so a caller that continues from the last chunk it knows sees that
+     * chunk again and can hold the index against what it knows before it appends to it.
      *
      * @param conn Database connection (schema already set)
-     * @param afterFirstTick Only chunks beginning past this tick are read
+     * @param fromFirstTick Only chunks beginning at or past this tick are read
      * @return The chunks ordered by first tick
      * @throws SQLException if the database read fails
      */
-    private List<IndexedChunk> readChunkIndex(Connection conn, long afterFirstTick) throws SQLException {
+    private List<IndexedChunk> readChunkIndex(Connection conn, long fromFirstTick) throws SQLException {
         String sql = "SELECT first_tick, last_tick, tick_count, step FROM environment_chunks"
-                + " WHERE first_tick > ? ORDER BY first_tick";
+                + " WHERE first_tick >= ? ORDER BY first_tick";
 
         List<IndexedChunk> chunks = new ArrayList<>();
         try (PreparedStatement stmt = conn.prepareStatement(sql)) {
-            stmt.setLong(1, afterFirstTick);
+            stmt.setLong(1, fromFirstTick);
             try (ResultSet rs = stmt.executeQuery()) {
                 while (rs.next()) {
                     chunks.add(new IndexedChunk(rs.getLong("first_tick"), rs.getLong("last_tick"),
@@ -723,7 +746,7 @@ public class RowPerChunkStrategy extends AbstractH2EnvStorageStrategy {
         }
         if (samplingInterval < 1) {
             throw new IllegalStateException("chunk " + firstTick + ".." + lastTick
-                + " carries no sampling interval; it was written by an older build,"
+                + " states no sampling interval; it was written by an older build,"
                 + " which is the build to read it with");
         }
         // Get or create PreparedStatement for this connection

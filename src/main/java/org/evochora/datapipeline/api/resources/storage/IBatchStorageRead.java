@@ -338,8 +338,12 @@ public interface IBatchStorageRead extends IResource {
      * <p>
      * This is the primary read primitive. Each chunk's uncompressed protobuf bytes are read
      * from storage, wrapped in a {@link RawChunk} with metadata extracted via partial parse
-     * (firstTick, lastTick, tickCount), and passed to the consumer. The raw bytes are discarded
-     * before the next chunk is read. Peak heap usage is O(rawChunkSize) (~25 MB for 4000x3000).
+     * (firstTick, lastTick, tickCount, samplingInterval), and passed to the consumer. The raw
+     * bytes are discarded before the next chunk is read. Peak heap usage is O(rawChunkSize)
+     * (~25 MB for 4000x3000).
+     * <p>
+     * A chunk has to state the sampling interval it was recorded at; one that does not is read
+     * with an interval of 0, which every consumer that needs the run's step rejects.
      * <p>
      * The raw bytes include all protobuf fields (including organisms). Consumers that need
      * parsed objects should use {@link #forEachChunk} instead.

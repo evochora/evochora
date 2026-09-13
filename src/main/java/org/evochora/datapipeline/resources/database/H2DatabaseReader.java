@@ -138,7 +138,8 @@ public class H2DatabaseReader implements IDatabaseReader {
     }
 
     @Override
-    public org.evochora.datapipeline.api.resources.database.dto.TickRangeExtension extendTickRanges(
+    public java.util.Optional<org.evochora.datapipeline.api.resources.database.dto.TickRangeExtension>
+            extendTickRanges(
             List<org.evochora.datapipeline.api.resources.database.dto.SampledTickRange> known,
             long afterFirstTick) throws SQLException {
         ensureNotClosed();

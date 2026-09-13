@@ -3,6 +3,7 @@ package org.evochora.datapipeline.resources.database.h2;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.List;
+import java.util.Optional;
 
 import org.evochora.datapipeline.api.resources.database.PendingChunkRead;
 import org.evochora.datapipeline.api.resources.database.TickNotFoundException;
@@ -173,21 +174,25 @@ public interface IH2EnvStorageStrategy {
     /**
      * Continues ranges an earlier read left behind with the chunks that were indexed since.
      * <p>
-     * Only chunks beginning past {@code afterFirstTick} are read, and the last of the known ranges
-     * is treated as still open: a chunk that carries its step and begins one step past it
-     * lengthens it. Everything else follows {@link #readTickRanges(Connection, String)}, whose
-     * result this reproduces as long as the chunks before {@code afterFirstTick} are unchanged -
-     * which is for the caller to establish, by checking the growth against
+     * The read starts at the chunk the known ranges end on, so that chunk is seen again and held
+     * against them: where it is gone, or no longer ends where the ranges say, nothing is appended
+     * and the answer is empty - the caller then reads the index in full. Otherwise the last of the
+     * known ranges is treated as still open, and a chunk that carries its step and begins one step
+     * past it lengthens it. Everything else follows {@link #readTickRanges(Connection, String)},
+     * whose result this reproduces as long as the chunks before {@code afterFirstTick} are
+     * unchanged - which the caller establishes by checking the growth against
      * {@link #readChunkIndexSummary(Connection)}.
      *
      * @param conn Database connection (schema already set)
      * @param runId Simulation run the connection points at, named in error messages
      * @param known The ranges of the earlier read, ordered by first tick
      * @param afterFirstTick First tick of the last chunk the earlier read saw
-     * @return The extended ranges and what this read took in
+     * @return The extended ranges and what this read took in, which counts the boundary chunk
+     *         neither as a chunk nor as ticks; empty where the index no longer continues what the
+     *         caller knows
      * @throws SQLException if the database read fails
      * @throws IllegalStateException on the same contradictions as {@link #readTickRanges(Connection, String)}
      */
-    TickRangeExtension extendTickRanges(Connection conn, String runId,
-                                        List<SampledTickRange> known, long afterFirstTick) throws SQLException;
+    Optional<TickRangeExtension> extendTickRanges(Connection conn, String runId,
+                                                  List<SampledTickRange> known, long afterFirstTick) throws SQLException;
 }
