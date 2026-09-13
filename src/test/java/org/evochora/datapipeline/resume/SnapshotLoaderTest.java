@@ -8,6 +8,7 @@ import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.when;
 
 import java.io.IOException;
+import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -17,6 +18,7 @@ import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.resources.storage.CheckedConsumer;
+import org.evochora.datapipeline.api.resources.storage.BatchFileListResult;
 import org.evochora.datapipeline.api.resources.storage.ChunkFieldFilter;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageRead;
 import org.evochora.datapipeline.api.resources.storage.StoragePath;
@@ -186,13 +188,33 @@ class SnapshotLoaderTest {
 
         StoragePath lastBatchPath = StoragePath.of(TEST_RUN_ID + "/raw/000/000/batch_0000000000000001000_0000000000000001199.pb");
         when(storageRead.findLastBatchFile(TEST_RUN_ID + "/raw/")).thenReturn(Optional.of(lastBatchPath));
+        when(storageRead.listBatchFiles(TEST_RUN_ID + "/raw/", null, 1))
+            .thenReturn(new BatchFileListResult(List.of(lastBatchPath), null, false));
         stubChunkRead(lastBatchPath, chunk(1000, 1099), chunk(1100, 1199));
 
         assertThatThrownBy(() -> loader.loadCheckpointContaining(TEST_RUN_ID, 5000))
             .isInstanceOf(ResumeException.class)
             .hasMessageContaining("tick 5000")
             .hasMessageContaining(TEST_RUN_ID)
-            .hasMessageContaining("ends at tick 1199");
+            .hasMessageContaining("covers ticks 1000 to 1199");
+    }
+
+    @Test
+    void loadCheckpointContaining_TickBeforeRecordedData_NamesWhereTheDataBegins() throws Exception {
+        stubMetadata();
+
+        when(storageRead.findBatchFileContaining(TEST_RUN_ID + "/raw/", 0L)).thenReturn(Optional.empty());
+
+        StoragePath onlyBatchPath = StoragePath.of(TEST_RUN_ID + "/raw/000/001/batch_0000000000000150000_0000000000000150199.pb");
+        when(storageRead.findLastBatchFile(TEST_RUN_ID + "/raw/")).thenReturn(Optional.of(onlyBatchPath));
+        when(storageRead.listBatchFiles(TEST_RUN_ID + "/raw/", null, 1))
+            .thenReturn(new BatchFileListResult(List.of(onlyBatchPath), null, false));
+        stubChunkRead(onlyBatchPath, chunk(150000, 150099), chunk(150100, 150199));
+
+        assertThatThrownBy(() -> loader.loadCheckpointContaining(TEST_RUN_ID, 0))
+            .isInstanceOf(ResumeException.class)
+            .hasMessageContaining("tick 0")
+            .hasMessageContaining("covers ticks 150000 to 150199");
     }
 
     @Test

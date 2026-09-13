@@ -639,6 +639,16 @@ class FileSystemStorageResourceTest {
     }
 
     @Test
+    void testFindBatchFileContaining_TickBeforeFirstBatch_ReturnsEmpty() throws IOException {
+        // A run forked from another begins where its window begins; nothing precedes it
+        storage.writeChunkBatchStreaming(List.of(createChunk(150_000, 150_009, 10)).iterator());
+
+        java.util.Optional<StoragePath> found = storage.findBatchFileContaining("test-sim/raw/", 0);
+
+        assertFalse(found.isPresent(), "No batch covers a tick before the run's first batch");
+    }
+
+    @Test
     void testFindBatchFileContaining_TickBeyondLastBatch_ReturnsEmpty() throws IOException {
         storage.writeChunkBatchStreaming(List.of(createChunk(0, 9, 10)).iterator());
 

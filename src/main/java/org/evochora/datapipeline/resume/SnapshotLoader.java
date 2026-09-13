@@ -157,8 +157,9 @@ public class SnapshotLoader {
     }
 
     /**
-     * Builds the message for a tick that no chunk of the run covers, naming where the recorded
-     * data ends so that a caller can see how far the run reaches.
+     * Builds the message for a tick that no chunk of the run covers, naming the first and the
+     * last recorded tick so that a caller can see whether the tick lies before the run, which a
+     * forked run begins in the middle of, or beyond it.
      *
      * @param runId The simulation run ID that was searched
      * @param tick The tick that was requested
@@ -166,7 +167,8 @@ public class SnapshotLoader {
      * @throws IOException if storage access fails
      */
     private String describeMissingTick(String runId, long tick) throws IOException {
-        Optional<StoragePath> lastBatchOpt = storageRead.findLastBatchFile(runId + "/raw/");
+        String prefix = runId + "/raw/";
+        Optional<StoragePath> lastBatchOpt = storageRead.findLastBatchFile(prefix);
         if (lastBatchOpt.isEmpty()) {
             return "No tick data found for run: " + runId;
         }
@@ -176,10 +178,17 @@ public class SnapshotLoader {
             lastCoveredTick[0] = chunk.getLastTick();
             return true;
         });
+        long[] firstCoveredTick = {-1};
+        for (StoragePath firstBatch : storageRead.listBatchFiles(prefix, null, 1).getFilenames()) {
+            forEachSnapshotChunk(firstBatch, chunk -> {
+                firstCoveredTick[0] = chunk.getFirstTick();
+                return false;
+            });
+        }
 
         return String.format(
-            "No chunk covering tick %d in run '%s': the recorded data ends at tick %d",
-            tick, runId, lastCoveredTick[0]);
+            "No chunk covering tick %d in run '%s': the recorded data covers ticks %d to %d",
+            tick, runId, firstCoveredTick[0], lastCoveredTick[0]);
     }
 
     /**

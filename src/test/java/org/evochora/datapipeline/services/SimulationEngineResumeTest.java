@@ -147,7 +147,7 @@ class SimulationEngineResumeTest {
         assertThatThrownBy(() -> new SimulationEngine("test-engine", options, resources))
             .isInstanceOf(ResumeException.class)
             .hasMessageContaining("tick 5000")
-            .hasMessageContaining("ends at tick 1099");
+            .hasMessageContaining("covers ticks 1000 to 1099");
     }
 
     @Test

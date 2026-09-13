@@ -1593,7 +1593,8 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
      * The folder levels come from the configuration of the reading resource, not from the run, so
      * a run written under different levels is unreachable for the descent. Batch files under the
      * prefix that the descent does not reach are exactly that case, and reporting the run as empty
-     * would hide it.
+     * would hide it. A tick before the run's first batch file is not that case: a run that was
+     * forked from another begins where its window begins, and nothing precedes it.
      *
      * @param basePrefix The run prefix that was searched, ending with a slash
      * @param tick The tick that was searched for, or null if the search was for the last file
@@ -1601,7 +1602,11 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
      * @throws IOException If storage access fails
      */
     private void requireFolderStructureReachesRun(String basePrefix, Long tick) throws IOException {
-        if (listBatchFiles(basePrefix, null, 1).getFilenames().isEmpty()) {
+        List<StoragePath> first = listBatchFiles(basePrefix, null, 1).getFilenames();
+        if (first.isEmpty()) {
+            return;
+        }
+        if (tick != null && tick < parseBatchStartTick(first.get(0).asString())) {
             return;
         }
 
