@@ -1157,10 +1157,6 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
         if (maxResults <= 0) {
             throw new IllegalArgumentException("maxResults must be > 0");
         }
-        if (sortOrder == IBatchStorageRead.SortOrder.DESCENDING && continuationToken != null) {
-            throw new IllegalArgumentException(
-                "continuationToken is not supported with DESCENDING sortOrder (underlying storage only paginates ascending)");
-        }
 
         // Delegate to subclass to get the files with prefix
         // listRaw returns PHYSICAL paths (with compression extensions), ascending
@@ -1217,6 +1213,14 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
 
         if (sortOrder == IBatchStorageRead.SortOrder.DESCENDING) {
             Collections.reverse(sortedPaths);
+            // The whole listing is at hand, so a page continues behind the token in this order;
+            // the ascending listing had the primitive apply the token
+            if (continuationToken != null) {
+                int behindToken = sortedPaths.indexOf(continuationToken);
+                sortedPaths = behindToken < 0
+                    ? sortedPaths.stream().filter(path -> path.compareTo(continuationToken) < 0).toList()
+                    : sortedPaths.subList(behindToken + 1, sortedPaths.size());
+            }
         }
 
         // Convert to StoragePath list with limit
@@ -1228,10 +1232,7 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
         // Check if truncated
         boolean truncated = batchFiles.size() > maxResults;
         List<StoragePath> resultFiles = truncated ? batchFiles.subList(0, maxResults) : batchFiles;
-        // A token continues an ascending listing; descending takes none, so it hands out none
-        String nextToken = (truncated && sortOrder == IBatchStorageRead.SortOrder.ASCENDING)
-            ? resultFiles.get(resultFiles.size() - 1).asString()
-            : null;
+        String nextToken = truncated ? resultFiles.get(resultFiles.size() - 1).asString() : null;
 
         return new BatchFileListResult(resultFiles, nextToken, truncated);
     }

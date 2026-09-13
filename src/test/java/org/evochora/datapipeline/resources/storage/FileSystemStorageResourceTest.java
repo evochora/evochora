@@ -820,13 +820,23 @@ class FileSystemStorageResourceTest {
     }
 
     @Test
-    void testListBatchFiles_Descending_WithContinuationToken_Throws() throws IOException {
-        storage.writeChunkBatchStreaming(List.of(createChunk(0, 9, 10)).iterator());
+    void testListBatchFiles_Descending_PagesNewestFirst() throws IOException {
+        for (int i = 0; i < 10; i++) {
+            storage.writeChunkBatchStreaming(List.of(createChunk(i * 10, i * 10 + 9, 10)).iterator());
+        }
 
-        assertThrows(IllegalArgumentException.class,
-            () -> storage.listBatchFiles("test-sim/", "test-sim/raw/000/000/batch_x.pb", 1,
-                IBatchStorageRead.SortOrder.DESCENDING),
-            "Should reject a continuation token with descending order");
+        BatchFileListResult firstPage = storage.listBatchFiles("test-sim/", null, 3,
+            IBatchStorageRead.SortOrder.DESCENDING);
+        assertTrue(firstPage.isTruncated(), "Seven files follow the first three");
+        BatchFileListResult secondPage = storage.listBatchFiles("test-sim/", firstPage.getNextContinuationToken(), 3,
+            IBatchStorageRead.SortOrder.DESCENDING);
+
+        assertEquals(3, secondPage.getFilenames().size(), "The second page holds three files");
+        assertTrue(secondPage.getFilenames().get(0).asString().contains("batch_0000000000000000060_"),
+            "The second page continues behind the first, was: " + secondPage.getFilenames().get(0).asString());
+        assertTrue(secondPage.getFilenames().get(2).asString().contains("batch_0000000000000000040_"),
+            "The second page keeps the descending order, was: " + secondPage.getFilenames().get(2).asString());
+        assertTrue(secondPage.isTruncated(), "Four files still follow");
     }
 
     // ========================================================================

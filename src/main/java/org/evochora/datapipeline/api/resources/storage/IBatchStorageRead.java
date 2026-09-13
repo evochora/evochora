@@ -221,8 +221,8 @@ public interface IBatchStorageRead extends IResource {
      * last files can only be known after all of them were seen. The names are fetched page by
      * page, and a backend that walks the whole run for every page, as the file system does,
      * walks it once per thousand files: hundreds of walks over hundreds of thousands of names for
-     * a run of 10^9 ticks. A descending listing takes no continuation token and hands out none.
-     * Use it for one-off lookups only; for the last batch
+     * a run of 10^9 ticks, and every page reads the whole listing again. Use it for one-off
+     * lookups only; for the last batch
      * file use {@link #findLastBatchFile}, which descends the folder tree instead, and for the
      * file covering one tick {@link #findBatchFileContaining}.
      *
