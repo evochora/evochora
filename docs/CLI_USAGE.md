@@ -4,7 +4,7 @@
 
 The Evochora CLI (`bin/evochora`) is the main entry point for running the simulation node and tools:
 
-- **Node**: start and control the simulation pipeline.
+- **Node**: start and control the simulation pipeline — start a new run (`node run`), continue an interrupted one (`node resume`), re-record a window of one as a new run (`node fork`), or serve the already indexed runs without simulating (`node show`).
 - **Compile**: compile EvoASM (Evochora Assembly) programs.
 - **Inspect**: inspect stored simulation data.
 - **Video**: render simulation runs into videos.
@@ -32,6 +32,10 @@ bin/evochora help video
 bin/evochora help inspect
 bin/evochora help cleanup
 
+# Show help for a node subcommand
+bin/evochora node resume --help
+bin/evochora node fork --help
+
 # Show help for inspect storage subcommand
 bin/evochora inspect storage --help
 ```
@@ -58,6 +62,50 @@ The node will:
 - Start all configured services (simulation engine, persistence, indexers, HTTP server, etc.)
 - Expose the HTTP API for monitoring and control
 - Run until interrupted (Ctrl+C)
+
+### Continue a Run (`node resume`)
+
+```bash
+# Continue the newest run in storage
+bin/evochora node resume
+
+# Continue a named run
+bin/evochora node resume --run <run-id>
+```
+
+**Parameters:**
+- `--run, -r`: Run ID to continue (default: the newest run in storage)
+- `--storage, -s`: Storage resource the newest run is looked up in (default: tick-storage)
+
+Continues an interrupted run where its recorded data ends.
+
+### Fork a Run (`node fork`)
+
+```bash
+# Re-record ticks 150000..200000 of the newest run with the "detailed" profile
+bin/evochora node fork --from 150000 --to 200000 --profile detailed
+
+# Fork a named run and record every 10th tick
+bin/evochora node fork --run <run-id> --from 150000 --to 200000 --sampling 10
+```
+
+**Parameters:**
+- `--run, -r`: Run ID to fork from (default: the newest run in storage)
+- `--from <tick>`: First tick that must be recorded (required)
+- `--to <tick>`: Last tick that must be recorded (required)
+- `--profile, -p <name>`: Tuning profile from the configuration (`detailed`, `sampled`, `sparse`; default: the configured one)
+- `--sampling <n>`: Ticks between two recorded ticks, on top of the profile
+- `--storage, -s`: Storage resource the newest run is looked up in (default: tick-storage)
+
+Records a stretch of an existing run again as a new run, typically more densely than the original. The recorded window may begin a little before `--from` and end a little after `--to`. After the last tick of the window the simulation pauses; `POST /pipeline/api/service/simulation-engine/resume` continues it.
+
+### View Indexed Runs (`node show`)
+
+```bash
+bin/evochora node show
+```
+
+Starts the node without simulating: the HTTP server serves the runs already in the database to the visualizer and analyzer.
 
 ---
 
@@ -364,6 +412,11 @@ java -jar build/libs/evochora.jar video --run-id my-simulation-run --out simulat
 - Verify the configuration file uses valid HOCON syntax
 - Check that all required configuration keys are present
 - See `config/evochora.conf` for the experiment template and `src/main/resources/reference.conf` for all defaults
+
+### Warning that a run was written by another build
+- Every run records the git revision of the build that wrote it; a run is reproduced exactly only by that build
+- Check out the revision named in the warning (`git checkout <hash>`) and build it to read or continue the run faithfully
+- A revision ending in `-dirty` came from uncommitted changes and cannot be checked out again
 
 ### Inspect storage fails
 - Verify the simulation run ID exists in storage
