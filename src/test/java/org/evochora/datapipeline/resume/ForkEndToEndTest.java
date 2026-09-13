@@ -151,6 +151,9 @@ class ForkEndToEndTest {
         assertThat(metadata.getFork().getFirstTick()).isEqualTo(WINDOW_FIRST);
         assertThat(metadata.getFork().getLastTick()).isEqualTo(WINDOW_LAST);
         assertThat(recorded.stream().allMatch(c -> c.getSimulationRunId().equals(metadata.getSimulationRunId()))).isTrue();
+        assertThat(recorded.get(0).getSnapshot().getSimulationRunId())
+            .as("the parent's snapshot becomes the fork's first tick and names the fork")
+            .isEqualTo(metadata.getSimulationRunId());
         Config recordedConfig = ConfigFactory.parseString(metadata.getResolvedConfigJson());
         assertThat(recordedConfig.getInt("samplingInterval")).isEqualTo(FORK_SAMPLING);
         assertThat(recordedConfig.getConfigList("organisms")).hasSize(1);

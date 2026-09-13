@@ -488,6 +488,13 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
 
             applyParallelismScaling(restored.simulation(), currentRuntimeConfig);
 
+            // A fork records under its own ID; the parent's snapshot becomes the fork's first
+            // tick and must say so, as the chunk around it does
+            String runId = forkOrigin == null ? parentRunId : newRunId();
+            TickData encoderSnapshot = forkOrigin == null
+                ? checkpoint.snapshot()
+                : checkpoint.snapshot().toBuilder().setSimulationRunId(runId).build();
+
             return new InitializedState(
                 restored.simulation(),
                 randomProvider,
@@ -496,7 +503,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                 deathHandlersList,
                 birthHandlersList,
                 restored.programArtifacts(),
-                forkOrigin == null ? parentRunId : newRunId(),
+                runId,
                 seed,
                 forkOrigin == null ? metadata.getStartTimeMs() : System.currentTimeMillis(),
                 checkpoint.getResumeFromTick() - 1,
@@ -507,7 +514,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                 runOptions.organismDensityFactor(),
                 runOptions.maxCellsPerOrganism(),
                 runOptions.estimatedDeltaRatio(),
-                checkpoint.snapshot(),  // Pass snapshot to prime the encoder
+                encoderSnapshot,  // Primes the encoder
                 forkOrigin == null ? null : withRecordingOptions(originalConfig, runOptions),
                 forkOrigin
             );
