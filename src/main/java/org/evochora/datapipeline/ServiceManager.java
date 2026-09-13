@@ -37,6 +37,7 @@ import org.slf4j.LoggerFactory;
 
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
+import com.typesafe.config.ConfigValueType;
 
 /**
  * Owns the life cycle of the pipeline's services and binds them to the resources they work with.
@@ -196,6 +197,9 @@ public class ServiceManager implements IMonitorable {
         Map<String, Config> initializersByClass = new LinkedHashMap<>();
         
         for (String resourceName : resourcesConfig.root().keySet()) {
+            if (isSetToNull(resourcesConfig, resourceName)) {
+                continue;
+            }
             try {
                 Config resourceDefinition = resourcesConfig.getConfig(resourceName);
                 if (resourceDefinition.hasPath("init")) {
@@ -262,6 +266,10 @@ public class ServiceManager implements IMonitorable {
         log.info("\u001B[34m========== Resource Initialization ==========\u001B[0m");
         Config resourcesConfig = config.getConfig("resources");
         for (String resourceName : resourcesConfig.root().keySet()) {
+            if (isSetToNull(resourcesConfig, resourceName)) {
+                log.debug("Resource '{}' is set to null and is not instantiated.", resourceName);
+                continue;
+            }
             try {
                 Config resourceDefinition = resourcesConfig.getConfig(resourceName);
                 String className = resourceDefinition.getString("className");
@@ -294,6 +302,10 @@ public class ServiceManager implements IMonitorable {
         log.info("\u001B[34m========== Service Initialization ==========\u001B[0m");
         Config servicesConfig = config.getConfig("services");
         for (String serviceName : servicesConfig.root().keySet()) {
+            if (isSetToNull(servicesConfig, serviceName)) {
+                log.debug("Service '{}' is set to null and gets no factory.", serviceName);
+                continue;
+            }
             try {
                 Config serviceDefinition = servicesConfig.getConfig(serviceName);
                 String className = serviceDefinition.getString("className");
@@ -304,6 +316,11 @@ public class ServiceManager implements IMonitorable {
                     Config resourcesConfig = serviceDefinition.getConfig("resources");
                     for (Map.Entry<String, com.typesafe.config.ConfigValue> entry : resourcesConfig.root().entrySet()) {
                         String portName = entry.getKey();
+                        // A binding set to null is not bound: a port the defaults declare for a
+                        // mode this configuration does not use.
+                        if (entry.getValue().valueType() == ConfigValueType.NULL) {
+                            continue;
+                        }
                         String resourceUri = entry.getValue().unwrapped().toString();
                         ResourceContext context = parseResourceUri(resourceUri, serviceName, portName);
                         IResource baseResource = resources.get(context.resourceName());
@@ -343,6 +360,19 @@ public class ServiceManager implements IMonitorable {
                 log.error("Failed to build factory for service '{}': {}. Skipping this service.", serviceName, errorMsg);
             }
         }
+    }
+
+    /**
+     * Whether an entry of a configuration object is set to {@code null}. Such an entry is not
+     * there: it is how a configuration that includes the defaults takes a resource, a service or
+     * a binding out again, and it is neither instantiated nor reported.
+     *
+     * @param object the configuration object holding the entry
+     * @param key the entry's key, taken from the object's key set
+     * @return true if the entry's value is {@code null}
+     */
+    private static boolean isSetToNull(Config object, String key) {
+        return object.root().get(key).valueType() == ConfigValueType.NULL;
     }
 
     /**
@@ -1304,6 +1334,9 @@ public class ServiceManager implements IMonitorable {
 
         // Iterate over all configured services to find SimulationEngine
         for (String serviceName : servicesConfig.root().keySet()) {
+            if (isSetToNull(servicesConfig, serviceName)) {
+                continue;
+            }
             Config serviceConfig = servicesConfig.getConfig(serviceName);
 
             if (!serviceConfig.hasPath("className")) {

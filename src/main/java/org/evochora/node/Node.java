@@ -20,6 +20,7 @@ import org.slf4j.LoggerFactory;
 
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigObject;
+import com.typesafe.config.ConfigValueType;
 
 import ch.qos.logback.classic.LoggerContext;
 
@@ -155,6 +156,12 @@ public final class Node {
         // Step 1: Parse all process definitions
         final Map<String, ProcessDefinition> processDefs = new LinkedHashMap<>();
         for (final String processName : processesConfig.keySet()) {
+            // A process set to null is not there: that is how a configuration takes a process
+            // out that the defaults declare.
+            if (processesConfig.get(processName).valueType() == ConfigValueType.NULL) {
+                LOGGER.debug("Process '{}' is set to null and is not loaded.", processName);
+                continue;
+            }
             try {
                 final Config processConfig = processesConfig.toConfig().getConfig(processName);
                 final String className = processConfig.getString("className");
@@ -166,6 +173,11 @@ public final class Node {
                 if (processConfig.hasPath("require")) {
                     final ConfigObject requireConfig = processConfig.getObject("require");
                     for (final String localName : requireConfig.keySet()) {
+                        // A dependency set to null is not required, like a process set to null
+                        // is not there.
+                        if (requireConfig.get(localName).valueType() == ConfigValueType.NULL) {
+                            continue;
+                        }
                         requires.put(localName, requireConfig.toConfig().getString(localName));
                     }
                 }

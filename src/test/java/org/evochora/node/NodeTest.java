@@ -465,4 +465,83 @@ class NodeTest {
             throw new RuntimeException("Stop failed");
         }
     }
+
+    /**
+     * A process set to {@code null} in the configuration is not there: not parsed, not built, not
+     * reported. That is how a configuration that includes the defaults takes a process out again.
+     */
+    @Test
+    @DisplayName("A process set to null is not there")
+    void constructor_leavesOutAProcessSetToNull() {
+        RecordingProcess.constructed.clear();
+        Config config = ConfigFactory.parseString("""
+            node {
+              processes {
+                kept { className = "org.evochora.node.NodeTest$RecordingProcess" }
+                gone = null
+              }
+            }
+            """);
+
+        testNode = new Node(config);
+
+        assertThat(RecordingProcess.constructed.keySet()).containsExactly("kept");
+    }
+
+    /**
+     * A dependency set to {@code null} is not required: the process is built with the dependencies
+     * that remain, and nothing is looked up for the name that was taken out.
+     */
+    @Test
+    @DisplayName("A require entry set to null is not required")
+    void constructor_leavesOutARequireEntrySetToNull() {
+        RecordingProcess.constructed.clear();
+        Config config = ConfigFactory.parseString("""
+            node {
+              processes {
+                provider { className = "org.evochora.node.NodeTest$RecordingProcess" }
+                user {
+                  className = "org.evochora.node.NodeTest$RecordingProcess"
+                  require {
+                    kept = "provider"
+                    gone = null
+                  }
+                }
+              }
+            }
+            """);
+
+        testNode = new Node(config);
+
+        assertThat(RecordingProcess.constructed.keySet()).containsExactlyInAnyOrder("provider", "user");
+        assertThat(RecordingProcess.constructed.get("user").keySet()).containsExactly("kept");
+    }
+
+    /**
+     * A process that records, by name, the dependencies it was constructed with, and exposes
+     * itself as a service so that another process can require it.
+     */
+    @SuppressWarnings("unused") // Used via reflection in tests
+    private static class RecordingProcess implements IProcess, org.evochora.node.spi.IServiceProvider {
+        static final Map<String, Map<String, Object>> constructed = new java.util.LinkedHashMap<>();
+
+        public RecordingProcess(String processName, Map<String, Object> dependencies, Config config) {
+            constructed.put(processName, new java.util.LinkedHashMap<>(dependencies));
+        }
+
+        @Override
+        public Object getExposedService() {
+            return this;
+        }
+
+        @Override
+        public void start() {
+            // Nothing to run.
+        }
+
+        @Override
+        public void stop() {
+            // Nothing to stop.
+        }
+    }
 }

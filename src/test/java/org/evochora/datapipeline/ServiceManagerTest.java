@@ -423,4 +423,102 @@ public class ServiceManagerTest {
             assertEquals("test-queue", consumerResource.getResourceName());
         });
     }
+
+    /**
+     * A resource set to {@code null} in the configuration is not there: not instantiated, not
+     * listed, and no error about it. That is how a configuration that includes the defaults takes
+     * a resource out again.
+     */
+    @Test
+    void aResourceSetToNullIsNotThere() {
+        ServiceManager sm = new ServiceManager(ConfigFactory.parseString("""
+            pipeline {
+              autoStart = false
+              startupSequence = ["producer"]
+              resources {
+                "test-queue" {
+                  className = "org.evochora.datapipeline.resources.queues.InMemoryBlockingQueue"
+                  options { capacity = 100 }
+                }
+                gone = null
+              }
+              services {
+                producer {
+                  className = "org.evochora.datapipeline.services.DummyProducerService"
+                  resources { output = "queue-out:test-queue?window=5" }
+                  options { intervalMs = 10, maxMessages = 1 }
+                }
+              }
+            }
+            """));
+
+        assertNotNull(sm.getResource("test-queue", IResource.class));
+        assertThrows(IllegalArgumentException.class, () -> sm.getResource("gone", IResource.class));
+    }
+
+    /** A service set to {@code null} gets no factory and is unknown to the manager. */
+    @Test
+    void aServiceSetToNullIsNotThere() {
+        ServiceManager sm = new ServiceManager(ConfigFactory.parseString("""
+            pipeline {
+              autoStart = false
+              startupSequence = ["producer"]
+              resources {
+                "test-queue" {
+                  className = "org.evochora.datapipeline.resources.queues.InMemoryBlockingQueue"
+                  options { capacity = 100 }
+                }
+              }
+              services {
+                producer {
+                  className = "org.evochora.datapipeline.services.DummyProducerService"
+                  resources { output = "queue-out:test-queue?window=5" }
+                  options { intervalMs = 10, maxMessages = 1 }
+                }
+                gone = null
+              }
+            }
+            """));
+
+        assertEquals(IService.State.STOPPED, sm.getServiceStatus("producer").state());
+        assertThrows(IllegalArgumentException.class, () -> sm.getServiceStatus("gone"));
+    }
+
+    /**
+     * A resource binding set to {@code null} is not bound: the service starts with the bindings
+     * that remain. A service that binds a resource only for a mode that is switched off can so
+     * be run in a configuration where that resource is gone.
+     */
+    @Test
+    void aBindingSetToNullIsNotBound() {
+        ServiceManager sm = new ServiceManager(ConfigFactory.parseString("""
+            pipeline {
+              autoStart = false
+              startupSequence = ["producer"]
+              resources {
+                "test-queue" {
+                  className = "org.evochora.datapipeline.resources.queues.InMemoryBlockingQueue"
+                  options { capacity = 100 }
+                }
+              }
+              services {
+                producer {
+                  className = "org.evochora.datapipeline.services.DummyProducerService"
+                  resources {
+                    output = "queue-out:test-queue?window=5"
+                    gone = null
+                  }
+                  options { intervalMs = 10, maxMessages = -1 }
+                }
+              }
+            }
+            """));
+
+        sm.startAll();
+        await().atMost(2, TimeUnit.SECONDS).untilAsserted(() ->
+                assertEquals(IService.State.RUNNING, sm.getServiceStatus("producer").state()));
+        assertEquals(1, sm.getServiceStatus("producer").resourceBindings().size(),
+                "only the binding that was not taken out");
+        sm.stopAll();
+    }
 }
