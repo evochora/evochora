@@ -6,6 +6,9 @@ package org.evochora.node.processes.http.api.visualizer;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -21,6 +24,7 @@ import org.evochora.datapipeline.api.resources.database.IDatabaseReaderProvider;
 import org.evochora.datapipeline.api.resources.database.dto.ChunkIndexSummary;
 import org.evochora.datapipeline.api.resources.database.dto.SampledTickRange;
 import org.evochora.datapipeline.api.resources.database.dto.SpatialRegion;
+import org.evochora.datapipeline.api.resources.database.dto.TickRangeExtension;
 import org.evochora.node.processes.http.api.visualizer.dto.TickRangesResponseDto;
 import org.evochora.node.spi.ServiceRegistry;
 import org.junit.jupiter.api.DisplayName;
@@ -202,8 +206,9 @@ class EnvironmentControllerUnitTest {
         @DisplayName("Should report the ranges a viewer can navigate along")
         void reportsTheRangesOfTheRun() throws Exception {
             IDatabaseReader reader = readerWith(
-                new ChunkIndexSummary(3L, 290L),
-                List.of(new SampledTickRange(100L, 190L, 10L), new SampledTickRange(250L, 290L, 20L)));
+                new ChunkIndexSummary(3L, 290L, 30L),
+                extensionOf(List.of(new SampledTickRange(100L, 190L, 10L),
+                                    new SampledTickRange(250L, 290L, 20L)), 3L, 30L, 250L));
             EnvironmentController controller = controllerReading(reader);
 
             String json = objectMapper.writeValueAsString(callGetTicks(controller));
@@ -218,8 +223,8 @@ class EnvironmentControllerUnitTest {
         @DisplayName("Should keep the ranges while the chunk index stands still")
         void readsTheIndexOnlyOnce() throws Exception {
             IDatabaseReader reader = readerWith(
-                new ChunkIndexSummary(2L, 190L),
-                List.of(new SampledTickRange(0L, 190L, 10L)));
+                new ChunkIndexSummary(2L, 190L, 20L),
+                extensionOf(List.of(new SampledTickRange(0L, 190L, 10L)), 2L, 20L, 100L));
             EnvironmentController controller = controllerReading(reader);
 
             callGetTicks(controller);
@@ -227,33 +232,82 @@ class EnvironmentControllerUnitTest {
 
             verify(reader, times(2)).getChunkIndexSummary();
             verify(reader, times(1)).getTickRanges();
+            verify(reader, never()).extendTickRanges(anyList(), anyLong());
             assertThat(second.ranges()).containsExactly(new SampledTickRange(0L, 190L, 10L));
         }
 
         @Test
-        @DisplayName("Should read the ranges again once the chunk index has moved")
-        void readsTheIndexAgainAfterItGrew() throws Exception {
+        @DisplayName("Should read only the new chunks once the index has grown")
+        void readsOnlyWhatWasAppended() throws Exception {
             IDatabaseReader reader = mock(IDatabaseReader.class);
             when(reader.getChunkIndexSummary())
-                .thenReturn(new ChunkIndexSummary(2L, 190L))
-                .thenReturn(new ChunkIndexSummary(3L, 290L));
+                .thenReturn(new ChunkIndexSummary(2L, 190L, 20L))
+                .thenReturn(new ChunkIndexSummary(3L, 290L, 30L));
+            when(reader.getTickRanges()).thenReturn(
+                extensionOf(List.of(new SampledTickRange(0L, 190L, 10L)), 2L, 20L, 100L));
+            when(reader.extendTickRanges(anyList(), anyLong())).thenReturn(
+                extensionOf(List.of(new SampledTickRange(0L, 290L, 10L)), 1L, 10L, 200L));
+            EnvironmentController controller = controllerReading(reader);
+
+            callGetTicks(controller);
+            TickRangesResponseDto second = callGetTicks(controller);
+
+            verify(reader, times(1)).getTickRanges();
+            verify(reader).extendTickRanges(List.of(new SampledTickRange(0L, 190L, 10L)), 100L);
+            assertThat(second.maxTick()).isEqualTo(290L);
+        }
+
+        @Test
+        @DisplayName("Should build the ranges anew when a chunk that was already there has changed")
+        void readsEverythingAgainWhenTheGrowthDoesNotAddUp() throws Exception {
+            IDatabaseReader reader = mock(IDatabaseReader.class);
+            // The second summary holds five ticks more without holding another chunk: one of the
+            // two known chunks was written again
+            when(reader.getChunkIndexSummary())
+                .thenReturn(new ChunkIndexSummary(2L, 190L, 20L))
+                .thenReturn(new ChunkIndexSummary(2L, 190L, 25L));
             when(reader.getTickRanges())
-                .thenReturn(List.of(new SampledTickRange(0L, 190L, 10L)))
-                .thenReturn(List.of(new SampledTickRange(0L, 290L, 10L)));
+                .thenReturn(extensionOf(List.of(new SampledTickRange(0L, 190L, 10L)), 2L, 20L, 100L))
+                .thenReturn(extensionOf(List.of(new SampledTickRange(0L, 190L, 5L)), 2L, 25L, 100L));
+            when(reader.extendTickRanges(anyList(), anyLong())).thenReturn(
+                extensionOf(List.of(new SampledTickRange(0L, 190L, 10L)), 0L, 0L, 100L));
             EnvironmentController controller = controllerReading(reader);
 
             callGetTicks(controller);
             TickRangesResponseDto second = callGetTicks(controller);
 
             verify(reader, times(2)).getTickRanges();
-            assertThat(second.maxTick()).isEqualTo(290L);
+            assertThat(second.ranges()).containsExactly(new SampledTickRange(0L, 190L, 5L));
+        }
+
+        @Test
+        @DisplayName("Should carry the ticks the index holds in the ETag")
+        void namesTheSampleCountInTheETag() throws Exception {
+            IDatabaseReader reader = mock(IDatabaseReader.class);
+            when(reader.getChunkIndexSummary())
+                .thenReturn(new ChunkIndexSummary(2L, 190L, 20L))
+                .thenReturn(new ChunkIndexSummary(2L, 190L, 25L));
+            when(reader.getTickRanges()).thenReturn(
+                extensionOf(List.of(new SampledTickRange(0L, 190L, 10L)), 2L, 20L, 100L));
+            when(reader.extendTickRanges(anyList(), anyLong())).thenReturn(
+                extensionOf(List.of(new SampledTickRange(0L, 190L, 10L)), 0L, 0L, 100L));
+            Config withETag = ConfigFactory.parseString(
+                "http-cache { ticks { enabled = true, maxAge = 5, useETag = true } }");
+            EnvironmentController controller = controllerReading(reader, withETag);
+
+            String first = callGetTicksForETag(controller);
+            String second = callGetTicksForETag(controller);
+
+            assertThat(first).contains("_20");
+            assertThat(second).contains("_25");
+            assertThat(first).isNotEqualTo(second);
         }
 
         @Test
         @DisplayName("Should answer 404 while the run has recorded nothing")
         void reportsNoRunWhileNothingIsRecorded() throws Exception {
             IDatabaseReader reader = mock(IDatabaseReader.class);
-            when(reader.getChunkIndexSummary()).thenReturn(new ChunkIndexSummary(0L, 0L));
+            when(reader.getChunkIndexSummary()).thenReturn(new ChunkIndexSummary(0L, 0L, 0L));
             EnvironmentController controller = controllerReading(reader);
 
             assertThatThrownBy(() -> controller.getTicks(contextForRun()))
@@ -261,7 +315,12 @@ class EnvironmentControllerUnitTest {
             verify(reader, never()).getTickRanges();
         }
 
-        private IDatabaseReader readerWith(ChunkIndexSummary summary, List<SampledTickRange> ranges)
+        private TickRangeExtension extensionOf(List<SampledTickRange> ranges, long addedChunks,
+                                               long addedSamples, long lastFirstTick) {
+            return new TickRangeExtension(ranges, addedChunks, addedSamples, lastFirstTick);
+        }
+
+        private IDatabaseReader readerWith(ChunkIndexSummary summary, TickRangeExtension ranges)
                 throws Exception {
             IDatabaseReader reader = mock(IDatabaseReader.class);
             when(reader.getChunkIndexSummary()).thenReturn(summary);
@@ -270,11 +329,16 @@ class EnvironmentControllerUnitTest {
         }
 
         private EnvironmentController controllerReading(IDatabaseReader reader) throws Exception {
+            return controllerReading(reader, ConfigFactory.empty());
+        }
+
+        private EnvironmentController controllerReading(IDatabaseReader reader, Config options)
+                throws Exception {
             ServiceRegistry serviceRegistry = new ServiceRegistry();
             IDatabaseReaderProvider provider = mock(IDatabaseReaderProvider.class);
             when(provider.createReader(RUN_ID)).thenReturn(reader);
             serviceRegistry.register(IDatabaseReaderProvider.class, provider);
-            return new EnvironmentController(serviceRegistry, ConfigFactory.empty());
+            return new EnvironmentController(serviceRegistry, options);
         }
 
         private Context contextForRun() {
@@ -291,6 +355,15 @@ class EnvironmentControllerUnitTest {
             ArgumentCaptor<Object> body = ArgumentCaptor.forClass(Object.class);
             verify(ctx).json(body.capture());
             return (TickRangesResponseDto) body.getValue();
+        }
+
+        private String callGetTicksForETag(EnvironmentController controller) throws Exception {
+            Context ctx = contextForRun();
+            controller.getTicks(ctx);
+
+            ArgumentCaptor<String> etag = ArgumentCaptor.forClass(String.class);
+            verify(ctx).header(eq("ETag"), etag.capture());
+            return etag.getValue();
         }
     }
 

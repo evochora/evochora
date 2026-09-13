@@ -1121,7 +1121,7 @@ public class H2Database extends AbstractDatabaseResource
             return getEnvStrategy().readChunkIndexSummary(conn);
         } catch (SQLException e) {
             if (isMissingTable(e)) {
-                return new org.evochora.datapipeline.api.resources.database.dto.ChunkIndexSummary(0L, 0L);
+                return new org.evochora.datapipeline.api.resources.database.dto.ChunkIndexSummary(0L, 0L, 0L);
             }
             throw e;
         }
@@ -1135,20 +1135,60 @@ public class H2Database extends AbstractDatabaseResource
      *
      * @param conn The database connection (schema already set)
      * @param runId The simulation run ID, named in the error messages of the range check
-     * @return The ranges ordered by first tick; empty when nothing is indexed
+     * @return The ranges ordered by first tick and what the read took in; empty when nothing is
+     *         indexed
      * @throws SQLException if the database query fails
      */
-    java.util.List<org.evochora.datapipeline.api.resources.database.dto.SampledTickRange> getTickRangesInternal(
+    org.evochora.datapipeline.api.resources.database.dto.TickRangeExtension getTickRangesInternal(
             Connection conn, String runId) throws SQLException {
         try {
             queriesExecuted.incrementAndGet();
             return getEnvStrategy().readTickRanges(conn, runId);
         } catch (SQLException e) {
             if (isMissingTable(e)) {
-                return java.util.List.of();
+                return emptyTickRanges();
             }
             throw e;
         }
+    }
+
+    /**
+     * Continues known tick ranges with the chunks indexed since they were read.
+     * <p>
+     * Delegates to {@link IH2EnvStorageStrategy#extendTickRanges(Connection, String, java.util.List, long)}.
+     * A run whose chunk index does not exist yet has nothing to add.
+     *
+     * @param conn The database connection (schema already set)
+     * @param runId The simulation run ID, named in the error messages of the range check
+     * @param known The ranges of the earlier read, ordered by first tick
+     * @param afterFirstTick First tick of the last chunk the earlier read saw
+     * @return The extended ranges and what this read took in
+     * @throws SQLException if the database query fails
+     */
+    org.evochora.datapipeline.api.resources.database.dto.TickRangeExtension extendTickRangesInternal(
+            Connection conn, String runId,
+            java.util.List<org.evochora.datapipeline.api.resources.database.dto.SampledTickRange> known,
+            long afterFirstTick) throws SQLException {
+        try {
+            queriesExecuted.incrementAndGet();
+            return getEnvStrategy().extendTickRanges(conn, runId, known, afterFirstTick);
+        } catch (SQLException e) {
+            if (isMissingTable(e)) {
+                return new org.evochora.datapipeline.api.resources.database.dto.TickRangeExtension(
+                        known, 0L, 0L, afterFirstTick);
+            }
+            throw e;
+        }
+    }
+
+    /**
+     * The answer for a run that has no chunk index to read.
+     *
+     * @return An extension holding no ranges and having taken nothing in
+     */
+    private static org.evochora.datapipeline.api.resources.database.dto.TickRangeExtension emptyTickRanges() {
+        return new org.evochora.datapipeline.api.resources.database.dto.TickRangeExtension(
+                java.util.List.of(), 0L, 0L, Long.MIN_VALUE);
     }
 
     /**

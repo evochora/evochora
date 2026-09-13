@@ -8,6 +8,7 @@ import org.evochora.datapipeline.api.resources.database.PendingChunkRead;
 import org.evochora.datapipeline.api.resources.database.TickNotFoundException;
 import org.evochora.datapipeline.api.resources.database.dto.ChunkIndexSummary;
 import org.evochora.datapipeline.api.resources.database.dto.SampledTickRange;
+import org.evochora.datapipeline.api.resources.database.dto.TickRangeExtension;
 
 /**
  * H2-specific strategy interface for storing and reading environment data as chunks.
@@ -159,11 +160,33 @@ public interface IH2EnvStorageStrategy {
      *
      * @param conn Database connection (schema already set)
      * @param runId Simulation run the connection points at, named in error messages
-     * @return The ranges ordered by first tick; empty when nothing is indexed
+     * @return The ranges ordered by first tick and what the read took in; the ranges are empty
+     *         when nothing is indexed
      * @throws SQLException if the database read fails
      * @throws IllegalStateException if two chunks overlap, if a chunk's span does not fit the
      *                               number of ticks it holds, or if the run's only chunk holds a
      *                               single tick and so leaves no step anywhere
      */
-    List<SampledTickRange> readTickRanges(Connection conn, String runId) throws SQLException;
+    TickRangeExtension readTickRanges(Connection conn, String runId) throws SQLException;
+
+    /**
+     * Continues ranges an earlier read left behind with the chunks that were indexed since.
+     * <p>
+     * Only chunks beginning past {@code afterFirstTick} are read, and the last of the known ranges
+     * is treated as still open: a chunk that carries its step and begins one step past it
+     * lengthens it, and a chunk holding a single tick may take that step as its own. Everything
+     * else follows {@link #readTickRanges(Connection, String)}, whose result this reproduces as
+     * long as the chunks before {@code afterFirstTick} are unchanged - which is for the caller to
+     * establish, by checking the growth against {@link #readChunkIndexSummary(Connection)}.
+     *
+     * @param conn Database connection (schema already set)
+     * @param runId Simulation run the connection points at, named in error messages
+     * @param known The ranges of the earlier read, ordered by first tick
+     * @param afterFirstTick First tick of the last chunk the earlier read saw
+     * @return The extended ranges and what this read took in
+     * @throws SQLException if the database read fails
+     * @throws IllegalStateException on the same contradictions as {@link #readTickRanges(Connection, String)}
+     */
+    TickRangeExtension extendTickRanges(Connection conn, String runId,
+                                        List<SampledTickRange> known, long afterFirstTick) throws SQLException;
 }

@@ -20,6 +20,7 @@ import org.evochora.datapipeline.api.resources.database.TickNotFoundException;
 import org.evochora.datapipeline.api.resources.database.dto.ChunkIndexSummary;
 import org.evochora.datapipeline.api.resources.database.dto.SampledTickRange;
 import org.evochora.datapipeline.api.resources.database.dto.SpatialRegion;
+import org.evochora.datapipeline.api.resources.database.dto.TickRangeExtension;
 import org.evochora.datapipeline.utils.MetadataConfigHelper;
 import org.evochora.datapipeline.utils.delta.DeltaCodec;
 import org.evochora.node.processes.http.api.pipeline.dto.ErrorResponseDto;
@@ -100,9 +101,11 @@ public class EnvironmentController extends VisualizerBaseController {
     /**
      * Cache for the tick ranges of a run, per runId.
      * <p>
-     * Deriving the ranges reads the run's whole chunk index, while the visualizer asks for them on
-     * every navigation. The cached entry carries the index summary it was derived from, so a
-     * request only has to check that summary - one aggregate query - against the stored one.
+     * Deriving the ranges reads the run's chunk index, while the visualizer asks for them on every
+     * navigation and keeps asking while a run is being indexed. The cached entry carries the index
+     * summary it was derived from, so an unchanged index is answered from one aggregate query, and
+     * it carries where the index was left off, so a grown index is caught up on by reading only
+     * the chunks that are new.
      */
     private final Cache<String, CachedTickRanges> tickRangesCache;
 
@@ -116,8 +119,10 @@ public class EnvironmentController extends VisualizerBaseController {
      *
      * @param summary The chunk index as it stood when the ranges were read
      * @param response The response derived from that index
+     * @param lastFirstTick First tick of the last chunk that went into the ranges
      */
-    private record CachedTickRanges(ChunkIndexSummary summary, TickRangesResponseDto response) {}
+    private record CachedTickRanges(ChunkIndexSummary summary, TickRangesResponseDto response,
+                                    long lastFirstTick) {}
 
     /**
      * Constructs a new EnvironmentController with chunk caching.
@@ -845,9 +850,11 @@ public class EnvironmentController extends VisualizerBaseController {
                 throw new VisualizerBaseController.NoRunIdException("No environment ticks available for run: " + runId);
             }
 
-            // Generate ETag: runId_maxTick_chunkCount. Both numbers move while a run is being
-            // indexed, and a chunk filling a gap changes the ranges without moving maxTick
-            final String etag = "\"" + runId + "_" + summary.maxLastTick() + "_" + summary.chunkCount() + "\"";
+            // Generate ETag from everything the summary knows: a chunk filling a gap changes the
+            // ranges without moving the highest tick, and a chunk recorded again with a different
+            // number of ticks moves neither that nor the chunk count
+            final String etag = "\"" + runId + "_" + summary.maxLastTick()
+                + "_" + summary.chunkCount() + "_" + summary.sampleCount() + "\"";
 
             // Apply cache headers (may return 304 Not Modified if ETag matches)
             if (applyCacheHeaders(ctx, cacheConfig, etag)) {
@@ -869,8 +876,14 @@ public class EnvironmentController extends VisualizerBaseController {
     }
 
     /**
-     * Returns the run's recorded ticks, reading the chunk index only when it has moved since the
-     * cached answer was derived from it.
+     * Returns the run's recorded ticks, reading of the chunk index only what the cached answer
+     * does not already cover.
+     * <p>
+     * An unchanged index is answered from the cache. A changed one is first caught up on by
+     * reading the chunks past the last one the cached answer saw; that catch-up is kept only when
+     * the chunks and ticks it took in account for the whole growth the summary reports, because
+     * only then did the index grow at its end alone. Otherwise a chunk that was already there was
+     * written again, and the ranges are built anew from the whole index.
      *
      * @param runId The run being asked about
      * @param summary The chunk index as this request found it
@@ -886,7 +899,25 @@ public class EnvironmentController extends VisualizerBaseController {
             return cached.response();
         }
 
-        final List<SampledTickRange> ranges = reader.getTickRanges();
+        TickRangeExtension extension = null;
+        if (cached != null) {
+            final TickRangeExtension appended =
+                reader.extendTickRanges(cached.response().ranges(), cached.lastFirstTick());
+            if (accountsForTheGrowth(cached.summary(), appended, summary)) {
+                extension = appended;
+            } else {
+                LOGGER.debug("Rebuilding tick ranges of run {}: {} known chunks with {} ticks plus {} appended"
+                    + " chunks with {} ticks do not account for the {} chunks with {} ticks the index holds",
+                    runId, cached.summary().chunkCount(), cached.summary().sampleCount(),
+                    appended.addedChunks(), appended.addedSamples(),
+                    summary.chunkCount(), summary.sampleCount());
+            }
+        }
+        if (extension == null) {
+            extension = reader.getTickRanges();
+        }
+
+        final List<SampledTickRange> ranges = extension.ranges();
         if (ranges.isEmpty()) {
             // The summary counted chunks a moment ago; an index that lost them in between leaves
             // nothing to navigate
@@ -895,8 +926,28 @@ public class EnvironmentController extends VisualizerBaseController {
 
         final TickRangesResponseDto response = new TickRangesResponseDto(
             ranges.get(0).first(), ranges.get(ranges.size() - 1).last(), ranges);
-        tickRangesCache.put(runId, new CachedTickRanges(summary, response));
+        tickRangesCache.put(runId, new CachedTickRanges(summary, response, extension.lastFirstTick()));
         return response;
+    }
+
+    /**
+     * Tells whether what a catch-up read took in is exactly what the index gained.
+     * <p>
+     * An indexer that only appends leaves every chunk before the catch-up untouched, so the chunks
+     * and the ticks the index now holds are the known ones plus the appended ones. Any other
+     * outcome means a chunk that was already counted has changed, and what was known about it no
+     * longer holds.
+     *
+     * @param known The summary the cached ranges were derived from
+     * @param appended What the catch-up read took in
+     * @param current The summary this request found
+     * @return true if the catch-up describes the whole difference between the two summaries
+     */
+    private static boolean accountsForTheGrowth(final ChunkIndexSummary known,
+                                                final TickRangeExtension appended,
+                                                final ChunkIndexSummary current) {
+        return known.chunkCount() + appended.addedChunks() == current.chunkCount()
+            && known.sampleCount() + appended.addedSamples() == current.sampleCount();
     }
 
 }

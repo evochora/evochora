@@ -131,10 +131,18 @@ public class H2DatabaseReader implements IDatabaseReader {
     }
 
     @Override
-    public List<org.evochora.datapipeline.api.resources.database.dto.SampledTickRange> getTickRanges()
+    public org.evochora.datapipeline.api.resources.database.dto.TickRangeExtension getTickRanges()
             throws SQLException {
         ensureNotClosed();
         return database.getTickRangesInternal(connection, runId);
+    }
+
+    @Override
+    public org.evochora.datapipeline.api.resources.database.dto.TickRangeExtension extendTickRanges(
+            List<org.evochora.datapipeline.api.resources.database.dto.SampledTickRange> known,
+            long afterFirstTick) throws SQLException {
+        ensureNotClosed();
+        return database.extendTickRangesInternal(connection, runId, known, afterFirstTick);
     }
 
     @Override

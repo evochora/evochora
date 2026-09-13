@@ -92,7 +92,7 @@ class H2DatabaseReaderTest {
         writeChunkIndex(chunkOf(10L, 30L, 3), chunkOf(40L, 60L, 3), chunkOf(200L, 220L, 3));
 
         try (IDatabaseReader reader = provider.createReader(runId)) {
-            assertThat(reader.getTickRanges()).containsExactly(
+            assertThat(reader.getTickRanges().ranges()).containsExactly(
                 new SampledTickRange(10L, 60L, 10L),
                 new SampledTickRange(200L, 220L, 10L));
         }
@@ -107,8 +107,8 @@ class H2DatabaseReaderTest {
         }
 
         try (IDatabaseReader reader = provider.createReader(runId)) {
-            assertThat(reader.getTickRanges()).isEmpty();
-            assertThat(reader.getChunkIndexSummary()).isEqualTo(new ChunkIndexSummary(0L, 0L));
+            assertThat(reader.getTickRanges().ranges()).isEmpty();
+            assertThat(reader.getChunkIndexSummary()).isEqualTo(new ChunkIndexSummary(0L, 0L, 0L));
         }
     }
 
@@ -117,7 +117,7 @@ class H2DatabaseReaderTest {
         writeChunkIndex(chunkOf(10L, 30L, 3), chunkOf(40L, 60L, 3));
 
         try (IDatabaseReader reader = provider.createReader(runId)) {
-            assertThat(reader.getChunkIndexSummary()).isEqualTo(new ChunkIndexSummary(2L, 60L));
+            assertThat(reader.getChunkIndexSummary()).isEqualTo(new ChunkIndexSummary(2L, 60L, 6L));
         }
     }
 
