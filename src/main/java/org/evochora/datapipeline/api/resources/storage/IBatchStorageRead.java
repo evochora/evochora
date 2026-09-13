@@ -218,9 +218,11 @@ public interface IBatchStorageRead extends IResource {
      * <p>
      * <strong>The price of {@link SortOrder#DESCENDING}:</strong> it lists every batch file under
      * the prefix before it returns, because the listing primitive delivers ascending only, so the
-     * last files can only be known after all of them were seen. The cost grows with the run,
-     * hundreds of thousands of names for a run of 10^9 ticks, and a descending listing takes no
-     * continuation token and hands out none. Use it for one-off lookups only; for the last batch
+     * last files can only be known after all of them were seen. The names are fetched page by
+     * page, and a backend that walks the whole run for every page, as the file system does,
+     * walks it once per thousand files: hundreds of walks over hundreds of thousands of names for
+     * a run of 10^9 ticks. A descending listing takes no continuation token and hands out none.
+     * Use it for one-off lookups only; for the last batch
      * file use {@link #findLastBatchFile}, which descends the folder tree instead, and for the
      * file covering one tick {@link #findBatchFileContaining}.
      *
