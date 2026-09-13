@@ -1511,9 +1511,9 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
      * Lists the names of the folders directly under a prefix, in ascending order.
      * <p>
      * A {@code superseded} folder is not part of the tick order and is left out. One listing
-     * covers a level, which holds at most {@link #FOLDERS_PER_LEVEL} folders; one more than that
-     * is asked for, so that a {@code superseded} folder cannot push a full level past the limit
-     * unnoticed.
+     * covers a level, which holds at most {@link #FOLDERS_PER_LEVEL} folders, {@code 000} to
+     * {@code 999}; two more than that are asked for, so that one folder beyond the limit is seen
+     * even when a {@code superseded} folder is among the entries.
      *
      * @param prefix The folder to list, ending with a slash
      * @return The folder names without their path, ascending
@@ -1522,16 +1522,16 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
      */
     private List<String> listFolderNames(String prefix) throws IOException {
         List<String> names = new ArrayList<>();
-        for (String entry : listRaw(prefix, true, null, FOLDERS_PER_LEVEL + 1, null, null)) {
+        for (String entry : listRaw(prefix, true, null, FOLDERS_PER_LEVEL + 2, null, null)) {
             String path = entry.endsWith("/") ? entry.substring(0, entry.length() - 1) : entry;
             String name = path.substring(path.lastIndexOf('/') + 1);
             if (!"superseded".equals(name)) {
                 names.add(name);
             }
         }
-        if (names.size() >= FOLDERS_PER_LEVEL) {
+        if (names.size() > FOLDERS_PER_LEVEL) {
             throw new IllegalStateException(String.format(
-                "Folder '%s' holds at least %d folders, and a level carries at most that many: "
+                "Folder '%s' holds more than %d folders, and a level carries at most that many: "
                     + "folder names hold %d digits and a wider name would break their tick order",
                 prefix, FOLDERS_PER_LEVEL, FOLDER_NAME_DIGITS));
         }

@@ -847,15 +847,30 @@ class FileSystemStorageResourceTest {
     }
 
     @Test
+    void testFindLastBatchFile_FullLevelOfThousandFolders_IsAccepted() throws IOException {
+        // The first 10^8 ticks fill the second level completely: folders 000 to 999
+        for (int folder = 0; folder < 999; folder++) {
+            assertTrue(new File(tempDir.toFile(), String.format("test-sim/raw/000/%03d", folder)).mkdirs(),
+                "Should create the folder");
+        }
+        storage.writeChunkBatchStreaming(List.of(createChunk(99_900_000L, 99_900_009L, 10)).iterator());
+
+        java.util.Optional<StoragePath> last = storage.findLastBatchFile("test-sim/raw/");
+
+        assertTrue(last.isPresent(), "A level of exactly 1000 folders is the full width of a 3-digit name");
+        assertTrue(last.get().asString().contains("000/999/"), "The last folder should hold the last batch");
+    }
+
+    @Test
     void testFindLastBatchFile_LevelHoldsTooManyFolders_Throws() throws IOException {
-        for (int folder = 0; folder < 1000; folder++) {
-            assertTrue(new File(tempDir.toFile(), String.format("wide-run/raw/%03d", folder)).mkdirs(),
+        for (int folder = 0; folder <= 1000; folder++) {
+            assertTrue(new File(tempDir.toFile(), String.format("wide-run/raw/%04d", folder)).mkdirs(),
                 "Should create the folder");
         }
 
         IllegalStateException thrown = assertThrows(IllegalStateException.class,
             () -> storage.findLastBatchFile("wide-run/raw/"),
-            "A level of 1000 folders should be rejected");
+            "A level of 1001 folders should be rejected");
         assertTrue(thrown.getMessage().contains("wide-run/raw/"), "Message should name the folder");
     }
 }
