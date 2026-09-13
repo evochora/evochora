@@ -111,9 +111,10 @@ public class NodeForkCommand implements Callable<Integer> {
     }
 
     /**
-     * Checks the tick window the command line asks for.
+     * Checks the tick window and the sampling the command line asks for.
      *
-     * @return what is wrong with the window, or {@code null} when it is a window at all
+     * @return what is wrong with them, or {@code null} when the window is a window at all and the
+     *         sampling, if given, records at least every tick
      */
     String rangeError() {
         if (fromTick < 0) {
@@ -122,6 +123,9 @@ public class NodeForkCommand implements Callable<Integer> {
         if (toTick < fromTick) {
             return "--to must not lie before --from, but is " + toTick
                 + " while --from is " + fromTick + ".";
+        }
+        if (samplingInterval != null && samplingInterval < 1) {
+            return "--sampling must be at least 1, but is " + samplingInterval + ".";
         }
         return null;
     }

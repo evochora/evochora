@@ -124,6 +124,14 @@ class NodeForkCommandTest {
     }
 
     @Test
+    void aSamplingBelowOneIsRefused() {
+        NodeForkCommand command = CommandLine.populateCommand(new NodeForkCommand(),
+            "--from", "10", "--to", "20", "--sampling", "0");
+
+        assertThat(command.rangeError()).contains("--sampling").contains("0");
+    }
+
+    @Test
     void aWindowOfOneTickIsAccepted() {
         NodeForkCommand command = CommandLine.populateCommand(
             new NodeForkCommand(), "--from", "7", "--to", "7");
