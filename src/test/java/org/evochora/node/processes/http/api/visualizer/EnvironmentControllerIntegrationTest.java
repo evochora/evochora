@@ -44,6 +44,7 @@ import org.evochora.datapipeline.resources.topics.H2TopicResource;
 import org.evochora.datapipeline.services.indexers.EnvironmentIndexer;
 import org.evochora.junit.extensions.logging.ExpectLog;
 import org.evochora.junit.extensions.logging.LogLevel;
+import org.evochora.junit.extensions.logging.AllowLog;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
 import org.evochora.node.spi.ServiceRegistry;
 import org.junit.jupiter.api.AfterEach;
@@ -72,6 +73,7 @@ import io.restassured.response.Response;
  */
 @Tag("integration")
 @ExtendWith(LogWatchExtension.class)
+@AllowLog(level = LogLevel.WARN, loggerPattern = ".*EnvironmentIndexer.*", messagePattern = "Run .* was written by build .* and is read by build .*")
 class EnvironmentControllerIntegrationTest {
 
     private H2Database testDatabase;

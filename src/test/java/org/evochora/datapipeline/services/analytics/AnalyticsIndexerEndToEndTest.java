@@ -68,6 +68,7 @@ import com.typesafe.config.ConfigFactory;
  */
 @Tag("integration")
 @ExtendWith(LogWatchExtension.class)
+@AllowLog(level = LogLevel.WARN, loggerPattern = ".*AnalyticsIndexer.*", messagePattern = "Run .* was written by build .* and is read by build .*")
 class AnalyticsIndexerEndToEndTest {
 
     private H2Database testDatabase;

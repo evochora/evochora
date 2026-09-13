@@ -13,6 +13,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.typesafe.config.Config;
+import com.typesafe.config.ConfigFactory;
 
 import org.evochora.cli.config.ConfigLoader;
 
@@ -27,7 +28,10 @@ import picocli.CommandLine.Option;
  * The root command also owns the configuration of an invocation: the {@code --config} option names
  * the configuration file, and subcommands reach the resolved configuration through
  * {@link #getConfig()}. It is loaded on first access and kept afterwards, so every subcommand of
- * one invocation sees the same values.
+ * one invocation sees the same values. A subcommand that has values of its own to place above the
+ * configuration file — the node subcommands, which select a run, a tuning profile or the startup
+ * behaviour from the command line — passes them to {@link #getConfig(Config)}, which resolves the
+ * configuration again with those values on top and keeps that result in place of the first one.
  */
 @Command(
     name = "evochora",
@@ -60,7 +64,7 @@ public class CommandLineInterface implements Callable<Integer> {
     private File configFile;
 
     private Config config;
-    private boolean initialized = false;
+    private boolean loggingConfigured = false;
 
     @Override
     public Integer call() {
@@ -95,16 +99,12 @@ public class CommandLineInterface implements Callable<Integer> {
         return commandLine;
     }
 
-    private void initialize() {
-        if (initialized) {
-            return;
-        }
-
+    private void initialize(final Config overrides) {
         // Initialize logger early for config loading feedback
         final Logger logger = LoggerFactory.getLogger(CommandLineInterface.class);
 
         try {
-            this.config = ConfigLoader.resolve(this.configFile, (level, message) -> {
+            this.config = ConfigLoader.resolve(this.configFile, overrides, (level, message) -> {
                 switch (level) {
                     case INFO -> logger.info(message);
                     case WARN -> logger.warn(message);
@@ -118,18 +118,29 @@ public class CommandLineInterface implements Callable<Integer> {
             System.exit(1);
         }
 
-        // Logging setup
+        configureLogging();
+    }
+
+    /**
+     * Applies the logging settings of the loaded configuration, at most once per invocation.
+     * <p>
+     * Reconfiguring Logback resets its context and drops every appender attached to it, so a
+     * second pass would undo whatever the first one set up. A subcommand that reloads the
+     * configuration with overrides therefore keeps the logging of the first load; the overrides
+     * the node subcommands place select a run, a tuning profile and the startup behaviour, and
+     * never touch {@code logging}.
+     */
+    private void configureLogging() {
+        if (loggingConfigured) {
+            return;
+        }
         if (config.hasPath("logging.format")) {
             final String format = config.getString("logging.format");
             System.setProperty("evochora.logging.format", "PLAIN".equalsIgnoreCase(format) ? "STDOUT_PLAIN" : "STDOUT");
             reconfigureLogback();
         }
         LoggingConfigurator.configure(config);
-
-        // Welcome message logic moved to NodeRunCommand
-        // (Only relevant for long-running node process)
-
-        initialized = true;
+        loggingConfigured = true;
     }
 
 
@@ -188,7 +199,8 @@ public class CommandLineInterface implements Callable<Integer> {
      * Returns the resolved configuration of this invocation. The first call loads it, either from
      * the file named by {@code --config} or, without that option, through the discovery cascade of
      * {@link ConfigLoader#resolve(File, ConfigLoader.ConfigMessageHandler)}, and applies the
-     * logging settings it contains; later calls return the same instance.
+     * logging settings it contains; later calls return the configuration that is in place, which
+     * is the one a preceding {@link #getConfig(Config)} left behind.
      * <p>
      * A configuration file that is named but does not exist, and a file that cannot be parsed, are
      * not signalled by an exception: the error is logged and the JVM terminates with exit code 1.
@@ -196,9 +208,29 @@ public class CommandLineInterface implements Callable<Integer> {
      * @return the resolved configuration for this invocation
      */
     public Config getConfig() {
-        if (!initialized) {
-            initialize();
+        if (config == null) {
+            initialize(ConfigFactory.empty());
         }
+        return config;
+    }
+
+    /**
+     * Reloads the configuration of this invocation with the given overrides on top of every other
+     * source and returns it; later calls to {@link #getConfig()} return this configuration.
+     * <p>
+     * A subcommand that derives its overrides from the configuration itself — the name of a
+     * storage resource to look a run up in, the names of the tuning profiles — reads the plain
+     * configuration through {@link #getConfig()} first and hands the overrides it built to this
+     * method afterwards. The configuration is resolved again from the same sources, so the
+     * overrides take part in the substitutions rather than being written over a resolved result.
+     *
+     * @param overrides an unresolved configuration, as
+     *                  {@link com.typesafe.config.ConfigFactory#parseString(String)} returns it,
+     *                  placed above the system properties in every branch of the discovery cascade
+     * @return the configuration of this invocation resolved with the overrides applied
+     */
+    public Config getConfig(final Config overrides) {
+        initialize(overrides);
         return config;
     }
 }

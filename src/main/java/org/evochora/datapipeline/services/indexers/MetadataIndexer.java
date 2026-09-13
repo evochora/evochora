@@ -6,6 +6,7 @@ import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.database.IResourceSchemaAwareMetadataWriter;
 import org.evochora.datapipeline.api.resources.storage.StoragePath;
+import org.evochora.datapipeline.utils.BuildRevisionCheck;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -81,6 +82,7 @@ public class MetadataIndexer<ACK> extends AbstractIndexer<MetadataInfo, ACK> {
         // Read metadata from storage
         StoragePath storagePath = StoragePath.of(info.getStoragePath());
         SimulationMetadata metadata = storage.readMessage(storagePath, SimulationMetadata.parser());
+        BuildRevisionCheck.warnIfWrittenByAnotherBuild(metadata, log);
         
         // Index metadata to database
         setShutdownPhase(ShutdownPhase.PROCESSING);

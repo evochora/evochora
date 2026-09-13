@@ -13,10 +13,14 @@ import org.evochora.datapipeline.api.contracts.TickDelta;
 import org.evochora.datapipeline.api.delta.ChunkCorruptedException;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageRead;
 import org.evochora.datapipeline.api.resources.storage.StoragePath;
+import org.evochora.datapipeline.utils.BuildRevisionCheck;
 import org.evochora.datapipeline.utils.MetadataConfigHelper;
 import org.evochora.datapipeline.utils.delta.DeltaCodec;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.model.Molecule;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -39,6 +43,8 @@ import picocli.CommandLine.Spec;
     description = "Inspect tick data from storage for debugging purposes"
 )
 public class InspectStorageSubcommand implements Callable<Integer> {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(InspectStorageSubcommand.class);
 
     @Option(
         names = {"-t", "--tick"},
@@ -88,6 +94,7 @@ public class InspectStorageSubcommand implements Callable<Integer> {
             }
             
             SimulationMetadata metadata = storage.readMessage(metadataPath.get(), SimulationMetadata.parser());
+            BuildRevisionCheck.warnIfWrittenByAnotherBuild(metadata, LOGGER);
             int totalCells = calculateTotalCells(metadata);
             
             // Create decoder

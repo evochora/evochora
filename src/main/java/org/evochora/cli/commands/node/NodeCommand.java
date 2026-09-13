@@ -17,7 +17,10 @@ import picocli.CommandLine.ParentCommand;
     name = "node",
     description = "Manages the Evochora Node server",
     subcommands = {
-        NodeRunCommand.class
+        NodeRunCommand.class,
+        NodeResumeCommand.class,
+        NodeForkCommand.class,
+        NodeShowCommand.class
     }
 )
 public class NodeCommand {

@@ -146,6 +146,83 @@ class ConfigLoaderTest {
         assertEquals(profileInsertBatchSize, config.getInt("pipeline.services.environment-indexer-1.options.insertBatchSize"));
     }
 
+    @Test
+    @DisplayName("Override layer should win over the config file and the system properties")
+    void loadFromFile_overrideShouldWinOverFileAndSystemProperty() {
+        System.setProperty("test.value", "system-value");
+        ConfigFactory.invalidateCaches();
+        Config overrides = ConfigFactory.parseString("test.value = \"override-value\"");
+
+        Config config = ConfigLoader.loadFromFile(testResource("test-config.conf"), overrides);
+
+        assertEquals("override-value", config.getString("test.value"));
+        assertEquals("file-priority", config.getString("test.priority"));
+    }
+
+    @Test
+    @DisplayName("Override of pipeline.runId should reach the simulation engine's resume.runId")
+    void loadFromFile_runIdOverrideShouldReachResumeRunId() {
+        Config overrides = ConfigFactory.parseString("pipeline.runId = \"20260101-12000000-abc\"");
+
+        Config config = ConfigLoader.loadFromFile(testResource("test-config.conf"), overrides);
+
+        assertEquals("20260101-12000000-abc",
+                config.getString("pipeline.services.simulation-engine.options.resume.runId"));
+    }
+
+    @Test
+    @DisplayName("Profile substitution in the override layer should reach downstream services")
+    void loadFromFile_profileSubstitutionInOverrideShouldReachServices() {
+        Config overrides = ConfigFactory.parseString("pipeline.tuning = ${profiles.sampled}");
+
+        Config config = ConfigLoader.loadFromFile(testResource("test-config.conf"), overrides);
+
+        int profileSamplingInterval = config.getInt("profiles.sampled.samplingInterval");
+        assertEquals(profileSamplingInterval, config.getInt("pipeline.tuning.samplingInterval"));
+        assertEquals(profileSamplingInterval,
+                config.getInt("pipeline.services.simulation-engine.options.samplingInterval"));
+    }
+
+    @Test
+    @DisplayName("Sampling interval set on top of a profile should win over the profile's value")
+    void loadFromFile_samplingIntervalShouldWinOverProfileInSameOverrideDocument() {
+        Config overrides = ConfigFactory.parseString("""
+                pipeline.tuning = ${profiles.sampled}
+                pipeline.tuning.samplingInterval = 7
+                """);
+
+        Config config = ConfigLoader.loadFromFile(testResource("test-config.conf"), overrides);
+
+        assertEquals(7, config.getInt("pipeline.tuning.samplingInterval"));
+        assertEquals(7, config.getInt("pipeline.services.simulation-engine.options.samplingInterval"));
+        // The rest of the profile still applies
+        assertEquals(config.getInt("profiles.sampled.snapshotInterval"),
+                config.getInt("pipeline.tuning.snapshotInterval"));
+    }
+
+    @Test
+    @DisplayName("Sampling interval alone should win over the configured tuning profile")
+    void loadFromFile_samplingIntervalWithoutProfileShouldWinOverConfiguredProfile() {
+        Config overrides = ConfigFactory.parseString("pipeline.tuning.samplingInterval = 13");
+
+        Config config = ConfigLoader.loadFromFile(testResource("test-config.conf"), overrides);
+
+        assertEquals(13, config.getInt("pipeline.tuning.samplingInterval"));
+        assertEquals(13, config.getInt("pipeline.services.simulation-engine.options.samplingInterval"));
+    }
+
+    @Test
+    @DisplayName("loadDefaults should place the override layer above the system properties")
+    void loadDefaults_overrideShouldWinOverSystemProperty() {
+        System.setProperty("test.value", "system-value");
+        ConfigFactory.invalidateCaches();
+        Config overrides = ConfigFactory.parseString("test.value = \"override-value\"");
+
+        Config config = ConfigLoader.loadDefaults(overrides);
+
+        assertEquals("override-value", config.getString("test.value"));
+    }
+
     /**
      * Locates a test resource file on the classpath.
      *

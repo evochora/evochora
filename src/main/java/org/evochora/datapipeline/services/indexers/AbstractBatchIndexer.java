@@ -23,6 +23,7 @@ import org.evochora.datapipeline.api.resources.topics.TopicMessage;
 import org.evochora.datapipeline.services.indexers.components.DlqComponent;
 import org.evochora.datapipeline.services.indexers.components.IdempotencyComponent;
 import org.evochora.datapipeline.services.indexers.components.MetadataReadingComponent;
+import org.evochora.datapipeline.utils.BuildRevisionCheck;
 
 import com.typesafe.config.Config;
 
@@ -311,6 +312,7 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
             if (components != null && components.metadata != null) {
                 components.metadata.loadMetadata(runId);
                 log.debug("Metadata loaded for run: {}", runId);
+                BuildRevisionCheck.warnIfWrittenByAnotherBuild(components.metadata.getMetadata(), log);
             }
 
             // Step 2: Prepare tables (template method hook for subclasses)
