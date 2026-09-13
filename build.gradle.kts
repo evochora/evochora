@@ -183,9 +183,71 @@ tasks.named("processResources") {
     }
 }
 
+// The revision of the sources a build was made from, put on its classpath as
+// evochora-build.properties and read there by org.evochora.BuildInfo. The engine writes that
+// revision into the metadata of every run, because a run is reproduced exactly only by the build
+// that wrote it; whoever reads a run compares the two and warns when they differ.
+//
+// The value comes from the first of these that answers:
+//   1. the git checkout — the commit hash, with "-dirty" appended when a tracked file carries
+//      uncommitted changes;
+//   2. a GIT_REVISION file in the project root — an experiment bundle ships one next to its source
+//      archive, so a build made from the archive records the revision the archive came from;
+//   3. "unknown" — no checkout and no such file, and the sources cannot be named.
+//
+// The value is resolved while the build is configured and registered as an input of the task, so
+// the file is rewritten when the revision changes and left alone when it does not.
+fun gitOutput(vararg command: String): String? = try {
+    val process = ProcessBuilder(*command)
+        .directory(rootProject.projectDir)
+        .redirectErrorStream(true)
+        .start()
+    val output = process.inputStream.bufferedReader().readText().trim()
+    if (process.waitFor() == 0) output else null
+} catch (e: Exception) {
+    null
+}
+
+val buildRevision: String = run {
+    // Absent in source archives and container builds; in a worktree it is a file, not a directory.
+    val head = if (rootProject.file(".git").exists()) gitOutput("git", "rev-parse", "HEAD") else null
+    if (!head.isNullOrBlank()) {
+        // Only tracked files count: an untracked file is not part of the sources a checkout yields
+        val status = gitOutput("git", "status", "--porcelain", "--untracked-files=no")
+        if (status.isNullOrBlank()) head else head + "-dirty"
+    } else {
+        val shipped = rootProject.file("GIT_REVISION")
+        val recorded = if (shipped.isFile) shipped.readText().trim() else ""
+        recorded.ifBlank { "unknown" }
+    }
+}
+
+val writeBuildInfo = tasks.register("writeBuildInfo") {
+    group = "build"
+    description = "Records the revision of the sources on the classpath"
+
+    val revision = buildRevision
+    val propertiesFile = layout.buildDirectory.file("generated/build-info/evochora-build.properties")
+    inputs.property("revision", revision)
+    outputs.file(propertiesFile)
+
+    doLast {
+        val target = propertiesFile.get().asFile
+        target.parentFile.mkdirs()
+        target.writeText("revision=$revision\n")
+    }
+}
+
+sourceSets.main {
+    resources.srcDir(layout.buildDirectory.dir("generated/build-info"))
+}
+
+tasks.named<ProcessResources>("processResources") {
+    dependsOn(writeBuildInfo)
+}
+
 tasks.named<Jar>("jar") {
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-    archiveVersion.set("")
     manifest {
         attributes["Main-Class"] = "org.evochora.cli.CommandLineInterface"
     }
@@ -196,9 +258,17 @@ tasks.withType<Copy> {
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
 
-// Configure the distribution archives (distZip, distTar)
-tasks.withType<AbstractArchiveTask> {
-    // Use the project version for archives, which is dynamically set from RELEASE_TAG
+// The distribution archives (distZip, distTar) carry the project version, which comes from
+// RELEASE_TAG. The jars inside them do not: an archive names its version once, and the jars are
+// never published on their own, so they keep the fixed names the documentation and the
+// benchmark tooling refer to.
+tasks.withType<Jar> {
+    archiveVersion.set("")
+}
+tasks.named<Zip>("distZip") {
+    archiveVersion.set(project.version.toString())
+}
+tasks.named<Tar>("distTar") {
     archiveVersion.set(project.version.toString())
 }
 
