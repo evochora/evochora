@@ -1202,9 +1202,7 @@ public class H2Database extends AbstractDatabaseResource
      * @return true if the table the query names does not exist
      */
     private static boolean isMissingTable(SQLException e) {
-        return e.getErrorCode() == 42104 || e.getErrorCode() == 42102
-                || (e.getMessage() != null && e.getMessage().contains("Table")
-                    && e.getMessage().contains("not found"));
+        return e.getErrorCode() == 42104 || e.getErrorCode() == 42102;
     }
 
     /**
