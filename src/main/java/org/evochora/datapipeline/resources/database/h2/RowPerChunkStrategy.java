@@ -317,11 +317,18 @@ public class RowPerChunkStrategy extends AbstractH2EnvStorageStrategy {
     /**
      * {@inheritDoc}
      * <p>
-     * Reads every chunk of the index and builds the ranges from nothing.
+     * Reads every chunk of the index in one pass and builds the ranges from nothing; no row is
+     * held beyond the moment it is folded into a range, so the size of the index does not
+     * matter to the heap.
      */
     @Override
     public TickRangeExtension readTickRanges(Connection conn, String runId) throws SQLException {
-        return buildRanges(runId, List.of(), Long.MIN_VALUE, readChunkIndex(conn, Long.MIN_VALUE));
+        RangeAccumulator ranges = new RangeAccumulator(runId, List.of(), Long.MIN_VALUE);
+        forEachChunkFrom(conn, Long.MIN_VALUE, chunk -> {
+            ranges.add(chunk);
+            return true;
+        });
+        return ranges.finish();
     }
 
     /**
@@ -337,66 +344,122 @@ public class RowPerChunkStrategy extends AbstractH2EnvStorageStrategy {
         if (known.isEmpty()) {
             return Optional.empty();
         }
-        List<IndexedChunk> chunks = readChunkIndex(conn, afterFirstTick);
         SampledTickRange open = known.get(known.size() - 1);
+        RangeAccumulator ranges = new RangeAccumulator(runId, known, afterFirstTick);
+        boolean[] boundaryHolds = {false};
+        boolean[] first = {true};
 
-        // The first row read is the chunk the known ranges end on. Where it is gone, or no longer
-        // ends where it did, what is known about the index no longer describes it, and appending
-        // to it would carry that on
-        if (chunks.isEmpty()) {
-            return Optional.empty();
-        }
-        IndexedChunk boundary = chunks.get(0);
-        if (boundary.firstTick() != afterFirstTick
-                || boundary.lastTick() != open.last()
-                || boundary.step() != open.step()) {
-            return Optional.empty();
-        }
+        forEachChunkFrom(conn, afterFirstTick, chunk -> {
+            if (first[0]) {
+                // The first row read is the chunk the known ranges end on. Where it is gone, or
+                // no longer ends where it did, what is known about the index no longer describes
+                // it, and appending to it would carry that on
+                first[0] = false;
+                boundaryHolds[0] = chunk.firstTick() == afterFirstTick
+                        && chunk.lastTick() == open.last()
+                        && chunk.step() == open.step();
+                return boundaryHolds[0];
+            }
+            ranges.add(chunk);
+            return true;
+        });
 
-        return Optional.of(buildRanges(runId, known, afterFirstTick,
-                chunks.subList(1, chunks.size())));
+        return boundaryHolds[0] ? Optional.of(ranges.finish()) : Optional.empty();
     }
 
     /**
-     * Extends the given ranges by the chunks that follow them.
+     * Reads the index rows from a given first tick onwards, in the order the ranges are built
+     * from, and hands each to the visitor until it declines the next.
      * <p>
-     * The chunks are walked in order of their first tick, each with the step it states: a chunk
+     * The bound is inclusive, so a caller that continues from the last chunk it knows sees that
+     * chunk again and can hold the index against what it knows before it appends to it.
+     *
+     * @param conn Database connection (schema already set)
+     * @param fromFirstTick Only chunks beginning at or past this tick are read
+     * @param visitor Receives each chunk and returns whether the next one is wanted
+     * @throws SQLException if the database read fails
+     */
+    private void forEachChunkFrom(Connection conn, long fromFirstTick, ChunkVisitor visitor) throws SQLException {
+        String sql = "SELECT first_tick, last_tick, tick_count, step FROM environment_chunks"
+                + " WHERE first_tick >= ? ORDER BY first_tick";
+
+        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setLong(1, fromFirstTick);
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    IndexedChunk chunk = new IndexedChunk(rs.getLong("first_tick"), rs.getLong("last_tick"),
+                            rs.getInt("tick_count"), rs.getInt("step"));
+                    if (!visitor.visit(chunk)) {
+                        return;
+                    }
+                }
+            }
+        }
+    }
+
+    /** Receives the rows of the chunk index one at a time. */
+    @FunctionalInterface
+    private interface ChunkVisitor {
+        /**
+         * @param chunk The row read
+         * @return Whether the next row is wanted
+         */
+        boolean visit(IndexedChunk chunk);
+    }
+
+    /**
+     * Folds chunks into ranges as they are read.
+     * <p>
+     * The chunks arrive in order of their first tick, each with the step it states: a chunk
      * continues the open range when it carries the same step and begins exactly one step past it,
      * and opens a new range otherwise. The last of the known ranges is the open one the first new
      * chunk meets, so a run that is still being indexed grows its last range instead of being read
-     * again from the start.
-     *
-     * @param runId Simulation run the chunks belong to, named in error messages
-     * @param known Ranges an earlier read left behind, ordered by first tick; empty to build anew
-     * @param afterFirstTick First tick of the last chunk the known ranges cover, or
-     *                       {@link Long#MIN_VALUE} when there are none
-     * @param chunks The chunks to extend by, ordered by first tick and none of them known
-     * @return The extended ranges and what the read took in
-     * @throws IllegalStateException if two chunks overlap, or a chunk's span does not match the
-     *                               step and the number of ticks it states
+     * again from the start. Only the open range is held between two chunks.
      */
-    private TickRangeExtension buildRanges(String runId,
-                                           List<SampledTickRange> known, long afterFirstTick,
-                                           List<IndexedChunk> chunks) {
-        List<SampledTickRange> ranges = new ArrayList<>(known);
-        long rangeFirst = 0L;
-        long rangeLast = 0L;
-        long rangeStep = 0L;
-        long previousFirst = afterFirstTick;
-        boolean inRange = !ranges.isEmpty();
+    private final class RangeAccumulator {
+        private final String runId;
+        private final List<SampledTickRange> ranges;
+        private long rangeFirst;
+        private long rangeLast;
+        private long rangeStep;
+        private long previousFirst;
+        private boolean inRange;
+        private long addedChunks;
+        private long addedSamples;
+        private long lastFirstTick;
 
-        if (inRange) {
-            // The last known range is still open: a chunk continuing it lengthens it rather than
-            // starting a range of its own
-            SampledTickRange open = ranges.remove(ranges.size() - 1);
-            rangeFirst = open.first();
-            rangeLast = open.last();
-            rangeStep = open.step();
+        /**
+         * @param runId Simulation run the chunks belong to, named in error messages
+         * @param known Ranges an earlier read left behind, ordered by first tick; empty to build anew
+         * @param afterFirstTick First tick of the last chunk the known ranges cover, or
+         *                       {@link Long#MIN_VALUE} when there are none
+         */
+        RangeAccumulator(String runId, List<SampledTickRange> known, long afterFirstTick) {
+            this.runId = runId;
+            this.ranges = new ArrayList<>(known);
+            this.previousFirst = afterFirstTick;
+            this.lastFirstTick = afterFirstTick;
+            this.inRange = !ranges.isEmpty();
+            if (inRange) {
+                // The last known range is still open: a chunk continuing it lengthens it rather
+                // than starting a range of its own
+                SampledTickRange open = ranges.remove(ranges.size() - 1);
+                rangeFirst = open.first();
+                rangeLast = open.last();
+                rangeStep = open.step();
+            }
         }
 
-        long addedSamples = 0L;
-        for (IndexedChunk chunk : chunks) {
+        /**
+         * Folds one more chunk in.
+         *
+         * @param chunk The chunk, later than every chunk folded in before it and not yet known
+         * @throws IllegalStateException if the chunk overlaps the one before it, or its step does
+         *                               not describe it
+         */
+        void add(IndexedChunk chunk) {
             long chunkStep = checkedStep(runId, chunk);
+            addedChunks++;
             addedSamples += chunk.tickCount();
 
             if (inRange && chunk.firstTick() <= rangeLast) {
@@ -417,45 +480,20 @@ public class RowPerChunkStrategy extends AbstractH2EnvStorageStrategy {
                 inRange = true;
             }
             previousFirst = chunk.firstTick();
+            lastFirstTick = chunk.firstTick();
         }
 
-        if (inRange) {
-            ranges.add(new SampledTickRange(rangeFirst, rangeLast, rangeStep));
-        }
-
-        long lastFirstTick = chunks.isEmpty()
-                ? afterFirstTick
-                : chunks.get(chunks.size() - 1).firstTick();
-        return new TickRangeExtension(List.copyOf(ranges), chunks.size(), addedSamples, lastFirstTick);
-    }
-
-    /**
-     * Reads the index rows from a given first tick onwards, in the order the ranges are built
-     * from.
-     * <p>
-     * The bound is inclusive, so a caller that continues from the last chunk it knows sees that
-     * chunk again and can hold the index against what it knows before it appends to it.
-     *
-     * @param conn Database connection (schema already set)
-     * @param fromFirstTick Only chunks beginning at or past this tick are read
-     * @return The chunks ordered by first tick
-     * @throws SQLException if the database read fails
-     */
-    private List<IndexedChunk> readChunkIndex(Connection conn, long fromFirstTick) throws SQLException {
-        String sql = "SELECT first_tick, last_tick, tick_count, step FROM environment_chunks"
-                + " WHERE first_tick >= ? ORDER BY first_tick";
-
-        List<IndexedChunk> chunks = new ArrayList<>();
-        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
-            stmt.setLong(1, fromFirstTick);
-            try (ResultSet rs = stmt.executeQuery()) {
-                while (rs.next()) {
-                    chunks.add(new IndexedChunk(rs.getLong("first_tick"), rs.getLong("last_tick"),
-                            rs.getInt("tick_count"), rs.getInt("step")));
-                }
+        /**
+         * Closes the open range and returns everything folded in.
+         *
+         * @return The ranges and what the read took in
+         */
+        TickRangeExtension finish() {
+            if (inRange) {
+                ranges.add(new SampledTickRange(rangeFirst, rangeLast, rangeStep));
             }
+            return new TickRangeExtension(List.copyOf(ranges), addedChunks, addedSamples, lastFirstTick);
         }
-        return chunks;
     }
 
     /**
