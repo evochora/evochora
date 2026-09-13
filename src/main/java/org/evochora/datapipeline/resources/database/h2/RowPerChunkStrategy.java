@@ -551,20 +551,17 @@ public class RowPerChunkStrategy extends AbstractH2EnvStorageStrategy {
     }
 
     /**
-     * Ensures the {@code .chunk_meta} file exists, computing {@code chunkTickStep}
-     * from raw metadata fields (firstTick, lastTick, tickCount).
+     * Ensures the {@code .chunk_meta} file exists, taking the ticks a chunk spans from the first
+     * chunk written: its sample count times the sampling interval it was recorded at.
      *
      * @param schemaDir the schema-specific directory
-     * @param firstTick first tick of the first chunk
-     * @param lastTick last tick of the first chunk
      * @param tickCount sampled tick count of the first chunk
+     * @param samplingInterval simulation ticks between two samples of the first chunk
      * @return the ticksPerSubdirectory value
      * @throws SQLException if metadata cannot be written or read
      */
-    private long ensureChunkMetadataFromRaw(Path schemaDir, long firstTick,
-                                            long lastTick, int tickCount) throws SQLException {
-        long chunkTickStep = estimateChunkTickStepFromRaw(firstTick, lastTick, tickCount);
-        return ensureChunkMetadataWithStep(schemaDir, chunkTickStep);
+    private long ensureChunkMetadataFromRaw(Path schemaDir, int tickCount, int samplingInterval) throws SQLException {
+        return ensureChunkMetadataWithStep(schemaDir, (long) tickCount * samplingInterval);
     }
 
     /**
@@ -634,26 +631,6 @@ public class RowPerChunkStrategy extends AbstractH2EnvStorageStrategy {
         log.debug("Created chunk metadata: ticksPerSubdirectory={} (maxFiles={} × chunkTickStep={})",
                 ticksPerSubdir, maxFilesPerDirectory, chunkTickStep);
         return ticksPerSubdir;
-    }
-
-    /**
-     * Estimates chunk tick step from raw metadata fields.
-     * <p>
-     * Equivalent to {@link #estimateChunkTickStep(TickDataChunk)} but uses
-     * pre-extracted firstTick/lastTick/tickCount instead of a parsed chunk.
-     *
-     * @param firstTick first tick of the chunk
-     * @param lastTick last tick of the chunk
-     * @param tickCount sampled tick count
-     * @return estimated tick step between consecutive chunks
-     */
-    private long estimateChunkTickStepFromRaw(long firstTick, long lastTick, int tickCount) {
-        int tc = Math.max(tickCount, 1);
-        if (tc <= 1 || firstTick == lastTick) {
-            return tc;
-        }
-        long samplingInterval = (lastTick - firstTick) / (tc - 1);
-        return tc * Math.max(samplingInterval, 1);
     }
 
     /**
@@ -777,7 +754,7 @@ public class RowPerChunkStrategy extends AbstractH2EnvStorageStrategy {
         }
 
         // Ensure metadata (cached per schema directory after first call)
-        long ticksPerSubdir = ensureChunkMetadataFromRaw(schemaDir, firstTick, lastTick, tickCount);
+        long ticksPerSubdir = ensureChunkMetadataFromRaw(schemaDir, tickCount, samplingInterval);
 
         // Compress raw protobuf bytes
         byte[] compressed = compressRawBytes(rawProtobufData);
