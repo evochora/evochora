@@ -82,6 +82,7 @@ public class NodeResumeCommand implements Callable<Integer> {
             pipeline.runId = %s
             pipeline.autoStart = true
             pipeline.services."simulation-engine".options.resume.enabled = true
-            """.formatted(ConfigUtil.quoteString(targetRunId)));
+            pipeline.services."simulation-engine".resources.resumeStorage = %s
+            """.formatted(ConfigUtil.quoteString(targetRunId), ConfigUtil.quoteString("storage-read:" + storageName)));
     }
 }

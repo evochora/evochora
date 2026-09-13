@@ -51,6 +51,17 @@ class NodeForkCommandTest {
     }
 
     @Test
+    void theStorageTheParentWasLookedUpInIsTheOneTheEngineRestoresFrom() {
+        NodeForkCommand command = CommandLine.populateCommand(new NodeForkCommand(),
+            "--from", "10", "--to", "20", "--storage", "archive");
+
+        Config overrides = command.overrides("20260101-12000000-a-run");
+
+        assertThat(overrides.getString("pipeline.services.simulation-engine.resources.resumeStorage"))
+            .isEqualTo("storage-read:archive");
+    }
+
+    @Test
     void indexersStayUnpinnedSoTheyFindTheNewRun() {
         NodeForkCommand command = CommandLine.populateCommand(
             new NodeForkCommand(), "--from", "0", "--to", "10");

@@ -49,6 +49,18 @@ class NodeResumeCommandTest {
         assertThat(config.getString("pipeline.services.environment-indexer-1.options.runId"))
             .isEqualTo("20260101-12000000-a-run");
         assertThat(config.getBoolean("pipeline.autoStart")).isTrue();
+        assertThat(config.getString("pipeline.services.simulation-engine.resources.resumeStorage"))
+            .isEqualTo("storage-read:tick-storage");
+    }
+
+    @Test
+    void theStorageTheRunWasLookedUpInIsTheOneTheEngineRestoresFrom() {
+        NodeResumeCommand command = CommandLine.populateCommand(new NodeResumeCommand(), "--storage", "archive");
+
+        Config overrides = command.overrides("20260101-12000000-a-run");
+
+        assertThat(overrides.getString("pipeline.services.simulation-engine.resources.resumeStorage"))
+            .isEqualTo("storage-read:archive");
     }
 
     @Test

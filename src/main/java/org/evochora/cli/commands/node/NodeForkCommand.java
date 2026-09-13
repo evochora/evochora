@@ -172,6 +172,8 @@ public class NodeForkCommand implements Callable<Integer> {
     Config overrides(final String parentRunId) {
         final StringBuilder document = new StringBuilder()
             .append("pipeline.autoStart = true\n")
+            .append("pipeline.services.\"simulation-engine\".resources.resumeStorage = ")
+            .append(ConfigUtil.quoteString("storage-read:" + storageName)).append("\n")
             .append("pipeline.services.\"simulation-engine\".options.resume {\n")
             .append("  enabled = true\n")
             .append("  runId = ").append(ConfigUtil.quoteString(parentRunId)).append("\n")
