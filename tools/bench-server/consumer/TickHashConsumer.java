@@ -1,4 +1,4 @@
-package org.evochora.bench;
+package org.evochora.tools.bench;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;

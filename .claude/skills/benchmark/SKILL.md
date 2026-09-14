@@ -106,7 +106,7 @@ their difference. 1 M ticks is a smoke test, not a measurement.
 
 Set `dumpDir` in the consumer's options and run both sides again. Every normalized chunk lands as
 `chunk_<seq>_<lastTick>.pb`; compare the directories file by file, decode the first divergent
-chunk with `ChunkDump` (`java -cp "consumer-classes:lib/*" org.evochora.bench.ChunkDump <file>`)
+chunk with `ChunkDump` (`java -cp "consumer-classes:lib/*" org.evochora.tools.bench.ChunkDump <file>`)
 and read the differing field: organism, tick, field name lead to the code line. A divergence in
 a dead organism's last instruction record is observation, not behaviour — that has happened.
 
