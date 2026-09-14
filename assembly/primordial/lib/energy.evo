@@ -68,9 +68,9 @@ EXPORT .PROC HARVEST
     RBIR %VEC %MASK; NOP^2                # Random selection from energy neighbors
     B2VR %VEC %VEC; NOP^2                 # Convert to direction vector
 
-    SCAN %MASK %VEC; NOP^2                # Read the energy value
-    LETI %MASK ENERGY:0                   # Is it actually energy (value > 0)?
-      JMPI HARVEST_MOVE; NOP^2            # ...no/empty, skip
+    SCAN %MASK %VEC; NOP^2                # Read the cell again
+    INTI %MASK ENERGY:0                   # Is it still energy?
+      JMPI HARVEST_MOVE; NOP^2            # ...no, someone was faster: skip
 
     PEEK %MASK %VEC; NOP^2                # Consume the energy molecule
     JMPI HARVEST_SAVE_AND_RETURN; NOP^9; JMPI HARVEST_SAVE_AND_RETURN

@@ -7,6 +7,7 @@ import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.isa.RegisterBank;
+import org.evochora.runtime.isa.instructions.ConditionalInstruction;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.LocationValue;
 import org.evochora.runtime.model.Molecule;
@@ -17,6 +18,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
+import java.util.Arrays;
 import java.util.Map;
 
 /**
@@ -1774,22 +1776,89 @@ public class VMConditionalInstructionTest {
     }
 
     /**
-     * The magnitude of a vector is a DATA value: a scalar it is compared with has to be
-     * value-compatible with DATA, and against any other type the comparison is never satisfied,
-     * whatever the comparison asks.
+     * The magnitude of a vector is a DATA value: for an equality test the scalar it is compared with
+     * has to be value-compatible with DATA, and "not equal" holds against every other type. An
+     * order comparison looks at the numbers alone.
      */
     @Test
     @Tag("unit")
-    void testValueComparisons_VectorAgainstScalar_FollowsTheValueCompatibilityOfData() {
+    void testValueComparisons_VectorAgainstScalar_EqualityNeedsDataAndOrderIgnoresTheType() {
         int[] three = new int[]{2, -1};
         int energyThree = new Molecule(Config.TYPE_ENERGY, 3).toInt();
         int stateThree = new Molecule(Config.TYPE_STATE, 3).toInt();
 
         assertThat(holds("IFR", Map.of(1, three, 3, stateThree), 1, 3)).as("STATE is compatible with DATA").isTrue();
         assertThat(holds("IFR", Map.of(1, three, 3, energyThree), 1, 3)).as("ENERGY:3 == |(2,-1)|").isFalse();
-        assertThat(holds("INR", Map.of(1, three, 3, energyThree), 1, 3)).as("ENERGY:3 != |(2,-1)|").isFalse();
+        assertThat(holds("INR", Map.of(1, three, 3, energyThree), 1, 3)).as("ENERGY:3 != |(2,-1)|").isTrue();
         assertThat(holds("GTR", Map.of(1, three, 3, energyThree), 1, 3)).as("|(2,-1)| > ENERGY:3").isFalse();
-        assertThat(holds("LETR", Map.of(1, energyThree, 3, three), 1, 3)).as("ENERGY:3 <= |(2,-1)|").isFalse();
+        assertThat(holds("LETR", Map.of(1, energyThree, 3, three), 1, 3)).as("ENERGY:3 <= |(2,-1)|").isTrue();
+    }
+
+    /**
+     * Two scalars of types that are not value-compatible are never equal, so "not equal" holds,
+     * and an order comparison between them compares the numbers as if the types were the same.
+     */
+    @Test
+    @Tag("unit")
+    void testValueComparisons_IncompatibleScalars_AreUnequalAndOrderedByNumber() {
+        int dataSeven = new Molecule(Config.TYPE_DATA, 7).toInt();
+        int energySeven = new Molecule(Config.TYPE_ENERGY, 7).toInt();
+        int energyNine = new Molecule(Config.TYPE_ENERGY, 9).toInt();
+
+        assertThat(holds("IFR", Map.of(1, dataSeven, 3, energySeven), 1, 3)).as("DATA:7 == ENERGY:7").isFalse();
+        assertThat(holds("INR", Map.of(1, dataSeven, 3, energySeven), 1, 3)).as("DATA:7 != ENERGY:7").isTrue();
+        assertThat(holds("LTR", Map.of(1, dataSeven, 3, energyNine), 1, 3)).as("DATA:7 < ENERGY:9").isTrue();
+        assertThat(holds("GETR", Map.of(1, dataSeven, 3, energyNine), 1, 3)).as("DATA:7 >= ENERGY:9").isFalse();
+        assertThat(holds("GTR", Map.of(1, energyNine, 3, dataSeven), 1, 3)).as("ENERGY:9 > DATA:7").isTrue();
+        assertThat(holds("LETR", Map.of(1, energyNine, 3, dataSeven), 1, 3)).as("ENERGY:9 <= DATA:7").isFalse();
+    }
+
+    /**
+     * A value comparison and its registered negation are exact opposites: whatever the operands,
+     * exactly one of the two holds. The compiler relies on this when it replaces a condition by
+     * its negation. The second operand is kept at magnitude 0 or 1 so that the probabilistic
+     * comparisons draw 0 and decide deterministically.
+     */
+    @Test
+    @Tag("unit")
+    void testValueComparisons_EveryPairIsAnExactNegation() {
+        Object[][] operandPairs = {
+                {scalar(Config.TYPE_DATA, 1), scalar(Config.TYPE_DATA, 1)},
+                {scalar(Config.TYPE_DATA, 1), scalar(Config.TYPE_STATE, 1)},
+                {scalar(Config.TYPE_DATA, 0), scalar(Config.TYPE_DATA, 1)},
+                {scalar(Config.TYPE_DATA, 5), scalar(Config.TYPE_DATA, 1)},
+                {scalar(Config.TYPE_DATA, -5), scalar(Config.TYPE_DATA, 0)},
+                {scalar(Config.TYPE_DATA, 1), scalar(Config.TYPE_ENERGY, 1)},
+                {scalar(Config.TYPE_ENERGY, 5), scalar(Config.TYPE_DATA, 1)},
+                {scalar(Config.TYPE_ENERGY, 0), scalar(Config.TYPE_DATA, 1)},
+                {scalar(Config.TYPE_STRUCTURE, 1), scalar(Config.TYPE_ENERGY, 1)},
+                {new int[]{1, 0}, scalar(Config.TYPE_DATA, 1)},
+                {new int[]{1, 0}, scalar(Config.TYPE_ENERGY, 1)},
+                {scalar(Config.TYPE_DATA, 1), new int[]{0, -1}},
+                {scalar(Config.TYPE_ENERGY, 1), new int[]{0, -1}},
+                {new int[]{1, 0}, new int[]{1, 0}},
+                {new int[]{1, 0}, new int[]{0, 1}},
+                {new int[]{2, 3}, new int[]{0, 0}},
+        };
+        String[] conditionals = {"IFR", "INR", "LTR", "GETR", "GTR", "LETR", "PGTR", "PLER", "PLTR", "PGER"};
+
+        for (String name : conditionals) {
+            String negation = ConditionalInstruction.negationOf(name).orElseThrow();
+            for (Object[] operands : operandPairs) {
+                Map<Integer, Object> registers = Map.of(1, operands[0], 3, operands[1]);
+                assertThat(holds(negation, registers, 1, 3))
+                        .as("%s negates %s for %s and %s", negation, name, describe(operands[0]), describe(operands[1]))
+                        .isNotEqualTo(holds(name, registers, 1, 3));
+            }
+        }
+    }
+
+    private static int scalar(int type, int value) {
+        return new Molecule(type, value).toInt();
+    }
+
+    private static String describe(Object operand) {
+        return operand instanceof int[] vector ? Arrays.toString(vector) : Molecule.fromInt((Integer) operand).toString();
     }
 
     /**

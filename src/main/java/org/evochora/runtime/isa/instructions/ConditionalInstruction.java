@@ -21,13 +21,18 @@ import static org.evochora.runtime.isa.Instruction.OperandSource.*;
  * Handles conditional instructions, which compare values and skip the next instruction
  * if the condition is not met. It supports different operand types and sources.
  * <p>
- * The value comparisons work on a scalar per operand: a scalar operand contributes its own value,
- * a vector operand its Manhattan magnitude, the sum of the absolute values of its components. Two
- * vector operands of an equality test are compared component by component instead, so that two
- * positions count as equal only if they are the same position. A magnitude is a DATA value, so a
- * scalar it is compared with has to be value-compatible with DATA under strict typing; where it is
- * not, the condition is not met and the instruction does not fail, exactly as for two scalars of
- * incompatible types.
+ * Every conditional is registered with its negation, and the two are exact opposites: for any
+ * pair of operands exactly one of them holds. The compiler relies on that when it inverts a
+ * condition.
+ * <p>
+ * The value comparisons work on a type and a number per operand: a scalar contributes its own type
+ * and value, a vector the type DATA and its Manhattan magnitude, the sum of the absolute values of
+ * its components. An equality test (IF, IN) asks whether the two are the same value: it holds if
+ * the types are value-compatible and the numbers are equal, and "not equal" holds otherwise, a
+ * type mismatch included. Two vector operands of an equality test are compared component by
+ * component instead, so that two positions count as equal only if they are the same position. An
+ * order comparison (LT, GT, LET, GET and the probabilistic ones) compares the numbers alone; the
+ * types play no part in it. Types are the business of the type comparisons (IFT, INT).
  * <p>
  * The probabilistic operations (PGT, PLE, PLT, PGE) replace the second value B by a uniformly
  * distributed draw U from {@code [0, B)} taken from the organism's own random source, and then
@@ -296,29 +301,28 @@ public class ConditionalInstruction extends Instruction {
             boolean conditionMet = false;
 
             if (opName.startsWith("IFT") || opName.startsWith("INT")) { // Type comparison
-                int type1 = (op1.value() instanceof Integer i) ? org.evochora.runtime.model.Molecule.fromInt(i).type() : -1; // -1 for vectors
+                int type1 = (op1.value() instanceof Integer i) ? Molecule.fromInt(i).type() : -1; // -1 for vectors
                 int type2 = (op2.value() instanceof Integer i) ? Molecule.fromInt(i).type() : -1;
                 if (opName.startsWith("INT")) {
                     conditionMet = (type1 != type2);
                 } else {
                     conditionMet = (type1 == type2);
                 }
-            } else { // Value comparison
-                if (op1.value() instanceof Integer i1 && op2.value() instanceof Integer i2) {
-                    Molecule s1 = org.evochora.runtime.model.Molecule.fromInt(i1);
-                    Molecule s2 = org.evochora.runtime.model.Molecule.fromInt(i2);
-                    if (Config.STRICT_TYPING && !Molecule.areValueCompatible(s1.type(), s2.type())) {
-                        // Condition is false if the types cannot be compared by value in strict mode
-                    } else {
-                        conditionMet = compare(opName, s1.toScalarValue(), s2.toScalarValue(), organism);
-                    }
-                } else if (isEqualityComparison(opName)
-                        && op1.value() instanceof int[] v1 && op2.value() instanceof int[] v2) {
-                    boolean areEqual = Arrays.equals(v1, v2);
-                    conditionMet = opName.startsWith("IN") ? !areEqual : areEqual;
-                } else if (comparableWithMagnitude(op1.value()) && comparableWithMagnitude(op2.value())) {
-                    conditionMet = compare(opName, magnitudeOf(op1.value()), magnitudeOf(op2.value()), organism);
-                }
+            } else if (op1.value() instanceof Integer i1 && op2.value() instanceof Integer i2) {
+                Molecule s1 = Molecule.fromInt(i1);
+                Molecule s2 = Molecule.fromInt(i2);
+                conditionMet = isEqualityComparison(opName)
+                        ? equalityHolds(opName, s1.type(), s1.toScalarValue(), s2.type(), s2.toScalarValue())
+                        : compare(opName, s1.toScalarValue(), s2.toScalarValue(), organism);
+            } else if (isEqualityComparison(opName)
+                    && op1.value() instanceof int[] v1 && op2.value() instanceof int[] v2) {
+                boolean areEqual = Arrays.equals(v1, v2);
+                conditionMet = opName.startsWith("IN") ? !areEqual : areEqual;
+            } else { // At least one vector, which enters as a DATA value, its magnitude
+                conditionMet = isEqualityComparison(opName)
+                        ? equalityHolds(opName, typeOf(op1.value()), magnitudeOf(op1.value()),
+                                typeOf(op2.value()), magnitudeOf(op2.value()))
+                        : compare(opName, magnitudeOf(op1.value()), magnitudeOf(op2.value()), organism);
             }
 
             if (!conditionMet) {
@@ -342,12 +346,30 @@ public class ConditionalInstruction extends Instruction {
     }
 
     /**
-     * Decides a value comparison between two scalars.
+     * Decides an equality test between two values that have been reduced to a type and a number.
+     * <p>
+     * Two values are equal if their types are value-compatible and their numbers are the same; the
+     * "not equal" operations hold exactly when they are not.
+     *
+     * @param opName  the name of the conditional opcode
+     * @param type1   the type of the first operand
+     * @param number1 the number of the first operand
+     * @param type2   the type of the second operand
+     * @param number2 the number of the second operand
+     * @return {@code true} if the condition holds
+     */
+    private static boolean equalityHolds(String opName, int type1, int number1, int type2, int number2) {
+        boolean areEqual = Molecule.areValueCompatible(type1, type2) && number1 == number2;
+        return opName.startsWith("IN") ? !areEqual : areEqual;
+    }
+
+    /**
+     * Decides an order comparison between two numbers.
      * <p>
      * The probabilistic operations compare the first value against a draw below the second one
      * instead of against the second one itself; every other operation is deterministic.
      *
-     * @param opName   the name of the conditional opcode
+     * @param opName   the name of an order-comparing conditional opcode
      * @param val1     the value of the first operand
      * @param val2     the value of the second operand, the bound of the draw for a probabilistic
      *                 operation
@@ -356,8 +378,6 @@ public class ConditionalInstruction extends Instruction {
      */
     private static boolean compare(String opName, int val1, int val2, Organism organism) {
         return switch (opName) {
-            case "IFR", "IFI", "IFS" -> val1 == val2;
-            case "INR", "INI", "INS" -> val1 != val2;
             case "GTR", "GTI", "GTS" -> val1 > val2;
             case "GETR", "GETI", "GETS" -> val1 >= val2;
             case "LTR", "LTI", "LTS" -> val1 < val2;
@@ -385,19 +405,15 @@ public class ConditionalInstruction extends Instruction {
     }
 
     /**
-     * Tells whether an operand may take part in a comparison against a vector's magnitude.
+     * Returns the type a comparison works on for one operand.
      * <p>
-     * The magnitude is a DATA value, so under strict typing a scalar on the other side has to be
-     * value-compatible with DATA, as it would have to be against a DATA scalar; a vector operand
-     * always may.
+     * A scalar contributes its own type, a vector counts as DATA, the type of its magnitude.
      *
      * @param value the value of an operand, a molecule or a vector
-     * @return {@code true} if the operand can be compared with a magnitude
+     * @return the molecule type the comparison uses
      */
-    private static boolean comparableWithMagnitude(Object value) {
-        return !(value instanceof Integer scalar)
-                || !Config.STRICT_TYPING
-                || Molecule.areValueCompatible(Config.TYPE_DATA, Molecule.fromInt(scalar).type());
+    private static int typeOf(Object value) {
+        return value instanceof int[] ? Config.TYPE_DATA : Molecule.fromInt((Integer) value).type();
     }
 
     /**
