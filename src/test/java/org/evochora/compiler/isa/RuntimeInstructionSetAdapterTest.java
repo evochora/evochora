@@ -59,11 +59,6 @@ class RuntimeInstructionSetAdapterTest {
     }
 
     @Test
-    void typedLiteralsAreRequiredExactlyWhenTheRuntimeTypesStrictly() {
-        assertThat(isa.requiresTypedLiterals()).isEqualTo(Config.STRICT_TYPING);
-    }
-
-    @Test
     void aRegisterTextIsReadIntoItsBankAndIndex() {
         IInstructionSet.RegisterRef ref = isa.parseRegister("%dr3").orElseThrow();
 

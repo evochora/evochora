@@ -32,11 +32,6 @@ public final class Config {
     //public static final int MAX_ORGANISM_ENTROPY = 32767/4;
 
     /**
-     * If true, enforces strict type checking during operations.
-     */
-    public static final boolean STRICT_TYPING = true;
-
-    /**
      * The number of general-purpose data registers available to an organism.
      */
     public static final int NUM_DATA_REGISTERS = 8;

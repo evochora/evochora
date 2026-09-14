@@ -167,8 +167,8 @@ public class BitwiseInstruction extends Instruction {
                     s2 = org.evochora.runtime.model.Molecule.fromInt(i2);
                 }
 
-                if (Config.STRICT_TYPING && !Molecule.areValueCompatible(s1.type(), s2.type())) {
-                    organism.instructionFailed("Operand types must be compatible in strict mode for bitwise operations.");
+                if (!Molecule.areValueCompatible(s1.type(), s2.type())) {
+                    organism.instructionFailed("Operand types must be value-compatible for bitwise operations.");
                     return;
                 }
 

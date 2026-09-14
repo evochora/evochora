@@ -49,13 +49,6 @@ public interface IInstructionSet {
 	List<RegisterBankInfo> registerBanks();
 
 	/**
-	 * Tells whether the target rejects an untyped literal where a literal operand is expected.
-	 *
-	 * @return {@code true} if every literal operand has to carry a molecule type.
-	 */
-	boolean requiresTypedLiterals();
-
-	/**
 	 * Looks up a molecule type by the name source uses for it, such as {@code DATA} or
 	 * {@code STRUCTURE}.
 	 *

@@ -163,8 +163,8 @@ public class ArithmeticInstruction extends Instruction {
                     s2 = org.evochora.runtime.model.Molecule.fromInt(i2);
                 }
 
-                if (Config.STRICT_TYPING && !Molecule.areValueCompatible(s1.type(), s2.type())) {
-                    organism.instructionFailed("Operand types must be compatible in strict mode.");
+                if (!Molecule.areValueCompatible(s1.type(), s2.type())) {
+                    organism.instructionFailed("Operand types must be value-compatible.");
                     return;
                 }
 
@@ -329,8 +329,8 @@ public class ArithmeticInstruction extends Instruction {
             s2 = Molecule.fromInt(i2);
         }
 
-        if (Config.STRICT_TYPING && !Molecule.areValueCompatible(s1.type(), s2.type())) {
-            organism.instructionFailed("Operand types must be compatible in strict mode.");
+        if (!Molecule.areValueCompatible(s1.type(), s2.type())) {
+            organism.instructionFailed("Operand types must be value-compatible.");
             return;
         }
 

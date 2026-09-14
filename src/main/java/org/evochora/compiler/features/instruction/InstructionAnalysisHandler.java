@@ -132,8 +132,8 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                         );
                     }
 
-                    // 2) Strict typing: prohibit untyped literals when a type is expected
-                    if (isa.requiresTypedLiterals() && expectedType == ArgKind.LITERAL && argumentNode instanceof NumberLiteralNode) {
+                    // 2) A literal operand has to carry a molecule type
+                    if (expectedType == ArgKind.LITERAL && argumentNode instanceof NumberLiteralNode) {
                         diagnostics.reportError(
                                 String.format("Argument %d for instruction '%s' requires a typed literal (e.g., DATA:42).",
                                         i + 1, instructionName),

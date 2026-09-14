@@ -86,9 +86,7 @@ class VirtualMachineTest {
         // Place a DATA molecule (not CODE) at IP
         environment.setMolecule(new Molecule(Config.TYPE_DATA, 99), org.getIp());
 
-        if (Config.STRICT_TYPING) {
-            assertThat(vm.peekNextInstruction(org)).isNull();
-        }
+        assertThat(vm.peekNextInstruction(org)).isNull();
     }
 
     @Test

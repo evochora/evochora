@@ -430,14 +430,12 @@ public class SemanticAnalyzerTest {
     }
 
     /**
-     * Verifies that using an untyped number where a typed literal is required
-     * (based on compiler config) is reported as an error.
-     * This is a unit test for strict typing rules.
+     * Verifies that an untyped number where a literal operand is expected is reported as an
+     * error: every literal carries a molecule type.
      */
     @Test
     @Tag("unit")
-    void testStrictTypingRejectsUntypedLiteral() {
-        // STRICT_TYPING ist in Config true → ungetypte Zahl 42 ist nicht erlaubt bei SETI
+    void testUntypedLiteralIsRejected() {
         String source = "SETI %DR0 42";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         List<AstNode> ast = getAst(source, diagnostics);

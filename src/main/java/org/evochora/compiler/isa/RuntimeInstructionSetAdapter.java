@@ -76,14 +76,6 @@ public final class RuntimeInstructionSetAdapter implements IInstructionSet {
      * {@inheritDoc}
      */
     @Override
-    public boolean requiresTypedLiterals() {
-        return Config.STRICT_TYPING;
-    }
-
-    /**
-     * {@inheritDoc}
-     */
-    @Override
     public Optional<Integer> moleculeType(String name) {
         try {
             return Optional.of(MoleculeTypeRegistry.nameToType(name));

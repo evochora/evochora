@@ -213,11 +213,6 @@ class CallSiteBindingRuleTest {
         }
 
         @Override
-        public boolean requiresTypedLiterals() {
-            return false;
-        }
-
-        @Override
         public Optional<Integer> moleculeType(String name) {
             return Optional.empty();
         }

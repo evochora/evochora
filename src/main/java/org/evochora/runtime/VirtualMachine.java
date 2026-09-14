@@ -62,15 +62,13 @@ public class VirtualMachine {
 
         Instruction instruction;
 
-        if (Config.STRICT_TYPING) {
-            int type = rawMol & Config.TYPE_MASK;
-            if (type != Config.TYPE_CODE && rawMol != 0) {
-                // Non-CODE molecules: treat as NOP (will be skipped by skipNopCells)
-                int nopOpcodeId = Instruction.getInstructionIdByName("NOP");
-                instruction = new org.evochora.runtime.isa.instructions.NopInstruction(organism, nopOpcodeId);
-                instruction.resolveOperands(this.environment);
-                return instruction;
-            }
+        int type = rawMol & Config.TYPE_MASK;
+        if (type != Config.TYPE_CODE && rawMol != 0) {
+            // Only a CODE molecule is an instruction; any other one is passed over like a NOP
+            int nopOpcodeId = Instruction.getInstructionIdByName("NOP");
+            instruction = new org.evochora.runtime.isa.instructions.NopInstruction(organism, nopOpcodeId);
+            instruction.resolveOperands(this.environment);
+            return instruction;
         }
 
         int opcodeId = Molecule.extractSignedValue(rawMol);
@@ -283,7 +281,7 @@ public class VirtualMachine {
         if (rawMol == 0) {
             return null;
         }
-        if (Config.STRICT_TYPING && (rawMol & Config.TYPE_MASK) != Config.TYPE_CODE) {
+        if ((rawMol & Config.TYPE_MASK) != Config.TYPE_CODE) {
             return null;
         }
 
