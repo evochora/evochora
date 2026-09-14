@@ -604,6 +604,9 @@ so its baseline is its own, not run `20260907`'s.
     scalar follows the value-compatibility rule of two scalars instead of bypassing it: against
     `DATA` or `STATE` the numbers decide, against any other type the comparison is not satisfied.
     Strict typing means that types carry meaning, and one pairing must not be exempt from it.
+    *Superseded on 2026-09-14 (commit 9ec90f51): an order comparison compares the numbers whatever
+    the types; an equality test holds only between value-compatible types and its negation in
+    every other case, so that every conditional is the exact negation of its partner.*
 26. **The instruction registry is the only source of an instruction's family, operation and
     operand list.** The opcode id is the family in its lowest five bits and an explicit index
     within the family above them, stated in every registration and never renumbered, so that a

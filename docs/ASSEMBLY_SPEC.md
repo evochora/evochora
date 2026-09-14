@@ -542,7 +542,7 @@ Note on conflicts: If a world interaction loses conflict resolution for its targ
 * `ADPR %REG`, `ADPI <Literal>`, `ADPS`: Sets the active Data Pointer index.
 * `SMR %REG`, `SMRI <Literal>`, `SMRS`: Sets the Molecule Marker Register (`MR`) to the value from the register, literal, or stack. The operand must be of type `DATA` or `STATE`; otherwise, the instruction fails. The value is masked to 4 bits (0-15).
 * `GMR %REG`, `GMRS`: Gets the current value of the Molecule Marker Register (`MR`) and stores it in the specified register or pushes it onto the stack. The result is of type `DATA`.
-* `CMR %REG`, `CMRI <Literal>`, `CMRS`: Orphans all molecules owned by this organism that have a marker value matching the operand. Sets both marker and owner to 0. The operand must be of type `DATA` or `STATE`.
+* `CMR %REG`, `CMRI <Literal>`, `CMRS`: Removes all molecules owned by this organism that have a marker value matching the operand; their cells become empty and unowned. The operand must be of type `DATA` or `STATE`.
 
 ### Location Stack and Register Operations
 
@@ -837,21 +837,35 @@ Complete, compilable example programs are provided in [`assembly/examples/`](../
 |---|---|
 | [`simple.evo`](../assembly/examples/simple.evo) | Basic syntax: register aliases, `.DEFINE`, `.PROC`, labels, loops |
 | [`complex.evo`](../assembly/examples/complex.evo) | Advanced features: `.PLACE`, `.MACRO`, `.REPEAT`, `.SOURCE`, multiple `.ORG` regions |
-| [`modules.evo`](../assembly/examples/modules.evo) | Module system: `.IMPORT`, `EXPORT .IMPORT`, `.REQUIRE`, `USING`, `.SOURCE` for shared constants, `EXPORT` |
+| [`modules/main.evo`](../assembly/examples/modules/main.evo) | Module system: `.IMPORT`, `EXPORT .IMPORT`, `.REQUIRE`, `USING`, `.SOURCE` for shared constants, `EXPORT` |
+| [`duplicate-shell/main.evo`](../assembly/examples/duplicate-shell/main.evo) | A procedure that copies a labelled frame beside one of its edges: location parameters, marker handling, defensive writing, and a driver that calls it |
 
 The module example consists of multiple files:
 
 | File | Role |
 |---|---|
-| [`modules/constants.evo`](../assembly/examples/modules/constants.evo) | Shared constants loaded via `.SOURCE` |
-| [`modules/math.evo`](../assembly/examples/modules/math.evo) | Standalone math utilities (no dependencies) |
-| [`modules/movement.evo`](../assembly/examples/modules/movement.evo) | Movement procedures, depends on math via `.REQUIRE` |
-| [`modules/navigation.evo`](../assembly/examples/modules/navigation.evo) | Passes a required math module down to movement and its own import of movement back up via `EXPORT .IMPORT` |
+| [`modules/lib/constants.evo`](../assembly/examples/modules/lib/constants.evo) | Shared constants loaded via `.SOURCE` |
+| [`modules/lib/math.evo`](../assembly/examples/modules/lib/math.evo) | Standalone math utilities (no dependencies) |
+| [`modules/lib/movement.evo`](../assembly/examples/modules/lib/movement.evo) | Movement procedures, depends on math via `.REQUIRE` |
+| [`modules/lib/navigation.evo`](../assembly/examples/modules/lib/navigation.evo) | Passes a required math module down to movement and its own import of movement back up via `EXPORT .IMPORT` |
 
 To compile the examples using the CLI:
 
 ```bash
 evochora compile --source-root assembly/examples --file=simple.evo
 evochora compile --source-root assembly/examples --file=complex.evo
-evochora compile --source-root assembly/examples --file=modules.evo
+evochora compile --source-root assembly/examples/modules --file=main.evo
+evochora compile --source-root assembly/examples/duplicate-shell --file=main.evo
 ```
+
+To run an example in the node, `assembly/example.conf` starts the one named by its
+`example-dir` in a small world without energy sources or mutation, and pauses after a fixed
+number of ticks:
+
+```bash
+bin/evochora --config assembly/example.conf node run
+```
+
+What the specification does not cover, how to leave room for evolution, how to act among other
+organisms, what a procedure has to do for its caller, is in the
+[EvoASM Guidelines](EVOASM_GUIDELINES.md).

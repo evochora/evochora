@@ -18,7 +18,7 @@
 # but not NAV.MOVE.NORTH.
 
 .REQUIRE "math.evo" AS ARITH
-EXPORT .IMPORT "modules/movement.evo" AS MOVE USING ARITH AS CALC
+EXPORT .IMPORT "lib/movement.evo" AS MOVE USING ARITH AS CALC
 
 # Move one step north and one step east.
 EXPORT .PROC PATROL REF X REF Y

@@ -1,0 +1,57 @@
+# main.evo
+# Driver for DUPLICATE: a rectangular frame with a label in every corner, copied once beside each
+# of its four edges. Every copy starts from another corner of the original. The edges are built
+# from several different STRUCTURE values, so that a correct copy is visibly a copy of what stood
+# there and not a frame repainted in one colour.
+
+.REG %MARKER %DR0
+.REG %RESULT %DR1
+.REG %AT_NE  %LR0
+.REG %AT_SE  %LR1
+.REG %AT_SW  %LR2
+.REG %AT_NW  %LR3
+
+.ORG 0|0
+START:
+  SETI %MARKER DATA:3
+  # The corners are resolved before the first copy exists: afterwards every corner label
+  # stands more than once in the world.
+  SKJI NE
+  DPLR %AT_NE
+  SKJI SE
+  DPLR %AT_SE
+  SKJI SW
+  DPLR %AT_SW
+  SKJI NW
+  DPLR %AT_NW
+  CALL FRAME.DUPLICATE REF %RESULT VAL %MARKER LVAL %AT_NE
+  CALL FRAME.DUPLICATE REF %RESULT VAL %MARKER LVAL %AT_SE
+  CALL FRAME.DUPLICATE REF %RESULT VAL %MARKER LVAL %AT_SW
+  CALL FRAME.DUPLICATE REF %RESULT VAL %MARKER LVAL %AT_NW
+DONE:
+  NOP
+  JMPI DONE
+
+.ORG 0|4
+.IMPORT "lib/duplicate.evo" AS FRAME
+
+# The frame: 21 by 11 cells, corners are labels, edges are structure. Each of the four edges has
+# its own value, and the middle three cells of each edge a second one, so that every cell of a
+# copy can be checked against the cell it came from.
+.ORG 40|40
+NW:
+.ORG 60|40
+NE:
+.ORG 60|50
+SE:
+.ORG 40|50
+SW:
+.ORG 0|0
+.PLACE STRUCTURE:101 41..48|40, 52..59|40
+.PLACE STRUCTURE:201 49..51|40
+.PLACE STRUCTURE:102 60|41..43, 60|47..49
+.PLACE STRUCTURE:202 60|44..46
+.PLACE STRUCTURE:103 41..48|50, 52..59|50
+.PLACE STRUCTURE:203 49..51|50
+.PLACE STRUCTURE:104 40|41..43, 40|47..49
+.PLACE STRUCTURE:204 40|44..46

@@ -2,11 +2,11 @@
 # Demonstrates .IMPORT, EXPORT .IMPORT, .REQUIRE, USING, .SOURCE, and EXPORT.
 #
 # File structure:
-#   modules.evo              (this file — entry point)
-#   modules/constants.evo    (shared constants, loaded via .SOURCE)
-#   modules/math.evo         (standalone math utilities)
-#   modules/movement.evo     (movement, depends on math via .REQUIRE)
-#   modules/navigation.evo   (imports movement and passes it on via EXPORT .IMPORT)
+#   main.evo                 (this file — entry point)
+#   lib/constants.evo        (shared constants, loaded via .SOURCE)
+#   lib/math.evo             (standalone math utilities)
+#   lib/movement.evo         (movement, depends on math via .REQUIRE)
+#   lib/navigation.evo       (imports movement and passes it on via EXPORT .IMPORT)
 #
 # A module is wired to another one in one of two directions:
 #
@@ -21,16 +21,16 @@
 #   movement reaches this file, as NAV.MOVE.
 
 # Import the standalone math module — its code is placed here
-.IMPORT "modules/math.evo" AS MATHLIB
+.IMPORT "lib/math.evo" AS MATHLIB
 
 # Import navigation and give it our math module: what we call MATHLIB is what navigation
 # asked for as ARITH. Navigation hands it on to movement under yet another name, and
 # passes its own import of movement back up, so we reach it as NAV.MOVE without placing
 # that code again.
-.IMPORT "modules/navigation.evo" AS NAV USING MATHLIB AS ARITH
+.IMPORT "lib/navigation.evo" AS NAV USING MATHLIB AS ARITH
 
 # Load shared constants for direct use in this file
-.SOURCE "modules/constants.evo"
+.SOURCE "lib/constants.evo"
 
 # Register aliases
 .REG %POS_X %DR0

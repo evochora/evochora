@@ -1,0 +1,161 @@
+# lib/duplicate.evo
+# Duplicates the frame of a rectangle beside one of its edges.
+#
+# The rectangle is a frame of arbitrary molecules with a LABEL molecule in every corner. CORNER is
+# the position of one of those corners. Standing on it, the procedure finds the two edges that meet
+# there and takes the one that leaves the corner clockwise; the copy is written beside that edge,
+# directly adjacent, shifted outward by the rectangle's extent along the other edge plus one. Read
+# pointer DP0 and write pointer DP1 walk the frame in lockstep.
+#
+# Parameters:
+#   RESULT  (REF)  DATA:1 when the frame was copied, DATA:0 when the copy was abandoned
+#   MARKER  (VAL)  marker register value while writing; the caller's value is restored
+#   CORNER  (LVAL) position of the corner the copy starts from
+#
+# Nothing about the frame's contents is assumed: the edges may be of any type and value, and every
+# cell is copied as it is found.
+#
+# The copy is defensive: a foreign cell in the way abandons it; an unowned molecule in the way is
+# removed and paid for. What was written before an abandonment stays.
+
+EXPORT .PROC DUPLICATE REF RESULT VAL MARKER LVAL CORNER
+
+  .REG %EDGE_A  %PDR0   # edge leaving the corner clockwise, once oriented
+  .REG %EDGE_B  %PDR1   # the other edge meeting at the corner
+  .REG %DIR     %PDR2   # direction probed or walked
+  .REG %COUNT   %PDR3   # edges found, later corners passed
+  .REG %TMP     %PDR4   # molecule scanned or removed
+  .REG %STEPS   %PDR5   # probe count, later the shift to the copy
+  .REG %SAVEDMR %PDR6   # the caller's marker register
+  .REG %SHIFT   %PDR7   # outward direction from the frame to the copy
+
+  # Keep the caller's data pointers and stand on the corner.
+  ADPI DATA:0
+  DPLS
+  ADPI DATA:1
+  DPLS
+  ADPI DATA:0
+  SKLR CORNER
+  SETV %DIR 1|0
+  SETI %COUNT DATA:0
+  SETI %STEPS DATA:0
+  JMPI FIND_EDGES
+
+  # The two edges meeting at the corner are the neighbours that are occupied and hold no label. A
+  # frame begins next to its corner with an edge cell, while an adjacent copy of the same frame
+  # begins with its own corner label, so the label test keeps a neighbouring copy from being taken
+  # for a third edge.
+  .ORG 0|2
+FIND_EDGES:
+  SCAN %TMP %DIR
+  IFI %TMP CODE:0                        # an empty cell holds CODE:0
+    JMPI FIND_NEXT
+  IFTI %TMP LABEL:0
+    JMPI FIND_NEXT
+  JMPI EDGE_FOUND
+FIND_NEXT:
+  RTRI %DIR DATA:1 DATA:0
+  INCR %STEPS
+  LTI %STEPS DATA:4
+    JMPI FIND_EDGES
+  INI %COUNT DATA:2
+    JMPI ABANDON                         # not a corner of a frame
+  JMPI ORIENT
+EDGE_FOUND:
+  IFI %COUNT DATA:0
+    SETR %EDGE_A %DIR
+  IFI %COUNT DATA:1
+    SETR %EDGE_B %DIR
+  INCR %COUNT
+  JMPI FIND_NEXT
+
+  # Of the two edges, the one leaving the corner clockwise is walked first; the copy lies beyond
+  # it, away from the other edge.
+  .ORG 0|4
+ORIENT:
+  CRSR %TMP %EDGE_A %EDGE_B
+  GTI %TMP DATA:0
+    JMPI ORIENTED
+  XCHG %EDGE_A %EDGE_B
+ORIENTED:
+  SETR %SHIFT %EDGE_B
+  RTRI %SHIFT DATA:1 DATA:0
+  RTRI %SHIFT DATA:1 DATA:0              # turned twice: away from the other edge
+  SETI %STEPS DATA:0
+  JMPI MEASURE
+
+  # The extent along the other edge: steps to the cell before its far corner, plus the corner,
+  # plus one cell beyond it, where the copy begins.
+  .ORG 0|6
+MEASURE:
+  SCAN %TMP %EDGE_B
+  IFTI %TMP LABEL:0
+    JMPI MEASURED
+  SEEK %EDGE_B
+  INCR %STEPS
+  JMPI MEASURE
+MEASURED:
+  INCR %STEPS
+  INCR %STEPS
+  SKLR CORNER
+  GMR %SAVEDMR
+  SMR MARKER
+  ADPI DATA:1
+  SKLR CORNER
+  JMPI SHIFT_STEP
+
+  # The write pointer walks outward to the copy's corner.
+  .ORG 0|8
+SHIFT_STEP:
+  IFFR %SHIFT
+    JMPI ABANDON_MARKED
+  INPR %SHIFT
+    PEEK %TMP %SHIFT
+  SEEK %SHIFT
+  DECR %STEPS
+  GTI %STEPS DATA:0
+    JMPI SHIFT_STEP
+  SETR %DIR %EDGE_A
+  SETI %COUNT DATA:0
+  JMPI COPY_CELL
+
+  # Around the frame: read under DP0, write under DP1, step both, turn at every corner. The
+  # fourth corner reached is the one the copy started from.
+  .ORG 0|10
+COPY_CELL:
+  ADPI DATA:0
+  SCNI %TMP 0|0
+  ADPI DATA:1
+  POKI %TMP 0|0
+  IFER
+    JMPI ABANDON_MARKED
+  IFFR %DIR
+    JMPI ABANDON_MARKED
+  INPR %DIR
+    PEEK %TMP %DIR
+  SEEK %DIR
+  ADPI DATA:0
+  SEEK %DIR
+  SCNI %TMP 0|0
+  INTI %TMP LABEL:0
+    JMPI COPY_CELL
+  INCR %COUNT
+  RTRI %DIR DATA:1 DATA:0
+  LTI %COUNT DATA:4
+    JMPI COPY_CELL
+  SMR %SAVEDMR
+  SETI RESULT DATA:1
+  JMPI RESTORE
+
+  .ORG 0|12
+ABANDON_MARKED:
+  SMR %SAVEDMR
+ABANDON:
+  SETI RESULT DATA:0
+RESTORE:
+  ADPI DATA:1
+  SKLS
+  ADPI DATA:0
+  SKLS
+  RET
+.ENDP

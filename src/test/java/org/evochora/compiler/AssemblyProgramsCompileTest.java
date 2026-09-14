@@ -36,10 +36,11 @@ class AssemblyProgramsCompileTest {
 
     @ParameterizedTest(name = "{1} from {0}")
     @CsvSource({
-            "assembly/examples,   simple.evo",
-            "assembly/examples,   complex.evo",
-            "assembly/examples,   modules.evo",
-            "assembly/primordial, main.evo",
+            "assembly/examples,                 simple.evo",
+            "assembly/examples,                 complex.evo",
+            "assembly/examples/modules,         main.evo",
+            "assembly/examples/duplicate-shell, main.evo",
+            "assembly/primordial,               main.evo",
     })
     @Tag("integration")
     void aProgramInThisRepositoryCompiles(String sourceRootPath, String fileName) throws Exception {
