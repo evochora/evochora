@@ -39,7 +39,7 @@ Every cell in the grid contains a **Molecule**, which is the fundamental unit of
 
 #### Types in value operations
 
-Two scalar values are *value-compatible* if their types are equal, or if one is `DATA` and the other `STATE`. Arithmetic and bitwise instructions fail on incompatible operands. Value comparisons (`IF*`, `GT*`, `LT*`, …) between incompatible operands are never satisfied, whatever the comparison; the instruction itself does not fail. Where an instruction requires a plain number, such as the shift amount of `SHL*`/`SHR*` or the operand of `SMR*`/`CMR*`, `DATA` or `STATE` is accepted. A computation keeps the type of its first operand, so an operation on a `STATE` value yields a `STATE` result. Type comparisons (`IFT*`, `INT*`) and type scans (`SNT*`) match types exactly.
+Two scalar values are *value-compatible* if their types are equal, or if one is `DATA` and the other `STATE`. Arithmetic and bitwise instructions fail on incompatible operands. The equality tests (`IF*`, `IN*`) compare the molecule: two values are equal if they are value-compatible and hold the same number, and *not equal* in every other case, a type mismatch included. The order comparisons (`GT*`, `LT*`, `GET*`, `LET*` and the probabilistic ones) compare the numbers alone, whatever the types. No comparison fails on its operands. Where an instruction requires a plain number, such as the shift amount of `SHL*`/`SHR*` or the operand of `SMR*`/`CMR*`, `DATA` or `STATE` is accepted. A computation keeps the type of its first operand, so an operation on a `STATE` value yields a `STATE` result. Type comparisons (`IFT*`, `INT*`) and type scans (`SNT*`) match types exactly.
 
 ### Ownership
 
@@ -420,7 +420,7 @@ These instructions skip the next instruction if the condition is false.
 
 #### Value comparisons
 
-Operands are values — register contents, the top of the stack, or literals — and a value may be a scalar or a vector.
+Operands are values — register contents, the top of the stack, or literals — and a value may be a scalar or a vector. Equality compares the molecule, order compares the number, and every negated form holds exactly when its counterpart does not; see *Types in value operations*.
 
 * `IFR %REG1 %REG2`, `IFI %REG1 <Literal>`, `IFS`: If values are equal.
 * `LTR %REG1 %REG2`, `LTI %REG1 <Literal>`, `LTS`: If value of first argument is less than second.
@@ -466,7 +466,7 @@ Cell tests:
 
 A value comparison reduces each operand to one number: a scalar contributes its own value, a vector its **Manhattan magnitude**, the sum of the absolute values of its components. The comparison then runs on those two numbers, whether the operands are two scalars, two vectors, or one of each. No combination of operand types fails.
 
-The magnitude of a vector is a `DATA` value and follows the rule of *Types in value operations*: against `DATA` or `STATE` the numbers decide, against any other type the comparison is never satisfied.
+The magnitude of a vector is a `DATA` value and follows the rule of *Types in value operations*: an order comparison uses the numbers whatever the scalar's type; an equality test holds only against `DATA` or `STATE`, and `IN*` holds against any other type.
 
 The equality tests `IFR`/`IFI`/`IFS` and `INR`/`INI`/`INS` are the exception for two vector operands: they compare component by component, so that two positions are equal only if they are the same position. A vector compared against a scalar is compared by its magnitude here as well.
 
