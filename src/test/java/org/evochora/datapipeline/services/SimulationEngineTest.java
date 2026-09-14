@@ -99,7 +99,7 @@ class SimulationEngineTest {
         return ConfigFactory.parseMap(Map.of(
                 "samplingInterval", 1,
                 "environment", Map.of(
-                        "shape", List.of(32, 32),
+                        "shape", List.of(64, 32),
                         "topology", "TORUS"
                 ),
                 "organisms", List.of(Map.of(
@@ -394,6 +394,100 @@ class SimulationEngineTest {
     void constructor_shouldDefaultPauseTicksToEmpty() {
         Config config = createValidConfig().withoutPath("pauseTicks");
         assertDoesNotThrow(() -> new SimulationEngine("test-engine", config, resources));
+    }
+
+    // ============ Initial Placement Tests ============
+
+    @Test
+    void constructor_shouldRejectCodeBeyondTheEdgeOfABoundedWorld() throws IOException {
+        Path program = writeProgram("seti.evo", "SETI %DR0 DATA:1\n");
+        Config config = placementConfig("BOUND", organism(program, 31, 0));
+
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
+                () -> new SimulationEngine("test-engine", config, resources));
+        assertTrue(exception.getMessage().contains("outside the bounded world"), exception.getMessage());
+        assertTrue(exception.getMessage().contains("[32, 0]"), exception.getMessage());
+    }
+
+    @Test
+    void constructor_shouldRejectAStartPositionOutsideABoundedWorld() throws IOException {
+        Path program = writeProgram("seti.evo", "SETI %DR0 DATA:1\n");
+        Config config = placementConfig("BOUND", organism(program, 40, 0));
+
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
+                () -> new SimulationEngine("test-engine", config, resources));
+        assertTrue(exception.getMessage().contains("start position [40, 0]"), exception.getMessage());
+    }
+
+    @Test
+    void constructor_shouldWrapAStartPositionOutsideAToroidalWorld() throws IOException {
+        Path program = writeProgram("seti.evo", "SETI %DR0 DATA:1\n");
+        Config config = placementConfig("TORUS", organism(program, 40, 0));
+
+        assertDoesNotThrow(() -> new SimulationEngine("test-engine", config, resources));
+    }
+
+    @Test
+    void constructor_shouldRejectCodeThatOverwritesItselfAfterWrappingAToroidalWorld() throws IOException {
+        Path program = writeProgram("wrapping.evo", """
+                .ORG 0|0
+                SETI %DR0 DATA:1
+                .ORG 32|0
+                SETI %DR0 DATA:2
+                """);
+        Config config = placementConfig("TORUS", organism(program, 0, 0));
+
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
+                () -> new SimulationEngine("test-engine", config, resources));
+        assertTrue(exception.getMessage().contains("overlap"), exception.getMessage());
+        assertTrue(exception.getMessage().contains("owned by organism 1"), exception.getMessage());
+    }
+
+    @Test
+    void constructor_shouldRejectOrganismsWhoseCodeOverlaps() throws IOException {
+        Path program = writeProgram("seti.evo", "SETI %DR0 DATA:1\n");
+        Config config = placementConfig("TORUS", organism(program, 0, 0), organism(program, 1, 0));
+
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
+                () -> new SimulationEngine("test-engine", config, resources));
+        assertTrue(exception.getMessage().contains("organism 2 at [1, 0]"), exception.getMessage());
+        assertTrue(exception.getMessage().contains("owned by organism 1"), exception.getMessage());
+    }
+
+    @Test
+    void constructor_shouldAllowCodeOnTheEmptyCellsOfAnotherOrganism() throws IOException {
+        Path nops = writeProgram("nops.evo", "NOP\nNOP\nNOP\n");
+        Path seti = writeProgram("seti.evo", "SETI %DR0 DATA:1\n");
+        Config config = placementConfig("TORUS", organism(nops, 0, 0), organism(seti, 0, 0));
+
+        assertDoesNotThrow(() -> new SimulationEngine("test-engine", config, resources));
+    }
+
+    @Test
+    void constructor_shouldAcceptOrganismsOnSeparateCells() throws IOException {
+        Path program = writeProgram("seti.evo", "SETI %DR0 DATA:1\n");
+        Config config = placementConfig("TORUS", organism(program, 0, 0), organism(program, 0, 1));
+
+        assertDoesNotThrow(() -> new SimulationEngine("test-engine", config, resources));
+    }
+
+    private Path writeProgram(String fileName, String source) throws IOException {
+        Path program = tempDir.resolve(fileName);
+        Files.writeString(program, source);
+        return program;
+    }
+
+    private static Map<String, Object> organism(Path program, int x, int y) {
+        return Map.of("program", program.toString(), "initialEnergy", 1000,
+                "placement", Map.of("positions", List.of(x, y)));
+    }
+
+    @SafeVarargs
+    private Config placementConfig(String topology, Map<String, Object>... organisms) {
+        return createValidConfig()
+                .withValue("environment.shape", ConfigValueFactory.fromAnyRef(List.of(32, 32)))
+                .withValue("environment.topology", ConfigValueFactory.fromAnyRef(topology))
+                .withValue("organisms", ConfigValueFactory.fromAnyRef(List.of(organisms)));
     }
 
     // ============ Metrics Tests ============

@@ -732,6 +732,12 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
             String programPath = orgConfig.getString("program");
             ProgramArtifact artifact = artifactsByPath.get(programPath);
             int[] startPosition = positions.stream().mapToInt(i -> i).toArray();
+            if (!envProps.isToroidal() && !insideWorld(startPosition, envProps.getWorldShape())) {
+                throw new IllegalArgumentException(
+                    "Organism placement outside the world: start position " + Arrays.toString(startPosition)
+                    + " of program " + programPath + " lies outside the bounded world of shape "
+                    + Arrays.toString(envProps.getWorldShape()));
+            }
 
             Organism organism = Organism.create(simulation, startPosition, orgConfig.getInt("initialEnergy"));
             organism.setProgramId(artifact.programId());
@@ -1208,39 +1214,62 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         return builder.build();
     }
 
+    /**
+     * Writes an initial organism's code and placed molecules into the world. A cell that would lie
+     * outside a bounded world, or that already holds something other than an unowned CODE:0, is a
+     * configuration error: the organism would start with part of its program missing or would
+     * destroy a cell placed before it, including its own after wrapping around a toroidal world.
+     */
     private void placeOrganismCodeAndObjects(Simulation sim, Organism organism, ProgramArtifact artifact, int[] startPosition) {
-        // Place code in environment
         // ProgramArtifact guarantees deterministic iteration order (sorted by coordinate in Emitter)
         for (Map.Entry<int[], Integer> entry : artifact.machineCodeLayout().entrySet()) {
-            int[] relativePos = entry.getKey();
-            int[] absolutePos = new int[startPosition.length];
-            for (int i = 0; i < startPosition.length; i++) {
-                absolutePos[i] = startPosition[i] + relativePos[i];
-            }
-
-            org.evochora.runtime.model.Molecule molecule = org.evochora.runtime.model.Molecule.fromInt(entry.getValue());
-            // CODE:0 should always have owner=0 (represents empty cell)
-            int ownerId = (molecule.type() == org.evochora.runtime.Config.TYPE_CODE && molecule.toScalarValue() == 0) ? 0 : organism.getId();
-            sim.getEnvironment().setMolecule(molecule, ownerId, absolutePos);
+            placeCell(sim.getEnvironment(), organism, startPosition, entry.getKey(),
+                    org.evochora.runtime.model.Molecule.fromInt(entry.getValue()));
         }
 
-        // Place initial world objects
         for (Map.Entry<int[], org.evochora.compiler.api.PlacedMolecule> entry : artifact.initialWorldObjects().entrySet()) {
-            int[] relativePos = entry.getKey();
-            int[] absolutePos = new int[startPosition.length];
-            for (int i = 0; i < startPosition.length; i++) {
-                absolutePos[i] = startPosition[i] + relativePos[i];
-            }
-
             org.evochora.compiler.api.PlacedMolecule pm = entry.getValue();
-            // CODE:0 should always have owner=0 (represents empty cell)
-            int ownerId = (pm.type() == org.evochora.runtime.Config.TYPE_CODE && pm.value() == 0) ? 0 : organism.getId();
-            sim.getEnvironment().setMolecule(
-                new org.evochora.runtime.model.Molecule(pm.type(), pm.value()),
-                ownerId,
-                absolutePos
-            );
+            placeCell(sim.getEnvironment(), organism, startPosition, entry.getKey(),
+                    new org.evochora.runtime.model.Molecule(pm.type(), pm.value()));
         }
+    }
+
+    private static void placeCell(Environment environment, Organism organism, int[] startPosition,
+                                  int[] relativePos, org.evochora.runtime.model.Molecule molecule) {
+        int[] absolutePos = new int[startPosition.length];
+        for (int i = 0; i < startPosition.length; i++) {
+            absolutePos[i] = startPosition[i] + relativePos[i];
+        }
+
+        EnvironmentProperties props = environment.getProperties();
+        if (!props.isToroidal() && !insideWorld(absolutePos, props.getWorldShape())) {
+            throw new IllegalArgumentException(String.format(
+                "Organism placement outside the world: organism %d at %s places a cell at %s, outside the bounded world of shape %s",
+                organism.getId(), Arrays.toString(startPosition), Arrays.toString(absolutePos),
+                Arrays.toString(props.getWorldShape())));
+        }
+
+        int existingOwner = environment.getOwnerId(absolutePos);
+        org.evochora.runtime.model.Molecule existing = environment.getMolecule(absolutePos);
+        if (!existing.isEmpty() || existingOwner != 0) {
+            throw new IllegalArgumentException(String.format(
+                "Organism placement overlap: organism %d at %s places a cell at %s, which already holds %s owned by organism %d",
+                organism.getId(), Arrays.toString(startPosition), Arrays.toString(absolutePos),
+                existing, existingOwner));
+        }
+
+        // CODE:0 always has owner 0, because it is the empty cell
+        int ownerId = (molecule.type() == org.evochora.runtime.Config.TYPE_CODE && molecule.toScalarValue() == 0) ? 0 : organism.getId();
+        environment.setMolecule(molecule, ownerId, absolutePos);
+    }
+
+    private static boolean insideWorld(int[] coord, int[] shape) {
+        for (int i = 0; i < coord.length; i++) {
+            if (coord[i] < 0 || coord[i] >= shape[i]) {
+                return false;
+            }
+        }
+        return true;
     }
     
     // ==================== ISimulationSource ====================

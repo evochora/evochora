@@ -110,7 +110,7 @@ class SimulationEngineIntegrationTest {
                 "snapshotInterval", 1,
                 "chunkInterval", 1,
                 "environment", Map.of(
-                        "shape", List.of(32, 32),
+                        "shape", List.of(64, 32),
                         "topology", "TORUS"
                 ),
                 "organisms", List.of(Map.of(
@@ -184,7 +184,7 @@ class SimulationEngineIntegrationTest {
         // Verify environment configuration from resolvedConfigJson
         int[] shape = MetadataConfigHelper.getEnvironmentShape(metadata);
         assertEquals(2, shape.length);
-        assertEquals(32, shape[0]);
+        assertEquals(64, shape[0]);
         assertEquals(32, shape[1]);
         assertTrue(MetadataConfigHelper.isEnvironmentToroidal(metadata)); // TORUS topology
     }
@@ -793,7 +793,7 @@ class SimulationEngineIntegrationTest {
     @Test
     void engine_shouldRunInSmallWorld() {
         Config smallWorldConfig = baseConfig
-                .withValue("environment.shape", ConfigValueFactory.fromAnyRef(List.of(32, 32)))
+                .withValue("environment.shape", ConfigValueFactory.fromAnyRef(List.of(64, 32)))
                 .withValue("organisms", ConfigValueFactory.fromAnyRef(List.of(Map.of(
                         "program", programFile.toString(),
                         "initialEnergy", 1000,

@@ -58,7 +58,8 @@ import com.typesafe.config.ConfigFactory;
 @AllowLog(level = LogLevel.WARN, loggerPattern = ".*SimulationEngine.*", messagePattern = "Run .* was written by build .* and is read by build .*")
 class ForkEndToEndTest {
 
-    private static final int WORLD_SIDE = 32;
+    private static final int WORLD_WIDTH = 64;
+    private static final int WORLD_HEIGHT = 32;
     private static final int ACCUMULATED_DELTA_INTERVAL = 5;
     private static final int SNAPSHOT_INTERVAL = 2;
     private static final int CHUNK_INTERVAL = 1;
@@ -248,7 +249,7 @@ class ForkEndToEndTest {
                 }
             }
             """.formatted(samplingInterval, ACCUMULATED_DELTA_INTERVAL, SNAPSHOT_INTERVAL, CHUNK_INTERVAL,
-                WORLD_SIDE, WORLD_SIDE, programFile.toString().replace("\\", "/"));
+                WORLD_WIDTH, WORLD_HEIGHT, programFile.toString().replace("\\", "/"));
         if (parentRunId != null) {
             config += """
                 resume {
@@ -269,7 +270,7 @@ class ForkEndToEndTest {
     // ========================================================================
 
     private static Map<Long, TickData> decode(List<TickDataChunk> chunks) throws ChunkCorruptedException {
-        DeltaCodec.Decoder decoder = new DeltaCodec.Decoder(WORLD_SIDE * WORLD_SIDE);
+        DeltaCodec.Decoder decoder = new DeltaCodec.Decoder(WORLD_WIDTH * WORLD_HEIGHT);
         Map<Long, TickData> ticks = new TreeMap<>();
         for (TickDataChunk chunk : chunks) {
             for (TickData tick : decoder.decompressChunk(chunk)) {

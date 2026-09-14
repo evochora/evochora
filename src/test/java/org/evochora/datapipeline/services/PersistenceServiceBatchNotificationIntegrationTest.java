@@ -244,7 +244,7 @@ class PersistenceServiceBatchNotificationIntegrationTest {
                     seed = 42
                     maxTicks = 50
                     environment {
-                      shape = [32, 32]
+                      shape = [64, 32]
                       topology = "TORUS"
                     }
                     organisms = [
