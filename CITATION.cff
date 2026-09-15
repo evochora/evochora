@@ -1,0 +1,9 @@
+cff-version: 1.2.0
+message: "If you use Evochora in your research, please cite it as below."
+type: software
+title: "Evochora: Simulation Platform for Digital Evolution Research"
+authors:
+  - name: "Evochora Project"
+repository-code: "https://github.com/evochora/evochora"
+url: "https://evochora.org"
+license: MIT

@@ -480,7 +480,7 @@ If you use Evochora in your research, please cite:
 ```bibtex
 @software{evochora2025,
   title={Evochora: Simulation Platform for Digital Evolution Research},
-  author={[Authors]},
+  author={{Evochora Project}},
   url={https://github.com/evochora/evochora},
   year={2025}
 }
