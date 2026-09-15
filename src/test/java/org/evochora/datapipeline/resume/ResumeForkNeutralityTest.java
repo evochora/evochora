@@ -33,6 +33,9 @@ class ResumeForkNeutralityTest {
     private static final int SIZE = 64;
     private static final int PARENT_ENERGY = 30_000;
 
+    /** Rows of inheritable genome when the operators must choose among several scan lines. */
+    private static final int SEVERAL_GENOME_ROWS = 8;
+
     /** Mutations always apply, so the single birth exercises all four plugins. */
     private static final String MUTATING = ResumeNeutralityHarness.configJson(SIZE, 1.0);
 
@@ -60,6 +63,18 @@ class ResumeForkNeutralityTest {
     @Test
     void resumedRun_reproducesTheBirthAndItsMutations_twoThreads() {
         assertForkNeutral(2);
+    }
+
+    /**
+     * The operators of an uninterrupted run have handled many newborns before any given birth; the
+     * operators of a resumed run are rebuilt fresh. Here the uninterrupted run's operators - and the
+     * interrupted run's up to the pause - process a large body first, so the birth after the pause
+     * meets freshly restored operators on one side and experienced ones on the other. The newborn
+     * inherits several rows, so that duplication and insertion choose among several scan lines.
+     */
+    @Test
+    void resumedRun_reproducesTheBirthAndItsMutations_afterTheOperatorsProcessedALargeBody() {
+        assertForkNeutral(1, true);
     }
 
     /**
@@ -97,14 +112,30 @@ class ResumeForkNeutralityTest {
      * and requires the trajectories to match tick for tick.
      */
     private void assertForkNeutral(int parallelism) {
+        assertForkNeutral(parallelism, false);
+    }
+
+    /**
+     * As {@link #assertForkNeutral(int)}; with {@code operatorsProcessedALargeBody} the birth handlers
+     * of both runs first process a large newborn in a world of their own, before the first tick, and
+     * the child inherits {@value #SEVERAL_GENOME_ROWS} rows instead of one.
+     */
+    private void assertForkNeutral(int parallelism, boolean operatorsProcessedALargeBody) {
+        int genomeRows = operatorsProcessedALargeBody ? SEVERAL_GENOME_ROWS : 1;
         int totalTicks = ForkProgram.FORK_TICK + 12;
         int pauseBeforeBirth = ForkProgram.FORK_TICK - 3;
         int pauseAfterBirth = ForkProgram.FORK_TICK + 4;
 
-        ResumeNeutralityHarness.Fixture reference = newWorld(parallelism);
+        ResumeNeutralityHarness.Fixture reference = newWorld(parallelism, Environment.TILE_SIDE, genomeRows);
+        if (operatorsProcessedALargeBody) {
+            ResumeNeutralityHarness.processLargeNewborn(reference.plugins());
+        }
         List<List<String>> expected = ResumeNeutralityHarness.tick(reference.sim(), reference.plugins(), totalTicks, true);
 
-        ResumeNeutralityHarness.Fixture interrupted = newWorld(parallelism);
+        ResumeNeutralityHarness.Fixture interrupted = newWorld(parallelism, Environment.TILE_SIDE, genomeRows);
+        if (operatorsProcessedALargeBody) {
+            ResumeNeutralityHarness.processLargeNewborn(interrupted.plugins());
+        }
         List<List<String>> actual = new ArrayList<>(
                 ResumeNeutralityHarness.tick(interrupted.sim(), interrupted.plugins(), pauseBeforeBirth, true));
 
@@ -162,10 +193,14 @@ class ResumeForkNeutralityTest {
     }
 
     private ResumeNeutralityHarness.Fixture newWorld(int parallelism, int tileSide) {
+        return newWorld(parallelism, tileSide, 1);
+    }
+
+    private ResumeNeutralityHarness.Fixture newWorld(int parallelism, int tileSide, int genomeRows) {
         ResumeNeutralityHarness.Fixture fixture =
                 ResumeNeutralityHarness.newFixture(MUTATING, SIZE, parallelism, tileSide);
         simulations.add(fixture.sim());
-        ForkProgram.place(fixture.sim(), fixture.env(), new int[]{0, 0}, PARENT_ENERGY);
+        ForkProgram.place(fixture.sim(), fixture.env(), new int[]{0, 0}, PARENT_ENERGY, genomeRows);
         return fixture;
     }
 
