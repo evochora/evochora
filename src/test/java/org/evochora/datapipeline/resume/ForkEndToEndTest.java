@@ -52,6 +52,11 @@ import com.typesafe.config.ConfigFactory;
  * end at the parent's chunk boundary after 100, pause there, announce itself with its own
  * metadata naming the parent and the window, and hold at every tick of the window exactly what
  * an uninterrupted run at every tick holds. Continuing the paused fork records the next chunk.
+ * <p>
+ * Asked for a first tick that lies further inside the parent's chunk, the fork begins its
+ * recording on the boundary of its own chunks before that tick: it simulates its way there from
+ * the checkpoint without recording, and what it records from there on is again what the run at
+ * every tick recorded.
  */
 @Tag("integration")
 @ExtendWith(LogWatchExtension.class)
@@ -81,6 +86,12 @@ class ForkEndToEndTest {
     private static final long WINDOW_LAST = 119;
     private static final int WINDOW_CHUNKS = 8;
 
+    /** A requested first tick that lies inside the parent's chunk and off the fork's chunk grid. */
+    private static final long OFF_GRID_FROM = 67;
+    /** The boundary of the fork's chunks before that request, where its recording begins. */
+    private static final long OFF_GRID_FIRST = 60;
+    private static final int OFF_GRID_CHUNKS = 6;
+
     @TempDir
     Path tempDir;
 
@@ -107,26 +118,14 @@ class ForkEndToEndTest {
 
     @Test
     void fork_RecordsTheWindowDenselyAsANewRunAndPausesAtItsEnd() throws Exception {
-        // The parent: every fourth tick, persisted as it would be by the pipeline
-        CapturingQueue<TickDataChunk> parentChunks = new CapturingQueue<>();
-        CapturingQueue<SimulationMetadata> parentMetadata = new CapturingQueue<>();
-        runUntil(newEngine(PARENT_SAMPLING, null, parentChunks, parentMetadata), parentChunks, 4);
-        SimulationMetadata parent = parentMetadata.getCaptured().get(0);
+        SimulationMetadata parent = recordParentRun();
         String parentRunId = parent.getSimulationRunId();
-        storage.writeMessage(parentRunId + "/raw/metadata.pb", parent);
-        for (TickDataChunk chunk : parentChunks.getCaptured()) {
-            storage.writeChunkBatchStreaming(List.of(chunk).iterator());
-        }
-
-        // The reference: the same run at every tick, far enough to cover the window and the chunk after it
-        CapturingQueue<TickDataChunk> referenceChunks = new CapturingQueue<>();
-        runUntil(newEngine(FORK_SAMPLING, null, referenceChunks, new CapturingQueue<>()), referenceChunks, WINDOW_CHUNKS + 5);
-        Map<Long, TickData> reference = decode(referenceChunks.getCaptured());
+        Map<Long, TickData> reference = recordReferenceRun();
 
         // The fork
         CapturingQueue<TickDataChunk> forkChunks = new CapturingQueue<>();
         CapturingQueue<SimulationMetadata> forkMetadata = new CapturingQueue<>();
-        SimulationEngine fork = newEngine(FORK_SAMPLING, parentRunId, forkChunks, forkMetadata);
+        SimulationEngine fork = newEngine(FORK_SAMPLING, parentRunId, REQUESTED_FROM, forkChunks, forkMetadata);
         fork.start();
         await().atMost(Duration.ofSeconds(30)).pollInterval(Duration.ofMillis(50))
             .until(() -> fork.getCurrentState() == AbstractService.State.PAUSED);
@@ -183,9 +182,87 @@ class ForkEndToEndTest {
             .isEqualTo(comparable(reference.get(WINDOW_LAST + 1)));
     }
 
+    @Test
+    void fork_AskedForATickOffItsChunkGrid_SimulatesToTheGridBeforeRecording() throws Exception {
+        SimulationMetadata parent = recordParentRun();
+        String parentRunId = parent.getSimulationRunId();
+        Map<Long, TickData> reference = recordReferenceRun();
+
+        CapturingQueue<TickDataChunk> forkChunks = new CapturingQueue<>();
+        CapturingQueue<SimulationMetadata> forkMetadata = new CapturingQueue<>();
+        SimulationEngine fork = newEngine(FORK_SAMPLING, parentRunId, OFF_GRID_FROM, forkChunks, forkMetadata);
+        fork.start();
+        await().atMost(Duration.ofSeconds(30)).pollInterval(Duration.ofMillis(50))
+            .until(() -> fork.getCurrentState() == AbstractService.State.PAUSED);
+        fork.stop();
+
+        // The recording begins on the fork's own chunk boundary before the requested tick, not at
+        // the checkpoint: the ticks from the checkpoint to there were simulated without recording
+        List<TickDataChunk> recorded = forkChunks.getCaptured();
+        assertThat(recorded).hasSize(OFF_GRID_CHUNKS);
+        assertThat(recorded.stream().map(TickDataChunk::getFirstTick))
+            .as("no chunk before the fork's first recorded tick was published")
+            .allMatch(first -> first >= OFF_GRID_FIRST);
+        for (int i = 0; i < OFF_GRID_CHUNKS; i++) {
+            assertThat(recorded.get(i).getFirstTick()).isEqualTo(OFF_GRID_FIRST + i * FORK_TICKS_PER_CHUNK);
+            assertThat(recorded.get(i).getTickCount()).isEqualTo(SAMPLES_PER_CHUNK);
+        }
+        assertThat(recorded.get(0).getSnapshot().getTickNumber()).isEqualTo(OFF_GRID_FIRST);
+
+        // It pauses at the same last tick as a fork asked for a tick on the grid
+        assertThat(recorded.get(OFF_GRID_CHUNKS - 1).getLastTick()).isEqualTo(WINDOW_LAST);
+
+        SimulationMetadata metadata = forkMetadata.getCaptured().get(0);
+        assertThat(metadata.getFork().getParentRunId()).isEqualTo(parentRunId);
+        assertThat(metadata.getFork().getFirstTick()).isEqualTo(OFF_GRID_FIRST);
+        assertThat(metadata.getFork().getLastTick()).isEqualTo(WINDOW_LAST);
+
+        // Every recorded tick is what the run at every tick recorded there
+        Map<Long, TickData> window = decode(recorded);
+        assertThat(window.keySet()).containsExactlyElementsOf(
+            java.util.stream.LongStream.rangeClosed(OFF_GRID_FIRST, WINDOW_LAST).boxed().toList());
+        List<Long> differing = new ArrayList<>();
+        for (Map.Entry<Long, TickData> entry : window.entrySet()) {
+            if (!comparable(entry.getValue()).equals(comparable(reference.get(entry.getKey())))) {
+                differing.add(entry.getKey());
+            }
+        }
+        assertThat(differing).as("ticks at which the fork differs from the run at every tick").isEmpty();
+    }
+
     // ========================================================================
     // Running engines
     // ========================================================================
+
+    /**
+     * Records the parent run at every fourth tick and persists it as the pipeline would, so that a
+     * fork can be restored from it.
+     *
+     * @return the parent's metadata
+     */
+    private SimulationMetadata recordParentRun() throws Exception {
+        CapturingQueue<TickDataChunk> parentChunks = new CapturingQueue<>();
+        CapturingQueue<SimulationMetadata> parentMetadata = new CapturingQueue<>();
+        runUntil(newEngine(PARENT_SAMPLING, null, REQUESTED_FROM, parentChunks, parentMetadata), parentChunks, 4);
+        SimulationMetadata parent = parentMetadata.getCaptured().get(0);
+        storage.writeMessage(parent.getSimulationRunId() + "/raw/metadata.pb", parent);
+        for (TickDataChunk chunk : parentChunks.getCaptured()) {
+            storage.writeChunkBatchStreaming(List.of(chunk).iterator());
+        }
+        return parent;
+    }
+
+    /**
+     * Records the same run at every tick, far enough to cover the window and the chunk after it.
+     *
+     * @return the recorded ticks by tick number
+     */
+    private Map<Long, TickData> recordReferenceRun() throws Exception {
+        CapturingQueue<TickDataChunk> referenceChunks = new CapturingQueue<>();
+        runUntil(newEngine(FORK_SAMPLING, null, REQUESTED_FROM, referenceChunks, new CapturingQueue<>()),
+            referenceChunks, WINDOW_CHUNKS + 5);
+        return decode(referenceChunks.getCaptured());
+    }
 
     private void runUntil(SimulationEngine engine, CapturingQueue<TickDataChunk> chunks, int chunkCount) {
         engine.start();
@@ -197,7 +274,7 @@ class ForkEndToEndTest {
     /**
      * Builds an engine for a new run, or for a fork of the given parent when a parent is named.
      */
-    private SimulationEngine newEngine(int samplingInterval, String parentRunId,
+    private SimulationEngine newEngine(int samplingInterval, String parentRunId, long fromTick,
                                        CapturingQueue<TickDataChunk> chunks,
                                        CapturingQueue<SimulationMetadata> metadata) {
         Map<String, List<IResource>> resources = new HashMap<>();
@@ -206,10 +283,10 @@ class ForkEndToEndTest {
         if (parentRunId != null) {
             resources.put("resumeStorage", List.of(storage));
         }
-        return new SimulationEngine("engine", engineConfig(samplingInterval, parentRunId), resources);
+        return new SimulationEngine("engine", engineConfig(samplingInterval, parentRunId, fromTick), resources);
     }
 
-    private Config engineConfig(int samplingInterval, String parentRunId) {
+    private Config engineConfig(int samplingInterval, String parentRunId, long fromTick) {
         String config = """
             samplingInterval = %d
             accumulatedDeltaInterval = %d
@@ -260,7 +337,7 @@ class ForkEndToEndTest {
                         toTick = %d
                     }
                 }
-                """.formatted(parentRunId, REQUESTED_FROM, REQUESTED_TO);
+                """.formatted(parentRunId, fromTick, REQUESTED_TO);
         }
         return ConfigFactory.parseString(config);
     }

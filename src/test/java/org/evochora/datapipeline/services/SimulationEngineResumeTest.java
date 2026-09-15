@@ -2,8 +2,11 @@ package org.evochora.datapipeline.services;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.awaitility.Awaitility.await;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import java.io.IOException;
+import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -33,6 +36,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
@@ -133,6 +137,46 @@ class SimulationEngineResumeTest {
         SimulationEngine engine = new SimulationEngine("test-engine", options, resources);
 
         assertThat(engine.getCurrentState()).isEqualTo(AbstractService.State.STOPPED);
+    }
+
+    @Test
+    void forkMode_TickOffTheForkChunkGrid_StartsOnTheGridBoundaryBefore() throws IOException {
+        setupValidCheckpoint(1000);
+
+        // The fork records 1 × 40 × 1 × 1 = 40 ticks per chunk, which divides the parent's
+        // 1 × 40 × 1000 × 100. Its chunk grid starts at the checkpoint, tick 1000, so the
+        // requested tick 1090 is rounded down to 1080.
+        Config options = ConfigFactory.parseString("""
+            resume {
+                enabled = true
+                runId = "%s"
+                fork {
+                    fromTick = 1090
+                    toTick = 1095
+                }
+            }
+            samplingInterval = 1
+            accumulatedDeltaInterval = 40
+            snapshotInterval = 1
+            chunkInterval = 1
+            metricsWindowSeconds = 1
+            pauseTicks = []
+            """.formatted(TEST_RUN_ID));
+
+        SimulationEngine engine = new SimulationEngine("test-engine", options, resources);
+
+        // The window a fork records is what its metadata announces, and the metadata is sent
+        // before the first tick is simulated
+        ArgumentCaptor<SimulationMetadata> announced = ArgumentCaptor.forClass(SimulationMetadata.class);
+        engine.start();
+        try {
+            await().atMost(Duration.ofSeconds(10)).pollInterval(Duration.ofMillis(10))
+                .untilAsserted(() -> verify(mockMetadataResource).put(announced.capture()));
+        } finally {
+            engine.stop();
+        }
+
+        assertThat(announced.getValue().getFork().getFirstTick()).isEqualTo(1080);
     }
 
     @Test

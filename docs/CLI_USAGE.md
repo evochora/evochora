@@ -97,7 +97,7 @@ bin/evochora node fork --run <run-id> --from 150000 --to 200000 --sampling 10
 - `--sampling <n>`: Ticks between two recorded ticks, on top of the profile
 - `--storage, -s`: Storage resource the newest run is looked up in (default: tick-storage)
 
-Records a stretch of an existing run again as a new run, typically more densely than the original. The recorded window may begin a little before `--from` and end a little after `--to`. After the last tick of the window the simulation pauses; `POST /pipeline/api/service/simulation-engine/resume` continues it.
+Records a stretch of an existing run again as a new run, typically more densely than the original. The recorded window may begin a little before `--from` and end a little after `--to`; the more densely the new run records, the closer to `--from` it begins. After the last tick of the window the simulation pauses; `POST /pipeline/api/service/simulation-engine/resume` continues it.
 
 ### View Indexed Runs (`node show`)
 

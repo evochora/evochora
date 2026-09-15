@@ -94,8 +94,11 @@ import com.typesafe.config.ConfigValueFactory;
  * sampling, delta, snapshot and chunk intervals come from the current configuration. The
  * fork's chunks must divide the parent's, so that the window ends on a boundary of the parent's
  * chunks: it is rounded outwards to whole parent chunks, and the service pauses itself after the
- * last tick of the window, from where it can be continued like any paused run. The metadata of a
- * forked run names the parent and the window it recorded.
+ * last tick of the window, from where it can be continued like any paused run. The fork begins
+ * its recording on the first tick of its own chunk grid at or before the requested first tick,
+ * which is at most one of the fork's chunks after the checkpoint; the ticks in between are
+ * simulated without being recorded. The metadata of a forked run names the parent and the window
+ * it recorded.
  * <p>
  * <strong>Threading:</strong> the simulation, the chunk encoder and the organism serializer are
  * owned by the service thread and are not thread-safe. Metrics are requested from a monitoring
@@ -142,6 +145,8 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
     private final Config recordedConfig;
     /** Where this run was forked from; null unless the run is a fork. */
     private final ForkOrigin forkOrigin;
+    /** The parent tick a fork was restored at; -1 unless the run is a fork. */
+    private final long forkCheckpointTick;
     private final SimulationParameters simulationParameters;
     private final AtomicLong currentTick = new AtomicLong(-1);
     private final AtomicLong messagesSent = new AtomicLong(0);
@@ -233,9 +238,15 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
      *                            environment's per-organism visit buffers in the memory estimate.
      * @param estimatedDeltaRatio Expected per-tick change rate for memory estimation, read from
      *                            the config that governs this run (current config or checkpoint metadata).
-     * @param resumeSnapshot checkpoint snapshot for resume mode (null for new simulations).
-     *                       When present, the encoder is initialized with this snapshot so
-     *                       subsequent ticks are treated as deltas within the same chunk.
+     * @param resumeSnapshot the recorded tick the encoder starts from, or null when the run
+     *                       captures its first recorded tick from the live simulation. When
+     *                       present, the encoder is initialized with this snapshot so that
+     *                       subsequent ticks are treated as deltas within the same chunk. A
+     *                       resume always starts from the checkpoint's snapshot; a fork does so
+     *                       only when its first recorded tick is the checkpoint tick itself,
+     *                       because a restored organism carries no record of the instruction it
+     *                       last executed and only the parent's snapshot holds that record. A
+     *                       new simulation has no such snapshot.
      * @param recordedConfig the configuration the run's metadata carries: the current options for
      *                       a new run, the parent's configuration with the current recording
      *                       options for a fork, null for a resume whose metadata already exists
@@ -315,6 +326,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         this.mode = !resume ? Mode.NEW : state.forkOrigin() != null ? Mode.FORK : Mode.RESUME;
         this.recordedConfig = state.recordedConfig();
         this.forkOrigin = state.forkOrigin();
+        this.forkCheckpointTick = this.forkOrigin == null ? -1 : state.initialTick();
 
         // A fork pauses after the last tick of its window, as if that tick were configured
         List<Long> configuredPauseTicks = options.hasPath("pauseTicks") ? options.getLongList("pauseTicks") : Collections.emptyList();
@@ -488,12 +500,19 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
 
             applyParallelismScaling(restored.simulation(), currentRuntimeConfig);
 
-            // A fork records under its own ID; the parent's snapshot becomes the fork's first
-            // tick and must say so, as the chunk around it does
+            // A fork records under its own ID. Its first recorded tick is the checkpoint only
+            // when its chunk grid begins there; then the parent's snapshot becomes that tick and
+            // must name the fork, as the chunk around it does. Otherwise the fork simulates its
+            // way to the first tick of its grid and captures it itself.
             String runId = forkOrigin == null ? parentRunId : newRunId();
-            TickData encoderSnapshot = forkOrigin == null
-                ? checkpoint.snapshot()
-                : checkpoint.snapshot().toBuilder().setSimulationRunId(runId).build();
+            TickData encoderSnapshot;
+            if (forkOrigin == null) {
+                encoderSnapshot = checkpoint.snapshot();
+            } else if (forkOrigin.getFirstTick() == checkpoint.getCheckpointTick()) {
+                encoderSnapshot = checkpoint.snapshot().toBuilder().setSimulationRunId(runId).build();
+            } else {
+                encoderSnapshot = null;
+            }
 
             return new InitializedState(
                 restored.simulation(),
@@ -540,13 +559,16 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
     }
 
     /**
-     * Rounds the requested window outwards to whole chunks of the parent.
+     * Rounds the requested window to the chunk grids of the fork and of the parent.
      * <p>
-     * The window begins at the checkpoint, which is the start of the parent's chunk that holds
-     * the requested first tick, and ends with the last tick the fork records before the next
-     * boundary of the parent's chunks at or beyond the requested last tick. The fork's chunks
-     * must divide the parent's for that boundary to be a boundary of the fork's chunks as well,
-     * so a later recording can lay the fork's chunks over the parent's without overlap.
+     * The window begins on the last boundary of the fork's own chunks at or before the requested
+     * first tick. That grid starts at the checkpoint, the first tick of the parent's chunk that
+     * holds the requested first tick, so the window begins at most one of the fork's chunks after
+     * the checkpoint and still falls on a boundary of the parent's chunks. The window ends with
+     * the last tick the fork records before the next boundary of the parent's chunks at or beyond
+     * the requested last tick. The fork's chunks must divide the parent's for both boundaries to
+     * be boundaries of the fork's chunks as well, so a later recording can lay the fork's chunks
+     * over the parent's without overlap.
      *
      * @param parentRunId the run the state is taken from
      * @param request the ticks the fork must record
@@ -555,6 +577,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
      * @param fork the recording options of the fork
      * @return the parent and the rounded window
      * @throws IllegalArgumentException if the fork's chunk length does not divide the parent's
+     * @throws IllegalStateException if the window's first tick is not one the fork samples
      */
     private static ForkOrigin forkWindow(String parentRunId, ForkRequest request, long checkpointTick,
                                          RunOptions parent, RunOptions fork) {
@@ -568,11 +591,19 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                 forkTicksPerChunk, fork.samplingInterval(), fork.accumulatedDeltaInterval(),
                 fork.snapshotInterval(), fork.chunkInterval(), parentRunId, parentTicksPerChunk));
         }
+        long firstTick = checkpointTick
+            + (request.fromTick() - checkpointTick) / forkTicksPerChunk * forkTicksPerChunk;
+        if (firstTick % fork.samplingInterval() != 0) {
+            throw new IllegalStateException(String.format(
+                "A fork's first recorded tick must be one it samples: tick %d is not a multiple of "
+                    + "samplingInterval %d (checkpoint tick %d, %d ticks per chunk)",
+                firstTick, fork.samplingInterval(), checkpointTick, forkTicksPerChunk));
+        }
         long parentChunks = Math.ceilDiv(request.toTick() - checkpointTick + 1, parentTicksPerChunk);
         long boundary = checkpointTick + parentChunks * parentTicksPerChunk;
         return ForkOrigin.newBuilder()
             .setParentRunId(parentRunId)
-            .setFirstTick(checkpointTick)
+            .setFirstTick(firstTick)
             .setLastTick(boundary - fork.samplingInterval())
             .build();
     }
@@ -783,9 +814,9 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         int parallelism = simulation.getEffectiveParallelism();
         String parallelismStr = parallelism > 1 ? parallelism + " workers" : "sequential";
         if (mode == Mode.FORK) {
-            log.info("SimulationEngine FORKED: world=[{}, {}], organisms={}, tickPlugins={} ({}), seed={}, sampling={}, ticksPerChunk={}, parallelism={}, runId={}, parent={}, window=[{}, {}]",
+            log.info("SimulationEngine FORKED: world=[{}, {}], organisms={}, tickPlugins={} ({}), seed={}, sampling={}, ticksPerChunk={}, parallelism={}, runId={}, parent={}, checkpointTick={}, window=[{}, {}]",
                     worldDims, topology, simulation.getOrganisms().size(), tickPlugins.size(), pluginNames, seed, samplingInterval, ticksPerChunk, parallelismStr, runId,
-                    forkOrigin.getParentRunId(), forkOrigin.getFirstTick(), forkOrigin.getLastTick());
+                    forkOrigin.getParentRunId(), forkCheckpointTick, forkOrigin.getFirstTick(), forkOrigin.getLastTick());
         } else if (mode == Mode.RESUME) {
             log.info("SimulationEngine RESUMED: world=[{}, {}], organisms={}, tickPlugins={} ({}), seed={}, sampling={}, ticksPerChunk={}, parallelism={}, runId={}, resumeFromTick={}",
                     worldDims, topology, simulation.getOrganisms().size(), tickPlugins.size(), pluginNames, seed, samplingInterval, ticksPerChunk, parallelismStr, runId, currentTick.get() + 1);
@@ -812,6 +843,10 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
 
         // Check isStopRequested() for graceful shutdown (in addition to state and interrupt)
         try {
+            if (mode == Mode.FORK) {
+                advanceToFirstRecordedTick();
+            }
+
             while ((getCurrentState() == State.RUNNING || getCurrentState() == State.PAUSED)
                     && !isStopRequested() && !Thread.currentThread().isInterrupted()) {
                 checkPause();
@@ -855,6 +890,45 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         // Only complete chunks are persisted; partial data is discarded and regenerated on resume.
 
         log.info("Simulation loop finished.");
+    }
+
+    /**
+     * Simulates a fork from the checkpoint it was restored at up to the tick before the first one
+     * it records, without recording anything.
+     * <p>
+     * The checkpoint lies on a boundary of the parent's chunks, which is at most one of the fork's
+     * chunks before the tick the fork's own chunk grid begins on. Those ticks are simulated exactly
+     * as the recording loop simulates them, only without capturing; the simulation is deterministic,
+     * so the state reached is the state the parent had there. Dead organisms are pruned and birth
+     * mutation records are dropped at the ticks a recording would have done so, so that what the
+     * first recorded tick holds does not depend on how far back the checkpoint lies. The first
+     * recorded tick itself is left to the recording loop, which simulates it with the per-instruction
+     * execution details a sampled tick carries and captures it as the first chunk's snapshot.
+     * <p>
+     * A pause requested during this phase is honoured, and a stop request or an interrupt ends it.
+     *
+     * @throws InterruptedException if the thread is interrupted while the service is paused
+     */
+    private void advanceToFirstRecordedTick() throws InterruptedException {
+        long firstRecordedTick = forkOrigin.getFirstTick();
+        if (currentTick.get() < firstRecordedTick - 1) {
+            log.debug("Simulating ticks {} to {} without recording, up to the fork's first recorded tick {}",
+                    currentTick.get() + 1, firstRecordedTick - 1, firstRecordedTick);
+        }
+        while (currentTick.get() < firstRecordedTick - 1
+                && (getCurrentState() == State.RUNNING || getCurrentState() == State.PAUSED)
+                && !isStopRequested() && !Thread.currentThread().isInterrupted()) {
+            checkPause();
+
+            simulation.setCaptureExecutionDetails(false);
+            simulation.tick();
+            long tick = currentTick.incrementAndGet();
+
+            if (tick % samplingInterval == 0) {
+                simulation.pruneDeadOrganisms();
+                simulation.clearBirthMutationRecords();
+            }
+        }
     }
 
     @Override
