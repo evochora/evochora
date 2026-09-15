@@ -82,6 +82,22 @@ final class ForkProgram {
      * @return the parent organism
      */
     static Organism place(Simulation simulation, Environment environment, int[] at, int energy) {
+        return place(simulation, environment, at, energy, 1);
+    }
+
+    /**
+     * As {@link #place(Simulation, Environment, int[], int)}, with the inheritable genome repeated on
+     * the given number of consecutive rows. Each row is one scan line of the child, so with more than
+     * one row the mutation operators choose among several lines.
+     *
+     * @param simulation the simulation to add the organism to
+     * @param environment the environment to place code and genome in
+     * @param at the parent's start position
+     * @param energy the parent's starting energy
+     * @param genomeRows rows of inheritable genome, starting with the row the child is born into
+     * @return the parent organism
+     */
+    static Organism place(Simulation simulation, Environment environment, int[] at, int energy, int genomeRows) {
         ProgramArtifact artifact;
         try {
             artifact = new Compiler().compile(
@@ -98,12 +114,15 @@ final class ForkProgram {
             environment.setMolecule(Molecule.fromInt(entry.getValue()), parent.getId(),
                     absolute(at, entry.getKey(), environment));
         }
-        placeInheritableGenome(environment, parent, at);
+        for (int r = 0; r < genomeRows; r++) {
+            placeInheritableGenome(environment, parent, at, r);
+        }
         return parent;
     }
 
     /**
-     * Lays out the cells the child inherits, along the row it is born into.
+     * Lays out the cells the child inherits along one row: the row it is born into, or one of the
+     * rows below it.
      * <p>
      * The layout follows what the mutation plugins look for. They group the child's cells into scan
      * lines perpendicular to its direction vector, walk each line from its first to its last owned
@@ -115,9 +134,9 @@ final class ForkProgram {
      * Two labels share a hash because deletion weights labels by how often their hash occurs, and
      * a label reference is included so substitution has one of each type it knows.
      */
-    private static void placeInheritableGenome(Environment environment, Organism parent, int[] at) {
+    private static void placeInheritableGenome(Environment environment, Organism parent, int[] at, int rowIndex) {
         int labelHash = 0b1011_0110_0101_1001_1010 & Config.VALUE_MASK;
-        int row = at[1] + GENOME_ROW_OFFSET;
+        int row = at[1] + GENOME_ROW_OFFSET + rowIndex;
         int turn = Instruction.getInstructionIdByName("TRNI");
         int column = at[0];
 

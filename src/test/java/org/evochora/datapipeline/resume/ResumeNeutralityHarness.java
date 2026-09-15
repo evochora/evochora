@@ -29,6 +29,7 @@ import org.evochora.runtime.spi.IRandomProvider;
 import org.evochora.runtime.spi.ISimulationPlugin;
 import org.evochora.runtime.spi.ITickPlugin;
 import org.evochora.runtime.thermodynamics.ThermodynamicPolicyManager;
+import org.evochora.runtime.worldgen.MutationTestWorld;
 
 import com.google.protobuf.ByteString;
 import com.typesafe.config.Config;
@@ -45,6 +46,12 @@ import com.typesafe.config.ConfigFactory;
 final class ResumeNeutralityHarness {
 
     static final long SEED = 42L;
+
+    /** Scan lines of the body {@link #processLargeNewborn} hands to the birth handlers. */
+    private static final int LARGE_BODY_ROWS = 400;
+
+    /** Side of the world that holds that body. */
+    private static final int LARGE_BODY_WORLD_SIDE = 512;
 
     private ResumeNeutralityHarness() {}
 
@@ -214,6 +221,23 @@ final class ResumeNeutralityHarness {
             }
         }
         return plugins;
+    }
+
+    /**
+     * Hands one newborn with a large body - {@value #LARGE_BODY_ROWS} scan lines - to every birth
+     * handler among the plugins, in a world of its own. The handlers draw from the fixture's random
+     * stream and keep whatever they build for the next birth, as the operators of a long run do by
+     * the time a checkpoint is taken; the scenario's own world is not touched.
+     *
+     * @param plugins the plugins of a fixture, in registration order
+     */
+    static void processLargeNewborn(List<ISimulationPlugin> plugins) {
+        MutationTestWorld world = new MutationTestWorld(LARGE_BODY_ROWS, LARGE_BODY_WORLD_SIDE, 0L);
+        for (ISimulationPlugin plugin : plugins) {
+            if (plugin instanceof IBirthHandler handler) {
+                handler.onBirth(world.child, world.env);
+            }
+        }
     }
 
     /** The plugin instances a restored state holds, each exactly once, in registration order. */

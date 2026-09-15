@@ -116,7 +116,18 @@ public class GeneInsertionPlugin implements IBirthHandler {
     private int[] perpStrides;
 
     // --- Scan line infrastructure (reused across mutate() calls) ---
+    /**
+     * Finds a scan line by its perpendicular key. Only for lookups: the map is reused across births
+     * and keeps the table size it once grew to, so its iteration order depends on the bodies this
+     * instance processed before, and a choice made in that order would differ between a run and
+     * its resumed or forked continuation.
+     */
     private final Int2ObjectOpenHashMap<ScanLineInfo> scanLineMap = new Int2ObjectOpenHashMap<>();
+    /**
+     * The scan lines of the current newborn at indices {@code 0} to {@code poolIndex - 1}, in the
+     * order in which the flat-index visit of its cells first reached them - an order set by the
+     * body alone. Every pass over the scan lines runs in this order.
+     */
     private final ArrayList<ScanLineInfo> scanLinePool = new ArrayList<>();
     private int poolIndex;
 
@@ -972,7 +983,8 @@ public class GeneInsertionPlugin implements IBirthHandler {
     private void resolveWalkRanges(int childId, Environment env, int dvDim, int shapeDvDim) {
         boolean toroidal = env.properties.isToroidal();
         boolean anyWrapping = false;
-        for (ScanLineInfo line : scanLineMap.values()) {
+        for (int i = 0; i < poolIndex; i++) {
+            ScanLineInfo line = scanLinePool.get(i);
             line.walkStart = line.minDv;
             line.walkEnd = line.maxDv;
             if (ScanLineArc.largestGapRuleApplies(line.minDv, line.maxDv, shapeDvDim, toroidal)) {
@@ -987,7 +999,8 @@ public class GeneInsertionPlugin implements IBirthHandler {
         // One pass over the child's cells groups the DV coordinates by scan line: every line owns
         // a segment of one shared buffer, starting at its offset, sized by its cell count.
         int total = 0;
-        for (ScanLineInfo line : scanLineMap.values()) {
+        for (int i = 0; i < poolIndex; i++) {
+            ScanLineInfo line = scanLinePool.get(i);
             line.segmentStart = total;
             line.segmentFill = 0;
             total += line.count;
@@ -1000,7 +1013,8 @@ public class GeneInsertionPlugin implements IBirthHandler {
             dvCoordCollector[line.segmentStart + line.segmentFill++] = coordBuffer[dvDimF];
         });
 
-        for (ScanLineInfo line : scanLineMap.values()) {
+        for (int i = 0; i < poolIndex; i++) {
+            ScanLineInfo line = scanLinePool.get(i);
             if (!ScanLineArc.largestGapRuleApplies(line.minDv, line.maxDv, shapeDvDim, toroidal)) {
                 continue;
             }
@@ -1044,7 +1058,8 @@ public class GeneInsertionPlugin implements IBirthHandler {
     private boolean selectNopRun(Environment env, int dvDim, int minLength, int shapeDvDim) {
         nopCandidateCount = 0;
 
-        for (ScanLineInfo line : scanLineMap.values()) {
+        for (int i = 0; i < poolIndex; i++) {
+            ScanLineInfo line = scanLinePool.get(i);
             env.properties.flatIndexToCoordinates(line.sampleFlatIndex, coordBuffer);
 
             int arcLength = (line.walkEnd >= line.walkStart)
