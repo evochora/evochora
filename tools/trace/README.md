@@ -7,8 +7,9 @@ directory is the only output. The tables are tab-separated text, meant to be que
 DuckDB (`duckdb` reads them directly) and searchable with grep.
 
 The consumer is a pipeline service outside the product build, like the benchmark consumer under
-`tools/bench-server/`: `run-trace.sh` compiles it against the installation tree and puts it on the
-node's classpath.
+`tools/bench-server/`: `run-trace.sh` compiles it, and the helper under `tools/trace/fork/` that
+resolves a recorded run's storage, against the installation tree and puts them on the node's
+classpath.
 
 ## Running
 
@@ -36,6 +37,38 @@ One further deliberate difference: the plugin list is emptied, so there is no wo
 generation, no decay on death and no mutation, only the label rewriting of newborns. A task that
 needs a plugin adds it back on the command line; the comments in `trace.conf` show how. The
 node's log lands in `<outputDir>/node.log`, the generated configuration in `<outputDir>/run.conf`.
+
+### A window of a recorded run
+
+With fork options the recorder does not start a new run but continues a recorded one, through
+`node fork`, and records a window of it tick by tick:
+
+```bash
+tools/trace/run-trace.sh --config config/local.conf --fork-run <runId> --fork-from 96429820 \
+  /tmp/trace 500 'pipeline.services.trace-consumer.options.organisms = [185299, 187433]'
+```
+
+- `--fork-run` and `--fork-from` are required; `--config` names the configuration the run was
+  recorded with (default `config/evochora.conf`), `--fork-storage` the storage resource in it
+  (default `tick-storage`). The resource is resolved in that configuration and handed to the node
+  as a read-only resource, with its paths written out, so nothing else of that configuration
+  reaches the trace and the run is only read.
+- The engine restores the parent's checkpoint of the chunk that holds `--fork-from`, simulates
+  without recording up to `--fork-from` rounded down to a multiple of 50, and records from there.
+  `ticks` counts from `--fork-from` and is rounded outwards to whole chunks: the trace holds at
+  least `--fork-from` to `--fork-from + ticks - 1`, and up to 49 ticks more on either side. The
+  script prints the window before it starts and stops if the engine's own window begins elsewhere.
+- Physics, plugins and mutations come from the recorded run, not from `trace.conf`; the plugin
+  list emptied there does not apply. The simulation continues exactly as the run did, so the
+  state at a tick the run recorded equals that recording - compare a few organisms before relying
+  on the trace.
+- The silent phase can be one whole chunk of the parent. A large world needs more heap than the
+  default; `TRACE_XMX` sets it.
+- Without a filter every organism of the world writes a row to `steps.tsv` and `state.tsv` in every
+  tick. The option `organisms` of the trace consumer limits both tables to the listed IDs;
+  `cells.tsv` keeps every cell of the world, so a foreign organism that writes into the traced one
+  still shows with its owner. `cellSnapshotInterval` bounds the
+  full cell dumps, which hold every occupied cell of the world each time.
 
 ## Tables
 
@@ -96,8 +129,9 @@ come first and the full rows describe the same state.
 | `type`, `value`, `marker`, `owner` | the molecule and the owning organism, 0 for none |
 
 **`run.tsv`** - key/value facts: run id, seed, build revision, world shape, toroidal, program
-ids, cell snapshot interval. **`artifact_<programId>.json`** - the compiler artifact of every
-program as JSON: sources, source map, labels, placed molecules, register aliases.
+ids, cell snapshot interval, the organism filter (`all` without one).
+**`artifact_<programId>.json`** - the compiler artifact of every program as JSON: sources,
+source map, labels, placed molecules, register aliases.
 
 ## Querying
 

@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -70,7 +71,9 @@ import com.typesafe.config.ConfigFactory;
  * it. Lists are written without quotes, as {@code [a,b,c]}, so the files hold no quote characters
  * and a CSV reader needs no quoting rules.</p>
  *
- * <p>Options: {@code outputDir} (required), {@code cellSnapshotInterval} (default 1000).
+ * <p>Options: {@code outputDir} (required), {@code cellSnapshotInterval} (default 1000),
+ * {@code organisms} (a list of organism IDs; when given, {@code steps.tsv} and {@code state.tsv}
+ * hold rows of these organisms only, while {@code cells.tsv} still holds every cell of the world).
  * Resources: {@code input} (tick chunks), {@code metadata} (the run's metadata message).</p>
  */
 public final class TraceConsumer extends AbstractService {
@@ -82,6 +85,8 @@ public final class TraceConsumer extends AbstractService {
     private final IInputQueueResource<SimulationMetadata> metadata;
     private final Path outputDir;
     private final long cellSnapshotInterval;
+    /** The organisms whose steps and states are written; null writes every organism. */
+    private final Set<Integer> organismFilter;
 
     private EnvironmentProperties envProps;
     private MutableCellState cells;
@@ -134,6 +139,7 @@ public final class TraceConsumer extends AbstractService {
         if (this.cellSnapshotInterval < 1) {
             throw new IllegalArgumentException("cellSnapshotInterval must be >= 1");
         }
+        this.organismFilter = options.hasPath("organisms") ? Set.copyOf(options.getIntList("organisms")) : null;
         try {
             Files.createDirectories(this.outputDir);
         } catch (IOException e) {
@@ -224,6 +230,7 @@ public final class TraceConsumer extends AbstractService {
             run.write("toroidal\t" + toroidal + "\n");
             run.write("programs\t" + programIds + "\n");
             run.write("cell_snapshot_interval\t" + cellSnapshotInterval + "\n");
+            run.write("organisms\t" + (organismFilter == null ? "all" : sortedList(organismFilter)) + "\n");
         }
         log.info("Trace of run {} starts: world {} {}, {} program(s), output {}",
                 meta.getSimulationRunId(), shapeText, toroidal ? "toroidal" : "bounded", programs.size(), outputDir);
@@ -261,6 +268,12 @@ public final class TraceConsumer extends AbstractService {
             prefix = prefix.substring(0, prefix.lastIndexOf('/', i - 1) + 1);
         }
         return prefix == null ? "" : prefix;
+    }
+
+    private static String sortedList(Set<Integer> ids) {
+        List<Integer> sorted = new ArrayList<>(ids);
+        java.util.Collections.sort(sorted);
+        return sorted.toString().replace(" ", "");
     }
 
     private static String fileSafe(String id) {
@@ -356,6 +369,9 @@ public final class TraceConsumer extends AbstractService {
 
     private void recordOrganisms(long tick, List<OrganismState> organisms) throws IOException {
         for (OrganismState o : organisms) {
+            if (organismFilter != null && !organismFilter.contains(o.getOrganismId())) {
+                continue;
+            }
             if (!stateHeaderWritten) {
                 writeStateHeader(o.getDataPointersCount());
                 stateHeaderWritten = true;
