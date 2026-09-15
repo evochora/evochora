@@ -713,6 +713,38 @@ public class Environment implements IEnvironmentReader {
         return this.grid[layoutIndex];
     }
 
+    /**
+     * Gets the owner of the cell at the specified layout index.
+     * OPTIMIZATION: Direct array access without coordinate conversion.
+     *
+     * @param layoutIndex The layout index
+     * @return The owner id, {@code 0} for an unowned cell
+     */
+    int getOwnerIdByIndex(int layoutIndex) {
+        return this.ownerGrid[layoutIndex];
+    }
+
+    /**
+     * The number of dimensions of the world. Unlike {@link #getShape()} this hands out no array
+     * and therefore allocates nothing.
+     *
+     * @return the number of dimensions
+     */
+    int dimensions() {
+        return this.shape.length;
+    }
+
+    /**
+     * The size of the world along one dimension. Unlike {@link #getShape()} this hands out no
+     * array and therefore allocates nothing.
+     *
+     * @param dimension the dimension to measure
+     * @return the number of cells along that dimension
+     */
+    int axisSize(int dimension) {
+        return this.shape[dimension];
+    }
+
 
 
 

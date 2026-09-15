@@ -25,10 +25,14 @@ package org.evochora.runtime.model;
  * smallest to the largest coordinate. On a bounded axis nothing wraps at all and the arc is always
  * the smallest to the largest coordinate.
  * <p>
- * An arc is a function of the coordinates, the axis size and the topology alone, and it allocates
- * nothing: the coordinates are read out of a range of an array the caller owns and the two ends
- * are written into a {@link Result} the caller owns, so a caller that keeps both around pays no
- * allocation per call.
+ * The rule can be applied in two ways, and both allocate nothing. {@link #resolve} computes the
+ * two ends of an arc from coordinates the caller has collected, and is a function of those
+ * coordinates, the axis size and the topology alone: they are read out of a range of an array the
+ * caller owns and the two ends are written into a {@link Result} the caller owns, so a caller that
+ * keeps both around pays no allocation per call. {@link #isWithinArc} answers the narrower question
+ * whether one position lies in the arc, and reads the owners along the line out of the world itself,
+ * stopping as soon as the answer is certain. The two must agree on every line, which is what
+ * {@code ScanLineArcTest} checks.
  */
 public final class ScanLineArc {
 
@@ -124,5 +128,202 @@ public final class ScanLineArc {
 
         out.start = sortedCoordinates[from + startIndex];
         out.end = sortedCoordinates[from + (startIndex - 1 + count) % count];
+    }
+
+    /**
+     * Reports whether a position lies in the arc an organism occupies on the line through it.
+     * <p>
+     * The line runs along {@code axis} through {@code position}: it holds the cells that share
+     * every other coordinate with it. The arc on that line is the one the class documentation
+     * defines, so a position on a cell of the organism always lies in it, a position between two
+     * of its cells lies in it as well, and a line the organism owns no cell on has no arc to lie
+     * in.
+     * <p>
+     * Rather than collecting the owned coordinates, this walks the line outwards from the position
+     * and stops as soon as the answer is certain. It first looks for the organism's cells on either
+     * side, which bound the stretch of free cells the position sits in, and then examines the rest
+     * of the line only as far as it takes to find out whether a wider stretch exists somewhere
+     * else: a stretch wider than half the axis is the widest there can be, and one that no
+     * remaining piece of the line could still exceed is the widest as well. A position on an owned
+     * cell is answered without reading a second cell.
+     * <p>
+     * Allocation-free and free of state, and it only reads, so it may be called from the parallel
+     * wave. A position outside a bounded world names no cell and lies in no arc, which is answered
+     * as {@code false} rather than rejected, the way the coordinate accessors of
+     * {@link Environment} report the owner of such a position as unowned.
+     *
+     * @param environment The world the owners are read from.
+     * @param position The position to test, one component per dimension.
+     * @param axis The dimension the line runs along.
+     * @param ownerId The organism whose cells form the arc.
+     * @return {@code true} if the position lies in that organism's arc on the line.
+     * @throws IllegalArgumentException if the position does not have one component per dimension.
+     */
+    public static boolean isWithinArc(Environment environment, int[] position, int axis, int ownerId) {
+        int dimensions = environment.dimensions();
+        if (position.length != dimensions) {
+            throw new IllegalArgumentException("Coordinate dimensions do not match world dimensions.");
+        }
+        for (int i = 0; i < dimensions; i++) {
+            if (position[i] < 0 || position[i] >= environment.axisSize(i)) {
+                return false;
+            }
+        }
+
+        int index = environment.getIndexFromCoordinate(position);
+        if (environment.getOwnerIdByIndex(index) == ownerId) {
+            return true;
+        }
+
+        int axisSize = environment.axisSize(axis);
+        if (!environment.getProperties().isToroidal()) {
+            return ownedCellFound(environment, index, axis, false, ownerId)
+                    && ownedCellFound(environment, index, axis, true, ownerId);
+        }
+
+        // The free cells around the position form one stretch, bounded by the nearest owned cell
+        // on either side. Its width is the distance between those two cells, and the search for
+        // them stops once that width must exceed half the axis: all stretches of a line add up to
+        // the axis, so one wider than half of it is the widest, and the position is outside.
+        int forward = 0;
+        int forwardIndex = index;
+        boolean forwardFound = false;
+        // One more step is worth taking only while the stretch it could close still stays within
+        // half the axis; the cell behind the position accounts for the one step of the other side.
+        while (2 * (forward + 2) <= axisSize) {
+            forwardIndex = environment.stepIndex(forwardIndex, axis, true);
+            forward++;
+            if (environment.getOwnerIdByIndex(forwardIndex) == ownerId) {
+                forwardFound = true;
+                break;
+            }
+        }
+        if (!forwardFound) {
+            return false;
+        }
+
+        int backward = 0;
+        int backwardIndex = index;
+        boolean backwardFound = false;
+        while (2 * (forward + backward + 1) <= axisSize) {
+            backwardIndex = environment.stepIndex(backwardIndex, axis, false);
+            backward++;
+            if (environment.getOwnerIdByIndex(backwardIndex) == ownerId) {
+                backwardFound = true;
+                break;
+            }
+        }
+        if (!backwardFound) {
+            return false;
+        }
+
+        int coordinate = position[axis];
+        int ownStart = coordinate - backward;
+        if (ownStart < 0) {
+            ownStart += axisSize;
+        }
+        int ownEnd = coordinate + forward;
+        if (ownEnd >= axisSize) {
+            ownEnd -= axisSize;
+        }
+        return widerStretchExists(environment, forwardIndex, ownEnd, axis, ownerId, axisSize,
+                forward + backward, ownStart);
+    }
+
+    /**
+     * Walks a line in one direction until a cell of the organism is reached or the world ends.
+     *
+     * @param environment The world the owners are read from.
+     * @param fromIndex The layout index of the cell to start from, which is not examined.
+     * @param axis The dimension the line runs along.
+     * @param forward Whether to walk towards higher coordinates.
+     * @param ownerId The organism to look for.
+     * @return {@code true} if a cell of that organism lies in that direction.
+     */
+    private static boolean ownedCellFound(Environment environment, int fromIndex, int axis, boolean forward,
+                                          int ownerId) {
+        int index = fromIndex;
+        while (true) {
+            index = environment.stepIndex(index, axis, forward);
+            if (index < 0) {
+                return false;
+            }
+            if (environment.getOwnerIdByIndex(index) == ownerId) {
+                return true;
+            }
+        }
+    }
+
+    /**
+     * Reports whether a toroidal line holds a stretch of free cells that takes the outside from the
+     * one the tested position sits in.
+     * <p>
+     * The walk starts at the owned cell that ends the position's own stretch and follows the line
+     * away from it until it reaches the cell that begins that stretch again, measuring every other
+     * stretch on the way. It ends early where the outcome is settled: a wider stretch decides
+     * against the position's own, and a remaining piece of line too short to hold one decides for
+     * it.
+     *
+     * @param environment The world the owners are read from.
+     * @param fromIndex The layout index of the owned cell the position's stretch ends at.
+     * @param fromCoordinate The coordinate of that cell along the axis.
+     * @param axis The dimension the line runs along.
+     * @param ownerId The organism whose cells bound the stretches.
+     * @param axisSize The size of the world along that axis.
+     * @param ownStretch The width of the stretch the position sits in.
+     * @param ownStart The coordinate of the owned cell that stretch begins at.
+     * @return {@code true} if another stretch takes the outside, which leaves the position inside.
+     */
+    private static boolean widerStretchExists(Environment environment, int fromIndex, int fromCoordinate, int axis,
+                                              int ownerId, int axisSize, int ownStretch, int ownStart) {
+        int remaining = axisSize - ownStretch;
+        int index = fromIndex;
+        int coordinate = fromCoordinate;
+        int previousOwnedOffset = 0;
+        int previousOwnedCoordinate = fromCoordinate;
+        for (int offset = 1; offset <= remaining; offset++) {
+            index = environment.stepIndex(index, axis, true);
+            coordinate = coordinate + 1 == axisSize ? 0 : coordinate + 1;
+            if (environment.getOwnerIdByIndex(index) != ownerId) {
+                continue;
+            }
+            int stretch = offset - previousOwnedOffset;
+            if (stretch > ownStretch) {
+                return true;
+            }
+            if (stretch == ownStretch
+                    && takesTheOutside(previousOwnedCoordinate, ownStart, stretch, axisSize)) {
+                return true;
+            }
+            previousOwnedOffset = offset;
+            previousOwnedCoordinate = coordinate;
+            if (remaining - previousOwnedOffset < ownStretch) {
+                break;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Decides which of two equally wide stretches of free cells counts as the outside.
+     * <p>
+     * This is the tie of the largest-gap rule the class documentation states: a stretch that runs
+     * across the world edge loses against one that does not, and between two that both stay inside
+     * the axis the one at the smaller coordinates wins.
+     *
+     * @param start The coordinate the stretch in question begins at.
+     * @param otherStart The coordinate the stretch it is compared with begins at.
+     * @param stretch The width both of them have.
+     * @param axisSize The size of the world along the axis.
+     * @return {@code true} if the stretch beginning at {@code start} counts as the outside.
+     */
+    private static boolean takesTheOutside(int start, int otherStart, int stretch, int axisSize) {
+        if (start + stretch >= axisSize) {
+            return false;
+        }
+        if (otherStart + stretch >= axisSize) {
+            return true;
+        }
+        return start < otherStart;
     }
 }

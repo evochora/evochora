@@ -2088,4 +2088,187 @@ public class VMConditionalInstructionTest {
         world.setMolecule(new Molecule(type, value), position);
         return runner.getNextInstructionPosition(position, runner.getDv(), world);
     }
+
+    // ===== Body Tests (IFB*, INB*) =====
+    //
+    // The organism's data pointer stands on {5, 5}. A body is built by giving single cells to the
+    // organism: cells on the row y = 5 bound it along the x axis, cells on the column x = 5 along
+    // the y axis.
+
+    /** Gives one cell to the test organism. */
+    private void own(int x, int y) {
+        environment.setOwnerId(org.getId(), new int[]{x, y});
+    }
+
+    /** Reads the marker the following ADDI writes when it is not skipped. */
+    private int marker() {
+        return scalarOf(org.readOperand(0));
+    }
+
+    /** Runs the placed instruction and the marker behind it. */
+    private void runInstructionAndMarker() {
+        sim.tick();
+        sim.tick();
+    }
+
+    @Test
+    @Tag("unit")
+    void testIfbr_WithinBodyOnTheLine_ExecutesNext() {
+        own(3, 5);
+        own(8, 5);
+        org.writeOperand(1, new int[]{1, 0});
+        placeInstruction("IFBR", 1);
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFBR"), environment));
+
+        runInstructionAndMarker();
+
+        assertThat(marker()).as("the data pointer lies between two cells of the body").isEqualTo(1);
+        assertNoInstructionFailure();
+    }
+
+    @Test
+    @Tag("unit")
+    void testIfbr_OutsideTheBodyOnTheLine_SkipsNext() {
+        own(3, 5);
+        own(4, 5);
+        org.writeOperand(1, new int[]{1, 0});
+        placeInstruction("IFBR", 1);
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFBR"), environment));
+
+        runInstructionAndMarker();
+
+        assertThat(marker()).as("the body ends before the data pointer").isZero();
+        assertNoInstructionFailure();
+    }
+
+    @Test
+    @Tag("unit")
+    void testInbr_OutsideTheBodyOnTheLine_ExecutesNext() {
+        own(3, 5);
+        own(4, 5);
+        org.writeOperand(1, new int[]{1, 0});
+        placeInstruction("INBR", 1);
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INBR"), environment));
+
+        runInstructionAndMarker();
+
+        assertThat(marker()).as("the negation holds where the data pointer is outside").isEqualTo(1);
+        assertNoInstructionFailure();
+    }
+
+    @Test
+    @Tag("unit")
+    void testIfbi_AVectorThatIsNoUnitVectorNamesTheNearestAxis() {
+        own(3, 5);
+        own(8, 5);
+        placeInstructionWithVector("IFBI", 3, 1);
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFBI"), environment));
+
+        runInstructionAndMarker();
+
+        assertThat(marker()).as("3|1 is nearest to the x axis, where the body encloses the pointer").isEqualTo(1);
+        assertNoInstructionFailure();
+    }
+
+    @Test
+    @Tag("unit")
+    void testIfbi_TheSignOfTheVectorDoesNotMatter() {
+        own(3, 5);
+        own(8, 5);
+        placeInstructionWithVector("IFBI", -1, 0);
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFBI"), environment));
+
+        runInstructionAndMarker();
+
+        assertThat(marker()).as("a line has no direction, so -1|0 names the same line as 1|0").isEqualTo(1);
+        assertNoInstructionFailure();
+    }
+
+    @Test
+    @Tag("unit")
+    void testIfbs_TakesTheVectorFromTheStack() {
+        own(5, 2);
+        own(5, 9);
+        org.getDataStack().push(new int[]{0, 1});
+        placeInstruction("IFBS");
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFBS"), environment));
+
+        runInstructionAndMarker();
+
+        assertThat(marker()).as("the body encloses the pointer along the y axis").isEqualTo(1);
+        assertNoInstructionFailure();
+    }
+
+    @Test
+    @Tag("unit")
+    void testIfbi_TheZeroVectorAsksEveryAxis_SkipsWhenOneAxisIsOutside() {
+        own(3, 5);
+        own(8, 5);
+        own(5, 2);
+        placeInstructionWithVector("IFBI", 0, 0);
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFBI"), environment));
+
+        runInstructionAndMarker();
+
+        assertThat(marker()).as("inside along x, but the column holds one cell only").isZero();
+        assertNoInstructionFailure();
+    }
+
+    @Test
+    @Tag("unit")
+    void testIfbi_TheZeroVectorAsksEveryAxis_ExecutesWhenAllAxesAreWithin() {
+        own(3, 5);
+        own(8, 5);
+        own(5, 2);
+        own(5, 9);
+        placeInstructionWithVector("IFBI", 0, 0);
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFBI"), environment));
+
+        runInstructionAndMarker();
+
+        assertThat(marker()).as("the body encloses the pointer on both axes").isEqualTo(1);
+        assertNoInstructionFailure();
+    }
+
+    @Test
+    @Tag("unit")
+    void testInbi_TheZeroVectorAsksEveryAxis_ExecutesWhenOneAxisIsOutside() {
+        own(3, 5);
+        own(8, 5);
+        own(5, 2);
+        placeInstructionWithVector("INBI", 0, 0);
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INBI"), environment));
+
+        runInstructionAndMarker();
+
+        assertThat(marker()).as("the negation holds as soon as one axis is outside").isEqualTo(1);
+        assertNoInstructionFailure();
+    }
+
+    @Test
+    @Tag("unit")
+    void testIfbr_OnACellOfTheOwnBody_ExecutesNext() {
+        own(5, 5);
+        org.writeOperand(1, new int[]{1, 0});
+        placeInstruction("IFBR", 1);
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFBR"), environment));
+
+        runInstructionAndMarker();
+
+        assertThat(marker()).as("a pointer standing on an own cell is always within the body").isEqualTo(1);
+        assertNoInstructionFailure();
+    }
+
+    @Test
+    @Tag("unit")
+    void testIfbr_AScalarOperandFailsTheInstruction() {
+        org.writeOperand(1, new Molecule(Config.TYPE_DATA, 3).toInt());
+        placeInstruction("IFBR", 1);
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFBR"), environment));
+
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).as("the body test needs a vector").isTrue();
+        assertThat(org.getFailureReason()).contains("requires a vector argument");
+    }
 }

@@ -433,12 +433,13 @@ Operands are values — register contents, the top of the stack, or literals —
 
 #### Cell tests
 
-The vector is a displacement from the active `DP`, as in a world interaction: it addresses the cell the `DP` stands on, or one adjacent to it. A vector that would reach further is mapped to the nearest adjacent cell.
+The vector is a displacement from the active `DP`, as in a world interaction: it addresses the cell the `DP` stands on, or one adjacent to it. A vector that would reach further is mapped to the nearest adjacent cell. The body test is the exception: its vector names a line through the `DP`, not a cell.
 
 * `IFMR %VEC_REG`, `IFMI <Vector>`, `IFMS`: If cell at `DP` + vector is owned by self.
 * `IFPR %VEC_REG`, `IFPI <Vector>`, `IFPS`: If cell at `DP` + vector is passable (empty or owned by self).
 * `IFFR %VEC_REG`, `IFFI <Vector>`, `IFFS`: If cell at `DP` + vector is owned by a foreign organism (ownerId != 0 && ownerId != self.id).
 * `IFVR %VEC_REG`, `IFVI <Vector>`, `IFVS`: If cell at `DP` + vector is vacant (has no owner, ownerId == 0). Note: "Vacant" refers to ownership status, not whether the cell contains a molecule. A cell can have a molecule and still be vacant.
+* `IFBR %VEC_REG`, `IFBI <Vector>`, `IFBS`: If `DP` lies within the own body on the line along the vector's axis: between the outermost cells the organism owns there, gaps included. On a torus the widest gap between own cells is the outside, the world edge included. A vector with no non-zero component asks every axis, and holds only if `DP` lies within the body on all of them.
 
 #### Negated Conditional Instructions
 
@@ -461,6 +462,7 @@ Cell tests:
 * `INPR %VEC_REG`, `INPI <Vector>`, `INPS`: If cell at `DP` + vector is **not** passable (not empty and not owned by self).
 * `INFR %VEC_REG`, `INFI <Vector>`, `INFS`: If cell at `DP` + vector is **not** owned by a foreign organism (ownerId == 0 || ownerId == self.id).
 * `INVR %VEC_REG`, `INVI <Vector>`, `INVS`: If cell at `DP` + vector is **not** vacant (has an owner, ownerId != 0).
+* `INBR %VEC_REG`, `INBI <Vector>`, `INBS`: If `DP` does **not** lie within the own body on that line; with a vector of no non-zero component, if it lies outside on at least one axis.
 
 #### Vector operands in value comparisons
 

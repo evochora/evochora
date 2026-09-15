@@ -6,6 +6,7 @@ import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.LocationValue;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
+import org.evochora.runtime.model.ScanLineArc;
 import org.evochora.runtime.model.Environment;
 
 import java.util.Arrays;
@@ -38,6 +39,10 @@ import static org.evochora.runtime.isa.Instruction.OperandSource.*;
  * distributed draw U from {@code [0, B)} taken from the organism's own random source, and then
  * compare exactly as their deterministic counterparts do. A bound of zero or less yields
  * {@code U = 0}, which leaves a comparison against zero rather than a failing instruction.
+ * <p>
+ * The body tests (IFB, INB) ask whether the active data pointer lies within the organism's own body
+ * on the line the vector names. What lying within the body on a line means is the arc of
+ * {@link ScanLineArc}, and a vector without components asks the question on every axis at once.
  */
 public class ConditionalInstruction extends Instruction {
 
@@ -101,6 +106,10 @@ public class ConditionalInstruction extends Instruction {
         regPair(22, 23, 58, 59, "PLTR", "PGER", REGISTER, REGISTER);
         regPair(22, 23, 60, 61, "PLTI", "PGEI", REGISTER, IMMEDIATE);
         regPair(22, 23, 62, 63, "PLTS", "PGES", STACK, STACK);
+        // Operations 24 and 25: within the own body on a line / not within it
+        regPair(24, 25, 64, 65, "IFBR", "INBR", REGISTER);
+        regPair(24, 25, 66, 67, "IFBI", "INBI", VECTOR);  // Note: uses VECTOR operand despite "I" suffix
+        regPair(24, 25, 68, 69, "IFBS", "INBS", STACK);
     }
 
     /**
@@ -177,20 +186,7 @@ public class ConditionalInstruction extends Instruction {
                 return;
             }
             if (opName.startsWith("IFM") || opName.startsWith("INM")) {
-                List<Operand> operands = resolveOperands(environment);
-                if (organism.isInstructionFailed()) {
-                    return;
-                }
-                if (operands.size() != 1) {
-                    organism.instructionFailed("Invalid operand count for " + opName);
-                    return;
-                }
-                Operand op = operands.get(0);
-                if (!(op.value() instanceof int[])) {
-                    organism.instructionFailed(opName + " requires a vector argument.");
-                    return;
-                }
-                int[] vector = organism.toDisplacement((int[]) op.value());
+                int[] vector = resolveDisplacementOperand(environment, opName);
                 if (vector == null) {
                     return;
                 }
@@ -204,20 +200,7 @@ public class ConditionalInstruction extends Instruction {
                 return;
             }
             if (opName.startsWith("IFP") || opName.startsWith("INP")) {
-                List<Operand> operands = resolveOperands(environment);
-                if (organism.isInstructionFailed()) {
-                    return;
-                }
-                if (operands.size() != 1) {
-                    organism.instructionFailed("Invalid operand count for " + opName);
-                    return;
-                }
-                Operand op = operands.get(0);
-                if (!(op.value() instanceof int[])) {
-                    organism.instructionFailed(opName + " requires a vector argument.");
-                    return;
-                }
-                int[] vector = organism.toDisplacement((int[]) op.value());
+                int[] vector = resolveDisplacementOperand(environment, opName);
                 if (vector == null) {
                     return;
                 }
@@ -233,20 +216,7 @@ public class ConditionalInstruction extends Instruction {
             }
             if (opName.startsWith("IFF") || opName.startsWith("INF")) {
                 // Foreign ownership check: ownerId != 0 && ownerId != self.id
-                List<Operand> operands = resolveOperands(environment);
-                if (organism.isInstructionFailed()) {
-                    return;
-                }
-                if (operands.size() != 1) {
-                    organism.instructionFailed("Invalid operand count for " + opName);
-                    return;
-                }
-                Operand op = operands.get(0);
-                if (!(op.value() instanceof int[])) {
-                    organism.instructionFailed(opName + " requires a vector argument.");
-                    return;
-                }
-                int[] vector = organism.toDisplacement((int[]) op.value());
+                int[] vector = resolveDisplacementOperand(environment, opName);
                 if (vector == null) {
                     return;
                 }
@@ -261,20 +231,7 @@ public class ConditionalInstruction extends Instruction {
             }
             if (opName.startsWith("IFV") || opName.startsWith("INV")) {
                 // Vacant ownership check: ownerId == 0
-                List<Operand> operands = resolveOperands(environment);
-                if (organism.isInstructionFailed()) {
-                    return;
-                }
-                if (operands.size() != 1) {
-                    organism.instructionFailed("Invalid operand count for " + opName);
-                    return;
-                }
-                Operand op = operands.get(0);
-                if (!(op.value() instanceof int[])) {
-                    organism.instructionFailed(opName + " requires a vector argument.");
-                    return;
-                }
-                int[] vector = organism.toDisplacement((int[]) op.value());
+                int[] vector = resolveDisplacementOperand(environment, opName);
                 if (vector == null) {
                     return;
                 }
@@ -282,6 +239,19 @@ public class ConditionalInstruction extends Instruction {
                 int ownerId = environment.getOwnerId(targetCoordinate);
                 boolean isVacant = (ownerId == 0);
                 boolean conditionMet = opName.startsWith("IFV") ? isVacant : !isVacant;
+                if (!conditionMet) {
+                    organism.skipNextInstruction(environment);
+                }
+                return;
+            }
+            if (opName.startsWith("IFB") || opName.startsWith("INB")) {
+                // Body check: does the data pointer lie within the own body on the line the vector names
+                int[] vector = resolveDisplacementOperand(environment, opName);
+                if (vector == null) {
+                    return;
+                }
+                boolean isWithinBody = isWithinOwnBody(organism, environment, vector);
+                boolean conditionMet = opName.startsWith("IFB") ? isWithinBody : !isWithinBody;
                 if (!conditionMet) {
                     organism.skipNextInstruction(environment);
                 }
@@ -333,6 +303,70 @@ public class ConditionalInstruction extends Instruction {
             organism.instructionFailed("Stack underflow during conditional operation.");
             return;
         }
+    }
+
+    /**
+     * Resolves the single vector operand of a conditional that tests a cell, and maps it to the
+     * displacement that reaches one.
+     * <p>
+     * The displacement is the vector itself when it already reaches a cell; anything further is
+     * mapped to the nearest adjacent cell, and a vector without components stays one, so the test
+     * applies to the cell the data pointer stands on. See {@link Organism#toDisplacement(int[])}.
+     *
+     * @param environment the environment the operands are read from
+     * @param opName      the name of the opcode, for the message of a rejection
+     * @return the displacement, or {@code null} if the instruction has been marked failed, which
+     *         happens when an operand could not be read, when the count is not one, and when the
+     *         operand is not a vector
+     */
+    private int[] resolveDisplacementOperand(Environment environment, String opName) {
+        List<Operand> operands = resolveOperands(environment);
+        if (organism.isInstructionFailed()) {
+            return null;
+        }
+        if (operands.size() != 1) {
+            organism.instructionFailed("Invalid operand count for " + opName);
+            return null;
+        }
+        if (!(operands.get(0).value() instanceof int[] vector)) {
+            organism.instructionFailed(opName + " requires a vector argument.");
+            return null;
+        }
+        return organism.toDisplacement(vector);
+    }
+
+    /**
+     * Reports whether the active data pointer lies within the organism's own body on the line the
+     * vector names.
+     * <p>
+     * The vector names the axis the line runs along, and its sign plays no part: a line has no
+     * direction. A vector without components names no line, and the question is then asked on every
+     * axis, with the answer holding only if the data pointer lies within the body on all of them.
+     * The first axis it lies outside on ends the examination.
+     * <p>
+     * What "within the body" means on one line is the arc of {@link ScanLineArc}, the stretch from
+     * the first to the last cell the organism owns there.
+     *
+     * @param organism    the organism the data pointer and the body belong to
+     * @param environment the environment the cells' owners are read from
+     * @param vector      the displacement the operand was mapped to, a unit vector or the zero vector
+     * @return {@code true} if the data pointer lies within the own body
+     */
+    private static boolean isWithinOwnBody(Organism organism, Environment environment, int[] vector) {
+        int[] position = organism.getActiveDp();
+        // A displacement is a unit vector or the zero vector, so the first non-zero component is
+        // the only one, and it names the axis alone.
+        for (int axis = 0; axis < vector.length; axis++) {
+            if (vector[axis] != 0) {
+                return ScanLineArc.isWithinArc(environment, position, axis, organism.getId());
+            }
+        }
+        for (int axis = 0; axis < position.length; axis++) {
+            if (!ScanLineArc.isWithinArc(environment, position, axis, organism.getId())) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /**
