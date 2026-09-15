@@ -7,6 +7,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.BitSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -66,9 +67,10 @@ import com.typesafe.config.ConfigFactory;
  *   <li>{@code artifact_<programId>.json} - the compiler artifact of every program, as JSON.</li>
  * </ul>
  *
- * <p>Cells are tracked from the chunks' snapshots and deltas; a change row is written for every
- * cell whose molecule or owner differs from the tracked state, whatever kind of delta delivered
- * it. Lists are written without quotes, as {@code [a,b,c]}, so the files hold no quote characters
+ * <p>Cells are tracked from the recorded full states and deltas; a change row is written for every
+ * cell whose molecule or owner differs from the tracked state, whatever delivered it, and a full
+ * state after the first also yields a change row for every cell that became empty, which a full
+ * state does not list. Lists are written without quotes, as {@code [a,b,c]}, so the files hold no quote characters
  * and a CSV reader needs no quoting rules.</p>
  *
  * <p>Options: {@code outputDir} (required), {@code cellSnapshotInterval} (default 1000),
@@ -90,6 +92,10 @@ public final class TraceConsumer extends AbstractService {
 
     private EnvironmentProperties envProps;
     private MutableCellState cells;
+    /** The cells {@link #cells} holds as occupied - molecule data, an owner, or both - one bit per flat index. */
+    private BitSet occupied;
+    /** Scratch set of the cells a full state lists as occupied, swapped with {@link #occupied} once it is applied. */
+    private BitSet occupiedInFullState;
     private final Map<String, Program> programs = new HashMap<>();
     /** State of every living organism as recorded at the previous tick. */
     private final Map<Integer, OrganismState> previousStates = new HashMap<>();
@@ -109,7 +115,7 @@ public final class TraceConsumer extends AbstractService {
     private BufferedWriter state;
     private BufferedWriter cellsOut;
     private boolean stateHeaderWritten = false;
-    private boolean firstSnapshotSeen = false;
+    private boolean firstFullStateSeen = false;
     private long chunkCount = 0;
     private long lastTick = -1;
     private long lastDrainedTick = -1;
@@ -200,6 +206,8 @@ public final class TraceConsumer extends AbstractService {
         boolean toroidal = "TORUS".equalsIgnoreCase(resolved.getString("environment.topology"));
         this.envProps = new EnvironmentProperties(shape, toroidal);
         this.cells = new MutableCellState(Math.toIntExact(envProps.getTotalCells()));
+        this.occupied = new BitSet(Math.toIntExact(envProps.getTotalCells()));
+        this.occupiedInFullState = new BitSet(Math.toIntExact(envProps.getTotalCells()));
 
         StringBuilder programIds = new StringBuilder();
         for (ProgramArtifact artifact : meta.getProgramsList()) {
@@ -282,18 +290,36 @@ public final class TraceConsumer extends AbstractService {
 
     // ---------------------------------------------------------------- chunks
 
+    /**
+     * Records every tick a chunk carries.
+     * <p>
+     * A recorded tick comes in one of two forms, and each is read for what it is, wherever it
+     * stands in the chunk: a full state, which lists every occupied cell and no empty one, or a
+     * set of changes, which lists every cell that changed since an earlier recording with its
+     * present content, a cell that became empty included. Deltas of both known types are such
+     * change sets; neither is read as relative to a particular recording, each is compared with
+     * the tracked state. A delta of any other type stops the trace, and so does a tick that does
+     * not follow the previous one by the chunk's sampling interval - a recording in a form this
+     * consumer does not read would otherwise drop out of the trace without a trace of its own.
+     */
     private void recordChunk(TickDataChunk chunk) throws IOException {
+        int samplingInterval = chunk.getSamplingInterval();
         if (chunk.hasSnapshot()) {
             TickData snapshot = chunk.getSnapshot();
-            recordCells(snapshot.getTickNumber(), snapshot.getCellColumns(), !firstSnapshotSeen);
-            firstSnapshotSeen = true;
+            advanceTo(snapshot.getTickNumber(), samplingInterval);
+            recordFullState(snapshot.getTickNumber(), snapshot.getCellColumns());
             recordOrganisms(snapshot.getTickNumber(), snapshot.getOrganismsList());
-            lastTick = snapshot.getTickNumber();
         }
         for (TickDelta delta : chunk.getDeltasList()) {
-            recordCells(delta.getTickNumber(), delta.getChangedCells(), false);
-            recordOrganisms(delta.getTickNumber(), delta.getOrganismsList());
-            lastTick = delta.getTickNumber();
+            long tick = delta.getTickNumber();
+            advanceTo(tick, samplingInterval);
+            switch (delta.getDeltaType()) {
+                case INCREMENTAL, ACCUMULATED -> recordChanges(tick, delta.getChangedCells());
+                default -> throw new IllegalStateException("Tick " + tick + " is recorded as a delta of type "
+                        + delta.getDeltaType() + ", which the trace consumer cannot read: it reads full states "
+                        + "and deltas that list the changed cells");
+            }
+            recordOrganisms(tick, delta.getOrganismsList());
         }
         chunkCount++;
         if (chunkCount % 100 == 0) {
@@ -302,30 +328,89 @@ public final class TraceConsumer extends AbstractService {
     }
 
     /**
-     * Writes the cells of one tick: as a full dump when this is the first snapshot or the tick
-     * falls on the snapshot interval, and as change rows for every delivered cell that differs
-     * from the tracked state. The tracked state is updated afterwards, so a snapshot arriving
-     * mid-run yields exactly the cells that changed in its tick.
+     * Requires a recorded tick to follow the previous one by the sampling interval, and makes it
+     * the last tick.
+     *
+     * @throws IllegalStateException if a tick is missing between the previous one and this one
      */
-    private void recordCells(long tick, CellDataColumns delivered, boolean initial) throws IOException {
-        int n = delivered.getFlatIndicesCount();
-        if (initial) {
-            cells.applySnapshot(delivered);
+    private void advanceTo(long tick, int samplingInterval) {
+        if (lastTick >= 0 && tick != lastTick + samplingInterval) {
+            throw new IllegalStateException(String.format(
+                    "Tick %d follows tick %d, but the run records every %d ticks: a recorded tick did not "
+                            + "reach the trace", tick, lastTick, samplingInterval));
+        }
+        lastTick = tick;
+    }
+
+    /**
+     * Records a full state. The first one is written as the complete set of occupied cells. Every
+     * later one is written as its difference to the tracked state: a change row for every listed
+     * cell whose content differs, and a change row with an empty cell for every tracked occupied
+     * cell the state no longer lists. The state then replaces the tracked one.
+     */
+    private void recordFullState(long tick, CellDataColumns state) throws IOException {
+        int n = state.getFlatIndicesCount();
+        if (!firstFullStateSeen) {
+            firstFullStateSeen = true;
+            cells.applySnapshot(state);
+            occupied.clear();
+            for (int i = 0; i < n; i++) {
+                if (state.getMoleculeData(i) != 0 || state.getOwnerIds(i) != 0) {
+                    occupied.set(state.getFlatIndices(i));
+                }
+            }
             writeFullCells(tick);
             return;
         }
         int[] coord = new int[envProps.getDimensions()];
+        occupiedInFullState.clear();
         for (int i = 0; i < n; i++) {
-            int flat = delivered.getFlatIndices(i);
-            int molecule = delivered.getMoleculeData(i);
-            int owner = delivered.getOwnerIds(i);
+            int flat = state.getFlatIndices(i);
+            int molecule = state.getMoleculeData(i);
+            int owner = state.getOwnerIds(i);
+            if (molecule != 0 || owner != 0) {
+                occupiedInFullState.set(flat);
+            }
+            if (cells.getMoleculeData(flat) != molecule || cells.getOwnerId(flat) != owner) {
+                envProps.flatIndexToCoordinates(flat, coord);
+                writeCellRow(tick, "change", coord, molecule, owner);
+            }
+        }
+        for (int flat = occupied.nextSetBit(0); flat >= 0; flat = occupied.nextSetBit(flat + 1)) {
+            if (!occupiedInFullState.get(flat)) {
+                envProps.flatIndexToCoordinates(flat, coord);
+                writeCellRow(tick, "change", coord, 0, 0);
+            }
+        }
+        cells.applySnapshot(state);
+        BitSet previous = occupied;
+        occupied = occupiedInFullState;
+        occupiedInFullState = previous;
+        if (tick % cellSnapshotInterval == 0) {
+            writeFullCells(tick);
+        }
+    }
+
+    /**
+     * Records a set of changes: a change row for every listed cell whose content differs from the
+     * tracked state, a cell that became empty included, after which the tracked state takes the
+     * listed contents.
+     */
+    private void recordChanges(long tick, CellDataColumns changes) throws IOException {
+        int n = changes.getFlatIndicesCount();
+        int[] coord = new int[envProps.getDimensions()];
+        for (int i = 0; i < n; i++) {
+            int flat = changes.getFlatIndices(i);
+            int molecule = changes.getMoleculeData(i);
+            int owner = changes.getOwnerIds(i);
+            occupied.set(flat, molecule != 0 || owner != 0);
             if (cells.getMoleculeData(flat) == molecule && cells.getOwnerId(flat) == owner) {
                 continue;
             }
             envProps.flatIndexToCoordinates(flat, coord);
             writeCellRow(tick, "change", coord, molecule, owner);
         }
-        cells.applyDelta(delivered);
+        cells.applyDelta(changes);
         if (tick % cellSnapshotInterval == 0) {
             writeFullCells(tick);
         }
