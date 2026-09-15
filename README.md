@@ -491,5 +491,3 @@ If you use Evochora in your research, please cite:
 _Full disclosure: This project uses AI coding assistants. Humans define the architecture, write specifications, and review generated code to ensure correctness and maintain the overall design._
 
 ---
-
-**Note**: Evochora is in active development. Some features described in documentation may be planned but not yet implemented. See the project documentation and roadmap for the current status.
