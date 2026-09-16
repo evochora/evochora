@@ -384,12 +384,60 @@ class GeneDuplicationPluginTest {
     }
 
     @Test
-    void anAppliedCopyIsRecordedWithItsTargetCellsAndItsSource() {
-        // One gene at y=2 (LABEL at x=10, CODE at x=11 and x=12) and one empty row at y=4 as the
-        // only scan line with a NOP run: three molecules land at x=0..2 of that row
+    void aShellCellAtTheEndOfTheLineIsNotCarriedIntoTheBody() {
+        // A gene at y=2 whose line ends in the organism's shell, and one empty row as the target
         environment.setMolecule(new Molecule(Config.TYPE_LABEL, 12345), child.getId(), new int[]{10, 2});
-        environment.setMolecule(new Molecule(Config.TYPE_CODE, 42), child.getId(), new int[]{11, 2});
-        environment.setMolecule(new Molecule(Config.TYPE_CODE, 42), child.getId(), new int[]{12, 2});
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, ADDR_OPCODE), child.getId(), new int[]{11, 2});
+        environment.setMolecule(new Molecule(Config.TYPE_REGISTER, 0), child.getId(), new int[]{12, 2});
+        environment.setMolecule(new Molecule(Config.TYPE_REGISTER, 1), child.getId(), new int[]{13, 2});
+        environment.setMolecule(new Molecule(Config.TYPE_STRUCTURE, 100), child.getId(), new int[]{14, 2});
+        placeEmptyOwnedRow(4, 0, 19);
+
+        IRandomProvider rng = new SeededRandomProvider(42L);
+        GeneDuplicationPlugin plugin = new GeneDuplicationPlugin(rng, 1.0, 3);
+        plugin.onBirth(child, environment);
+
+        assertThat(environment.getMolecule(0, 4).type()).as("the label opens the copy").isEqualTo(Config.TYPE_LABEL);
+        assertThat(environment.getMolecule(1, 4).toInt())
+                .as("the instruction is carried")
+                .isEqualTo(new Molecule(Config.TYPE_CODE, ADDR_OPCODE).toInt());
+        assertThat(environment.getMolecule(4, 4).toInt())
+                .as("the shell at the end of the line is not carried into the body")
+                .isZero();
+    }
+
+    @Test
+    void anOccupiedCellThatIsNoCodeIsCarriedAsAnEmptyOne() {
+        // A gene at y=2 with a data cell between two instructions: the data leaves an empty cell,
+        // the instruction behind it is still carried
+        environment.setMolecule(new Molecule(Config.TYPE_LABEL, 12345), child.getId(), new int[]{10, 2});
+        environment.setMolecule(new Molecule(Config.TYPE_STRUCTURE, 100), child.getId(), new int[]{11, 2});
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, ADDR_OPCODE), child.getId(), new int[]{12, 2});
+        environment.setMolecule(new Molecule(Config.TYPE_REGISTER, 0), child.getId(), new int[]{13, 2});
+        environment.setMolecule(new Molecule(Config.TYPE_REGISTER, 1), child.getId(), new int[]{14, 2});
+        placeEmptyOwnedRow(4, 0, 19);
+
+        IRandomProvider rng = new SeededRandomProvider(42L);
+        GeneDuplicationPlugin plugin = new GeneDuplicationPlugin(rng, 1.0, 3);
+        plugin.onBirth(child, environment);
+
+        assertThat(environment.getMolecule(1, 4).toInt())
+                .as("the occupied cell that is no code leaves an empty one")
+                .isZero();
+        assertThat(environment.getMolecule(2, 4).toInt())
+                .as("what follows it is carried")
+                .isEqualTo(new Molecule(Config.TYPE_CODE, ADDR_OPCODE).toInt());
+    }
+
+    @Test
+    void anAppliedCopyIsRecordedWithItsTargetCellsAndItsSource() {
+        // One gene at y=2 (LABEL at x=10, an ADDR instruction at x=11 with its two register
+        // operands) and one empty row at y=4 as the only scan line with a NOP run: three molecules
+        // land at x=0..3 of that row
+        environment.setMolecule(new Molecule(Config.TYPE_LABEL, 12345), child.getId(), new int[]{10, 2});
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, ADDR_OPCODE), child.getId(), new int[]{11, 2});
+        environment.setMolecule(new Molecule(Config.TYPE_REGISTER, 0), child.getId(), new int[]{12, 2});
+        environment.setMolecule(new Molecule(Config.TYPE_REGISTER, 1), child.getId(), new int[]{13, 2});
         placeEmptyOwnedRow(4, 0, 19);
 
         IRandomProvider rng = new SeededRandomProvider(42L);
@@ -401,12 +449,14 @@ class GeneDuplicationPluginTest {
         MutationRecord record = records.get(0);
         assertThat(record.pluginClass()).isEqualTo(GeneDuplicationPlugin.class.getName());
         assertThat(record.kind()).isEqualTo("duplication");
-        assertThat(record.cells()).containsExactly(flatIndex(0, 4), flatIndex(1, 4), flatIndex(2, 4));
-        assertThat(record.oldValues()).containsExactly(0, 0, 0);
+        assertThat(record.cells()).containsExactly(
+                flatIndex(0, 4), flatIndex(1, 4), flatIndex(2, 4), flatIndex(3, 4));
+        assertThat(record.oldValues()).containsExactly(0, 0, 0, 0);
         assertThat(record.newValues()).containsExactly(
                 environment.getMolecule(0, 4).toInt(),
                 environment.getMolecule(1, 4).toInt(),
-                environment.getMolecule(2, 4).toInt());
+                environment.getMolecule(2, 4).toInt(),
+                environment.getMolecule(3, 4).toInt());
         assertThat(record.newValues()[0])
                 .as("the first target cell holds the copied label")
                 .isEqualTo(environment.getMolecule(10, 2).toInt());

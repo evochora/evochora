@@ -38,6 +38,22 @@ import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
  * the copy is cut back to the last block boundary that fits entirely, never inside a block. A run
  * that cannot hold even the first block is not written to at all.
  * <p>
+ * What a copy carries of those blocks is what the machine reads as code: the cells of an
+ * instruction, the labels that open a block, and the empty cells between them. A CODE molecule
+ * whose value is no registered opcode is none: the machine reads it as a no-operation of one cell,
+ * and the cells behind it are no operands. Every other
+ * occupied cell is written as an empty cell instead. A line's extent ends at the outermost cell the
+ * organism owns there, which for a body with a shell is a shell cell, and data a program keeps
+ * between its instructions is no gene either; carried into the middle of a body, such a cell is
+ * read as code by whoever reads that body afterwards. The empty cell left in its place is where a
+ * later insertion can write. Cells at the end of a copy that would be written empty are not copied
+ * at all, so that a copy asks for no room it does not use.
+ * <p>
+ * <strong>The reading frame</strong> is built once per duplication, for the newborn whose body is
+ * copied. It is meant to serve more than this handler: as soon as a second birth handler needs to
+ * know the code structure of a body, it should be built once per birth and handed to the handlers
+ * instead, so that they share one answer rather than each paying for its own.
+ * <p>
  * The algorithm groups owned cells by scan lines perpendicular to the organism's direction vector (DV),
  * ensuring equal selection probability for each scan line regardless of cell density. A random scan line
  * is chosen as the target for NOP area search, and a random LABEL is selected as the source via reservoir
@@ -345,12 +361,15 @@ public class GeneDuplicationPlugin implements IBirthHandler {
         sourcePos[dvDimFinal] = selectedLabelDvCoord;
 
         int room = targetLine.bestNopLength;
+        // The reading frame says of every source cell whether the machine reads it as part of an
+        // instruction, which decides what the copy carries, and which LABEL cells are the block
+        // boundaries a cut-back copy may end at.
+        frame.build(env, childId, child.getInitialPosition(), dv);
         int copyLength;
         if (availableSource <= room) {
             copyLength = availableSource;
         } else {
             // The room ends inside the source, so the copy is cut back to a whole number of blocks
-            frame.build(env, childId, child.getInitialPosition(), dv);
             copyLength = lastBlockBoundaryWithin(env, childId, room, dvStep, dvDimFinal, shapeDvDim);
             sourcePos[dvDimFinal] = selectedLabelDvCoord;
             if (copyLength == 0) {
@@ -358,6 +377,16 @@ public class GeneDuplicationPlugin implements IBirthHandler {
                         child.getBirthTick(), childId, room);
                 return;
             }
+        }
+
+        // Cells the copy would write as empty carry nothing, so the copy does not reserve room for
+        // them: cutting them off lets a copy fit that would otherwise be cut back or skipped.
+        copyLength = withoutTrailingEmptyCells(env, copyLength, dvStep, dvDimFinal, shapeDvDim);
+        sourcePos[dvDimFinal] = selectedLabelDvCoord;
+        if (copyLength == 0) {
+            LOG.debug("tick={} Organism {} selected for duplication: the source holds no code to copy — skipping",
+                    child.getBirthTick(), childId);
+            return;
         }
 
         // --- Step 5: Copy ---
@@ -374,7 +403,7 @@ public class GeneDuplicationPlugin implements IBirthHandler {
                 .param(env.properties.toFlatIndex(sourcePos));
 
         for (int i = 0; i < copyLength; i++) {
-            int srcMoleculeInt = env.getMoleculeIntAt(sourcePos);
+            int srcMoleculeInt = carriedByACopy(env, sourcePos) ? env.getMoleculeIntAt(sourcePos) : 0;
             Molecule molecule = Molecule.fromInt(srcMoleculeInt);
             int ownerId = (srcMoleculeInt == 0) ? 0 : childId;
             if (srcMoleculeInt != 0) {
@@ -412,6 +441,61 @@ public class GeneDuplicationPlugin implements IBirthHandler {
             LOG.debug("tick={} Organism {} gene duplication: copied {} molecules from {} to {}",
                     child.getBirthTick(), childId, copyLength, Arrays.toString(sourcePos), Arrays.toString(targetPos));
         }
+    }
+
+    /**
+     * Whether a copy carries the cell at a position as it stands.
+     * <p>
+     * A copy carries what the machine reads as code: the cells of an instruction, the labels that
+     * open a block, and the empty cells between them. Every other occupied cell — the organism's shell where a line
+     * ends at it, data a program keeps between its instructions — is written as an empty cell
+     * instead, because it is not a gene; the space it leaves is where a later insertion can write.
+     *
+     * @param env The environment the cell is read from.
+     * @param position The cell's position.
+     * @return {@code true} if the copy takes the molecule as it stands.
+     */
+    private boolean carriedByACopy(Environment env, int[] position) {
+        int moleculeInt = env.getMoleculeIntAt(position);
+        if (moleculeInt == 0) {
+            return true;
+        }
+        if ((moleculeInt & Config.TYPE_MASK) == Config.TYPE_LABEL) {
+            return true;
+        }
+        return frame.slot(env.properties.toFlatIndex(position)) != GenomeFrame.Slot.NONE;
+    }
+
+    /**
+     * Shortens a copy so that it does not end in cells that would be written as empty ones.
+     * <p>
+     * Such cells carry nothing into the copy, and a copy that does not ask for room for them fits
+     * into a shorter run of empty cells. Reads the source from the cell the caller has put into
+     * {@code sourcePos} and leaves that buffer somewhere along the source.
+     *
+     * @param env The environment the source is read from.
+     * @param copyLength The length the copy would have.
+     * @param dvStep The step along the direction vector, 1 or -1.
+     * @param dvDim The dimension the direction vector runs along.
+     * @param shapeDvDim The size of the world along that dimension.
+     * @return The length up to and including the last cell the copy carries, 0 if it carries none.
+     */
+    private int withoutTrailingEmptyCells(Environment env, int copyLength, int dvStep, int dvDim, int shapeDvDim) {
+        int carried = 0;
+        int dvPos = sourcePos[dvDim];
+        for (int offset = 0; offset < copyLength; offset++) {
+            sourcePos[dvDim] = dvPos;
+            if (env.getMoleculeIntAt(sourcePos) != 0 && carriedByACopy(env, sourcePos)) {
+                carried = offset + 1;
+            }
+            dvPos += dvStep;
+            if (dvPos >= shapeDvDim) {
+                dvPos -= shapeDvDim;
+            } else if (dvPos < 0) {
+                dvPos += shapeDvDim;
+            }
+        }
+        return carried;
     }
 
     /**
