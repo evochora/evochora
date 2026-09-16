@@ -116,6 +116,18 @@ substitution in a DATA operand — a threshold, a harvest period — makes the c
 the old hash counted it as a clone; the rates quoted here were measured under the old hash and
 describe those runs.
 
+Measure reproduction as a count, not as a share: the mean number of children, and the mean number
+of children that themselves reproduced. The second decides whether a lineage grows, and a value
+below one means it shrinks; the share of organisms with any child hides exactly that. The
+distribution is skewed, so report a median or a quantile beside the mean. Censor the end of the
+run: drop births later than two median generation times before the last tick, or the youngest
+generations are counted as childless because they had no time to reproduce.
+
+**One denominator.** State the base of every share and keep it the same across the report — all
+births of the run is the usual one. Shares of the mutated children, of the living population and
+of a sample are three different quantities. A number that comes from a sample carries its sample
+size, and an interval wide enough to judge whether the effect is real.
+
 **Fate classes** per child: *fertile* (has children); *acute lethal* (lifetime below ~1 000
 ticks); *entropy death* (lifetime below ~20 000); *sterile long-lived*; *alive at end*. Two
 lifetimes recur and both follow from the run's resolved config (in `raw/metadata.pb.zst`, a
@@ -126,8 +138,21 @@ value):
 |---|---|---|
 | ≈ child initial energy ÷ `error-penalty-cost` (25 000 ÷ 100 → 248 ticks) | the child fails every instruction from birth | `energy` ≤ 0 |
 | ≈ `max-entropy` ÷ base entropy (+ a few ticks; 10 000 → 10 010) | the child ran but never wrote a cell, so nothing dissipated entropy | `entropy_register` ≥ max-entropy, energy account full |
+| ≈ the child's initial energy ÷ the per-tick base cost | the child ran but never harvested | `energy` ≤ 0 |
+
+Both parameters of the third row are looked up, never assumed: the child's initial energy is a
+constant of the program that forks the child and can be read from its source or its compiled
+artifact, and it changes with the program, including by mutation; the per-tick cost comes from the
+run's resolved configuration.
 
 Children with genome hash 0 are futile forks (no cells handed over); they die in the first class.
+
+**What the hash does not see.** Which molecules are left out of the genome hash is configured
+under `organism.genome-exclude` and recorded in the run's resolved configuration; read it before
+interpreting clone and mutant counts. Molecules left out make a body defect invisible in every
+genome statistic, so a suspicion of that kind is settled in the bodies, not in the hashes. When a
+child lacks a cell, follow that cell backwards through the recordings: it separates a copy that
+never wrote it from one that wrote it and had it taken away.
 
 **The acute-lethal class is invisible in body data**: its members die before the first recording
 after their birth, so no body endpoint ever shows them. Their mutations are not invisible: the
