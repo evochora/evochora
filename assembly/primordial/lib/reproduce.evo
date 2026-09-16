@@ -164,12 +164,15 @@ EXPORT .PROC CONTINUE REF ER
   # ===========================================================================
   .ORG 0|18
   CONTINUE_WRITEINIT: NOP^4
-    # Prepare write operation - defensive checks first
-    IFFR %DIRVEC                              # Is first cell foreign?
-      JMPI CONTINUE_PREP_NEXT_REPRODUCTION; NOP^4 # ...abort reproduction
-    INPR %DIRVEC                              # If molecule not passable...
-      PEEK %TMP %DIRVEC                       # ...remove it (safe now)
-    SEEK %DIRVEC; NOP                         # Move forward
+    # The cell ahead is this organism's own wall: it must be there, and it must be ours
+    SCAN %TMP %DIRVEC; NOP^4                  # What stands in the wall position?
+    INR %TMP %SHELL                           # Not our shell molecule?
+      JMPI CONTINUE_REPAIR_WALL; NOP^4        # ...put the wall back
+  CONTINUE_WRITEINIT_STEP: NOP^4
+    SEEK %DIRVEC                              # Step onto our own wall
+    IFER                                      # Taken while we looked?
+      JMPI CONTINUE_REPAIR_WALL; NOP^4        # ...put the wall back and step again
+    DPLS; NOP^4                               # Remember the wall, the read pointer starts there
     SETR %TMP %SHELL                          # The shell to write, in the register PPK overwrites
     IFFR %DIRVEC                              # Is next cell foreign?
       JMPI CONTINUE_PREP_NEXT_REPRODUCTION; NOP^4 # ...abort reproduction
@@ -178,9 +181,9 @@ EXPORT .PROC CONTINUE REF ER
     IFER                                      # If that step failed, the cell was taken...
       JMPI CONTINUE_PREP_NEXT_REPRODUCTION    # ...abort reproduction
 
-    # Set read DP to shell position
+    # Set read DP to the wall position, handed over instead of walked to
     ADPI DATA:0; NOP^4                        # Select DP0 (read pointer)
-    SEEK %DIRVEC                              # Move read pointer forward
+    SKLS; NOP^4                               # Put it on the remembered wall position
 
     # Turn inward for reading
     RTRI %DIRVEC DATA:0 DATA:1; NOP^4         # Rotate 90° CCW
@@ -191,10 +194,26 @@ EXPORT .PROC CONTINUE REF ER
     JMPI CONTINUE_READLINE; NOP^4; JMPI CONTINUE_READLINE
 
   # ===========================================================================
+  # WALL REPAIR - the cell ahead has to be this organism's own wall, so put it back
+  # ===========================================================================
+  .ORG 0|20
+  CONTINUE_REPAIR_WALL: NOP^4
+    INFR %DIRVEC                              # Not foreign, so ours to write...
+      JMPI CONTINUE_REPAIR_WALL_WRITE; NOP^4  # ...go and write it
+    INBI 0|0                                  # Foreign, and we stand outside our own body...
+      JMPI CONTINUE_PREP_NEXT_REPRODUCTION; NOP^4 # ...leave it alone and abandon
+  CONTINUE_REPAIR_WALL_WRITE: NOP^4
+    SMRI DATA:0; NOP^4                        # The wall stays with us, it is not the child's
+    SETR %TMP %SHELL; NOP^4                   # The shell to write, in the register PPK overwrites
+    PPKR %TMP %DIRVEC; NOP^4                  # Clear and write the wall in one tick
+    SMRI DATA:1; NOP^4                        # Marker back for the copy
+    JMPI CONTINUE_WRITEINIT_STEP; NOP^8; JMPI CONTINUE_WRITEINIT_STEP
+
+  # ===========================================================================
   # READ LINE - Read molecules from source and push to stack
   # Only own molecules are copied; foreign/unowned are removed and replaced with CODE:0
   # ===========================================================================
-  .ORG 0|20
+  .ORG 0|22
   CONTINUE_READLINE: NOP^4
     SCAN %TMP %DIRVEC; NOP^4                  # Scan cell ahead
     IFR %TMP %SHELL                           # Is it our shell?
@@ -221,7 +240,7 @@ EXPORT .PROC CONTINUE REF ER
   # ===========================================================================
   # READ LINE STEP - Move the read pointer on, clearing the path where allowed
   # ===========================================================================
-  .ORG 0|22
+  .ORG 0|24
   CONTINUE_READLINE_SEEK: NOP^4
     SEEK %DIRVEC                              # Move forward
     INER                                      # If SEEK succeeded...
@@ -244,7 +263,7 @@ EXPORT .PROC CONTINUE REF ER
   # ===========================================================================
   # WRITE LINE - Pop molecules from stack and write to destination
   # ===========================================================================
-  .ORG 0|24
+  .ORG 0|26
   CONTINUE_WRITELINE: NOP^4                   # Write loop
     POP %TMP; NOP^4                           # Pop next molecule from stack
     IFR %TMP %SHELL; NOP^4                    # Is it the terminator symbol?
@@ -252,7 +271,7 @@ EXPORT .PROC CONTINUE REF ER
 
     JMPI CONTINUE_WRITELINE2; NOP^28; JMPI CONTINUE_WRITELINE2
 
-  .ORG 0|26
+  .ORG 0|28
   CONTINUE_WRITELINE2: NOP^4
     # Defensive check directly before the write: one tick between the test and the write
     IFFR %DIRVEC; NOP^4                       # Is target cell foreign?
@@ -283,7 +302,7 @@ EXPORT .PROC CONTINUE REF ER
   # ===========================================================================
   # WRITE FINISH - Complete row and prepare for next
   # ===========================================================================
-  .ORG 0|28
+  .ORG 0|30
   CONTINUE_WRITEFINISH: NOP^4                 # Write row terminator shell
     # The cell ahead is cleared and written in CONTINUE_WRITE_FINISH_END, not here
     SETV %TMP 0|0; NOP^4                      # Clear for comparison
@@ -297,7 +316,7 @@ EXPORT .PROC CONTINUE REF ER
     PPKR %TMP %SIDEVEC; NOP^3                 # Clear and write the shell in one tick
     JMPI CONTINUE_WRITE_FINISH_END; NOP^3; JMPI CONTINUE_WRITE_FINISH_END
 
-  .ORG 0|30
+  .ORG 0|32
   CONTINUE_WRITE_FINISH_END: NOP^4
     SETR %TMP %SHELL; NOP^4                   # The shell to write, in the register PPK overwrites
     IFFR %DIRVEC; NOP^4                       # Is cell foreign?
@@ -311,7 +330,7 @@ EXPORT .PROC CONTINUE REF ER
   # ===========================================================================
   # WRITE FINISH CORNER - Handle corner shell placement
   # ===========================================================================
-  .ORG 0|32
+  .ORG 0|34
   CONTINUE_WRITEFINISH_CORNER:
     # Write corner shell
   CONTINUE_WRITEFINISH_CORNER_SEEK:
@@ -340,7 +359,7 @@ EXPORT .PROC CONTINUE REF ER
   # ===========================================================================
   # WRITE FINISH NO SIDE - Move to next row
   # ===========================================================================
-  .ORG 0|34
+  .ORG 0|36
   CONTINUE_WRITEFINISH_NOSIDE: NOP^4
     SETV %SIDEVEC 0|0;NOP^4                   # Clear SIDEVEC (no longer in first row)
     SKLR %CONTCORD; NOP^4                     # Return to row start
@@ -348,15 +367,20 @@ EXPORT .PROC CONTINUE REF ER
     # Move one row down - with defensive checks
     RTRI %DIRVEC DATA:1 DATA:0; NOP^4         # Turn right (perpendicular to copy direction)
 
-    IFFR %DIRVEC; NOP^4                       # Is cell foreign?
-      JMPI CONTINUE_PREP_NEXT_REPRODUCTION; NOP^4 # ...abort
-
+  CONTINUE_WRITEFINISH_NEXTROW: NOP^4         # The cell is inside our own body: we clear it
+    INFR %DIRVEC                              # Not foreign, so ours to clear...
+      JMPI CONTINUE_WRITEFINISH_NEXTROW_CLEAR; NOP^4
+    INBI 0|0                                  # Foreign, and we stand outside our own body...
+      JMPI CONTINUE_PREP_NEXT_REPRODUCTION; NOP^4 # ...abandon
+  CONTINUE_WRITEFINISH_NEXTROW_CLEAR: NOP^4
     INPR %DIRVEC; NOP^4                       # If molecule not passable...
       PEEK %TMP %DIRVEC; NOP^4                # ...remove it
     SEEK %DIRVEC; NOP^4                       # Move to next row
+    IFER                                      # Taken while we looked?
+      JMPI CONTINUE_WRITEFINISH_NEXTROW       # ...decide again and step again
     JMPI CONTINUE_WRITEFINISH_NOSIDE2; NOP^12; JMPI CONTINUE_WRITEFINISH_NOSIDE2
 
-    .ORG 0|36
+    .ORG 0|38
     CONTINUE_WRITEFINISH_NOSIDE2: NOP^4
     SCAN %TMP %DIRVEC; NOP^4                  # Scan cell ahead (next row direction)
     IFR %TMP %SHELL; NOP^4                    # Is it the shell?
@@ -375,7 +399,7 @@ EXPORT .PROC CONTINUE REF ER
   # ===========================================================================
   # FORK PHASE - Navigate to spawn position and create child
   # ===========================================================================
-  .ORG 0|38
+  .ORG 0|40
   CONTINUE_FORK: NOP^4
     RTRI %DIRVEC DATA:0 DATA:1; NOP^4         # Turn inward (CCW)
     RTRI %DIRVEC DATA:0 DATA:1; NOP^4         # Turn inward again (180° total)
@@ -393,7 +417,7 @@ EXPORT .PROC CONTINUE REF ER
     JMPI CONTINUE_FORK_NORTH; NOP^4; JMPI CONTINUE_FORK_NORTH
 
   # Walk north until hitting the shell
-  .ORG 0|40
+  .ORG 0|42
   CONTINUE_FORK_NORTH: NOP^4
     SCNI %TMP 0|-1; NOP^4                     # Scan cell to the north
     IFR %TMP %SHELL; NOP^4                    # Is it the shell?
@@ -408,7 +432,7 @@ EXPORT .PROC CONTINUE REF ER
     SEKI 0|-1; NOP^4                          # Step north
     JMPI CONTINUE_FORK_NORTH; NOP^4; JMPI CONTINUE_FORK_NORTH
 
-  .ORG 0|42
+  .ORG 0|44
   # Walk west until hitting the shell
   CONTINUE_FORK_WEST: NOP^4
     SCNI %TMP -1|0; NOP^4                     # Scan cell to the west
@@ -425,7 +449,7 @@ EXPORT .PROC CONTINUE REF ER
     JMPI CONTINUE_FORK_WEST; NOP^23; JMPI CONTINUE_FORK_WEST
 
   # Execute FORK instruction
-  .ORG 0|44
+  .ORG 0|46
   CONTINUE_FORK_FINISH: NOP^4
     INFI -1|0                                 # If the cell to the west is not foreign...
       JMPI CONTINUE_FORK_FINISH_CLEAR; NOP^4  # ...it may be cleared
@@ -435,6 +459,8 @@ EXPORT .PROC CONTINUE REF ER
     INPI -1|0                                 # If not passable...
       PEKI %TMP -1|0; NOP^2                   # ...remove obstacle
     SEKI -1|0; NOP^4                          # Step west onto shell
+    IFER                                      # Taken while we looked?
+      JMPI CONTINUE_FORK_FINISH; NOP^4        # ...decide again and step again
     PUSV 1|0; NOP^4                           # Child's top-left corner is to the east
     PUSI REPRODUCTION_CHILD_INITAL_ENERGY; NOP^2 # Push child's initial energy
     GDVS; NOP^4                               # Child inherits parent's DV direction
@@ -444,7 +470,7 @@ EXPORT .PROC CONTINUE REF ER
   # ===========================================================================
   # CLEANUP AND ERROR RECOVERY
   # ===========================================================================
-  .ORG 0|46
+  .ORG 0|48
   # Stack cleanup for aborts during WRITELINE (SHELL still on stack)
   CONTINUE_CLEANUP_STACK: NOP^4
     POP %TMP;NOP^4                            # Pop molecule from data stack
@@ -457,7 +483,7 @@ EXPORT .PROC CONTINUE REF ER
   # ===========================================================================
   # ABORT BEFORE THE LOOP - only the caller's pointer is on the location stack
   # ===========================================================================
-  .ORG 0|48
+  .ORG 0|50
   CONTINUE_ABORT_EARLY: NOP^4
     CMRI DATA:1; NOP^4                        # Orphan anything still marked from an earlier round
     SETR %SIDEVEC %DIRVEC; NOP^4              # The next round starts at the first row...
@@ -466,7 +492,7 @@ EXPORT .PROC CONTINUE REF ER
     CRLR %CONTCORD; NOP^4                     # Start the navigation from the beginning
     JMPI CONTINUE_SAVE_AND_RET; NOP^8; JMPI CONTINUE_SAVE_AND_RET
 
-  .ORG 0|50
+  .ORG 0|52
   CONTINUE_PREP_NEXT_REPRODUCTION: NOP^4
     # Cleanup and prepare for next reproduction - robust against early abort
     CMRI DATA:1; NOP^4                        # Clear old markers (prevent transfer of aborted molecules during FORK)
@@ -490,7 +516,7 @@ EXPORT .PROC CONTINUE REF ER
   # ===========================================================================
   # STATE PERSISTENCE AND RETURN
   # ===========================================================================
-  .ORG 0|52
+  .ORG 0|54
   CONTINUE_SAVE_AND_RET: NOP^4
     SKLS; NOP^4                               # Restore original DP from location stack
 
@@ -501,7 +527,7 @@ EXPORT .PROC CONTINUE REF ER
     CRSR %SIDEVEC %DIRVEC %SIDEVEC; NOP^4     # Cross product: 1 for right, -1 for left
     JMPI CONTINUE_STORE_STATE; NOP^20; JMPI CONTINUE_STORE_STATE
 
-  .ORG 0|54
+  .ORG 0|56
   CONTINUE_SIDVEC_STORE_0: NOP^4
     SETI %SIDEVEC DATA:0; NOP^4               # Set SIDEVEC to 0 (mutation buffer)
 
@@ -511,7 +537,7 @@ EXPORT .PROC CONTINUE REF ER
     STATIC2_STORE CONTINUE_STATE %DIRMASK %SIDEVEC; NOP^4
     JMPI CONTINUE_STORE_STATE2; NOP^10; JMPI CONTINUE_STORE_STATE2
 
-  .ORG 0|56
+  .ORG 0|58
   CONTINUE_STORE_STATE2: NOP^4
     # Multiple RET instructions for mutation resistance
     NOP^8; RET; NOP^20; RET; NOP^4; RET
