@@ -14,15 +14,15 @@
 # Constants
 # ----------------------------
 .DEFINE REPRODUCTION_CONTINUE_THRESHOLD DATA:50000         # reproduce for certain from here on, below with probability ER / 50000
-.DEFINE ENTROPY_REPRODUCTION_CONTINUE_THRESHOLD DATA:50000   # reproduce for certain from here on, below with probability SR / 50000
+.DEFINE ENTROPY_REPRODUCTION_CONTINUE_THRESHOLD DATA:25000 # reproduce for certain from here on, below with probability SR / 50000
 
 # ----------------------------
-# STRUCTURE Shell (102x87)
+# STRUCTURE Shell (112x91)
 # ----------------------------
 .PLACE STRUCTURE:100 -1..110|-1      # Bottom edge
-.PLACE STRUCTURE:100 -1..110|85      # Top edge
-.PLACE STRUCTURE:100 -1|0..84        # Left edge
-.PLACE STRUCTURE:100 110|0..84       # Right edge
+.PLACE STRUCTURE:100 -1..110|89      # Top edge
+.PLACE STRUCTURE:100 -1|0..88        # Left edge
+.PLACE STRUCTURE:100 110|0..88       # Right edge
 
 # ===========================================================================
 # INITIALIZATION
@@ -86,5 +86,5 @@ JMPI MAIN_LOOP; NOP^12; JMPI MAIN_LOOP
 # ===========================================================================
 # SAFETY FALLBACK (mutation resistance)
 # ===========================================================================
-.ORG 0|83
+.ORG 0|87
 JMPI MAIN_LOOP; NOP^54; JMPI MAIN_LOOP
