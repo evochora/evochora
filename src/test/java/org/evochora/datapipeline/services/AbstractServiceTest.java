@@ -2,11 +2,13 @@ package org.evochora.datapipeline.services;
 
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
+import com.typesafe.config.ConfigValueFactory;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.services.IService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -192,6 +194,8 @@ public class AbstractServiceTest {
      */
     private static class ProcessingPhaseService extends AbstractService {
         private final CountDownLatch runningLatch = new CountDownLatch(1);
+        /** Counted down once the service has entered PROCESSING, which it then stays in. */
+        private final CountDownLatch processingLatch = new CountDownLatch(1);
         private final AtomicBoolean wasInterruptedDuringProcessing = new AtomicBoolean(false);
         private final long processingDurationMs;
 
@@ -205,9 +209,20 @@ public class AbstractServiceTest {
         protected void run() throws InterruptedException {
             runningLatch.countDown();
             setShutdownPhase(ShutdownPhase.PROCESSING);
+            processingLatch.countDown();
             Thread.interrupted();
 
-            // Simulate a long write operation that must not be interrupted
+            // Hold the phase until a stop is requested, so that a test observes it without having
+            // to catch a window of its own duration.
+            while (!isStopRequested()) {
+                if (Thread.currentThread().isInterrupted()) {
+                    wasInterruptedDuringProcessing.set(true);
+                    return;
+                }
+                Thread.yield();
+            }
+
+            // Simulate a long write operation that must run to its end although a stop was requested
             long start = System.currentTimeMillis();
             while ((System.currentTimeMillis() - start) < processingDurationMs) {
                 if (Thread.currentThread().isInterrupted()) {
@@ -218,11 +233,6 @@ public class AbstractServiceTest {
             }
 
             setShutdownPhase(ShutdownPhase.WAITING);
-
-            // After processing, check for stop
-            while (!isStopRequested() && !Thread.currentThread().isInterrupted()) {
-                Thread.sleep(50);
-            }
         }
 
         public boolean wasInterruptedDuringProcessing() {
@@ -231,29 +241,30 @@ public class AbstractServiceTest {
     }
 
     @Test
+    @Timeout(value = 10, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
     void waitingPhaseServiceIsInterruptedImmediately() throws InterruptedException {
-        WaitingPhaseService service = new WaitingPhaseService("waiting-svc", config, resources);
+        // The service blocks forever and its shutdown timeout is an hour, so only the immediate
+        // interrupt of the WAITING phase can end it: that stop() returns at all is the proof, and
+        // the timeout of this test turns its absence into a failure rather than a hanging build.
+        // A stopwatch would say the same and would fail on a stalled machine.
+        Config longTimeout = config.withValue("shutdownTimeout", ConfigValueFactory.fromAnyRef(3600));
+        WaitingPhaseService service = new WaitingPhaseService("waiting-svc", longTimeout, resources);
         service.start();
         assertTrue(service.runningLatch.await(2, TimeUnit.SECONDS), "Service should be running");
 
-        long start = System.currentTimeMillis();
         service.stop();
-        long elapsed = System.currentTimeMillis() - start;
 
         assertEquals(IService.State.STOPPED, service.getCurrentState());
-        // WAITING phase should be interrupted immediately, not wait for full timeout (5s default)
-        assertTrue(elapsed < 2000, "WAITING service should stop quickly, took " + elapsed + "ms");
     }
 
     @Test
     void processingPhaseServiceGetsGracePeriod() throws InterruptedException {
-        // Service will be in PROCESSING for 500ms, then return to WAITING
+        // The service enters PROCESSING, stays there until the stop request, and then writes for
+        // 500ms; stop() must let that writing finish instead of interrupting it.
         ProcessingPhaseService service = new ProcessingPhaseService("processing-svc", config, resources, 500);
         service.start();
-        assertTrue(service.runningLatch.await(2, TimeUnit.SECONDS), "Service should be running");
-
-        await().atMost(2, TimeUnit.SECONDS)
-            .until(() -> service.getShutdownPhase() == IService.ShutdownPhase.PROCESSING);
+        assertTrue(service.processingLatch.await(2, TimeUnit.SECONDS),
+            "Service should have entered the PROCESSING phase");
 
         service.stop();
 
