@@ -178,6 +178,40 @@ class SnapshotLoaderTest {
     }
 
     @Test
+    void loadCheckpointContaining_TickBetweenLastRecordingAndNextChunk_ReturnsThatChunksSnapshot() throws Exception {
+        stubMetadata();
+
+        // Both chunks record every tenth tick: the first one records 1000 to 1090 and covers
+        // 1000 to 1099, so tick 1095 lies after its last recording and still belongs to it
+        StoragePath batchPath = StoragePath.of(TEST_RUN_ID + "/raw/000/000/batch_0000000000000001000_0000000000000001190.pb");
+        when(storageRead.findBatchFileContaining(TEST_RUN_ID + "/raw/", 1095L)).thenReturn(Optional.of(batchPath));
+        stubChunkRead(batchPath, sampledChunk(1000, 10, 10), sampledChunk(1100, 10, 10));
+
+        ResumeCheckpoint checkpoint = loader.loadCheckpointContaining(TEST_RUN_ID, 1095);
+
+        assertThat(checkpoint.getCheckpointTick()).isEqualTo(1000);
+    }
+
+    @Test
+    void loadCheckpointContaining_TickBehindTheLastChunksRange_NamesWhereTheDataEnds() throws Exception {
+        stubMetadata();
+
+        // The storage returns the last file for any tick behind it; its last chunk covers
+        // 1100 to 1199, so tick 1250 lies beyond the recorded data
+        StoragePath batchPath = StoragePath.of(TEST_RUN_ID + "/raw/000/000/batch_0000000000000001000_0000000000000001190.pb");
+        when(storageRead.findBatchFileContaining(TEST_RUN_ID + "/raw/", 1250L)).thenReturn(Optional.of(batchPath));
+        when(storageRead.findLastBatchFile(TEST_RUN_ID + "/raw/")).thenReturn(Optional.of(batchPath));
+        when(storageRead.listBatchFiles(TEST_RUN_ID + "/raw/", null, 1))
+            .thenReturn(new BatchFileListResult(List.of(batchPath), null, false));
+        stubChunkRead(batchPath, sampledChunk(1000, 10, 10), sampledChunk(1100, 10, 10));
+
+        assertThatThrownBy(() -> loader.loadCheckpointContaining(TEST_RUN_ID, 1250))
+            .isInstanceOf(ResumeException.class)
+            .hasMessageContaining("tick 1250")
+            .hasMessageContaining("covers ticks 1000 to 1190");
+    }
+
+    @Test
     void loadCheckpointContaining_TickBeyondRecordedData_NamesLastCoveredTick() throws Exception {
         stubMetadata();
 
@@ -292,10 +326,18 @@ class SnapshotLoaderTest {
     }
 
     private TickDataChunk chunk(long firstTick, long lastTick) {
+        return sampledChunk(firstTick, (int) (lastTick - firstTick + 1), 1);
+    }
+
+    /**
+     * A chunk that records every {@code samplingInterval}-th tick, starting with its snapshot.
+     */
+    private TickDataChunk sampledChunk(long firstTick, int recordedTicks, int samplingInterval) {
         return TickDataChunk.newBuilder()
             .setFirstTick(firstTick)
-            .setLastTick(lastTick)
-            .setTickCount((int) (lastTick - firstTick + 1))
+            .setLastTick(firstTick + (long) (recordedTicks - 1) * samplingInterval)
+            .setTickCount(recordedTicks)
+            .setSamplingInterval(samplingInterval)
             .setSnapshot(createSnapshot(firstTick))
             .build();
     }

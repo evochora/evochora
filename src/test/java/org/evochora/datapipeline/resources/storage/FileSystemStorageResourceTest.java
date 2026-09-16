@@ -629,13 +629,14 @@ class FileSystemStorageResourceTest {
     }
 
     @Test
-    void testFindBatchFileContaining_TickInGapBetweenBatches_ReturnsEmpty() throws IOException {
-        storage.writeChunkBatchStreaming(List.of(createChunk(0, 9, 10)).iterator());
+    void testFindBatchFileContaining_TickBehindTheLastRecordingOfABatch_ReturnsThatBatch() throws IOException {
+        StoragePath firstPath = storage.writeChunkBatchStreaming(List.of(createChunk(0, 9, 10)).iterator()).path();
         storage.writeChunkBatchStreaming(List.of(createChunk(20, 29, 10)).iterator());
 
         java.util.Optional<StoragePath> found = storage.findBatchFileContaining("test-sim/raw/", 15);
 
-        assertFalse(found.isPresent(), "No batch covers a tick between two recorded ranges");
+        assertTrue(found.isPresent(), "A batch's range reaches up to the first tick of the next batch");
+        assertEquals(firstPath.asString(), found.get().asString());
     }
 
     @Test
@@ -649,12 +650,13 @@ class FileSystemStorageResourceTest {
     }
 
     @Test
-    void testFindBatchFileContaining_TickBeyondLastBatch_ReturnsEmpty() throws IOException {
-        storage.writeChunkBatchStreaming(List.of(createChunk(0, 9, 10)).iterator());
+    void testFindBatchFileContaining_TickBehindTheLastBatch_ReturnsTheLastBatch() throws IOException {
+        StoragePath lastPath = storage.writeChunkBatchStreaming(List.of(createChunk(0, 9, 10)).iterator()).path();
 
         java.util.Optional<StoragePath> found = storage.findBatchFileContaining("test-sim/raw/", 1000);
 
-        assertFalse(found.isPresent(), "No batch covers a tick beyond the recorded data");
+        assertTrue(found.isPresent(), "The last batch has no follower to end its range");
+        assertEquals(lastPath.asString(), found.get().asString());
     }
 
     @Test
@@ -699,13 +701,15 @@ class FileSystemStorageResourceTest {
     }
 
     @Test
-    void testFindBatchFileContaining_FolderHoldsOnlyLaterBatches_ReturnsEmpty() throws IOException {
-        storage.writeChunkBatchStreaming(List.of(createChunk(99_990, 100_010, 21)).iterator());
+    void testFindBatchFileContaining_FolderHoldsOnlyLaterBatches_StepsBackToThePrecedingBatch() throws IOException {
+        StoragePath spanningPath = storage.writeChunkBatchStreaming(
+            List.of(createChunk(99_990, 100_010, 21)).iterator()).path();
         storage.writeChunkBatchStreaming(List.of(createChunk(100_020, 100_029, 10)).iterator());
 
         java.util.Optional<StoragePath> found = storage.findBatchFileContaining("test-sim/raw/", 100_015);
 
-        assertFalse(found.isPresent(), "No batch covers a tick between the recorded ranges");
+        assertTrue(found.isPresent(), "The batch before the tick's folder holds the tick in its range");
+        assertEquals(spanningPath.asString(), found.get().asString());
     }
 
     @Test
