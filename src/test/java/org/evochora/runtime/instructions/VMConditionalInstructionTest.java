@@ -2100,6 +2100,11 @@ public class VMConditionalInstructionTest {
         environment.setOwnerId(org.getId(), new int[]{x, y});
     }
 
+    /** Gives one cell to the test organism, marked as a cell it is building for a child. */
+    private void ownMarked(int x, int y) {
+        environment.setMolecule(new Molecule(Config.TYPE_STRUCTURE, 100, 1), org.getId(), new int[]{x, y});
+    }
+
     /** Reads the marker the following ADDI writes when it is not skipped. */
     private int marker() {
         return scalarOf(org.readOperand(0));
@@ -2256,6 +2261,21 @@ public class VMConditionalInstructionTest {
         runInstructionAndMarker();
 
         assertThat(marker()).as("a pointer standing on an own cell is always within the body").isEqualTo(1);
+        assertNoInstructionFailure();
+    }
+
+    @Test
+    @Tag("unit")
+    void testIfbr_CellsMarkedForAChildAreNotTheOwnBody() {
+        ownMarked(3, 5);
+        ownMarked(8, 5);
+        org.writeOperand(1, new int[]{1, 0});
+        placeInstruction("IFBR", 1);
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFBR"), environment));
+
+        runInstructionAndMarker();
+
+        assertThat(marker()).as("a body built for a child does not enclose the pointer").isZero();
         assertNoInstructionFailure();
     }
 

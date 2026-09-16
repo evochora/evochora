@@ -474,20 +474,38 @@ public final class TraceConsumer extends AbstractService {
         }
     }
 
+    /**
+     * The components of a recorded vector as the array the runtime's coordinate arithmetic takes.
+     *
+     * @param vector the recorded vector
+     * @param dims the number of dimensions of the world
+     * @return a new array holding the vector's components
+     */
+    private static int[] coordinates(Vector vector, int dims) {
+        int[] components = new int[dims];
+        for (int d = 0; d < dims; d++) {
+            components[d] = vector.getComponents(d);
+        }
+        return components;
+    }
+
     private void writeStepRow(long tick, OrganismState o) throws IOException {
         Program program = programs.get(o.getProgramId());
         int dims = envProps.getDimensions();
         Vector ipBefore = o.getIpBeforeFetch();
         Vector origin = o.getInitialPosition();
 
-        // Relative position within the program, as the compiler laid it out: the plain
-        // difference to the origin, never the shorter way round the torus.
+        // Relative position within the program, as the compiler laid it out. On a toroidal world
+        // the difference to the origin is taken the short way round, the same rule the runtime
+        // uses: a body that lies across the world edge would otherwise be reported at an offset of
+        // nearly a world width, and none of its cells would be found in the program's layout.
+        int[] relative = envProps.getRelativeVector(coordinates(origin, dims), coordinates(ipBefore, dims));
         StringBuilder rel = new StringBuilder();
         for (int d = 0; d < dims; d++) {
             if (d > 0) {
                 rel.append('|');
             }
-            rel.append(ipBefore.getComponents(d) - origin.getComponents(d));
+            rel.append(relative[d]);
         }
         Integer address = program == null ? null : program.relCoordToAddress.get(rel.toString());
 

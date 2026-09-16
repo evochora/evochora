@@ -439,7 +439,7 @@ The vector is a displacement from the active `DP`, as in a world interaction: it
 * `IFPR %VEC_REG`, `IFPI <Vector>`, `IFPS`: If cell at `DP` + vector is passable (empty or owned by self).
 * `IFFR %VEC_REG`, `IFFI <Vector>`, `IFFS`: If cell at `DP` + vector is owned by a foreign organism (ownerId != 0 && ownerId != self.id).
 * `IFVR %VEC_REG`, `IFVI <Vector>`, `IFVS`: If cell at `DP` + vector is vacant (has no owner, ownerId == 0). Note: "Vacant" refers to ownership status, not whether the cell contains a molecule. A cell can have a molecule and still be vacant.
-* `IFBR %VEC_REG`, `IFBI <Vector>`, `IFBS`: If `DP` lies within the own body on the line along the vector's axis: between the outermost cells the organism owns there, gaps included. On a torus the widest gap between own cells is the outside, the world edge included. A vector with no non-zero component asks every axis, and holds only if `DP` lies within the body on all of them.
+* `IFBR %VEC_REG`, `IFBI <Vector>`, `IFBS`: If `DP` lies within the own body on the line along the vector's axis: between the outermost cells of that body there, gaps included. A cell belongs to the body when the organism owns it and it carries no marker, so cells set aside for a child count as outside. On a torus the widest gap between body cells is the outside, the world edge included. A vector with no non-zero component asks every axis, and holds only if `DP` lies within the body on all of them.
 
 #### Negated Conditional Instructions
 

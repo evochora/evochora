@@ -1,10 +1,14 @@
 package org.evochora.runtime.model;
 
+import org.evochora.runtime.Config;
+
 /**
  * The extent an organism occupies on one line of the world.
  * <p>
- * A line is the set of cells that share every coordinate but one; the cells an organism owns on it
- * are given by their coordinates along that one axis and need not be contiguous. The arc is the
+ * A line is the set of cells that share every coordinate but one; the cells of an organism's body
+ * on it are given by their coordinates along that one axis and need not be contiguous. A cell
+ * belongs to that body when the organism owns it and it carries no marker: a marked cell is one
+ * the organism has set aside for a child it is building, and that body is not its own. The arc is the
  * stretch of the line the organism spans: it runs from the smallest to the largest owned
  * coordinate and contains whatever lies between them, gaps and foreign cells included.
  * <p>
@@ -135,9 +139,9 @@ public final class ScanLineArc {
      * <p>
      * The line runs along {@code axis} through {@code position}: it holds the cells that share
      * every other coordinate with it. The arc on that line is the one the class documentation
-     * defines, so a position on a cell of the organism always lies in it, a position between two
-     * of its cells lies in it as well, and a line the organism owns no cell on has no arc to lie
-     * in.
+     * defines, so a position on a cell of the organism's body always lies in it, a position between
+     * two of them lies in it as well, and a line without such a cell has no arc to lie in. Cells
+     * the organism owns but has marked do not count: they are the body of a child being built.
      * <p>
      * Rather than collecting the owned coordinates, this walks the line outwards from the position
      * and stops as soon as the answer is certain. It first looks for the organism's cells on either
@@ -156,7 +160,7 @@ public final class ScanLineArc {
      * @param environment The world the owners are read from.
      * @param position The position to test, one component per dimension.
      * @param axis The dimension the line runs along.
-     * @param ownerId The organism whose cells form the arc.
+     * @param ownerId The organism whose body forms the arc.
      * @return {@code true} if the position lies in that organism's arc on the line.
      * @throws IllegalArgumentException if the position does not have one component per dimension.
      */
@@ -172,7 +176,7 @@ public final class ScanLineArc {
         }
 
         int index = environment.getIndexFromCoordinate(position);
-        if (environment.getOwnerIdByIndex(index) == ownerId) {
+        if (isBodyCell(environment, index, ownerId)) {
             return true;
         }
 
@@ -194,7 +198,7 @@ public final class ScanLineArc {
         while (2 * (forward + 2) <= axisSize) {
             forwardIndex = environment.stepIndex(forwardIndex, axis, true);
             forward++;
-            if (environment.getOwnerIdByIndex(forwardIndex) == ownerId) {
+            if (isBodyCell(environment, forwardIndex, ownerId)) {
                 forwardFound = true;
                 break;
             }
@@ -209,7 +213,7 @@ public final class ScanLineArc {
         while (2 * (forward + backward + 1) <= axisSize) {
             backwardIndex = environment.stepIndex(backwardIndex, axis, false);
             backward++;
-            if (environment.getOwnerIdByIndex(backwardIndex) == ownerId) {
+            if (isBodyCell(environment, backwardIndex, ownerId)) {
                 backwardFound = true;
                 break;
             }
@@ -232,6 +236,21 @@ public final class ScanLineArc {
     }
 
     /**
+     * Whether a cell counts as part of the organism's body: it belongs to the organism and carries
+     * no marker. A marked cell is one the organism has set aside — the body it is building for a
+     * child — and that is not its own body, which is why it does not extend the arc.
+     *
+     * @param environment The world the cell is read from.
+     * @param index The layout index of the cell.
+     * @param ownerId The organism whose body is in question.
+     * @return {@code true} if the cell is part of that organism's body.
+     */
+    private static boolean isBodyCell(Environment environment, int index, int ownerId) {
+        return environment.getOwnerIdByIndex(index) == ownerId
+                && (environment.getMoleculeInt(index) & Config.MARKER_MASK) == 0;
+    }
+
+    /**
      * Walks a line in one direction until a cell of the organism is reached or the world ends.
      *
      * @param environment The world the owners are read from.
@@ -249,7 +268,7 @@ public final class ScanLineArc {
             if (index < 0) {
                 return false;
             }
-            if (environment.getOwnerIdByIndex(index) == ownerId) {
+            if (isBodyCell(environment, index, ownerId)) {
                 return true;
             }
         }
@@ -285,7 +304,7 @@ public final class ScanLineArc {
         for (int offset = 1; offset <= remaining; offset++) {
             index = environment.stepIndex(index, axis, true);
             coordinate = coordinate + 1 == axisSize ? 0 : coordinate + 1;
-            if (environment.getOwnerIdByIndex(index) != ownerId) {
+            if (!isBodyCell(environment, index, ownerId)) {
                 // The stretch open here is already wider than the position's own one, and it can
                 // only grow: wherever it ends, it takes the outside from it.
                 if (offset - previousOwnedOffset > ownStretch) {

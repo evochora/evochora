@@ -42,7 +42,9 @@ import static org.evochora.runtime.isa.Instruction.OperandSource.*;
  * <p>
  * The body tests (IFB, INB) ask whether the active data pointer lies within the organism's own body
  * on the line the vector names. What lying within the body on a line means is the arc of
- * {@link ScanLineArc}, and a vector without components asks the question on every axis at once.
+ * {@link ScanLineArc}: the cells the organism owns and has not marked, so that what it is building
+ * for a child counts as outside its body. A vector without components asks the question on every
+ * axis at once.
  */
 public class ConditionalInstruction extends Instruction {
 
@@ -345,7 +347,7 @@ public class ConditionalInstruction extends Instruction {
      * The first axis it lies outside on ends the examination.
      * <p>
      * What "within the body" means on one line is the arc of {@link ScanLineArc}, the stretch from
-     * the first to the last cell the organism owns there.
+     * the first to the last unmarked cell the organism owns there.
      *
      * @param organism    the organism the data pointer and the body belong to
      * @param environment the environment the cells' owners are read from

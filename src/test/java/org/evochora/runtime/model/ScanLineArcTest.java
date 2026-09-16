@@ -3,6 +3,7 @@ package org.evochora.runtime.model;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import org.evochora.runtime.Config;
 import org.evochora.runtime.label.PreExpandedHammingStrategy;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -318,6 +319,33 @@ class ScanLineArcTest {
         assertThat(ScanLineArc.isWithinArc(environment, new int[]{-1, 5}, 0, OWNER)).isFalse();
         assertThatThrownBy(() -> ScanLineArc.isWithinArc(environment, new int[]{6}, 0, OWNER))
                 .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    /**
+     * A cell the organism owns but has marked is the body of a child it is building, and does not
+     * count as its own body: it neither bounds an arc nor carries a position inside one.
+     */
+    @Test
+    void aCellMarkedForAChildIsNotPartOfTheBody() {
+        Environment environment = new Environment(new EnvironmentProperties(new int[]{16, 16}, true),
+                new PreExpandedHammingStrategy(), 1);
+
+        environment.setMolecule(new Molecule(Config.TYPE_STRUCTURE, 100), OWNER, new int[]{4, 5});
+        environment.setMolecule(new Molecule(Config.TYPE_STRUCTURE, 100), OWNER, new int[]{9, 5});
+        assertThat(ScanLineArc.isWithinArc(environment, new int[]{6, 5}, 0, OWNER))
+                .as("unmarked cells of the organism enclose the position")
+                .isTrue();
+
+        environment.setMolecule(new Molecule(Config.TYPE_STRUCTURE, 100, 1), OWNER, new int[]{4, 5});
+        environment.setMolecule(new Molecule(Config.TYPE_STRUCTURE, 100, 1), OWNER, new int[]{9, 5});
+        assertThat(ScanLineArc.isWithinArc(environment, new int[]{6, 5}, 0, OWNER))
+                .as("the same cells marked for a child no longer bound an arc")
+                .isFalse();
+
+        environment.setMolecule(new Molecule(Config.TYPE_STRUCTURE, 100, 1), OWNER, new int[]{6, 5});
+        assertThat(ScanLineArc.isWithinArc(environment, new int[]{6, 5}, 0, OWNER))
+                .as("standing on a marked cell is not standing in the own body either")
+                .isFalse();
     }
 
     /** Gives one cell of a two-dimensional world to the owner these tests use. */
