@@ -200,14 +200,18 @@ EXPORT .PROC CONTINUE REF ER
       JMPI CONTINUE_WRITESTART; NOP^4         # ...start writing phase
     IFMR %DIRVEC                              # Is cell owned by us?
       JMPI CONTINUE_READLINE_PUSH; NOP^4      # ...yes, copy the molecule
-    # Not our cell (unowned or foreign) - remove and replace with empty
-    INFR %DIRVEC                              # If the cell ahead is not foreign...
+    # Not our cell: an empty one is copied as empty, an occupied one has to be asked about
+    INPR %DIRVEC                              # If not passable, so occupied and not ours...
+      JMPI CONTINUE_READLINE_MAYCLEAR; NOP^4  # ...ask whether we may clear it
+    JMPI CONTINUE_READLINE_EMPTY; NOP^4       # Empty: there is nothing to clear
+  CONTINUE_READLINE_MAYCLEAR: NOP^4
+    INFR %DIRVEC                              # If the occupied cell is not foreign...
       JMPI CONTINUE_READLINE_CLEAR; NOP^4     # ...it may be cleared
     INBI 0|0                                  # Foreign: if the DP left the own body...
       JMPI CONTINUE_CLEANUP_STACK; NOP^4      # ...abort, the stack still holds SHELL + molecules
   CONTINUE_READLINE_CLEAR: NOP^4
-    INPR %DIRVEC                              # If not passable...
-      PEEK %TMP %DIRVEC; NOP^4                # ...remove it
+    PEEK %TMP %DIRVEC; NOP^4                  # Remove it
+  CONTINUE_READLINE_EMPTY: NOP^4
     SETI %TMP CODE:0; NOP^4                   # Replace with CODE:0
   CONTINUE_READLINE_PUSH:
     PUSH %TMP; NOP^4                          # Push molecule (own) or CODE:0 (foreign/unowned)
