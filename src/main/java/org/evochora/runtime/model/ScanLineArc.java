@@ -143,7 +143,8 @@ public final class ScanLineArc {
      * and stops as soon as the answer is certain. It first looks for the organism's cells on either
      * side, which bound the stretch of free cells the position sits in, and then examines the rest
      * of the line only as far as it takes to find out whether a wider stretch exists somewhere
-     * else: a stretch wider than half the axis is the widest there can be, and one that no
+     * else: a stretch wider than half the axis is the widest there can be, one that has already
+     * grown wider than the position's own settles the question wherever it ends, and one that no
      * remaining piece of the line could still exceed is the widest as well. A position on an owned
      * cell is answered without reading a second cell.
      * <p>
@@ -260,9 +261,9 @@ public final class ScanLineArc {
      * <p>
      * The walk starts at the owned cell that ends the position's own stretch and follows the line
      * away from it until it reaches the cell that begins that stretch again, measuring every other
-     * stretch on the way. It ends early where the outcome is settled: a wider stretch decides
-     * against the position's own, and a remaining piece of line too short to hold one decides for
-     * it.
+     * stretch on the way. It ends early where the outcome is settled: a stretch that has grown
+     * wider than the position's own decides against it, whether or not its end has been reached,
+     * and a remaining piece of line too short to hold a wider one decides for it.
      *
      * @param environment The world the owners are read from.
      * @param fromIndex The layout index of the owned cell the position's stretch ends at.
@@ -285,6 +286,11 @@ public final class ScanLineArc {
             index = environment.stepIndex(index, axis, true);
             coordinate = coordinate + 1 == axisSize ? 0 : coordinate + 1;
             if (environment.getOwnerIdByIndex(index) != ownerId) {
+                // The stretch open here is already wider than the position's own one, and it can
+                // only grow: wherever it ends, it takes the outside from it.
+                if (offset - previousOwnedOffset > ownStretch) {
+                    return true;
+                }
                 continue;
             }
             int stretch = offset - previousOwnedOffset;
