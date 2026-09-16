@@ -29,6 +29,14 @@ tools/trace/run-trace.sh /tmp/trace 5000 \
   'pipeline.services.simulation-engine.options.seed = 7'
 ```
 
+A second source root needs a name: two roots without one share the empty prefix, and the engine
+rejects that with "Duplicate source root prefixes detected". A name is given as `prefix`, is at
+least two characters of `A-Z`, `0-9` and underscore, and prefixes the program's path as
+`NAME:main.evo`. It has to prefix every path inside that program as well, its `.IMPORT` and
+`.SOURCE` lines included, because an unprefixed path resolves against the root without a name and
+not against the program's own directory. Two variants of one program are therefore easiest to run
+from a single root that holds both.
+
 `tools/trace/trace.conf` holds the recording setup and includes `config/evochora.conf` for
 everything else. Every process, resource and service the recording does not need is set to
 `null` there, which takes it out of the configuration: no brokers, no database, no HTTP server,
@@ -91,7 +99,7 @@ one (a conflict loser has no executed instruction, only a failure reason).
 | `dp` | the data pointer the instruction acted with: index and position of the active pointer as the tick began, `1@61\|40` |
 | `cost_e`, `cost_s` | energy taken and entropy added by the instruction |
 | `failed`, `fail_reason` | 1 and the reason when the instruction failed |
-| `cond_met` | for a conditional instruction: 1 when the instruction right behind it ran next, 0 when that one was skipped; empty for every other instruction. A skipped instruction costs no tick and has no row of its own, so this is where a decision shows |
+| `cond_met` | for a conditional instruction: 1 when the instruction that follows it in the layout ran next, 0 when the next step began elsewhere; empty for every other instruction. A skipped instruction costs no tick and has no row of its own, so this is where a decision shows. The column compares addresses, not conditions: `NOP` padding between the conditional and the next instruction moves that address, so a padded conditional reports 0 even where its condition held. Where padding is in play, read the decision off the next step row, whose `addr` and `src_label` say where execution went |
 | `src_file`, `src_line`, `src_text` | what the compiled program has at `addr`: file (relative to the directory all sources share), line and the source line |
 | `src_label` | the nearest label or procedure above that source line |
 | `src_op` | what the compiler placed at `rel`: an opcode by mnemonic, or the molecule type for a non-code cell such as `LABEL` |

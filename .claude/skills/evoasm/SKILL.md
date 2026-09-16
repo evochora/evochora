@@ -109,6 +109,12 @@ tools/trace/run-trace.sh <scratchpad>/trace-N <ticks> \
 
 Choose the smallest world that holds the program and its work (each side a multiple of 32),
 and round the tick count generously: the engine drops a partial chunk of 50 ticks at the pause.
+A self-replicator needs three times its own body on each side, or it has no room to place a copy
+in every direction. It also needs the energy for one: a quiet world has none to harvest, a copy
+of the primordial costs roughly 45 energy per body cell, and `runtime.organism.max-energy` caps
+what the organism can hold, so a run that has to reach a `FORK` raises that cap and
+`initialEnergy` with it.
+
 Load `tools/trace/views.sql` first; then ask, in this order:
 
 1. `steps`: any failures, any `differs`? Both should be zero for a program that does what it
@@ -118,8 +124,9 @@ Load `tools/trace/views.sql` first; then ask, in this order:
    a `REF` result in `state`, an invariant at a label as a query that lists its violations.
 4. When something is wrong, walk back: the cell that is wrong, the change row that last wrote
    it, the step at that tick with its `dp`, the register that held the wrong value and the last
-   tick it changed (`changed` column, or `lag` over `state`), the step that set it. `cond_met`
-   says which way every conditional went; `changed` shows what a `SCAN` read in its own row.
+   tick it changed (`changed` column, or `lag` over `state`), the step that set it. Where a
+   conditional went shows in the step that followed it, and `changed` shows what a `SCAN` read
+   in its own row.
 
 Expect a first trace to be wrong, and expect the trace to say why within a few queries. What the
 trace cannot tell you: why a fuzzy jump chose the label it chose, and which thermodynamic rule
@@ -143,7 +150,9 @@ or the documentation would have helped in this session, concrete and from this s
   `STRUCTURE:5` passes as greater than zero. `INTI %TMP ENERGY:0` asks the type.
 - Four calls that copy a frame beside each edge resolved the same corner label to a copy's
   corner once copies existed; the driver resolves the corners into location registers first.
-- A `cond_met` of 0 behind a conditional whose next instruction is a `NOP`: the machine skips
-  NOPs without a tick, and the recorder reads the gap as a skipped instruction.
+- `cond_met` compares addresses, not conditions: it is 1 only when the next step began at the
+  cell right behind the conditional. `NOP` padding sits there in every program written to evolve,
+  so a padded conditional reports 0 even where its condition held. Read the decision off the next
+  step row instead, whose `addr` and `src_label` say where execution went.
 - Trace outputs belong in the session's scratchpad; the recorder's own README says what it
   writes and what it removes.
