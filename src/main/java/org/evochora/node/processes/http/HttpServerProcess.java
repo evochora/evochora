@@ -40,9 +40,12 @@ public class HttpServerProcess extends AbstractProcess {
     // Keys are now quoted to be valid HOCON syntax.
     private static final String CONTROLLER_ACTION_KEY = "\"$controller\"";
     private static final String STATIC_ACTION_KEY = "\"$static\"";
-    /** Colours the lead-in of the web interface line; the URL itself stays uncoloured so terminals can link it. */
-    private static final String ANSI_GREEN = "\u001B[32m";
-    private static final String ANSI_RESET = "\u001B[0m";
+    /**
+     * Line announcing the web interface: a green READY badge, a bold label and a green arrow before
+     * the bold URL. A space separates the URL from the closing reset, so terminals can link it.
+     */
+    private static final String WEB_INTERFACE_LINE =
+        "\u001B[1;30;42m READY \u001B[0m \u001B[1mWeb interface:\u001B[0m \u001B[1;32m\u25B6\u001B[0m \u001B[1m{} \u001B[0m";
 
     private final List<RouteDefinition> routeDefinitions = new ArrayList<>();
     private final ServiceRegistry controllerRegistry;
@@ -192,7 +195,7 @@ public class HttpServerProcess extends AbstractProcess {
         app.start(host, port);
         if (servesRootPage()) {
             LOGGER.debug("HTTP server started on {}:{}", host, port);
-            LOGGER.info("{}Web interface available at{} {}", ANSI_GREEN, ANSI_RESET, webInterfaceUrl(host, port));
+            LOGGER.info(WEB_INTERFACE_LINE, webInterfaceUrl(host, port));
         } else {
             LOGGER.info("HTTP server started on {}:{}", host, port);
         }
