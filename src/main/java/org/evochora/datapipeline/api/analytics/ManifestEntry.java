@@ -132,10 +132,26 @@ public class ManifestEntry {
 
     /**
      * One table a chart reads alongside its own data.
+     * <p>
+     * A companion is read at the finest level of detail unless it follows the chart's level: a
+     * table carrying structure, such as a lineage, must stay complete, while a table carrying
+     * values over time can be read as coarsely as the chart itself.
      *
-     * @param metricId storage metric identifier under which the table's Parquet files are found
-     * @param query    SQL query for that table, with the same {@code {table}} placeholder
-     *                 {@link #generatedQuery} uses
+     * @param metricId     storage metric identifier under which the table's Parquet files are found
+     * @param query        SQL query for that table, with the same {@code {table}} placeholder
+     *                     {@link #generatedQuery} uses
+     * @param followsLevel whether the table is read at the level of detail the chart shows
      */
-    public record Companion(String metricId, String query) { }
+    public record Companion(String metricId, String query, boolean followsLevel) {
+
+        /**
+         * A companion read at the finest level of detail.
+         *
+         * @param metricId storage metric identifier under which the table's Parquet files are found
+         * @param query    SQL query for that table
+         */
+        public Companion(String metricId, String query) {
+            this(metricId, query, false);
+        }
+    }
 }

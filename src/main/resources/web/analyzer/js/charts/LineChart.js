@@ -1,11 +1,16 @@
 import * as ChartRegistry from './ChartRegistry.js';
 import { formatTickValue, axisTicks, tooltipTitle, tooltipValue } from './ChartUtils.js';
+import * as GenomeDepthSeries from './GenomeDepthSeries.js';
 
 /**
  * Line Chart Implementation
  * 
  * Renders time-series data as line charts using Chart.js.
  * Supports dual Y-axes and automatic color assignment.
+ *
+ * A metric may add series the chart derives from its companion tables rather than reads from its
+ * own rows: the config names a derivation under {@code derivedY2}, and its series are drawn on the
+ * secondary axis. The derivation owns everything about those series; this chart only draws them.
  * 
  * @module LineChart
  */
@@ -40,6 +45,11 @@ import { formatTickValue, axisTicks, tooltipTitle, tooltipValue } from './ChartU
         return value;
     }
 
+/** Derivations a metric can name under {@code derivedY2}, by name. */
+const DERIVATIONS = {
+    'genome-depth': GenomeDepthSeries
+};
+
 /**
  * Formats a column key as a human-readable label.
  * Converts snake_case to Title Case.
@@ -57,9 +67,10 @@ function formatLabel(key) {
      * @param {HTMLCanvasElement} canvas - Canvas element
      * @param {Array<Object>} data - Data rows (array of objects)
      * @param {Object} config - Visualization config with x, y, y2 fields
+     * @param {Object} [context] - Render context; its companion rows feed derived series
      * @returns {Chart} Chart.js instance
      */
-export function render(canvas, data, config) {
+export function render(canvas, data, config, context = {}) {
         const ctx = canvas.getContext('2d');
         
         // Extract config
@@ -110,6 +121,28 @@ export function render(canvas, data, config) {
             });
             colorIndex++;
         });
+
+        // Series derived from companion tables, drawn on the secondary axis like y2 columns
+        const derivation = DERIVATIONS[config.derivedY2];
+        const derived = derivation ? derivation.derive(labels, context.companion || null, config) : [];
+        derived.forEach(series => {
+            datasets.push({
+                label: series.label,
+                data: series.values,
+                borderColor: getColor(colorIndex),
+                backgroundColor: getColor(colorIndex) + '20',
+                borderWidth: 2,
+                borderDash: [5, 5],
+                fill: false,
+                tension: 0.1,
+                spanGaps: true,
+                pointRadius: data.length > 100 ? 0 : 3,
+                pointHoverRadius: 5,
+                yAxisID: 'y2'
+            });
+            colorIndex++;
+        });
+        const y2Titles = [...y2Keys.map(formatLabel), ...derived.map(series => series.label)];
 
         // Y-axis format hints from plugin manifest: "integer" or "decimal"
         const yFormat = config.yFormat || null;
@@ -201,11 +234,11 @@ export function render(canvas, data, config) {
                     },
                     y2: {
                         type: 'linear',
-                        display: y2Keys.length > 0,
+                        display: y2Titles.length > 0,
                         position: 'right',
                         title: {
-                            display: y2Keys.length > 0,
-                            text: y2Keys.map(formatLabel).join(', '),
+                            display: y2Titles.length > 0,
+                            text: y2Titles.join(', '),
                             color: '#888'
                         },
                         ticks: {

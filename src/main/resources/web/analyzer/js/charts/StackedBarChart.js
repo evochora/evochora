@@ -1,5 +1,6 @@
 import * as ChartRegistry from './ChartRegistry.js';
 import { formatTickValue, axisTicks, tooltipTitle, tooltipValue } from './ChartUtils.js';
+import * as LowerBars from './LowerBars.js';
 
 /**
  * Stacked Bar Chart Implementation
@@ -9,6 +10,13 @@ import { formatTickValue, axisTicks, tooltipTitle, tooltipValue } from './ChartU
  *
  * Supports percentage mode where each bar totals 100%.
  * Supports optional secondary Y-axis (y2) for overlay line data.
+ * Series may carry names ({@code labels}) and colors ({@code colors}) chosen by the metric, and a
+ * metric may leave series that hold only zeros out of the legend ({@code hideEmpty}). Negative
+ * values stack below zero, so one bar can show two opposite quantities.
+ *
+ * A metric may add a second group of bars below the chart ({@code lower}), fed from a companion
+ * table and drawn on an axis of its own in absolute numbers; {@link LowerBars} builds that group,
+ * its legend and its tooltip lines, and this chart only places it.
  *
  * @module StackedBarChart
  */
@@ -19,6 +27,10 @@ import { formatTickValue, axisTicks, tooltipTitle, tooltipValue } from './ChartU
         '#ffd700', '#ff6b6b', '#98d8c8', '#f08080', '#c79ecf'
     ];
     
+    /** Shares of the chart height the shares and the lower bars get when both are drawn. */
+    const UPPER_WEIGHT = 7;
+    const LOWER_WEIGHT = 3;
+
     function getColor(index) {
         return COLORS[index % COLORS.length];
     }
@@ -32,6 +44,25 @@ import { formatTickValue, axisTicks, tooltipTitle, tooltipValue } from './ChartU
 
 function formatLabel(key) {
     return key.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+}
+
+/**
+ * Tick options that leave a single "0" where two stacked axes meet: the upper axis writes its
+ * zero without a unit, the lower one leaves its zero out.
+ *
+ * @param {Object} ticks - Tick options as axisTicks returns them
+ * @param {string} zeroText - What this axis writes at zero
+ * @returns {Object} Tick options with the zero replaced
+ */
+function withZeroAtSeam(ticks, zeroText) {
+    const format = ticks.callback;
+    return {
+        ...ticks,
+        callback: function(value, index, all) {
+            if (value === 0) return zeroText;
+            return format ? format.call(this, value, index, all) : value;
+        }
+    };
 }
 
 /**
@@ -67,11 +98,11 @@ function createLegendClickHandler() {
         const meta = chart.getDatasetMeta(index);
         meta.hidden = meta.hidden === null ? !chart.data.datasets[index].hidden : null;
         
-        // Count visible datasets
+        // Count visible shares; the rate line and the lower bars are not shares
         let visibleCount = 0;
         chart.data.datasets.forEach((ds, idx) => {
             const dsMeta = chart.getDatasetMeta(idx);
-            if (!dsMeta.hidden) {
+            if (ds.yAxisID === 'y' && !dsMeta.hidden) {
                 visibleCount++;
             }
         });
@@ -95,9 +126,10 @@ function createLegendClickHandler() {
      * @param {HTMLCanvasElement} canvas - Canvas element
      * @param {Array<Object>} data - Data rows (array of objects)
      * @param {Object} config - Visualization config with x, y, and optional y2 fields
+     * @param {Object} [context] - Render context; its companion rows feed the lower bars
      * @returns {Chart} Chart.js instance
      */
-export function render(canvas, data, config) {
+export function render(canvas, data, config, context = {}) {
         const ctx = canvas.getContext('2d');
 
         const xKey = config.x || 'tick';
@@ -110,12 +142,16 @@ export function render(canvas, data, config) {
         const y2Key = config.y2 || null;
         const y2Label = config.y2Label || formatLabel(y2Key || '');
         const y2PeakTickKey = config.y2PeakTick || null;
+        // Names and colors a metric chooses for its series; the rest are derived
+        const seriesLabels = config.labels || {};
+        const seriesColors = config.colors || {};
+        const colorOf = (key, index) => seriesColors[key] || getColor(index);
 
         const labels = data.map(row => toNumber(row[xKey]));
 
         // Calculate percentages based on ALL categories (not just visible ones)
         const datasets = yKeys.map((key, index) => ({
-            label: formatLabel(key),
+            label: seriesLabels[key] || formatLabel(key),
             data: data.map(row => {
                 const val = toNumber(row[key]);
                 if (isPercentage) {
@@ -124,8 +160,8 @@ export function render(canvas, data, config) {
                 }
                 return val;
             }),
-            borderColor: getColor(index),
-            backgroundColor: getColor(index) + 'cc',
+            borderColor: colorOf(key, index),
+            backgroundColor: colorOf(key, index) + 'cc',
             borderWidth: 1,
             yAxisID: 'y',
             order: 1  // Draw bars first (lower order = drawn earlier = behind)
@@ -151,6 +187,38 @@ export function render(canvas, data, config) {
                 peakTicks: y2PeakTickKey ? data.map(row => toNumber(row[y2PeakTickKey])) : null
             });
         }
+
+        // Bars below the chart, from a companion table
+        const lower = LowerBars.build(data, xKey, context.companion || null, config.lower);
+        const lowerDetails = new Map();
+        (lower || []).forEach(segment => {
+            const index = datasets.length;
+            lowerDetails.set(index, segment.details);
+            datasets.push({
+                label: segment.label,
+                data: segment.values,
+                borderColor: segment.color,
+                backgroundColor: segment.color + 'cc',
+                borderWidth: 1,
+                yAxisID: LowerBars.AXIS_ID,
+                order: 1
+            });
+        });
+        const hasLower = !!lower;
+
+        // The pointer's height decides whether the tooltip speaks for the shares or for the
+        // segment of the lower bars under it
+        let pointerY = null;
+        const pointerPlugin = {
+            id: 'lowerBarsPointer',
+            beforeEvent(chart, args) {
+                pointerY = args.event?.y ?? null;
+            }
+        };
+        const inLowerHalf = chart => {
+            const scale = chart.scales[LowerBars.AXIS_ID];
+            return hasLower && scale && pointerY != null && pointerY >= scale.top && pointerY <= scale.bottom;
+        };
 
         // Calculate appropriate max for y2 axis (auto-scale with headroom)
         const y2Max = y2Key ? calculateY2Max(data, y2Key) : undefined;
@@ -204,7 +272,7 @@ export function render(canvas, data, config) {
                 labels: labels,
                 datasets: datasets
             },
-            plugins: y2LinePlugin ? [y2LinePlugin] : [],
+            plugins: [pointerPlugin, ...(y2LinePlugin ? [y2LinePlugin] : [])],
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
@@ -220,6 +288,14 @@ export function render(canvas, data, config) {
                             font: { family: "'Courier New', monospace", size: 11 },
                             usePointStyle: true,
                             pointStyle: 'rect',
+                            // A metric may leave out series that hold nothing in the shown window
+                            filter: (item, legendData) => {
+                                const dataset = legendData.datasets[item.datasetIndex];
+                                // The lower bars have their own legend under the chart
+                                if (dataset.yAxisID === LowerBars.AXIS_ID) return false;
+                                return !config.hideEmpty || dataset.yAxisID !== 'y'
+                                    || dataset.data.some(value => value !== 0);
+                            },
                             // Custom label generation to show line icon for y2 dataset
                             generateLabels: function(chart) {
                                 const labels = Chart.defaults.plugins.legend.labels.generateLabels(chart);
@@ -246,9 +322,21 @@ export function render(canvas, data, config) {
                         borderColor: '#333',
                         borderWidth: 1,
                         padding: 12,
+                        filter: item => {
+                            const isLower = item.dataset.yAxisID === LowerBars.AXIS_ID;
+                            if (inLowerHalf(item.chart)) {
+                                return isLower && LowerBars.isUnderPointer(item, pointerY);
+                            }
+                            if (isLower) return false;
+                            return !config.hideEmpty || item.dataset.yAxisID !== 'y' || item.parsed.y !== 0;
+                        },
                         callbacks: {
                             title: tooltipTitle,
                             label: context => {
+                                if (context.dataset.yAxisID === LowerBars.AXIS_ID) {
+                                    const details = lowerDetails.get(context.datasetIndex)?.[context.dataIndex];
+                                    return LowerBars.tooltipLines(context.dataset.label, context.parsed.y, details);
+                                }
                                 let label = context.dataset.label || '';
                                 if (label) {
                                     label += ': ';
@@ -288,9 +376,31 @@ export function render(canvas, data, config) {
                         },
                         grid: { color: '#333', drawBorder: false }
                     },
+                    ...(hasLower ? {
+                        [LowerBars.AXIS_ID]: {
+                            type: 'linear',
+                            position: 'left',
+                            stack: 'leftPanels',
+                            stackWeight: LOWER_WEIGHT,
+                            stacked: true,
+                            reverse: true,
+                            min: 0,
+                            title: {
+                                display: true,
+                                text: config.lower.label || '',
+                                color: '#ff9b9b'
+                            },
+                            ticks: {
+                                color: '#ff9b9b',
+                                ...withZeroAtSeam(axisTicks('integer'), '')
+                            },
+                            grid: { color: '#2a1a1a', drawBorder: false }
+                        }
+                    } : {}),
                     y: {
                         stacked: true,
                         position: 'left',
+                        ...(hasLower ? { stack: 'leftPanels', stackWeight: UPPER_WEIGHT } : {}),
                         // Start with max 100 (all categories visible)
                         max: isPercentage ? 100 : undefined,
                         title: yLabel
@@ -298,7 +408,9 @@ export function render(canvas, data, config) {
                             : { display: false },
                         ticks: {
                             color: '#888',
-                            ...axisTicks(isPercentage ? 'percent' : yFormat)
+                            ...(hasLower
+                                ? withZeroAtSeam(axisTicks(isPercentage ? 'percent' : yFormat), '0')
+                                : axisTicks(isPercentage ? 'percent' : yFormat))
                         },
                         grid: { color: '#333', drawBorder: false }
                     },
@@ -306,6 +418,7 @@ export function render(canvas, data, config) {
                         y2: {
                             type: 'linear',
                             position: 'right',
+                            ...(hasLower ? { stack: 'rightPanels', stackWeight: UPPER_WEIGHT } : {}),
                             min: 0,
                             max: y2Max,
                             title: {
@@ -321,6 +434,21 @@ export function render(canvas, data, config) {
                                 drawOnChartArea: false  // Don't draw grid lines over bars
                             }
                         }
+                    } : {}),
+                    ...(hasLower && y2Key ? {
+                        // Keeps the rate axis as tall as the shares it belongs to. Stacked axes are
+                        // placed in the order they are defined: on the right the first one is drawn
+                        // on top, on the left at the bottom - hence the lower axis before y, and
+                        // this spacer after y2
+                        y2Spacer: {
+                            type: 'linear',
+                            position: 'right',
+                            stack: 'rightPanels',
+                            stackWeight: LOWER_WEIGHT,
+                            ticks: { display: false },
+                            grid: { display: false },
+                            border: { display: false }
+                        }
                     } : {})
                 },
                 animation: {
@@ -333,8 +461,14 @@ export function render(canvas, data, config) {
         
         // Store metadata
         chart._isPercentage = isPercentage;
-        chart._totalDatasets = y2Key ? datasets.length - 1 : datasets.length;  // Exclude y2 from count
+        chart._totalDatasets = yKeys.length;  // Only the shares count towards the 100% axis
         chart._hasY2 = !!y2Key;
+
+        if (hasLower) {
+            LowerBars.renderLegend(chart);
+        } else {
+            LowerBars.removeLegend(canvas);
+        }
 
         return chart;
     }

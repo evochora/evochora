@@ -1,10 +1,12 @@
 package org.evochora.datapipeline.services.analytics.plugins;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.List;
 import java.util.Map;
 
+import org.evochora.datapipeline.api.analytics.ManifestEntry;
 import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.junit.jupiter.api.BeforeEach;
@@ -117,5 +119,50 @@ class GenerationDepthPluginTest {
 
         assertThat(rows).hasSize(1);
         assertThat(rows.get(0)).hasSize(3);
+    }
+
+    @Test
+    void theChartReadsTheGenomePopulationAtItsLevelAndTheLineageWhole() {
+        ManifestEntry entry = plugin.getManifestEntry();
+
+        assertThat(entry.companions).hasSize(2);
+        ManifestEntry.Companion population = entry.companions.get(0);
+        ManifestEntry.Companion lineage = entry.companions.get(1);
+        assertThat(population.metricId()).isEqualTo("genome_population");
+        assertThat(population.followsLevel()).isTrue();
+        assertThat(lineage.metricId()).isEqualTo("genome_lineage");
+        assertThat(lineage.followsLevel()).isFalse();
+        // 64-bit hashes do not survive a JavaScript number
+        assertThat(population.query()).contains("genome_hash::VARCHAR");
+        assertThat(lineage.query()).contains("genome_hash::VARCHAR", "parent_genome_hash::VARCHAR");
+        assertThat(entry.visualization.config)
+            .containsEntry("derivedY2", "genome-depth")
+            .containsEntry("populationMetric", "genome_population")
+            .containsEntry("lineageMetric", "genome_lineage");
+    }
+
+    @Test
+    void theCompanionMetricsCanBeRenamed() {
+        GenerationDepthPlugin renamed = new GenerationDepthPlugin();
+        renamed.configure(ConfigFactory.parseMap(Map.of("metricId", "depth",
+            "populationMetricId", "pop", "lineageMetricId", "lin")));
+
+        ManifestEntry entry = renamed.getManifestEntry();
+
+        assertThat(entry.companions).extracting(ManifestEntry.Companion::metricId)
+            .containsExactly("pop", "lin");
+        assertThat(entry.visualization.config)
+            .containsEntry("populationMetric", "pop")
+            .containsEntry("lineageMetric", "lin");
+    }
+
+    @Test
+    void anEmptyCompanionMetricIsRefused() {
+        GenerationDepthPlugin empty = new GenerationDepthPlugin();
+
+        assertThatThrownBy(() -> empty.configure(ConfigFactory.parseMap(
+                Map.of("metricId", "depth", "lineageMetricId", " "))))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("lineageMetricId");
     }
 }

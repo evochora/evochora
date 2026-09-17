@@ -307,6 +307,41 @@ main.container {
     padding: 12px;
 }
 
+/* --- Lower Bars Legend --- */
+/* Its own row under the chart, like the clade path: laid over the canvas it would cover the axis. */
+.lower-legend {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 4px 12px;
+    margin-top: 6px;
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+}
+
+.lower-legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 0;
+    background: transparent;
+    border: none;
+    color: #e0e0e0;
+    font: inherit;
+    cursor: pointer;
+}
+
+.lower-legend-item.hidden {
+    text-decoration: line-through;
+    opacity: 0.5;
+}
+
+.lower-legend-swatch {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+}
+
 /* --- Metric Card Scrollbar --- */
 .metric-card-scrollbar-row {
     display: flex;

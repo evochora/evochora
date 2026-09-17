@@ -72,7 +72,11 @@ function precisionForRange(range, divisor) {
  * @returns {string} The formatted label
  */
 export function formatAxisValue(value, ticks, suffix = '') {
-    return value.toFixed(decimalsForStep(ticks)) + suffix;
+    const decimals = decimalsForStep(ticks);
+    return value.toLocaleString('en-US', {
+        minimumFractionDigits: decimals,
+        maximumFractionDigits: decimals
+    }) + suffix;
 }
 
 /**
@@ -99,13 +103,17 @@ export function decimalsForStep(ticks) {
  *
  * An integer quantity gets integer ticks from Chart.js itself, so no label is ever dropped for
  * not being whole; everything else is written with as many decimals as the tick spacing needs.
+ * Every label groups thousands the way the tooltips do.
  *
  * @param {string|null} format - "integer", "percent", or anything else for a plain number
  * @returns {Object} Tick options to merge into a scale
  */
 export function axisTicks(format) {
     if (format === 'integer') {
-        return { precision: 0 };
+        return {
+            precision: 0,
+            callback: value => value.toLocaleString('en-US', { maximumFractionDigits: 0 })
+        };
     }
     const suffix = format === 'percent' ? '%' : '';
     return {
@@ -125,10 +133,16 @@ export function axisTicks(format) {
  * A label that is not a number is passed through as it stands: an x axis of categories has no
  * tick to name.
  *
+ * A chart whose tooltip filter leaves no item gets an empty title: Chart.js still asks for one,
+ * and a failure here would break the event handling Chart.js shares between all charts of a page.
+ *
  * @param {Array<{label: string}>} items - The hovered items, as Chart.js passes them
  * @returns {string} The title line
  */
 export function tooltipTitle(items) {
+    if (!items || items.length === 0) {
+        return '';
+    }
     const label = items[0].label;
     const tick = Number(label);
     // A chart whose x axis carries categories rather than ticks has nothing to call a tick here

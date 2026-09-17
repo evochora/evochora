@@ -77,12 +77,18 @@ function createLegendClickHandler() {
  * @param {string} xKey - X-axis column (e.g., 'tick')
  * @param {string} groupKey - Grouping column (e.g., 'genome_label')
  * @param {string} valueKey - Value column (e.g., 'count')
+ * @param {string[]} [order] - Groups in the order they are stacked and listed; groups it does not
+ *        name follow in the order they first appear
  * @returns {{pivoted: Array<Object>, groups: string[]}} Pivoted data and group labels
  */
-function pivotData(data, xKey, groupKey, valueKey) {
+function pivotData(data, xKey, groupKey, valueKey, order = []) {
     // Collect unique x values and groups
     const xValues = [...new Set(data.map(row => toNumber(row[xKey])))].sort((a, b) => a - b);
-    const groups = [...new Set(data.map(row => row[groupKey]))];
+    const present = new Set(data.map(row => row[groupKey]));
+    const groups = [
+        ...order.filter(group => present.has(group)),
+        ...[...present].filter(group => !order.includes(group))
+    ];
 
     // Build lookup: x -> group -> value
     const lookup = new Map();
@@ -195,7 +201,9 @@ function expandJsonColumn(data, xKey, jsonKey, maxGroups) {
      * @param {Array<Object>} data - Data rows (array of objects)
      * @param {Object} config - Visualization config with x, y, and optional groupBy. {@code yMax}
      *        fixes the top of the axis; without it the axis follows the data and rounds up, which
-     *        leaves a scale reaching past the largest value a series can take.
+     *        leaves a scale reaching past the largest value a series can take. With groupBy,
+     *        {@code groupOrder} sets the order groups are stacked and listed in, and
+     *        {@code groupDetails}, a Map from group to text, adds that text to a group's tooltip.
      * @returns {Chart} Chart.js instance
      */
 export function render(canvas, data, config) {
@@ -216,7 +224,7 @@ export function render(canvas, data, config) {
         } else if (config.groupBy) {
             // Long-format data with groupBy pivoting
             const valueKey = config.y || 'count';
-            const { pivoted, groups } = pivotData(data, xKey, config.groupBy, valueKey);
+            const { pivoted, groups } = pivotData(data, xKey, config.groupBy, valueKey, config.groupOrder || []);
             chartData = pivoted;
             yKeys = groups;
             labels = pivoted.map(row => toNumber(row[xKey]));
@@ -297,8 +305,11 @@ export function render(canvas, data, config) {
                                 // Same derivation as the axis ticks below: how a value reads
                                 // follows from its format, and normalizing to percent implies
                                 // that format
-                                return label + tooltipValue(context.parsed.y,
+                                const value = label + tooltipValue(context.parsed.y,
                                     isPercentage ? 'percent' : yFormat);
+                                // What a group stands for, too long for the legend
+                                const detail = config.groupDetails?.get?.(context.dataset.label);
+                                return detail ? `${value} · ${detail}` : value;
                             }
                         }
                     }
@@ -379,7 +390,7 @@ export function update(chart, data, config) {
         } else if (config.groupBy) {
             // Long-format data with groupBy pivoting
             const valueKey = config.y || 'count';
-            const { pivoted, groups } = pivotData(data, xKey, config.groupBy, valueKey);
+            const { pivoted, groups } = pivotData(data, xKey, config.groupBy, valueKey, config.groupOrder || []);
             chartData = pivoted;
             yKeys = groups;
             chart.data.labels = pivoted.map(row => toNumber(row[xKey]));

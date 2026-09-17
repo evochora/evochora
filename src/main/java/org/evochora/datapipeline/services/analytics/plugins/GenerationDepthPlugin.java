@@ -12,6 +12,8 @@ import org.evochora.datapipeline.api.analytics.VisualizationHint;
 import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.TickData;
 
+import com.typesafe.config.Config;
+
 /**
  * Tracks the generation depth of organisms.
  * <p>
@@ -30,6 +32,12 @@ import org.evochora.datapipeline.api.contracts.TickData;
  * Reading a recorded fact instead makes each row a function of its tick alone, so the values do
  * not depend on how much of the stream this instance has seen, on the order the chunks arrived in,
  * or on how many instances share the work.
+ * <p>
+ * <strong>Genome depth.</strong> The chart also shows how many genome changes separate the living
+ * genomes from their founders - the depth in the genome lineage rather than in the replications.
+ * It writes no data of its own for that: the chart reads the genome population and the genome
+ * lineage as companions and derives the depth from them. The population follows the chart's level
+ * of detail, as it is a value over time; the lineage is structure and is read whole.
  */
 public class GenerationDepthPlugin extends AbstractAnalyticsPlugin {
 
@@ -38,6 +46,27 @@ public class GenerationDepthPlugin extends AbstractAnalyticsPlugin {
         .column("max_depth", ColumnType.INTEGER)
         .column("avg_depth", ColumnType.DOUBLE)
         .build();
+
+    /** Metric holding the living genomes and their carriers per recording. */
+    private String populationMetricId = "genome_population";
+
+    /** Metric holding the edges from each genome to the genome of its parent. */
+    private String lineageMetricId = "genome_lineage";
+
+    /**
+     * {@inheritDoc}
+     *
+     * @throws IllegalArgumentException if {@code populationMetricId} or {@code lineageMetricId} is
+     *         configured empty
+     */
+    @Override
+    public void configure(Config config) {
+        super.configure(config);
+        this.populationMetricId = companionMetricId(config, "populationMetricId",
+            "the living genomes the genome depth is averaged over", populationMetricId);
+        this.lineageMetricId = companionMetricId(config, "lineageMetricId",
+            "the genome lineage the genome depth is counted in", lineageMetricId);
+    }
 
     @Override
     public ParquetSchema getSchema() {
@@ -72,7 +101,8 @@ public class GenerationDepthPlugin extends AbstractAnalyticsPlugin {
         ManifestEntry entry = new ManifestEntry();
         entry.id = metricId;
         entry.name = "Generation Depth";
-        entry.description = "Maximum and average lineage depth of living organisms.";
+        entry.description = "Lineage depth of living organisms: replications (left) and genome "
+            + "changes (right) since the founders.";
         
         entry.dataSources = new HashMap<>();
         for (int level = 0; level < lodLevels; level++) {
@@ -80,8 +110,19 @@ public class GenerationDepthPlugin extends AbstractAnalyticsPlugin {
             entry.dataSources.put(lodName, metricId + "/" + lodName + "/**/*.parquet");
         }
         
+        // Genome hashes leave as text: 64 bits do not survive a JavaScript number
+        entry.companions = List.of(
+            new ManifestEntry.Companion(populationMetricId,
+                "SELECT tick, genome_hash::VARCHAR AS genome_hash, count FROM {table}", true),
+            new ManifestEntry.Companion(lineageMetricId,
+                "SELECT genome_hash::VARCHAR AS genome_hash, "
+                    + "parent_genome_hash::VARCHAR AS parent_genome_hash, first_birth_tick FROM {table}"));
+
         entry.visualization = VisualizationHint.chart("line-chart", "tick")
-            .with("y", List.of("max_depth", "avg_depth"));
+            .with("y", List.of("max_depth", "avg_depth"))
+            .with("derivedY2", "genome-depth")
+            .with("populationMetric", populationMetricId)
+            .with("lineageMetric", lineageMetricId);
 
         return entry;
     }

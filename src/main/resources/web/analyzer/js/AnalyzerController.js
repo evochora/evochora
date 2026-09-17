@@ -527,7 +527,7 @@ export async function loadDashboard(runId) {
                 return;
             }
 
-            const companion = await loadCompanionData(metric, controller.signal);
+            const companion = await loadCompanionData(metric, resolvedLod, controller.signal);
             loadedData[metricId] = {
                 data: isOverview ? thinToLimit(data, effectiveLimit) : data,
                 companion
@@ -560,7 +560,8 @@ export async function loadDashboard(runId) {
      *
      * A companion is read at its finest level of detail: it carries structure, and a thinned-out
      * structure is not a coarser view of it but a wrong one - a lineage missing edges turns
-     * descendants into roots. They are read again whenever the metric is loaded, because a running
+     * descendants into roots. A companion that carries values over time instead says so
+     * ({@code followsLevel}) and is read at the level the chart shows, as its own data is. They are read again whenever the metric is loaded, because a running
      * simulation keeps adding to them, and a tree that stops growing loses every genome born after
      * it was read.
      *
@@ -570,11 +571,12 @@ export async function loadDashboard(runId) {
      * redraws from what is already loaded and costs no request.
      *
      * @param {Object} metric - Manifest entry of the metric being loaded
+     * @param {string|null} lod - Level of detail the chart shows, for companions following it
      * @param {AbortSignal} signal - Signal aborting the fetch
      * @returns {Promise<Object<string, Array<Object>>|null>} Rows per companion metric id, or null
      *          if the metric has none
      */
-    async function loadCompanionData(metric, signal) {
+    async function loadCompanionData(metric, lod, signal) {
         if (!metric.companions || metric.companions.length === 0) {
             return null;
         }
@@ -582,8 +584,9 @@ export async function loadDashboard(runId) {
         const rowsByMetric = {};
         for (const companion of metric.companions) {
             const blobKey = `companion_${metric.id}_${companion.metricId}`;
+            const level = companion.followsLevel && lod ? lod : 'lod0';
             const { blob } = await AnalyticsApi.fetchParquetBlob(
-                companion.metricId, currentRunId, 'lod0', signal
+                companion.metricId, currentRunId, level, signal
             );
             await DuckDBClient.registerParquetBlob(blobKey, blob);
             rowsByMetric[companion.metricId] =
@@ -675,7 +678,7 @@ export async function loadDashboard(runId) {
             // reachable by scrolling. It is fetched here only when the metric was loaded without
             // rows and the scroll is what first reaches some.
             const companion = loadedData[metricId]?.companion
-                ?? await loadCompanionData(card.metric, controller.signal);
+                ?? await loadCompanionData(card.metric, selectedLod, controller.signal);
             loadedData[metricId] = { data, companion };
             renderWithViewState(card);
 

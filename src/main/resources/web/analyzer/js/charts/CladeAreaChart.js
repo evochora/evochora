@@ -182,10 +182,12 @@ function mapToBands(genomes, parents, bands) {
  * @param {Array<Object>} data - Rows with tick, genome_hash, count
  * @param {Map<string, string>} bandOf - Genome to band key
  * @param {Map<string, string>} labels - Band key to label
- * @param {number} maxBands - Greatest number of named bands to keep
- * @returns {Array<Object>} Rows with tick, clade, count
+ * @param {number} maxBands - Greatest number of named bands to keep besides those always kept
+ * @param {Set<string>} alwaysKept - Band labels never folded into the rest, however small
+ * @returns {{folded: Array<Object>, ranked: string[]}} Rows with tick, clade, share, and the kept
+ *          band labels from the largest to the smallest
  */
-function foldIntoBands(data, bandOf, labels, maxBands) {
+function foldIntoBands(data, bandOf, labels, maxBands, alwaysKept) {
     const perTick = new Map();
     const population = new Map();
     const totals = new Map();
@@ -212,10 +214,12 @@ function foldIntoBands(data, bandOf, labels, maxBands) {
     }
 
     // Ranked over the whole window, so a band does not appear and vanish from tick to tick
-    const kept = new Set([...totals.entries()]
+    const ranked = [...totals.entries()]
+        .filter(([label]) => !alwaysKept.has(label))
         .sort((a, b) => b[1] - a[1])
         .slice(0, maxBands)
-        .map(([label]) => label));
+        .map(([label]) => label);
+    const kept = new Set([...alwaysKept, ...ranked]);
 
     const folded = [];
     for (const [tick, bands] of perTick) {
@@ -234,7 +238,7 @@ function foldIntoBands(data, bandOf, labels, maxBands) {
             folded.push({ tick, clade: OTHER, share: (other / whole) * 100 });
         }
     }
-    return folded;
+    return { folded, ranked };
 }
 
 /** Digits of the six-character genome label, as the rest of the project writes it. */
@@ -343,25 +347,31 @@ function causeOf(events) {
 }
 
 /**
- * Builds the labels of the bands, marking those that stand for carriers only.
+ * Builds the labels of the bands, marking those that stand for carriers only, and what founded
+ * each band.
  *
- * A label carries the genome and what founded it, so that the legend and the tooltip - which reads
- * the same label - say what started the band without a second place to look.
+ * The label names the genome and stays short, as the legend lists it; what founded the band can
+ * run long and is shown in the tooltip instead.
  *
  * @param {{clades: Set<string>, selves: Set<string>}} bands - Bands to label
  * @param {Map<string, Array<Object>>} founding - Genome to the events of its first carrier
- * @returns {Map<string, string>} Band key to label
+ * @returns {{labels: Map<string, string>, causes: Map<string, string>}} Band key to label, and
+ *          label to what founded the band
  */
 function labelBands(bands, founding) {
     const labels = new Map();
+    const causes = new Map();
     for (const genome of bands.clades) {
-        labels.set(genome, `${shortLabel(genome)} · ${causeOf(founding.get(genome))}`);
+        const label = shortLabel(genome);
+        labels.set(genome, label);
+        causes.set(label, causeOf(founding.get(genome)));
     }
     for (const genome of bands.selves) {
-        labels.set(genome,
-            `${shortLabel(genome)} (itself) · ${causeOf(founding.get(genome))}`);
+        const label = `${shortLabel(genome)} (itself)`;
+        labels.set(genome, label);
+        causes.set(label, causeOf(founding.get(genome)));
     }
-    return labels;
+    return { labels, causes };
 }
 
 /**
@@ -472,11 +482,15 @@ export function render(canvas, data, config, context = {}) {
     }
 
     const bands = bandsFor(parents, children, openPath);
-    const labels = labelBands(bands, founding);
+    const { labels, causes } = labelBands(bands, founding);
 
     const genomes = new Set(data.map(row => row.genome_hash));
     const bandOf = mapToBands(genomes, parents, bands);
-    const folded = foldIntoBands(data, bandOf, labels, config.maxBands || 8);
+    // The opened genome's own carriers first and always named, the clades by size, what is left
+    // over last
+    const selves = [...bands.selves].map(genome => labels.get(genome));
+    const { folded, ranked } = foldIntoBands(data, bandOf, labels, config.maxBands || 8, new Set(selves));
+    const groupOrder = [...selves, ...ranked, OTHER];
 
     renderPath(canvas, openPath, (path) => onViewStateChange({ openPath: path }));
 
@@ -488,6 +502,8 @@ export function render(canvas, data, config, context = {}) {
     const chart = StackedAreaChart.render(canvas, folded, {
         ...config,
         groupBy: 'clade',
+        groupOrder,
+        groupDetails: causes,
         y: 'share',
         yAxisMode: undefined,
         yMax: 100,

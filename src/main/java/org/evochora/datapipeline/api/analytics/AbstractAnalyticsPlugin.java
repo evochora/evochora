@@ -110,6 +110,28 @@ public abstract class AbstractAnalyticsPlugin implements IAnalyticsPlugin {
     }
 
     /**
+     * Reads the name of a table a chart is read next to, for a plugin whose manifest names companions.
+     *
+     * @param config the plugin's configuration
+     * @param option the option naming the metric
+     * @param holds what the named table holds, for the message
+     * @param fallback the name to keep when the option is absent
+     * @return the metric id to load that table under
+     * @throws IllegalArgumentException if the option is configured empty
+     */
+    protected String companionMetricId(Config config, String option, String holds, String fallback) {
+        if (!config.hasPath(option)) {
+            return fallback;
+        }
+        String configured = config.getString(option).trim();
+        if (configured.isEmpty()) {
+            throw new IllegalArgumentException("Metric '" + metricId + "': " + option
+                + " names the metric holding " + holds + ", and cannot be empty.");
+        }
+        return configured;
+    }
+
+    /**
      * A value a plugin sets itself, with the reason it cannot be configured.
      *
      * @param value  the value that holds for this metric

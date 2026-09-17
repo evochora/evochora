@@ -80,28 +80,6 @@ public class GenomePopulationPlugin extends AbstractAnalyticsPlugin {
             "the mutation events a band's founding mutation is named from", mutationSummaryMetricId);
     }
 
-    /**
-     * Reads the name of a table this chart is read next to.
-     *
-     * @param config the plugin's configuration
-     * @param option the option naming the metric
-     * @param holds what the named table holds, for the message
-     * @param fallback the name to keep when the option is absent
-     * @return the metric id to load that table under
-     * @throws IllegalArgumentException if the option is configured empty
-     */
-    private String companionMetricId(Config config, String option, String holds, String fallback) {
-        if (!config.hasPath(option)) {
-            return fallback;
-        }
-        String configured = config.getString(option).trim();
-        if (configured.isEmpty()) {
-            throw new IllegalArgumentException("Metric '" + metricId + "': " + option
-                + " names the metric holding " + holds + ", and cannot be empty.");
-        }
-        return configured;
-    }
-
     @Override
     public void initialize(IAnalyticsContext context) {
         super.initialize(context);

@@ -17,6 +17,8 @@ import org.evochora.datapipeline.api.memory.SimulationParameters;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.isa.Instruction.InstructionInfo;
 
+import com.typesafe.config.Config;
+
 /**
  * Tracks the usage of different instruction families over time.
  * <p>
@@ -26,6 +28,11 @@ import org.evochora.runtime.isa.Instruction.InstructionInfo;
  * <p>
  * Additionally tracks instruction failure rates on a secondary Y-axis,
  * showing the percentage of executed instructions that failed.
+ * <p>
+ * Below the shares, the chart shows the failed instructions in absolute numbers, split by
+ * instruction, with the failure texts in the tooltip. It reads them from the table
+ * {@link InstructionFailuresPlugin} writes, as a companion that follows the chart's level of
+ * detail.
  * <p>
  * <strong>Design:</strong>
  * <ul>
@@ -40,6 +47,24 @@ public class InstructionUsagePlugin extends AbstractAnalyticsPlugin {
     
     /** Target number of buckets for aggregation (~100 bars in chart) */
     private static final int TARGET_BUCKETS = 100;
+
+    /** Largest number of instructions the failure half names; the rest is one group. */
+    private static final int FAILURE_GROUPS = 8;
+
+    /** Metric holding the failed instructions and their failure texts. */
+    private String failuresMetricId = "instruction_failures";
+
+    /**
+     * {@inheritDoc}
+     *
+     * @throws IllegalArgumentException if {@code failuresMetricId} is configured empty
+     */
+    @Override
+    public void configure(Config config) {
+        super.configure(config);
+        this.failuresMetricId = companionMetricId(config, "failuresMetricId",
+            "the failed instructions shown below the shares", failuresMetricId);
+    }
 
     private static final Map<Integer, String> OPCODE_TO_FAMILY_NAME = new HashMap<>();
     private static final List<String> FAMILY_NAMES;
@@ -117,7 +142,8 @@ public class InstructionUsagePlugin extends AbstractAnalyticsPlugin {
      * is done client-side by the chart component.
      * <p>
      * For failure rate, calculates the maximum rate within each bucket
-     * and records the tick where that maximum occurred.
+     * and records the tick where that maximum occurred. Every row also carries the bucket size,
+     * so the chart can place the rows of its failure companion in the same buckets.
      *
      * @return SQL query string with {table} placeholder
      */
@@ -153,7 +179,8 @@ public class InstructionUsagePlugin extends AbstractAnalyticsPlugin {
                 bucket_tick AS tick,
                 %s,
                 MAX(tick_failure_rate) AS failure_rate,
-                ARG_MAX(tick, tick_failure_rate) AS failure_rate_peak_tick
+                ARG_MAX(tick, tick_failure_rate) AS failure_rate_peak_tick,
+                ANY_VALUE((SELECT bucket_size FROM params)) AS bucket_size
             FROM per_tick
             GROUP BY 1
             ORDER BY tick
@@ -167,7 +194,8 @@ public class InstructionUsagePlugin extends AbstractAnalyticsPlugin {
         ManifestEntry entry = new ManifestEntry();
         entry.id = metricId;
         entry.name = "Instruction Usage";
-        entry.description = "Instruction family breakdown (%) with maximum failure rate (sampled).";
+        entry.description = "Instruction families (%) with peak failure rate, and failed instructions "
+            + "below (sampled).";
 
         entry.dataSources = new HashMap<>();
         for (int level = 0; level < lodLevels; level++) {
@@ -184,15 +212,30 @@ public class InstructionUsagePlugin extends AbstractAnalyticsPlugin {
         outputCols.addAll(FAMILY_NAMES);
         outputCols.add("failure_rate");
         outputCols.add("failure_rate_peak_tick");
+        outputCols.add("bucket_size");
         entry.outputColumns = outputCols;
+
+        // The failures arrive as written, one row per instruction and text per recording: grouping
+        // them by text is a hash aggregation the browser's DuckDB build does not survive, so the
+        // chart sums them itself
+        entry.companions = List.of(new ManifestEntry.Companion(failuresMetricId,
+            "SELECT tick, instruction, reason, count FROM {table}", true));
 
         entry.visualization = VisualizationHint.chart("stacked-bar-chart", "tick")
             .with("y", FAMILY_NAMES)
             .with("yAxisMode", "percent")
             // A stacked bar chart reads y2 as one column name, not as a list.
             .with("y2", "failure_rate")
-            .with("y2Label", "Failure Rate")
-            .with("y2PeakTick", "failure_rate_peak_tick");
+            .with("y2Label", "Peak failure rate")
+            .with("y2PeakTick", "failure_rate_peak_tick")
+            .with("lower", Map.of(
+                "metric", failuresMetricId,
+                "group", "instruction",
+                "detail", "reason",
+                "value", "count",
+                "bucketSize", "bucket_size",
+                "label", "Failures",
+                "maxGroups", FAILURE_GROUPS));
 
         return entry;
     }

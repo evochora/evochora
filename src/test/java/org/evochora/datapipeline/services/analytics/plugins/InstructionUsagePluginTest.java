@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+import org.evochora.datapipeline.api.analytics.ManifestEntry;
 import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.runtime.isa.Instruction;
@@ -73,5 +74,42 @@ class InstructionUsagePluginTest {
         assertThat(row[cfIndex]).isEqualTo(1);
         assertThat(row[dataIndex]).isEqualTo(0);
         assertThat(row[failureIndex]).isEqualTo(1);  // 1 of 3 instructions failed
+    }
+
+    @Test
+    void theFailuresBelowTheSharesComeFromTheirOwnTableAtTheChartsLevel() {
+        ManifestEntry entry = plugin.getManifestEntry();
+
+        assertThat(entry.companions).hasSize(1);
+        ManifestEntry.Companion failures = entry.companions.get(0);
+        assertThat(failures.metricId()).isEqualTo("instruction_failures");
+        assertThat(failures.followsLevel()).isTrue();
+        // Grouping by text is left to the chart: the browser's DuckDB does not survive it
+        assertThat(failures.query()).doesNotContainIgnoringCase("group by");
+        assertThat(entry.outputColumns).contains("bucket_size");
+        assertThat(entry.generatedQuery).contains("AS bucket_size");
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> lower = (Map<String, Object>) entry.visualization.config.get("lower");
+        assertThat(lower)
+            .containsEntry("metric", "instruction_failures")
+            .containsEntry("group", "instruction")
+            .containsEntry("detail", "reason")
+            .containsEntry("value", "count")
+            .containsEntry("bucketSize", "bucket_size");
+    }
+
+    @Test
+    void theFailuresTableCanBeRenamed() {
+        InstructionUsagePlugin renamed = new InstructionUsagePlugin();
+        renamed.configure(ConfigFactory.parseMap(
+            Map.of("metricId", "instructions", "failuresMetricId", "fails")));
+
+        ManifestEntry entry = renamed.getManifestEntry();
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> lower = (Map<String, Object>) entry.visualization.config.get("lower");
+        assertThat(entry.companions.get(0).metricId()).isEqualTo("fails");
+        assertThat(lower).containsEntry("metric", "fails");
     }
 }
