@@ -194,7 +194,7 @@ public final class EmbeddedBrokerRegistry {
             try {
                 configureLogging();
 
-                log.info("Starting Embedded ActiveMQ Artemis Broker (serverId={})...", id);
+                log.debug("Starting Embedded ActiveMQ Artemis Broker (serverId={})...", id);
 
                 Configuration artemisConfig = new ConfigurationImpl();
 

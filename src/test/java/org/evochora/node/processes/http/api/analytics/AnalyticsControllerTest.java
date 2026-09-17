@@ -96,6 +96,31 @@ class AnalyticsControllerTest {
             verify(storage, times(1)).listAnalyticsFiles(anyString(), anyString()); // Count remains 1
         });
     }
-    
+
+    @Test
+    void emptyManifestIsNotCached() throws Exception {
+        IAnalyticsStorageRead storage = mock(IAnalyticsStorageRead.class);
+        when(storage.listAnalyticsFiles(anyString(), anyString()))
+            .thenReturn(List.of())
+            .thenReturn(List.of("pop/metadata.json"));
+        when(storage.openAnalyticsInputStream(anyString(), anyString()))
+            .thenReturn(new ByteArrayInputStream("{\"id\":\"pop\"}".getBytes()));
+
+        ServiceRegistry registry = new ServiceRegistry();
+        registry.register(IAnalyticsStorageRead.class, storage);
+
+        AnalyticsController controller = new AnalyticsController(
+            registry,
+            ConfigFactory.parseMap(Map.of("analyticsManifestCacheTtlSeconds", 60))
+        );
+
+        Javalin app = Javalin.create();
+        controller.registerRoutes(app, "/api");
+
+        JavalinTest.test(app, (server, client) -> {
+            assertThat(client.get("/api/manifest?runId=run1").body().string()).contains("\"metrics\":[]");
+            assertThat(client.get("/api/manifest?runId=run1").body().string()).contains("\"id\":\"pop\"");
+        });
+    }
 }
 

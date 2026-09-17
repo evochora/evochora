@@ -52,7 +52,7 @@ public class ServiceManagerProcess extends AbstractProcess implements IServicePr
             .withValue("pipeline", options.root());
 
         this.serviceManager = new ServiceManager(rootConfig);
-        LOGGER.info("ServiceManagerProcess '{}' initialized.", processName);
+        LOGGER.debug("ServiceManagerProcess '{}' initialized.", processName);
     }
 
     @Override

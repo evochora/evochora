@@ -123,7 +123,7 @@ public class ServiceManager implements IMonitorable {
      */
     public ServiceManager(Config rootConfig) {
         this.pipelineConfig = loadPipelineConfig(rootConfig);
-        log.info("Initializing ServiceManager...");
+        log.debug("Initializing ServiceManager...");
 
         // The engine's options are read and validated before any resource or service exists:
         // a configuration the estimate cannot be built on fails here, with nothing to stop.
@@ -142,7 +142,7 @@ public class ServiceManager implements IMonitorable {
             this.startupSequence = Collections.emptyList();
         }
 
-        log.info("ServiceManager initialized with {} resources and {} service factories.", resources.size(), serviceFactories.size());
+        log.debug("ServiceManager initialized with {} resources and {} service factories.", resources.size(), serviceFactories.size());
 
         // Auto-start services if configured
         boolean autoStart = pipelineConfig.hasPath("autoStart")

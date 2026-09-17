@@ -1,10 +1,9 @@
 import { loadingManager } from './LoadingManager.js';
+import { RunWaiter } from '../../../shared/run/RunAvailability.js';
 
 /**
- * Polls the pipeline status API and tick-range APIs when the visualizer is opened
- * before tick data is available in the database. Shows loading status with live
- * simulation metrics on the timeline canvas (via LoadingManager) and
- * auto-resolves once data arrives.
+ * Shows the waiting state on the timeline canvas while the visualizer is open on a starting run
+ * whose data has not been indexed yet, and resolves once the awaited data is there.
  *
  * Uses LoadingManager (not TickPanelManager directly) so that the explicit-status
  * flag prevents counter-based API-request tracking from interfering with the
@@ -13,8 +12,6 @@ import { loadingManager } from './LoadingManager.js';
  * @class WaitingOverlay
  */
 export class WaitingOverlay {
-    static POLL_INTERVAL_MS = 5000;
-
     /**
      * @param {object} deps
      * @param {object} deps.environmentApi - EnvironmentApi instance (for fetchTickRange)
@@ -23,76 +20,50 @@ export class WaitingOverlay {
     constructor({ environmentApi, organismApi }) {
         this._environmentApi = environmentApi;
         this._organismApi = organismApi;
-        this._timer = null;
+        this._waiter = new RunWaiter();
     }
 
     /**
-     * Shows loading status on the timeline and polls until tick data becomes available.
+     * Shows the waiting state until the check yields a value.
      *
-     * Resolves with the first available maxTick value.
-     * Rejects if the simulation engine is not running for the given runId.
+     * Fails with a RunUnavailableError once the run is no longer starting, and with an
+     * AbortError when cancelled.
+     *
+     * @param {string} runId - The run ID to wait for.
+     * @param {function(): Promise<any>} check - Resolves to the awaited value, or null while there is none.
+     * @returns {Promise<any>} The first value the check yields.
+     */
+    async waitFor(runId, check) {
+        loadingManager.show('Waiting for data');
+        try {
+            return await this._waiter.wait(runId, {
+                check,
+                onProgress: text => loadingManager.update(text)
+            });
+        } finally {
+            loadingManager.hide();
+        }
+    }
+
+    /**
+     * Waits until tick data of the run is available.
      *
      * @param {string} runId - The run ID to wait for.
      * @returns {Promise<number>} The first available maxTick.
      */
     waitForData(runId) {
-        return new Promise((resolve, reject) => {
-            loadingManager.show('Waiting for data');
-
-            const poll = async () => {
-                try {
-                    const status = await fetch('/pipeline/api/status')
-                        .then(r => r.ok ? r.json() : null)
-                        .catch(() => null);
-
-                    if (status) {
-                        const pipelineActive = status.status === 'RUNNING' || status.status === 'DEGRADED';
-
-                        if (!pipelineActive || status.activeRunId !== runId) {
-                            this._stop();
-                            loadingManager.hide();
-                            reject(new Error('No data available for this run'));
-                            return;
-                        }
-
-                        this._updateStatus(status);
-                    }
-
-                    const maxTick = await this._fetchMaxTick(runId);
-                    if (maxTick !== null) {
-                        this._stop();
-                        loadingManager.hide();
-                        resolve(maxTick);
-                    }
-                } catch (e) {
-                    console.debug('WaitingOverlay poll error:', e);
-                }
-            };
-
-            poll();
-            this._timer = setInterval(poll, WaitingOverlay.POLL_INTERVAL_MS);
-        });
+        return this.waitFor(runId, () => this._fetchMaxTick(runId));
     }
 
     /**
-     * Immediately stops polling and hides the loading overlay (e.g. on navigation away).
+     * Immediately stops waiting and hides the loading overlay (e.g. on navigation away).
      */
     cancel() {
-        this._stop();
+        this._waiter.cancel();
         loadingManager.hide();
     }
 
     // ── Private ──────────────────────────────────────────────
-
-    _updateStatus(pipelineStatus) {
-        const source = (pipelineStatus.services || []).find(s => s.metrics?.current_tick !== undefined);
-        if (!source) return;
-        const ticks = Math.max(0, source.metrics.current_tick ?? 0);
-        const tps = source.metrics.ticks_per_second ?? 0;
-        const ticksFmt = Number(ticks).toLocaleString('en-US');
-        const tpsFmt = Math.round(tps).toLocaleString('en-US');
-        loadingManager.update(`Waiting for data \u2014 ${ticksFmt} ticks \u00b7 ${tpsFmt} t/s`);
-    }
 
     async _fetchMaxTick(runId) {
         const [envRange, orgRange] = await Promise.all([
@@ -105,12 +76,5 @@ export class WaitingOverlay {
         if (envRange?.maxTick !== undefined) return envRange.maxTick;
         if (orgRange?.maxTick !== undefined) return orgRange.maxTick;
         return null;
-    }
-
-    _stop() {
-        if (this._timer) {
-            clearInterval(this._timer);
-            this._timer = null;
-        }
     }
 }

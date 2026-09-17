@@ -1,4 +1,5 @@
 import { PipelineStatusPoller } from '../../../../shared/pipeline/PipelineStatusPoller.js';
+import { includeStartingRun } from '../../../../shared/run/RunAvailability.js';
 
 /**
  * Run selector panel for choosing simulation runs.
@@ -210,7 +211,9 @@ export class RunSelectorPanel {
      */
     renderList(filterText) {
         const term = (filterText || '').toLowerCase();
-        this.filteredRuns = this.runs.filter(r => r.runId && r.runId.toLowerCase().includes(term));
+        const { activeRunId, status } = this._pipelineState();
+        this.filteredRuns = includeStartingRun(this.runs, { activeRunId, status })
+            .filter(r => r.runId && r.runId.toLowerCase().includes(term));
 
         if (this.filteredRuns.length === 0) {
             this.listEl.innerHTML = `<div class="run-selector-empty">No runs available</div>`;
@@ -218,7 +221,6 @@ export class RunSelectorPanel {
         }
 
         const currentRunId = this.getCurrentRunId?.() || null;
-        const { activeRunId, status } = this._pipelineState();
 
         this.listEl.innerHTML = this.filteredRuns.map((r, index) => {
             const classes = ['run-selector-item'];

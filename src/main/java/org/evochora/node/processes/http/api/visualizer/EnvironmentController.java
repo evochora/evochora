@@ -174,7 +174,7 @@ public class EnvironmentController extends VisualizerBaseController {
         // Minimap aggregator is stateless and thread-safe
         this.minimapAggregator = new MinimapAggregator();
 
-        LOGGER.info("EnvironmentController chunk cache initialized: one chunk, expireAfterAccess={}s",
+        LOGGER.debug("EnvironmentController chunk cache initialized: one chunk, expireAfterAccess={}s",
             expireAfterAccessSeconds);
     }
 

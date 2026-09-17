@@ -1,4 +1,5 @@
 import { PipelineStatusPoller } from '../pipeline/PipelineStatusPoller.js';
+import { includeStartingRun } from '../run/RunAvailability.js';
 
 export class Footer {
     /**
@@ -101,10 +102,11 @@ export class Footer {
 
     renderOverlay(filterText) {
         const term = (filterText || '').toLowerCase();
-        const matches = this.runs.filter(r => r.runId && r.runId.toLowerCase().includes(term));
+        const { activeRunId, status } = this._pipelineState();
+        const matches = includeStartingRun(this.runs, { activeRunId, status })
+            .filter(r => r.runId && r.runId.toLowerCase().includes(term));
 
         const currentRunId = this.getCurrentRunId?.() || null;
-        const { activeRunId, status } = this._pipelineState();
 
         const listItems = matches.map(r => {
             const classes = ['footer-run-item'];
@@ -263,6 +265,15 @@ export class Footer {
     }
 
     // ── Pipeline status ──────────────────────────────────────
+
+    /**
+     * Returns the pipeline state as last polled, which the page may use to decide whether data is
+     * still to be expected.
+     * @returns {{ activeRunId: string|null, status: string|null }}
+     */
+    pipelineState() {
+        return this._pipelineState();
+    }
 
     /** @returns {{ activeRunId: string|null, status: string|null }} */
     _pipelineState() {

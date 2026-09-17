@@ -40,6 +40,9 @@ public class HttpServerProcess extends AbstractProcess {
     // Keys are now quoted to be valid HOCON syntax.
     private static final String CONTROLLER_ACTION_KEY = "\"$controller\"";
     private static final String STATIC_ACTION_KEY = "\"$static\"";
+    /** Colours the lead-in of the web interface line; the URL itself stays uncoloured so terminals can link it. */
+    private static final String ANSI_GREEN = "\u001B[32m";
+    private static final String ANSI_RESET = "\u001B[0m";
 
     private final List<RouteDefinition> routeDefinitions = new ArrayList<>();
     private final ServiceRegistry controllerRegistry;
@@ -187,7 +190,37 @@ public class HttpServerProcess extends AbstractProcess {
         registerControllers(app);
 
         app.start(host, port);
-        LOGGER.info("HTTP server started on {}:{}", host, port);
+        if (servesRootPage()) {
+            LOGGER.debug("HTTP server started on {}:{}", host, port);
+            LOGGER.info("{}Web interface available at{} {}", ANSI_GREEN, ANSI_RESET, webInterfaceUrl(host, port));
+        } else {
+            LOGGER.info("HTTP server started on {}:{}", host, port);
+        }
+    }
+
+    /**
+     * Tells whether a static page is served at the root path, which is the entry page for users.
+     *
+     * @return true if a static route is configured for {@code /}
+     */
+    private boolean servesRootPage() {
+        return routeDefinitions.stream()
+            .anyMatch(def -> def.type == RouteType.STATIC && "/".equals(def.basePath));
+    }
+
+    /**
+     * Builds the URL under which a user reaches the root page of this server.
+     * <p>
+     * A wildcard bind address listens on every interface but cannot be opened in a browser, so it
+     * is shown as {@code localhost}; any other host is shown as configured.
+     *
+     * @param host the configured bind address
+     * @param port the configured port
+     * @return the URL of the root page, ending with a slash
+     */
+    static String webInterfaceUrl(final String host, final int port) {
+        final boolean wildcard = "0.0.0.0".equals(host) || "::".equals(host) || "[::]".equals(host);
+        return "http://" + (wildcard ? "localhost" : host) + ":" + port + "/";
     }
 
     @Override

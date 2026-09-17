@@ -978,8 +978,11 @@ public class AnalyticsController implements IController {
             Map<String, Object> response = Map.of("metrics", entries);
             String responseJson = gson.toJson(response);
             
-            // Update Cache
-            manifestCache.put(runId, new CacheEntry(System.currentTimeMillis(), responseJson));
+            // An empty manifest belongs to a run whose indexer has not written it yet; caching it
+            // would hide the metrics for a whole TTL once they appear.
+            if (!entries.isEmpty()) {
+                manifestCache.put(runId, new CacheEntry(System.currentTimeMillis(), responseJson));
+            }
             
             ctx.json(response);
             

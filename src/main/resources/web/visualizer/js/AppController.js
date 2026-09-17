@@ -13,6 +13,9 @@ import { TickPanelManager } from './ui/panels/TickPanelManager.js';
 import * as TickGrid from './TickGrid.js';
 import { loadingManager } from './ui/LoadingManager.js';
 import { WaitingOverlay } from './ui/WaitingOverlay.js';
+import {
+    NO_RUNS_MESSAGE, RunUnavailableError, chooseInitialRunId, fetchPipelineStatus, isRunStarting, runHasNoDataMessage
+} from '../../shared/run/RunAvailability.js';
 
 /**
  * The main application controller. It initializes all components, manages the application state,
@@ -179,57 +182,18 @@ export class AppController {
             
             this.tickPanelManager.updateTickDisplay(this.state.currentTick, this.state.maxTick);
 
-            // Fetch metadata for new run
-            const metadata = await this.simulationApi.fetchMetadata(this.state.runId);
-            this.state.metadata = metadata; // Store metadata for use by components
-            
-            // Set type mappings for Protobuf ID resolution in EnvironmentApi
-            setTypeMappings(metadata);
-            this.minimapView?.setMoleculeTypes(metadata?.moleculeTypes, metadata?.moleculeTypeShift);
-
-            // Update UI components that depend on metadata
-            this._refreshStepInfo();
-            this.tickPanelManager?.loadMultiplierForRun(this.state.runId); // Load after metadata is ready
-            this.tickPanelManager?.updateTooltips();
-
-            if (metadata?.environment?.shape) {
-                this.state.worldShape = Array.from(metadata.environment.shape);
-                this.renderer.updateWorldShape(this.state.worldShape);
-            }
-            if (Array.isArray(metadata?.programs)) {
-                // Attach environment info to each artifact for toroidal coordinate calculations
-                const envInfo = metadata?.environment;
-                for (const program of metadata.programs) {
-                    if (program && program.programId && program.sources) {
-                        if (envInfo) {
-                            // Derive per-dimension toroidal flags from topology string.
-                            // Config uses topology="TORUS" (string), not a toroidal array.
-                            const isTorus = envInfo.topology?.toUpperCase() === 'TORUS';
-                            const shape = envInfo.shape ? Array.from(envInfo.shape) : null;
-                            program.envProps = {
-                                worldShape: shape,
-                                toroidal: shape ? shape.map(() => isTorus) : null
-                            };
-                        }
-                        this.programArtifactCache.set(program.programId, program);
-                    }
-                }
-            }
-            // Update organism panel manager with metadata
-            if (this.organismPanelManager) {
-                this.organismPanelManager.setMetadata(metadata);
-            }
-
-            await this._refreshTickRanges();
-            this.tickPanelManager.updateTickDisplay(this.state.currentTick, this.state.maxTick);
+            await this._loadRun(null, null);
 
             // Load initial tick for new run
             await this.navigateToTick(this.state.currentTick, true);
             window.runSelectorPanel?.updateCurrent?.();
             this._startMaxTickPolling();
         } catch (error) {
+            if (error.name === 'AbortError') {
+                return;
+            }
             console.error('Failed to change run:', error);
-            showError('Failed to change run: ' + error.message);
+            showError(error instanceof RunUnavailableError ? error.message : 'Failed to change run: ' + error.message);
         }
     }
     
@@ -563,8 +527,11 @@ export class AppController {
         try {
             hideError();
 
-            // Ensure we have an initial runId (latest if none provided)
+            // Ensure we have an initial runId (the starting run, else the latest, if none provided)
             await this.ensureInitialRunId();
+            if (!this.state.runId) {
+                throw new RunUnavailableError(NO_RUNS_MESSAGE);
+            }
 
             // Initialize renderer
             this._initInProgress = true;
@@ -601,68 +568,7 @@ export class AppController {
             this.simulationRequestController = new AbortController();
             const signal = this.simulationRequestController.signal;
 
-            // Load metadata for world shape
-            loadingManager.update('Loading metadata', 15);
-            const metadata = await this.simulationApi.fetchMetadata(this.state.runId, { signal });
-            if (metadata) {
-                this.state.metadata = metadata; // Store metadata for use by components
-                
-                // Set type mappings for Protobuf ID resolution in EnvironmentApi
-                setTypeMappings(metadata);
-                this.minimapView?.setMoleculeTypes(metadata?.moleculeTypes, metadata?.moleculeTypeShift);
-
-                // Update sampling info in the UI
-                this._refreshStepInfo();
-                this.tickPanelManager?.loadMultiplierForRun(this.state.runId);
-                this.tickPanelManager?.updateTooltips();
-                
-                if (metadata.runId && !this.state.runId) {
-                    this.state.runId = metadata.runId;
-                }
-                if (metadata.environment && metadata.environment.shape) {
-                    this.state.worldShape = Array.from(metadata.environment.shape);
-                    // Wait a bit before updating world shape to ensure devicePixelRatio is stable
-                    // This helps with monitor-specific initialization issues
-                    await new Promise(resolve => requestAnimationFrame(resolve));
-                    this.renderer.updateWorldShape(this.state.worldShape);
-                }
-
-                // Cache program artifacts with environment info for toroidal calculations
-                if (Array.isArray(metadata.programs)) {
-                    const envInfo = metadata?.environment;
-                    for (const program of metadata.programs) {
-                        if (program && program.programId && program.sources) {
-                            if (envInfo) {
-                                const isTorus = envInfo.topology?.toUpperCase() === 'TORUS';
-                                const shape = envInfo.shape ? Array.from(envInfo.shape) : null;
-                                program.envProps = {
-                                    worldShape: shape,
-                                    toroidal: shape ? shape.map(() => isTorus) : null
-                                };
-                            }
-                            this.programArtifactCache.set(program.programId, program);
-                        }
-                    }
-                }
-                
-                // Update organism panel manager with metadata
-                if (this.organismPanelManager) {
-                    this.organismPanelManager.setMetadata(metadata);
-                }
-            }
-            
-            // Load which ticks the run holds
-            loadingManager.update('Loading tick range', 30);
-            await this._refreshTickRanges();
-            this.tickPanelManager.updateTickDisplay(this.state.currentTick, this.state.maxTick);
-
-            // If no tick data is available yet, wait for the simulation to produce data
-            if (this.state.maxTick === null) {
-                loadingManager.hide();
-                this.state.maxTick = await this.waitingOverlay.waitForData(this.state.runId);
-                this.tickPanelManager.updateTickDisplay(this.state.currentTick, this.state.maxTick);
-                loadingManager.show('Loading');
-            }
+            await this._loadRun(signal, (label, percent) => loadingManager.update(label, percent));
 
             // Wait for layout to be calculated before loading initial viewport
             // This ensures correct viewport size calculation on first load,
@@ -697,7 +603,7 @@ export class AppController {
                 return;
             }
             console.error('Failed to initialize application:', error);
-            showError('Failed to initialize: ' + error.message);
+            showError(error instanceof RunUnavailableError ? error.message : 'Failed to initialize: ' + error.message);
         }
     }
     
@@ -717,6 +623,114 @@ export class AppController {
             // Silently fail - don't interrupt navigation if update fails
             console.debug('Failed to update maxTick:', error);
         }
+    }
+
+    /**
+     * Loads what the current run needs before its first tick can be shown: the metadata and the
+     * range of recorded ticks. While the run is starting and either is not indexed yet, the
+     * waiting overlay stays up until it is; a run that is not starting and lacks either fails with
+     * a RunUnavailableError.
+     *
+     * @param {AbortSignal|null} signal - Cancels the metadata request.
+     * @param {function(string, number): void|null} onStep - Receives the loading steps; given only
+     *        while the initial loading indicator is shown, which is restored after a wait.
+     * @returns {Promise<void>}
+     * @private
+     */
+    async _loadRun(signal, onStep) {
+        const runId = this.state.runId;
+
+        onStep?.('Loading metadata', 15);
+        let metadata = await this._fetchIndexedMetadata(runId, signal);
+        if (!metadata) {
+            if (!isRunStarting(await fetchPipelineStatus(), runId)) {
+                throw new RunUnavailableError(runHasNoDataMessage(runId));
+            }
+            metadata = await this._waitForRun(runId, () => this._fetchIndexedMetadata(runId, signal), onStep);
+        }
+        await this._applyMetadata(metadata);
+
+        onStep?.('Loading tick range', 30);
+        await this._refreshTickRanges();
+        this.tickPanelManager.updateTickDisplay(this.state.currentTick, this.state.maxTick);
+        if (this.state.maxTick === null) {
+            this.state.maxTick = await this._waitForRun(runId, null, onStep);
+            this.tickPanelManager.updateTickDisplay(this.state.currentTick, this.state.maxTick);
+        }
+    }
+
+    /**
+     * Shows the waiting overlay until the check yields a value; without a check, until the run
+     * has tick data.
+     * @private
+     */
+    async _waitForRun(runId, check, onStep) {
+        if (onStep) loadingManager.hide();
+        const value = check
+            ? await this.waitingOverlay.waitFor(runId, check)
+            : await this.waitingOverlay.waitForData(runId);
+        if (onStep) loadingManager.show('Loading');
+        return value;
+    }
+
+    /**
+     * Fetches the metadata of a run, or null while the index does not hold it.
+     * @private
+     */
+    async _fetchIndexedMetadata(runId, signal) {
+        try {
+            return await this.simulationApi.fetchMetadata(runId, { signal });
+        } catch (error) {
+            if (error?.status === 404) return null;
+            throw error;
+        }
+    }
+
+    /**
+     * Hands the metadata of the current run to every component that depends on it.
+     * @private
+     */
+    async _applyMetadata(metadata) {
+        this.state.metadata = metadata;
+
+        // Set type mappings for Protobuf ID resolution in EnvironmentApi
+        setTypeMappings(metadata);
+        this.minimapView?.setMoleculeTypes(metadata?.moleculeTypes, metadata?.moleculeTypeShift);
+
+        // Update sampling info in the UI
+        this._refreshStepInfo();
+        this.tickPanelManager?.loadMultiplierForRun(this.state.runId);
+        this.tickPanelManager?.updateTooltips();
+
+        if (metadata?.environment?.shape) {
+            this.state.worldShape = Array.from(metadata.environment.shape);
+            // Wait a frame before updating world shape to ensure devicePixelRatio is stable
+            // This helps with monitor-specific initialization issues
+            await new Promise(resolve => requestAnimationFrame(resolve));
+            this.renderer.updateWorldShape(this.state.worldShape);
+        }
+
+        // Cache program artifacts with environment info for toroidal calculations
+        if (Array.isArray(metadata?.programs)) {
+            const envInfo = metadata?.environment;
+            for (const program of metadata.programs) {
+                if (program && program.programId && program.sources) {
+                    if (envInfo) {
+                        // Topology is configured as a string ("TORUS"), not per dimension
+                        const isTorus = envInfo.topology?.toUpperCase() === 'TORUS';
+                        const shape = envInfo.shape ? Array.from(envInfo.shape) : null;
+                        program.envProps = {
+                            worldShape: shape,
+                            toroidal: shape ? shape.map(() => isTorus) : null
+                        };
+                    }
+                    this.programArtifactCache.set(program.programId, program);
+                }
+            }
+        }
+
+        // Update organism panel manager with metadata
+        this.organismPanelManager?.setMetadata(metadata);
     }
 
     /**
@@ -1563,26 +1577,22 @@ export class AppController {
     }
 
     /**
-     * Ensures there is an initial runId by fetching the latest run if none is set.
-     * Mirrors analyzer behavior: auto-picks newest run.
+     * Ensures there is an initial runId if none is set: the starting run, otherwise the newest run
+     * with data. Leaves it unset if there is neither.
      * @private
      */
     async ensureInitialRunId() {
         if (this.state.runId) return;
-        try {
-            const response = await fetch('/analyzer/api/runs');
-            if (!response.ok) {
-                const text = await response.text();
-                throw new Error(text || 'Failed to fetch runs');
-            }
-            const runs = await response.json();
-            if (Array.isArray(runs) && runs.length > 0) {
-                runs.sort((a, b) => (b.startTime || 0) - (a.startTime || 0));
-                this.state.runId = runs[0].runId;
-            }
-        } catch (error) {
-            console.error('Failed to auto-select runId:', error);
-        }
+        const [runs, pipeline] = await Promise.all([
+            fetch('/analyzer/api/runs')
+                .then(response => response.ok ? response.json() : [])
+                .catch(error => {
+                    console.error('Failed to fetch runs:', error);
+                    return [];
+                }),
+            fetchPipelineStatus()
+        ]);
+        this.state.runId = chooseInitialRunId(Array.isArray(runs) ? runs : [], pipeline);
     }
 
     /**

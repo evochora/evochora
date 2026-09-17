@@ -4,6 +4,10 @@ import * as HeaderView from './ui/HeaderView.js';
 import * as DashboardView from './ui/DashboardView.js';
 import * as DuckDBClient from './data/DuckDBClient.js';
 import * as MetricCardView from './ui/MetricCardView.js';
+import {
+    NO_RUNS_MESSAGE, RunUnavailableError, RunWaiter, WAIT_INTERVAL_MS,
+    chooseInitialRunId, fetchPipelineStatus, isRunStarting, runHasNoDataMessage
+} from '../../shared/run/RunAvailability.js';
 
 /**
  * Analyzer Controller
@@ -33,6 +37,14 @@ import * as MetricCardView from './ui/MetricCardView.js';
     let currentRunId = null;
     let manifest = null;
     let isLoading = false;
+    /** Increases with every dashboard load, so a load that was overtaken leaves the page alone. */
+    let loadGeneration = 0;
+    /** Pipeline status as last fetched by this controller; the footer's poll takes over once it has one. */
+    let pipeline = null;
+    /** Waits for the manifest of a starting run. */
+    const manifestWaiter = new RunWaiter();
+    /** Pending reloads of cards that wait for their first data, keyed by metric ID. */
+    const dataRetryTimers = {};
     /** @type {Object<string, AbortController>} Active abort controllers per metric ID */
     const abortControllers = {};
 
@@ -84,31 +96,28 @@ export async function init() {
     }
     
     /**
- * Loads available runs and auto-selects the latest if none selected.
+     * Loads the dashboard of the run in the URL, or, without one, of the starting run or else the
+     * newest run with data.
      */
     async function loadRuns() {
         try {
             HeaderView.setLoading(true);
             
-            const runs = await AnalyticsApi.listRuns();
-            
-        // Auto-load first (latest) run if available and none selected
-        if (runs.length > 0 && !currentRunId) {
-            // Sort by startTime or runId timestamp (newest first)
-            const sorted = [...runs].sort((a, b) => {
-                const scoreA = a.startTime || extractTimestamp(a.runId);
-                const scoreB = b.startTime || extractTimestamp(b.runId);
-                return scoreB - scoreA;
-            });
-            currentRunId = sorted[0].runId;
-            updateUrlRunId(currentRunId);
+            const [runs, status] = await Promise.all([AnalyticsApi.listRuns(), fetchPipelineStatus()]);
+            pipeline = status;
+
+            // Without a run in the URL: the starting run, otherwise the newest one with data
+            if (!currentRunId) {
+                currentRunId = chooseInitialRunId(runs, pipeline);
+                if (!currentRunId) {
+                    showError(NO_RUNS_MESSAGE);
+                    return;
+                }
+                updateUrlRunId(currentRunId);
+            }
             window.footer?.updateCurrent?.();
             await loadDashboard(currentRunId);
-        } else if (currentRunId) {
-            window.footer?.updateCurrent?.();
-            await loadDashboard(currentRunId);
-        }
-            
+
         } catch (error) {
             console.error('[AnalyzerController] Failed to load runs:', error);
             showError(`Failed to load runs: ${error.message}`);
@@ -117,14 +126,6 @@ export async function init() {
         }
     }
 
-/**
- * Extracts a sortable timestamp from a runId.
- */
-function extractTimestamp(runId) {
-    const m = (runId || '').match(/^(\d{8})-(\d{8})/);
-    return m ? Number(m[1] + m[2]) : 0;
-}
-    
     /**
      * Handles run selection change.
      */
@@ -175,19 +176,22 @@ function extractTimestamp(runId) {
      * @param {string} runId - Simulation run ID
      */
 export async function loadDashboard(runId) {
-        if (isLoading) return;
+        // A load still waiting for a starting run gives way; any other load in progress wins
+        if (isLoading && !manifestWaiter.isWaiting()) return;
+        manifestWaiter.cancel();
+        clearDataRetries();
+        const generation = ++loadGeneration;
         isLoading = true;
         
         try {
+            hideError();
             HeaderView.setLoading(true);
             DashboardView.showMessage('Loading metrics...');
             
-            // Fetch manifest
+            // Fetch manifest; a starting run has none yet and is waited for
             manifest = await AnalyticsApi.getManifest(runId);
-            
             if (!manifest.metrics || manifest.metrics.length === 0) {
-                DashboardView.showEmptyState('No metrics available for this run.');
-                return;
+                manifest = await waitForManifest(runId);
             }
             
             // Sort metrics by preferred order
@@ -236,11 +240,80 @@ export async function loadDashboard(runId) {
             await loadAllMetricsData();
             
         } catch (error) {
+            if (generation !== loadGeneration || error.name === 'AbortError') {
+                return;
+            }
+            if (error instanceof RunUnavailableError) {
+                DashboardView.showMessage('');
+                showError(error.message);
+                return;
+            }
             console.error('[AnalyzerController] Failed to load dashboard:', error);
             DashboardView.showMessage(`Error: ${error.message}`, true);
         } finally {
-            isLoading = false;
-            HeaderView.setLoading(false);
+            if (generation === loadGeneration) {
+                isLoading = false;
+                HeaderView.setLoading(false);
+            }
+        }
+    }
+
+    /**
+     * Waits until the manifest of a starting run lists metrics, showing the progress of the
+     * simulation meanwhile.
+     *
+     * @param {string} runId - Simulation run ID
+     * @returns {Promise<Object>} The manifest
+     * @throws {RunUnavailableError} If the run is not starting, or stops before its metrics appear
+     */
+    async function waitForManifest(runId) {
+        pipeline = await fetchPipelineStatus();
+        if (!isRunStarting(pipeline, runId)) {
+            throw new RunUnavailableError(runHasNoDataMessage(runId));
+        }
+        DashboardView.showMessage('Waiting for data');
+        return manifestWaiter.wait(runId, {
+            check: async () => {
+                const candidate = await AnalyticsApi.getManifest(runId);
+                return candidate.metrics && candidate.metrics.length > 0 ? candidate : null;
+            },
+            onProgress: text => DashboardView.showMessage(text)
+        });
+    }
+
+    /**
+     * Shows that a card has no data. While the run shown is starting, more may come: the card
+     * says so and loads itself again after a while, until it has data or the run stops.
+     *
+     * @param {Object} card - MetricCard instance
+     */
+    function showNoDataOrRetry(card) {
+        const runId = currentRunId;
+        const polled = window.footer?.pipelineState?.();
+        const status = polled && polled.status ? polled : pipeline;
+        if (!isRunStarting(status, runId)) {
+            MetricCardView.showNoData(card);
+            return;
+        }
+        MetricCardView.showWaitingForData(card);
+        const metricId = card.metric.id;
+        clearTimeout(dataRetryTimers[metricId]);
+        dataRetryTimers[metricId] = setTimeout(() => {
+            delete dataRetryTimers[metricId];
+            if (runId !== currentRunId || DashboardView.getAllCards()[metricId] !== card) return;
+            loadMetricData(card).catch(error => {
+                if (error.name === 'AbortError') return;
+                console.error(`[AnalyzerController] Failed to reload metric ${metricId}:`, error);
+                MetricCardView.showError(card, error.message || 'Failed to load data');
+            });
+        }, WAIT_INTERVAL_MS);
+    }
+
+    /** Drops every pending card reload, as when another run or dashboard is loaded. */
+    function clearDataRetries() {
+        for (const metricId of Object.keys(dataRetryTimers)) {
+            clearTimeout(dataRetryTimers[metricId]);
+            delete dataRetryTimers[metricId];
         }
     }
     
@@ -453,7 +526,7 @@ export async function loadDashboard(runId) {
             }
 
             if (data.length === 0) {
-                MetricCardView.showNoData(card);
+                showNoDataOrRetry(card);
                 return;
             }
 
@@ -469,7 +542,7 @@ export async function loadDashboard(runId) {
                 throw error;
             }
             if (error.code === 'NO_DATA') {
-                MetricCardView.showNoData(card);
+                showNoDataOrRetry(card);
                 return;
             }
             console.error(`[Analytics] Error loading metric ${metricId}:`, error);

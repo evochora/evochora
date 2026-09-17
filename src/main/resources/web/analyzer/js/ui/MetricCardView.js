@@ -355,6 +355,17 @@ export function showNoData(card) {
 }
 
 /**
+ * Shows that the card has no data yet but may still get some.
+ *
+ * @param {Object} card
+ */
+export function showWaitingForData(card) {
+    if (card) {
+        showMessage(card, 'Waiting for data\u2026');
+    }
+}
+
+/**
  * Shows a message on the card overlay.
  * 
  * @param {Object} card

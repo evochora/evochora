@@ -392,7 +392,6 @@ public class ServiceManagerTest {
 
     @Test
     @FailOnLog(level = LogLevel.INFO)
-    @ExpectLog(level = LogLevel.INFO, messagePattern = "Initializing ServiceManager\\.\\.\\.")
     @ExpectLog(level = LogLevel.INFO, messagePattern = ".*========== Resource Initialization ==========.*")
     @ExpectLog(level = LogLevel.INFO, messagePattern = "Instantiated resource 'test-queue' of type .*")
     @ExpectLog(level = LogLevel.INFO, messagePattern = "Instantiated resource 'consumer-dlq' of type .*")
@@ -400,7 +399,6 @@ public class ServiceManagerTest {
     @ExpectLog(level = LogLevel.INFO, messagePattern = ".*========== Service Initialization ==========.*")
     @ExpectLog(level = LogLevel.INFO, messagePattern = "Built factory for service 'producer' of type .*")
     @ExpectLog(level = LogLevel.INFO, messagePattern = "Built factory for service 'consumer' of type .*")
-    @ExpectLog(level = LogLevel.INFO, messagePattern = "ServiceManager initialized with 3 resources and 2 service factories\\.")
     @ExpectLog(level = LogLevel.INFO, messagePattern = "Auto-start is disabled\\. Services must be started manually via API\\.")
     void testInitializationLogging() {
         new ServiceManager(createTestConfig(false));

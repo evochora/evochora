@@ -28,9 +28,6 @@ public class NodeShowCommand implements Callable<Integer> {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(NodeShowCommand.class);
 
-    /** Path under which the HTTP server hosts the visualizer's static files. */
-    private static final String VISUALIZER_PATH = "/visualizer/";
-
     /** Configuration of the network the HTTP process listens on. */
     private static final String HTTP_NETWORK_PATH = "node.processes.http.options.network";
 
@@ -42,7 +39,7 @@ public class NodeShowCommand implements Callable<Integer> {
         final CommandLineInterface cli = parent.getParent();
         final Config config = cli.getConfig(overrides());
         NodeLauncher.start(cli, config);
-        logVisualizerUrl(config);
+        warnIfNothingIsServed(config);
         return NodeLauncher.awaitShutdown();
     }
 
@@ -60,18 +57,15 @@ public class NodeShowCommand implements Callable<Integer> {
     }
 
     /**
-     * Reports where the visualizer of the started node can be reached.
+     * Warns when the node has no HTTP server, since a node that simulates nothing is then of no use.
+     * Where the web interface can be reached is reported by the HTTP server itself.
      *
      * @param config the configuration the node was started with
      */
-    private void logVisualizerUrl(final Config config) {
+    private void warnIfNothingIsServed(final Config config) {
         if (!config.hasPath(HTTP_NETWORK_PATH)) {
             LOGGER.warn("No HTTP server process is configured under {}, so this node serves nothing.",
                 HTTP_NETWORK_PATH);
-            return;
         }
-        final Config network = config.getConfig(HTTP_NETWORK_PATH);
-        LOGGER.info("Visualizer available at http://{}:{}{}",
-            network.getString("host"), network.getInt("port"), VISUALIZER_PATH);
     }
 }

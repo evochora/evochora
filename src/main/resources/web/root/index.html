@@ -1190,6 +1190,12 @@
                 return (b.startTime || 0) - (a.startTime || 0);
             });
 
+            // A run the pipeline is producing but whose data is not indexed yet
+            var pipelineActive = pipelineStatus === 'RUNNING' || pipelineStatus === 'DEGRADED';
+            if (activeRunId && pipelineActive && !runData[activeRunId]) {
+                runs.unshift({ runId: activeRunId, starting: true });
+            }
+
             if (runs.length === 0) {
                 el.innerHTML = '<div class="run-list-empty">No simulation runs available yet.</div>';
                 return;
@@ -1213,7 +1219,9 @@
                 qs = qs.replace('?&', '?');
                 h += '<tr' + cls + '>';
                 h += '<td>' + fmtTimestamp(run.runId);
-                if (isActive && pipelineStatus && pipelineStatus !== 'STOPPED') {
+                if (run.starting) {
+                    h += ' <span class="run-status-badge run-status-running">STARTING</span>';
+                } else if (isActive && pipelineStatus && pipelineStatus !== 'STOPPED') {
                     var badgeCls = 'run-status-badge ';
                     if (pipelineStatus === 'RUNNING') badgeCls += 'run-status-running';
                     else if (pipelineStatus === 'DEGRADED') badgeCls += 'run-status-error';
@@ -1237,7 +1245,7 @@
 
         // ── Refresh cycles ──
         function refreshLight() {
-            return fetchRuns().then(function() {
+            return Promise.all([fetchRuns(), fetchPipelineStatus()]).then(function() {
                 var promises = Object.keys(runData).map(function(id) {
                     return Promise.all([fetchTicks(id), fetchMetadata(id)]);
                 });
@@ -1247,12 +1255,10 @@
 
         function refreshHeavy() {
             if (!systemOnline) return Promise.resolve();
-            return fetchPipelineStatus().then(function() {
-                var promises = Object.keys(runData).map(function(id) {
-                    return fetchOrganisms(id);
-                });
-                return Promise.all(promises);
-            }).then(render);
+            var promises = Object.keys(runData).map(function(id) {
+                return fetchOrganisms(id);
+            });
+            return Promise.all(promises).then(render);
         }
 
         // ── Start ──

@@ -280,7 +280,7 @@ public final class Node {
             }
         }
 
-        LOGGER.info("Initialized {} process(es) successfully.", managedProcesses.size());
+        LOGGER.debug("Initialized {} process(es) successfully.", managedProcesses.size());
     }
 
     /**
