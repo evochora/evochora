@@ -20,7 +20,6 @@
     --button-bg: #3a3a5a;
     --button-border: #5a5a7a;
     --button-hover: #4a4a6a;
-    --error-bg: #8b1a1a;
     --chart-accent-1: #4a9eff;
     --chart-accent-2: #a0e0a0;
     --chart-accent-3: #ffb366;
@@ -449,57 +448,6 @@ main.container {
 
 .status-message.error {
     color: #ff6b6b;
-}
-
-/* --- Error Bar (global) --- */
-.error-bar {
-    position: fixed;
-    top: 54px;
-    left: 0;
-    width: 100%;
-    background-color: var(--error-bg);
-    color: #ffffff;
-    padding: 10px 40px 10px 15px;
-    display: none;
-    align-items: center;
-    justify-content: space-between;
-    border-bottom: 1px solid #aa2a2a;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-    z-index: 1001;
-}
-
-.error-bar.visible {
-    display: flex;
-}
-
-.error-bar-message {
-    flex: 1;
-    font-size: 0.9em;
-    line-height: 1.4;
-}
-
-.error-bar-close {
-    position: absolute;
-    right: 10px;
-    top: 50%;
-    transform: translateY(-50%);
-    background: transparent;
-    border: none;
-    color: #ffffff;
-    font-size: 24px;
-    cursor: pointer;
-    padding: 0;
-    width: 24px;
-    height: 24px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 3px;
-    transition: background-color 0.2s;
-}
-
-.error-bar-close:hover {
-    background-color: rgba(255, 255, 255, 0.2);
 }
 
 /* --- Empty State --- */

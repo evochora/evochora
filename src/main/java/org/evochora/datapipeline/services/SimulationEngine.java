@@ -124,6 +124,8 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
     private final int accumulatedDeltaInterval;
     private final int snapshotInterval;
     private final int chunkInterval;
+    /** Last tick before this service started simulating: -1 for a new run, the restored tick otherwise. */
+    private final long startTick;
     /** Upper bound on the cells one organism owns, an estimation assumption read from the options. */
     private final int maxCellsPerOrganism;
     private final int metricsWindowSeconds;
@@ -351,6 +353,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         this.seed = state.seed();
         this.startTimeMs = state.startTimeMs();
         this.currentTick.set(state.initialTick());
+        this.startTick = state.initialTick();
         state.programArtifacts().forEach(programArtifactsById::put);
 
         // Intervals from state (config for new simulation, metadata for resume)
@@ -953,6 +956,9 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         metrics.put("messages_sent", messagesSent.get());
         metrics.put("sampling_interval", samplingInterval);
         metrics.put("ticks_per_second", ticksPerSecond);
+        // Together with current_tick these tell how far the first chunk, and so the first data, is
+        metrics.put("start_tick", startTick);
+        metrics.put("ticks_per_chunk", simulationParameters.simulationTicksPerChunk());
     }
 
     private boolean shouldAutoPause(long tick) {

@@ -4,9 +4,10 @@ import * as HeaderView from './ui/HeaderView.js';
 import * as DashboardView from './ui/DashboardView.js';
 import * as DuckDBClient from './data/DuckDBClient.js';
 import * as MetricCardView from './ui/MetricCardView.js';
+import { dismissClosableNotice } from '../../shared/notice/Notice.js';
 import {
-    NO_RUNS_MESSAGE, RunUnavailableError, RunWaiter, WAIT_INTERVAL_MS,
-    chooseInitialRunId, fetchPipelineStatus, isRunStarting, runHasNoDataMessage
+    RunUnavailableError, RunWaiter, WAIT_INTERVAL_MS, chooseInitialRunId, fetchPipelineStatus,
+    isRunStarting, showLoadFailedNotice, showRunUnavailableNotice, waitWithStartNotice
 } from '../../shared/run/RunAvailability.js';
 
 /**
@@ -110,7 +111,7 @@ export async function init() {
             if (!currentRunId) {
                 currentRunId = chooseInitialRunId(runs, pipeline);
                 if (!currentRunId) {
-                    showError(NO_RUNS_MESSAGE);
+                    await showRunUnavailableNotice(new RunUnavailableError(null));
                     return;
                 }
                 updateUrlRunId(currentRunId);
@@ -120,7 +121,7 @@ export async function init() {
 
         } catch (error) {
             console.error('[AnalyzerController] Failed to load runs:', error);
-            showError(`Failed to load runs: ${error.message}`);
+            showLoadFailedNotice('Could not load the run list', error);
         } finally {
             HeaderView.setLoading(false);
         }
@@ -184,7 +185,7 @@ export async function loadDashboard(runId) {
         isLoading = true;
         
         try {
-            hideError();
+            dismissClosableNotice();
             HeaderView.setLoading(true);
             DashboardView.showMessage('Loading metrics...');
             
@@ -243,13 +244,13 @@ export async function loadDashboard(runId) {
             if (generation !== loadGeneration || error.name === 'AbortError') {
                 return;
             }
+            DashboardView.showMessage('');
             if (error instanceof RunUnavailableError) {
-                DashboardView.showMessage('');
-                showError(error.message);
+                await showRunUnavailableNotice(error);
                 return;
             }
             console.error('[AnalyzerController] Failed to load dashboard:', error);
-            DashboardView.showMessage(`Error: ${error.message}`, true);
+            showLoadFailedNotice('Could not load the analyzer dashboard', error);
         } finally {
             if (generation === loadGeneration) {
                 isLoading = false;
@@ -259,8 +260,7 @@ export async function loadDashboard(runId) {
     }
 
     /**
-     * Waits until the manifest of a starting run lists metrics, showing the progress of the
-     * simulation meanwhile.
+     * Waits until the manifest of a starting run lists metrics, showing the start card meanwhile.
      *
      * @param {string} runId - Simulation run ID
      * @returns {Promise<Object>} The manifest
@@ -269,15 +269,12 @@ export async function loadDashboard(runId) {
     async function waitForManifest(runId) {
         pipeline = await fetchPipelineStatus();
         if (!isRunStarting(pipeline, runId)) {
-            throw new RunUnavailableError(runHasNoDataMessage(runId));
+            throw new RunUnavailableError(runId);
         }
-        DashboardView.showMessage('Waiting for data');
-        return manifestWaiter.wait(runId, {
-            check: async () => {
-                const candidate = await AnalyticsApi.getManifest(runId);
-                return candidate.metrics && candidate.metrics.length > 0 ? candidate : null;
-            },
-            onProgress: text => DashboardView.showMessage(text)
+        DashboardView.showMessage('');
+        return waitWithStartNotice(manifestWaiter, runId, async () => {
+            const candidate = await AnalyticsApi.getManifest(runId);
+            return candidate.metrics && candidate.metrics.length > 0 ? candidate : null;
         });
     }
 
@@ -689,31 +686,6 @@ export async function loadDashboard(runId) {
             if (abortControllers[metricId] === controller) {
                 delete abortControllers[metricId];
             }
-        }
-    }
-    
-    /**
-     * Shows a global error message.
-     * 
-     * @param {string} message
-     */
-export function showError(message) {
-        const errorBar = document.getElementById('error-banner');
-        const errorMessage = document.getElementById('error-message');
-        
-        if (errorBar && errorMessage) {
-            errorMessage.textContent = message;
-            errorBar.classList.add('visible');
-        }
-    }
-    
-    /**
-     * Hides the global error message.
-     */
-export function hideError() {
-        const errorBar = document.getElementById('error-banner');
-        if (errorBar) {
-            errorBar.classList.remove('visible');
         }
     }
     

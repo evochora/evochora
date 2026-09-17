@@ -9,31 +9,32 @@
  * starting here; it appears once its data has been indexed.
  */
 
-/** Message shown when neither a run with data nor a starting run exists. */
-export const NO_RUNS_MESSAGE = 'No simulation runs available yet.';
+import { hideStartNotice, showErrorNotice, showStartNotice, updateStartNotice } from '../notice/Notice.js';
 
 /**
- * Raised when an interface has nothing to show for a run, or no run at all. Its message is meant
- * for the user as it is.
+ * Raised when an interface has nothing to show: no run at all ({@code runId} null), or a run
+ * without data that is not starting.
  */
 export class RunUnavailableError extends Error {
-    constructor(message) {
-        super(message);
+    /** @param {string|null} runId */
+    constructor(runId) {
+        super(runId ? `Run ${runId} has no data on this node.` : 'No simulation runs available.');
         this.name = 'RunUnavailableError';
+        this.runId = runId;
     }
+}
+
+/**
+ * Returns the names of the pipeline services that stopped with an error.
+ * @param {object|null} pipeline
+ * @returns {string[]}
+ */
+function failedServices(pipeline) {
+    return (pipeline?.services || []).filter(s => s.state === 'ERROR').map(s => s.name);
 }
 
 /** Interval in which a waiting interface checks again whether its data has arrived. */
 export const WAIT_INTERVAL_MS = 5000;
-
-/**
- * Builds the message shown when a run has no data and none is to be expected.
- * @param {string} runId
- * @returns {string}
- */
-export function runHasNoDataMessage(runId) {
-    return `Run ${runId} has no data on this node.`;
-}
 
 /**
  * Fetches the pipeline status of this node without touching any loading indicator.
@@ -110,24 +111,117 @@ export function sortRunsNewestFirst(runs) {
 }
 
 /**
- * Describes the progress of the simulation while an interface waits for its data.
- * @param {object|null} pipeline
+ * Shortens a run id for display: its start date and time and the last characters of its UUID.
+ * @param {string} runId
  * @returns {string}
  */
-export function waitingText(pipeline) {
-    const source = (pipeline?.services || []).find(s => s.metrics?.current_tick !== undefined);
-    if (!source) return 'Waiting for data';
-    const ticks = Math.max(0, source.metrics.current_tick ?? 0).toLocaleString('en-US');
-    const tps = Math.round(source.metrics.ticks_per_second ?? 0).toLocaleString('en-US');
-    return `Waiting for data — ${ticks} ticks · ${tps} t/s`;
+export function formatRunLabel(runId) {
+    const m = (runId || '').match(/^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})\d*-([0-9a-fA-F-]+)$/);
+    if (!m) return runId || '';
+    const tail = m[6].replace(/-/g, '').slice(-4);
+    return `${m[1]}-${m[2]}-${m[3]} ${m[4]}:${m[5]} \u00b7 \u2026${tail}`;
+}
+
+/**
+ * Tells how far a starting run is from its first data: the part of its first chunk simulated so
+ * far, whether that chunk is complete and waits for the indexers, and which services have failed
+ * meanwhile.
+ * @param {object|null} pipeline
+ * @returns {{indexing: boolean, fraction: number, ticks: number|null, ticksPerSecond: number|null, failed: string[]}}
+ */
+export function startProgress(pipeline) {
+    const failed = failedServices(pipeline);
+    const engine = (pipeline?.services || []).find(s => s.metrics?.ticks_per_chunk !== undefined);
+    if (!engine) return { indexing: false, fraction: 0, ticks: null, ticksPerSecond: null, failed };
+    const { current_tick: current, start_tick: start, ticks_per_chunk: perChunk, ticks_per_second: tps } = engine.metrics;
+    const simulated = Math.max(0, current - start);
+    const fraction = perChunk > 0 ? simulated / perChunk : 0;
+    // The engine measures its rate over a time window; until the first window has passed it reports 0
+    const ticksPerSecond = tps > 0 ? tps : null;
+    return { indexing: fraction >= 1, fraction: Math.min(1, fraction), ticks: Math.max(0, current), ticksPerSecond, failed };
+}
+
+/**
+ * Shows the start card while waiting for the data of a starting run, and removes it afterwards.
+ * @param {RunWaiter} waiter
+ * @param {string} runId
+ * @param {function(): Promise<any>} check - resolves to the awaited data, or null while there is none
+ * @returns {Promise<any>} the first non-null result of the check
+ */
+export async function waitWithStartNotice(waiter, runId, check) {
+    showStartNotice(formatRunLabel(runId));
+    try {
+        return await waiter.wait(runId, {
+            check,
+            onProgress: pipeline => updateStartNotice(startProgress(pipeline))
+        });
+    } finally {
+        hideStartNotice();
+    }
+}
+
+/**
+ * Shows what the user can do when there is nothing to show. For a run without data, the way to
+ * the latest run is offered only if there is a run to open.
+ * @param {RunUnavailableError} error
+ * @returns {Promise<void>}
+ */
+export async function showRunUnavailableNotice(error) {
+    const reload = { label: 'Reload', onClick: () => window.location.reload() };
+    if (!error.runId) {
+        showErrorNotice({
+            title: 'No simulation runs found',
+            text: 'Your configuration probably points to the wrong data location, or no simulation has been indexed yet.',
+            actions: [{ ...reload, primary: true }]
+        });
+        return;
+    }
+    const actions = [reload];
+    if (await hasRunToOpen()) {
+        actions.push({
+            label: 'Open latest run',
+            primary: true,
+            onClick: () => window.location.assign(window.location.pathname)
+        });
+    } else {
+        reload.primary = true;
+    }
+    showErrorNotice({
+        title: `Run ${formatRunLabel(error.runId)} has no data`,
+        text: 'Your configuration probably points to the wrong data location, or this run has not been indexed yet.',
+        actions
+    });
+}
+
+/**
+ * Shows that a page could not be loaded because of a technical fault; the user can only reload.
+ * @param {string} title
+ * @param {Error} error
+ */
+export function showLoadFailedNotice(title, error) {
+    showErrorNotice({
+        title,
+        detail: error?.message || String(error),
+        actions: [{ label: 'Reload', primary: true, onClick: () => window.location.reload() }]
+    });
+}
+
+/** @private */
+async function hasRunToOpen() {
+    const [runs, pipeline] = await Promise.all([
+        fetch('/analyzer/api/runs').then(r => r.ok ? r.json() : []).catch(() => []),
+        fetchPipelineStatus()
+    ]);
+    return (Array.isArray(runs) && runs.length > 0) || startingRunId(pipeline) !== null;
 }
 
 /**
  * Waits for the data of a starting run.
  *
  * Every {@link WAIT_INTERVAL_MS} the check is run; the wait ends with its first non-null result.
- * It fails with the no-data message once the run is no longer starting, and with an AbortError
- * when cancelled.
+ * It fails with a RunUnavailableError once the run is no longer starting, and with an AbortError
+ * when cancelled. A failed pipeline service does not end the wait: the data this interface needs
+ * may come from services that still run.
  */
 export class RunWaiter {
     constructor() {
@@ -140,7 +234,7 @@ export class RunWaiter {
      * @param {string} runId
      * @param {object} options
      * @param {function(): Promise<any>} options.check - resolves to the awaited data, or null while there is none
-     * @param {function(string): void} [options.onProgress] - receives a progress text on every round
+     * @param {function(object|null): void} [options.onProgress] - receives the pipeline status on every round
      * @returns {Promise<any>} the first non-null result of the check
      */
     wait(runId, { check, onProgress }) {
@@ -163,10 +257,10 @@ export class RunWaiter {
                     if (!current()) return;
                     if (pipeline && !isRunStarting(pipeline, runId)) {
                         this._finish();
-                        reject(new RunUnavailableError(runHasNoDataMessage(runId)));
+                        reject(new RunUnavailableError(runId));
                         return;
                     }
-                    onProgress?.(waitingText(pipeline));
+                    onProgress?.(pipeline);
                 } catch (e) {
                     console.debug('RunWaiter round failed:', e);
                 }

@@ -7,50 +7,10 @@
 import { AppController } from './AppController.js';
 import { AppSwitcher } from '../../shared/app-switcher/AppSwitcher.js';
 import { RunSelectorPanel } from './ui/panels/RunSelectorPanel.js';
+import { showLoadFailedNotice } from '../../shared/run/RunAvailability.js';
 
 // App controller instance (created after DOM is ready)
 export let appController = null;
-
-/**
- * Sets up global error handling functions.
- */
-function setupErrorHandling() {
-    const errorBanner = document.getElementById('error-banner');
-    const errorMessageSpan = document.getElementById('error-message');
-    const closeButton = document.getElementById('close-error-banner');
-
-    window.showError = (message) => {
-        if (errorMessageSpan && errorBanner) {
-            errorMessageSpan.textContent = message;
-            errorBanner.style.display = 'flex';
-        }
-    };
-
-    window.hideError = () => {
-        if (errorBanner && errorMessageSpan) {
-            errorBanner.style.display = 'none';
-            errorMessageSpan.textContent = '';
-        }
-    };
-
-    if (closeButton) {
-        closeButton.addEventListener('click', window.hideError);
-    }
-
-    // Close error modal with ESC key
-    document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' && errorBanner && errorBanner.style.display !== 'none') {
-            window.hideError();
-        }
-    });
-
-    // Close error modal when clicking on backdrop
-    errorBanner?.addEventListener('click', (e) => {
-        if (e.target === errorBanner) {
-            window.hideError();
-        }
-    });
-}
 
 /**
  * Initializes the AppSwitcher component.
@@ -118,9 +78,6 @@ async function initRunSelector() {
  */
 async function init() {
     try {
-        // Set up error handling first
-        setupErrorHandling();
-
         // Create the app controller (DOM is now ready)
         appController = new AppController();
 
@@ -134,7 +91,7 @@ async function init() {
         await appController.init();
     } catch (error) {
         console.error('Failed to initialize visualizer:', error);
-        window.showError?.('Failed to initialize visualizer: ' + error.message);
+        showLoadFailedNotice('Could not start the visualizer', error);
     }
 }
 

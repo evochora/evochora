@@ -507,6 +507,10 @@ class SimulationEngineTest {
         assertEquals(1, metrics.get("sampling_interval").intValue());
         assertEquals(0.0, metrics.get("ticks_per_second").doubleValue());
         assertEquals(0, metrics.get("error_count").intValue());
+        assertEquals(-1L, metrics.get("start_tick").longValue(), "A new run starts before tick 0");
+        assertEquals(SimulationParameters.DEFAULT_ACCUMULATED_DELTA_INTERVAL
+                * SimulationParameters.DEFAULT_SNAPSHOT_INTERVAL * SimulationParameters.DEFAULT_CHUNK_INTERVAL,
+            metrics.get("ticks_per_chunk").intValue(), "With sampling every tick a chunk spans its samples");
     }
 
     @Test

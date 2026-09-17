@@ -13,8 +13,10 @@ import { TickPanelManager } from './ui/panels/TickPanelManager.js';
 import * as TickGrid from './TickGrid.js';
 import { loadingManager } from './ui/LoadingManager.js';
 import { WaitingOverlay } from './ui/WaitingOverlay.js';
+import { dismissClosableNotice, hideNotice, showErrorNotice } from '../../shared/notice/Notice.js';
 import {
-    NO_RUNS_MESSAGE, RunUnavailableError, chooseInitialRunId, fetchPipelineStatus, isRunStarting, runHasNoDataMessage
+    RunUnavailableError, chooseInitialRunId, fetchPipelineStatus, isRunStarting,
+    showLoadFailedNotice, showRunUnavailableNotice
 } from '../../shared/run/RunAvailability.js';
 
 /**
@@ -105,6 +107,8 @@ export class AppController {
             environmentApi: this.environmentApi,
             organismApi: this.organismApi
         });
+        /** Run shown before a run change that failed, offered as the way back. */
+        this._runBeforeFailedChange = null;
 
         // Organism details views (render into organism-details container in the panel)
         const detailsRoot = document.getElementById('organism-details');
@@ -135,15 +139,20 @@ export class AppController {
     /**
      * Changes the active run and reloads all dependent data.
      * @param {string} runId - The run identifier to load.
+     * @param {object} [options]
+     * @param {boolean} [options.retry=false] - Loads the run even though it is already the current
+     *        one, as when a failed change is tried again.
      */
-    async changeRun(runId) {
+    async changeRun(runId, { retry = false } = {}) {
         const trimmed = runId ? runId.trim() : null;
-        if (!trimmed || trimmed === this.state.runId) {
+        if (!trimmed || (trimmed === this.state.runId && !retry)) {
             return;
         }
+        // The URL still names the run shown before; it is rewritten once the new run is loaded
+        const previousRunId = retry ? this._runBeforeFailedChange : this.state.runId;
 
         try {
-            hideError();
+            dismissClosableNotice();
 
             // Stop polling and cancel ongoing requests
             this._stopMaxTickPolling();
@@ -192,8 +201,27 @@ export class AppController {
             if (error.name === 'AbortError') {
                 return;
             }
+            if (error instanceof RunUnavailableError) {
+                // The page now belongs to the run without data, so a reload asks for it again
+                this.updateUrlState();
+                await showRunUnavailableNotice(error);
+                return;
+            }
             console.error('Failed to change run:', error);
-            showError(error instanceof RunUnavailableError ? error.message : 'Failed to change run: ' + error.message);
+            this._runBeforeFailedChange = previousRunId;
+            const actions = [];
+            if (previousRunId) {
+                actions.push({ label: 'Back to previous run', onClick: () => window.location.reload() });
+            }
+            actions.push({
+                label: 'Retry',
+                primary: true,
+                onClick: () => {
+                    hideNotice();
+                    this.changeRun(trimmed, { retry: true });
+                }
+            });
+            showErrorNotice({ title: 'Could not switch the run', detail: error.message, actions });
         }
     }
     
@@ -388,7 +416,7 @@ export class AppController {
         const signal = this.organismDetailsRequestController.signal;
 
         try {
-            hideError();
+            dismissClosableNotice();
             const details = await this.organismApi.fetchOrganismDetails(
                 this.state.currentTick,
                 organismId,
@@ -513,7 +541,7 @@ export class AppController {
             }
             console.error('Failed to load organism details:', error);
             this.clearOrganismDetails();
-            showError('Failed to load organism details: ' + error.message);
+            showErrorNotice({ title: 'Could not load the organism details', detail: error.message, closable: true });
         }
     }
     
@@ -525,12 +553,12 @@ export class AppController {
      */
     async init() {
         try {
-            hideError();
+            dismissClosableNotice();
 
             // Ensure we have an initial runId (the starting run, else the latest, if none provided)
             await this.ensureInitialRunId();
             if (!this.state.runId) {
-                throw new RunUnavailableError(NO_RUNS_MESSAGE);
+                throw new RunUnavailableError(null);
             }
 
             // Initialize renderer
@@ -602,8 +630,12 @@ export class AppController {
                 // Request aborted by user navigation - expected
                 return;
             }
+            if (error instanceof RunUnavailableError) {
+                await showRunUnavailableNotice(error);
+                return;
+            }
             console.error('Failed to initialize application:', error);
-            showError(error instanceof RunUnavailableError ? error.message : 'Failed to initialize: ' + error.message);
+            showLoadFailedNotice('Could not start the visualizer', error);
         }
     }
     
@@ -644,7 +676,7 @@ export class AppController {
         let metadata = await this._fetchIndexedMetadata(runId, signal);
         if (!metadata) {
             if (!isRunStarting(await fetchPipelineStatus(), runId)) {
-                throw new RunUnavailableError(runHasNoDataMessage(runId));
+                throw new RunUnavailableError(runId);
             }
             metadata = await this._waitForRun(runId, () => this._fetchIndexedMetadata(runId, signal), onStep);
         }
@@ -933,7 +965,7 @@ export class AppController {
         }
 
         try {
-            hideError();
+            dismissClosableNotice();
 
             // Request minimap only on tick change (not on panning)
             const needMinimap = this.state.currentTick !== this.lastMinimapTick;
@@ -1011,7 +1043,7 @@ export class AppController {
                 loadingManager.hide();
             }
             console.error('Failed to load viewport:', error);
-            showError('Failed to load viewport: ' + error.message);
+            showErrorNotice({ title: 'Could not load this tick', detail: error.message, closable: true });
             // Update panel with empty list on error
             this.updateOrganismPanel([]);
         }
@@ -1031,7 +1063,7 @@ export class AppController {
 
         loadingManager.show('Fetching environment');
         try {
-            hideError();
+            dismissClosableNotice();
             await this.renderer.loadViewport(this.state.currentTick, this.state.runId);
             // Re-render organism markers for the new viewport using cached data
             loadingManager.update('Rendering organisms', 90);
@@ -1045,7 +1077,7 @@ export class AppController {
                 return;
             }
             console.error('Failed to load environment for viewport:', error);
-            showError('Failed to load environment for viewport: ' + error.message);
+            showErrorNotice({ title: 'Could not load the environment', detail: error.message, closable: true });
         }
     }
 

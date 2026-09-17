@@ -1,13 +1,9 @@
-import { loadingManager } from './LoadingManager.js';
-import { RunWaiter } from '../../../shared/run/RunAvailability.js';
+import { hideStartNotice } from '../../../shared/notice/Notice.js';
+import { RunWaiter, waitWithStartNotice } from '../../../shared/run/RunAvailability.js';
 
 /**
- * Shows the waiting state on the timeline canvas while the visualizer is open on a starting run
- * whose data has not been indexed yet, and resolves once the awaited data is there.
- *
- * Uses LoadingManager (not TickPanelManager directly) so that the explicit-status
- * flag prevents counter-based API-request tracking from interfering with the
- * waiting-for-data state.
+ * Shows the start card while the visualizer is open on a starting run whose data has not been
+ * indexed yet, and resolves once the awaited data is there.
  *
  * @class WaitingOverlay
  */
@@ -24,7 +20,7 @@ export class WaitingOverlay {
     }
 
     /**
-     * Shows the waiting state until the check yields a value.
+     * Shows the start card until the check yields a value.
      *
      * Fails with a RunUnavailableError once the run is no longer starting, and with an
      * AbortError when cancelled.
@@ -33,16 +29,8 @@ export class WaitingOverlay {
      * @param {function(): Promise<any>} check - Resolves to the awaited value, or null while there is none.
      * @returns {Promise<any>} The first value the check yields.
      */
-    async waitFor(runId, check) {
-        loadingManager.show('Waiting for data');
-        try {
-            return await this._waiter.wait(runId, {
-                check,
-                onProgress: text => loadingManager.update(text)
-            });
-        } finally {
-            loadingManager.hide();
-        }
+    waitFor(runId, check) {
+        return waitWithStartNotice(this._waiter, runId, check);
     }
 
     /**
@@ -56,11 +44,11 @@ export class WaitingOverlay {
     }
 
     /**
-     * Immediately stops waiting and hides the loading overlay (e.g. on navigation away).
+     * Immediately stops waiting and removes the start card (e.g. on navigation away).
      */
     cancel() {
         this._waiter.cancel();
-        loadingManager.hide();
+        hideStartNotice();
     }
 
     // ── Private ──────────────────────────────────────────────

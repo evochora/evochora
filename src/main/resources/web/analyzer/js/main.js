@@ -24,19 +24,12 @@ import * as HeaderView from './ui/HeaderView.js';
 // Import shared components
 import { Footer } from '../../shared/footer/Footer.js';
 import { AppSwitcher } from '../../shared/app-switcher/AppSwitcher.js';
+import { showLoadFailedNotice } from '../../shared/run/RunAvailability.js';
 
 /**
  * Initializes the application when the DOM is ready.
  */
     function initApp() {
-        // Setup error bar close button
-        const closeErrorBtn = document.getElementById('close-error-banner');
-        if (closeErrorBtn) {
-            closeErrorBtn.addEventListener('click', () => {
-                AnalyzerController.hideError();
-            });
-        }
-    
     // Initialize shared components
     initAppSwitcher();
     initFooter();
@@ -44,7 +37,7 @@ import { AppSwitcher } from '../../shared/app-switcher/AppSwitcher.js';
         // Initialize the main controller
         AnalyzerController.init().catch(error => {
             console.error('[Analytics] Initialization failed:', error);
-            AnalyzerController.showError(`Initialization failed: ${error.message}`);
+            showLoadFailedNotice('Could not start the analyzer', error);
         });
     }
     
