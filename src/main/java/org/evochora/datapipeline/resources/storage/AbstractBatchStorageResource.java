@@ -1295,8 +1295,8 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
      * to.
      * <p>
      * The answer is exact, not an approximation: the tree is sorted, so the file found this way
-     * is the one with the greatest first tick at or below the tick, and it covers the tick exactly
-     * when its last tick reaches it. The lookup costs one listing per folder level plus the files
+     * is the one with the greatest first tick at or below the tick, which is the file whose range
+     * the tick lies in. The lookup costs one listing per folder level plus the files
      * of one leaf, and the same again for the walk back plus one listing per folder it steps over
      * — independent of how many batch files the run holds.
      * <p>
@@ -1321,11 +1321,6 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
         }
 
         String path = candidate.get();
-        if (parseBatchEndTick(path) < tick) {
-            // The tick lies behind the file that precedes it, in a gap or beyond the recorded data
-            return java.util.Optional.empty();
-        }
-
         log.debug("Batch file covering tick {}: {}", tick, path);
         return java.util.Optional.of(StoragePath.of(path));
     }

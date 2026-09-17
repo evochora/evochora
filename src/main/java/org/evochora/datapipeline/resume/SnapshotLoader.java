@@ -94,6 +94,12 @@ public class SnapshotLoader {
      * <p>
      * The checkpoint is based on the snapshot of that chunk, which is the state at the chunk's
      * first tick — at or before the requested tick, never after it.
+     * <p>
+     * A chunk covers the ticks from its first tick up to its recorded ticks times its sampling
+     * interval after it, the last one exclusive. That reaches past its last recording to the tick
+     * before the next sample, so a tick the run did not record belongs to the chunk whose snapshot
+     * is the latest state before it. The chunk supplies both numbers itself; they hold for it even
+     * where the run records other stretches at other intervals.
      *
      * @param runId The simulation run ID to read
      * @param tick The tick the chunk must cover
@@ -112,7 +118,8 @@ public class SnapshotLoader {
 
             TickData[] covering = new TickData[1];
             forEachSnapshotChunk(batchPath, chunk -> {
-                if (tick >= chunk.getFirstTick() && tick <= chunk.getLastTick()) {
+                long end = chunk.getFirstTick() + (long) chunk.getTickCount() * chunk.getSamplingInterval();
+                if (tick >= chunk.getFirstTick() && tick < end) {
                     covering[0] = chunk.getSnapshot();
                     return false;
                 }

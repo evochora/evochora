@@ -313,10 +313,18 @@ public interface IBatchStorageRead extends IResource {
     /**
      * Finds the batch file whose tick range covers the given tick.
      * <p>
-     * A batch file covers the ticks between its first and its last tick, both inclusive, and the
-     * ranges of a run do not overlap. The result is therefore the one file in which a reader can
-     * find the tick, or empty when no file covers it — because the tick lies beyond the recorded
-     * data, or in a gap the run never wrote.
+     * A batch file's range begins at its first tick and ends before the first tick of the file
+     * that follows it. Not every tick in it is recorded - a run records only the ticks it samples -
+     * but every tick in it lies after the file's first snapshot and before the next file's. The
+     * result is therefore the file with the greatest first tick at or below the tick, and it is
+     * empty only when no file begins at or before the tick. The lookup answers from the file names
+     * alone.
+     * <p>
+     * The last file of a run has no follower to end its range, so it is returned for every tick
+     * behind it. Whether such a tick still belongs to the recorded data only the file's chunks
+     * can tell: a chunk covers its first tick and the ticks up to its recorded ticks times its
+     * sampling interval after it. A reader checks the tick against the chunk it takes from the
+     * file, and a reader of one recorded tick checks that the chunk recorded it.
      * <p>
      * The tick-range filter of {@link #listBatchFiles(String, String, int, long, long, SortOrder)}
      * cannot express this lookup: it selects files by their <em>first</em> tick, so a file that
@@ -327,7 +335,8 @@ public interface IBatchStorageRead extends IResource {
      *
      * @param runIdPrefix The run prefix to search (e.g., "runId/raw/")
      * @param tick The tick the batch file must cover
-     * @return Optional containing the path to the covering batch file, empty if no file covers the tick
+     * @return Optional containing the path to the covering batch file, empty if no file begins at or
+     *         before the tick
      * @throws IOException If storage access fails
      * @throws IllegalArgumentException If runIdPrefix is null or tick is negative
      */

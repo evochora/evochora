@@ -320,6 +320,7 @@ class SimulationEngineResumeTest {
             .setFirstTick(snapshotTick)
             .setLastTick(snapshotTick + 99)
             .setTickCount(100)
+            .setSamplingInterval(1)
             .setSnapshot(snapshot)
             .build();
     }
@@ -409,7 +410,8 @@ class SimulationEngineResumeTest {
 
         @Override
         public Optional<StoragePath> findBatchFileContaining(String runIdPrefix, long tick) {
-            if (chunk == null || tick < chunk.getFirstTick() || tick > chunk.getLastTick()) {
+            // The storage answers from the file names: the one file covers every tick from its first on
+            if (chunk == null || tick < chunk.getFirstTick()) {
                 return Optional.empty();
             }
             return Optional.ofNullable(batchPath);

@@ -24,6 +24,7 @@ EXPORT .PROC CONTINUE REF ER
   .REG %DIRVEC  %PDR2     # Reproduction direction as unit vector
   .REG %SIDEVEC %PDR3     # Vector to shell side in first/last row, else DATA:0; in local state DATA:1 for right (last row) and DATA:-1 for left (first row)
   .REG %TMP     %PDR4     # Temporary register for quick comparisons
+  .REG %WALLPOS %PLR0     # Wall position of the row being written, where the read pointer starts
 
   # Entry point with redundant jumps for mutation resistance
   NOP^4; JMPI CONTINUE_INIT; NOP^48; JMPI CONTINUE_INIT
@@ -172,7 +173,7 @@ EXPORT .PROC CONTINUE REF ER
     SEEK %DIRVEC                              # Step onto our own wall
     IFER                                      # Taken while we looked?
       JMPI CONTINUE_REPAIR_WALL; NOP^4        # ...put the wall back and step again
-    DPLS; NOP^4                               # Remember the wall, the read pointer starts there
+    DPLR %WALLPOS; NOP^4                      # Remember the wall, the read pointer starts there
     SETR %TMP %SHELL                          # The shell to write, in the register PPK overwrites
     IFFR %DIRVEC                              # Is next cell foreign?
       JMPI CONTINUE_PREP_NEXT_REPRODUCTION; NOP^4 # ...abort reproduction
@@ -183,7 +184,7 @@ EXPORT .PROC CONTINUE REF ER
 
     # Set read DP to the wall position, handed over instead of walked to
     ADPI DATA:0; NOP^4                        # Select DP0 (read pointer)
-    SKLS; NOP^4                               # Put it on the remembered wall position
+    SKLR %WALLPOS; NOP^4                      # Put it on the remembered wall position
 
     # Turn inward for reading
     RTRI %DIRVEC DATA:0 DATA:1; NOP^4         # Rotate 90° CCW

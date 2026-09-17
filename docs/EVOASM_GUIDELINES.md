@@ -35,6 +35,10 @@ Padding does not slow a program down, because the instruction pointer passes ove
 without spending a tick; what it costs is space, and the work of copying it when the organism
 replicates its own body.
 
+Pad between statements, never between a conditional and the instruction it guards. Put the
+longer runs behind unconditional jumps, where new code breaks no path, and shorter ones into the
+flow, where new code runs at once.
+
 ### Redundant jumps and returns
 
 A mutation that lands on a jump or a return cuts the path that runs through it. A second jump
@@ -71,6 +75,9 @@ enter. You can ask after a step or a write whether it happened, and decide what 
     JMPI NEXT_CELL                        # ...go on
   PEEK %TMP %DIR                          # otherwise take what is in the way, and pay for it
 ```
+
+Test as close to the action as you can; the world may change in between. Write with `PPK` what
+has to stand there whatever was in the way, with `POKE` what must destroy nothing.
 
 ### Decide about what is in the way
 
@@ -133,9 +140,10 @@ else a procedure touches is still changed when it returns, a data pointer it mov
 register it set, a global register it wrote, what it pushed on a stack. Often that is the point
 of the procedure. What matters is to know what it changes, to say it in its header, and to put
 back on every exit path, the abandon paths included, what it did not mean to change: the
-location stack keeps a data pointer, `GMR` and `SMR` keep the marker register. What the caller
-cannot see for itself, whether the work was done at all, say, goes through a reference
-parameter:
+location stack keeps a data pointer, `GMR` and `SMR` keep the marker register. An abandon path
+from the middle of a procedure takes off what was pushed up to there; a position needed only
+briefly is better kept in a `%PLRx`. What the caller cannot see for itself, whether the work
+was done at all, say, goes through a reference parameter:
 
 ```
   ADPI DATA:0
