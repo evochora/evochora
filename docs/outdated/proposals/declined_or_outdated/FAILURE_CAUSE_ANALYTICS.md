@@ -15,7 +15,7 @@ When organisms fail instructions in a live run, the analytics show **that** they
   The information is produced every tick and discarded.
 
 Why this matters for the fitness-landscape work: the failure-cause distribution is the live
-counterpart of the [MUTATIONAL_ROBUSTNESS_ASSAY](MUTATIONAL_ROBUSTNESS_ASSAY.md). The assay measures
+counterpart of the [MUTATIONAL_ROBUSTNESS_ASSAY](../../../proposals/ideas/MUTATIONAL_ROBUSTNESS_ASSAY.md). The assay measures
 the landscape around the primordial under controlled conditions; the cause histogram shows what the
 *evolved population* actually fails at in a real run — i.e. which cliff is currently under selection.
 Example: a high share of one operand-shaped cause would be the live signature of a cliff that

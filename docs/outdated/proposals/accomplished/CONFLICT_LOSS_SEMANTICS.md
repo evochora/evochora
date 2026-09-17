@@ -90,7 +90,7 @@ proven bound); hot-path cost of one `mix` per contender, no allocation.
 
 The failure reason travels through the existing `failure_reason`/`failure_count` path. A per-cause
 failure breakdown, if ever wanted, is the existing
-[FAILURE_CAUSE_ANALYTICS](../../../proposals/ideas/FAILURE_CAUSE_ANALYTICS.md) idea, where this reason becomes one
+[FAILURE_CAUSE_ANALYTICS](../declined_or_outdated/FAILURE_CAUSE_ANALYTICS.md) idea, where this reason becomes one
 category. This proposal adds no metric, no column, and no backlog entry.
 
 ## Coordination

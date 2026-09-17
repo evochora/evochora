@@ -2,7 +2,7 @@
 
 Design documents for changes that are agreed in principle but not yet implemented.
 Once a proposal is fully implemented it moves to `docs/outdated/proposals/accomplished/`;
-if it is dropped, it moves to `docs/outdated/proposals/delined_or_outdated/`.
+if it is dropped, it moves to `docs/outdated/proposals/declined_or_outdated/`.
 
 A proposal holds agreed solutions only — no alternatives, no open choices; every decision, down to
 a package name, is made with the maintainer before it is written down, never deferred to the
@@ -50,7 +50,6 @@ specifications and carry no commitment to implement.
 | Document | Summary |
 |---|---|
 | [MUTATIONAL_ROBUSTNESS_ASSAY](ideas/MUTATIONAL_ROBUSTNESS_ASSAY.md) | CLI instrument that classifies all single-mutation variants of a genome (lethal/sterile/impaired/neutral/improved) to measure fitness-landscape ruggedness before/after changes |
-| [FAILURE_CAUSE_ANALYTICS](ideas/FAILURE_CAUSE_ANALYTICS.md) | Aggregate instruction-failure *causes* (not just the existing failure rate) as a per-tick histogram — the live counterpart of the robustness assay |
 | [GRADED_CHEMISTRY_ADDITIONS](ideas/GRADED_CHEMISTRY_ADDITIONS.md) | Five additions to the reaction-network idea of SCIENTIFIC_OVERVIEW §4.6: continuous yield, compositionality criterion, generative schema, spontaneous reactions, stagnation risk |
 | [BIT_CHEMISTRY](ideas/BIT_CHEMISTRY.md) | Concrete candidate for the §4.6 reaction system: bound energy as substrate bits, one XOR/AND rule with continuous yield, grid-only reactions with a closed energy accounting — and a reachability analysis showing it yields slopes for parameters, not new behaviour |
 | [CONTINUOUS_REGULATION](ideas/CONTINUOUS_REGULATION.md) | EMIT/SENS: organism-internal signal concentrations with Hamming-weighted graded sensing and per-tick decay — behavior depends gradually on internal state instead of only hard branches |
