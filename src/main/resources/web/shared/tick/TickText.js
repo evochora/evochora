@@ -3,8 +3,8 @@
  *
  * How a tick is typed and written. A tick is a whole number, often a long one, so it can be typed
  * short - "28M", "28.5M", "500k", "9.9B" - and a long one is written in groups of three:
- * "1,041,924,159". Numbers are written the en_US way everywhere: the comma groups,
- * the point is the decimal mark, whatever the browser's locale.
+ * "1,041,924,159". Numbers are written the en_US way everywhere, in the visualizer and the
+ * analyzer alike: the comma groups, the point is the decimal mark, whatever the browser's locale.
  *
  * A tick field holds only what a tick can be: digits, at most one decimal mark, at most one
  * suffix at the end. Whatever else is typed is dropped. The commas that group the digits belong to
