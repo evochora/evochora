@@ -102,7 +102,9 @@ export function init(container, handler) {
 }
 
 /**
- * Sets the tick range of the run and the window shown on it.
+ * Sets the tick range of the run and the window shown on it. A drag under way keeps its window: a
+ * running run grows between two loads, and the reader's hand must not be moved by that; the drag
+ * ends against the new range.
  *
  * @param {?{min: number, max: number}} runExtent - Tick range of the run, or null to hide the view
  * @param {?{from: number, to: number}} tickWindow - Window shown, or null for the whole run
@@ -111,9 +113,14 @@ export function show(runExtent, tickWindow) {
     if (!root) return;
     extent = runExtent && runExtent.max > runExtent.min ? runExtent : null;
     root.hidden = !extent;
-    if (!extent) return;
-    view = clamp(tickWindow ? { ...tickWindow } : { from: extent.min, to: extent.max });
-    showInputs();
+    if (!extent) {
+        drag = null;
+        return;
+    }
+    if (!drag) {
+        view = clamp(tickWindow ? { ...tickWindow } : { from: extent.min, to: extent.max });
+        showInputs();
+    }
     draw();
 }
 
