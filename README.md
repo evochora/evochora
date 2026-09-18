@@ -48,8 +48,8 @@
       <br><sub>Tick-by-tick inspection and debugging of organism state, registers, and EvoASM execution</sub>
     </td>
     <td align="center" width="50%">
-      <a href="https://github.com/user-attachments/assets/c30c6bcc-cdbe-4637-befe-3d69b21319db" target="_blank">
-        <img alt="Web Analyzer" src="https://github.com/user-attachments/assets/c30c6bcc-cdbe-4637-befe-3d69b21319db" width="100%">
+      <a href="https://github.com/user-attachments/assets/eb83082c-0a04-4572-aaa3-2e601a1322c3" target="_blank">
+        <img alt="Web Analyzer" src="https://github.com/user-attachments/assets/eb83082c-0a04-4572-aaa3-2e601a1322c3" width="100%">
       </a>
       <br><strong>Web Analyzer</strong>
       <br><sub>Population metrics, environment composition, and genome analytics via pluggable charts</sub>
