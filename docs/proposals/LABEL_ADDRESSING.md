@@ -59,10 +59,11 @@ mixed.
 
    An own label within tolerance beats every foreign label, however near the foreign one is.
 2. **Foreign labels only without an own match.** If no own label lies within tolerance and
-   `foreignReach` is not negative, labels of other owners — unowned ones included — are examined.
-   A foreign label is *reachable* when `hammingWeight × hammingDistance + distance ≤ foreignReach`.
-   Among the reachable labels the best occupied stage is taken, and on it the nearest label is the
-   target, deterministically. A negative `foreignReach` means no foreign label is ever reachable.
+   `foreignReach` is not negative, the labels in cells of other owners and in unowned cells are
+   examined. A foreign label is *reachable* when
+   `foreignReachDeductionPerBit × hammingDistance + distance ≤ foreignReach`. Among the reachable
+   labels the best occupied stage is taken, and on it the nearest label is the target,
+   deterministically. A negative `foreignReach` means no foreign label is ever reachable.
 3. **No match.** The lookup fails; the instruction fails as it does today.
 
 **Ties.** Candidates at equal distance are ordered by position (flat index). An organism with an
@@ -70,39 +71,55 @@ even ID takes the first of them, one with an odd ID the last. The rule is the sa
 and foreign candidates and keeps the choice free of a spatial bias across the population.
 
 **Foreign stages are bounded.** The foreign search examines stages up to the smallest of
-`tolerance`, 3, and `foreignReach / hammingWeight`.
+`tolerance`, 3, and `foreignReach / foreignReachDeductionPerBit`.
 
-`distance` is the toroidal Manhattan distance from the calling position to the label, as today.
-Which instructions may land on a foreign label is unchanged: jumps and calls may, `SKJ*`, `PSLI`
-and `LRLI` refuse a foreign target.
+**Distance.** `distance` is the Manhattan distance from the calling position to the label. It
+wraps around the world edge only in a toroidal world; in a bounded world it does not, and neither
+does the range search below. Today's distance wraps regardless of the topology.
+
+What an instruction does with the resolved target is unchanged: jumps and calls go wherever the
+lookup leads; `SKJ*`, `PSLI` and `LRLI` fail when the target cell is owned by another organism and
+accept an unowned one. Unowned labels do not arise in the shipped configuration, where
+`DecayOnDeath` clears a dying organism's cells before they are released; they exist in
+configurations without that handler.
 
 ### Marked labels are not targets
 
 A label enters the label index only while its marker is 0. A label written with a non-zero marker
 is invisible to every lookup, including those of the organism writing it. It enters the index when
-the marker falls to 0: owned by the child at `FORK`, unowned when its owner dies. This rule lives
-in `LabelIndex`, ahead of the matching strategy, and therefore holds for every strategy.
+the marker falls to 0: owned by the child at `FORK`, unowned when its owner dies without a handler
+clearing the cell. Overwriting or clearing a marked label leaves the index untouched. This rule
+lives in `LabelIndex`, ahead of the matching strategy, and therefore holds for every strategy.
 
-### Clade flip
+### Namespace flip
 
-With probability `cladeFlipRate` a newborn's labels and label references are all XORed with the
-same mask, which has exactly one bit set, drawn uniformly from the uppermost `cladeBits` bits of
-the label value. Because the flip is coherent, nothing changes inside the organism; between
-organisms the Hamming distance of homologous labels grows with genealogical distance, within the
-`cladeBits` positions. Close relatives stay reachable for each other, distant clades drift apart,
-and a host lineage escapes its parasites with all labels at once, while a parasite lineage follows
-by its own flips. The remaining low bits are never touched by a flip and identify a gene across
-clades. `cladeFlipRate = 0` draws no random number and leaves addresses purely stable by descent.
+With probability `namespaceFlipRate` a newborn's labels and label references are all XORed with
+the same mask, which has exactly one bit set, drawn uniformly from the uppermost `namespaceBits`
+bits of the label value. Because the flip is coherent, nothing changes inside the organism.
+Between two lineages the difference performs a random walk over the `namespaceBits` positions: it
+grows with genealogical distance at first and then saturates, at a mean of half the positions.
+With `namespaceBits = 8` and a tolerance of 2, about one in seven unrelated lineages stays within
+tolerance of each other at any moment; each differing bit additionally deducts reach. The small
+space is chosen on purpose: within the few hundred generations of a run, lineages separate and
+meet again instead of separating once and for all. The remaining low bits are never touched by a
+flip and identify a gene across lineages. `namespaceFlipRate = 0` draws no random number and
+leaves addresses purely stable by descent.
+
+*Expectation, to be observed in runs, not a verified property:* close relatives stay reachable
+for each other; a host lineage escapes its parasites for a time, with all its labels at once,
+because every label moves together; a parasite lineage follows by its own flips, since following
+by point mutation of a single reference is improbable.
 
 The flip is recorded on the newborn as a mutation record of kind `label-rewrite` with the mask as
-its parameter, exactly as today's rewrite is; genome hashing and the namespace composition of the
-data pipeline work for any mask and stay as they are.
+its parameter, exactly as today's rewrite is, and it names the class of the strategy that chose
+the mask as its source. Genome hashing and the namespace composition of the data pipeline work
+for any mask and stay as they are.
 
 ### The strategy owns matching and address inheritance
 
 Matching and the inheritance of addresses are two halves of one model and are configured together.
-The strategy interface moves to `org.evochora.runtime.spi.ILabelMatchingStrategy` and is reduced
-to what any strategy can answer:
+The strategy interface keeps its name, moves to `org.evochora.runtime.spi.ILabelMatchingStrategy`
+and is reduced to what any strategy can answer:
 
 | Method | Purpose |
 |---|---|
@@ -119,26 +136,33 @@ The Hamming-specific getters, `updateMarker` and `getCandidates` leave the inter
 The core applies the mask: after the birth handlers of a newborn have run, `Simulation` asks the
 strategy for the mask and, if it is not zero, `org.evochora.runtime.label.LabelRewrite` XORs every
 `LABEL` and `LABELREF` cell the newborn owns and records the `label-rewrite` mutation record. The
-mask is drawn from the root random provider, as every sequential part of a tick draws.
+mask is drawn from the root random provider, as every sequential part of a tick draws. That the
+rewrite follows the mutation operators, which the namespace composition of recorded values relies
+on, is thereby fixed in the core instead of following from the order of a configuration list.
 `LabelRewritePlugin` is removed, and with it the `pipeline.core-plugins` mechanism, whose only
 entry it was.
 
 The default strategy is `org.evochora.runtime.label.HammingLabelMatchingStrategy`; it replaces
 `PreExpandedHammingStrategy`, which is removed. It is selected and configured in the existing
-`label-matching { className, options }` block of the runtime configuration. A configuration that
-still names the old class or appends `${pipeline.core-plugins}` fails at start.
+`label-matching { className, options }` block of the runtime configuration.
 
-| Option | Default | Meaning |
+| Option | `reference.conf` | Meaning |
 |---|---|---|
 | `tolerance` | `2` | largest Hamming distance at which a label matches |
-| `hammingWeight` | `50` | reach a foreign label loses per differing bit |
 | `selectionSpread` | `50` | half-weight distance of the lottery among own duplicates; `0` = nearest |
-| `foreignReach` | `250` | bound of `hammingWeight × hammingDistance + distance` for foreign labels; negative = never |
-| `cladeFlipRate` | `0.05` | probability per newborn of a clade flip |
-| `cladeBits` | `8` | number of uppermost label bits a clade flip can hit |
+| `foreignReach` | `250` | bound of `foreignReachDeductionPerBit × hammingDistance + distance` for foreign labels; negative = never |
+| `foreignReachDeductionPerBit` | `50` | what each differing bit deducts from the reach of a foreign label |
+| `namespaceFlipRate` | `0.05` | probability per newborn of a namespace flip |
+| `namespaceBits` | `8` | number of uppermost label bits a namespace flip can hit |
 
-`foreignPenalty` no longer exists. `reference.conf` carries the defaults with the full
-documentation; `config/evochora.conf` mirrors the block with short comments.
+`foreignPenalty` and `hammingWeight` no longer exist. The strategy validates its option block in
+the constructor and rejects a key it does not know, naming `foreignReach` and
+`foreignReachDeductionPerBit` as the replacements of the two removed keys; a configuration that
+still names the old class or appends `${pipeline.core-plugins}` fails at start as well.
+`reference.conf` carries the defaults with the full documentation; `config/evochora.conf` mirrors
+the block with short comments. A strategy built without a configuration — tests and embedders —
+keeps `selectionSpread = 0`, as today, so that it stays deterministic; its other values equal the
+table.
 
 ### Index
 
@@ -147,46 +171,71 @@ outside the parallel wave and read concurrently inside it:
 
 - **Own labels:** per owner, the label values and flat indexes of its labels in parallel arrays
   ordered by flat index. An own lookup walks the array once, XORs and counts bits per entry. Its
-  cost does not depend on `tolerance`.
+  cost does not depend on `tolerance`; it grows with the number of labels the organism owns.
 - **Foreign labels:** label value → flat indexes and owners in parallel arrays ordered by flat
   index, plus the bit set of occupied values. Per stage the reach leaves a radius
-  `foreignReach − hammingWeight × stage`; because the first coordinate is the most significant
-  part of the flat index, all labels within that radius lie in one contiguous range of the array
-  (two on a torus), which is located by binary search and scanned. The search ends on the first
-  stage that yields a reachable label.
+  `foreignReach − foreignReachDeductionPerBit × stage`; because the first coordinate is the most
+  significant part of the flat index, all labels within that radius lie in one contiguous range
+  of the array (two across the seam of a toroidal world), which is located by binary search and
+  scanned in full for the nearest label. The range bounds the first coordinate only, so it is a
+  superset of the labels in reach. The search ends on the first stage that yields a reachable
+  label.
+
+A child's labels are marked, and therefore outside the index, until `FORK`; the fork adds them
+under the child, one ordered insertion per label into a new array.
 
 ### Label values use all 20 bits
 
 A label value uses the full value field. `Config.LABEL_VALUE_MASK` is removed in favour of
 `Config.VALUE_MASK`; the compiler's label hash, the two mutation plugins that flip or invent label
-bits, the recorded clade mask and the tick benchmark follow. With 20 bits, `cladeBits = 8` is the
-upper two of five hexadecimal digits and the gene-identifying bits are the lower three.
+bits, the recorded namespace mask and the tick benchmark follow. The compiler's output changes on
+purpose: the reference artifact of `CompilerOutputEquivalenceTest` is regenerated, after a diff
+has shown that nothing but label and label reference values differs, and the pull request says
+so. With 20 bits, `namespaceBits = 8` is the upper two of five hexadecimal digits and the
+gene-identifying bits are the lower three.
 
 ### Label values are unsigned, and shown in hexadecimal
 
-`Molecule.extractTypedValue(moleculeInt)` returns the value as the molecule's type defines it:
-unsigned for `LABEL` and `LABELREF`, sign-extended for every other type. The environment, organism
-and mutation endpoints send this value, so a label value reaches the browser in the range
-`0…FFFFF`, as the key the artifact's label maps use.
+A new method `Molecule.extractTypedValue(moleculeInt)` returns the value as the molecule's type
+defines it: unsigned for `LABEL` and `LABELREF`, sign-extended for every other type. The
+environment, organism and mutation endpoints send this value, so a label value reaches the browser
+in the range `0…FFFFF`, as the key the artifact's label maps use. `Molecule.extractSignedValue`,
+which the virtual machine calls for every instruction, is not touched.
 
 Wherever a person reads a label value it is five uppercase hexadecimal digits with leading zeros
-and no prefix: `L:3A7F1`, `LR:3A7F1`, `[#3A7F1]` in the source view. One formatter serves the
-visualizer (`ValueFormatter.formatLabelValue`), used by the organism panel, the environment
-tooltips, the source annotations and the cell text at the highest zoom level, where the value is
-drawn on two lines, two digits above three. Backend texts follow: `Molecule.toString`, the failure
-messages of jumps and location instructions, the storage inspection command and the trace
-consumer.
+and no prefix: `L:3A7F1`, `LR:3A7F1`, `[#3A7F1]` in the source view. In the visualizer the
+decision sits in one place, `ValueFormatter.format`, which already receives the type name and
+serves registers, stacks, parameters and instruction arguments; `ValueFormatter.formatLabelValue`
+produces the digits and is used by `format`, the environment tooltips, the source annotations and
+the cell text at the highest zoom level, where the value is drawn on two lines, two digits above
+three. Backend texts follow: `Molecule.toString`, the failure messages of jumps and location
+instructions, the storage inspection command and the trace consumer. The hexadecimal form is for
+reading only; `Molecule.parse`, the syntax of configuration, stays decimal.
 
 ## Cost
 
-The lookup is on the hot path of every jump and call. The own path replaces a hash lookup into a
-world-wide map, a distance computation and a random draw per jump by one pass over the organism's
-own labels, and draws a random number only among duplicates. The foreign path runs only for
-references without an own match; its cost grows with `foreignReach` and with the number of
-homologous labels in range, and it is no longer a rare path once parasites are common. Neither
-statement is measured. The implementation therefore stops after the matching commit for a
-measurement on the real code (see below); a result that shows the own path slower than today ends
-the work until the numbers have been looked at.
+The lookup is on the hot path of every jump and call.
+
+**Own path.** A hash lookup into a world-wide map, a distance computation and a random draw per
+jump are replaced by one pass over the organism's own labels, with a random draw only among
+duplicates. The pass grows with the number of labels an organism owns, and duplication makes
+genomes grow.
+
+**Foreign path.** It runs only for references without an own match, but the design makes exactly
+that case common once parasites exist. Under stable addresses one label value is shared by every
+organism carrying the gene, so a value's array is as large as the population. The range search
+bounds one coordinate only: in a world 2048 cells wide with `foreignReach = 250` about a quarter
+of the array remains and is scanned in full, because the nearest label is wanted. A reference that
+matches nothing pays every stage on every execution, and a broken jump in a tight loop does that
+continuously.
+
+**Births** become cheaper: today every birth visits all cells of the newborn and rewrites every
+label, each rewrite an index removal and insertion; with a flip rate of 0.05 that pass runs for
+one birth in twenty.
+
+None of this is measured. The implementation stops after the matching commit for a measurement on
+the real code; a result that shows the own path slower than today, or the foreign path costing
+more than the run can bear, ends the work until the numbers have been looked at.
 
 Every run changes: the same seed gives a different trajectory.
 
@@ -194,44 +243,56 @@ Every run changes: the same seed gives a different trajectory.
 
 One pull request, five commits and a measurement checkpoint. Core logic is written by the main
 agent; mechanical adaptation of tests, constants and comments is delegated to a cheaper model and
-verified by diff and test run. Each commit ends with `./gradlew check`.
+verified by diff and test run. Each commit ends with `./gradlew check` and leaves a runnable
+state; the order is chosen so that no intermediate state translates or displays a label value
+wrongly.
 
-**Commit 1 — Marked labels are not targets.** `LabelIndex` indexes a label only with marker 0 and
-takes one call for a cell that is released (position, molecule, new owner) in place of the separate
-owner and marker updates; `Environment.transferOwnership` and `clearOwnershipFor` use it. The marker
-leaves `LabelEntry` and the strategy interface. Tests: a marked label is no target before `FORK`,
-not even for its writer; it is the child's own label after `FORK`; it is unowned after the parent's
-death; a resume from a snapshot taken while a child is under construction resolves every lookup as
-the uninterrupted run does.
+**Commit 1 — Marked labels are not targets.** `LabelIndex` indexes a label only with marker 0,
+consults the old molecule's marker before it removes, and takes one call for a cell that is
+released (position, molecule, new owner) in place of the separate owner and marker updates;
+`Environment.transferOwnership` and `clearOwnershipFor` use it. The marker leaves `LabelEntry` and
+the strategy interface. Tests: a marked label is no target before `FORK`, not even for its writer;
+it is the child's own label after `FORK`; it is unowned after the parent's death when no handler
+clears it; overwriting and clearing a marked label leave the index consistent; a resume from a
+snapshot taken while a child is under construction resolves every lookup as the uninterrupted run
+does.
 
-**Commit 2 — Strategy interface, Hamming strategy, clade flip.** The interface moves to
-`runtime.spi` in its reduced form; `HammingLabelMatchingStrategy` with both index structures, the
-staged rule, `foreignReach`, the tie rule and `birthMask`; `LabelRewrite` and its call in
-`Simulation`; removal of `PreExpandedHammingStrategy`, `LabelEntry`, `LabelRewritePlugin` and
-`pipeline.core-plugins`; `Environment` passes the previous owner when a label is overwritten;
-`GeneInsertionPlugin` uses `valuesMatch`; `reference.conf`, `config/evochora.conf`,
-`tools/trace/trace.conf` and `assembly/example.conf`; `SimulationBenchmark` places organisms with
-shared label values. Tests: stages and the lottery on the best stage only; a reference flip leaves
-the distribution among duplicates unchanged; the reach threshold per bit and the negative reach;
-the tie rule; the range search across the torus seam; `birthMask` draws nothing at rate 0 and hits
-only the uppermost `cladeBits`; the core rewrite step; a minimal second strategy in the test
-sources, loaded by class name through the strategy factory.
-
-**Measurement checkpoint — before anything else is built.** JMH tick benchmark, `origin/main`
-against commit 2, decision profile with `selectionSpread=50`. Real-run comparison over 10 M ticks:
-`origin/main` against commit 2 with `foreignReach = -1`, `cladeFlipRate = 0`, and against commit 2
-with the defaults; two rounds in swapped order, compared by wall seconds per executed instruction
-because behaviour differs on purpose.
+**Commit 2 — Unsigned label values and hexadecimal display.** `Molecule.extractTypedValue` and its
+use in `EnvironmentController`, `OrganismStateConverter` and `LineageMutationTranslator`; the
+backend texts; `ValueFormatter.format` and `formatLabelValue` and their callers in the visualizer.
+While label values still have 19 bits this changes what is shown, not what is sent.
 
 **Commit 3 — 20-bit label values.** `RuntimeInstructionSetAdapter.labelValue`, `Config`,
 `GeneSubstitutionPlugin` (bit choice and result mask), `GeneInsertionPlugin` (invented references),
-`LabelNamespaceMask` (recorded mask), `SimulationBenchmark`, the comments in both configuration
-files. Tests: the assertions that state 19 bits, and regression cases with the top bit set for mask
-composition, mutation translation, procedure name resolution and both mutation plugins.
+`LabelRewritePlugin` (mask range), `LabelNamespaceMask` (recorded mask), the comment in
+`LineageMutationTranslator` that rests on the narrower mask, `SimulationBenchmark`, the comments in
+both configuration files, the regenerated reference artifact. Tests: the assertions that state
+19 bits, and regression cases with the top bit set for mask composition, mutation translation,
+procedure name resolution, the endpoints of commit 2 and both mutation plugins.
 
-**Commit 4 — Unsigned label values and hexadecimal display.** `Molecule.extractTypedValue` and its
-use in `EnvironmentController`, `OrganismStateConverter` and `LineageMutationTranslator`; the
-backend texts; `ValueFormatter.formatLabelValue` and its callers in the visualizer.
+**Commit 4 — Strategy interface, Hamming strategy, namespace flip.** The interface moves to
+`runtime.spi` in its reduced form; `HammingLabelMatchingStrategy` with both index structures, the
+staged rule, the reach, the tie rule, the topology-aware distance, option validation and
+`birthMask`; `LabelRewrite` and its call in `Simulation`; removal of `PreExpandedHammingStrategy`,
+`LabelEntry`, `LabelRewritePlugin` and `pipeline.core-plugins`; `Environment` passes the previous
+owner when a label is overwritten; `GeneInsertionPlugin` uses `valuesMatch`; `reference.conf`,
+`config/evochora.conf`, `tools/trace/trace.conf` and `assembly/example.conf`; `SimulationBenchmark`
+places organisms with shared label values and gains the scenarios the checkpoint measures. Tests:
+stages and the lottery on the best stage only; a reference flip leaves the distribution among
+duplicates unchanged; the reach per differing bit and the negative reach; the tie rule; the range
+search across the torus seam and in a bounded world; an unknown option key is rejected; `birthMask`
+draws nothing at rate 0 and hits only the uppermost `namespaceBits`; the core rewrite step and the
+source it records; a resume across a birth whose flip fires, at rate 1; a minimal second strategy in
+the test sources, loaded by class name through the strategy factory.
+
+**Measurement checkpoint — before anything else is built.** Each run is announced and waits for
+its go.
+- JMH tick benchmark, `origin/main` against commit 4, decision profile with `selectionSpread=50`,
+  extended by the cases the design makes common: a high share of lookups without an own match, one
+  label value carried by thousands of organisms, and a body with many labels.
+- Real-run comparison over 10 M ticks: `origin/main` against commit 4 with `foreignReach = -1`,
+  `namespaceFlipRate = 0`, and against commit 4 with the defaults; two rounds in swapped order,
+  compared by wall seconds per executed instruction because behaviour differs on purpose.
 
 **Commit 5 — Documentation.** `docs/SCIENTIFIC_OVERVIEW.md` and `README.md` (fuzzy addressing,
 label namespace rewriting), `docs/ASSEMBLY_SPEC.md` (marked labels, the matching rule),
@@ -240,4 +301,5 @@ and the assembly specification is proposed and approved hunk by hunk. This docum
 `docs/outdated/proposals/accomplished/`.
 
 **Before the pull request.** Architecture review of the branch, merge of `origin/main`,
-`./gradlew check`, and a closing measurement with the production configuration.
+`./gradlew check`, and a closing measurement with the production configuration. The pull request
+states that the compiler's output changes on purpose.
