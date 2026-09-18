@@ -13,8 +13,8 @@ normally needs both. Conditions, validity criteria and how to interpret a differ
 |---|---|---|
 | Measures | `Simulation.tick()` throughput on synthetic programs, no deaths, nothing persisted | wall time of a real node: primordial, thermodynamics, mutation, births and deaths, sampling |
 | Answers | did the instruction path get faster | does production get faster, and does behaviour stay identical |
-| Cost | ≈13 min per side (decision profile) | ≈9 min per side per 10 M ticks, plus 3 min quiet-wait each |
-| Blind to | population dynamics, allocation on the sampling path, pipeline threads | nothing in the engine — but noisier per run (0.5 % between rounds on the host) |
+| Cost | per side: forks × (warm-up + measurement iterations) × iteration time × parameter combinations | grows with `pauseTicks` and the population, plus the script's quiet-wait per variant; the first run gives the estimate for the following ones |
+| Blind to | population dynamics, allocation on the sampling path, pipeline threads | nothing in the engine — but noisier per run; the spread of one variant between its rounds is the yardstick |
 
 Both run on the benchmark host (`BENCH_SSH`, default `ubuntu@evochora.org`) in throw-away
 containers from a digest-pinned JRE image. Never on a developer machine while anything else runs,
@@ -39,7 +39,7 @@ BENCH_JMH_ARGS="SimulationBenchmark.tick -p parallelism=4 -f 3 -wi 3 -i 8 -jvmAr
     tools/bench-server/run-benchmark.sh <side>/build/libs/evochora-jmh.jar <side>.json
 ```
 
-That is the decision profile (three forks, eight iterations, pre-sized heap, ≈13 min); the class
+That is the decision profile (three forks, eight iterations, pre-sized heap); the class
 defaults are for quick looks. Compare the two JSON files combination by combination: score and
 error of both sides, relative difference, and whether the 99.9 % confidence intervals overlap.
 A difference inside the combined error is "within error", not a small gain. Look at the pattern
@@ -84,9 +84,9 @@ run-comparison.sh      tools/bench-server/run-comparison.sh
 itself, and sets the `sparse` tuning profile. Keep both: a silently skipped include measures
 the defaults of `reference.conf` (its program path does not even compile in the tree), and the
 `detailed` profile of the shipped `evochora.conf` samples every tick, so the consumer's hashing,
-not the simulation, dominates the wall time — a 10 M tick run then takes over an hour instead
-of minutes. Check the first `SimulationEngine started` line of a log for `sampling=10000` and
-the first `TICKHASH` line for `lastTick` counting in thousands before trusting a run.
+not the simulation, dominates the wall time. Check the first `SimulationEngine started` line of
+a log for `sampling=10000` and the first `TICKHASH` line for `lastTick` counting in thousands
+before trusting a run.
 
 Run all variants in one invocation, then again in the opposite order:
 
@@ -95,12 +95,12 @@ Run all variants in one invocation, then again in the opposite order:
 ```
 
 Two rounds with swapped order separate the change from drift. Read `progress.txt`: seconds and
-hash per variant. With 0.5 % spread between rounds on the host, a difference of a few percent is
-real; report it against the base spread, not as a single number.
+hash per variant. The spread of one variant between its two rounds is the noise of the
+measurement; report a difference against that spread, not as a single number.
 
 `pauseTicks = [10000000]` is the standard length: the population grows past the parallelism
-thresholds and deaths accumulate in the organism list, which is where several past changes made
-their difference. 1 M ticks is a smoke test, not a measurement.
+thresholds and deaths accumulate in the organism list, both part of production behaviour that a
+shorter run never reaches. 1 M ticks is a smoke test, not a measurement.
 
 ### When the hashes differ
 
@@ -108,7 +108,7 @@ Set `dumpDir` in the consumer's options and run both sides again. Every normaliz
 `chunk_<seq>_<lastTick>.pb`; compare the directories file by file, decode the first divergent
 chunk with `ChunkDump` (`java -cp "consumer-classes:lib/*" org.evochora.tools.bench.ChunkDump <file>`)
 and read the differing field: organism, tick, field name lead to the code line. A divergence in
-a dead organism's last instruction record is observation, not behaviour — that has happened.
+a dead organism's last instruction record is observation, not behaviour.
 
 ## 3 · Verdict
 
@@ -116,23 +116,19 @@ a dead organism's last instruction record is observation, not behaviour — that
 - JMH faster, real run within its spread: the hot path improved but production does not notice
   — report both, the decision is the user's.
 - Real run slower although JMH is neutral or faster: the change costs something JMH is blind to
-  (allocation, cache locality across ticks, thread hand-over). Dynamic work distribution in the
-  worker pool lost 4–5 % this way while its own spin time fell; static assignment keeps each
-  organism's state hot in one core's cache.
+  (allocation, cache locality across ticks, thread hand-over).
 - Keep the measured tables with the pull request or the note that decided; absolute numbers are
   not a project-wide reference (`docs/BENCHMARKING.md`, Reporting).
 
-## Pitfalls that have cost sessions
+## Pitfalls
 
 - The host is shared: another session's comparison in `~/bench/cmp/` is destroyed by starting a
   second one. Check `uptime` and `progress.txt` before touching the directory.
-- A JMH run on a laptop without a clock cap reports throttling as a regression (a "−25 %" once).
+- A JMH run on a laptop without a clock cap reports throttling as a regression.
   Never conclude from a developer machine without the conditions in `docs/BENCHMARKING.md`.
-- Two divisions per dimension in a distance computation cost more on the host's ARM cores than
-  the hash-map lookup they replaced (−1.9 %); one division per dimension gave −4.3 %. Micro-
-  optimizations need the measurement, not the intuition.
-- A synthetic scenario can mislead the profile: 512 clones without label rewriting spent 38 % in
-  label matching, which production (labels rewritten at every birth) never does. Profile
-  production runs, benchmark synthetic ones.
-- Killing a process by a command-line pattern matched the session's own shell. Match only
+- A micro-optimization that looks obviously cheaper can measure slower on the host's cores. It
+  needs the measurement, not the intuition.
+- A synthetic scenario can mislead the profile: it can spend its time in a path that production
+  never stresses. Profile production runs, benchmark synthetic ones.
+- Killing a process by a command-line pattern can match the session's own shell. Match only
   processes whose `argv[0]` ends in `/bin/java`.

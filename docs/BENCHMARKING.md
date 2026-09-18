@@ -75,12 +75,13 @@ BENCH_JMH_ARGS="SimulationBenchmark.tick -p parallelism=4 -f 3 -wi 3 -i 8 -jvmAr
     tools/bench-server/run-benchmark.sh <jmh-jar> <local-result.json>
 ```
 
-Three forks of eight three-second iterations (~13 minutes for the full sweep) bring the 99.9 %
-confidence interval down to roughly 1.5–3.5 % of the score, and the fixed pre-sized heap removes
-heap-resizing noise; the class defaults (two forks, five iterations, ~5 minutes) are for quick
-looks, not for verdicts. During a run the script pauses the host's periodic maintenance timers
-and restarts them afterwards. If a single iteration collapses in an otherwise flat fork, some
-co-tenant still interfered: re-measure that combination instead of accepting the widened error.
+Three forks of eight three-second iterations narrow the 99.9 % confidence interval, and the
+fixed pre-sized heap removes heap-resizing noise; the class defaults (two forks, five
+iterations) are for quick looks, not for verdicts. A sweep takes forks × (warm-up + measurement
+iterations) × iteration time × parameter combinations. During a run the script pauses the host's
+periodic maintenance timers and restarts them afterwards. If a single iteration collapses in an
+otherwise flat fork, some co-tenant still interfered: re-measure that combination instead of
+accepting the widened error.
 
 The host's CPU architecture (currently ARM Neoverse-N1) differs from typical development
 machines. Relative comparisons of algorithmic changes carry over; for changes whose effect
@@ -105,7 +106,7 @@ Before measuring:
 2. **Use the performance power profile** of the operating system so that the governor does not
    reduce the clock below the cap for power-saving reasons.
 3. **No swap in use** and enough free memory for the `-Xmx8g` heap configured in
-   `build.gradle.kts`. Swap activity during a run shows up as tens of percent of error.
+   `build.gradle.kts`. Swap activity during a run invalidates it.
 4. **No competing load.** Stop the Gradle daemon, IDE language servers, browsers with active
    tabs, and anything else that consumes CPU. Check the load average before starting.
 5. **Never run two benchmarks at the same time**, not on the same machine, not in parallel
@@ -150,7 +151,7 @@ above are not met.
 Discard a run, fix the environment, and measure again when any of the following holds:
 
 - The reported error (99.9 % confidence interval) exceeds 10 % of the score for any parameter
-  combination. Under stable conditions the benchmark achieves 1–4 %.
+  combination.
 - Iterations within a fork fall monotonically. This is the signature of thermal throttling or
   of a background process ramping up, not of a steady state.
 - The two forks of one combination differ by more than their combined error.
