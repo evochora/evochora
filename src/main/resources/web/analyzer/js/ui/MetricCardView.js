@@ -1,6 +1,5 @@
 
 import * as ChartRegistry from '../charts/ChartRegistry.js';
-import { formatTickValue } from '../charts/ChartUtils.js';
 
 /**
  * Metric Card View
@@ -36,7 +35,7 @@ export function reset() {
  */
 export function create(metric) {
     const cardEl = document.createElement('div');
-    cardEl.className = 'metric-card';
+    cardEl.className = metric.fullWidth ? 'metric-card full-width' : 'metric-card';
     cardEl.dataset.metricId = metric.id;
     
     // Header
@@ -53,7 +52,63 @@ export function create(metric) {
     const controls = document.createElement('div');
     controls.className = 'metric-card-controls';
 
-    // LOD chip buttons from manifest dataSources
+    const lodChips = document.createElement('div');
+    lodChips.className = 'lod-chips';
+    renderLodChips(lodChips, metric);
+    controls.appendChild(lodChips);
+
+    // Reloads this card alone; shown only while the run can still change
+    const refreshButton = document.createElement('button');
+    refreshButton.className = 'lod-chip card-refresh';
+    refreshButton.textContent = '\u27F3';
+    refreshButton.setAttribute('aria-label', 'Reload this card');
+    refreshButton.dataset.tooltip = 'Reload this card';
+    refreshButton.hidden = true;
+    refreshButton.addEventListener('click', () => {
+        const card = cards[metric.id];
+        if (card && card.onRefresh) {
+            card.onRefresh();
+        }
+    });
+    controls.appendChild(refreshButton);
+
+    header.appendChild(titleGroup);
+    header.appendChild(controls);
+    
+    // Chart container
+    const chartContainer = document.createElement('div');
+    chartContainer.className = 'metric-card-chart-container';
+    chartContainer.innerHTML = `<canvas></canvas>`;
+    
+    // Message overlay (for loading, error, no-data) — inside chart container over the chart alone
+    const messageOverlay = document.createElement('div');
+    messageOverlay.className = 'metric-card-message-overlay';
+    chartContainer.appendChild(messageOverlay);
+
+    cardEl.appendChild(header);
+    cardEl.appendChild(chartContainer);
+
+    // Store instance
+    cards[metric.id] = {
+        element: cardEl,
+        metric: metric,
+        chart: null,
+        messageOverlay: messageOverlay,
+        lodChips: lodChips,
+        refreshButton: refreshButton
+    };
+    
+    return cardEl;
+}
+
+/**
+ * Fills a container with one chip per level of detail the manifest entry offers.
+ *
+ * @param {HTMLElement} container - Element that holds the chips
+ * @param {Object} metric - Metric manifest entry
+ */
+function renderLodChips(container, metric) {
+    container.innerHTML = '';
     const lodLevels = metric.dataSources ? Object.keys(metric.dataSources).sort() : [];
     lodLevels.forEach(lod => {
         const chip = document.createElement('button');
@@ -66,59 +121,60 @@ export function create(metric) {
                 card.onLodChange(lod);
             }
         });
-        controls.appendChild(chip);
+        container.appendChild(chip);
     });
+}
 
-    header.appendChild(titleGroup);
-    header.appendChild(controls);
-    
-    // Chart container
-    const chartContainer = document.createElement('div');
-    chartContainer.className = 'metric-card-chart-container';
-    chartContainer.innerHTML = `<canvas></canvas>`;
-    
-    // Scrollbar row: [viewFrom] [scrollbar] [viewTo]
-    const scrollRow = document.createElement('div');
-    scrollRow.className = 'metric-card-scrollbar-row';
-    scrollRow.style.display = 'none';
+/**
+ * Takes over a manifest entry read again for a card: a running run gains levels of detail.
+ *
+ * @param {Object} card - Card instance
+ * @param {Object} metric - Metric manifest entry
+ */
+export function updateMetric(card, metric) {
+    if (!card || !metric) return;
+    const active = card.lodChips.querySelector('.lod-chip.active');
+    card.metric = metric;
+    renderLodChips(card.lodChips, metric);
+    if (active) {
+        setActiveLod(card, active.dataset.lod, { pinned: !!card.pinnedLod, tooFine: card.tooFine || [] });
+    }
+}
 
-    const scrollLabelFrom = document.createElement('span');
-    scrollLabelFrom.className = 'metric-card-scrollbar-label';
-    const scrollContainer = document.createElement('div');
-    scrollContainer.className = 'metric-card-scrollbar-container';
-    const scrollInner = document.createElement('div');
-    scrollInner.className = 'metric-card-scrollbar-inner';
-    scrollContainer.appendChild(scrollInner);
-    const scrollLabelTo = document.createElement('span');
-    scrollLabelTo.className = 'metric-card-scrollbar-label';
+/**
+ * Registers the callback of a card's reload button.
+ *
+ * @param {Object} card - Card instance
+ * @param {function(): void} callback
+ */
+export function setOnRefresh(card, callback) {
+    if (card) {
+        card.onRefresh = callback;
+    }
+}
 
-    scrollRow.appendChild(scrollLabelFrom);
-    scrollRow.appendChild(scrollContainer);
-    scrollRow.appendChild(scrollLabelTo);
+/**
+ * Shows or hides the reload button of a card.
+ *
+ * @param {Object} card - Card instance
+ * @param {boolean} visible
+ */
+export function setRefreshVisible(card, visible) {
+    if (card && card.refreshButton) {
+        card.refreshButton.hidden = !visible;
+    }
+}
 
-    // Message overlay (for loading, error, no-data) — inside chart container so scrollbar stays usable
-    const messageOverlay = document.createElement('div');
-    messageOverlay.className = 'metric-card-message-overlay';
-    chartContainer.appendChild(messageOverlay);
-
-    cardEl.appendChild(header);
-    cardEl.appendChild(chartContainer);
-    cardEl.appendChild(scrollRow);
-
-    // Store instance
-    cards[metric.id] = {
-        element: cardEl,
-        metric: metric,
-        chart: null,
-        messageOverlay: messageOverlay,
-        scrollRow: scrollRow,
-        scrollContainer: scrollContainer,
-        scrollInner: scrollInner,
-        scrollLabelFrom: scrollLabelFrom,
-        scrollLabelTo: scrollLabelTo
-    };
-    
-    return cardEl;
+/**
+ * Enables or disables the reload button of a card, as while the card loads.
+ *
+ * @param {Object} card - Card instance
+ * @param {boolean} enabled
+ */
+export function setRefreshEnabled(card, enabled) {
+    if (card && card.refreshButton) {
+        card.refreshButton.disabled = !enabled;
+    }
 }
 
 /**
@@ -218,16 +274,30 @@ export function showError(card, message) {
 }
 
 /**
- * Sets the active LOD level on a card's chip buttons.
+ * Shows on a card's chips which level of detail it draws and how it came to it.
  *
  * @param {Object} card - Card instance
- * @param {string} lod - LOD level to activate (e.g., 'lod0')
+ * @param {string} lod - Level drawn (e.g., 'lod0')
+ * @param {Object} [state]
+ * @param {boolean} [state.pinned=false] - Whether the reader chose the level; otherwise the card
+ *        chose the finest one the tick window allows
+ * @param {Array<string>} [state.tooFine=[]] - Levels holding more points over the tick window
+ *        than the card draws; they cannot be chosen. The level drawn may be among them: then it
+ *        is the coarsest, drawn thinned, and stays enabled
  */
-export function setActiveLod(card, lod) {
-    if (!card || !card.element) return;
-    const chips = card.element.querySelectorAll('.lod-chip');
-    chips.forEach(chip => {
-        chip.classList.toggle('active', chip.dataset.lod === lod);
+export function setActiveLod(card, lod, { pinned = false, tooFine = [] } = {}) {
+    if (!card || !card.lodChips) return;
+    card.lodChips.querySelectorAll('.lod-chip').forEach(chip => {
+        const active = chip.dataset.lod === lod;
+        const tooFineForWindow = tooFine.includes(chip.dataset.lod);
+        chip.classList.toggle('active', active);
+        chip.classList.toggle('pinned', active && pinned);
+        chip.disabled = tooFineForWindow && !active;
+        chip.dataset.tooltip = chip.disabled ? 'Too many points for this tick window'
+            : active && tooFineForWindow ? 'Coarsest level, thinned to fit this tick window'
+            : active && pinned ? 'Pinned \u2013 click to let the card choose again'
+            : active ? 'Chosen for this tick window \u2013 click to pin'
+            : 'Pin this level of detail';
     });
 }
 
@@ -241,108 +311,6 @@ export function setOnLodChange(card, callback) {
     if (card) {
         card.onLodChange = callback;
     }
-}
-
-/**
- * Shows the scrollbar for a card, sized proportionally to the view window.
- *
- * @param {Object} card - Card instance
- * @param {Object} windowState - { tickMin, tickMax, viewFrom, viewTo }
- */
-export function showScrollbar(card, windowState) {
-    if (!card || !card.scrollContainer || !card.scrollInner) return;
-
-    const totalRange = windowState.tickMax - windowState.tickMin;
-    const viewRange = windowState.viewTo - windowState.viewFrom;
-    if (totalRange <= 0 || viewRange >= totalRange) {
-        hideScrollbar(card);
-        return;
-    }
-
-    // Store reference for live label updates during scroll
-    card._windowState = windowState;
-
-    // Show row first so layout is computed
-    card.scrollRow.style.display = 'flex';
-
-    // Update range labels
-    updateScrollLabels(card, windowState.viewFrom, windowState.viewTo, viewRange);
-
-    // Inner div width determines scrollbar thumb size relative to container
-    const ratio = totalRange / viewRange;
-    const containerWidth = card.scrollContainer.clientWidth || card.element.clientWidth;
-    card.scrollInner.style.width = `${Math.round(containerWidth * ratio)}px`;
-
-    // Defer scroll position to next frame so the browser has laid out the new inner width
-    const scrollRatio = (windowState.viewFrom - windowState.tickMin) / (totalRange - viewRange);
-    card._settingScrollPosition = true;
-    requestAnimationFrame(() => {
-        const maxScroll = card.scrollContainer.scrollWidth - card.scrollContainer.clientWidth;
-        card.scrollContainer.scrollLeft = Math.round(scrollRatio * maxScroll);
-        // Allow scroll events again after position is set
-        requestAnimationFrame(() => { card._settingScrollPosition = false; });
-    });
-}
-
-/**
- * Updates the from/to labels next to the scrollbar.
- */
-function updateScrollLabels(card, viewFrom, viewTo, viewRange) {
-    if (card.scrollLabelFrom) {
-        card.scrollLabelFrom.textContent = formatTickValue(viewFrom, viewRange);
-    }
-    if (card.scrollLabelTo) {
-        card.scrollLabelTo.textContent = formatTickValue(viewTo, viewRange);
-    }
-}
-
-/**
- * Hides the scrollbar for a card.
- *
- * @param {Object} card - Card instance
- */
-export function hideScrollbar(card) {
-    if (card) {
-        if (card.scrollRow) card.scrollRow.style.display = 'none';
-        card._windowState = null;
-    }
-}
-
-/**
- * Registers a debounced callback for scroll position changes on a card.
- * The callback receives a ratio (0.0 = start, 1.0 = end).
- *
- * @param {Object} card - Card instance
- * @param {function(number): void} callback - Called with scroll ratio
- */
-export function setOnScroll(card, callback) {
-    if (!card || !card.scrollContainer) return;
-
-    let debounceTimer = null;
-    card.scrollContainer.addEventListener('scroll', () => {
-        // Ignore scroll events triggered by programmatic position updates
-        if (card._settingScrollPosition) return;
-
-        const maxScroll = card.scrollContainer.scrollWidth - card.scrollContainer.clientWidth;
-        const ratio = maxScroll > 0 ? card.scrollContainer.scrollLeft / maxScroll : 0;
-
-        // Update labels immediately for responsive feedback
-        if (card._windowState) {
-            const ws = card._windowState;
-            const totalRange = ws.tickMax - ws.tickMin;
-            const viewRange = ws.viewTo - ws.viewFrom;
-            const maxOffset = totalRange - viewRange;
-            const viewFrom = ws.tickMin + Math.round(ratio * maxOffset);
-            const viewTo = viewFrom + viewRange;
-            updateScrollLabels(card, viewFrom, viewTo, viewRange);
-        }
-
-        // Debounce the actual data fetch
-        if (debounceTimer) clearTimeout(debounceTimer);
-        debounceTimer = setTimeout(() => {
-            callback(ratio);
-        }, 150);
-    });
 }
 
 /**

@@ -25,7 +25,7 @@
     --chart-accent-3: #ffb366;
     --chart-accent-4: #dda0dd;
     --chart-accent-5: #87ceeb;
-    --footer-height: 24px;
+    --footer-height: 44px;
 }
 
 * {
@@ -54,7 +54,7 @@ header {
     border-bottom: 1px solid var(--border-color);
 }
 
-.header-left, .header-right {
+.header-left {
     display: flex;
     align-items: center;
     gap: 15px;
@@ -134,10 +134,6 @@ button.primary:hover {
     background-color: #4a5f8a;
 }
 
-#btn-refresh {
-    font-size: 1.1em;
-}
-
 /* --- Select / Dropdown --- */
 select {
     background-color: var(--bg-card);
@@ -190,6 +186,93 @@ main.container {
     }
 }
 
+.dashboard[hidden] {
+    display: none;
+}
+
+/* A card whose chart needs the width takes a row of its own */
+.metric-card.full-width {
+    grid-column: 1 / -1;
+}
+
+/* --- Metric Groups --- */
+/* Every group is a page of its own; the header lists them. Groups that do not fit move into a menu. */
+.group-nav {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin: 0 24px;
+    position: relative;
+}
+
+.group-nav[hidden] {
+    display: none;
+}
+
+.group-nav-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    color: var(--text-secondary);
+    font-family: inherit;
+    font-size: 0.9em;
+    white-space: nowrap;
+    flex-shrink: 0;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.group-nav-item:hover {
+    color: var(--text-primary);
+    background-color: transparent;
+    border-color: var(--border-color);
+}
+
+.group-nav-item.active {
+    color: var(--text-primary);
+    background-color: var(--bg-primary);
+    border-color: var(--border-color);
+    box-shadow: inset 0 -2px 0 var(--accent-blue);
+}
+
+.group-nav-item[hidden] {
+    display: none;
+}
+
+.group-nav-count {
+    font-size: 0.8em;
+    color: var(--text-muted);
+}
+
+.group-nav-menu {
+    position: absolute;
+    top: calc(100% + 10px);
+    right: 0;
+    z-index: 30;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 200px;
+    padding: 6px;
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+}
+
+.group-nav-menu[hidden] {
+    display: none;
+}
+
+.group-nav-menu .group-nav-item {
+    justify-content: space-between;
+}
 
 /* --- Metric Card --- */
 .metric-card {
@@ -261,6 +344,40 @@ main.container {
     color: var(--text-primary);
 }
 
+.lod-chips {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.lod-chips:empty {
+    display: none;
+}
+
+/* A chip like the levels of detail, set apart from them: it acts on the card, it does not choose a view */
+.card-refresh {
+    margin-left: 8px;
+}
+
+.card-refresh[hidden] {
+    display: none;
+}
+
+/* A level the reader chose stands out from one the card chose for the tick window: the card's
+   choice is marked quietly, the reader's is filled */
+.lod-chip.active.pinned {
+    background-color: var(--accent-blue);
+    border-color: var(--accent-blue);
+    color: #0a0a14;
+    font-weight: bold;
+}
+
+.lod-chip.active.pinned:hover {
+    background-color: var(--accent-blue-hover);
+    border-color: var(--accent-blue-hover);
+    color: #0a0a14;
+}
+
 .lod-chip:disabled {
     opacity: 0.3;
     cursor: not-allowed;
@@ -297,9 +414,14 @@ main.container {
 }
 
 /* --- Metric Card Chart Container --- */
+/* Takes the height its card has left: cards of one row are equally tall, and the chart of the
+   shorter one grows instead of leaving the card empty below it. The explicit minimum keeps the
+   height of the canvas from feeding back into the height of the card. */
 .metric-card-chart-container {
     position: relative;
-    height: 350px;
+    flex: 1 1 350px;
+    min-height: 350px;
+    overflow: hidden;
     width: 100%;
     background-color: var(--bg-card);
     border: 1px solid var(--border-color);
@@ -342,58 +464,7 @@ main.container {
     height: 10px;
 }
 
-/* --- Metric Card Scrollbar --- */
-.metric-card-scrollbar-row {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    margin-top: 4px;
-}
-
-.metric-card-scrollbar-label {
-    font-size: 10px;
-    font-family: 'Courier New', monospace;
-    color: #888;
-    white-space: nowrap;
-    min-width: 3.5em;
-    text-align: center;
-}
-
-.metric-card-scrollbar-container {
-    flex: 1;
-    min-width: 0;
-    height: 12px;
-    overflow-x: scroll;
-    overflow-y: hidden;
-    background-color: var(--bg-tertiary);
-    border: 1px solid var(--border-color);
-    border-radius: 3px;
-    scrollbar-width: thin;
-    scrollbar-color: var(--button-bg) var(--bg-tertiary);
-}
-
-.metric-card-scrollbar-container::-webkit-scrollbar {
-    height: 10px;
-}
-
-.metric-card-scrollbar-container::-webkit-scrollbar-track {
-    background: var(--bg-tertiary);
-    border-radius: 3px;
-}
-
-.metric-card-scrollbar-container::-webkit-scrollbar-thumb {
-    background-color: var(--button-bg);
-    border-radius: 3px;
-}
-
-.metric-card-scrollbar-container::-webkit-scrollbar-thumb:hover {
-    background-color: var(--button-hover);
-}
-
-.metric-card-scrollbar-inner {
-    height: 1px;
-}
-
+/* --- Metric Card Message Overlay --- */
 .metric-card-message-overlay {
     display: none;
     position: absolute;
@@ -513,27 +584,6 @@ main.container {
     margin: 0;
 }
 
-/* --- Refresh Button Spinner --- */
-.btn-refresh.loading {
-    pointer-events: none;
-}
-
-.btn-refresh.loading::after {
-    content: '';
-    display: inline-block;
-    width: 12px;
-    height: 12px;
-    margin-left: 6px;
-    border: 2px solid var(--text-muted);
-    border-top-color: transparent;
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin {
-    to { transform: rotate(360deg); }
-}
-
 /* --- Tooltips --- */
 [data-tooltip] {
     position: relative;
@@ -567,3 +617,313 @@ main.container {
     visibility: visible;
 }
 
+/* The controls of a card stand at its right edge: their tooltips open towards the left, or the
+   hidden ones would already make the page wider than the window */
+.metric-card-controls [data-tooltip]::after {
+    left: auto;
+    right: 0;
+    transform: none;
+}
+
+/* =================================================================
+   Footer - the run shown, and the part of it
+   ================================================================= */
+
+/* Footer container */
+.footer-bar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: var(--footer-height);
+    background: #191923;
+    border-top: 1px solid #333;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 10px;
+    font-family: 'Monospaced', 'Courier New', Courier, monospace;
+    z-index: 1000;
+}
+
+.footer-left, .footer-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.footer-left {
+    flex: 1;
+    min-width: 0;
+    margin-right: 24px;
+}
+
+/* --- Tick Window --- */
+/* The part of the run every card shows: a track over the whole run with the window on it, and
+   the two ticks beside it for typing. */
+.tick-window {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.tick-window[hidden] {
+    display: none;
+}
+
+.tick-window-input {
+    width: 112px; /* room for "1.000.000.000" */
+    height: 26px;
+    padding: 0 8px;
+    background-color: #222;
+    border: 1px solid #555;
+    border-radius: 4px;
+    color: var(--text-primary);
+    font-family: 'Roboto Mono', 'Courier New', monospace;
+    font-size: 12px;
+    text-align: right;
+    outline: none;
+    transition: border-color 0.15s ease;
+}
+
+.tick-window-input:focus {
+    border-color: var(--accent-blue);
+}
+
+.tick-window-input.invalid {
+    border-color: #f87171;
+}
+
+.tick-window-track {
+    flex: 1;
+    min-width: 60px;
+    position: relative;
+    height: 26px;
+    touch-action: none;
+}
+
+.tick-window-track canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border: 1px solid #333;
+    border-radius: 3px;
+}
+
+.tick-window-tooltip {
+    position: absolute;
+    bottom: calc(100% + 6px);
+    transform: translateX(-50%);
+    background: rgba(25, 25, 35, 0.95);
+    border: 1px solid #444;
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-family: 'Roboto Mono', 'Courier New', monospace;
+    font-size: 11px;
+    color: var(--text-primary);
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.1s;
+}
+
+.tick-window-tooltip.visible {
+    opacity: 1;
+}
+
+/* One of the family of the two ticks: same height, same face, joined to the last tick */
+.tick-window-reset {
+    width: 26px;
+    height: 26px;
+    margin-left: -4px;
+    padding: 0;
+    background-color: #222;
+    border: 1px solid #555;
+    border-radius: 4px;
+    color: var(--text-secondary);
+    font-size: 14px;
+    line-height: 1;
+    cursor: pointer;
+    transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.tick-window-reset:hover {
+    color: var(--text-primary);
+    border-color: var(--accent-blue);
+    background-color: #222;
+}
+
+.tick-window-reset:disabled {
+    opacity: 0.35;
+    cursor: default;
+}
+
+/* The footer is the bottom of the page: its tooltips open upwards */
+.tick-window [data-tooltip]::after {
+    top: auto;
+    bottom: 125%;
+    left: auto;
+    right: 0;
+    transform: none;
+}
+
+/* Footer buttons */
+.footer-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 20px;
+    padding: 0 8px;
+    background: #0f0f18;
+    border: 1px solid #333;
+    border-radius: 3px;
+    color: #aaa;
+    font-family: inherit;
+    font-size: 0.85em;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.footer-btn:hover {
+    background: #1a1a2a;
+    border-color: #555;
+    color: #e0e0e0;
+}
+
+.footer-btn.active {
+    background: #1a2a3a;
+    border-color: #4a9eff;
+    color: #4a9eff;
+}
+
+.footer-btn-icon {
+    font-size: 0.9em;
+}
+
+.footer-btn-text {
+    font-size: 0.85em;
+}
+
+.footer-run {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    color: #e0e0e0;
+}
+
+.footer-run-label {
+    color: #aaa;
+    font-size: 0.9em;
+}
+
+.footer-run-value {
+    min-width: 220px;
+    max-width: 280px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding: 2px 6px;
+    border: 1px solid #333;
+    border-radius: 4px;
+    background: #0f0f18;
+    transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.footer-run:hover .footer-run-value {
+    border-color: #555;
+    background: #141422;
+}
+
+.footer-run-input {
+    min-width: 220px;
+    background: #0a0a14;
+    border: 1px solid #4a9eff;
+    color: #e0e0e0;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: inherit;
+    font-size: inherit;
+    outline: none;
+}
+
+/* Overlay als Dropdown direkt über dem Input */
+.footer-overlay {
+    position: absolute;
+    bottom: calc(100% + 1px);
+    left: 0;
+    min-width: 220px;
+    background: #191923;
+    border: 1px solid #333;
+    border-radius: 4px;
+    display: none;
+    box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.35);
+    z-index: 1001;
+    overflow: hidden;
+}
+
+.footer-overlay.visible {
+    display: block;
+}
+
+.footer-run-list {
+    max-height: 260px;
+    overflow-x: hidden;
+    overflow-y: auto;
+}
+
+.footer-run-item {
+    padding: 4px 6px;
+    cursor: pointer;
+    border-bottom: 1px solid #222;
+    border-left: 2px solid transparent;
+}
+
+.footer-run-item:last-child {
+    border-bottom: none;
+}
+
+/* Viewer-selected run: left border accent */
+.footer-run-item.current {
+    border-left-color: #4a9eff;
+}
+
+/* Pipeline-active run: visible background tint */
+.footer-run-item.pipeline-running {
+    background: rgba(80, 200, 120, 0.15);
+}
+
+.footer-run-item.pipeline-degraded {
+    background: rgba(224, 80, 80, 0.15);
+}
+
+/* Hover overlays pipeline background */
+.footer-run-item:hover {
+    background: #1a1a2a;
+}
+
+/* Collapsed value: pipeline status tint */
+.footer-run-value.pipeline-running {
+    border-color: rgba(80, 200, 120, 0.5);
+    background: rgba(80, 200, 120, 0.12);
+}
+
+.footer-run-value.pipeline-degraded {
+    border-color: rgba(224, 80, 80, 0.5);
+    background: rgba(224, 80, 80, 0.12);
+}
+
+.run-id {
+    color: #e0e0e0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.footer-empty {
+    color: #888;
+    padding: 6px;
+}
