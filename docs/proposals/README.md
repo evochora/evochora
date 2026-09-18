@@ -17,6 +17,7 @@ table carries the whole order.
 
 | Document / Issue | Status | Summary |
 |---|---|---|
+| [LABEL_ADDRESSING](LABEL_ADDRESSING.md) | IN PROGRESS | Jumps resolve into half-built bodies, foreign code use is never heritable and a lost label is replaced by an arbitrary one; label values stable by descent, own labels first, a reach bound for foreign labels, a gradual clade flip owned by the matching strategy, 20-bit label values shown in hexadecimal |
 | [PERSISTED_FORMAT_VERSIONING](PERSISTED_FORMAT_VERSIONING.md) | TO BE REVIEWED | Storage batches, run database and run metadata carry no format version, so data written by an incompatible build is read silently or fails without naming the cause; one version constant plus fail-fast reads |
 | [DEPENDENCY_UPDATE](DEPENDENCY_UPDATE.md) | TO BE REVIEWED | 24 of 32 dependencies behind, six by a major version; removal of the unused JLine pair, three build hygiene fixes, and a staged update procedure derived from what the test suite can and cannot verify |
 
