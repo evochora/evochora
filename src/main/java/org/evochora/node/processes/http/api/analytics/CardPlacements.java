@@ -62,7 +62,7 @@ final class CardPlacements {
      *
      * @param entries Manifest entries as read from the run
      * @return The entries in the order of their plugins, those of one plugin as they arrived,
-     *         those of no configured plugin last
+     *         those of no configured plugin last; {@code order} counts them from 0 without gaps
      */
     List<ManifestEntry> apply(List<ManifestEntry> entries) {
         List<ManifestEntry> placed = new ArrayList<>(entries);
@@ -80,6 +80,10 @@ final class CardPlacements {
             }
         }
         placed.sort(Comparator.comparingInt(entry -> entry.order));
+        // The place among the cards, without the gaps the plugins that write no card would leave
+        for (int place = 0; place < placed.size(); place++) {
+            placed.get(place).order = place;
+        }
         return placed;
     }
 }

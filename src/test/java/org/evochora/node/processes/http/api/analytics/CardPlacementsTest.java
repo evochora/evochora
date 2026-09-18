@@ -84,9 +84,9 @@ class CardPlacementsTest {
         List<ManifestEntry> placed = placements().apply(new ArrayList<>(List.of(
             entry("stranger", null), entry("genome_lineage", null))));
 
-        assertThat(placed.get(0).id).isEqualTo("genome_lineage");
+        assertThat(placed).extracting(entry -> entry.id).containsExactly("genome_lineage", "stranger");
         assertThat(placed.get(0).group).isNull();
-        assertThat(placed.get(0).order).isEqualTo(3);
+        assertThat(placed).extracting(entry -> entry.order).containsExactly(0, 1);
     }
 
     @Test

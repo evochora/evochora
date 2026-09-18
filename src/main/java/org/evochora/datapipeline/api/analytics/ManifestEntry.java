@@ -49,7 +49,7 @@ public class ManifestEntry {
     /** Whether the card takes a row of the dashboard on its own; {@code null} means it does not. */
     public Boolean fullWidth;
 
-    /** Place of the card among all cards, ascending; filled by the node like {@link #group}. */
+    /** Place of the card among all cards, counted from 0 without gaps; filled by the node like {@link #group}. */
     public Integer order;
     
     /** Description of what this metric shows */
