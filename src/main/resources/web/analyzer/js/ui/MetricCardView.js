@@ -136,7 +136,9 @@ export function updateMetric(card, metric) {
     const active = card.lodChips.querySelector('.lod-chip.active');
     card.metric = metric;
     renderLodChips(card.lodChips, metric);
-    if (active) setActiveLod(card, active.dataset.lod);
+    if (active) {
+        setActiveLod(card, active.dataset.lod, { pinned: !!card.pinnedLod, tooFine: card.tooFine || [] });
+    }
 }
 
 /**
