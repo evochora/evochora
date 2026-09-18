@@ -10,31 +10,26 @@ package org.evochora.runtime.label;
  *       lists are ordered by it, so that candidate order does not depend on the grid's memory
  *       layout</li>
  *   <li>{@code owner}: The owner ID of the cell containing the label</li>
- *   <li>{@code marker}: The marker value (non-zero indicates transfer-in-progress)</li>
  * </ul>
+ * <p>
+ * An entry exists only for a label whose marker is 0: a marked label belongs to a body that is
+ * still under construction and is kept out of the index by {@link LabelIndex}.
  * <p>
  * The position can be reconstructed from the flat index with
  * {@code EnvironmentProperties.flatIndexToCoordinates()}.
  *
  * @param flatIndex The flat index of the cell holding the label
  * @param owner The owner ID of the cell
- * @param marker The marker value (0 = normal, non-zero = transfer marker)
  */
-public record LabelEntry(int flatIndex, int owner, int marker) {
+public record LabelEntry(int flatIndex, int owner) {
 
     /**
      * Checks if this label is considered "foreign" relative to a given code owner.
-     * <p>
-     * A label is foreign if:
-     * <ul>
-     *   <li>The label owner differs from the code owner, OR</li>
-     *   <li>The label has a transfer marker (marker != 0)</li>
-     * </ul>
      *
      * @param codeOwner The owner ID of the executing code
-     * @return true if the label is foreign, false if it's "own"
+     * @return true if the label's cell is owned by anyone but {@code codeOwner}, unowned included
      */
     public boolean isForeign(int codeOwner) {
-        return owner != codeOwner || marker != 0;
+        return owner != codeOwner;
     }
 }

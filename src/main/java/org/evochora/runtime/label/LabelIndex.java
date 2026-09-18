@@ -9,8 +9,11 @@ import java.util.Collection;
 /**
  * Index for efficient fuzzy label lookup in the simulation environment.
  * <p>
- * The LabelIndex maintains an index of all LABEL molecules in the environment,
- * enabling O(1) lookup for jump targets using Hamming distance tolerance.
+ * The LabelIndex maintains an index of the LABEL molecules in the environment that are jump
+ * targets: those whose marker is 0. A label written with a non-zero marker belongs to a body an
+ * organism is still building for a child; it is invisible to every lookup, its writer's included,
+ * until a fork or the owner's death resets the marker. The rule sits here, ahead of the matching
+ * strategy, so that it holds for every strategy.
  * <p>
  * This class delegates to an {@link ILabelMatchingStrategy} for the actual
  * matching logic, allowing different strategies to be used (e.g., pre-expanded
@@ -55,8 +58,8 @@ public class LabelIndex {
     /**
      * Finds the best matching label for a jump instruction.
      * <p>
-     * The matching algorithm considers Hamming distance, physical distance, ownership,
-     * and transfer markers to find the most appropriate target.
+     * The matching algorithm considers Hamming distance, physical distance and ownership to
+     * find the most appropriate target among the unmarked labels.
      *
      * @param searchValue The label value to search for (from jump operand)
      * @param codeOwner The owner ID of the executing code
@@ -74,10 +77,12 @@ public class LabelIndex {
     /**
      * Called when a molecule is set in the environment.
      * <p>
-     * This method updates the index based on LABEL molecule changes:
+     * Only a LABEL molecule whose marker is 0 is a jump target. A marked label belongs to a body
+     * that is still under construction, so it is neither added nor — never having been added —
+     * removed:
      * <ul>
-     *   <li>If old molecule was LABEL: remove from index</li>
-     *   <li>If new molecule is LABEL: add to index</li>
+     *   <li>If the old molecule was an unmarked LABEL: remove it from the index</li>
+     *   <li>If the new molecule is an unmarked LABEL: add it to the index</li>
      * </ul>
      *
      * @param flatIndex The flat index of the cell
@@ -86,58 +91,63 @@ public class LabelIndex {
      * @param owner The owner ID of the cell
      */
     public void onMoleculeSet(int flatIndex, int oldMoleculeInt, int newMoleculeInt, int owner) {
-        int oldType = oldMoleculeInt & Config.TYPE_MASK;
-        int newType = newMoleculeInt & Config.TYPE_MASK;
-
-        // Remove old LABEL if present
-        if (oldType == Config.TYPE_LABEL) {
-            int oldValue = oldMoleculeInt & Config.VALUE_MASK;
-            strategy.removeLabel(oldValue, flatIndex);
+        if (isUnmarkedLabel(oldMoleculeInt)) {
+            strategy.removeLabel(oldMoleculeInt & Config.VALUE_MASK, flatIndex);
         }
-
-        // Add new LABEL if present
-        if (newType == Config.TYPE_LABEL) {
-            int newValue = newMoleculeInt & Config.VALUE_MASK;
-            // Use unsigned shift (>>>) to avoid sign-extension when bit 31 is set (marker >= 8)
-            int marker = (newMoleculeInt & Config.MARKER_MASK) >>> Config.MARKER_SHIFT;
-            LabelEntry entry = new LabelEntry(flatIndex, owner, marker);
-            strategy.addLabel(newValue, entry);
+        if (isUnmarkedLabel(newMoleculeInt)) {
+            strategy.addLabel(newMoleculeInt & Config.VALUE_MASK, new LabelEntry(flatIndex, owner));
         }
     }
 
     /**
-     * Called when ownership of a cell changes.
+     * Called when ownership of a cell changes while its molecule stays as it is.
      * <p>
-     * If the cell contains a LABEL molecule, updates the index entry.
+     * If the cell contains an unmarked LABEL molecule, updates the index entry. A marked label has
+     * no entry.
      *
      * @param flatIndex The flat index of the cell
      * @param moleculeInt The molecule's packed integer value
      * @param newOwner The new owner ID
      */
     public void onOwnerChange(int flatIndex, int moleculeInt, int newOwner) {
-        int type = moleculeInt & Config.TYPE_MASK;
-        if (type == Config.TYPE_LABEL) {
-            int value = moleculeInt & Config.VALUE_MASK;
-            strategy.updateOwner(value, flatIndex, newOwner);
+        if (isUnmarkedLabel(moleculeInt)) {
+            strategy.updateOwner(moleculeInt & Config.VALUE_MASK, flatIndex, newOwner);
         }
     }
 
     /**
-     * Called when the marker of a cell changes (e.g., after transfer/FORK).
+     * Called when a cell is released: it passes to a new owner — a child at a fork, nobody at a
+     * death — and its marker is reset to 0 in the same step.
      * <p>
-     * If the cell contains a LABEL molecule, updates the index entry.
+     * A LABEL that was marked becomes a jump target at this moment and enters the index under its
+     * new owner. A LABEL that was unmarked already has an entry, which takes the new owner.
      *
      * @param flatIndex The flat index of the cell
-     * @param moleculeInt The molecule's packed integer value (with new marker already set)
+     * @param oldMoleculeInt The molecule's packed integer value before the release, with the
+     *                       marker it carried until then
+     * @param newOwner The owner ID the cell passes to; {@code 0} for nobody
      */
-    public void onMarkerChange(int flatIndex, int moleculeInt) {
-        int type = moleculeInt & Config.TYPE_MASK;
-        if (type == Config.TYPE_LABEL) {
-            int value = moleculeInt & Config.VALUE_MASK;
-            // Use unsigned shift (>>>) to avoid sign-extension when bit 31 is set (marker >= 8)
-            int marker = (moleculeInt & Config.MARKER_MASK) >>> Config.MARKER_SHIFT;
-            strategy.updateMarker(value, flatIndex, marker);
+    public void onCellReleased(int flatIndex, int oldMoleculeInt, int newOwner) {
+        if ((oldMoleculeInt & Config.TYPE_MASK) != Config.TYPE_LABEL) {
+            return;
         }
+        int value = oldMoleculeInt & Config.VALUE_MASK;
+        if ((oldMoleculeInt & Config.MARKER_MASK) == 0) {
+            strategy.updateOwner(value, flatIndex, newOwner);
+        } else {
+            strategy.addLabel(value, new LabelEntry(flatIndex, newOwner));
+        }
+    }
+
+    /**
+     * Whether a packed molecule is a LABEL that takes part in matching, that is, one with marker 0.
+     *
+     * @param moleculeInt The molecule's packed integer value
+     * @return {@code true} for a LABEL molecule whose marker is 0
+     */
+    private static boolean isUnmarkedLabel(int moleculeInt) {
+        return (moleculeInt & Config.TYPE_MASK) == Config.TYPE_LABEL
+                && (moleculeInt & Config.MARKER_MASK) == 0;
     }
 
     /**

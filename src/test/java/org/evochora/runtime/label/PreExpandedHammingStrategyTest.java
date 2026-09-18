@@ -60,7 +60,7 @@ class PreExpandedHammingStrategyTest {
         int flatIndex = 100;
         int owner = 1;
 
-        LabelEntry entry = new LabelEntry(flatIndex, owner, 0);
+        LabelEntry entry = new LabelEntry(flatIndex, owner);
         strategy.addLabel(labelValue, entry);
 
         int result = strategy.findTarget(labelValue, owner, callerCoords, environment, random);
@@ -74,7 +74,7 @@ class PreExpandedHammingStrategyTest {
         int flatIndex = 100;
         int owner = 1;
 
-        LabelEntry entry = new LabelEntry(flatIndex, owner, 0);
+        LabelEntry entry = new LabelEntry(flatIndex, owner);
         strategy.addLabel(labelValue, entry);
 
         int result = strategy.findTarget(searchValue, owner, callerCoords, environment, random);
@@ -88,7 +88,7 @@ class PreExpandedHammingStrategyTest {
         int flatIndex = 100;
         int owner = 1;
 
-        LabelEntry entry = new LabelEntry(flatIndex, owner, 0);
+        LabelEntry entry = new LabelEntry(flatIndex, owner);
         strategy.addLabel(labelValue, entry);
 
         int result = strategy.findTarget(searchValue, owner, callerCoords, environment, random);
@@ -102,7 +102,7 @@ class PreExpandedHammingStrategyTest {
         int flatIndex = 100;
         int owner = 1;
 
-        LabelEntry entry = new LabelEntry(flatIndex, owner, 0);
+        LabelEntry entry = new LabelEntry(flatIndex, owner);
         strategy.addLabel(labelValue, entry);
 
         int result = strategy.findTarget(searchValue, owner, callerCoords, environment, random);
@@ -117,33 +117,14 @@ class PreExpandedHammingStrategyTest {
 
         // Both labels at same physical distance from caller (flatIndex 64 and 65 are adjacent)
         // flatIndex 64 = (1, 0), flatIndex 65 = (1, 1) in 64x64 grid
-        LabelEntry foreignEntry = new LabelEntry(64, foreignOwner, 0);
+        LabelEntry foreignEntry = new LabelEntry(64, foreignOwner);
         strategy.addLabel(labelValue, foreignEntry);
 
-        LabelEntry ownEntry = new LabelEntry(65, ownOwner, 0);
+        LabelEntry ownEntry = new LabelEntry(65, ownOwner);
         strategy.addLabel(labelValue, ownEntry);
 
         // Own label should be preferred (lower score: distance + 0 vs distance + 20)
         int result = strategy.findTarget(labelValue, ownOwner, callerCoords, environment, random);
-        assertThat(result).isEqualTo(65);
-    }
-
-    @Test
-    void testTransferMarkerMakesLabelForeign() {
-        int labelValue = 12345;
-        int owner = 1;
-        int marker = 1; // Non-zero marker = transfer in progress
-
-        // Add label with transfer marker at position 64
-        LabelEntry entryWithMarker = new LabelEntry(64, owner, marker);
-        strategy.addLabel(labelValue, entryWithMarker);
-
-        // Add label without marker at position 65
-        LabelEntry entryWithoutMarker = new LabelEntry(65, owner, 0);
-        strategy.addLabel(labelValue, entryWithoutMarker);
-
-        // Label without marker should be preferred (marker makes first one "foreign")
-        int result = strategy.findTarget(labelValue, owner, callerCoords, environment, random);
         assertThat(result).isEqualTo(65);
     }
 
@@ -158,11 +139,11 @@ class PreExpandedHammingStrategyTest {
         int ownOwner = 1;
 
         // Add own label with 1-bit difference at position 64 (≈distance 1)
-        LabelEntry ownFuzzy = new LabelEntry(64, ownOwner, 0);
+        LabelEntry ownFuzzy = new LabelEntry(64, ownOwner);
         strategy.addLabel(nearValue, ownFuzzy);
 
         // Add foreign label with exact match at position 65 (≈distance 1)
-        LabelEntry foreignExact = new LabelEntry(65, foreignOwner, 0);
+        LabelEntry foreignExact = new LabelEntry(65, foreignOwner);
         strategy.addLabel(exactValue, foreignExact);
 
         // Own fuzzy: score = 50 + ~1 + 0 = ~51
@@ -180,10 +161,10 @@ class PreExpandedHammingStrategyTest {
         // Two own labels at different distances
         // flatIndex 1 = (0, 1), distance from (0,0) = 1
         // flatIndex 10 = (0, 10), distance from (0,0) = 10
-        LabelEntry farEntry = new LabelEntry(10, owner, 0);
+        LabelEntry farEntry = new LabelEntry(10, owner);
         strategy.addLabel(labelValue, farEntry);
 
-        LabelEntry nearEntry = new LabelEntry(1, owner, 0);
+        LabelEntry nearEntry = new LabelEntry(1, owner);
         strategy.addLabel(labelValue, nearEntry);
 
         // Closer label should win
@@ -199,8 +180,8 @@ class PreExpandedHammingStrategyTest {
 
         // Both labels are foreign (caller is owner 1), same distance
         // Using adjacent flatIndex values so physical distances are similar
-        LabelEntry entry1 = new LabelEntry(64, owner1, 0);
-        LabelEntry entry2 = new LabelEntry(65, owner2, 0);
+        LabelEntry entry1 = new LabelEntry(64, owner1);
+        LabelEntry entry2 = new LabelEntry(65, owner2);
 
         strategy.addLabel(labelValue, entry1);
         strategy.addLabel(labelValue, entry2);
@@ -217,7 +198,7 @@ class PreExpandedHammingStrategyTest {
         int oldOwner = 1;
         int newOwner = 2;
 
-        LabelEntry entry = new LabelEntry(flatIndex, oldOwner, 0);
+        LabelEntry entry = new LabelEntry(flatIndex, oldOwner);
         strategy.addLabel(labelValue, entry);
 
         // Update owner
@@ -232,32 +213,12 @@ class PreExpandedHammingStrategyTest {
     }
 
     @Test
-    void testUpdateMarker() {
-        int labelValue = 12345;
-        int flatIndex = 100;
-        int owner = 1;
-
-        LabelEntry entry = new LabelEntry(flatIndex, owner, 0);
-        strategy.addLabel(labelValue, entry);
-
-        // Update marker
-        strategy.updateMarker(labelValue, flatIndex, 5);
-
-        // Verify: marker should be updated
-        var candidates = strategy.getCandidates(labelValue);
-        assertThat(candidates).hasSize(1);
-        LabelEntry updated = candidates.iterator().next();
-        assertThat(updated.marker()).isEqualTo(5);
-        assertThat(updated.isForeign(owner)).isTrue(); // marker != 0 makes it foreign
-    }
-
-    @Test
     void testRemoveLabel() {
         int labelValue = 12345;
         int flatIndex = 100;
         int owner = 1;
 
-        LabelEntry entry = new LabelEntry(flatIndex, owner, 0);
+        LabelEntry entry = new LabelEntry(flatIndex, owner);
         strategy.addLabel(labelValue, entry);
 
         // Verify it exists
@@ -280,7 +241,7 @@ class PreExpandedHammingStrategyTest {
         int flatIndex = 100;
         int owner = 1;
 
-        LabelEntry entry = new LabelEntry(flatIndex, owner, 0);
+        LabelEntry entry = new LabelEntry(flatIndex, owner);
         strategy.addLabel(labelValue, entry);
 
         // Check a few specific neighbors
@@ -304,10 +265,10 @@ class PreExpandedHammingStrategyTest {
         // Label B at (63, 0) - direct distance = 63, but toroidal = 1 (wrap around)
         // Both should have same score, so tie-break by owner
 
-        LabelEntry entryA = new LabelEntry(1, 2, 0);  // owner 2
+        LabelEntry entryA = new LabelEntry(1, 2);  // owner 2
         strategy.addLabel(labelValue, entryA);
 
-        LabelEntry entryB = new LabelEntry(63, 3, 0); // owner 3
+        LabelEntry entryB = new LabelEntry(63, 3); // owner 3
         strategy.addLabel(labelValue, entryB);
 
         // Both have same toroidal distance (1), both foreign, lower owner wins
@@ -321,8 +282,8 @@ class PreExpandedHammingStrategyTest {
     void stochasticSelection_isIndependentOfInsertionOrder() {
         int labelValue = 12345;
         int owner = 1;
-        LabelEntry near = new LabelEntry(1, owner, 0);
-        LabelEntry far = new LabelEntry(10, owner, 0);
+        LabelEntry near = new LabelEntry(1, owner);
+        LabelEntry far = new LabelEntry(10, owner);
 
         PreExpandedHammingStrategy nearFirst = new PreExpandedHammingStrategy(2, 100, 50, 50);
         nearFirst.addLabel(labelValue, near);
@@ -350,8 +311,8 @@ class PreExpandedHammingStrategyTest {
         int labelValue = 12345;
         int owner = 1;
         // Near label at flatIndex 1 (distance 1), far label at flatIndex 10 (distance 10)
-        strat.addLabel(labelValue, new LabelEntry(1, owner, 0));
-        strat.addLabel(labelValue, new LabelEntry(10, owner, 0));
+        strat.addLabel(labelValue, new LabelEntry(1, owner));
+        strat.addLabel(labelValue, new LabelEntry(10, owner));
 
         // Run 10 times — must always pick the closer label
         for (int i = 0; i < 10; i++) {
@@ -368,8 +329,8 @@ class PreExpandedHammingStrategyTest {
         int labelValue = 12345;
         int owner = 1;
         // flatIndex 1 = (0,1) distance 1, flatIndex 64 = (1,0) distance 1 — equal distance
-        strat.addLabel(labelValue, new LabelEntry(1, owner, 0));
-        strat.addLabel(labelValue, new LabelEntry(64, owner, 0));
+        strat.addLabel(labelValue, new LabelEntry(1, owner));
+        strat.addLabel(labelValue, new LabelEntry(64, owner));
 
         Map<Integer, Integer> counts = new HashMap<>();
         for (int i = 0; i < 20; i++) {
@@ -392,8 +353,8 @@ class PreExpandedHammingStrategyTest {
         // Near: flatIndex 1 (distance 1), Far: flatIndex 20 (distance 20)
         int nearIndex = 1;
         int farIndex = 20;
-        strat.addLabel(labelValue, new LabelEntry(nearIndex, owner, 0));
-        strat.addLabel(labelValue, new LabelEntry(farIndex, owner, 0));
+        strat.addLabel(labelValue, new LabelEntry(nearIndex, owner));
+        strat.addLabel(labelValue, new LabelEntry(farIndex, owner));
 
         int nearCount = 0;
         for (int i = 0; i < 20; i++) {
@@ -415,8 +376,8 @@ class PreExpandedHammingStrategyTest {
         int labelValue = 12345;
         int owner = 1;
         // Near: flatIndex 1 (distance 1), Far: flatIndex 20 (distance 20)
-        strat.addLabel(labelValue, new LabelEntry(1, owner, 0));
-        strat.addLabel(labelValue, new LabelEntry(20, owner, 0));
+        strat.addLabel(labelValue, new LabelEntry(1, owner));
+        strat.addLabel(labelValue, new LabelEntry(20, owner));
 
         Map<Integer, Integer> counts = new HashMap<>();
         for (int i = 0; i < 20; i++) {
@@ -439,8 +400,8 @@ class PreExpandedHammingStrategyTest {
         int foreignOwner = 2;
         int callingOwner = 1;
         // Only foreign labels — Phase 1 finds nothing, Phase 2 runs
-        strat.addLabel(labelValue, new LabelEntry(64, foreignOwner, 0));
-        strat.addLabel(labelValue, new LabelEntry(65, foreignOwner, 0));
+        strat.addLabel(labelValue, new LabelEntry(64, foreignOwner));
+        strat.addLabel(labelValue, new LabelEntry(65, foreignOwner));
 
         int firstResult = strat.findTarget(labelValue, callingOwner, callerCoords, environment, random);
         for (int i = 0; i < 10; i++) {
@@ -469,8 +430,8 @@ class PreExpandedHammingStrategyTest {
     void hammingMatchSurvivesRemovalOfOneOfTwoEntries() {
         int labelValue = 0b10101010101010101010;
         int searchValue = labelValue ^ 1; // Hamming distance 1
-        strategy.addLabel(labelValue, new LabelEntry(100, 1, 0));
-        strategy.addLabel(labelValue, new LabelEntry(200, 1, 0));
+        strategy.addLabel(labelValue, new LabelEntry(100, 1));
+        strategy.addLabel(labelValue, new LabelEntry(200, 1));
 
         // Removing one of two entries must keep the value visible to the Hamming stages
         strategy.removeLabel(labelValue, 100);
@@ -482,7 +443,7 @@ class PreExpandedHammingStrategyTest {
     void hammingMatchDisappearsWhenLastEntryOfValueIsRemoved() {
         int labelValue = 0b10101010101010101010;
         int searchValue = labelValue ^ 1; // Hamming distance 1
-        strategy.addLabel(labelValue, new LabelEntry(100, 1, 0));
+        strategy.addLabel(labelValue, new LabelEntry(100, 1));
         strategy.removeLabel(labelValue, 100);
 
         int result = strategy.findTarget(searchValue, 1, callerCoords, environment, random);
@@ -493,9 +454,9 @@ class PreExpandedHammingStrategyTest {
     void hammingMatchIsFoundAgainAfterRemoveAndReAdd() {
         int labelValue = 0b10101010101010101010;
         int searchValue = labelValue ^ 1; // Hamming distance 1
-        strategy.addLabel(labelValue, new LabelEntry(100, 1, 0));
+        strategy.addLabel(labelValue, new LabelEntry(100, 1));
         strategy.removeLabel(labelValue, 100);
-        strategy.addLabel(labelValue, new LabelEntry(300, 1, 0));
+        strategy.addLabel(labelValue, new LabelEntry(300, 1));
 
         int result = strategy.findTarget(searchValue, 1, callerCoords, environment, random);
         assertThat(result).isEqualTo(300);

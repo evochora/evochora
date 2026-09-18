@@ -381,22 +381,7 @@ public class PreExpandedHammingStrategy implements ILabelMatchingStrategy {
         if (list != null) {
             for (int i = 0; i < list.size(); i++) {
                 if (list.get(i).flatIndex() == flatIndex) {
-                    LabelEntry old = list.get(i);
-                    list.set(i, new LabelEntry(flatIndex, newOwner, old.marker()));
-                    return;
-                }
-            }
-        }
-    }
-
-    @Override
-    public void updateMarker(int labelValue, int flatIndex, int newMarker) {
-        List<LabelEntry> list = valueToLabels.get(labelValue);
-        if (list != null) {
-            for (int i = 0; i < list.size(); i++) {
-                if (list.get(i).flatIndex() == flatIndex) {
-                    LabelEntry old = list.get(i);
-                    list.set(i, new LabelEntry(flatIndex, old.owner(), newMarker));
+                    list.set(i, new LabelEntry(flatIndex, newOwner));
                     return;
                 }
             }

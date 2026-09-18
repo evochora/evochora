@@ -162,6 +162,37 @@ class ResumeForkNeutralityTest {
     }
 
     /**
+     * The label index is not persisted; a resume rebuilds it from the cells. Three ticks before the
+     * fork the child's body stands in the world with its marker set, and its labels are no jump
+     * targets — in the rebuilt index as little as in the one that was built cell by cell.
+     */
+    @Test
+    void resumedRun_keepsTheLabelsOfABodyUnderConstructionOutOfTheLabelIndex() {
+        int pauseBeforeBirth = ForkProgram.FORK_TICK - 3;
+        ResumeNeutralityHarness.Fixture interrupted = newWorld(1);
+        ResumeNeutralityHarness.tick(interrupted.sim(), interrupted.plugins(), pauseBeforeBirth, true);
+        assertThat(jumpTargetOfTheGenomeLabel(interrupted.sim()))
+                .as("uninterrupted: a marked label is no target")
+                .isEqualTo(-1);
+
+        SimulationRestorer.RestoredState restored = ResumeNeutralityHarness.restore(
+                interrupted.sim(), interrupted.provider(), interrupted.plugins(), MUTATING, 1);
+        simulations.add(restored.simulation());
+
+        assertThat(jumpTargetOfTheGenomeLabel(restored.simulation()))
+                .as("resumed: the rebuilt index leaves the marked label out as well")
+                .isEqualTo(-1);
+    }
+
+    /** Resolves the inheritable genome's label value for the parent, as a jump of the parent would. */
+    private static int jumpTargetOfTheGenomeLabel(Simulation simulation) {
+        Organism parent = simulation.getOrganisms().get(0);
+        return simulation.getEnvironment().getLabelIndex().findTarget(
+                ForkProgram.GENOME_LABEL_HASH, parent.getId(), parent.getIp(),
+                simulation.getEnvironment(), parent.getRandom());
+    }
+
+    /**
      * The memory layout of the grid is not part of the contract. A birth with mutations is where a
      * layout could leak into the trajectory: the mutation operators visit the newborn's cells and
      * draw randomness on the way, and the label index orders its candidates.

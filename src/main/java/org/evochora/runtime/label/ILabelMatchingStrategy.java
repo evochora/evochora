@@ -47,6 +47,9 @@ public interface ILabelMatchingStrategy {
     /**
      * Adds a label entry to the index.
      * <p>
+     * Only labels with marker 0 are handed to a strategy; a marked label is not a jump target and
+     * never reaches it.
+     * <p>
      * The result of {@link #findTarget} must depend only on the set of entries present, never on
      * the order in which they were added: an index rebuilt from a snapshot adds the same entries
      * in a different order and must resolve every lookup identically.
@@ -67,24 +70,13 @@ public interface ILabelMatchingStrategy {
     /**
      * Updates the owner of a label entry.
      * <p>
-     * Called when ownership is transferred (e.g., during FORK).
+     * Called when the cell of an indexed label passes to another owner.
      *
      * @param labelValue The label's value (20-bit hash)
      * @param flatIndex The flat index of the label
      * @param newOwner The new owner ID
      */
     void updateOwner(int labelValue, int flatIndex, int newOwner);
-
-    /**
-     * Updates the marker of a label entry.
-     * <p>
-     * Called when the marker changes (e.g., set during copy, cleared after FORK).
-     *
-     * @param labelValue The label's value (20-bit hash)
-     * @param flatIndex The flat index of the label
-     * @param newMarker The new marker value
-     */
-    void updateMarker(int labelValue, int flatIndex, int newMarker);
 
     /**
      * Gets all labels that match the search value within tolerance.

@@ -843,8 +843,9 @@ public class Environment implements IEnvironmentReader {
         for (int i = 0; i < toTransfer.size(); i++) {
             int layoutIndex = toTransfer.getInt(i);
             ownerGrid[layoutIndex] = toOwnerId;
+            int releasedMoleculeInt = grid[layoutIndex];
             // Reset marker to 0: clear marker bits and keep value/type
-            grid[layoutIndex] = grid[layoutIndex] & ~Config.MARKER_MASK;
+            grid[layoutIndex] = releasedMoleculeInt & ~Config.MARKER_MASK;
             // Track change for delta compression
             markChanged(layoutIndex);
             // Update ownership index
@@ -852,10 +853,8 @@ public class Environment implements IEnvironmentReader {
             if (toSet != null) {
                 toSet.add(layoutIndex);
             }
-            // Update label index: owner changed and marker reset to 0
-            int moleculeInt = grid[layoutIndex];
-            labelIndex.onOwnerChange(toFlatIndex(layoutIndex), moleculeInt, toOwnerId);
-            labelIndex.onMarkerChange(toFlatIndex(layoutIndex), moleculeInt);
+            // A label that was marked becomes a jump target of its new owner with this release
+            labelIndex.onCellReleased(toFlatIndex(layoutIndex), releasedMoleculeInt, toOwnerId);
             // An empty cell handed to "nobody" leaves the occupied set
             updateOccupiedIndices(layoutIndex);
         }
@@ -886,14 +885,13 @@ public class Environment implements IEnvironmentReader {
         int count = owned.size();
         owned.forEach((int layoutIndex) -> {
             ownerGrid[layoutIndex] = 0;
+            int releasedMoleculeInt = grid[layoutIndex];
             // Reset marker to 0
-            grid[layoutIndex] = grid[layoutIndex] & ~Config.MARKER_MASK;
+            grid[layoutIndex] = releasedMoleculeInt & ~Config.MARKER_MASK;
             // Track change for delta compression
             markChanged(layoutIndex);
-            // Update label index: owner cleared and marker reset to 0
-            int moleculeInt = grid[layoutIndex];
-            labelIndex.onOwnerChange(toFlatIndex(layoutIndex), moleculeInt, 0);
-            labelIndex.onMarkerChange(toFlatIndex(layoutIndex), moleculeInt);
+            // A label that was marked becomes an unowned jump target with this release
+            labelIndex.onCellReleased(toFlatIndex(layoutIndex), releasedMoleculeInt, 0);
             // A cell that is now empty and unowned leaves the occupied set; otherwise every dead
             // organism's footprint would stay in it (and in every snapshot) forever
             updateOccupiedIndices(layoutIndex);

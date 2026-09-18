@@ -174,4 +174,69 @@ class LabelIndexTest {
                 .as("tolerance 3 reaches the third stage and picks the nearer of two equal candidates")
                 .isEqualTo(near);
     }
+
+    /** Packs a LABEL molecule with a marker, as a write with a non-zero marker register stores it. */
+    private static int markedLabel(int labelValue, int marker) {
+        return (marker << Config.MARKER_SHIFT) | Config.TYPE_LABEL | labelValue;
+    }
+
+    @Test
+    void markedLabelIsNoTarget_notEvenForItsWriter() {
+        int labelValue = 12345;
+        int writer = 1;
+
+        labelIndex.onMoleculeSet(100, 0, markedLabel(labelValue, 3), writer);
+
+        assertThat(labelIndex.findTarget(labelValue, writer, callerCoords, environment, random)).isEqualTo(-1);
+        assertThat(labelIndex.findTarget(labelValue, 2, callerCoords, environment, random)).isEqualTo(-1);
+    }
+
+    @Test
+    void releasedMarkedLabel_entersTheIndexUnderItsNewOwner() {
+        int labelValue = 12345;
+        int parent = 1;
+        int child = 2;
+        int marked = markedLabel(labelValue, 3);
+        labelIndex.onMoleculeSet(100, 0, marked, parent);
+
+        labelIndex.onCellReleased(100, marked, child);
+
+        assertThat(labelIndex.getCandidates(labelValue))
+                .containsExactly(new LabelEntry(100, child));
+    }
+
+    @Test
+    void releasedUnmarkedLabel_keepsItsSingleEntryAndTakesTheNewOwner() {
+        int labelValue = 12345;
+        int unmarked = Config.TYPE_LABEL | labelValue;
+        labelIndex.onMoleculeSet(100, 0, unmarked, 1);
+
+        labelIndex.onCellReleased(100, unmarked, 0);
+
+        assertThat(labelIndex.getCandidates(labelValue))
+                .containsExactly(new LabelEntry(100, 0));
+    }
+
+    @Test
+    void overwritingOrClearingAMarkedLabel_leavesTheIndexConsistent() {
+        int labelValue = 12345;
+        int owner = 1;
+        int unmarked = Config.TYPE_LABEL | labelValue;
+        // An unmarked label of the same value elsewhere: it must survive whatever happens to the marked one
+        labelIndex.onMoleculeSet(200, 0, unmarked, owner);
+        labelIndex.onMoleculeSet(100, 0, markedLabel(labelValue, 3), owner);
+
+        // Overwrite the marked label by an unmarked one, then clear that cell
+        labelIndex.onMoleculeSet(100, markedLabel(labelValue, 3), unmarked, owner);
+        assertThat(labelIndex.getCandidates(labelValue))
+                .containsExactlyInAnyOrder(new LabelEntry(100, owner), new LabelEntry(200, owner));
+        labelIndex.onMoleculeSet(100, unmarked, 0, 0);
+
+        // A marked label that is cleared was never indexed: nothing to remove, nothing removed
+        labelIndex.onMoleculeSet(300, 0, markedLabel(labelValue, 3), owner);
+        labelIndex.onMoleculeSet(300, markedLabel(labelValue, 3), 0, 0);
+
+        assertThat(labelIndex.getCandidates(labelValue))
+                .containsExactly(new LabelEntry(200, owner));
+    }
 }
