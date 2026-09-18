@@ -93,7 +93,7 @@ class CardPlacementsTest {
 
     @Test
     @ExpectLog(level = LogLevel.WARN,
-        messagePattern = "Analytics plugins 0 and 1 share the metric id 'vital_stats'; the later one places its cards")
+        messagePattern = "Analytics plugins 0 \\(A\\) and 1 \\(B\\) share the metric id 'vital_stats'; the later one places its cards")
     void ofTwoPluginsSharingAMetricIdTheLaterPlacesTheCards() {
         Config twice = ConfigFactory.parseString("""
             plugins = [

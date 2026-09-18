@@ -28,8 +28,8 @@ final class CardPlacements {
 
     private static final Logger log = LoggerFactory.getLogger(CardPlacements.class);
 
-    /** The placement of one plugin's cards. */
-    private record Placement(String group, Boolean fullWidth, int order) { }
+    /** The placement of one plugin's cards, and the plugin's class for naming it in a message. */
+    private record Placement(String group, Boolean fullWidth, int order, String className) { }
 
     private final Map<String, Placement> byMetricId = new HashMap<>();
     /** How many plugins were configured; the cards of no plugin come after all of theirs. */
@@ -51,13 +51,16 @@ final class CardPlacements {
                 continue;
             }
             String metricId = options.getString("metricId");
-            Placement earlier = byMetricId.put(metricId, new Placement(
+            Config plugin = plugins.get(index);
+            Placement placement = new Placement(
                 options.hasPath("group") ? options.getString("group") : null,
                 options.hasPath("fullWidth") ? options.getBoolean("fullWidth") : null,
-                index));
+                index,
+                plugin.hasPath("className") ? plugin.getString("className") : "?");
+            Placement earlier = byMetricId.put(metricId, placement);
             if (earlier != null) {
-                log.warn("Analytics plugins {} and {} share the metric id '{}'; the later one places its cards",
-                    earlier.order(), index, metricId);
+                log.warn("Analytics plugins {} ({}) and {} ({}) share the metric id '{}'; the later one places its cards",
+                    earlier.order(), earlier.className(), index, placement.className(), metricId);
             }
         }
     }
