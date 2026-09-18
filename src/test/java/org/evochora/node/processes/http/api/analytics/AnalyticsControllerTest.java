@@ -1,5 +1,8 @@
 package org.evochora.node.processes.http.api.analytics;
 
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.typesafe.config.ConfigFactory;
 import io.javalin.Javalin;
 import io.javalin.testtools.JavalinTest;
@@ -64,6 +67,44 @@ class AnalyticsControllerTest {
             
             // Verify aggregation structure
             assertThat(json).contains("\"metrics\":[");
+        });
+    }
+
+    @Test
+    void theManifestCarriesWhereEachCardStandsFromThePluginList() throws Exception {
+        IAnalyticsStorageRead storage = mock(IAnalyticsStorageRead.class);
+        when(storage.listAnalyticsFiles(eq("run1"), eq("")))
+            .thenReturn(List.of("age_distribution/metadata.json", "population/metadata.json"));
+        when(storage.openAnalyticsInputStream(eq("run1"), eq("age_distribution/metadata.json")))
+            .thenReturn(new ByteArrayInputStream("{\"id\":\"age_distribution\"}".getBytes()));
+        when(storage.openAnalyticsInputStream(eq("run1"), eq("population/metadata.json")))
+            .thenReturn(new ByteArrayInputStream("{\"id\":\"population\"}".getBytes()));
+        ServiceRegistry registry = new ServiceRegistry();
+        registry.register(IAnalyticsStorageRead.class, storage);
+
+        // The plugin list names population first and gives the age distribution a row of its own
+        AnalyticsController controller = new AnalyticsController(registry, ConfigFactory.parseString("""
+            plugins = [
+              { className = "P", options { metricId = "population", group = "Population" } },
+              { className = "A", options { metricId = "age_distribution", group = "Population", fullWidth = true } }
+            ]
+            """));
+        Javalin app = Javalin.create();
+        controller.registerRoutes(app, "/api");
+
+        JavalinTest.test(app, (server, client) -> {
+            JsonArray metrics = JsonParser.parseString(client.get("/api/manifest?runId=run1").body().string())
+                .getAsJsonObject().getAsJsonArray("metrics");
+            JsonObject first = metrics.get(0).getAsJsonObject();
+            JsonObject second = metrics.get(1).getAsJsonObject();
+
+            assertThat(first.get("id").getAsString()).isEqualTo("population");
+            assertThat(first.get("group").getAsString()).isEqualTo("Population");
+            assertThat(first.get("fullWidth").isJsonNull()).isTrue();
+            assertThat(first.get("order").getAsInt()).isZero();
+            assertThat(second.get("id").getAsString()).isEqualTo("age_distribution");
+            assertThat(second.get("fullWidth").getAsBoolean()).isTrue();
+            assertThat(second.get("order").getAsInt()).isEqualTo(1);
         });
     }
 
