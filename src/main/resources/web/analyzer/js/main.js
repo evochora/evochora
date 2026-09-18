@@ -95,6 +95,7 @@ function initFooter() {
             window.footer?.updateCurrent?.();
         },
     });
+    window.footer.onPipelineChange(() => AnalyzerController.updateRefreshVisibility());
 }
 
 // Initialize when DOM is ready

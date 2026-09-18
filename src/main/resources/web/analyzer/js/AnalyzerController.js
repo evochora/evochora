@@ -7,7 +7,7 @@ import * as MetricCardView from './ui/MetricCardView.js';
 import { dismissClosableNotice } from '../../shared/notice/Notice.js';
 import {
     RunUnavailableError, RunWaiter, WAIT_INTERVAL_MS, chooseInitialRunId, fetchPipelineStatus,
-    isRunStarting, showLoadFailedNotice, showRunUnavailableNotice, waitWithStartNotice
+    isRunStarting, showLoadFailedNotice, showRunUnavailableNotice, startingRunId, waitWithStartNotice
 } from '../../shared/run/RunAvailability.js';
 
 /**
@@ -71,9 +71,7 @@ export async function init() {
         }
 
         // Initialize UI components
-        HeaderView.init({
-            onRefresh: handleRefresh
-        });
+        HeaderView.init();
         
         DashboardView.init();
         
@@ -150,14 +148,44 @@ export async function init() {
     }
     
     /**
-     * Handles refresh button click.
+     * Reloads one card. The manifest entry is read again, because a running run gains levels of
+     * detail; the card keeps its level, and keeps its place unless it stood at the newest data,
+     * which it then follows.
+     *
+     * @param {Object} card - MetricCard instance
      */
-    async function handleRefresh() {
-        if (currentRunId) {
-            await loadDashboard(currentRunId);
-        } else {
-            await loadRuns();
+    async function refreshCard(card) {
+        const runId = currentRunId;
+        const metricId = card.metric.id;
+        MetricCardView.setRefreshEnabled(card, false);
+        try {
+            const fresh = await AnalyticsApi.getManifest(runId);
+            if (runId !== currentRunId || DashboardView.getAllCards()[metricId] !== card) return;
+            const entry = (fresh.metrics || []).find(metric => metric.id === metricId);
+            if (entry) MetricCardView.updateMetric(card, entry);
+
+            const state = windowState[metricId];
+            card._keepPosition = !!state && state.viewTo < state.tickMax;
+            await loadMetricData(card);
+        } catch (error) {
+            if (error.name === 'AbortError') return;
+            console.error(`[AnalyzerController] Failed to reload metric ${metricId}:`, error);
+            MetricCardView.showError(card, error.message || 'Failed to load data');
+        } finally {
+            MetricCardView.setRefreshEnabled(card, true);
         }
+    }
+
+    /**
+     * Shows the reload button of every card while the run shown is the one the pipeline is
+     * producing data for, and hides it otherwise: a run that is not being written cannot change.
+     * Called whenever the run shown or the pipeline state changes.
+     */
+export function updateRefreshVisibility() {
+        const live = !!currentRunId && startingRunId(window.footer?.pipelineState?.()) === currentRunId;
+        Object.values(DashboardView.getAllCards()).forEach(card => {
+            MetricCardView.setRefreshVisible(card, live);
+        });
     }
     
     /**
@@ -192,7 +220,7 @@ export async function loadDashboard(runId) {
             for (const [metricId, card] of Object.entries(cards)) {
                 MetricCardView.setOnLodChange(card, (lod) => {
                     card.selectedLod = lod;
-                    card._lodSwitching = true;
+                    card._keepPosition = true;
                     MetricCardView.setActiveLod(card, lod);
                     loadMetricData(card).catch(error => {
                         if (error.name !== 'AbortError') {
@@ -206,6 +234,8 @@ export async function loadDashboard(runId) {
                     });
                 });
 
+                MetricCardView.setOnRefresh(card, () => refreshCard(card));
+
                 MetricCardView.setOnScroll(card, (scrollRatio) => {
                     handleScroll(card, scrollRatio).catch(error => {
                         if (error.name !== 'AbortError') {
@@ -214,6 +244,8 @@ export async function loadDashboard(runId) {
                     });
                 });
             }
+
+            updateRefreshVisibility();
 
             // Load the group in view; the others load when they are first opened
             DashboardView.setOnGroupChange(() => {
@@ -423,10 +455,10 @@ export async function loadDashboard(runId) {
             const selectedLod = card.selectedLod || null;
             const isParquet = !!hasGeneratedQuery;
 
-            // Preserve tick position on LOD switch
+            // A switch of the level of detail and a reload away from the newest data keep the place
             const prevState = windowState[metricId];
-            const keepPosition = card._lodSwitching && prevState;
-            delete card._lodSwitching;
+            const keepPosition = card._keepPosition && prevState;
+            delete card._keepPosition;
 
             const effectiveLimit = calculateEffectiveLimit(card);
 

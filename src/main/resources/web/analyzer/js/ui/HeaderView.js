@@ -1,42 +1,20 @@
 /**
  * Header View Component
  * 
- * Manages the header bar with refresh button and loading indicator.
- * Run selection has moved to the footer component.
+ * Manages the header bar with its loading indicator. The run is chosen in the footer, the
+ * metric groups are listed by the dashboard view, and a card reloads itself.
  * 
  * @module HeaderView
  */
     
     // DOM elements
-    let refreshBtn = null;
     let loadingIndicator = null;
-    
-    // State
-    let onRefresh = null;
-    
+
     /**
      * Initializes the header view.
-     * 
-     * @param {Object} callbacks - Event callbacks
-     * @param {Function} callbacks.onRefresh - Called when refresh button clicked
      */
-export function init(callbacks) {
-        refreshBtn = document.getElementById('btn-refresh');
+export function init() {
         loadingIndicator = document.getElementById('loading-indicator');
-        
-        onRefresh = callbacks.onRefresh || (() => {});
-        
-        // Event listeners
-    if (refreshBtn) {
-        refreshBtn.addEventListener('click', handleRefresh);
-    }
-    }
-    
-    /**
-     * Handles refresh button click.
-     */
-    function handleRefresh() {
-        onRefresh();
     }
     
     /**
@@ -47,10 +25,6 @@ export function init(callbacks) {
 export function setLoading(show) {
         if (loadingIndicator) {
             loadingIndicator.classList.toggle('active', show);
-        }
-        if (refreshBtn) {
-            refreshBtn.classList.toggle('loading', show);
-            refreshBtn.disabled = show;
         }
     }
     

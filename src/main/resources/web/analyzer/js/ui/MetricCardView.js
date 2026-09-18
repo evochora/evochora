@@ -53,21 +53,25 @@ export function create(metric) {
     const controls = document.createElement('div');
     controls.className = 'metric-card-controls';
 
-    // LOD chip buttons from manifest dataSources
-    const lodLevels = metric.dataSources ? Object.keys(metric.dataSources).sort() : [];
-    lodLevels.forEach(lod => {
-        const chip = document.createElement('button');
-        chip.className = 'lod-chip';
-        chip.dataset.lod = lod;
-        chip.textContent = lod.replace('lod', 'L');
-        chip.addEventListener('click', () => {
-            const card = cards[metric.id];
-            if (card && card.onLodChange) {
-                card.onLodChange(lod);
-            }
-        });
-        controls.appendChild(chip);
+    const lodChips = document.createElement('div');
+    lodChips.className = 'lod-chips';
+    renderLodChips(lodChips, metric);
+    controls.appendChild(lodChips);
+
+    // Reloads this card alone; shown only while the run can still change
+    const refreshButton = document.createElement('button');
+    refreshButton.className = 'lod-chip card-refresh';
+    refreshButton.textContent = '\u27F3';
+    refreshButton.setAttribute('aria-label', 'Reload this card');
+    refreshButton.dataset.tooltip = 'Reload this card';
+    refreshButton.hidden = true;
+    refreshButton.addEventListener('click', () => {
+        const card = cards[metric.id];
+        if (card && card.onRefresh) {
+            card.onRefresh();
+        }
     });
+    controls.appendChild(refreshButton);
 
     header.appendChild(titleGroup);
     header.appendChild(controls);
@@ -111,6 +115,8 @@ export function create(metric) {
         metric: metric,
         chart: null,
         messageOverlay: messageOverlay,
+        lodChips: lodChips,
+        refreshButton: refreshButton,
         scrollRow: scrollRow,
         scrollContainer: scrollContainer,
         scrollInner: scrollInner,
@@ -119,6 +125,80 @@ export function create(metric) {
     };
     
     return cardEl;
+}
+
+/**
+ * Fills a container with one chip per level of detail the manifest entry offers.
+ *
+ * @param {HTMLElement} container - Element that holds the chips
+ * @param {Object} metric - Metric manifest entry
+ */
+function renderLodChips(container, metric) {
+    container.innerHTML = '';
+    const lodLevels = metric.dataSources ? Object.keys(metric.dataSources).sort() : [];
+    lodLevels.forEach(lod => {
+        const chip = document.createElement('button');
+        chip.className = 'lod-chip';
+        chip.dataset.lod = lod;
+        chip.textContent = lod.replace('lod', 'L');
+        chip.addEventListener('click', () => {
+            const card = cards[metric.id];
+            if (card && card.onLodChange) {
+                card.onLodChange(lod);
+            }
+        });
+        container.appendChild(chip);
+    });
+}
+
+/**
+ * Takes over a manifest entry read again for a card: a running run gains levels of detail.
+ *
+ * @param {Object} card - Card instance
+ * @param {Object} metric - Metric manifest entry
+ */
+export function updateMetric(card, metric) {
+    if (!card || !metric) return;
+    const active = card.lodChips.querySelector('.lod-chip.active');
+    card.metric = metric;
+    renderLodChips(card.lodChips, metric);
+    if (active) setActiveLod(card, active.dataset.lod);
+}
+
+/**
+ * Registers the callback of a card's reload button.
+ *
+ * @param {Object} card - Card instance
+ * @param {function(): void} callback
+ */
+export function setOnRefresh(card, callback) {
+    if (card) {
+        card.onRefresh = callback;
+    }
+}
+
+/**
+ * Shows or hides the reload button of a card.
+ *
+ * @param {Object} card - Card instance
+ * @param {boolean} visible
+ */
+export function setRefreshVisible(card, visible) {
+    if (card && card.refreshButton) {
+        card.refreshButton.hidden = !visible;
+    }
+}
+
+/**
+ * Enables or disables the reload button of a card, as while the card loads.
+ *
+ * @param {Object} card - Card instance
+ * @param {boolean} enabled
+ */
+export function setRefreshEnabled(card, enabled) {
+    if (card && card.refreshButton) {
+        card.refreshButton.disabled = !enabled;
+    }
 }
 
 /**

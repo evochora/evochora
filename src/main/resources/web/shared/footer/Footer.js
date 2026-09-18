@@ -275,6 +275,14 @@ export class Footer {
         return this._pipelineState();
     }
 
+    /**
+     * Registers a handler called whenever the polled pipeline state changes.
+     * @param {function(): void} handler
+     */
+    onPipelineChange(handler) {
+        this._poller.onChange(handler);
+    }
+
     /** @returns {{ activeRunId: string|null, status: string|null }} */
     _pipelineState() {
         return { activeRunId: this._poller.activeRunId, status: this._poller.status };

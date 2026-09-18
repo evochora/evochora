@@ -134,10 +134,6 @@ button.primary:hover {
     background-color: #4a5f8a;
 }
 
-#btn-refresh {
-    font-size: 1.1em;
-}
-
 /* --- Select / Dropdown --- */
 select {
     background-color: var(--bg-card);
@@ -346,6 +342,25 @@ main.container {
     background-color: var(--button-bg);
     border-color: var(--accent-blue);
     color: var(--text-primary);
+}
+
+.lod-chips {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.lod-chips:empty {
+    display: none;
+}
+
+/* A chip like the levels of detail, set apart from them: it acts on the card, it does not choose a view */
+.card-refresh {
+    margin-left: 8px;
+}
+
+.card-refresh[hidden] {
+    display: none;
 }
 
 .lod-chip:disabled {
@@ -605,27 +620,6 @@ main.container {
     margin: 0;
 }
 
-/* --- Refresh Button Spinner --- */
-.btn-refresh.loading {
-    pointer-events: none;
-}
-
-.btn-refresh.loading::after {
-    content: '';
-    display: inline-block;
-    width: 12px;
-    height: 12px;
-    margin-left: 6px;
-    border: 2px solid var(--text-muted);
-    border-top-color: transparent;
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin {
-    to { transform: rotate(360deg); }
-}
-
 /* --- Tooltips --- */
 [data-tooltip] {
     position: relative;
@@ -657,5 +651,13 @@ main.container {
 [data-tooltip]:hover::after {
     opacity: 1;
     visibility: visible;
+}
+
+/* The controls of a card stand at its right edge: their tooltips open towards the left, or the
+   hidden ones would already make the page wider than the window */
+.metric-card-controls [data-tooltip]::after {
+    left: auto;
+    right: 0;
+    transform: none;
 }
 
