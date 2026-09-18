@@ -129,10 +129,12 @@ function clamp(next) {
     return { from, to: from + width };
 }
 
+/** Whether a window covers the whole run. */
 function isWholeRun(candidate) {
     return candidate.from <= extent.min && candidate.to >= extent.max;
 }
 
+/** Writes the window into the two tick fields and clears their marks. */
 function showInputs() {
     fromInput.value = formatTick(view.from);
     toInput.value = formatTick(view.to);
@@ -184,6 +186,7 @@ function tickAt(clientX) {
     return Math.min(extent.max, Math.max(extent.min, Math.round(tick / unit) * unit));
 }
 
+/** The position of a tick on a track of the given width. */
 function xOf(tick, width) {
     return (tick - extent.min) / (extent.max - extent.min) * width;
 }
@@ -200,12 +203,17 @@ function gripAt(clientX) {
     return 'new';
 }
 
+/** Starts a drag: of an edge, of the window, or of a new window over the track. */
 function handlePointerDown(event) {
     if (!extent || event.button !== 0) return;
     event.currentTarget.setPointerCapture(event.pointerId);
     drag = { grip: gripAt(event.clientX), startTick: tickAt(event.clientX), startView: { ...view }, moved: false };
 }
 
+/**
+ * Moves the window with a drag and shows the tick under the pointer; nothing is reported until the
+ * drag ends.
+ */
 function handlePointerMove(event) {
     if (!extent) return;
     const tick = tickAt(event.clientX);
@@ -241,6 +249,7 @@ function handlePointerMove(event) {
     draw();
 }
 
+/** Ends a drag and reports the window, unless the pointer never moved or no window is left. */
 function handlePointerUp(event) {
     if (!drag) return;
     event.currentTarget.releasePointerCapture?.(event.pointerId);
@@ -262,6 +271,7 @@ function markStep(width) {
     return [1, 2, 5, 10].map(factor => factor * power).find(step => step >= raw);
 }
 
+/** Draws the track: the run, the window on it, the scale and the tick under the pointer. */
 function draw() {
     if (!canvas || !extent || !view) return;
     const box = canvas.getBoundingClientRect();
