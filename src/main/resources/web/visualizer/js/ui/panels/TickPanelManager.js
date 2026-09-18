@@ -1,5 +1,6 @@
 import { TimelineLoadingOverlay } from '../TimelineLoadingOverlay.js';
 import * as TickGrid from '../../TickGrid.js';
+import { bindTickField, formatTick, groupDigits, parseTick } from '../../utils/TickText.js';
 
 /**
  * Manages the timeline panel with interactive canvas track, tick input, and keyboard shortcuts.
@@ -110,6 +111,7 @@ export class TickPanelManager {
         });
         tickInput?.addEventListener('change', () => this.handleTickInputChange());
         tickInput?.addEventListener('click', () => tickInput.select());
+        if (tickInput) bindTickField(tickInput);
 
         // Multiplier input events
         multiplierInput?.addEventListener('change', () => this.handleMultiplierChange());
@@ -231,6 +233,8 @@ export class TickPanelManager {
             }
         }
 
+        this._renderScale(ctx, w, h, TickGrid.firstTick(ranges) ?? 0, TickGrid.lastTick(ranges) ?? 0);
+
         // Hover marker (behind progress fill)
         if (this._hoverTick !== null) {
             const hx = this._tickToPosition(this._hoverTick);
@@ -246,6 +250,39 @@ export class TickPanelManager {
         // Current tick edge marker (thin bright line at progress boundary)
         ctx.fillStyle = '#4a9eff';
         ctx.fillRect(Math.max(0, Math.round(cx) - 1), 0, 2, h);
+    }
+
+    /**
+     * Draws the scale of the track: a mark every round step, its tick centred above it where it
+     * fits. The step
+     * is the 1-2-5 step that puts the marks about 90 pixels apart, whatever the length of the run.
+     * @param {CanvasRenderingContext2D} ctx
+     * @param {number} w - Track width in CSS pixels
+     * @param {number} h - Track height in CSS pixels
+     * @param {number} first - First tick of the run
+     * @param {number} last - Last tick of the run
+     * @private
+     */
+    _renderScale(ctx, w, h, first, last) {
+        if (last <= first) return;
+        const raw = (last - first) / Math.max(1, w / 90);
+        const power = Math.pow(10, Math.floor(Math.log10(raw)));
+        const step = [1, 2, 5, 10].map(factor => factor * power).find(candidate => candidate >= raw);
+
+        ctx.font = '9px "Roboto Mono", "Courier New", monospace';
+        ctx.textBaseline = 'middle';
+        ctx.textAlign = 'center';
+        for (let tick = Math.ceil(first / step) * step; tick <= last; tick += step) {
+            const x = Math.round(this._tickToPosition(tick));
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+            ctx.fillRect(Math.min(w - 1, x), h - 6, 1, 6);
+            // A tick that would not fit centred over its mark is left out: a shifted one misleads
+            const label = formatTick(tick);
+            const half = ctx.measureText(label).width / 2;
+            if (x - half < 2 || x + half > w - 2) continue;
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+            ctx.fillText(label, x, (h - 6) / 2 + 1);
+        }
     }
 
     /**
@@ -268,7 +305,7 @@ export class TickPanelManager {
         // Position and show tooltip
         if (tooltip) {
             const snappedX = this._tickToPosition(snapped);
-            tooltip.textContent = String(snapped);
+            tooltip.textContent = groupDigits(snapped);
             tooltip.style.left = `${snappedX}px`;
             tooltip.classList.add('visible');
         }
@@ -465,10 +502,12 @@ export class TickPanelManager {
     handleTickInputKeyDown(e) {
         if (e.key === 'Enter') {
             e.preventDefault();
-            this.handleTickInputChange();
-            setTimeout(() => this.elements.tickInput?.select(), 0);
+            if (this.handleTickInputChange()) {
+                setTimeout(() => this.elements.tickInput?.select(), 0);
+            }
         } else if (e.key === 'Escape') {
             e.preventDefault();
+            this.showCurrentTick();
             this.elements.tickInput?.blur();
         } else if (e.key === 'ArrowUp') {
             e.preventDefault();
@@ -486,14 +525,30 @@ export class TickPanelManager {
     }
 
     /**
-     * Handles the change event for the tick input.
+     * Takes the typed tick. A text that is no tick - a decimal part without a suffix - is marked
+     * and keeps its text, so that it can be completed.
+     * @returns {boolean} Whether the text was a tick
      * @private
      */
     handleTickInputChange() {
-        const value = parseInt(this.elements.tickInput?.value, 10);
-        if (!Number.isNaN(value)) {
+        const { tickInput } = this.elements;
+        const value = parseTick(tickInput?.value);
+        tickInput?.classList.toggle('invalid', value === null);
+        if (value !== null) {
             this.onNavigate(value);
         }
+        return value !== null;
+    }
+
+    /**
+     * Puts the current tick back into the tick input.
+     * @private
+     */
+    showCurrentTick() {
+        const { tickInput } = this.elements;
+        if (!tickInput) return;
+        tickInput.value = groupDigits(this.getState().currentTick || 0);
+        tickInput.classList.remove('invalid');
     }
 
     /**
@@ -675,12 +730,8 @@ export class TickPanelManager {
         const { tickInput, tickSuffix } = this.elements;
 
         if (tickInput) {
-            tickInput.value = String(currentTick || 0);
-            if (typeof maxTick === 'number' && maxTick > 0) {
-                tickInput.max = String(Math.max(0, maxTick));
-            }
-            const first = TickGrid.firstTick(this.getState().ranges || []);
-            tickInput.min = String(first ?? 0);
+            tickInput.value = groupDigits(currentTick || 0);
+            tickInput.classList.remove('invalid');
         }
 
         if (tickSuffix) {

@@ -156,7 +156,7 @@ body {
 }
 
 /* Timeline tick/multiplier inputs - compact style */
-#timeline-panel .tick-input-wrapper input[type="number"] {
+#timeline-panel .tick-input-wrapper input.tick-input {
     width: 90px;
     padding: 4px 36px 4px 6px;
     font-size: 11px;
@@ -165,6 +165,11 @@ body {
 #timeline-panel .tick-input-wrapper .tick-total-suffix {
     font-size: 11px;
     right: 6px;
+}
+
+/* Room for a tick written in groups of three, "1.000.000.000", beside the suffix */
+#timeline-panel .timeline-tick-input input.tick-input {
+    width: 144px;
 }
 
 #timeline-panel .multiplier-wrapper input.tick-input {
@@ -682,7 +687,7 @@ button:hover { background-color: #4a4a6a; }
     display: inline-flex;
     align-items: center;
 }
-.tick-input-wrapper input[type="number"] {
+.tick-input-wrapper input.tick-input {
     width: 120px;
     background-color: #222;
     border: 1px solid #555;
@@ -695,15 +700,19 @@ button:hover { background-color: #4a4a6a; }
     transition: border-color 0.15s ease;
 }
 
-.tick-input-wrapper input[type="number"]:focus {
+.tick-input-wrapper input.tick-input:focus {
     border-color: #4a9eff;
 }
-.tick-input-wrapper input[type="number"]::-webkit-outer-spin-button,
-.tick-input-wrapper input[type="number"]::-webkit-inner-spin-button {
+
+.tick-input-wrapper input.tick-input.invalid {
+    border-color: #f87171;
+}
+.tick-input-wrapper input.tick-input::-webkit-outer-spin-button,
+.tick-input-wrapper input.tick-input::-webkit-inner-spin-button {
     -webkit-appearance: none;
     margin: 0;
 }
-.tick-input-wrapper input[type="number"] {
+.tick-input-wrapper input.tick-input {
     -moz-appearance: textfield; /* Firefox: remove arrows */
     appearance: textfield;
 }
