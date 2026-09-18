@@ -61,6 +61,8 @@ public class AnalyticsController implements IController {
     
     // Caching for Manifest
     private final long cacheTtlMs;
+    /** Where the analyzer puts each card, from the plugin list this node is configured with. */
+    private final CardPlacements placements;
     private final ConcurrentHashMap<String, CacheEntry> manifestCache = new ConcurrentHashMap<>();
     
     // DuckDB driver loaded flag (for server-side queries)
@@ -72,13 +74,17 @@ public class AnalyticsController implements IController {
      * Constructs a new AnalyticsController.
      *
      * @param registry Service registry for accessing storage resources
-     * @param options Controller-specific configuration
+     * @param options Controller-specific configuration; {@code plugins}, when present, is the
+     *                plugin list of the analytics indexer, which says where each card stands
      */
     public AnalyticsController(ServiceRegistry registry, Config options) {
         this.storage = registry.get(IAnalyticsStorageRead.class);
         this.cacheTtlMs = options.hasPath("analyticsManifestCacheTtlSeconds") 
             ? options.getInt("analyticsManifestCacheTtlSeconds") * 1000L 
             : 30000L; // Default 30s
+        this.placements = options.hasPath("plugins")
+            ? new CardPlacements(options.getConfigList("plugins"))
+            : CardPlacements.none();
         
         // Load DuckDB driver for server-side queries
         loadDuckDbDriver();
@@ -975,7 +981,7 @@ public class AnalyticsController implements IController {
                 }
             }
 
-            Map<String, Object> response = Map.of("metrics", entries);
+            Map<String, Object> response = Map.of("metrics", placements.apply(entries));
             String responseJson = gson.toJson(response);
             
             // An empty manifest belongs to a run whose indexer has not written it yet; caching it

@@ -37,6 +37,20 @@ public class ManifestEntry {
     
     /** Human-readable name (e.g., "Birth &amp; Death Rates") */
     public String name;
+
+    /**
+     * Group of the analyzer page the card stands on, or {@code null} for the group of cards that
+     * name none. Where a card stands is a property of the view, not of the run: the node fills
+     * this field, {@link #fullWidth} and {@link #order} from its own configuration when it serves
+     * the manifest, and the indexer never writes them.
+     */
+    public String group;
+
+    /** Whether the card takes a row of the dashboard on its own; {@code null} means it does not. */
+    public Boolean fullWidth;
+
+    /** Place of the card among all cards, ascending; filled by the node like {@link #group}. */
+    public Integer order;
     
     /** Description of what this metric shows */
     public String description;
