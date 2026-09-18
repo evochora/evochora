@@ -4,6 +4,7 @@ import * as HeaderView from './ui/HeaderView.js';
 import * as DashboardView from './ui/DashboardView.js';
 import * as DuckDBClient from './data/DuckDBClient.js';
 import * as MetricCardView from './ui/MetricCardView.js';
+import * as TickWindowView from './ui/TickWindowView.js';
 import { dismissClosableNotice } from '../../shared/notice/Notice.js';
 import {
     RunUnavailableError, RunWaiter, WAIT_INTERVAL_MS, chooseInitialRunId, fetchPipelineStatus,
@@ -53,11 +54,29 @@ import {
     /** Hard cap on data points loaded per chart */
     const HARD_CAP = 5000;
 
+    /** URL parameters that carry the tick window. */
+    const WINDOW_FROM_PARAM = 'from';
+    const WINDOW_TO_PARAM = 'to';
+
     /**
-     * Per-metric window state for tick-range scrolling.
-     * @type {Object<string, {tickMin: number, tickMax: number, viewFrom: number, viewTo: number, effectiveLimit: number, isParquet: boolean}>}
+     * The part of the run every card shows, or null for the whole run. It belongs to the page and
+     * not to a card, so that a moment found in one chart is looked at in all of them.
+     * @type {?{from: number, to: number}}
      */
-    const windowState = {};
+    let tickWindow = null;
+
+    /**
+     * Tick range of the run shown, over all its metrics.
+     * @type {?{min: number, max: number}}
+     */
+    let runExtent = null;
+
+    /**
+     * Tick range each metric was last found to hold, keyed by metric ID. Listing a metric's files
+     * is what a load costs before any data, so the answer is asked for once per run and again
+     * only when a card is reloaded, which is when a running run may have grown.
+     */
+    const tickRanges = {};
 
     /**
      * Initializes the controller and UI components.
@@ -74,6 +93,13 @@ export async function init() {
         HeaderView.init();
         
         DashboardView.init();
+
+        const from = Number.parseInt(urlParams.get(WINDOW_FROM_PARAM), 10);
+        const to = Number.parseInt(urlParams.get(WINDOW_TO_PARAM), 10);
+        tickWindow = Number.isFinite(from) && Number.isFinite(to) && to > from ? { from, to } : null;
+        if (window.footer?.leftSlot) {
+            TickWindowView.init(window.footer.leftSlot, handleTickWindowChange);
+        }
         
         // Update logo width for loading animation
         HeaderView.updateLogoWidth();
@@ -120,6 +146,12 @@ export async function init() {
     async function handleRunChange(runId) {
         if (!runId || runId === currentRunId) return;
 
+        // Another run holds other ticks: it is shown whole. The first run keeps the window of the URL
+        if (currentRunId) {
+            tickWindow = null;
+            writeTickWindowToUrl();
+        }
+        runExtent = null;
         currentRunId = runId;
         updateUrlRunId(runId);
         window.footer?.updateCurrent?.();
@@ -149,8 +181,7 @@ export async function init() {
     
     /**
      * Reloads one card. The manifest entry is read again, because a running run gains levels of
-     * detail; the card keeps its level, and keeps its place unless it stood at the newest data,
-     * which it then follows.
+     * detail; a pinned level stays pinned, and the tick window stays the page's.
      *
      * @param {Object} card - MetricCard instance
      */
@@ -163,9 +194,8 @@ export async function init() {
             if (runId !== currentRunId || DashboardView.getAllCards()[metricId] !== card) return;
             const entry = (fresh.metrics || []).find(metric => metric.id === metricId);
             if (entry) MetricCardView.updateMetric(card, entry);
+            delete tickRanges[metricId];
 
-            const state = windowState[metricId];
-            card._keepPosition = !!state && state.viewTo < state.tickMax;
             await loadMetricData(card);
         } catch (error) {
             if (error.name === 'AbortError') return;
@@ -212,16 +242,20 @@ export async function loadDashboard(runId) {
                 manifest = await waitForManifest(runId);
             }
             
-            // Create the cards, in the order of the manifest
+            // The cards stand in the order of the manifest
+            // Create metric cards
             DashboardView.createCards(manifest.metrics);
 
-            // Register LOD change and scroll handlers
+            // Register the handlers of the cards
             const cards = DashboardView.getAllCards();
             for (const [metricId, card] of Object.entries(cards)) {
                 MetricCardView.setOnLodChange(card, (lod) => {
-                    card.selectedLod = lod;
-                    card._keepPosition = true;
-                    MetricCardView.setActiveLod(card, lod);
+                    // A click pins a level; a click on the pinned level lets the card choose again
+                    card.pinnedLod = card.pinnedLod === lod ? null : lod;
+                    if (card.pinnedLod && lod === card.shownLod) {
+                        MetricCardView.setActiveLod(card, lod, { pinned: true, tooFine: card.tooFine });
+                        return;
+                    }
                     loadMetricData(card).catch(error => {
                         if (error.name !== 'AbortError') {
                             let message = error.message || 'Failed to load data';
@@ -235,17 +269,12 @@ export async function loadDashboard(runId) {
                 });
 
                 MetricCardView.setOnRefresh(card, () => refreshCard(card));
-
-                MetricCardView.setOnScroll(card, (scrollRatio) => {
-                    handleScroll(card, scrollRatio).catch(error => {
-                        if (error.name !== 'AbortError') {
-                            console.error(`[AnalyzerController] Scroll error for ${metricId}:`, error);
-                        }
-                    });
-                });
             }
 
             updateRefreshVisibility();
+
+            runExtent = await fetchRunExtent(runId, manifest.metrics);
+            TickWindowView.show(runExtent, tickWindow);
 
             // Load the group in view; the others load when they are first opened
             DashboardView.setOnGroupChange(() => {
@@ -340,8 +369,8 @@ export async function loadDashboard(runId) {
         const promises = cards.map(card => {
             const metricId = card.metric.id;
             card.dataRequested = true;
-            return loadMetricData(card).catch(error => {
-                if (error.name === 'AbortError') return; // LOD switch interrupted this load
+            return loadMetricData(card, { keepCompanion: true }).catch(error => {
+                if (error.name === 'AbortError') return; // another load of the card interrupted this one
                 // Extract user-friendly error message (hide technical details)
                 let message = error.message || 'Failed to load data';
                 if (message.includes('Binder Error') || message.includes('Parser Error')) {
@@ -396,7 +425,7 @@ export async function loadDashboard(runId) {
     }
 
     /**
-     * The coarsest level of detail a metric offers - its overview.
+     * The coarsest level of detail a metric offers.
      *
      * @param {Object} metric - Manifest entry
      * @returns {string|null} The coarsest level, or null if the metric names none
@@ -409,8 +438,8 @@ export async function loadDashboard(runId) {
     /**
      * Keeps every nth row so that at most `limit` ticks remain, and returns the rest unchanged.
      *
-     * The overview must show the whole run; when it holds more moments than the chart can draw,
-     * they are thinned evenly rather than cut off at one end. Rows sharing a tick stay together,
+     * The coarsest level is drawn even when it holds more moments over the tick window than the
+     * chart can draw; they are thinned evenly then rather than cut off at one end. Rows sharing a tick stay together,
      * so a metric with several rows per moment keeps its moments whole.
      *
      * @param {Array<Object>} rows - Rows ordered by tick
@@ -429,15 +458,20 @@ export async function loadDashboard(runId) {
     }
 
     /**
-     * Loads data for a single metric card with windowed tick-range support.
+     * Loads data for a single metric card, over the tick window of the page.
      * <p>
-     * Two-phase approach for fast loading:
-     * 1. Lightweight /tick-range pre-check (~1ms) determines if windowing is needed.
-     * 2. Data request uses tickFrom/tickTo so the server only merges the needed files.
+     * 1. The ticks the metric holds are known from the load of the run, or asked for.
+     * 2. The card draws the finest level of detail whose points over the tick window fit what it
+     *    can draw, unless the reader pinned a level; a pinned level that has become too fine for
+     *    the window is released.
+     * 3. The data request names the window, so the server only merges the files it needs.
      *
      * @param {Object} card - MetricCard instance
+     * @param {Object} [options]
+     * @param {boolean} [options.keepCompanion=false] - Whether companions read before are kept, as
+     *        when only the tick window changed (see {@link loadCompanionData})
      */
-    async function loadMetricData(card) {
+    async function loadMetricData(card, { keepCompanion = false } = {}) {
         const metric = card.metric;
         const metricId = metric.id;
 
@@ -452,92 +486,57 @@ export async function loadDashboard(runId) {
 
         try {
             const hasGeneratedQuery = metric.generatedQuery && metric.generatedQuery.trim();
-            const selectedLod = card.selectedLod || null;
             const isParquet = !!hasGeneratedQuery;
-
-            // A switch of the level of detail and a reload away from the newest data keep the place
-            const prevState = windowState[metricId];
-            const keepPosition = card._keepPosition && prevState;
-            delete card._keepPosition;
-
             const effectiveLimit = calculateEffectiveLimit(card);
 
-            // Phase 1: Lightweight tick-range pre-check
-            const rangeInfo = await AnalyticsApi.fetchTickRange(metricId, currentRunId, selectedLod);
+            // Phase 1: which ticks the metric holds
+            const rangeInfo = tickRanges[metricId]
+                ?? (tickRanges[metricId] = await AnalyticsApi.fetchTickRange(metricId, currentRunId, null));
             const tickMin = rangeInfo.tickMin;
             const tickMax = rangeInfo.tickMax;
-            const resolvedLod = rangeInfo.lod || selectedLod;
-            // The overview is never windowed: it answers what the whole run looks like, and a
-            // window would answer something else. Too many points there are thinned after loading.
-            const isOverview = resolvedLod === coarsestLod(metric);
             const hasRange = tickMin != null && tickMax != null;
-            const points = hasRange ? pointCount(metric, resolvedLod, tickMin, tickMax) : 0;
-            const needsWindowing = !isOverview && hasRange && points > effectiveLimit;
+            if (hasRange) extendRunExtent(tickMin, tickMax);
 
-            // Calculate view window if windowing is needed
-            let viewFrom = null;
-            let viewTo = null;
-            if (needsWindowing) {
-                const totalRange = tickMax - tickMin;
-                const viewRange = Math.max(1, Math.round(totalRange * (effectiveLimit / points)));
-
-                if (keepPosition && prevState && prevState.viewFrom != null) {
-                    viewFrom = Math.max(tickMin, Math.min(prevState.viewFrom, tickMax - viewRange));
-                    viewTo = viewFrom + viewRange;
-                } else {
-                    // Default: latest data (rightmost)
-                    viewTo = tickMax;
-                    viewFrom = tickMax - viewRange;
-                }
+            const from = hasRange ? Math.max(tickMin, tickWindow ? tickWindow.from : tickMin) : null;
+            const to = hasRange ? Math.min(tickMax, tickWindow ? tickWindow.to : tickMax) : null;
+            if (hasRange && from > to) {
+                MetricCardView.showNoData(card);
+                return;
             }
 
-            // Phase 2: Fetch data with or without tick range limits
-            let data;
+            // Phase 2: the level of detail. Levels sort from the finest to the coarsest
+            const levels = metric.dataSources ? Object.keys(metric.dataSources).sort() : [];
+            const fits = lod => !hasRange || pointCount(metric, lod, from, to) <= effectiveLimit;
+            const tooFine = levels.filter(lod => !fits(lod));
+            if (card.pinnedLod && tooFine.includes(card.pinnedLod)) {
+                card.pinnedLod = null;
+            }
+            const resolvedLod = card.pinnedLod || levels.find(fits) || coarsestLod(metric) || rangeInfo.lod;
+            // Only the coarsest level can be drawn although it does not fit; it is thinned then
+            const thin = !!resolvedLod && tooFine.includes(resolvedLod);
+            const viewFrom = tickWindow ? from : null;
+            const viewTo = tickWindow ? to : null;
 
+            // Phase 3: fetch the data of the window
+            let data;
             if (isParquet) {
-                // Fetch Parquet blob — server only merges files in the tick window
                 const { blob: parquetBlob } = await AnalyticsApi.fetchParquetBlob(
                     metricId, currentRunId, resolvedLod, controller.signal, viewFrom, viewTo
                 );
-
                 const blobKey = `${metricId}_${resolvedLod || 'auto'}`;
                 await DuckDBClient.registerParquetBlob(blobKey, parquetBlob);
-
                 data = await DuckDBClient.queryRegisteredBlob(blobKey, metric.generatedQuery);
-
-                if (needsWindowing) {
-                    windowState[metricId] = {
-                        tickMin, tickMax, viewFrom, viewTo, effectiveLimit,
-                        isParquet: true, blobKey, points
-                    };
-                    MetricCardView.showScrollbar(card, windowState[metricId]);
-                } else {
-                    delete windowState[metricId];
-                    MetricCardView.hideScrollbar(card);
-                }
-
             } else {
-                // JSON path — server-side query with tick range
                 const result = await AnalyticsApi.queryData(
                     currentRunId, metricId, resolvedLod, controller.signal, viewFrom, viewTo
                 );
                 data = result.data;
-
-                if (needsWindowing) {
-                    windowState[metricId] = {
-                        tickMin, tickMax, viewFrom, viewTo, effectiveLimit,
-                        isParquet: false, points
-                    };
-                    MetricCardView.showScrollbar(card, windowState[metricId]);
-                } else {
-                    delete windowState[metricId];
-                    MetricCardView.hideScrollbar(card);
-                }
             }
 
-            // Highlight the active LOD chip
+            card.shownLod = resolvedLod;
+            card.tooFine = tooFine;
             if (resolvedLod) {
-                MetricCardView.setActiveLod(card, resolvedLod);
+                MetricCardView.setActiveLod(card, resolvedLod, { pinned: !!card.pinnedLod, tooFine });
             }
 
             if (data.length === 0) {
@@ -545,10 +544,15 @@ export async function loadDashboard(runId) {
                 return;
             }
 
-            const companion = await loadCompanionData(metric, resolvedLod, controller.signal);
+            const previous = loadedData[metricId];
+            const followsLevel = (metric.companions || []).some(companion => companion.followsLevel);
+            const companion = keepCompanion && previous?.companion && (!followsLevel || previous.lod === resolvedLod)
+                ? previous.companion
+                : await loadCompanionData(metric, resolvedLod, controller.signal);
             loadedData[metricId] = {
-                data: isOverview ? thinToLimit(data, effectiveLimit) : data,
-                companion
+                data: thin ? thinToLimit(data, effectiveLimit) : data,
+                companion,
+                lod: resolvedLod
             };
             renderWithViewState(card);
 
@@ -583,10 +587,11 @@ export async function loadDashboard(runId) {
      * simulation keeps adding to them, and a tree that stops growing loses every genome born after
      * it was read.
      *
-     * Scrolling is not such a moment. It moves the window inside the tick range that was known
-     * when the metric was loaded, and the copy read then already covers that whole range, so the
-     * scroll path carries it along instead of asking for it again. Opening a clade likewise
-     * redraws from what is already loaded and costs no request.
+     * A change of the tick window is not such a moment. It moves the window inside the tick range
+     * that was known when the metric was loaded, and the copy read then already covers that whole
+     * range, so the load carries it along instead of asking for it again - unless the companion
+     * follows the level and the level changed with the window. Opening a clade likewise redraws
+     * from what is already loaded and costs no request.
      *
      * @param {Object} metric - Manifest entry of the metric being loaded
      * @param {string|null} lod - Level of detail the chart shows, for companions following it
@@ -637,79 +642,76 @@ export async function loadDashboard(runId) {
     }
 
     /**
-     * Handles scroll events for a metric card.
-     * Recomputes the view window from the scroll ratio and reloads data.
+     * Reads the tick range of a run over all its metrics. Every request is the lightweight one.
      *
-     * @param {Object} card - Card instance
-     * @param {number} scrollRatio - 0.0 (start) to 1.0 (end)
+     * @param {string} runId - Simulation run ID
+     * @param {Array<Object>} metrics - Metric manifest entries
+     * @returns {Promise<?{min: number, max: number}>} The range, or null if no metric holds a tick
      */
-    async function handleScroll(card, scrollRatio) {
-        const metricId = card.metric.id;
-        const state = windowState[metricId];
-        if (!state) return;
-
-        const totalRange = state.tickMax - state.tickMin;
-        const viewRange = state.viewTo - state.viewFrom;
-        const maxOffset = totalRange - viewRange;
-
-        const viewFrom = state.tickMin + Math.round(scrollRatio * maxOffset);
-        const viewTo = viewFrom + viewRange;
-
-        // Update state
-        state.viewFrom = viewFrom;
-        state.viewTo = viewTo;
-
-        // Abort any in-flight request
-        if (abortControllers[metricId]) {
-            abortControllers[metricId].abort();
-        }
-        const controller = new AbortController();
-        abortControllers[metricId] = controller;
-
-        try {
-            MetricCardView.showLoading(card);
-            let data;
-            const selectedLod = card.selectedLod || null;
-
-            if (state.isParquet) {
-                // Re-fetch windowed blob from server and re-register
-                const { blob: parquetBlob } = await AnalyticsApi.fetchParquetBlob(
-                    metricId, currentRunId, selectedLod, controller.signal, viewFrom, viewTo
-                );
-                await DuckDBClient.registerParquetBlob(state.blobKey, parquetBlob);
-                data = await DuckDBClient.queryRegisteredBlob(state.blobKey, card.metric.generatedQuery);
-            } else {
-                // Server-side query with tick range
-                const result = await AnalyticsApi.queryData(
-                    currentRunId, metricId, selectedLod, controller.signal, viewFrom, viewTo
-                );
-                data = result.data;
+    async function fetchRunExtent(runId, metrics) {
+        Object.keys(tickRanges).forEach(metricId => delete tickRanges[metricId]);
+        await Promise.all(metrics.map(async metric => {
+            try {
+                tickRanges[metric.id] = await AnalyticsApi.fetchTickRange(metric.id, runId, null);
+            } catch (error) {
+                // The card of the metric asks again and shows what went wrong
             }
-
-            if (data.length === 0) {
-                MetricCardView.showNoData(card);
-                return;
-            }
-
-            // The companion is not windowed, and the scrollbar cannot leave the tick range that
-            // was known when the metric was loaded - so the copy from then covers every tick
-            // reachable by scrolling. It is fetched here only when the metric was loaded without
-            // rows and the scroll is what first reaches some.
-            const companion = loadedData[metricId]?.companion
-                ?? await loadCompanionData(card.metric, selectedLod, controller.signal);
-            loadedData[metricId] = { data, companion };
-            renderWithViewState(card);
-
-        } catch (error) {
-            if (error.name === 'AbortError') return;
-            console.error(`[Analytics] Scroll error for ${metricId}:`, error);
-        } finally {
-            if (abortControllers[metricId] === controller) {
-                delete abortControllers[metricId];
-            }
-        }
+        }));
+        const held = Object.values(tickRanges).filter(range => range.tickMin != null && range.tickMax != null);
+        if (held.length === 0) return null;
+        return {
+            min: Math.min(...held.map(range => range.tickMin)),
+            max: Math.max(...held.map(range => range.tickMax))
+        };
     }
-    
+
+    /**
+     * Widens the tick range of the run by what a metric turned out to hold, as a running run does
+     * between two loads.
+     *
+     * @param {number} tickMin - First tick of a metric
+     * @param {number} tickMax - Last tick of a metric
+     */
+    function extendRunExtent(tickMin, tickMax) {
+        if (runExtent && tickMin >= runExtent.min && tickMax <= runExtent.max) return;
+        runExtent = runExtent
+            ? { min: Math.min(runExtent.min, tickMin), max: Math.max(runExtent.max, tickMax) }
+            : { min: tickMin, max: tickMax };
+        TickWindowView.show(runExtent, tickWindow);
+    }
+
+    /**
+     * Takes over the tick window the reader set. The group in view loads at once; the cards of
+     * the other groups load when their group is opened.
+     *
+     * @param {?{from: number, to: number}} next - The window, or null for the whole run
+     */
+    function handleTickWindowChange(next) {
+        tickWindow = next;
+        writeTickWindowToUrl();
+        Object.values(DashboardView.getAllCards()).forEach(card => {
+            card.dataRequested = false;
+        });
+        loadVisibleMetricsData().catch(error => {
+            console.error('[AnalyzerController] Failed to load the tick window:', error);
+        });
+    }
+
+    /** Writes the tick window into the URL, which keeps the run last. */
+    function writeTickWindowToUrl() {
+        const url = new URL(window.location.href);
+        const runId = url.searchParams.get('runId');
+        url.searchParams.delete('runId');
+        url.searchParams.delete(WINDOW_FROM_PARAM);
+        url.searchParams.delete(WINDOW_TO_PARAM);
+        if (tickWindow) {
+            url.searchParams.set(WINDOW_FROM_PARAM, tickWindow.from);
+            url.searchParams.set(WINDOW_TO_PARAM, tickWindow.to);
+        }
+        if (runId) url.searchParams.set('runId', runId);
+        window.history.replaceState({}, '', url.toString());
+    }
+
 export const changeRun = handleRunChange;
 export const getCurrentRunId = () => currentRunId;
 

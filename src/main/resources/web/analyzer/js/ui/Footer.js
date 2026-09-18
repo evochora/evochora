@@ -1,5 +1,5 @@
-import { PipelineStatusPoller } from '../pipeline/PipelineStatusPoller.js';
-import { includeStartingRun } from '../run/RunAvailability.js';
+import { PipelineStatusPoller } from '../../../shared/pipeline/PipelineStatusPoller.js';
+import { includeStartingRun } from '../../../shared/run/RunAvailability.js';
 
 export class Footer {
     /**
@@ -43,10 +43,19 @@ export class Footer {
             </div>
         `;
         this.barEl = this.element.querySelector('.footer-bar');
+        this.leftEl = this.element.querySelector('.footer-left');
         this.runEl = this.element.querySelector('.footer-run');
         this.valueEl = this.element.querySelector('.footer-run-value');
         this.overlayEl = this.element.querySelector('.footer-overlay');
         this.updateCurrent();
+    }
+
+    /**
+     * The left part of the bar, which the page fills with what says which part of the run is shown.
+     * @returns {HTMLElement}
+     */
+    get leftSlot() {
+        return this.leftEl;
     }
 
     async open() {

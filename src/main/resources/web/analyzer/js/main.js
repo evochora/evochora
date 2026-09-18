@@ -22,7 +22,7 @@ import * as AnalyticsApi from './api/AnalyticsApi.js';
 import * as HeaderView from './ui/HeaderView.js';
 
 // Import shared components
-import { Footer } from '../../shared/footer/Footer.js';
+import { Footer } from './ui/Footer.js';
 import { AppSwitcher } from '../../shared/app-switcher/AppSwitcher.js';
 import { showLoadFailedNotice } from '../../shared/run/RunAvailability.js';
 
