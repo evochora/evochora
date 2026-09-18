@@ -146,7 +146,7 @@ export async function init() {
     async function handleRunChange(runId) {
         if (!runId || runId === currentRunId) return;
 
-        // Another run holds other ticks: it is shown whole. The first run keeps the window of the URL
+        // Another run holds other ticks: it is shown whole. The first run keeps the URL's window
         if (currentRunId) {
             tickWindow = null;
             writeTickWindowToUrl();
@@ -212,7 +212,8 @@ export async function init() {
      * Called whenever the run shown or the pipeline state changes.
      */
 export function updateRefreshVisibility() {
-        const live = !!currentRunId && startingRunId(window.footer?.pipelineState?.()) === currentRunId;
+        const pipeline = window.footer?.pipelineState?.();
+        const live = !!currentRunId && startingRunId(pipeline) === currentRunId;
         Object.values(DashboardView.getAllCards()).forEach(card => {
             MetricCardView.setRefreshVisible(card, live);
         });
@@ -242,8 +243,7 @@ export async function loadDashboard(runId) {
                 manifest = await waitForManifest(runId);
             }
             
-            // The cards stand in the order of the manifest
-            // Create metric cards
+            // Create the cards, in the order of the manifest
             DashboardView.createCards(manifest.metrics);
 
             // Register the handlers of the cards
@@ -370,7 +370,7 @@ export async function loadDashboard(runId) {
             const metricId = card.metric.id;
             card.dataRequested = true;
             return loadMetricData(card, { keepCompanion: true }).catch(error => {
-                if (error.name === 'AbortError') return; // another load of the card interrupted this one
+                if (error.name === 'AbortError') return; // another load of the card took over
                 // Extract user-friendly error message (hide technical details)
                 let message = error.message || 'Failed to load data';
                 if (message.includes('Binder Error') || message.includes('Parser Error')) {
@@ -439,8 +439,8 @@ export async function loadDashboard(runId) {
      * Keeps every nth row so that at most `limit` ticks remain, and returns the rest unchanged.
      *
      * The coarsest level is drawn even when it holds more moments over the tick window than the
-     * chart can draw; they are thinned evenly then rather than cut off at one end. Rows sharing a tick stay together,
-     * so a metric with several rows per moment keeps its moments whole.
+     * chart can draw; they are thinned evenly then rather than cut off at one end. Rows sharing a
+     * tick stay together, so a metric with several rows per moment keeps its moments whole.
      *
      * @param {Array<Object>} rows - Rows ordered by tick
      * @param {number} limit - Greatest number of ticks to keep
@@ -491,7 +491,8 @@ export async function loadDashboard(runId) {
 
             // Phase 1: which ticks the metric holds
             const rangeInfo = tickRanges[metricId]
-                ?? (tickRanges[metricId] = await AnalyticsApi.fetchTickRange(metricId, currentRunId, null));
+                ?? (tickRanges[metricId] =
+                    await AnalyticsApi.fetchTickRange(metricId, currentRunId, null));
             const tickMin = rangeInfo.tickMin;
             const tickMax = rangeInfo.tickMax;
             const hasRange = tickMin != null && tickMax != null;
@@ -511,7 +512,8 @@ export async function loadDashboard(runId) {
             if (card.pinnedLod && tooFine.includes(card.pinnedLod)) {
                 card.pinnedLod = null;
             }
-            const resolvedLod = card.pinnedLod || levels.find(fits) || coarsestLod(metric) || rangeInfo.lod;
+            const resolvedLod = card.pinnedLod || levels.find(fits)
+                || coarsestLod(metric) || rangeInfo.lod;
             // Only the coarsest level can be drawn although it does not fit; it is thinned then
             const thin = !!resolvedLod && tooFine.includes(resolvedLod);
             const viewFrom = tickWindow ? from : null;
@@ -546,7 +548,9 @@ export async function loadDashboard(runId) {
 
             const previous = loadedData[metricId];
             const followsLevel = (metric.companions || []).some(companion => companion.followsLevel);
-            const companion = keepCompanion && previous?.companion && (!followsLevel || previous.lod === resolvedLod)
+            const companionKept = keepCompanion && previous?.companion
+                && (!followsLevel || previous.lod === resolvedLod);
+            const companion = companionKept
                 ? previous.companion
                 : await loadCompanionData(metric, resolvedLod, controller.signal);
             loadedData[metricId] = {
@@ -657,7 +661,8 @@ export async function loadDashboard(runId) {
                 // The card of the metric asks again and shows what went wrong
             }
         }));
-        const held = Object.values(tickRanges).filter(range => range.tickMin != null && range.tickMax != null);
+        const held = Object.values(tickRanges)
+            .filter(range => range.tickMin != null && range.tickMax != null);
         if (held.length === 0) return null;
         return {
             min: Math.min(...held.map(range => range.tickMin)),
