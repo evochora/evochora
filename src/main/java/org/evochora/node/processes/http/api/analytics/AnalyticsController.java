@@ -989,8 +989,9 @@ public class AnalyticsController implements IController {
             if (!entries.isEmpty()) {
                 manifestCache.put(runId, new CacheEntry(System.currentTimeMillis(), responseJson));
             }
-            
-            ctx.json(response);
+
+            // The same text the cache serves, so that a manifest reads the same whether cached or not
+            ctx.contentType("application/json").result(responseJson);
             
         } catch (Exception e) {
             log.error("Failed to aggregate manifest for run {}", runId, e);

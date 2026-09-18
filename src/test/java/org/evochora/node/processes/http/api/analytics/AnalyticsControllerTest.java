@@ -100,7 +100,7 @@ class AnalyticsControllerTest {
 
             assertThat(first.get("id").getAsString()).isEqualTo("population");
             assertThat(first.get("group").getAsString()).isEqualTo("Population");
-            assertThat(first.get("fullWidth").isJsonNull()).isTrue();
+            assertThat(first.has("fullWidth")).as("a card of no width says nothing about it").isFalse();
             assertThat(first.get("order").getAsInt()).isZero();
             assertThat(second.get("id").getAsString()).isEqualTo("age_distribution");
             assertThat(second.get("fullWidth").getAsBoolean()).isTrue();
