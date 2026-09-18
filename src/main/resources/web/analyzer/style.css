@@ -54,7 +54,7 @@ header {
     border-bottom: 1px solid var(--border-color);
 }
 
-.header-left, .header-right {
+.header-left {
     display: flex;
     align-items: center;
     gap: 15px;

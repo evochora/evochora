@@ -3,10 +3,11 @@
  *
  * The part of the run every card shows. A track stands for the whole run and carries the window:
  * dragging an edge sets that side, dragging the window moves it, dragging over the track outside
- * it draws a new one, and a double click or the button beside the last tick shows the whole run again. The two ticks stand beside the
- * track for typing, as "28M", "28.5M", "500k" or a plain number, whose digits are grouped as they
- * are typed. A field that holds no tick - a decimal part without a suffix - is marked and keeps
- * its text until it is completed, or Escape puts the tick back.
+ * it draws a new one, and a double click or the button beside the last tick shows the whole run
+ * again. The two ticks stand beside the track for typing, as "28M", "28.5M", "500k" or a plain
+ * number, whose digits are grouped as they are typed. A field that holds no tick - a decimal part
+ * without a suffix - is marked and keeps its text until it is completed, or Escape puts the tick
+ * back.
  *
  * The window is reported when a drag ends or a typed tick is confirmed, never while dragging:
  * every report makes the cards load.
@@ -59,7 +60,8 @@ export function init(container, handler) {
             <div class="tick-window-tooltip"></div>
         </div>
         <input class="tick-window-input" type="text" inputmode="decimal" aria-label="Last tick shown">
-        <button class="tick-window-reset" aria-label="Show the whole run" data-tooltip="Show the whole run">\u2922</button>
+        <button class="tick-window-reset" aria-label="Show the whole run"
+                data-tooltip="Show the whole run">\u2922</button>
     `;
     container.appendChild(root);
 
@@ -214,7 +216,9 @@ function gripAt(clientX) {
 function handlePointerDown(event) {
     if (!extent || event.button !== 0) return;
     event.currentTarget.setPointerCapture(event.pointerId);
-    drag = { grip: gripAt(event.clientX), startTick: tickAt(event.clientX), startView: { ...view }, moved: false };
+    drag = {
+        grip: gripAt(event.clientX), startTick: tickAt(event.clientX), startView: { ...view }, moved: false
+    };
 }
 
 /**
@@ -234,7 +238,8 @@ function handlePointerMove(event) {
         } else if (drag.grip === 'to') {
             view = { from: start.from, to: Math.max(tick, start.from + minWidth()) };
         } else if (drag.grip === 'window') {
-            view = clamp({ from: start.from + tick - drag.startTick, to: start.to + tick - drag.startTick });
+            const shift = tick - drag.startTick;
+            view = clamp({ from: start.from + shift, to: start.to + shift });
         } else if (drag.moved) {
             view = { from: Math.min(drag.startTick, tick), to: Math.max(drag.startTick, tick) };
         }
