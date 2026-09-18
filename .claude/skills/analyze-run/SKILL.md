@@ -304,12 +304,17 @@ Clade membership is a proxy; the mutation is molecules in the world. Via the nod
 - Organism detail (`/visualizer/api/organisms/{tick}/{id}`) → `staticInfo.initialPosition` and the
   runtime state; the body endpoint above already carries the anchor, so this is only needed for the
   state itself.
-- **The reproduction switch lives in `MAIN_LOOP` row 4** (y0+4, x0−2…x0+45 covers it): primordial
-  layout is `NRG %DR0 … GTI %DR0 D100000 [NOP padding 16–19] JMPI MAIN_REPRODUCE … GTI %SR D5000 …`.
-  Conditional skip semantics: a failed test skips the next REAL instruction, walking over NOPs. An
-  insertion in the padding therefore makes the `JMPI` unconditional (energy route always open); a
-  substitution that breaks the `GTI` comparison closes the route permanently. This one switch has
-  been retuned independently in three runs — check it in every analysis.
+- **Find the reproduction switch before reading any clade.** Every primordial decides in its main
+  loop whether to reproduce or to harvest, and that decision is the most retuned place of every
+  run analysed so far. Do not take its layout from this text or from memory: read the founder's
+  body at tick 0 through the body endpoint and locate the conditionals that guard the jump into
+  reproduction, with their operand cells and the NOP padding behind them. Then read the trunk
+  mutations of every surviving lineage against those cells. Conditional skip semantics make the
+  padding sensitive: a failed test skips the next REAL instruction, walking over NOPs, so an
+  insertion in the padding makes the following jump unconditional, an inserted conditional inverts
+  the dial, and a substitution that breaks the comparison - or points it at a register nothing
+  writes - closes the route. Independent lineages hitting the same guard by different molecular
+  routes is convergence; measure it against clones in the same window before calling it selection.
 - **Execution heatmap (statistical):** every sampled tick carries each organism's IP. Aggregating
   IP positions relative to the body anchor across many organisms of a clade yields a coverage
   heatmap good enough to separate hot code (main loop, harvest) from code that never runs at
