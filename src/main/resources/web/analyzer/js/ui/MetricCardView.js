@@ -36,7 +36,7 @@ export function reset() {
  */
 export function create(metric) {
     const cardEl = document.createElement('div');
-    cardEl.className = 'metric-card';
+    cardEl.className = metric.fullWidth ? 'metric-card full-width' : 'metric-card';
     cardEl.dataset.metricId = metric.id;
     
     // Header

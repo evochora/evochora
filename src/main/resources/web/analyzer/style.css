@@ -190,6 +190,93 @@ main.container {
     }
 }
 
+.dashboard[hidden] {
+    display: none;
+}
+
+/* A card whose chart needs the width takes a row of its own */
+.metric-card.full-width {
+    grid-column: 1 / -1;
+}
+
+/* --- Metric Groups --- */
+/* Every group is a page of its own; the header lists them. Groups that do not fit move into a menu. */
+.group-nav {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin: 0 24px;
+    position: relative;
+}
+
+.group-nav[hidden] {
+    display: none;
+}
+
+.group-nav-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    color: var(--text-secondary);
+    font-family: inherit;
+    font-size: 0.9em;
+    white-space: nowrap;
+    flex-shrink: 0;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.group-nav-item:hover {
+    color: var(--text-primary);
+    background-color: transparent;
+    border-color: var(--border-color);
+}
+
+.group-nav-item.active {
+    color: var(--text-primary);
+    background-color: var(--bg-primary);
+    border-color: var(--border-color);
+    box-shadow: inset 0 -2px 0 var(--accent-blue);
+}
+
+.group-nav-item[hidden] {
+    display: none;
+}
+
+.group-nav-count {
+    font-size: 0.8em;
+    color: var(--text-muted);
+}
+
+.group-nav-menu {
+    position: absolute;
+    top: calc(100% + 10px);
+    right: 0;
+    z-index: 30;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 200px;
+    padding: 6px;
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+}
+
+.group-nav-menu[hidden] {
+    display: none;
+}
+
+.group-nav-menu .group-nav-item {
+    justify-content: space-between;
+}
 
 /* --- Metric Card --- */
 .metric-card {
@@ -297,9 +384,14 @@ main.container {
 }
 
 /* --- Metric Card Chart Container --- */
+/* Takes the height its card has left: cards of one row are equally tall, and the chart of the
+   shorter one grows instead of leaving the card empty below it. The explicit minimum keeps the
+   height of the canvas from feeding back into the height of the card. */
 .metric-card-chart-container {
     position: relative;
-    height: 350px;
+    flex: 1 1 350px;
+    min-height: 350px;
+    overflow: hidden;
     width: 100%;
     background-color: var(--bg-card);
     border: 1px solid var(--border-color);

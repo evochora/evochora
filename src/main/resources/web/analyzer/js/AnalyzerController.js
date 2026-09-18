@@ -22,17 +22,6 @@ import {
  * @module AnalyzerController
  */
 
-    const METRIC_ORDER = [
-        'population',           // 1. Population Overview
-        'vital_stats',          // 2. Birth & Death Rates
-        'generation_depth',     // 3. Generation Depth
-        'age_distribution',     // 4. Age Distribution
-        'death_lifetimes',      // 5. Death Lifetimes
-        'genome_clades',        // 6. Clade Shares
-        'genome_diversity',     // 7. Genome Diversity
-        'instruction_usage',    // 8. Instruction Usage
-        'environment_composition' // 9. Environment Composition
-    ];
     
     // State
     let currentRunId = null;
@@ -195,18 +184,7 @@ export async function loadDashboard(runId) {
                 manifest = await waitForManifest(runId);
             }
             
-            // Sort metrics by preferred order
-            manifest.metrics.sort((a, b) => {
-                const orderA = METRIC_ORDER.indexOf(a.id);
-                const orderB = METRIC_ORDER.indexOf(b.id);
-                // Metrics not in METRIC_ORDER go to the end (alphabetically)
-                if (orderA === -1 && orderB === -1) return a.id.localeCompare(b.id);
-                if (orderA === -1) return 1;
-                if (orderB === -1) return -1;
-                return orderA - orderB;
-            });
-            
-            // Create metric cards
+            // Create the cards, in the order of the manifest
             DashboardView.createCards(manifest.metrics);
 
             // Register LOD change and scroll handlers
@@ -237,8 +215,13 @@ export async function loadDashboard(runId) {
                 });
             }
 
-            // Load data for all metrics
-            await loadAllMetricsData();
+            // Load the group in view; the others load when they are first opened
+            DashboardView.setOnGroupChange(() => {
+                loadVisibleMetricsData().catch(error => {
+                    console.error('[AnalyzerController] Failed to load group:', error);
+                });
+            });
+            await loadVisibleMetricsData();
             
         } catch (error) {
             if (generation !== loadGeneration || error.name === 'AbortError') {
@@ -315,13 +298,16 @@ export async function loadDashboard(runId) {
     }
     
     /**
-     * Loads data for all metric cards.
+     * Loads data for the cards of the group in view that have not asked for theirs yet. A card is
+     * measured when it loads, so it loads while it is visible.
      */
-    async function loadAllMetricsData() {
-        const cards = DashboardView.getAllCards();
+    async function loadVisibleMetricsData() {
+        const cards = DashboardView.getActiveCards().filter(card => !card.dataRequested);
 
-        // Load all metrics in parallel
-        const promises = Object.entries(cards).map(([metricId, card]) => {
+        // Load the metrics in parallel
+        const promises = cards.map(card => {
+            const metricId = card.metric.id;
+            card.dataRequested = true;
             return loadMetricData(card).catch(error => {
                 if (error.name === 'AbortError') return; // LOD switch interrupted this load
                 // Extract user-friendly error message (hide technical details)
