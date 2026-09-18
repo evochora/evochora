@@ -280,16 +280,19 @@ export function showError(card, message) {
  * @param {boolean} [state.pinned=false] - Whether the reader chose the level; otherwise the card
  *        chose the finest one the tick window allows
  * @param {Array<string>} [state.tooFine=[]] - Levels holding more points over the tick window
- *        than the card draws; they cannot be chosen
+ *        than the card draws; they cannot be chosen. The level drawn may be among them: then it
+ *        is the coarsest, drawn thinned, and stays enabled
  */
 export function setActiveLod(card, lod, { pinned = false, tooFine = [] } = {}) {
     if (!card || !card.lodChips) return;
     card.lodChips.querySelectorAll('.lod-chip').forEach(chip => {
         const active = chip.dataset.lod === lod;
+        const tooFineForWindow = tooFine.includes(chip.dataset.lod);
         chip.classList.toggle('active', active);
         chip.classList.toggle('pinned', active && pinned);
-        chip.disabled = tooFine.includes(chip.dataset.lod);
+        chip.disabled = tooFineForWindow && !active;
         chip.dataset.tooltip = chip.disabled ? 'Too many points for this tick window'
+            : active && tooFineForWindow ? 'Coarsest level, thinned to fit this tick window'
             : active && pinned ? 'Pinned \u2013 click to let the card choose again'
             : active ? 'Chosen for this tick window \u2013 click to pin'
             : 'Pin this level of detail';
