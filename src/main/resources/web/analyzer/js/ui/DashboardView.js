@@ -54,7 +54,8 @@ export function setOnGroupChange(handler) {
  * The metrics are laid out by the group their manifest entry names. Every group is a page of its
  * own, reached through the header, which lists the groups in the order the manifest first names
  * them; a dashboard with a single group has no navigation. Metrics without a group share one
- * that comes last.
+ * that comes last. Group names that differ only in what the URL drops - case, punctuation -
+ * name the same group.
  *
  * @param {Array<Object>} metrics - Metric manifest entries
  */
@@ -64,17 +65,22 @@ export function createCards(metrics) {
     MetricCardView.reset();
     container.innerHTML = '';
 
-    const byGroup = new Map();
+    // A group is what its name is in the URL, in lower case: two plugins that spell a group
+    // differently name the same group, and the first spelling is the one shown
+    const bySlug = new Map();
     metrics.forEach(metric => {
         const name = metric.group || UNGROUPED;
-        if (!byGroup.has(name)) byGroup.set(name, []);
-        byGroup.get(name).push(metric);
+        const key = slug(name);
+        if (!bySlug.has(key)) bySlug.set(key, { name, metrics: [] });
+        bySlug.get(key).metrics.push(metric);
     });
-    if (byGroup.has(UNGROUPED)) {
-        const ungrouped = byGroup.get(UNGROUPED);
-        byGroup.delete(UNGROUPED);
-        byGroup.set(UNGROUPED, ungrouped);
+    const ungroupedKey = slug(UNGROUPED);
+    if (bySlug.has(ungroupedKey)) {
+        const ungrouped = bySlug.get(ungroupedKey);
+        bySlug.delete(ungroupedKey);
+        bySlug.set(ungroupedKey, ungrouped);
     }
+    const byGroup = new Map([...bySlug.values()].map(group => [group.name, group.metrics]));
     groups = [...byGroup.keys()];
 
     byGroup.forEach((groupMetrics, name) => {
