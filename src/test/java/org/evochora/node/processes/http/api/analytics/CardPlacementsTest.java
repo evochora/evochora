@@ -3,6 +3,8 @@ package org.evochora.node.processes.http.api.analytics;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 import org.evochora.datapipeline.api.analytics.ManifestEntry;
+import org.evochora.junit.extensions.logging.ExpectLog;
+import org.evochora.junit.extensions.logging.LogLevel;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
@@ -87,6 +89,22 @@ class CardPlacementsTest {
         assertThat(placed).extracting(entry -> entry.id).containsExactly("genome_lineage", "stranger");
         assertThat(placed.get(0).group).isNull();
         assertThat(placed).extracting(entry -> entry.order).containsExactly(0, 1);
+    }
+
+    @Test
+    @ExpectLog(level = LogLevel.WARN,
+        messagePattern = "Analytics plugins 0 and 1 share the metric id 'vital_stats'; the later one places its cards")
+    void ofTwoPluginsSharingAMetricIdTheLaterPlacesTheCards() {
+        Config twice = ConfigFactory.parseString("""
+            plugins = [
+              { className = "A", options { metricId = "vital_stats", group = "Population" } },
+              { className = "B", options { metricId = "vital_stats", group = "Ecology" } }
+            ]
+            """);
+        ManifestEntry placed = new CardPlacements(twice.getConfigList("plugins"))
+            .apply(List.of(entry("vital_stats", null))).get(0);
+
+        assertThat(placed.group).isEqualTo("Ecology");
     }
 
     @Test

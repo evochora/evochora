@@ -2,6 +2,8 @@ package org.evochora.node.processes.http.api.analytics;
 
 import com.typesafe.config.Config;
 import org.evochora.datapipeline.api.analytics.ManifestEntry;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -24,6 +26,8 @@ import java.util.Map;
  */
 final class CardPlacements {
 
+    private static final Logger log = LoggerFactory.getLogger(CardPlacements.class);
+
     /** The placement of one plugin's cards. */
     private record Placement(String group, Boolean fullWidth, int order) { }
 
@@ -35,7 +39,8 @@ final class CardPlacements {
      * Reads the placements from a plugin list as the analytics indexer is configured with.
      *
      * @param plugins Entries with {@code options.metricId}, and possibly {@code options.group}
-     *                and {@code options.fullWidth}; an entry without a metric id places nothing
+     *                and {@code options.fullWidth}; an entry without a metric id places nothing,
+     *                and of two entries sharing a metric id the later places the cards
      */
     CardPlacements(List<? extends Config> plugins) {
         this.pluginCount = plugins.size();
@@ -45,10 +50,15 @@ final class CardPlacements {
             if (options == null || !options.hasPath("metricId")) {
                 continue;
             }
-            byMetricId.put(options.getString("metricId"), new Placement(
+            String metricId = options.getString("metricId");
+            Placement earlier = byMetricId.put(metricId, new Placement(
                 options.hasPath("group") ? options.getString("group") : null,
                 options.hasPath("fullWidth") ? options.getBoolean("fullWidth") : null,
                 index));
+            if (earlier != null) {
+                log.warn("Analytics plugins {} and {} share the metric id '{}'; the later one places its cards",
+                    earlier.order(), index, metricId);
+            }
         }
     }
 
