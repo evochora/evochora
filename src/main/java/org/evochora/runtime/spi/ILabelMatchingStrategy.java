@@ -1,6 +1,7 @@
 package org.evochora.runtime.spi;
 
 import org.evochora.runtime.model.Environment;
+import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.runtime.model.OrganismRandom;
 
 /**
@@ -20,9 +21,20 @@ import org.evochora.runtime.model.OrganismRandom;
  * Thread Safety: {@link #findTarget} and {@link #valuesMatch} are called concurrently from every
  * thread of the parallel wave and must not mutate the strategy. {@link #addLabel},
  * {@link #removeLabel}, {@link #changeOwner} and {@link #birthMask} are called only from the
- * simulation thread outside the wave.
+ * simulation thread outside the wave, {@link #initialize} before any of them.
  */
 public interface ILabelMatchingStrategy {
+
+    /**
+     * Tells the strategy the shape and topology of the world its labels lie in. The environment
+     * calls this once, before it reports the first label, so that a strategy can order its labels
+     * by where they are. A strategy that does not need the shape ignores the call.
+     *
+     * @param properties The properties of the world
+     */
+    default void initialize(EnvironmentProperties properties) {
+        // nothing to prepare
+    }
 
     /**
      * Resolves a label reference to the label it jumps to.

@@ -68,6 +68,7 @@ class HammingLabelMatchingStrategyTest {
     @Test
     void aSingleOwnLabelIsTheTargetAndDrawsNoRandomNumber() {
         HammingLabelMatchingStrategy strategy = withSpread(50);
+        strategy.initialize(wide.getProperties());
         strategy.addLabel(VALUE, at(wide, 40, 0), SELF);
         OrganismRandom used = randomOf(SELF);
         OrganismRandom untouched = randomOf(SELF);
@@ -81,6 +82,7 @@ class HammingLabelMatchingStrategyTest {
     @Test
     void anOwnLabelIsFoundUpToTheToleranceAndNotBeyond() {
         HammingLabelMatchingStrategy strategy = withReach(-1);
+        strategy.initialize(wide.getProperties());
         strategy.addLabel(VALUE, at(wide, 40, 0), SELF);
 
         assertThat(strategy.findTarget(ONE_BIT_OFF, SELF, new int[]{0, 0}, wide, randomOf(SELF))).isEqualTo(at(wide, 40, 0));
@@ -91,6 +93,7 @@ class HammingLabelMatchingStrategyTest {
     @Test
     void aWiderToleranceReachesTheThirdStage() {
         HammingLabelMatchingStrategy tolerant = new HammingLabelMatchingStrategy(3, 0, -1, 50, 0.0, 8);
+        tolerant.initialize(wide.getProperties());
         tolerant.addLabel(VALUE, at(wide, 20, 0), SELF);
         tolerant.addLabel(VALUE, at(wide, 5, 0), SELF);
 
@@ -102,6 +105,7 @@ class HammingLabelMatchingStrategyTest {
     @Test
     void stagesAreNeverMixed_anExactLabelFarAwayBeatsANearOneABitOff() {
         HammingLabelMatchingStrategy strategy = withSpread(50);
+        strategy.initialize(wide.getProperties());
         strategy.addLabel(VALUE, at(wide, 900, 0), SELF);
         strategy.addLabel(ONE_BIT_OFF, at(wide, 1, 0), SELF);
 
@@ -115,6 +119,7 @@ class HammingLabelMatchingStrategyTest {
     @Test
     void anOwnLabelWithinToleranceBeatsANearerExactForeignOne() {
         HammingLabelMatchingStrategy strategy = withSpread(0);
+        strategy.initialize(wide.getProperties());
         strategy.addLabel(TWO_BITS_OFF, at(wide, 900, 0), SELF);
         strategy.addLabel(VALUE, at(wide, 1, 0), OTHER);
 
@@ -124,6 +129,7 @@ class HammingLabelMatchingStrategyTest {
     @Test
     void duplicatesOnTheBestStageShareTheJumpsByLottery_aWorseStageTakesNoPart() {
         HammingLabelMatchingStrategy strategy = withSpread(50);
+        strategy.initialize(wide.getProperties());
         strategy.addLabel(VALUE, at(wide, 10, 0), SELF);
         strategy.addLabel(VALUE, at(wide, 30, 0), SELF);
         strategy.addLabel(ONE_BIT_OFF, at(wide, 2, 0), SELF);
@@ -141,6 +147,7 @@ class HammingLabelMatchingStrategyTest {
     @Test
     void aReferenceThatMutatesByOneBitKeepsTheDistributionAmongDuplicates() {
         HammingLabelMatchingStrategy strategy = withSpread(50);
+        strategy.initialize(wide.getProperties());
         strategy.addLabel(VALUE, at(wide, 10, 0), SELF);
         strategy.addLabel(VALUE, at(wide, 30, 0), SELF);
 
@@ -159,6 +166,7 @@ class HammingLabelMatchingStrategyTest {
     @Test
     void withoutALotteryTheNearestDuplicateIsTheTarget_andATieFollowsTheParityOfTheOrganismId() {
         HammingLabelMatchingStrategy strategy = withSpread(0);
+        strategy.initialize(wide.getProperties());
         for (int owner : new int[]{SELF, ODD_SELF}) {
             strategy.addLabel(VALUE, at(wide, 90, 0), owner);
             strategy.addLabel(VALUE, at(wide, 110, 0), owner);
@@ -178,6 +186,7 @@ class HammingLabelMatchingStrategyTest {
     @Test
     void aReferenceWithoutAnOwnMatchReachesAForeignLabelWithinItsReach() {
         HammingLabelMatchingStrategy strategy = withReach(250);
+        strategy.initialize(wide.getProperties());
         strategy.addLabel(VALUE, at(wide, 750, 0), OTHER);
 
         assertThat(strategy.findTarget(VALUE, SELF, new int[]{500, 0}, wide, randomOf(SELF))).isEqualTo(at(wide, 750, 0));
@@ -188,6 +197,7 @@ class HammingLabelMatchingStrategyTest {
     @Test
     void everyDifferingBitDeductsFromTheReach() {
         HammingLabelMatchingStrategy strategy = withReach(250);
+        strategy.initialize(wide.getProperties());
         strategy.addLabel(VALUE, at(wide, 700, 0), OTHER);
 
         assertThat(strategy.findTarget(ONE_BIT_OFF, SELF, new int[]{500, 0}, wide, randomOf(SELF))).isEqualTo(at(wide, 700, 0));
@@ -199,6 +209,7 @@ class HammingLabelMatchingStrategyTest {
     @Test
     void aReachTooShortForADeductionLeavesThatStageOut() {
         HammingLabelMatchingStrategy strategy = withReach(40);
+        strategy.initialize(wide.getProperties());
         strategy.addLabel(VALUE, at(wide, 501, 0), OTHER);
 
         assertThat(strategy.findTarget(VALUE, SELF, new int[]{500, 0}, wide, randomOf(SELF))).isEqualTo(at(wide, 501, 0));
@@ -209,6 +220,7 @@ class HammingLabelMatchingStrategyTest {
     @Test
     void aNegativeReachIsolatesAnOrganism() {
         HammingLabelMatchingStrategy strategy = withReach(-1);
+        strategy.initialize(wide.getProperties());
         strategy.addLabel(VALUE, at(wide, 501, 0), OTHER);
 
         assertThat(strategy.findTarget(VALUE, SELF, new int[]{500, 0}, wide, randomOf(SELF))).isEqualTo(-1);
@@ -217,6 +229,7 @@ class HammingLabelMatchingStrategyTest {
     @Test
     void amongForeignLabelsTheBestStageCounts_andOnItTheNearest() {
         HammingLabelMatchingStrategy strategy = withReach(250);
+        strategy.initialize(wide.getProperties());
         strategy.addLabel(ONE_BIT_OFF, at(wide, 501, 0), OTHER);
         strategy.addLabel(VALUE, at(wide, 700, 0), OTHER);
         strategy.addLabel(VALUE, at(wide, 650, 1), OTHER + 1);
@@ -229,6 +242,7 @@ class HammingLabelMatchingStrategyTest {
     @Test
     void aForeignTieFollowsTheParityOfTheOrganismIdAcrossDifferentValues() {
         HammingLabelMatchingStrategy strategy = withReach(250);
+        strategy.initialize(wide.getProperties());
         // Two labels one bit off, carrying different values, at the same distance on either side
         strategy.addLabel(VALUE ^ 0b10, at(wide, 480, 0), OTHER);
         strategy.addLabel(VALUE ^ 0b01, at(wide, 520, 0), OTHER);
@@ -240,6 +254,7 @@ class HammingLabelMatchingStrategyTest {
     @Test
     void anUnownedLabelIsForeignToEverybody() {
         HammingLabelMatchingStrategy strategy = withReach(250);
+        strategy.initialize(wide.getProperties());
         strategy.addLabel(VALUE, at(wide, 510, 0), 0);
 
         assertThat(strategy.findTarget(VALUE, SELF, new int[]{500, 0}, wide, randomOf(SELF))).isEqualTo(at(wide, 510, 0));
@@ -248,6 +263,7 @@ class HammingLabelMatchingStrategyTest {
     @Test
     void theForeignSearchDrawsNoRandomNumber() {
         HammingLabelMatchingStrategy strategy = new HammingLabelMatchingStrategy(2, 50, 250, 50, 0.0, 8);
+        strategy.initialize(wide.getProperties());
         strategy.addLabel(VALUE, at(wide, 510, 0), OTHER);
         strategy.addLabel(VALUE, at(wide, 490, 0), OTHER);
         OrganismRandom used = randomOf(SELF);
@@ -264,6 +280,7 @@ class HammingLabelMatchingStrategyTest {
     void distanceWrapsAroundATorusAndNotAroundABoundedWorld() {
         for (Environment world : new Environment[]{torus, bounded}) {
             HammingLabelMatchingStrategy strategy = withReach(10);
+            strategy.initialize(world.getProperties());
             strategy.addLabel(VALUE, at(world, 62, 5), OTHER);
             int target = strategy.findTarget(VALUE, SELF, new int[]{2, 5}, world, randomOf(SELF));
 
@@ -278,6 +295,7 @@ class HammingLabelMatchingStrategyTest {
     @Test
     void theSearchFindsLabelsOnBothSidesOfTheSeam() {
         HammingLabelMatchingStrategy strategy = withReach(10);
+        strategy.initialize(torus.getProperties());
         strategy.addLabel(VALUE, at(torus, 60, 5), OTHER);
         strategy.addLabel(VALUE, at(torus, 5, 5), OTHER + 1);
 
@@ -290,6 +308,7 @@ class HammingLabelMatchingStrategyTest {
     @Test
     void aReachBeyondTheWorldCoversAllOfIt() {
         HammingLabelMatchingStrategy strategy = withReach(1_000_000);
+        strategy.initialize(wide.getProperties());
         strategy.addLabel(VALUE, at(wide, 1023, 7), OTHER);
 
         assertThat(strategy.findTarget(VALUE, SELF, new int[]{0, 0}, wide, randomOf(SELF))).isEqualTo(at(wide, 1023, 7));
@@ -300,6 +319,7 @@ class HammingLabelMatchingStrategyTest {
     @Test
     void aLabelThatChangesHandsBecomesItsNewOwnersOwn() {
         HammingLabelMatchingStrategy strategy = withReach(-1);
+        strategy.initialize(wide.getProperties());
         strategy.addLabel(VALUE, at(wide, 10, 0), OTHER);
         assertThat(strategy.findTarget(VALUE, SELF, new int[]{0, 0}, wide, randomOf(SELF))).isEqualTo(-1);
 
@@ -313,6 +333,7 @@ class HammingLabelMatchingStrategyTest {
     @Test
     void aRemovedLabelIsGoneFromBothPaths() {
         HammingLabelMatchingStrategy strategy = withReach(250);
+        strategy.initialize(wide.getProperties());
         strategy.addLabel(VALUE, at(wide, 10, 0), SELF);
         strategy.addLabel(VALUE, at(wide, 20, 0), SELF);
 
@@ -330,7 +351,9 @@ class HammingLabelMatchingStrategyTest {
     void theResultDoesNotDependOnTheOrderLabelsWereAddedIn() {
         int[][] labels = {{10, 0}, {30, 0}, {20, 3}, {40, 1}};
         HammingLabelMatchingStrategy forward = withSpread(50);
+        forward.initialize(wide.getProperties());
         HammingLabelMatchingStrategy backward = withSpread(50);
+        backward.initialize(wide.getProperties());
         for (int i = 0; i < labels.length; i++) {
             forward.addLabel(VALUE, at(wide, labels[i][0], labels[i][1]), SELF);
             int j = labels.length - 1 - i;
@@ -446,5 +469,43 @@ class HammingLabelMatchingStrategyTest {
                 .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("namespaceBits");
         assertThatThrownBy(() -> new HammingLabelMatchingStrategy(2, 0, 250, -1, 0.1, 8))
                 .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("foreignReachDeductionPerBit");
+    }
+
+    // ==================== The world's shape ====================
+
+    @Test
+    void aLabelReportedBeforeTheWorldsShapeIsKnownIsRejected() {
+        HammingLabelMatchingStrategy strategy = new HammingLabelMatchingStrategy();
+
+        assertThatThrownBy(() -> strategy.addLabel(VALUE, 5, SELF)).isInstanceOf(IllegalStateException.class);
+        assertThat(strategy.findTarget(VALUE, SELF, new int[]{0, 0}, wide, randomOf(SELF)))
+                .as("a strategy that knows no world holds no label").isEqualTo(-1);
+    }
+
+    @Test
+    void aStrategyHoldingLabelsCannotBeGivenAnotherWorld() {
+        HammingLabelMatchingStrategy strategy = new HammingLabelMatchingStrategy();
+        strategy.initialize(wide.getProperties());
+        strategy.initialize(torus.getProperties());
+        strategy.addLabel(VALUE, at(torus, 5, 5), SELF);
+
+        assertThatThrownBy(() -> strategy.initialize(wide.getProperties())).isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    void labelsInUnownedCellsAreForeignLabelsToEveryone() {
+        HammingLabelMatchingStrategy strategy = withReach(250);
+        strategy.initialize(wide.getProperties());
+        strategy.addLabel(VALUE, at(wide, 30, 0), SELF);
+        strategy.changeOwner(VALUE, at(wide, 30, 0), SELF, 0);
+
+        assertThat(strategy.ownerOf(VALUE, at(wide, 30, 0))).isZero();
+        assertThat(strategy.findTarget(VALUE, SELF, new int[]{0, 0}, wide, randomOf(SELF)))
+                .as("its former owner reaches it like anybody else").isEqualTo(at(wide, 30, 0));
+        assertThat(strategy.findTarget(VALUE, OTHER, new int[]{0, 0}, wide, randomOf(OTHER))).isEqualTo(at(wide, 30, 0));
+
+        strategy.changeOwner(VALUE, at(wide, 30, 0), 0, OTHER);
+        assertThat(strategy.findTarget(VALUE, OTHER, new int[]{600, 0}, wide, randomOf(OTHER)))
+                .as("an own label has no reach").isEqualTo(at(wide, 30, 0));
     }
 }

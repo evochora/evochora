@@ -200,6 +200,7 @@ public class Environment implements IEnvironmentReader {
         this.changedSinceLastSnapshot = new BitSet(size);
 
         // Initialize label index for fuzzy jump matching
+        labelMatchingStrategy.initialize(properties);
         this.labelIndex = new LabelIndex(labelMatchingStrategy);
     }
 

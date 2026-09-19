@@ -8,7 +8,6 @@ import org.evochora.runtime.model.OrganismRandom;
 import org.evochora.runtime.spi.ILabelMatchingStrategy;
 import org.evochora.runtime.spi.IRandomProvider;
 
-import java.util.BitSet;
 import java.util.Set;
 
 /**
@@ -72,27 +71,31 @@ import java.util.Set;
  * touched by a flip. With a rate of 0 no random number is drawn.
  *
  * <h2>Index</h2>
+ * Every label is held for both kinds of lookup. Labels in unowned cells have no owner to look them
+ * up as its own and are held for the foreign search only.
  * <ul>
- *   <li><b>Own labels:</b> per owner, its labels ordered by flat index with their values. An own
- *       lookup walks that list once, XORs and counts bits per entry; its cost grows with the number
- *       of labels the organism owns and does not depend on {@code tolerance}.</li>
- *   <li><b>Foreign labels:</b> per label value, the labels carrying it ordered by flat index with
- *       their owners, and one bit per value in use. A stage probes the values at its Hamming
- *       distance — 1, then every single-bit, double-bit and triple-bit neighbour — against the bit
- *       set. Under stable addresses one value is carried by every organism with that gene, so a
- *       list is as long as the population; the reach bounds what is scanned: the radius a stage
- *       leaves, {@code foreignReach − foreignReachDeductionPerBit × stage}, limits the first
- *       coordinate, and because that coordinate is the most significant part of the flat index the
- *       labels within the limit form one contiguous range of the list (two across the seam of a
- *       toroidal world), located by binary search and scanned in full.</li>
+ *   <li><b>Own labels:</b> {@link OwnLabelTable} answers in one probe which label of the organism
+ *       carries exactly the searched value — the case of almost every jump, whose cost depends
+ *       neither on the number of labels the organism owns nor on the population. Only when the
+ *       organism has no label or several labels with that exact value, its labels are walked: they
+ *       are kept per owner, ordered by flat index with their values, and the walk XORs and counts
+ *       bits per entry; its cost grows with the number of labels the organism owns and does not
+ *       depend on {@code tolerance}.</li>
+ *   <li><b>Foreign labels:</b> {@link TiledLabelIndex} holds the labels per value and per tile of
+ *       the world, and one bit per value in use. A stage probes the values at its Hamming distance —
+ *       1, then every single-bit, double-bit and triple-bit neighbour — against the bit set, and
+ *       searches the labels of every value in use outwards from the caller, within the radius the
+ *       stage leaves, {@code foreignReach − foreignReachDeductionPerBit × stage}. Under stable
+ *       addresses one value is carried by every organism with that gene; the tiles keep the search
+ *       to the labels nearby.</li>
  * </ul>
- * Every label is held in both structures. Additions, removals and owner changes cost a binary
- * search and an array shift in each.
+ * An addition, a removal or an owner change costs one probe of the table, a binary search and an
+ * array shift in the owner's list, and a scan of one tile's bucket.
  * <p>
  * Thread Safety: {@link #findTarget} and {@link #valuesMatch} only read and are called concurrently
  * from every thread of the parallel wave; {@link #addLabel}, {@link #removeLabel},
  * {@link #changeOwner} and {@link #birthMask} are called only from the simulation thread outside
- * the wave.
+ * the wave, {@link #initialize} before any of them.
  */
 public class HammingLabelMatchingStrategy implements ILabelMatchingStrategy {
 
@@ -141,17 +144,14 @@ public class HammingLabelMatchingStrategy implements ILabelMatchingStrategy {
     /** The highest stage the foreign search examines under this configuration; -1 for none. */
     private final int lastForeignStage;
 
-    /** Per owner: its labels by flat index, the payload being the label value. */
+    /** Per owner other than 0: its labels by flat index, the payload being the label value. */
     private final Int2ObjectOpenHashMap<LabelList> labelsByOwner = new Int2ObjectOpenHashMap<>();
 
-    /** Per label value: the labels carrying it by flat index, the payload being the owner. */
-    private final Int2ObjectOpenHashMap<LabelList> labelsByValue = new Int2ObjectOpenHashMap<>();
+    /** Per owner other than 0 and label value: the owner's only label with it, or that there are several. */
+    private final OwnLabelTable ownLabels = new OwnLabelTable();
 
-    /**
-     * One bit per label value in use, so that a probe for a neighbour value nobody carries costs a
-     * bit read instead of a hash lookup.
-     */
-    private final BitSet occupiedValues = new BitSet(1 << VALUE_BITS);
+    /** All labels by value and place; created when the world's shape is known. */
+    private TiledLabelIndex labels;
 
     /**
      * Creates a strategy with the default settings.
@@ -247,6 +247,10 @@ public class HammingLabelMatchingStrategy implements ILabelMatchingStrategy {
     @Override
     public int findTarget(int searchValue, int codeOwner, int[] callerCoords, Environment environment,
                           OrganismRandom random) {
+        int onlyExact = ownLabels.find(codeOwner, searchValue);
+        if (onlyExact >= 0) {
+            return onlyExact;
+        }
         LabelList own = labelsByOwner.get(codeOwner);
         if (own != null) {
             // One pass: the best stage, how many own labels stand on it, and the first of them
@@ -267,19 +271,18 @@ public class HammingLabelMatchingStrategy implements ILabelMatchingStrategy {
                 return own.flatIndexAt(firstPosition);
             }
             if (onBestStage > 1) {
-                return chooseAmongOwn(own, firstPosition, searchValue, bestStage, codeOwner, callerCoords,
-                        environment.properties, random);
+                return chooseAmongOwn(own, firstPosition, searchValue, bestStage, codeOwner, callerCoords, random);
             }
         }
-        return lastForeignStage < 0 ? -1
-                : findForeign(searchValue, codeOwner, callerCoords, environment.properties);
+        return lastForeignStage < 0 ? -1 : findForeign(searchValue, codeOwner, callerCoords);
     }
 
     /**
      * Chooses among several own labels on one stage: by lottery, or the nearest.
      */
     private int chooseAmongOwn(LabelList own, int firstPosition, int searchValue, int stage, int codeOwner,
-                               int[] callerCoords, EnvironmentProperties props, OrganismRandom random) {
+                               int[] callerCoords, OrganismRandom random) {
+        CoordinateDecoder coordinates = labels.coordinates();
         boolean preferLowIndex = prefersLowIndex(codeOwner);
         int chosen = -1;
         int chosenDistance = Integer.MAX_VALUE;
@@ -289,14 +292,14 @@ public class HammingLabelMatchingStrategy implements ILabelMatchingStrategy {
                 continue;
             }
             int flatIndex = own.flatIndexAt(i);
-            int distance = distance(callerCoords, flatIndex, props);
+            int distance = coordinates.distance(callerCoords, flatIndex);
             if (selectionSpread > 0) {
                 long weight = Math.max(1, (long) WEIGHT_PRECISION * selectionSpread / (distance + selectionSpread));
                 totalWeight += weight;
                 if (random.nextLong(totalWeight) < weight) {
                     chosen = flatIndex;
                 }
-            } else if (isBetter(distance, flatIndex, chosenDistance, chosen, preferLowIndex)) {
+            } else if (TiledLabelIndex.isNearer(distance, flatIndex, chosenDistance, chosen, preferLowIndex)) {
                 chosenDistance = distance;
                 chosen = flatIndex;
             }
@@ -307,68 +310,22 @@ public class HammingLabelMatchingStrategy implements ILabelMatchingStrategy {
     /**
      * Finds the nearest reachable foreign label on the best stage that holds one.
      */
-    private int findForeign(int searchValue, int codeOwner, int[] callerCoords, EnvironmentProperties props) {
+    private int findForeign(int searchValue, int codeOwner, int[] callerCoords) {
+        if (labels == null) {
+            return -1;
+        }
         boolean preferLowIndex = prefersLowIndex(codeOwner);
-        int size0 = props.getDimensionSize(0);
-        int stride0 = props.getStride(0);
         for (int stage = 0; stage <= lastForeignStage; stage++) {
             int radius = foreignReach - foreignReachDeductionPerBit * stage;
-
-            // The window of the first coordinate the radius leaves: one range, or two where it
-            // crosses the seam of a toroidal world. A radius beyond the world covers all of it.
-            int window = Math.min(radius, size0);
-            int low = callerCoords[0] - window;
-            int high = callerCoords[0] + window;
-            int from = Math.max(low, 0);
-            int to = Math.min(high, size0 - 1);
-            int seamFrom = 0;
-            int seamTo = -1;
-            if (props.isToroidal()) {
-                if (high - low + 1 >= size0) {
-                    from = 0;
-                    to = size0 - 1;
-                } else if (low < 0) {
-                    seamFrom = low + size0;
-                    seamTo = size0 - 1;
-                } else if (high >= size0) {
-                    seamFrom = 0;
-                    seamTo = high - size0;
-                }
-            }
-
-            int best = -1;
-            int bestDistance = Integer.MAX_VALUE;
+            long search = TiledLabelIndex.searchState(Integer.MAX_VALUE, -1);
             for (int mask : NEIGHBOUR_MASKS[stage]) {
                 int value = searchValue ^ mask;
-                if (!occupiedValues.get(value)) {
-                    continue;
-                }
-                LabelList labels = labelsByValue.get(value);
-                if (labels == null) {
-                    continue;
-                }
-                for (int range = 0; range < 2; range++) {
-                    int rangeFrom = range == 0 ? from : seamFrom;
-                    int rangeTo = range == 0 ? to : seamTo;
-                    if (rangeTo < rangeFrom) {
-                        continue;
-                    }
-                    int end = labels.lowerBound((rangeTo + 1) * stride0);
-                    for (int i = labels.lowerBound(rangeFrom * stride0); i < end; i++) {
-                        if (labels.payloadAt(i) == codeOwner) {
-                            continue;
-                        }
-                        int flatIndex = labels.flatIndexAt(i);
-                        int distance = distance(callerCoords, flatIndex, props);
-                        if (distance <= radius && isBetter(distance, flatIndex, bestDistance, best, preferLowIndex)) {
-                            bestDistance = distance;
-                            best = flatIndex;
-                        }
-                    }
+                if (labels.isInUse(value)) {
+                    search = labels.nearest(value, codeOwner, callerCoords, radius, preferLowIndex, search);
                 }
             }
-            if (best >= 0) {
-                return best;
+            if (TiledLabelIndex.foundFlatIndex(search) >= 0) {
+                return TiledLabelIndex.foundFlatIndex(search);
             }
         }
         return -1;
@@ -382,34 +339,6 @@ public class HammingLabelMatchingStrategy implements ILabelMatchingStrategy {
         return (organismId & 1) == 0;
     }
 
-    private static boolean isBetter(int distance, int flatIndex, int bestDistance, int bestFlatIndex,
-                                    boolean preferLowIndex) {
-        if (distance != bestDistance) {
-            return distance < bestDistance;
-        }
-        return preferLowIndex ? flatIndex < bestFlatIndex : flatIndex > bestFlatIndex;
-    }
-
-    /**
-     * Manhattan distance between the caller's coordinates and the cell at a flat index. The cell's
-     * coordinate is decoded dimension-wise from the index and the world's row-major strides without
-     * materializing a coordinate array; in a toroidal world each per-dimension difference takes the
-     * shorter way around, in a bounded world it does not wrap.
-     */
-    private static int distance(int[] caller, int flatIndex, EnvironmentProperties props) {
-        boolean toroidal = props.isToroidal();
-        int distance = 0;
-        int remaining = flatIndex;
-        for (int i = 0; i < caller.length; i++) {
-            int stride = props.getStride(i);
-            int labelCoord = remaining / stride;
-            remaining -= labelCoord * stride;
-            int diff = Math.abs(caller[i] - labelCoord);
-            distance += toroidal ? Math.min(diff, props.getDimensionSize(i) - diff) : diff;
-        }
-        return distance;
-    }
-
     @Override
     public boolean valuesMatch(int searchValue, int labelValue) {
         return Integer.bitCount((searchValue ^ labelValue) & Config.VALUE_MASK) <= tolerance;
@@ -417,38 +346,75 @@ public class HammingLabelMatchingStrategy implements ILabelMatchingStrategy {
 
     // ==================== Index maintenance ====================
 
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Creates the index of all labels for the world's shape. A strategy that already holds labels
+     * belongs to a world and cannot be given another.
+     *
+     * @throws IllegalStateException if the strategy already holds labels
+     */
+    @Override
+    public void initialize(EnvironmentProperties properties) {
+        if (labels != null && !labels.isEmpty()) {
+            throw new IllegalStateException("The label index already holds labels of another world");
+        }
+        labels = new TiledLabelIndex(properties);
+    }
+
+    /** The index of all labels; it exists once the world's shape is known. */
+    private TiledLabelIndex allLabels() {
+        if (labels == null) {
+            throw new IllegalStateException("A label was reported before initialize() told the world's shape");
+        }
+        return labels;
+    }
+
     @Override
     public void addLabel(int labelValue, int flatIndex, int owner) {
-        labelsByOwner.computeIfAbsent(owner, k -> new LabelList()).put(flatIndex, labelValue);
-        labelsByValue.computeIfAbsent(labelValue, k -> new LabelList()).put(flatIndex, owner);
-        occupiedValues.set(labelValue);
+        allLabels().put(labelValue, flatIndex, owner);
+        if (owner != 0) {
+            addOwn(labelValue, flatIndex, owner);
+        }
     }
 
     @Override
     public void removeLabel(int labelValue, int flatIndex, int owner) {
-        LabelList ofOwner = labelsByOwner.get(owner);
-        if (ofOwner != null && ofOwner.remove(flatIndex) && ofOwner.size() == 0) {
-            labelsByOwner.remove(owner);
-        }
-        LabelList ofValue = labelsByValue.get(labelValue);
-        if (ofValue != null && ofValue.remove(flatIndex) && ofValue.size() == 0) {
-            labelsByValue.remove(labelValue);
-            occupiedValues.clear(labelValue);
+        allLabels().remove(labelValue, flatIndex);
+        if (owner != 0) {
+            removeOwn(labelValue, flatIndex, owner);
         }
     }
 
     @Override
     public void changeOwner(int labelValue, int flatIndex, int oldOwner, int newOwner) {
-        LabelList ofValue = labelsByValue.get(labelValue);
-        if (ofValue == null || ofValue.positionOf(flatIndex) < 0) {
+        if (!allLabels().setOwner(labelValue, flatIndex, newOwner)) {
             return;
         }
-        ofValue.put(flatIndex, newOwner);
-        LabelList ofOldOwner = labelsByOwner.get(oldOwner);
-        if (ofOldOwner != null && ofOldOwner.remove(flatIndex) && ofOldOwner.size() == 0) {
-            labelsByOwner.remove(oldOwner);
+        if (oldOwner != 0) {
+            removeOwn(labelValue, flatIndex, oldOwner);
         }
-        labelsByOwner.computeIfAbsent(newOwner, k -> new LabelList()).put(flatIndex, labelValue);
+        if (newOwner != 0) {
+            addOwn(labelValue, flatIndex, newOwner);
+        }
+    }
+
+    private void addOwn(int labelValue, int flatIndex, int owner) {
+        LabelList ofOwner = labelsByOwner.computeIfAbsent(owner, k -> new LabelList());
+        if (ofOwner.positionOf(flatIndex) < 0) {
+            ofOwner.put(flatIndex, labelValue);
+            ownLabels.add(owner, labelValue, flatIndex);
+        }
+    }
+
+    private void removeOwn(int labelValue, int flatIndex, int owner) {
+        LabelList ofOwner = labelsByOwner.get(owner);
+        if (ofOwner != null && ofOwner.remove(flatIndex)) {
+            ownLabels.remove(owner, labelValue, ofOwner);
+            if (ofOwner.size() == 0) {
+                labelsByOwner.remove(owner);
+            }
+        }
     }
 
     /**
@@ -459,9 +425,7 @@ public class HammingLabelMatchingStrategy implements ILabelMatchingStrategy {
      * @return The owner the label is indexed under, or -1 if the index holds no such label
      */
     public int ownerOf(int labelValue, int flatIndex) {
-        LabelList ofValue = labelsByValue.get(labelValue);
-        int position = ofValue == null ? -1 : ofValue.positionOf(flatIndex);
-        return position < 0 ? -1 : ofValue.payloadAt(position);
+        return labels == null ? -1 : labels.ownerOf(labelValue, flatIndex);
     }
 
     // ==================== Birth ====================

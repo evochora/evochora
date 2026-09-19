@@ -32,6 +32,7 @@ class LabelIndexTest {
         strategy = new HammingLabelMatchingStrategy();
         labelIndex = new LabelIndex(strategy);
         environment = new Environment(new EnvironmentProperties(new int[]{64, 64}, true));
+        strategy.initialize(environment.getProperties());
         callerCoords = new int[]{0, 0};
         // The random source of the organism performing the lookups, positioned at a fixed tick
         random = new OrganismRandom(OWNER);
