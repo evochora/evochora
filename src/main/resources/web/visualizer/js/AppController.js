@@ -976,6 +976,11 @@ export class AppController {
                 this.state.runId,
                 needMinimap
             );
+            // The environment is awaited only after the organisms. When the organisms fail or a
+            // newer load aborts this one first, the environment is never awaited; its failure is
+            // then no news, and the browser must not report it as unhandled. Awaiting it below
+            // still throws as before.
+            environmentPromise.catch(() => {});
             const organismPromise = this.organismApi.fetchOrganismsAtTick(
                 this.state.currentTick,
                 this.state.runId,
