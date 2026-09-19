@@ -56,7 +56,7 @@ counted in the main sources at the end of the tiled-grid work:
 | `worldgen/GeyserCreator` | 4 |
 | `spi/DeathContext`, `datapipeline/services/SimulationEngine` | 3 each |
 | `VirtualMachine`, `worldgen/SolarRadiationCreator`, `worldgen/DecayOnDeath`, `model/Molecule`, `datapipeline/resume/SimulationRestorer`, `compiler/CompilerRunner` | 2 each |
-| other instructions and plugins (`Stack`, `Nop`, `Data`, `Bitwise`, `Arithmetic`, `Instruction`, `LabelRewritePlugin`, `GeneInsertionPlugin`, `GeneDuplicationPlugin`, `LabelIndex`) | 1 each |
+| other instructions and plugins (`Stack`, `Nop`, `Data`, `Bitwise`, `Arithmetic`, `Instruction`, `LabelRewrite`, `GeneInsertionPlugin`, `GeneDuplicationPlugin`, `LabelIndex`) | 1 each |
 
 Roughly half of these are on the per-instruction path (the instruction classes, `Organism`,
 `VirtualMachine`); the rest run per birth, per death, per tick plugin, or outside the simulation

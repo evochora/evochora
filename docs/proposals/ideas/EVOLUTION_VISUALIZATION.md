@@ -157,10 +157,10 @@ It enhances the existing lineage chain display.
 
 **Data requirements:** Needs explicit mutation event tracking. Currently we can
 detect *that* a mutation occurred (genome_hash differs from parent), but not
-*what type* of mutation. The five mutation plugins (GeneInsertionPlugin,
-GeneSubstitutionPlugin, GeneDeletionPlugin, GeneDuplicationPlugin,
-LabelRewritePlugin) would need to record the mutation type applied at each
-birth event.
+*what type* of mutation. The four mutation plugins (GeneInsertionPlugin,
+GeneSubstitutionPlugin, GeneDeletionPlugin, GeneDuplicationPlugin) and the
+label rewrite of the runtime would need to record the mutation type applied
+at each birth event.
 
 ---
 
@@ -462,9 +462,9 @@ occurred (genome_hash differs from parent), but not *what kind* of mutation.
 - Optionally: the old and new values at the mutation site.
 
 **Where to record it:**
-- The five mutation plugins (`GeneInsertionPlugin`, `GeneSubstitutionPlugin`,
-  `GeneDeletionPlugin`, `GeneDuplicationPlugin`, `LabelRewritePlugin`) already
-  perform the mutation; they would additionally emit a mutation event record.
+- The four mutation plugins (`GeneInsertionPlugin`, `GeneSubstitutionPlugin`,
+  `GeneDeletionPlugin`, `GeneDuplicationPlugin`) and the runtime's `LabelRewrite`
+  already perform the mutation; they would additionally emit a mutation event record.
 - This record would flow through the existing data pipeline and be persisted
   alongside the organism record.
 

@@ -1,6 +1,6 @@
 # Label Addressing
 
-**Status: AGREED — every decision below is made; implementation pending.**
+**Status: ACCOMPLISHED 2026-09-19 — implemented on branch `label-addressing`; where the implementation left the plan is recorded under Outcome at the end.**
 
 ## Problem
 
@@ -123,7 +123,8 @@ and is reduced to what any strategy can answer:
 
 | Method | Purpose |
 |---|---|
-| `findTarget(searchValue, codeOwner, callerCoords, environment, random)` | resolve a reference; `-1` when nothing matches |
+| `initialize(properties)` | the shape and topology of the world, told once before the first label; default: nothing to prepare |
+| `findTarget(searchValue, codeOwner, callerCoords, random)` | resolve a reference; `-1` when nothing matches |
 | `addLabel(labelValue, flatIndex, owner)` | a label with marker 0 appeared |
 | `removeLabel(labelValue, flatIndex, owner)` | it disappeared |
 | `changeOwner(labelValue, flatIndex, oldOwner, newOwner)` | its cell changed hands |
@@ -166,23 +167,30 @@ table.
 
 ### Index
 
-`HammingLabelMatchingStrategy` keeps two structures, both mutated only from the simulation thread
-outside the parallel wave and read concurrently inside it:
+`HammingLabelMatchingStrategy` holds every label for both kinds of lookup; the structures are
+mutated only from the simulation thread outside the parallel wave and read concurrently inside it.
+Labels in unowned cells have no owner to look them up as its own and are held for the foreign
+search only.
 
-- **Own labels:** per owner, the label values and flat indexes of its labels in parallel arrays
-  ordered by flat index. An own lookup walks the array once, XORs and counts bits per entry. Its
-  cost does not depend on `tolerance`; it grows with the number of labels the organism owns.
-- **Foreign labels:** label value → flat indexes and owners in parallel arrays ordered by flat
-  index, plus the bit set of occupied values. Per stage the reach leaves a radius
-  `foreignReach − foreignReachDeductionPerBit × stage`; because the first coordinate is the most
-  significant part of the flat index, all labels within that radius lie in one contiguous range
-  of the array (two across the seam of a toroidal world), which is located by binary search and
-  scanned in full for the nearest label. The range bounds the first coordinate only, so it is a
-  superset of the labels in reach. The search ends on the first stage that yields a reachable
-  label.
+- **Own labels:** `OwnLabelTable`, one open-addressing hash table of primitive longs over all
+  owners, answers in one probe which label of an organism carries exactly the searched value — the
+  case of almost every jump. Only for a value the organism holds not at all or several times its
+  labels are walked: per owner, label values and flat indexes in parallel arrays ordered by flat
+  index, one XOR and bit count per entry. The cost of that walk does not depend on `tolerance`; it
+  grows with the number of labels the organism owns.
+- **Foreign labels:** `TiledLabelIndex` holds the labels per value and per tile of 128 cells over
+  the first two dimensions of the world, each tile's labels in a small unordered bucket, plus the
+  bit set of values in use. Per stage the reach leaves a radius
+  `foreignReach − foreignReachDeductionPerBit × stage`; the search visits the tiles in rings around
+  the caller and ends with the ring no tile of which can hold a label nearer than the best found.
+  Every candidate is compared by distance and then by flat index, a total order, so the result
+  does not depend on the order of a bucket. The search ends on the first stage that yields a
+  reachable label. `CoordinateDecoder` decodes flat indexes by multiplying with the reciprocal of
+  the stride.
 
 A child's labels are marked, and therefore outside the index, until `FORK`; the fork adds them
-under the child, one ordered insertion per label into a new array.
+under the child: one probe of the table, one ordered insertion into the child's array and one
+append to a tile's bucket per label.
 
 ### Label values use all 20 bits
 
@@ -222,26 +230,27 @@ reading only; `Molecule.parse`, the syntax of configuration, stays decimal.
 
 The lookup is on the hot path of every jump and call.
 
-**Own path.** A hash lookup into a world-wide map, a distance computation and a random draw per
-jump are replaced by one pass over the organism's own labels, with a random draw only among
-duplicates. The pass grows with the number of labels an organism owns, and duplication makes
-genomes grow.
+**Own path.** A hash lookup into a world-wide map of lists, a distance computation and a random
+draw per jump are replaced by one probe of a table of primitives, with a walk over the organism's
+own labels only for a value it holds not at all or several times, and a random draw only among
+duplicates.
 
 **Foreign path.** It runs only for references without an own match, but the design makes exactly
 that case common once parasites exist. Under stable addresses one label value is shared by every
-organism carrying the gene, so a value's array is as large as the population. The range search
-bounds one coordinate only: in a world 2048 cells wide with `foreignReach = 250` about a quarter
-of the array remains and is scanned in full, because the nearest label is wanted. A reference that
-matches nothing pays every stage on every execution, and a broken jump in a tight loop does that
-continuously.
+organism carrying the gene; the tiles keep the search to the labels nearby, so its cost follows
+the distance to the target and not the size of the population. A reference that matches nothing
+pays every stage on every execution, each stage visiting the tiles within its radius.
 
-**Births** become cheaper: today every birth visits all cells of the newborn and rewrites every
-label, each rewrite an index removal and insertion; with a flip rate of 0.05 that pass runs for
-one birth in twenty.
+**Births and deaths.** Today every birth visits all cells of the newborn and rewrites every label,
+each rewrite an index removal and insertion; with a flip rate of 0.05 that pass runs for one birth
+in twenty. What remains per label is a probe, an insertion into a short array and a change to one
+bucket.
 
-None of this is measured. The implementation stops after the matching commit for a measurement on
-the real code; a result that shows the own path slower than today, or the foreign path costing
-more than the run can bear, ends the work until the numbers have been looked at.
+**Memory.** The table and the per-value tile arrays cost more than sorted lists would — about as
+much as the index this design replaces.
+
+How these costs are measured is described in `docs/BENCHMARKING.md` (Label lookup); the measured
+tables are kept with the pull request.
 
 Every run changes: the same seed gives a different trajectory.
 
@@ -311,3 +320,27 @@ and the assembly specification is proposed and approved hunk by hunk. This docum
 **Before the pull request.** Architecture review of the branch, merge of `origin/main`,
 `./gradlew check`, and a closing measurement with the production configuration. The pull request
 states that the compiler's output changes on purpose.
+
+## Outcome
+
+The five commits were built as planned. The measurement checkpoint after commit 4 changed the
+index, and with it the strategy interface:
+
+- **The checkpoint compared against `origin/main` and found the planned index slower on two
+  paths.** An own lookup walked all of an organism's labels where `origin/main` looked one value
+  up, and every birth and death shifted sorted arrays as long as the population. The index
+  described above replaces the two sorted-array structures the plan named. It was chosen by
+  measuring alternatives against each other and against `origin/main` — for the own path a binary
+  search in the owner's array, the table, and a table per organism reached through the organism;
+  for the foreign path an outward walk over the sorted array, the same over an array in chunks,
+  and tiles of 64 and of 128 cells — with the rule that the read paths decide and the write path
+  and memory break a tie.
+- **`initialize(properties)` joined the interface** because tiles need the world's shape before
+  the first label arrives, and **`environment` left `findTarget`** because no strategy read it any
+  more.
+- **`LabelMatchingBenchmark` was added** (`docs/BENCHMARKING.md`, Label lookup): the programs of the
+  tick benchmark own too few labels to show a change to the index. In the tick benchmark
+  `orphanedPercent` spreads the organisms without labels evenly; `extraLabels` was dropped again.
+- The real-run comparison ran as planned, three variants in two rounds of swapped order, each
+  variant with the same hash in both rounds.
+
