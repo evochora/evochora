@@ -155,6 +155,24 @@ class GenomeFlowTest {
     }
 
     /**
+     * A label between the conditional and the jump changes nothing: the machine's skip passes
+     * everything that is no instruction, a label included, so a failed test still skips the jump
+     * and execution runs on into the cells behind it. The jump is the only instruction of its
+     * block here, and the conditional ends the block before.
+     */
+    @Test
+    void conditionalSkipsAJumpAcrossALabel() {
+        label(2, LABEL_VALUE);
+        conditional(3);
+        label(7, LABEL_VALUE + 1);
+        withLabelOperand(8, "JMPI", LABEL_VALUE);
+        place(30, new Molecule(Config.TYPE_DATA, 0));
+        build(2, FORWARD);
+
+        assertThat(reached(12, 2)).isTrue();
+    }
+
+    /**
      * A label between the jump and the cell is an entry of its own: a jump to it runs on into the
      * cell, whatever stands before the label.
      */
