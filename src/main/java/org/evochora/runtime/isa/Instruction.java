@@ -5,13 +5,13 @@ package org.evochora.runtime.isa;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 
+import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap;
+import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.internal.services.ExecutionContext;
 import org.evochora.runtime.isa.instructions.ArithmeticInstruction;
@@ -150,22 +150,34 @@ public abstract class Instruction {
     /**
      * The family every registered instruction belongs to, keyed by full opcode ID. Written while
      * the instruction set is registered and read on cold paths only — mutation plugins and
-     * introspection — so a map is enough.
+     * introspection — so a map is enough; a primitive one, so that a lookup allocates nothing.
+     * Never iterated: only lookups by opcode ID read it.
      */
-    private static final Map<Integer, Integer> FAMILY_BY_ID = new HashMap<>();
+    private static final Int2IntOpenHashMap FAMILY_BY_ID = unregisteredAsMinusOne();
     /**
      * The operation number of every registered instruction, keyed by full opcode ID. The operation
      * is what ties the opcodes that do the same thing with different operands together, such as
      * {@code GTR}, {@code GTI} and {@code GTS}. Read on cold paths only, like {@link #FAMILY_BY_ID}.
      */
-    private static final Map<Integer, Integer> OPERATION_BY_ID = new HashMap<>();
+    private static final Int2IntOpenHashMap OPERATION_BY_ID = unregisteredAsMinusOne();
     /**
      * The opcodes after which execution never continues with the cell behind the instruction: an
      * unconditional jump and a return. A call is none, because its return comes back to that cell.
      * An instruction declares this itself while it registers; read on cold paths only, like
      * {@link #FAMILY_BY_ID}.
      */
-    private static final Set<Integer> NEVER_FALLS_THROUGH = new HashSet<>();
+    private static final IntOpenHashSet NEVER_FALLS_THROUGH = new IntOpenHashSet();
+
+    /**
+     * Creates a registry keyed by opcode ID that answers {@code -1} for an opcode it does not hold.
+     *
+     * @return the empty registry
+     */
+    private static Int2IntOpenHashMap unregisteredAsMinusOne() {
+        Int2IntOpenHashMap registry = new Int2IntOpenHashMap();
+        registry.defaultReturnValue(-1);
+        return registry;
+    }
 
     // ========== Opcode ID layout ==========
 
@@ -872,12 +884,19 @@ public abstract class Instruction {
      * molecules an instruction reads. Used by mutation plugins to generate syntactically
      * correct instruction chains.
      *
+     * <p>
+     * Allocates nothing: the list is the immutable one the instruction registered with, read from
+     * the array registry, and the registration map is reached only for an opcode ID outside that
+     * array's range.
+     *
      * @param opcodeId The instruction opcode ID (including TYPE_CODE bits).
      * @return Unmodifiable list of operand sources, or empty list if unknown.
      */
     public static List<OperandSource> getOperandSourcesById(int opcodeId) {
-        List<OperandSource> sources = OPERAND_SOURCES.get(opcodeId);
-        return sources != null ? Collections.unmodifiableList(sources) : List.of();
+        List<OperandSource> sources = (opcodeId >= 0 && opcodeId < REGISTRY_SIZE)
+                ? OPERAND_SOURCES_ARRAY[opcodeId]
+                : OPERAND_SOURCES.get(opcodeId);
+        return sources != null ? sources : List.of();
     }
 
     /**
@@ -890,8 +909,7 @@ public abstract class Instruction {
      * @return The family ID from {@link Family}, or {@code -1} if the opcode is not registered.
      */
     public static int getFamilyById(int opcodeId) {
-        Integer family = FAMILY_BY_ID.get(opcodeId);
-        return family != null ? family : -1;
+        return FAMILY_BY_ID.get(opcodeId);
     }
 
     /**
@@ -936,8 +954,7 @@ public abstract class Instruction {
      * @return The operation number, or {@code -1} if the opcode is not registered.
      */
     public static int getOperationById(int opcodeId) {
-        Integer operation = OPERATION_BY_ID.get(opcodeId);
-        return operation != null ? operation : -1;
+        return OPERATION_BY_ID.get(opcodeId);
     }
 
     /**

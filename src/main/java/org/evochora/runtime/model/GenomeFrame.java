@@ -80,8 +80,8 @@ import it.unimi.dsi.fastutil.ints.IntArrayList;
  * <strong>Allocation.</strong> The frame is an object so that its buffers — the role table, the
  * scan lines, their pool and the coordinate arrays — survive a build and are cleared at the
  * beginning of the next one. After the first builds the only allocations left per build are the
- * visitor handed to the environment's owned-cell visit, the lookup of the NOP opcode and the list
- * the instruction registry returns per opcode.
+ * visitor handed to the environment's owned-cell visit and the lookup of the NOP opcode; the
+ * operand sources of an opcode are the registry's own list and cost nothing.
  * <p>
  * <strong>Thread safety.</strong> Not thread-safe: a frame holds the buffers of the build that is
  * running, so every user keeps its own.
