@@ -972,6 +972,36 @@ class GeneDuplicationPluginTest {
         assertThat(child.getBirthMutations().get(0).cells()).hasSize(4);
     }
 
+    /**
+     * The closing jump is written along the direction vector like the copy before it, around the
+     * world edge: the target run lies at x=27..31 and x=0, so the copy ends at x=30, the jump's
+     * opcode stands on the last cell before the edge and its label reference on the first behind it.
+     */
+    @Test
+    void aClosingJumpIsWrittenAcrossTheWorldEdge() {
+        int id = child.getId();
+        placeOpenRisingBlock(id, 10, 2);
+        placeOpenRisingBlock(id, 14, 2);
+        for (int x = 23; x < 27; x++) {
+            place(id, x, 4, new Molecule(Config.TYPE_STRUCTURE, 1));
+        }
+        for (int x = 1; x < 5; x++) {
+            place(id, x, 4, new Molecule(Config.TYPE_STRUCTURE, 1));
+        }
+
+        new GeneDuplicationPlugin(new SeededRandomProvider(42L), 1.0, 4).onBirth(child, environment);
+
+        assertOpenBlockAt(27, 4);
+        assertThat(environment.getMolecule(31, 4).toInt()).isEqualTo(opcode(JMPI_OPCODE).toInt());
+        assertThat(environment.getMolecule(0, 4).toInt()).isEqualTo(labelRef().toInt());
+        assertThat(environment.getMolecule(1, 4).toInt())
+                .as("the cell behind the run is untouched")
+                .isEqualTo(new Molecule(Config.TYPE_STRUCTURE, 1).toInt());
+        assertThat(child.getBirthMutations().get(0).cells()).containsExactly(
+                flatIndex(27, 4), flatIndex(28, 4), flatIndex(29, 4), flatIndex(30, 4),
+                flatIndex(31, 4), flatIndex(0, 4));
+    }
+
     // ---- Where a copy goes ----
 
     @Test

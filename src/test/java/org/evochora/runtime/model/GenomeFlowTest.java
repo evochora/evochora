@@ -199,6 +199,25 @@ class GenomeFlowTest {
     }
 
     /**
+     * A cell two walks of the frame read differently counts as reached. Here a LABEL molecule is
+     * the operand of the jump: the walk from x=2 reads it as that operand, the walk that begins at
+     * it as a label. Read as an operand alone it would lead back to the jump and the cells behind
+     * it would seem out of reach — but a jump can land on that label and run on into them.
+     */
+    @Test
+    void cellBehindACellWithTwoReadingsCountsAsReached() {
+        label(2, LABEL_VALUE);
+        opcode(3, "JMPI");
+        label(4, LABEL_VALUE + 1);
+        place(30, new Molecule(Config.TYPE_DATA, 0));
+        build(2, FORWARD);
+
+        assertThat(frame.slot(env.getProperties().toFlatIndex(new int[]{4, ROW})))
+                .isEqualTo(GenomeFrame.Slot.AMBIGUOUS);
+        assertThat(reached(8, 2)).isTrue();
+    }
+
+    /**
      * The walk goes against the direction vector, which for a vector towards falling coordinates
      * means towards rising ones.
      */
