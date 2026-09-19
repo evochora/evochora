@@ -206,9 +206,13 @@ facts, not a reconstruction, and need no node:
 - `mutation_summary` — one row per event with the same keys, `cell_count`, the smallest
   `position` among its cells (independent of the direction the plugin walked), `dv` and `params`
   as JSON text. The built-in kinds: `duplication` (`params`: flat
-  index of the copied source), `deletion` (`params`: how many copies of the deleted label the body
-  had), `instruction-insertion`, `label-insertion` (a detour of a copied label, one instruction
-  and a jump onwards; `params`: the copied label's value and the value the jump carries),
+  index of the copied source; a copy cut at a block boundary that execution could leave at its end
+  carries two more cells, a `JMPI` to the label it was cut at), `deletion` (`params`: how many
+  copies of the deleted label the body had), `instruction-insertion`, `label-insertion` (one
+  instruction in front of a block: a label with the block's old value, the instruction and a
+  `JMPI` to the block's new value, written into an empty region, and as the event's last cell the
+  block's own label, renamed by one bit — so the event's smallest `position` can be the block's
+  label rather than the inserted chain; `params`: the old value and the new one),
   `substitution` (`params`: the slot code of the selected cell — 0 neither, 1 a scalar immediate
   slot, 2 a vector slot — and the action code: 0 value perturbation, 1, 2, 3 an opcode flip of the
   operation, family, variant, 4 a register step, 5 a register swap with the adjacent register
