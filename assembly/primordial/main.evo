@@ -61,7 +61,9 @@ MAIN_LOOP:
 
 MAIN_REPRODUCE: NOP^4
   CALL REPRODUCE.CONTINUE REF %ER; NOP^4  # Call reproduction procedure
-  JMPI MAIN_LOOP; NOP^4; JMPI MAIN_LOOP   # Decide again
+  # The copier returns without writing when the energy is short, which leaves energy and entropy
+  # as they were: deciding again at once would decide the same. One harvest comes first
+  JMPI MAIN_HARVEST; NOP^4; JMPI MAIN_HARVEST
 
 .ORG 0|6
 MAIN_HARVEST: NOP^4
