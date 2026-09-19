@@ -86,8 +86,10 @@ import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
  * one {@code getShape()} defensive copy, the two visitor lambdas (one per owned-cell pass), when a
  * copy is applied the {@link MutationRecord} handed to the newborn, the defensive copy of the
  * newborn's initial position together with what one {@link GenomeFrame} build costs, and, only
- * where a copy is closed, the two {@link Molecule} records of the jump. The owned-cell iteration is O(n) where n is
- * typically 1000-3000, running at most a few times per tick.
+ * where a copy is closed, the two {@link Molecule} records of the jump. The frame is built for
+ * every newborn that carries a label, before it is known whether a run qualifies, because which
+ * runs qualify is read from it. The owned-cell iteration is O(n) where n is typically 1000-3000,
+ * running at most a few times per tick.
  * <p>
  * <strong>What it records:</strong> an applied duplication reports itself on the newborn as a
  * {@link MutationRecord} of kind {@code "duplication"}. Its cells are the target cells that
@@ -521,7 +523,7 @@ public class GeneDuplicationPlugin implements IBirthHandler {
      * @param dvDim The DV dimension index.
      * @param shapeDvDim The environment size along the DV dimension.
      * @return The number of source cells to copy, or {@code 0} if the room holds no whole block
-     *         that carries anything.
+     *         together with the jump it needs.
      */
     private int cutBackCopyLength(Environment env, int childId, int room, int labelDvCoord,
                                   int dvStep, int dvDim, int shapeDvDim) {
@@ -533,10 +535,8 @@ public class GeneDuplicationPlugin implements IBirthHandler {
                 return 0;
             }
             sourcePos[dvDim] = labelDvCoord;
+            // At least the chosen label: a label is always carried
             int carried = withoutTrailingEmptyCells(env, boundary, dvStep, dvDim, shapeDvDim);
-            if (carried == 0) {
-                return 0;
-            }
             sourcePos[dvDim] = labelDvCoord;
             cutCopyEndsOpen = flow.endsOpen(env, frame, sourcePos, carried, dvDim, dvStep);
             if (!cutCopyEndsOpen || carried + CLOSING_JUMP_LENGTH <= room) {
