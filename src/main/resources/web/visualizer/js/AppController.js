@@ -565,6 +565,7 @@ export class AppController {
                 }
             );
             this.minimapView.restoreState(); // Restore expanded/collapsed state
+            this.minimapView.setTorus(this.renderer.torus);
             this.minimapView.updateZoomButton(this.renderer.getCurrentCellSize());
             this.minimapView.setOwnershipColorResolver(this._minimapOwnershipColorResolver());
 
@@ -713,6 +714,11 @@ export class AppController {
         this._refreshStepInfo();
         this.tickPanelManager?.loadMultiplierForRun(this.state.runId);
         this.tickPanelManager?.updateTooltips();
+
+        // A toroidal world is shown across its seam; a bounded one as it always was
+        const isTorus = metadata?.environment?.topology?.toUpperCase() === 'TORUS';
+        this.renderer.setTopology(isTorus);
+        this.minimapView?.setTorus(isTorus);
 
         if (metadata?.environment?.shape) {
             this.state.worldShape = Array.from(metadata.environment.shape);
