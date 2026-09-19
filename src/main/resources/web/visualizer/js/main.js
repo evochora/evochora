@@ -8,6 +8,7 @@ import { AppController } from './AppController.js';
 import { AppSwitcher } from '../../shared/app-switcher/AppSwitcher.js';
 import { RunSelectorPanel } from './ui/panels/RunSelectorPanel.js';
 import { showLoadFailedNotice } from '../../shared/run/RunAvailability.js';
+import { createWheelInputSwitch } from './ui/WheelInputSwitch.js';
 
 // App controller instance (created after DOM is ready)
 export let appController = null;
@@ -30,7 +31,8 @@ async function initAppSwitcher() {
                 tick: appController?.state?.currentTick,
                 organism: appController?.state?.selectedOrganismId,
                 runId: appController?.state?.runId
-            })
+            }),
+            footer: createWheelInputSwitch(mode => appController?.renderer?.interaction?.setWheelInputMode(mode))
         });
 
         // Make the entire logo panel trigger the app switcher

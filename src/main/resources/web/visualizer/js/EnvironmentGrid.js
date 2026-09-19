@@ -3,6 +3,9 @@ import { isMarkPresent } from './MutationMarks.js';
 import { moleculeTypeEntry, moleculeTypeName, NO_DATA_COLOR, VALUE_FORMAT } from './MoleculeTypePalette.js';
 import { AnnotationUtils } from './annotator/AnnotationUtils.js';
 import { ValueFormatter } from './utils/ValueFormatter.js';
+import { clampCamera, zoomCamera } from './interaction/ViewportMath.js';
+import { ViewportInteraction } from './interaction/ViewportInteraction.js';
+import { isOverviewSize } from './interaction/ZoomLevels.js';
 
 /**
  * Writes a molecule in the short form of the cell tooltip: an instruction as its opcode name, a
@@ -65,7 +68,11 @@ export class EnvironmentGrid {
         
         // --- Zoom & Rendering Strategy ---
         this.isZoomedOut = false;
-        this.zoomOutScale = 1;  // 1-4 px per cell in zoomed-out mode
+        this.zoomOutScale = 1;  // 1-10 px per cell in zoomed-out mode
+        this.detailCellSize = this.config.cellSize;  // px per cell in the detail view
+        // Scale of the drawn picture while a zoom gesture runs; 1 when the zoom is at rest
+        this.previewFactor = 1;
+        this.zoomPreviewActive = false;
         // The detailed renderer is the default strategy
         this.detailedRenderer = new DetailedRendererStrategy(this);
         this.zoomedOutRenderer = new ZoomedOutRendererStrategy(this);
@@ -105,15 +112,11 @@ export class EnvironmentGrid {
         this.tooltipTimeout = null;
         this.lastMousePosition = null;
         this.tooltipDelay = 300;
-        this.isPanning = false;
-        this.panStartX = 0;
-        this.panStartY = 0;
-        this.cameraStartX = 0;
-        this.cameraStartY = 0;
         this.viewportLoadTimeout = null;
         this._stageUpdatePending = false; // RAF throttle flag for stage position updates
         this._lastClickPos = null;       // "x,y" string for organism click cycling
         this._clickCycleIndex = 0;       // Current index in organism cycle list
+        this.tapBlocked = false;         // Set while a press is a drag, pinch or long press, not a tap
 
         // --- Virtual Scrollbar Elements ---
         this.vScrollTrack = document.getElementById('scrollbar-track-v');
@@ -166,7 +169,7 @@ export class EnvironmentGrid {
         this.zoomedOutRenderer.init();
         
         this.setupTooltipEvents();
-        this.setupInteractionEvents();
+        this.interaction = new ViewportInteraction(this, canvas);
         this.setupResizeListener();
 
         this.clampCameraToWorld();
@@ -176,85 +179,87 @@ export class EnvironmentGrid {
     }
 
     /**
-     * Toggles the zoom state and switches the active rendering strategy.
-     * Preserves the viewport center position across zoom changes.
-     * @param {boolean} isZoomedOut - The new zoom state.
+     * Returns the size in pixels per cell the cells are drawn at.
+     * @returns {number}
      */
-    setZoom(isZoomedOut) {
-        // Calculate viewport center in cell coordinates (before zoom change)
-        const oldCellSize = this.getCurrentCellSize();
-        const centerCellX = (this.cameraX + this.viewportWidth / 2) / oldCellSize;
-        const centerCellY = (this.cameraY + this.viewportHeight / 2) / oldCellSize;
+    getCurrentCellSize() {
+        return this.isZoomedOut ? this.zoomOutScale : this.detailCellSize;
+    }
 
-        // Apply zoom state change
-        this.isZoomedOut = isZoomedOut;
-        this.activeRenderer = this.isZoomedOut ? this.zoomedOutRenderer : this.detailedRenderer;
+    /**
+     * Returns the size in pixels per cell the cells appear at on screen: the size they are drawn at,
+     * scaled while a zoom gesture shows the drawn picture at another size.
+     * @returns {number}
+     */
+    getDisplayCellSize() {
+        return this.getCurrentCellSize() * this.previewFactor;
+    }
 
-        // Calculate new camera position to preserve center (after zoom change)
-        const newCellSize = this.getCurrentCellSize();
-        this.cameraX = centerCellX * newCellSize - this.viewportWidth / 2;
-        this.cameraY = centerCellY * newCellSize - this.viewportHeight / 2;
+    /**
+     * Returns the centre of the viewport, the point a zoom without a pointer keeps in place.
+     * @returns {{x: number, y: number}}
+     */
+    viewportCenter() {
+        return { x: this.viewportWidth / 2, y: this.viewportHeight / 2 };
+    }
 
-        // Clear everything, as all scales and positions are now invalid.
-        this.clear();
+    /**
+     * Shows the picture drawn so far at another size while a zoom gesture runs. Nothing is drawn or
+     * loaded until {@link applyZoom} ends the gesture: the stage is scaled, and the world point under
+     * the anchor stays where it is on screen.
+     * @param {number} size - Pixels per cell to show.
+     * @param {{x: number, y: number}} anchor - Point of the viewport that stays in place.
+     */
+    previewZoom(size, anchor) {
+        const camera = zoomCamera({ x: this.cameraX, y: this.cameraY }, anchor, this.getDisplayCellSize(), size);
+        this.cameraX = camera.x;
+        this.cameraY = camera.y;
+        this.previewFactor = size / this.getCurrentCellSize();
+        this.zoomPreviewActive = true;
+        this._scheduleStageUpdate();
+    }
+
+    /**
+     * Sets the size the cells are drawn at and ends a zoom preview. The world point under the anchor
+     * stays where it is on screen. A size of the overview selects the overview at that scale, a
+     * larger size the detail view at that cell size. The caller loads and draws the viewport afterwards.
+     * @param {number} size - Pixels per cell, one of the zoom levels.
+     * @param {{x: number, y: number}} anchor - Point of the viewport that stays in place.
+     * @returns {boolean} Whether the size the cells are drawn at changed.
+     */
+    applyZoom(size, anchor) {
+        const oldSize = this.getCurrentCellSize();
+        const camera = zoomCamera({ x: this.cameraX, y: this.cameraY }, anchor, this.getDisplayCellSize(), size);
+        const zoomedOut = isOverviewSize(size);
+        const modeChanged = zoomedOut !== this.isZoomedOut;
+
+        this.isZoomedOut = zoomedOut;
+        if (zoomedOut) {
+            this.zoomOutScale = size;
+        } else {
+            this.detailCellSize = size;
+        }
+        this.activeRenderer = zoomedOut ? this.zoomedOutRenderer : this.detailedRenderer;
+        this.previewFactor = 1;
+        this.zoomPreviewActive = false;
+        this.cameraX = camera.x;
+        this.cameraY = camera.y;
+
+        if (modeChanged) {
+            // Every cell drawn so far is at the wrong size in the wrong renderer
+            this.clear();
+        } else if (size !== oldSize) {
+            // The overview draws its buffer anew; the detail view builds its cells at the new size
+            if (zoomedOut) {
+                this.zoomedOutRenderer.clearCache();
+            } else {
+                this.detailedRenderer.clear();
+            }
+        }
         this.updateGridBackground();
         this.clampCameraToWorld();
         this.updateStagePosition();
-
-        // Invalidate caches when switching modes (free memory)
-        // Note: clear() already calls clearCache() on both renderers,
-        // but we explicitly clear the "other" renderer to ensure memory is freed
-        if (isZoomedOut) {
-            this.detailedRenderer.clearCache();
-        } else {
-            this.zoomedOutRenderer.clearCache();
-        }
-    }
-    
-    getCurrentCellSize() {
-        return this.isZoomedOut ? this.zoomOutScale : this.config.cellSize;
-    }
-
-    /**
-     * Sets the zoom-out scale (pixels per cell in zoomed-out mode).
-     * Preserves the viewport center position across scale changes.
-     * @param {number} scale - The new scale (1-10).
-     */
-    setZoomOutScale(scale) {
-        const newScale = Math.max(1, Math.min(10, Math.round(scale)));
-        if (this.zoomOutScale === newScale) return;
-
-        if (this.isZoomedOut) {
-            // Calculate viewport center in cell coordinates (before scale change)
-            const oldScale = this.zoomOutScale;
-            const centerCellX = (this.cameraX + this.viewportWidth / 2) / oldScale;
-            const centerCellY = (this.cameraY + this.viewportHeight / 2) / oldScale;
-
-            // Apply new scale
-            this.zoomOutScale = newScale;
-            localStorage.setItem('evochora-zoom-out-scale', String(newScale));
-
-            // Calculate new camera position to preserve center
-            this.cameraX = centerCellX * newScale - this.viewportWidth / 2;
-            this.cameraY = centerCellY * newScale - this.viewportHeight / 2;
-
-            this.zoomedOutRenderer.clearCache();
-            this.updateGridBackground();
-            this.clampCameraToWorld();
-            this.updateStagePosition();
-        } else {
-            // Not in zoomed-out mode, just store the value
-            this.zoomOutScale = newScale;
-            localStorage.setItem('evochora-zoom-out-scale', String(newScale));
-        }
-    }
-
-    /**
-     * Gets the current zoom-out scale.
-     * @returns {number} The current scale (1-4).
-     */
-    getZoomOutScale() {
-        return this.zoomOutScale;
+        return size !== oldSize;
     }
 
     /**
@@ -301,20 +306,15 @@ export class EnvironmentGrid {
         if (this.worldWidthCells == null || this.worldHeightCells == null) {
             return;
         }
-
-        const cellSize = this.getCurrentCellSize();
-        const worldWidthPx = this.worldWidthCells * cellSize;
-        const worldHeightPx = this.worldHeightCells * cellSize;
-        
         const margin = EnvironmentGrid.MARGIN;
-        const bottomMargin = EnvironmentGrid.BOTTOM_MARGIN;
-        const minCameraX = -margin;
-        const minCameraY = -margin;
-        const maxCameraX = Math.max(0, worldWidthPx - this.viewportWidth + margin);
-        const maxCameraY = Math.max(0, worldHeightPx - this.viewportHeight + bottomMargin);
-
-        this.cameraX = Math.min(Math.max(this.cameraX, minCameraX), maxCameraX);
-        this.cameraY = Math.min(Math.max(this.cameraY, minCameraY), maxCameraY);
+        const camera = clampCamera(
+            { x: this.cameraX, y: this.cameraY },
+            { width: this.worldWidthCells, height: this.worldHeightCells },
+            this.getDisplayCellSize(),
+            { width: this.viewportWidth, height: this.viewportHeight },
+            { left: margin, top: margin, right: margin, bottom: EnvironmentGrid.BOTTOM_MARGIN });
+        this.cameraX = camera.x;
+        this.cameraY = camera.y;
     }
 
     /**
@@ -322,6 +322,7 @@ export class EnvironmentGrid {
      */
     updateStagePosition() {
         if (!this.app || !this.app.stage) return;
+        this.app.stage.scale.set(this.previewFactor);
         this.app.stage.x = -this.cameraX;
         this.app.stage.y = -this.cameraY;
         this.updateScrollbars();
@@ -352,13 +353,16 @@ export class EnvironmentGrid {
      * @private
      */
     requestViewportLoad() {
-        if (!this.onViewportChange) {
+        // A zoom gesture shows the picture drawn so far; the viewport is loaded once it has ended
+        if (!this.onViewportChange || this.zoomPreviewActive) {
             return;
         }
         if (this.viewportLoadTimeout) {
             clearTimeout(this.viewportLoadTimeout);
         }
         this.viewportLoadTimeout = setTimeout(() => {
+            // A zoom gesture that began in the meantime loads when it ends
+            if (this.zoomPreviewActive) return;
             this.onViewportChange();
         }, 80);
     }
@@ -697,7 +701,7 @@ export class EnvironmentGrid {
      * @param {number} cellY - The target Y coordinate in cells.
      */
     centerOn(cellX, cellY) {
-        const cellSize = this.getCurrentCellSize();
+        const cellSize = this.getDisplayCellSize();
 
         // Convert cell coordinates to pixel coordinates
         const worldX = cellX * cellSize;
@@ -719,7 +723,7 @@ export class EnvironmentGrid {
      * @private
      */
     getVisibleRegion() {
-        const cellSize = this.getCurrentCellSize();
+        const cellSize = this.getDisplayCellSize();
         const x1 = Math.floor(this.cameraX / cellSize);
         const x2 = Math.ceil((this.cameraX + this.viewportWidth) / cellSize);
         const y1 = Math.floor(this.cameraY / cellSize);
@@ -908,7 +912,7 @@ export class EnvironmentGrid {
         const elapsed = performance.now() - this._selectionAnimStart;
         const phase = (elapsed % 1500) / 1500;
 
-        const scale = this.isZoomedOut ? this.zoomOutScale : this.config.cellSize;
+        const scale = this.getCurrentCellSize();
         const minRadius = Math.max(scale * 0.8, 6);
         const maxRadius = Math.max(scale * 3.5, 20);
         const radius = minRadius + (maxRadius - minRadius) * phase;
@@ -934,79 +938,27 @@ export class EnvironmentGrid {
     }
 
     /**
-     * Sets up event listeners for camera panning (left-mouse drag) and future clicks.
-     * @private
+     * Moves the camera by a distance in screen pixels and loads what comes into view.
+     * @param {number} dx - Pixels to the right.
+     * @param {number} dy - Pixels down.
      */
-    setupInteractionEvents() {
-        const canvas = this.app.view;
-        const DRAG_THRESHOLD = 5; // Pixels the mouse must move to initiate a drag
+    panBy(dx, dy) {
+        this.moveCameraTo(this.cameraX + dx, this.cameraY + dy);
+    }
 
-        let isPotentialDrag = false;
-
-        // Prevent context menu on right click (we keep this for usability)
-        canvas.addEventListener('contextmenu', (event) => {
-            event.preventDefault();
-        });
-
-        canvas.addEventListener('mousedown', (event) => {
-            if (event.button !== 0) return; // Only handle left mouse button
-            event.preventDefault();
-
-            // Remove focus from any input field when clicking on the grid
-            if (document.activeElement && document.activeElement.tagName === 'INPUT') {
-                document.activeElement.blur();
-            }
-
-            isPotentialDrag = true;
-            this.isPanning = false; // Reset panning state
-            this.panStartX = event.clientX;
-            this.panStartY = event.clientY;
-            this.cameraStartX = this.cameraX;
-            this.cameraStartY = this.cameraY;
-
-            const onMouseMove = (moveEvent) => {
-                if (!isPotentialDrag) return;
-
-                const dx = moveEvent.clientX - this.panStartX;
-                const dy = moveEvent.clientY - this.panStartY;
-
-                // Check if we've moved past the threshold
-                if (!this.isPanning && Math.sqrt(dx * dx + dy * dy) > DRAG_THRESHOLD) {
-                    this.isPanning = true; // Start panning
-                }
-
-                if (this.isPanning) {
-                    this.cameraX = this.cameraStartX - dx;
-                    this.cameraY = this.cameraStartY - dy;
-
-                    this._scheduleStageUpdate();
-                    this.requestViewportLoad();
-                }
-            };
-
-            const onMouseUp = (upEvent) => {
-                if (upEvent.button !== 0) return; // Only react to left mouse up
-
-                if (!this.isPanning && isPotentialDrag) {
-                    // --- FUTURE CLICK LOGIC GOES HERE ---
-                    const rect = canvas.getBoundingClientRect();
-                    const worldX = (upEvent.clientX - rect.left) + this.cameraX;
-                    const worldY = (upEvent.clientY - rect.top) + this.cameraY;
-                    const cellX = Math.floor(worldX / this.config.cellSize);
-                    const cellY = Math.floor(worldY / this.config.cellSize);
-                    // Cell click detected - cellX, cellY available for future use
-                }
-                
-                // Cleanup
-                isPotentialDrag = false;
-                this.isPanning = false;
-                window.removeEventListener('mousemove', onMouseMove);
-                window.removeEventListener('mouseup', onMouseUp);
-            };
-
-            window.addEventListener('mousemove', onMouseMove);
-            window.addEventListener('mouseup', onMouseUp);
-        });
+    /**
+     * Moves the camera to a position in screen pixels, kept inside the world.
+     * @param {number} x - Camera x.
+     * @param {number} y - Camera y.
+     * @param {boolean} [load=true] - Whether to load what comes into view once the camera rests;
+     *        false leaves loading to the caller.
+     */
+    moveCameraTo(x, y, load = true) {
+        this.cameraX = x;
+        this.cameraY = y;
+        this.clampCameraToWorld();
+        this._scheduleStageUpdate();
+        if (load) this.requestViewportLoad();
     }
 
     /**
@@ -1021,12 +973,14 @@ export class EnvironmentGrid {
         const bottomMargin = EnvironmentGrid.BOTTOM_MARGIN;
 
         // --- Horizontal Scrollbar Interaction ---
-        this.hScrollThumb.addEventListener('mousedown', (e) => {
+        this.hScrollThumb.addEventListener('pointerdown', (e) => {
             e.preventDefault();
+            // The thumb keeps the pointer while it is dragged, also when it leaves the thumb
+            this.hScrollThumb.setPointerCapture(e.pointerId);
             const startX = e.clientX;
             const startCameraX = this.cameraX;
             const trackWidth = this.hScrollTrack.clientWidth;
-            const worldWidthPx = this.worldWidthCells * this.getCurrentCellSize();
+            const worldWidthPx = this.worldWidthCells * this.getDisplayCellSize();
             const scrollableWidth = worldWidthPx + 2 * margin;
 
             const onMouseMove = (moveEvent) => {
@@ -1040,21 +994,25 @@ export class EnvironmentGrid {
             };
 
             const onMouseUp = () => {
-                window.removeEventListener('mousemove', onMouseMove);
-                window.removeEventListener('mouseup', onMouseUp);
+                this.hScrollThumb.removeEventListener('pointermove', onMouseMove);
+                this.hScrollThumb.removeEventListener('pointerup', onMouseUp);
+                this.hScrollThumb.removeEventListener('pointercancel', onMouseUp);
             };
 
-            window.addEventListener('mousemove', onMouseMove);
-            window.addEventListener('mouseup', onMouseUp);
+            this.hScrollThumb.addEventListener('pointermove', onMouseMove);
+            this.hScrollThumb.addEventListener('pointerup', onMouseUp);
+            this.hScrollThumb.addEventListener('pointercancel', onMouseUp);
         });
 
         // --- Vertical Scrollbar Interaction ---
-        this.vScrollThumb.addEventListener('mousedown', (e) => {
+        this.vScrollThumb.addEventListener('pointerdown', (e) => {
             e.preventDefault();
+            // The thumb keeps the pointer while it is dragged, also when it leaves the thumb
+            this.vScrollThumb.setPointerCapture(e.pointerId);
             const startY = e.clientY;
             const startCameraY = this.cameraY;
             const trackHeight = this.vScrollTrack.clientHeight;
-            const worldHeightPx = this.worldHeightCells * this.getCurrentCellSize();
+            const worldHeightPx = this.worldHeightCells * this.getDisplayCellSize();
             const scrollableHeight = worldHeightPx + margin + bottomMargin;
 
             const onMouseMove = (moveEvent) => {
@@ -1068,12 +1026,14 @@ export class EnvironmentGrid {
             };
 
             const onMouseUp = () => {
-                window.removeEventListener('mousemove', onMouseMove);
-                window.removeEventListener('mouseup', onMouseUp);
+                this.vScrollThumb.removeEventListener('pointermove', onMouseMove);
+                this.vScrollThumb.removeEventListener('pointerup', onMouseUp);
+                this.vScrollThumb.removeEventListener('pointercancel', onMouseUp);
             };
 
-            window.addEventListener('mousemove', onMouseMove);
-            window.addEventListener('mouseup', onMouseUp);
+            this.vScrollThumb.addEventListener('pointermove', onMouseMove);
+            this.vScrollThumb.addEventListener('pointerup', onMouseUp);
+            this.vScrollThumb.addEventListener('pointercancel', onMouseUp);
         });
 
         // --- Horizontal Track Click (jump to position) ---
@@ -1084,7 +1044,7 @@ export class EnvironmentGrid {
             const trackRect = this.hScrollTrack.getBoundingClientRect();
             const clickX = e.clientX - trackRect.left;
             const trackWidth = this.hScrollTrack.clientWidth;
-            const worldWidthPx = this.worldWidthCells * this.getCurrentCellSize();
+            const worldWidthPx = this.worldWidthCells * this.getDisplayCellSize();
             const scrollableWidth = worldWidthPx + 2 * margin;
 
             // Calculate camera position from click position
@@ -1102,7 +1062,7 @@ export class EnvironmentGrid {
             const trackRect = this.vScrollTrack.getBoundingClientRect();
             const clickY = e.clientY - trackRect.top;
             const trackHeight = this.vScrollTrack.clientHeight;
-            const worldHeightPx = this.worldHeightCells * this.getCurrentCellSize();
+            const worldHeightPx = this.worldHeightCells * this.getDisplayCellSize();
             const scrollableHeight = worldHeightPx + margin + bottomMargin;
 
             // Calculate camera position from click position
@@ -1173,7 +1133,7 @@ export class EnvironmentGrid {
     updateScrollbars() {
         if (!this.hScrollTrack || !this.vScrollTrack) return;
 
-        const cellSize = this.getCurrentCellSize();
+        const cellSize = this.getDisplayCellSize();
         const worldWidthPx = this.worldWidthCells * cellSize;
         const worldHeightPx = this.worldHeightCells * cellSize;
         
@@ -1219,8 +1179,13 @@ export class EnvironmentGrid {
      * @private
      */
     setupTooltipEvents() {
-        this.app.view.addEventListener('mousemove', (event) => this.handleMouseMove(event));
-        this.app.view.addEventListener('mouseleave', () => {
+        // A finger brings the tooltip up by resting, which ViewportInteraction handles
+        this.app.view.addEventListener('pointermove', (event) => {
+            if (event.pointerType !== 'touch') this.handleMouseMove(event);
+        });
+        // A finger leaves the canvas whenever it is lifted; its tooltip stays until the next touch
+        this.app.view.addEventListener('pointerleave', (event) => {
+            if (event.pointerType === 'touch') return;
             this.hideTooltip();
             if (this.tooltipTimeout) clearTimeout(this.tooltipTimeout);
             this.lastMousePosition = null;
@@ -1234,33 +1199,12 @@ export class EnvironmentGrid {
      * @private
      */
     handleMouseMove(event) {
-        const rect = this.app.view.getBoundingClientRect();
-        const x = event.clientX - rect.left;
-        const y = event.clientY - rect.top;
-
-        if (x < 0 || y < 0 || x >= rect.width || y >= rect.height) {
+        const target = this._gridCellAt(event.clientX, event.clientY);
+        if (!target) {
             this.hideTooltip();
             return;
         }
-
-        const cellSize = this.getCurrentCellSize();
-        const worldX = x + this.cameraX;
-        const worldY = y + this.cameraY;
-
-        const gridX = Math.floor(worldX / cellSize);
-        const gridY = Math.floor(worldY / cellSize);
-
-        // --- NEW: Boundary Check ---
-        // Do not show tooltip if the cursor is outside the defined world grid
-        if (
-            this.worldWidthCells === null || this.worldHeightCells === null ||
-            gridX < 0 || gridX >= this.worldWidthCells ||
-            gridY < 0 || gridY >= this.worldHeightCells
-        ) {
-            this.hideTooltip();
-            return;
-        }
-        // --- End of Boundary Check ---
+        const { gridX, gridY } = target;
 
         const currentPos = `${gridX},${gridY}`;
 
@@ -1283,6 +1227,51 @@ export class EnvironmentGrid {
     }
 
     /**
+     * Returns the world cell under a point of the page, or null when the point lies off the canvas
+     * or off the world.
+     * @param {number} clientX - Page x in client pixels.
+     * @param {number} clientY - Page y in client pixels.
+     * @returns {{gridX: number, gridY: number}|null}
+     * @private
+     */
+    _gridCellAt(clientX, clientY) {
+        const rect = this.app.view.getBoundingClientRect();
+        const x = clientX - rect.left;
+        const y = clientY - rect.top;
+        if (x < 0 || y < 0 || x >= rect.width || y >= rect.height) return null;
+
+        const cellSize = this.getDisplayCellSize();
+        const gridX = Math.floor((x + this.cameraX) / cellSize);
+        const gridY = Math.floor((y + this.cameraY) / cellSize);
+        if (
+            this.worldWidthCells === null || this.worldHeightCells === null ||
+            gridX < 0 || gridX >= this.worldWidthCells ||
+            gridY < 0 || gridY >= this.worldHeightCells
+        ) {
+            return null;
+        }
+        return { gridX, gridY };
+    }
+
+    /**
+     * Shows the tooltip of the cell under a point at once, lifted above it. Used for a finger,
+     * which would cover a tooltip shown at the point itself.
+     * @param {number} clientX - Page x in client pixels.
+     * @param {number} clientY - Page y in client pixels.
+     * @param {number} lift - Pixels the tooltip is raised above the point.
+     */
+    showTooltipAtPoint(clientX, clientY, lift) {
+        const target = this._gridCellAt(clientX, clientY);
+        const cell = target ? this.findCellAt(target.gridX, target.gridY) : null;
+        const nearbyOrganisms = target ? this.findAllOrganismsNear(target.gridX, target.gridY) : [];
+        if (!cell && nearbyOrganisms.length === 0) {
+            this.hideTooltip();
+            return;
+        }
+        this.showTooltip({ clientX, clientY: clientY - lift }, cell, target.gridX, target.gridY, nearbyOrganisms);
+    }
+
+    /**
      * Finds all organisms (IP or DP) near the given grid coordinates.
      * Uses a minimum hit radius for small organisms.
      *
@@ -1294,7 +1283,7 @@ export class EnvironmentGrid {
     findAllOrganismsNear(gridX, gridY) {
         if (!this.currentOrganisms || this.currentOrganisms.length === 0) return [];
 
-        const cellSize = this.getCurrentCellSize();
+        const cellSize = this.getDisplayCellSize();
         // Minimum hit radius in pixels, converted to cells
         const MIN_HIT_RADIUS_PX = 15;
         const hitRadiusCells = Math.max(0.5, MIN_HIT_RADIUS_PX / cellSize / 2);
@@ -1339,6 +1328,8 @@ export class EnvironmentGrid {
      * @param {number} gridY - The Y coordinate in cells.
      */
     cycleOrganismAtPosition(gridX, gridY) {
+        // A press that dragged, pinched or brought up a tooltip selects nothing when it ends
+        if (this.tapBlocked) return;
         const allMatches = this.findAllOrganismsNear(gridX, gridY);
         // Deduplicate by organismId
         const unique = [...new Map(allMatches.map(m => [m.organism.organismId, m.organism])).values()];
@@ -1651,9 +1642,9 @@ class DetailedRendererStrategy extends BaseRendererStrategy {
 
         // What a cell holds that the loaded region does not name: nothing at all
         this.emptyCell = { type: 'CODE', value: 0, ownerId: 0, opcodeName: null, marker: 0 };
+        // The font size follows the cell size the text is drawn at
         this.cellFont = {
             fontFamily: 'Monospaced, "Courier New"',
-            fontSize: this.config.cellSize * 0.4,
             fill: 0xffffff,
             align: 'center',
         };
@@ -1784,7 +1775,7 @@ class DetailedRendererStrategy extends BaseRendererStrategy {
             }
 
             if (!text) {
-                text = new PIXI.Text({ text: label, style: { ...this.cellFont, fill: this.getTextColorForType(cell.type) }});
+                text = new PIXI.Text({ text: label, style: { ...this.cellFont, fontSize: cellSize * 0.4, fill: this.getTextColorForType(cell.type) }});
                 text.anchor.set(0.5);
                 text.position.set(x + cellSize / 2, y + cellSize / 2);
                 this.grid.textContainer.addChild(text);
@@ -1915,7 +1906,7 @@ class DetailedRendererStrategy extends BaseRendererStrategy {
                 // Make it clickable
                 graphics.interactive = true;
                 graphics.buttonMode = true;
-                graphics.on('click', (event) => {
+                graphics.on('pointertap', (event) => {
                     event.stopPropagation();
                     const current = self.grid.currentOrganisms?.find(o => o.organismId === organism.organismId);
                     if (current && Array.isArray(current.ip)) {
@@ -2002,7 +1993,7 @@ class DetailedRendererStrategy extends BaseRendererStrategy {
             let dpEntry = this.dpGraphics.get(cellKey);
             if (!dpEntry) {
                 const graphics = new PIXI.Graphics();
-                const text = new PIXI.Text({ text: "", style: { ...this.cellFont, fontSize: this.config.cellSize * 0.45, fontWeight: "900", fill: entry.color, dropShadow: true, dropShadowColor: "rgba(0,0,0,0.8)", dropShadowBlur: 1, dropShadowAngle: Math.PI / 4, dropShadowDistance: 1 }});
+                const text = new PIXI.Text({ text: "", style: { ...this.cellFont, fontSize: this.grid.getCurrentCellSize() * 0.45, fontWeight: "900", fill: entry.color, dropShadow: true, dropShadowColor: "rgba(0,0,0,0.8)", dropShadowBlur: 1, dropShadowAngle: Math.PI / 4, dropShadowDistance: 1 }});
                 text.anchor.set(0.5);
                 dpEntry = { graphics, text };
                 this.dpGraphics.set(cellKey, dpEntry);
@@ -2011,7 +2002,7 @@ class DetailedRendererStrategy extends BaseRendererStrategy {
                 // Make it clickable
                 graphics.interactive = true;
                 graphics.buttonMode = true;
-                graphics.on('click', (event) => {
+                graphics.on('pointertap', (event) => {
                     event.stopPropagation();
                     const [cx, cy] = cellKey.split(',').map(Number);
                     self.grid.cycleOrganismAtPosition(cx, cy);
@@ -2373,7 +2364,7 @@ class ZoomedOutRendererStrategy extends BaseRendererStrategy {
                 // Make it clickable
                 ipGraphics.interactive = true;
                 ipGraphics.buttonMode = true;
-                ipGraphics.on('click', (event) => {
+                ipGraphics.on('pointertap', (event) => {
                     event.stopPropagation();
                     const current = self.grid.currentOrganisms?.find(o => o.organismId === organismId);
                     if (current && Array.isArray(current.ip)) {
@@ -2441,7 +2432,7 @@ class ZoomedOutRendererStrategy extends BaseRendererStrategy {
                  // Make it clickable
                 dpEntry.graphics.interactive = true;
                 dpEntry.graphics.buttonMode = true;
-                dpEntry.graphics.on('click', (event) => {
+                dpEntry.graphics.on('pointertap', (event) => {
                     event.stopPropagation();
                     const [cx, cy] = cellKey.split(',').map(Number);
                     self.grid.cycleOrganismAtPosition(cx, cy);

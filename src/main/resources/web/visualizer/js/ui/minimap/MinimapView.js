@@ -1,6 +1,7 @@
 import { MinimapRenderer } from './MinimapRenderer.js';
 import { MinimapNavigator } from './MinimapNavigator.js';
 import { MinimapOrganismOverlay } from './MinimapOrganismOverlay.js';
+import { ZOOM_LEVELS } from '../../interaction/ZoomLevels.js';
 
 /**
  * Orchestrates minimap rendering and navigation as a collapsible panel.
@@ -25,20 +26,20 @@ export class MinimapView {
      * Creates a new MinimapView.
      *
      * @param {function(number, number): void} onNavigate - Callback when user navigates via minimap.
-     * @param {function(boolean): void} onZoomToggle - Callback when zoom button is clicked.
-     * @param {function(number): void} onScaleChange - Callback when zoom-out scale is changed.
+     * @param {function(number): void} onZoomChange - Callback when the zoom slider selects a level,
+     *        with its size in pixels per cell.
      */
-    constructor(onNavigate, onZoomToggle, onScaleChange) {
+    constructor(onNavigate, onZoomChange) {
         this.onNavigate = onNavigate;
-        this.onZoomToggle = onZoomToggle;
-        this.onScaleChange = onScaleChange;
+        this.onZoomChange = onZoomChange;
         this.worldShape = null;
         this.lastMinimapData = null;
         this.viewportBounds = null;
         this.expanded = true;
         this.visible = false;
-        this.isZoomedOut = true;
         this.minimapUseful = true; // True when world is larger than viewport
+        // While a zoom gesture runs, the minimap neither appears nor disappears
+        this._gestureActive = false;
 
         this.createDOM();
         this.renderer = new MinimapRenderer(this.canvas);
@@ -70,7 +71,7 @@ export class MinimapView {
                 <span class="panel-label world-size">— × —</span>
             </div>
             <div class="minimap-collapsed-center">
-                <input type="range" class="minimap-zoom-slider" min="1" max="11" value="1" title="Zoom level">
+                <input type="range" class="minimap-zoom-slider" min="1" max="${ZOOM_LEVELS.length}" value="1" title="Zoom level">
             </div>
             <div class="minimap-collapsed-right">
                 <span class="panel-arrow minimap-expand-arrow">▲</span>
@@ -88,7 +89,7 @@ export class MinimapView {
                     <span class="world-size">— × —</span>
                 </div>
                 <div class="minimap-panel-center">
-                    <input type="range" class="minimap-zoom-slider" min="1" max="11" value="1" title="Zoom level">
+                    <input type="range" class="minimap-zoom-slider" min="1" max="${ZOOM_LEVELS.length}" value="1" title="Zoom level">
                 </div>
                 <div class="minimap-panel-controls">
                     <button class="minimap-organism-toggle active" title="Toggle organism overlay">Org</button>
@@ -145,24 +146,9 @@ export class MinimapView {
 
         // Zoom slider change handler
         const handleZoomSliderChange = (e) => {
-            const value = parseInt(e.target.value, 10);
-            if (value === 11) {
-                // Switch to zoomed-in (detail) mode
-                if (this.onZoomToggle) {
-                    this.onZoomToggle(false, null);
-                }
-            } else {
-                // Set scale and ensure zoomed-out mode
-                if (this.isZoomedOut) {
-                    if (this.onScaleChange) {
-                        this.onScaleChange(value);
-                    }
-                } else {
-                    if (this.onZoomToggle) {
-                        this.onZoomToggle(true, value);
-                    }
-                }
-            }
+            // A slider left between two levels by a zoom gesture is dragged from there to a level
+            const value = Math.round(Number(e.target.value));
+            this.onZoomChange?.(ZOOM_LEVELS[value - 1]);
         };
 
         // Zoom slider (expanded panel)
@@ -246,7 +232,21 @@ export class MinimapView {
         }
 
         // Check if minimap is useful (after viewportBounds is set)
-        this.updateMinimapUsefulness();
+        if (!this._gestureActive) {
+            this.updateMinimapUsefulness();
+        }
+    }
+
+    /**
+     * Marks the start or the end of a zoom gesture. While it runs, the minimap keeps its visibility;
+     * at its end, visibility follows the viewport the gesture came to rest on.
+     * @param {boolean} active - True while a zoom gesture runs.
+     */
+    setGestureActive(active) {
+        this._gestureActive = active;
+        if (!active) {
+            this.updateMinimapUsefulness();
+        }
     }
 
     /**
@@ -451,21 +451,35 @@ export class MinimapView {
     }
 
     /**
-     * Updates the zoom slider based on current zoom state and scale.
-     * @param {boolean} isZoomedOut - Current zoom state.
-     * @param {number} [currentScale=1] - Current zoom-out scale (1-10).
+     * Places the zoom slider on the level the zoom rests on.
+     * @param {number} size - Pixels per cell, one of the zoom levels.
      */
-    updateZoomButton(isZoomedOut, currentScale = 1) {
-        this.isZoomedOut = isZoomedOut;
+    updateZoomButton(size) {
+        // Slider value: 1 for the smallest level, one more for each level above it
+        this._setSliders('1', ZOOM_LEVELS.indexOf(size) + 1);
+    }
 
-        // Slider value: 1-10 for zoomed out scales, 11 for detail mode
-        const sliderValue = isZoomedOut ? currentScale : 11;
+    /**
+     * Places the zoom slider between two levels while a zoom gesture runs.
+     * @param {number} position - Level index, 0 for the smallest level; a fraction lies between
+     *        two levels.
+     */
+    showZoomPosition(position) {
+        this._setSliders('any', position + 1);
+    }
 
-        if (this.zoomSlider) {
-            this.zoomSlider.value = sliderValue;
-        }
-        if (this.zoomSliderCollapsed) {
-            this.zoomSliderCollapsed.value = sliderValue;
+    /**
+     * Sets step and value of both zoom sliders. The step comes first: a value off the step is
+     * rounded to it.
+     * @param {string} step - 'any' while a gesture runs, '1' at rest.
+     * @param {number} value - Slider value, 1 to the number of zoom levels.
+     * @private
+     */
+    _setSliders(step, value) {
+        for (const slider of [this.zoomSlider, this.zoomSliderCollapsed]) {
+            if (!slider) continue;
+            slider.step = step;
+            slider.value = value;
         }
     }
 

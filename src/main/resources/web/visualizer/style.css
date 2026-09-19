@@ -122,6 +122,12 @@ body {
     opacity: 0.7;
 }
 
+#logo-panel .app-switcher-footer {
+    padding: 8px 10px 2px;
+    border-top-color: #333;
+    font-size: 11px;
+}
+
 
 /* Toggle button inside panels */
 .panel-toggle {
@@ -749,6 +755,17 @@ main.container {
 #worldCanvas {
     background-color: #14141e;
     flex-shrink: 0;
+}
+
+/* A finger or pen on the world, the minimap or a scrollbar thumb moves the view itself: the
+   browser neither scrolls nor zooms the page, nor selects text or opens a menu on a long press */
+.world-container canvas,
+.minimap-canvas,
+.scrollbar-thumb-v, .scrollbar-thumb-h {
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
 }
 
 /* Unchangeable info styles */
@@ -1574,4 +1591,61 @@ main.container {
 .multiplier-wrapper input.tick-input {
     width: 80px; /* Shorter width for multiplier */
     padding-right: 36px; /* Space for suffix */
+}
+
+/* Wheel and touchpad switch in the app switcher: Auto, mouse, touchpad */
+.wheel-input-switch {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    border: 1px solid #3a3a4a;
+    border-radius: 5px;
+    overflow: hidden;
+}
+
+.wheel-input-switch button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 26px;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: #808090;
+    font-family: 'Roboto Mono', 'Courier New', monospace;
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    outline: none;
+}
+
+.wheel-input-switch button + button {
+    border-left: 1px solid #3a3a4a;
+}
+
+.wheel-input-switch button:hover {
+    color: #a0a0b0;
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.wheel-input-switch button:focus-visible {
+    box-shadow: inset 0 0 0 1px #4a9eff;
+}
+
+.wheel-input-switch button[aria-pressed="true"] {
+    color: #4a9eff;
+    background: rgba(74, 158, 255, 0.14);
+}
+
+.wheel-input-switch svg {
+    width: 16px;
+    height: 16px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.1;
+    stroke-linecap: round;
+}
+
+.wheel-input-switch svg .dot {
+    fill: currentColor;
+    stroke: none;
 }

@@ -1,8 +1,20 @@
+/**
+ * The button that opens the list of the other web apps, and the list itself.
+ */
 export class AppSwitcher {
-    constructor({ element, apps, getState }) {
+    /**
+     * @param {object} options
+     * @param {HTMLElement} options.element - Container the button and the list are rendered into.
+     * @param {Array<{url: string, name: string, description: string}>} options.apps - All web apps.
+     * @param {function(): object} options.getState - State carried over to the app switched to.
+     * @param {?HTMLElement} [options.footer] - Settings of the current app, shown below the links,
+     *        set apart by a line; clicks on it leave the list open.
+     */
+    constructor({ element, apps, getState, footer = null }) {
         this.element = element;
         this.apps = apps;
         this.getState = getState;
+        this.footer = footer;
         this.isOverlayVisible = false;
         this.render();
         this.attachEventListeners();
@@ -40,6 +52,10 @@ export class AppSwitcher {
 
         this.overlay.innerHTML = '';
         appLinks.forEach(link => this.overlay.appendChild(link));
+        if (this.footer) {
+            this.footer.classList.add('app-switcher-footer');
+            this.overlay.appendChild(this.footer);
+        }
     }
 
     buildUrl(baseUrl) {
