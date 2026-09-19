@@ -1,6 +1,6 @@
 import { loadingManager } from './ui/LoadingManager.js';
 import { isMarkPresent } from './MutationMarks.js';
-import { moleculeTypeEntry, moleculeTypeName, NO_DATA_COLOR } from './MoleculeTypePalette.js';
+import { moleculeTypeEntry, moleculeTypeName, NO_DATA_COLOR, VALUE_FORMAT } from './MoleculeTypePalette.js';
 import { AnnotationUtils } from './annotator/AnnotationUtils.js';
 import { ValueFormatter } from './utils/ValueFormatter.js';
 
@@ -22,7 +22,7 @@ function formatTooltipMolecule(typeName, value, opcodeName) {
     if (typeName === 'REGISTER') {
         return AnnotationUtils.formatRegisterName(value);
     }
-    return `${moleculeTypeEntry(typeName).abbr}:${value}`;
+    return `${moleculeTypeEntry(typeName).abbr}:${ValueFormatter.formatMoleculeValue(typeName, value)}`;
 }
 
 /**
@@ -1771,12 +1771,14 @@ class DetailedRendererStrategy extends BaseRendererStrategy {
             let label;
             if (cell.type === 'CODE') {
                 label = (cell.opcodeName && typeof cell.opcodeName === 'string') ? cell.opcodeName : String(cell.value);
+            } else if (moleculeTypeEntry(cell.type).valueFormat === VALUE_FORMAT.HEX) {
+                label = ValueFormatter.formatHexValueOnTwoLines(cell.value);
             } else {
                 label = cell.value.toString();
             }
 
             // Split long values (> 4 chars) into two lines for better readability
-            if (label.length > 4) {
+            if (label.length > 4 && !label.includes('\n')) {
                 const mid = Math.ceil(label.length / 2);
                 label = label.slice(0, mid) + '\n' + label.slice(mid);
             }

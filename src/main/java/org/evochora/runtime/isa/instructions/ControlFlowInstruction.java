@@ -67,7 +67,8 @@ public class ControlFlowInstruction extends Instruction {
                     int callLabelHash = (Integer) callTargetObj;
                     int[] callTargetIp = resolveLabelTarget(callLabelHash, organism.getIp(), organism, environment);
                     if (callTargetIp == null) {
-                        organism.instructionFailed("CALL: No matching label found for hash " + callLabelHash);
+                        organism.instructionFailed("CALL: No matching label found for hash "
+                                + labelHashText(callLabelHash));
                         return;
                     }
                     ProcedureCallHandler.executeCall(context, callTargetIp, callLabelHash);
@@ -82,7 +83,8 @@ public class ControlFlowInstruction extends Instruction {
                     int jmpiLabelHash = (Integer) jmpiTargetObj;
                     int[] jmpiTargetIp = resolveLabelTarget(jmpiLabelHash, organism.getIp(), organism, environment);
                     if (jmpiTargetIp == null) {
-                        organism.instructionFailed("JMPI: No matching label found for hash " + jmpiLabelHash);
+                        organism.instructionFailed("JMPI: No matching label found for hash "
+                                + labelHashText(jmpiLabelHash));
                         return;
                     }
                     // Skip past the LABEL molecule to the actual code
@@ -98,7 +100,8 @@ public class ControlFlowInstruction extends Instruction {
                     if (jmprLabelHash < 0) { organism.instructionFailed("JMPR: Invalid register value for label hash."); return; }
                     int[] jmprTargetIp = resolveLabelTarget(jmprLabelHash, organism.getIp(), organism, environment);
                     if (jmprTargetIp == null) {
-                        organism.instructionFailed("JMPR: No matching label found for hash " + jmprLabelHash);
+                        organism.instructionFailed("JMPR: No matching label found for hash "
+                                + labelHashText(jmprLabelHash));
                         return;
                     }
                     // Skip past the LABEL molecule to the actual code
@@ -114,7 +117,8 @@ public class ControlFlowInstruction extends Instruction {
                     if (jmpsLabelHash < 0) { organism.instructionFailed("JMPS: Invalid stack value for label hash."); return; }
                     int[] jmpsTargetIp = resolveLabelTarget(jmpsLabelHash, organism.getIp(), organism, environment);
                     if (jmpsTargetIp == null) {
-                        organism.instructionFailed("JMPS: No matching label found for hash " + jmpsLabelHash);
+                        organism.instructionFailed("JMPS: No matching label found for hash "
+                                + labelHashText(jmpsLabelHash));
                         return;
                     }
                     // Skip past the LABEL molecule to the actual code

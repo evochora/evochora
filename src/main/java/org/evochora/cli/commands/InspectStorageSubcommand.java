@@ -303,9 +303,9 @@ public class InspectStorageSubcommand implements Callable<Integer> {
                 int ownerId = columns.getOwnerIds(i);
                 
                 int type = moleculeInt & Config.TYPE_MASK;
-                int value = Molecule.extractSignedValue(moleculeInt);
-                
-                out.printf("  Index: %d, Type: %d, Value: %d, Owner: %d%n",
+                String value = Molecule.formatValue(moleculeInt);
+
+                out.printf("  Index: %d, Type: %d, Value: %s, Owner: %d%n",
                     flatIndex,
                     type,
                     value,

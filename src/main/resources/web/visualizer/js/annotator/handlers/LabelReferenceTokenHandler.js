@@ -1,4 +1,5 @@
 import { AnnotationUtils } from '../AnnotationUtils.js';
+import { ValueFormatter } from '../../utils/ValueFormatter.js';
 
 /**
  * Handles the annotation of tokens that are references to labels or procedures.
@@ -46,7 +47,7 @@ export class LabelReferenceTokenHandler {
 
         // Format hash value as decimal with # prefix (e.g., "[#12345]")
         return {
-            annotationText: `[#${hashValue ^ labelNamespaceMask}]`,
+            annotationText: `[#${ValueFormatter.formatHexValue(hashValue ^ labelNamespaceMask)}]`,
             kind: 'label-ref'
         };
     }

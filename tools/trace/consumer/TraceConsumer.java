@@ -740,7 +740,7 @@ public final class TraceConsumer extends AbstractService {
                 case LABEL -> {
                     int value = rawMol & Config.VALUE_MASK;
                     String name = program == null ? null : program.labelValueToName.get(value);
-                    sb.append(name != null ? name : "LABEL:" + value);
+                    sb.append(name != null ? name : "LABEL:" + Molecule.formatValue(rawMol));
                 }
                 default -> sb.append(molecule(rawMol));
             }
@@ -823,7 +823,7 @@ public final class TraceConsumer extends AbstractService {
 
     private static String molecule(int moleculeInt) {
         Molecule m = Molecule.fromInt(moleculeInt);
-        String text = MoleculeTypeRegistry.typeToName(m.type()) + ":" + m.toScalarValue();
+        String text = MoleculeTypeRegistry.typeToName(m.type()) + ":" + Molecule.formatValue(moleculeInt);
         return m.marker() != 0 ? text + "/" + m.marker() : text;
     }
 

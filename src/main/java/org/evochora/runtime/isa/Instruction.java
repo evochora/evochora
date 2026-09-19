@@ -25,6 +25,7 @@ import org.evochora.runtime.isa.instructions.StateInstruction;
 import org.evochora.runtime.isa.instructions.VectorInstruction;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
+import org.evochora.runtime.model.MoleculeTypeRegistry;
 import org.evochora.runtime.model.Organism;
 
 import static org.evochora.runtime.isa.Family.*;
@@ -438,6 +439,17 @@ public abstract class Instruction {
     protected int resolveLabelHash(int[] currentIp, Environment environment) {
         Organism.FetchResult res = organism.fetchSignedArgument(currentIp, environment);
         return res.value() & Config.VALUE_MASK;
+    }
+
+    /**
+     * Writes a label hash the way a {@code LABEL} molecule's value is written, for the failure
+     * message of an instruction that found no matching label.
+     *
+     * @param labelHash The label hash the instruction searched for.
+     * @return The text of the hash in the value format the {@code LABEL} type declares.
+     */
+    protected static String labelHashText(int labelHash) {
+        return MoleculeTypeRegistry.valueFormatOf(Config.TYPE_LABEL).write(labelHash);
     }
 
     /**

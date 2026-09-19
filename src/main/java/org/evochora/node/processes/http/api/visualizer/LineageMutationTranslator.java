@@ -164,9 +164,9 @@ final class LineageMutationTranslator {
      * Splits a packed molecule the way the environment endpoint splits a cell.
      *
      * @param moleculeInt The packed molecule
-     * @return Its type and its signed value
+     * @return Its type and its value as the type defines it: unsigned for a label type, signed otherwise
      */
     private static MoleculeView molecule(final int moleculeInt) {
-        return new MoleculeView(moleculeInt & Config.TYPE_MASK, Molecule.extractSignedValue(moleculeInt));
+        return new MoleculeView(moleculeInt & Config.TYPE_MASK, Molecule.extractTypedValue(moleculeInt));
     }
 }

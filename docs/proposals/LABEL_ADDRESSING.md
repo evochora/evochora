@@ -196,19 +196,25 @@ gene-identifying bits are the lower three.
 
 ### Label values are unsigned, and shown in hexadecimal
 
-A new method `Molecule.extractTypedValue(moleculeInt)` returns the value as the molecule's type
-defines it: unsigned for `LABEL` and `LABELREF`, sign-extended for every other type. The
-environment, organism and mutation endpoints send this value, so a label value reaches the browser
-in the range `0…FFFFF`, as the key the artifact's label maps use. `Molecule.extractSignedValue`,
-which the virtual machine calls for every instruction, is not touched.
+Every molecule type is registered in `MoleculeTypeRegistry` with the format its value is read and
+written in, a `MoleculeValueFormat`: `DECIMAL` for a number in two's complement, `HEX` for a bit
+pattern without a sign. `LABEL` and `LABELREF` declare `HEX`. Two new, type-neutral methods of
+`Molecule` follow the declaration: `extractTypedValue(moleculeInt)` returns the value as the format
+reads it, `formatValue(moleculeInt)` its text. The environment, organism and mutation endpoints
+send the typed value, so a label value reaches the browser in the range `0…FFFFF`, as the key the
+artifact's label maps use. `Molecule.extractSignedValue`, which the virtual machine calls for every
+instruction, is not touched. No caller decides by the type: a new type is covered by its
+registration.
 
-Wherever a person reads a label value it is five uppercase hexadecimal digits with leading zeros
-and no prefix: `L:3A7F1`, `LR:3A7F1`, `[#3A7F1]` in the source view. In the visualizer the
-decision sits in one place, `ValueFormatter.format`, which already receives the type name and
-serves registers, stacks, parameters and instruction arguments; `ValueFormatter.formatLabelValue`
-produces the digits and is used by `format`, the environment tooltips, the source annotations and
-the cell text at the highest zoom level, where the value is drawn on two lines, two digits above
-three. Backend texts follow: `Molecule.toString`, the failure messages of jumps and location
+Wherever a person reads a label value it is five uppercase hexadecimal digits with leading zeros and
+no prefix: `L:3A7F1`, `LR:3A7F1`, `[#3A7F1]` in the source view. In the visualizer the palette of
+molecule types, the one place that knows type names, names for every type the format its value is
+written in (`valueFormat`: `decimal` or `hex`) and gives `hex` to `LABEL` and `LABELREF`.
+`ValueFormatter.format`, which serves registers, stacks, parameters and instruction arguments, reads
+that format; `ValueFormatter.formatHexValue` produces the digits and is used by `format`, the
+environment tooltips, the source annotations and the cell text at the highest zoom level, where the
+value is drawn on two lines, two digits above three. Backend texts are written through
+`Molecule.formatValue`: `Molecule.toString`, the failure messages of jumps and location
 instructions, the storage inspection command and the trace consumer. The hexadecimal form is for
 reading only; `Molecule.parse`, the syntax of configuration, stays decimal.
 
@@ -257,10 +263,12 @@ clears it; overwriting and clearing a marked label leave the index consistent; a
 snapshot taken while a child is under construction resolves every lookup as the uninterrupted run
 does.
 
-**Commit 2 — Unsigned label values and hexadecimal display.** `Molecule.extractTypedValue` and its
-use in `EnvironmentController`, `OrganismStateConverter` and `LineageMutationTranslator`; the
-backend texts; `ValueFormatter.format` and `formatLabelValue` and their callers in the visualizer.
-While label values still have 19 bits this changes what is shown, not what is sent.
+**Commit 2 — Unsigned label values and hexadecimal display.** `MoleculeValueFormat`, its declaration
+per type in `MoleculeTypeRegistry`, `Molecule.extractTypedValue` and `formatValue` and their use in
+`EnvironmentController`, `OrganismStateConverter` and `LineageMutationTranslator`; the backend
+texts; the palette's `valueFormat`, `ValueFormatter.format` and `formatHexValue` and their callers
+in the visualizer. While label values still have 19 bits this changes what is shown, not what is
+sent.
 
 **Commit 3 — 20-bit label values.** `RuntimeInstructionSetAdapter.labelValue`, `Config`,
 `GeneSubstitutionPlugin` (bit choice and result mask), `GeneInsertionPlugin` (invented references),

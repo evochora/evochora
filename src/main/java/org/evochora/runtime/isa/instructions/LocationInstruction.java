@@ -271,7 +271,8 @@ public class LocationInstruction extends Instruction {
                 // Find target label using fuzzy matching (from active DP position)
                 int[] targetCoords = resolveLabelTarget(labelHash, org.getActiveDp(), org, env);
                 if (targetCoords == null) {
-                    org.instructionFailed("SKJ: No matching label found for hash " + labelHash);
+                    org.instructionFailed("SKJ: No matching label found for hash "
+                            + labelHashText(labelHash));
                     return;
                 }
 
@@ -289,7 +290,8 @@ public class LocationInstruction extends Instruction {
                 }
                 int[] targetCoords = resolveLabelTarget(labelHash, org.getActiveDp(), org, env);
                 if (targetCoords == null) {
-                    org.instructionFailed("PSLI: No matching label found for hash " + labelHash);
+                    org.instructionFailed("PSLI: No matching label found for hash "
+                            + labelHashText(labelHash));
                     return;
                 }
                 if (!validateOwnership(targetCoords, org, env, "PSLI")) return;
@@ -306,7 +308,8 @@ public class LocationInstruction extends Instruction {
                 }
                 int[] targetCoords = resolveLabelTarget(labelHash, org.getActiveDp(), org, env);
                 if (targetCoords == null) {
-                    org.instructionFailed("LRLI: No matching label found for hash " + labelHash);
+                    org.instructionFailed("LRLI: No matching label found for hash "
+                            + labelHashText(labelHash));
                     return;
                 }
                 if (!validateOwnership(targetCoords, org, env, "LRLI")) return;
