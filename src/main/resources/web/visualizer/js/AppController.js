@@ -5,6 +5,7 @@ import { EnvironmentGrid } from './EnvironmentGrid.js';
 import { buildMarkMap } from './MutationMarks.js';
 import { moleculeTypeName } from './MoleculeTypePalette.js';
 import { MinimapView } from './ui/minimap/MinimapView.js';
+import { nearestLevelIndex, ZOOM_LEVELS } from './interaction/ZoomLevels.js';
 import { OrganismInstructionView } from './ui/organism/OrganismInstructionView.js';
 import { OrganismSourceView } from './ui/organism/OrganismSourceView.js';
 import { OrganismStateView } from './ui/organism/OrganismStateView.js';
@@ -48,8 +49,12 @@ export class AppController {
         this.organismMutationsRequestController = null;
         
         // State
-        const storedZoom = localStorage.getItem('evochora-zoom-state');
-        const initialZoom = storedZoom !== null ? storedZoom === 'true' : true; // Default zoomed out
+        // Zoom level in pixels per cell (persisted); the smallest level when none is stored, the
+        // nearest level to a size that is no longer one
+        const storedZoomSize = Number(localStorage.getItem('evochora-zoom-size'));
+        const initialZoomSize = storedZoomSize > 0
+            ? ZOOM_LEVELS[nearestLevelIndex(ZOOM_LEVELS, storedZoomSize)]
+            : ZOOM_LEVELS[0];
         
         // Counts the tick-range requests sent, so a late answer to an earlier one is recognised
         this._tickRangeRequest = 0;
@@ -63,7 +68,6 @@ export class AppController {
             previousTick: null, // For change detection
             previousOrganisms: null, // For change detection
             previousOrganismDetails: null, // For change detection in details
-            isZoomedOut: initialZoom, // Zoom state (persisted)
             organisms: [], // Current organisms for the tick
             metadata: null, // Simulation metadata (includes organism config)
             colorMode: localStorage.getItem('evochora-color-mode') || 'id', // 'id' or 'genome'
@@ -95,8 +99,8 @@ export class AppController {
         this.minimapView = null;
         this.lastMinimapTick = null;
 
-        // Apply initial zoom state (persisted from localStorage, default zoomed out)
-        this.renderer.setZoom(this.state.isZoomedOut);
+        // Apply the initial zoom level (persisted from localStorage)
+        this.renderer.applyZoom(initialZoomSize, { x: 0, y: 0 });
 
         // Initialize panel managers
         this.initPanelManagers();
@@ -130,6 +134,18 @@ export class AppController {
         // Setup camera moved handler (immediate visual feedback, not debounced)
         this.renderer.onCameraMoved = () => {
             this.updateMinimapViewport();
+        };
+
+        // A zoom gesture shows the picture drawn so far at another size; the slider follows it, the
+        // minimap keeps its visibility, and the zoom comes to rest on a level when the gesture ends
+        this.renderer.onZoomGestureStart = () => {
+            this.minimapView?.setGestureActive(true);
+        };
+        this.renderer.onZoomPreview = (position) => {
+            this.minimapView?.showZoomPosition(position);
+        };
+        this.renderer.onZoomCommit = (size, anchor) => {
+            this.applyZoomSize(size, anchor);
         };
 
         // Keep run selector display in sync when state changes externally
@@ -298,51 +314,24 @@ export class AppController {
     }
     
     /**
-     * Toggles the zoom state of the environment grid and forces a full refresh.
+     * Brings the zoom to rest at a size and draws the viewport at it. Ends a zoom gesture: the
+     * slider and the minimap show the level reached, and the viewport is drawn anew only when the
+     * size the cells are drawn at changed.
+     * @param {number} size - Pixels per cell, one of the zoom levels.
+     * @param {{x: number, y: number}} anchor - Point of the viewport that stays in place.
      */
-    async toggleZoom() {
-        await this.setZoom(!this.state.isZoomedOut);
-    }
+    async applyZoomSize(size, anchor) {
+        const changed = this.renderer.applyZoom(size, anchor);
+        localStorage.setItem('evochora-zoom-size', String(size));
+        this.minimapView?.updateZoomButton(size);
+        this.minimapView?.setGestureActive(false);
+        this.updateMinimapViewport();
 
-    /**
-     * Sets the zoom state, optionally with a specific scale.
-     * @param {boolean} isZoomedOut - True for overview, false for detailed view
-     * @param {number|null} [scale=null] - Optional scale to set when switching to zoomed-out
-     */
-    async setZoom(isZoomedOut, scale = null) {
-        // If switching to zoomed-out with a specific scale, set it first (without navigation)
-        if (isZoomedOut && scale !== null) {
-            this.renderer.zoomOutScale = Math.max(1, Math.min(10, Math.round(scale)));
-            localStorage.setItem('evochora-zoom-out-scale', String(this.renderer.zoomOutScale));
+        if (changed) {
+            await this.navigateToTick(this.state.currentTick, true);
+        } else {
+            this.renderer.requestViewportLoad();
         }
-
-        if (this.state.isZoomedOut === isZoomedOut) return;
-
-        this.state.isZoomedOut = isZoomedOut;
-
-        // Persist zoom state
-        localStorage.setItem('evochora-zoom-state', isZoomedOut ? 'true' : 'false');
-
-        // Update minimap panel zoom select
-        this.minimapView?.updateZoomButton(isZoomedOut, this.renderer.getZoomOutScale());
-
-        // Tell the renderer to update its internal state
-        this.renderer.setZoom(isZoomedOut);
-
-        // Force a full re-render of the current tick
-        await this.navigateToTick(this.state.currentTick, true);
-    }
-
-    /**
-     * Sets the zoom-out scale (pixels per cell in zoomed-out mode).
-     * @param {number} scale - The new scale (1-4).
-     */
-    async setZoomOutScale(scale) {
-        this.renderer.setZoomOutScale(scale);
-        this.minimapView?.updateZoomButton(this.state.isZoomedOut, scale);
-
-        // Force a full re-render of the current tick
-        await this.navigateToTick(this.state.currentTick, true);
     }
 
     /**
@@ -566,26 +555,17 @@ export class AppController {
             loadingManager.show('Initializing renderer');
             await this.renderer.init();
 
-            // Restore zoom-out scale from localStorage
-            const savedScale = localStorage.getItem('evochora-zoom-out-scale');
-            if (savedScale) {
-                this.renderer.zoomOutScale = parseInt(savedScale, 10) || 1;
-            }
-
             // Create minimap panel (positioned fixed, appended to body)
             this.minimapView = new MinimapView(
                 (worldX, worldY) => {
                     this.renderer.centerOn(worldX, worldY);
                 },
-                (isZoomedOut, scale) => {
-                    this.setZoom(isZoomedOut, scale);
-                },
-                (scale) => {
-                    this.setZoomOutScale(scale);
+                (size) => {
+                    this.applyZoomSize(size, this.renderer.viewportCenter());
                 }
             );
             this.minimapView.restoreState(); // Restore expanded/collapsed state
-            this.minimapView.updateZoomButton(this.state.isZoomedOut, this.renderer.getZoomOutScale());
+            this.minimapView.updateZoomButton(this.renderer.getCurrentCellSize());
             this.minimapView.setOwnershipColorResolver(this._minimapOwnershipColorResolver());
 
             // Abort previous request if it's still running

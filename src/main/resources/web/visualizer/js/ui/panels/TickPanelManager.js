@@ -1,6 +1,7 @@
 import { TimelineLoadingOverlay } from '../TimelineLoadingOverlay.js';
 import * as TickGrid from '../../TickGrid.js';
 import { bindTickField, formatTick, groupDigits, parseTick } from '../../../../shared/tick/TickText.js';
+import { isTextEntry } from '../../interaction/EditableTarget.js';
 
 /**
  * Milliseconds a click on the timeline waits for a second click before it jumps: a double click
@@ -619,9 +620,8 @@ export class TickPanelManager {
      * @private
      */
     handleGlobalKeyDown(e) {
-        // Skip if any text/number input is focused
-        const activeEl = document.activeElement;
-        if (activeEl?.matches('input[type="text"], input[type="number"]')) {
+        // Keys typed into a text field are text, not navigation
+        if (isTextEntry(document.activeElement)) {
             return;
         }
 
