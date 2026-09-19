@@ -26,6 +26,12 @@ export class MinimapRenderer {
     static BYTE_UNKNOWN = 254;
 
     /**
+     * Minimap pixels the larger side of the viewport rectangle falls below before a crosshair
+     * marks it: below that, a zoomed-in view on a large world is hard to find on the minimap.
+     */
+    static CROSSHAIR_BELOW_PX = 12;
+
+    /**
      * Creates a new MinimapRenderer.
      *
      * Until {@link setMoleculeTypes} has supplied the run's type map and shift, no molecule byte
@@ -177,6 +183,44 @@ export class MinimapRenderer {
         // Inner subtle fill to make it more visible
         this.ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
         this.ctx.fillRect(rectX, rectY, rectW, rectH);
+
+        if (Math.max(rectW, rectH) < MinimapRenderer.CROSSHAIR_BELOW_PX) {
+            this.drawCrosshair(rectX + rectW / 2, rectY + rectH / 2, rectW, rectH);
+        }
+    }
+
+    /**
+     * Draws two lines across the minimap that cross in the viewport rectangle and end at its
+     * outer edge, so that a rectangle too small to be seen can still be found.
+     *
+     * @param {number} centerX - Centre of the rectangle in minimap pixels.
+     * @param {number} centerY - Centre of the rectangle in minimap pixels.
+     * @param {number} rectW - Width of the rectangle in minimap pixels.
+     * @param {number} rectH - Height of the rectangle in minimap pixels.
+     * @private
+     */
+    drawCrosshair(centerX, centerY, rectW, rectH) {
+        const width = this.canvas.width;
+        const height = this.canvas.height;
+        // Centred on a pixel, so that a line one pixel wide stays sharp
+        const x = Math.round(centerX - 0.5) + 0.5;
+        const y = Math.round(centerY - 0.5) + 0.5;
+        // The rectangle's 2 px border is centred on its edges and reaches 1 px beyond them
+        const gapX = rectW / 2 + 1;
+        const gapY = rectH / 2 + 1;
+
+        this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
+        this.ctx.lineWidth = 1;
+        this.ctx.beginPath();
+        this.ctx.moveTo(0, y);
+        this.ctx.lineTo(x - gapX, y);
+        this.ctx.moveTo(x + gapX, y);
+        this.ctx.lineTo(width, y);
+        this.ctx.moveTo(x, 0);
+        this.ctx.lineTo(x, y - gapY);
+        this.ctx.moveTo(x, y + gapY);
+        this.ctx.lineTo(x, height);
+        this.ctx.stroke();
     }
 
     /**

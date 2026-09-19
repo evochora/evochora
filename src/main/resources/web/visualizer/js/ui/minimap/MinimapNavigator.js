@@ -1,6 +1,6 @@
 /**
- * Handles mouse interaction on the minimap for navigation.
- * Click to center viewport, drag to pan continuously.
+ * Handles pointer interaction on the minimap for navigation: mouse, pen or finger.
+ * Press to center viewport, drag to pan continuously.
  * Emits 'navigate' events with world coordinates.
  *
  * @class MinimapNavigator
@@ -18,19 +18,22 @@ export class MinimapNavigator extends EventTarget {
         this.canvas = canvas;
         this.worldShape = worldShape;
         this.isDragging = false;
+        this.onPointerDown = this.onPointerDown.bind(this);
+        this.onPointerMove = this.onPointerMove.bind(this);
+        this.onPointerUp = this.onPointerUp.bind(this);
 
         this.bindEvents();
     }
 
     /**
-     * Binds mouse event listeners to the canvas.
+     * Binds pointer event listeners to the canvas.
      * @private
      */
     bindEvents() {
-        this.canvas.addEventListener('mousedown', this.onMouseDown.bind(this));
-        this.canvas.addEventListener('mousemove', this.onMouseMove.bind(this));
-        this.canvas.addEventListener('mouseup', this.onMouseUp.bind(this));
-        this.canvas.addEventListener('mouseleave', this.onMouseUp.bind(this));
+        this.canvas.addEventListener('pointerdown', this.onPointerDown);
+        this.canvas.addEventListener('pointermove', this.onPointerMove);
+        this.canvas.addEventListener('pointerup', this.onPointerUp);
+        this.canvas.addEventListener('pointercancel', this.onPointerUp);
 
         // Prevent context menu on right-click
         this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -40,39 +43,42 @@ export class MinimapNavigator extends EventTarget {
     }
 
     /**
-     * Handles mouse down - starts dragging and emits initial navigate event.
-     * @param {MouseEvent} e - The mouse event.
+     * Handles pointer down - starts dragging and emits initial navigate event. The canvas keeps the
+     * pointer until it is released, so a drag that leaves the minimap goes on to its edge.
+     * @param {PointerEvent} e - The pointer event.
      * @private
      */
-    onMouseDown(e) {
-        if (e.button !== 0) return; // Only left click
+    onPointerDown(e) {
+        if (e.button !== 0) return; // Only the primary button, pen tip or finger
+        e.preventDefault();
+        this.canvas.setPointerCapture(e.pointerId);
         this.isDragging = true;
         this.emitNavigate(e);
     }
 
     /**
-     * Handles mouse move - emits navigate events while dragging.
-     * @param {MouseEvent} e - The mouse event.
+     * Handles pointer move - emits navigate events while dragging.
+     * @param {PointerEvent} e - The pointer event.
      * @private
      */
-    onMouseMove(e) {
+    onPointerMove(e) {
         if (this.isDragging) {
             this.emitNavigate(e);
         }
     }
 
     /**
-     * Handles mouse up - stops dragging.
+     * Handles pointer up - stops dragging.
      * @private
      */
-    onMouseUp() {
+    onPointerUp() {
         this.isDragging = false;
     }
 
     /**
      * Converts minimap coordinates to world coordinates and emits navigate event.
      * Uses the same floating-point scale calculation as MinimapAggregator.java on the server.
-     * @param {MouseEvent} e - The mouse event.
+     * @param {PointerEvent} e - The pointer event.
      * @private
      */
     emitNavigate(e) {
@@ -110,9 +116,9 @@ export class MinimapNavigator extends EventTarget {
      * Cleans up event listeners.
      */
     destroy() {
-        this.canvas.removeEventListener('mousedown', this.onMouseDown);
-        this.canvas.removeEventListener('mousemove', this.onMouseMove);
-        this.canvas.removeEventListener('mouseup', this.onMouseUp);
-        this.canvas.removeEventListener('mouseleave', this.onMouseUp);
+        this.canvas.removeEventListener('pointerdown', this.onPointerDown);
+        this.canvas.removeEventListener('pointermove', this.onPointerMove);
+        this.canvas.removeEventListener('pointerup', this.onPointerUp);
+        this.canvas.removeEventListener('pointercancel', this.onPointerUp);
     }
 }

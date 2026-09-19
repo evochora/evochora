@@ -77,3 +77,11 @@
     color: var(--app-switcher-text-secondary);
     margin-top: 2px;
 }
+
+.app-switcher-footer {
+    border-top: 1px solid var(--app-switcher-border);
+    margin-top: 4px;
+    padding: 10px 16px 4px;
+    color: var(--app-switcher-text-secondary);
+    font-size: 0.85em;
+}
