@@ -193,19 +193,11 @@ public class SimulationBenchmark {
      * Share of the organisms, in percent, that are placed without their LABEL molecules. Their
      * label references have no own match, so every jump and call of theirs runs the foreign search
      * and resolves to the homologous label of a neighbour — the case that is common once parasites
-     * exist. All organisms carry the same label values, so one value's list is as long as the
-     * population.
+     * exist. They are spread evenly among the others, as parasites live among their hosts. All
+     * organisms carry the same label values, so one value's list is as long as the population.
      */
     @Param({"0"})
     private int orphanedPercent;
-
-    /**
-     * Number of additional LABEL molecules with random values every organism owns, placed in the
-     * lower half of the world. They lengthen the pass an own lookup makes, as duplication does to
-     * a genome over a long run.
-     */
-    @Param({"0"})
-    private int extraLabels;
 
     private Map<String, ProgramArtifact> compiledPrograms;
     private EnvironmentProperties envProps;
@@ -314,7 +306,7 @@ public class SimulationBenchmark {
             int[] startIp = new int[]{offsetX, offsetY};
             Organism organism = Organism.create(simulation, startIp, MAX_ENERGY);
 
-            boolean orphaned = i * 100L / organisms < orphanedPercent;
+            boolean orphaned = (i + 1L) * orphanedPercent / 100 != (long) i * orphanedPercent / 100;
 
             for (Map.Entry<int[], Integer> entry : layout.entrySet()) {
                 int[] coord = entry.getKey();
@@ -342,17 +334,6 @@ public class SimulationBenchmark {
                 }
 
                 env.setMolecule(mol, organism.getId(), placed);
-            }
-
-            for (int extra = 0; extra < extraLabels; extra++) {
-                long slot = (long) i * extraLabels + extra;
-                int[] placed = new int[]{(int) (slot % ENV_SIZE), ENV_SIZE / 2 + (int) (slot / ENV_SIZE)};
-                if (placed[1] >= ENV_SIZE) {
-                    throw new IllegalStateException("extraLabels=" + extraLabels + " for " + organisms
-                            + " organisms does not fit into the lower half of the world");
-                }
-                env.setMolecule(new Molecule(org.evochora.runtime.Config.TYPE_LABEL,
-                        random.nextInt(org.evochora.runtime.Config.VALUE_MASK + 1)), organism.getId(), placed);
             }
 
             simulation.addOrganism(organism);
