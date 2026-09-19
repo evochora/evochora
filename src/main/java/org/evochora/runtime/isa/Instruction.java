@@ -5,10 +5,12 @@ package org.evochora.runtime.isa;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 import org.evochora.runtime.Config;
 import org.evochora.runtime.internal.services.ExecutionContext;
@@ -157,6 +159,13 @@ public abstract class Instruction {
      * {@code GTR}, {@code GTI} and {@code GTS}. Read on cold paths only, like {@link #FAMILY_BY_ID}.
      */
     private static final Map<Integer, Integer> OPERATION_BY_ID = new HashMap<>();
+    /**
+     * The opcodes after which execution never continues with the cell behind the instruction: an
+     * unconditional jump and a return. A call is none, because its return comes back to that cell.
+     * An instruction declares this itself while it registers; read on cold paths only, like
+     * {@link #FAMILY_BY_ID}.
+     */
+    private static final Set<Integer> NEVER_FALLS_THROUGH = new HashSet<>();
 
     // ========== Opcode ID layout ==========
 
@@ -564,6 +573,7 @@ public abstract class Instruction {
         OPERATION_BY_ID.clear();
         OPERAND_SOURCES.clear();
         PARALLEL_EXECUTE_SAFE_MAP.clear();
+        NEVER_FALLS_THROUGH.clear();
     }
 
     /**
@@ -882,6 +892,37 @@ public abstract class Instruction {
     public static int getFamilyById(int opcodeId) {
         Integer family = FAMILY_BY_ID.get(opcodeId);
         return family != null ? family : -1;
+    }
+
+    /**
+     * Declares that execution never continues with the cell behind a registered instruction.
+     * <p>
+     * <b>Thread safety:</b> Must only be called during single-threaded initialization ({@link #init()}).
+     *
+     * @param name the mnemonic of an instruction that is already registered
+     * @throws IllegalStateException if no instruction is registered under that name
+     */
+    protected static void declareNeverFallsThrough(String name) {
+        Integer opcodeId = NAME_TO_ID.get(name.toUpperCase());
+        if (opcodeId == null) {
+            throw new IllegalStateException("Instruction " + name + " is not registered");
+        }
+        NEVER_FALLS_THROUGH.add(opcodeId);
+    }
+
+    /**
+     * Tells whether execution never continues with the cell behind an instruction: an
+     * unconditional jump and a return never fall through. A call does — it leaves, but its return
+     * comes back to the cell behind it — and so does a conditional, whatever its test says. Code
+     * that reasons about which cells the instruction pointer can reach by running on from one
+     * instruction to the next asks this.
+     *
+     * @param opcodeId The instruction opcode ID (including TYPE_CODE bits).
+     * @return {@code true} if the instruction declared it; {@code false} for every other opcode,
+     *         an unregistered one included.
+     */
+    public static boolean neverFallsThrough(int opcodeId) {
+        return NEVER_FALLS_THROUGH.contains(opcodeId);
     }
 
     /**
