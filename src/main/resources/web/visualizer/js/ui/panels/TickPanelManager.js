@@ -3,6 +3,12 @@ import * as TickGrid from '../../TickGrid.js';
 import { bindTickField, formatTick, groupDigits, parseTick } from '../../../../shared/tick/TickText.js';
 
 /**
+ * Milliseconds a click on the timeline waits for a second click before it jumps: a double click
+ * jumps to the last tick alone, without loading the tick of its first click on the way.
+ */
+const TIMELINE_DOUBLE_CLICK_MS = 200;
+
+/**
  * Manages the timeline panel with interactive canvas track, tick input, and keyboard shortcuts.
  * The canvas displays the recorded ticks, a current-tick marker, and a hover preview.
  * Uses callback injection for loose coupling (no direct controller reference).
@@ -74,6 +80,7 @@ export class TickPanelManager {
         // Key repeat state for held arrow keys
         this.keyRepeatTimeout = null;
         this.keyRepeatInterval = null;
+        this._timelineClickTimer = null; // A single click waiting for a possible second one
         this.isKeyHeld = false;
 
         // Debounced navigation for keyboard input
@@ -312,7 +319,8 @@ export class TickPanelManager {
     }
 
     /**
-     * Handles click on the timeline track: navigates to the snapped tick.
+     * Handles click on the timeline track: navigates to the snapped tick, or to the last tick when
+     * the click is the second of a double click.
      * @param {MouseEvent} e
      * @private
      */
@@ -320,12 +328,25 @@ export class TickPanelManager {
         const { trackContainer } = this.elements;
         if (!trackContainer) return;
 
+        clearTimeout(this._timelineClickTimer);
+        this._timelineClickTimer = null;
+
+        // The browser counts the clicks of a double click by the system's double-click time
+        if (e.detail >= 2) {
+            const last = TickGrid.lastTick(this.getState().ranges || []);
+            if (last !== null) this.onNavigate(last);
+            return;
+        }
+
         const rect = trackContainer.getBoundingClientRect();
         const x = e.clientX - rect.left;
         const rawTick = this._positionToTick(x);
         const snapped = this._snapToSampledTick(rawTick);
 
-        this.onNavigate(snapped);
+        this._timelineClickTimer = setTimeout(() => {
+            this._timelineClickTimer = null;
+            this.onNavigate(snapped);
+        }, TIMELINE_DOUBLE_CLICK_MS);
     }
 
     /**
