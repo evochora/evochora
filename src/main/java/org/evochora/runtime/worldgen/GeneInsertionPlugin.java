@@ -1,11 +1,14 @@
 package org.evochora.runtime.worldgen;
 
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.ints.IntArrayList;
 import org.evochora.runtime.Config;
+import org.evochora.runtime.isa.Family;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.isa.Instruction.OperandSource;
 import org.evochora.runtime.isa.RegisterBank;
 import org.evochora.runtime.model.Environment;
+import org.evochora.runtime.model.GenomeFlow;
 import org.evochora.runtime.model.GenomeFrame;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.MutationRecord;
@@ -23,8 +26,8 @@ import java.util.Map;
 import java.util.Random;
 
 /**
- * Gene insertion birth handler that inserts syntactically correct instruction chains
- * or label detours into NOP (empty) regions of newborn organisms.
+ * Gene insertion birth handler that inserts syntactically correct instruction chains into NOP
+ * (empty) regions of newborn organisms, either where they stand or in front of a block.
  * <p>
  * Called once per newborn organism in the post-Execute phase of each tick. With configurable
  * probability, selects a mutation entry via weighted random choice and inserts the resulting
@@ -33,18 +36,36 @@ import java.util.Random;
  * Instruction entries generate a complete chain: one CODE molecule (opcode) followed by
  * type-correct argument molecules (REGISTER, DATA, LABELREF, etc.) as defined by the
  * instruction's {@link OperandSource} list. This ensures inserted code is syntactically
- * valid, making most mutations neutral or functional rather than immediately lethal.
+ * valid, making most mutations neutral or functional rather than immediately lethal. Such a chain
+ * takes effect only where execution passes the empty region it lands in.
  * <p>
- * <strong>What a label entry builds.</strong> A label entry places a detour: a LABEL carrying the
- * value of one of the newborn's existing labels A, one instruction generated exactly as an
- * instruction entry generates it, and a {@code JMPI} to a value X. Because the fuzzy label match
- * finds the copy of A as readily as the original, code that jumped to A may land in the detour;
- * the jump at its end sends control on to where the original code would have gone. X is the value
- * of the first LABELREF in a label operand slot in the stretch A heads, otherwise the value of the
- * next block start on A's line, otherwise one of the newborn's other labels, drawn uniformly. Every
- * candidate must differ from A by more than the label index's Hamming tolerance, or the detour's
- * own jump would match its own label and loop. A newborn without a label, and one for which no
- * candidate clears the tolerance, receives nothing.
+ * <strong>What a label entry builds.</strong> A label entry inserts one instruction in front of a
+ * block of code that has no room in front of it. It picks one of the newborn's labels A, gives
+ * that label a new value A' and writes elsewhere: a LABEL carrying A, one instruction generated as
+ * an instruction entry generates it, and a {@code JMPI} to A'. Every reference to A now finds the
+ * new label, runs the instruction and arrives at the block it meant, which is unchanged. Four
+ * rules keep the insertion well-formed whatever the program is:
+ * <ul>
+ *   <li><b>A is a jump target and nothing else</b> ({@link GenomeFlow#isJumpTarget}): a label a
+ *       location instruction addresses names a place for the data pointer, and moving its value
+ *       would move that place without what is kept there.</li>
+ *   <li><b>A' differs from A in exactly one bit.</b> The label match prefers an exact own label,
+ *       so references to A reach the new label and the closing jump reaches the block. One bit
+ *       keeps the block within reach of those references: should the new label mutate away, they
+ *       fall back to the block instead of failing. The bit is the first, from a random one on,
+ *       whose value no label of the newborn carries and which draws no reference away from another
+ *       label ({@link GenomeFlow#drawsNoForeignReference}).</li>
+ *   <li><b>Execution goes on behind the inserted instruction.</b> A conditional is none, because
+ *       a failed test would skip the closing jump, and neither is an instruction that
+ *       {@linkplain Instruction#neverFallsThrough(int) never falls through}, behind which
+ *       the closing jump is never reached. A wildcard leaves both out; an entry that names one is
+ *       rejected.</li>
+ *   <li><b>The chain goes where execution does not run on into</b>
+ *       ({@link GenomeFlow#reachedByFallThrough}): in an empty region other code passes through,
+ *       the closing jump would carry that code's execution off into the block.</li>
+ * </ul>
+ * A newborn without such a label, without such a bit or without such a region receives nothing.
+ * An instruction's own LABEL operand receives A', so that it never refers to the new label.
  * <p>
  * <strong>NOP Area Search:</strong> Groups owned cells by scan line (perpendicular to DV),
  * tracks the DV extent per scan line, and walks the arc the owned cells span on it (see
@@ -59,17 +80,17 @@ import java.util.Random;
  * visitor lambdas (one per owned-cell pass), 1-4 {@link Molecule} records for the chain and, when
  * a chain is placed, the {@link MutationRecord} handed to the newborn. A label entry adds the
  * defensive copy of the newborn's initial position together with what one {@link GenomeFrame}
- * build costs, the two further {@link Molecule} records of the jump, and, only where the search
- * falls back to the newborn's other labels, one more visitor lambda.
+ * build costs, two further visitor lambdas (the references and the labels), the three further
+ * {@link Molecule} records of the label and the jump, and the record of the renamed label.
  * <p>
  * <strong>What it records:</strong> a placed chain reports itself on the newborn as a
  * {@link MutationRecord} naming the cells of the chain in placement order, with the empty cell as
  * the old value and the placed molecule as the new one. An instruction chain reports the kind
- * {@code "instruction-insertion"} and no parameters. A detour reports the kind
- * {@code "label-insertion"} and, as its two parameters, the label value A it copies and the value
- * X it jumps to — neither of which can be told from the written cells alone, because the same two
- * values could have been chosen for any number of reasons. A run that finds no NOP run long enough
- * places nothing and records nothing.
+ * {@code "instruction-insertion"} and no parameters. A label entry reports the kind
+ * {@code "label-insertion"}, names the renamed label after the cells of the chain, with its old
+ * and its new molecule, and carries two parameters: the value A the new label copies and the value
+ * A' the block's label received. A run that finds no NOP run long enough places nothing and
+ * records nothing.
  * <p>
  * <strong>Thread Safety:</strong> Not thread-safe. Runs in the sequential post-Execute phase of
  * {@code Simulation.tick()}.
@@ -89,10 +110,10 @@ public class GeneInsertionPlugin implements IBirthHandler {
     /** The kind an inserted instruction chain is reported under. */
     private static final String INSTRUCTION_KIND = "instruction-insertion";
 
-    /** The kind an inserted detour is reported under. */
+    /** The kind a label entry's insertion is reported under. */
     private static final String LABEL_KIND = "label-insertion";
 
-    /** The instruction a detour ends with, an unconditional jump to a label value. */
+    /** The instruction a label entry's chain ends with, an unconditional jump to a label value. */
     private static final String JUMP_INSTRUCTION = "JMPI";
 
     /** The settings an instruction entry is read for. */
@@ -107,7 +128,7 @@ public class GeneInsertionPlugin implements IBirthHandler {
     private final List<MutationEntry> entries;
     private final double totalWeight;
 
-    /** Opcode of the jump a detour ends with. */
+    /** Opcode of the jump a label entry's chain ends with. */
     private final int jumpOpcodeId;
 
     // --- Reusable buffers (lazy-initialized on first mutate() call) ---
@@ -134,13 +155,18 @@ public class GeneInsertionPlugin implements IBirthHandler {
     // --- Reservoir sampling state (reset per mutate() call) ---
     private int reservoirLabelHash;
     private int reservoirLabelCount;
-    private int reservoirLabelPerpKey;
-    private int reservoirLabelDvCoord;
 
-    // --- Jump target search state (reset per detour) ---
-    private int detourJumpTarget;
-    private int fallbackTargetValue;
-    private int fallbackTargetCount;
+    // --- Label entry state (reset per label entry) ---
+    /** The value of the label a label entry copies. */
+    private int copiedLabelValue;
+    /** The flat index of that label, which is renamed once the chain is placed. */
+    private int copiedLabelFlatIndex;
+    /** The value that label is renamed to and the chain's closing jump carries. */
+    private int renamedLabelValue;
+    /** Number of jump targets the label reservoir has seen. */
+    private int jumpTargetCount;
+    /** The values of all LABEL molecules the newborn owns; a renamed label must carry none of them. */
+    private final IntArrayList ownLabelValues = new IntArrayList();
 
     // --- NOP run selection state (reset per mutate() call) ---
     private ScanLineInfo selectedNopScanLine;
@@ -154,10 +180,13 @@ public class GeneInsertionPlugin implements IBirthHandler {
     private final MutationRecord.Builder recordBuilder = new MutationRecord.Builder();
 
     /**
-     * The newborn's genome in the machine's reading frame; built only for a detour, and kept so
-     * that such a build reuses the buffers of the one before.
+     * The newborn's genome in the machine's reading frame; built only for a label entry, and kept
+     * so that such a build reuses the buffers of the one before.
      */
     private final GenomeFrame frame = new GenomeFrame();
+
+    /** What the instruction set says about control flow in that genome; used by label entries only. */
+    private final GenomeFlow flow = new GenomeFlow();
 
     // --- DV coordinate collector for arc resolution (reused) ---
     private int[] dvCoordCollector;
@@ -191,11 +220,12 @@ public class GeneInsertionPlugin implements IBirthHandler {
     ) implements MutationEntry {}
 
     /**
-     * Label entry: inserts a detour of a copied label, one instruction and a jump onwards.
-     * The instruction is drawn from the same kind of description an instruction entry carries,
-     * so that the body of a detour is code of the same shape as a plain insertion.
+     * Label entry: inserts one instruction in front of a block, as a copied label, the instruction
+     * and a jump to the block's renamed label. The instruction is drawn from the same kind of
+     * description an instruction entry carries, so that it is code of the same shape as a plain
+     * insertion; an instruction behind which execution may not go on is no such instruction.
      *
-     * @param opcodeIds Resolved opcode IDs of the instruction in the detour's middle.
+     * @param opcodeIds Resolved opcode IDs of the inserted instruction.
      * @param operandSourcesByOpcode Cached operand sources per opcode, parallel to opcodeIds.
      * @param weight Selection weight.
      * @param argConfig Argument generation configuration.
@@ -335,7 +365,7 @@ public class GeneInsertionPlugin implements IBirthHandler {
     }
 
     /**
-     * Resolves the opcode of the jump a detour ends with.
+     * Resolves the opcode of the jump a label entry's chain ends with.
      *
      * @return The opcode ID of {@value #JUMP_INSTRUCTION}.
      * @throws IllegalStateException if the instruction set does not carry that instruction, which
@@ -345,7 +375,7 @@ public class GeneInsertionPlugin implements IBirthHandler {
         Integer id = Instruction.getInstructionIdByName(JUMP_INSTRUCTION);
         if (id == null) {
             throw new IllegalStateException("The instruction set carries no " + JUMP_INSTRUCTION
-                    + ", which a label entry's detour ends with");
+                    + ", which a label entry's chain ends with");
         }
         return id;
     }
@@ -355,13 +385,17 @@ public class GeneInsertionPlugin implements IBirthHandler {
      * <p>
      * Both entry types describe the instruction they generate the same way, through
      * {@code instructions} and {@code args}; a label entry is marked by {@code type = "label"} and
-     * wraps that instruction in a detour. A setting the entry type does not know is rejected, so
-     * that a stale name fails loudly instead of being ignored.
+     * puts that instruction in front of a block. It inserts only an instruction behind which
+     * execution goes on ({@link #goesOnBehind}), because the jump that closes its chain has to be
+     * reached: a wildcard leaves the others out, and a list that names one is rejected. A setting
+     * the entry type does not know is rejected, so that a stale name fails loudly instead of being
+     * ignored.
      *
      * @param entryConfig The entry configuration.
      * @return The parsed mutation entry.
      * @throws IllegalArgumentException if the entry names an unknown type, carries an unaccepted
-     *                                  key, or lacks a setting its type requires.
+     *                                  key, lacks a setting its type requires, or is a label entry
+     *                                  that names an instruction execution may not go on behind.
      */
     private MutationEntry parseEntry(com.typesafe.config.Config entryConfig) {
         boolean isLabelEntry = false;
@@ -393,6 +427,9 @@ public class GeneInsertionPlugin implements IBirthHandler {
             Map<Integer, String> allInstructions = Instruction.getAllInstructions();
             opcodeIds = new ArrayList<>(allInstructions.keySet());
             operandSourcesByOpcode = new ArrayList<>(opcodeIds.size());
+            if (isLabelEntry) {
+                opcodeIds.removeIf(id -> !goesOnBehind(id));
+            }
             for (int id : opcodeIds) {
                 operandSourcesByOpcode.add(Instruction.getOperandSourcesById(id));
             }
@@ -404,6 +441,10 @@ public class GeneInsertionPlugin implements IBirthHandler {
                 Integer id = Instruction.getInstructionIdByName(name);
                 if (id == null) {
                     throw new IllegalArgumentException("Unknown instruction: " + name);
+                }
+                if (isLabelEntry && !goesOnBehind(id)) {
+                    throw new IllegalArgumentException("A label entry cannot insert " + name
+                            + ": execution may not go on behind it, to the jump that closes the chain.");
                 }
                 opcodeIds.add(id);
                 operandSourcesByOpcode.add(Instruction.getOperandSourcesById(id));
@@ -418,6 +459,21 @@ public class GeneInsertionPlugin implements IBirthHandler {
         return isLabelEntry
                 ? new LabelEntry(opcodeIds, operandSourcesByOpcode, weight, argConfig)
                 : new InstructionEntry(opcodeIds, operandSourcesByOpcode, weight, argConfig);
+    }
+
+    /**
+     * Tells whether execution goes on with the cell behind an instruction whenever it runs.
+     * <p>
+     * It does not behind a conditional, whose failed test skips the next instruction, and not
+     * behind an instruction that {@linkplain Instruction#neverFallsThrough(int) never falls
+     * through}. A call is no such instruction: its return comes back to that cell.
+     *
+     * @param opcodeId The instruction opcode ID.
+     * @return {@code true} if a label entry may insert the instruction.
+     */
+    private static boolean goesOnBehind(int opcodeId) {
+        return Instruction.getFamilyById(opcodeId) != Family.CONDITIONAL
+                && !Instruction.neverFallsThrough(opcodeId);
     }
 
     /**
@@ -526,10 +582,11 @@ public class GeneInsertionPlugin implements IBirthHandler {
      * <p>
      * <strong>Draw order.</strong> The label reservoir runs first, over the owned cells in
      * flat-index order; then the entry is drawn by weight. An instruction entry then draws its
-     * opcode and its operands. A label entry first determines the value the detour jumps to, which
-     * draws only where the search falls back to the newborn's other labels, and then draws the
-     * opcode and operands of the instruction in the detour's middle. The NOP run is drawn last,
-     * by a reservoir over the runs in the order the scan lines are walked.
+     * opcode and its operands. A label entry first draws the label it copies, by a reservoir over
+     * the newborn's jump targets in flat-index order, then the bit the search for the renamed value
+     * starts at, and then the opcode and operands of the inserted instruction. The NOP run is drawn
+     * last, by a reservoir over the runs in the order the scan lines are walked; a label entry
+     * offers that reservoir only the runs execution does not run on into.
      *
      * @param child The newborn organism.
      * @param env The simulation environment.
@@ -565,7 +622,7 @@ public class GeneInsertionPlugin implements IBirthHandler {
                 return;
             }
         } else if (entry instanceof LabelEntry le) {
-            if (!buildDetourChain(le, child, env, dv, dvDim, shape[dvDim], dims)) {
+            if (!buildLabelChain(le, child, env, dv, dvDim, dims)) {
                 chainBuffer.clear();
                 return;
             }
@@ -575,25 +632,28 @@ public class GeneInsertionPlugin implements IBirthHandler {
             return;
         }
 
-        if (!selectNopRun(env, dvDim, chainBuffer.size(), shape[dvDim])) {
+        int dvStep = dv[dvDim];
+        boolean isLabelEntry = entry instanceof LabelEntry;
+        if (!selectNopRun(env, dvDim, dvStep, chainBuffer.size(), shape[dvDim], isLabelEntry)) {
             LOG.debug("tick={} Organism {} gene insertion: no NOP area of length {} found", child.getBirthTick(), childId, chainBuffer.size());
             return;
         }
 
-        int dvStep = dv[dvDim];
         if (dvStep < 0) {
             selectedNopDvStart = (selectedNopDvStart + chainBuffer.size() - 1) % shape[dvDim];
         }
-        // A detour carries the label it copies and the value it jumps to, neither of which the
-        // written cells alone say anything about
-        if (entry instanceof LabelEntry) {
+        if (isLabelEntry) {
             recordBuilder.start(getClass().getName(), LABEL_KIND, dv)
-                    .param(reservoirLabelHash)
-                    .param(detourJumpTarget);
+                    .param(copiedLabelValue)
+                    .param(renamedLabelValue);
         } else {
             recordBuilder.start(getClass().getName(), INSTRUCTION_KIND, dv);
         }
         placeChain(env, childId, dvDim, dvStep, shape[dvDim]);
+        if (isLabelEntry) {
+            // Only now: a chain that found no room must leave the label it copies as it is
+            renameCopiedLabel(env, childId);
+        }
         child.recordBirthMutation(recordBuilder.build());
         if (LOG.isDebugEnabled()) {
             env.properties.flatIndexToCoordinates(selectedNopScanLine.sampleFlatIndex, coordBuffer);
@@ -631,9 +691,9 @@ public class GeneInsertionPlugin implements IBirthHandler {
      * @param argConfig How the arguments are generated.
      * @param dims Number of environment dimensions (for VECTOR operands).
      * @param labelOperand The value a LABEL operand receives, or {@code -1} to take the label the
-     *                     reservoir sampled, or a random value when the body has none. A detour
-     *                     passes the target its trailing jump was validated for, so that an
-     *                     instruction in the middle of it never refers to the detour's own label.
+     *                     reservoir sampled, or a random value when the body has none. A label
+     *                     entry passes the value its closing jump carries, so that the inserted
+     *                     instruction never refers to the label the chain opens with.
      * @return {@code true} if the instruction was appended, {@code false} if the argument config
      *         does not cover a required operand type.
      */
@@ -698,175 +758,129 @@ public class GeneInsertionPlugin implements IBirthHandler {
     }
 
     /**
-     * Builds a detour in {@link #chainBuffer}: the value of an existing label, one instruction and
-     * a jump onwards.
+     * Builds a label entry's chain in {@link #chainBuffer}: the value of one of the newborn's jump
+     * targets, one instruction and a jump to the value that target is renamed to.
      * <p>
-     * The label value is the one the reservoir of {@link #buildScanLines} sampled; the value the
-     * jump carries is chosen by {@link #selectJumpTarget} and kept in {@link #detourJumpTarget}, as
-     * the second parameter of the record a placed detour reports. A newborn without a label and one
-     * for which no jump target qualifies receive nothing.
+     * The label is chosen by {@link #selectLabelToCopy} and the renamed value by
+     * {@link #chooseRenamedValue}; both are kept for the record and for {@link #renameCopiedLabel},
+     * which runs once the chain is placed. A newborn without a jump target and one whose chosen
+     * label has no value to be renamed to receive nothing.
      *
      * @param entry The label entry.
      * @param child The newborn organism.
      * @param env The simulation environment.
      * @param dv The newborn's direction vector.
      * @param dvDim The DV dimension index.
-     * @param shapeDvDim The environment size along the DV dimension.
      * @param dims Number of environment dimensions.
      * @return {@code true} if the chain was built, {@code false} if nothing is to be placed.
      */
-    private boolean buildDetourChain(LabelEntry entry, Organism child, Environment env, int[] dv,
-                                     int dvDim, int shapeDvDim, int dims) {
-        if (reservoirLabelHash < 0) {
-            LOG.debug("tick={} Organism {} insertion: no label to build a detour from",
-                    child.getBirthTick(), child.getId());
+    private boolean buildLabelChain(LabelEntry entry, Organism child, Environment env, int[] dv,
+                                    int dvDim, int dims) {
+        int childId = child.getId();
+        int tolerance = env.getLabelIndex().getStrategy().getTolerance();
+
+        frame.build(env, childId, child.getInitialPosition(), dv);
+        flow.collectReferences(env, frame, childId, dvDim, dv[dvDim]);
+
+        if (!selectLabelToCopy(env, childId, tolerance)) {
+            LOG.debug("tick={} Organism {} insertion: no label that is a jump target and nothing else",
+                    child.getBirthTick(), childId);
+            return false;
+        }
+        renamedLabelValue = chooseRenamedValue(tolerance);
+        if (renamedLabelValue < 0) {
+            LOG.debug("tick={} Organism {} insertion: no value one bit from label {} is free",
+                    child.getBirthTick(), childId, copiedLabelValue);
             return false;
         }
 
-        int target = selectJumpTarget(child, env, dv, dvDim, shapeDvDim);
-        if (target < 0) {
-            LOG.debug("tick={} Organism {} insertion: no jump target outside the tolerance of label {}",
-                    child.getBirthTick(), child.getId(), reservoirLabelHash);
-            return false;
-        }
-        detourJumpTarget = target;
-
-        chainBuffer.add(new Molecule(Config.TYPE_LABEL, reservoirLabelHash));
-        if (!appendInstruction(entry.opcodeIds(), entry.operandSourcesByOpcode(), entry.argConfig(), dims, target)) {
-            LOG.debug("tick={} Organism {} insertion: detour build failed (missing arg config)",
-                    child.getBirthTick(), child.getId());
+        chainBuffer.add(new Molecule(Config.TYPE_LABEL, copiedLabelValue));
+        if (!appendInstruction(entry.opcodeIds(), entry.operandSourcesByOpcode(), entry.argConfig(), dims,
+                renamedLabelValue)) {
+            LOG.debug("tick={} Organism {} insertion: label entry build failed (missing arg config)",
+                    child.getBirthTick(), childId);
             return false;
         }
         chainBuffer.add(new Molecule(Config.TYPE_CODE, jumpOpcodeId & Config.VALUE_MASK));
-        chainBuffer.add(new Molecule(Config.TYPE_LABELREF, target));
+        chainBuffer.add(new Molecule(Config.TYPE_LABELREF, renamedLabelValue));
         return true;
     }
 
     /**
-     * Chooses the value a detour's jump carries, so that control leaves the detour for where the
-     * code behind the copied label goes on.
-     * <p>
-     * Three sources are tried in order, and the first candidate that clears
-     * {@link #acceptsAsJumpTarget} wins:
-     * <ol>
-     *   <li>the value of the first LABELREF standing in a label operand slot in the stretch the
-     *       sampled label heads — the walk runs along the direction vector from that label to the
-     *       next block start on its line or to the end of the newborn's extent on it, and the
-     *       reading frame says which cells are operand slots and which LABEL cells open a block;</li>
-     *   <li>the value of that next block start, where the code behind the label falls through to;</li>
-     *   <li>one of the newborn's other labels, drawn uniformly by one reservoir pass over the
-     *       owned cells in flat-index order.</li>
-     * </ol>
-     *
-     * @param child The newborn organism.
-     * @param env The simulation environment.
-     * @param dv The newborn's direction vector.
-     * @param dvDim The DV dimension index.
-     * @param shapeDvDim The environment size along the DV dimension.
-     * @return The chosen value, or {@code -1} if no candidate qualifies.
-     */
-    private int selectJumpTarget(Organism child, Environment env, int[] dv, int dvDim, int shapeDvDim) {
-        ScanLineInfo line = scanLineMap.get(reservoirLabelPerpKey);
-        if (line == null) {
-            return -1;
-        }
-        int childId = child.getId();
-        int sourceHash = reservoirLabelHash;
-        int tolerance = env.getLabelIndex().getStrategy().getTolerance();
-        int dvStep = dv[dvDim];
-
-        frame.build(env, childId, child.getInitialPosition(), dv);
-
-        // The cells of the stretch, the sampled label itself included
-        int available = (dvStep > 0)
-                ? toroidalForwardDistance(reservoirLabelDvCoord, line.walkEnd, shapeDvDim)
-                : toroidalForwardDistance(line.walkStart, reservoirLabelDvCoord, shapeDvDim);
-
-        env.properties.flatIndexToCoordinates(line.sampleFlatIndex, walkPos);
-        int dvPos = reservoirLabelDvCoord;
-        int labelRefValue = -1;
-        int nextBlockStart = -1;
-
-        for (int offset = 1; offset < available; offset++) {
-            dvPos += dvStep;
-            if (dvPos >= shapeDvDim) {
-                dvPos -= shapeDvDim;
-            } else if (dvPos < 0) {
-                dvPos += shapeDvDim;
-            }
-            walkPos[dvDim] = dvPos;
-            int moleculeInt = env.getMoleculeIntAt(walkPos);
-            int type = moleculeInt & Config.TYPE_MASK;
-            if (type != Config.TYPE_LABEL && type != Config.TYPE_LABELREF) {
-                continue;
-            }
-            GenomeFrame.Slot slot = frame.slot(env.properties.toFlatIndex(walkPos));
-            if (type == Config.TYPE_LABEL
-                    && slot == GenomeFrame.Slot.NONE
-                    && env.getOwnerIdAt(walkPos) == childId) {
-                nextBlockStart = moleculeInt & Config.VALUE_MASK;
-                break;
-            }
-            if (type == Config.TYPE_LABELREF && slot == GenomeFrame.Slot.LABEL && labelRefValue < 0) {
-                labelRefValue = moleculeInt & Config.VALUE_MASK;
-            }
-        }
-
-        if (labelRefValue >= 0 && acceptsAsJumpTarget(labelRefValue, sourceHash, tolerance)) {
-            return labelRefValue;
-        }
-        if (nextBlockStart >= 0 && acceptsAsJumpTarget(nextBlockStart, sourceHash, tolerance)) {
-            return nextBlockStart;
-        }
-        return drawOtherLabel(env, childId, sourceHash, tolerance);
-    }
-
-    /**
-     * Draws one of the newborn's labels that can serve as a detour's jump target.
+     * Draws the label a label entry copies, uniformly among the newborn's jump targets.
      * <p>
      * One reservoir pass over the owned cells in flat-index order, so that the draw does not depend
-     * on the order in which the genome's cells were written.
+     * on the order in which the genome's cells were written. A candidate is a LABEL molecule that
+     * opens a block — one the reading frame reads as no operand — and whose value is a jump target
+     * and nothing else ({@link GenomeFlow#isJumpTarget}). The pass also collects the value of every
+     * LABEL molecule the newborn owns into {@link #ownLabelValues}.
      *
      * @param env The simulation environment.
      * @param childId The newborn whose labels are considered.
-     * @param sourceHash The label value the detour copies.
      * @param tolerance The label index's Hamming tolerance.
-     * @return The drawn value, or {@code -1} if no label qualifies.
+     * @return {@code true} if a label was drawn into {@link #copiedLabelValue} and
+     *         {@link #copiedLabelFlatIndex}.
      */
-    private int drawOtherLabel(Environment env, int childId, int sourceHash, int tolerance) {
-        fallbackTargetValue = -1;
-        fallbackTargetCount = 0;
+    private boolean selectLabelToCopy(Environment env, int childId, int tolerance) {
+        ownLabelValues.clear();
+        jumpTargetCount = 0;
         env.visitCellsOwnedBy(childId, cell -> {
             int moleculeInt = cell.moleculeInt();
             if ((moleculeInt & Config.TYPE_MASK) != Config.TYPE_LABEL) {
                 return;
             }
             int value = moleculeInt & Config.VALUE_MASK;
-            if (!acceptsAsJumpTarget(value, sourceHash, tolerance)) {
+            ownLabelValues.add(value);
+            int flatIndex = env.properties.toFlatIndex(cell.coordinate());
+            if (frame.slot(flatIndex) != GenomeFrame.Slot.NONE || !flow.isJumpTarget(value, tolerance)) {
                 return;
             }
-            fallbackTargetCount++;
-            if (random.nextInt(fallbackTargetCount) == 0) {
-                fallbackTargetValue = value;
+            jumpTargetCount++;
+            if (random.nextInt(jumpTargetCount) == 0) {
+                copiedLabelValue = value;
+                copiedLabelFlatIndex = flatIndex;
             }
         });
-        return fallbackTargetValue;
+        return jumpTargetCount > 0;
     }
 
     /**
-     * Reports whether a value can be a detour's jump target for a given copied label.
+     * Chooses the value the copied label is renamed to: its own value with one bit flipped.
      * <p>
-     * The jump has to leave the detour, and the label match is fuzzy: a value the index would
-     * resolve to the detour's own label would turn the detour into a loop. The candidate must
-     * therefore lie further from the copied label than the index's tolerance reaches.
+     * The bits are tried from a random one on, in rising order and around. A value is taken if no
+     * LABEL molecule of the newborn carries it — two labels of one value would share the references
+     * to it — and if it draws no reference away from another label
+     * ({@link GenomeFlow#drawsNoForeignReference}).
      *
-     * @param candidate The value considered as a jump target.
-     * @param sourceHash The label value the detour copies.
      * @param tolerance The label index's Hamming tolerance.
-     * @return {@code true} if the candidate is a different value far enough from the copied label.
+     * @return The chosen value, or {@code -1} if no bit qualifies.
      */
-    private static boolean acceptsAsJumpTarget(int candidate, int sourceHash, int tolerance) {
-        return candidate != sourceHash && Integer.bitCount(candidate ^ sourceHash) > tolerance;
+    private int chooseRenamedValue(int tolerance) {
+        int firstBit = random.nextInt(LABEL_HASH_BITS);
+        for (int i = 0; i < LABEL_HASH_BITS; i++) {
+            int candidate = copiedLabelValue ^ (1 << ((firstBit + i) % LABEL_HASH_BITS));
+            if (!ownLabelValues.contains(candidate)
+                    && flow.drawsNoForeignReference(candidate, copiedLabelValue, tolerance)) {
+                return candidate;
+            }
+        }
+        return -1;
+    }
+
+    /**
+     * Gives the copied label its new value and appends the change to {@link #recordBuilder}.
+     * <p>
+     * Everything about the molecule but its value stays as it is.
+     *
+     * @param env The simulation environment.
+     * @param childId The child organism's ID.
+     */
+    private void renameCopiedLabel(Environment env, int childId) {
+        env.properties.flatIndexToCoordinates(copiedLabelFlatIndex, walkPos);
+        int oldMoleculeInt = env.getMoleculeIntAt(walkPos);
+        Molecule renamed = Molecule.fromInt((oldMoleculeInt & ~Config.VALUE_MASK) | renamedLabelValue);
+        recordBuilder.cell(copiedLabelFlatIndex, oldMoleculeInt, renamed.toInt());
+        env.setMolecule(renamed, childId, walkPos);
     }
 
     /**
@@ -921,9 +935,7 @@ public class GeneInsertionPlugin implements IBirthHandler {
      * <p>
      * Groups owned (non-empty) cells by perpendicular coordinate, tracking minDv/maxDv
      * per scan line. Also scans for TYPE_LABEL molecules via reservoir sampling, storing
-     * the sampled label's value in {@link #reservoirLabelHash} and where it stands in
-     * {@link #reservoirLabelPerpKey} and {@link #reservoirLabelDvCoord}, because a detour walks
-     * the code from there.
+     * the sampled label's value in {@link #reservoirLabelHash}.
      *
      * @param childId The child whose owned cells are grouped, visited in index order.
      * @param env The simulation environment.
@@ -959,8 +971,6 @@ public class GeneInsertionPlugin implements IBirthHandler {
                 reservoirLabelCount++;
                 if (random.nextInt(reservoirLabelCount) == 0) {
                     reservoirLabelHash = moleculeInt & Config.VALUE_MASK;
-                    reservoirLabelPerpKey = perpKey;
-                    reservoirLabelDvCoord = dvCoord;
                 }
             }
         });
@@ -1051,11 +1061,15 @@ public class GeneInsertionPlugin implements IBirthHandler {
      *
      * @param env The simulation environment.
      * @param dvDim The DV dimension index.
+     * @param dvStep The DV step value ({@code dv[dvDim]}).
      * @param minLength Minimum required contiguous empty cells.
      * @param shapeDvDim The environment size along the DV dimension.
+     * @param awayFromExecution Whether only a run execution does not run on into qualifies; needs
+     *                          {@link #frame} built for the newborn.
      * @return {@code true} if a qualifying run was found.
      */
-    private boolean selectNopRun(Environment env, int dvDim, int minLength, int shapeDvDim) {
+    private boolean selectNopRun(Environment env, int dvDim, int dvStep, int minLength, int shapeDvDim,
+                                 boolean awayFromExecution) {
         nopCandidateCount = 0;
 
         for (int i = 0; i < poolIndex; i++) {
@@ -1081,11 +1095,7 @@ public class GeneInsertionPlugin implements IBirthHandler {
                     nopRunLength++;
                 } else {
                     if (nopRunLength >= minLength) {
-                        nopCandidateCount++;
-                        if (random.nextInt(nopCandidateCount) == 0) {
-                            selectedNopScanLine = line;
-                            selectedNopDvStart = nopRunStart;
-                        }
+                        offerNopRun(env, line, nopRunStart, nopRunLength, dvDim, dvStep, shapeDvDim, awayFromExecution);
                     }
                     nopRunLength = 0;
                     nopRunStart = -1;
@@ -1096,15 +1106,47 @@ public class GeneInsertionPlugin implements IBirthHandler {
             }
             // Trailing run
             if (nopRunLength >= minLength) {
-                nopCandidateCount++;
-                if (random.nextInt(nopCandidateCount) == 0) {
-                    selectedNopScanLine = line;
-                    selectedNopDvStart = nopRunStart;
-                }
+                offerNopRun(env, line, nopRunStart, nopRunLength, dvDim, dvStep, shapeDvDim, awayFromExecution);
             }
         }
 
         return nopCandidateCount > 0;
+    }
+
+    /**
+     * Offers one NOP run to the reservoir of {@link #selectNopRun}.
+     * <p>
+     * Where only a run away from execution qualifies, the run is asked about at the cell execution
+     * would enter it by; the empty cells of the run itself change nothing about the answer. Uses
+     * {@link #walkPos}; {@link #coordBuffer} holds the line's coordinates and is left as it is.
+     *
+     * @param env The simulation environment.
+     * @param line The scan line the run lies on.
+     * @param runStart The run's smallest DV coordinate, in the direction of rising coordinates.
+     * @param runLength The number of cells of the run.
+     * @param dvDim The DV dimension index.
+     * @param dvStep The DV step value ({@code dv[dvDim]}).
+     * @param shapeDvDim The environment size along the DV dimension.
+     * @param awayFromExecution Whether a run execution runs on into is passed over.
+     */
+    private void offerNopRun(Environment env, ScanLineInfo line, int runStart, int runLength,
+                             int dvDim, int dvStep, int shapeDvDim, boolean awayFromExecution) {
+        if (awayFromExecution) {
+            System.arraycopy(coordBuffer, 0, walkPos, 0, walkPos.length);
+            int entry = dvStep > 0 ? runStart : (runStart + runLength - 1) % shapeDvDim;
+            walkPos[dvDim] = entry;
+            int cellsBefore = dvStep > 0
+                    ? toroidalForwardDistance(line.walkStart, entry, shapeDvDim) - 1
+                    : toroidalForwardDistance(entry, line.walkEnd, shapeDvDim) - 1;
+            if (flow.reachedByFallThrough(env, frame, walkPos, dvDim, dvStep, cellsBefore)) {
+                return;
+            }
+        }
+        nopCandidateCount++;
+        if (random.nextInt(nopCandidateCount) == 0) {
+            selectedNopScanLine = line;
+            selectedNopDvStart = runStart;
+        }
     }
 
     /**
