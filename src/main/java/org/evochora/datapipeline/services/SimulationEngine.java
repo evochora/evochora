@@ -721,7 +721,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
             runtimeConfig.hasPath("thermodynamics") ? runtimeConfig.getConfig("thermodynamics") : com.typesafe.config.ConfigFactory.empty());
         Config organismConfig = runtimeConfig.hasPath("organism") ? runtimeConfig.getConfig("organism") : com.typesafe.config.ConfigFactory.empty();
 
-        org.evochora.runtime.label.ILabelMatchingStrategy labelMatchingStrategy =
+        org.evochora.runtime.spi.ILabelMatchingStrategy labelMatchingStrategy =
             Environment.createLabelMatchingStrategy(
                 runtimeConfig.hasPath("label-matching") ? runtimeConfig.getConfig("label-matching") : null);
 

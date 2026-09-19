@@ -8,7 +8,7 @@ import java.util.List;
 
 import org.evochora.runtime.internal.services.SeededRandomProvider;
 import org.evochora.runtime.isa.Instruction;
-import org.evochora.runtime.label.PreExpandedHammingStrategy;
+import org.evochora.runtime.label.HammingLabelMatchingStrategy;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.runtime.model.Molecule;
@@ -198,7 +198,7 @@ class DeterministicExecutionTest {
      */
     private Simulation newSoftGateWorld(int tileSide) {
         Environment env = new Environment(new EnvironmentProperties(new int[]{64}, true),
-                new PreExpandedHammingStrategy(), tileSide);
+                new HammingLabelMatchingStrategy(), tileSide);
         Simulation sim = SimulationTestUtils.createSimulation(env, 1);
         simulations.add(sim);
         sim.setRandomProvider(new SeededRandomProvider(SEED));
@@ -310,7 +310,10 @@ class DeterministicExecutionTest {
 
         JumperWorld(int organismCount, int parallelism, int tileSide) {
             env = new Environment(new EnvironmentProperties(new int[]{64, 64}, true),
-                    new PreExpandedHammingStrategy(2, 100, 50, 50), tileSide);
+                    new HammingLabelMatchingStrategy(2, 50, HammingLabelMatchingStrategy.DEFAULT_FOREIGN_REACH,
+                            HammingLabelMatchingStrategy.DEFAULT_FOREIGN_REACH_DEDUCTION_PER_BIT,
+                            HammingLabelMatchingStrategy.DEFAULT_NAMESPACE_FLIP_RATE,
+                            HammingLabelMatchingStrategy.DEFAULT_NAMESPACE_BITS), tileSide);
             sim = SimulationTestUtils.createSimulation(env, parallelism);
             simulations.add(sim);
             provider = new SeededRandomProvider(SEED);
@@ -369,7 +372,7 @@ class DeterministicExecutionTest {
 
         RandWorld(int tileSide) {
             env = new Environment(new EnvironmentProperties(new int[]{64}, true),
-                    new PreExpandedHammingStrategy(), tileSide);
+                    new HammingLabelMatchingStrategy(), tileSide);
             sim = SimulationTestUtils.createSimulation(env, 1);
             simulations.add(sim);
             provider = new SeededRandomProvider(SEED);

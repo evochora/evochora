@@ -11,9 +11,9 @@ import org.evochora.runtime.isa.IEnvironmentReader;
 
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
-import org.evochora.runtime.label.ILabelMatchingStrategy;
+import org.evochora.runtime.label.HammingLabelMatchingStrategy;
 import org.evochora.runtime.label.LabelIndex;
-import org.evochora.runtime.label.PreExpandedHammingStrategy;
+import org.evochora.runtime.spi.ILabelMatchingStrategy;
 
 /**
  * Represents the simulation environment, managing the grid of molecules and their owners.
@@ -103,7 +103,7 @@ public class Environment implements IEnvironmentReader {
     /**
      * Creates a label matching strategy from configuration.
      * <p>
-     * If config is null or has no className, returns the default {@link PreExpandedHammingStrategy}.
+     * If config is null or has no className, returns the default {@link HammingLabelMatchingStrategy}.
      * Otherwise instantiates the configured strategy class via reflection, passing the options
      * sub-config to the strategy's constructor.
      *
@@ -113,7 +113,7 @@ public class Environment implements IEnvironmentReader {
      */
     public static ILabelMatchingStrategy createLabelMatchingStrategy(com.typesafe.config.Config config) {
         if (config == null || !config.hasPath("className")) {
-            return new PreExpandedHammingStrategy();
+            return new HammingLabelMatchingStrategy();
         }
         String className = config.getString("className");
         com.typesafe.config.Config options = config.hasPath("options")
@@ -149,7 +149,7 @@ public class Environment implements IEnvironmentReader {
      * @param properties The environment properties.
      */
     public Environment(EnvironmentProperties properties) {
-        this(properties, new org.evochora.runtime.label.PreExpandedHammingStrategy());
+        this(properties, new HammingLabelMatchingStrategy());
     }
 
     /**
@@ -161,7 +161,7 @@ public class Environment implements IEnvironmentReader {
      * @throws IllegalArgumentException if the world shape is not valid for the production tile side,
      *                                  see {@link GridLayout}
      */
-    public Environment(EnvironmentProperties properties, org.evochora.runtime.label.ILabelMatchingStrategy labelMatchingStrategy) {
+    public Environment(EnvironmentProperties properties, ILabelMatchingStrategy labelMatchingStrategy) {
         this(properties, labelMatchingStrategy, TILE_SIDE);
     }
 
@@ -178,7 +178,7 @@ public class Environment implements IEnvironmentReader {
      * @throws IllegalArgumentException if the tile side or the world shape is not valid, see
      *                                  {@link GridLayout}
      */
-    public Environment(EnvironmentProperties properties, org.evochora.runtime.label.ILabelMatchingStrategy labelMatchingStrategy, int tileSide) {
+    public Environment(EnvironmentProperties properties, ILabelMatchingStrategy labelMatchingStrategy, int tileSide) {
         this.properties = properties;
         this.shape = properties.getWorldShape();
         this.isToroidal = properties.isToroidal();
@@ -461,7 +461,7 @@ public class Environment implements IEnvironmentReader {
         this.ownerGrid[index] = ownerId;
 
         // Update label index for fuzzy jump matching
-        labelIndex.onMoleculeSet(toFlatIndex(index), oldMoleculeInt, newMoleculeInt, ownerId);
+        labelIndex.onMoleculeSet(toFlatIndex(index), oldMoleculeInt, oldOwner, newMoleculeInt, ownerId);
 
         // Update sparse cell tracking if enabled
         updateOccupiedIndices(index);
@@ -499,7 +499,7 @@ public class Environment implements IEnvironmentReader {
 
                 // Update label index for fuzzy jump matching
                 int moleculeInt = this.grid[index];
-                labelIndex.onOwnerChange(toFlatIndex(index), moleculeInt, ownerId);
+                labelIndex.onOwnerChange(toFlatIndex(index), moleculeInt, oldOwner, ownerId);
             }
             this.ownerGrid[index] = ownerId;
 
@@ -796,7 +796,7 @@ public class Environment implements IEnvironmentReader {
 
         // Update label index for fuzzy jump matching
         int owner = this.ownerGrid[layoutIndex];
-        labelIndex.onMoleculeSet(toFlatIndex(layoutIndex), oldMoleculeInt, newMoleculeInt, owner);
+        labelIndex.onMoleculeSet(toFlatIndex(layoutIndex), oldMoleculeInt, owner, newMoleculeInt, owner);
 
         // Update sparse cell tracking if enabled
         updateOccupiedIndices(layoutIndex);
@@ -854,7 +854,7 @@ public class Environment implements IEnvironmentReader {
                 toSet.add(layoutIndex);
             }
             // A label that was marked becomes a jump target of its new owner with this release
-            labelIndex.onCellReleased(toFlatIndex(layoutIndex), releasedMoleculeInt, toOwnerId);
+            labelIndex.onCellReleased(toFlatIndex(layoutIndex), releasedMoleculeInt, fromOwnerId, toOwnerId);
             // An empty cell handed to "nobody" leaves the occupied set
             updateOccupiedIndices(layoutIndex);
         }
@@ -891,7 +891,7 @@ public class Environment implements IEnvironmentReader {
             // Track change for delta compression
             markChanged(layoutIndex);
             // A label that was marked becomes an unowned jump target with this release
-            labelIndex.onCellReleased(toFlatIndex(layoutIndex), releasedMoleculeInt, 0);
+            labelIndex.onCellReleased(toFlatIndex(layoutIndex), releasedMoleculeInt, ownerId, 0);
             // A cell that is now empty and unowned leaves the occupied set; otherwise every dead
             // organism's footprint would stay in it (and in every snapshot) forever
             updateOccupiedIndices(layoutIndex);
@@ -943,7 +943,7 @@ public class Environment implements IEnvironmentReader {
             // Update ownership index: remove from owner's set
             owned.remove(layoutIndex);
             // Update label index: molecule removed
-            labelIndex.onMoleculeSet(toFlatIndex(layoutIndex), oldMoleculeInt, 0, 0);
+            labelIndex.onMoleculeSet(toFlatIndex(layoutIndex), oldMoleculeInt, ownerId, 0, 0);
             // Update sparse cell tracking if enabled
             occupiedIndices.clear(layoutIndex);
         }

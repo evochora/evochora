@@ -12,7 +12,7 @@ import org.evochora.compiler.api.CompilationException;
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.internal.services.SeededRandomProvider;
 import org.evochora.runtime.isa.Instruction;
-import org.evochora.runtime.label.PreExpandedHammingStrategy;
+import org.evochora.runtime.label.HammingLabelMatchingStrategy;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.runtime.model.Molecule;
@@ -181,13 +181,31 @@ public class SimulationBenchmark {
     private int parallelism;
 
     /**
-     * Selection spread of the label-matching strategy. {@code 0} selects the closest own label
-     * deterministically; a positive value enables weighted-random selection among own exact
-     * matches, which draws one random number for every jump or call that resolves to an own
-     * exact match and therefore exercises the organism's random source on the control-flow path.
+     * Selection spread of the label-matching strategy. {@code 0} takes the nearest of several own
+     * labels on the best Hamming stage; a positive value draws one of them by lottery, which
+     * exercises the organism's random source on the control-flow path. A jump with a single own
+     * candidate draws nothing either way.
      */
     @Param({"0"})
     private int selectionSpread;
+
+    /**
+     * Share of the organisms, in percent, that are placed without their LABEL molecules. Their
+     * label references have no own match, so every jump and call of theirs runs the foreign search
+     * and resolves to the homologous label of a neighbour — the case that is common once parasites
+     * exist. All organisms carry the same label values, so one value's list is as long as the
+     * population.
+     */
+    @Param({"0"})
+    private int orphanedPercent;
+
+    /**
+     * Number of additional LABEL molecules with random values every organism owns, placed in the
+     * lower half of the world. They lengthen the pass an own lookup makes, as duplication does to
+     * a genome over a long run.
+     */
+    @Param({"0"})
+    private int extraLabels;
 
     private Map<String, ProgramArtifact> compiledPrograms;
     private EnvironmentProperties envProps;
@@ -219,11 +237,15 @@ public class SimulationBenchmark {
      */
     @Setup(Level.Iteration)
     public void setupSimulation() {
-        PreExpandedHammingStrategy labelMatchingStrategy = new PreExpandedHammingStrategy(
-                PreExpandedHammingStrategy.DEFAULT_TOLERANCE,
-                PreExpandedHammingStrategy.DEFAULT_FOREIGN_PENALTY,
-                PreExpandedHammingStrategy.DEFAULT_HAMMING_WEIGHT,
-                selectionSpread);
+        // No organism is born during a measurement, so the namespace flip rate is irrelevant; 0
+        // states that and keeps the root provider untouched
+        HammingLabelMatchingStrategy labelMatchingStrategy = new HammingLabelMatchingStrategy(
+                HammingLabelMatchingStrategy.DEFAULT_TOLERANCE,
+                selectionSpread,
+                HammingLabelMatchingStrategy.DEFAULT_FOREIGN_REACH,
+                HammingLabelMatchingStrategy.DEFAULT_FOREIGN_REACH_DEDUCTION_PER_BIT,
+                0.0,
+                HammingLabelMatchingStrategy.DEFAULT_NAMESPACE_BITS);
         Environment env = new Environment(envProps, labelMatchingStrategy);
 
         Config organismConfig = ConfigFactory.parseMap(Map.of(
@@ -267,8 +289,8 @@ public class SimulationBenchmark {
     /**
      * Places multiple copies of a compiled program into the environment and
      * creates one organism per copy. Each organism gets ownership of its
-     * molecules and unique label hashes (XOR-rewritten like LabelRewritePlugin
-     * does on FORK in production) to avoid O(n²) label resolution.
+     * molecules. All copies carry the same label values, as relatives do in a
+     * production run, where label values pass unchanged from parent to child.
      */
     private void placeOrganisms(Environment env, ProgramArtifact artifact) {
         Map<int[], Integer> layout = artifact.machineCodeLayout();
@@ -292,7 +314,7 @@ public class SimulationBenchmark {
             int[] startIp = new int[]{offsetX, offsetY};
             Organism organism = Organism.create(simulation, startIp, MAX_ENERGY);
 
-            int labelMask = random.nextInt(org.evochora.runtime.Config.VALUE_MASK) + 1;
+            boolean orphaned = i * 100L / organisms < orphanedPercent;
 
             for (Map.Entry<int[], Integer> entry : layout.entrySet()) {
                 int[] coord = entry.getKey();
@@ -306,8 +328,10 @@ public class SimulationBenchmark {
 
                 if (type == org.evochora.runtime.Config.TYPE_LABEL
                         || type == org.evochora.runtime.Config.TYPE_LABELREF) {
-                    int oldValue = moleculeInt & org.evochora.runtime.Config.VALUE_MASK;
-                    int newValue = oldValue ^ labelMask;
+                    if (orphaned && type == org.evochora.runtime.Config.TYPE_LABEL) {
+                        continue;
+                    }
+                    int newValue = moleculeInt & org.evochora.runtime.Config.VALUE_MASK;
                     if (type == org.evochora.runtime.Config.TYPE_LABELREF
                             && "REALISTIC".equals(assembly) && random.nextBoolean()) {
                         newValue = newValue ^ (1 << random.nextInt(org.evochora.runtime.Config.VALUE_BITS));
@@ -318,6 +342,17 @@ public class SimulationBenchmark {
                 }
 
                 env.setMolecule(mol, organism.getId(), placed);
+            }
+
+            for (int extra = 0; extra < extraLabels; extra++) {
+                long slot = (long) i * extraLabels + extra;
+                int[] placed = new int[]{(int) (slot % ENV_SIZE), ENV_SIZE / 2 + (int) (slot / ENV_SIZE)};
+                if (placed[1] >= ENV_SIZE) {
+                    throw new IllegalStateException("extraLabels=" + extraLabels + " for " + organisms
+                            + " organisms does not fit into the lower half of the world");
+                }
+                env.setMolecule(new Molecule(org.evochora.runtime.Config.TYPE_LABEL,
+                        random.nextInt(org.evochora.runtime.Config.VALUE_MASK + 1)), organism.getId(), placed);
             }
 
             simulation.addOrganism(organism);

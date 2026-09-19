@@ -7,6 +7,7 @@ import java.util.List;
 
 import org.evochora.runtime.Simulation;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.label.LabelRewrite;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Organism;
 import org.junit.jupiter.api.AfterEach;
@@ -38,6 +39,13 @@ class ResumeForkNeutralityTest {
 
     /** Mutations always apply, so the single birth exercises all four plugins. */
     private static final String MUTATING = ResumeNeutralityHarness.configJson(SIZE, 1.0);
+
+    /**
+     * As {@link #MUTATING}, with a namespace flip at every birth: the label matching strategy draws
+     * the newborn's mask from the root random provider, after the mutation operators have drawn.
+     */
+    private static final String MUTATING_AND_FLIPPING = MUTATING.replace(
+            "\"selectionSpread\": 50", "\"selectionSpread\": 50, \"namespaceFlipRate\": 1.0");
 
     /** Mutations never apply — the reference for showing that the plugins actually change something. */
     private static final String QUIET = ResumeNeutralityHarness.configJson(SIZE, 0.0);
@@ -121,18 +129,27 @@ class ResumeForkNeutralityTest {
      * the child inherits {@value #SEVERAL_GENOME_ROWS} rows instead of one.
      */
     private void assertForkNeutral(int parallelism, boolean operatorsProcessedALargeBody) {
+        assertForkNeutral(parallelism, operatorsProcessedALargeBody, MUTATING);
+    }
+
+    /**
+     * As {@link #assertForkNeutral(int, boolean)}, under a given configuration.
+     *
+     * @return The uninterrupted simulation, for what a scenario wants to check beyond the trajectory.
+     */
+    private Simulation assertForkNeutral(int parallelism, boolean operatorsProcessedALargeBody, String configJson) {
         int genomeRows = operatorsProcessedALargeBody ? SEVERAL_GENOME_ROWS : 1;
         int totalTicks = ForkProgram.FORK_TICK + 12;
         int pauseBeforeBirth = ForkProgram.FORK_TICK - 3;
         int pauseAfterBirth = ForkProgram.FORK_TICK + 4;
 
-        ResumeNeutralityHarness.Fixture reference = newWorld(parallelism, Environment.TILE_SIDE, genomeRows);
+        ResumeNeutralityHarness.Fixture reference = newWorld(parallelism, Environment.TILE_SIDE, genomeRows, configJson);
         if (operatorsProcessedALargeBody) {
             ResumeNeutralityHarness.processLargeNewborn(reference.plugins());
         }
         List<List<String>> expected = ResumeNeutralityHarness.tick(reference.sim(), reference.plugins(), totalTicks, true);
 
-        ResumeNeutralityHarness.Fixture interrupted = newWorld(parallelism, Environment.TILE_SIDE, genomeRows);
+        ResumeNeutralityHarness.Fixture interrupted = newWorld(parallelism, Environment.TILE_SIDE, genomeRows, configJson);
         if (operatorsProcessedALargeBody) {
             ResumeNeutralityHarness.processLargeNewborn(interrupted.plugins());
         }
@@ -140,7 +157,7 @@ class ResumeForkNeutralityTest {
                 ResumeNeutralityHarness.tick(interrupted.sim(), interrupted.plugins(), pauseBeforeBirth, true));
 
         SimulationRestorer.RestoredState beforeBirth = ResumeNeutralityHarness.restore(
-                interrupted.sim(), interrupted.provider(), interrupted.plugins(), MUTATING, parallelism);
+                interrupted.sim(), interrupted.provider(), interrupted.plugins(), configJson, parallelism);
         simulations.add(beforeBirth.simulation());
         actual.addAll(ResumeNeutralityHarness.tick(beforeBirth.simulation(),
                 ResumeNeutralityHarness.uniquePlugins(beforeBirth),
@@ -148,7 +165,7 @@ class ResumeForkNeutralityTest {
 
         SimulationRestorer.RestoredState afterBirth = ResumeNeutralityHarness.restore(
                 beforeBirth.simulation(), beforeBirth.randomProvider(),
-                ResumeNeutralityHarness.uniquePlugins(beforeBirth), MUTATING, parallelism);
+                ResumeNeutralityHarness.uniquePlugins(beforeBirth), configJson, parallelism);
         simulations.add(afterBirth.simulation());
         actual.addAll(ResumeNeutralityHarness.tick(afterBirth.simulation(),
                 ResumeNeutralityHarness.uniquePlugins(afterBirth),
@@ -159,6 +176,22 @@ class ResumeForkNeutralityTest {
                 .hasSizeGreaterThan(expected.get(0).size());
 
         ResumeNeutralityHarness.assertSameTrajectory(expected, actual, "parallelism " + parallelism);
+        return reference.sim();
+    }
+
+    /**
+     * The namespace flip draws from the root random provider like the mutation operators do, one
+     * step after them. A resume must leave that draw where it was: the newborn gets the same mask,
+     * and everything that draws afterwards continues as in the uninterrupted run.
+     */
+    @Test
+    void resumedRun_reproducesABirthWhoseNamespaceFlipFires() {
+        Simulation uninterrupted = assertForkNeutral(1, false, MUTATING_AND_FLIPPING);
+
+        Organism parent = uninterrupted.getOrganisms().get(0);
+        assertThat(child(uninterrupted, parent).getBirthMutations())
+                .as("the flip must have fired, or the scenario shows nothing")
+                .anyMatch(record -> LabelRewrite.MUTATION_KIND.equals(record.kind()));
     }
 
     /**
@@ -205,7 +238,7 @@ class ResumeForkNeutralityTest {
             assertThat(tiled.plugins().stream().map(plugin -> plugin.getClass().getSimpleName()).toList())
                     .as("every production plugin takes part, so that none can depend on the layout unnoticed")
                     .containsExactlyInAnyOrder("SeedEnergyCreator", "GeyserCreator", "SolarRadiationCreator",
-                            "EnergyVaultCreator", "DecayOnDeath", "LabelRewritePlugin", "GeneDuplicationPlugin",
+                            "EnergyVaultCreator", "DecayOnDeath", "GeneDuplicationPlugin",
                             "GeneDeletionPlugin", "GeneInsertionPlugin", "GeneSubstitutionPlugin");
             List<List<String>> expected = ResumeNeutralityHarness.tick(tiled.sim(), tiled.plugins(), totalTicks, true);
             ResumeNeutralityHarness.Fixture rowMajor = newWorld(parallelism, 1);
@@ -228,8 +261,12 @@ class ResumeForkNeutralityTest {
     }
 
     private ResumeNeutralityHarness.Fixture newWorld(int parallelism, int tileSide, int genomeRows) {
+        return newWorld(parallelism, tileSide, genomeRows, MUTATING);
+    }
+
+    private ResumeNeutralityHarness.Fixture newWorld(int parallelism, int tileSide, int genomeRows, String configJson) {
         ResumeNeutralityHarness.Fixture fixture =
-                ResumeNeutralityHarness.newFixture(MUTATING, SIZE, parallelism, tileSide);
+                ResumeNeutralityHarness.newFixture(configJson, SIZE, parallelism, tileSide);
         simulations.add(fixture.sim());
         ForkProgram.place(fixture.sim(), fixture.env(), new int[]{0, 0}, PARENT_ENERGY, genomeRows);
         return fixture;

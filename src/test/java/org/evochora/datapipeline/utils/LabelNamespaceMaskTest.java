@@ -9,7 +9,8 @@ import org.evochora.datapipeline.api.contracts.StoredMutationEvent;
 import org.evochora.datapipeline.api.contracts.StoredMutationEvents;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
 import org.evochora.runtime.Config;
-import org.evochora.runtime.worldgen.LabelRewritePlugin;
+import org.evochora.runtime.label.HammingLabelMatchingStrategy;
+import org.evochora.runtime.label.LabelRewrite;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -27,8 +28,8 @@ class LabelNamespaceMaskTest {
 
     private static StoredMutationEvent labelMask(long mask) {
         return StoredMutationEvent.newBuilder()
-                .setPluginClass(LabelRewritePlugin.class.getName())
-                .setKind(LabelRewritePlugin.MUTATION_KIND)
+                .setPluginClass(HammingLabelMatchingStrategy.class.getName())
+                .setKind(LabelRewrite.MUTATION_KIND)
                 .addParams(mask)
                 .build();
     }
@@ -111,13 +112,13 @@ class LabelNamespaceMaskTest {
     @Test
     void refusesALabelMaskEventThatCarriesNoMask() {
         final StoredMutationEvents events = birth(StoredMutationEvent.newBuilder()
-                .setPluginClass(LabelRewritePlugin.class.getName())
-                .setKind(LabelRewritePlugin.MUTATION_KIND)
+                .setPluginClass(HammingLabelMatchingStrategy.class.getName())
+                .setKind(LabelRewrite.MUTATION_KIND)
                 .build());
 
         assertThatThrownBy(() -> LabelNamespaceMask.ofBirth(events))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining(LabelRewritePlugin.MUTATION_KIND)
-                .hasMessageContaining(LabelRewritePlugin.class.getName());
+                .hasMessageContaining(LabelRewrite.MUTATION_KIND)
+                .hasMessageContaining(HammingLabelMatchingStrategy.class.getName());
     }
 }

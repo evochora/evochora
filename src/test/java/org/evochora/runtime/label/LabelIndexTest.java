@@ -11,14 +11,17 @@ import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Unit tests for LabelIndex.
- * <p>
- * Tests the integration of LabelIndex with the ILabelMatchingStrategy,
- * verifying correct handling of LABEL molecule changes.
+ * Unit tests for LabelIndex: which changes of a cell it reports to the matching strategy, and
+ * that a label is a jump target only while its marker is 0.
  */
 @Tag("unit")
 class LabelIndexTest {
 
+    private static final int OWNER = 1;
+    private static final int LABEL_VALUE = 12345;
+    private static final int UNMARKED = Config.TYPE_LABEL | LABEL_VALUE;
+
+    private HammingLabelMatchingStrategy strategy;
     private LabelIndex labelIndex;
     private Environment environment;
     private int[] callerCoords;
@@ -26,153 +29,17 @@ class LabelIndexTest {
 
     @BeforeEach
     void setUp() {
-        labelIndex = new LabelIndex();
-        // Create a small test environment (64x64)
-        EnvironmentProperties props = new EnvironmentProperties(new int[]{64, 64}, true);
-        environment = new Environment(props);
+        strategy = new HammingLabelMatchingStrategy();
+        labelIndex = new LabelIndex(strategy);
+        environment = new Environment(new EnvironmentProperties(new int[]{64, 64}, true));
         callerCoords = new int[]{0, 0};
         // The random source of the organism performing the lookups, positioned at a fixed tick
-        random = new OrganismRandom(1);
+        random = new OrganismRandom(OWNER);
         random.beginTick(42L);
     }
 
-    @Test
-    void testFindTargetWithNoLabels() {
-        int result = labelIndex.findTarget(12345, 1, callerCoords, environment, random);
-        assertThat(result).isEqualTo(-1);
-    }
-
-    @Test
-    void testAddAndFindExactMatch() {
-        // Create a LABEL molecule with value 12345
-        int labelValue = 12345;
-        int flatIndex = 100;
-        int owner = 1;
-
-        // Simulate setMolecule with a LABEL
-        int moleculeInt = Config.TYPE_LABEL | labelValue;
-        labelIndex.onMoleculeSet(flatIndex, 0, moleculeInt, owner);
-
-        // Find the label
-        int result = labelIndex.findTarget(labelValue, owner, callerCoords, environment, random);
-        assertThat(result).isEqualTo(flatIndex);
-    }
-
-    @Test
-    void testRemoveLabel() {
-        int labelValue = 12345;
-        int flatIndex = 100;
-        int owner = 1;
-
-        int moleculeInt = Config.TYPE_LABEL | labelValue;
-        labelIndex.onMoleculeSet(flatIndex, 0, moleculeInt, owner);
-
-        // Verify it exists
-        assertThat(labelIndex.findTarget(labelValue, owner, callerCoords, environment, random)).isEqualTo(flatIndex);
-
-        // Remove it (simulate clearing the cell)
-        labelIndex.onMoleculeSet(flatIndex, moleculeInt, 0, owner);
-
-        // Should no longer be found
-        assertThat(labelIndex.findTarget(labelValue, owner, callerCoords, environment, random)).isEqualTo(-1);
-    }
-
-    @Test
-    void testReplaceLabel() {
-        int flatIndex = 100;
-        int owner = 1;
-
-        int oldValue = 12345;
-        int newValue = 54321;
-
-        int oldMolecule = Config.TYPE_LABEL | oldValue;
-        int newMolecule = Config.TYPE_LABEL | newValue;
-
-        // Add first label
-        labelIndex.onMoleculeSet(flatIndex, 0, oldMolecule, owner);
-        assertThat(labelIndex.findTarget(oldValue, owner, callerCoords, environment, random)).isEqualTo(flatIndex);
-
-        // Replace with new label
-        labelIndex.onMoleculeSet(flatIndex, oldMolecule, newMolecule, owner);
-
-        // Old value should not be found
-        assertThat(labelIndex.findTarget(oldValue, owner, callerCoords, environment, random)).isEqualTo(-1);
-        // New value should be found
-        assertThat(labelIndex.findTarget(newValue, owner, callerCoords, environment, random)).isEqualTo(flatIndex);
-    }
-
-    @Test
-    void testOwnerChange() {
-        int labelValue = 12345;
-        int flatIndex = 100;
-        int oldOwner = 1;
-        int newOwner = 2;
-
-        int moleculeInt = Config.TYPE_LABEL | labelValue;
-        labelIndex.onMoleculeSet(flatIndex, 0, moleculeInt, oldOwner);
-
-        // Old owner can find it as "own"
-        int result1 = labelIndex.findTarget(labelValue, oldOwner, callerCoords, environment, random);
-        assertThat(result1).isEqualTo(flatIndex);
-
-        // Change ownership
-        labelIndex.onOwnerChange(flatIndex, moleculeInt, newOwner);
-
-        // New owner can find it as "own"
-        int result2 = labelIndex.findTarget(labelValue, newOwner, callerCoords, environment, random);
-        assertThat(result2).isEqualTo(flatIndex);
-    }
-
-    @Test
-    void testNonLabelMoleculeIgnored() {
-        // DATA molecule should be ignored
-        int dataMolecule = Config.TYPE_DATA | 12345;
-        int flatIndex = 100;
-
-        labelIndex.onMoleculeSet(flatIndex, 0, dataMolecule, 1);
-
-        // Should not be found
-        assertThat(labelIndex.findTarget(12345, 1, callerCoords, environment, random)).isEqualTo(-1);
-    }
-
-    @Test
-    void testGetCandidates() {
-        int labelValue = 12345;
-        int flatIndex = 100;
-        int owner = 1;
-
-        int moleculeInt = Config.TYPE_LABEL | labelValue;
-        labelIndex.onMoleculeSet(flatIndex, 0, moleculeInt, owner);
-
-        var candidates = labelIndex.getCandidates(labelValue);
-        assertThat(candidates).hasSize(1);
-        assertThat(candidates.iterator().next().flatIndex()).isEqualTo(flatIndex);
-    }
-
-    @Test
-    void threeBitMutationIsFoundOnlyWithToleranceThree_andTheNearerLabelWins() {
-        // Two own labels carrying the same value, one 5 cells from the caller, one 20 cells away
-        // in a 64x64 world; the search value differs from both by three bits.
-        int labelValue = 12345;
-        int mutated = labelValue ^ 0b111;
-        int near = environment.getProperties().toFlatIndex(new int[]{5, 0});
-        int far = environment.getProperties().toFlatIndex(new int[]{20, 0});
-        int owner = 1;
-        int moleculeInt = Config.TYPE_LABEL | labelValue;
-
-        LabelIndex tolerant = new LabelIndex(new PreExpandedHammingStrategy(3,
-                PreExpandedHammingStrategy.DEFAULT_FOREIGN_PENALTY, PreExpandedHammingStrategy.DEFAULT_HAMMING_WEIGHT));
-        for (LabelIndex index : new LabelIndex[]{labelIndex, tolerant}) {
-            index.onMoleculeSet(far, 0, moleculeInt, owner);
-            index.onMoleculeSet(near, 0, moleculeInt, owner);
-        }
-
-        assertThat(labelIndex.findTarget(mutated, owner, callerCoords, environment, random))
-                .as("the default tolerance of 2 does not reach three flipped bits")
-                .isEqualTo(-1);
-        assertThat(tolerant.findTarget(mutated, owner, callerCoords, environment, random))
-                .as("tolerance 3 reaches the third stage and picks the nearer of two equal candidates")
-                .isEqualTo(near);
+    private int targetFor(int searchValue, int organismId) {
+        return labelIndex.findTarget(searchValue, organismId, callerCoords, environment, random);
     }
 
     /** Packs a LABEL molecule with a marker, as a write with a non-zero marker register stores it. */
@@ -181,62 +48,128 @@ class LabelIndexTest {
     }
 
     @Test
+    void findsNothingWithoutLabels() {
+        assertThat(targetFor(LABEL_VALUE, OWNER)).isEqualTo(-1);
+    }
+
+    @Test
+    void reportsAWrittenLabelUnderTheCellsOwner() {
+        labelIndex.onMoleculeSet(100, 0, 0, UNMARKED, OWNER);
+
+        assertThat(strategy.ownerOf(LABEL_VALUE, 100)).isEqualTo(OWNER);
+        assertThat(targetFor(LABEL_VALUE, OWNER)).isEqualTo(100);
+    }
+
+    @Test
+    void reportsAnOverwrittenLabelAsGone() {
+        labelIndex.onMoleculeSet(100, 0, 0, UNMARKED, OWNER);
+
+        labelIndex.onMoleculeSet(100, UNMARKED, OWNER, 0, OWNER);
+
+        assertThat(strategy.ownerOf(LABEL_VALUE, 100)).isEqualTo(-1);
+        assertThat(targetFor(LABEL_VALUE, OWNER)).isEqualTo(-1);
+    }
+
+    @Test
+    void reportsAReplacedLabelUnderItsNewValue() {
+        int otherValue = 54321;
+        labelIndex.onMoleculeSet(100, 0, 0, UNMARKED, OWNER);
+
+        labelIndex.onMoleculeSet(100, UNMARKED, OWNER, Config.TYPE_LABEL | otherValue, OWNER);
+
+        assertThat(strategy.ownerOf(LABEL_VALUE, 100)).isEqualTo(-1);
+        assertThat(strategy.ownerOf(otherValue, 100)).isEqualTo(OWNER);
+    }
+
+    @Test
+    void aWriteThatAlsoChangesTheOwnerRemovesTheLabelUnderItsOldOwner() {
+        int newOwner = 2;
+        labelIndex.onMoleculeSet(100, 0, 0, UNMARKED, OWNER);
+
+        labelIndex.onMoleculeSet(100, UNMARKED, OWNER, UNMARKED, newOwner);
+
+        assertThat(strategy.ownerOf(LABEL_VALUE, 100)).isEqualTo(newOwner);
+        assertThat(targetFor(LABEL_VALUE, newOwner)).isEqualTo(100);
+    }
+
+    @Test
+    void reportsAnOwnerChange() {
+        int newOwner = 2;
+        labelIndex.onMoleculeSet(100, 0, 0, UNMARKED, OWNER);
+
+        labelIndex.onOwnerChange(100, UNMARKED, OWNER, newOwner);
+
+        assertThat(strategy.ownerOf(LABEL_VALUE, 100)).isEqualTo(newOwner);
+    }
+
+    @Test
+    void ignoresAMoleculeThatIsNoLabel() {
+        labelIndex.onMoleculeSet(100, 0, 0, Config.TYPE_DATA | LABEL_VALUE, OWNER);
+
+        assertThat(strategy.ownerOf(LABEL_VALUE, 100)).isEqualTo(-1);
+    }
+
+    @Test
     void markedLabelIsNoTarget_notEvenForItsWriter() {
-        int labelValue = 12345;
-        int writer = 1;
+        labelIndex.onMoleculeSet(100, 0, 0, markedLabel(LABEL_VALUE, 3), OWNER);
 
-        labelIndex.onMoleculeSet(100, 0, markedLabel(labelValue, 3), writer);
-
-        assertThat(labelIndex.findTarget(labelValue, writer, callerCoords, environment, random)).isEqualTo(-1);
-        assertThat(labelIndex.findTarget(labelValue, 2, callerCoords, environment, random)).isEqualTo(-1);
+        assertThat(strategy.ownerOf(LABEL_VALUE, 100)).isEqualTo(-1);
+        assertThat(targetFor(LABEL_VALUE, OWNER)).isEqualTo(-1);
+        assertThat(targetFor(LABEL_VALUE, 2)).isEqualTo(-1);
     }
 
     @Test
-    void releasedMarkedLabel_entersTheIndexUnderItsNewOwner() {
-        int labelValue = 12345;
-        int parent = 1;
+    void anOwnerChangeOfAMarkedLabelIsNotReported() {
+        int marked = markedLabel(LABEL_VALUE, 3);
+        labelIndex.onMoleculeSet(100, 0, 0, marked, OWNER);
+
+        labelIndex.onOwnerChange(100, marked, OWNER, 2);
+
+        assertThat(strategy.ownerOf(LABEL_VALUE, 100)).isEqualTo(-1);
+    }
+
+    @Test
+    void releasedMarkedLabel_becomesATargetOfItsNewOwner() {
         int child = 2;
-        int marked = markedLabel(labelValue, 3);
-        labelIndex.onMoleculeSet(100, 0, marked, parent);
+        int marked = markedLabel(LABEL_VALUE, 3);
+        labelIndex.onMoleculeSet(100, 0, 0, marked, OWNER);
 
-        labelIndex.onCellReleased(100, marked, child);
+        labelIndex.onCellReleased(100, marked, OWNER, child);
 
-        assertThat(labelIndex.getCandidates(labelValue))
-                .containsExactly(new LabelEntry(100, child));
+        assertThat(strategy.ownerOf(LABEL_VALUE, 100)).isEqualTo(child);
     }
 
     @Test
-    void releasedUnmarkedLabel_keepsItsSingleEntryAndTakesTheNewOwner() {
-        int labelValue = 12345;
-        int unmarked = Config.TYPE_LABEL | labelValue;
-        labelIndex.onMoleculeSet(100, 0, unmarked, 1);
+    void releasedUnmarkedLabel_staysATargetAndTakesTheNewOwner() {
+        labelIndex.onMoleculeSet(100, 0, 0, UNMARKED, OWNER);
 
-        labelIndex.onCellReleased(100, unmarked, 0);
+        labelIndex.onCellReleased(100, UNMARKED, OWNER, 0);
 
-        assertThat(labelIndex.getCandidates(labelValue))
-                .containsExactly(new LabelEntry(100, 0));
+        assertThat(strategy.ownerOf(LABEL_VALUE, 100)).isZero();
+        assertThat(targetFor(LABEL_VALUE, OWNER))
+                .as("the former owner has no own label any more and reaches the unowned one as a foreign label")
+                .isEqualTo(100);
     }
 
     @Test
     void overwritingOrClearingAMarkedLabel_leavesTheIndexConsistent() {
-        int labelValue = 12345;
-        int owner = 1;
-        int unmarked = Config.TYPE_LABEL | labelValue;
+        int marked = markedLabel(LABEL_VALUE, 3);
         // An unmarked label of the same value elsewhere: it must survive whatever happens to the marked one
-        labelIndex.onMoleculeSet(200, 0, unmarked, owner);
-        labelIndex.onMoleculeSet(100, 0, markedLabel(labelValue, 3), owner);
+        labelIndex.onMoleculeSet(200, 0, 0, UNMARKED, OWNER);
+        labelIndex.onMoleculeSet(100, 0, 0, marked, OWNER);
 
         // Overwrite the marked label by an unmarked one, then clear that cell
-        labelIndex.onMoleculeSet(100, markedLabel(labelValue, 3), unmarked, owner);
-        assertThat(labelIndex.getCandidates(labelValue))
-                .containsExactlyInAnyOrder(new LabelEntry(100, owner), new LabelEntry(200, owner));
-        labelIndex.onMoleculeSet(100, unmarked, 0, 0);
+        labelIndex.onMoleculeSet(100, marked, OWNER, UNMARKED, OWNER);
+        assertThat(strategy.ownerOf(LABEL_VALUE, 100)).isEqualTo(OWNER);
+        assertThat(strategy.ownerOf(LABEL_VALUE, 200)).isEqualTo(OWNER);
+        labelIndex.onMoleculeSet(100, UNMARKED, OWNER, 0, 0);
 
-        // A marked label that is cleared was never indexed: nothing to remove, nothing removed
-        labelIndex.onMoleculeSet(300, 0, markedLabel(labelValue, 3), owner);
-        labelIndex.onMoleculeSet(300, markedLabel(labelValue, 3), 0, 0);
+        // A marked label that is cleared was never reported: nothing to remove, nothing removed
+        labelIndex.onMoleculeSet(300, 0, 0, marked, OWNER);
+        labelIndex.onMoleculeSet(300, marked, OWNER, 0, 0);
 
-        assertThat(labelIndex.getCandidates(labelValue))
-                .containsExactly(new LabelEntry(200, owner));
+        assertThat(strategy.ownerOf(LABEL_VALUE, 100)).isEqualTo(-1);
+        assertThat(strategy.ownerOf(LABEL_VALUE, 300)).isEqualTo(-1);
+        assertThat(strategy.ownerOf(LABEL_VALUE, 200)).isEqualTo(OWNER);
     }
 }

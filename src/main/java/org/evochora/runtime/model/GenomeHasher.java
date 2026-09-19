@@ -2,6 +2,7 @@ package org.evochora.runtime.model;
 
 import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
 import org.evochora.runtime.Config;
+import org.evochora.runtime.label.LabelAddress;
 
 import java.nio.ByteBuffer;
 import java.security.MessageDigest;
@@ -20,7 +21,7 @@ import java.util.List;
  * LABEL and LABELREF values are normalized before hashing: all values are XOR-ed with
  * the value of the LABEL molecule at the smallest relative position (the "anchor label"). This
  * makes the hash invariant to uniform label namespace rewriting (as performed by
- * {@link org.evochora.runtime.worldgen.LabelRewritePlugin}) while still detecting
+ * {@link org.evochora.runtime.label.LabelRewrite}) while still detecting
  * individual mutations to label or labelref values. The normalization is correct because
  * {@code (A ^ M) ^ (B ^ M) = A ^ B} — a uniform XOR mask cancels out in pairwise
  * differences.
@@ -125,8 +126,7 @@ public final class GenomeHasher {
         if (anchorLabelValue != -1) {
             for (long[] entry : genomeMolecules) {
                 int moleculeInt = (int) entry[dims];
-                int type = moleculeInt & Config.TYPE_MASK;
-                if (type == Config.TYPE_LABEL || type == Config.TYPE_LABELREF) {
+                if (LabelAddress.isCarriedBy(moleculeInt)) {
                     int normalizedValue = (moleculeInt & Config.VALUE_MASK) ^ anchorLabelValue;
                     entry[dims] = (moleculeInt & ~Config.VALUE_MASK) | normalizedValue;
                 }

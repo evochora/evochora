@@ -6,6 +6,7 @@ import java.util.Objects;
 
 import org.evochora.runtime.isa.IEnvironmentModifyingInstruction;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.label.LabelRewrite;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Organism;
 import org.evochora.runtime.model.OrganismRandom;
@@ -61,6 +62,9 @@ public class Simulation {
     private final List<IInstructionInterceptor> instructionInterceptors = new ArrayList<>();
     private final List<IDeathHandler> deathHandlers = new ArrayList<>();
     private final List<IBirthHandler> birthHandlers = new ArrayList<>();
+
+    /** Moves every newborn into the label namespace the label matching strategy chooses for it. */
+    private final LabelRewrite labelRewrite = new LabelRewrite();
     private final InterceptionContext interceptContext = new InterceptionContext();  // Used when the calling thread runs wave 1 alone
     private final InterceptionContext[] parallelInterceptContexts;  // Used by the worker pool, one per thread
     private final DeathContext deathContext = new DeathContext();  // Main thread only, reused across ticks
@@ -458,6 +462,9 @@ public class Simulation {
                             handler.getClass().getSimpleName(), newborn.getId(), e.getMessage());
                 }
             }
+            // After the mutation operators, so that what they wrote moves into the newborn's label
+            // namespace together with what it inherited
+            labelRewrite.apply(newborn, environment, randomProvider);
             if (newborn.hasBirthMutations()) {
                 newbornsWithBirthMutations.add(newborn);
             }

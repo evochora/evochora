@@ -12,6 +12,7 @@ import org.evochora.node.processes.http.api.visualizer.dto.OrganismMutationsResp
 import org.evochora.node.processes.http.api.visualizer.dto.OrganismMutationsResponseDto.MutationCellView;
 import org.evochora.node.processes.http.api.visualizer.dto.OrganismMutationsResponseDto.MutationEventView;
 import org.evochora.runtime.Config;
+import org.evochora.runtime.label.LabelAddress;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.runtime.model.Molecule;
 
@@ -152,11 +153,7 @@ final class LineageMutationTranslator {
      *         neither a label nor a label reference
      */
     private static int translate(final int moleculeInt, final int mask) {
-        final int type = moleculeInt & Config.TYPE_MASK;
-        if (type != Config.TYPE_LABEL && type != Config.TYPE_LABELREF) {
-            return moleculeInt;
-        }
-        return moleculeInt ^ mask;
+        return LabelAddress.isCarriedBy(moleculeInt) ? moleculeInt ^ mask : moleculeInt;
     }
 
     /**

@@ -11,6 +11,7 @@ import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.MutationRecord;
 import org.evochora.runtime.model.Organism;
 import org.evochora.runtime.model.ScanLineArc;
+import org.evochora.runtime.spi.ILabelMatchingStrategy;
 import org.evochora.runtime.spi.IBirthHandler;
 import org.evochora.runtime.spi.IRandomProvider;
 import org.slf4j.Logger;
@@ -42,9 +43,9 @@ import java.util.Random;
  * the jump at its end sends control on to where the original code would have gone. X is the value
  * of the first LABELREF in a label operand slot in the stretch A heads, otherwise the value of the
  * next block start on A's line, otherwise one of the newborn's other labels, drawn uniformly. Every
- * candidate must differ from A by more than the label index's Hamming tolerance, or the detour's
+ * candidate must be a value the label matching strategy does not match with A, or the detour's
  * own jump would match its own label and loop. A newborn without a label, and one for which no
- * candidate clears the tolerance, receives nothing.
+ * candidate qualifies, receives nothing.
  * <p>
  * <strong>NOP Area Search:</strong> Groups owned cells by scan line (perpendicular to DV),
  * tracks the DV extent per scan line, and walks the arc the owned cells span on it (see
@@ -724,7 +725,7 @@ public class GeneInsertionPlugin implements IBirthHandler {
 
         int target = selectJumpTarget(child, env, dv, dvDim, shapeDvDim);
         if (target < 0) {
-            LOG.debug("tick={} Organism {} insertion: no jump target outside the tolerance of label {}",
+            LOG.debug("tick={} Organism {} insertion: no jump target that does not match label {}",
                     child.getBirthTick(), child.getId(), reservoirLabelHash);
             return false;
         }
@@ -771,7 +772,7 @@ public class GeneInsertionPlugin implements IBirthHandler {
         }
         int childId = child.getId();
         int sourceHash = reservoirLabelHash;
-        int tolerance = env.getLabelIndex().getStrategy().getTolerance();
+        ILabelMatchingStrategy matching = env.getLabelIndex().getStrategy();
         int dvStep = dv[dvDim];
 
         frame.build(env, childId, child.getInitialPosition(), dv);
@@ -811,13 +812,13 @@ public class GeneInsertionPlugin implements IBirthHandler {
             }
         }
 
-        if (labelRefValue >= 0 && acceptsAsJumpTarget(labelRefValue, sourceHash, tolerance)) {
+        if (labelRefValue >= 0 && acceptsAsJumpTarget(labelRefValue, sourceHash, matching)) {
             return labelRefValue;
         }
-        if (nextBlockStart >= 0 && acceptsAsJumpTarget(nextBlockStart, sourceHash, tolerance)) {
+        if (nextBlockStart >= 0 && acceptsAsJumpTarget(nextBlockStart, sourceHash, matching)) {
             return nextBlockStart;
         }
-        return drawOtherLabel(env, childId, sourceHash, tolerance);
+        return drawOtherLabel(env, childId, sourceHash, matching);
     }
 
     /**
@@ -829,10 +830,10 @@ public class GeneInsertionPlugin implements IBirthHandler {
      * @param env The simulation environment.
      * @param childId The newborn whose labels are considered.
      * @param sourceHash The label value the detour copies.
-     * @param tolerance The label index's Hamming tolerance.
+     * @param matching The run's label matching strategy.
      * @return The drawn value, or {@code -1} if no label qualifies.
      */
-    private int drawOtherLabel(Environment env, int childId, int sourceHash, int tolerance) {
+    private int drawOtherLabel(Environment env, int childId, int sourceHash, ILabelMatchingStrategy matching) {
         fallbackTargetValue = -1;
         fallbackTargetCount = 0;
         env.visitCellsOwnedBy(childId, cell -> {
@@ -841,7 +842,7 @@ public class GeneInsertionPlugin implements IBirthHandler {
                 return;
             }
             int value = moleculeInt & Config.VALUE_MASK;
-            if (!acceptsAsJumpTarget(value, sourceHash, tolerance)) {
+            if (!acceptsAsJumpTarget(value, sourceHash, matching)) {
                 return;
             }
             fallbackTargetCount++;
@@ -855,17 +856,17 @@ public class GeneInsertionPlugin implements IBirthHandler {
     /**
      * Reports whether a value can be a detour's jump target for a given copied label.
      * <p>
-     * The jump has to leave the detour, and the label match is fuzzy: a value the index would
-     * resolve to the detour's own label would turn the detour into a loop. The candidate must
-     * therefore lie further from the copied label than the index's tolerance reaches.
+     * The jump has to leave the detour, and the label match is fuzzy: a value the matching strategy
+     * would resolve to the detour's own label would turn the detour into a loop. The candidate must
+     * therefore be a value that a reference to the copied label cannot address.
      *
      * @param candidate The value considered as a jump target.
      * @param sourceHash The label value the detour copies.
-     * @param tolerance The label index's Hamming tolerance.
-     * @return {@code true} if the candidate is a different value far enough from the copied label.
+     * @param matching The run's label matching strategy.
+     * @return {@code true} if a reference carrying the candidate cannot resolve to the copied label.
      */
-    private static boolean acceptsAsJumpTarget(int candidate, int sourceHash, int tolerance) {
-        return candidate != sourceHash && Integer.bitCount(candidate ^ sourceHash) > tolerance;
+    private static boolean acceptsAsJumpTarget(int candidate, int sourceHash, ILabelMatchingStrategy matching) {
+        return !matching.valuesMatch(candidate, sourceHash);
     }
 
     /**

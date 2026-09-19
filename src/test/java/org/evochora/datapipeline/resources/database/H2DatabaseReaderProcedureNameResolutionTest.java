@@ -19,7 +19,8 @@ import org.evochora.datapipeline.api.resources.database.IDatabaseReader;
 import org.evochora.datapipeline.api.resources.database.IDatabaseReaderProvider;
 import org.evochora.datapipeline.api.resources.database.dto.OrganismTickDetails;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
-import org.evochora.runtime.worldgen.LabelRewritePlugin;
+import org.evochora.runtime.label.HammingLabelMatchingStrategy;
+import org.evochora.runtime.label.LabelRewrite;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -296,8 +297,8 @@ class H2DatabaseReaderProcedureNameResolutionTest {
     private byte[] labelRewrite(int mask) {
         return StoredMutationEvents.newBuilder()
                 .addEvents(StoredMutationEvent.newBuilder()
-                        .setPluginClass(LabelRewritePlugin.class.getName())
-                        .setKind(LabelRewritePlugin.MUTATION_KIND)
+                        .setPluginClass(HammingLabelMatchingStrategy.class.getName())
+                        .setKind(LabelRewrite.MUTATION_KIND)
                         .addParams(mask)
                         .addDv(1)
                         .addDv(0)

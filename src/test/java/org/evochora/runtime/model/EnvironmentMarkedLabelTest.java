@@ -1,6 +1,7 @@
 package org.evochora.runtime.model;
 
 import org.evochora.runtime.Config;
+import org.evochora.runtime.label.HammingLabelMatchingStrategy;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -38,12 +39,19 @@ class EnvironmentMarkedLabelTest {
         environment.setMolecule(new Molecule(Config.TYPE_LABEL, LABEL_VALUE, MARKER), PARENT, labelCoord);
     }
 
+    /** The owner the label is a jump target under, or -1 while it is none. */
+    private int indexedOwner() {
+        return ((HammingLabelMatchingStrategy) environment.getLabelIndex().getStrategy())
+                .ownerOf(LABEL_VALUE, labelFlatIndex);
+    }
+
     private int targetFor(int organismId) {
         return environment.getLabelIndex().findTarget(LABEL_VALUE, organismId, callerCoords, environment, random);
     }
 
     @Test
     void markedLabelIsNoTargetBeforeTheFork_notEvenForItsWriter() {
+        assertThat(indexedOwner()).isEqualTo(-1);
         assertThat(targetFor(PARENT)).isEqualTo(-1);
         assertThat(targetFor(STRANGER)).isEqualTo(-1);
     }
@@ -52,23 +60,15 @@ class EnvironmentMarkedLabelTest {
     void forkMakesTheLabelTheChildsOwn() {
         environment.transferOwnership(PARENT, CHILD, MARKER);
 
+        assertThat(indexedOwner()).isEqualTo(CHILD);
         assertThat(targetFor(CHILD)).isEqualTo(labelFlatIndex);
-        assertThat(environment.getLabelIndex().getCandidates(LABEL_VALUE))
-                .singleElement()
-                .satisfies(entry -> {
-                    assertThat(entry.owner()).isEqualTo(CHILD);
-                    assertThat(entry.isForeign(CHILD)).isFalse();
-                    assertThat(entry.isForeign(PARENT)).isTrue();
-                });
     }
 
     @Test
     void deathOfTheOwnerLeavesTheLabelUnowned() {
         environment.clearOwnershipFor(PARENT);
 
-        assertThat(environment.getLabelIndex().getCandidates(LABEL_VALUE))
-                .singleElement()
-                .satisfies(entry -> assertThat(entry.owner()).isZero());
+        assertThat(indexedOwner()).isZero();
         assertThat(targetFor(STRANGER)).isEqualTo(labelFlatIndex);
     }
 
@@ -76,7 +76,7 @@ class EnvironmentMarkedLabelTest {
     void clearingTheMarkedCellsOfAnAbortedBuildLeavesNothingBehind() {
         environment.clearMarkersFor(PARENT, MARKER);
 
-        assertThat(environment.getLabelIndex().getCandidates(LABEL_VALUE)).isEmpty();
+        assertThat(indexedOwner()).isEqualTo(-1);
         assertThat(targetFor(PARENT)).isEqualTo(-1);
     }
 

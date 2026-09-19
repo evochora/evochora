@@ -21,7 +21,7 @@ import org.evochora.runtime.internal.services.SeededRandomProvider;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Organism;
 import org.evochora.runtime.isa.RegisterBank;
-import org.evochora.runtime.worldgen.LabelRewritePlugin;
+import org.evochora.runtime.worldgen.DecayOnDeath;
 import org.evochora.test.utils.ProtoTestUtils;
 import org.evochora.runtime.spi.IRandomProvider;
 import org.junit.jupiter.api.BeforeAll;
@@ -598,9 +598,9 @@ class SimulationRestorerTest {
         TickData snapshot = snapshotWith(createOrganismState(1, 500));
 
         assertThatThrownBy(() -> SimulationRestorer.restore(
-                    new ResumeCheckpoint(metadataWithLabelRewritePlugin(), snapshot), randomProvider, 1))
+                    new ResumeCheckpoint(metadataWithDecayOnDeathPlugin(), snapshot), randomProvider, 1))
                 .isInstanceOf(ResumeException.class)
-                .hasMessageContaining(LabelRewritePlugin.class.getName())
+                .hasMessageContaining(DecayOnDeath.class.getName())
                 .hasMessageContaining("holds no state");
     }
 
@@ -611,17 +611,19 @@ class SimulationRestorerTest {
      */
     @Test
     void restore_PluginConfiguredTwice_Rejected() {
-        String twice = "[{ \"className\": \"" + LabelRewritePlugin.class.getName() + "\", \"options\": {} },"
-                     + " { \"className\": \"" + LabelRewritePlugin.class.getName() + "\", \"options\": {} }]";
+        String twice = "[{ \"className\": \"" + DecayOnDeath.class.getName()
+                     + "\", \"options\": { \"replacement\": \"ENERGY:100\" } },"
+                     + " { \"className\": \"" + DecayOnDeath.class.getName()
+                     + "\", \"options\": { \"replacement\": \"ENERGY:100\" } }]";
         SimulationMetadata metadata = createMinimalMetadata(twice);
         TickData snapshot = snapshotWith(createOrganismState(1, 500)).toBuilder()
-            .addPluginStates(pluginState(LabelRewritePlugin.class))
+            .addPluginStates(pluginState(DecayOnDeath.class))
             .build();
 
         assertThatThrownBy(() -> SimulationRestorer.restore(
                     new ResumeCheckpoint(metadata, snapshot), randomProvider, 1))
                 .isInstanceOf(ResumeException.class)
-                .hasMessageContaining(LabelRewritePlugin.class.getName())
+                .hasMessageContaining(DecayOnDeath.class.getName())
                 .hasMessageContaining("configured more than once");
     }
 
@@ -720,25 +722,25 @@ class SimulationRestorerTest {
     @Test
     void restore_DuplicatePluginState_Rejected() {
         TickData snapshot = snapshotWith(createOrganismState(1, 500)).toBuilder()
-            .addPluginStates(pluginState(LabelRewritePlugin.class))
-            .addPluginStates(pluginState(LabelRewritePlugin.class))
+            .addPluginStates(pluginState(DecayOnDeath.class))
+            .addPluginStates(pluginState(DecayOnDeath.class))
             .build();
 
         assertThatThrownBy(() -> SimulationRestorer.restore(
-                    new ResumeCheckpoint(metadataWithLabelRewritePlugin(), snapshot), randomProvider, 1))
+                    new ResumeCheckpoint(metadataWithDecayOnDeathPlugin(), snapshot), randomProvider, 1))
                 .isInstanceOf(ResumeException.class)
-                .hasMessageContaining(LabelRewritePlugin.class.getName());
+                .hasMessageContaining(DecayOnDeath.class.getName());
     }
 
     @Test
     void restore_PluginStateWithoutConfiguredPlugin_Rejected() {
         TickData snapshot = snapshotWith(createOrganismState(1, 500)).toBuilder()
-            .addPluginStates(pluginState(LabelRewritePlugin.class))
+            .addPluginStates(pluginState(DecayOnDeath.class))
             .build();
 
         assertThatThrownBy(() -> restoreSnapshot(snapshot))
                 .isInstanceOf(ResumeException.class)
-                .hasMessageContaining(LabelRewritePlugin.class.getName());
+                .hasMessageContaining(DecayOnDeath.class.getName());
     }
 
     @Test
@@ -1031,9 +1033,10 @@ class SimulationRestorerTest {
     }
 
     /** Metadata configuring one plugin, so that plugin state reconciliation can be exercised. */
-    private SimulationMetadata metadataWithLabelRewritePlugin() {
+    private SimulationMetadata metadataWithDecayOnDeathPlugin() {
         return createMinimalMetadata(
-                "[{\"className\": \"" + LabelRewritePlugin.class.getName() + "\", \"options\": {}}]");
+                "[{\"className\": \"" + DecayOnDeath.class.getName()
+                        + "\", \"options\": {\"replacement\": \"ENERGY:100\"}}]");
     }
 
     /** Metadata carrying one program whose token map holds exactly the given token. */

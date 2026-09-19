@@ -736,8 +736,8 @@ class SamplingNeutralityTest {
                     overrides { instructions = {}, families = {} }
                 }
                 label-matching {
-                    className = "org.evochora.runtime.label.PreExpandedHammingStrategy"
-                    options { tolerance = 2, hammingWeight = 50, foreignPenalty = 100, selectionSpread = 50 }
+                    className = "org.evochora.runtime.label.HammingLabelMatchingStrategy"
+                    options { tolerance = 2, selectionSpread = 50 }
                 }
             }
             """.formatted(

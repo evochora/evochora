@@ -226,7 +226,7 @@ class GenomeHasherTest {
         int[] tileSides = {1, Environment.TILE_SIDE};
         for (int i = 0; i < tileSides.length; i++) {
             Environment world = new Environment(new EnvironmentProperties(new int[]{64, 64}, true),
-                    new org.evochora.runtime.label.PreExpandedHammingStrategy(), tileSides[i]);
+                    new org.evochora.runtime.label.HammingLabelMatchingStrategy(), tileSides[i]);
             world.setMolecule(new Molecule(Config.TYPE_LABEL, 20, 0), ORGANISM_ID, new int[]{5, 5});
             for (int x = 6; x < 60; x += 7) {
                 world.setMolecule(new Molecule(Config.TYPE_CODE, x, 0), ORGANISM_ID, new int[]{x, 5});
