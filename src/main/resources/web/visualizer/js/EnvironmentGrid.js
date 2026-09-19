@@ -6,6 +6,7 @@ import { ValueFormatter } from './utils/ValueFormatter.js';
 import { clampCamera, zoomCamera } from './interaction/ViewportMath.js';
 import { ViewportInteraction } from './interaction/ViewportInteraction.js';
 import { isOverviewSize } from './interaction/ZoomLevels.js';
+import { circularDistance, splitRegion, wrap } from './interaction/TorusView.js';
 
 /**
  * Writes a molecule in the short form of the cell tooltip: an instruction as its opcode name, a
@@ -39,6 +40,15 @@ export class EnvironmentGrid {
     static MARGIN = 50;
     static BOTTOM_MARGIN = 90; // Extra space for footer panels
 
+    /** Colour of the seam of a toroidal world: the blue the visualizer marks things with. */
+    static SEAM_COLOR = 0x4a9eff;
+
+    /** Opacity of the seam in the detail view, where it lies over few, large cells. */
+    static SEAM_ALPHA_DETAIL = 0.3;
+
+    /** Opacity of the seam in the overview, where it lies over the dense picture of a whole world. */
+    static SEAM_ALPHA_OVERVIEW = 0.6;
+
     /**
      * @param {HTMLElement} container - The DOM element to contain the PIXI.js canvas.
      * @param {object} config - The application configuration object.
@@ -57,8 +67,15 @@ export class EnvironmentGrid {
         this.cellContainer = new PIXI.Container();
         this.textContainer = new PIXI.Container();
         this.organismContainer = new PIXI.Container();
+        // The world's seam, drawn on a toroidal world only
+        this.seamLines = new PIXI.Graphics();
+        // Covers what lies outside the one world shown, where a toroidal world is smaller than the view
+        this.torusCover = new PIXI.Graphics();
 
         // --- World & Camera State ---
+        // A toroidal world has no edge: the camera moves on without bound and the world is shown
+        // across its seam; a bounded world keeps the camera within its edges
+        this.torus = false;
         this.worldWidthCells = this.config.worldSize?.[0] ?? null;
         this.worldHeightCells = this.config.worldSize?.[1] ?? null;
         this.cameraX = 0;
@@ -162,8 +179,11 @@ export class EnvironmentGrid {
         this.container.innerHTML = '';
         this.container.appendChild(canvas);
 
-        this.app.stage.addChild(this.gridBackground, this.cellContainer, this.textContainer, this.organismContainer);
+        this.app.stage.addChild(this.gridBackground, this.cellContainer, this.textContainer, this.seamLines, this.organismContainer);
         this.organismContainer.addChild(this._selectionRing);
+        this._stageEventMode = this.app.stage.eventMode;
+        this._renderTorusBound = () => this._renderTorus();
+        this._applyTopology();
 
         this.detailedRenderer.init();
         this.zoomedOutRenderer.init();
@@ -263,6 +283,89 @@ export class EnvironmentGrid {
     }
 
     /**
+     * Sets whether the world is a torus. A toroidal world is drawn across its seam, its camera is
+     * not held at an edge, and pointer hits wrap around; a bounded world keeps every behaviour it
+     * had.
+     * @param {boolean} isTorus - True for a toroidal world.
+     */
+    setTopology(isTorus) {
+        if (this.torus === isTorus) return;
+        this.torus = isTorus;
+        this.clear();
+        this._applyTopology();
+        this.updateGridBackground();
+        this.clampCameraToWorld();
+        this.updateStagePosition();
+    }
+
+    /**
+     * Brings the drawing in line with the topology. A torus is drawn by {@link _renderTorus} in
+     * place of the application's own render, which draws the stage once; PIXI's pointer events on
+     * the stage are off, since after several passes they would hit one copy of the world only, and
+     * a tap selects through {@link tapAt} instead.
+     * @private
+     */
+    _applyTopology() {
+        if (!this.app?.ticker) return;
+        this.app.ticker.remove(this.app.render, this.app);
+        this.app.ticker.remove(this._renderTorusBound);
+        if (this.torus) {
+            this.app.ticker.add(this._renderTorusBound, null, PIXI.UPDATE_PRIORITY.LOW);
+            this.app.stage.eventMode = 'none';
+        } else {
+            this.app.ticker.add(this.app.render, this.app, PIXI.UPDATE_PRIORITY.LOW);
+            this.app.stage.eventMode = this._stageEventMode;
+        }
+        this.seamLines.visible = this.torus;
+    }
+
+    /**
+     * Draws a toroidal world: the stage once for every copy of the world the view reaches into —
+     * one, or two across a seam, four at a corner — and then, where the world is smaller than the
+     * view, a cover over everything outside the one world shown around the view's centre.
+     * @private
+     */
+    _renderTorus() {
+        const renderer = this.app.renderer;
+        const stage = this.app.stage;
+        const size = this.getDisplayCellSize();
+        if (this.worldWidthCells == null || this.worldHeightCells == null) {
+            renderer.render({ container: stage });
+            return;
+        }
+        const worldWidthPx = this.worldWidthCells * size;
+        const worldHeightPx = this.worldHeightCells * size;
+        const lastX = Math.floor((this.cameraX + this.viewportWidth) / worldWidthPx);
+        const lastY = Math.floor((this.cameraY + this.viewportHeight) / worldHeightPx);
+
+        let first = true;
+        for (let copyX = Math.floor(this.cameraX / worldWidthPx); copyX <= lastX; copyX++) {
+            for (let copyY = Math.floor(this.cameraY / worldHeightPx); copyY <= lastY; copyY++) {
+                stage.position.set(copyX * worldWidthPx - this.cameraX, copyY * worldHeightPx - this.cameraY);
+                renderer.render({ container: stage, clear: first });
+                first = false;
+            }
+        }
+        stage.position.set(-this.cameraX, -this.cameraY);
+
+        // The one world shown lies centred on the view
+        const left = (this.viewportWidth - worldWidthPx) / 2;
+        const top = (this.viewportHeight - worldHeightPx) / 2;
+        if (left > 0 || top > 0) {
+            const right = left + worldWidthPx;
+            const bottom = top + worldHeightPx;
+            const w = this.viewportWidth;
+            const h = this.viewportHeight;
+            const cover = this.torusCover.clear();
+            if (left > 0) cover.rect(0, 0, left, h).rect(right, 0, w - right, h);
+            if (top > 0) cover.rect(Math.max(0, left), 0, Math.min(w, right) - Math.max(0, left), top)
+                .rect(Math.max(0, left), bottom, Math.min(w, right) - Math.max(0, left), h - bottom);
+            cover.fill(this.config.backgroundColor);
+            renderer.render({ container: cover, clear: false });
+        }
+    }
+
+    /**
      * Updates the world shape (dimensions in cells) and adjusts the camera.
      * @param {number[]} worldShape - An array representing the world size, e.g., `[width, height]`.
      */
@@ -295,6 +398,21 @@ export class EnvironmentGrid {
         this.gridBackground.clear();
         this.gridBackground.rect(0, 0, worldWidthPx, worldHeightPx);
         this.gridBackground.fill(NO_DATA_COLOR);
+
+        // The seam runs along the world's first column and first row; every copy draws it where it
+        // meets the copy before. The overview packs a world into few pixels, where a faint line is
+        // lost, so it is drawn stronger there than in the detail view.
+        this.seamLines.clear();
+        if (this.torus) {
+            this.seamLines
+                .moveTo(0, 0).lineTo(0, worldHeightPx)
+                .moveTo(0, 0).lineTo(worldWidthPx, 0)
+                .stroke({
+                    width: 1,
+                    color: EnvironmentGrid.SEAM_COLOR,
+                    alpha: this.isZoomedOut ? EnvironmentGrid.SEAM_ALPHA_OVERVIEW : EnvironmentGrid.SEAM_ALPHA_DETAIL,
+                });
+        }
     }
 
     /**
@@ -304,6 +422,13 @@ export class EnvironmentGrid {
      */
     clampCameraToWorld() {
         if (this.worldWidthCells == null || this.worldHeightCells == null) {
+            return;
+        }
+        if (this.torus) {
+            // No edge to stop at: the camera is kept within one world, which shows the same
+            const size = this.getDisplayCellSize();
+            this.cameraX = wrap(this.cameraX, this.worldWidthCells * size);
+            this.cameraY = wrap(this.cameraY, this.worldHeightCells * size);
             return;
         }
         const margin = EnvironmentGrid.MARGIN;
@@ -400,6 +525,10 @@ export class EnvironmentGrid {
             this._fullWorldPrefetched = false; // Reset prefetch state on tick change
         }
 
+        if (this.torus) {
+            return this._loadTorusViewport(tick, runId, viewport, includeMinimap, renderer);
+        }
+
         // Note: We intentionally do NOT abort running prefetch when viewport changes.
         // Prefetch loads in background and will complete, making future pans faster.
 
@@ -474,6 +603,57 @@ export class EnvironmentGrid {
 
         // Return minimap data if present
         return { minimap: data.minimap };
+    }
+
+    /**
+     * Loads the view of a toroidal world, which can span the seam: the view region is split into
+     * the regions of the world it covers — up to four at a corner — and those not yet loaded are
+     * fetched together and drawn each in place.
+     * @param {number} tick - The tick to load.
+     * @param {string|null} runId - The run.
+     * @param {{x1: number, x2: number, y1: number, y2: number}} viewport - View region, unwrapped.
+     * @param {boolean} includeMinimap - Whether the minimap is wanted with the first request.
+     * @param {BaseRendererStrategy} renderer - The active renderer.
+     * @returns {Promise<{minimap?: object}>}
+     * @private
+     */
+    async _loadTorusViewport(tick, runId, viewport, includeMinimap, renderer) {
+        const pieces = splitRegion(viewport, this.worldWidthCells, this.worldHeightCells);
+        const missing = pieces.filter(piece => !renderer.isRegionFullyLoaded(piece));
+        if (missing.length === 0 && !includeMinimap) {
+            this._triggerPrefetch(tick, runId, viewport);
+            return {};
+        }
+
+        if (this.currentAbortController) {
+            this.currentAbortController.abort();
+        }
+        const controller = new AbortController();
+        this.currentAbortController = controller;
+
+        const wanted = missing.length > 0 ? missing : [pieces[0]];
+        const results = await Promise.all(wanted.map((piece, i) =>
+            this.environmentApi.fetchEnvironmentData(tick, piece, {
+                runId,
+                signal: controller.signal,
+                includeMinimap: includeMinimap && i === 0
+            })));
+
+        if (missing.length > 0) {
+            // Tooltips read the cells of the latest load, here all of its regions
+            this._rawCells = results.flatMap(data => data.cells);
+            this._buildCellDataAsync();
+
+            await new Promise(resolve => requestAnimationFrame(resolve));
+            loadingManager.update('Rendering environment');
+            missing.forEach((piece, i) => this.renderCellsWithCleanup(results[i].cells, piece));
+        }
+
+        if (this.currentAbortController === controller) {
+            this.currentAbortController = null;
+        }
+        this._triggerPrefetch(tick, runId, viewport);
+        return { minimap: results[0].minimap };
     }
 
     /**
@@ -972,16 +1152,22 @@ export class EnvironmentGrid {
         const margin = EnvironmentGrid.MARGIN;
         const bottomMargin = EnvironmentGrid.BOTTOM_MARGIN;
 
+        // On a toroidal world the part of a thumb that runs past the end of its track shows at the
+        // start of it, as a second thumb dragged like the first
+        this.hScrollThumbWrapped = this._createWrappedThumb(this.hScrollThumb);
+        this.vScrollThumbWrapped = this._createWrappedThumb(this.vScrollThumb);
+
         // --- Horizontal Scrollbar Interaction ---
-        this.hScrollThumb.addEventListener('pointerdown', (e) => {
+        const dragHorizontal = (e) => {
+            const thumb = e.currentTarget;
             e.preventDefault();
             // The thumb keeps the pointer while it is dragged, also when it leaves the thumb
-            this.hScrollThumb.setPointerCapture(e.pointerId);
+            thumb.setPointerCapture(e.pointerId);
             const startX = e.clientX;
             const startCameraX = this.cameraX;
             const trackWidth = this.hScrollTrack.clientWidth;
             const worldWidthPx = this.worldWidthCells * this.getDisplayCellSize();
-            const scrollableWidth = worldWidthPx + 2 * margin;
+            const scrollableWidth = this.torus ? worldWidthPx : worldWidthPx + 2 * margin;
 
             const onMouseMove = (moveEvent) => {
                 const dx = moveEvent.clientX - startX;
@@ -994,26 +1180,29 @@ export class EnvironmentGrid {
             };
 
             const onMouseUp = () => {
-                this.hScrollThumb.removeEventListener('pointermove', onMouseMove);
-                this.hScrollThumb.removeEventListener('pointerup', onMouseUp);
-                this.hScrollThumb.removeEventListener('pointercancel', onMouseUp);
+                thumb.removeEventListener('pointermove', onMouseMove);
+                thumb.removeEventListener('pointerup', onMouseUp);
+                thumb.removeEventListener('pointercancel', onMouseUp);
             };
 
-            this.hScrollThumb.addEventListener('pointermove', onMouseMove);
-            this.hScrollThumb.addEventListener('pointerup', onMouseUp);
-            this.hScrollThumb.addEventListener('pointercancel', onMouseUp);
-        });
+            thumb.addEventListener('pointermove', onMouseMove);
+            thumb.addEventListener('pointerup', onMouseUp);
+            thumb.addEventListener('pointercancel', onMouseUp);
+        };
+        this.hScrollThumb.addEventListener('pointerdown', dragHorizontal);
+        this.hScrollThumbWrapped.addEventListener('pointerdown', dragHorizontal);
 
         // --- Vertical Scrollbar Interaction ---
-        this.vScrollThumb.addEventListener('pointerdown', (e) => {
+        const dragVertical = (e) => {
+            const thumb = e.currentTarget;
             e.preventDefault();
             // The thumb keeps the pointer while it is dragged, also when it leaves the thumb
-            this.vScrollThumb.setPointerCapture(e.pointerId);
+            thumb.setPointerCapture(e.pointerId);
             const startY = e.clientY;
             const startCameraY = this.cameraY;
             const trackHeight = this.vScrollTrack.clientHeight;
             const worldHeightPx = this.worldHeightCells * this.getDisplayCellSize();
-            const scrollableHeight = worldHeightPx + margin + bottomMargin;
+            const scrollableHeight = this.torus ? worldHeightPx : worldHeightPx + margin + bottomMargin;
 
             const onMouseMove = (moveEvent) => {
                 const dy = moveEvent.clientY - startY;
@@ -1026,20 +1215,22 @@ export class EnvironmentGrid {
             };
 
             const onMouseUp = () => {
-                this.vScrollThumb.removeEventListener('pointermove', onMouseMove);
-                this.vScrollThumb.removeEventListener('pointerup', onMouseUp);
-                this.vScrollThumb.removeEventListener('pointercancel', onMouseUp);
+                thumb.removeEventListener('pointermove', onMouseMove);
+                thumb.removeEventListener('pointerup', onMouseUp);
+                thumb.removeEventListener('pointercancel', onMouseUp);
             };
 
-            this.vScrollThumb.addEventListener('pointermove', onMouseMove);
-            this.vScrollThumb.addEventListener('pointerup', onMouseUp);
-            this.vScrollThumb.addEventListener('pointercancel', onMouseUp);
-        });
+            thumb.addEventListener('pointermove', onMouseMove);
+            thumb.addEventListener('pointerup', onMouseUp);
+            thumb.addEventListener('pointercancel', onMouseUp);
+        };
+        this.vScrollThumb.addEventListener('pointerdown', dragVertical);
+        this.vScrollThumbWrapped.addEventListener('pointerdown', dragVertical);
 
         // --- Horizontal Track Click (jump to position) ---
         this.hScrollTrack.addEventListener('click', (e) => {
             // Ignore if clicking on thumb
-            if (e.target === this.hScrollThumb) return;
+            if (e.target === this.hScrollThumb || e.target === this.hScrollThumbWrapped) return;
 
             const trackRect = this.hScrollTrack.getBoundingClientRect();
             const clickX = e.clientX - trackRect.left;
@@ -1047,8 +1238,10 @@ export class EnvironmentGrid {
             const worldWidthPx = this.worldWidthCells * this.getDisplayCellSize();
             const scrollableWidth = worldWidthPx + 2 * margin;
 
-            // Calculate camera position from click position
-            this.cameraX = (clickX / trackWidth) * scrollableWidth - margin;
+            // Calculate camera position from click position; a torus has no margin to scroll into
+            this.cameraX = this.torus
+                ? (clickX / trackWidth) * worldWidthPx
+                : (clickX / trackWidth) * scrollableWidth - margin;
             this.clampCameraToWorld();
             this.updateStagePosition();
             this.requestViewportLoad();
@@ -1057,7 +1250,7 @@ export class EnvironmentGrid {
         // --- Vertical Track Click (jump to position) ---
         this.vScrollTrack.addEventListener('click', (e) => {
             // Ignore if clicking on thumb
-            if (e.target === this.vScrollThumb) return;
+            if (e.target === this.vScrollThumb || e.target === this.vScrollThumbWrapped) return;
 
             const trackRect = this.vScrollTrack.getBoundingClientRect();
             const clickY = e.clientY - trackRect.top;
@@ -1065,12 +1258,60 @@ export class EnvironmentGrid {
             const worldHeightPx = this.worldHeightCells * this.getDisplayCellSize();
             const scrollableHeight = worldHeightPx + margin + bottomMargin;
 
-            // Calculate camera position from click position
-            this.cameraY = (clickY / trackHeight) * scrollableHeight - margin;
+            // Calculate camera position from click position; a torus has no margin to scroll into
+            this.cameraY = this.torus
+                ? (clickY / trackHeight) * worldHeightPx
+                : (clickY / trackHeight) * scrollableHeight - margin;
             this.clampCameraToWorld();
             this.updateStagePosition();
             this.requestViewportLoad();
         });
+    }
+
+    /**
+     * Creates the second thumb of a scrollbar, hidden until a toroidal world needs it.
+     * @param {HTMLElement} thumb - The scrollbar's thumb.
+     * @returns {HTMLElement}
+     * @private
+     */
+    _createWrappedThumb(thumb) {
+        const wrapped = thumb.cloneNode(false);
+        wrapped.removeAttribute('id');
+        wrapped.style.display = 'none';
+        thumb.parentElement.appendChild(wrapped);
+        return wrapped;
+    }
+
+    /**
+     * Places the scrollbar thumbs on a toroidal world. A thumb shows where the view lies in one
+     * turn of the world; the part that runs past the end of the track shows at its start.
+     * @private
+     */
+    _updateTorusScrollbars() {
+        const cellSize = this.getDisplayCellSize();
+        const place = (track, thumb, wrapped, worldPx, viewPx, camera, horizontal) => {
+            if (worldPx <= viewPx) {
+                track.style.display = 'none';
+                return;
+            }
+            track.style.display = 'block';
+            const trackPx = horizontal ? track.clientWidth : track.clientHeight;
+            const length = Math.max((viewPx / worldPx) * trackPx, 10);
+            const start = (camera / worldPx) * trackPx;
+            const [offset, size] = horizontal ? ['left', 'width'] : ['top', 'height'];
+            thumb.style[offset] = `${start}px`;
+            thumb.style[size] = `${Math.min(length, trackPx - start)}px`;
+            const overrun = start + length - trackPx;
+            wrapped.style.display = overrun > 0 ? 'block' : 'none';
+            if (overrun > 0) {
+                wrapped.style[offset] = '0px';
+                wrapped.style[size] = `${overrun}px`;
+            }
+        };
+        place(this.hScrollTrack, this.hScrollThumb, this.hScrollThumbWrapped,
+            this.worldWidthCells * cellSize, this.viewportWidth, this.cameraX, true);
+        place(this.vScrollTrack, this.vScrollThumb, this.vScrollThumbWrapped,
+            this.worldHeightCells * cellSize, this.viewportHeight, this.cameraY, false);
     }
 
     /**
@@ -1132,6 +1373,14 @@ export class EnvironmentGrid {
      */
     updateScrollbars() {
         if (!this.hScrollTrack || !this.vScrollTrack) return;
+        if (this.torus) {
+            if (this.hScrollThumbWrapped) this._updateTorusScrollbars();
+            return;
+        }
+        if (this.hScrollThumbWrapped) {
+            this.hScrollThumbWrapped.style.display = 'none';
+            this.vScrollThumbWrapped.style.display = 'none';
+        }
 
         const cellSize = this.getDisplayCellSize();
         const worldWidthPx = this.worldWidthCells * cellSize;
@@ -1241,6 +1490,18 @@ export class EnvironmentGrid {
         if (x < 0 || y < 0 || x >= rect.width || y >= rect.height) return null;
 
         const cellSize = this.getDisplayCellSize();
+        if (this.torus && this.worldWidthCells !== null && this.worldHeightCells !== null) {
+            // Outside the one world shown, where the world is smaller than the view, lies nothing
+            const halfWidth = this.worldWidthCells * cellSize / 2;
+            const halfHeight = this.worldHeightCells * cellSize / 2;
+            if (Math.abs(x - this.viewportWidth / 2) >= halfWidth || Math.abs(y - this.viewportHeight / 2) >= halfHeight) {
+                return null;
+            }
+            return {
+                gridX: wrap(Math.floor((x + this.cameraX) / cellSize), this.worldWidthCells),
+                gridY: wrap(Math.floor((y + this.cameraY) / cellSize), this.worldHeightCells),
+            };
+        }
         const gridX = Math.floor((x + this.cameraX) / cellSize);
         const gridY = Math.floor((y + this.cameraY) / cellSize);
         if (
@@ -1288,6 +1549,12 @@ export class EnvironmentGrid {
         const MIN_HIT_RADIUS_PX = 15;
         const hitRadiusCells = Math.max(0.5, MIN_HIT_RADIUS_PX / cellSize / 2);
 
+        // On a torus a pointer just past the seam is next to the cells just before it
+        const distance = this.torus
+            ? (x1, y1, x2, y2) => Math.max(
+                circularDistance(x1, x2, this.worldWidthCells), circularDistance(y1, y2, this.worldHeightCells))
+            : (x1, y1, x2, y2) => Math.max(Math.abs(x1 - x2), Math.abs(y1 - y2));
+
         const results = [];
         for (const organism of this.currentOrganisms) {
             if (!organism) continue;
@@ -1296,7 +1563,7 @@ export class EnvironmentGrid {
             if (Array.isArray(organism.ip) && organism.ip.length >= 2) {
                 const ipX = organism.ip[0];
                 const ipY = organism.ip[1];
-                const dist = Math.max(Math.abs(gridX - ipX), Math.abs(gridY - ipY));
+                const dist = distance(gridX, gridY, ipX, ipY);
                 if (dist <= hitRadiusCells) {
                     results.push({ organism, type: 'IP', position: [ipX, ipY] });
                 }
@@ -1309,7 +1576,7 @@ export class EnvironmentGrid {
                     if (!Array.isArray(dp) || dp.length < 2) continue;
                     const dpX = dp[0];
                     const dpY = dp[1];
-                    const dist = Math.max(Math.abs(gridX - dpX), Math.abs(gridY - dpY));
+                    const dist = distance(gridX, gridY, dpX, dpY);
                     if (dist <= hitRadiusCells) {
                         results.push({ organism, type: `DP${i}`, position: [dpX, dpY] });
                     }
@@ -1318,6 +1585,16 @@ export class EnvironmentGrid {
         }
 
         return results;
+    }
+
+    /**
+     * Selects the organism under a tap on a toroidal world, where PIXI's pointer events are off.
+     * @param {number} clientX - Page x in client pixels.
+     * @param {number} clientY - Page y in client pixels.
+     */
+    tapAt(clientX, clientY) {
+        const target = this._gridCellAt(clientX, clientY);
+        if (target) this.cycleOrganismAtPosition(target.gridX, target.gridY);
     }
 
     /**
@@ -2086,6 +2363,10 @@ class ZoomedOutRendererStrategy extends BaseRendererStrategy {
 
         // Track the currently rendered region (for viewport-based cache validation)
         this._renderedRegion = null;
+
+        // On a toroidal world the view can span the seam: each region drawn keeps a texture of its
+        // own, newest last, so that the regions on both sides of the seam are shown together
+        this._torusPieces = [];
     }
 
     init() {
@@ -2100,6 +2381,19 @@ class ZoomedOutRendererStrategy extends BaseRendererStrategy {
         super.clearCache();
         this._pixelBuffer = null;
         this._renderedRegion = null;
+        this._removeTorusPieces(this._torusPieces.length);
+    }
+
+    /**
+     * Removes the oldest regions kept for a toroidal world.
+     * @param {number} count - How many to remove.
+     * @private
+     */
+    _removeTorusPieces(count) {
+        for (const { sprite } of this._torusPieces.splice(0, count)) {
+            this.grid.cellContainer.removeChild(sprite);
+            sprite.destroy({ texture: true, textureSource: true });
+        }
     }
 
     /**
@@ -2109,6 +2403,10 @@ class ZoomedOutRendererStrategy extends BaseRendererStrategy {
      * @returns {boolean}
      */
     isRegionFullyLoaded(viewport) {
+        if (this.grid.torus) {
+            return this._torusPieces.some(({ region: r }) =>
+                viewport.x1 >= r.x1 && viewport.y1 >= r.y1 && viewport.x2 <= r.x2 && viewport.y2 <= r.y2);
+        }
         if (!this._renderedRegion) return false;
 
         const r = this._renderedRegion;
@@ -2162,6 +2460,41 @@ class ZoomedOutRendererStrategy extends BaseRendererStrategy {
         };
         this._colorCache.set(color, cached);
         return cached;
+    }
+
+    /** Regions kept at most for a toroidal world: four around a corner of the seam, and the prefetched ones. */
+    static MAX_TORUS_PIECES = 8;
+
+    /**
+     * Keeps the pixels just drawn as a region of a toroidal world, beside the regions drawn
+     * before; a region seen again replaces its older texture.
+     * @param {{x1: number, y1: number, x2: number, y2: number}} region - Region drawn, in cells.
+     * @param {number} width - Texture width in pixels.
+     * @param {number} height - Texture height in pixels.
+     * @param {number} scale - Pixels per cell.
+     * @private
+     */
+    _keepTorusPiece(region, width, height, scale) {
+        const same = this._torusPieces.findIndex(({ region: r }) =>
+            r.x1 === region.x1 && r.y1 === region.y1 && r.x2 === region.x2 && r.y2 === region.y2);
+        if (same !== -1) {
+            const [old] = this._torusPieces.splice(same, 1);
+            this.grid.cellContainer.removeChild(old.sprite);
+            old.sprite.destroy({ texture: true, textureSource: true });
+        }
+        // Each region needs a canvas of its own: a texture shows whatever its canvas holds now
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        canvas.getContext('2d').putImageData(new ImageData(this._pixelBuffer, width, height), 0, 0);
+        const sprite = new PIXI.Sprite(PIXI.Texture.from(canvas, { scaleMode: 'nearest' }));
+        sprite.x = region.x1 * scale;
+        sprite.y = region.y1 * scale;
+        this.grid.cellContainer.addChild(sprite);
+        this._torusPieces.push({ region, sprite });
+        if (this._torusPieces.length > ZoomedOutRendererStrategy.MAX_TORUS_PIECES) {
+            this._removeTorusPieces(this._torusPieces.length - ZoomedOutRendererStrategy.MAX_TORUS_PIECES);
+        }
     }
 
     /**
@@ -2301,6 +2634,11 @@ class ZoomedOutRendererStrategy extends BaseRendererStrategy {
                 if (named.has(mark.y * worldWidth + mark.x)) continue;
                 fillCell(mark.x, mark.y, asPixel(this.grid.markColor(mark)));
             }
+        }
+
+        if (this.grid.torus) {
+            this._keepTorusPiece({ x1: clampedX1, y1: clampedY1, x2: clampedX2, y2: clampedY2 }, textureWidth, textureHeight, scale);
+            return;
         }
 
         // --- Step 3: Track rendered region for viewport-based cache validation ---
