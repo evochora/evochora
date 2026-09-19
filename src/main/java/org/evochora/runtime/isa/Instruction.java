@@ -893,7 +893,8 @@ public abstract class Instruction {
      * @return Unmodifiable list of operand sources, or empty list if unknown.
      */
     public static List<OperandSource> getOperandSourcesById(int opcodeId) {
-        List<OperandSource> sources = (opcodeId >= 0 && opcodeId < REGISTRY_SIZE)
+        // The array's own length, not the registry size: before init() the array is empty
+        List<OperandSource> sources = (opcodeId >= 0 && opcodeId < OPERAND_SOURCES_ARRAY.length)
                 ? OPERAND_SOURCES_ARRAY[opcodeId]
                 : OPERAND_SOURCES.get(opcodeId);
         return sources != null ? sources : List.of();
