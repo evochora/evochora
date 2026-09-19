@@ -40,7 +40,7 @@ class LabelIndexTest {
     }
 
     private int targetFor(int searchValue, int organismId) {
-        return labelIndex.findTarget(searchValue, organismId, callerCoords, environment, random);
+        return labelIndex.findTarget(searchValue, organismId, callerCoords, random);
     }
 
     /** Packs a LABEL molecule with a marker, as a write with a non-zero marker register stores it. */

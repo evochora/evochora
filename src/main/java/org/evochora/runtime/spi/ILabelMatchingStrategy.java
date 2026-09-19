@@ -1,6 +1,5 @@
 package org.evochora.runtime.spi;
 
-import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.runtime.model.OrganismRandom;
 
@@ -42,20 +41,19 @@ public interface ILabelMatchingStrategy {
      * The result must depend only on the labels present, never on the order in which they were
      * added: an index rebuilt from a snapshot adds the same labels in a different order and must
      * resolve every lookup identically. It must not depend on the grid's memory layout either;
-     * positions are compared by flat index.
+     * positions are compared by flat index. The world's shape and topology are what
+     * {@link #initialize} told.
      *
      * @param searchValue The label value the reference carries, within the value field
      * @param codeOwner The ID of the organism executing the lookup; its own labels are its own
      * @param callerCoords The coordinates the distance to a label is measured from
-     * @param environment The environment, for the world's shape and topology
      * @param random The random source of the organism executing the lookup; the only source of
      *               randomness a strategy may use here, so that a stochastic choice depends on the
      *               calling organism alone and never on the thread performing the lookup.
      *               Must not be null.
      * @return The flat index of the target label, or -1 if the reference resolves to none
      */
-    int findTarget(int searchValue, int codeOwner, int[] callerCoords, Environment environment,
-                   OrganismRandom random);
+    int findTarget(int searchValue, int codeOwner, int[] callerCoords, OrganismRandom random);
 
     /**
      * Reports a label that became a jump target.

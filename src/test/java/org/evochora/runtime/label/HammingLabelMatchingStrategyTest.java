@@ -73,7 +73,7 @@ class HammingLabelMatchingStrategyTest {
         OrganismRandom used = randomOf(SELF);
         OrganismRandom untouched = randomOf(SELF);
 
-        int target = strategy.findTarget(VALUE, SELF, new int[]{0, 0}, wide, used);
+        int target = strategy.findTarget(VALUE, SELF, new int[]{0, 0}, used);
 
         assertThat(target).isEqualTo(at(wide, 40, 0));
         assertThat(used.nextLong()).as("the lookup drew nothing").isEqualTo(untouched.nextLong());
@@ -85,9 +85,9 @@ class HammingLabelMatchingStrategyTest {
         strategy.initialize(wide.getProperties());
         strategy.addLabel(VALUE, at(wide, 40, 0), SELF);
 
-        assertThat(strategy.findTarget(ONE_BIT_OFF, SELF, new int[]{0, 0}, wide, randomOf(SELF))).isEqualTo(at(wide, 40, 0));
-        assertThat(strategy.findTarget(TWO_BITS_OFF, SELF, new int[]{0, 0}, wide, randomOf(SELF))).isEqualTo(at(wide, 40, 0));
-        assertThat(strategy.findTarget(THREE_BITS_OFF, SELF, new int[]{0, 0}, wide, randomOf(SELF))).isEqualTo(-1);
+        assertThat(strategy.findTarget(ONE_BIT_OFF, SELF, new int[]{0, 0}, randomOf(SELF))).isEqualTo(at(wide, 40, 0));
+        assertThat(strategy.findTarget(TWO_BITS_OFF, SELF, new int[]{0, 0}, randomOf(SELF))).isEqualTo(at(wide, 40, 0));
+        assertThat(strategy.findTarget(THREE_BITS_OFF, SELF, new int[]{0, 0}, randomOf(SELF))).isEqualTo(-1);
     }
 
     @Test
@@ -97,7 +97,7 @@ class HammingLabelMatchingStrategyTest {
         tolerant.addLabel(VALUE, at(wide, 20, 0), SELF);
         tolerant.addLabel(VALUE, at(wide, 5, 0), SELF);
 
-        assertThat(tolerant.findTarget(THREE_BITS_OFF, SELF, new int[]{0, 0}, wide, randomOf(SELF)))
+        assertThat(tolerant.findTarget(THREE_BITS_OFF, SELF, new int[]{0, 0}, randomOf(SELF)))
                 .as("both labels stand on stage 3; without a lottery the nearer one is the target")
                 .isEqualTo(at(wide, 5, 0));
     }
@@ -112,7 +112,7 @@ class HammingLabelMatchingStrategyTest {
         for (long tick = 0; tick < 50; tick++) {
             OrganismRandom random = new OrganismRandom(SELF);
             random.beginTick(tick);
-            assertThat(strategy.findTarget(VALUE, SELF, new int[]{0, 0}, wide, random)).isEqualTo(at(wide, 900, 0));
+            assertThat(strategy.findTarget(VALUE, SELF, new int[]{0, 0}, random)).isEqualTo(at(wide, 900, 0));
         }
     }
 
@@ -123,7 +123,7 @@ class HammingLabelMatchingStrategyTest {
         strategy.addLabel(TWO_BITS_OFF, at(wide, 900, 0), SELF);
         strategy.addLabel(VALUE, at(wide, 1, 0), OTHER);
 
-        assertThat(strategy.findTarget(VALUE, SELF, new int[]{0, 0}, wide, randomOf(SELF))).isEqualTo(at(wide, 900, 0));
+        assertThat(strategy.findTarget(VALUE, SELF, new int[]{0, 0}, randomOf(SELF))).isEqualTo(at(wide, 900, 0));
     }
 
     @Test
@@ -138,7 +138,7 @@ class HammingLabelMatchingStrategyTest {
         for (long tick = 0; tick < 200; tick++) {
             OrganismRandom random = new OrganismRandom(SELF);
             random.beginTick(tick);
-            targets.add(strategy.findTarget(VALUE, SELF, new int[]{0, 0}, wide, random));
+            targets.add(strategy.findTarget(VALUE, SELF, new int[]{0, 0}, random));
         }
 
         assertThat(targets).containsExactlyInAnyOrder(at(wide, 10, 0), at(wide, 30, 0));
@@ -157,9 +157,9 @@ class HammingLabelMatchingStrategyTest {
             OrganismRandom mutated = new OrganismRandom(SELF);
             mutated.beginTick(tick);
 
-            assertThat(strategy.findTarget(ONE_BIT_OFF, SELF, new int[]{0, 0}, wide, mutated))
+            assertThat(strategy.findTarget(ONE_BIT_OFF, SELF, new int[]{0, 0}, mutated))
                     .as("tick %d: both duplicates move to stage 1 together", tick)
-                    .isEqualTo(strategy.findTarget(VALUE, SELF, new int[]{0, 0}, wide, exact));
+                    .isEqualTo(strategy.findTarget(VALUE, SELF, new int[]{0, 0}, exact));
         }
     }
 
@@ -174,10 +174,10 @@ class HammingLabelMatchingStrategyTest {
         }
         int[] between = {100, 0};
 
-        assertThat(strategy.findTarget(VALUE, SELF, new int[]{95, 0}, wide, randomOf(SELF))).isEqualTo(at(wide, 90, 0));
-        assertThat(strategy.findTarget(VALUE, SELF, between, wide, randomOf(SELF)))
+        assertThat(strategy.findTarget(VALUE, SELF, new int[]{95, 0}, randomOf(SELF))).isEqualTo(at(wide, 90, 0));
+        assertThat(strategy.findTarget(VALUE, SELF, between, randomOf(SELF)))
                 .as("an even ID takes the lowest flat index of a tie").isEqualTo(at(wide, 90, 0));
-        assertThat(strategy.findTarget(VALUE, ODD_SELF, between, wide, randomOf(ODD_SELF)))
+        assertThat(strategy.findTarget(VALUE, ODD_SELF, between, randomOf(ODD_SELF)))
                 .as("an odd ID takes the highest flat index of a tie").isEqualTo(at(wide, 110, 0));
     }
 
@@ -189,8 +189,8 @@ class HammingLabelMatchingStrategyTest {
         strategy.initialize(wide.getProperties());
         strategy.addLabel(VALUE, at(wide, 750, 0), OTHER);
 
-        assertThat(strategy.findTarget(VALUE, SELF, new int[]{500, 0}, wide, randomOf(SELF))).isEqualTo(at(wide, 750, 0));
-        assertThat(strategy.findTarget(VALUE, SELF, new int[]{499, 0}, wide, randomOf(SELF)))
+        assertThat(strategy.findTarget(VALUE, SELF, new int[]{500, 0}, randomOf(SELF))).isEqualTo(at(wide, 750, 0));
+        assertThat(strategy.findTarget(VALUE, SELF, new int[]{499, 0}, randomOf(SELF)))
                 .as("one cell beyond the reach").isEqualTo(-1);
     }
 
@@ -200,10 +200,10 @@ class HammingLabelMatchingStrategyTest {
         strategy.initialize(wide.getProperties());
         strategy.addLabel(VALUE, at(wide, 700, 0), OTHER);
 
-        assertThat(strategy.findTarget(ONE_BIT_OFF, SELF, new int[]{500, 0}, wide, randomOf(SELF))).isEqualTo(at(wide, 700, 0));
-        assertThat(strategy.findTarget(ONE_BIT_OFF, SELF, new int[]{499, 0}, wide, randomOf(SELF))).isEqualTo(-1);
-        assertThat(strategy.findTarget(TWO_BITS_OFF, SELF, new int[]{550, 0}, wide, randomOf(SELF))).isEqualTo(at(wide, 700, 0));
-        assertThat(strategy.findTarget(TWO_BITS_OFF, SELF, new int[]{549, 0}, wide, randomOf(SELF))).isEqualTo(-1);
+        assertThat(strategy.findTarget(ONE_BIT_OFF, SELF, new int[]{500, 0}, randomOf(SELF))).isEqualTo(at(wide, 700, 0));
+        assertThat(strategy.findTarget(ONE_BIT_OFF, SELF, new int[]{499, 0}, randomOf(SELF))).isEqualTo(-1);
+        assertThat(strategy.findTarget(TWO_BITS_OFF, SELF, new int[]{550, 0}, randomOf(SELF))).isEqualTo(at(wide, 700, 0));
+        assertThat(strategy.findTarget(TWO_BITS_OFF, SELF, new int[]{549, 0}, randomOf(SELF))).isEqualTo(-1);
     }
 
     @Test
@@ -212,8 +212,8 @@ class HammingLabelMatchingStrategyTest {
         strategy.initialize(wide.getProperties());
         strategy.addLabel(VALUE, at(wide, 501, 0), OTHER);
 
-        assertThat(strategy.findTarget(VALUE, SELF, new int[]{500, 0}, wide, randomOf(SELF))).isEqualTo(at(wide, 501, 0));
-        assertThat(strategy.findTarget(ONE_BIT_OFF, SELF, new int[]{500, 0}, wide, randomOf(SELF)))
+        assertThat(strategy.findTarget(VALUE, SELF, new int[]{500, 0}, randomOf(SELF))).isEqualTo(at(wide, 501, 0));
+        assertThat(strategy.findTarget(ONE_BIT_OFF, SELF, new int[]{500, 0}, randomOf(SELF)))
                 .as("a reach of 40 cannot pay the 50 a differing bit deducts").isEqualTo(-1);
     }
 
@@ -223,7 +223,7 @@ class HammingLabelMatchingStrategyTest {
         strategy.initialize(wide.getProperties());
         strategy.addLabel(VALUE, at(wide, 501, 0), OTHER);
 
-        assertThat(strategy.findTarget(VALUE, SELF, new int[]{500, 0}, wide, randomOf(SELF))).isEqualTo(-1);
+        assertThat(strategy.findTarget(VALUE, SELF, new int[]{500, 0}, randomOf(SELF))).isEqualTo(-1);
     }
 
     @Test
@@ -234,7 +234,7 @@ class HammingLabelMatchingStrategyTest {
         strategy.addLabel(VALUE, at(wide, 700, 0), OTHER);
         strategy.addLabel(VALUE, at(wide, 650, 1), OTHER + 1);
 
-        assertThat(strategy.findTarget(VALUE, SELF, new int[]{500, 0}, wide, randomOf(SELF)))
+        assertThat(strategy.findTarget(VALUE, SELF, new int[]{500, 0}, randomOf(SELF)))
                 .as("the exact labels beat the near one a bit off; of the two, the nearer wins")
                 .isEqualTo(at(wide, 650, 1));
     }
@@ -247,8 +247,8 @@ class HammingLabelMatchingStrategyTest {
         strategy.addLabel(VALUE ^ 0b10, at(wide, 480, 0), OTHER);
         strategy.addLabel(VALUE ^ 0b01, at(wide, 520, 0), OTHER);
 
-        assertThat(strategy.findTarget(VALUE, SELF, new int[]{500, 0}, wide, randomOf(SELF))).isEqualTo(at(wide, 480, 0));
-        assertThat(strategy.findTarget(VALUE, ODD_SELF, new int[]{500, 0}, wide, randomOf(ODD_SELF))).isEqualTo(at(wide, 520, 0));
+        assertThat(strategy.findTarget(VALUE, SELF, new int[]{500, 0}, randomOf(SELF))).isEqualTo(at(wide, 480, 0));
+        assertThat(strategy.findTarget(VALUE, ODD_SELF, new int[]{500, 0}, randomOf(ODD_SELF))).isEqualTo(at(wide, 520, 0));
     }
 
     @Test
@@ -257,7 +257,7 @@ class HammingLabelMatchingStrategyTest {
         strategy.initialize(wide.getProperties());
         strategy.addLabel(VALUE, at(wide, 510, 0), 0);
 
-        assertThat(strategy.findTarget(VALUE, SELF, new int[]{500, 0}, wide, randomOf(SELF))).isEqualTo(at(wide, 510, 0));
+        assertThat(strategy.findTarget(VALUE, SELF, new int[]{500, 0}, randomOf(SELF))).isEqualTo(at(wide, 510, 0));
     }
 
     @Test
@@ -269,7 +269,7 @@ class HammingLabelMatchingStrategyTest {
         OrganismRandom used = randomOf(SELF);
         OrganismRandom untouched = randomOf(SELF);
 
-        strategy.findTarget(VALUE, SELF, new int[]{500, 0}, wide, used);
+        strategy.findTarget(VALUE, SELF, new int[]{500, 0}, used);
 
         assertThat(used.nextLong()).isEqualTo(untouched.nextLong());
     }
@@ -282,7 +282,7 @@ class HammingLabelMatchingStrategyTest {
             HammingLabelMatchingStrategy strategy = withReach(10);
             strategy.initialize(world.getProperties());
             strategy.addLabel(VALUE, at(world, 62, 5), OTHER);
-            int target = strategy.findTarget(VALUE, SELF, new int[]{2, 5}, world, randomOf(SELF));
+            int target = strategy.findTarget(VALUE, SELF, new int[]{2, 5}, randomOf(SELF));
 
             if (world == torus) {
                 assertThat(target).as("four cells across the seam").isEqualTo(at(torus, 62, 5));
@@ -299,9 +299,9 @@ class HammingLabelMatchingStrategyTest {
         strategy.addLabel(VALUE, at(torus, 60, 5), OTHER);
         strategy.addLabel(VALUE, at(torus, 5, 5), OTHER + 1);
 
-        assertThat(strategy.findTarget(VALUE, SELF, new int[]{63, 5}, torus, randomOf(SELF))).isEqualTo(at(torus, 60, 5));
-        assertThat(strategy.findTarget(VALUE, SELF, new int[]{1, 5}, torus, randomOf(SELF))).isEqualTo(at(torus, 5, 5));
-        assertThat(strategy.findTarget(VALUE, SELF, new int[]{62, 5}, torus, randomOf(SELF)))
+        assertThat(strategy.findTarget(VALUE, SELF, new int[]{63, 5}, randomOf(SELF))).isEqualTo(at(torus, 60, 5));
+        assertThat(strategy.findTarget(VALUE, SELF, new int[]{1, 5}, randomOf(SELF))).isEqualTo(at(torus, 5, 5));
+        assertThat(strategy.findTarget(VALUE, SELF, new int[]{62, 5}, randomOf(SELF)))
                 .as("two cells to the one, seven across the seam to the other").isEqualTo(at(torus, 60, 5));
     }
 
@@ -311,7 +311,7 @@ class HammingLabelMatchingStrategyTest {
         strategy.initialize(wide.getProperties());
         strategy.addLabel(VALUE, at(wide, 1023, 7), OTHER);
 
-        assertThat(strategy.findTarget(VALUE, SELF, new int[]{0, 0}, wide, randomOf(SELF))).isEqualTo(at(wide, 1023, 7));
+        assertThat(strategy.findTarget(VALUE, SELF, new int[]{0, 0}, randomOf(SELF))).isEqualTo(at(wide, 1023, 7));
     }
 
     // ==================== Index maintenance ====================
@@ -321,13 +321,13 @@ class HammingLabelMatchingStrategyTest {
         HammingLabelMatchingStrategy strategy = withReach(-1);
         strategy.initialize(wide.getProperties());
         strategy.addLabel(VALUE, at(wide, 10, 0), OTHER);
-        assertThat(strategy.findTarget(VALUE, SELF, new int[]{0, 0}, wide, randomOf(SELF))).isEqualTo(-1);
+        assertThat(strategy.findTarget(VALUE, SELF, new int[]{0, 0}, randomOf(SELF))).isEqualTo(-1);
 
         strategy.changeOwner(VALUE, at(wide, 10, 0), OTHER, SELF);
 
         assertThat(strategy.ownerOf(VALUE, at(wide, 10, 0))).isEqualTo(SELF);
-        assertThat(strategy.findTarget(VALUE, SELF, new int[]{0, 0}, wide, randomOf(SELF))).isEqualTo(at(wide, 10, 0));
-        assertThat(strategy.findTarget(VALUE, OTHER, new int[]{0, 0}, wide, randomOf(OTHER))).isEqualTo(-1);
+        assertThat(strategy.findTarget(VALUE, SELF, new int[]{0, 0}, randomOf(SELF))).isEqualTo(at(wide, 10, 0));
+        assertThat(strategy.findTarget(VALUE, OTHER, new int[]{0, 0}, randomOf(OTHER))).isEqualTo(-1);
     }
 
     @Test
@@ -340,11 +340,11 @@ class HammingLabelMatchingStrategyTest {
         strategy.removeLabel(VALUE, at(wide, 10, 0), SELF);
 
         assertThat(strategy.ownerOf(VALUE, at(wide, 10, 0))).isEqualTo(-1);
-        assertThat(strategy.findTarget(VALUE, SELF, new int[]{0, 0}, wide, randomOf(SELF))).isEqualTo(at(wide, 20, 0));
-        assertThat(strategy.findTarget(VALUE, OTHER, new int[]{0, 0}, wide, randomOf(OTHER))).isEqualTo(at(wide, 20, 0));
+        assertThat(strategy.findTarget(VALUE, SELF, new int[]{0, 0}, randomOf(SELF))).isEqualTo(at(wide, 20, 0));
+        assertThat(strategy.findTarget(VALUE, OTHER, new int[]{0, 0}, randomOf(OTHER))).isEqualTo(at(wide, 20, 0));
 
         strategy.removeLabel(VALUE, at(wide, 20, 0), SELF);
-        assertThat(strategy.findTarget(VALUE, OTHER, new int[]{0, 0}, wide, randomOf(OTHER))).isEqualTo(-1);
+        assertThat(strategy.findTarget(VALUE, OTHER, new int[]{0, 0}, randomOf(OTHER))).isEqualTo(-1);
     }
 
     @Test
@@ -365,8 +365,8 @@ class HammingLabelMatchingStrategyTest {
             a.beginTick(tick);
             OrganismRandom b = new OrganismRandom(SELF);
             b.beginTick(tick);
-            assertThat(forward.findTarget(VALUE, SELF, new int[]{0, 0}, wide, a))
-                    .isEqualTo(backward.findTarget(VALUE, SELF, new int[]{0, 0}, wide, b));
+            assertThat(forward.findTarget(VALUE, SELF, new int[]{0, 0}, a))
+                    .isEqualTo(backward.findTarget(VALUE, SELF, new int[]{0, 0}, b));
         }
     }
 
@@ -478,7 +478,7 @@ class HammingLabelMatchingStrategyTest {
         HammingLabelMatchingStrategy strategy = new HammingLabelMatchingStrategy();
 
         assertThatThrownBy(() -> strategy.addLabel(VALUE, 5, SELF)).isInstanceOf(IllegalStateException.class);
-        assertThat(strategy.findTarget(VALUE, SELF, new int[]{0, 0}, wide, randomOf(SELF)))
+        assertThat(strategy.findTarget(VALUE, SELF, new int[]{0, 0}, randomOf(SELF)))
                 .as("a strategy that knows no world holds no label").isEqualTo(-1);
     }
 
@@ -500,12 +500,12 @@ class HammingLabelMatchingStrategyTest {
         strategy.changeOwner(VALUE, at(wide, 30, 0), SELF, 0);
 
         assertThat(strategy.ownerOf(VALUE, at(wide, 30, 0))).isZero();
-        assertThat(strategy.findTarget(VALUE, SELF, new int[]{0, 0}, wide, randomOf(SELF)))
+        assertThat(strategy.findTarget(VALUE, SELF, new int[]{0, 0}, randomOf(SELF)))
                 .as("its former owner reaches it like anybody else").isEqualTo(at(wide, 30, 0));
-        assertThat(strategy.findTarget(VALUE, OTHER, new int[]{0, 0}, wide, randomOf(OTHER))).isEqualTo(at(wide, 30, 0));
+        assertThat(strategy.findTarget(VALUE, OTHER, new int[]{0, 0}, randomOf(OTHER))).isEqualTo(at(wide, 30, 0));
 
         strategy.changeOwner(VALUE, at(wide, 30, 0), 0, OTHER);
-        assertThat(strategy.findTarget(VALUE, OTHER, new int[]{600, 0}, wide, randomOf(OTHER)))
+        assertThat(strategy.findTarget(VALUE, OTHER, new int[]{600, 0}, randomOf(OTHER)))
                 .as("an own label has no reach").isEqualTo(at(wide, 30, 0));
     }
 }

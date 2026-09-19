@@ -472,7 +472,6 @@ public abstract class Instruction {
                 labelHash,
                 organism.getId(),
                 callerCoords,
-                environment,
                 organism.getRandom()
         );
         if (targetFlatIndex < 0) {

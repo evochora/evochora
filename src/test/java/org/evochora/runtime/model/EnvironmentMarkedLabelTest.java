@@ -46,7 +46,7 @@ class EnvironmentMarkedLabelTest {
     }
 
     private int targetFor(int organismId) {
-        return environment.getLabelIndex().findTarget(LABEL_VALUE, organismId, callerCoords, environment, random);
+        return environment.getLabelIndex().findTarget(LABEL_VALUE, organismId, callerCoords, random);
     }
 
     @Test

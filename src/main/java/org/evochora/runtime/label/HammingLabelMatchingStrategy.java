@@ -2,7 +2,6 @@ package org.evochora.runtime.label;
 
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import org.evochora.runtime.Config;
-import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.runtime.model.OrganismRandom;
 import org.evochora.runtime.spi.ILabelMatchingStrategy;
@@ -245,8 +244,7 @@ public class HammingLabelMatchingStrategy implements ILabelMatchingStrategy {
     // ==================== Lookup ====================
 
     @Override
-    public int findTarget(int searchValue, int codeOwner, int[] callerCoords, Environment environment,
-                          OrganismRandom random) {
+    public int findTarget(int searchValue, int codeOwner, int[] callerCoords, OrganismRandom random) {
         int onlyExact = ownLabels.find(codeOwner, searchValue);
         if (onlyExact >= 0) {
             return onlyExact;

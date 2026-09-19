@@ -111,8 +111,8 @@ class LabelRewriteTest {
         worldWith(exactStrategyWithMask(0));
         environment.setMolecule(new Molecule(Config.TYPE_LABEL, 12345), child.getId(), new int[]{3, 4});
 
-        int exact = environment.getLabelIndex().findTarget(12345, child.getId(), new int[]{0, 0}, environment, child.getRandom());
-        int oneBitOff = environment.getLabelIndex().findTarget(12344, child.getId(), new int[]{0, 0}, environment, child.getRandom());
+        int exact = environment.getLabelIndex().findTarget(12345, child.getId(), new int[]{0, 0}, child.getRandom());
+        int oneBitOff = environment.getLabelIndex().findTarget(12344, child.getId(), new int[]{0, 0}, child.getRandom());
 
         assertThat(exact).isEqualTo(environment.getProperties().toFlatIndex(new int[]{3, 4}));
         assertThat(oneBitOff).as("this strategy knows no tolerance").isEqualTo(-1);
@@ -145,9 +145,9 @@ class LabelRewriteTest {
         new LabelRewrite().apply(child, environment, new SeededRandomProvider(42L));
 
         int flatIndex = environment.getProperties().toFlatIndex(new int[]{3, 4});
-        assertThat(environment.getLabelIndex().findTarget(12345 ^ MASK, child.getId(), new int[]{0, 0}, environment, child.getRandom()))
+        assertThat(environment.getLabelIndex().findTarget(12345 ^ MASK, child.getId(), new int[]{0, 0}, child.getRandom()))
                 .isEqualTo(flatIndex);
-        assertThat(environment.getLabelIndex().findTarget(12345, child.getId(), new int[]{0, 0}, environment, child.getRandom()))
+        assertThat(environment.getLabelIndex().findTarget(12345, child.getId(), new int[]{0, 0}, child.getRandom()))
                 .isEqualTo(-1);
     }
 

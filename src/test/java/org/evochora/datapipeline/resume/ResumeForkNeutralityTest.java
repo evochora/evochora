@@ -221,8 +221,7 @@ class ResumeForkNeutralityTest {
     private static int jumpTargetOfTheGenomeLabel(Simulation simulation) {
         Organism parent = simulation.getOrganisms().get(0);
         return simulation.getEnvironment().getLabelIndex().findTarget(
-                ForkProgram.GENOME_LABEL_HASH, parent.getId(), parent.getIp(),
-                simulation.getEnvironment(), parent.getRandom());
+                ForkProgram.GENOME_LABEL_HASH, parent.getId(), parent.getIp(), parent.getRandom());
     }
 
     /**

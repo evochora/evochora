@@ -1,6 +1,5 @@
 package org.evochora.runtime.label;
 
-import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.OrganismRandom;
 import org.evochora.runtime.spi.ILabelMatchingStrategy;
 import org.evochora.runtime.spi.IRandomProvider;
@@ -28,8 +27,7 @@ public class ExactLabelMatchingStrategy implements ILabelMatchingStrategy {
     }
 
     @Override
-    public int findTarget(int searchValue, int codeOwner, int[] callerCoords, Environment environment,
-                          OrganismRandom random) {
+    public int findTarget(int searchValue, int codeOwner, int[] callerCoords, OrganismRandom random) {
         TreeMap<Integer, Integer> carrying = labels.get(searchValue);
         return carrying == null || carrying.isEmpty() ? -1 : carrying.firstKey();
     }

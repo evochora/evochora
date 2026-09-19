@@ -5,7 +5,6 @@ import java.util.Random;
 import java.util.concurrent.TimeUnit;
 
 import org.evochora.runtime.Config;
-import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.runtime.model.OrganismRandom;
 import org.openjdk.jmh.annotations.Benchmark;
@@ -79,7 +78,6 @@ public class LabelMatchingBenchmark {
     private String scenario;
 
     private HammingLabelMatchingStrategy strategy;
-    private Environment environment;
     private OrganismRandom random;
 
     private final int[] searchValues = new int[CALLS];
@@ -99,7 +97,7 @@ public class LabelMatchingBenchmark {
     public void fillIndex() {
         EnvironmentProperties props = new EnvironmentProperties(new int[]{WORLD_WIDTH, WORLD_HEIGHT}, true);
         strategy = new HammingLabelMatchingStrategy();
-        environment = new Environment(props, strategy);
+        strategy.initialize(props);
         random = new OrganismRandom(1);
         random.beginTick(42L);
         Random setupRandom = new Random(42);
@@ -213,7 +211,7 @@ public class LabelMatchingBenchmark {
     }
 
     private int lookup(int call) {
-        return strategy.findTarget(searchValues[call], callers[call], callerCoords[call], environment, random);
+        return strategy.findTarget(searchValues[call], callers[call], callerCoords[call], random);
     }
 
     /**
