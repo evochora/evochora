@@ -4,6 +4,7 @@ import {
     NO_DATA_COLOR,
     UNKNOWN_TYPE_NAME
 } from '../../MoleculeTypePalette.js';
+import { splitSpan, wrap } from '../../interaction/TorusView.js';
 
 /**
  * Renders minimap data onto a canvas using putImageData for optimal performance.
@@ -47,6 +48,8 @@ export class MinimapRenderer {
         this.typeShift = null;
         this.colorByByte = this.buildColorTable();
         this.lastMinimapData = null;
+        // A toroidal world's viewport rectangle continues across the minimap's edges
+        this.torus = false;
 
         // Off-screen canvas for caching background (environment + organisms)
         this._cacheCanvas = document.createElement('canvas');
@@ -156,6 +159,11 @@ export class MinimapRenderer {
         const scaleX = worldWidth / minimapWidth;
         const scaleY = worldHeight / minimapHeight;
 
+        if (this.torus) {
+            this.drawTorusViewportRect(viewportBounds, worldShape, scaleX, scaleY);
+            return;
+        }
+
         // Clamp viewport bounds to world bounds (minimap only shows the world, not margin areas)
         const clampedX1 = Math.max(0, x);
         const clampedY1 = Math.max(0, y);
@@ -186,6 +194,54 @@ export class MinimapRenderer {
 
         if (Math.max(rectW, rectH) < MinimapRenderer.CROSSHAIR_BELOW_PX) {
             this.drawCrosshair(rectX + rectW / 2, rectY + rectH / 2, rectW, rectH);
+        }
+    }
+
+    /**
+     * Draws the viewport rectangle of a toroidal world. Where the view spans the seam, the
+     * rectangle is drawn in parts at the opposite edges of the minimap, up to four at a corner;
+     * only the rectangle's own sides get a border, not the cuts at the seam.
+     *
+     * @param {{x: number, y: number, width: number, height: number}} viewportBounds - Viewport in
+     *        world cells, starting within the world.
+     * @param {number[]} worldShape - World dimensions [width, height].
+     * @param {number} scaleX - World cells per minimap pixel, horizontally.
+     * @param {number} scaleY - World cells per minimap pixel, vertically.
+     * @private
+     */
+    drawTorusViewportRect(viewportBounds, worldShape, scaleX, scaleY) {
+        const { x, y, width, height } = viewportBounds;
+        const [worldWidth, worldHeight] = worldShape;
+        // Each part of a span: its bounds, and whether its start and end are sides of the rectangle
+        const parts = (start, length, period) => {
+            const spans = splitSpan(start, start + length, period);
+            if (spans.length === 1) return [{ span: spans[0], startSide: true, endSide: true }];
+            return [{ span: spans[0], startSide: true, endSide: false }, { span: spans[1], startSide: false, endSide: true }];
+        };
+
+        this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+        this.ctx.lineWidth = 2;
+        this.ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+        for (const px of parts(x, width, worldWidth)) {
+            for (const py of parts(y, height, worldHeight)) {
+                const x1 = px.span[0] / scaleX;
+                const x2 = px.span[1] / scaleX;
+                const y1 = py.span[0] / scaleY;
+                const y2 = py.span[1] / scaleY;
+                this.ctx.fillRect(x1, y1, x2 - x1, y2 - y1);
+                this.ctx.beginPath();
+                if (px.startSide) { this.ctx.moveTo(x1, y1); this.ctx.lineTo(x1, y2); }
+                if (px.endSide) { this.ctx.moveTo(x2, y1); this.ctx.lineTo(x2, y2); }
+                if (py.startSide) { this.ctx.moveTo(x1, y1); this.ctx.lineTo(x2, y1); }
+                if (py.endSide) { this.ctx.moveTo(x1, y2); this.ctx.lineTo(x2, y2); }
+                this.ctx.stroke();
+            }
+        }
+
+        const rectW = Math.min(width, worldWidth) / scaleX;
+        const rectH = Math.min(height, worldHeight) / scaleY;
+        if (Math.max(rectW, rectH) < MinimapRenderer.CROSSHAIR_BELOW_PX) {
+            this.drawCrosshair(wrap(x + width / 2, worldWidth) / scaleX, wrap(y + height / 2, worldHeight) / scaleY, rectW, rectH);
         }
     }
 

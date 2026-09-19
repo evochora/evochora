@@ -245,7 +245,12 @@ export class ViewportInteraction {
     }
 
     _onPointerUp(event) {
-        if (!this._pointers.delete(event.pointerId)) return;
+        if (!this._pointers.has(event.pointerId)) return;
+        // On a torus the grid selects on a tap itself; elsewhere PIXI reports the tap on the organism
+        if (this.grid.torus && this._pointers.size === 1 && !this.grid.tapBlocked && event.type === 'pointerup') {
+            this.grid.tapAt(event.clientX, event.clientY);
+        }
+        this._pointers.delete(event.pointerId);
         if (this._pinch && this._pointers.size < 2) {
             this._pinch = null;
             this._commitZoom();

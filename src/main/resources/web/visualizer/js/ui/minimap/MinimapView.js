@@ -238,6 +238,16 @@ export class MinimapView {
     }
 
     /**
+     * Sets whether the world is a torus, whose viewport rectangle continues across the minimap's
+     * edges.
+     * @param {boolean} isTorus
+     */
+    setTorus(isTorus) {
+        this.renderer.torus = isTorus;
+        if (this.viewportBounds) this.updateViewport(this.viewportBounds);
+    }
+
+    /**
      * Marks the start or the end of a zoom gesture. While it runs, the minimap keeps its visibility;
      * at its end, visibility follows the viewport the gesture came to rest on.
      * @param {boolean} active - True while a zoom gesture runs.
