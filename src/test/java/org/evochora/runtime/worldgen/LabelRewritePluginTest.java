@@ -115,7 +115,7 @@ class LabelRewritePluginTest {
 
     @Test
     void preservesHammingDistance() {
-        int labelValue = 0b1010_1010_1010_1010_101;  // 19 bits
+        int labelValue = 0b1010_1010_1010_1010_101;  // an arbitrary bit pattern within the value field
         int labelRefValue = 0b1010_1010_1010_1010_100;  // 1 bit different (bit 0)
         int expectedHamming = Integer.bitCount(labelValue ^ labelRefValue);
         assertThat(expectedHamming).isEqualTo(1);

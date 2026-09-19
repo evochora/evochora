@@ -292,7 +292,7 @@ public class SimulationBenchmark {
             int[] startIp = new int[]{offsetX, offsetY};
             Organism organism = Organism.create(simulation, startIp, MAX_ENERGY);
 
-            int labelMask = random.nextInt(0x7FFFF) + 1;
+            int labelMask = random.nextInt(org.evochora.runtime.Config.VALUE_MASK) + 1;
 
             for (Map.Entry<int[], Integer> entry : layout.entrySet()) {
                 int[] coord = entry.getKey();
@@ -310,7 +310,7 @@ public class SimulationBenchmark {
                     int newValue = oldValue ^ labelMask;
                     if (type == org.evochora.runtime.Config.TYPE_LABELREF
                             && "REALISTIC".equals(assembly) && random.nextBoolean()) {
-                        newValue = newValue ^ (1 << random.nextInt(19));
+                        newValue = newValue ^ (1 << random.nextInt(org.evochora.runtime.Config.VALUE_BITS));
                     }
                     int marker = (moleculeInt & org.evochora.runtime.Config.MARKER_MASK)
                             >>> org.evochora.runtime.Config.MARKER_SHIFT;

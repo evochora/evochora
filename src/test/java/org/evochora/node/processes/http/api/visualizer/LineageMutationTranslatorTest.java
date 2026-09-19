@@ -66,6 +66,24 @@ class LineageMutationTranslatorTest {
     }
 
     @Test
+    void aMaskThatSetsTheTopBitOfTheValueFieldYieldsAnUnsignedLabelValue() {
+        int topBit = 1 << (Config.VALUE_BITS - 1);
+        StoredMutationEvents generation1 = StoredMutationEvents.newBuilder()
+                .setDimensions(2)
+                .addEvents(substitution(RECORDED_LABEL, -5, 0))
+                .build();
+
+        List<MutationEventView> events = LineageMutationTranslator.translate(
+                List.of(
+                    entry(2, 2, mask(topBit)),
+                    entry(1, 1, generation1)),
+                WORLD);
+
+        // The key the artifact's label maps use: the raw value bits, never a negative number
+        assertThat(events.get(0).cells().get(0).after().moleculeValue()).isEqualTo(0x1234 | topBit);
+    }
+
+    @Test
     void translatesTheValueBeforeTheWriteLikeTheValueAfterIt() {
         // A substitution over a label reference: the value it replaced stood in the same namespace
         // as the one it wrote, so the visualizer shows both through the same masks.

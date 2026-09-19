@@ -59,7 +59,7 @@ the replication core stays discrete.
 
 ## Open questions
 
-1. Signal identity: reuse the 19-bit label-hash space (shared Hamming machinery, label mutation
+1. Signal identity: reuse the label-hash space (shared Hamming machinery, label mutation
    operators apply directly) or a separate signal space?
 2. SENS semantics: weighted sum only, or also weighted-max / threshold variants?
 3. How does the layer couple back into control flow — SENS writes a register that existing

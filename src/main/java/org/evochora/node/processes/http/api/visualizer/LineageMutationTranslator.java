@@ -29,9 +29,8 @@ import org.evochora.runtime.model.Molecule;
  * {@link LabelNamespaceMask#recordedAfter} is the composition a record needs — the masks of the
  * recording birth that were applied after the plugin wrote.
  * <p>
- * A mask touches only the value bits of a molecule — it is drawn from
- * {@link Config#LABEL_VALUE_MASK}, which is narrower than the value field — so it is applied to
- * the packed molecule directly. Molecules of any other type pass through untouched: they were
+ * A mask touches only the value bits of a molecule — it never leaves
+ * {@link Config#VALUE_MASK} — so it is applied to the packed molecule directly. Molecules of any other type pass through untouched: they were
  * never masked.
  * <p>
  * <strong>Thread Safety:</strong> Stateless; all methods are static and operate only on their

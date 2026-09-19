@@ -82,7 +82,7 @@ public interface IInstructionSet {
 	 * the two by Hamming distance. Definitions and references use this one derivation.
 	 *
 	 * @param name The label name, qualified as it is in the layout.
-	 * @return The value, reduced to the bits a label value may use; never negative.
+	 * @return The value: a bit pattern over the whole value field of a cell, without a sign.
 	 */
 	int labelValue(String name);
 

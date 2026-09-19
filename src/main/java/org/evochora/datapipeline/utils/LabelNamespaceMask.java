@@ -88,7 +88,7 @@ public final class LabelNamespaceMask {
      * Reads the mask one event carries.
      *
      * @param event The event to read
-     * @return The mask, narrowed to the bits a label value may use, or zero if the event is not a
+     * @return The mask, narrowed to the value field a label value occupies, or zero if the event is not a
      *         label mask
      * @throws IllegalStateException if a label mask event carries no mask
      */
@@ -101,6 +101,6 @@ public final class LabelNamespaceMask {
                 + "' reported by " + event.getPluginClass() + " carries no mask, so no label value"
                 + " of its lineage can be placed in a later namespace");
         }
-        return (int) (event.getParams(0) & Config.LABEL_VALUE_MASK);
+        return (int) (event.getParams(0) & Config.VALUE_MASK);
     }
 }

@@ -117,7 +117,7 @@ class RuntimeInstructionSetAdapterTest {
     void aLabelValueNeverLeavesTheLabelValueBits() {
         for (String name : List.of("START", "MAIN.LOOP", "_safe_call_7", "", "a very long label name indeed")) {
             int value = isa.labelValue(name);
-            assertThat(value).isBetween(0, Config.LABEL_VALUE_MASK);
+            assertThat(value).isBetween(0, Config.VALUE_MASK);
         }
     }
 }

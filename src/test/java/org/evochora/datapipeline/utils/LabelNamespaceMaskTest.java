@@ -37,7 +37,7 @@ class LabelNamespaceMaskTest {
         return StoredMutationEvent.newBuilder()
                 .setPluginClass("org.evochora.runtime.worldgen.GeneSubstitutionPlugin")
                 .setKind("substitution")
-                .addParams(0x7FFFFL)
+                .addParams(0xFFFFFL)
                 .build();
     }
 
@@ -77,10 +77,19 @@ class LabelNamespaceMaskTest {
     }
 
     @Test
-    void narrowsAMaskToTheBitsALabelValueUses() {
+    void narrowsAMaskToTheValueFieldALabelValueOccupies() {
         // The plugin reports a full 64-bit parameter; a label value holds fewer bits than that
         assertThat(LabelNamespaceMask.ofBirth(birth(labelMask(-1L))))
-                .isEqualTo(Config.LABEL_VALUE_MASK);
+                .isEqualTo(Config.VALUE_MASK);
+    }
+
+    @Test
+    void keepsTheTopBitOfTheValueFieldInAMask() {
+        final int topBit = 1 << (Config.VALUE_BITS - 1);
+
+        assertThat(LabelNamespaceMask.ofBirth(birth(labelMask(topBit)))).isEqualTo(topBit);
+        assertThat(LabelNamespaceMask.ofChain(List.of(birth(labelMask(topBit | 0x0F)), birth(labelMask(0x0F)))))
+                .isEqualTo(topBit);
     }
 
     @Test

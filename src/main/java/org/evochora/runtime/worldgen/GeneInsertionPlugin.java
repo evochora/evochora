@@ -82,9 +82,8 @@ public class GeneInsertionPlugin implements IBirthHandler {
 
     private static final Logger LOG = LoggerFactory.getLogger(GeneInsertionPlugin.class);
 
-    /** Maximum label hash value (19-bit unsigned). */
-    private static final int LABEL_HASH_BITS = 19;
-    private static final int LABEL_HASH_MAX = (1 << LABEL_HASH_BITS) - 1;
+    /** The largest label hash: a label hash is a bit pattern over the whole value field of a cell. */
+    private static final int LABEL_HASH_MAX = Config.VALUE_MASK;
 
     /** The kind an inserted instruction chain is reported under. */
     private static final String INSTRUCTION_KIND = "instruction-insertion";

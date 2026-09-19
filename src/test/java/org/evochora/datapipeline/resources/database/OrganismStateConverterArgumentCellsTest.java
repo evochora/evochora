@@ -87,6 +87,29 @@ class OrganismStateConverterArgumentCellsTest {
         assertThat(view.arguments.get(0).value).isEqualTo(4711);
     }
 
+    /**
+     * A label value is a bit pattern, not a number: with the top bit of the value field set it
+     * reaches the view as the raw value bits, the key the artifact's label maps use, while a number
+     * with the same bits is negative.
+     */
+    @Test
+    void sendsALabelValueWithTheTopBitSetUnsigned() {
+        int topBit = 1 << (Config.VALUE_BITS - 1);
+        int labelValue = topBit | 0x3A7F;
+
+        InstructionView jump = OrganismStateConverter.resolveInstructionView(
+                jmpiId, List.of(Config.TYPE_LABELREF | labelValue),
+                0, 0, new int[]{1, 2}, new int[]{1, 0},
+                false, null, List.of(), new int[]{100, 100}, null);
+        assertThat(jump.arguments.get(0).moleculeType).isEqualTo("LABELREF");
+        assertThat(jump.arguments.get(0).value).isEqualTo(labelValue);
+
+        InstructionView set = resolve(List.of(
+                new Molecule(Config.TYPE_REGISTER, 0).toInt(),
+                Config.TYPE_DATA | labelValue));
+        assertThat(set.arguments.get(1).value).isEqualTo(Molecule.extractSignedValue(labelValue)).isNegative();
+    }
+
     /** A record that ends before the signature does is a defect and says so. */
     @Test
     void failsOnARecordShorterThanTheSignature() {

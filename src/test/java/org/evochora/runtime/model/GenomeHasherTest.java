@@ -303,7 +303,7 @@ class GenomeHasherTest {
         int labelRef = 510;
 
         long[] hashes = new long[3];
-        int[] masks = {0, 0x3A7F, 0x7FFFF};
+        int[] masks = {0, 0x3A7F, Config.VALUE_MASK};
 
         for (int i = 0; i < masks.length; i++) {
             env = new Environment(new int[]{32, 32}, false);

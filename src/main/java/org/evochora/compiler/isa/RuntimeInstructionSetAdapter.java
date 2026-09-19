@@ -103,10 +103,10 @@ public final class RuntimeInstructionSetAdapter implements IInstructionSet {
 
     /**
      * {@inheritDoc}
-     * <p>The name's hash code reduced to the label value's bits.</p>
+     * <p>The name's hash code reduced to the bits of the value field.</p>
      */
     @Override
     public int labelValue(String name) {
-        return name.hashCode() & Config.LABEL_VALUE_MASK;
+        return name.hashCode() & Config.VALUE_MASK;
     }
 }

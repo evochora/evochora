@@ -15,7 +15,7 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Birth handler that gives each newborn organism a unique label namespace by XOR-rewriting
- * all LABEL and LABELREF molecules with a random 19-bit mask.
+ * all LABEL and LABELREF molecules with a random mask over the value field.
  * <p>
  * Without this plugin, children inherit the exact label hash values of their parents, causing
  * most organisms in the population to share identical labels. While the fuzzy jump system's
@@ -94,7 +94,7 @@ public class LabelRewritePlugin implements IBirthHandler {
     /**
      * Rewrites all LABEL and LABELREF molecules owned by the newborn with a random XOR mask.
      * <p>
-     * The mask is a non-zero 19-bit value. Applying the same mask to both labels and labelrefs
+     * The mask is a non-zero value within the value field. Applying the same mask to both labels and labelrefs
      * preserves all Hamming distances, so the organism's internal fuzzy jump behaviour is unchanged.
      * A rewrite that moved at least one molecule is recorded on the child, with the mask as its
      * parameter.
@@ -109,7 +109,7 @@ public class LabelRewritePlugin implements IBirthHandler {
             return;
         }
 
-        int mask = random.nextInt(Config.LABEL_VALUE_MASK) + 1; // [1, LABEL_VALUE_MASK], never zero
+        int mask = random.nextInt(Config.VALUE_MASK) + 1; // [1, VALUE_MASK], never zero
         final int[] rewriteCount = {0};
 
         environment.visitCellsOwnedBy(child.getId(), cell -> {
