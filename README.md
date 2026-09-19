@@ -48,8 +48,8 @@
       <br><sub>Tick-by-tick inspection and debugging of organism state, registers, and EvoASM execution</sub>
     </td>
     <td align="center" width="50%">
-      <a href="https://github.com/user-attachments/assets/c30c6bcc-cdbe-4637-befe-3d69b21319db" target="_blank">
-        <img alt="Web Analyzer" src="https://github.com/user-attachments/assets/c30c6bcc-cdbe-4637-befe-3d69b21319db" width="100%">
+      <a href="https://github.com/user-attachments/assets/eb83082c-0a04-4572-aaa3-2e601a1322c3" target="_blank">
+        <img alt="Web Analyzer" src="https://github.com/user-attachments/assets/eb83082c-0a04-4572-aaa3-2e601a1322c3" width="100%">
       </a>
       <br><strong>Web Analyzer</strong>
       <br><sub>Population metrics, environment composition, and genome analytics via pluggable charts</sub>
@@ -126,7 +126,7 @@ For the full scientific motivation, see the [Scientific Overview](docs/SCIENTIFI
 
 ### Analyze Your Results
 - **Standard Formats** — All simulation data exports as Parquet, ready for Python, R, or Jupyter
-- **Pluggable Analytics** — Add custom metrics as analytics plugins with built-in chart visualization; built-in plugins cover population, vital stats, age distribution, genome diversity, and more
+- **Pluggable Analytics** — Add custom metrics as analytics plugins with built-in chart visualization; built-in plugins cover population and demography, genomes and lineage, mutation, instruction usage, and environment composition
 - **Web-Based Inspection** — Step through every tick, inspect organism registers, stacks, and debug EvoASM execution in the browser
 - **Jupyter Notebook** — A ready-to-use [data analysis notebook](https://colab.research.google.com/github/evochora/evochora/blob/main/notebooks/data_analysis_guide.ipynb?flush_cache=true) with phylogenetic trees, Muller plots, and cross-metric analysis using pandas, networkx, and DuckDB
 
@@ -206,7 +206,7 @@ Evochora is extensible at multiple levels through Java plugin interfaces:
 - **Mutation plugins** — Implement `IBirthHandler` to define new mutation operators that run during organism reproduction. Built-in plugins: gene insertion, substitution, deletion, and duplication.
 - **Environment plugins** — Implement `ITickPlugin` to add new environmental processes. Built-in plugins: solar radiation, geysers, and seed energy distribution.
 - **Death handlers** — Implement `IDeathHandler` to control what happens when an organism dies (e.g., decay into energy).
-- **Analytics plugins** — Extend `AbstractAnalyticsPlugin` to define custom metrics exported as Parquet. Built-in plugins: population metrics, vital stats, age distribution, genome diversity, and more.
+- **Analytics plugins** — Extend `AbstractAnalyticsPlugin` to define custom metrics exported as Parquet. Built-in plugins cover population and demography, genomes and lineage, mutation, instruction usage, and environment composition.
 - **Compiler extensions** — Each compiler phase is extensible via handler registries (directives, IR converters, layout, linking, emission).
 - **VM instructions** — Add new instructions to the ISA via the instruction registry.
 

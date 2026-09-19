@@ -57,9 +57,9 @@ export async function getManifest(runId) {
     }
 
     /**
-     * Fetches tick range and file count for a metric (lightweight, no file I/O).
-     * Used to determine whether tick-range windowing is needed before making
-     * the heavier /data or /parquet requests.
+     * Fetches tick range and file count for a metric. The server lists the metric's files for
+     * it, which on a run of tens of thousands of files takes a noticeable fraction of a second -
+     * the analyzer asks once per run and metric and keeps the answer.
      *
      * @param {string} metric - Metric identifier
      * @param {string} runId - Simulation run ID

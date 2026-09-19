@@ -1,6 +1,6 @@
 import { TimelineLoadingOverlay } from '../TimelineLoadingOverlay.js';
 import * as TickGrid from '../../TickGrid.js';
-import { bindTickField, formatTick, groupDigits, parseTick } from '../../utils/TickText.js';
+import { bindTickField, formatTick, groupDigits, parseTick } from '../../../../shared/tick/TickText.js';
 
 /**
  * Manages the timeline panel with interactive canvas track, tick input, and keyboard shortcuts.
