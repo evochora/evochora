@@ -3,6 +3,7 @@ package org.evochora.compiler.backend.emit;
 import org.evochora.compiler.api.MachineInstructionInfo;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.backend.layout.LayoutResult;
+import org.evochora.compiler.isa.IInstructionSet;
 import org.evochora.compiler.model.ir.IrImm;
 import org.evochora.compiler.model.ir.IrInstruction;
 import org.evochora.compiler.model.ir.IrLabelRef;
@@ -30,15 +31,18 @@ import java.util.stream.Collectors;
 final class SourceLineIndex {
 
     private final LayoutResult layout;
+    private final IInstructionSet isa;
     private final Map<String, List<MachineInstructionInfo>> instructionsByLine = new HashMap<>();
 
     /**
      * Creates an empty index over a layout.
      *
      * @param layout The layout, for the addresses and coordinates of labels.
+     * @param isa    The instruction set, for the text a typed value is shown as.
      */
-    SourceLineIndex(LayoutResult layout) {
+    SourceLineIndex(LayoutResult layout, IInstructionSet isa) {
         this.layout = layout;
+        this.isa = isa;
     }
 
     /**
@@ -86,10 +90,21 @@ final class SourceLineIndex {
         return switch (op) {
             case IrReg r -> r.name();
             case IrImm imm -> String.valueOf(imm.value());
-            case IrTypedImm ti -> ti.typeName() + ":" + ti.value();
+            case IrTypedImm ti -> ti.typeName() + ":" + formatTypedValue(ti);
             case IrVec vec -> join(vec.components());
             case IrLabelRef ref -> formatLabelDelta(ref, opcodeCoord);
         };
+    }
+
+    /**
+     * Formats the value of a typed immediate the way the target shows a value of that type. A
+     * type name the target does not know is rejected where the operand is encoded; here its value
+     * is shown as written.
+     */
+    private String formatTypedValue(IrTypedImm operand) {
+        return isa.moleculeType(operand.typeName())
+                .map(type -> isa.formatValue(type, (int) operand.value()))
+                .orElseGet(() -> String.valueOf(operand.value()));
     }
 
     /**

@@ -105,6 +105,15 @@ class RuntimeInstructionSetAdapterTest {
     }
 
     @Test
+    void aValueIsWrittenInTheFormatTheRuntimeDeclaresForItsType() {
+        int label = isa.moleculeType("LABELREF").orElseThrow();
+        int data = isa.moleculeType("DATA").orElseThrow();
+
+        assertThat(isa.formatValue(label, 0x5E246)).isEqualTo("5E246");
+        assertThat(isa.formatValue(data, -3)).isEqualTo("-3");
+    }
+
+    @Test
     void aLabelValueNeverLeavesTheLabelValueBits() {
         for (String name : List.of("START", "MAIN.LOOP", "_safe_call_7", "", "a very long label name indeed")) {
             int value = isa.labelValue(name);

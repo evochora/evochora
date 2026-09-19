@@ -94,6 +94,15 @@ public final class RuntimeInstructionSetAdapter implements IInstructionSet {
 
     /**
      * {@inheritDoc}
+     * <p>The format the runtime's type registry declares for the type.</p>
+     */
+    @Override
+    public String formatValue(int type, int value) {
+        return MoleculeTypeRegistry.valueFormatOf(type).write(value);
+    }
+
+    /**
+     * {@inheritDoc}
      * <p>The name's hash code reduced to the label value's bits.</p>
      */
     @Override

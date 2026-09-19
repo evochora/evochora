@@ -114,6 +114,9 @@ class H2DatabaseReaderProcedureNameResolutionTest {
             OrganismTickDetails details = reader.readOrganismDetails(TICK, ORGANISM_ID);
             assertThat(details.state.callStack).hasSize(1);
             assertThat(details.state.callStack.get(0).procName).isEmpty();
+            assertThat(details.state.callStack.get(0).labelValue)
+                    .as("an unnamed frame is identified by the label value the call resolved")
+                    .isEqualTo(UNKNOWN_HASH);
         }
     }
 

@@ -3879,7 +3879,7 @@
       {
         "linearAddress": 117,
         "opcode": "CALL",
-        "operandsAsString": "LABELREF:203918",
+        "operandsAsString": "LABELREF:31C8E",
         "synthetic": false
       },
       {
@@ -3925,7 +3925,7 @@
       {
         "linearAddress": 45,
         "opcode": "CALL",
-        "operandsAsString": "LABELREF:64431",
+        "operandsAsString": "LABELREF:0FBAF",
         "synthetic": false
       },
       {
@@ -3961,7 +3961,7 @@
       {
         "linearAddress": 17,
         "opcode": "JMPI",
-        "operandsAsString": "LABELREF:204270",
+        "operandsAsString": "LABELREF:31DEE",
         "synthetic": false
       }
     ],
@@ -3983,7 +3983,7 @@
       {
         "linearAddress": 105,
         "opcode": "PSLI",
-        "operandsAsString": "LABELREF:261837",
+        "operandsAsString": "LABELREF:3FECD",
         "synthetic": true
       },
       {
@@ -3995,7 +3995,7 @@
       {
         "linearAddress": 109,
         "opcode": "CALL",
-        "operandsAsString": "LABELREF:226711",
+        "operandsAsString": "LABELREF:37597",
         "synthetic": false
       },
       {
@@ -4055,7 +4055,7 @@
       {
         "linearAddress": 99,
         "opcode": "CALL",
-        "operandsAsString": "LABELREF:64431",
+        "operandsAsString": "LABELREF:0FBAF",
         "synthetic": false
       },
       {
@@ -4119,7 +4119,7 @@
       {
         "linearAddress": 155,
         "opcode": "JMPI",
-        "operandsAsString": "LABELREF:129663",
+        "operandsAsString": "LABELREF:1FA7F",
         "synthetic": true
       }
     ],
@@ -4235,7 +4235,7 @@
       {
         "linearAddress": 12,
         "opcode": "JMPI",
-        "operandsAsString": "LABELREF:50650",
+        "operandsAsString": "LABELREF:0C5DA",
         "synthetic": false
       }
     ],
@@ -4243,7 +4243,7 @@
       {
         "linearAddress": 142,
         "opcode": "JMPI",
-        "operandsAsString": "LABELREF:52290",
+        "operandsAsString": "LABELREF:0CC42",
         "synthetic": false
       }
     ],
@@ -4319,7 +4319,7 @@
       {
         "linearAddress": 130,
         "opcode": "CALL",
-        "operandsAsString": "LABELREF:108352",
+        "operandsAsString": "LABELREF:1A740",
         "synthetic": false
       },
       {
@@ -4359,7 +4359,7 @@
       {
         "linearAddress": 124,
         "opcode": "JMPI",
-        "operandsAsString": "LABELREF:55746",
+        "operandsAsString": "LABELREF:0D9C2",
         "synthetic": true
       }
     ],
@@ -4373,7 +4373,7 @@
       {
         "linearAddress": 61,
         "opcode": "CALL",
-        "operandsAsString": "LABELREF:203918",
+        "operandsAsString": "LABELREF:31C8E",
         "synthetic": false
       },
       {
@@ -4387,7 +4387,7 @@
       {
         "linearAddress": 137,
         "opcode": "JMPI",
-        "operandsAsString": "LABELREF:52290",
+        "operandsAsString": "LABELREF:0CC42",
         "synthetic": false
       }
     ],
@@ -4415,7 +4415,7 @@
       {
         "linearAddress": 135,
         "opcode": "JMPI",
-        "operandsAsString": "LABELREF:76951",
+        "operandsAsString": "LABELREF:12C97",
         "synthetic": false
       }
     ]

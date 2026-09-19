@@ -67,6 +67,16 @@ public interface IInstructionSet {
 	int encodeCell(int type, int value);
 
 	/**
+	 * Writes the value of a molecule as text, the way the target shows a value of that type: a
+	 * number in decimal, a label value as the bit pattern it is.
+	 *
+	 * @param type  The molecule type, as returned by {@link #moleculeType}.
+	 * @param value The molecule value.
+	 * @return The text of the value, without the type name.
+	 */
+	String formatValue(int type, int value);
+
+	/**
 	 * The value that stands for a label name in the machine code: a LABEL molecule carries it,
 	 * a LABELREF operand carries the value of the label it refers to, and the runtime matches
 	 * the two by Hamming distance. Definitions and references use this one derivation.

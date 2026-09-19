@@ -191,7 +191,7 @@ public final class OrganismStateConverter {
             savedRegisters.add(convertRegisterValue(rv));
         }
 
-        return new ProcFrameView(procName, absReturnIp, absCallIp, savedRegisters);
+        return new ProcFrameView(procName, frame.getLabelHash(), absReturnIp, absCallIp, savedRegisters);
     }
     
     /**
