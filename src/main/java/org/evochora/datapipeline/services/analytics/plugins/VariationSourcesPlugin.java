@@ -3,7 +3,6 @@ package org.evochora.datapipeline.services.analytics.plugins;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 import org.evochora.datapipeline.api.analytics.AbstractAnalyticsPlugin;
 import org.evochora.datapipeline.api.analytics.Aggregation;
@@ -12,7 +11,6 @@ import org.evochora.datapipeline.api.analytics.IAnalyticsContext;
 import org.evochora.datapipeline.api.analytics.ManifestEntry;
 import org.evochora.datapipeline.api.analytics.ParquetSchema;
 import org.evochora.datapipeline.api.analytics.VisualizationHint;
-import org.evochora.datapipeline.api.contracts.MutationEvent;
 import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.memory.MemoryEstimate;
@@ -38,14 +36,9 @@ import org.evochora.datapipeline.utils.MetadataConfigHelper;
  *       five above: a mutation plugin from outside this project</li>
  * </ul>
  * <p>
- * <strong>How a birth is sorted.</strong> Every birth counts in exactly one column, so the counts
- * of a row add up to the births of that recording. The genome decides before the events do: a
- * newborn without a genome has nothing that could have varied, whatever its parent carried, and
- * one whose genome is the parent's received no variation even where a plugin wrote outside the
- * body. Only then do the events of the birth that wrote cells decide, by their kinds. An event
- * that wrote no cell - the label mask, which changes every label by the same amount and no
- * molecule of its own - is not a variation and is left out, so a birth that carries only such an
- * event reads as whatever its genome says.
+ * <strong>How a birth is sorted.</strong> {@link BirthVariation} decides, and the columns follow
+ * its classes in its order. Every birth counts in exactly one column, so the counts of a row add
+ * up to the births of that recording.
  * <p>
  * Which kinds met at a birth counted under {@code multiple} is not in these rows;
  * {@code mutation_summary} holds every single event and answers that.
@@ -80,42 +73,13 @@ import org.evochora.datapipeline.utils.MetadataConfigHelper;
 public class VariationSourcesPlugin extends AbstractAnalyticsPlugin {
 
     /**
-     * The count columns, in the order they follow the tick in a row and stack in the chart:
-     * the two the genome alone decides, the remainder no plugin explains, the kinds, and the two
-     * that catch what a single known kind does not cover.
+     * The count columns, in the order they follow the tick in a row and stack in the chart: one per
+     * class a birth is sorted into, in the order those classes are numbered in.
      */
-    private static final List<String> COUNT_COLUMNS = List.of(
-        "unchanged",
-        "bodiless",
-        "no_event",
-        "duplication",
-        "deletion",
-        "instruction_insertion",
-        "label_insertion",
-        "substitution",
-        "multiple",
-        "other");
+    private static final List<String> COUNT_COLUMNS = BirthVariation.CLASSES;
 
     /** How many time buckets the chart's query cuts the loaded ticks into. */
     private static final int TARGET_BUCKETS = 50;
-
-    private static final int UNCHANGED = COUNT_COLUMNS.indexOf("unchanged");
-    private static final int BODILESS = COUNT_COLUMNS.indexOf("bodiless");
-    private static final int NO_EVENT = COUNT_COLUMNS.indexOf("no_event");
-    private static final int MULTIPLE = COUNT_COLUMNS.indexOf("multiple");
-    private static final int OTHER = COUNT_COLUMNS.indexOf("other");
-
-    /**
-     * The column of each mutation kind this project's plugins report. A kind outside this map has
-     * no column of its own and counts under {@code other}, so a plugin brought from elsewhere
-     * shows up as its own band instead of disappearing into one of these.
-     */
-    private static final Map<String, Integer> COLUMN_OF_KIND = Map.of(
-        "duplication", COUNT_COLUMNS.indexOf("duplication"),
-        "deletion", COUNT_COLUMNS.indexOf("deletion"),
-        "instruction-insertion", COUNT_COLUMNS.indexOf("instruction_insertion"),
-        "label-insertion", COUNT_COLUMNS.indexOf("label_insertion"),
-        "substitution", COUNT_COLUMNS.indexOf("substitution"));
 
     private static final ParquetSchema SCHEMA = buildSchema();
 
@@ -185,7 +149,7 @@ public class VariationSourcesPlugin extends AbstractAnalyticsPlugin {
             if (!org.hasParentId() || org.getBirthTick() <= previousRecording) {
                 continue;
             }
-            births[columnOf(org)]++;
+            births[BirthVariation.classify(org)]++;
             total++;
         }
 
@@ -199,36 +163,6 @@ public class VariationSourcesPlugin extends AbstractAnalyticsPlugin {
             row[i + 1] = births[i];
         }
         return Collections.singletonList(row);
-    }
-
-    /**
-     * Finds the column one birth counts in.
-     *
-     * @param org the newborn, with its genome, its parent's and the events of its birth
-     * @return the index of the column within {@link #COUNT_COLUMNS}
-     */
-    private int columnOf(OrganismState org) {
-        if (org.getGenomeHash() == 0L) {
-            return BODILESS;
-        }
-        if (org.hasParentGenomeHash() && org.getGenomeHash() == org.getParentGenomeHash()) {
-            return UNCHANGED;
-        }
-        String kind = null;
-        for (MutationEvent event : org.getBirthMutationsList()) {
-            if (event.getCellsCount() == 0) {
-                continue;
-            }
-            if (kind == null) {
-                kind = event.getKind();
-            } else if (!kind.equals(event.getKind())) {
-                return MULTIPLE;
-            }
-        }
-        if (kind == null) {
-            return NO_EVENT;
-        }
-        return COLUMN_OF_KIND.getOrDefault(kind, OTHER);
     }
 
     /**

@@ -155,17 +155,32 @@ public class ManifestEntry {
      * @param query        SQL query for that table, with the same {@code {table}} placeholder
      *                     {@link #generatedQuery} uses
      * @param followsLevel whether the table is read at the level of detail the chart shows
+     * @param columnar     whether the frontend hands the chart one array per column instead of one
+     *                     object per row; for a table too large to turn into objects, where the
+     *                     per-row objects cost more than the values they carry
      */
-    public record Companion(String metricId, String query, boolean followsLevel) {
+    public record Companion(String metricId, String query, boolean followsLevel, boolean columnar) {
 
         /**
-         * A companion read at the finest level of detail.
+         * A companion read at the finest level of detail, row by row.
          *
          * @param metricId storage metric identifier under which the table's Parquet files are found
          * @param query    SQL query for that table
          */
         public Companion(String metricId, String query) {
-            this(metricId, query, false);
+            this(metricId, query, false, false);
+        }
+
+        /**
+         * A companion read row by row.
+         *
+         * @param metricId     storage metric identifier under which the table's Parquet files are
+         *                     found
+         * @param query        SQL query for that table
+         * @param followsLevel whether the table is read at the level of detail the chart shows
+         */
+        public Companion(String metricId, String query, boolean followsLevel) {
+            this(metricId, query, followsLevel, false);
         }
     }
 }
