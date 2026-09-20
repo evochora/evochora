@@ -293,6 +293,10 @@ public class VariationSourcesPlugin extends AbstractAnalyticsPlugin {
      * births table and over the whole run, so the browser derives the series from that table, read
      * column by column and unfiltered. What this entry's own query returns is the tick range this
      * plugin's table covers, so that the card knows where its data begins and ends.
+     * <p>
+     * {@code birthsMetric} names that table for the derivation, and {@code variationClasses} lets
+     * the browser resolve a class name to the index the table's {@code variation} column holds, so
+     * that the order of the classes is stated once.
      *
      * @return the manifest entry of the mutation success card
      */
@@ -320,6 +324,8 @@ public class VariationSourcesPlugin extends AbstractAnalyticsPlugin {
 
         entry.visualization = VisualizationHint.chart("line-chart", "tick")
             .with("derived", "mutation-success")
+            .with("birthsMetric", birthsMetricId)
+            .with("variationClasses", BirthVariation.CLASSES)
             .with("y", SUCCESS_SERIES)
             .with("yFormat", "decimal")
             .with("yLabel", "Success against no plugin mutation")

@@ -6,7 +6,11 @@ import { formatTickValue, axisTicks, tooltipTitle, tooltipValue } from './ChartU
  * 
  * Renders percentile data as layered bands to show distribution over time.
  * This is ideal for visualizing age distributions, showing min/max, interquartile range, etc.
- * 
+ *
+ * A metric may draw more than one distribution in one chart: {@code groups} names each of them
+ * with its own colour and its own percentile columns, and the legend tells them apart by name.
+ * Without it the chart draws the single distribution of its {@code y} columns.
+ *
  * @module BandChart
  */
     
@@ -23,15 +27,16 @@ import { formatTickValue, axisTicks, tooltipTitle, tooltipValue } from './ChartU
     /**
      * Colour of the nth band counted from the outside.
      *
+     * @param {string} base - The hex colour of the group the band belongs to
      * @param {number} index - 0 for the outermost band
      * @param {number} total - How many bands there are
      * @returns {string} An rgba-style hex colour
      */
-    function bandColor(index, total) {
+    function bandColor(base, index, total) {
         const step = Math.max(0, BAND_ALPHA.length - total);
-        return BAND_BASE + BAND_ALPHA[Math.min(BAND_ALPHA.length - 1, index + step)];
+        return base + BAND_ALPHA[Math.min(BAND_ALPHA.length - 1, index + step)];
     }
-    
+
     function toNumber(value) {
         if (typeof value === 'bigint') {
             return Number(value);
@@ -41,6 +46,69 @@ import { formatTickValue, axisTicks, tooltipTitle, tooltipValue } from './ChartU
 
 function formatLabel(key) {
     return key.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+}
+
+/**
+ * The band groups to draw: the ones the config names, or the single unnamed one of its {@code y}
+ * columns.
+ *
+ * @param {Object} config - Visualization config
+ * @returns {Array<{name: string, base: string, median: string, keys: Array<string>}>} Per group
+ *          its name for the legend, the colour of its bands, the colour of its median line, and
+ *          its percentile columns in ascending order
+ */
+function bandGroups(config) {
+    if (Array.isArray(config.groups) && config.groups.length > 0) {
+        return config.groups.map(group => ({
+            name: group.name || '',
+            base: group.color || BAND_BASE,
+            median: group.color || PALETTE.medianLine,
+            keys: group.y || []
+        }));
+    }
+    return [{ name: '', base: BAND_BASE, median: PALETTE.medianLine, keys: config.y || [] }];
+}
+
+/**
+ * The name one percentile column carries inside its group.
+ *
+ * A column named after its group - {@code energy_p50} in the group "Energy" - keeps only what
+ * distinguishes it, so that the legend reads "Energy P50" rather than "Energy Energy P50".
+ *
+ * @param {string} name - The group's name, empty where the chart draws a single group
+ * @param {string} key - The column
+ * @returns {string} The label of that column
+ */
+function percentileLabel(name, key) {
+    const prefix = name.toLowerCase().replace(/\s+/g, '_') + '_';
+    const bare = name && key.toLowerCase().startsWith(prefix) ? key.slice(prefix.length) : key;
+    return formatLabel(bare);
+}
+
+/**
+ * What the left axis is called where the metric does not name it: the groups, or, for a single
+ * unnamed group, the columns it is drawn from.
+ *
+ * @param {Array<{name: string, keys: Array<string>}>} groups - The band groups
+ * @returns {string} The title of the axis
+ */
+function axisTitleOf(groups) {
+    const named = groups.map(group => group.name).filter(Boolean);
+    if (named.length > 0) {
+        return named.join(', ');
+    }
+    return groups.flatMap(group => group.keys).map(formatLabel).join(', ');
+}
+
+/**
+ * Puts a group's name in front of what one of its datasets is called.
+ *
+ * @param {string} name - The group's name, empty where the chart draws a single group
+ * @param {string} text - What the dataset is called within its group
+ * @returns {string} The label of the dataset
+ */
+function groupLabel(name, text) {
+    return name ? `${name} ${text}` : text;
 }
 
 /**
@@ -83,11 +151,13 @@ export function render(canvas, data, config) {
         const ctx = canvas.getContext('2d');
         
         const xKey = config.x || 'tick';
-        // Percentiles in ascending order, an odd number of them: outermost pair first, the
-        // middle one last. Three, five and seven all work; the outermost pair becomes the
-        // faintest band, each pair inside it a stronger one, and the middle one a line.
-        const yKeys = config.y || [];
+        // A group's percentiles stand in ascending order, an odd number of them. Three, five and
+        // seven all work; the outermost pair becomes the faintest band, each pair inside it a
+        // stronger one, and the middle one a line.
+        const groups = bandGroups(config);
         const y2Keys = config.y2 || [];
+        const y2Colors = Array.isArray(config.y2Colors) && config.y2Colors.length > 0
+            ? config.y2Colors : SECOND_AXIS_COLORS;
 
         const labels = data.map(row => toNumber(row[xKey]));
 
@@ -95,45 +165,51 @@ export function render(canvas, data, config) {
 
         // --- Create datasets for bands ---
         // Each band needs TWO datasets: lower boundary + upper boundary with fill
-        const bandCount = Math.floor(yKeys.length / 2);
-        for (let i = 0; i < bandCount; i++) {
-            const lower = yKeys[i];
-            const upper = yKeys[yKeys.length - 1 - i];
-            addBandDatasets(datasets, data, lower, upper,
-                `${formatLabel(lower)}-${formatLabel(upper)}`, bandColor(i, bandCount));
-        }
+        groups.forEach(group => {
+            const bandCount = Math.floor(group.keys.length / 2);
+            for (let i = 0; i < bandCount; i++) {
+                const lower = group.keys[i];
+                const upper = group.keys[group.keys.length - 1 - i];
+                const label = groupLabel(group.name,
+                    percentileLabel(group.name, lower) + '-' + percentileLabel(group.name, upper));
+                addBandDatasets(datasets, data, lower, upper, label,
+                    bandColor(group.base, i, bandCount));
+            }
+        });
 
-        // Median line (on top)
-        if (yKeys.length % 2 === 1) {
-            const middle = yKeys[(yKeys.length - 1) / 2];
-            datasets.push({
-                label: formatLabel(middle),
-                data: data.map(row => toNumber(row[middle])),
-                borderColor: PALETTE.medianLine,
-                borderWidth: 2,
-                pointRadius: 0,
-                fill: false,
-                tension: 0.4 // Smooth curves
-            });
-        }
+        // Median lines, above every band so that no group's shading covers another's middle
+        groups.forEach(group => {
+            if (group.keys.length % 2 === 1) {
+                const middle = group.keys[(group.keys.length - 1) / 2];
+                datasets.push({
+                    label: groupLabel(group.name, percentileLabel(group.name, middle)),
+                    data: data.map(row => toNumber(row[middle])),
+                    borderColor: group.median,
+                    borderWidth: 2,
+                    pointRadius: 0,
+                    fill: false,
+                    tension: 0.4 // Smooth curves
+                });
+            }
+        });
 
         // Series on a second axis, for a quantity of a different kind - how many measurements
         // are behind the percentiles, say, which a band of three says something else than one
-        // of three hundred
+        // of three hundred. Dashed, unless the metric draws them as a quantity of its own.
         y2Keys.forEach((key, index) => {
             datasets.push({
                 label: formatLabel(key),
                 data: data.map(row => toNumber(row[key])),
-                borderColor: SECOND_AXIS_COLORS[index % SECOND_AXIS_COLORS.length],
+                borderColor: y2Colors[index % y2Colors.length],
                 borderWidth: 1,
-                borderDash: [4, 3],
+                ...(config.y2Solid ? {} : { borderDash: [4, 3] }),
                 pointRadius: 0,
                 fill: false,
                 tension: 0.2,
                 yAxisID: 'y2'
             });
         });
-       
+
         const chartConfig = {
             type: 'line',
             data: {
@@ -196,7 +272,7 @@ export function render(canvas, data, config) {
                     y: {
                         title: {
                             display: true,
-                            text: config.yLabel || yKeys.map(formatLabel).join(', '),
+                            text: config.yLabel || axisTitleOf(groups),
                             color: '#888'
                         },
                         ticks: { color: '#888', ...axisTicks(config.yFormat) },

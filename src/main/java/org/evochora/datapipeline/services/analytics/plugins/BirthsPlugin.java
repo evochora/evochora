@@ -203,6 +203,10 @@ public class BirthsPlugin extends AbstractAnalyticsPlugin {
      * the whole run, so the browser derives the bands and the share from the table itself, read
      * column by column and unfiltered. What this entry's own query returns is the tick range the
      * table covers, so that the card knows where its data begins and ends.
+     * <p>
+     * The columns named under {@code y} and {@code y2} are the ones the derivation produces, not
+     * columns of this table; {@code variationClasses} lets the browser resolve a class name to the
+     * index the {@code variation} column holds, so that the order of the classes is stated once.
      */
     @Override
     public ManifestEntry getManifestEntry() {
@@ -227,7 +231,15 @@ public class BirthsPlugin extends AbstractAnalyticsPlugin {
             false, true));
 
         entry.visualization = VisualizationHint.chart("band-chart", "tick")
-            .with("derived", "generation-time");
+            .with("derived", "generation-time")
+            .with("birthsMetric", metricId)
+            .with("variationClasses", BirthVariation.CLASSES)
+            .with("y", List.of("p10", "p25", "p50", "p75", "p90"))
+            .with("yFormat", "integer")
+            .with("yLabel", "Ticks")
+            .with("y2", List.of("newborns_that_found_a_line"))
+            .with("y2Format", "percent")
+            .with("y2Label", "Share of newborns that found a line");
 
         return entry;
     }

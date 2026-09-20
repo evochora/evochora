@@ -186,7 +186,18 @@ class BirthsPluginTest {
         assertThat(entry.id).isEqualTo("births");
         assertThat(entry.name).isEqualTo("Generation Time");
         assertThat(entry.visualization.type).isEqualTo("band-chart");
-        assertThat(entry.visualization.config).containsEntry("derived", "generation-time");
+        // The columns the card draws are the ones the derivation produces, over the births table it
+        // names, whose classes it resolves through the list given here
+        assertThat(entry.visualization.config)
+            .containsEntry("derived", "generation-time")
+            .containsEntry("birthsMetric", "births")
+            .containsEntry("variationClasses", VARIATION_CLASSES)
+            .containsEntry("y", List.of("p10", "p25", "p50", "p75", "p90"))
+            .containsEntry("yFormat", "integer")
+            .containsEntry("yLabel", "Ticks")
+            .containsEntry("y2", List.of("newborns_that_found_a_line"))
+            .containsEntry("y2Format", "percent")
+            .containsEntry("y2Label", "Share of newborns that found a line");
         assertThat(entry.companions).singleElement().satisfies(companion -> {
             assertThat(companion.metricId()).isEqualTo("births");
             assertThat(companion.columnar()).isTrue();

@@ -1,5 +1,7 @@
 
 import * as ChartRegistry from '../charts/ChartRegistry.js';
+import * as GenerationTimeSeries from '../charts/GenerationTimeSeries.js';
+import * as MutationSuccessSeries from '../charts/MutationSuccessSeries.js';
 
 /**
  * Metric Card View
@@ -34,7 +36,10 @@ import * as ChartRegistry from '../charts/ChartRegistry.js';
  * A derivation whose companion is missing or empty returns an empty array rather than throwing; the
  * card then says it has no data, as a card whose own table is empty does.
  */
-const DERIVATIONS = {};
+const DERIVATIONS = {
+    'generation-time': GenerationTimeSeries,
+    'mutation-success': MutationSuccessSeries
+};
 
 // State
 let cards = {}; // Store card instances by metric ID

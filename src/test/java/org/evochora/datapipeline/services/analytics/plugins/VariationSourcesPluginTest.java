@@ -358,6 +358,10 @@ class VariationSourcesPluginTest {
         assertThat(success.visualization.type).isEqualTo("line-chart");
         assertThat(success.visualization.config)
             .containsEntry("derived", "mutation-success")
+            // The derivation reads the births under this name and resolves their classes through
+            // the list given here
+            .containsEntry("birthsMetric", "births")
+            .containsEntry("variationClasses", COUNT_COLUMNS)
             .containsEntry("y", List.of("no_plugin_mutation", "duplication", "deletion",
                 "instruction_insertion", "label_insertion", "substitution"))
             .containsEntry("yMin", 0)
