@@ -129,6 +129,49 @@ class TiledLabelIndexTest {
     }
 
     @Test
+    void findsTheSameLabelAmongManyValuesHeldByTile() {
+        // Forty values with thirty labels each are all held by tile, several hundred keys in one
+        // table: their probe sequences collide, which a search has to walk past
+        EnvironmentProperties properties = new EnvironmentProperties(new int[]{512, 384}, true);
+        TiledLabelIndex index = new TiledLabelIndex(properties);
+        CoordinateDecoder coordinates = index.coordinates();
+        Random random = new Random(11);
+        int values = 40;
+        List<List<Integer>> flatIndexesOfValue = new ArrayList<>();
+        Map<Integer, Integer> valueAtFlatIndex = new HashMap<>();
+        for (int v = 0; v < values; v++) {
+            List<Integer> flatIndexes = new ArrayList<>();
+            while (flatIndexes.size() < 30) {
+                int flatIndex = random.nextInt(512 * 384);
+                if (valueAtFlatIndex.putIfAbsent(flatIndex, v) == null) {
+                    flatIndexes.add(flatIndex);
+                    index.put(VALUE + v * 7919, flatIndex, 1);
+                }
+            }
+            flatIndexesOfValue.add(flatIndexes);
+        }
+
+        for (int query = 0; query < 2_000; query++) {
+            int v = random.nextInt(values);
+            int[] from = {random.nextInt(512), random.nextInt(384)};
+            int radius = 40 + random.nextInt(300);
+            int expected = -1;
+            int expectedDistance = Integer.MAX_VALUE;
+            for (int flatIndex : flatIndexesOfValue.get(v)) {
+                int distance = coordinates.distance(from, flatIndex);
+                if (distance <= radius && TiledLabelIndex.isNearer(distance, flatIndex, expectedDistance, expected, true)) {
+                    expectedDistance = distance;
+                    expected = flatIndex;
+                }
+            }
+
+            long search = index.nearest(VALUE + v * 7919, NOBODY, from, radius, true, noneFound());
+
+            assertThat(TiledLabelIndex.foundFlatIndex(search)).isEqualTo(expected);
+        }
+    }
+
+    @Test
     void findsTheSameLabelAsASearchOverEveryLabel() {
         // Worlds of one to three dimensions, smaller than a tile, a multiple of the tile side and
         // not, each toroidal and bounded
