@@ -26,9 +26,11 @@ import java.util.Random;
  * <strong>Which labels are candidates:</strong> only those whose value the newborn's body holds at
  * least {@code minLabelCount} times among its LABEL cells. At the default of 2 the deletion removes
  * only a block the body carries twice, so what it takes away stands elsewhere and the deletion is
- * neutral by construction — the counterpart of duplication and of the label insertion's detour,
- * whose label copies the value of an existing one. A label occurring fewer times is not drawn from
- * at all; {@code minLabelCount = 1} makes every label a candidate again.
+ * neutral by construction — the counterpart of duplication, which leaves a second block under the
+ * same label value. A label insertion leaves none: the label it writes takes over the value of a
+ * block's label, and that label is renamed, so both values occur once and neither is drawn from.
+ * A label occurring fewer times is not drawn from at all; {@code minLabelCount = 1} makes every
+ * label a candidate again.
  * <p>
  * Among the candidates a label is drawn with weight = count^exponent, count being how often its
  * value occurs and the exponent configurable. With exponent=2.0 (default) this yields quadratic
@@ -37,7 +39,7 @@ import java.util.Random;
  * <p>
  * The thermodynamic cost system (value-dependent POKE costs) provides the counterweight to
  * genome bloat from duplication. This plugin provides the matching variation: the redundant blocks
- * duplication and detour insertion leave behind are the ones that can be taken away again.
+ * duplication leaves behind are the ones that can be taken away again.
  * <p>
  * <strong>What it records:</strong> an applied deletion reports itself on the newborn as a
  * {@link MutationRecord} of kind {@code "deletion"}. Its cells are the label cell and every cleared

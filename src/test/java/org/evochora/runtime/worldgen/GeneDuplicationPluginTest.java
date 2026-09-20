@@ -40,11 +40,26 @@ class GeneDuplicationPluginTest {
     /** SETV opcode: a register and a vector operand, so it occupies four cells in a 2D world. */
     private static int SETV_OPCODE;
 
+    /** JMPI opcode: one label operand, so a jump occupies two cells. */
+    private static int JMPI_OPCODE;
+
+    /** RET opcode: no operand, one cell. */
+    private static int RET_OPCODE;
+
+    /** IFI opcode, a conditional: a register and an immediate operand, three cells. */
+    private static int IFI_OPCODE;
+
+    /** The value every label of the block tests carries. */
+    private static final int BLOCK_LABEL_VALUE = 12345;
+
     @BeforeAll
     static void initInstructions() {
         Instruction.init();
         ADDR_OPCODE = Instruction.getInstructionIdByName("ADDR");
         SETV_OPCODE = Instruction.getInstructionIdByName("SETV");
+        JMPI_OPCODE = Instruction.getInstructionIdByName("JMPI");
+        RET_OPCODE = Instruction.getInstructionIdByName("RET");
+        IFI_OPCODE = Instruction.getInstructionIdByName("IFI");
     }
 
     @BeforeEach
@@ -501,7 +516,12 @@ class GeneDuplicationPluginTest {
 
     /** The molecule a block begins with. */
     private static Molecule label() {
-        return new Molecule(Config.TYPE_LABEL, 12345);
+        return new Molecule(Config.TYPE_LABEL, BLOCK_LABEL_VALUE);
+    }
+
+    /** The molecule of a reference to the label the blocks begin with. */
+    private static Molecule labelRef() {
+        return new Molecule(Config.TYPE_LABELREF, BLOCK_LABEL_VALUE);
     }
 
     /** The molecule of a register operand cell. */
@@ -520,25 +540,36 @@ class GeneDuplicationPluginTest {
     }
 
     /**
-     * Places a block of four cells, a label followed by one ADDR instruction, running from
-     * {@code labelX} towards rising x.
+     * Places a block of four cells that execution cannot leave at its end — a label, a jump and a
+     * return — running from {@code labelX} towards rising x.
      */
     private void placeRisingBlock(int ownerId, int labelX, int y) {
+        place(ownerId, labelX, y, label());
+        place(ownerId, labelX + 1, y, opcode(JMPI_OPCODE));
+        place(ownerId, labelX + 2, y, labelRef());
+        place(ownerId, labelX + 3, y, opcode(RET_OPCODE));
+    }
+
+    /**
+     * Places a block of four cells that execution cannot leave at its end — a label, a jump and a
+     * return — running from {@code labelX} towards falling x.
+     */
+    private void placeFallingBlock(int ownerId, int labelX, int y) {
+        place(ownerId, labelX, y, label());
+        place(ownerId, labelX - 1, y, opcode(JMPI_OPCODE));
+        place(ownerId, labelX - 2, y, labelRef());
+        place(ownerId, labelX - 3, y, opcode(RET_OPCODE));
+    }
+
+    /**
+     * Places a block of four cells that execution runs on from — a label followed by one ADDR
+     * instruction — running from {@code labelX} towards rising x.
+     */
+    private void placeOpenRisingBlock(int ownerId, int labelX, int y) {
         place(ownerId, labelX, y, label());
         place(ownerId, labelX + 1, y, opcode(ADDR_OPCODE));
         place(ownerId, labelX + 2, y, reg());
         place(ownerId, labelX + 3, y, reg());
-    }
-
-    /**
-     * Places a block of four cells, a label followed by one ADDR instruction, running from
-     * {@code labelX} towards falling x.
-     */
-    private void placeFallingBlock(int ownerId, int labelX, int y) {
-        place(ownerId, labelX, y, label());
-        place(ownerId, labelX - 1, y, opcode(ADDR_OPCODE));
-        place(ownerId, labelX - 2, y, reg());
-        place(ownerId, labelX - 3, y, reg());
     }
 
     /**
@@ -555,12 +586,26 @@ class GeneDuplicationPluginTest {
         }
     }
 
-    /** The molecules of one ADDR block, in the order the copy writes them. */
+    /** The molecules of one block of {@link #placeRisingBlock}, in the order the copy writes them. */
     private void assertBlockAt(int x, int y) {
+        assertThat(environment.getMolecule(x, y).toInt()).isEqualTo(label().toInt());
+        assertThat(environment.getMolecule(x + 1, y).toInt()).isEqualTo(opcode(JMPI_OPCODE).toInt());
+        assertThat(environment.getMolecule(x + 2, y).toInt()).isEqualTo(labelRef().toInt());
+        assertThat(environment.getMolecule(x + 3, y).toInt()).isEqualTo(opcode(RET_OPCODE).toInt());
+    }
+
+    /** The molecules of one block of {@link #placeOpenRisingBlock}, in the order the copy writes them. */
+    private void assertOpenBlockAt(int x, int y) {
         assertThat(environment.getMolecule(x, y).toInt()).isEqualTo(label().toInt());
         assertThat(environment.getMolecule(x + 1, y).toInt()).isEqualTo(opcode(ADDR_OPCODE).toInt());
         assertThat(environment.getMolecule(x + 2, y).toInt()).isEqualTo(reg().toInt());
         assertThat(environment.getMolecule(x + 3, y).toInt()).isEqualTo(reg().toInt());
+    }
+
+    /** Asserts that a jump to the blocks' label stands at the given cell and the one behind it. */
+    private void assertClosingJumpAt(int x, int y) {
+        assertThat(environment.getMolecule(x, y).toInt()).isEqualTo(opcode(JMPI_OPCODE).toInt());
+        assertThat(environment.getMolecule(x + 1, y).toInt()).isEqualTo(labelRef().toInt());
     }
 
     @Test
@@ -693,13 +738,13 @@ class GeneDuplicationPluginTest {
         plugin.onBirth(negChild, environment);
 
         assertThat(environment.getMolecule(7, 4).toInt()).isEqualTo(label().toInt());
-        assertThat(environment.getMolecule(6, 4).toInt()).isEqualTo(opcode(ADDR_OPCODE).toInt());
-        assertThat(environment.getMolecule(5, 4).toInt()).isEqualTo(reg().toInt());
-        assertThat(environment.getMolecule(4, 4).toInt()).isEqualTo(reg().toInt());
+        assertThat(environment.getMolecule(6, 4).toInt()).isEqualTo(opcode(JMPI_OPCODE).toInt());
+        assertThat(environment.getMolecule(5, 4).toInt()).isEqualTo(labelRef().toInt());
+        assertThat(environment.getMolecule(4, 4).toInt()).isEqualTo(opcode(RET_OPCODE).toInt());
         assertThat(environment.getMolecule(3, 4).toInt()).isEqualTo(label().toInt());
-        assertThat(environment.getMolecule(2, 4).toInt()).isEqualTo(opcode(ADDR_OPCODE).toInt());
-        assertThat(environment.getMolecule(1, 4).toInt()).isEqualTo(reg().toInt());
-        assertThat(environment.getMolecule(0, 4).toInt()).isEqualTo(reg().toInt());
+        assertThat(environment.getMolecule(2, 4).toInt()).isEqualTo(opcode(JMPI_OPCODE).toInt());
+        assertThat(environment.getMolecule(1, 4).toInt()).isEqualTo(labelRef().toInt());
+        assertThat(environment.getMolecule(0, 4).toInt()).isEqualTo(opcode(RET_OPCODE).toInt());
         assertThat(environment.getMolecule(8, 4).isEmpty())
                 .as("the third block does not fit and is not begun").isTrue();
         assertThat(environment.getMolecule(9, 4).isEmpty())
@@ -715,7 +760,7 @@ class GeneDuplicationPluginTest {
 
     @Test
     void aLabelInsideAnOperandListIsNoBlockBoundary() {
-        // y=2: one ADDR block at x=10..13, then a block whose SETV carries a LABEL molecule as the
+        // y=2: one block at x=10..13, then a block whose SETV carries a LABEL molecule as the
         // first component of its vector operand (x=17). The target run of eight cells ends at that
         // very cell, in the middle of the SETV, so the copy is cut back to the block before it.
         int id = child.getId();
@@ -796,9 +841,9 @@ class GeneDuplicationPluginTest {
             // starts at the first or the second label is cut back at a boundary beyond the edge.
             placeRisingBlock(id, 26, 2);
             place(id, 30, 2, label());
-            place(id, 31, 2, opcode(ADDR_OPCODE));
-            place(id, 0, 2, reg());
-            place(id, 1, 2, reg());
+            place(id, 31, 2, opcode(JMPI_OPCODE));
+            place(id, 0, 2, labelRef());
+            place(id, 1, 2, opcode(RET_OPCODE));
             placeRisingBlock(id, 2, 2);
             placeTargetRow(id, 4, 6);
 
@@ -811,5 +856,183 @@ class GeneDuplicationPluginTest {
             copies++;
         }
         assertThat(copies).isEqualTo(20);
+    }
+
+    // ---- How a cut-back copy ends ----
+
+    @Test
+    void aCutBackCopyThatExecutionCanLeaveIsClosedWithAJumpToTheLabelItWasCutAt() {
+        // Two blocks of four cells that execution runs on from, a target run of six cells: the
+        // first block fits with the two cells of the jump, the second does not
+        placeOpenRisingBlock(child.getId(), 10, 2);
+        placeOpenRisingBlock(child.getId(), 14, 2);
+        placeTargetRow(child.getId(), 4, 6);
+
+        new GeneDuplicationPlugin(new SeededRandomProvider(42L), 1.0, 4).onBirth(child, environment);
+
+        assertOpenBlockAt(0, 4);
+        assertClosingJumpAt(4, 4);
+        List<MutationRecord> records = child.getBirthMutations();
+        assertThat(records).hasSize(1);
+        assertThat(records.get(0).cells()).containsExactly(
+                flatIndex(0, 4), flatIndex(1, 4), flatIndex(2, 4), flatIndex(3, 4),
+                flatIndex(4, 4), flatIndex(5, 4));
+        assertThat(records.get(0).params()).containsExactly(flatIndex(10, 2));
+    }
+
+    @Test
+    void aJumpBehindAConditionalLeavesTheCopyOpenAndIsClosedToo() {
+        // The first block ends in a jump a conditional can skip: label, IFI, jump — six cells.
+        // A closed block follows, and the run of eight cells holds the first with its closing jump.
+        for (int seed = 0; seed < 10; seed++) {
+            setUp();
+            int id = child.getId();
+            place(id, 10, 2, label());
+            place(id, 11, 2, opcode(IFI_OPCODE));
+            place(id, 12, 2, reg());
+            place(id, 13, 2, new Molecule(Config.TYPE_DATA, 0));
+            place(id, 14, 2, opcode(JMPI_OPCODE));
+            place(id, 15, 2, labelRef());
+            placeRisingBlock(id, 16, 2);
+            placeTargetRow(id, 4, 8);
+
+            new GeneDuplicationPlugin(new SeededRandomProvider(seed), 1.0, 4).onBirth(child, environment);
+
+            List<MutationRecord> records = child.getBirthMutations();
+            assertThat(records).as("seed=%d", seed).hasSize(1);
+            if (records.get(0).params()[0] != flatIndex(10, 2)) {
+                continue; // the copy began at the second block, which the run holds whole
+            }
+            assertThat(environment.getMolecule(1, 4).toInt()).isEqualTo(opcode(IFI_OPCODE).toInt());
+            assertThat(environment.getMolecule(4, 4).toInt()).isEqualTo(opcode(JMPI_OPCODE).toInt());
+            assertClosingJumpAt(6, 4);
+            assertThat(records.get(0).cells()).hasSize(8);
+            return;
+        }
+        throw new AssertionError("no seed began the copy at the first block");
+    }
+
+    @Test
+    void aRunThatHoldsABlockButNotItsClosingJumpIsCutBackFurther() {
+        // A block execution cannot leave, then two it runs on from; the run of nine cells holds
+        // two blocks but not the jump behind them, so the copy ends behind the first
+        for (int seed = 0; seed < 10; seed++) {
+            setUp();
+            int id = child.getId();
+            placeRisingBlock(id, 10, 2);
+            placeOpenRisingBlock(id, 14, 2);
+            placeOpenRisingBlock(id, 18, 2);
+            placeTargetRow(id, 4, 9);
+
+            new GeneDuplicationPlugin(new SeededRandomProvider(seed), 1.0, 4).onBirth(child, environment);
+
+            List<MutationRecord> records = child.getBirthMutations();
+            if (records == null || records.get(0).params()[0] != flatIndex(10, 2)) {
+                continue;
+            }
+            assertBlockAt(0, 4);
+            for (int x = 4; x < 9; x++) {
+                assertThat(environment.getMolecule(x, 4).isEmpty())
+                        .as("cell (%d,4): neither a second block nor a jump", x).isTrue();
+            }
+            assertThat(records.get(0).cells()).hasSize(4);
+            return;
+        }
+        throw new AssertionError("no seed began the copy at the first block");
+    }
+
+    @Test
+    void aRunThatHoldsTheOnlyFittingBlockButNotItsClosingJumpIsNotWrittenTo() {
+        // Two blocks execution runs on from, a run of exactly four cells
+        placeOpenRisingBlock(child.getId(), 10, 2);
+        placeOpenRisingBlock(child.getId(), 14, 2);
+        placeTargetRow(child.getId(), 4, 4);
+
+        new GeneDuplicationPlugin(new SeededRandomProvider(42L), 1.0, 4).onBirth(child, environment);
+
+        for (int x = 0; x < 4; x++) {
+            assertThat(environment.getMolecule(x, 4).isEmpty())
+                    .as("cell (%d,4) of the target run stays empty", x).isTrue();
+        }
+        assertThat(child.getBirthMutations()).isNull();
+    }
+
+    @Test
+    void aCopyThatReachesTheEndOfTheSourceLineIsNotClosed() {
+        // One block execution runs on from and nothing behind it: the source ends there as well
+        placeOpenRisingBlock(child.getId(), 10, 2);
+        placeTargetRow(child.getId(), 4, 8);
+
+        new GeneDuplicationPlugin(new SeededRandomProvider(42L), 1.0, 4).onBirth(child, environment);
+
+        assertOpenBlockAt(0, 4);
+        for (int x = 4; x < 8; x++) {
+            assertThat(environment.getMolecule(x, 4).isEmpty()).as("cell (%d,4)", x).isTrue();
+        }
+        assertThat(child.getBirthMutations().get(0).cells()).hasSize(4);
+    }
+
+    /**
+     * The closing jump is written along the direction vector like the copy before it, around the
+     * world edge: the target run lies at x=27..31 and x=0, so the copy ends at x=30, the jump's
+     * opcode stands on the last cell before the edge and its label reference on the first behind it.
+     */
+    @Test
+    void aClosingJumpIsWrittenAcrossTheWorldEdge() {
+        int id = child.getId();
+        placeOpenRisingBlock(id, 10, 2);
+        placeOpenRisingBlock(id, 14, 2);
+        for (int x = 23; x < 27; x++) {
+            place(id, x, 4, new Molecule(Config.TYPE_STRUCTURE, 1));
+        }
+        for (int x = 1; x < 5; x++) {
+            place(id, x, 4, new Molecule(Config.TYPE_STRUCTURE, 1));
+        }
+
+        new GeneDuplicationPlugin(new SeededRandomProvider(42L), 1.0, 4).onBirth(child, environment);
+
+        assertOpenBlockAt(27, 4);
+        assertThat(environment.getMolecule(31, 4).toInt()).isEqualTo(opcode(JMPI_OPCODE).toInt());
+        assertThat(environment.getMolecule(0, 4).toInt()).isEqualTo(labelRef().toInt());
+        assertThat(environment.getMolecule(1, 4).toInt())
+                .as("the cell behind the run is untouched")
+                .isEqualTo(new Molecule(Config.TYPE_STRUCTURE, 1).toInt());
+        assertThat(child.getBirthMutations().get(0).cells()).containsExactly(
+                flatIndex(27, 4), flatIndex(28, 4), flatIndex(29, 4), flatIndex(30, 4),
+                flatIndex(31, 4), flatIndex(0, 4));
+    }
+
+    // ---- Where a copy goes ----
+
+    @Test
+    void aRunExecutionRunsOnIntoIsNoTarget() {
+        // y=2: the source. y=4: a label, an ADDR and behind it a run of eight cells, which
+        // execution runs on into. y=6: a run of eight cells with nothing before it.
+        int written = 0;
+        for (int seed = 0; seed < 10; seed++) {
+            setUp();
+            int id = child.getId();
+            placeRisingBlock(id, 10, 2);
+            place(id, 0, 4, new Molecule(Config.TYPE_LABEL, 777));
+            place(id, 1, 4, opcode(ADDR_OPCODE));
+            place(id, 2, 4, reg());
+            place(id, 3, 4, reg());
+            for (int x = 4; x < 12; x++) {
+                place(id, x, 4, new Molecule(Config.TYPE_CODE, 0));
+            }
+            place(id, 12, 4, new Molecule(Config.TYPE_STRUCTURE, 1));
+            placeTargetRow(id, 6, 8);
+
+            new GeneDuplicationPlugin(new SeededRandomProvider(seed), 1.0, 4).onBirth(child, environment);
+
+            for (int x = 4; x < 12; x++) {
+                assertThat(environment.getMolecule(x, 4).isEmpty())
+                        .as("seed=%d cell (%d,4) lies where execution runs on into", seed, x).isTrue();
+            }
+            if (child.getBirthMutations() != null) {
+                written++;
+            }
+        }
+        assertThat(written).as("copies that went to the other run").isPositive();
     }
 }

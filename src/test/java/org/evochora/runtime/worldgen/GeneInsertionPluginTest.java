@@ -47,16 +47,10 @@ class GeneInsertionPluginTest {
     private static final int LABEL_HASH_A = 11111;
 
     /**
-     * Values a detour may jump to. Each differs from {@link #LABEL_HASH_A} in three bits, one more
-     * than the label index's default Hamming tolerance, so that the detour's jump cannot match the
-     * detour's own label.
+     * A value that differs from {@link #LABEL_HASH_A} in three bits, one more than the label
+     * index's default Hamming tolerance, so that a reference to it does not address A.
      */
     private static final int LABEL_HASH_X = LABEL_HASH_A ^ 0b0000111;
-    private static final int LABEL_HASH_B = LABEL_HASH_A ^ 0b0111000;
-    private static final int LABEL_HASH_C = LABEL_HASH_A ^ 0b1110000;
-
-    /** A value one bit from {@link #LABEL_HASH_A}, which the fuzzy match would resolve to A. */
-    private static final int LABEL_HASH_NEAR = LABEL_HASH_A ^ 0b1;
 
     /** Left boundary x-coordinate for the standard scan line. */
     private static final int LEFT = 2;
@@ -157,14 +151,14 @@ class GeneInsertionPluginTest {
         environment.setMolecule(new Molecule(type, value), child.getId(), new int[]{x, y});
     }
 
-    /** The opcode of the instruction the detour tests generate. */
+    /** The opcode of the instruction the label entry tests insert. */
     private static int setiId() {
         Integer id = Instruction.getInstructionIdByName("SETI");
         assertThat(id).isNotNull();
         return id;
     }
 
-    /** The opcode of the jump a detour ends with. */
+    /** The opcode of the jump a label entry's chain ends with. */
     private static int jmpiId() {
         Integer id = Instruction.getInstructionIdByName("JMPI");
         assertThat(id).isNotNull();
@@ -172,10 +166,10 @@ class GeneInsertionPluginTest {
     }
 
     /**
-     * Creates a label entry whose detour carries a SETI, so that its chain is six cells long:
+     * Creates a label entry that inserts a SETI, so that its chain is six cells long:
      * LABEL, CODE, REGISTER, DATA, CODE, LABELREF.
      */
-    private LabelEntry createDetourEntry() {
+    private LabelEntry createLabelEntry() {
         int seti = setiId();
         RegisterConfig regConfig = new RegisterConfig(List.of(new int[]{0, 0, 7}));
         DataConfig dataConfig = new DataConfig(0, 255);
@@ -187,35 +181,48 @@ class GeneInsertionPluginTest {
                 argConfig);
     }
 
-    /** Length of the chain {@link #createDetourEntry} produces. */
-    private static final int DETOUR_LENGTH = 6;
+    /** Length of the chain {@link #createLabelEntry} produces. */
+    private static final int LABEL_CHAIN_LENGTH = 6;
+
+    /** Places a jump to the given value, two cells. */
+    private void placeJump(int x, int y, int target) {
+        place(x, y, Config.TYPE_CODE, jmpiId());
+        place(x + 1, y, Config.TYPE_LABELREF, target);
+    }
 
     /**
-     * Runs a detour insertion and returns the record it wrote, or null if it placed nothing.
+     * Runs a label entry and returns the record it wrote, or null if it placed nothing.
      */
-    private MutationRecord insertDetour(long seed) {
+    private MutationRecord insertBeforeLabel(long seed) {
         IRandomProvider rng = new SeededRandomProvider(seed);
-        GeneInsertionPlugin plugin = new GeneInsertionPlugin(rng, 1.0, List.of(createDetourEntry()));
+        GeneInsertionPlugin plugin = new GeneInsertionPlugin(rng, 1.0, List.of(createLabelEntry()));
         plugin.mutate(child, environment);
         List<MutationRecord> records = child.getBirthMutations();
         return records == null ? null : records.get(0);
     }
 
     /**
-     * Asserts that a detour stands as one chain at the given start, with the two recorded values.
+     * Asserts that a label entry's chain stands at the given start and that the label it copied,
+     * at {@code labelX}, now carries the value the chain jumps to, one bit from the copied one.
+     *
+     * @return The value the copied label was renamed to.
      */
-    private void assertDetourAt(MutationRecord record, int startX, int sourceHash, int target) {
+    private int assertInsertedBeforeLabel(MutationRecord record, int startX, int labelX, int copiedValue) {
         assertThat(record).isNotNull();
         assertThat(record.pluginClass()).isEqualTo(GeneInsertionPlugin.class.getName());
         assertThat(record.kind()).isEqualTo("label-insertion");
-        assertThat(record.params()).containsExactly(sourceHash, target);
+        assertThat(record.params()).hasSize(2);
+        assertThat(record.params()[0]).isEqualTo(copiedValue);
+        int renamed = (int) record.params()[1];
+        assertThat(Integer.bitCount(renamed ^ copiedValue)).as("the renamed value is one bit away").isEqualTo(1);
         assertThat(record.cells()).containsExactly(
                 flatIndex(startX, Y), flatIndex(startX + 1, Y), flatIndex(startX + 2, Y),
-                flatIndex(startX + 3, Y), flatIndex(startX + 4, Y), flatIndex(startX + 5, Y));
+                flatIndex(startX + 3, Y), flatIndex(startX + 4, Y), flatIndex(startX + 5, Y),
+                flatIndex(labelX, Y));
         assertThat(record.dv()).isEqualTo(child.getDv());
 
         assertThat(environment.getMolecule(startX, Y).type()).isEqualTo(Config.TYPE_LABEL);
-        assertThat(environment.getMolecule(startX, Y).value()).isEqualTo(sourceHash);
+        assertThat(environment.getMolecule(startX, Y).value()).isEqualTo(copiedValue);
         assertThat(environment.getMolecule(startX + 1, Y).type()).isEqualTo(Config.TYPE_CODE);
         assertThat(environment.getMolecule(startX + 1, Y).value()).isEqualTo(setiId());
         assertThat(environment.getMolecule(startX + 2, Y).type()).isEqualTo(Config.TYPE_REGISTER);
@@ -223,7 +230,19 @@ class GeneInsertionPluginTest {
         assertThat(environment.getMolecule(startX + 4, Y).type()).isEqualTo(Config.TYPE_CODE);
         assertThat(environment.getMolecule(startX + 4, Y).value()).isEqualTo(jmpiId());
         assertThat(environment.getMolecule(startX + 5, Y).type()).isEqualTo(Config.TYPE_LABELREF);
-        assertThat(environment.getMolecule(startX + 5, Y).value()).isEqualTo(target);
+        assertThat(environment.getMolecule(startX + 5, Y).value()).isEqualTo(renamed);
+
+        assertThat(environment.getMolecule(labelX, Y).type()).isEqualTo(Config.TYPE_LABEL);
+        assertThat(environment.getMolecule(labelX, Y).value()).as("the block's label").isEqualTo(renamed);
+        return renamed;
+    }
+
+    /** Asserts that the cells from {@code fromX} up to but not including {@code toX} are empty. */
+    private void assertEmpty(int fromX, int toX) {
+        for (int x = fromX; x < toX; x++) {
+            assertThat(environment.getMolecule(x, Y).isEmpty())
+                    .as("Cell (%d,%d) should remain empty", x, Y).isTrue();
+        }
     }
 
     /**
@@ -398,168 +417,222 @@ class GeneInsertionPluginTest {
         assertThat(foundLabelRef).as("Should insert a LABELREF molecule").isTrue();
     }
 
-    // ---- Detour (label entry) tests ----
+    // ---- Label entry tests ----
 
     @Test
-    void aDetourJumpsToTheLabelReferenceInTheStretchItsLabelHeads() {
-        // LABEL A heads a stretch that jumps to X; the detour takes over that jump.
+    void aLabelEntryPutsAnInstructionInFrontOfABlock() {
+        // LABEL A heads a block that jumps back to A; the empty run behind that jump holds the chain.
         placeLabel(2, Y, LABEL_HASH_A);
-        place(3, Y, Config.TYPE_CODE, jmpiId());
-        place(4, Y, Config.TYPE_LABELREF, LABEL_HASH_X);
+        placeJump(3, Y, LABEL_HASH_A);
         placeCode(15, Y);
 
-        MutationRecord record = insertDetour(42L);
+        MutationRecord record = insertBeforeLabel(42L);
 
         // x=5..14 is the only empty run, so the chain starts at its first cell
-        assertDetourAt(record, 5, LABEL_HASH_A, LABEL_HASH_X);
+        assertInsertedBeforeLabel(record, 5, 2, LABEL_HASH_A);
+        assertThat(environment.getMolecule(4, Y).value())
+                .as("the reference to A is untouched and now finds the new label").isEqualTo(LABEL_HASH_A);
     }
 
     /**
-     * An instruction in the middle of a detour that takes a label operand refers to the detour's
-     * target, never to the detour's own label: a jump to its own label would loop on itself.
+     * An inserted instruction that takes a label operand refers to the renamed block, never to the
+     * label the chain opens with: a call of that label would call itself without end.
      */
     @Test
-    void aJumpInTheMiddleOfADetourRefersToTheDetourTarget() {
+    void aCallInsertedByALabelEntryRefersToTheRenamedBlock() {
         placeLabel(2, Y, LABEL_HASH_A);
-        place(3, Y, Config.TYPE_CODE, jmpiId());
-        place(4, Y, Config.TYPE_LABELREF, LABEL_HASH_X);
+        placeJump(3, Y, LABEL_HASH_A);
         placeCode(15, Y);
-        int jmpi = jmpiId();
+        Integer call = Instruction.getInstructionIdByName("CALL");
+        assertThat(call).isNotNull();
         LabelEntry entry = new LabelEntry(
-                List.of(jmpi),
-                List.of(Instruction.getOperandSourcesById(jmpi)),
+                List.of(call),
+                List.of(Instruction.getOperandSourcesById(call)),
                 1.0,
                 new ArgumentConfig(null, null, null, "existing", null));
         GeneInsertionPlugin plugin = new GeneInsertionPlugin(new SeededRandomProvider(42L), 1.0, List.of(entry));
 
         plugin.mutate(child, environment);
 
-        // The chain LABEL A, JMPI, LABELREF, JMPI, LABELREF starts at x=5; both references carry X
+        // The chain LABEL A, CALL, LABELREF, JMPI, LABELREF starts at x=5; both references carry A'
         List<MutationRecord> records = child.getBirthMutations();
         assertThat(records).hasSize(1);
-        assertThat(records.get(0).params()).containsExactly(LABEL_HASH_A, LABEL_HASH_X);
+        int renamed = (int) records.get(0).params()[1];
         assertThat(environment.getMolecule(5, Y).value()).isEqualTo(LABEL_HASH_A);
         assertThat(environment.getMolecule(7, Y).type()).isEqualTo(Config.TYPE_LABELREF);
-        assertThat(environment.getMolecule(7, Y).value()).as("the middle jump's target").isEqualTo(LABEL_HASH_X);
-        assertThat(environment.getMolecule(9, Y).value()).as("the trailing jump's target").isEqualTo(LABEL_HASH_X);
-    }
-
-    /**
-     * The search for the detour's target follows the direction vector around the world edge, as
-     * the code it reads does: a jump behind the edge is still the first jump of A's stretch.
-     */
-    @Test
-    void aDetourFindsTheJumpBehindTheWorldEdge() {
-        // A at x=30, its jump at x=31 with the reference at x=0; the body continues to x=1 and
-        // owns a cell at x=12, so the arc runs from 30 around the edge to 12 and the empty run
-        // x=2..11 inside it holds the chain.
-        placeLabel(30, Y, LABEL_HASH_A);
-        place(31, Y, Config.TYPE_CODE, jmpiId());
-        place(0, Y, Config.TYPE_LABELREF, LABEL_HASH_X);
-        placeCode(1, Y);
-        placeCode(12, Y);
-
-        MutationRecord record = insertDetour(42L);
-
-        assertDetourAt(record, 2, LABEL_HASH_A, LABEL_HASH_X);
+        assertThat(environment.getMolecule(7, Y).value()).as("the inserted call's target").isEqualTo(renamed);
+        assertThat(environment.getMolecule(9, Y).value()).as("the closing jump's target").isEqualTo(renamed);
     }
 
     @Test
-    void aDetourWithoutAJumpInItsStretchTakesTheNextBlockStart() {
-        // Nothing in A's stretch jumps, so the detour goes where A's code falls through to: B.
+    void aLabelALocationInstructionAddressesIsNotCopied() {
+        // A is where SKJI sends the data pointer, so moving its value would move that place
+        Integer skji = Instruction.getInstructionIdByName("SKJI");
+        assertThat(skji).isNotNull();
         placeLabel(2, Y, LABEL_HASH_A);
-        placeLabel(3, Y, LABEL_HASH_B);
-        placeCode(14, Y);
+        place(3, Y, Config.TYPE_CODE, skji);
+        place(4, Y, Config.TYPE_LABELREF, LABEL_HASH_A);
+        placeJump(5, Y, LABEL_HASH_X);
+        placeCode(16, Y);
 
-        MutationRecord record = insertDetour(0L);
-
-        assertThat(record).isNotNull();
-        assertThat(record.params()[0])
-                .as("the reservoir sampled the first of the two labels for this seed")
-                .isEqualTo(LABEL_HASH_A);
-        // x=4..13 is the only empty run
-        assertDetourAt(record, 4, LABEL_HASH_A, LABEL_HASH_B);
+        assertThat(insertBeforeLabel(42L)).isNull();
+        assertEmpty(7, 16);
+        assertThat(environment.getMolecule(2, Y).value()).isEqualTo(LABEL_HASH_A);
     }
 
     @Test
-    void aDetourAtTheEndOfItsLineTakesAnotherLabelOfTheBody() {
-        // A is the last block of its line; C stands on a line of its own that holds no empty run.
+    void aLabelNoJumpAddressesIsNotCopied() {
         placeLabel(2, Y, LABEL_HASH_A);
-        placeCode(13, Y);
-        placeLabel(2, Y + 2, LABEL_HASH_C);
-        placeCode(3, Y + 2);
-
-        MutationRecord record = insertDetour(0L);
-
-        assertThat(record).isNotNull();
-        assertThat(record.params()[0])
-                .as("the reservoir sampled A for this seed")
-                .isEqualTo(LABEL_HASH_A);
-        // x=3..12 on line Y is the only empty run of either line
-        assertDetourAt(record, 3, LABEL_HASH_A, LABEL_HASH_C);
-    }
-
-    @Test
-    void aBodyWithOneLabelGetsNoDetour() {
-        // A is the only label, so nothing is far enough from it to jump to
-        placeLabel(2, Y, LABEL_HASH_A);
-        placeCode(13, Y);
-
-        assertThat(insertDetour(42L)).isNull();
-        for (int x = 3; x < 13; x++) {
-            assertThat(environment.getMolecule(x, Y).isEmpty())
-                    .as("Cell (%d,%d) should remain empty", x, Y).isTrue();
-        }
-    }
-
-    @Test
-    void aCandidateWithinTheToleranceOfTheLabelIsRejected() {
-        // The only candidate lies one bit from A, so the detour's jump would find its own label
-        placeLabel(2, Y, LABEL_HASH_A);
-        place(3, Y, Config.TYPE_CODE, jmpiId());
-        place(4, Y, Config.TYPE_LABELREF, LABEL_HASH_NEAR);
+        placeJump(3, Y, LABEL_HASH_X);
         placeCode(15, Y);
 
-        assertThat(insertDetour(42L)).isNull();
-        for (int x = 5; x < 15; x++) {
-            assertThat(environment.getMolecule(x, Y).isEmpty())
-                    .as("Cell (%d,%d) should remain empty", x, Y).isTrue();
+        assertThat(insertBeforeLabel(42L)).isNull();
+        assertEmpty(5, 15);
+        assertThat(environment.getMolecule(2, Y).value()).isEqualTo(LABEL_HASH_A);
+    }
+
+    @Test
+    void theChainGoesWhereExecutionDoesNotRunOnInto() {
+        // x=6..11 lies behind an ordinary instruction; x=14..20 lies behind the unconditional jump
+        for (long seed = 0; seed < 20; seed++) {
+            setUp();
+            placeLabel(2, Y, LABEL_HASH_A);
+            place(3, Y, Config.TYPE_CODE, setiId());
+            place(4, Y, Config.TYPE_REGISTER, 0);
+            place(5, Y, Config.TYPE_DATA, 1);
+            placeJump(12, Y, LABEL_HASH_A);
+            placeCode(21, Y);
+
+            MutationRecord record = insertBeforeLabel(seed);
+
+            assertInsertedBeforeLabel(record, 14, 2, LABEL_HASH_A);
+            assertEmpty(6, 12);
         }
     }
 
     @Test
-    void aRunTooShortForTheWholeDetourIsNotUsed() {
-        // The empty run holds a bare label but not the chain of six cells
-        placeLabel(2, Y, LABEL_HASH_A);
-        place(3, Y, Config.TYPE_CODE, jmpiId());
-        place(4, Y, Config.TYPE_LABELREF, LABEL_HASH_X);
-        placeCode(8, Y);
-
-        assertThat(DETOUR_LENGTH).isGreaterThan(3);
-        assertThat(insertDetour(42L)).isNull();
-        for (int x = 5; x < 8; x++) {
-            assertThat(environment.getMolecule(x, Y).isEmpty())
-                    .as("Cell (%d,%d) should remain empty", x, Y).isTrue();
-        }
-    }
-
-    @Test
-    void aLabelInsideAnOperandListDoesNotEndTheStretch() {
-        // The LABEL at x=5 stands in SETI's immediate slot, so it opens no block and the jump
-        // behind it is still the end of A's stretch. It carries A's own value, so that whichever
-        // of the two LABEL cells the reservoir samples, the detour copies the same value.
+    void aBodyWhoseOnlyRunExecutionPassesThroughGetsNothing() {
+        // The only empty run lies between an ordinary instruction and the jump behind it
         placeLabel(2, Y, LABEL_HASH_A);
         place(3, Y, Config.TYPE_CODE, setiId());
         place(4, Y, Config.TYPE_REGISTER, 0);
-        placeLabel(5, Y, LABEL_HASH_A);
-        place(6, Y, Config.TYPE_CODE, jmpiId());
-        place(7, Y, Config.TYPE_LABELREF, LABEL_HASH_X);
-        placeCode(14, Y);
+        place(5, Y, Config.TYPE_DATA, 1);
+        placeJump(12, Y, LABEL_HASH_A);
 
-        MutationRecord record = insertDetour(42L);
+        assertThat(insertBeforeLabel(42L)).isNull();
+        assertEmpty(6, 12);
+        assertThat(environment.getMolecule(2, Y).value())
+                .as("a chain that found no room leaves the label as it is").isEqualTo(LABEL_HASH_A);
+    }
 
-        // x=8..13 is the only empty run and holds the chain exactly
-        assertDetourAt(record, 8, LABEL_HASH_A, LABEL_HASH_X);
+    /**
+     * The renamed value keeps clear of the body's other labels and of the references to them.
+     * Labels A and X stand three bits apart, in bits 0 to 2: flipping one of those bits in either
+     * would bring it within the tolerance of the references to the other.
+     */
+    @Test
+    void theRenamedValueDrawsNoReferenceAwayFromAnotherLabel() {
+        for (long seed = 0; seed < 40; seed++) {
+            setUp();
+            placeLabel(2, Y, LABEL_HASH_A);
+            placeJump(3, Y, LABEL_HASH_X);
+            placeLabel(5, Y, LABEL_HASH_X);
+            placeJump(6, Y, LABEL_HASH_A);
+            placeCode(18, Y);
+
+            MutationRecord record = insertBeforeLabel(seed);
+
+            assertThat(record).isNotNull();
+            int flipped = (int) (record.params()[0] ^ record.params()[1]);
+            assertThat(Integer.bitCount(flipped)).isEqualTo(1);
+            assertThat(flipped & 0b111).as("seed %d flipped one of the bits A and X differ in", seed).isZero();
+        }
+    }
+
+    /**
+     * The walk that asks whether execution runs on into a run follows the direction vector around
+     * the world edge, as the code it reads does.
+     */
+    @Test
+    void aRunBehindAJumpAcrossTheWorldEdgeIsUsed() {
+        // A at x=28, its jump at x=30 with the reference at x=31; the body owns a cell at x=10, so
+        // the arc runs from 28 around the edge to 10 and the empty run x=0..9 lies behind the jump.
+        placeLabel(28, Y, LABEL_HASH_A);
+        placeJump(30, Y, LABEL_HASH_A);
+        placeCode(10, Y);
+
+        MutationRecord record = insertBeforeLabel(42L);
+
+        assertInsertedBeforeLabel(record, 0, 28, LABEL_HASH_A);
+    }
+
+    @Test
+    void aRunTooShortForTheWholeChainIsNotUsed() {
+        // The empty run holds a bare label but not the chain of six cells
+        placeLabel(2, Y, LABEL_HASH_A);
+        placeJump(3, Y, LABEL_HASH_A);
+        placeCode(8, Y);
+
+        assertThat(LABEL_CHAIN_LENGTH).isGreaterThan(3);
+        assertThat(insertBeforeLabel(42L)).isNull();
+        assertEmpty(5, 8);
+        assertThat(environment.getMolecule(2, Y).value()).isEqualTo(LABEL_HASH_A);
+    }
+
+    @Test
+    void aLabelInsideAnOperandListIsNotCopied() {
+        // The LABEL at x=5 stands in SETI's immediate slot, so it opens no block. It carries a value
+        // of its own that a jump addresses, and still only A, which opens a block, is copied.
+        for (long seed = 0; seed < 10; seed++) {
+            setUp();
+            placeLabel(2, Y, LABEL_HASH_A);
+            place(3, Y, Config.TYPE_CODE, setiId());
+            place(4, Y, Config.TYPE_REGISTER, 0);
+            placeLabel(5, Y, LABEL_HASH_X);
+            placeJump(6, Y, LABEL_HASH_A);
+            placeJump(8, Y, LABEL_HASH_X);
+            placeCode(20, Y);
+
+            MutationRecord record = insertBeforeLabel(seed);
+
+            assertThat(record).isNotNull();
+            assertThat(record.params()[0]).as("seed %d", seed).isEqualTo(LABEL_HASH_A);
+        }
+    }
+
+    @Test
+    void aLabelEntryFollowsANegativeDirectionVector() {
+        // Execution runs from high x to low x: A at x=20, its jump at x=19 with the reference at
+        // x=18, then the empty run x=6..17 down to the boundary at x=5.
+        Organism negChild = Organism.restore(3, 9)
+                .parentId(1)
+                .ip(new int[]{0, 0})
+                .dv(new int[]{-1, 0})
+                .initialPosition(new int[]{0, 0})
+                .energy(5000)
+                .build(simulation);
+        simulation.addOrganism(negChild);
+        int negId = negChild.getId();
+        environment.setMolecule(new Molecule(Config.TYPE_LABEL, LABEL_HASH_A), negId, new int[]{20, Y});
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, jmpiId()), negId, new int[]{19, Y});
+        environment.setMolecule(new Molecule(Config.TYPE_LABELREF, LABEL_HASH_A), negId, new int[]{18, Y});
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, 42), negId, new int[]{5, Y});
+
+        GeneInsertionPlugin plugin = new GeneInsertionPlugin(new SeededRandomProvider(42L), 1.0,
+                List.of(createLabelEntry()));
+        plugin.mutate(negChild, environment);
+
+        List<MutationRecord> records = negChild.getBirthMutations();
+        assertThat(records).hasSize(1);
+        int renamed = (int) records.get(0).params()[1];
+        // The chain occupies the six cells of the run with the smallest coordinates and reads downwards
+        assertThat(environment.getMolecule(11, Y).type()).isEqualTo(Config.TYPE_LABEL);
+        assertThat(environment.getMolecule(11, Y).value()).isEqualTo(LABEL_HASH_A);
+        assertThat(environment.getMolecule(10, Y).value()).isEqualTo(setiId());
+        assertThat(environment.getMolecule(7, Y).value()).isEqualTo(jmpiId());
+        assertThat(environment.getMolecule(6, Y).type()).isEqualTo(Config.TYPE_LABELREF);
+        assertThat(environment.getMolecule(6, Y).value()).isEqualTo(renamed);
+        assertThat(environment.getMolecule(20, Y).value()).isEqualTo(renamed);
     }
 
     // ---- Configuration tests ----
@@ -580,7 +653,70 @@ class GeneInsertionPluginTest {
     }
 
     @Test
-    void aLabelEntryNeedsAnInstructionToPutIntoItsDetour() {
+    void aLabelEntryThatNamesAConditionalIsRejected() {
+        String text = """
+                mutationRate = 1.0
+                entries = [
+                  { type = "label", weight = 1, instructions = ["SETI", "IFI"],
+                    args { REGISTER { range = [0, 7] }, DATA { min = 0, max = 255 } } }
+                ]
+                """;
+        assertThatThrownBy(() -> new GeneInsertionPlugin(
+                new SeededRandomProvider(42L), ConfigFactory.parseString(text)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("IFI");
+    }
+
+    @Test
+    void aLabelEntryThatNamesAJumpOrAReturnIsRejected() {
+        for (String name : List.of("JMPI", "JMPR", "JMPS", "RET")) {
+            String text = """
+                    mutationRate = 1.0
+                    entries = [
+                      { type = "label", weight = 1, instructions = ["SETI", "%s"],
+                        args { REGISTER { range = [0, 7] }, DATA { min = 0, max = 255 }, LABELREF = "existing" } }
+                    ]
+                    """.formatted(name);
+            assertThatThrownBy(() -> new GeneInsertionPlugin(
+                    new SeededRandomProvider(42L), ConfigFactory.parseString(text)))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining(name);
+        }
+    }
+
+    @Test
+    void aWildcardLabelEntryInsertsOnlyWhatExecutionGoesOnBehind() {
+        String text = """
+                mutationRate = 1.0
+                entries = [
+                  { type = "label", weight = 1, instructions = "*",
+                    args { REGISTER { range = [0, 7] }, LOCATION_REGISTER { range = [0, 3] },
+                           DATA { min = 0, max = 255 }, LABELREF = "existing", VECTOR = "unit" } }
+                ]
+                """;
+        for (long seed = 0; seed < 60; seed++) {
+            setUp();
+            placeLabel(2, Y, LABEL_HASH_A);
+            placeJump(3, Y, LABEL_HASH_A);
+            placeCode(16, Y);
+            GeneInsertionPlugin plugin = new GeneInsertionPlugin(
+                    new SeededRandomProvider(seed), ConfigFactory.parseString(text));
+
+            plugin.mutate(child, environment);
+
+            assertThat(child.getBirthMutations()).as("seed %d", seed).hasSize(1);
+            int insertedOpcode = environment.getMolecule(6, Y).value();
+            assertThat(Instruction.getFamilyById(insertedOpcode))
+                    .as("seed %d inserted %s", seed, Instruction.getInstructionNameById(insertedOpcode))
+                    .isNotEqualTo(org.evochora.runtime.isa.Family.CONDITIONAL);
+            assertThat(Instruction.neverFallsThrough(insertedOpcode))
+                    .as("seed %d inserted %s", seed, Instruction.getInstructionNameById(insertedOpcode))
+                    .isFalse();
+        }
+    }
+
+    @Test
+    void aLabelEntryNeedsAnInstructionToInsert() {
         String text = """
                 mutationRate = 1.0
                 entries = [

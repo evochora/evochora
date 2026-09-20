@@ -59,8 +59,13 @@ class MutationHistoryIndependenceTest {
     }
 
     @Test
-    void geneInsertion_isIndependentOfCellInsertionOrder() {
-        assertSameOutcome(MutationHistoryIndependenceTest::insertion);
+    void instructionInsertion_isIndependentOfCellInsertionOrder() {
+        assertSameOutcome(MutationHistoryIndependenceTest::instructionInsertion);
+    }
+
+    @Test
+    void labelInsertion_isIndependentOfCellInsertionOrder() {
+        assertSameOutcome(MutationHistoryIndependenceTest::labelInsertion);
     }
 
     @Test
@@ -79,8 +84,13 @@ class MutationHistoryIndependenceTest {
     }
 
     @Test
-    void geneInsertion_isIndependentOfWhatTheInstanceProcessedBefore() {
-        assertSameOutcomeAfterHistory(MutationHistoryIndependenceTest::insertion);
+    void instructionInsertion_isIndependentOfWhatTheInstanceProcessedBefore() {
+        assertSameOutcomeAfterHistory(MutationHistoryIndependenceTest::instructionInsertion);
+    }
+
+    @Test
+    void labelInsertion_isIndependentOfWhatTheInstanceProcessedBefore() {
+        assertSameOutcomeAfterHistory(MutationHistoryIndependenceTest::labelInsertion);
     }
 
     @Test
@@ -100,13 +110,25 @@ class MutationHistoryIndependenceTest {
                 "deletionRate", 1.0, "countExponent", 2.0, "minLabelCount", 1)));
     }
 
-    private static IBirthHandler insertion(IRandomProvider rng) {
+    // The two entry types of the insertion are compared one at a time: each walks the body its own
+    // way, and a plugin that holds both would pass on the strength of whichever of them placed
+    // something.
+
+    private static IBirthHandler instructionInsertion(IRandomProvider rng) {
         return new GeneInsertionPlugin(rng, ConfigFactory.parseString("""
                 mutationRate = 1.0
                 entries = [
-                  { instructions = "*", weight = 3,
+                  { instructions = "*", weight = 1,
                     args { REGISTER { range = [0, 7] }, LOCATION_REGISTER { range = [0, 3] },
                            DATA { min = 0, max = 255 }, LABELREF = "existing", VECTOR = "unit" } }
+                ]
+                """));
+    }
+
+    private static IBirthHandler labelInsertion(IRandomProvider rng) {
+        return new GeneInsertionPlugin(rng, ConfigFactory.parseString("""
+                mutationRate = 1.0
+                entries = [
                   { type = "label", weight = 1, instructions = "*",
                     args { REGISTER { range = [0, 7] }, LOCATION_REGISTER { range = [0, 3] },
                            DATA { min = 0, max = 255 }, LABELREF = "existing", VECTOR = "unit" } }

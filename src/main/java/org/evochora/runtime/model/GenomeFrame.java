@@ -71,7 +71,9 @@ import it.unimi.dsi.fastutil.ints.IntArrayList;
  *       insertion can tell a gap between two instructions from a cell inside an operand list.</li>
  * </ul>
  * What the frame does not know is control flow: a walk does not end at a jump, so the padding
- * behind a row's last jump is reached like the code before it.
+ * behind a row's last jump is reached like the code before it. {@link GenomeFlow} answers those
+ * questions on top of a built frame — whether execution runs on into a cell, whether a label is a
+ * jump target and nothing else, whether a stretch of code can be left at its end.
  * <p>
  * <strong>Determinism.</strong> The roles are a pure function of the grid, of the cells the
  * organism owns, of the initial position and of the direction vector. Nothing is carried over
@@ -80,8 +82,8 @@ import it.unimi.dsi.fastutil.ints.IntArrayList;
  * <strong>Allocation.</strong> The frame is an object so that its buffers — the role table, the
  * scan lines, their pool and the coordinate arrays — survive a build and are cleared at the
  * beginning of the next one. After the first builds the only allocations left per build are the
- * visitor handed to the environment's owned-cell visit, the lookup of the NOP opcode and the list
- * the instruction registry returns per opcode.
+ * visitor handed to the environment's owned-cell visit and the lookup of the NOP opcode; the
+ * operand sources of an opcode are the registry's own list and cost nothing.
  * <p>
  * <strong>Thread safety.</strong> Not thread-safe: a frame holds the buffers of the build that is
  * running, so every user keeps its own.
