@@ -10,6 +10,32 @@ import * as ChartRegistry from '../charts/ChartRegistry.js';
  * @module MetricCardView
  */
 
+/**
+ * The derivations a card can name under {@code derived} in its visualization config, by that name.
+ * A derivation becomes available to cards by being added here.
+ *
+ * Such a card draws nothing from its own rows. Its manifest entry names a companion table, and the
+ * derivation computes every row the chart draws from that table alone; the chart sees ordinary rows
+ * and knows nothing of where they came from. The registry lives here, where the rows are handed to
+ * the chart, because charts of different kinds draw derived rows and each of them would otherwise
+ * carry the same map.
+ *
+ * A module registered here exports {@code derive(companion, config)}:
+ * <ul>
+ *   <li>{@code companion} - what the card loaded for its companions: per companion metric id its
+ *       rows, or, where the manifest marks the companion as columnar, one array of values per
+ *       column keyed by column name. It is null for a metric without companions.</li>
+ *   <li>{@code config} - the visualization config, which names the companion metric ids the
+ *       derivation reads and everything else it needs.</li>
+ *   <li>returns the rows the chart draws, in the shape a chart's own rows have: an array of objects
+ *       carrying the x key and the y keys the config names.</li>
+ * </ul>
+ *
+ * A derivation whose companion is missing or empty returns an empty array rather than throwing; the
+ * card then says it has no data, as a card whose own table is empty does.
+ */
+const DERIVATIONS = {};
+
 // State
 let cards = {}; // Store card instances by metric ID
 
@@ -194,10 +220,15 @@ export function getAllCards() {
  * {@code viewState} and asks for a new one through {@code onViewStateChange}, which redraws from
  * the rows already loaded.
  *
+ * A card whose visualization config names a derivation under {@code derived} hands the chart the
+ * rows that derivation returns instead of its own; see {@link DERIVATIONS}.
+ *
  * @param {Object} card - Card instance
  * @param {Array<Object>} data - Data for the chart
  * @param {Object} [context] - Optional render context
- * @param {Object<string, Array<Object>>|null} [context.companion] - Rows per companion metric id, if the metric has companions
+ * @param {Object<string, Array<Object>|Object<string, ArrayLike<*>>>|null} [context.companion] -
+ *        Per companion metric id its rows, or its columns where the companion is columnar, if the
+ *        metric has companions
  * @param {Object|null} [context.viewState] - The view state this chart last asked for
  * @param {Function} [context.onViewStateChange] - Called with a new view state to redraw
  *
@@ -225,11 +256,27 @@ export function renderChart(card, data, context = {}) {
         if (card.chart.destroy) {
             card.chart.destroy();
         }
+        card.chart = null;
+    }
+
+    let rows = data;
+    if (chartConfig.derived) {
+        const derivation = DERIVATIONS[chartConfig.derived];
+        if (!derivation) {
+            console.warn(`[MetricCardView] Unknown derivation: ${chartConfig.derived}`);
+            showError(card, `Unknown derivation: ${chartConfig.derived}`);
+            return;
+        }
+        rows = derivation.derive(context.companion || null, chartConfig);
+        if (!rows || rows.length === 0) {
+            showNoData(card);
+            return;
+        }
     }
 
     const chartModule = ChartRegistry.getChart(chartType);
     if (chartModule && chartModule.render) {
-        card.chart = chartModule.render(canvas, data, chartConfig, context);
+        card.chart = chartModule.render(canvas, rows, chartConfig, context);
         if (!card.chart) {
             // A chart returns nothing when what it was given is not enough to draw from - a chart
             // grouped by a companion table, without that table. Clearing the message here would
@@ -319,6 +366,18 @@ export function setOnLodChange(card, callback) {
 export function showNoData(card) {
     if (card) {
         showMessage(card, 'No data available');
+    }
+}
+
+/**
+ * Shows that the card needs a table the run does not hold.
+ *
+ * @param {Object} card - Card instance
+ * @param {string} table - Metric id of the table the card draws from
+ */
+export function showMissingTable(card, table) {
+    if (card) {
+        showMessage(card, `Needs the table '${table}', which this run does not hold.`);
     }
 }
 

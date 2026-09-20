@@ -214,6 +214,51 @@ export async function queryRegisteredBlob(metricKey, sql) {
     }
 
     /**
+     * Queries a previously registered Parquet blob and returns the result column by column.
+     *
+     * The values arrive as one array per selected column instead of one object per row, which is
+     * what a table of hundreds of thousands of rows costs twice over: the row objects weigh far
+     * more than the values they carry, and every one of them has to be built first. The columns are
+     * taken from the Arrow result as they are, so no row object is created at all.
+     *
+     * A column keeps the type Arrow gives it. A 64-bit integer column arrives as BigInt values, a
+     * narrower numeric column as numbers, a text column as strings. 64-bit values are not turned
+     * into numbers here, as {@link queryRegisteredBlob} does for rows: a genome hash uses all 64
+     * bits and would not survive that. A caller that needs numbers converts the columns it knows to
+     * be far below 2^53 - ticks, ids, counts - with {@code Number()} itself.
+     *
+     * @param {string} metricKey - The key used in registerParquetBlob
+     * @param {string} sql - SQL with {table} placeholder
+     * @returns {Promise<Object<string, ArrayLike<*>>>} One array of values per selected column,
+     *          keyed by column name
+     * @throws {Error} If no blob is registered for the key, or if a selected column is absent from
+     *         the result
+     */
+export async function queryRegisteredBlobColumns(metricKey, sql) {
+        if (!initialized) {
+            await init();
+        }
+
+        const fileName = registeredBlobs.get(metricKey);
+        if (!fileName) {
+            throw new Error(`No registered blob for key: ${metricKey}`);
+        }
+
+        const finalSql = sql.replaceAll('{table}', `'${fileName}'`);
+        const result = await conn.query(finalSql);
+
+        const columns = {};
+        for (const field of result.schema.fields) {
+            const column = result.getChild(field.name);
+            if (!column) {
+                throw new Error(`Query result has no column: ${field.name}`);
+            }
+            columns[field.name] = column.toArray();
+        }
+        return columns;
+    }
+
+    /**
      * Drops a previously registered Parquet blob.
      *
      * @param {string} metricKey - The key used in registerParquetBlob

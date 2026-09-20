@@ -327,13 +327,20 @@ export async function loadDashboard(runId) {
      * says so and loads itself again after a while, until it has data or the run stops.
      *
      * @param {Object} card - MetricCard instance
+     * @param {string} [missingTable] - Metric id of a companion table the run holds nothing for.
+     *        A card drawing only from that table says which table it misses, which reads otherwise
+     *        like a card whose own table is empty
      */
-    function showNoDataOrRetry(card) {
+    function showNoDataOrRetry(card, missingTable = null) {
         const runId = currentRunId;
         const polled = window.footer?.pipelineState?.();
         const status = polled && polled.status ? polled : pipeline;
         if (!isRunStarting(status, runId)) {
-            MetricCardView.showNoData(card);
+            if (missingTable) {
+                MetricCardView.showMissingTable(card, missingTable);
+            } else {
+                MetricCardView.showNoData(card);
+            }
             return;
         }
         MetricCardView.showWaitingForData(card);
@@ -565,7 +572,7 @@ export async function loadDashboard(runId) {
                 throw error;
             }
             if (error.code === 'NO_DATA') {
-                showNoDataOrRetry(card);
+                showNoDataOrRetry(card, error.missingTable);
                 return;
             }
             console.error(`[Analytics] Error loading metric ${metricId}:`, error);
@@ -597,11 +604,18 @@ export async function loadDashboard(runId) {
      * follows the level and the level changed with the window. Opening a clade likewise redraws
      * from what is already loaded and costs no request.
      *
+     * A companion the manifest marks as columnar arrives as one array of values per selected column
+     * instead of one object per row, because a table of hundreds of thousands of rows costs more in
+     * row objects than in the values they carry. Its entry in the result is that column object,
+     * keyed by column name, in place of the array of rows every other companion's entry holds; what
+     * the types of those values are stands at {@link DuckDBClient.queryRegisteredBlobColumns}.
+     *
      * @param {Object} metric - Manifest entry of the metric being loaded
      * @param {string|null} lod - Level of detail the chart shows, for companions following it
      * @param {AbortSignal} signal - Signal aborting the fetch
-     * @returns {Promise<Object<string, Array<Object>>|null>} Rows per companion metric id, or null
-     *          if the metric has none
+     * @returns {Promise<Object<string, Array<Object>|Object<string, ArrayLike<*>>>|null>} Per
+     *          companion metric id its rows, or its columns where the companion is columnar; null
+     *          if the metric has no companions
      */
     async function loadCompanionData(metric, lod, signal) {
         if (!metric.companions || metric.companions.length === 0) {
@@ -612,12 +626,23 @@ export async function loadDashboard(runId) {
         for (const companion of metric.companions) {
             const blobKey = `companion_${metric.id}_${companion.metricId}`;
             const level = companion.followsLevel && lod ? lod : 'lod0';
-            const { blob } = await AnalyticsApi.fetchParquetBlob(
-                companion.metricId, currentRunId, level, signal
-            );
+            let blob;
+            try {
+                ({ blob } = await AnalyticsApi.fetchParquetBlob(
+                    companion.metricId, currentRunId, level, signal
+                ));
+            } catch (error) {
+                // A run that never wrote the table holds no files for it, and the card says which
+                // table it misses rather than only that it has nothing to show
+                if (error.code === 'NO_DATA') {
+                    error.missingTable = companion.metricId;
+                }
+                throw error;
+            }
             await DuckDBClient.registerParquetBlob(blobKey, blob);
-            rowsByMetric[companion.metricId] =
-                await DuckDBClient.queryRegisteredBlob(blobKey, companion.query);
+            rowsByMetric[companion.metricId] = companion.columnar
+                ? await DuckDBClient.queryRegisteredBlobColumns(blobKey, companion.query)
+                : await DuckDBClient.queryRegisteredBlob(blobKey, companion.query);
         }
         return rowsByMetric;
     }
