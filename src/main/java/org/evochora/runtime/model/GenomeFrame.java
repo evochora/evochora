@@ -71,7 +71,9 @@ import it.unimi.dsi.fastutil.ints.IntArrayList;
  *       insertion can tell a gap between two instructions from a cell inside an operand list.</li>
  * </ul>
  * What the frame does not know is control flow: a walk does not end at a jump, so the padding
- * behind a row's last jump is reached like the code before it.
+ * behind a row's last jump is reached like the code before it. {@link GenomeFlow} answers those
+ * questions on top of a built frame — whether execution runs on into a cell, whether a label is a
+ * jump target and nothing else, whether a stretch of code can be left at its end.
  * <p>
  * <strong>Determinism.</strong> The roles are a pure function of the grid, of the cells the
  * organism owns, of the initial position and of the direction vector. Nothing is carried over

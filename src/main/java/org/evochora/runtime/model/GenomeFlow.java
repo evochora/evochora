@@ -65,8 +65,10 @@ public final class GenomeFlow {
      *   <li>an instruction after which execution continues with the next cell — reached;</li>
      *   <li>an instruction that {@linkplain Instruction#neverFallsThrough(int) never falls
      *       through}: reached only if the instruction before it is a conditional, which skips it
-     *       when its test fails. A label between the two does not end that search: the machine's
-     *       skip passes every cell that is no instruction ({@link Organism#skipNopCells});</li>
+     *       when its test fails. Only that one instruction is asked, because a conditional skips
+     *       the next instruction and no other; a conditional further back acts on what stands
+     *       between. A label between the two does not end the search for it: the machine's skip
+     *       passes every cell that is no instruction ({@link Organism#skipNopCells});</li>
      *   <li>the beginning of the organism's extent on the line: nothing comes from there — not
      *       reached.</li>
      * </ul>
