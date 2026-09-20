@@ -4,6 +4,7 @@ import com.typesafe.config.ConfigFactory;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
 import org.evochora.runtime.internal.services.SeededRandomProvider;
+import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.isa.RegisterBank;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.EnvironmentProperties;
@@ -13,6 +14,7 @@ import org.evochora.runtime.model.Organism;
 import org.evochora.runtime.spi.ILabelMatchingStrategy;
 import org.evochora.runtime.thermodynamics.ThermodynamicPolicyManager;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
@@ -29,6 +31,11 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  */
 @Tag("unit")
 class LabelRewriteTest {
+
+    @BeforeAll
+    static void init() {
+        Instruction.init();
+    }
 
     private static final int MASK = 0b1000_0000_0000_0101_0000;
 

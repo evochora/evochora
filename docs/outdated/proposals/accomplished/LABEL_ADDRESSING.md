@@ -348,6 +348,11 @@ index, and with it the strategy interface:
   tick benchmark own too few labels to show a change to the index. Its `namespacePerOrganism`
   switch fills the value space, the case a high namespace flip rate over many bits produces. In the tick benchmark
   `orphanedPercent` spreads the organisms without labels evenly; `extraLabels` was dropped again.
+- **`estimateMemoryBytes(labels)` joined the interface**: the run's memory estimate assumes that at
+  most 5 percent of a world's cells are labels and asks the strategy what holding them costs.
+- **`docs/ASSEMBLY_SPEC.md` and `README.md` stayed as they were**, against the plan for commit 5: the
+  specification defines the language and says nothing that became wrong, and the README's
+  sentence on fuzzy jumps still holds.
 - The real-run comparison ran as planned, three variants in two rounds of swapped order, each
   variant with the same hash in both rounds.
 

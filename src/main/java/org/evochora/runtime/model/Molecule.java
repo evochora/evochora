@@ -339,7 +339,6 @@ public record Molecule(int type, int value, int marker) {
     @Override
     public String toString() {
         String typePrefix = MoleculeTypeRegistry.typeToName(this.type());
-        String valueText = MoleculeTypeRegistry.valueFormatOf(this.type()).write(this.value());
-        return typePrefix + ":" + valueText + " M:" + this.marker();
+        return typePrefix + ":" + formatValue(this.toInt()) + " M:" + this.marker();
     }
 }

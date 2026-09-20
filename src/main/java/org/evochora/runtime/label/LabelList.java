@@ -8,8 +8,7 @@ import java.util.Arrays;
  * <p>
  * The order by flat index makes every walk over the list depend on the labels' coordinates alone —
  * never on the order in which labels were added, which differs between a run and its resume, and
- * never on the grid's memory layout. It also makes the labels within a range of the first
- * coordinate a contiguous stretch that {@link #lowerBound(int)} locates.
+ * never on the grid's memory layout.
  * <p>
  * Thread Safety: not synchronized. Mutated only from the simulation thread outside the parallel
  * wave, read concurrently inside it.

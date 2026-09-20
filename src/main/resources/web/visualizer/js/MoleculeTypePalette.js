@@ -19,15 +19,15 @@ export const VALUE_FORMAT = Object.freeze({ DECIMAL: 'decimal', HEX: 'hex' });
  * separately below.
  */
 export const MOLECULE_TYPE_PALETTE = {
-    CODE:      { bg: 0x3c5078, text: 0xffffff, abbr: 'C',  valueFormat: 'decimal' },  // blue-gray
-    DATA:      { bg: 0x32323c, text: 0xffffff, abbr: 'D',  valueFormat: 'decimal' },  // dark gray
-    ENERGY:    { bg: 0xffe664, text: 0x323232, abbr: 'E',  valueFormat: 'decimal' },  // yellow
-    STRUCTURE: { bg: 0xff7878, text: 0x323232, abbr: 'S',  valueFormat: 'decimal' },  // red/pink
-    LABEL:     { bg: 0xa0a0a8, text: 0x323232, abbr: 'L',  valueFormat: 'hex'     },  // light gray
-    LABELREF:  { bg: 0xa0a0a8, text: 0xffffff, abbr: 'LR', valueFormat: 'hex'     },  // light gray, light text distinguishes it from LABEL
-    REGISTER:  { bg: 0x506080, text: 0xffffff, abbr: 'R',  valueFormat: 'decimal' },  // medium blue-gray
-    STATE:     { bg: 0x32323c, text: 0xffd166, abbr: 'ST', valueFormat: 'decimal' },  // dark gray as DATA, amber text distinguishes it
-    UNKNOWN:   { bg: 0xff00ff, text: 0xffffff, abbr: '?',  valueFormat: 'decimal' }   // magenta, unmistakable
+    CODE:      { bg: 0x3c5078, text: 0xffffff, abbr: 'C',  valueFormat: VALUE_FORMAT.DECIMAL },  // blue-gray
+    DATA:      { bg: 0x32323c, text: 0xffffff, abbr: 'D',  valueFormat: VALUE_FORMAT.DECIMAL },  // dark gray
+    ENERGY:    { bg: 0xffe664, text: 0x323232, abbr: 'E',  valueFormat: VALUE_FORMAT.DECIMAL },  // yellow
+    STRUCTURE: { bg: 0xff7878, text: 0x323232, abbr: 'S',  valueFormat: VALUE_FORMAT.DECIMAL },  // red/pink
+    LABEL:     { bg: 0xa0a0a8, text: 0x323232, abbr: 'L',  valueFormat: VALUE_FORMAT.HEX     },  // light gray
+    LABELREF:  { bg: 0xa0a0a8, text: 0xffffff, abbr: 'LR', valueFormat: VALUE_FORMAT.HEX     },  // light gray, light text distinguishes it from LABEL
+    REGISTER:  { bg: 0x506080, text: 0xffffff, abbr: 'R',  valueFormat: VALUE_FORMAT.DECIMAL },  // medium blue-gray
+    STATE:     { bg: 0x32323c, text: 0xffd166, abbr: 'ST', valueFormat: VALUE_FORMAT.DECIMAL },  // dark gray as DATA, amber text distinguishes it
+    UNKNOWN:   { bg: 0xff00ff, text: 0xffffff, abbr: '?',  valueFormat: VALUE_FORMAT.DECIMAL }   // magenta, unmistakable
 };
 
 /** The name of the entry every unrecognized type falls back to. */

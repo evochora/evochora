@@ -299,7 +299,7 @@ public class HammingLabelMatchingStrategy implements ILabelMatchingStrategy {
             int flatIndex = own.flatIndexAt(i);
             int distance = coordinates.distance(callerCoords, flatIndex);
             if (selectionSpread > 0) {
-                long weight = Math.max(1, (long) WEIGHT_PRECISION * selectionSpread / (distance + selectionSpread));
+                long weight = Math.max(1, (long) WEIGHT_PRECISION * selectionSpread / ((long) distance + selectionSpread));
                 totalWeight += weight;
                 if (random.nextLong(totalWeight) < weight) {
                     chosen = flatIndex;
