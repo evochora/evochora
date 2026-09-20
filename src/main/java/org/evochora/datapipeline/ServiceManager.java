@@ -513,7 +513,12 @@ public class ServiceManager implements IMonitorable {
                 try {
                     stopService(name);
                 } catch (Exception e) {
-                    log.warn("Could not stop service '{}': {}", name, e.getMessage());
+                    // A one-shot service can finish between the selection above and this stop
+                    if (services.get(name).getCurrentState() == IService.State.STOPPED) {
+                        log.debug("Service '{}' had stopped by itself.", name);
+                    } else {
+                        log.warn("Could not stop service '{}': {}", name, e.getMessage());
+                    }
                 }
             }, "shutdown-" + name);
             t.start();
