@@ -12,9 +12,11 @@ import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 import org.evochora.datapipeline.api.analytics.ManifestEntry;
@@ -64,6 +66,11 @@ public class AnalyticsController implements IController {
     /** Where the analyzer puts each card, from the plugin list this node is configured with. */
     private final CardPlacements placements;
     private final ConcurrentHashMap<String, CacheEntry> manifestCache = new ConcurrentHashMap<>();
+    /**
+     * The missing companion tables already reported, by run, card and table, so that the log names
+     * each of them once and not again with every manifest rebuilt after the cache ran out.
+     */
+    private final Set<String> reportedMissingCompanions = ConcurrentHashMap.newKeySet();
     
     // DuckDB driver loaded flag (for server-side queries)
     private static volatile boolean duckDbDriverLoaded = false;
@@ -981,6 +988,8 @@ public class AnalyticsController implements IController {
                 }
             }
 
+            warnAboutMissingCompanions(runId, entries);
+
             Map<String, Object> response = Map.of("metrics", placements.apply(entries));
             String responseJson = gson.toJson(response);
             
@@ -997,6 +1006,52 @@ public class AnalyticsController implements IController {
             log.error("Failed to aggregate manifest for run {}", runId, e);
             ctx.status(500).result("Failed to generate manifest");
         }
+    }
+
+    /**
+     * Reports every card of a run that reads a companion table the run does not hold.
+     * <p>
+     * Such a card cannot be drawn, and what is missing is a plugin in the configuration of an
+     * indexer - which whoever runs the servers can change and whoever looks at the analyzer
+     * possibly cannot, so it is said here, in the server's log. The indexers do not say it: the
+     * table may be written by an indexer on another node, and none of them knows what the others
+     * write. A run holds a table when one of its manifest entries is stored under that name, which
+     * an indexer writes before its first row.
+     *
+     * @param runId   The run the manifest belongs to
+     * @param entries The manifest entries read from the run
+     */
+    private void warnAboutMissingCompanions(String runId, List<ManifestEntry> entries) {
+        Set<String> held = new HashSet<>();
+        for (ManifestEntry entry : entries) {
+            if (entry != null) {
+                held.add(storageMetricOf(entry));
+            }
+        }
+        for (ManifestEntry entry : entries) {
+            if (entry == null || entry.companions == null) {
+                continue;
+            }
+            for (ManifestEntry.Companion companion : entry.companions) {
+                if (!held.contains(companion.metricId())
+                        && reportedMissingCompanions.add(runId + "/" + entry.id + "/" + companion.metricId())) {
+                    log.warn("Run {}: the card '{}' reads the table '{}', which the run does not hold; the card cannot be drawn until an analytics indexer runs a plugin with that metricId",
+                        runId, entry.id, companion.metricId());
+                }
+            }
+        }
+    }
+
+    /**
+     * Names the table a manifest entry's rows are stored under.
+     *
+     * @param entry The manifest entry
+     * @return Its {@code storageMetricId}, or its id where it names none
+     */
+    private static String storageMetricOf(ManifestEntry entry) {
+        return entry.storageMetricId != null && !entry.storageMetricId.isBlank()
+            ? entry.storageMetricId
+            : entry.id;
     }
 
     /**

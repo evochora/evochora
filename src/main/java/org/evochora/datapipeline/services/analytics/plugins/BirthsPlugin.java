@@ -227,7 +227,7 @@ public class BirthsPlugin extends AbstractAnalyticsPlugin {
             false, true));
 
         entry.visualization = VisualizationHint.chart("band-chart", "tick")
-            .with("derivedY2", "generation-time");
+            .with("derived", "generation-time");
 
         return entry;
     }

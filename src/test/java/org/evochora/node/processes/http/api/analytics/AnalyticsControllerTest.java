@@ -7,6 +7,8 @@ import com.typesafe.config.ConfigFactory;
 import io.javalin.Javalin;
 import io.javalin.testtools.JavalinTest;
 import org.evochora.datapipeline.api.resources.storage.IAnalyticsStorageRead;
+import org.evochora.junit.extensions.logging.ExpectLog;
+import org.evochora.junit.extensions.logging.LogLevel;
 import org.evochora.node.spi.ServiceRegistry;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -105,6 +107,39 @@ class AnalyticsControllerTest {
             assertThat(second.get("id").getAsString()).isEqualTo("age_distribution");
             assertThat(second.get("fullWidth").getAsBoolean()).isTrue();
             assertThat(second.get("order").getAsInt()).isEqualTo(1);
+        });
+    }
+
+    @Test
+    @ExpectLog(level = LogLevel.WARN, messagePattern = "Run run1: the card 'mutation_success' reads the table 'births', which the run does not hold.*")
+    void aCardWhoseCompanionTableTheRunDoesNotHoldIsReported() throws Exception {
+        IAnalyticsStorageRead storage = mock(IAnalyticsStorageRead.class);
+        when(storage.listAnalyticsFiles(eq("run1"), eq("")))
+            .thenReturn(List.of("mutation_success/metadata.json", "genome_diversity/metadata.json",
+                "generation_time/metadata.json"));
+        // Reads a table no entry of the run is stored under
+        when(storage.openAnalyticsInputStream(eq("run1"), eq("mutation_success/metadata.json")))
+            .thenReturn(new ByteArrayInputStream(("{\"id\":\"mutation_success\","
+                + "\"storageMetricId\":\"variation_sources\","
+                + "\"companions\":[{\"metricId\":\"births\",\"query\":\"q\"}]}").getBytes()));
+        // Reads the table another card is stored under, and the one it is stored under itself
+        when(storage.openAnalyticsInputStream(eq("run1"), eq("genome_diversity/metadata.json")))
+            .thenReturn(new ByteArrayInputStream(("{\"id\":\"genome_diversity\","
+                + "\"storageMetricId\":\"genome\","
+                + "\"companions\":[{\"metricId\":\"generation_time\",\"query\":\"q\"},"
+                + "{\"metricId\":\"genome\",\"query\":\"q\"}]}").getBytes()));
+        when(storage.openAnalyticsInputStream(eq("run1"), eq("generation_time/metadata.json")))
+            .thenReturn(new ByteArrayInputStream("{\"id\":\"generation_time\"}".getBytes()));
+        ServiceRegistry registry = new ServiceRegistry();
+        registry.register(IAnalyticsStorageRead.class, storage);
+
+        AnalyticsController controller = new AnalyticsController(registry,
+            ConfigFactory.parseMap(Map.of("analyticsManifestCacheTtlSeconds", 1)));
+        Javalin app = Javalin.create();
+        controller.registerRoutes(app, "/api");
+
+        JavalinTest.test(app, (server, client) -> {
+            assertThat(client.get("/api/manifest?runId=run1").code()).isEqualTo(200);
         });
     }
 

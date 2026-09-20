@@ -2,7 +2,9 @@ package org.evochora.datapipeline.services.analytics.plugins;
 
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.evochora.datapipeline.api.analytics.AbstractAnalyticsPlugin;
 import org.evochora.datapipeline.api.analytics.Aggregation;
@@ -16,6 +18,8 @@ import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.memory.MemoryEstimate;
 import org.evochora.datapipeline.api.memory.SimulationParameters;
 import org.evochora.datapipeline.utils.MetadataConfigHelper;
+
+import com.typesafe.config.Config;
 
 /**
  * Counts a recording's births by what made each newborn's genome what it is, one row per recording.
@@ -69,6 +73,14 @@ import org.evochora.datapipeline.utils.MetadataConfigHelper;
  * <p>
  * A recording without births produces no row: a row of zeros would read as a recording whose
  * births came from nowhere rather than as one that had none.
+ * <p>
+ * <strong>The second card.</strong> "Mutation Success" asks what a mutation was worth: how often a
+ * birth that received a given kind founds a line that goes on, measured against the births no
+ * mutation plugin touched, which stand at 1. A kind that stays far below the others is a cliff -
+ * the mutation is made and the lines it makes end. None of that is in these rows: it is derived in
+ * the browser from the births table, one row per birth, which the card reads as a companion under
+ * the metric named by {@code birthsMetricId}. Without a births plugin configured under that name
+ * the card has nothing to read and cannot be drawn.
  */
 public class VariationSourcesPlugin extends AbstractAnalyticsPlugin {
 
@@ -78,10 +90,34 @@ public class VariationSourcesPlugin extends AbstractAnalyticsPlugin {
      */
     private static final List<String> COUNT_COLUMNS = BirthVariation.CLASSES;
 
+    /**
+     * The series of the mutation success card, in the order it draws them: the births no mutation
+     * plugin touched, which the other series are measured against, and then the five kinds a
+     * mutation plugin of this project reports.
+     */
+    private static final List<String> SUCCESS_SERIES = List.of(
+        "no_plugin_mutation",
+        "duplication",
+        "deletion",
+        "instruction_insertion",
+        "label_insertion",
+        "substitution");
+
+    /**
+     * The colour of every class, the one place both cards take it from, so that a kind reads the
+     * same on either of them. These are the colours the stacked bars carry by their position in
+     * the frontend's palette; the second card draws a different selection in a different order and
+     * would otherwise give the same kind another colour.
+     */
+    private static final Map<String, String> CLASS_COLORS = classColors();
+
     /** How many time buckets the chart's query cuts the loaded ticks into. */
     private static final int TARGET_BUCKETS = 50;
 
     private static final ParquetSchema SCHEMA = buildSchema();
+
+    /** Metric holding the single births the success of a mutation kind is counted over. */
+    private String birthsMetricId = "births";
 
     /**
      * How many simulation ticks lie between two recordings, which is the window a state's birth
@@ -89,6 +125,26 @@ public class VariationSourcesPlugin extends AbstractAnalyticsPlugin {
      * carrying metadata has been supplied.
      */
     private int recordingInterval;
+
+    /**
+     * Builds the colour of every class, in the order the classes are numbered in.
+     *
+     * @return the hex colour of each class of {@link BirthVariation#CLASSES}, in that order
+     */
+    private static Map<String, String> classColors() {
+        Map<String, String> colors = new LinkedHashMap<>();
+        colors.put("unchanged", "#4a9eff");
+        colors.put("bodiless", "#a0e0a0");
+        colors.put("no_event", "#ffb366");
+        colors.put("duplication", "#dda0dd");
+        colors.put("deletion", "#87ceeb");
+        colors.put("instruction_insertion", "#ffd700");
+        colors.put("label_insertion", "#ff6b6b");
+        colors.put("substitution", "#98d8c8");
+        colors.put("multiple", "#f08080");
+        colors.put("other", "#c79ecf");
+        return Collections.unmodifiableMap(colors);
+    }
 
     private static ParquetSchema buildSchema() {
         ParquetSchema.Builder builder = ParquetSchema.builder().column("tick", ColumnType.BIGINT);
@@ -105,6 +161,19 @@ public class VariationSourcesPlugin extends AbstractAnalyticsPlugin {
         return new Fixed(1, "a birth is reported as a newborn in exactly one recording, so a "
             + "skipped recording loses its births for good - births are events, not a state that "
             + "can be sampled");
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * @throws IllegalArgumentException if {@code birthsMetricId} is configured empty, which would
+     *         leave the mutation success card looking for a table under no name and showing nothing
+     */
+    @Override
+    public void configure(Config config) {
+        super.configure(config);
+        this.birthsMetricId = companionMetricId(config, "birthsMetricId",
+            "the single births the success of a mutation kind is counted over", birthsMetricId);
     }
 
     /**
@@ -195,9 +264,88 @@ public class VariationSourcesPlugin extends AbstractAnalyticsPlugin {
         entry.visualization = VisualizationHint.chart("stacked-bar-chart", "tick")
             .with("y", COUNT_COLUMNS)
             .with("yLabel", "Births")
-            .with("yFormat", "integer");
+            .with("yFormat", "integer")
+            .with("colors", CLASS_COLORS);
 
         return entry;
+    }
+
+    /**
+     * {@inheritDoc}
+     * <p>
+     * The counts of this table carry the first card; the second one is drawn from the births table
+     * alone and stands here because it asks the same question of the same classes.
+     */
+    @Override
+    public List<ManifestEntry> getManifestEntries() {
+        ManifestEntry sources = getManifestEntry();
+        ManifestEntry success = mutationSuccessEntry();
+        applyCommonConfig(sources);
+        applyCommonConfig(success);
+        return List.of(sources, success);
+    }
+
+    /**
+     * Describes the card that measures what a mutation kind was worth.
+     * <p>
+     * The card draws no series this table holds. Whether a birth founded a line that goes on is a
+     * question about single births and their descendants, which exists only across the rows of the
+     * births table and over the whole run, so the browser derives the series from that table, read
+     * column by column and unfiltered. What this entry's own query returns is the tick range this
+     * plugin's table covers, so that the card knows where its data begins and ends.
+     *
+     * @return the manifest entry of the mutation success card
+     */
+    private ManifestEntry mutationSuccessEntry() {
+        ManifestEntry entry = new ManifestEntry();
+        entry.id = "mutation_success";
+        entry.storageMetricId = metricId;
+        entry.name = "Mutation Success";
+        entry.description = "How often a birth founds a line that goes on, by the mutation it "
+            + "received, against the births the mutation plugins left alone (= 1). A kind that "
+            + "stays far below the others is a cliff.";
+
+        entry.dataSources = new HashMap<>();
+        for (int level = 0; level < lodLevels; level++) {
+            String lodName = lodLevelName(level);
+            entry.dataSources.put(lodName, metricId + "/" + lodName + "/**/*.parquet");
+        }
+
+        entry.generatedQuery = "SELECT MIN(tick) AS first_tick, MAX(tick) AS last_tick FROM {table}";
+
+        entry.companions = List.of(new ManifestEntry.Companion(birthsMetricId,
+            "SELECT tick, birth_tick, organism_id, parent_id, parent_birth_tick, generation, "
+                + "genome_hash, parent_genome_hash, variation FROM {table} ORDER BY birth_tick",
+            false, true));
+
+        entry.visualization = VisualizationHint.chart("line-chart", "tick")
+            .with("derived", "mutation-success")
+            .with("y", SUCCESS_SERIES)
+            .with("yFormat", "decimal")
+            .with("yLabel", "Success against no plugin mutation")
+            .with("yMin", 0)
+            .with("reference", "no_plugin_mutation")
+            .with("referenceLabel", "No plugin mutation (= 1)")
+            .with("colors", successColors());
+
+        return entry;
+    }
+
+    /**
+     * The colour of every kind the mutation success card draws. The series the others are measured
+     * against gets none: the chart styles its reference line itself.
+     *
+     * @return the hex colour of each kind, in the order the card draws them
+     */
+    private static Map<String, String> successColors() {
+        Map<String, String> colors = new LinkedHashMap<>();
+        for (String series : SUCCESS_SERIES) {
+            String color = CLASS_COLORS.get(series);
+            if (color != null) {
+                colors.put(series, color);
+            }
+        }
+        return colors;
     }
 
     /**

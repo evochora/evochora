@@ -186,7 +186,7 @@ class BirthsPluginTest {
         assertThat(entry.id).isEqualTo("births");
         assertThat(entry.name).isEqualTo("Generation Time");
         assertThat(entry.visualization.type).isEqualTo("band-chart");
-        assertThat(entry.visualization.config).containsEntry("derivedY2", "generation-time");
+        assertThat(entry.visualization.config).containsEntry("derived", "generation-time");
         assertThat(entry.companions).singleElement().satisfies(companion -> {
             assertThat(companion.metricId()).isEqualTo("births");
             assertThat(companion.columnar()).isTrue();

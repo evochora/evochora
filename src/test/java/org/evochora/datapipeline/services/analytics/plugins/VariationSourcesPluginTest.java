@@ -54,6 +54,14 @@ class VariationSourcesPluginTest {
         "multiple",
         "other");
 
+    /** The kinds a mutation plugin of this project reports, which the second card holds apart. */
+    private static final List<String> MUTATION_KINDS = List.of(
+        "duplication",
+        "deletion",
+        "instruction_insertion",
+        "label_insertion",
+        "substitution");
+
     private VariationSourcesPlugin plugin;
 
     @BeforeEach
@@ -323,6 +331,109 @@ class VariationSourcesPluginTest {
     @Test
     void everyRecordedTickIsRead() {
         assertThat(plugin.getSamplingInterval()).isEqualTo(1);
+    }
+
+    @Test
+    void theTableCarriesTwoCards() {
+        assertThat(plugin.getManifestEntries())
+            .extracting(entry -> entry.id)
+            .containsExactly("variation_sources", "mutation_success");
+    }
+
+    @Test
+    void theSecondCardReadsTheParquetFilesOfThisMetric() {
+        ManifestEntry success = mutationSuccess(plugin);
+
+        assertThat(success.storageMetricId).isEqualTo("variation_sources");
+        assertThat(success.dataSources).containsOnlyKeys("lod0");
+        assertThat(success.name).isEqualTo("Mutation Success");
+        assertThat(success.generatedQuery).isEqualTo(
+            "SELECT MIN(tick) AS first_tick, MAX(tick) AS last_tick FROM {table}");
+    }
+
+    @Test
+    void theSecondCardDerivesItsSeriesFromTheBirthsReadColumnWise() {
+        ManifestEntry success = mutationSuccess(plugin);
+
+        assertThat(success.visualization.type).isEqualTo("line-chart");
+        assertThat(success.visualization.config)
+            .containsEntry("derived", "mutation-success")
+            .containsEntry("y", List.of("no_plugin_mutation", "duplication", "deletion",
+                "instruction_insertion", "label_insertion", "substitution"))
+            .containsEntry("yMin", 0)
+            .containsEntry("reference", "no_plugin_mutation");
+        assertThat(success.companions).singleElement().satisfies(companion -> {
+            assertThat(companion.metricId()).isEqualTo("births");
+            assertThat(companion.columnar()).isTrue();
+            assertThat(companion.followsLevel()).isFalse();
+            assertThat(companion.query())
+                .contains("parent_birth_tick")
+                .contains("variation")
+                .contains("ORDER BY birth_tick");
+        });
+    }
+
+    @Test
+    void theBirthsTableCanBeConfiguredUnderAnotherName() {
+        VariationSourcesPlugin renamed = new VariationSourcesPlugin();
+        renamed.configure(ConfigFactory.parseMap(Map.of(
+            "metricId", "variation_sources", "birthsMetricId", "life_table")));
+        renamed.initialize(context());
+
+        assertThat(mutationSuccess(renamed).companions).singleElement()
+            .satisfies(companion -> assertThat(companion.metricId()).isEqualTo("life_table"));
+    }
+
+    @Test
+    void aBirthsTableWithoutANameIsRefused() {
+        // The card would look for a table under no name and show nothing
+        assertThatThrownBy(() -> new VariationSourcesPlugin().configure(ConfigFactory.parseMap(
+                Map.of("metricId", "variation_sources", "birthsMetricId", "  "))))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("birthsMetricId");
+    }
+
+    @Test
+    void aKindHasTheSameColourOnBothCards() {
+        List<ManifestEntry> entries = plugin.getManifestEntries();
+        Map<String, String> sourceColors = colorsOf(entries.get(0));
+        Map<String, String> successColors = colorsOf(entries.get(1));
+
+        // The stacked bars colour every class; the second card draws the five kinds and leaves the
+        // series they are measured against to the chart, which styles its reference line itself
+        assertThat(sourceColors).containsOnlyKeys(COUNT_COLUMNS);
+        assertThat(successColors.keySet()).containsExactlyElementsOf(MUTATION_KINDS);
+        for (String kind : MUTATION_KINDS) {
+            assertThat(successColors).containsEntry(kind, sourceColors.get(kind));
+        }
+    }
+
+    @Test
+    void theClassesKeepTheColoursOfTheChartsPalette() {
+        // The palette the stacked bar chart hands out by series position, written down so that both
+        // cards can name the same colour for the same kind
+        Map<String, String> colors = colorsOf(plugin.getManifestEntry());
+
+        assertThat(colors.values()).containsExactly(
+            "#4a9eff", "#a0e0a0", "#ffb366", "#dda0dd", "#87ceeb",
+            "#ffd700", "#ff6b6b", "#98d8c8", "#f08080", "#c79ecf");
+    }
+
+    /**
+     * The colours one card gives its series, by series key.
+     */
+    @SuppressWarnings("unchecked")
+    private static Map<String, String> colorsOf(ManifestEntry entry) {
+        return (Map<String, String>) entry.visualization.config.get("colors");
+    }
+
+    /**
+     * The second of the plugin's cards, the one derived from the births table.
+     */
+    private static ManifestEntry mutationSuccess(VariationSourcesPlugin plugin) {
+        List<ManifestEntry> entries = plugin.getManifestEntries();
+        assertThat(entries).hasSize(2);
+        return entries.get(1);
     }
 
     /**
