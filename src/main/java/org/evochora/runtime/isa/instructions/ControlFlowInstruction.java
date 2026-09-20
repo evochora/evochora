@@ -35,6 +35,12 @@ public class ControlFlowInstruction extends Instruction {
         reg(1, 3, "CALL", LABEL);
         // Operation 2: RET (Return from subroutine)
         reg(2, 4, "RET");
+
+        // A call is left out: its return continues with the cell behind it.
+        declareNeverFallsThrough("JMPR");
+        declareNeverFallsThrough("JMPS");
+        declareNeverFallsThrough("JMPI");
+        declareNeverFallsThrough("RET");
     }
 
     private static void reg(int op, int index, String name, OperandSource... sources) {

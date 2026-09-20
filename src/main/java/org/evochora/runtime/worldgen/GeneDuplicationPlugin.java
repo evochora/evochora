@@ -5,7 +5,9 @@ import java.util.Arrays;
 import java.util.Random;
 
 import org.evochora.runtime.Config;
+import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Environment;
+import org.evochora.runtime.model.GenomeFlow;
 import org.evochora.runtime.model.GenomeFrame;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.MutationRecord;
@@ -38,6 +40,25 @@ import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
  * the copy is cut back to the last block boundary that fits entirely, never inside a block. A run
  * that cannot hold even the first block is not written to at all.
  * <p>
+ * <strong>How a cut-back copy ends.</strong> The source runs on from the last copied block into the
+ * label the copy was cut at; the copy has nothing behind it. Where execution can leave the copied
+ * stretch at its end ({@link GenomeFlow#endsOpen}) — its last instruction is no unconditional jump
+ * and no return, or a conditional can skip it — the copy is closed with a {@code JMPI} to the value
+ * of that label, so that it goes on where the source goes on. The jump takes two cells of the run;
+ * where they are missing the copy is cut back further, to the last boundary that leaves them. A
+ * copy that reaches the end of the source line is left as it is: the source has nothing behind it
+ * there either.
+ * <p>
+ * <strong>Where a copy goes.</strong> Only into a run of empty cells execution does not run on into
+ * ({@link GenomeFlow#reachedByFallThrough}). In a run other code passes through, that code would
+ * enter the copy at its first label and leave with the copy's jumps, whatever was copied.
+ * <p>
+ * <strong>Labels that are no jump targets</strong> are copied like any other. A label a location
+ * instruction addresses names a place for the data pointer; its copy is a second such place, and
+ * the references to it are shared between the two by the label match. The original stays where it
+ * is and keeps its share, so what this does to an organism depends on what its program keeps
+ * there — it is left to selection, as the content of every copy is.
+ * <p>
  * What a copy carries of those blocks is what the machine reads as code: the cells of an
  * instruction, the labels that open a block, and the empty cells between them. A CODE molecule
  * whose value is no registered opcode is none: the machine reads it as a no-operation of one cell,
@@ -56,25 +77,29 @@ import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
  * <p>
  * The algorithm groups owned cells by scan lines perpendicular to the organism's direction vector (DV),
  * ensuring equal selection probability for each scan line regardless of cell density. A random scan line
- * is chosen as the target for NOP area search, and a random LABEL is selected as the source via reservoir
- * sampling.
+ * is chosen among the lines that hold a qualifying NOP run, and a random LABEL is selected as the
+ * source via reservoir sampling.
  * <p>
  * <strong>Performance:</strong> Near-zero allocation after warmup. The owned cells are visited
  * through the environment's cell views; reusable coordinate buffers, ScanLineInfo pooling and direct
  * bit extraction from packed molecule ints minimize GC pressure. The only per-call allocations are
  * one {@code getShape()} defensive copy, the two visitor lambdas (one per owned-cell pass), when a
- * copy is applied the {@link MutationRecord} handed to the newborn, and, only where a copy has to
- * be cut back to a block boundary, the defensive copy of the newborn's initial position together
- * with what one {@link GenomeFrame} build costs. The owned-cell iteration is O(n) where n is
- * typically 1000-3000, running at most a few times per tick.
+ * copy is applied the {@link MutationRecord} handed to the newborn, the defensive copy of the
+ * newborn's initial position together with what one {@link GenomeFrame} build costs, and, only
+ * where a copy is closed, the two {@link Molecule} records of the jump. The frame is built for
+ * every newborn that carries a label, before it is known whether a run qualifies, because which
+ * runs qualify is read from it. The owned-cell iteration is O(n) where n is typically 1000-3000,
+ * running at most a few times per tick.
  * <p>
  * <strong>What it records:</strong> an applied duplication reports itself on the newborn as a
  * {@link MutationRecord} of kind {@code "duplication"}. Its cells are the target cells that
  * received a non-empty molecule, in the order the copy loop wrote them; the old value is what
- * stood at the target cell before the write, the new value the copied molecule. Its one parameter
+ * stood at the target cell before the write, the new value the copied molecule; the two cells of
+ * a closing jump follow the copied ones. Its one parameter
  * is the flat index of the first source cell, which is the chosen label, because the source of a
  * copy cannot be recovered from the copied values alone. A run that finds no label, no NOP run
- * long enough, or no run that holds the first block writes nothing and records nothing.
+ * that is long enough and away from execution, or no run that holds the first block writes nothing
+ * and records nothing.
  * <p>
  * <strong>Thread Safety:</strong> Not thread-safe. Runs in the sequential post-Execute phase of
  * {@code Simulation.tick()}.
@@ -88,9 +113,18 @@ public class GeneDuplicationPlugin implements IBirthHandler {
     /** The kind this plugin reports its writes under. */
     private static final String MUTATION_KIND = "duplication";
 
+    /** The instruction a cut-back copy is closed with, an unconditional jump to a label value. */
+    private static final String JUMP_INSTRUCTION = "JMPI";
+
+    /** Cells a closing jump takes: its opcode and its label reference. */
+    private static final int CLOSING_JUMP_LENGTH = 2;
+
     private final Random random;
     private final double duplicationRate;
     private final int minNopSize;
+
+    /** Opcode of the jump a cut-back copy is closed with. */
+    private final int jumpOpcodeId;
 
     // Reusable buffers (lazy-initialized on first duplicate() call)
     private int[] coordBuffer;
@@ -124,10 +158,22 @@ public class GeneDuplicationPlugin implements IBirthHandler {
     private final MutationRecord.Builder recordBuilder = new MutationRecord.Builder();
 
     /**
-     * The newborn's genome in the machine's reading frame; built only where a copy has to be cut
-     * back to a block boundary, and kept so that such a build reuses the buffers of the one before.
+     * The newborn's genome in the machine's reading frame, built once per duplication and kept so
+     * that a build reuses the buffers of the one before.
      */
     private final GenomeFrame frame = new GenomeFrame();
+
+    /** What the instruction set says about control flow in that genome. */
+    private final GenomeFlow flow = new GenomeFlow();
+
+    /** Coordinates of the cell a NOP run is asked about; reused. */
+    private int[] runEntryPos;
+
+    /** The value of the label the last {@link #lastBlockBoundaryWithin} cut at. */
+    private int cutLabelValue;
+
+    /** Whether execution can leave the stretch the last {@link #cutBackCopyLength} returned at its end. */
+    private boolean cutCopyEndsOpen;
 
     /**
      * Mutable scan line info for grouping owned cells by perpendicular coordinates.
@@ -192,6 +238,7 @@ public class GeneDuplicationPlugin implements IBirthHandler {
         this.random = randomProvider.asJavaRandom();
         this.duplicationRate = config.getDouble("duplicationRate");
         this.minNopSize = config.getInt("minNopSize");
+        this.jumpOpcodeId = resolveJumpOpcode();
         if (duplicationRate < 0.0 || duplicationRate > 1.0) {
             throw new IllegalArgumentException("duplicationRate must be in [0.0, 1.0], got: " + duplicationRate);
         }
@@ -212,6 +259,23 @@ public class GeneDuplicationPlugin implements IBirthHandler {
         this.random = randomProvider.asJavaRandom();
         this.duplicationRate = duplicationRate;
         this.minNopSize = minNopSize;
+        this.jumpOpcodeId = resolveJumpOpcode();
+    }
+
+    /**
+     * Resolves the opcode of the jump a cut-back copy is closed with.
+     *
+     * @return The opcode ID of {@value #JUMP_INSTRUCTION}.
+     * @throws IllegalStateException if the instruction set does not carry that instruction, which
+     *                               means the registry was not initialized.
+     */
+    private static int resolveJumpOpcode() {
+        Integer id = Instruction.getInstructionIdByName(JUMP_INSTRUCTION);
+        if (id == null) {
+            throw new IllegalStateException("The instruction set carries no " + JUMP_INSTRUCTION
+                    + ", which a cut-back copy is closed with");
+        }
+        return id;
     }
 
     /** {@inheritDoc} */
@@ -312,19 +376,24 @@ public class GeneDuplicationPlugin implements IBirthHandler {
         int selectedLabelPerpKey = labelState[0];
         int selectedLabelDvCoord = labelState[1];
 
+        // The reading frame says of every cell whether the machine reads it as part of an
+        // instruction: which runs execution runs on into, what the copy carries, which LABEL cells
+        // are the block boundaries a cut-back copy may end at, and whether the copy ends open.
+        frame.build(env, childId, child.getInitialPosition(), dv);
+
         // --- Step 3: Scan ALL scan lines for NOP areas ---
         int candidateCount = 0;
         for (int i = 0; i < poolIndex; i++) {
             ScanLineInfo line = scanLinePool.get(i);
             env.properties.flatIndexToCoordinates(line.sampleFlatIndex, coordBuffer);
-            findBestNopRun(line, env, dvDimFinal, shape[dvDimFinal]);
+            findBestNopRun(line, env, dvDimFinal, dv[dvDimFinal], shape[dvDimFinal]);
             if (line.bestNopLength >= minNopSize) {
                 candidateCount++;
             }
         }
 
         if (candidateCount == 0) {
-            LOG.debug("tick={} Organism {} selected for duplication: {} labels, no scan line with NOP >= {} — skipping",
+            LOG.debug("tick={} Organism {} selected for duplication: {} labels, no scan line with a NOP run >= {} away from execution — skipping",
                     child.getBirthTick(), childId, labelCount, minNopSize);
             return;
         }
@@ -361,39 +430,28 @@ public class GeneDuplicationPlugin implements IBirthHandler {
         sourcePos[dvDimFinal] = selectedLabelDvCoord;
 
         int room = targetLine.bestNopLength;
-        // The reading frame says of every source cell whether the machine reads it as part of an
-        // instruction, which decides what the copy carries, and which LABEL cells are the block
-        // boundaries a cut-back copy may end at.
-        frame.build(env, childId, child.getInitialPosition(), dv);
-        int copyLength;
-        if (availableSource <= room) {
-            copyLength = availableSource;
-        } else {
-            // The room ends inside the source, so the copy is cut back to a whole number of blocks
-            copyLength = lastBlockBoundaryWithin(env, childId, room, dvStep, dvDimFinal, shapeDvDim);
-            sourcePos[dvDimFinal] = selectedLabelDvCoord;
-            if (copyLength == 0) {
-                LOG.debug("tick={} Organism {} selected for duplication: NOP run of {} cells does not hold the first block — skipping",
-                        child.getBirthTick(), childId, room);
-                return;
-            }
-        }
-
-        // Cells the copy would write as empty carry nothing, so the copy does not reserve room for
-        // them: cutting them off lets a copy fit that would otherwise be cut back or skipped.
-        copyLength = withoutTrailingEmptyCells(env, copyLength, dvStep, dvDimFinal, shapeDvDim);
+        boolean cutBack = availableSource > room;
+        int copyLength = cutBack
+                ? cutBackCopyLength(env, childId, room, selectedLabelDvCoord, dvStep, dvDimFinal, shapeDvDim)
+                // Cells the copy would write as empty carry nothing, so the copy does not reserve
+                // room for them
+                : withoutTrailingEmptyCells(env, availableSource, dvStep, dvDimFinal, shapeDvDim);
         sourcePos[dvDimFinal] = selectedLabelDvCoord;
         if (copyLength == 0) {
-            LOG.debug("tick={} Organism {} selected for duplication: the source holds no code to copy — skipping",
-                    child.getBirthTick(), childId);
+            LOG.debug("tick={} Organism {} selected for duplication: NOP run of {} cells holds no code of the source — skipping",
+                    child.getBirthTick(), childId, room);
             return;
         }
+        // A copy that reaches the end of the source line ends where the source ends; only a
+        // cut-back copy lacks what the source runs on into.
+        boolean closed = cutBack && cutCopyEndsOpen;
+        int writtenLength = closed ? copyLength + CLOSING_JUMP_LENGTH : copyLength;
 
         // --- Step 5: Copy ---
         // Build target position from target scan line, adjusting start for DV direction
         env.properties.flatIndexToCoordinates(targetLine.sampleFlatIndex, targetPos);
         if (dvStep < 0) {
-            targetPos[dvDimFinal] = (targetLine.bestNopStart + copyLength - 1) % shapeDvDim;
+            targetPos[dvDimFinal] = (targetLine.bestNopStart + writtenLength - 1) % shapeDvDim;
         } else {
             targetPos[dvDimFinal] = targetLine.bestNopStart;
         }
@@ -429,6 +487,10 @@ public class GeneDuplicationPlugin implements IBirthHandler {
             }
         }
 
+        if (closed) {
+            writeClosingJump(env, childId, dvStep, dvDimFinal, shapeDvDim);
+        }
+
         child.recordBirthMutation(recordBuilder.build());
 
         if (LOG.isDebugEnabled()) {
@@ -436,10 +498,97 @@ public class GeneDuplicationPlugin implements IBirthHandler {
             sourcePos[dvDimFinal] = selectedLabelDvCoord;
             env.properties.flatIndexToCoordinates(targetLine.sampleFlatIndex, targetPos);
             targetPos[dvDimFinal] = (dvStep < 0)
-                    ? (targetLine.bestNopStart + copyLength - 1) % shapeDvDim
+                    ? (targetLine.bestNopStart + writtenLength - 1) % shapeDvDim
                     : targetLine.bestNopStart;
             LOG.debug("tick={} Organism {} gene duplication: copied {} molecules from {} to {}",
                     child.getBirthTick(), childId, copyLength, Arrays.toString(sourcePos), Arrays.toString(targetPos));
+        }
+    }
+
+    /**
+     * Determines how many cells of the source a cut-back copy takes.
+     * <p>
+     * The copy ends at the last block boundary within the room, without the cells it would write
+     * as empty. If execution can leave that stretch at its end, the copy is closed with a jump and
+     * needs {@value #CLOSING_JUMP_LENGTH} cells more; where the room does not hold them, the copy
+     * is cut back to the last boundary that leaves them. The label the copy was cut at is left in
+     * {@link #cutLabelValue}, and whether execution can leave the returned stretch at its end in
+     * {@link #cutCopyEndsOpen}. Leaves the source buffer somewhere along the source.
+     *
+     * @param env The simulation environment.
+     * @param childId The newborn whose cells and whose reading frame the blocks belong to.
+     * @param room The number of cells the target's empty run offers.
+     * @param labelDvCoord The DV coordinate of the chosen label, where the source begins.
+     * @param dvStep The step along the DV dimension, {@code +1} or {@code -1}.
+     * @param dvDim The DV dimension index.
+     * @param shapeDvDim The environment size along the DV dimension.
+     * @return The number of source cells to copy, or {@code 0} if the room holds no whole block
+     *         together with the jump it needs.
+     */
+    private int cutBackCopyLength(Environment env, int childId, int room, int labelDvCoord,
+                                  int dvStep, int dvDim, int shapeDvDim) {
+        int available = room;
+        while (available > 0) {
+            sourcePos[dvDim] = labelDvCoord;
+            int boundary = lastBlockBoundaryWithin(env, childId, available, dvStep, dvDim, shapeDvDim);
+            if (boundary == 0) {
+                return 0;
+            }
+            sourcePos[dvDim] = labelDvCoord;
+            // At least the chosen label: a label is always carried
+            int carried = withoutTrailingEmptyCells(env, boundary, dvStep, dvDim, shapeDvDim);
+            sourcePos[dvDim] = labelDvCoord;
+            cutCopyEndsOpen = flow.endsOpen(env, frame, sourcePos, carried, dvDim, dvStep);
+            if (!cutCopyEndsOpen || carried + CLOSING_JUMP_LENGTH <= room) {
+                return carried;
+            }
+            // The closing jump does not fit behind this stretch: look for a boundary further back
+            available = boundary - 1;
+        }
+        return 0;
+    }
+
+    /**
+     * Writes the jump that closes a cut-back copy, to the value of the label the copy was cut at,
+     * and appends its two cells to {@link #recordBuilder}.
+     * <p>
+     * Writes at the cell the target buffer stands on, which after the copy loop is the first cell
+     * behind the copy.
+     *
+     * @param env The simulation environment.
+     * @param childId The child organism's ID.
+     * @param dvStep The step along the DV dimension, {@code +1} or {@code -1}.
+     * @param dvDim The DV dimension index.
+     * @param shapeDvDim The environment size along the DV dimension.
+     */
+    private void writeClosingJump(Environment env, int childId, int dvStep, int dvDim, int shapeDvDim) {
+        writeBehindCopy(env, childId, new Molecule(Config.TYPE_CODE, jumpOpcodeId & Config.VALUE_MASK),
+                dvStep, dvDim, shapeDvDim);
+        writeBehindCopy(env, childId, new Molecule(Config.TYPE_LABELREF, cutLabelValue),
+                dvStep, dvDim, shapeDvDim);
+    }
+
+    /**
+     * Writes one molecule at the cell the target buffer stands on, appends it to
+     * {@link #recordBuilder} and moves the target buffer one cell along the direction vector.
+     *
+     * @param env The simulation environment.
+     * @param childId The child organism's ID.
+     * @param molecule The molecule to write.
+     * @param dvStep The step along the DV dimension, {@code +1} or {@code -1}.
+     * @param dvDim The DV dimension index.
+     * @param shapeDvDim The environment size along the DV dimension.
+     */
+    private void writeBehindCopy(Environment env, int childId, Molecule molecule,
+                                 int dvStep, int dvDim, int shapeDvDim) {
+        recordBuilder.cell(env.properties.toFlatIndex(targetPos),
+                env.getMoleculeIntAt(targetPos), molecule.toInt());
+        env.setMolecule(molecule, childId, targetPos);
+        targetPos[dvDim] += dvStep;
+        if (targetPos[dvDim] >= shapeDvDim) {
+            targetPos[dvDim] -= shapeDvDim;
+        } else if (targetPos[dvDim] < 0) {
+            targetPos[dvDim] += shapeDvDim;
         }
     }
 
@@ -509,8 +658,9 @@ public class GeneDuplicationPlugin implements IBirthHandler {
      * start is a LABEL cell the newborn owns that the reading frame does not read as part of an
      * instruction; a LABEL cell standing in an operand list is read as that operand and passed over.
      * <p>
-     * The walk leaves the source buffer standing on the last cell it looked at; the caller restores
-     * it to the chosen label.
+     * The value of the label at that boundary is left in {@link #cutLabelValue}. The walk leaves
+     * the source buffer standing on the last cell it looked at; the caller restores it to the
+     * chosen label.
      *
      * @param env The simulation environment.
      * @param childId The newborn whose cells and whose reading frame the blocks belong to.
@@ -539,6 +689,7 @@ public class GeneDuplicationPlugin implements IBirthHandler {
             }
             if (frame.slot(env.properties.toFlatIndex(sourcePos)) == GenomeFrame.Slot.NONE) {
                 boundary = offset;
+                cutLabelValue = env.getMoleculeIntAt(sourcePos) & Config.VALUE_MASK;
             }
         }
         return boundary;
@@ -554,6 +705,7 @@ public class GeneDuplicationPlugin implements IBirthHandler {
             coordBuffer = new int[dims];
             sourcePos = new int[dims];
             targetPos = new int[dims];
+            runEntryPos = new int[dims];
             perpStrides = new int[dims];
         }
     }
@@ -593,20 +745,22 @@ public class GeneDuplicationPlugin implements IBirthHandler {
     }
 
     /**
-     * Scans a scan line for the largest contiguous run of empty cells (CODE:0, marker:0).
-     * Results are stored in the ScanLineInfo's bestNopStart/bestNopLength fields.
+     * Scans a scan line for the largest contiguous run of empty cells (CODE:0, marker:0) that
+     * execution does not run on into. Results are stored in the ScanLineInfo's
+     * bestNopStart/bestNopLength fields.
      * <p>
      * Walks along the scan line's arc ({@link ScanLineInfo#walkStart} to
      * {@link ScanLineInfo#walkEnd}), correctly handling toroidal wrapping.
      * Uses the shared coordBuffer (caller must have initialized it via flatIndexToCoordinates
-     * with the scan line's sampleFlatIndex before calling).
+     * with the scan line's sampleFlatIndex before calling) and needs {@link #frame} built.
      *
      * @param line The scan line to scan.
      * @param env The simulation environment.
      * @param dvDim The DV dimension index.
+     * @param dvStep The step along the DV dimension, {@code +1} or {@code -1}.
      * @param shapeDvDim The environment size along the DV dimension.
      */
-    private void findBestNopRun(ScanLineInfo line, Environment env, int dvDim, int shapeDvDim) {
+    private void findBestNopRun(ScanLineInfo line, Environment env, int dvDim, int dvStep, int shapeDvDim) {
         int nopRunStart = -1;
         int nopRunLength = 0;
         line.bestNopStart = -1;
@@ -627,10 +781,7 @@ public class GeneDuplicationPlugin implements IBirthHandler {
                 }
                 nopRunLength++;
             } else {
-                if (nopRunLength > line.bestNopLength) {
-                    line.bestNopStart = nopRunStart;
-                    line.bestNopLength = nopRunLength;
-                }
+                offerNopRun(line, env, nopRunStart, nopRunLength, dvDim, dvStep, shapeDvDim);
                 nopRunLength = 0;
                 nopRunStart = -1;
             }
@@ -638,10 +789,40 @@ public class GeneDuplicationPlugin implements IBirthHandler {
             dvPos++;
             if (dvPos >= shapeDvDim) dvPos = 0;
         }
-        if (nopRunLength > line.bestNopLength) {
-            line.bestNopStart = nopRunStart;
-            line.bestNopLength = nopRunLength;
+        offerNopRun(line, env, nopRunStart, nopRunLength, dvDim, dvStep, shapeDvDim);
+    }
+
+    /**
+     * Takes a NOP run as the line's best if it is longer than the best so far, long enough to be a
+     * target at all, and away from execution.
+     * <p>
+     * The run is asked about at the cell execution would enter it by; the empty cells of the run
+     * itself change nothing about the answer. A run too short to matter is not asked about.
+     *
+     * @param line The scan line the run lies on.
+     * @param env The simulation environment.
+     * @param runStart The run's smallest DV coordinate, in the direction of rising coordinates.
+     * @param runLength The number of cells of the run; 0 if there is none.
+     * @param dvDim The DV dimension index.
+     * @param dvStep The step along the DV dimension, {@code +1} or {@code -1}.
+     * @param shapeDvDim The environment size along the DV dimension.
+     */
+    private void offerNopRun(ScanLineInfo line, Environment env, int runStart, int runLength,
+                             int dvDim, int dvStep, int shapeDvDim) {
+        if (runLength <= line.bestNopLength || runLength < minNopSize) {
+            return;
         }
+        System.arraycopy(coordBuffer, 0, runEntryPos, 0, runEntryPos.length);
+        int entry = dvStep > 0 ? runStart : (runStart + runLength - 1) % shapeDvDim;
+        runEntryPos[dvDim] = entry;
+        int cellsBefore = dvStep > 0
+                ? toroidalForwardDistance(line.walkStart, entry, shapeDvDim) - 1
+                : toroidalForwardDistance(entry, line.walkEnd, shapeDvDim) - 1;
+        if (flow.reachedByFallThrough(env, frame, runEntryPos, dvDim, dvStep, cellsBefore)) {
+            return;
+        }
+        line.bestNopStart = runStart;
+        line.bestNopLength = runLength;
     }
 
     /**

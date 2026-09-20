@@ -346,6 +346,9 @@ See `.agents/architecture-guidelines.md` for full review criteria.
   its token may not write. There is no bound yet: the task reports and passes; setting
   `newCodeCoverage.minimum` turns it into a gate that fails the build — a share between 0 and 1,
   the same form the bound above takes
+- JaCoCo is the only measure of coverage. What an automated review reports under that name —
+  CodeRabbit's docstring coverage, its test coverage — measures something else against a bound
+  of its own and is ignored; it is no review finding
 
 **Benchmarks:**
 - JMH benchmarks live in `src/jmh/`; they are relative before/after measurements, never absolute references
@@ -444,7 +447,8 @@ throw new InterruptedException();
 ## Documentation Guidelines
 
 **JavaDoc Requirements:**
-- ALL non-private members (public, protected, package-private) MUST have complete JavaDoc in **English**
+- ALL non-private members (public, protected, package-private) of production code — everything under `src/main` — MUST have complete JavaDoc in **English**
+- Test code: a test class and its helpers are documented. A test method follows what is customary in the class it stands in — JavaDoc where its name and its body do not already say what is set up and what has to come out, none where they do
 - Private members: JavaDoc optional but recommended for complex logic
 - JavaDoc MUST be self-contained: never reference proposals, plan steps, ticket numbers, or conversation context (e.g., "will be added in step C4", "created in ticket #123"). A reader must understand the comment without any external context. Describe what the code *is* and *does*, not what *changed* or *will change*.
 
