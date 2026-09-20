@@ -19,8 +19,8 @@ import java.util.List;
  * structural shell the primordial program builds around itself.
  * <p>
  * LABEL and LABELREF values are normalized before hashing: all values are XOR-ed with
- * the value of the LABEL molecule at the smallest relative position (the "anchor label"). This
- * makes the hash invariant to uniform label namespace rewriting (as performed by
+ * the value of the LABEL molecule at the smallest relative position (the "anchor label"), or of
+ * the LABELREF there if the genome holds no LABEL. This makes the hash invariant to uniform label namespace rewriting (as performed by
  * {@link org.evochora.runtime.label.LabelRewrite}) while still detecting
  * individual mutations to label or labelref values. The normalization is correct because
  * {@code (A ^ M) ^ (B ^ M) = A ^ B} — a uniform XOR mask cancels out in pairwise
@@ -88,6 +88,9 @@ public final class GenomeHasher {
         // chosen regardless of absolute placement in toroidal worlds.
         int anchorLabelValue = -1;
         int anchorEntryIndex = -1;
+        // The LABELREF at the smallest relative position, the anchor of a genome without a LABEL
+        int anchorRefValue = -1;
+        int anchorRefEntryIndex = -1;
 
         // Collect the molecules the rule keeps, with their relative positions. The set iterates in
         // an order that follows the environment's layout indices, and so its memory layout; the
@@ -117,7 +120,15 @@ public final class GenomeHasher {
                     anchorEntryIndex = genomeMolecules.size() - 1;
                     anchorLabelValue = moleculeInt & Config.VALUE_MASK;
                 }
+            } else if (type == Config.TYPE_LABELREF) {
+                if (anchorRefEntryIndex == -1 || lexicographicallySmaller(entry, genomeMolecules.get(anchorRefEntryIndex), dims)) {
+                    anchorRefEntryIndex = genomeMolecules.size() - 1;
+                    anchorRefValue = moleculeInt & Config.VALUE_MASK;
+                }
             }
+        }
+        if (anchorLabelValue == -1) {
+            anchorLabelValue = anchorRefValue;
         }
 
         // Normalize LABEL/LABELREF values by XOR-ing with the anchor label value.

@@ -279,6 +279,30 @@ class GenomeHasherTest {
     }
 
     @Test
+    void aGenomeWithLabelRefsButNoLabel_hasTheSameHashInADifferentLabelNamespace() {
+        // A body that jumps into foreign code only: references, and no label of its own
+        int mask = 0x81234;
+        long[] hashes = new long[2];
+        for (int i = 0; i < 2; i++) {
+            int namespace = i == 0 ? 0 : mask;
+            env = new Environment(new int[]{32, 32}, false);
+            env.setMolecule(new Molecule(Config.TYPE_CODE, 42, 0), ORGANISM_ID, new int[]{5, 5});
+            env.setMolecule(new Molecule(Config.TYPE_LABELREF, 100 ^ namespace, 0), ORGANISM_ID, new int[]{5, 6});
+            env.setMolecule(new Molecule(Config.TYPE_LABELREF, 105 ^ namespace, 0), ORGANISM_ID, new int[]{5, 7});
+            hashes[i] = GenomeHasher.computeGenomeHash(env, ORGANISM_ID, INITIAL_POSITION, DEFAULT_RULE);
+        }
+        assertThat(hashes[0]).isEqualTo(hashes[1]);
+
+        // One reference mutated on its own is still a different genome
+        env = new Environment(new int[]{32, 32}, false);
+        env.setMolecule(new Molecule(Config.TYPE_CODE, 42, 0), ORGANISM_ID, new int[]{5, 5});
+        env.setMolecule(new Molecule(Config.TYPE_LABELREF, 100, 0), ORGANISM_ID, new int[]{5, 6});
+        env.setMolecule(new Molecule(Config.TYPE_LABELREF, 999, 0), ORGANISM_ID, new int[]{5, 7});
+        assertThat(GenomeHasher.computeGenomeHash(env, ORGANISM_ID, INITIAL_POSITION, DEFAULT_RULE))
+                .isNotEqualTo(hashes[0]);
+    }
+
+    @Test
     void testMutatedLabelRef_differentHash() {
         // Original: LABEL=100, LABELREF=105
         env.setMolecule(new Molecule(Config.TYPE_LABEL, 100, 0), ORGANISM_ID, new int[]{5, 5});

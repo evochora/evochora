@@ -489,8 +489,9 @@ assay described in `docs/proposals/ideas/MUTATIONAL_ROBUSTNESS_ASSAY.md`.
   `raw/metadata.pb.zst`). A child born owning an energy cell is a "mutant" with identical
   code. A body read later may contain the copy in progress for the next child, marked ≠ 0. When
   diffing bodies, drop those cells and the excluded molecules, and XOR-normalize LABEL and LABELREF
-  values with the value of the LABEL at the smallest relative position, as the hasher does —
-  otherwise every child differs from its parent in every label.
+  values with the value of the LABEL at the smallest relative position (of the LABELREF there if
+  the body has no LABEL), as the hasher does — otherwise a child whose namespace flip fired
+  differs from its parent in every label.
 - Empty cells (`CODE:0`) are unowned and absent from a body; inserted or duplicated code therefore
   appears as *new* cells, a deletion as *missing* cells.
 
