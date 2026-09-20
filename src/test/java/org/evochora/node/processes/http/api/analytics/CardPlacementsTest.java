@@ -71,6 +71,38 @@ class CardPlacementsTest {
     }
 
     @Test
+    void theCardsOfOnePluginStandInTheOrderItsOptionNamesThem() {
+        CardPlacements placements = new CardPlacements(ConfigFactory.parseString("""
+            plugins = [
+              { className = "V", options { metricId = "variation_sources", cards = ["variation_sources", "mutation_success"] } }
+            ]
+            """).getConfigList("plugins"));
+
+        // The order a sorted storage listing hands the entries over in
+        List<ManifestEntry> placed = placements.apply(List.of(
+            entry("mutation_success", "variation_sources"), entry("variation_sources", null)));
+
+        assertThat(placed).extracting(entry -> entry.id)
+            .containsExactly("variation_sources", "mutation_success");
+        assertThat(placed).extracting(entry -> entry.order).containsExactly(0, 1);
+    }
+
+    @Test
+    void aCardTheOptionDoesNotNameFollowsTheNamedOnesAndANamedOneTheRunLacksIsPassedOver() {
+        CardPlacements placements = new CardPlacements(ConfigFactory.parseString("""
+            plugins = [
+              { className = "G", options { metricId = "genome", cards = ["genome_absent", "genome_clades"] } }
+            ]
+            """).getConfigList("plugins"));
+
+        List<ManifestEntry> placed = placements.apply(List.of(
+            entry("genome_b", "genome"), entry("genome_a", "genome"), entry("genome_clades", "genome")));
+
+        assertThat(placed).extracting(entry -> entry.id)
+            .containsExactly("genome_clades", "genome_b", "genome_a");
+    }
+
+    @Test
     void aCardOfNoConfiguredPluginComesLastWithoutAGroup() {
         List<ManifestEntry> placed = placements().apply(new ArrayList<>(List.of(
             entry("stranger", null), entry("vital_stats", null), entry("another", null))));
