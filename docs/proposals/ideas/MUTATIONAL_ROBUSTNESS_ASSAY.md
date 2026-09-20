@@ -40,6 +40,24 @@ a change that moves mass from *lethal* toward *neutral* smooths the landscape; a
 is rhetoric. The RNA literature identifies exactly this distribution shape (high neutral fraction
 with preserved access to variation) as the signature of evolvable systems.
 
+## What a finished run already tells, and what it cannot
+
+A recorded run is a natural experiment on the same question. Its mutation tables say what every
+birth received, its life table says who reproduced, and the share of carriers with offspring per
+mutation kind, read against the children that carry their parent's genome unchanged, ranks the
+operators and localizes a cliff inside one of them (the recipe *Where are the cliffs?* of the
+`analyze-run` skill). It costs minutes and no simulation, and it sees what the assay does not:
+evolved genomes, in the ecology they evolved in.
+
+It does not replace the assay. It is observation: place, neighbours, energy and the lineage's past
+take part in every outcome, so a difference between two groups is a pointer, never the effect of
+the mutation alone, and a split can hide an effect entirely where another defect of the same
+operator dominates. It sees only the mutations that occurred, at the rate they occurred, and it
+can compare two versions of an operator only through two long runs with different histories. The
+assay holds everything but the mutation fixed, covers the variants systematically, and measures a
+change to an operator on the same genome before and after. The run says where to look; the assay
+says what a change does.
+
 ## Why the building blocks already exist
 
 - **Deterministic, seeded simulation**: `IRandomProvider` — identical seeds reproduce identical runs.

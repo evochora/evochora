@@ -390,11 +390,63 @@ per parent: a few parents with thousands each are futile forkers, recognisable b
 own origin and energy just below the copier's pause threshold. Failure reasons by class name the
 mechanism — bodiless children die of the skip budget and of the ownership check on jumps.
 
-**Where are the cliffs?** For births with exactly one event: kind, action code, the opcode hit,
-the module of the position; the share dying within 1 000 ticks and the share fertile, against the
-clone baseline; the failure reason per kind. A group far above the clone share in acute deaths or
-far below it in fertility is a cliff, and its module says whether it is the primordial's or the
-world's.
+**Where are the cliffs?** A cliff is a mutation whose *form* takes its carrier out whatever its
+*content* was — a copy that ends nowhere, a jump into data — so that the variation it carried is
+never tested. Content that harms is selection's business; form that kills is a wasted birth. The
+run shows where to look, in three steps.
+
+*1 · Rank the kinds against the clones.* Join the life table of step 1b with `mutation_summary`.
+A birth is `bodiless` (hash 0), a `clone` (hash equal to the parent's and no event with
+`cell_count > 0`), `no_event` (hash differs, no such event), the one kind of its events, or
+`multiple`. Per class: births, the share with at least one child, the mean number of children and
+the mean number of children that themselves had children. Censor the last two generation times.
+Where the life table carries death ticks, add the share dying within 1 000 ticks and the last
+failure reason per class: a class far above the clones in acute deaths is a cliff as well.
+
+```sql
+WITH ev AS (SELECT organism_id, list(DISTINCT kind) kinds, count(*) n
+            FROM mutation_summary WHERE kind <> 'label-rewrite' AND cell_count > 0 GROUP BY 1),
+     kids AS (SELECT parent_id organism_id, count(*) children FROM organisms GROUP BY 1)
+SELECT CASE WHEN o.genome_hash = 0 THEN 'bodiless'
+            WHEN ev.organism_id IS NULL AND o.genome_hash = o.parent_genome_hash THEN 'clone'
+            WHEN ev.organism_id IS NULL THEN 'no_event'
+            WHEN ev.n = 1 THEN ev.kinds[1] ELSE 'multiple' END AS class,
+       count(*) births, avg((coalesce(k.children, 0) > 0)::INT) fertile_share
+FROM organisms o LEFT JOIN ev USING (organism_id) LEFT JOIN kids k USING (organism_id)
+WHERE o.parent_id IS NOT NULL AND o.birth_tick < :last_birth - 2 * :generation_time
+GROUP BY 1 ORDER BY 2 DESC
+```
+
+A kind a few points below the clones is ordinary content; a kind far below them is worth step 2.
+
+*2 · Split that kind by what its record says.* `mutation_summary.params` and the cells in
+`mutation_events` say what the operator decided: which label, which value, which instruction (a
+CODE cell's value is the opcode, and its family is what the instruction set registers it under),
+where the cells went, how a copy ends. A kind whose fertility ranges from nothing to the clones'
+level across the values of one such decision has its cliff in that decision, not in the operator
+as a whole. Two tools:
+- *Label values across organisms.* A recorded LABEL or LABELREF value stands in the namespace the
+  parent had at that birth. XOR it with the masks of every `label-rewrite` event on the parent's
+  ancestor chain, the parent's own included, and it is the founder's value again, which the
+  compiled artifact names (`labelValueToName`). The XOR of two values of one record needs no
+  masks at all and identifies the pair.
+- *What stands around the written cells* — whether execution runs on into them, what follows a
+  copy — is in the parent's body (step 3), not in the record. The founder's compiled layout
+  stands in for it only where the lineage has not rewritten that region; say so when it is used.
+
+*3 · Read a split only where the confounder is the same in every row.* Splitting insertions by
+the family of the inserted instruction once showed no effect of a conditional in front of the
+operator's closing jump — because that jump, to a guessed target, was itself the damage, and
+skipping it cost nothing. Splitting the same insertions by where their cells landed was sound:
+the guessed target burdened every row alike. Before a split is reported, name what else differs
+between its rows. A group carries its n; below a few hundred births it is a hint.
+
+*What follows from it.* The run points, the instruction set decides: a rule for an operator is
+derived from what the machine does with the written form, for any program, and the founder of
+the run at hand is one program. The share a rule is expected to move is an estimate until a run
+with the rule shows it. This is observation — place, neighbours and the lineage's past all take
+part; the controlled counterpart, one mutation at a time under identical conditions, is the
+assay described in `docs/proposals/ideas/MUTATIONAL_ROBUSTNESS_ASSAY.md`.
 
 ## 4 · Interpretation discipline
 
