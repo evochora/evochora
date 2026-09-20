@@ -52,8 +52,8 @@ import java.util.Random;
  *   <li><b>A' differs from A in exactly one bit.</b> The label match prefers an exact own label,
  *       so references to A reach the new label and the closing jump reaches the block. One bit
  *       keeps the block within reach of those references: should the new label mutate away, they
- *       fall back to the block instead of failing. The bit is the first, from a random one on,
- *       whose value no label of the newborn carries and which draws no reference away from another
+ *       fall back to the block instead of failing. The bit is drawn uniformly among those whose
+ *       value no label of the newborn carries and which draw no reference away from another
  *       label ({@link GenomeFlow#drawsNoForeignReference}).</li>
  *   <li><b>Execution goes on behind the inserted instruction.</b> A conditional is none, because
  *       a failed test would skip the closing jump, and neither is an instruction that
@@ -583,8 +583,8 @@ public class GeneInsertionPlugin implements IBirthHandler {
      * <strong>Draw order.</strong> The label reservoir runs first, over the owned cells in
      * flat-index order; then the entry is drawn by weight. An instruction entry then draws its
      * opcode and its operands. A label entry first draws the label it copies, by a reservoir over
-     * the newborn's jump targets in flat-index order, then the bit the search for the renamed value
-     * starts at, and then the opcode and operands of the inserted instruction. The NOP run is drawn
+     * the newborn's jump targets in flat-index order, then the bit the renamed value differs in,
+     * and then the opcode and operands of the inserted instruction. The NOP run is drawn
      * last, by a reservoir over the runs in the order the scan lines are walked; a label entry
      * offers that reservoir only the runs execution does not run on into.
      *
@@ -847,24 +847,35 @@ public class GeneInsertionPlugin implements IBirthHandler {
     /**
      * Chooses the value the copied label is renamed to: its own value with one bit flipped.
      * <p>
-     * The bits are tried from a random one on, in rising order and around. A value is taken if no
-     * LABEL molecule of the newborn carries it — two labels of one value would share the references
-     * to it — and if it draws no reference away from another label
-     * ({@link GenomeFlow#drawsNoForeignReference}).
+     * A bit qualifies if no LABEL molecule of the newborn carries the resulting value — two labels
+     * of one value would share the references to it — and if that value draws no reference away
+     * from another label ({@link GenomeFlow#drawsNoForeignReference}). The qualifying bits are
+     * collected first and one of them is drawn uniformly, with a single random number.
      *
      * @param tolerance The label index's Hamming tolerance.
      * @return The chosen value, or {@code -1} if no bit qualifies.
      */
     private int chooseRenamedValue(int tolerance) {
-        int firstBit = random.nextInt(LABEL_HASH_BITS);
-        for (int i = 0; i < LABEL_HASH_BITS; i++) {
-            int candidate = copiedLabelValue ^ (1 << ((firstBit + i) % LABEL_HASH_BITS));
+        int qualifyingBits = 0;
+        for (int bit = 0; bit < LABEL_HASH_BITS; bit++) {
+            int candidate = copiedLabelValue ^ (1 << bit);
             if (!ownLabelValues.contains(candidate)
                     && flow.drawsNoForeignReference(candidate, copiedLabelValue, tolerance)) {
-                return candidate;
+                qualifyingBits |= 1 << bit;
             }
         }
-        return -1;
+        if (qualifyingBits == 0) {
+            return -1;
+        }
+        // The drawn number counts qualifying bits from the lowest one up
+        int remaining = random.nextInt(Integer.bitCount(qualifyingBits));
+        int bit = Integer.numberOfTrailingZeros(qualifyingBits);
+        while (remaining > 0) {
+            qualifyingBits &= qualifyingBits - 1;
+            bit = Integer.numberOfTrailingZeros(qualifyingBits);
+            remaining--;
+        }
+        return copiedLabelValue ^ (1 << bit);
     }
 
     /**
