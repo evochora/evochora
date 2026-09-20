@@ -363,9 +363,9 @@ public class AnalyticsController implements IController {
                     mimeType = "application/json",
                     example = """
                         [
-                          {"tick": 0, "alive_count": 1, "total_dead": 0, "avg_energy": 10000.0},
-                          {"tick": 1, "alive_count": 1, "total_dead": 0, "avg_energy": 9950.5},
-                          {"tick": 2, "alive_count": 2, "total_dead": 0, "avg_energy": 9900.0}
+                          {"tick": 0, "alive_count": 1, "bodied_count": 1, "energy_p50": 100.0},
+                          {"tick": 1, "alive_count": 1, "bodied_count": 1, "energy_p50": 99.5},
+                          {"tick": 2, "alive_count": 2, "bodied_count": 2, "energy_p50": 99.0}
                         ]
                         """
                 )
@@ -551,7 +551,7 @@ public class AnalyticsController implements IController {
         String whereClause = buildTickWhereClause(tickFrom, tickTo);
 
         // union_by_name=true allows merging Parquet files with different schemas
-        // (e.g., old files without avg_entropy, new files with it)
+        // (e.g., files a build wrote before a plugin gained a column, next to files with it)
         String sql = String.format(
             "SELECT * FROM read_parquet([%s], union_by_name=true)%s ORDER BY tick",
             fileList, whereClause
@@ -817,7 +817,7 @@ public class AnalyticsController implements IController {
         String whereClause = buildTickWhereClause(tickFrom, tickTo);
         String outputPath = outputFile.toAbsolutePath().toString().replace("\\", "/");
         // union_by_name=true allows merging Parquet files with different schemas
-        // (e.g., old files without avg_entropy, new files with it)
+        // (e.g., files a build wrote before a plugin gained a column, next to files with it)
         String sql = String.format(
             "COPY (SELECT * FROM read_parquet([%s], union_by_name=true)%s ORDER BY tick) TO '%s' (FORMAT PARQUET, CODEC 'ZSTD')",
             fileList, whereClause, outputPath
@@ -924,16 +924,18 @@ public class AnalyticsController implements IController {
                             {
                               "id": "population",
                               "name": "Population Overview",
-                              "description": "Overview of alive organisms, total deaths, and average energy over time.",
+                              "description": "Living organisms, and how their energy and entropy are spread among them.",
                               "dataSources": {
                                 "lod0": "population/lod0/**/*.parquet"
                               },
                               "visualization": {
-                                "type": "line-chart",
+                                "type": "band-chart",
                                 "config": {
                                   "x": "tick",
-                                  "y": ["alive_count", "total_dead"],
-                                  "y2": ["avg_energy"]
+                                  "groups": [
+                                    {"name": "Energy", "color": "#4a9eff", "y": ["energy_p10", "energy_p25", "energy_p50", "energy_p75", "energy_p90"]}
+                                  ],
+                                  "y2": ["alive_count", "bodied_count"]
                                 }
                               }
                             }

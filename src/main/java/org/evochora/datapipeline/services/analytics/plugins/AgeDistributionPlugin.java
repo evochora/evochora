@@ -84,32 +84,16 @@ public class AgeDistributionPlugin extends AbstractAnalyticsPlugin {
         
         Object[] row = new Object[] {
             currentTick,
-            getPercentile(ages, 0),
-            getPercentile(ages, 10),
-            getPercentile(ages, 25),
-            getPercentile(ages, 50),
-            getPercentile(ages, 75),
-            getPercentile(ages, 90),
-            getPercentile(ages, 100)
+            Percentiles.of(ages, 0),
+            Percentiles.of(ages, 10),
+            Percentiles.of(ages, 25),
+            Percentiles.of(ages, 50),
+            Percentiles.of(ages, 75),
+            Percentiles.of(ages, 90),
+            Percentiles.of(ages, 100)
         };
-        
+
         return Collections.singletonList(row);
-    }
-    
-    /**
-     * Calculates the P-th percentile value from a sorted list of integers.
-     * Uses nearest-rank method.
-     */
-    private int getPercentile(List<Integer> sortedValues, int percentile) {
-        if (sortedValues.isEmpty()) return 0;
-        
-        if (percentile <= 0) return sortedValues.get(0);
-        if (percentile >= 100) return sortedValues.get(sortedValues.size() - 1);
-        
-        // Index calculation: (N-1) * P / 100
-        // We round to nearest index
-        int index = (int) Math.round((sortedValues.size() - 1) * (percentile / 100.0));
-        return sortedValues.get(index);
     }
 
     /**
