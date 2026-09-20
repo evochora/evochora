@@ -27,6 +27,12 @@ public class ExactLabelMatchingStrategy implements ILabelMatchingStrategy {
     }
 
     @Override
+    public long estimateMemoryBytes(long labels) {
+        // A boxed key and value in a tree map entry per label, roughly
+        return labels * 96;
+    }
+
+    @Override
     public int findTarget(int searchValue, int codeOwner, int[] callerCoords, OrganismRandom random) {
         TreeMap<Integer, Integer> carrying = labels.get(searchValue);
         return carrying == null || carrying.isEmpty() ? -1 : carrying.firstKey();

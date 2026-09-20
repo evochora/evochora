@@ -508,4 +508,16 @@ class HammingLabelMatchingStrategyTest {
         assertThat(strategy.findTarget(VALUE, OTHER, new int[]{600, 0}, randomOf(OTHER)))
                 .as("an own label has no reach").isEqualTo(at(wide, 30, 0));
     }
+
+    // ==================== Memory ====================
+
+    @Test
+    void theMemoryEstimateGrowsByAFixedAmountPerLabelAboveAFixedBase() {
+        HammingLabelMatchingStrategy strategy = new HammingLabelMatchingStrategy();
+        long base = strategy.estimateMemoryBytes(0);
+
+        assertThat(base).as("two bit sets over the 20-bit value space").isEqualTo(2 * (1L << 20) / 8);
+        assertThat(strategy.estimateMemoryBytes(1_000) - base).isEqualTo(176_000);
+        assertThat(strategy.estimateMemoryBytes(2_000_000) - base).isEqualTo(352_000_000L);
+    }
 }

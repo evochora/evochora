@@ -120,6 +120,12 @@ public class HammingLabelMatchingStrategy implements ILabelMatchingStrategy {
     /** Default number of uppermost value bits a namespace flip can hit. */
     public static final int DEFAULT_NAMESPACE_BITS = 8;
 
+    // Figures of the memory estimate
+    /** Upper bound of the bytes one label costs: 80 as an own label, 96 in the index of all labels. */
+    private static final long BYTES_PER_LABEL = 80 + 96;
+    /** Bytes of the two bit sets over the value space. */
+    private static final long FIXED_BYTES = 2 * (1L << Config.VALUE_BITS) / 8;
+
     /** The highest stage the foreign search examines: the neighbour masks reach this far. */
     private static final int MAX_FOREIGN_STAGE = 3;
 
@@ -443,6 +449,13 @@ public class HammingLabelMatchingStrategy implements ILabelMatchingStrategy {
             return 0;
         }
         return 1 << (VALUE_BITS - 1 - randomProvider.nextInt(namespaceBits));
+    }
+
+    // ==================== Memory estimate ====================
+
+    @Override
+    public long estimateMemoryBytes(long labels) {
+        return Math.addExact(Math.multiplyExact(labels, BYTES_PER_LABEL), FIXED_BYTES);
     }
 
     // ==================== Settings ====================

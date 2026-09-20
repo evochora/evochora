@@ -36,6 +36,16 @@ public interface ILabelMatchingStrategy {
     }
 
     /**
+     * Estimates the memory the strategy needs to hold a number of labels, as an upper bound: the
+     * run's memory estimate assumes how many labels a world can hold and asks the strategy what
+     * that costs. The answer depends on how the strategy keeps its labels and on nothing else.
+     *
+     * @param labels The number of labels to hold
+     * @return The bytes the strategy needs for them at most
+     */
+    long estimateMemoryBytes(long labels);
+
+    /**
      * Resolves a label reference to the label it jumps to.
      * <p>
      * The result must depend only on the labels present, never on the order in which they were
