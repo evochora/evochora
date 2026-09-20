@@ -5,7 +5,7 @@ import org.evochora.datapipeline.api.contracts.DeltaType;
 import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.PluginState;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
-import org.evochora.runtime.label.PreExpandedHammingStrategy;
+import org.evochora.runtime.label.HammingLabelMatchingStrategy;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.runtime.model.Molecule;
@@ -195,7 +195,7 @@ class DeltaCodecEncoderTest {
         // The environment numbers its cells in its own layout; persisted columns must carry the
         // flat index, the row-major numbering of EnvironmentProperties, which every reader decodes with.
         Environment tiled = new Environment(new EnvironmentProperties(new int[]{64, 64}, false),
-                new PreExpandedHammingStrategy(), 32);
+                new HammingLabelMatchingStrategy(), 32);
         DeltaCodec.Encoder encoder = new DeltaCodec.Encoder(RUN_ID, 1, 2, 10, 1);
         int[] snapshotCell = {33, 1};
         int[] deltaCell = {2, 40};
@@ -219,9 +219,9 @@ class DeltaCodecEncoderTest {
         // Two environments with different memory layouts must persist the same world as the same
         // bytes: the cells appear under their flat index, in ascending flat-index order.
         Environment rowMajor = new Environment(new EnvironmentProperties(new int[]{64, 64}, false),
-                new PreExpandedHammingStrategy(), 1);
+                new HammingLabelMatchingStrategy(), 1);
         Environment tiled = new Environment(new EnvironmentProperties(new int[]{64, 64}, false),
-                new PreExpandedHammingStrategy(), 32);
+                new HammingLabelMatchingStrategy(), 32);
         int[][] cells = {{40, 1}, {1, 40}, {33, 33}, {0, 0}, {63, 63}, {2, 0}};
         for (int[] cell : cells) {
             rowMajor.setMolecule(Molecule.fromInt(100 + cell[0]), cell);

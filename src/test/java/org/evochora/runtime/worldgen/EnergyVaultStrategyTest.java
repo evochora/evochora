@@ -3,7 +3,7 @@ package org.evochora.runtime.worldgen;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
 import org.evochora.runtime.internal.services.SeededRandomProvider;
-import org.evochora.runtime.label.PreExpandedHammingStrategy;
+import org.evochora.runtime.label.HammingLabelMatchingStrategy;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.runtime.model.Molecule;
@@ -244,7 +244,7 @@ public class EnergyVaultStrategyTest {
     @Tag("unit")
     void keepsTheEdgeOfANonToroidalWorldFree() {
         Environment environment = new Environment(
-                new EnvironmentProperties(new int[]{5, 5}, false), new PreExpandedHammingStrategy(), TILE_SIDE);
+                new EnvironmentProperties(new int[]{5, 5}, false), new HammingLabelMatchingStrategy(), TILE_SIDE);
         // Every cell of the world is drawn many times over, so a centre on the edge would be used
         // if it were accepted.
         creator(0.04, 0, 1, 500).execute(simulationAt(environment, 0L));
@@ -262,7 +262,7 @@ public class EnergyVaultStrategyTest {
      */
     private static Environment world(int... shape) {
         return new Environment(new EnvironmentProperties(shape, true),
-                new PreExpandedHammingStrategy(), TILE_SIDE);
+                new HammingLabelMatchingStrategy(), TILE_SIDE);
     }
 
     /**

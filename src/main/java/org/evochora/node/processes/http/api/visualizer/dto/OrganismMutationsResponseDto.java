@@ -79,7 +79,9 @@ public record OrganismMutationsResponseDto(
      * @param moleculeType Molecule type as defined in {@code Config} (the type bits at their
      *                     position in the packed molecule, e.g. {@code Config.TYPE_LABEL}); the
      *                     metadata endpoint maps these values to names
-     * @param moleculeValue Signed value of the molecule; for a CODE molecule this is the opcode
+     * @param moleculeValue Value of the molecule as its type defines it: the unsigned label value for a
+     *                      LABEL or LABELREF, a signed number otherwise; for a CODE molecule this is
+     *                      the opcode
      */
     public record MoleculeView(
         int moleculeType,

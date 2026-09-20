@@ -14,6 +14,7 @@ import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.MutationRecord;
 import org.evochora.runtime.model.Organism;
 import org.evochora.runtime.model.ScanLineArc;
+import org.evochora.runtime.spi.ILabelMatchingStrategy;
 import org.evochora.runtime.spi.IBirthHandler;
 import org.evochora.runtime.spi.IRandomProvider;
 import org.slf4j.Logger;
@@ -50,11 +51,13 @@ import java.util.Random;
  *       location instruction addresses names a place for the data pointer, and moving its value
  *       would move that place without what is kept there.</li>
  *   <li><b>A' differs from A in exactly one bit.</b> The label match prefers an exact own label,
- *       so references to A reach the new label and the closing jump reaches the block. One bit
- *       keeps the block within reach of those references: should the new label mutate away, they
- *       fall back to the block instead of failing. The bit is drawn uniformly among those whose
- *       value no label of the newborn carries and which draw no reference away from another
- *       label ({@link GenomeFlow#drawsNoForeignReference}).</li>
+ *       so references to A reach the new label and the closing jump reaches the block. Where the
+ *       label matching strategy lets a reference address a value one bit away, one bit also keeps
+ *       the block within reach of those references: should the new label mutate away, they fall
+ *       back to the block instead of failing. The bit is drawn uniformly among those whose value
+ *       no label of the newborn carries and which let no reference address A' that did not
+ *       address A ({@link GenomeFlow#drawsNoForeignReference}); a reference that could address A
+ *       already may divide its jumps between the labels differently.</li>
  *   <li><b>Execution goes on behind the inserted instruction.</b> A conditional is none, because
  *       a failed test would skip the closing jump, and neither is an instruction that
  *       {@linkplain Instruction#neverFallsThrough(int) never falls through}, behind which
@@ -103,9 +106,8 @@ public class GeneInsertionPlugin implements IBirthHandler {
 
     private static final Logger LOG = LoggerFactory.getLogger(GeneInsertionPlugin.class);
 
-    /** Maximum label hash value (19-bit unsigned). */
-    private static final int LABEL_HASH_BITS = 19;
-    private static final int LABEL_HASH_MAX = (1 << LABEL_HASH_BITS) - 1;
+    /** The largest label hash: a label hash is a bit pattern over the whole value field of a cell. */
+    private static final int LABEL_HASH_MAX = Config.VALUE_MASK;
 
     /** The kind an inserted instruction chain is reported under. */
     private static final String INSTRUCTION_KIND = "instruction-insertion";
@@ -777,17 +779,17 @@ public class GeneInsertionPlugin implements IBirthHandler {
     private boolean buildLabelChain(LabelEntry entry, Organism child, Environment env, int[] dv,
                                     int dvDim, int dims) {
         int childId = child.getId();
-        int tolerance = env.getLabelIndex().getStrategy().getTolerance();
+        ILabelMatchingStrategy matching = env.getLabelIndex().getStrategy();
 
         frame.build(env, childId, child.getInitialPosition(), dv);
         flow.collectReferences(env, frame, childId, dvDim, dv[dvDim]);
 
-        if (!selectLabelToCopy(env, childId, tolerance)) {
+        if (!selectLabelToCopy(env, childId, matching)) {
             LOG.debug("tick={} Organism {} insertion: no label that is a jump target and nothing else",
                     child.getBirthTick(), childId);
             return false;
         }
-        renamedLabelValue = chooseRenamedValue(tolerance);
+        renamedLabelValue = chooseRenamedValue(matching);
         if (renamedLabelValue < 0) {
             LOG.debug("tick={} Organism {} insertion: no value one bit from label {} is free",
                     child.getBirthTick(), childId, copiedLabelValue);
@@ -817,11 +819,11 @@ public class GeneInsertionPlugin implements IBirthHandler {
      *
      * @param env The simulation environment.
      * @param childId The newborn whose labels are considered.
-     * @param tolerance The label index's Hamming tolerance.
+     * @param matching The run's label matching strategy, which tells whether a reference addresses a label.
      * @return {@code true} if a label was drawn into {@link #copiedLabelValue} and
      *         {@link #copiedLabelFlatIndex}.
      */
-    private boolean selectLabelToCopy(Environment env, int childId, int tolerance) {
+    private boolean selectLabelToCopy(Environment env, int childId, ILabelMatchingStrategy matching) {
         ownLabelValues.clear();
         jumpTargetCount = 0;
         env.visitCellsOwnedBy(childId, cell -> {
@@ -832,7 +834,7 @@ public class GeneInsertionPlugin implements IBirthHandler {
             int value = moleculeInt & Config.VALUE_MASK;
             ownLabelValues.add(value);
             int flatIndex = env.properties.toFlatIndex(cell.coordinate());
-            if (frame.slot(flatIndex) != GenomeFrame.Slot.NONE || !flow.isJumpTarget(value, tolerance)) {
+            if (frame.slot(flatIndex) != GenomeFrame.Slot.NONE || !flow.isJumpTarget(value, matching)) {
                 return;
             }
             jumpTargetCount++;
@@ -852,15 +854,15 @@ public class GeneInsertionPlugin implements IBirthHandler {
      * from another label ({@link GenomeFlow#drawsNoForeignReference}). The qualifying bits are
      * collected first and one of them is drawn uniformly, with a single random number.
      *
-     * @param tolerance The label index's Hamming tolerance.
+     * @param matching The run's label matching strategy, which tells whether a reference addresses a label.
      * @return The chosen value, or {@code -1} if no bit qualifies.
      */
-    private int chooseRenamedValue(int tolerance) {
+    private int chooseRenamedValue(ILabelMatchingStrategy matching) {
         int qualifyingBits = 0;
-        for (int bit = 0; bit < LABEL_HASH_BITS; bit++) {
+        for (int bit = 0; bit < Config.VALUE_BITS; bit++) {
             int candidate = copiedLabelValue ^ (1 << bit);
             if (!ownLabelValues.contains(candidate)
-                    && flow.drawsNoForeignReference(candidate, copiedLabelValue, tolerance)) {
+                    && flow.drawsNoForeignReference(candidate, copiedLabelValue, matching)) {
                 qualifyingBits |= 1 << bit;
             }
         }

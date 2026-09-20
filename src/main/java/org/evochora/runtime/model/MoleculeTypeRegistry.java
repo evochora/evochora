@@ -3,6 +3,7 @@ package org.evochora.runtime.model;
 import org.evochora.runtime.Config;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -13,7 +14,8 @@ import java.util.Optional;
  * Central registry for molecule type definitions.
  * <p>
  * Provides bidirectional conversion between int types (from {@link Config}) and string names,
- * and a stable order over the registered types. This eliminates hardcoding of molecule type
+ * the {@link MoleculeValueFormat} each type declares for its value, and a stable order over the
+ * registered types. This eliminates hardcoding of molecule type
  * strings throughout the codebase and gives every consumer that needs a per-type table
  * (colour palettes, count arrays, column lists) one source for its size and its indices.
  * <p>
@@ -32,7 +34,8 @@ import java.util.Optional;
  * To add a new molecule type:
  * <ol>
  *   <li>Add constant to {@link Config} (e.g., {@code TYPE_FOOD})</li>
- *   <li>Register here during static initialization: {@code register(Config.TYPE_FOOD, "FOOD")}</li>
+ *   <li>Register here during static initialization, with the format its value is read and written
+ *       in: {@code register(Config.TYPE_FOOD, "FOOD", MoleculeValueFormat.DECIMAL)}</li>
  *   <li>All other code will automatically use the registry</li>
  * </ol>
  * A constant that exists in {@link Config} without a registration line here fails the unit test
@@ -60,16 +63,25 @@ public final class MoleculeTypeRegistry {
      */
     private static final Map<Integer, Integer> TYPE_TO_INDEX = new HashMap<>();
     
+    /**
+     * The value format of every possible type code, indexed by the type's raw index (the type bits
+     * shifted down). A code no type is registered under reads and writes as a number, in line with
+     * the tolerant {@link #typeToName(int)}: a mutated cell may carry any type bits.
+     */
+    private static final MoleculeValueFormat[] FORMAT_BY_RAW_INDEX = new MoleculeValueFormat[1 << Config.TYPE_BITS];
+
     static {
+        Arrays.fill(FORMAT_BY_RAW_INDEX, MoleculeValueFormat.DECIMAL);
+
         // Register all molecule types from Config
-        register(Config.TYPE_CODE, "CODE");
-        register(Config.TYPE_DATA, "DATA");
-        register(Config.TYPE_ENERGY, "ENERGY");
-        register(Config.TYPE_STRUCTURE, "STRUCTURE");
-        register(Config.TYPE_LABEL, "LABEL");
-        register(Config.TYPE_LABELREF, "LABELREF");
-        register(Config.TYPE_REGISTER, "REGISTER");
-        register(Config.TYPE_STATE, "STATE");
+        register(Config.TYPE_CODE, "CODE", MoleculeValueFormat.DECIMAL);
+        register(Config.TYPE_DATA, "DATA", MoleculeValueFormat.DECIMAL);
+        register(Config.TYPE_ENERGY, "ENERGY", MoleculeValueFormat.DECIMAL);
+        register(Config.TYPE_STRUCTURE, "STRUCTURE", MoleculeValueFormat.DECIMAL);
+        register(Config.TYPE_LABEL, "LABEL", MoleculeValueFormat.HEX);
+        register(Config.TYPE_LABELREF, "LABELREF", MoleculeValueFormat.HEX);
+        register(Config.TYPE_REGISTER, "REGISTER", MoleculeValueFormat.DECIMAL);
+        register(Config.TYPE_STATE, "STATE", MoleculeValueFormat.DECIMAL);
     }
     
     /**
@@ -87,10 +99,14 @@ public final class MoleculeTypeRegistry {
      *
      * @param type The molecule type integer value from Config
      * @param name The human-readable name for this type (will be stored as uppercase)
-     * @throws IllegalArgumentException if the name is null or blank
+     * @param valueFormat How the value of a molecule of this type is read and written
+     * @throws IllegalArgumentException if the name is null or blank, or the format is null
      * @throws IllegalStateException if the type or name is already registered
      */
-    static void register(int type, String name) {
+    static void register(int type, String name, MoleculeValueFormat valueFormat) {
+        if (valueFormat == null) {
+            throw new IllegalArgumentException("Molecule type '" + name + "' needs a value format");
+        }
         if (TYPE_TO_NAME.containsKey(type)) {
             throw new IllegalStateException("Molecule type " + type + " is already registered");
         }
@@ -105,6 +121,31 @@ public final class MoleculeTypeRegistry {
         NAME_TO_TYPE.put(upperName, type);
         TYPE_TO_INDEX.put(type, ORDERED_TYPES.size());
         ORDERED_TYPES.add(type);
+        FORMAT_BY_RAW_INDEX[rawIndex(type)] = valueFormat;
+    }
+
+    /**
+     * Returns the format in which the value of a molecule type is read and written.
+     * <p>
+     * Tolerant like {@link #typeToName(int)}: a type code no type is registered under yields
+     * {@link MoleculeValueFormat#DECIMAL}. The lookup is an array access without boxing.
+     *
+     * @param type The molecule type integer value, or a packed molecule integer; only the type
+     *             bits are used
+     * @return The declared value format, never null
+     */
+    public static MoleculeValueFormat valueFormatOf(int type) {
+        return FORMAT_BY_RAW_INDEX[rawIndex(type)];
+    }
+
+    /**
+     * The type bits of a type constant or packed molecule, shifted down to a dense index.
+     *
+     * @param type A molecule type integer value or a packed molecule integer
+     * @return The raw index, in the range {@code 0} to {@code (1 << Config.TYPE_BITS) - 1}
+     */
+    private static int rawIndex(int type) {
+        return (type & Config.TYPE_MASK) >>> Config.TYPE_SHIFT;
     }
     
     /**

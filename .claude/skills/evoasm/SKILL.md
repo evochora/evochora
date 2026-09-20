@@ -49,10 +49,13 @@ session an iteration.
 - Inside an imported file `.ORG` is relative to the import position. Code runs along the
   direction vector until a jump, so long procedures are laid out in rows, each `.ORG` on its own
   line and each row ending in a jump, as the primordial does. The world's width is the hard bound.
-- Every corner label of a copied structure exists twice once the copy stands, and a label in an
-  instruction resolves by fuzzy matching to whichever is nearest or most similar. Resolve
-  positions into location registers before the world changes when the program has to be sure
-  which one it means.
+- A label resolves by fuzzy matching among the organism's own labels first; a foreign label is
+  reached only when no own label matches, and only within the configured reach. A label written
+  with a non-zero marker is no target at all until the `FORK` resets the marker, so the labels
+  of a copy under construction do not attract the parent's jumps. A label written with `MR` 0
+  is a target at once: a second own label with the same value makes the choice between the two
+  a lottery. Resolve positions into location registers before the world changes when the
+  program has to be sure which one it means.
 - Cells of different owners: `SEEK` enters only empty or own cells, `POKE` writes only into empty
   ones, `PEEK` clears whatever is there and pays for it; a foreign cell costs a lot to read. The
   cell tests `IFFR`, `IFMR`, `INPR` exist to decide before acting.

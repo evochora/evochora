@@ -1,32 +1,20 @@
 package org.evochora.runtime.label;
 
 import org.evochora.runtime.Config;
-import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.OrganismRandom;
-
-import java.util.Collection;
+import org.evochora.runtime.spi.ILabelMatchingStrategy;
 
 /**
- * Index for efficient fuzzy label lookup in the simulation environment.
+ * Keeps the label matching strategy informed about the labels that are jump targets.
  * <p>
- * The LabelIndex maintains an index of all LABEL molecules in the environment,
- * enabling O(1) lookup for jump targets using Hamming distance tolerance.
+ * A LABEL molecule is a jump target while its marker is 0. A label written with a non-zero marker
+ * belongs to a body an organism is still building for a child; it is invisible to every lookup, its
+ * writer's included, until a fork or the owner's death resets the marker. The rule sits here, ahead
+ * of the {@link ILabelMatchingStrategy}, so that it holds for every strategy: a strategy is told
+ * about a label only while the label is a target.
  * <p>
- * This class delegates to an {@link ILabelMatchingStrategy} for the actual
- * matching logic, allowing different strategies to be used (e.g., pre-expanded
- * Hamming, linear search, etc.).
- * <p>
- * Usage:
- * <pre>
- * // Create index with default strategy
- * LabelIndex index = new LabelIndex();
- *
- * // Called by Environment.setMolecule() when a LABEL is placed
- * index.onMoleculeSet(flatIndex, oldMolecule, newMolecule, owner);
- *
- * // Called by ControlFlowInstruction to find jump target
- * int targetIndex = index.findTarget(labelValue, codeOwner, callerCoords, environment, organism.getRandom());
- * </pre>
+ * The environment reports every change of a cell's molecule or owner; this class turns those into
+ * the strategy's additions, removals and owner changes, and passes lookups through.
  * <p>
  * Thread Safety: lookups ({@link #findTarget}) are safe for concurrent callers and are issued
  * from every thread of the parallel wave; mutations are issued only from the simulation thread
@@ -37,10 +25,11 @@ public class LabelIndex {
     private final ILabelMatchingStrategy strategy;
 
     /**
-     * Creates a new LabelIndex with the default pre-expanded Hamming strategy.
+     * Creates a new LabelIndex with the default strategy, {@link HammingLabelMatchingStrategy}
+     * with its default settings.
      */
     public LabelIndex() {
-        this(new PreExpandedHammingStrategy());
+        this(new HammingLabelMatchingStrategy());
     }
 
     /**
@@ -53,101 +42,95 @@ public class LabelIndex {
     }
 
     /**
-     * Finds the best matching label for a jump instruction.
-     * <p>
-     * The matching algorithm considers Hamming distance, physical distance, ownership,
-     * and transfer markers to find the most appropriate target.
+     * Resolves the label reference of a jump instruction.
      *
      * @param searchValue The label value to search for (from jump operand)
-     * @param codeOwner The owner ID of the executing code
+     * @param codeOwner The ID of the organism executing the lookup
      * @param callerCoords The coordinates of the calling instruction (for distance calculation)
-     * @param environment The environment (for coordinate conversion and toroidal distance)
      * @param random The random source of the organism executing the lookup (see
      *               {@link ILabelMatchingStrategy#findTarget})
-     * @return The flat index of the best matching label, or -1 if no match found
+     * @return The flat index of the target label, or -1 if the reference resolves to none
      */
-    public int findTarget(int searchValue, int codeOwner, int[] callerCoords, Environment environment,
-                          OrganismRandom random) {
-        return strategy.findTarget(searchValue, codeOwner, callerCoords, environment, random);
+    public int findTarget(int searchValue, int codeOwner, int[] callerCoords, OrganismRandom random) {
+        return strategy.findTarget(searchValue, codeOwner, callerCoords, random);
     }
 
     /**
      * Called when a molecule is set in the environment.
      * <p>
-     * This method updates the index based on LABEL molecule changes:
+     * Only a LABEL molecule whose marker is 0 is a jump target. A marked label is neither added
+     * nor — never having been added — removed:
      * <ul>
-     *   <li>If old molecule was LABEL: remove from index</li>
-     *   <li>If new molecule is LABEL: add to index</li>
+     *   <li>If the old molecule was an unmarked LABEL: remove it under the cell's old owner</li>
+     *   <li>If the new molecule is an unmarked LABEL: add it under the cell's new owner</li>
      * </ul>
      *
      * @param flatIndex The flat index of the cell
      * @param oldMoleculeInt The old molecule's packed integer value (0 if cell was empty)
+     * @param oldOwner The owner ID the cell had before the write
      * @param newMoleculeInt The new molecule's packed integer value
-     * @param owner The owner ID of the cell
+     * @param newOwner The owner ID the cell has after the write
      */
-    public void onMoleculeSet(int flatIndex, int oldMoleculeInt, int newMoleculeInt, int owner) {
-        int oldType = oldMoleculeInt & Config.TYPE_MASK;
-        int newType = newMoleculeInt & Config.TYPE_MASK;
-
-        // Remove old LABEL if present
-        if (oldType == Config.TYPE_LABEL) {
-            int oldValue = oldMoleculeInt & Config.VALUE_MASK;
-            strategy.removeLabel(oldValue, flatIndex);
+    public void onMoleculeSet(int flatIndex, int oldMoleculeInt, int oldOwner, int newMoleculeInt, int newOwner) {
+        if (isUnmarkedLabel(oldMoleculeInt)) {
+            strategy.removeLabel(oldMoleculeInt & Config.VALUE_MASK, flatIndex, oldOwner);
         }
-
-        // Add new LABEL if present
-        if (newType == Config.TYPE_LABEL) {
-            int newValue = newMoleculeInt & Config.VALUE_MASK;
-            // Use unsigned shift (>>>) to avoid sign-extension when bit 31 is set (marker >= 8)
-            int marker = (newMoleculeInt & Config.MARKER_MASK) >>> Config.MARKER_SHIFT;
-            LabelEntry entry = new LabelEntry(flatIndex, owner, marker);
-            strategy.addLabel(newValue, entry);
+        if (isUnmarkedLabel(newMoleculeInt)) {
+            strategy.addLabel(newMoleculeInt & Config.VALUE_MASK, flatIndex, newOwner);
         }
     }
 
     /**
-     * Called when ownership of a cell changes.
+     * Called when ownership of a cell changes while its molecule stays as it is.
      * <p>
-     * If the cell contains a LABEL molecule, updates the index entry.
+     * If the cell contains an unmarked LABEL molecule, the strategy learns of the new owner. A
+     * marked label is not a target and the strategy does not know it.
      *
      * @param flatIndex The flat index of the cell
      * @param moleculeInt The molecule's packed integer value
+     * @param oldOwner The owner ID the cell had until now
      * @param newOwner The new owner ID
      */
-    public void onOwnerChange(int flatIndex, int moleculeInt, int newOwner) {
-        int type = moleculeInt & Config.TYPE_MASK;
-        if (type == Config.TYPE_LABEL) {
-            int value = moleculeInt & Config.VALUE_MASK;
-            strategy.updateOwner(value, flatIndex, newOwner);
+    public void onOwnerChange(int flatIndex, int moleculeInt, int oldOwner, int newOwner) {
+        if (isUnmarkedLabel(moleculeInt)) {
+            strategy.changeOwner(moleculeInt & Config.VALUE_MASK, flatIndex, oldOwner, newOwner);
         }
     }
 
     /**
-     * Called when the marker of a cell changes (e.g., after transfer/FORK).
+     * Called when a cell is released: it passes to a new owner — a child at a fork, nobody at a
+     * death — and its marker is reset to 0 in the same step.
      * <p>
-     * If the cell contains a LABEL molecule, updates the index entry.
+     * A LABEL that was marked becomes a jump target at this moment and is added under its new
+     * owner. A LABEL that was unmarked is a target already and changes its owner.
      *
      * @param flatIndex The flat index of the cell
-     * @param moleculeInt The molecule's packed integer value (with new marker already set)
+     * @param oldMoleculeInt The molecule's packed integer value before the release, with the
+     *                       marker it carried until then
+     * @param oldOwner The owner ID the cell had until now
+     * @param newOwner The owner ID the cell passes to; {@code 0} for nobody
      */
-    public void onMarkerChange(int flatIndex, int moleculeInt) {
-        int type = moleculeInt & Config.TYPE_MASK;
-        if (type == Config.TYPE_LABEL) {
-            int value = moleculeInt & Config.VALUE_MASK;
-            // Use unsigned shift (>>>) to avoid sign-extension when bit 31 is set (marker >= 8)
-            int marker = (moleculeInt & Config.MARKER_MASK) >>> Config.MARKER_SHIFT;
-            strategy.updateMarker(value, flatIndex, marker);
+    public void onCellReleased(int flatIndex, int oldMoleculeInt, int oldOwner, int newOwner) {
+        if ((oldMoleculeInt & Config.TYPE_MASK) != Config.TYPE_LABEL) {
+            return;
+        }
+        int value = oldMoleculeInt & Config.VALUE_MASK;
+        if ((oldMoleculeInt & Config.MARKER_MASK) == 0) {
+            strategy.changeOwner(value, flatIndex, oldOwner, newOwner);
+        } else {
+            strategy.addLabel(value, flatIndex, newOwner);
         }
     }
 
     /**
-     * Gets all candidates matching a search value (for debugging/testing).
+     * Whether a packed molecule is a LABEL that takes part in matching, that is, one with marker 0.
      *
-     * @param searchValue The label value to search for
-     * @return Collection of matching label entries
+     * @param moleculeInt The molecule's packed integer value
+     * @return {@code true} for a LABEL molecule whose marker is 0
      */
-    public Collection<LabelEntry> getCandidates(int searchValue) {
-        return strategy.getCandidates(searchValue);
+    private static boolean isUnmarkedLabel(int moleculeInt) {
+        return (moleculeInt & Config.TYPE_MASK) == Config.TYPE_LABEL
+                && (moleculeInt & Config.MARKER_MASK) == 0;
     }
 
     /**

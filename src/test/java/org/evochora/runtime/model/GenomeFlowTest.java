@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import org.evochora.runtime.Config;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.label.HammingLabelMatchingStrategy;
+import org.evochora.runtime.spi.ILabelMatchingStrategy;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -23,7 +25,8 @@ class GenomeFlowTest {
     private static final int DV_DIM = 0;
     private static final int[] FORWARD = new int[]{1, 0};
     private static final int[] BACKWARD = new int[]{-1, 0};
-    private static final int TOLERANCE = 2;
+    /** A strategy that lets a reference address a label up to two bits away; it holds no labels here. */
+    private static final ILabelMatchingStrategy MATCHING = new HammingLabelMatchingStrategy(2, 0, -1, 50, 0.0, 8);
     private static final int LABEL_VALUE = 0b1010_1010_1010;
 
     private Environment env;
@@ -265,7 +268,7 @@ class GenomeFlowTest {
         build(2, FORWARD);
         flow.collectReferences(env, frame, ORGANISM_ID, DV_DIM, 1);
 
-        assertThat(flow.isJumpTarget(LABEL_VALUE, TOLERANCE)).isTrue();
+        assertThat(flow.isJumpTarget(LABEL_VALUE, MATCHING)).isTrue();
     }
 
     /**
@@ -279,7 +282,7 @@ class GenomeFlowTest {
         build(2, FORWARD);
         flow.collectReferences(env, frame, ORGANISM_ID, DV_DIM, 1);
 
-        assertThat(flow.isJumpTarget(LABEL_VALUE, TOLERANCE)).isFalse();
+        assertThat(flow.isJumpTarget(LABEL_VALUE, MATCHING)).isFalse();
     }
 
     /**
@@ -296,7 +299,7 @@ class GenomeFlowTest {
         build(2, FORWARD);
         flow.collectReferences(env, frame, ORGANISM_ID, DV_DIM, 1);
 
-        assertThat(flow.isJumpTarget(LABEL_VALUE, TOLERANCE)).isFalse();
+        assertThat(flow.isJumpTarget(LABEL_VALUE, MATCHING)).isFalse();
     }
 
     /**
@@ -312,7 +315,7 @@ class GenomeFlowTest {
         build(2, FORWARD);
         flow.collectReferences(env, frame, ORGANISM_ID, DV_DIM, 1);
 
-        assertThat(flow.isJumpTarget(LABEL_VALUE, TOLERANCE)).isFalse();
+        assertThat(flow.isJumpTarget(LABEL_VALUE, MATCHING)).isFalse();
     }
 
     /**
@@ -329,7 +332,7 @@ class GenomeFlowTest {
         build(2, FORWARD);
         flow.collectReferences(env, frame, ORGANISM_ID, DV_DIM, 1);
 
-        assertThat(flow.isJumpTarget(LABEL_VALUE, TOLERANCE)).isFalse();
+        assertThat(flow.isJumpTarget(LABEL_VALUE, MATCHING)).isFalse();
     }
 
     // ---- drawsNoForeignReference ----
@@ -348,9 +351,9 @@ class GenomeFlowTest {
         flow.collectReferences(env, frame, ORGANISM_ID, DV_DIM, 1);
 
         // Flipping bit 0 moves the label to two bits from the other reference, which did not reach it before
-        assertThat(flow.drawsNoForeignReference(LABEL_VALUE ^ 1, LABEL_VALUE, TOLERANCE)).isFalse();
+        assertThat(flow.drawsNoForeignReference(LABEL_VALUE ^ 1, LABEL_VALUE, MATCHING)).isFalse();
         // Flipping a bit the two values agree in moves it further away from that reference
-        assertThat(flow.drawsNoForeignReference(LABEL_VALUE ^ (1 << 15), LABEL_VALUE, TOLERANCE)).isTrue();
+        assertThat(flow.drawsNoForeignReference(LABEL_VALUE ^ (1 << 15), LABEL_VALUE, MATCHING)).isTrue();
     }
 
     // ---- endsOpen ----

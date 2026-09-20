@@ -1,6 +1,6 @@
 package org.evochora.runtime.model;
 
-import org.evochora.runtime.label.PreExpandedHammingStrategy;
+import org.evochora.runtime.label.HammingLabelMatchingStrategy;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -224,7 +224,7 @@ class EnvironmentChangeTrackingTest {
         assertEquals(1024, env.getTotalCells());  // 32x32
         
         // A world this small cannot be tiled; the row-major layout (tile side 1) keeps the test's cell count.
-        Environment env3d = new Environment(new EnvironmentProperties(new int[]{5, 6, 7}, false), new PreExpandedHammingStrategy(), 1);
+        Environment env3d = new Environment(new EnvironmentProperties(new int[]{5, 6, 7}, false), new HammingLabelMatchingStrategy(), 1);
         assertEquals(210, env3d.getTotalCells());  // 5*6*7
     }
     

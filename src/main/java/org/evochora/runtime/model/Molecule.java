@@ -98,6 +98,36 @@ public record Molecule(int type, int value, int marker) {
     }
 
     /**
+     * Extracts the value component of a packed molecule integer in the format its type declares.
+     * <p>
+     * Every molecule type is registered with a {@link MoleculeValueFormat}: a number is returned
+     * sign-extended, as {@link #extractSignedValue(int)} returns it, a bit pattern as the raw value
+     * bits in the range {@code 0} to {@link Config#VALUE_MASK}.
+     * <p>
+     * This is the value to hand to consumers outside the runtime, where a bit pattern serves as a
+     * key. The instruction-execution path keeps using {@link #extractSignedValue(int)}.
+     *
+     * @param moleculeInt The packed molecule integer.
+     * @return The value as the declared format of the molecule's type reads it.
+     */
+    public static int extractTypedValue(int moleculeInt) {
+        return MoleculeTypeRegistry.valueFormatOf(moleculeInt).read(moleculeInt);
+    }
+
+    /**
+     * Writes the value component of a packed molecule integer as text, in the format its type
+     * declares — a number in decimal, a bit pattern in hexadecimal.
+     * <p>
+     * The text is for reading only; {@link #parse(String)} reads decimal values whatever the type.
+     *
+     * @param moleculeInt The packed molecule integer.
+     * @return The text of the value, without the type name.
+     */
+    public static String formatValue(int moleculeInt) {
+        return MoleculeTypeRegistry.valueFormatOf(moleculeInt).write(moleculeInt);
+    }
+
+    /**
      * Reports whether two molecule types may take part in the same scalar value operation.
      * <p>
      * Two types are value-compatible when computing with or comparing their values is meaningful
@@ -309,6 +339,6 @@ public record Molecule(int type, int value, int marker) {
     @Override
     public String toString() {
         String typePrefix = MoleculeTypeRegistry.typeToName(this.type());
-        return typePrefix + ":" + this.toScalarValue() + " M:" + this.marker();
+        return typePrefix + ":" + formatValue(this.toInt()) + " M:" + this.marker();
     }
 }

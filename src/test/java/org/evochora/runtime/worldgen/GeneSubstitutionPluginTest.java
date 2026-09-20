@@ -1065,7 +1065,7 @@ class GeneSubstitutionPluginTest {
 
     @Test
     void labelFlipsBits() {
-        int originalHash = 0b1010101010101010101; // 19-bit value
+        int originalHash = 0b1010101010101010101; // an arbitrary pattern within the value field
         int verified = 0;
         for (int seed = 0; seed < 50; seed++) {
             setUp();
@@ -1073,7 +1073,7 @@ class GeneSubstitutionPluginTest {
             GeneSubstitutionPlugin plugin = labelOnlyPlugin(new SeededRandomProvider(seed));
             plugin.substitute(child, environment);
 
-            int newHash = environment.getMolecule(5, 5).value();
+            int newHash = environment.getMolecule(5, 5).value() & Config.VALUE_MASK;
             if (newHash != originalHash) {
                 int diff = newHash ^ originalHash;
                 assertThat(Integer.bitCount(diff))
@@ -1095,7 +1095,7 @@ class GeneSubstitutionPluginTest {
             GeneSubstitutionPlugin plugin = labelrefOnlyPlugin(new SeededRandomProvider(seed));
             plugin.substitute(child, environment);
 
-            int newHash = environment.getMolecule(5, 5).value();
+            int newHash = environment.getMolecule(5, 5).value() & Config.VALUE_MASK;
             if (newHash != originalHash) {
                 int diff = newHash ^ originalHash;
                 assertThat(Integer.bitCount(diff))
@@ -1837,8 +1837,40 @@ class GeneSubstitutionPluginTest {
             assertThat(Integer.bitCount(diff))
                     .as("seed=%d: flipping 3 bits should produce exactly 3 bit difference", seed)
                     .isEqualTo(3);
-            assertThat(flipped).as("seed=%d: result must be within 19-bit range", seed)
-                    .isBetween(0, (1 << 19) - 1);
+            assertThat(flipped).as("seed=%d: result must lie within the value field", seed)
+                    .isBetween(0, Config.VALUE_MASK);
+        }
+    }
+
+    @Test
+    void flipBitsReachesTheTopValueBit() {
+        int topBit = 1 << (Config.VALUE_BITS - 1);
+        boolean sawTopBit = false;
+
+        for (int seed = 0; seed < 500; seed++) {
+            GeneSubstitutionPlugin p = allTypesPlugin(new SeededRandomProvider(seed));
+            int flipped = p.flipBits(0, 1);
+            if (flipped == topBit) {
+                sawTopBit = true;
+                break;
+            }
+        }
+
+        assertThat(sawTopBit).as("flipping a single bit of 0 should sometimes hit the value field's top bit").isTrue();
+    }
+
+    @Test
+    void flipBitsDoesNotClearAnUnrelatedTopBit() {
+        int topBit = 1 << (Config.VALUE_BITS - 1);
+
+        for (int seed = 0; seed < 100; seed++) {
+            GeneSubstitutionPlugin p = allTypesPlugin(new SeededRandomProvider(seed));
+            int flipped = p.flipBits(topBit, 1);
+            // The flipped bit is random: it clears the top bit only when it happens to be the top
+            // bit itself, in which case the result is 0.
+            assertThat(flipped == 0 || (flipped & topBit) != 0)
+                    .as("seed=%d: flipping a single bit of the top-bit-only value must not clear the top bit unless that is the flipped bit", seed)
+                    .isTrue();
         }
     }
 }

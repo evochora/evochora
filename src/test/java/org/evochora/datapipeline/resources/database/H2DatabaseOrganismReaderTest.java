@@ -30,6 +30,8 @@ import org.evochora.datapipeline.api.resources.database.dto.ProcFrameView;
 import org.evochora.datapipeline.api.resources.database.dto.RegisterValueView;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
 import org.evochora.test.utils.ProtoTestUtils;
+import org.evochora.runtime.label.HammingLabelMatchingStrategy;
+import org.evochora.runtime.label.LabelRewrite;
 import org.evochora.runtime.model.Molecule;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -374,8 +376,8 @@ class H2DatabaseOrganismReaderTest {
         StoredMutationEvents childEvents = StoredMutationEvents.newBuilder()
                 .setDimensions(2)
                 .addEvents(StoredMutationEvent.newBuilder()
-                        .setPluginClass("org.evochora.runtime.worldgen.LabelRewritePlugin")
-                        .setKind("label-rewrite")
+                        .setPluginClass(HammingLabelMatchingStrategy.class.getName())
+                        .setKind(LabelRewrite.MUTATION_KIND)
                         .addParams(0x2A))
                 .build();
 

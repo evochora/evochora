@@ -1,7 +1,13 @@
-import { moleculeTypeEntry } from '../MoleculeTypePalette.js';
+import { moleculeTypeEntry, VALUE_FORMAT } from '../MoleculeTypePalette.js';
 
 /** Shown for a location register or location stack entry that holds no position. */
 const EMPTY_LOCATION = '\u2014';
+
+/** The number of digits a value written in hexadecimal is padded to. */
+const HEX_VALUE_DIGITS = 5;
+
+/** How many of those digits stand on the first line where a hexadecimal value is drawn on two lines. */
+const HEX_VALUE_FIRST_LINE_DIGITS = 2;
 
 /**
  * A utility class for formatting various data types from the simulation
@@ -16,6 +22,41 @@ const EMPTY_LOCATION = '\u2014';
  * @throws {Error} If the value is null, undefined, or has an unknown/invalid structure.
  */
 export class ValueFormatter {
+    /**
+     * Writes the value of a molecule in the format its palette entry names: hexadecimal or decimal.
+     *
+     * @param {string|null} typeName - The type name of the molecule.
+     * @param {number} value - The value of the molecule as the server sent it.
+     * @returns {string} The value as text, without the type prefix.
+     */
+    static formatMoleculeValue(typeName, value) {
+        return moleculeTypeEntry(typeName).valueFormat === VALUE_FORMAT.HEX
+            ? ValueFormatter.formatHexValue(value)
+            : String(value);
+    }
+
+    /**
+     * Writes a value in hexadecimal: uppercase digits with leading zeros and no prefix, e.g. `03A7F`.
+     *
+     * @param {number} value - A non-negative value.
+     * @returns {string} The hexadecimal text.
+     */
+    static formatHexValue(value) {
+        return value.toString(16).toUpperCase().padStart(HEX_VALUE_DIGITS, '0');
+    }
+
+    /**
+     * Writes a hexadecimal value on two lines for a place too narrow for one: the leading digits
+     * above the remaining ones.
+     *
+     * @param {number} value - A non-negative value.
+     * @returns {string} The hexadecimal text with one line break.
+     */
+    static formatHexValueOnTwoLines(value) {
+        const digits = ValueFormatter.formatHexValue(value);
+        return digits.slice(0, HEX_VALUE_FIRST_LINE_DIGITS) + '\n' + digits.slice(HEX_VALUE_FIRST_LINE_DIGITS);
+    }
+
     /**
      * Formats a given value into a display string.
      * It strictly requires valid, non-null inputs. It accepts primitives, recognized
@@ -47,7 +88,7 @@ export class ValueFormatter {
             }
             const typeName = value.type || '';
             const typeAbbr = (typeName.length > 0 ? moleculeTypeEntry(typeName).abbr + ':' : '');
-            return `${typeAbbr}${value.value}`;
+            return `${typeAbbr}${ValueFormatter.formatMoleculeValue(typeName, value.value)}`;
         }
 
         if (value.kind === 'VECTOR') {

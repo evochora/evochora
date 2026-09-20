@@ -1,7 +1,7 @@
 package org.evochora.runtime.model;
 
 import org.evochora.runtime.Config;
-import org.evochora.runtime.label.PreExpandedHammingStrategy;
+import org.evochora.runtime.label.HammingLabelMatchingStrategy;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
@@ -20,7 +20,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class EnvironmentCellAccessTest {
 
     private static Environment tiled() {
-        return new Environment(new EnvironmentProperties(new int[]{64, 64}, true), new PreExpandedHammingStrategy(), 32);
+        return new Environment(new EnvironmentProperties(new int[]{64, 64}, true), new HammingLabelMatchingStrategy(), 32);
     }
 
     private static Molecule data(int value) {
@@ -73,7 +73,8 @@ class EnvironmentCellAccessTest {
         List<Integer> occupied = new ArrayList<>();
         env.forEachOccupiedCellInFlatIndexOrder((flatIndex, molecule, owner) -> occupied.add(flatIndex));
         assertThat(occupied).containsExactly(env.properties.toFlatIndex(new int[]{33, 1}));
-        assertThat(env.getLabelIndex().getCandidates(77)).hasSize(1);
+        assertThat(((HammingLabelMatchingStrategy) env.getLabelIndex().getStrategy())
+                .ownerOf(77, env.properties.toFlatIndex(new int[]{33, 1}))).isEqualTo(2);
         List<Integer> changed = new ArrayList<>();
         env.forEachCellChangedSinceLastSample((flatIndex, molecule, owner) -> changed.add(flatIndex));
         assertThat(changed).isEqualTo(occupied);

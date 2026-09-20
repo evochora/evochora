@@ -44,7 +44,9 @@ public record OrganismBodyResponseDto(
      * @param moleculeType Molecule type as defined in {@code Config} (the type bits at their
      *                     position in the packed molecule, e.g. {@code Config.TYPE_ENERGY});
      *                     the metadata endpoint maps these values to names
-     * @param moleculeValue Signed value of the molecule; for a CODE molecule this is the opcode
+     * @param moleculeValue Value of the molecule as its type defines it: the unsigned label value for a
+     *                      LABEL or LABELREF, a signed number otherwise; for a CODE molecule this is
+     *                      the opcode
      * @param marker Marker of the molecule (0-15). A marker other than 0 means the molecule is
      *               staged for handover to a child at the next reproduction; the handover clears
      *               it back to 0

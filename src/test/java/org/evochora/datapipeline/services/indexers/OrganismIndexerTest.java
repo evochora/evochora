@@ -28,6 +28,8 @@ import org.evochora.datapipeline.api.resources.topics.IResourceTopicReader;
 import org.evochora.datapipeline.resources.database.H2Database;
 import org.evochora.datapipeline.resources.database.OrganismDataWriterWrapper;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
+import org.evochora.runtime.label.HammingLabelMatchingStrategy;
+import org.evochora.runtime.label.LabelRewrite;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -197,8 +199,8 @@ class OrganismIndexerTest {
             .setOrganismId(3)
             .setInitialPosition(Vector.newBuilder().addComponents(2).addComponents(3).build())
             .addBirthMutations(MutationEvent.newBuilder()
-                .setPluginClass("org.evochora.runtime.worldgen.LabelRewritePlugin")
-                .setKind("label-rewrite")
+                .setPluginClass(HammingLabelMatchingStrategy.class.getName())
+                .setKind(LabelRewrite.MUTATION_KIND)
                 .addParams(0x2A))
             .build();
 

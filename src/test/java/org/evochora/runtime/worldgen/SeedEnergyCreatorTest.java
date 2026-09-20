@@ -1,7 +1,7 @@
 package org.evochora.runtime.worldgen;
 
 import org.evochora.runtime.model.EnvironmentProperties;
-import org.evochora.runtime.label.PreExpandedHammingStrategy;
+import org.evochora.runtime.label.HammingLabelMatchingStrategy;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
@@ -99,7 +99,7 @@ public class SeedEnergyCreatorTest {
     @Tag("unit")
     void appliesAmountVarianceCorrectly() {
         // A world this small cannot be tiled; the row-major layout (tile side 1) keeps the test's cell count.
-        Environment env = new Environment(new EnvironmentProperties(new int[]{1, 1}, false), new PreExpandedHammingStrategy(), 1);
+        Environment env = new Environment(new EnvironmentProperties(new int[]{1, 1}, false), new HammingLabelMatchingStrategy(), 1);
         Map<String, Object> configMap = new HashMap<>();
         configMap.put("percentage", 1.0); // 100%
         configMap.put("amount", 100);
@@ -128,7 +128,7 @@ public class SeedEnergyCreatorTest {
     @Tag("unit")
     void doesNotOverwriteExistingMolecules() {
         // A world this small cannot be tiled; the row-major layout (tile side 1) keeps the test's cell count.
-        Environment env = new Environment(new EnvironmentProperties(new int[]{2, 1}, false), new PreExpandedHammingStrategy(), 1);
+        Environment env = new Environment(new EnvironmentProperties(new int[]{2, 1}, false), new HammingLabelMatchingStrategy(), 1);
         env.setMolecule(new Molecule(org.evochora.runtime.Config.TYPE_CODE, 123), new int[]{0, 0});
 
         Map<String, Object> configMap = new HashMap<>();
@@ -157,7 +157,7 @@ public class SeedEnergyCreatorTest {
         // Every cell is taken, so no draw can ever succeed and the requested amount is
         // unreachable. The search has to end in a statement about that, not in a hanging loop.
         // A world this small cannot be tiled; the row-major layout (tile side 1) keeps the test's cell count.
-        Environment env = new Environment(new EnvironmentProperties(new int[]{4, 1}, false), new PreExpandedHammingStrategy(), 1);
+        Environment env = new Environment(new EnvironmentProperties(new int[]{4, 1}, false), new HammingLabelMatchingStrategy(), 1);
         for (int x = 0; x < 4; x++) {
             env.setMolecule(new Molecule(org.evochora.runtime.Config.TYPE_CODE, 123), new int[]{x, 0});
         }

@@ -126,8 +126,13 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
     private final int chunkInterval;
     /** Last tick before this service started simulating: -1 for a new run, the restored tick otherwise. */
     private final long startTick;
-    /** Upper bound on the cells one organism owns, an estimation assumption read from the options. */
+
+    // Assumptions of the memory estimate; none of them limits the simulation
+    /** Upper bound on the cells one organism owns, read from the options. */
     private final int maxCellsPerOrganism;
+    /** Share of a world's cells that are labels at most. */
+    private static final double LABEL_SHARE_OF_CELLS = 0.05;
+
     private final int metricsWindowSeconds;
 
     /** Ticks after which the service pauses itself, ascending; a primitive array so the per-tick check boxes nothing. */
@@ -721,7 +726,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
             runtimeConfig.hasPath("thermodynamics") ? runtimeConfig.getConfig("thermodynamics") : com.typesafe.config.ConfigFactory.empty());
         Config organismConfig = runtimeConfig.hasPath("organism") ? runtimeConfig.getConfig("organism") : com.typesafe.config.ConfigFactory.empty();
 
-        org.evochora.runtime.label.ILabelMatchingStrategy labelMatchingStrategy =
+        org.evochora.runtime.spi.ILabelMatchingStrategy labelMatchingStrategy =
             Environment.createLabelMatchingStrategy(
                 runtimeConfig.hasPath("label-matching") ? runtimeConfig.getConfig("label-matching") : null);
 
@@ -1428,7 +1433,19 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
             MemoryEstimate.Category.SERVICE_BATCH
         ));
         
-        // 3. Organisms in memory - realistic worst-case estimate
+        // 3. Label index. How much a label costs is the label matching strategy's knowledge; how
+        //    many labels a world holds is assumed here.
+        long labels = (long) Math.ceil(params.totalCells() * LABEL_SHARE_OF_CELLS);
+        long labelIndexBytes = simulation.getEnvironment().getLabelIndex().getStrategy().estimateMemoryBytes(labels);
+        estimates.add(new MemoryEstimate(
+            serviceName + " (Label index)",
+            labelIndexBytes,
+            String.format("%d labels (%.0f%% of %d cells) as the label matching strategy holds them",
+                labels, LABEL_SHARE_OF_CELLS * 100, params.totalCells()),
+            MemoryEstimate.Category.SERVICE_BATCH
+        ));
+
+        // 4. Organisms in memory - realistic worst-case estimate
         // Per organism breakdown (8-bank architecture, 48 register slots):
         //   - Base object + fields + registers (48 slots): ~2.1 KB
         //   - dataStack (128 max × 16 bytes boxed): ~2 KB
@@ -1446,7 +1463,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
             MemoryEstimate.Category.SERVICE_BATCH
         ));
         
-        // 3b. Birth mutation records waiting for the next recording
+        // 4b. Birth mutation records waiting for the next recording
         // A record is held from the birth that produced it until the next recording has captured
         // it. 500 bytes stands for one median duplication - about 17 cells with their flat
         // index and their molecule before and after, the two names and the list objects around
@@ -1466,7 +1483,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
             MemoryEstimate.Category.SERVICE_BATCH
         ));
 
-        // 3. Compiled programs cache - estimate ~100KB per unique program
+        // 5. Compiled programs cache - estimate ~100KB per unique program
         long compiledProgramsBytes = (long) programArtifactsById.size() * 100 * 1024;
         if (compiledProgramsBytes > 0) {
             estimates.add(new MemoryEstimate(
@@ -1477,7 +1494,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
             ));
         }
         
-        // 4. Encoder state for delta compression
+        // 6. Encoder state for delta compression
         // - currentSnapshot: 1 full TickData (bytesPerTick)
         // - currentDeltas: up to (samplesPerChunk - 1) deltas
         // - cell columns builder: while a snapshot is captured, three int lists with one entry

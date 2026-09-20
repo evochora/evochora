@@ -156,14 +156,6 @@ public final class Config {
     public static final int VALUE_MASK = (1 << VALUE_BITS) - 1;
 
     /**
-     * A bitmask of the bits a label value may use. A label value must stay non-negative in the
-     * cell's two's-complement value field, so it uses one bit less than {@link #VALUE_MASK}.
-     * The compiler derives label values within it, and a label rewrite draws its mask from it
-     * so that every rewritten value stays non-negative.
-     */
-    public static final int LABEL_VALUE_MASK = (1 << (VALUE_BITS - 1)) - 1;
-
-    /**
      * The type code for a cell containing executable code.
      */
     public static final int TYPE_CODE      = (0x00 & ((1 << TYPE_BITS) - 1)) << TYPE_SHIFT;
@@ -192,7 +184,7 @@ public final class Config {
 
     /**
      * The type code for a cell representing a label reference (jump operand).
-     * Label references carry the same 19-bit hash as LABEL molecules but are not
+     * Label references carry the same hash as LABEL molecules, a bit pattern over the whole value field, but are not
      * indexed by the LabelIndex. This allows mutation systems to distinguish
      * label operands (bitflip mutation) from regular data (arithmetic mutation).
      */

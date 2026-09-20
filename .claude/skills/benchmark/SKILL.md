@@ -49,6 +49,12 @@ a drop in a single combination is the environment.
 `-p selectionSpread=50` matches production (weighted-random label choice, one random draw per
 jump); the default `0` is deterministic and does not exercise the organism's random source.
 
+A change to the label index or the label search is measured with `LabelMatchingBenchmark` as
+well (`docs/BENCHMARKING.md`, Label lookup): the programs of the tick benchmark own one to three
+labels, so the tick benchmark is nearly blind to it. Run `LabelMatchingBenchmark.findTarget`
+for the lookups and `LabelMatchingBenchmark.birthAndDeath -p scenario=OWN` for the write path,
+with the same decision profile.
+
 ## 2 · Real-run comparison
 
 The node starts with two services only: the simulation engine and `TickHashConsumer`

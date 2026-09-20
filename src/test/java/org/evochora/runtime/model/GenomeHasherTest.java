@@ -226,7 +226,7 @@ class GenomeHasherTest {
         int[] tileSides = {1, Environment.TILE_SIDE};
         for (int i = 0; i < tileSides.length; i++) {
             Environment world = new Environment(new EnvironmentProperties(new int[]{64, 64}, true),
-                    new org.evochora.runtime.label.PreExpandedHammingStrategy(), tileSides[i]);
+                    new org.evochora.runtime.label.HammingLabelMatchingStrategy(), tileSides[i]);
             world.setMolecule(new Molecule(Config.TYPE_LABEL, 20, 0), ORGANISM_ID, new int[]{5, 5});
             for (int x = 6; x < 60; x += 7) {
                 world.setMolecule(new Molecule(Config.TYPE_CODE, x, 0), ORGANISM_ID, new int[]{x, 5});
@@ -279,6 +279,30 @@ class GenomeHasherTest {
     }
 
     @Test
+    void aGenomeWithLabelRefsButNoLabel_hasTheSameHashInADifferentLabelNamespace() {
+        // A body that jumps into foreign code only: references, and no label of its own
+        int mask = 0x81234;
+        long[] hashes = new long[2];
+        for (int i = 0; i < 2; i++) {
+            int namespace = i == 0 ? 0 : mask;
+            env = new Environment(new int[]{32, 32}, false);
+            env.setMolecule(new Molecule(Config.TYPE_CODE, 42, 0), ORGANISM_ID, new int[]{5, 5});
+            env.setMolecule(new Molecule(Config.TYPE_LABELREF, 100 ^ namespace, 0), ORGANISM_ID, new int[]{5, 6});
+            env.setMolecule(new Molecule(Config.TYPE_LABELREF, 105 ^ namespace, 0), ORGANISM_ID, new int[]{5, 7});
+            hashes[i] = GenomeHasher.computeGenomeHash(env, ORGANISM_ID, INITIAL_POSITION, DEFAULT_RULE);
+        }
+        assertThat(hashes[0]).isEqualTo(hashes[1]);
+
+        // One reference mutated on its own is still a different genome
+        env = new Environment(new int[]{32, 32}, false);
+        env.setMolecule(new Molecule(Config.TYPE_CODE, 42, 0), ORGANISM_ID, new int[]{5, 5});
+        env.setMolecule(new Molecule(Config.TYPE_LABELREF, 100, 0), ORGANISM_ID, new int[]{5, 6});
+        env.setMolecule(new Molecule(Config.TYPE_LABELREF, 999, 0), ORGANISM_ID, new int[]{5, 7});
+        assertThat(GenomeHasher.computeGenomeHash(env, ORGANISM_ID, INITIAL_POSITION, DEFAULT_RULE))
+                .isNotEqualTo(hashes[0]);
+    }
+
+    @Test
     void testMutatedLabelRef_differentHash() {
         // Original: LABEL=100, LABELREF=105
         env.setMolecule(new Molecule(Config.TYPE_LABEL, 100, 0), ORGANISM_ID, new int[]{5, 5});
@@ -303,7 +327,7 @@ class GenomeHasherTest {
         int labelRef = 510;
 
         long[] hashes = new long[3];
-        int[] masks = {0, 0x3A7F, 0x7FFFF};
+        int[] masks = {0, 0x3A7F, Config.VALUE_MASK};
 
         for (int i = 0; i < masks.length; i++) {
             env = new Environment(new int[]{32, 32}, false);

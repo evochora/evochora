@@ -68,8 +68,8 @@ says what a change does.
 - **Headless CLI pattern**: `CompileCommand` / `InspectCommand` show how to run compiler + runtime
   without the pipeline.
 - **Replication detector**: `GenomeHasher` already computes a genome hash that ignores STATE
-  molecules — an organism's own runtime memory — and is invariant under the private label namespace
-  of `LabelRewritePlugin` — a child with the parent's hash is a faithful replication.
+  molecules — an organism's own runtime memory — and is invariant under the namespace flip a
+  newborn's labels may undergo — a child with the parent's hash is a faithful replication.
 - **Problem size**: the primordial owns roughly 2,500–3,000 cells (comment in
   `GeneDuplicationPlugin`), so exhaustive single-mutant enumeration is on the order of a few thousand
   short simulation runs — parallelizable, since runs are independent.

@@ -8,6 +8,7 @@ import org.evochora.compiler.model.ir.IrImm;
 import org.evochora.compiler.model.ir.IrInstruction;
 import org.evochora.compiler.model.ir.IrLabelRef;
 import org.evochora.compiler.model.ir.IrTypedImm;
+import org.evochora.runtime.Config;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -68,7 +69,7 @@ class LabelRefLinkingRuleTest {
 
         IrTypedImm typedImm = (IrTypedImm) result.operands().get(0);
         assertThat(typedImm.typeName()).isEqualTo("LABELREF");
-        long expectedHash = "TEST.FOO".hashCode() & 0x7FFFF;
+        long expectedHash = "TEST.FOO".hashCode() & Config.VALUE_MASK;
         assertThat(typedImm.value()).isEqualTo(expectedHash);
     }
 
@@ -102,19 +103,19 @@ class LabelRefLinkingRuleTest {
             // When: The rule is applied
             IrInstruction result = rule.apply(input, context, layout);
 
-            // Then: The hash matches the expected formula (19-bit, always positive)
+            // Then: The hash matches the expected formula (within the value field, always positive)
             assertThat(result.operands().get(0)).isInstanceOf(IrTypedImm.class);
             IrTypedImm typedImm = (IrTypedImm) result.operands().get(0);
             assertThat(typedImm.typeName()).isEqualTo("LABELREF");
 
-            long expectedHash = qualifiedName.hashCode() & 0x7FFFF;
+            long expectedHash = qualifiedName.hashCode() & Config.VALUE_MASK;
             assertThat(typedImm.value())
                     .as("Hash for label '%s' should match runtime expectation", qualifiedName)
                     .isEqualTo(expectedHash);
 
-            // And: The hash is within the valid range (19 bits, always positive)
+            // And: The hash is within the valid range (within the value field, always positive)
             assertThat(typedImm.value()).isGreaterThanOrEqualTo(0);
-            assertThat(typedImm.value()).isLessThanOrEqualTo(0x7FFFF);
+            assertThat(typedImm.value()).isLessThanOrEqualTo(Config.VALUE_MASK);
         }
     }
 
@@ -143,7 +144,7 @@ class LabelRefLinkingRuleTest {
         // Then: The reference is resolved exactly as written
         assertThat(result.operands().get(0)).isInstanceOf(IrTypedImm.class);
         assertThat(((IrTypedImm) result.operands().get(0)).value())
-                .isEqualTo("_safe_call_0".hashCode() & 0x7FFFF);
+                .isEqualTo("_safe_call_0".hashCode() & Config.VALUE_MASK);
     }
 
     @Test

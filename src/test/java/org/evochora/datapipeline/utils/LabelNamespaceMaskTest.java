@@ -9,7 +9,8 @@ import org.evochora.datapipeline.api.contracts.StoredMutationEvent;
 import org.evochora.datapipeline.api.contracts.StoredMutationEvents;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
 import org.evochora.runtime.Config;
-import org.evochora.runtime.worldgen.LabelRewritePlugin;
+import org.evochora.runtime.label.HammingLabelMatchingStrategy;
+import org.evochora.runtime.label.LabelRewrite;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -27,8 +28,8 @@ class LabelNamespaceMaskTest {
 
     private static StoredMutationEvent labelMask(long mask) {
         return StoredMutationEvent.newBuilder()
-                .setPluginClass(LabelRewritePlugin.class.getName())
-                .setKind(LabelRewritePlugin.MUTATION_KIND)
+                .setPluginClass(HammingLabelMatchingStrategy.class.getName())
+                .setKind(LabelRewrite.MUTATION_KIND)
                 .addParams(mask)
                 .build();
     }
@@ -37,7 +38,7 @@ class LabelNamespaceMaskTest {
         return StoredMutationEvent.newBuilder()
                 .setPluginClass("org.evochora.runtime.worldgen.GeneSubstitutionPlugin")
                 .setKind("substitution")
-                .addParams(0x7FFFFL)
+                .addParams(0xFFFFFL)
                 .build();
     }
 
@@ -77,10 +78,19 @@ class LabelNamespaceMaskTest {
     }
 
     @Test
-    void narrowsAMaskToTheBitsALabelValueUses() {
+    void narrowsAMaskToTheValueFieldALabelValueOccupies() {
         // The plugin reports a full 64-bit parameter; a label value holds fewer bits than that
         assertThat(LabelNamespaceMask.ofBirth(birth(labelMask(-1L))))
-                .isEqualTo(Config.LABEL_VALUE_MASK);
+                .isEqualTo(Config.VALUE_MASK);
+    }
+
+    @Test
+    void keepsTheTopBitOfTheValueFieldInAMask() {
+        final int topBit = 1 << (Config.VALUE_BITS - 1);
+
+        assertThat(LabelNamespaceMask.ofBirth(birth(labelMask(topBit)))).isEqualTo(topBit);
+        assertThat(LabelNamespaceMask.ofChain(List.of(birth(labelMask(topBit | 0x0F)), birth(labelMask(0x0F)))))
+                .isEqualTo(topBit);
     }
 
     @Test
@@ -102,13 +112,13 @@ class LabelNamespaceMaskTest {
     @Test
     void refusesALabelMaskEventThatCarriesNoMask() {
         final StoredMutationEvents events = birth(StoredMutationEvent.newBuilder()
-                .setPluginClass(LabelRewritePlugin.class.getName())
-                .setKind(LabelRewritePlugin.MUTATION_KIND)
+                .setPluginClass(HammingLabelMatchingStrategy.class.getName())
+                .setKind(LabelRewrite.MUTATION_KIND)
                 .build());
 
         assertThatThrownBy(() -> LabelNamespaceMask.ofBirth(events))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining(LabelRewritePlugin.MUTATION_KIND)
-                .hasMessageContaining(LabelRewritePlugin.class.getName());
+                .hasMessageContaining(LabelRewrite.MUTATION_KIND)
+                .hasMessageContaining(HammingLabelMatchingStrategy.class.getName());
     }
 }

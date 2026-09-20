@@ -16,6 +16,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import org.evochora.runtime.label.HammingLabelMatchingStrategy;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.resources.IResource;
@@ -254,6 +255,20 @@ class SimulationEngineTest {
         assertTrue(tracking.explanation().contains("owned-cell visit buffers (50000 cells per organism × 24 bytes)"),
                 tracking.explanation());
         assertTrue(tracking.estimatedBytes() >= 50_000L * 24, "the buffers are part of the total");
+    }
+
+    @Test
+    void estimateWorstCaseMemory_declaresTheLabelIndexForFivePercentOfTheCells() {
+        SimulationEngine engine = new SimulationEngine("test-engine", createValidConfig(), resources);
+        SimulationParameters params = SimulationParameters.of(new int[]{2048, 1152}, 10);
+
+        MemoryEstimate labelIndex = engine.estimateWorstCaseMemory(params).stream()
+                .filter(e -> e.componentName().endsWith("(Label index)"))
+                .findFirst().orElseThrow();
+        // 5 percent of 2,359,296 cells, rounded up
+        long labels = 117_965;
+        assertEquals(new HammingLabelMatchingStrategy().estimateMemoryBytes(labels), labelIndex.estimatedBytes());
+        assertTrue(labelIndex.explanation().contains(labels + " labels (5% of"), labelIndex.explanation());
     }
 
     @Test
