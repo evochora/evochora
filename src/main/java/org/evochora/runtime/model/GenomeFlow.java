@@ -204,7 +204,8 @@ public final class GenomeFlow {
      * {@linkplain Instruction#neverFallsThrough(int) never falls through} and the
      * instruction before it, within the stretch, is no conditional. It is open in every other case:
      * its last instruction lets execution continue, a conditional can skip the closing jump, or it
-     * holds no instruction at all.
+     * holds no instruction at all. A stretch that holds a cell two walks of the frame read
+     * differently is open as well: what execution does there cannot be told from one reading.
      *
      * @param env The environment holding the cells.
      * @param frame The reading frame of the organism, built for the grid as it stands.
@@ -225,7 +226,11 @@ public final class GenomeFlow {
         int pos = firstCell[dvDim];
         for (int i = 0; i < length; i++) {
             coord[dvDim] = pos;
-            if (frame.slot(props.toFlatIndex(coord)) == Slot.INSTRUCTION) {
+            Slot slot = frame.slot(props.toFlatIndex(coord));
+            if (slot == Slot.AMBIGUOUS) {
+                return true;
+            }
+            if (slot == Slot.INSTRUCTION) {
                 opcodeIdBeforeLast = lastOpcodeId;
                 lastOpcodeId = Molecule.extractSignedValue(env.getMoleculeIntAt(coord));
             }

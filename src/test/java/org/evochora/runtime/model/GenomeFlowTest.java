@@ -413,6 +413,23 @@ class GenomeFlowTest {
     }
 
     /**
+     * A stretch that holds a cell with two readings is open, although its last instruction is an
+     * unconditional jump: the LABEL molecule standing as that jump's operand is a label a jump can
+     * land on, and execution runs on from there past the end of the stretch.
+     */
+    @Test
+    void stretchHoldingACellWithTwoReadingsIsOpen() {
+        label(2, LABEL_VALUE);
+        opcode(3, "JMPI");
+        label(4, LABEL_VALUE + 1);
+        build(2, FORWARD);
+
+        assertThat(frame.slot(env.getProperties().toFlatIndex(new int[]{4, ROW})))
+                .isEqualTo(GenomeFrame.Slot.AMBIGUOUS);
+        assertThat(open(3)).isTrue();
+    }
+
+    /**
      * Only a conditional inside the stretch counts: one that stands before the stretch's first
      * cell is not part of what a copy of the stretch would carry.
      */
