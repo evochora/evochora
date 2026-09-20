@@ -178,19 +178,22 @@ search only.
   labels are walked: per owner, label values and flat indexes in parallel arrays ordered by flat
   index, one XOR and bit count per entry. The cost of that walk does not depend on `tolerance`; it
   grows with the number of labels the organism owns.
-- **Foreign labels:** `TiledLabelIndex` holds the labels per value and per tile of 128 cells over
-  the first two dimensions of the world, each tile's labels in a small unordered bucket, plus the
-  bit set of values in use. Per stage the reach leaves a radius
-  `foreignReach − foreignReachDeductionPerBit × stage`; the search visits the tiles in rings around
-  the caller and ends with the ring no tile of which can hold a label nearer than the best found.
+- **Foreign labels:** `TiledLabelIndex` holds all labels in one open-addressing hash table of
+  primitive longs, plus the bit set of values in use. A value with at most 16 labels holds them
+  under one key, and a search examines each; a value with more holds them by tile of 128 cells over
+  the first two dimensions of the world, keyed by value and tile. Per stage the reach leaves a
+  radius `foreignReach − foreignReachDeductionPerBit × stage`; among the labels of a tiled value the
+  search visits the tiles in rings around the caller and ends with the ring no tile of which can
+  hold a label nearer than the best found. The memory of the index follows the number of labels,
+  not the size of the world and not the number of different values.
   Every candidate is compared by distance and then by flat index, a total order, so the result
   does not depend on the order of a bucket. The search ends on the first stage that yields a
   reachable label. `CoordinateDecoder` decodes flat indexes by multiplying with the reciprocal of
   the stride.
 
 A child's labels are marked, and therefore outside the index, until `FORK`; the fork adds them
-under the child: one probe of the table, one ordered insertion into the child's array and one
-append to a tile's bucket per label.
+under the child: one probe of the table of own labels, one ordered insertion into the child's
+array and one probe of the index of all labels per label.
 
 ### Label values use all 20 bits
 
@@ -246,8 +249,8 @@ each rewrite an index removal and insertion; with a flip rate of 0.05 that pass 
 in twenty. What remains per label is a probe, an insertion into a short array and a change to one
 bucket.
 
-**Memory.** The table and the per-value tile arrays cost more than sorted lists would — about as
-much as the index this design replaces.
+**Memory.** The two tables cost more than sorted lists would — about as much per label as the
+index this design replaces — and nothing that grows with the size of the world.
 
 How these costs are measured is described in `docs/BENCHMARKING.md` (Label lookup); the measured
 tables are kept with the pull request.
@@ -334,12 +337,16 @@ index, and with it the strategy interface:
   search in the owner's array, the table, and a table per organism reached through the organism;
   for the foreign path an outward walk over the sorted array, the same over an array in chunks,
   and tiles of 64 and of 128 cells — with the rule that the read paths decide and the write path
-  and memory break a tie.
+  and memory break a tie. A first tiled index kept an array of tiles per label value; its memory
+  grew with the number of different values times the area of the world, and a search that had to
+  probe many rare values walked the tiles for each. The table keyed by value and tile, with the
+  labels of a rare value held together, replaced it after the same comparison.
 - **`initialize(properties)` joined the interface** because tiles need the world's shape before
   the first label arrives, and **`environment` left `findTarget`** because no strategy read it any
   more.
 - **`LabelMatchingBenchmark` was added** (`docs/BENCHMARKING.md`, Label lookup): the programs of the
-  tick benchmark own too few labels to show a change to the index. In the tick benchmark
+  tick benchmark own too few labels to show a change to the index. Its `namespacePerOrganism`
+  switch fills the value space, the case a high namespace flip rate over many bits produces. In the tick benchmark
   `orphanedPercent` spreads the organisms without labels evenly; `extraLabels` was dropped again.
 - The real-run comparison ran as planned, three variants in two rounds of swapped order, each
   variant with the same hash in both rounds.

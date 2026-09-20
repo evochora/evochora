@@ -49,6 +49,7 @@ values — and reports nanoseconds per call:
 | Parameter | Values | Meaning |
 |---|---|---|
 | `labelsPerValue` | `200`, `2000`, `10000` | Number of organisms, and with it the number of labels that carry one value. |
+| `namespacePerOrganism` | `false` (default), `true` | `false`: all organisms share their label values, and a value's labels are as many as the population. `true`: every organism carries its values in a namespace of its own, as a high namespace flip rate over many bits leaves a population; the values in use are as many as the labels, and a foreign search finds most of the neighbour values it probes in use. A caller of `FOREIGN_NEAR` then stands near the one organism that carries the value it searches. |
 | `scenario` | `OWN`, `OWN_FUZZY`, `FOREIGN_NEAR`, `FOREIGN_MISS` | `OWN`: an organism looks up a label of its own, the regular case. `OWN_FUZZY`: the same with one bit of the searched value flipped, as a mutation leaves it. `FOREIGN_NEAR`: a caller without labels in an evenly populated world reaches the nearest label of another organism. `FOREIGN_MISS`: all labels lie in a band of rows and the callers stand beyond the foreign reach in the same columns, so the search has labels nearby in one direction and finds none. |
 
 The setup fails when a lookup does not end the way its scenario says, so a scenario that a

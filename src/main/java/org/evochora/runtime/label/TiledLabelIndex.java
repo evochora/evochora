@@ -6,30 +6,42 @@ import java.util.BitSet;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.model.EnvironmentProperties;
 
-import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap;
 
 /**
  * All labels of a world by value and by place, for the search of the nearest label with a value.
  * <p>
- * The world is divided into square tiles of {@link #TILE_SIDE} cells over its first two dimensions;
- * further dimensions are not divided. Per label value there is one array with a slot per tile, and
- * a tile that holds labels of the value has a small unordered bucket of them there. Under stable
- * label values one value is carried by every organism with that gene, so the labels of a value are
- * as many as the population — the tiles keep both the search and a change from touching more of
- * them than lie nearby:
+ * One open-addressing hash table of primitive longs holds every label. A slot is two adjacent
+ * longs, a key and what it stands for, so that a probe reads one cache line. How the labels of a
+ * value are keyed depends on how many there are:
  * <ul>
- *   <li>A search visits the tiles in rings around the caller's tile and ends with the ring no tile
- *       of which can hold a label nearer than the best found, or within the radius if none is
- *       found. Its cost follows the distance to the target, not the size of the population.</li>
- *   <li>An addition appends to one bucket, a removal or an owner change scans one bucket.</li>
+ *   <li><b>A value with few labels</b> — at most {@link #FEW} — holds all of them under one key,
+ *       wherever they lie. A search examines each. This is the state of a value that a mutation or
+ *       a namespace of its own has made rare; a search that has to probe many such values pays one
+ *       probe for each.</li>
+ *   <li><b>A value with many labels</b> holds them by tile: the world is divided into square tiles
+ *       of {@link #TILE_SIDE} cells over its first two dimensions — further dimensions are not
+ *       divided — and the key is the value and the tile. Under stable label values one value is
+ *       carried by every organism with that gene, so its labels are as many as the population. A
+ *       search visits the tiles in rings around the caller's tile and ends with the ring no tile of
+ *       which can hold a label nearer than the best found, or within the radius if none is found.
+ *       Its cost follows the distance to the target, not the size of the population.</li>
  * </ul>
- * The order of a bucket depends on the order of the changes, which differs between a run and its
- * resume. No result depends on it: a search compares every candidate by distance and then by flat
+ * A value passes from the first state to the second when it gains its label number {@code FEW + 1}
+ * and stays there until its last label is gone. Which state a value is in therefore depends on its
+ * history, which differs between a run and its resume, and so does the order of the labels under a
+ * key. No result depends on either: a search compares every candidate by distance and then by flat
  * index, which is a total order.
  * <p>
- * The tile side is a trade between the two ends of a search. Smaller tiles end a successful search
- * sooner in a dense world; larger tiles leave fewer empty tiles to pass in a sparse one and need
- * less memory for the per-value arrays.
+ * A key that stands for one label holds the label itself, its flat index and owner; several labels
+ * under one key lie in a small unordered bucket. An addition and a removal therefore touch one
+ * slot and at most one bucket. The table is never more than half full and doubles when it would be.
+ * Its memory follows the number of labels alone — not the size of the world, and not the number of
+ * different values.
+ * <p>
+ * The tile side is a trade between the two ends of a search among many labels. Smaller tiles end a
+ * successful search sooner in a dense world; larger tiles leave fewer empty tiles to pass in a
+ * sparse one.
  * <p>
  * Thread Safety: not synchronized. Mutated only from the simulation thread outside the parallel
  * wave, read concurrently inside it.
@@ -41,7 +53,7 @@ final class TiledLabelIndex {
 
     private static final int TILE_SHIFT = Integer.numberOfTrailingZeros(TILE_SIDE);
 
-    /** The labels of one value within one tile: flat indexes and owners, unordered. */
+    /** Several labels under one key: flat indexes and owners, unordered. */
     private static final class Bucket {
         private int[] flatIndexes = new int[4];
         private int[] owners = new int[4];
@@ -57,20 +69,29 @@ final class TiledLabelIndex {
         }
     }
 
-    /** The labels of one value: a bucket per tile that holds any, and their number. */
-    private static final class ValueTiles {
-        private final Bucket[] buckets;
-        private int labels;
+    private static final long EMPTY = -1L;
+    private static final long HASH_MULTIPLIER = 0x9E3779B97F4A7C15L;
 
-        private ValueTiles(int tileCount) {
-            buckets = new Bucket[tileCount];
-        }
-    }
+    /**
+     * Pairs of key — value and tile, or value and {@link #ANYWHERE} — and content. A content that
+     * is not negative is the only label under the key, flat index in the upper and owner in the
+     * lower half; a negative one is -1 - the position of the bucket holding several.
+     */
+    private long[] slots;
+    private int mask;
+    private int shift;
+    private int size;
+    private Bucket[] buckets = new Bucket[16];
+    private int[] freeBuckets = new int[16];
+    private int freeCount;
+    private int bucketCount;
+
+    /** Number of labels of every value that is held by tile, to know when its last label is gone. */
+    private final Int2IntOpenHashMap labelsOfValue = new Int2IntOpenHashMap();
 
     private final CoordinateDecoder coordinates;
     private final int tilesAlongFirst;
     private final int tilesAlongSecond;
-    private final Int2ObjectOpenHashMap<ValueTiles> tilesByValue = new Int2ObjectOpenHashMap<>();
 
     /**
      * One bit per label value in use, so that a probe for a value nobody carries costs a bit read
@@ -87,6 +108,93 @@ final class TiledLabelIndex {
         coordinates = new CoordinateDecoder(properties);
         tilesAlongFirst = tileCount(coordinates.size(0));
         tilesAlongSecond = coordinates.dimensions() > 1 ? tileCount(coordinates.size(1)) : 1;
+        allocate(1 << 10);
+    }
+
+    private void allocate(int capacity) {
+        slots = new long[capacity * 2];
+        for (int i = 0; i < slots.length; i += 2) {
+            slots[i] = EMPTY;
+        }
+        mask = capacity - 1;
+        shift = Long.SIZE - Integer.numberOfTrailingZeros(capacity);
+    }
+
+    private static long key(int labelValue, int tile) {
+        return ((long) labelValue << Integer.SIZE) | tile;
+    }
+
+    private int home(long key) {
+        return (int) ((key * HASH_MULTIPLIER) >>> shift);
+    }
+
+    /** The slot of a key, or -1 - the free slot it would take. */
+    private int slotOf(long key) {
+        int i = home(key);
+        while (true) {
+            long found = slots[i << 1];
+            if (found == key) {
+                return i;
+            }
+            if (found == EMPTY) {
+                return -1 - i;
+            }
+            i = (i + 1) & mask;
+        }
+    }
+
+    private void grow() {
+        long[] old = slots;
+        allocate((mask + 1) * 2);
+        for (int i = 0; i < old.length; i += 2) {
+            if (old[i] != EMPTY) {
+                int slot = -1 - slotOf(old[i]);
+                slots[slot << 1] = old[i];
+                slots[(slot << 1) + 1] = old[i + 1];
+            }
+        }
+    }
+
+    private void free(int slot) {
+        size--;
+        int hole = slot;
+        int next = (slot + 1) & mask;
+        while (slots[next << 1] != EMPTY) {
+            int home = home(slots[next << 1]);
+            boolean reachableFromHole = hole <= next ? (home <= hole || home > next) : (home <= hole && home > next);
+            if (reachableFromHole) {
+                slots[hole << 1] = slots[next << 1];
+                slots[(hole << 1) + 1] = slots[(next << 1) + 1];
+                hole = next;
+            }
+            next = (next + 1) & mask;
+        }
+        slots[hole << 1] = EMPTY;
+    }
+
+    private static long single(int flatIndex, int owner) {
+        return ((long) flatIndex << Integer.SIZE) | (owner & 0xFFFFFFFFL);
+    }
+
+    private int newBucket() {
+        if (freeCount > 0) {
+            int position = freeBuckets[--freeCount];
+            buckets[position] = new Bucket();
+            return position;
+        }
+        if (bucketCount == buckets.length) {
+            buckets = Arrays.copyOf(buckets, bucketCount * 2);
+        }
+        buckets[bucketCount] = new Bucket();
+        return bucketCount++;
+    }
+
+    private void releaseBucket(int position) {
+        buckets[position] = null;
+        if (freeCount == freeBuckets.length) {
+            freeBuckets = Arrays.copyOf(freeBuckets, freeCount * 2);
+        }
+        freeBuckets[freeCount++] = position;
     }
 
     private static int tileCount(int cells) {
@@ -123,7 +231,20 @@ final class TiledLabelIndex {
      * @return {@code true} if it is empty
      */
     boolean isEmpty() {
-        return tilesByValue.isEmpty();
+        return size == 0;
+    }
+
+    /** The pseudo tile under which a value with few labels holds all of them, wherever they lie. */
+    private static final int ANYWHERE = Integer.MAX_VALUE;
+
+    /** A value is held under {@link #ANYWHERE} until it has more labels than this. */
+    private static final int FEW = 16;
+
+    /** One bit per value whose labels are held by tile. */
+    private final BitSet tiledValues = new BitSet(1 << Config.VALUE_BITS);
+
+    private long keyFor(int labelValue, int flatIndex) {
+        return key(labelValue, tiledValues.get(labelValue) ? tileOf(flatIndex) : ANYWHERE);
     }
 
     /**
@@ -134,22 +255,73 @@ final class TiledLabelIndex {
      * @param owner The owner of the cell
      */
     void put(int labelValue, int flatIndex, int owner) {
-        ValueTiles ofValue = tilesByValue.get(labelValue);
-        if (ofValue == null) {
-            ofValue = new ValueTiles(tilesAlongFirst * tilesAlongSecond);
-            tilesByValue.put(labelValue, ofValue);
+        boolean tiled = tiledValues.get(labelValue);
+        int held = putAt(key(labelValue, tiled ? tileOf(flatIndex) : ANYWHERE), flatIndex, owner);
+        if (held < 0) {
+            return;
+        }
+        if (tiled) {
+            labelsOfValue.addTo(labelValue, 1);
+        } else if (held == 1) {
             valuesInUse.set(labelValue);
+        } else if (held > FEW) {
+            spreadOverTiles(labelValue);
         }
-        int tile = tileOf(flatIndex);
-        Bucket bucket = ofValue.buckets[tile];
-        if (bucket == null) {
-            bucket = new Bucket();
-            ofValue.buckets[tile] = bucket;
+    }
+
+    /** Moves the labels of a value from the one entry that held them all to an entry per tile. */
+    private void spreadOverTiles(int labelValue) {
+        int slot = slotOf(key(labelValue, ANYWHERE));
+        int bucketPosition = (int) (-1L - slots[(slot << 1) + 1]);
+        Bucket all = buckets[bucketPosition];
+        free(slot);
+        releaseBucket(bucketPosition);
+        tiledValues.set(labelValue);
+        labelsOfValue.put(labelValue, all.size);
+        for (int i = 0; i < all.size; i++) {
+            putAt(key(labelValue, tileOf(all.flatIndexes[i])), all.flatIndexes[i], all.owners[i]);
         }
+    }
+
+    /**
+     * Adds a label under a key, or sets the owner of the label already there.
+     *
+     * @return the number of labels under the key after a label was added, -1 if only an owner changed
+     */
+    private int putAt(long key, int flatIndex, int owner) {
+        if ((size + 1) * 2 > mask + 1) {
+            grow();
+        }
+        int slot = slotOf(key);
+        if (slot < 0) {
+            slot = -1 - slot;
+            slots[slot << 1] = key;
+            slots[(slot << 1) + 1] = single(flatIndex, owner);
+            size++;
+            return 1;
+        }
+        long content = slots[(slot << 1) + 1];
+        if (content >= 0) {
+            int held = (int) (content >>> Integer.SIZE);
+            if (held == flatIndex) {
+                slots[(slot << 1) + 1] = single(flatIndex, owner);
+                return -1;
+            }
+            int position = newBucket();
+            Bucket bucket = buckets[position];
+            bucket.flatIndexes[0] = held;
+            bucket.owners[0] = (int) content;
+            bucket.flatIndexes[1] = flatIndex;
+            bucket.owners[1] = owner;
+            bucket.size = 2;
+            slots[(slot << 1) + 1] = -1L - position;
+            return 2;
+        }
+        Bucket bucket = buckets[(int) (-1L - content)];
         int position = bucket.positionOf(flatIndex);
         if (position >= 0) {
             bucket.owners[position] = owner;
-            return;
+            return -1;
         }
         if (bucket.size == bucket.flatIndexes.length) {
             bucket.flatIndexes = Arrays.copyOf(bucket.flatIndexes, bucket.size * 2);
@@ -157,8 +329,7 @@ final class TiledLabelIndex {
         }
         bucket.flatIndexes[bucket.size] = flatIndex;
         bucket.owners[bucket.size] = owner;
-        bucket.size++;
-        ofValue.labels++;
+        return ++bucket.size;
     }
 
     /**
@@ -170,9 +341,20 @@ final class TiledLabelIndex {
      * @return {@code true} if the index holds the label
      */
     boolean setOwner(int labelValue, int flatIndex, int owner) {
-        ValueTiles ofValue = tilesByValue.get(labelValue);
-        Bucket bucket = ofValue == null ? null : ofValue.buckets[tileOf(flatIndex)];
-        int position = bucket == null ? -1 : bucket.positionOf(flatIndex);
+        int slot = slotOf(keyFor(labelValue, flatIndex));
+        if (slot < 0) {
+            return false;
+        }
+        long content = slots[(slot << 1) + 1];
+        if (content >= 0) {
+            if ((int) (content >>> Integer.SIZE) != flatIndex) {
+                return false;
+            }
+            slots[(slot << 1) + 1] = single(flatIndex, owner);
+            return true;
+        }
+        Bucket bucket = buckets[(int) (-1L - content)];
+        int position = bucket.positionOf(flatIndex);
         if (position < 0) {
             return false;
         }
@@ -188,24 +370,42 @@ final class TiledLabelIndex {
      * @return {@code true} if a label was removed
      */
     boolean remove(int labelValue, int flatIndex) {
-        ValueTiles ofValue = tilesByValue.get(labelValue);
-        if (ofValue == null) {
+        boolean tiled = tiledValues.get(labelValue);
+        int slot = slotOf(key(labelValue, tiled ? tileOf(flatIndex) : ANYWHERE));
+        if (slot < 0) {
             return false;
         }
-        int tile = tileOf(flatIndex);
-        Bucket bucket = ofValue.buckets[tile];
-        int position = bucket == null ? -1 : bucket.positionOf(flatIndex);
-        if (position < 0) {
-            return false;
+        long content = slots[(slot << 1) + 1];
+        boolean lastUnderKey;
+        if (content >= 0) {
+            if ((int) (content >>> Integer.SIZE) != flatIndex) {
+                return false;
+            }
+            free(slot);
+            lastUnderKey = true;
+        } else {
+            int bucketPosition = (int) (-1L - content);
+            Bucket bucket = buckets[bucketPosition];
+            int position = bucket.positionOf(flatIndex);
+            if (position < 0) {
+                return false;
+            }
+            bucket.size--;
+            bucket.flatIndexes[position] = bucket.flatIndexes[bucket.size];
+            bucket.owners[position] = bucket.owners[bucket.size];
+            if (bucket.size == 1) {
+                slots[(slot << 1) + 1] = single(bucket.flatIndexes[0], bucket.owners[0]);
+                releaseBucket(bucketPosition);
+            }
+            lastUnderKey = false;
         }
-        bucket.size--;
-        bucket.flatIndexes[position] = bucket.flatIndexes[bucket.size];
-        bucket.owners[position] = bucket.owners[bucket.size];
-        if (bucket.size == 0) {
-            ofValue.buckets[tile] = null;
-        }
-        if (--ofValue.labels == 0) {
-            tilesByValue.remove(labelValue);
+        if (tiled) {
+            if (labelsOfValue.addTo(labelValue, -1) == 1) {
+                labelsOfValue.remove(labelValue);
+                tiledValues.clear(labelValue);
+                valuesInUse.clear(labelValue);
+            }
+        } else if (lastUnderKey) {
             valuesInUse.clear(labelValue);
         }
         return true;
@@ -219,9 +419,16 @@ final class TiledLabelIndex {
      * @return The owner, or -1 if the index holds no such label
      */
     int ownerOf(int labelValue, int flatIndex) {
-        ValueTiles ofValue = tilesByValue.get(labelValue);
-        Bucket bucket = ofValue == null ? null : ofValue.buckets[tileOf(flatIndex)];
-        int position = bucket == null ? -1 : bucket.positionOf(flatIndex);
+        int slot = slotOf(keyFor(labelValue, flatIndex));
+        if (slot < 0) {
+            return -1;
+        }
+        long content = slots[(slot << 1) + 1];
+        if (content >= 0) {
+            return (int) (content >>> Integer.SIZE) == flatIndex ? (int) content : -1;
+        }
+        Bucket bucket = buckets[(int) (-1L - content)];
+        int position = bucket.positionOf(flatIndex);
         return position < 0 ? -1 : bucket.owners[position];
     }
 
@@ -263,13 +470,44 @@ final class TiledLabelIndex {
      * @return The state of the search after this value
      */
     long nearest(int labelValue, int excludedOwner, int[] from, int radius, boolean preferLowIndex, long state) {
-        ValueTiles ofValue = tilesByValue.get(labelValue);
-        if (ofValue == null) {
-            return state;
-        }
-        Bucket[] buckets = ofValue.buckets;
+        long[] table = slots;
+        int slotMask = mask;
+        Bucket[] several = buckets;
+        long valueKey = (long) labelValue << Integer.SIZE;
         int best = (int) state;
         int bestDistance = (int) (state >>> Integer.SIZE);
+        if (!tiledValues.get(labelValue)) {
+            // The few labels of the value are held together: examine each
+            int slot = slotOf(valueKey | ANYWHERE);
+            if (slot < 0) {
+                return state;
+            }
+            long content = table[(slot << 1) + 1];
+            if (content >= 0) {
+                if ((int) content != excludedOwner) {
+                    int flatIndex = (int) (content >>> Integer.SIZE);
+                    int distance = coordinates.distance(from, flatIndex);
+                    if (distance <= radius && isNearer(distance, flatIndex, bestDistance, best, preferLowIndex)) {
+                        bestDistance = distance;
+                        best = flatIndex;
+                    }
+                }
+                return searchState(bestDistance, best);
+            }
+            Bucket bucket = several[(int) (-1L - content)];
+            for (int i = 0, n = bucket.size; i < n; i++) {
+                if (bucket.owners[i] == excludedOwner) {
+                    continue;
+                }
+                int flatIndex = bucket.flatIndexes[i];
+                int distance = coordinates.distance(from, flatIndex);
+                if (distance <= radius && isNearer(distance, flatIndex, bestDistance, best, preferLowIndex)) {
+                    bestDistance = distance;
+                    best = flatIndex;
+                }
+            }
+            return searchState(bestDistance, best);
+        }
         int bound = Math.min(radius, bestDistance);
 
         boolean toroidal = coordinates.isToroidal();
@@ -309,10 +547,39 @@ final class TiledLabelIndex {
                         continue;
                     }
                     int tileSecond = wrap(homeSecond + offsetSecond, tilesAlongSecond);
-                    Bucket bucket = buckets[tileFirst * tilesAlongSecond + tileSecond];
-                    if (bucket == null || gapFirst + gap(fromSecond, tileSecond, sizeSecond, toroidal) > bound) {
+                    if (gapFirst + gap(fromSecond, tileSecond, sizeSecond, toroidal) > bound) {
                         continue;
                     }
+                    long key = valueKey | (tileFirst * tilesAlongSecond + tileSecond);
+                    int slot = home(key);
+                    long content = Long.MIN_VALUE;
+                    while (true) {
+                        long found = table[slot << 1];
+                        if (found == key) {
+                            content = table[(slot << 1) + 1];
+                            break;
+                        }
+                        if (found == EMPTY) {
+                            break;
+                        }
+                        slot = (slot + 1) & slotMask;
+                    }
+                    if (content == Long.MIN_VALUE) {
+                        continue;
+                    }
+                    if (content >= 0) {
+                        if ((int) content != excludedOwner) {
+                            int flatIndex = (int) (content >>> Integer.SIZE);
+                            int distance = coordinates.distance(from, flatIndex);
+                            if (distance <= radius && isNearer(distance, flatIndex, bestDistance, best, preferLowIndex)) {
+                                bestDistance = distance;
+                                best = flatIndex;
+                                bound = Math.min(radius, bestDistance);
+                            }
+                        }
+                        continue;
+                    }
+                    Bucket bucket = several[(int) (-1L - content)];
                     int[] flatIndexes = bucket.flatIndexes;
                     int[] owners = bucket.owners;
                     for (int i = 0, n = bucket.size; i < n; i++) {

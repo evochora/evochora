@@ -80,16 +80,17 @@ import java.util.Set;
  *       are kept per owner, ordered by flat index with their values, and the walk XORs and counts
  *       bits per entry; its cost grows with the number of labels the organism owns and does not
  *       depend on {@code tolerance}.</li>
- *   <li><b>Foreign labels:</b> {@link TiledLabelIndex} holds the labels per value and per tile of
- *       the world, and one bit per value in use. A stage probes the values at its Hamming distance —
+ *   <li><b>Foreign labels:</b> {@link TiledLabelIndex} holds the labels per value — those of a
+ *       value with few labels together, those of a value with many labels by tile of the world —
+ *       and one bit per value in use. A stage probes the values at its Hamming distance —
  *       1, then every single-bit, double-bit and triple-bit neighbour — against the bit set, and
  *       searches the labels of every value in use outwards from the caller, within the radius the
  *       stage leaves, {@code foreignReach − foreignReachDeductionPerBit × stage}. Under stable
  *       addresses one value is carried by every organism with that gene; the tiles keep the search
  *       to the labels nearby.</li>
  * </ul>
- * An addition, a removal or an owner change costs one probe of the table, a binary search and an
- * array shift in the owner's list, and a scan of one tile's bucket.
+ * An addition, a removal or an owner change costs one probe of the table of own labels, a binary
+ * search and an array shift in the owner's list, and one probe of the index of all labels.
  * <p>
  * Thread Safety: {@link #findTarget} and {@link #valuesMatch} only read and are called concurrently
  * from every thread of the parallel wave; {@link #addLabel}, {@link #removeLabel},

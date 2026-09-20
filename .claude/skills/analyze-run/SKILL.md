@@ -214,8 +214,10 @@ facts, not a reconstruction, and need no node:
   operation, family, variant, 4 a register step, 5 a register swap with the adjacent register
   operand, 6 a LABEL bit flip, 7 a LABELREF bit flip; a swap names two cells, every other action
   one), and
-  `label-rewrite` — the XOR mask every child's labels receive, with `cell_count` 0, `position`
-  `[]` and the mask in `params`; it changes no genome hash and is not a mutation.
+  `label-rewrite` — the XOR mask the labels and label references of a child received at birth,
+  recorded only for a birth whose namespace flip fired (one bit with the default strategy), with
+  `cell_count` 0, `position` `[]` and the mask in `params`; it changes no genome hash and is not a
+  mutation.
 - `variation_sources` — births per recording by what changed the genome: `unchanged`, `bodiless`
   (hash 0), `no_event`, one column per built-in kind, `multiple` (several kinds in one birth),
   `other` (a kind outside the built-in set). Its count columns are *summed* into the coarser LOD

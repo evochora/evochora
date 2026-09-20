@@ -77,6 +77,17 @@ public class LabelMatchingBenchmark {
     @Param({"OWN", "OWN_FUZZY", "FOREIGN_NEAR", "FOREIGN_MISS"})
     private String scenario;
 
+    /**
+     * Whether every organism carries its label values in a namespace of its own, as a high namespace
+     * flip rate over many bits leaves a population. {@code false}: all organisms share their label
+     * values, and a value's labels are as many as the population. {@code true}: the label values in
+     * use are as many as the labels, the value space is densely used, and a foreign search finds
+     * most of the neighbour values it probes in use. A caller of {@code FOREIGN_NEAR} then stands
+     * near the one organism that carries the value it searches.
+     */
+    @Param({"false"})
+    private boolean namespacePerOrganism;
+
     private HammingLabelMatchingStrategy strategy;
     private OrganismRandom random;
 
@@ -87,6 +98,7 @@ public class LabelMatchingBenchmark {
 
     /** The label values every organism owns, and the free plot and owner id of the organism being born. */
     private int[] values;
+    private int[] newbornValues;
     private int[] newbornFlatIndexes;
     private int newbornId;
 
@@ -114,19 +126,26 @@ public class LabelMatchingBenchmark {
             newbornFlatIndexes[k] = labelFlatIndex(props, plots[labelsPerValue], k);
         }
         Arrays.sort(origins, (a, b) -> Integer.compare(props.toFlatIndex(a), props.toFlatIndex(b)));
+        int[] namespaces = new int[labelsPerValue];
         for (int i = 0; i < labelsPerValue; i++) {
+            namespaces[i] = namespacePerOrganism ? setupRandom.nextInt(Config.VALUE_MASK + 1) : 0;
             for (int k = 0; k < VALUES; k++) {
-                strategy.addLabel(values[k], labelFlatIndex(props, origins[i], k), i + 1);
+                strategy.addLabel(values[k] ^ namespaces[i], labelFlatIndex(props, origins[i], k), i + 1);
             }
+        }
+        int newbornNamespace = namespacePerOrganism ? setupRandom.nextInt(Config.VALUE_MASK + 1) : 0;
+        newbornValues = new int[VALUES];
+        for (int k = 0; k < VALUES; k++) {
+            newbornValues[k] = values[k] ^ newbornNamespace;
         }
 
         int unintended = 0;
         for (int call = 0; call < CALLS; call++) {
             int k = setupRandom.nextInt(VALUES);
-            searchValues[call] = values[k];
+            int organism = setupRandom.nextInt(labelsPerValue);
+            searchValues[call] = values[k] ^ namespaces[organism];
             int expected;
             if (scenario.startsWith("OWN")) {
-                int organism = setupRandom.nextInt(labelsPerValue);
                 if ("OWN_FUZZY".equals(scenario)) {
                     searchValues[call] ^= 1 << setupRandom.nextInt(Config.VALUE_BITS);
                 }
@@ -136,10 +155,16 @@ public class LabelMatchingBenchmark {
             } else {
                 // Two callers that own nothing, one of each parity, so that both tie-break directions occur
                 callers[call] = labelsPerValue + 1 + (call & 1);
-                int y = band
-                        ? REMOTE_FROM + setupRandom.nextInt(REMOTE_TO - REMOTE_FROM)
-                        : setupRandom.nextInt(WORLD_HEIGHT);
-                callerCoords[call] = new int[]{setupRandom.nextInt(WORLD_WIDTH), y};
+                if (band) {
+                    callerCoords[call] = new int[]{setupRandom.nextInt(WORLD_WIDTH),
+                            REMOTE_FROM + setupRandom.nextInt(REMOTE_TO - REMOTE_FROM)};
+                } else if (namespacePerOrganism) {
+                    callerCoords[call] = new int[]{
+                            (origins[organism][0] + setupRandom.nextInt(81) - 40 + WORLD_WIDTH) % WORLD_WIDTH,
+                            (origins[organism][1] + setupRandom.nextInt(81) - 40 + WORLD_HEIGHT) % WORLD_HEIGHT};
+                } else {
+                    callerCoords[call] = new int[]{setupRandom.nextInt(WORLD_WIDTH), setupRandom.nextInt(WORLD_HEIGHT)};
+                }
                 expected = -1;
             }
             if (!endsAsIntended(call, expected)) {
@@ -235,13 +260,13 @@ public class LabelMatchingBenchmark {
     @Benchmark
     public int birthAndDeath() {
         for (int k = 0; k < VALUES; k++) {
-            strategy.addLabel(values[k], newbornFlatIndexes[k], newbornId);
+            strategy.addLabel(newbornValues[k], newbornFlatIndexes[k], newbornId);
         }
         for (int k = 0; k < VALUES; k++) {
-            strategy.changeOwner(values[k], newbornFlatIndexes[k], newbornId, 0);
+            strategy.changeOwner(newbornValues[k], newbornFlatIndexes[k], newbornId, 0);
         }
         for (int k = 0; k < VALUES; k++) {
-            strategy.removeLabel(values[k], newbornFlatIndexes[k], 0);
+            strategy.removeLabel(newbornValues[k], newbornFlatIndexes[k], 0);
         }
         return VALUES;
     }

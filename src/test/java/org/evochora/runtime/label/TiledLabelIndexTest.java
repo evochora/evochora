@@ -70,6 +70,36 @@ class TiledLabelIndexTest {
     }
 
     @Test
+    void keepsEveryLabelOfAValueWhenItGrowsFromFewToMany_andWhenItShrinksAgain() {
+        EnvironmentProperties properties = new EnvironmentProperties(new int[]{512, 384}, true);
+        TiledLabelIndex index = new TiledLabelIndex(properties);
+        int labels = 40;
+        int[] flatIndexes = new int[labels];
+        for (int i = 0; i < labels; i++) {
+            // Spread over several tiles, two of them in every cell row used
+            flatIndexes[i] = properties.toFlatIndex(new int[]{(i * 37) % 512, (i / 2) * 9});
+            index.put(VALUE, flatIndexes[i], i + 1);
+            for (int earlier = 0; earlier <= i; earlier++) {
+                assertThat(index.ownerOf(VALUE, flatIndexes[earlier])).isEqualTo(earlier + 1);
+            }
+        }
+
+        for (int i = 0; i < labels; i++) {
+            long search = index.nearest(VALUE, NOBODY, properties.flatIndexToCoordinates(flatIndexes[i]), 0, true,
+                    noneFound());
+            assertThat(TiledLabelIndex.foundFlatIndex(search)).isEqualTo(flatIndexes[i]);
+            assertThat(index.setOwner(VALUE, flatIndexes[i], 100 + i)).isTrue();
+        }
+
+        for (int i = 0; i < labels; i++) {
+            assertThat(index.remove(VALUE, flatIndexes[i])).isTrue();
+            assertThat(index.ownerOf(VALUE, flatIndexes[i])).isEqualTo(-1);
+            assertThat(index.isInUse(VALUE)).isEqualTo(i < labels - 1);
+        }
+        assertThat(index.isEmpty()).isTrue();
+    }
+
+    @Test
     void passesOverTheLabelsOfTheExcludedOwner() {
         EnvironmentProperties properties = new EnvironmentProperties(new int[]{256, 256}, true);
         TiledLabelIndex index = new TiledLabelIndex(properties);
