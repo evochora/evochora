@@ -128,6 +128,36 @@ class AnalyticsControllerTickRangeTest {
         });
     }
 
+    @Test
+    void runRange_spansEveryMetricOfTheRun() throws Exception {
+        IAnalyticsStorageRead storage = mock(IAnalyticsStorageRead.class);
+        // The metrics of a run do not reach equally far: each writes its own batch files and closes
+        // them at its own moment. One listing of the whole run answers for all of them, and the run
+        // reaches as far as the furthest
+        when(storage.getAnalyticsTickRange(eq("run1"), eq(""))).thenReturn(new long[]{0L, 45290000L});
+
+        Javalin app = createApp(storage);
+        JavalinTest.test(app, (server, client) -> {
+            var response = client.get("/api/run-range?runId=run1");
+            assertThat(response.code()).isEqualTo(200);
+
+            Map<?, ?> body = gson.fromJson(response.body().string(), Map.class);
+            assertThat(((Number) body.get("tickMin")).longValue()).isZero();
+            assertThat(((Number) body.get("tickMax")).longValue()).isEqualTo(45290000L);
+        });
+    }
+
+    @Test
+    void runRange_withoutAnyFileReturns404() throws Exception {
+        IAnalyticsStorageRead storage = mock(IAnalyticsStorageRead.class);
+        when(storage.getAnalyticsTickRange(eq("run1"), eq(""))).thenReturn(null);
+
+        Javalin app = createApp(storage);
+        JavalinTest.test(app, (server, client) -> {
+            assertThat(client.get("/api/run-range?runId=run1").code()).isEqualTo(404);
+        });
+    }
+
     // ========================================================================
     // Helpers
     // ========================================================================

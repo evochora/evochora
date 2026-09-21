@@ -66,6 +66,18 @@ export async function getManifest(runId) {
      * @param {string} [lod] - Optional LOD level
      * @returns {Promise<{tickMin: number|null, tickMax: number|null, fileCount: number, lod: string}>}
      */
+/**
+     * Asks how far a run has come: the first and the last tick it holds analytics for, over all of
+     * its metrics. One request for the run, since the metrics do not reach equally far and asking
+     * each of them would list the same files once per metric.
+     *
+     * @param {string} runId - Simulation run ID
+     * @returns {Promise<{tickMin: ?number, tickMax: ?number}>} The ticks the run holds
+     */
+export async function fetchRunRange(runId) {
+        return await fetchJson(`/run-range?runId=${encodeURIComponent(runId)}`);
+    }
+
 export async function fetchTickRange(metric, runId, lod = null) {
         let url = `/tick-range?metric=${encodeURIComponent(metric)}&runId=${encodeURIComponent(runId)}`;
         if (lod) {

@@ -67,6 +67,14 @@ public class AnalyticsController implements IController {
     private final CardPlacements placements;
     private final ConcurrentHashMap<String, CacheEntry> manifestCache = new ConcurrentHashMap<>();
     /**
+     * The tick range of each run as last read, so that a page asking for it while a run is written
+     * costs one listing per run and interval however many readers ask. The interval is short: the
+     * answer says how far a growing run has come, and a reader watches it grow.
+     */
+    private final ConcurrentHashMap<String, CacheEntry> runRangeCache = new ConcurrentHashMap<>();
+    /** How long the tick range of a run is served from the cache. */
+    private static final long RUN_RANGE_TTL_MS = 5000L;
+    /**
      * The missing companion tables already reported, by run, card and table, so that the log names
      * each of them once and not again with every manifest rebuilt after the cache ran out.
      */
@@ -117,6 +125,7 @@ public class AnalyticsController implements IController {
         app.get(basePath + "/runs", this::listRuns);
         app.get(basePath + "/manifest", this::getManifest);
         app.get(basePath + "/tick-range", this::getTickRange);
+        app.get(basePath + "/run-range", this::getRunRange);
         app.get(basePath + "/data", this::queryData);
         // Merged Parquet streaming for client-side DuckDB WASM queries
         app.get(basePath + "/parquet", this::getParquet);
@@ -272,6 +281,78 @@ public class AnalyticsController implements IController {
             @OpenApiResponse(status = "404", description = "No data found")
         }
     )
+    /**
+     * Returns the ticks a run holds analytics for, across every metric of it.
+     * <p>
+     * Route: GET /run-range?runId=...
+     * <p>
+     * The range comes from the names of the batch files, so no file is opened and one listing of
+     * the run answers for all its metrics at once. That matters for a reader watching a run grow:
+     * asking each metric on its own would cost one listing per metric over the same files, and the
+     * metrics do not reach equally far anyway - each writes its own batches and closes them at its
+     * own moment, so the run reaches as far as the furthest of them.
+     * <p>
+     * The answer is cached briefly, so that several open pages cost one listing per interval.
+     *
+     * @param ctx Javalin request context
+     */
+    @OpenApi(
+        path = "run-range",
+        methods = {HttpMethod.GET},
+        summary = "Get the tick range of a run",
+        description = "Returns the first and last tick the run holds analytics for, over all of its "
+            + "metrics. Only scans filenames - no file I/O.",
+        tags = {"analyzer / analytics"},
+        queryParams = {
+            @OpenApiParam(name = "runId", description = "Run ID (optional, defaults to latest)", required = false)
+        },
+        responses = {
+            @OpenApiResponse(
+                status = "200",
+                description = "Tick range of the run",
+                content = @OpenApiContent(
+                    mimeType = "application/json",
+                    example = """
+                        {"tickMin": 0, "tickMax": 45290000}
+                        """
+                )
+            ),
+            @OpenApiResponse(status = "404", description = "No run, or no data yet")
+        }
+    )
+    private void getRunRange(Context ctx) {
+        String runId;
+        try {
+            runId = resolveRunId(ctx);
+        } catch (IllegalStateException e) {
+            ctx.status(404).result("No simulation runs available");
+            return;
+        }
+
+        CacheEntry cached = runRangeCache.get(runId);
+        if (cached != null && System.currentTimeMillis() - cached.timestamp() < RUN_RANGE_TTL_MS) {
+            ctx.contentType("application/json").result(cached.json());
+            return;
+        }
+
+        try {
+            long[] range = storage.getAnalyticsTickRange(runId, "");
+            if (range == null) {
+                ctx.status(404).result("No data found for run: " + runId);
+                return;
+            }
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("tickMin", range[0]);
+            result.put("tickMax", range[1]);
+            String json = gson.toJson(result);
+            runRangeCache.put(runId, new CacheEntry(System.currentTimeMillis(), json));
+            ctx.contentType("application/json").result(json);
+        } catch (Exception e) {
+            log.error("Failed to get the tick range of run {}", runId, e);
+            ctx.status(500).result("Failed to get tick range: " + e.getMessage());
+        }
+    }
+
     private void getTickRange(Context ctx) {
         String metric = ctx.queryParam("metric");
         String lod = ctx.queryParam("lod");
