@@ -85,7 +85,8 @@ class ConfigLoaderTest {
     void loadDefaults_shouldReturnValidConfig() {
         Config config = ConfigLoader.loadDefaults();
 
-        assertNotNull(config);
+        assertEquals(1, config.getInt("profiles.detailed.samplingInterval"),
+                "The classpath defaults carry the profiles from reference.conf");
     }
 
     @Test

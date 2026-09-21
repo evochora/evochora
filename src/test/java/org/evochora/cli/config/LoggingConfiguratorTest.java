@@ -17,9 +17,9 @@ import org.slf4j.LoggerFactory;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 
+import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.LoggerContext;
 import ch.qos.logback.core.Appender;
-import ch.qos.logback.core.ConsoleAppender;
 
 /**
  * Tests for the LoggingConfigurator class.
@@ -54,31 +54,6 @@ class LoggingConfiguratorTest {
         final LoggerContext context = (LoggerContext) LoggerFactory.getILoggerFactory();
         final String formatProperty = context.getProperty("evochora.logging.format");
         assertEquals("STDOUT_PLAIN", formatProperty, "PLAIN format should set STDOUT_PLAIN property");
-        
-        // Verify that the root logger uses the correct appender
-        final ch.qos.logback.classic.Logger rootLogger = context.getLogger(Logger.ROOT_LOGGER_NAME);
-        
-        // Debug: Print all appenders
-        final java.util.Iterator<Appender<ch.qos.logback.classic.spi.ILoggingEvent>> iterator = rootLogger.iteratorForAppenders();
-        while (iterator.hasNext()) {
-            iterator.next();
-        }
-        
-        // Check if STDOUT_PLAIN appender exists
-        final Appender<?> plainAppender = rootLogger.getAppender("STDOUT_PLAIN");
-        if (plainAppender == null) {
-            // If not found, check if any appender is attached
-            final java.util.Iterator<Appender<ch.qos.logback.classic.spi.ILoggingEvent>> checkIterator = rootLogger.iteratorForAppenders();
-            final boolean hasAppenders = checkIterator.hasNext();
-            assertTrue(hasAppenders, "Root logger should have at least one appender after configuration");
-            
-            // Check the first appender
-            final Appender<?> firstAppender = checkIterator.next();
-            assertTrue(firstAppender instanceof ConsoleAppender, 
-                "First appender should be ConsoleAppender, but was: " + firstAppender.getClass().getSimpleName());
-        } else {
-            assertTrue(plainAppender instanceof ConsoleAppender, "STDOUT_PLAIN appender should be ConsoleAppender");
-        }
     }
 
     @Test
@@ -161,8 +136,13 @@ class LoggingConfiguratorTest {
         LoggingConfigurator.configure(config);
 
         // Then
-        // The configuration should be applied without throwing exceptions
-        assertTrue(true, "Configuration should complete without errors");
+        final LoggerContext context = (LoggerContext) LoggerFactory.getILoggerFactory();
+        assertEquals(Level.WARN, context.getLogger(Logger.ROOT_LOGGER_NAME).getLevel(),
+            "default-level sets the level of the root logger");
+        assertEquals(Level.DEBUG, context.getLogger("org.evochora.test").getLevel(),
+            "A named logger overrides the default level");
+        assertEquals(Level.INFO, context.getLogger("org.evochora.datapipeline.ServiceManager").getLevel(),
+            "Every named logger receives its own level");
     }
 
     @Test
@@ -174,12 +154,18 @@ class LoggingConfiguratorTest {
             }
             """);
 
+        final LoggerContext context = (LoggerContext) LoggerFactory.getILoggerFactory();
+        context.putProperty("evochora.logging.format", "UNTOUCHED");
+
         // When
         LoggingConfigurator.configure(config);
 
         // Then
-        // Should not throw exceptions and use Logback defaults
-        assertTrue(true, "Configuration should complete without errors");
+        assertEquals("UNTOUCHED", context.getProperty("evochora.logging.format"),
+            "Without a logging block no format is applied and Logback keeps its defaults");
+
+        // Leave a valid appender name behind for tests that reconfigure Logback.
+        context.putProperty("evochora.logging.format", "STDOUT");
     }
 
     @Test
@@ -194,11 +180,16 @@ class LoggingConfiguratorTest {
 
         // When
         LoggingConfigurator.configure(config);
-        LoggingConfigurator.configure(config); // Second call
+        LoggingConfigurator.configure(ConfigFactory.parseString("""
+            logging {
+              format = "JSON"
+            }
+            """));
 
         // Then
-        // Should not throw exceptions
-        assertTrue(true, "Multiple calls should be idempotent");
+        final LoggerContext context = (LoggerContext) LoggerFactory.getILoggerFactory();
+        assertEquals("STDOUT_PLAIN", context.getProperty("evochora.logging.format"),
+            "The second call is skipped, so the format of the first one survives");
     }
 
     @Test
