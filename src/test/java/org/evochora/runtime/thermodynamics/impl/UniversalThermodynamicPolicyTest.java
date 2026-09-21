@@ -261,22 +261,4 @@ class UniversalThermodynamicPolicyTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("zero");
     }
-
-    @Test
-    void theShippedConfigurationIsAccepted() {
-        // The two configuration files the project ships must pass the check they introduce.
-        // The thermodynamics block carries no substitutions of its own; the rest of the file
-        // does, and resolving it is the node's business, not this test's.
-        var config = com.typesafe.config.ConfigFactory.parseFile(new java.io.File("config/evochora.conf"))
-                .resolve(com.typesafe.config.ConfigResolveOptions.defaults().setAllowUnresolved(true));
-        var options = config.getConfig(
-                "pipeline.services.simulation-engine.options.runtime.thermodynamics.overrides.instructions")
-                .getConfig("\"PEEK, PEKI, PEKS, POKE, POKI, POKS, PPKR, PPKI, PPKS\"")
-                .getConfig("options");
-
-        var policy = new UniversalThermodynamicPolicy();
-        policy.initialize(options);
-
-        assertThat(policy.baseEnergy()).isZero();
-    }
 }

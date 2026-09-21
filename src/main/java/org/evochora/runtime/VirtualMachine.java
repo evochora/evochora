@@ -12,6 +12,8 @@ import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
 import org.evochora.runtime.spi.thermodynamics.IThermodynamicPolicy;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * The core of the execution environment.
@@ -23,6 +25,8 @@ import org.evochora.runtime.spi.thermodynamics.IThermodynamicPolicy;
  * threads, provided each organism is only accessed by one thread at a time.
  */
 public class VirtualMachine {
+
+    private static final Logger LOG = LoggerFactory.getLogger(VirtualMachine.class);
 
     /**
      * Failure reason recorded for an instruction that lost a write conflict. The instruction was
@@ -219,8 +223,17 @@ public class VirtualMachine {
             // Whatever the instruction managed to do before it threw is priced like any other
             // effect; what it did not do left no record and costs nothing. A throw from before the
             // base values were charged leaves them unpaid.
+            //
+            // Pricing is guarded in turn: this is the catch-all that keeps one organism's failure
+            // from taking the tick with it, and a policy that throws while pricing would escape
+            // through it. The instruction then pays its base values and the error penalty alone.
             if (policy != null && !effectsCharged) {
-                chargeEffects(policy, organism, context);
+                try {
+                    chargeEffects(policy, organism, context);
+                } catch (Exception pricingFailure) {
+                    LOG.error("Thermodynamic policy {} failed to price the effects of organism {}: {}",
+                            policy.getClass().getName(), organism.getId(), pricingFailure.toString(), pricingFailure);
+                }
             }
 
             // Apply penalty
