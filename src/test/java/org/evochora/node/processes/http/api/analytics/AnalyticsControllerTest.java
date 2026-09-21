@@ -111,12 +111,13 @@ class AnalyticsControllerTest {
     }
 
     @Test
-    @ExpectLog(level = LogLevel.WARN, messagePattern = "Run run1: the card 'mutation_success' reads the table 'births', which the run does not hold.*")
+    @ExpectLog(level = LogLevel.WARN, messagePattern = "Run run1: the card 'mutation_success' reads the table 'births', which this run holds nothing under and no plugin of this node writes.*")
     void aCardWhoseCompanionTableTheRunDoesNotHoldIsReported() throws Exception {
         IAnalyticsStorageRead storage = mock(IAnalyticsStorageRead.class);
         when(storage.listAnalyticsFiles(eq("run1"), eq("")))
             .thenReturn(List.of("mutation_success/metadata.json", "genome_diversity/metadata.json",
-                "generation_time/metadata.json"));
+                "generation_time/metadata.json", "generation_time/lod0/0/t_0_9.parquet",
+                "genome/lod0/0/g_0_9.parquet"));
         // Reads a table no entry of the run is stored under
         when(storage.openAnalyticsInputStream(eq("run1"), eq("mutation_success/metadata.json")))
             .thenReturn(new ByteArrayInputStream(("{\"id\":\"mutation_success\","
@@ -133,8 +134,41 @@ class AnalyticsControllerTest {
         ServiceRegistry registry = new ServiceRegistry();
         registry.register(IAnalyticsStorageRead.class, storage);
 
-        AnalyticsController controller = new AnalyticsController(registry,
-            ConfigFactory.parseMap(Map.of("analyticsManifestCacheTtlSeconds", 1)));
+        // A node that writes the variation sources but no births: nothing will ever fill that table
+        AnalyticsController controller = new AnalyticsController(registry, ConfigFactory.parseString("""
+            analyticsManifestCacheTtlSeconds = 1
+            plugins = [
+              { className = "V", options { metricId = "variation_sources", group = "Evolution" } }
+            ]
+            """));
+        Javalin app = Javalin.create();
+        controller.registerRoutes(app, "/api");
+
+        JavalinTest.test(app, (server, client) -> {
+            assertThat(client.get("/api/manifest?runId=run1").code()).isEqualTo(200);
+        });
+    }
+
+    @Test
+    void aCompanionTableWithFilesIsHeldEvenWhereItWritesNoManifestEntry() throws Exception {
+        IAnalyticsStorageRead storage = mock(IAnalyticsStorageRead.class);
+        // A plugin that writes no card writes no metadata.json, only its files
+        when(storage.listAnalyticsFiles(eq("run1"), eq("")))
+            .thenReturn(List.of("mutation_success/metadata.json", "births/lod0/0/births_0_9.parquet"));
+        when(storage.openAnalyticsInputStream(eq("run1"), eq("mutation_success/metadata.json")))
+            .thenReturn(new ByteArrayInputStream(("{\"id\":\"mutation_success\","
+                + "\"storageMetricId\":\"variation_sources\","
+                + "\"companions\":[{\"metricId\":\"births\",\"query\":\"q\"}]}").getBytes()));
+        ServiceRegistry registry = new ServiceRegistry();
+        registry.register(IAnalyticsStorageRead.class, storage);
+
+        // Not configured here either, so only its files can say the run holds it
+        AnalyticsController controller = new AnalyticsController(registry, ConfigFactory.parseString("""
+            analyticsManifestCacheTtlSeconds = 1
+            plugins = [
+              { className = "V", options { metricId = "variation_sources", group = "Evolution" } }
+            ]
+            """));
         Javalin app = Javalin.create();
         controller.registerRoutes(app, "/api");
 

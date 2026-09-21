@@ -75,6 +75,16 @@ final class CardPlacements {
         }
     }
 
+    /**
+     * Says whether a plugin of this name is in the list the node is configured with.
+     *
+     * @param metricId The metric id to look for
+     * @return {@code true} if a configured plugin writes under that name
+     */
+    boolean knowsMetric(String metricId) {
+        return byMetricId.containsKey(metricId);
+    }
+
     /** Placements of no plugin at all: every card keeps the order it arrived in. */
     static CardPlacements none() {
         return new CardPlacements(List.of());
