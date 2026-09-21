@@ -313,8 +313,7 @@ public class VariationSourcesPlugin extends AbstractAnalyticsPlugin {
         entry.storageMetricId = metricId;
         entry.name = "Mutation Success";
         entry.description = "How often a birth founds a line that goes on, by the mutation it "
-            + "received, against the births the mutation plugins left alone (= 1). A kind that "
-            + "stays far below the others is a cliff.";
+            + "received, against the births no mutation plugin touched (= 1).";
 
         entry.companions = List.of(new ManifestEntry.Companion(birthsMetricId,
             "SELECT birth_tick, parent_birth_tick, organism_id, parent_id, variation FROM {table}",
@@ -322,6 +321,7 @@ public class VariationSourcesPlugin extends AbstractAnalyticsPlugin {
 
         entry.visualization = VisualizationHint.chart("band-chart", "tick")
             .with("derived", "mutation-success")
+            .with("tooYoung", "tooYoung")
             .with("birthsMetric", birthsMetricId)
             .with("variationClasses", BirthVariation.CLASSES)
             .with("groups", successGroups())

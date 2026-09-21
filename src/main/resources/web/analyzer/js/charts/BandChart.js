@@ -7,7 +7,9 @@ import { formatTickValue, axisTicks, tooltipTitle, tooltipValue } from './ChartU
  * Renders percentile data as layered bands to show distribution over time.
  * This is ideal for visualizing age distributions, showing min/max, interquartile range, etc.
  *
- * A metric may name its second-axis series through {@code labels}, a map from column to label.
+ * A metric may name its second-axis series through {@code labels}, a map from column to label,
+ * and mark the rows it cannot judge yet through {@code tooYoung}, which names a column carrying
+ * that mark; the chart then shows that stretch as such instead of leaving it looking empty.
  *
  * A metric may draw more than one distribution in one chart: {@code groups} names each of them
  * with its own colour and its own percentile columns, and the legend tells them apart by name.
@@ -140,6 +142,52 @@ function percentileLabel(name, key) {
     const prefix = stem + '_';
     const bare = name && key.toLowerCase().startsWith(prefix) ? key.slice(prefix.length) : key;
     return formatLabel(bare);
+}
+
+/**
+ * Marks the stretch a metric says it cannot judge yet.
+ *
+ * A metric whose answer needs what happens after a moment - whether a birth founded a line, say -
+ * has nothing to say about its newest moments. Their windows are empty, and an empty right edge
+ * reads as data that went missing. The stretch is therefore drawn as what it is: shaded, closed
+ * off by a line, and named.
+ *
+ * @param {Array<Object>} data - The rows drawn
+ * @param {Object} config - Visualization config, naming the column that marks such a row
+ * @returns {Array<Object>} The plugin, or none where the metric marks nothing
+ */
+function tooYoungPlugin(data, config) {
+    const key = config.tooYoung;
+    if (!key) {
+        return [];
+    }
+    const first = data.findIndex(row => row[key]);
+    if (first < 0) {
+        return [];
+    }
+    return [{
+        id: 'tooYoung',
+        beforeDatasetsDraw(chart) {
+            const area = chart.chartArea;
+            const x = chart.scales.x.getPixelForValue(first);
+            const ctx = chart.ctx;
+            ctx.save();
+            ctx.fillStyle = 'rgba(224, 224, 224, 0.05)';
+            ctx.fillRect(x, area.top, area.right - x, area.bottom - area.top);
+            ctx.strokeStyle = 'rgba(224, 224, 224, 0.25)';
+            ctx.setLineDash([4, 4]);
+            ctx.beginPath();
+            ctx.moveTo(x, area.top);
+            ctx.lineTo(x, area.bottom);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.fillStyle = '#9aa0a6';
+            ctx.font = "10px 'Courier New', monospace";
+            ctx.textAlign = 'right';
+            ctx.fillText(config.tooYoungLabel || 'too young to judge', area.right - 6, area.top + 12);
+            ctx.restore();
+        }
+    }];
 }
 
 /**
@@ -304,6 +352,7 @@ export function render(canvas, data, config) {
                 labels: labels,
                 datasets: datasets
             },
+            plugins: tooYoungPlugin(data, config),
             options: {
                 responsive: true,
                 maintainAspectRatio: false,

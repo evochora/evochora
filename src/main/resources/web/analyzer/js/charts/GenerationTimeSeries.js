@@ -175,7 +175,8 @@ export function derive(companion, config, window, points) {
     for (let index = 0; index < count; index++) {
         const tick = Math.round(from + (index + 0.5) * width);
         const judged = tick < censorFrom;
-        const row = { tick };
+        // A window past the point where a birth could have grandchildren is not empty by accident
+        const row = { tick, tooYoung: !judged };
         for (const percentile of PERCENTILES) {
             row[percentile.key] = judged
                 ? BirthLines.quantile(times[index], percentile.rank) : null;

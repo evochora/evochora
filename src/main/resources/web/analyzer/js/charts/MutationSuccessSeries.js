@@ -28,10 +28,9 @@ import * as BirthLines from './BirthLines.js';
 /** The series the kinds are measured against, constant 1. */
 const CONTROL_SERIES = 'no_plugin_mutation';
 
-/** What the keys beside a kind's own carry: the ends of its range, and the births behind it. */
+/** What the keys beside a kind's own carry: the ends of the range around its value. */
 const LOW_SUFFIX = '_low';
 const HIGH_SUFFIX = '_high';
-const BIRTHS_SUFFIX = '_births';
 
 /** How many standard errors the drawn range reaches on each side. */
 const SPREAD_SIGMA = 1.96;
@@ -182,7 +181,8 @@ export function derive(companion, config, window, points) {
     const rows = [];
     for (let index = 0; index < windows; index++) {
         const tick = Math.round(from + (index + 0.5) * width);
-        const row = { tick };
+        // A window past the point where a birth could have grandchildren is not empty by accident
+        const row = { tick, tooYoung: tick >= censorFrom };
         row[CONTROL_SERIES] = 1;
         if (tick >= censorFrom) {
             KINDS.forEach(name => {
@@ -197,9 +197,9 @@ export function derive(companion, config, window, points) {
         const controlFounded = counts.founded[index];
         const controlOdds = controlFounded > 0 ? controlFounded / controlBirths : null;
         const controlRate = controlOdds;
-        // Every kind the window holds gets its value, the range that value could as well be, and
-        // the births it rests on. The range is what makes a fine window readable: where two kinds
-        // overlap, this window says nothing about their difference
+        // Every kind the window holds gets its value and the range it could as well be. The range
+        // is what makes a fine window readable: where two kinds overlap, this window says nothing
+        // about their difference
         KINDS.forEach((name, kind) => {
             const cell = (kind + 1) * windows + index;
             const births = counts.births[cell];
@@ -210,7 +210,6 @@ export function derive(companion, config, window, points) {
             row[name] = value;
             row[name + LOW_SUFFIX] = range ? value * range : null;
             row[name + HIGH_SUFFIX] = range ? value / range : null;
-            row[name + BIRTHS_SUFFIX] = counts.raw[cell];
         });
         rows.push(row);
     }

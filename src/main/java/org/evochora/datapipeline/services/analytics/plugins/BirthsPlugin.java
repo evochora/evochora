@@ -219,9 +219,8 @@ public class BirthsPlugin extends AbstractAnalyticsPlugin {
         ManifestEntry entry = new ManifestEntry();
         entry.id = metricId;
         entry.name = "Generation Time";
-        entry.description = "How long a line needs for one step: from an organism's birth to its "
-            + "first child that reproduces in turn. The longer it takes, the slower the population "
-            + "can change. Right axis: the share of newborns that found such a line at all.";
+        entry.description = "From an organism's birth to its first child that reproduces in turn. "
+            + "Right axis: the share of newborns that found such a line.";
 
         entry.companions = List.of(new ManifestEntry.Companion(metricId,
             "SELECT birth_tick, parent_birth_tick, organism_id, parent_id, variation FROM {table}",
@@ -229,6 +228,7 @@ public class BirthsPlugin extends AbstractAnalyticsPlugin {
 
         entry.visualization = VisualizationHint.chart("band-chart", "tick")
             .with("derived", "generation-time")
+            .with("tooYoung", "tooYoung")
             .with("birthsMetric", metricId)
             .with("variationClasses", BirthVariation.CLASSES)
             .with("y", List.of("p10", "p25", "p50", "p75", "p90"))
