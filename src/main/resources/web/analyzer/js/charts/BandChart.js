@@ -22,6 +22,9 @@ import { formatTickValue, axisTicks, tooltipTitle, tooltipValue } from './ChartU
     const BAND_ALPHA = ['20', '40', '60', '80'];
     const BAND_BASE = '#4a9eff';
 
+    /** How much room the label along the line needs across, in pixels. */
+    const LABEL_LINE_HEIGHT = 13;
+
     /** The colour of the line the bands are held against, where a metric names one. */
     const REFERENCE_COLOR = '#9aa0a6';
 
@@ -178,14 +181,20 @@ function tooYoungPlugin(data, config) {
             ctx.lineTo(x, area.bottom);
             ctx.stroke();
             ctx.setLineDash([]);
-            // The label belongs to the stretch, and where the stretch is too narrow to hold it,
-            // it stands to the left of the line rather than running off the plot
+            // The label stands along the line, where it needs the height of the plot rather than
+            // its width: a stretch of a few windows is narrow, and a card is never that short.
+            // Where even the height does not hold it, the shading and the line say it alone
             const text = config.tooYoungLabel || 'too young to judge';
             ctx.fillStyle = '#9aa0a6';
             ctx.font = "10px 'Courier New', monospace";
-            ctx.textAlign = 'right';
-            const fits = area.right - x > ctx.measureText(text).width + 12;
-            ctx.fillText(text, fits ? area.right - 6 : x - 6, area.top + 12);
+            const height = area.bottom - area.top;
+            if (ctx.measureText(text).width + 16 <= height) {
+                const wide = area.right - x >= LABEL_LINE_HEIGHT;
+                ctx.translate(x + (wide ? LABEL_LINE_HEIGHT - 3 : -3), area.bottom - 8);
+                ctx.rotate(-Math.PI / 2);
+                ctx.textAlign = 'left';
+                ctx.fillText(text, 0, 0);
+            }
             ctx.restore();
         }
     }];
