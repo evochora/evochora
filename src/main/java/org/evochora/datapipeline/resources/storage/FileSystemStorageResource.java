@@ -474,6 +474,32 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource
         return Files.newInputStream(file.toPath());
     }
 
+    /**
+     * Names the directory a listing has to walk to find every file whose path starts with a prefix.
+     * <p>
+     * A run holds one directory per metric and level, and a listing for one of them has no reason
+     * to look at the others: walking the run's whole analytics tree costs every file of every
+     * metric, which on a long run is two orders of magnitude more than the prefix can match. The
+     * directory named here is the deepest one the prefix fixes, so the callers' string comparison
+     * against the prefix decides exactly as it did over the whole tree.
+     *
+     * @param rootPath     The run's analytics root
+     * @param searchPrefix The prefix paths are matched against, relative to that root
+     * @return The directory to walk, or null where the prefix names one that does not exist and no
+     *         file can match
+     */
+    private static Path walkRootFor(Path rootPath, String searchPrefix) {
+        int lastSlash = searchPrefix.lastIndexOf('/');
+        if (lastSlash <= 0) {
+            return rootPath;
+        }
+        Path named = rootPath.resolve(searchPrefix.substring(0, lastSlash)).normalize();
+        if (!named.startsWith(rootPath)) {
+            return rootPath;
+        }
+        return Files.isDirectory(named) ? named : null;
+    }
+
     @Override
     public List<String> listAnalyticsFiles(String runId, String prefix) throws IOException {
         // Analytics root for this run
@@ -484,10 +510,14 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource
 
         // Prefix is relative to analytics/{runId}/
         String searchPrefix = (prefix == null) ? "" : prefix;
-        
-        // Simple recursive walk, filtering by prefix
+
+        // Walk the directory the prefix names, and match the paths against it as before
         Path rootPath = analyticsRoot.toPath();
-        try (Stream<Path> stream = Files.walk(rootPath)) {
+        Path walkRoot = walkRootFor(rootPath, searchPrefix);
+        if (walkRoot == null) {
+            return Collections.emptyList();
+        }
+        try (Stream<Path> stream = Files.walk(walkRoot)) {
             return stream
                 .filter(Files::isRegularFile)
                 .map(p -> rootPath.relativize(p))
@@ -513,8 +543,12 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource
 
         String searchPrefix = (prefix == null) ? "" : prefix;
         Path rootPath = analyticsRoot.toPath();
+        Path walkRoot = walkRootFor(rootPath, searchPrefix);
+        if (walkRoot == null) {
+            return Collections.emptyList();
+        }
 
-        try (Stream<Path> stream = Files.walk(rootPath)) {
+        try (Stream<Path> stream = Files.walk(walkRoot)) {
             return stream
                 .filter(Files::isRegularFile)
                 .map(p -> rootPath.relativize(p))
@@ -547,12 +581,16 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource
 
         String searchPrefix = (prefix == null) ? "" : prefix;
         Path rootPath = analyticsRoot.toPath();
+        Path walkRoot = walkRootFor(rootPath, searchPrefix);
+        if (walkRoot == null) {
+            return null;
+        }
 
         long minTick = Long.MAX_VALUE;
         long maxTick = Long.MIN_VALUE;
         boolean found = false;
 
-        try (Stream<Path> stream = Files.walk(rootPath)) {
+        try (Stream<Path> stream = Files.walk(walkRoot)) {
             List<String> paths = stream
                 .filter(Files::isRegularFile)
                 .map(p -> rootPath.relativize(p))

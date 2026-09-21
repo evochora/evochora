@@ -99,6 +99,19 @@ class FileSystemStorageAnalyticsTest {
     }
 
     @Test
+    void aPrefixOfNoDirectoryListsNothingAndLeavesTheOtherMetricsAlone() throws IOException {
+        storage.writeAnalyticsBlob(runId, "metric1", "lod0", "data.csv", "data".getBytes());
+        storage.writeAnalyticsBlob(runId, "metric1", "lod1", "data.csv", "data".getBytes());
+
+        // A listing walks the directory its prefix names, so one that names none finds nothing -
+        // and a prefix that is no whole directory name still matches as the string it is
+        assertTrue(storage.listAnalyticsFiles(runId, "metric9/lod0/").isEmpty());
+        assertTrue(storage.listAnalyticsFiles(runId, "metric1/lod9/").isEmpty());
+        assertEquals(2, storage.listAnalyticsFiles(runId, "metric1/lod").size());
+        assertEquals(1, storage.listAnalyticsFiles(runId, "metric1/lod0").size());
+    }
+
+    @Test
     void testWriteAtomicBlob() throws IOException {
         String metricId = "blob";
         String filename = "data.bin";

@@ -723,14 +723,7 @@ public class AnalyticsController implements IController {
                         }
                     }
                     
-                    // Validate file is readable (catches files still being written)
-                    try {
-                        validateParquetFile(tempFile);
-                        tempFiles.add(tempFile);
-                    } catch (Exception e) {
-                        log.debug("Skipping unreadable Parquet file (may still be written): {}", file);
-                        Files.deleteIfExists(tempFile);
-                    }
+                    tempFiles.add(tempFile);
                 }
                 
                 if (tempFiles.isEmpty()) {
@@ -738,7 +731,11 @@ public class AnalyticsController implements IController {
                     return;
                 }
 
-                // 3. Merge Parquet files using DuckDB (with optional tick range filter)
+                // 3. Merge Parquet files using DuckDB (with optional tick range filter). Storage
+                // publishes an analytics file by moving it into place, so every listed file is a
+                // complete one and the merge reads them all in one pass. A file it cannot read is
+                // a damaged one: the request fails with it rather than answering with a chart that
+                // silently misses whatever that file held.
                 mergedFile = tempDir.resolve("merged.parquet");
                 mergeParquetFiles(tempFiles, mergedFile, tickFrom, tickTo);
                 
@@ -990,7 +987,7 @@ public class AnalyticsController implements IController {
                 }
             }
 
-            warnAboutMissingCompanions(runId, entries);
+            warnAboutMissingCompanions(runId, entries, files);
 
             Map<String, Object> response = Map.of("metrics", placements.apply(entries));
             String responseJson = gson.toJson(response);
@@ -1017,17 +1014,24 @@ public class AnalyticsController implements IController {
      * indexer - which whoever runs the servers can change and whoever looks at the analyzer
      * possibly cannot, so it is said here, in the server's log. The indexers do not say it: the
      * table may be written by an indexer on another node, and none of them knows what the others
-     * write. A run holds a table when one of its manifest entries is stored under that name, which
-     * an indexer writes before its first row.
+     * write. A run holds a table when it has files under that name: a plugin that writes no card of
+     * its own writes no manifest entry either, so the entries say nothing about the companion
+     * tables - which are exactly the tables asked about here.
+     * <p>
+     * A table this node is configured to write is left out of the report even while the run holds
+     * nothing under its name: it is on its way rather than a table nobody writes.
      *
      * @param runId   The run the manifest belongs to
      * @param entries The manifest entries read from the run
+     * @param files   Every analytics file of the run, each path starting with its table's name
      */
-    private void warnAboutMissingCompanions(String runId, List<ManifestEntry> entries) {
+    private void warnAboutMissingCompanions(String runId, List<ManifestEntry> entries,
+                                            List<String> files) {
         Set<String> held = new HashSet<>();
-        for (ManifestEntry entry : entries) {
-            if (entry != null) {
-                held.add(storageMetricOf(entry));
+        for (String file : files) {
+            int slash = file.indexOf('/');
+            if (slash > 0) {
+                held.add(file.substring(0, slash));
             }
         }
         for (ManifestEntry entry : entries) {
@@ -1036,24 +1040,13 @@ public class AnalyticsController implements IController {
             }
             for (ManifestEntry.Companion companion : entry.companions) {
                 if (!held.contains(companion.metricId())
+                        && !placements.knowsMetric(companion.metricId())
                         && reportedMissingCompanions.add(runId + "/" + entry.id + "/" + companion.metricId())) {
-                    log.warn("Run {}: the card '{}' reads the table '{}', which the run does not hold; the card cannot be drawn until an analytics indexer runs a plugin with that metricId",
+                    log.warn("Run {}: the card '{}' reads the table '{}', which this run holds nothing under and no plugin of this node writes; the card cannot be drawn until an analytics indexer runs a plugin with that metricId",
                         runId, entry.id, companion.metricId());
                 }
             }
         }
-    }
-
-    /**
-     * Names the table a manifest entry's rows are stored under.
-     *
-     * @param entry The manifest entry
-     * @return Its {@code storageMetricId}, or its id where it names none
-     */
-    private static String storageMetricOf(ManifestEntry entry) {
-        return entry.storageMetricId != null && !entry.storageMetricId.isBlank()
-            ? entry.storageMetricId
-            : entry.id;
     }
 
     /**
