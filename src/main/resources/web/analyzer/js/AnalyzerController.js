@@ -546,6 +546,31 @@ export async function loadDashboard(runId) {
     }
 
     /**
+     * Brings the loaded rows down to what the card draws.
+     *
+     * Rows of ticks are dropped where there are more than the card can show. A metric whose
+     * columns are counts may not be treated that way: a dropped row takes its counts with it, and
+     * the card would say that fewer were born than were. Such a metric has to add its counts up
+     * per window in its own query, and where it did not, the card refuses rather than undercount.
+     *
+     * @param {Array<Object>} rows - The rows as loaded
+     * @param {number} limit - How many ticks the card draws
+     * @param {Object} metric - Manifest entry, saying which of its columns are counts
+     * @returns {Array<Object>} The rows the card draws
+     * @throws {Error} If counts would have to be dropped
+     */
+    function fitToCard(rows, limit, metric) {
+        const thinned = thinToLimit(rows, limit);
+        if (thinned.length < rows.length && metric.summedColumns?.length > 0) {
+            throw new Error(
+                `Metric ${metric.id} holds counts in ${metric.summedColumns.join(', ')} and `
+                + `returned ${rows.length} rows for a card drawing ${limit}: its query has to add `
+                + `them up per window, since dropping rows would drop what they counted`);
+        }
+        return thinned;
+    }
+
+    /**
      * Keeps every nth row so that at most `limit` ticks remain, and returns the rest unchanged.
      *
      * The coarsest level is drawn even when it holds more moments over the tick window than the
@@ -679,7 +704,7 @@ export async function loadDashboard(runId) {
                 ? { rows: previous.companion, missing: previous.missing }
                 : await loadCompanionData(metric, resolvedLod, controller.signal);
             loadedData[metricId] = {
-                data: thinToLimit(data, points),
+                data: fitToCard(data, points, metric),
                 companion: companion ? companion.rows : null,
                 missing: companion ? companion.missing : [],
                 lod: resolvedLod,

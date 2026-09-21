@@ -142,6 +142,15 @@ public class ManifestEntry {
      * <p>
      * If {@code null} or empty, the chart reads only its own data, which is the common case.
      */
+    /**
+     * The columns whose values are counts, added up when a coarser level of detail is built.
+     * <p>
+     * The browser may not drop rows of such a metric to fit a card: a dropped row takes its counts
+     * with it, and the chart would then say that fewer were born than were. It says so here so
+     * that a card can refuse rather than undercount.
+     */
+    public java.util.List<String> summedColumns;
+
     public java.util.List<Companion> companions;
 
     /**

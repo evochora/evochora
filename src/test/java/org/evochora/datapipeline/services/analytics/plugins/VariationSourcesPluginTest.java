@@ -408,6 +408,17 @@ class VariationSourcesPluginTest {
     }
 
     @Test
+    void theCountsSayThatTheyMayNotBeDropped() {
+        // The common part of an entry, this among it, is filled in where the plugin hands its
+        // entries over
+        ManifestEntry entry = plugin.getManifestEntries().get(0);
+
+        // The browser thins rows to fit a card; a count dropped with its row would make the card
+        // say that fewer were born than were, so the entry names the columns that are counts
+        assertThat(entry.summedColumns).containsExactlyElementsOf(COUNT_COLUMNS);
+    }
+
+    @Test
     void theStackedBarsNameTheirColoursAndTheBandsLeaveThemToTheChart() {
         List<ManifestEntry> entries = plugin.getManifestEntries();
 
