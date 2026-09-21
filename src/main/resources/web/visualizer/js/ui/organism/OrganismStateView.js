@@ -142,7 +142,11 @@ export class OrganismStateView {
             if (hasProcNames) {
                 // With procedure names: one line per entry
                 const formattedCallStack = callStack.map((entry, index) => {
-                    let result = entry.procName || 'UNKNOWN';
+                    // A frame whose label no artifact names - a call target that arose by mutation - is
+                    // identified by the label value the call resolved, written as a LABEL value is
+                    let result = entry.procName || (Number.isInteger(entry.labelValue) && entry.labelValue >= 0
+                        ? `[#${ValueFormatter.formatMoleculeValue('LABEL', entry.labelValue)}]`
+                        : 'UNKNOWN');
 
                     // Add return coordinates: [x|y] with injected-value styling
                     if (entry.absoluteReturnIp && Array.isArray(entry.absoluteReturnIp)) {

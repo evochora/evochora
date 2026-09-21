@@ -223,6 +223,11 @@ class CallSiteBindingRuleTest {
         }
 
         @Override
+        public String formatValue(int type, int value) {
+            throw new UnsupportedOperationException("not needed by this test");
+        }
+
+        @Override
         public int labelValue(String name) {
             throw new UnsupportedOperationException("not needed by this test");
         }

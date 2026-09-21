@@ -1,7 +1,7 @@
 package org.evochora.runtime.model;
 
 import org.evochora.runtime.Config;
-import org.evochora.runtime.label.PreExpandedHammingStrategy;
+import org.evochora.runtime.label.HammingLabelMatchingStrategy;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
@@ -19,7 +19,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class EnvironmentLayoutTest {
 
     private static Environment tiled(int[] shape, boolean toroidal) {
-        return new Environment(new EnvironmentProperties(shape, toroidal), new PreExpandedHammingStrategy(), 32);
+        return new Environment(new EnvironmentProperties(shape, toroidal), new HammingLabelMatchingStrategy(), 32);
     }
 
     @Test

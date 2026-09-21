@@ -35,7 +35,7 @@ import org.slf4j.LoggerFactory;
  * <strong>Strategies:</strong> Types whose value is an identifier have their own strategy — CODE
  * flips to a different registered opcode (operation, family or variant mode), REGISTER swaps with
  * the register operand beside it and moves ±1 within its bank boundaries where there is none (DR
- * stays DR, PDR stays PDR), LABEL and LABELREF flip N random bits of the 19-bit hash. Every other
+ * stays DR, PDR stays PDR), LABEL and LABELREF flip N random bits of the hash. Every other
  * type carries a plain number and uses the general strategy:
  * scale-proportional perturbation of the signed value, {@code delta = max(1,
  * round(|value|^exponent))} with the type's own exponent, a result leaving the 20-bit range
@@ -102,9 +102,9 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
 
     private static final Logger LOG = LoggerFactory.getLogger(GeneSubstitutionPlugin.class);
 
-    /** Maximum label hash value (19-bit unsigned). */
-    private static final int LABEL_HASH_BITS = 19;
-    private static final int LABEL_HASH_MAX = (1 << LABEL_HASH_BITS) - 1;
+    /** A label hash is a bit pattern over the whole value field of a cell. */
+    private static final int LABEL_HASH_BITS = Config.VALUE_BITS;
+    private static final int LABEL_HASH_MAX = Config.VALUE_MASK;
 
     /** The kind this plugin reports its writes under. */
     private static final String MUTATION_KIND = "substitution";
@@ -689,9 +689,9 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
     /**
      * Mutates a LABEL or LABELREF molecule's hash by flipping random bits.
      *
-     * @param hash The current 19-bit hash value.
+     * @param hash The current hash value.
      * @param bitflips Number of bits to flip.
-     * @return The mutated hash, masked to 19-bit range.
+     * @return The mutated hash, within the value field.
      */
     private int mutateLabelHash(int hash, int bitflips) {
         return flipBits(hash, bitflips);
@@ -703,7 +703,7 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
      *
      * @param hash The original hash.
      * @param bitflips Number of bits to flip.
-     * @return The hash with flipped bits, masked to 19-bit range.
+     * @return The hash with flipped bits, within the value field.
      */
     int flipBits(int hash, int bitflips) {
         int selectedBits = 0;

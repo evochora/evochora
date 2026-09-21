@@ -38,7 +38,7 @@ import org.evochora.datapipeline.api.contracts.TokenMapEntry;
 import org.evochora.datapipeline.api.contracts.Vector;
 import org.evochora.runtime.Simulation;
 import org.evochora.runtime.isa.RegisterBank;
-import org.evochora.runtime.label.ILabelMatchingStrategy;
+import org.evochora.runtime.spi.ILabelMatchingStrategy;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.runtime.model.Organism;

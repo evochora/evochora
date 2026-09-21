@@ -67,7 +67,7 @@ public class Emitter {
         }
 
         OperandEncoder encoder = new OperandEncoder(isa);
-        SourceLineIndex sourceLines = new SourceLineIndex(layout);
+        SourceLineIndex sourceLines = new SourceLineIndex(layout, isa);
         Map<Integer, int[]> linearToCoord = layout.linearAddressToCoord();
         Map<int[], Integer> machineCodeLayout = new HashMap<>();
 

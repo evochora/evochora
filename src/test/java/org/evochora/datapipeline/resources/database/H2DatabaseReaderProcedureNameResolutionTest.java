@@ -19,7 +19,8 @@ import org.evochora.datapipeline.api.resources.database.IDatabaseReader;
 import org.evochora.datapipeline.api.resources.database.IDatabaseReaderProvider;
 import org.evochora.datapipeline.api.resources.database.dto.OrganismTickDetails;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
-import org.evochora.runtime.worldgen.LabelRewritePlugin;
+import org.evochora.runtime.label.HammingLabelMatchingStrategy;
+import org.evochora.runtime.label.LabelRewrite;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -52,7 +53,8 @@ class H2DatabaseReaderProcedureNameResolutionTest {
 
     private static final int CHILD_ID = 2;
     private static final int GRANDCHILD_ID = 3;
-    private static final int CHILD_MASK = 0b101_0110_1010_1100_110;
+    /** Sets the top bit of the value field, so the masked hash would read negative as a number. */
+    private static final int CHILD_MASK = 0b1101_0110_1010_1100_0110;
     private static final int GRANDCHILD_MASK = 0b011_1001_0011_0101_001;
 
     @TempDir
@@ -114,6 +116,9 @@ class H2DatabaseReaderProcedureNameResolutionTest {
             OrganismTickDetails details = reader.readOrganismDetails(TICK, ORGANISM_ID);
             assertThat(details.state.callStack).hasSize(1);
             assertThat(details.state.callStack.get(0).procName).isEmpty();
+            assertThat(details.state.callStack.get(0).labelValue)
+                    .as("an unnamed frame is identified by the label value the call resolved")
+                    .isEqualTo(UNKNOWN_HASH);
         }
     }
 
@@ -292,8 +297,8 @@ class H2DatabaseReaderProcedureNameResolutionTest {
     private byte[] labelRewrite(int mask) {
         return StoredMutationEvents.newBuilder()
                 .addEvents(StoredMutationEvent.newBuilder()
-                        .setPluginClass(LabelRewritePlugin.class.getName())
-                        .setKind(LabelRewritePlugin.MUTATION_KIND)
+                        .setPluginClass(HammingLabelMatchingStrategy.class.getName())
+                        .setKind(LabelRewrite.MUTATION_KIND)
                         .addParams(mask)
                         .addDv(1)
                         .addDv(0)

@@ -13,7 +13,8 @@ import org.evochora.node.processes.http.api.visualizer.dto.OrganismMutationsResp
 import org.evochora.runtime.Config;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.runtime.model.Molecule;
-import org.evochora.runtime.worldgen.LabelRewritePlugin;
+import org.evochora.runtime.label.HammingLabelMatchingStrategy;
+import org.evochora.runtime.label.LabelRewrite;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -63,6 +64,24 @@ class LineageMutationTranslatorTest {
         assertThat(substitution.cells().get(0).after().moleculeValue())
                 .isEqualTo(0x1234 ^ MASK_GENERATION_1 ^ MASK_GENERATION_2 ^ MASK_GENERATION_3);
         assertThat(substitution.cells().get(0).after().moleculeType()).isEqualTo(Config.TYPE_LABELREF);
+    }
+
+    @Test
+    void aMaskThatSetsTheTopBitOfTheValueFieldYieldsAnUnsignedLabelValue() {
+        int topBit = 1 << (Config.VALUE_BITS - 1);
+        StoredMutationEvents generation1 = StoredMutationEvents.newBuilder()
+                .setDimensions(2)
+                .addEvents(substitution(RECORDED_LABEL, -5, 0))
+                .build();
+
+        List<MutationEventView> events = LineageMutationTranslator.translate(
+                List.of(
+                    entry(2, 2, mask(topBit)),
+                    entry(1, 1, generation1)),
+                WORLD);
+
+        // The key the artifact's label maps use: the raw value bits, never a negative number
+        assertThat(events.get(0).cells().get(0).after().moleculeValue()).isEqualTo(0x1234 | topBit);
     }
 
     @Test
@@ -138,7 +157,7 @@ class LineageMutationTranslatorTest {
 
         // The displayed organism starts at (2, 3), so an offset of -5 wraps around the world
         assertThat(events.get(0).cells().get(0).coordinates()).containsExactly(97, 3);
-        assertThat(events.get(1).kind()).isEqualTo(LabelRewritePlugin.MUTATION_KIND);
+        assertThat(events.get(1).kind()).isEqualTo(LabelRewrite.MUTATION_KIND);
         assertThat(events.get(1).cells()).isEmpty();
         assertThat(events.get(1).params()).containsExactly(MASK_GENERATION_2);
         // Every event names the genome it arose in and that genome's parent
@@ -177,8 +196,8 @@ class LineageMutationTranslatorTest {
     @Test
     void refusesAMaskThatCarriesNoValue() {
         StoredMutationEvent maskWithoutValue = StoredMutationEvent.newBuilder()
-                .setPluginClass(LabelRewritePlugin.class.getName())
-                .setKind(LabelRewritePlugin.MUTATION_KIND)
+                .setPluginClass(HammingLabelMatchingStrategy.class.getName())
+                .setKind(LabelRewrite.MUTATION_KIND)
                 .build();
         StoredMutationEvents events = StoredMutationEvents.newBuilder()
                 .setDimensions(2).addEvents(maskWithoutValue).build();
@@ -205,8 +224,8 @@ class LineageMutationTranslatorTest {
 
     private static StoredMutationEvent labelRewrite(int value) {
         return StoredMutationEvent.newBuilder()
-                .setPluginClass(LabelRewritePlugin.class.getName())
-                .setKind(LabelRewritePlugin.MUTATION_KIND)
+                .setPluginClass(HammingLabelMatchingStrategy.class.getName())
+                .setKind(LabelRewrite.MUTATION_KIND)
                 .addParams(value)
                 .build();
     }

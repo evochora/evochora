@@ -4,7 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import org.evochora.runtime.Config;
-import org.evochora.runtime.label.PreExpandedHammingStrategy;
+import org.evochora.runtime.label.HammingLabelMatchingStrategy;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
@@ -212,7 +212,7 @@ class ScanLineArcTest {
      */
     private void assertTheTwoAgreeOnEveryLine(int axisSize, boolean toroidal) {
         Environment environment = new Environment(new EnvironmentProperties(new int[]{axisSize}, toroidal),
-                new PreExpandedHammingStrategy(), 1);
+                new HammingLabelMatchingStrategy(), 1);
         int[] position = new int[1];
         int[] owned = new int[axisSize];
         int placement = 0;
@@ -270,7 +270,7 @@ class ScanLineArcTest {
     void theWalkFollowsOneLineAcrossTileAndWorldEdges() {
         for (int tileSide : new int[]{1, 32}) {
             Environment environment = new Environment(new EnvironmentProperties(new int[]{64, 64}, true),
-                    new PreExpandedHammingStrategy(), tileSide);
+                    new HammingLabelMatchingStrategy(), tileSide);
             // A body across the world edge on one line, one across a tile edge with a hole in it on
             // the next, and two cells on one column, all owned by the same organism.
             own(environment, 62, 40);
@@ -310,7 +310,7 @@ class ScanLineArcTest {
     @Test
     void aPositionThatNamesNoCellLiesInNoArc() {
         Environment environment = new Environment(new EnvironmentProperties(new int[]{16, 16}, false),
-                new PreExpandedHammingStrategy(), 1);
+                new HammingLabelMatchingStrategy(), 1);
         environment.setOwnerId(OWNER, 4, 5);
         environment.setOwnerId(OWNER, 9, 5);
 
@@ -328,7 +328,7 @@ class ScanLineArcTest {
     @Test
     void aCellMarkedForAChildIsNotPartOfTheBody() {
         Environment environment = new Environment(new EnvironmentProperties(new int[]{16, 16}, true),
-                new PreExpandedHammingStrategy(), 1);
+                new HammingLabelMatchingStrategy(), 1);
 
         environment.setMolecule(new Molecule(Config.TYPE_STRUCTURE, 100), OWNER, new int[]{4, 5});
         environment.setMolecule(new Molecule(Config.TYPE_STRUCTURE, 100), OWNER, new int[]{9, 5});

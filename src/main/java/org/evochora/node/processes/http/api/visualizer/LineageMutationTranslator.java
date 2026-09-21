@@ -12,6 +12,7 @@ import org.evochora.node.processes.http.api.visualizer.dto.OrganismMutationsResp
 import org.evochora.node.processes.http.api.visualizer.dto.OrganismMutationsResponseDto.MutationCellView;
 import org.evochora.node.processes.http.api.visualizer.dto.OrganismMutationsResponseDto.MutationEventView;
 import org.evochora.runtime.Config;
+import org.evochora.runtime.label.LabelAddress;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.runtime.model.Molecule;
 
@@ -29,9 +30,8 @@ import org.evochora.runtime.model.Molecule;
  * {@link LabelNamespaceMask#recordedAfter} is the composition a record needs — the masks of the
  * recording birth that were applied after the plugin wrote.
  * <p>
- * A mask touches only the value bits of a molecule — it is drawn from
- * {@link Config#LABEL_VALUE_MASK}, which is narrower than the value field — so it is applied to
- * the packed molecule directly. Molecules of any other type pass through untouched: they were
+ * A mask touches only the value bits of a molecule — it never leaves
+ * {@link Config#VALUE_MASK} — so it is applied to the packed molecule directly. Molecules of any other type pass through untouched: they were
  * never masked.
  * <p>
  * <strong>Thread Safety:</strong> Stateless; all methods are static and operate only on their
@@ -153,20 +153,16 @@ final class LineageMutationTranslator {
      *         neither a label nor a label reference
      */
     private static int translate(final int moleculeInt, final int mask) {
-        final int type = moleculeInt & Config.TYPE_MASK;
-        if (type != Config.TYPE_LABEL && type != Config.TYPE_LABELREF) {
-            return moleculeInt;
-        }
-        return moleculeInt ^ mask;
+        return LabelAddress.isCarriedBy(moleculeInt) ? moleculeInt ^ mask : moleculeInt;
     }
 
     /**
      * Splits a packed molecule the way the environment endpoint splits a cell.
      *
      * @param moleculeInt The packed molecule
-     * @return Its type and its signed value
+     * @return Its type and its value as the type defines it: unsigned for a label type, signed otherwise
      */
     private static MoleculeView molecule(final int moleculeInt) {
-        return new MoleculeView(moleculeInt & Config.TYPE_MASK, Molecule.extractSignedValue(moleculeInt));
+        return new MoleculeView(moleculeInt & Config.TYPE_MASK, Molecule.extractTypedValue(moleculeInt));
     }
 }

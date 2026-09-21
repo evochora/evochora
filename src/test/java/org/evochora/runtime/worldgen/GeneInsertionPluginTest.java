@@ -903,12 +903,53 @@ class GeneInsertionPluginTest {
         for (int x = LEFT + 1; x < RIGHT; x++) {
             Molecule mol = environment.getMolecule(x, Y);
             if (mol.type() == Config.TYPE_LABELREF) {
-                assertThat(mol.value()).as("LABELREF hash should be in valid 19-bit range")
-                        .isBetween(0, (1 << 19) - 1);
+                assertThat(Molecule.extractTypedValue(mol.toInt()))
+                        .as("LABELREF hash should lie within the value field")
+                        .isBetween(0, Config.VALUE_MASK);
                 foundLabelRef = true;
             }
         }
         assertThat(foundLabelRef).as("Should insert a LABELREF molecule even without existing labels").isTrue();
+    }
+
+    @Test
+    void labelRefRandomHashCanSetTheTopValueBit() {
+        // Only CODE molecules, no labels — LABELREF uses a random hash across the whole value field
+        createScanLine(LEFT, RIGHT, Y);
+
+        Integer jmpiId = Instruction.getInstructionIdByName("JMPI");
+        assertThat(jmpiId).isNotNull();
+        List<OperandSource> sources = Instruction.getOperandSourcesById(jmpiId);
+
+        ArgumentConfig argConfig = new ArgumentConfig(null, null, null, "existing", null);
+        InstructionEntry entry = new InstructionEntry(
+                List.of(jmpiId),
+                List.of(sources),
+                1.0,
+                argConfig
+        );
+
+        boolean foundTopBitSet = false;
+        for (int seed = 0; seed < 50; seed++) {
+            clearNopGap(LEFT, RIGHT, Y);
+
+            IRandomProvider rng = new SeededRandomProvider(seed);
+            GeneInsertionPlugin plugin = new GeneInsertionPlugin(rng, 1.0, List.of(entry));
+            plugin.mutate(child, environment);
+
+            for (int x = LEFT + 1; x < RIGHT; x++) {
+                Molecule mol = environment.getMolecule(x, Y);
+                if (mol.type() == Config.TYPE_LABELREF) {
+                    int hash = Molecule.extractTypedValue(mol.toInt());
+                    if ((hash & (1 << (Config.VALUE_BITS - 1))) != 0) {
+                        foundTopBitSet = true;
+                    }
+                }
+            }
+        }
+        assertThat(foundTopBitSet)
+                .as("At least one invented LABELREF hash should set the value field's top bit")
+                .isTrue();
     }
 
     @Test

@@ -1,5 +1,5 @@
 {
-  "programId": "1b041d5e",
+  "programId": "1b7c1d5e",
   "sources": {
     "REFERENCE_ROOT/lib/nav.evo": [
       "# Module that hands a required dependency down to its own import and passes that import",
@@ -122,13 +122,13 @@
     ]
   },
   "machineCodeLayout": {
-    "0": 4271255,
+    "0": 4795543,
     "6400": 6292480,
     "4610": 6291456,
     "4100": 131,
     "2310": 131,
-    "1800": 5447150,
-    "10": 4246594,
+    "1800": 5971438,
+    "10": 4770882,
     "6410": 4250050,
     "5900": 99,
     "4110": 296,
@@ -150,7 +150,7 @@
     "42": 0,
     "810": 0,
     "43": 69,
-    "44": 5295170,
+    "44": 5819458,
     "300": 195,
     "6700": 99,
     "45": 4302656,
@@ -171,14 +171,14 @@
     "6710": 69,
     "55": 1048576,
     "56": 69,
-    "6200": 5446798,
-    "57": 5372543,
+    "6200": 5971086,
+    "57": 5896831,
     "58": 99,
     "4410": 6291456,
     "59": 6292480,
     "60": 133,
     "3900": 131,
-    "61": 4323967,
+    "61": 4848255,
     "62": 1,
     "2110": 0,
     "63": 6292480,
@@ -196,7 +196,7 @@
     "5710": 1048578,
     "5200": 4421015,
     "3410": 6291456,
-    "2900": 4398574,
+    "2900": 4922862,
     "1110": 33,
     "600": 6292481,
     "5210": 6291456,
@@ -235,7 +235,7 @@
     "2710": 99,
     "2200": 99,
     "410": 33,
-    "6810": 5295170,
+    "6810": 5819458,
     "6300": 195,
     "4510": 99,
     "4000": 1048675,
@@ -255,17 +255,17 @@
     "700": 195,
     "5310": 1048583,
     "4800": 6292480,
-    "3010": 5307311,
+    "3010": 5831599,
     "2500": 4244954,
     "710": 0,
-    "200": 4258735,
+    "200": 4783023,
     "6600": 6292736,
-    "4810": 5446798,
+    "4810": 5971086,
     "4300": 99,
     "2510": 131,
     "2000": 6292480,
     "210": 6291456,
-    "6610": 5319831,
+    "6610": 5844119,
     "6100": 101,
     "4310": 195,
     "3800": 1048577,
@@ -274,7 +274,7 @@
     "6110": 5351232,
     "5600": 6292736,
     "3810": 6291712,
-    "3300": 4398222,
+    "3300": 4922510,
     "1510": 33,
     "1000": 6292480,
     "5610": 131,
@@ -285,7 +285,7 @@
     "500": 195,
     "6900": 133,
     "5110": 292,
-    "4600": 5307311,
+    "4600": 5831599,
     "2810": 6291457,
     "2300": 6292480,
     "510": 6291456
@@ -3879,7 +3879,7 @@
       {
         "linearAddress": 117,
         "opcode": "CALL",
-        "operandsAsString": "LABELREF:203918",
+        "operandsAsString": "LABELREF:B1C8E",
         "synthetic": false
       },
       {
@@ -3925,7 +3925,7 @@
       {
         "linearAddress": 45,
         "opcode": "CALL",
-        "operandsAsString": "LABELREF:64431",
+        "operandsAsString": "LABELREF:8FBAF",
         "synthetic": false
       },
       {
@@ -3961,7 +3961,7 @@
       {
         "linearAddress": 17,
         "opcode": "JMPI",
-        "operandsAsString": "LABELREF:204270",
+        "operandsAsString": "LABELREF:B1DEE",
         "synthetic": false
       }
     ],
@@ -3983,7 +3983,7 @@
       {
         "linearAddress": 105,
         "opcode": "PSLI",
-        "operandsAsString": "LABELREF:261837",
+        "operandsAsString": "LABELREF:3FECD",
         "synthetic": true
       },
       {
@@ -3995,7 +3995,7 @@
       {
         "linearAddress": 109,
         "opcode": "CALL",
-        "operandsAsString": "LABELREF:226711",
+        "operandsAsString": "LABELREF:37597",
         "synthetic": false
       },
       {
@@ -4055,7 +4055,7 @@
       {
         "linearAddress": 99,
         "opcode": "CALL",
-        "operandsAsString": "LABELREF:64431",
+        "operandsAsString": "LABELREF:8FBAF",
         "synthetic": false
       },
       {
@@ -4119,7 +4119,7 @@
       {
         "linearAddress": 155,
         "opcode": "JMPI",
-        "operandsAsString": "LABELREF:129663",
+        "operandsAsString": "LABELREF:9FA7F",
         "synthetic": true
       }
     ],
@@ -4235,7 +4235,7 @@
       {
         "linearAddress": 12,
         "opcode": "JMPI",
-        "operandsAsString": "LABELREF:50650",
+        "operandsAsString": "LABELREF:0C5DA",
         "synthetic": false
       }
     ],
@@ -4243,7 +4243,7 @@
       {
         "linearAddress": 142,
         "opcode": "JMPI",
-        "operandsAsString": "LABELREF:52290",
+        "operandsAsString": "LABELREF:8CC42",
         "synthetic": false
       }
     ],
@@ -4319,7 +4319,7 @@
       {
         "linearAddress": 130,
         "opcode": "CALL",
-        "operandsAsString": "LABELREF:108352",
+        "operandsAsString": "LABELREF:1A740",
         "synthetic": false
       },
       {
@@ -4359,7 +4359,7 @@
       {
         "linearAddress": 124,
         "opcode": "JMPI",
-        "operandsAsString": "LABELREF:55746",
+        "operandsAsString": "LABELREF:0D9C2",
         "synthetic": true
       }
     ],
@@ -4373,7 +4373,7 @@
       {
         "linearAddress": 61,
         "opcode": "CALL",
-        "operandsAsString": "LABELREF:203918",
+        "operandsAsString": "LABELREF:B1C8E",
         "synthetic": false
       },
       {
@@ -4387,7 +4387,7 @@
       {
         "linearAddress": 137,
         "opcode": "JMPI",
-        "operandsAsString": "LABELREF:52290",
+        "operandsAsString": "LABELREF:8CC42",
         "synthetic": false
       }
     ],
@@ -4415,35 +4415,35 @@
       {
         "linearAddress": 135,
         "opcode": "JMPI",
-        "operandsAsString": "LABELREF:76951",
+        "operandsAsString": "LABELREF:92C97",
         "synthetic": false
       }
     ]
   },
   "labelValueToName": {
     "108352": "LOCAL_STEP",
-    "52290": "START",
+    "576578": "START",
     "55746": "_safe_call_0",
     "226711": "NAV.PATROL",
-    "76951": "UTIL.READY",
+    "601239": "UTIL.READY",
     "50650": "UTIL.TO_MIN",
-    "204270": "UTIL.DONE",
-    "203918": "NAV.STEP.FORWARD",
+    "728558": "UTIL.DONE",
+    "728206": "NAV.STEP.FORWARD",
     "261837": "MARK",
-    "129663": "_safe_ret_0",
-    "64431": "UTIL.CLAMP"
+    "653951": "_safe_ret_0",
+    "588719": "UTIL.CLAMP"
   },
   "labelNameToValue": {
     "LOCAL_STEP": 108352,
     "_safe_call_0": 55746,
     "NAV.PATROL": 226711,
-    "UTIL.DONE": 204270,
-    "NAV.STEP.FORWARD": 203918,
-    "_safe_ret_0": 129663,
-    "UTIL.CLAMP": 64431,
+    "UTIL.DONE": 728558,
+    "NAV.STEP.FORWARD": 728206,
+    "_safe_ret_0": 653951,
+    "UTIL.CLAMP": 588719,
     "UTIL.TO_MIN": 50650,
-    "START": 52290,
-    "UTIL.READY": 76951,
+    "START": 576578,
+    "UTIL.READY": 601239,
     "MARK": 261837
   },
   "envProps": {

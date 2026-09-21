@@ -80,8 +80,6 @@ final class ResumeNeutralityHarness {
                              "structureValue": 500, "structureOwner": -1, "interval": 5, "safetyRadius": 3 } },
               { "className": "org.evochora.runtime.worldgen.DecayOnDeath",
                 "options": { "replacement": "CODE:0" } },
-              { "className": "org.evochora.runtime.worldgen.LabelRewritePlugin",
-                "options": {} },
               { "className": "org.evochora.runtime.worldgen.GeneDuplicationPlugin",
                 "options": { "duplicationRate": %1$s, "minNopSize": 8 } },
               { "className": "org.evochora.runtime.worldgen.GeneDeletionPlugin",
@@ -155,8 +153,8 @@ final class ResumeNeutralityHarness {
                   "overrides": { "instructions": {}, "families": {} }
                 },
                 "label-matching": {
-                  "className": "org.evochora.runtime.label.PreExpandedHammingStrategy",
-                  "options": { "tolerance": 2, "hammingWeight": 50, "foreignPenalty": 100, "selectionSpread": 50 }
+                  "className": "org.evochora.runtime.label.HammingLabelMatchingStrategy",
+                  "options": { "tolerance": 2, "selectionSpread": 50 }
                 }
               }
             }

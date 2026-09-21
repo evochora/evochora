@@ -222,6 +222,29 @@ public class ServiceManagerTest {
     }
 
     @Test
+    void stopAllDoesNotWarnAboutAServiceThatStoppedByItselfInTheMeantime() {
+        ServiceManager sm = new ServiceManager(ConfigFactory.parseString("""
+            pipeline {
+              autoStart = false
+              startupSequence = ["one-shot"]
+              resources {}
+              services {
+                one-shot {
+                  className = "org.evochora.datapipeline.SelfStoppingTestService"
+                }
+              }
+            }
+            """));
+        sm.startAll();
+        assertEquals(IService.State.RUNNING, sm.getServiceStatus("one-shot").state());
+
+        // The log watch fails this test on any warning
+        sm.stopAll();
+
+        assertEquals(IService.State.STOPPED, sm.getServiceStatus("one-shot").state());
+    }
+
+    @Test
     @AllowLog(level = LogLevel.WARN, messagePattern = ".*")
     void testStatusAndMetrics() {
         ServiceManager sm = new ServiceManager(createTestConfig(true));

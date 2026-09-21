@@ -224,4 +224,39 @@ class MoleculeTypeRegistryTest {
             .as("Config type constants missing a register(...) line in MoleculeTypeRegistry")
             .isEmpty();
     }
+
+    @Test
+    void everyRegisteredTypeDeclaresAValueFormat() {
+        for (int type : MoleculeTypeRegistry.orderedTypes()) {
+            assertThat(MoleculeTypeRegistry.valueFormatOf(type))
+                .as("value format of %s", MoleculeTypeRegistry.typeToName(type))
+                .isNotNull();
+        }
+        assertThat(MoleculeTypeRegistry.valueFormatOf(Config.TYPE_LABEL)).isEqualTo(MoleculeValueFormat.HEX);
+        assertThat(MoleculeTypeRegistry.valueFormatOf(Config.TYPE_LABELREF)).isEqualTo(MoleculeValueFormat.HEX);
+        assertThat(MoleculeTypeRegistry.valueFormatOf(Config.TYPE_DATA)).isEqualTo(MoleculeValueFormat.DECIMAL);
+    }
+
+    @Test
+    void valueFormatIsReadFromTheTypeBitsOfAPackedMolecule() {
+        int markedLabel = (0xF << Config.MARKER_SHIFT) | Config.TYPE_LABEL | 0x3A7F;
+        assertThat(MoleculeTypeRegistry.valueFormatOf(markedLabel)).isEqualTo(MoleculeValueFormat.HEX);
+    }
+
+    @Test
+    void aTypeCodeNoTypeIsRegisteredUnderReadsAndWritesAsANumber() {
+        for (int rawIndex = 0; rawIndex < (1 << Config.TYPE_BITS); rawIndex++) {
+            int type = rawIndex << Config.TYPE_SHIFT;
+            if (!MoleculeTypeRegistry.isRegistered(type)) {
+                assertThat(MoleculeTypeRegistry.valueFormatOf(type)).isEqualTo(MoleculeValueFormat.DECIMAL);
+            }
+        }
+    }
+
+    @Test
+    void registrationWithoutAValueFormatIsRejected() {
+        assertThatThrownBy(() -> MoleculeTypeRegistry.register(Config.TYPE_MASK, "FORMATLESS", null))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("value format");
+    }
 }

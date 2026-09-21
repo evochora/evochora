@@ -112,7 +112,7 @@ public final class OrganismStateConverter {
             Molecule molecule = Molecule.fromInt(raw);
             int typeId = molecule.type();
             String typeName = MoleculeTypeRegistry.typeToName(typeId);
-            int value = molecule.toScalarValue();
+            int value = Molecule.extractTypedValue(raw);
             return RegisterValueView.molecule(raw, typeId, typeName, value);
         }
         if (rv.hasVector()) {
@@ -191,7 +191,7 @@ public final class OrganismStateConverter {
             savedRegisters.add(convertRegisterValue(rv));
         }
 
-        return new ProcFrameView(procName, absReturnIp, absCallIp, savedRegisters);
+        return new ProcFrameView(procName, frame.getLabelHash(), absReturnIp, absCallIp, savedRegisters);
     }
     
     /**
@@ -277,8 +277,8 @@ public final class OrganismStateConverter {
             // Extract molecule type and value to show what was actually executed
             Molecule molecule = Molecule.fromInt(opcodeId);
             String moleculeTypeName = MoleculeTypeRegistry.typeToName(molecule.type());
-            int moleculeValue = molecule.toScalarValue();
-            String formattedOpcodeName = String.format("UNKNOWN [%s:%d]", moleculeTypeName, moleculeValue);
+            String moleculeValue = Molecule.formatValue(opcodeId);
+            String formattedOpcodeName = String.format("UNKNOWN [%s:%s]", moleculeTypeName, moleculeValue);
             
             String unknownReason = failureReason != null && !failureReason.isEmpty() 
                     ? failureReason 
@@ -355,7 +355,7 @@ public final class OrganismStateConverter {
                 int rawArg = rawArguments.get(argIndex);
                 Molecule molecule = Molecule.fromInt(rawArg);
                 String moleculeType = MoleculeTypeRegistry.typeToName(molecule.type());
-                int value = molecule.toScalarValue();
+                int value = Molecule.extractTypedValue(rawArg);
 
                 resolvedArgs.add(InstructionArgumentView.immediate(rawArg, moleculeType, value));
                 argIndex++;
@@ -378,7 +378,7 @@ public final class OrganismStateConverter {
                 int rawArg = rawArguments.get(argIndex);
                 Molecule molecule = Molecule.fromInt(rawArg);
                 String moleculeType = MoleculeTypeRegistry.typeToName(molecule.type());
-                int hashValue = molecule.toScalarValue();
+                int hashValue = Molecule.extractTypedValue(rawArg);
                 resolvedArgs.add(InstructionArgumentView.label(rawArg, moleculeType, hashValue));
                 argIndex++;
             } else {

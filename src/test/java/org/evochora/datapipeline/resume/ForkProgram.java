@@ -39,6 +39,9 @@ final class ForkProgram {
     /** The tick the fork happens on, counted from the first tick of the run. */
     static final int FORK_TICK = 10;
 
+    /** The value both labels and the label reference of the inheritable genome carry. */
+    static final int GENOME_LABEL_HASH = 0b1011_0110_0101_1001_1010 & Config.VALUE_MASK;
+
     /**
      * Row holding the inherited genome. It is the row the child is born into, so the child starts on
      * the cells it inherits rather than on empty space.
@@ -135,7 +138,7 @@ final class ForkProgram {
      * a label reference is included so substitution has one of each type it knows.
      */
     private static void placeInheritableGenome(Environment environment, Organism parent, int[] at, int rowIndex) {
-        int labelHash = 0b1011_0110_0101_1001_1010 & Config.VALUE_MASK;
+        int labelHash = GENOME_LABEL_HASH;
         int row = at[1] + GENOME_ROW_OFFSET + rowIndex;
         int turn = Instruction.getInstructionIdByName("TRNI");
         int column = at[0];

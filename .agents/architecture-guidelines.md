@@ -22,6 +22,7 @@ You will conduct comprehensive architectural reviews of the Evochora simulation 
 - **Confirm** that serialization strategies support both performance (in-process) and durability (cloud) requirements
 - **Reject** frontend code that reads the bit layout of a molecule: type and value reach the browser as separate fields from the controller, and a type name is resolved in one place
 - **Reject** a feature that reaches the core as a special case of one plugin: an extension is declared by the plugin (a column's aggregation, a kind, a class name) and the core acts on the declaration
+- **Flag** code that enumerates molecule types — an exhaustive `switch`, an "every type except" list, a new per-type table — and a type-specific method in the public interface of a central class such as `Molecule`: a new type touches only `Config`, `MoleculeTypeRegistry`, `MoleculeTypeColors` and `MoleculeTypePalette.js`, and how a value is read and written follows the type's declared `MoleculeValueFormat`. Code that reacts to one particular type without having to change for a new one is fine
 
 ### 3. Idempotency and Data Integrity
 - **Mandate** that all data-consuming services are idempotent (can safely process the same data multiple times)

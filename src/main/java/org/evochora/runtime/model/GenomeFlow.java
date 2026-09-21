@@ -4,6 +4,7 @@ import org.evochora.runtime.Config;
 import org.evochora.runtime.isa.Family;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.GenomeFrame.Slot;
+import org.evochora.runtime.spi.ILabelMatchingStrategy;
 
 import it.unimi.dsi.fastutil.booleans.BooleanArrayList;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
@@ -155,19 +156,19 @@ public final class GenomeFlow {
      * Tells whether a label value is addressed by jumps and calls and by nothing else, judged by
      * the references {@link #collectReferences} read.
      * <p>
-     * A reference addresses the label if it differs from it in at most {@code tolerance} bits. The
-     * label is a jump target if at least one reference addresses it and every reference that does
+     * A reference addresses the label if the run's label matching strategy says the two values
+     * match. The label is a jump target if at least one reference addresses it and every reference that does
      * stands in the label slot of a control flow instruction. One reference in a location
      * instruction, or one that stands in no label slot at all, makes the label a place for data.
      *
      * @param labelValue The label's value.
-     * @param tolerance The number of differing bits up to which a reference addresses a label.
+     * @param matching The run's label matching strategy.
      * @return {@code true} if the label is a jump target and nothing else.
      */
-    public boolean isJumpTarget(int labelValue, int tolerance) {
+    public boolean isJumpTarget(int labelValue, ILabelMatchingStrategy matching) {
         boolean addressed = false;
         for (int i = 0; i < referenceValues.size(); i++) {
-            if (Integer.bitCount(referenceValues.getInt(i) ^ labelValue) > tolerance) {
+            if (!matching.valuesMatch(referenceValues.getInt(i), labelValue)) {
                 continue;
             }
             if (!referenceIsControlFlow.getBoolean(i)) {
@@ -179,20 +180,21 @@ public final class GenomeFlow {
     }
 
     /**
-     * Tells whether a reference value addresses no label value it did not address before, which is
-     * what a label needs from a new value: that it draws no reference away from another label.
+     * Tells whether a label's new value is addressed by no reference that did not address its old
+     * value, so that the new value draws no reference to the label that could not reach it before.
+     * A reference that could address the old value already is not looked at: it may divide its
+     * jumps between this label and another one differently under the new value.
      *
      * @param newValue The value a label is to receive.
      * @param oldValue The value the label carries now.
-     * @param tolerance The number of differing bits up to which a reference addresses a label.
+     * @param matching The run's label matching strategy.
      * @return {@code true} if every collected reference that addresses {@code newValue} also
      *         addresses {@code oldValue}.
      */
-    public boolean drawsNoForeignReference(int newValue, int oldValue, int tolerance) {
+    public boolean drawsNoForeignReference(int newValue, int oldValue, ILabelMatchingStrategy matching) {
         for (int i = 0; i < referenceValues.size(); i++) {
             int reference = referenceValues.getInt(i);
-            if (Integer.bitCount(reference ^ newValue) <= tolerance
-                    && Integer.bitCount(reference ^ oldValue) > tolerance) {
+            if (matching.valuesMatch(reference, newValue) && !matching.valuesMatch(reference, oldValue)) {
                 return false;
             }
         }

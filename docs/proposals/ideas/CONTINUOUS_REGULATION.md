@@ -17,8 +17,8 @@ all-or-nothing evaluation:
 
 - decision thresholds are DATA molecules whose mutation is scale-proportional
   (smooth — after [DATA_MUTATION_SIGN_FIX](../DATA_MUTATION_SIGN_FIX.md));
-- fuzzy label matching computes a graded score
-  (`hamming × hammingWeight + distance + foreignPenalty`), but evaluates it as an argmax.
+- fuzzy label matching ranks candidates by graded quantities (Hamming distance, then distance in
+  cells), but evaluates them as an argmax.
 
 There is no mechanism by which behavior can depend on internal state in a *dosed* way. In terms of
 the fitness landscape: the genome→behavior map is discontinuous exactly at the sites that mutate
@@ -32,7 +32,7 @@ Three elements that produce continuity without floats in the genome:
    organism-internal state (analogous to ER/SR: integer, capped, serialized).
 2. **EMIT / SENS instructions.** `EMIT <hash> <amount>` releases a signal. `SENS <hash>` reads the
    **Hamming-weighted sum** of all signals near the hash — the existing fuzzy-matching machinery
-   (`PreExpandedHammingStrategy` pattern), evaluated as a weighted sum instead of an argmax. This
+   (`HammingLabelMatchingStrategy` pattern), evaluated as a weighted sum instead of an argmax. This
    is graded binding affinity (Banzhaf's artificial gene regulatory networks) built from existing
    infrastructure.
 3. **Decay.** Concentrations decay exponentially per tick (one integer multiplication per signal),
@@ -59,7 +59,7 @@ the replication core stays discrete.
 
 ## Open questions
 
-1. Signal identity: reuse the 19-bit label-hash space (shared Hamming machinery, label mutation
+1. Signal identity: reuse the label-hash space (shared Hamming machinery, label mutation
    operators apply directly) or a separate signal space?
 2. SENS semantics: weighted sum only, or also weighted-max / threshold variants?
 3. How does the layer couple back into control flow — SENS writes a register that existing

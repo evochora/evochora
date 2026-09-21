@@ -25,7 +25,8 @@ import org.evochora.junit.extensions.logging.LogWatchExtension;
 import org.evochora.node.spi.ServiceRegistry;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.model.Molecule;
-import org.evochora.runtime.worldgen.LabelRewritePlugin;
+import org.evochora.runtime.label.HammingLabelMatchingStrategy;
+import org.evochora.runtime.label.LabelRewrite;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -130,7 +131,7 @@ class OrganismControllerMutationsTest {
             // Both births masked the label after the substitution wrote it
             .body("events[0].cells[0].after.moleculeValue",
                 equalTo(RECORDED_LABEL_VALUE ^ MASK_PARENT ^ MASK_CHILD))
-            .body("events[1].kind", equalTo(LabelRewritePlugin.MUTATION_KIND))
+            .body("events[1].kind", equalTo(LabelRewrite.MUTATION_KIND))
             .body("events[1].cells", empty())
             .body("events[2].originOrganismId", equalTo(7))
             .body("events[2].originParentGenomeHash", equalTo("200"));
@@ -151,8 +152,8 @@ class OrganismControllerMutationsTest {
 
     private static StoredMutationEvent labelRewrite(int mask) {
         return StoredMutationEvent.newBuilder()
-                .setPluginClass(LabelRewritePlugin.class.getName())
-                .setKind(LabelRewritePlugin.MUTATION_KIND)
+                .setPluginClass(HammingLabelMatchingStrategy.class.getName())
+                .setKind(LabelRewrite.MUTATION_KIND)
                 .addParams(mask)
                 .build();
     }

@@ -498,7 +498,7 @@ public class EnvironmentController extends VisualizerBaseController {
             cells.add(new OrganismBodyResponseDto.BodyCell(
                 envProps.getRelativeVector(initialPosition, absolute),
                 moleculeInt & org.evochora.runtime.Config.TYPE_MASK,
-                Molecule.extractSignedValue(moleculeInt),
+                Molecule.extractTypedValue(moleculeInt),
                 (moleculeInt & org.evochora.runtime.Config.MARKER_MASK)
                     >>> org.evochora.runtime.Config.MARKER_SHIFT));
         }
@@ -643,7 +643,7 @@ public class EnvironmentController extends VisualizerBaseController {
 
             final int moleculeInt = cellColumns.getMoleculeData(i);
             final int moleculeType = moleculeInt & org.evochora.runtime.Config.TYPE_MASK;
-            final int moleculeValue = Molecule.extractSignedValue(moleculeInt);
+            final int moleculeValue = Molecule.extractTypedValue(moleculeInt);
             final int marker = (moleculeInt & org.evochora.runtime.Config.MARKER_MASK)
                     >> org.evochora.runtime.Config.MARKER_SHIFT;
             final int ownerId = cellColumns.getOwnerIds(i);

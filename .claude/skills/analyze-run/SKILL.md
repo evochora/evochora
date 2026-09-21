@@ -218,8 +218,10 @@ facts, not a reconstruction, and need no node:
   operation, family, variant, 4 a register step, 5 a register swap with the adjacent register
   operand, 6 a LABEL bit flip, 7 a LABELREF bit flip; a swap names two cells, every other action
   one), and
-  `label-rewrite` — the XOR mask every child's labels receive, with `cell_count` 0, `position`
-  `[]` and the mask in `params`; it changes no genome hash and is not a mutation.
+  `label-rewrite` — the XOR mask the labels and label references of a child received at birth,
+  recorded only for a birth whose namespace flip fired (one bit with the default strategy), with
+  `cell_count` 0, `position` `[]` and the mask in `params`; it changes no genome hash and is not a
+  mutation.
 - `births` — one row per birth, the life table of a run: `tick`, `birth_tick`, `organism_id`,
   `parent_id`, `parent_birth_tick` (the parent is in the same recording, so a generation step is
   one subtraction), `generation`, `genome_hash`, `parent_genome_hash` and `variation` (the index
@@ -495,8 +497,9 @@ assay described in `docs/proposals/ideas/MUTATIONAL_ROBUSTNESS_ASSAY.md`.
   `raw/metadata.pb.zst`). A child born owning an energy cell is a "mutant" with identical
   code. A body read later may contain the copy in progress for the next child, marked ≠ 0. When
   diffing bodies, drop those cells and the excluded molecules, and XOR-normalize LABEL and LABELREF
-  values with the value of the LABEL at the smallest relative position, as the hasher does —
-  otherwise every child differs from its parent in every label.
+  values with the value of the LABEL at the smallest relative position (of the LABELREF there if
+  the body has no LABEL), as the hasher does — otherwise a child whose namespace flip fired
+  differs from its parent in every label.
 - Empty cells (`CODE:0`) are unowned and absent from a body; inserted or duplicated code therefore
   appears as *new* cells, a deletion as *missing* cells.
 

@@ -14,6 +14,11 @@ public final class ProcFrameView {
      * mutation; callers distinguish named from unnamed frames by emptiness.
      */
     public final String procName;
+    /**
+     * The label value the call resolved, as the organism's cells carry it: the unsigned value of a
+     * LABEL molecule in the organism's own label namespace. It identifies an unnamed frame.
+     */
+    public final int labelValue;
     /** Absolute coordinates execution resumes at once the procedure returns. */
     public final int[] absoluteReturnIp;
     /**
@@ -31,15 +36,18 @@ public final class ProcFrameView {
      * Constructs a view of one call frame.
      *
      * @param procName          Resolved procedure name, empty if the label hash is unknown.
+     * @param labelValue        The label value the call resolved, in the organism's namespace.
      * @param absoluteReturnIp  Absolute coordinates execution resumes at after the return.
      * @param absoluteCallIp    Absolute coordinates of the originating CALL, or {@code null}.
      * @param savedRegisters    Caller registers preserved for the duration of the call.
      */
     public ProcFrameView(String procName,
+                         int labelValue,
                          int[] absoluteReturnIp,
                          int[] absoluteCallIp,
                          List<RegisterValueView> savedRegisters) {
         this.procName = procName;
+        this.labelValue = labelValue;
         this.absoluteReturnIp = absoluteReturnIp;
         this.absoluteCallIp = absoluteCallIp;
         this.savedRegisters = savedRegisters;

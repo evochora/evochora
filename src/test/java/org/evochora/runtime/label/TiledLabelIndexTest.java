@@ -1,0 +1,236 @@
+package org.evochora.runtime.label;
+
+import org.evochora.runtime.model.EnvironmentProperties;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Random;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+/**
+ * Unit tests for TiledLabelIndex: what it holds, and that its search by tiles finds the same label
+ * as a search over every label of the world.
+ */
+@Tag("unit")
+class TiledLabelIndexTest {
+
+    private static final int VALUE = 0x12345;
+    private static final int NOBODY = -5;
+
+    private static long noneFound() {
+        return TiledLabelIndex.searchState(Integer.MAX_VALUE, -1);
+    }
+
+    @Test
+    void holdsALabelUnderItsOwnerUntilItIsRemoved() {
+        TiledLabelIndex index = new TiledLabelIndex(new EnvironmentProperties(new int[]{256, 256}, true));
+        assertThat(index.isEmpty()).isTrue();
+
+        index.put(VALUE, 1000, 7);
+
+        assertThat(index.isInUse(VALUE)).isTrue();
+        assertThat(index.ownerOf(VALUE, 1000)).isEqualTo(7);
+        assertThat(index.ownerOf(VALUE, 1001)).isEqualTo(-1);
+
+        assertThat(index.remove(VALUE, 1000)).isTrue();
+        assertThat(index.remove(VALUE, 1000)).isFalse();
+        assertThat(index.isInUse(VALUE)).isFalse();
+        assertThat(index.isEmpty()).isTrue();
+    }
+
+    @Test
+    void puttingALabelAgainSetsItsOwner() {
+        TiledLabelIndex index = new TiledLabelIndex(new EnvironmentProperties(new int[]{256, 256}, true));
+        index.put(VALUE, 1000, 7);
+
+        index.put(VALUE, 1000, 0);
+
+        assertThat(index.ownerOf(VALUE, 1000)).isZero();
+        assertThat(index.remove(VALUE, 1000)).isTrue();
+        assertThat(index.isEmpty()).as("the label was held once").isTrue();
+    }
+
+    @Test
+    void setsTheOwnerOfALabelItHolds_andOfNoOther() {
+        TiledLabelIndex index = new TiledLabelIndex(new EnvironmentProperties(new int[]{256, 256}, true));
+        index.put(VALUE, 1000, 7);
+
+        assertThat(index.setOwner(VALUE, 1000, 8)).isTrue();
+        assertThat(index.setOwner(VALUE, 1001, 8)).isFalse();
+        assertThat(index.setOwner(VALUE + 1, 1000, 8)).isFalse();
+
+        assertThat(index.ownerOf(VALUE, 1000)).isEqualTo(8);
+        assertThat(index.ownerOf(VALUE, 1001)).isEqualTo(-1);
+        assertThat(index.isInUse(VALUE + 1)).isFalse();
+    }
+
+    @Test
+    void keepsEveryLabelOfAValueWhenItGrowsFromFewToMany_andWhenItShrinksAgain() {
+        EnvironmentProperties properties = new EnvironmentProperties(new int[]{512, 384}, true);
+        TiledLabelIndex index = new TiledLabelIndex(properties);
+        int labels = 40;
+        int[] flatIndexes = new int[labels];
+        for (int i = 0; i < labels; i++) {
+            // Spread over several tiles, two of them in every cell row used
+            flatIndexes[i] = properties.toFlatIndex(new int[]{(i * 37) % 512, (i / 2) * 9});
+            index.put(VALUE, flatIndexes[i], i + 1);
+            for (int earlier = 0; earlier <= i; earlier++) {
+                assertThat(index.ownerOf(VALUE, flatIndexes[earlier])).isEqualTo(earlier + 1);
+            }
+        }
+
+        for (int i = 0; i < labels; i++) {
+            long search = index.nearest(VALUE, NOBODY, properties.flatIndexToCoordinates(flatIndexes[i]), 0, true,
+                    noneFound());
+            assertThat(TiledLabelIndex.foundFlatIndex(search)).isEqualTo(flatIndexes[i]);
+            assertThat(index.setOwner(VALUE, flatIndexes[i], 100 + i)).isTrue();
+        }
+
+        for (int i = 0; i < labels; i++) {
+            assertThat(index.remove(VALUE, flatIndexes[i])).isTrue();
+            assertThat(index.ownerOf(VALUE, flatIndexes[i])).isEqualTo(-1);
+            assertThat(index.isInUse(VALUE)).isEqualTo(i < labels - 1);
+        }
+        assertThat(index.isEmpty()).isTrue();
+    }
+
+    @Test
+    void passesOverTheLabelsOfTheExcludedOwner() {
+        EnvironmentProperties properties = new EnvironmentProperties(new int[]{256, 256}, true);
+        TiledLabelIndex index = new TiledLabelIndex(properties);
+        int near = properties.toFlatIndex(new int[]{10, 10});
+        int far = properties.toFlatIndex(new int[]{40, 10});
+        index.put(VALUE, near, 7);
+        index.put(VALUE, far, 8);
+
+        long search = index.nearest(VALUE, 7, new int[]{9, 10}, 250, true, noneFound());
+
+        assertThat(TiledLabelIndex.foundFlatIndex(search)).isEqualTo(far);
+    }
+
+    @Test
+    void carriesTheBestLabelFromOneValueToTheNext() {
+        EnvironmentProperties properties = new EnvironmentProperties(new int[]{256, 256}, true);
+        TiledLabelIndex index = new TiledLabelIndex(properties);
+        int nearOfFirst = properties.toFlatIndex(new int[]{12, 10});
+        int fartherOfSecond = properties.toFlatIndex(new int[]{30, 10});
+        index.put(VALUE, nearOfFirst, 7);
+        index.put(VALUE + 1, fartherOfSecond, 7);
+
+        long search = index.nearest(VALUE, NOBODY, new int[]{10, 10}, 250, true, noneFound());
+        search = index.nearest(VALUE + 1, NOBODY, new int[]{10, 10}, 250, true, search);
+
+        assertThat(TiledLabelIndex.foundFlatIndex(search)).isEqualTo(nearOfFirst);
+    }
+
+    @Test
+    void findsTheSameLabelAmongManyValuesHeldByTile() {
+        // Forty values with thirty labels each are all held by tile, several hundred keys in one
+        // table: their probe sequences collide, which a search has to walk past
+        EnvironmentProperties properties = new EnvironmentProperties(new int[]{512, 384}, true);
+        TiledLabelIndex index = new TiledLabelIndex(properties);
+        CoordinateDecoder coordinates = index.coordinates();
+        Random random = new Random(11);
+        int values = 40;
+        List<List<Integer>> flatIndexesOfValue = new ArrayList<>();
+        Map<Integer, Integer> valueAtFlatIndex = new HashMap<>();
+        for (int v = 0; v < values; v++) {
+            List<Integer> flatIndexes = new ArrayList<>();
+            while (flatIndexes.size() < 30) {
+                int flatIndex = random.nextInt(512 * 384);
+                if (valueAtFlatIndex.putIfAbsent(flatIndex, v) == null) {
+                    flatIndexes.add(flatIndex);
+                    index.put(VALUE + v * 7919, flatIndex, 1);
+                }
+            }
+            flatIndexesOfValue.add(flatIndexes);
+        }
+
+        for (int query = 0; query < 2_000; query++) {
+            int v = random.nextInt(values);
+            int[] from = {random.nextInt(512), random.nextInt(384)};
+            int radius = 40 + random.nextInt(300);
+            int expected = -1;
+            int expectedDistance = Integer.MAX_VALUE;
+            for (int flatIndex : flatIndexesOfValue.get(v)) {
+                int distance = coordinates.distance(from, flatIndex);
+                if (distance <= radius && TiledLabelIndex.isNearer(distance, flatIndex, expectedDistance, expected, true)) {
+                    expectedDistance = distance;
+                    expected = flatIndex;
+                }
+            }
+
+            long search = index.nearest(VALUE + v * 7919, NOBODY, from, radius, true, noneFound());
+
+            assertThat(TiledLabelIndex.foundFlatIndex(search)).isEqualTo(expected);
+        }
+    }
+
+    @Test
+    void findsTheSameLabelAsASearchOverEveryLabel() {
+        // Worlds of one to three dimensions, smaller than a tile, a multiple of the tile side and
+        // not, each toroidal and bounded
+        int[][] shapes = {{64, 64}, {300, 200}, {1024, 32}, {512, 384}, {256}, {1000}, {40, 40, 40}, {2048, 1152}};
+        int[] radii = {0, 5, 60, 130, 250, 5000};
+        for (int[] shape : shapes) {
+            for (boolean toroidal : new boolean[]{true, false}) {
+                Random random = new Random(shape[0] * 31L + shape.length + (toroidal ? 1 : 0));
+                EnvironmentProperties properties = new EnvironmentProperties(shape, toroidal);
+                TiledLabelIndex index = new TiledLabelIndex(properties);
+                CoordinateDecoder coordinates = index.coordinates();
+                Map<Integer, Integer> ownerByFlatIndex = new HashMap<>();
+                List<Integer> flatIndexes = new ArrayList<>();
+                int cells = 1;
+                for (int extent : shape) {
+                    cells *= extent;
+                }
+
+                for (int round = 0; round < 400; round++) {
+                    // Labels come and go between the searches
+                    if (flatIndexes.isEmpty() || random.nextInt(4) > 0) {
+                        int flatIndex = random.nextInt(cells);
+                        if (ownerByFlatIndex.put(flatIndex, random.nextInt(6)) == null) {
+                            flatIndexes.add(flatIndex);
+                        }
+                        index.put(VALUE, flatIndex, ownerByFlatIndex.get(flatIndex));
+                    } else {
+                        int flatIndex = flatIndexes.remove(random.nextInt(flatIndexes.size()));
+                        ownerByFlatIndex.remove(flatIndex);
+                        assertThat(index.remove(VALUE, flatIndex)).isTrue();
+                    }
+
+                    int[] from = new int[shape.length];
+                    for (int i = 0; i < shape.length; i++) {
+                        from[i] = random.nextInt(shape[i]);
+                    }
+                    int radius = radii[random.nextInt(radii.length)];
+                    int excludedOwner = random.nextInt(6);
+                    boolean preferLowIndex = random.nextBoolean();
+
+                    int expected = -1;
+                    int expectedDistance = Integer.MAX_VALUE;
+                    for (int flatIndex : flatIndexes) {
+                        int distance = coordinates.distance(from, flatIndex);
+                        boolean counts = ownerByFlatIndex.get(flatIndex) != excludedOwner && distance <= radius;
+                        if (counts && TiledLabelIndex.isNearer(distance, flatIndex, expectedDistance, expected,
+                                preferLowIndex)) {
+                            expectedDistance = distance;
+                            expected = flatIndex;
+                        }
+                    }
+
+                    long search = index.nearest(VALUE, excludedOwner, from, radius, preferLowIndex, noneFound());
+                    assertThat(TiledLabelIndex.foundFlatIndex(search))
+                            .as("shape %s, toroidal %s, from %s, radius %d", java.util.Arrays.toString(shape), toroidal,
+                                    java.util.Arrays.toString(from), radius)
+                            .isEqualTo(expected);
+                }
+            }
+        }
+    }
+}
