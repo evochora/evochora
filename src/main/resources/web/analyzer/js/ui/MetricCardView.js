@@ -88,14 +88,14 @@ export function create(metric) {
     const controls = document.createElement('div');
     controls.className = 'metric-card-controls';
 
-    const lodChips = document.createElement('div');
-    lodChips.className = 'lod-chips';
-    renderLodChips(lodChips, metric);
-    controls.appendChild(lodChips);
+    const resolutionChips = document.createElement('div');
+    resolutionChips.className = 'resolution-chips';
+    renderResolutionChips(resolutionChips, metric);
+    controls.appendChild(resolutionChips);
 
     // Reloads this card alone; shown only while the run can still change
     const refreshButton = document.createElement('button');
-    refreshButton.className = 'lod-chip card-refresh';
+    refreshButton.className = 'resolution-chip card-refresh';
     refreshButton.textContent = '\u27F3';
     refreshButton.setAttribute('aria-label', 'Reload this card');
     refreshButton.dataset.tooltip = 'Reload this card';
@@ -130,7 +130,7 @@ export function create(metric) {
         metric: metric,
         chart: null,
         messageOverlay: messageOverlay,
-        lodChips: lodChips,
+        resolutionChips: resolutionChips,
         refreshButton: refreshButton
     };
     
@@ -143,25 +143,24 @@ export function create(metric) {
  * @param {HTMLElement} container - Element that holds the chips
  * @param {Object} metric - Metric manifest entry
  */
-function renderLodChips(container, metric) {
+function renderResolutionChips(container, metric) {
     container.innerHTML = '';
-    const lodLevels = levelsOf(metric);
-    lodLevels.forEach(lod => {
+    resolutionsOf().forEach(resolution => {
         const chip = document.createElement('button');
-        chip.className = 'lod-chip';
-        chip.dataset.lod = lod;
-        chip.textContent = lod.replace('lod', 'L');
+        chip.className = 'resolution-chip';
+        chip.dataset.resolution = resolution;
+        chip.textContent = 'L' + resolution;
         chip.addEventListener('click', () => {
             const card = cards[metric.id];
-            if (card && card.onLodChange) {
-                card.onLodChange(lod);
+            if (card && card.onResolutionChange) {
+                card.onResolutionChange(resolution);
             }
         });
         container.appendChild(chip);
     });
 }
 
-/** One entry per resolution a card offers, the finest first. */
+/** The resolutions a card offers, the finest first, counted from it. */
 const RESOLUTIONS = [0, 1, 2, 3, 4];
 
 /**
@@ -171,11 +170,10 @@ const RESOLUTIONS = [0, 1, 2, 3, 4];
  * each further one halves that. Which stored files are read to fill them is the loader's business,
  * so a card that derives its rows offers the same choice as one drawn from its own table.
  *
- * @param {Object} metric - Metric manifest entry
- * @returns {Array<string>} The resolution names, finest first
+ * @returns {Array<number>} The resolutions, finest first
  */
-export function levelsOf(metric) {
-    return RESOLUTIONS.map((_, level) => 'lod' + level);
+export function resolutionsOf() {
+    return RESOLUTIONS;
 }
 
 
@@ -187,11 +185,12 @@ export function levelsOf(metric) {
  */
 export function updateMetric(card, metric) {
     if (!card || !metric) return;
-    const active = card.lodChips.querySelector('.lod-chip.active');
+    const active = card.resolutionChips.querySelector('.resolution-chip.active');
     card.metric = metric;
-    renderLodChips(card.lodChips, metric);
+    renderResolutionChips(card.resolutionChips, metric);
     if (active) {
-        setActiveLod(card, active.dataset.lod, { pinned: !!card.pinnedLod, tooFine: card.tooFine || [] });
+        setActiveResolution(card, Number(active.dataset.resolution),
+            { pinned: !!card.pinnedResolution, tooFine: card.tooFine || [] });
     }
 }
 
@@ -358,19 +357,20 @@ export function showError(card, message) {
  * Shows on a card's chips which resolution it draws and how it came to it.
  *
  * @param {Object} card - Card instance
- * @param {string} lod - Level drawn (e.g., 'lod0')
+ * @param {number} resolution - The resolution drawn, counted from the finest
  * @param {Object} [state]
- * @param {boolean} [state.pinned=false] - Whether the reader chose the level; otherwise the card
- *        chose the finest one the tick window allows
- * @param {Array<string>} [state.tooFine=[]] - Levels holding more points over the tick window
- *        than the card draws; they cannot be chosen. The level drawn may be among them: then it
+ * @param {boolean} [state.pinned=false] - Whether the reader chose it; otherwise the card chose
+ *        the finest one the run fills over the ticks shown
+ * @param {Array<number>} [state.tooFine=[]] - Resolutions asking for more points than the run
+ *        holds over the ticks shown; they cannot be chosen. The one drawn may be among them: then it
  *        is the coarsest, drawn thinned, and stays enabled
  */
-export function setActiveLod(card, lod, { pinned = false, tooFine = [] } = {}) {
-    if (!card || !card.lodChips) return;
-    card.lodChips.querySelectorAll('.lod-chip').forEach(chip => {
-        const active = chip.dataset.lod === lod;
-        const tooFineForWindow = tooFine.includes(chip.dataset.lod);
+export function setActiveResolution(card, resolution, { pinned = false, tooFine = [] } = {}) {
+    if (!card || !card.resolutionChips) return;
+    card.resolutionChips.querySelectorAll('.resolution-chip').forEach(chip => {
+        const shown = Number(chip.dataset.resolution);
+        const active = shown === resolution;
+        const tooFineForWindow = tooFine.includes(shown);
         chip.classList.toggle('active', active);
         chip.classList.toggle('pinned', active && pinned);
         chip.disabled = tooFineForWindow && !active;
@@ -383,14 +383,14 @@ export function setActiveLod(card, lod, { pinned = false, tooFine = [] } = {}) {
 }
 
 /**
- * Registers a callback for LOD level changes on a card.
+ * Registers a callback for resolution level changes on a card.
  *
  * @param {Object} card - Card instance
- * @param {function(string): void} callback - Called with the selected LOD level
+ * @param {function(string): void} callback - Called with the selected resolution level
  */
-export function setOnLodChange(card, callback) {
+export function setOnResolutionChange(card, callback) {
     if (card) {
-        card.onLodChange = callback;
+        card.onResolutionChange = callback;
     }
 }
 

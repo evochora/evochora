@@ -259,11 +259,12 @@ export async function loadDashboard(runId) {
             // Register the handlers of the cards
             const cards = DashboardView.getAllCards();
             for (const [metricId, card] of Object.entries(cards)) {
-                MetricCardView.setOnLodChange(card, (lod) => {
-                    // A click pins a level; a click on the pinned level lets the card choose again
-                    card.pinnedLod = card.pinnedLod === lod ? null : lod;
-                    if (card.pinnedLod && lod === card.shownLod) {
-                        MetricCardView.setActiveLod(card, lod, { pinned: true, tooFine: card.tooFine });
+                MetricCardView.setOnResolutionChange(card, (resolution) => {
+                    // A click pins a resolution; a click on the pinned one lets the card choose again
+                    card.pinnedResolution = card.pinnedResolution === resolution ? null : resolution;
+                    if (card.pinnedResolution != null && resolution === card.shownResolution) {
+                        MetricCardView.setActiveResolution(card, resolution,
+                            { pinned: true, tooFine: card.tooFine });
                         return;
                     }
                     loadMetricData(card).catch(error => {
@@ -422,40 +423,7 @@ export async function loadDashboard(runId) {
             ? Math.min(card.metric.maxDataPoints, target) : target);
     }
 
-    /**
-     * How many points a level of detail holds over a tick range.
-     *
-     * The manifest names the tick distance between two rows of each level, so this is a count and
-     * not an estimate. Metrics writing several rows per tick - one per genome, say - still hold as
-     * many points as the chart draws: what is counted is moments in time.
-     *
-     * @param {Object} metric - Manifest entry
-     * @param {string} lod - Level of detail, e.g. "lod2"
-     * @param {number} tickMin - First tick of the metric
-     * @param {number} tickMax - Last tick of the metric
-     * @returns {number} The number of points
-     * @throws {Error} If the manifest names no interval for that level
-     */
-    function pointCount(metric, lod, tickMin, tickMax) {
-        const interval = metric.tickIntervals?.[lod];
-        if (!interval) {
-            throw new Error(
-                `Metric ${metric.id} names no tick interval for ${lod}; its manifest was written ` +
-                `by a build that did not record one, and this build cannot read its data either.`);
-        }
-        return Math.floor((tickMax - tickMin) / interval) + 1;
-    }
 
-    /**
-     * The coarsest level of detail a metric offers.
-     *
-     * @param {Object} metric - Manifest entry
-     * @returns {string|null} The coarsest level, or null if the metric names none
-     */
-    function coarsestLod(metric) {
-        const levels = metric.dataSources ? Object.keys(metric.dataSources).sort() : [];
-        return levels.length > 0 ? levels[levels.length - 1] : null;
-    }
 
     /**
      * How many moments the shown ticks hold at the finest the run was recorded with.
@@ -648,22 +616,20 @@ export async function loadDashboard(runId) {
             // Phase 2: the resolution. The reader picks how many points are drawn; the finest is
             // as many as the card can show apart, and each further one is half of that. Which of
             // the stored levels is read to fill them is decided below, not by the reader
-            const levels = MetricCardView.levelsOf(metric);
+            const resolutions = MetricCardView.resolutionsOf();
             // A resolution asking for more points than the window holds shows nothing finer than
             // the one below it, so it is offered greyed out rather than as a choice without effect
             const held = momentsHeld(metric, from, to);
-            const tooFine = levels.filter((lod, level) => pointsAt(effectiveLimit, level) > held);
-            if (card.pinnedLod && tooFine.includes(card.pinnedLod)) {
-                card.pinnedLod = null;
+            const tooFine = resolutions.filter(step => pointsAt(effectiveLimit, step) > held);
+            if (tooFine.includes(card.pinnedResolution)) {
+                card.pinnedResolution = null;
             }
-            const pinned = levels.indexOf(card.pinnedLod);
-            const wanted = pinned >= 0 ? pinned
-                : Math.max(0, levels.findIndex(lod => !tooFine.includes(lod)));
-            const points = pointsAt(effectiveLimit, wanted);
-            const resolvedLod = levels[wanted] || 'lod0';
+            const resolution = card.pinnedResolution ?? Math.max(0,
+                resolutions.findIndex(step => !tooFine.includes(step)));
+            const points = pointsAt(effectiveLimit, resolution);
             // The finest stored level that still holds more moments than the card draws; a coarser
             // one would have to be stretched, a finer one only costs transfer
-            const storageLod = derived ? null : finestLevelFor(metric, points, from, to);
+            const storageLevel = derived ? null : finestLevelFor(metric, points, from, to);
             const viewFrom = tickWindow ? from : null;
             const viewTo = tickWindow ? to : null;
 
@@ -673,23 +639,24 @@ export async function loadDashboard(runId) {
                 data = [];
             } else if (isParquet) {
                 const { blob: parquetBlob } = await AnalyticsApi.fetchParquetBlob(
-                    metricId, currentRunId, storageLod, controller.signal, viewFrom, viewTo
+                    metricId, currentRunId, storageLevel, controller.signal, viewFrom, viewTo
                 );
-                const blobKey = `${metricId}_${storageLod || 'auto'}`;
+                const blobKey = `${metricId}_${storageLevel || 'auto'}`;
                 await DuckDBClient.registerParquetBlob(blobKey, parquetBlob);
                 data = await DuckDBClient.queryRegisteredBlob(blobKey,
-                    withTickInterval(metric.generatedQuery, metric, storageLod,
+                    withTickInterval(metric.generatedQuery, metric, storageLevel,
                         hasRange ? to - from : 0, points));
             } else {
                 const result = await AnalyticsApi.queryData(
-                    currentRunId, metricId, storageLod, controller.signal, viewFrom, viewTo
+                    currentRunId, metricId, storageLevel, controller.signal, viewFrom, viewTo
                 );
                 data = result.data;
             }
 
-            card.shownLod = resolvedLod;
+            card.shownResolution = resolution;
             card.tooFine = tooFine;
-            MetricCardView.setActiveLod(card, resolvedLod, { pinned: !!card.pinnedLod, tooFine });
+            MetricCardView.setActiveResolution(card, resolution,
+                { pinned: card.pinnedResolution != null, tooFine });
 
             if (!derived && data.length === 0) {
                 showNoDataOrRetry(card);
@@ -697,17 +664,19 @@ export async function loadDashboard(runId) {
             }
 
             const previous = loadedData[metricId];
+            // A companion that follows the level was read from the level this card read, so it is
+            // kept only while that stays the same - the resolution says nothing about it
             const followsLevel = (metric.companions || []).some(companion => companion.followsLevel);
             const companionKept = keepCompanion && previous?.companion
-                && (!followsLevel || previous.lod === resolvedLod);
+                && (!followsLevel || previous.storageLevel === storageLevel);
             const companion = companionKept
                 ? { rows: previous.companion, missing: previous.missing }
-                : await loadCompanionData(metric, resolvedLod, controller.signal);
+                : await loadCompanionData(metric, storageLevel, controller.signal);
             loadedData[metricId] = {
                 data: fitToCard(data, points, metric),
                 companion: companion ? companion.rows : null,
                 missing: companion ? companion.missing : [],
-                lod: resolvedLod,
+                storageLevel,
                 points,
                 window: tickWindow
             };

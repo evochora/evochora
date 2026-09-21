@@ -11,15 +11,10 @@ import * as GenomeDepthSeries from './GenomeDepthSeries.js';
  * A metric may add series the chart derives from its companion tables rather than reads from its
  * own rows: the config names a derivation under {@code derivedY2}, and its series are drawn on the
  * secondary axis. The derivation owns everything about those series; this chart only draws them.
- *
- * A metric may also choose what its series look like: {@code colors} gives a series its colour,
- * {@code yLabel} titles the left axis, {@code yMin} fixes its lower end, and {@code reference}
- * names the one series the others are measured against, which is drawn as the scale rather than as
- * a measurement.
- *
+ * 
  * @module LineChart
  */
-
+    
     // Evochora color palette
     const COLORS = [
         '#4a9eff', // accent blue
@@ -32,31 +27,13 @@ import * as GenomeDepthSeries from './GenomeDepthSeries.js';
         '#98d8c8', // mint
     ];
     
-    // The series the others are held against carries no measurement of its own: grey and dashed,
-    // it reads as the scale it is rather than as one more curve
-    const REFERENCE_COLOR = '#9aa0a6';
-    const REFERENCE_DASH = [6, 4];
-
     /**
      * Gets color for a series by index.
      */
     function getColor(index) {
         return COLORS[index % COLORS.length];
     }
-
-    /**
-     * The name the reference series carries in the legend and the tooltip.
-     *
-     * @param {Object} config - Visualization config
-     * @returns {string|null} The label, or null where the config names no reference series
-     */
-    function referenceLabelOf(config) {
-        if (!config.reference) {
-            return null;
-        }
-        return config.referenceLabel || formatLabel(config.reference);
-    }
-
+    
     /**
      * Converts BigInt values to Numbers for Chart.js compatibility.
      * DuckDB returns BIGINT columns as JavaScript BigInt, but Chart.js requires Number.
@@ -104,10 +81,6 @@ export function render(canvas, data, config, context = {}) {
         // Prepare labels (x-axis values) - convert BigInt to Number
         const labels = data.map(row => toNumber(row[xKey]));
         
-        // Colours the metric chose for its series; a series it does not name keeps its palette one
-        const seriesColors = config.colors || {};
-        const referenceLabel = referenceLabelOf(config);
-
         // Prepare datasets
         const datasets = [];
         let colorIndex = 0;
@@ -115,18 +88,15 @@ export function render(canvas, data, config, context = {}) {
         // Primary Y-axis datasets - convert BigInt to Number
         yKeys.forEach(key => {
             const values = data.map(row => toNumber(row[key]));
-            const reference = key === config.reference;
-            const color = reference ? REFERENCE_COLOR : (seriesColors[key] || getColor(colorIndex));
             datasets.push({
-                label: reference ? referenceLabel : formatLabel(key),
+                label: formatLabel(key),
                 data: values,
-                borderColor: color,
-                backgroundColor: color + '20',
+                borderColor: getColor(colorIndex),
+                backgroundColor: getColor(colorIndex) + '20',
                 borderWidth: 2,
-                ...(reference ? { borderDash: REFERENCE_DASH } : {}),
                 fill: false,
                 tension: 0.1,
-                pointRadius: reference ? 0 : (data.length > 100 ? 0 : 3),
+                pointRadius: data.length > 100 ? 0 : 3,
                 pointHoverRadius: 5,
                 yAxisID: 'y'
             });
@@ -136,12 +106,11 @@ export function render(canvas, data, config, context = {}) {
         // Secondary Y-axis datasets - convert BigInt to Number
         y2Keys.forEach(key => {
             const values = data.map(row => toNumber(row[key]));
-            const color = seriesColors[key] || getColor(colorIndex);
             datasets.push({
                 label: formatLabel(key),
                 data: values,
-                borderColor: color,
-                backgroundColor: color + '20',
+                borderColor: getColor(colorIndex),
+                backgroundColor: getColor(colorIndex) + '20',
                 borderWidth: 2,
                 borderDash: [5, 5], // Dashed line for secondary axis
                 fill: false,
@@ -178,10 +147,6 @@ export function render(canvas, data, config, context = {}) {
         // Y-axis format hints from plugin manifest: "integer" or "decimal"
         const yFormat = config.yFormat || null;
         const y2Format = config.y2Format || null;
-
-        // A metric that names its left axis says what the series have in common; without one the
-        // axis lists them
-        const yTitle = config.yLabel || yKeys.map(formatLabel).join(', ');
 
         // Chart configuration
         const chartConfig = {
@@ -254,11 +219,10 @@ export function render(canvas, data, config, context = {}) {
                         display: true,
                         position: 'left',
                         title: {
-                            display: yTitle.length > 0,
-                            text: yTitle,
+                            display: yKeys.length > 0,
+                            text: yKeys.map(formatLabel).join(', '),
                             color: '#888'
                         },
-                        ...(Number.isFinite(config.yMin) ? { min: config.yMin } : {}),
                         ticks: {
                             color: '#888',
                             ...axisTicks(yFormat)
@@ -327,14 +291,10 @@ export function update(chart, data, config) {
             datasetIndex++;
         });
         
-        // Adjust point radius based on data size; the reference series is drawn without points
-        // however few there are
+        // Adjust point radius based on data size
         const pointRadius = data.length > 100 ? 0 : 3;
-        const referenceLabel = referenceLabelOf(config);
         chart.data.datasets.forEach(ds => {
-            if (ds.label !== referenceLabel) {
-                ds.pointRadius = pointRadius;
-            }
+            ds.pointRadius = pointRadius;
         });
         
         chart.update('none'); // No animation for updates

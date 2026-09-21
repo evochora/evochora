@@ -101,8 +101,8 @@ function spread(rate, births, controlRate, controlBirths) {
  * @param {number} width - The width of one window
  * @param {number} windows - How many windows the run is cut into
  * @returns {{births: Float64Array, founded: Float64Array}} The weighted counts, group by group and
- *          window by window, each parent counted once per group and window, and beside them the
- *          plain number of births of every cell; the control group comes first, the kinds follow
+ *          window by window, each parent counted once per group and window; the control group
+ *          comes first, the kinds follow
  */
 function countByWindow(table, groups, succeeded, from, to, width, windows) {
     const groupCount = KINDS.length + 1;
@@ -122,7 +122,6 @@ function countByWindow(table, groups, succeeded, from, to, width, windows) {
 
     const births = new Float64Array(groupCount * windows);
     const founded = new Float64Array(groupCount * windows);
-    const raw = new Int32Array(groupCount * windows);
     for (let index = 0; index < table.count; index++) {
         if (!counted(index)) {
             continue;
@@ -130,12 +129,11 @@ function countByWindow(table, groups, succeeded, from, to, width, windows) {
         const cell = cellOf(index);
         const weight = 1 / perParent.get(keyOf(index, cell));
         births[cell] += weight;
-        raw[cell]++;
         if (succeeded.has(table.organismId[index])) {
             founded[cell] += weight;
         }
     }
-    return { births, founded, raw };
+    return { births, founded };
 }
 
 /**

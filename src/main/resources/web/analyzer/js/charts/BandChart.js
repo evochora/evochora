@@ -9,9 +9,6 @@ import { formatTickValue, axisTicks, tooltipTitle, tooltipValue } from './ChartU
  *
  * A metric may name its second-axis series through {@code labels}, a map from column to label.
  *
- * A group may ask for a fainter shading than the default through {@code alpha}, which a chart
- * holding several groups needs so that their lines stay the strongest thing on it.
- *
  * A metric may draw more than one distribution in one chart: {@code groups} names each of them
  * with its own colour and its own percentile columns, and the legend tells them apart by name.
  * Without it the chart draws the single distribution of its {@code y} columns.
@@ -89,8 +86,7 @@ function bandGroups(config) {
             return {
                 name: group.name || '',
                 base: color,
-                alpha: group.alpha || null,
-                median: config.groups.length > 1 || group.color ? color : PALETTE.medianLine,
+                    median: config.groups.length > 1 || group.color ? color : PALETTE.medianLine,
                 keys: group.y || []
             };
         });
@@ -241,7 +237,7 @@ export function render(canvas, data, config) {
                 const label = groupLabel(group.name,
                     percentileLabel(group.name, lower) + '-' + percentileLabel(group.name, upper));
                 addBandDatasets(datasets, data, lower, upper, label,
-                    group.alpha ? group.base + group.alpha : bandColor(group.base, i, bandCount));
+                    bandColor(group.base, i, bandCount));
                 datasets[datasets.length - 1].bandGroup = groupIndex;
                 datasets[datasets.length - 2].bandGroup = groupIndex;
             }

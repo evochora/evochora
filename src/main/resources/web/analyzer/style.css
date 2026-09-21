@@ -313,14 +313,14 @@ main.container {
     gap: 8px;
 }
 
-.lod-selector {
+.resolution-selector {
     min-width: 80px;
     padding: 4px 8px;
     font-size: 0.8em;
 }
 
-/* --- LOD Chip Buttons --- */
-.lod-chip {
+/* --- Resolution Chip Buttons --- */
+.resolution-chip {
     padding: 2px 6px;
     font-size: 0.7em;
     background: transparent;
@@ -333,24 +333,24 @@ main.container {
     line-height: 1;
 }
 
-.lod-chip:hover {
+.resolution-chip:hover {
     border-color: var(--border-hover);
     color: var(--text-secondary);
 }
 
-.lod-chip.active {
+.resolution-chip.active {
     background-color: var(--button-bg);
     border-color: var(--accent-blue);
     color: var(--text-primary);
 }
 
-.lod-chips {
+.resolution-chips {
     display: flex;
     align-items: center;
     gap: 8px;
 }
 
-.lod-chips:empty {
+.resolution-chips:empty {
     display: none;
 }
 
@@ -365,20 +365,20 @@ main.container {
 
 /* A level the reader chose stands out from one the card chose for the tick window: the card's
    choice is marked quietly, the reader's is filled */
-.lod-chip.active.pinned {
+.resolution-chip.active.pinned {
     background-color: var(--accent-blue);
     border-color: var(--accent-blue);
     color: #0a0a14;
     font-weight: bold;
 }
 
-.lod-chip.active.pinned:hover {
+.resolution-chip.active.pinned:hover {
     background-color: var(--accent-blue-hover);
     border-color: var(--accent-blue-hover);
     color: #0a0a14;
 }
 
-.lod-chip:disabled {
+.resolution-chip:disabled {
     opacity: 0.3;
     cursor: not-allowed;
 }
