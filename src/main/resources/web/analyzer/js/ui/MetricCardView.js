@@ -29,6 +29,11 @@ import * as MutationSuccessSeries from '../charts/MutationSuccessSeries.js';
  *       column keyed by column name. It is null for a metric without companions.</li>
  *   <li>{@code config} - the visualization config, which names the companion metric ids the
  *       derivation reads and everything else it needs.</li>
+ *   <li>{@code window} - the ticks the card shows, as {@code {from, to}}, or null for the whole
+ *       run. What a derivation computes over the whole table it still draws for this window only,
+ *       so that every card of the dashboard covers the same ticks.</li>
+ *   <li>{@code points} - how many pieces to cut the shown ticks into, which is what the reader
+ *       chose as the card's resolution.</li>
  *   <li>returns the rows the chart draws, in the shape a chart's own rows have: an array of objects
  *       carrying the x key and the y keys the config names.</li>
  * </ul>
@@ -133,14 +138,14 @@ export function create(metric) {
 }
 
 /**
- * Fills a container with one chip per level of detail the manifest entry offers.
+ * Fills a container with one chip per resolution the card offers.
  *
  * @param {HTMLElement} container - Element that holds the chips
  * @param {Object} metric - Metric manifest entry
  */
 function renderLodChips(container, metric) {
     container.innerHTML = '';
-    const lodLevels = metric.dataSources ? Object.keys(metric.dataSources).sort() : [];
+    const lodLevels = levelsOf(metric);
     lodLevels.forEach(lod => {
         const chip = document.createElement('button');
         chip.className = 'lod-chip';
@@ -155,6 +160,24 @@ function renderLodChips(container, metric) {
         container.appendChild(chip);
     });
 }
+
+/** One entry per resolution a card offers, the finest first. */
+const RESOLUTIONS = [0, 1, 2, 3, 4];
+
+/**
+ * The resolutions a card offers.
+ *
+ * Every card offers the same ones: the finest draws as many points as the card can show apart, and
+ * each further one halves that. Which stored files are read to fill them is the loader's business,
+ * so a card that derives its rows offers the same choice as one drawn from its own table.
+ *
+ * @param {Object} metric - Metric manifest entry
+ * @returns {Array<string>} The resolution names, finest first
+ */
+export function levelsOf(metric) {
+    return RESOLUTIONS.map((_, level) => 'lod' + level);
+}
+
 
 /**
  * Takes over a manifest entry read again for a card: a running run gains levels of detail.
@@ -234,6 +257,9 @@ export function getAllCards() {
  * @param {Object<string, Array<Object>|Object<string, ArrayLike<*>>>|null} [context.companion] -
  *        Per companion metric id its rows, or its columns where the companion is columnar, if the
  *        metric has companions
+ * @param {Array<string>} [context.missing] - Companion tables that held nothing at this level
+ * @param {{from: number, to: number}|null} [context.window] - The ticks the card shows
+ * @param {number|null} [context.points] - How many points the card draws
  * @param {Object|null} [context.viewState] - The view state this chart last asked for
  * @param {Function} [context.onViewStateChange] - Called with a new view state to redraw
  *
@@ -245,7 +271,9 @@ export function renderChart(card, data, context = {}) {
 
     const canvas = card.element.querySelector('canvas');
     const chartType = card.metric.visualization?.type;
-    const chartConfig = card.metric.visualization?.config || {};
+    // The chart is told what the card is called, so that a series without a name of its own can
+    // say which quantity it belongs to rather than only which percentile it is
+    const chartConfig = { metricName: card.metric.name, ...(card.metric.visualization?.config || {}) };
 
     // Capture hidden dataset labels before destroying
     const hiddenLabels = new Set();
@@ -272,9 +300,10 @@ export function renderChart(card, data, context = {}) {
             showError(card, `Unknown derivation: ${chartConfig.derived}`);
             return;
         }
-        rows = derivation.derive(context.companion || null, chartConfig);
+        rows = derivation.derive(context.companion || null, chartConfig,
+            context.window || null, context.points || null);
         if (!rows || rows.length === 0) {
-            showNoData(card);
+            showNothingToDraw(card, context);
             return;
         }
     }
@@ -286,7 +315,7 @@ export function renderChart(card, data, context = {}) {
             // A chart returns nothing when what it was given is not enough to draw from - a chart
             // grouped by a companion table, without that table. Clearing the message here would
             // leave an empty plot that reads as one still loading.
-            showNoData(card);
+            showNothingToDraw(card, context);
             return;
         }
 
@@ -326,7 +355,7 @@ export function showError(card, message) {
 }
 
 /**
- * Shows on a card's chips which level of detail it draws and how it came to it.
+ * Shows on a card's chips which resolution it draws and how it came to it.
  *
  * @param {Object} card - Card instance
  * @param {string} lod - Level drawn (e.g., 'lod0')
@@ -345,11 +374,11 @@ export function setActiveLod(card, lod, { pinned = false, tooFine = [] } = {}) {
         chip.classList.toggle('active', active);
         chip.classList.toggle('pinned', active && pinned);
         chip.disabled = tooFineForWindow && !active;
-        chip.dataset.tooltip = chip.disabled ? 'Too many points for this tick window'
-            : active && tooFineForWindow ? 'Coarsest level, thinned to fit this tick window'
+        chip.dataset.tooltip = chip.disabled
+                ? 'Finer than this run was recorded over the ticks shown'
             : active && pinned ? 'Pinned \u2013 click to let the card choose again'
-            : active ? 'Chosen for this tick window \u2013 click to pin'
-            : 'Pin this level of detail';
+            : active ? 'Finest resolution this card can show \u2013 click to pin'
+            : 'Pin this resolution';
     });
 }
 
@@ -372,6 +401,21 @@ export function showNoData(card) {
     if (card) {
         showMessage(card, 'No data available');
     }
+}
+
+/**
+ * Shows that the card has nothing to draw, naming the table it missed where one was missing.
+ *
+ * @param {Object} card - Card instance
+ * @param {Object} context - Render context, carrying the tables that held nothing
+ */
+function showNothingToDraw(card, context) {
+    const missing = context && context.missing;
+    if (missing && missing.length > 0) {
+        showMissingTable(card, missing[0]);
+        return;
+    }
+    showNoData(card);
 }
 
 /**
