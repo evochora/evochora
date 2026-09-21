@@ -43,7 +43,7 @@ Two scalar values are *value-compatible* if their types are equal, or if one is 
 
 ### Ownership
 
-Any grid cell can be "owned" by an organism. This ownership is tracked separately from the molecule in the cell and is crucial for certain instructions like `SEEK` or `PEEK`, which behave differently depending on whether the target cell is owned by the acting organism, a foreign organism, or is unowned. Parent-owned cells are treated as foreign—offspring cannot access their parent's molecules. Some instructions treat unowned cells as foreign for cost purposes.
+Any grid cell can be "owned" by an organism. This ownership is tracked separately from the molecule in the cell and is crucial for certain instructions like `SEEK` or `PEEK`, which behave differently depending on whether the target cell is owned by the acting organism, a foreign organism, or is unowned. Movement treats an occupied unowned cell like a foreign one; costs are configured separately for all three cases.
 
 ### Molecule Marker
 
@@ -154,9 +154,9 @@ The energy costs and entropy changes for all instructions are configurable throu
 - **Read Rules**: Applied when instructions read from environment cells (e.g., `PEEK`, `PEKI`, `PEKS`). Rules are organized by ownership (`own`, `foreign`, `unowned`) and molecule type (`ENERGY`, `STRUCTURE`, `CODE`, `DATA`, `STATE`, or `_default`)
 - **Write Rules**: Applied when instructions write to environment cells (e.g., `POKE`, `POKI`, `POKS`). Rules are organized by molecule type (`ENERGY`, `STRUCTURE`, `CODE`, `DATA`, `STATE`) and resolved for the molecule as it is stored
 
-**Default Behavior**: If no specific policy is configured for an instruction, a default policy applies. The default policy typically applies a base energy cost and generates entropy proportional to energy consumption.
+**Default Behavior**: If no specific policy is configured for an instruction, a default policy applies. The default policy applies a base energy cost and a base entropy generation, configured independently of each other.
 
-**Configuration Format**: Rules can specify both fixed values (`energy`, `entropy`) and permille-based proportional values (`energy-permille`, `entropy-permille`). When both are specified, they are added together. Permille values are calculated as a fraction of the organism's current energy or entropy (e.g., `energy-permille = 1000` means 100% of current energy).
+**Configuration Format**: Rules can specify both fixed values (`energy`, `entropy`) and permille-based proportional values (`energy-permille`, `entropy-permille`). When both are specified, they are added together. Permille values are calculated as a fraction of the magnitude of the molecule's value (e.g., `energy-permille = 1000` means 100% of that value, `-1000` the same amount as a gain).
 
 For detailed configuration examples and available policy options, refer to the `evochora.conf` configuration file.
 
@@ -509,7 +509,7 @@ JMPI TAKE
 ### World Interaction
 
 These instructions interact with the environment grid relative to the **active Data Pointer (`DP`)**. The vector argument is a displacement: it addresses the cell the `DP` stands on, or one adjacent to it. A vector that would reach further is mapped to the nearest adjacent cell.
-Note on conflicts: If a world interaction loses conflict resolution for its target, its energy cost may be waived depending on the thermodynamic policy configuration.
+Note on conflicts: A world interaction that loses conflict resolution for its target is not executed and touches no cell, so only its base cost and the error penalty apply.
 
 * `PEEK %DEST_REG %VEC_REG`, `PEKI %DEST_REG <Vector>`, `PEKS`: Reads and consumes molecule at `DP` + vector, then clears ownership on that cell.
   - ENERGY molecules: Adds their value to `ER`. Energy costs and entropy generation depend on ownership (own/foreign/unowned) and are configured via thermodynamic policies.
@@ -520,7 +520,7 @@ Note on conflicts: If a world interaction loses conflict resolution for its targ
 * `POKE %SRC_REG %VEC_REG`, `POKI %SRC_REG <Vector>`, `POKS`: Writes molecule from `<%SRC_REG>` or stack to an empty cell at `DP` + vector and sets the ownership. The current `MR` is embedded into the written molecule; a `DATA` molecule written with `MR` 0 is stored as `STATE`.
   - Energy costs depend on the type of the molecule as it is stored (ENERGY, STRUCTURE, CODE, DATA, STATE) and are configured via thermodynamic policies.
   - Entropy dissipation is configured per molecule type in the thermodynamic policy configuration.
-  - Note: Energy costs may be charged even if the target cell is occupied and the write fails, depending on policy configuration.
+  - Note: A write onto an occupied cell fails and stores nothing, so neither the energy cost nor the entropy dissipation of a write applies.
 * `PPKR %REG %VEC_REG`, `PPKI %REG <Vector>`, `PPKS`: Atomically reads and consumes molecule at `DP` + vector into `%REG`, and writes new molecule that was in `%REG` or stack to the same cell, basically swaps molecule in cell with the one in register or stack. Sets the ownership.
   - The written molecule follows the same rule as `POKE`: the current `MR` is embedded into it, and a `DATA` molecule written with `MR` 0 is stored as `STATE`.
   - PEEK costs: Same as individual PEEK instruction, configured via thermodynamic policies.

@@ -115,6 +115,67 @@ public class EnergyCostTest {
     }
 
     /**
+     * Verifies that a POKE which fails on an occupied ENERGY cell gains nothing from it.
+     * The instruction never reads that cell, so its content must not enter the price - otherwise
+     * an organism could harvest a cell indefinitely by writing at it and failing.
+     * This is a unit test using an in-memory simulation.
+     */
+    @Test
+    @Tag("unit")
+    void testFailedPokeOnEnergyCellGainsNothing() {
+        Organism org = Organism.create(sim, new int[]{20, 40}, 1000);
+        sim.addOrganism(org);
+        org.setDp(0, org.getIp());
+
+        int[] vec = new int[]{0, 1};
+        int[] target = org.getTargetCoordinate(org.getDp(0), vec, environment);
+        environment.setMolecule(new Molecule(Config.TYPE_ENERGY, 500), target);
+
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 60).toInt());
+        org.writeOperand(1, vec);
+        int initialEr = org.getEr();
+
+        placeInstruction(org, "POKE", 0, 1);
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).as("POKE should fail on occupied cell").isTrue();
+        assertThat(org.getEr()).as("only the error penalty").isEqualTo(initialEr - 10);
+        assertThat(environment.getMolecule(target).toInt())
+                .as("the energy cell is untouched")
+                .isEqualTo(new Molecule(Config.TYPE_ENERGY, 500).toInt());
+    }
+
+    /**
+     * Verifies that PPK stores what stood in the cell, not what the organism could still absorb.
+     * At the energy cap nothing is absorbed, and the register still reports the cell's content.
+     * This is a unit test using an in-memory simulation.
+     */
+    @Test
+    @Tag("unit")
+    void testPpkStoresTheCellContentEvenAtTheEnergyCap() {
+        Organism org = Organism.create(sim, new int[]{70, 70}, 1000);
+        sim.addOrganism(org);
+        org.setDp(0, org.getIp());
+        org.addEr(org.getMaxEnergy());
+
+        int[] vec = new int[]{0, 1};
+        int[] target = org.getTargetCoordinate(org.getDp(0), vec, environment);
+        environment.setMolecule(new Molecule(Config.TYPE_ENERGY, 500), target);
+
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 50).toInt());
+        org.writeOperand(1, vec);
+
+        placeInstruction(org, "PPKR", 0, 1);
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).isFalse();
+        assertThat(org.getEr()).as("the register was already full").isEqualTo(org.getMaxEnergy());
+        assertThat((int) org.readOperand(0))
+                .as("the peeked molecule is what stood in the cell")
+                .isEqualTo(new Molecule(Config.TYPE_ENERGY, 500).toInt());
+    }
+
+    /**
      * Verifies that peeking a data molecule from a foreign cell consumes energy.
      * This is a unit test using an in-memory simulation.
      */
