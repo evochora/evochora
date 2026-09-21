@@ -94,8 +94,15 @@ public class AgeDistributionPlugin extends AbstractAnalyticsPlugin {
     }
 
     /**
-     * Generates the aggregated SQL query with dynamic bucket sizing.
-     * Uses AVG() for each percentile to smooth the data over buckets.
+     * Builds the query the browser runs over the loaded rows: one recording per window of the
+     * resolution shown, the earliest of that window, with its percentiles as they were measured.
+     * <p>
+     * The percentiles are not averaged over a window. A percentile is a position in a distribution,
+     * not a quantity that can be added and divided: the mean of the medians of ten recordings is
+     * not the median of what lived through them, it weighs a recording of twelve organisms like one
+     * of two thousand, and it hands back to an outlier the influence a percentile is chosen to deny
+     * it. The levels of this metric are sampled rather than summed for the same reason, and this
+     * query follows them.
      *
      * @return SQL query string with {table} placeholder
      */
@@ -106,16 +113,16 @@ public class AgeDistributionPlugin extends AbstractAnalyticsPlugin {
                 SELECT {tickInterval}::BIGINT AS bucket_size
             )
             SELECT
-                (FLOOR(tick / (SELECT bucket_size FROM params)) * (SELECT bucket_size FROM params))::BIGINT AS tick,
-                AVG(p0)::INTEGER AS p0,
-                AVG(p10)::INTEGER AS p10,
-                AVG(p25)::INTEGER AS p25,
-                AVG(p50)::INTEGER AS p50,
-                AVG(p75)::INTEGER AS p75,
-                AVG(p90)::INTEGER AS p90,
-                AVG(p100)::INTEGER AS p100
+                MIN(tick)::BIGINT AS tick,
+                ARG_MIN(p0, tick)::INTEGER AS p0,
+                ARG_MIN(p10, tick)::INTEGER AS p10,
+                ARG_MIN(p25, tick)::INTEGER AS p25,
+                ARG_MIN(p50, tick)::INTEGER AS p50,
+                ARG_MIN(p75, tick)::INTEGER AS p75,
+                ARG_MIN(p90, tick)::INTEGER AS p90,
+                ARG_MIN(p100, tick)::INTEGER AS p100
             FROM {table}
-            GROUP BY 1
+            GROUP BY FLOOR(tick / (SELECT bucket_size FROM params))
             ORDER BY tick
             """;
     }
@@ -125,8 +132,8 @@ public class AgeDistributionPlugin extends AbstractAnalyticsPlugin {
         ManifestEntry entry = new ManifestEntry();
         entry.id = metricId;
         entry.name = "Age Distribution";
-        entry.description = "Percentiles of organism age distribution. "
-            + "One point per time window of the resolution shown.";
+        entry.description = "How old the living are: percentiles of their age, one recording per "
+            + "time window. The oldest organism has its own line and its own scale.";
         
         entry.dataSources = new HashMap<>();
         for (int level = 0; level < lodLevels; level++) {
@@ -138,8 +145,17 @@ public class AgeDistributionPlugin extends AbstractAnalyticsPlugin {
         entry.generatedQuery = generateAggregatedQuery();
         entry.outputColumns = List.of("tick", "p0", "p10", "p25", "p50", "p75", "p90", "p100");
         
+        // The band holds the percentiles that describe the spread. The youngest organism is always
+        // a newborn and says nothing; the oldest is one organism, and how far it reaches grows with
+        // the size of the population, so it gets a line and a scale of its own rather than
+        // stretching the band that everything else is read in
         entry.visualization = VisualizationHint.chart("band-chart", "tick")
-            .with("y", List.of("p0", "p10", "p25", "p50", "p75", "p90", "p100"));
+            .with("y", List.of("p10", "p25", "p50", "p75", "p90"))
+            .with("yLabel", "Age of the living, in ticks")
+            .with("yFormat", "integer")
+            .with("y2", List.of("p100"))
+            .with("y2Label", "Oldest organism, in ticks")
+            .with("y2Format", "integer");
 
         return entry;
     }
