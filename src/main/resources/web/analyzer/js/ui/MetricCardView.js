@@ -93,20 +93,22 @@ export function create(metric) {
     renderResolutionChips(resolutionChips, metric);
     controls.appendChild(resolutionChips);
 
-    // Reloads this card alone; shown only while the run can still change
-    const refreshButton = document.createElement('button');
-    refreshButton.className = 'resolution-chip card-refresh';
-    refreshButton.textContent = '\u27F3';
-    refreshButton.setAttribute('aria-label', 'Reload this card');
-    refreshButton.dataset.tooltip = 'Reload this card';
-    refreshButton.hidden = true;
-    refreshButton.addEventListener('click', () => {
-        const card = cards[metric.id];
-        if (card && card.onRefresh) {
-            card.onRefresh();
+    // Shows this card alone, at the size of the screen. The whole card goes, not the chart alone:
+    // what a chart needs to be read - the percentiles it draws, the second legend of the failures
+    // below it - stands beside the canvas and not on it
+    const fullscreenButton = document.createElement('button');
+    fullscreenButton.className = 'resolution-chip card-fullscreen';
+    fullscreenButton.textContent = '⛶';
+    fullscreenButton.setAttribute('aria-label', 'Show this card full screen');
+    fullscreenButton.dataset.tooltip = 'Show this card full screen';
+    fullscreenButton.addEventListener('click', () => {
+        if (document.fullscreenElement === cardEl) {
+            document.exitFullscreen();
+        } else {
+            cardEl.requestFullscreen();
         }
     });
-    controls.appendChild(refreshButton);
+    controls.appendChild(fullscreenButton);
 
     header.appendChild(titleGroup);
     header.appendChild(controls);
@@ -130,8 +132,7 @@ export function create(metric) {
         metric: metric,
         chart: null,
         messageOverlay: messageOverlay,
-        resolutionChips: resolutionChips,
-        refreshButton: refreshButton
+        resolutionChips: resolutionChips
     };
     
     return cardEl;
@@ -193,42 +194,6 @@ export function updateMetric(card, metric) {
     if (active) {
         setActiveResolution(card, Number(active.dataset.resolution),
             { pinned: !!card.pinnedResolution, tooFine: card.tooFine || [] });
-    }
-}
-
-/**
- * Registers the callback of a card's reload button.
- *
- * @param {Object} card - Card instance
- * @param {function(): void} callback
- */
-export function setOnRefresh(card, callback) {
-    if (card) {
-        card.onRefresh = callback;
-    }
-}
-
-/**
- * Shows or hides the reload button of a card.
- *
- * @param {Object} card - Card instance
- * @param {boolean} visible
- */
-export function setRefreshVisible(card, visible) {
-    if (card && card.refreshButton) {
-        card.refreshButton.hidden = !visible;
-    }
-}
-
-/**
- * Enables or disables the reload button of a card, as while the card loads.
- *
- * @param {Object} card - Card instance
- * @param {boolean} enabled
- */
-export function setRefreshEnabled(card, enabled) {
-    if (card && card.refreshButton) {
-        card.refreshButton.disabled = !enabled;
     }
 }
 
@@ -395,6 +360,36 @@ export function setOnResolutionChange(card, callback) {
         card.onResolutionChange = callback;
     }
 }
+
+/** The card the screen is given to, so that leaving the mode reaches that card again. */
+let fullscreenCard = null;
+
+/**
+ * Registers what a card does when it is given the screen or gives it back.
+ *
+ * How many points a card draws follows from how wide it is, and full screen is several times the
+ * width of a card in the dashboard: the card reads the stretch it shows again, at the density that
+ * width allows. Leaving the mode does the same the other way round.
+ *
+ * @param {Object} card - Card instance
+ * @param {function(): void} callback
+ */
+export function setOnFullscreenChange(card, callback) {
+    if (card) {
+        card.onFullscreenChange = callback;
+    }
+}
+
+document.addEventListener('fullscreenchange', () => {
+    const entered = Object.values(cards)
+        .find(card => card.element === document.fullscreenElement) || null;
+    // Leaving reaches the card that was shown, which the document no longer names
+    const changed = entered || fullscreenCard;
+    fullscreenCard = entered;
+    if (changed && changed.onFullscreenChange) {
+        changed.onFullscreenChange();
+    }
+});
 
 /**
  * Shows a no-data state on the card.

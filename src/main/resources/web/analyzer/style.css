@@ -354,13 +354,19 @@ main.container {
     display: none;
 }
 
-/* A chip like the levels of detail, set apart from them: it acts on the card, it does not choose a view */
-.card-refresh {
+/* A chip like the resolutions, set apart from them: it acts on the card, it does not choose a view */
+.card-fullscreen {
     margin-left: 8px;
 }
 
-.card-refresh[hidden] {
-    display: none;
+/* The card takes the screen; its chart container grows with it, and what belongs beside the chart
+   - the resolutions, the legend of the failures below it - comes along because the card does */
+.metric-card:fullscreen {
+    width: 100%;
+    height: 100%;
+    box-sizing: border-box;
+    border-radius: 0;
+    background-color: var(--bg-secondary);
 }
 
 /* A level the reader chose stands out from one the card chose for the tick window: the card's

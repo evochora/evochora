@@ -326,12 +326,25 @@ export async function loadDashboard(runId) {
                     });
                 });
 
-                MetricCardView.setOnRefresh(card, () => refreshCard(card));
+                // The screen holds several times the points a card in the dashboard does, so the
+                // card reads the stretch it shows again at that density - and again on the way
+                // back. Only the density changes, so a companion that does not follow the level is
+                // kept: reading it again would cost seconds of the browser's one thread for a
+                // table that the width of the card says nothing about
+                MetricCardView.setOnFullscreenChange(card, () => {
+                    loadMetricData(card, { keepCompanion: true }).catch(error => {
+                        if (error.name !== 'AbortError') {
+                            console.error(`[AnalyzerController] Failed to load metric ${metricId}:`, error);
+                            MetricCardView.showError(card, error.message || 'Failed to load data');
+                        }
+                    });
+                });
             }
 
-            updateRefreshVisibility();
+            updateRunRangePoll();
 
             runExtent = await fetchRunExtent(runId, manifest.metrics);
+            loadedExtent = runExtent;
             TickWindowView.show(runExtent, tickWindow);
 
             // Load the group in view; the others load when they are first opened
