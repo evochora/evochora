@@ -377,18 +377,22 @@ public class VariationSourcesPlugin extends AbstractAnalyticsPlugin {
      * @return the SQL with {@code {table}} standing for the loaded rows
      */
     private static String windowSumQuery() {
+        // A window the level holds no recording in carries no count at all: nothing was counted
+        // there, which is not the same as nothing having happened. A zero would say the second
         String sums = COUNT_COLUMNS.stream()
-            .map(name -> "COALESCE(SUM(" + name + "), 0)::BIGINT AS " + name)
+            .map(name -> "CASE WHEN COUNT(rows.tick) = 0 THEN NULL"
+                + " ELSE COALESCE(SUM(rows." + name + "), 0) END::BIGINT AS " + name)
             .collect(java.util.stream.Collectors.joining(",\n                "));
         return """
             WITH %s
             SELECT
-                %s AS tick,
+                windows.window_tick AS tick,
                 %s
-            FROM {table}
-            GROUP BY 1
+            FROM windows LEFT JOIN window_rows rows
+                ON rows.window_tick = windows.window_tick
+            GROUP BY windows.window_tick
             ORDER BY tick
-            """.formatted(windowParams(), windowTick(), sums);
+            """.formatted(windowSource(), sums);
     }
 
     @Override

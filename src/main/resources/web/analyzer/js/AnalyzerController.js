@@ -530,19 +530,31 @@ export async function loadDashboard(runId) {
     }
 
     /**
-     * Fills the number of windows a card draws into a query that asks for it.
+     * Fills the stretch a card draws, and how many windows it cuts it into, into a query that asks
+     * for them.
      *
      * A metric whose rows are counts writes one row per window of its level, and another whenever a
      * batch ends inside one, so its rows lie closer together than its window is wide. Such a query
-     * says {@code {buckets}} where the number of windows belongs and works out their width from the
-     * ticks its own rows cover - the run may have grown since anything else was measured.
+     * says {@code {buckets}} where the number of windows belongs, and {@code {from}} and
+     * {@code {to}} where the stretch does. The stretch is the page's, not the level's: a coarse
+     * level holds its newest row further back, and a card reading its own rows for the answer would
+     * end earlier than the card beside it.
+     *
+     * Where the page knows no stretch, because the metric holds no tick at all, the placeholders
+     * become the first and last tick of the rows themselves - which is what the query would have
+     * asked of them in any case.
      *
      * @param {string} query - The metric's query
      * @param {number} points - How many points the card draws
-     * @returns {string} The query with the number filled in
+     * @param {?number} from - First tick drawn
+     * @param {?number} to - Last tick drawn
+     * @returns {string} The query with the numbers filled in
      */
-    function withBuckets(query, points) {
-        return query.replaceAll('{buckets}', String(Math.max(1, points)));
+    function fillWindow(query, points, from, to) {
+        return query
+            .replaceAll('{buckets}', String(Math.max(1, points)))
+            .replaceAll('{from}', from != null ? String(from) : 'SELECT MIN(tick) FROM {table}')
+            .replaceAll('{to}', to != null ? String(to) : 'SELECT MAX(tick) FROM {table}');
     }
 
     /**
@@ -665,8 +677,10 @@ export async function loadDashboard(runId) {
             // The finest stored level that still holds more moments than the card draws; a coarser
             // one would have to be stretched, a finer one only costs transfer
             const storageLevel = derived ? null : finestLevelFor(metric, points, from, to);
-            const viewFrom = tickWindow ? from : null;
-            const viewTo = tickWindow ? to : null;
+            // Only the files the shown stretch reaches into are fetched, whether the reader set a
+            // window or is looking at the whole run: what lies past it is drawn by no card
+            const viewFrom = from;
+            const viewTo = to;
 
             // Phase 3: fetch the data of the window
             let data;
@@ -678,8 +692,12 @@ export async function loadDashboard(runId) {
                 );
                 const blobKey = `${metricId}_${storageLevel || 'auto'}`;
                 await DuckDBClient.registerParquetBlob(blobKey, parquetBlob);
-                data = await DuckDBClient.queryRegisteredBlob(blobKey,
-                    withBuckets(metric.generatedQuery, points));
+                // A metric whose rows carry a second dimension is read column by column: the same
+                // values, without an object per row (see ManifestEntry.columnar)
+                const query = fillWindow(metric.generatedQuery, points, from, to);
+                data = metric.columnar
+                    ? await DuckDBClient.queryRegisteredBlobColumns(blobKey, query)
+                    : await DuckDBClient.queryRegisteredBlob(blobKey, query);
             } else {
                 const result = await AnalyticsApi.queryData(
                     currentRunId, metricId, storageLevel, controller.signal, viewFrom, viewTo

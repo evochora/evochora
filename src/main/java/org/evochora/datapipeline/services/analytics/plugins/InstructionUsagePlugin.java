@@ -146,8 +146,11 @@ public class InstructionUsagePlugin extends AbstractAnalyticsPlugin {
      */
     private String generateAggregatedQuery() {
         // Build column list dynamically from discovered families
+        // A window the level holds no recording in carries nothing rather than zeros, which would
+        // read as a window in which no instruction was executed at all
         String sumColumns = FAMILY_NAMES.stream()
-            .map(name -> "SUM(" + name + ")::BIGINT AS " + name)
+            .map(name -> "CASE WHEN COUNT(per_tick.tick) = 0 THEN NULL"
+                + " ELSE SUM(" + name + ") END::BIGINT AS " + name)
             .collect(Collectors.joining(",\n                "));
 
         // Build total calculation from all family columns (for per-tick rate)
@@ -161,24 +164,25 @@ public class InstructionUsagePlugin extends AbstractAnalyticsPlugin {
             per_tick AS (
                 SELECT
                     tick,
-                    %s AS bucket_tick,
+                    window_tick,
                     CASE
                         WHEN (%s) = 0 THEN 0.0
                         ELSE (failure_count::DOUBLE * 100.0 / (%s))
                     END AS tick_failure_rate,
                     %s
-                FROM {table}
+                FROM window_rows
             )
             SELECT
-                bucket_tick AS tick,
+                windows.window_tick AS tick,
                 %s,
                 MAX(tick_failure_rate) AS failure_rate,
-                ARG_MAX(tick, tick_failure_rate) AS failure_rate_peak_tick,
+                ARG_MAX(per_tick.tick, tick_failure_rate) AS failure_rate_peak_tick,
                 ANY_VALUE((SELECT bucket_size FROM params)) AS bucket_size
-            FROM per_tick
-            GROUP BY 1
+            FROM windows LEFT JOIN per_tick
+                ON per_tick.window_tick = windows.window_tick
+            GROUP BY windows.window_tick
             ORDER BY tick
-            """.formatted(windowParams(), windowTick(), totalExpr, totalExpr,
+            """.formatted(windowSource(), totalExpr, totalExpr,
                          FAMILY_NAMES.stream().collect(Collectors.joining(", ")),
                          sumColumns);
     }

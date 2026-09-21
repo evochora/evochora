@@ -94,8 +94,9 @@ public class AgeDistributionPlugin extends AbstractAnalyticsPlugin {
     }
 
     /**
-     * Builds the query the browser runs over the loaded rows: one recording per window of the
-     * resolution shown, the earliest of that window, with its percentiles as they were measured.
+     * Builds the query the browser runs over the loaded rows: one row per window of the stretch
+     * shown, carrying the percentiles of the earliest recording of that window as they were
+     * measured, and nothing where the loaded level holds no recording in it.
      * <p>
      * The percentiles are not averaged over a window. A percentile is a position in a distribution,
      * not a quantity that can be added and divided: the mean of the medians of ten recordings is
@@ -111,18 +112,19 @@ public class AgeDistributionPlugin extends AbstractAnalyticsPlugin {
             WITH
             %s
             SELECT
-                MIN(tick)::BIGINT AS tick,
-                ARG_MIN(p0, tick)::INTEGER AS p0,
-                ARG_MIN(p10, tick)::INTEGER AS p10,
-                ARG_MIN(p25, tick)::INTEGER AS p25,
-                ARG_MIN(p50, tick)::INTEGER AS p50,
-                ARG_MIN(p75, tick)::INTEGER AS p75,
-                ARG_MIN(p90, tick)::INTEGER AS p90,
-                ARG_MIN(p100, tick)::INTEGER AS p100
-            FROM {table}
-            GROUP BY %s
+                windows.window_tick AS tick,
+                ARG_MIN(rows.p0, rows.tick)::INTEGER AS p0,
+                ARG_MIN(rows.p10, rows.tick)::INTEGER AS p10,
+                ARG_MIN(rows.p25, rows.tick)::INTEGER AS p25,
+                ARG_MIN(rows.p50, rows.tick)::INTEGER AS p50,
+                ARG_MIN(rows.p75, rows.tick)::INTEGER AS p75,
+                ARG_MIN(rows.p90, rows.tick)::INTEGER AS p90,
+                ARG_MIN(rows.p100, rows.tick)::INTEGER AS p100
+            FROM windows LEFT JOIN window_rows rows
+                ON rows.window_tick = windows.window_tick
+            GROUP BY windows.window_tick
             ORDER BY tick
-            """.formatted(windowParams(), windowTick());
+            """.formatted(windowSource());
     }
 
     @Override

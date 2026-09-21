@@ -61,7 +61,9 @@ class AgeDistributionPluginTest {
         // old ones: the window keeps the earliest recording rather than averaging them
         String query = plugin.getManifestEntry().generatedQuery
             .replace("{table}", "ages")
-            .replace("{buckets}", "1");
+            .replace("{buckets}", "1")
+            .replace("{from}", "0")
+            .replace("{to}", "900");
         try (java.sql.Connection connection = java.sql.DriverManager.getConnection("jdbc:duckdb:");
              java.sql.Statement statement = connection.createStatement()) {
             statement.execute("CREATE TABLE ages (tick BIGINT, p0 INTEGER, p10 INTEGER, "
