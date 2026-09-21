@@ -43,7 +43,7 @@ import com.typesafe.config.Config;
  * <p>
  * <strong>Query-Time Computation:</strong>
  * <pre>
- * 1. Calculate bucket_size = (max_tick - min_tick) / 100
+ * 1. Take the width of one window from the card, which asks for as many as it can show
  * 2. For each row: births = delta(total_born), deaths = delta(total_born - alive_count)
  * 3. Aggregate by bucket and split the deaths by the causes counted in it
  * </pre>
@@ -53,9 +53,6 @@ import com.typesafe.config.Config;
  * shown as unclassified rather than guessed.
  */
 public class VitalStatsPlugin extends AbstractAnalyticsPlugin {
-
-    /** Target number of buckets for aggregation (~100 bars in chart) */
-    private static final int TARGET_BUCKETS = 100;
 
     /** Schema stores only raw facts - no derived values */
     private static final ParquetSchema SCHEMA = ParquetSchema.builder()
@@ -135,7 +132,7 @@ public class VitalStatsPlugin extends AbstractAnalyticsPlugin {
     /**
      * Generates the aggregated SQL query with dynamic bucket sizing.
      * <p>
-     * The query automatically calculates the bucket size to produce ~100 buckets,
+     * The query automatically calculates the bucket size to produce one point per window,
      * regardless of total tick count. This ensures readable bar charts even for
      * very long simulations.
      * <p>
@@ -148,8 +145,8 @@ public class VitalStatsPlugin extends AbstractAnalyticsPlugin {
         return """
             WITH
             params AS (
-                -- Calculate bucket size: (max - min) / TARGET_BUCKETS, minimum 1
-                SELECT GREATEST(1, (MAX(tick) - MIN(tick)) / %d)::BIGINT AS bucket_size
+                -- The width of one window, as the card asks for it
+                SELECT GREATEST(1, (MAX(tick) - MIN(tick)) / {buckets})::BIGINT AS bucket_size
                 FROM {table}
             ),
             raw AS (
@@ -199,7 +196,7 @@ public class VitalStatsPlugin extends AbstractAnalyticsPlugin {
                 CASE WHEN energy + entropy + other = 0 THEN -deaths ELSE 0 END AS deaths_unclassified
             FROM buckets
             ORDER BY tick
-            """.formatted(TARGET_BUCKETS);
+            """;
     }
 
     @Override

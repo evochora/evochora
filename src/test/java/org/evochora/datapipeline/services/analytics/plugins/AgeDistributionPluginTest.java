@@ -9,6 +9,7 @@ import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
+import org.evochora.datapipeline.api.analytics.ManifestEntry;
 import org.junit.jupiter.api.Test;
 
 import com.typesafe.config.ConfigFactory;
@@ -52,6 +53,42 @@ class AgeDistributionPluginTest {
         for (int i = 1; i <= 7; i++) {
             assertThat(row[i]).isEqualTo(50);
         }
+    }
+
+    @Test
+    void theWindowKeepsOneRecordingRatherThanAveragingItsPercentiles() throws java.sql.SQLException {
+        // Two recordings fall into one window, one of a young population and one of an old one:
+        // the window keeps the earlier one rather than averaging the two
+        String query = plugin.getManifestEntry().generatedQuery
+            .replace("{table}", "ages")
+            .replace("{buckets}", "1");
+        try (java.sql.Connection connection = java.sql.DriverManager.getConnection("jdbc:duckdb:");
+             java.sql.Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE ages (tick BIGINT, p0 INTEGER, p10 INTEGER, "
+                + "p25 INTEGER, p50 INTEGER, p75 INTEGER, p90 INTEGER, p100 INTEGER)");
+            statement.execute("INSERT INTO ages VALUES (0, 0, 1, 2, 10, 20, 30, 40)");
+            statement.execute("INSERT INTO ages VALUES (100, 0, 5, 50, 500, 900, 950, 999)");
+            statement.execute("INSERT INTO ages VALUES (900, 0, 5, 50, 500, 900, 950, 999)");
+            try (java.sql.ResultSet rows = statement.executeQuery(query)) {
+                assertThat(rows.next()).isTrue();
+                // The first window holds the first two recordings; their medians are 10 and 500,
+                // and the mean of those, 255, is a number neither moment ever had
+                assertThat(rows.getLong("tick")).isZero();
+                assertThat(rows.getInt("p50")).isEqualTo(10);
+                assertThat(rows.getInt("p100")).isEqualTo(40);
+            }
+        }
+    }
+
+    @Test
+    void theBandHoldsTheSpreadAndTheOldestOrganismItsOwnScale() {
+        ManifestEntry entry = plugin.getManifestEntry();
+
+        // The youngest is always a newborn, and how far the oldest reaches grows with the size of
+        // the population: neither belongs in the band the spread is read in
+        assertThat(entry.visualization.config)
+            .containsEntry("y", List.of("p10", "p25", "p50", "p75", "p90"))
+            .containsEntry("y2", List.of("p100"));
     }
 
     @Test

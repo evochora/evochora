@@ -12,9 +12,11 @@ import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 import org.evochora.datapipeline.api.analytics.ManifestEntry;
@@ -64,6 +66,11 @@ public class AnalyticsController implements IController {
     /** Where the analyzer puts each card, from the plugin list this node is configured with. */
     private final CardPlacements placements;
     private final ConcurrentHashMap<String, CacheEntry> manifestCache = new ConcurrentHashMap<>();
+    /**
+     * The missing companion tables already reported, by run, card and table, so that the log names
+     * each of them once and not again with every manifest rebuilt after the cache ran out.
+     */
+    private final Set<String> reportedMissingCompanions = ConcurrentHashMap.newKeySet();
     
     // DuckDB driver loaded flag (for server-side queries)
     private static volatile boolean duckDbDriverLoaded = false;
@@ -356,9 +363,9 @@ public class AnalyticsController implements IController {
                     mimeType = "application/json",
                     example = """
                         [
-                          {"tick": 0, "alive_count": 1, "total_dead": 0, "avg_energy": 10000.0},
-                          {"tick": 1, "alive_count": 1, "total_dead": 0, "avg_energy": 9950.5},
-                          {"tick": 2, "alive_count": 2, "total_dead": 0, "avg_energy": 9900.0}
+                          {"tick": 0, "alive_count": 1, "bodied_count": 1, "energy_p50": 100.0},
+                          {"tick": 1, "alive_count": 1, "bodied_count": 1, "energy_p50": 99.5},
+                          {"tick": 2, "alive_count": 2, "bodied_count": 2, "energy_p50": 99.0}
                         ]
                         """
                 )
@@ -544,7 +551,7 @@ public class AnalyticsController implements IController {
         String whereClause = buildTickWhereClause(tickFrom, tickTo);
 
         // union_by_name=true allows merging Parquet files with different schemas
-        // (e.g., old files without avg_entropy, new files with it)
+        // (e.g., files a build wrote before a plugin gained a column, next to files with it)
         String sql = String.format(
             "SELECT * FROM read_parquet([%s], union_by_name=true)%s ORDER BY tick",
             fileList, whereClause
@@ -716,14 +723,7 @@ public class AnalyticsController implements IController {
                         }
                     }
                     
-                    // Validate file is readable (catches files still being written)
-                    try {
-                        validateParquetFile(tempFile);
-                        tempFiles.add(tempFile);
-                    } catch (Exception e) {
-                        log.debug("Skipping unreadable Parquet file (may still be written): {}", file);
-                        Files.deleteIfExists(tempFile);
-                    }
+                    tempFiles.add(tempFile);
                 }
                 
                 if (tempFiles.isEmpty()) {
@@ -731,7 +731,11 @@ public class AnalyticsController implements IController {
                     return;
                 }
 
-                // 3. Merge Parquet files using DuckDB (with optional tick range filter)
+                // 3. Merge Parquet files using DuckDB (with optional tick range filter). Storage
+                // publishes an analytics file by moving it into place, so every listed file is a
+                // complete one and the merge reads them all in one pass. A file it cannot read is
+                // a damaged one: the request fails with it rather than answering with a chart that
+                // silently misses whatever that file held.
                 mergedFile = tempDir.resolve("merged.parquet");
                 mergeParquetFiles(tempFiles, mergedFile, tickFrom, tickTo);
                 
@@ -810,7 +814,7 @@ public class AnalyticsController implements IController {
         String whereClause = buildTickWhereClause(tickFrom, tickTo);
         String outputPath = outputFile.toAbsolutePath().toString().replace("\\", "/");
         // union_by_name=true allows merging Parquet files with different schemas
-        // (e.g., old files without avg_entropy, new files with it)
+        // (e.g., files a build wrote before a plugin gained a column, next to files with it)
         String sql = String.format(
             "COPY (SELECT * FROM read_parquet([%s], union_by_name=true)%s ORDER BY tick) TO '%s' (FORMAT PARQUET, CODEC 'ZSTD')",
             fileList, whereClause, outputPath
@@ -917,16 +921,18 @@ public class AnalyticsController implements IController {
                             {
                               "id": "population",
                               "name": "Population Overview",
-                              "description": "Overview of alive organisms, total deaths, and average energy over time.",
+                              "description": "Living organisms, and how their energy and entropy are spread among them.",
                               "dataSources": {
                                 "lod0": "population/lod0/**/*.parquet"
                               },
                               "visualization": {
-                                "type": "line-chart",
+                                "type": "band-chart",
                                 "config": {
                                   "x": "tick",
-                                  "y": ["alive_count", "total_dead"],
-                                  "y2": ["avg_energy"]
+                                  "groups": [
+                                    {"name": "Energy", "color": "#4a9eff", "y": ["energy_p10", "energy_p25", "energy_p50", "energy_p75", "energy_p90"]}
+                                  ],
+                                  "y2": ["alive_count", "bodied_count"]
                                 }
                               }
                             }
@@ -981,6 +987,8 @@ public class AnalyticsController implements IController {
                 }
             }
 
+            warnAboutMissingCompanions(runId, entries, files);
+
             Map<String, Object> response = Map.of("metrics", placements.apply(entries));
             String responseJson = gson.toJson(response);
             
@@ -996,6 +1004,48 @@ public class AnalyticsController implements IController {
         } catch (Exception e) {
             log.error("Failed to aggregate manifest for run {}", runId, e);
             ctx.status(500).result("Failed to generate manifest");
+        }
+    }
+
+    /**
+     * Reports every card of a run that reads a companion table the run does not hold.
+     * <p>
+     * Such a card cannot be drawn, and what is missing is a plugin in the configuration of an
+     * indexer - which whoever runs the servers can change and whoever looks at the analyzer
+     * possibly cannot, so it is said here, in the server's log. The indexers do not say it: the
+     * table may be written by an indexer on another node, and none of them knows what the others
+     * write. A run holds a table when it has files under that name: a plugin that writes no card of
+     * its own writes no manifest entry either, so the entries say nothing about the companion
+     * tables - which are exactly the tables asked about here.
+     * <p>
+     * A table this node is configured to write is left out of the report even while the run holds
+     * nothing under its name: it is on its way rather than a table nobody writes.
+     *
+     * @param runId   The run the manifest belongs to
+     * @param entries The manifest entries read from the run
+     * @param files   Every analytics file of the run, each path starting with its table's name
+     */
+    private void warnAboutMissingCompanions(String runId, List<ManifestEntry> entries,
+                                            List<String> files) {
+        Set<String> held = new HashSet<>();
+        for (String file : files) {
+            int slash = file.indexOf('/');
+            if (slash > 0) {
+                held.add(file.substring(0, slash));
+            }
+        }
+        for (ManifestEntry entry : entries) {
+            if (entry == null || entry.companions == null) {
+                continue;
+            }
+            for (ManifestEntry.Companion companion : entry.companions) {
+                if (!held.contains(companion.metricId())
+                        && !placements.knowsMetric(companion.metricId())
+                        && reportedMissingCompanions.add(runId + "/" + entry.id + "/" + companion.metricId())) {
+                    log.warn("Run {}: the card '{}' reads the table '{}', which this run holds nothing under and no plugin of this node writes; the card cannot be drawn until an analytics indexer runs a plugin with that metricId",
+                        runId, entry.id, companion.metricId());
+                }
+            }
         }
     }
 

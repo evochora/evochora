@@ -54,6 +54,16 @@ import {
     /** Hard cap on data points loaded per chart */
     const HARD_CAP = 5000;
 
+    /** How many pixels one bar and one point of a line need to stay apart on the card. */
+    const PIXELS_PER_BAR = 9;
+    const PIXELS_PER_LINE_POINT = 5;
+
+    /** What a card is taken to be wide while the browser has not laid it out yet. */
+    const DEFAULT_CHART_WIDTH = 800;
+
+    /** How many resolutions a card offers, each half as fine as the one before it. */
+    const RESOLUTIONS = 5;
+
     /** URL parameters that carry the tick window. */
     const WINDOW_FROM_PARAM = 'from';
     const WINDOW_TO_PARAM = 'to';
@@ -249,11 +259,12 @@ export async function loadDashboard(runId) {
             // Register the handlers of the cards
             const cards = DashboardView.getAllCards();
             for (const [metricId, card] of Object.entries(cards)) {
-                MetricCardView.setOnLodChange(card, (lod) => {
-                    // A click pins a level; a click on the pinned level lets the card choose again
-                    card.pinnedLod = card.pinnedLod === lod ? null : lod;
-                    if (card.pinnedLod && lod === card.shownLod) {
-                        MetricCardView.setActiveLod(card, lod, { pinned: true, tooFine: card.tooFine });
+                MetricCardView.setOnResolutionChange(card, (resolution) => {
+                    // A click pins a resolution; a click on the pinned one lets the card choose again
+                    card.pinnedResolution = card.pinnedResolution === resolution ? null : resolution;
+                    if (card.pinnedResolution != null && resolution === card.shownResolution) {
+                        MetricCardView.setActiveResolution(card, resolution,
+                            { pinned: true, tooFine: card.tooFine });
                         return;
                     }
                     loadMetricData(card).catch(error => {
@@ -327,13 +338,20 @@ export async function loadDashboard(runId) {
      * says so and loads itself again after a while, until it has data or the run stops.
      *
      * @param {Object} card - MetricCard instance
+     * @param {string} [missingTable] - Metric id of a companion table the run holds nothing for.
+     *        A card drawing only from that table says which table it misses, which reads otherwise
+     *        like a card whose own table is empty
      */
-    function showNoDataOrRetry(card) {
+    function showNoDataOrRetry(card, missingTable = null) {
         const runId = currentRunId;
         const polled = window.footer?.pipelineState?.();
         const status = polled && polled.status ? polled : pipeline;
         if (!isRunStarting(status, runId)) {
-            MetricCardView.showNoData(card);
+            if (missingTable) {
+                MetricCardView.showMissingTable(card, missingTable);
+            } else {
+                MetricCardView.showNoData(card);
+            }
             return;
         }
         MetricCardView.showWaitingForData(card);
@@ -392,47 +410,119 @@ export async function loadDashboard(runId) {
      * @returns {number}
      */
     function calculateEffectiveLimit(card) {
-        if (card.metric.maxDataPoints) {
-            return Math.min(HARD_CAP, card.metric.maxDataPoints);
+        // The card is measured, never the canvas: a canvas that has not been drawn into yet
+        // reports the 300 pixels HTML gives it by default, and the card would then open at a
+        // resolution it changes the moment the chart sizes its canvas for real
+        const chartWidth = card.element.clientWidth || DEFAULT_CHART_WIDTH;
+        const type = card.metric.visualization?.type || '';
+        // What a reader can still tell apart: a bar needs a few pixels of its own, a line is drawn
+        // from point to point and can carry many more. The card's width decides, not a number per metric
+        const perPoint = type.includes('bar') ? PIXELS_PER_BAR : PIXELS_PER_LINE_POINT;
+        const target = Math.max(20, Math.floor(chartWidth / perPoint));
+        return Math.min(HARD_CAP, card.metric.maxDataPoints
+            ? Math.min(card.metric.maxDataPoints, target) : target);
+    }
+
+
+
+    /**
+     * How many moments the shown ticks hold at the finest the run was recorded with.
+     *
+     * A card cannot draw more points than there are moments behind them, however wide it is. Where
+     * the manifest states no interval - nothing is known about what the run holds - no resolution
+     * is held back.
+     *
+     * @param {Object} metric - Manifest entry, carrying the tick interval of every level
+     * @param {number|null} from - First tick shown
+     * @param {number|null} to - Last tick shown
+     * @returns {number} The moments the window holds
+     */
+    function momentsHeld(metric, from, to) {
+        const intervals = metric.tickIntervals ? Object.values(metric.tickIntervals) : [];
+        if (intervals.length === 0 || from == null || to == null) {
+            return Infinity;
         }
-        const canvas = card.element.querySelector('canvas');
-        const chartWidth = canvas ? canvas.clientWidth : 800;
-        return Math.min(HARD_CAP, Math.max(100, Math.floor(chartWidth / 2)));
+        return Math.floor((to - from) / Math.min(...intervals)) + 1;
     }
 
     /**
-     * How many points a level of detail holds over a tick range.
+     * Picks the stored level a card reads to fill the points it draws.
      *
-     * The manifest names the tick distance between two rows of each level, so this is a count and
-     * not an estimate. Metrics writing several rows per tick - one per genome, say - still hold as
-     * many points as the chart draws: what is counted is moments in time.
+     * The finest level that still holds at least as many moments as the card draws: a coarser one
+     * could not fill them, a finer one would only cost transfer. Where the metric says nothing
+     * about its levels, the server decides.
      *
-     * @param {Object} metric - Manifest entry
-     * @param {string} lod - Level of detail, e.g. "lod2"
-     * @param {number} tickMin - First tick of the metric
-     * @param {number} tickMax - Last tick of the metric
-     * @returns {number} The number of points
-     * @throws {Error} If the manifest names no interval for that level
+     * @param {Object} metric - Manifest entry, carrying the tick interval of every level
+     * @param {number} points - How many points the card draws
+     * @param {number|null} from - First tick shown
+     * @param {number|null} to - Last tick shown
+     * @returns {string|null} The level to read, or null to let the server choose
      */
-    function pointCount(metric, lod, tickMin, tickMax) {
-        const interval = metric.tickIntervals?.[lod];
-        if (!interval) {
-            throw new Error(
-                `Metric ${metric.id} names no tick interval for ${lod}; its manifest was written ` +
-                `by a build that did not record one, and this build cannot read its data either.`);
-        }
-        return Math.floor((tickMax - tickMin) / interval) + 1;
-    }
-
-    /**
-     * The coarsest level of detail a metric offers.
-     *
-     * @param {Object} metric - Manifest entry
-     * @returns {string|null} The coarsest level, or null if the metric names none
-     */
-    function coarsestLod(metric) {
+    function finestLevelFor(metric, points, from, to) {
         const levels = metric.dataSources ? Object.keys(metric.dataSources).sort() : [];
-        return levels.length > 0 ? levels[levels.length - 1] : null;
+        if (levels.length === 0 || from == null || to == null) {
+            return null;
+        }
+        const holds = lod => (to - from) / (metric.tickIntervals?.[lod] || Infinity) + 1;
+        const coarse = [...levels].reverse().find(lod => holds(lod) >= points);
+        return coarse || levels[0];
+    }
+
+    /**
+     * How many points a card draws at one of its resolutions.
+     *
+     * The finest is as many as the card can show apart - its width divided by what a bar or a
+     * point of a line needs - and every further one is half of that. What the levels of the stored
+     * files hold does not enter: which of them is read to fill these points is the loader's
+     * business, not a choice the reader has to make.
+     *
+     * @param {number} capacity - How many points the card can show apart
+     * @param {number} resolution - The resolution, counted from the finest
+     * @returns {number} The points drawn at that resolution
+     */
+    function pointsAt(capacity, resolution) {
+        return Math.max(2, Math.round(capacity / Math.pow(2, resolution)));
+    }
+
+    /**
+     * Fills the number of windows a card draws into a query that asks for it.
+     *
+     * A metric whose rows are counts writes one row per window of its level, and another whenever a
+     * batch ends inside one, so its rows lie closer together than its window is wide. Such a query
+     * says {@code {buckets}} where the number of windows belongs and works out their width from the
+     * ticks its own rows cover - the run may have grown since anything else was measured.
+     *
+     * @param {string} query - The metric's query
+     * @param {number} points - How many points the card draws
+     * @returns {string} The query with the number filled in
+     */
+    function withBuckets(query, points) {
+        return query.replaceAll('{buckets}', String(Math.max(1, points)));
+    }
+
+    /**
+     * Brings the loaded rows down to what the card draws.
+     *
+     * Rows of ticks are dropped where there are more than the card can show. A metric whose
+     * columns are counts may not be treated that way: a dropped row takes its counts with it, and
+     * the card would say that fewer were born than were. Such a metric has to add its counts up
+     * per window in its own query, and where it did not, the card refuses rather than undercount.
+     *
+     * @param {Array<Object>} rows - The rows as loaded
+     * @param {number} limit - How many ticks the card draws
+     * @param {Object} metric - Manifest entry, saying which of its columns are counts
+     * @returns {Array<Object>} The rows the card draws
+     * @throws {Error} If counts would have to be dropped
+     */
+    function fitToCard(rows, limit, metric) {
+        const thinned = thinToLimit(rows, limit);
+        if (thinned.length < rows.length && metric.summedColumns?.length > 0) {
+            throw new Error(
+                `Metric ${metric.id} holds counts in ${metric.summedColumns.join(', ')} and `
+                + `returned ${rows.length} rows for a card drawing ${limit}: its query has to add `
+                + `them up per window, since dropping rows would drop what they counted`);
+        }
+        return thinned;
     }
 
     /**
@@ -485,14 +575,19 @@ export async function loadDashboard(runId) {
         MetricCardView.showLoading(card);
 
         try {
+            // A card that derives its rows holds no table of its own: it names no query, no level
+            // and no tick range, and everything it draws comes from its companions
+            const derived = !!metric.visualization?.config?.derived;
             const hasGeneratedQuery = metric.generatedQuery && metric.generatedQuery.trim();
             const isParquet = !!hasGeneratedQuery;
             const effectiveLimit = calculateEffectiveLimit(card);
 
             // Phase 1: which ticks the metric holds
-            const rangeInfo = tickRanges[metricId]
-                ?? (tickRanges[metricId] =
-                    await AnalyticsApi.fetchTickRange(metricId, currentRunId, null));
+            const rangeInfo = derived
+                ? { tickMin: null, tickMax: null, lod: null }
+                : tickRanges[metricId]
+                    ?? (tickRanges[metricId] =
+                        await AnalyticsApi.fetchTickRange(metricId, currentRunId, null));
             const tickMin = rangeInfo.tickMin;
             const tickMax = rangeInfo.tickMax;
             const hasRange = tickMin != null && tickMax != null;
@@ -505,58 +600,71 @@ export async function loadDashboard(runId) {
                 return;
             }
 
-            // Phase 2: the level of detail. Levels sort from the finest to the coarsest
-            const levels = metric.dataSources ? Object.keys(metric.dataSources).sort() : [];
-            const fits = lod => !hasRange || pointCount(metric, lod, from, to) <= effectiveLimit;
-            const tooFine = levels.filter(lod => !fits(lod));
-            if (card.pinnedLod && tooFine.includes(card.pinnedLod)) {
-                card.pinnedLod = null;
+            // Phase 2: the resolution. The reader picks how many points are drawn; the finest is
+            // as many as the card can show apart, and each further one is half of that. Which of
+            // the stored levels is read to fill them is decided below, not by the reader
+            const resolutions = MetricCardView.resolutionsOf();
+            // A resolution asking for more points than the window holds shows nothing finer than
+            // the one below it, so it is offered greyed out rather than as a choice without effect
+            const held = momentsHeld(metric, from, to);
+            const tooFine = resolutions.filter(step => pointsAt(effectiveLimit, step) > held);
+            if (tooFine.includes(card.pinnedResolution)) {
+                card.pinnedResolution = null;
             }
-            const resolvedLod = card.pinnedLod || levels.find(fits)
-                || coarsestLod(metric) || rangeInfo.lod;
-            // Only the coarsest level can be drawn although it does not fit; it is thinned then
-            const thin = !!resolvedLod && tooFine.includes(resolvedLod);
+            const resolution = card.pinnedResolution ?? Math.max(0,
+                resolutions.findIndex(step => !tooFine.includes(step)));
+            const points = pointsAt(effectiveLimit, resolution);
+            // The finest stored level that still holds more moments than the card draws; a coarser
+            // one would have to be stretched, a finer one only costs transfer
+            const storageLevel = derived ? null : finestLevelFor(metric, points, from, to);
             const viewFrom = tickWindow ? from : null;
             const viewTo = tickWindow ? to : null;
 
             // Phase 3: fetch the data of the window
             let data;
-            if (isParquet) {
+            if (derived) {
+                data = [];
+            } else if (isParquet) {
                 const { blob: parquetBlob } = await AnalyticsApi.fetchParquetBlob(
-                    metricId, currentRunId, resolvedLod, controller.signal, viewFrom, viewTo
+                    metricId, currentRunId, storageLevel, controller.signal, viewFrom, viewTo
                 );
-                const blobKey = `${metricId}_${resolvedLod || 'auto'}`;
+                const blobKey = `${metricId}_${storageLevel || 'auto'}`;
                 await DuckDBClient.registerParquetBlob(blobKey, parquetBlob);
-                data = await DuckDBClient.queryRegisteredBlob(blobKey, metric.generatedQuery);
+                data = await DuckDBClient.queryRegisteredBlob(blobKey,
+                    withBuckets(metric.generatedQuery, points));
             } else {
                 const result = await AnalyticsApi.queryData(
-                    currentRunId, metricId, resolvedLod, controller.signal, viewFrom, viewTo
+                    currentRunId, metricId, storageLevel, controller.signal, viewFrom, viewTo
                 );
                 data = result.data;
             }
 
-            card.shownLod = resolvedLod;
+            card.shownResolution = resolution;
             card.tooFine = tooFine;
-            if (resolvedLod) {
-                MetricCardView.setActiveLod(card, resolvedLod, { pinned: !!card.pinnedLod, tooFine });
-            }
+            MetricCardView.setActiveResolution(card, resolution,
+                { pinned: card.pinnedResolution != null, tooFine });
 
-            if (data.length === 0) {
+            if (!derived && data.length === 0) {
                 showNoDataOrRetry(card);
                 return;
             }
 
             const previous = loadedData[metricId];
+            // A companion that follows the level was read from the level this card read, so it is
+            // kept only while that stays the same - the resolution says nothing about it
             const followsLevel = (metric.companions || []).some(companion => companion.followsLevel);
             const companionKept = keepCompanion && previous?.companion
-                && (!followsLevel || previous.lod === resolvedLod);
+                && (!followsLevel || previous.storageLevel === storageLevel);
             const companion = companionKept
-                ? previous.companion
-                : await loadCompanionData(metric, resolvedLod, controller.signal);
+                ? { rows: previous.companion, missing: previous.missing }
+                : await loadCompanionData(metric, storageLevel, controller.signal);
             loadedData[metricId] = {
-                data: thin ? thinToLimit(data, effectiveLimit) : data,
-                companion,
-                lod: resolvedLod
+                data: fitToCard(data, points, metric),
+                companion: companion ? companion.rows : null,
+                missing: companion ? companion.missing : [],
+                storageLevel,
+                points,
+                window: tickWindow
             };
             renderWithViewState(card);
 
@@ -565,7 +673,7 @@ export async function loadDashboard(runId) {
                 throw error;
             }
             if (error.code === 'NO_DATA') {
-                showNoDataOrRetry(card);
+                showNoDataOrRetry(card, error.missingTable);
                 return;
             }
             console.error(`[Analytics] Error loading metric ${metricId}:`, error);
@@ -597,11 +705,19 @@ export async function loadDashboard(runId) {
      * follows the level and the level changed with the window. Opening a clade likewise redraws
      * from what is already loaded and costs no request.
      *
+     * A companion the manifest marks as columnar arrives as one array of values per selected column
+     * instead of one object per row, because a table of hundreds of thousands of rows costs more in
+     * row objects than in the values they carry. Its entry in the result is that column object,
+     * keyed by column name, in place of the array of rows every other companion's entry holds; what
+     * the types of those values are stands at {@link DuckDBClient.queryRegisteredBlobColumns}.
+     *
      * @param {Object} metric - Manifest entry of the metric being loaded
      * @param {string|null} lod - Level of detail the chart shows, for companions following it
      * @param {AbortSignal} signal - Signal aborting the fetch
-     * @returns {Promise<Object<string, Array<Object>>|null>} Rows per companion metric id, or null
-     *          if the metric has none
+     * @returns {Promise<{rows: Object<string, Array<Object>|Object<string, ArrayLike<*>>>,
+     *          missing: Array<string>}|null>} Per companion metric id its rows, or its columns
+     *          where the companion is columnar, and the metric ids of the tables that hold nothing
+     *          at this level; null if the metric has no companions
      */
     async function loadCompanionData(metric, lod, signal) {
         if (!metric.companions || metric.companions.length === 0) {
@@ -609,17 +725,32 @@ export async function loadDashboard(runId) {
         }
 
         const rowsByMetric = {};
+        const missing = [];
         for (const companion of metric.companions) {
             const blobKey = `companion_${metric.id}_${companion.metricId}`;
             const level = companion.followsLevel && lod ? lod : 'lod0';
-            const { blob } = await AnalyticsApi.fetchParquetBlob(
-                companion.metricId, currentRunId, level, signal
-            );
+            let blob;
+            try {
+                ({ blob } = await AnalyticsApi.fetchParquetBlob(
+                    companion.metricId, currentRunId, level, signal
+                ));
+            } catch (error) {
+                // A table that holds nothing at this level is not an error of the card: a table
+                // written only now and then has no coarse level yet while one written every
+                // recording does. The card draws what it has, and says which table it misses only
+                // where that leaves it with nothing to draw
+                if (error.code !== 'NO_DATA') {
+                    throw error;
+                }
+                missing.push(companion.metricId);
+                continue;
+            }
             await DuckDBClient.registerParquetBlob(blobKey, blob);
-            rowsByMetric[companion.metricId] =
-                await DuckDBClient.queryRegisteredBlob(blobKey, companion.query);
+            rowsByMetric[companion.metricId] = companion.columnar
+                ? await DuckDBClient.queryRegisteredBlobColumns(blobKey, companion.query)
+                : await DuckDBClient.queryRegisteredBlob(blobKey, companion.query);
         }
-        return rowsByMetric;
+        return { rows: rowsByMetric, missing };
     }
 
     /**
@@ -637,6 +768,9 @@ export async function loadDashboard(runId) {
 
         MetricCardView.renderChart(card, loaded.data, {
             companion: loaded.companion,
+            missing: loaded.missing,
+            window: loaded.window,
+            points: loaded.points,
             viewState: viewStates[metricId] || null,
             onViewStateChange: (next) => {
                 viewStates[metricId] = next;

@@ -2,6 +2,7 @@ package org.evochora.datapipeline.services.analytics.plugins;
 
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -12,12 +13,13 @@ import org.evochora.datapipeline.api.analytics.IAnalyticsContext;
 import org.evochora.datapipeline.api.analytics.ManifestEntry;
 import org.evochora.datapipeline.api.analytics.ParquetSchema;
 import org.evochora.datapipeline.api.analytics.VisualizationHint;
-import org.evochora.datapipeline.api.contracts.MutationEvent;
 import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.memory.MemoryEstimate;
 import org.evochora.datapipeline.api.memory.SimulationParameters;
 import org.evochora.datapipeline.utils.MetadataConfigHelper;
+
+import com.typesafe.config.Config;
 
 /**
  * Counts a recording's births by what made each newborn's genome what it is, one row per recording.
@@ -38,14 +40,9 @@ import org.evochora.datapipeline.utils.MetadataConfigHelper;
  *       five above: a mutation plugin from outside this project</li>
  * </ul>
  * <p>
- * <strong>How a birth is sorted.</strong> Every birth counts in exactly one column, so the counts
- * of a row add up to the births of that recording. The genome decides before the events do: a
- * newborn without a genome has nothing that could have varied, whatever its parent carried, and
- * one whose genome is the parent's received no variation even where a plugin wrote outside the
- * body. Only then do the events of the birth that wrote cells decide, by their kinds. An event
- * that wrote no cell - the label mask, which changes every label by the same amount and no
- * molecule of its own - is not a variation and is left out, so a birth that carries only such an
- * event reads as whatever its genome says.
+ * <strong>How a birth is sorted.</strong> {@link BirthVariation} decides, and the columns follow
+ * its classes in its order. Every birth counts in exactly one column, so the counts of a row add
+ * up to the births of that recording.
  * <p>
  * Which kinds met at a birth counted under {@code multiple} is not in these rows;
  * {@code mutation_summary} holds every single event and answers that.
@@ -76,48 +73,51 @@ import org.evochora.datapipeline.utils.MetadataConfigHelper;
  * <p>
  * A recording without births produces no row: a row of zeros would read as a recording whose
  * births came from nowhere rather than as one that had none.
+ * <p>
+ * <strong>The second card.</strong> "Mutation Success" asks what a mutation was worth: how often a
+ * birth that received a given kind founds a line that goes on, measured against the births no
+ * mutation plugin touched, which stand at 1. A kind that stays far below the others is a cliff -
+ * the mutation is made and the lines it makes end. None of that is in these rows: it is derived in
+ * the browser from the births table, one row per birth, which the card reads as a companion under
+ * the metric named by {@code birthsMetricId}. Without a births plugin configured under that name
+ * the card has nothing to read and cannot be drawn.
  */
 public class VariationSourcesPlugin extends AbstractAnalyticsPlugin {
 
     /**
-     * The count columns, in the order they follow the tick in a row and stack in the chart:
-     * the two the genome alone decides, the remainder no plugin explains, the kinds, and the two
-     * that catch what a single known kind does not cover.
+     * The count columns, in the order they follow the tick in a row and stack in the chart: one per
+     * class a birth is sorted into, in the order those classes are numbered in.
      */
-    private static final List<String> COUNT_COLUMNS = List.of(
-        "unchanged",
-        "bodiless",
-        "no_event",
+    private static final List<String> COUNT_COLUMNS = BirthVariation.CLASSES;
+
+    /**
+     * The series of the mutation success card, in the order it draws them: the births no mutation
+     * plugin touched, which the other series are measured against, and then the five kinds a
+     * mutation plugin of this project reports.
+     */
+    /** The series the kinds are held against, which rests on no kind's births. */
+    private static final String CONTROL_SERIES = "no_plugin_mutation";
+
+    private static final List<String> SUCCESS_SERIES = List.of(
+        "no_plugin_mutation",
         "duplication",
         "deletion",
         "instruction_insertion",
         "label_insertion",
-        "substitution",
-        "multiple",
-        "other");
-
-    /** How many time buckets the chart's query cuts the loaded ticks into. */
-    private static final int TARGET_BUCKETS = 50;
-
-    private static final int UNCHANGED = COUNT_COLUMNS.indexOf("unchanged");
-    private static final int BODILESS = COUNT_COLUMNS.indexOf("bodiless");
-    private static final int NO_EVENT = COUNT_COLUMNS.indexOf("no_event");
-    private static final int MULTIPLE = COUNT_COLUMNS.indexOf("multiple");
-    private static final int OTHER = COUNT_COLUMNS.indexOf("other");
+        "substitution");
 
     /**
-     * The column of each mutation kind this project's plugins report. A kind outside this map has
-     * no column of its own and counts under {@code other}, so a plugin brought from elsewhere
-     * shows up as its own band instead of disappearing into one of these.
+     * The colour of every class, the one place both cards take it from, so that a kind reads the
+     * same on either of them. These are the colours the stacked bars carry by their position in
+     * the frontend's palette; the second card draws a different selection in a different order and
+     * would otherwise give the same kind another colour.
      */
-    private static final Map<String, Integer> COLUMN_OF_KIND = Map.of(
-        "duplication", COUNT_COLUMNS.indexOf("duplication"),
-        "deletion", COUNT_COLUMNS.indexOf("deletion"),
-        "instruction-insertion", COUNT_COLUMNS.indexOf("instruction_insertion"),
-        "label-insertion", COUNT_COLUMNS.indexOf("label_insertion"),
-        "substitution", COUNT_COLUMNS.indexOf("substitution"));
+    private static final Map<String, String> CLASS_COLORS = classColors();
 
     private static final ParquetSchema SCHEMA = buildSchema();
+
+    /** Metric holding the single births the success of a mutation kind is counted over. */
+    private String birthsMetricId = "births";
 
     /**
      * How many simulation ticks lie between two recordings, which is the window a state's birth
@@ -125,6 +125,26 @@ public class VariationSourcesPlugin extends AbstractAnalyticsPlugin {
      * carrying metadata has been supplied.
      */
     private int recordingInterval;
+
+    /**
+     * Builds the colour of every class, in the order the classes are numbered in.
+     *
+     * @return the hex colour of each class of {@link BirthVariation#CLASSES}, in that order
+     */
+    private static Map<String, String> classColors() {
+        Map<String, String> colors = new LinkedHashMap<>();
+        colors.put("unchanged", "#4a9eff");
+        colors.put("bodiless", "#a0e0a0");
+        colors.put("no_event", "#ffb366");
+        colors.put("duplication", "#dda0dd");
+        colors.put("deletion", "#87ceeb");
+        colors.put("instruction_insertion", "#ffd700");
+        colors.put("label_insertion", "#ff6b6b");
+        colors.put("substitution", "#98d8c8");
+        colors.put("multiple", "#f08080");
+        colors.put("other", "#c79ecf");
+        return Collections.unmodifiableMap(colors);
+    }
 
     private static ParquetSchema buildSchema() {
         ParquetSchema.Builder builder = ParquetSchema.builder().column("tick", ColumnType.BIGINT);
@@ -141,6 +161,19 @@ public class VariationSourcesPlugin extends AbstractAnalyticsPlugin {
         return new Fixed(1, "a birth is reported as a newborn in exactly one recording, so a "
             + "skipped recording loses its births for good - births are events, not a state that "
             + "can be sampled");
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * @throws IllegalArgumentException if {@code birthsMetricId} is configured empty, which would
+     *         leave the mutation success card looking for a table under no name and showing nothing
+     */
+    @Override
+    public void configure(Config config) {
+        super.configure(config);
+        this.birthsMetricId = companionMetricId(config, "birthsMetricId",
+            "the single births the success of a mutation kind is counted over", birthsMetricId);
     }
 
     /**
@@ -185,7 +218,7 @@ public class VariationSourcesPlugin extends AbstractAnalyticsPlugin {
             if (!org.hasParentId() || org.getBirthTick() <= previousRecording) {
                 continue;
             }
-            births[columnOf(org)]++;
+            births[BirthVariation.classify(org)]++;
             total++;
         }
 
@@ -199,36 +232,6 @@ public class VariationSourcesPlugin extends AbstractAnalyticsPlugin {
             row[i + 1] = births[i];
         }
         return Collections.singletonList(row);
-    }
-
-    /**
-     * Finds the column one birth counts in.
-     *
-     * @param org the newborn, with its genome, its parent's and the events of its birth
-     * @return the index of the column within {@link #COUNT_COLUMNS}
-     */
-    private int columnOf(OrganismState org) {
-        if (org.getGenomeHash() == 0L) {
-            return BODILESS;
-        }
-        if (org.hasParentGenomeHash() && org.getGenomeHash() == org.getParentGenomeHash()) {
-            return UNCHANGED;
-        }
-        String kind = null;
-        for (MutationEvent event : org.getBirthMutationsList()) {
-            if (event.getCellsCount() == 0) {
-                continue;
-            }
-            if (kind == null) {
-                kind = event.getKind();
-            } else if (!kind.equals(event.getKind())) {
-                return MULTIPLE;
-            }
-        }
-        if (kind == null) {
-            return NO_EVENT;
-        }
-        return COLUMN_OF_KIND.getOrDefault(kind, OTHER);
     }
 
     /**
@@ -252,7 +255,7 @@ public class VariationSourcesPlugin extends AbstractAnalyticsPlugin {
             entry.dataSources.put(lodName, metricId + "/" + lodName + "/**/*.parquet");
         }
 
-        entry.generatedQuery = bucketSumQuery();
+        entry.generatedQuery = windowSumQuery();
         List<String> outputColumns = new java.util.ArrayList<>();
         outputColumns.add("tick");
         outputColumns.addAll(COUNT_COLUMNS);
@@ -261,44 +264,131 @@ public class VariationSourcesPlugin extends AbstractAnalyticsPlugin {
         entry.visualization = VisualizationHint.chart("stacked-bar-chart", "tick")
             .with("y", COUNT_COLUMNS)
             .with("yLabel", "Births")
-            .with("yFormat", "integer");
+            .with("yFormat", "integer")
+            .with("colors", CLASS_COLORS);
 
         return entry;
     }
 
     /**
-     * Builds the query the browser runs over the loaded rows: the ticks are cut into
-     * {@link #TARGET_BUCKETS} buckets of equal width and the counts of every recording in a bucket
-     * are added up, so a bar stands for the births of a window. Every bucket gets a row, a bucket
-     * without a recording in it one of zeros, so that the bars stand at equal width across the
-     * whole range.
+     * {@inheritDoc}
+     * <p>
+     * The counts of this table carry the first card; the second one is drawn from the births table
+     * alone and stands here because it asks the same question of the same classes.
+     */
+    @Override
+    public List<ManifestEntry> getManifestEntries() {
+        ManifestEntry sources = getManifestEntry();
+        ManifestEntry success = mutationSuccessEntry();
+        applyCommonConfig(sources);
+        applyCommonConfig(success);
+        return List.of(sources, success);
+    }
+
+    /**
+     * Describes the card that measures what a mutation kind was worth.
+     * <p>
+     * The card draws no series this table holds. Whether a birth founded a line that goes on is a
+     * question about single births and their descendants, which exists only across the rows of the
+     * births table and over the whole run, so the browser derives the series from that table, read
+     * column by column and unfiltered. The entry therefore names neither a query nor a level of
+     * detail of its own: reading this plugin's table for the card would cost a second pass over
+     * every file of it and give the card nothing it draws.
+     * <p>
+     * <p>
+     * The companion carries the five columns the derivation reads and leaves the genome hashes
+     * where they are: a hash uses all 64 bits, which a JavaScript number cannot hold, and a query
+     * that sorts a result carrying one fails in the browser's DuckDB. A derivation that needs a
+     * hash asks for it as text, the way the lineage table hands its hashes over. The rows arrive
+     * in no particular order, since the derivation reads them as a set and not as a sequence.
+     * {@code birthsMetric} names that table for the derivation, and {@code variationClasses} lets
+     * the browser resolve a class name to the index the table's {@code variation} column holds, so
+     * that the order of the classes is stated once.
+     *
+     * @return the manifest entry of the mutation success card
+     */
+    private ManifestEntry mutationSuccessEntry() {
+        ManifestEntry entry = new ManifestEntry();
+        entry.id = "mutation_success";
+        entry.storageMetricId = metricId;
+        entry.name = "Mutation Success";
+        entry.description = "How often a birth founds a line that goes on, by the mutation it "
+            + "received, against the births no mutation plugin touched (= 1).";
+
+        entry.companions = List.of(new ManifestEntry.Companion(birthsMetricId,
+            "SELECT birth_tick, parent_birth_tick, organism_id, parent_id, variation FROM {table}",
+            false, true));
+
+        entry.visualization = VisualizationHint.chart("band-chart", "tick")
+            .with("derived", "mutation-success")
+            .with("tooYoung", "tooYoung")
+            .with("birthsMetric", birthsMetricId)
+            .with("variationClasses", BirthVariation.CLASSES)
+            .with("groups", successGroups())
+            .with("yFormat", "decimal")
+            .with("yLabel", "Success against no plugin mutation")
+            .with("yMin", 0)
+            .with("bandLabel", "95% CI")
+            .with("reference", 1)
+            .with("referenceLabel", "No plugin mutation (= 1)");
+
+        return entry;
+    }
+
+    /**
+     * The colour of every kind the mutation success card draws. The series the others are measured
+     * against gets none: the chart styles its reference line itself.
+     *
+     * @return the hex colour of each kind, in the order the card draws them
+     */
+    /**
+     * Describes the band of every kind: the range its value could as well be at the births behind
+     * it, with the value in the middle. The colours are the chart's own, as on every other card.
+     *
+     * @return one band group per kind, in the order the kinds are listed
+     */
+    private static List<Map<String, Object>> successGroups() {
+        List<Map<String, Object>> groups = new java.util.ArrayList<>();
+        for (String series : SUCCESS_SERIES) {
+            if (CONTROL_SERIES.equals(series)) {
+                continue;
+            }
+            Map<String, Object> group = new LinkedHashMap<>();
+            group.put("name", series);
+            group.put("y", List.of(series + "_low", series, series + "_high"));
+            groups.add(group);
+        }
+        return groups;
+    }
+
+    /**
+     * Builds the query the browser runs over the loaded rows: the births of one window, added up,
+     * one row per window.
+     * <p>
+     * The rows of a level do not already say this: a level writes what it holds when a batch ends
+     * too, so its rows fall on ticks closer together than its window is wide. How many windows the
+     * card draws it fills in for {@code {buckets}}; how wide one of them is follows from the ticks
+     * the loaded rows actually cover, which is the only thing that cannot be out of date.
      *
      * @return the SQL with {@code {table}} standing for the loaded rows
      */
-    private static String bucketSumQuery() {
+    private static String windowSumQuery() {
         String sums = COUNT_COLUMNS.stream()
             .map(name -> "COALESCE(SUM(" + name + "), 0)::BIGINT AS " + name)
             .collect(java.util.stream.Collectors.joining(",\n                "));
         return """
             WITH params AS (
-                SELECT MIN(tick) AS first_tick,
-                       GREATEST(1, (MAX(tick) - MIN(tick)) / %d)::BIGINT AS bucket_size
+                SELECT GREATEST(1, (MAX(tick) - MIN(tick)) / {buckets})::BIGINT AS bucket_size
                 FROM {table}
-            ),
-            buckets AS (
-                SELECT (first_tick + n * bucket_size)::BIGINT AS bucket_tick
-                FROM params, range(0, %d + 1) AS r(n)
-                WHERE first_tick + n * bucket_size <= (SELECT MAX(tick) FROM {table})
             )
             SELECT
-                b.bucket_tick AS tick,
+                (FLOOR(tick / (SELECT bucket_size FROM params))
+                    * (SELECT bucket_size FROM params))::BIGINT AS tick,
                 %s
-            FROM buckets b
-            LEFT JOIN {table} t
-              ON t.tick >= b.bucket_tick AND t.tick < b.bucket_tick + (SELECT bucket_size FROM params)
-            GROUP BY b.bucket_tick
+            FROM {table}
+            GROUP BY 1
             ORDER BY tick
-            """.formatted(TARGET_BUCKETS, TARGET_BUCKETS, sums);
+            """.formatted(sums);
     }
 
     @Override

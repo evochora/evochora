@@ -55,6 +55,21 @@ public final class ParquetSchema {
     }
     
     /**
+     * Names the columns declared {@link Aggregation#SUM}, in column order.
+     *
+     * @return Names of the summed columns, empty if the schema has none
+     */
+    public java.util.List<String> summedColumnNames() {
+        java.util.List<String> names = new java.util.ArrayList<>();
+        for (Column column : columns) {
+            if (column.aggregation() == Aggregation.SUM) {
+                names.add(column.name());
+            }
+        }
+        return names;
+    }
+
+    /**
      * Returns the positions of the columns declared {@link Aggregation#SUM}, in column order.
      * <p>
      * An empty result says that every column of this schema is sampled, which is the case that

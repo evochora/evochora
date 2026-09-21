@@ -54,6 +54,14 @@ class VariationSourcesPluginTest {
         "multiple",
         "other");
 
+    /** The kinds a mutation plugin of this project reports, which the second card holds apart. */
+    private static final List<String> MUTATION_KINDS = List.of(
+        "duplication",
+        "deletion",
+        "instruction_insertion",
+        "label_insertion",
+        "substitution");
+
     private VariationSourcesPlugin plugin;
 
     @BeforeEach
@@ -314,15 +322,159 @@ class VariationSourcesPluginTest {
         ManifestEntry entry = plugin.getManifestEntry();
 
         assertThat(entry.outputColumns).startsWith("tick").containsAll(COUNT_COLUMNS);
+        // A bar covers one window of the level loaded, so that choosing a level widens the bars
         for (String column : COUNT_COLUMNS) {
             assertThat(entry.generatedQuery).contains("COALESCE(SUM(" + column + "), 0)::BIGINT AS " + column);
         }
-        assertThat(entry.generatedQuery).contains("bucket_size").contains("LEFT JOIN").contains("GROUP BY b.bucket_tick");
+        assertThat(entry.generatedQuery).contains("{buckets}").contains("GROUP BY 1");
     }
 
     @Test
     void everyRecordedTickIsRead() {
         assertThat(plugin.getSamplingInterval()).isEqualTo(1);
+    }
+
+    @Test
+    void theTableCarriesTwoCards() {
+        assertThat(plugin.getManifestEntries())
+            .extracting(entry -> entry.id)
+            .containsExactly("variation_sources", "mutation_success");
+    }
+
+    @Test
+    void theSecondCardReadsNothingOfThisMetricsOwnFiles() {
+        ManifestEntry success = mutationSuccess(plugin);
+
+        assertThat(success.storageMetricId).isEqualTo("variation_sources");
+        assertThat(success.name).isEqualTo("Mutation Success");
+        // The card draws only what it derives from the births table, so it reads nothing of this
+        // plugin's own files - naming them would cost a pass over every one of them for nothing
+        assertThat(success.dataSources).isNull();
+        assertThat(success.generatedQuery).isNull();
+    }
+
+    @Test
+    void theSecondCardDerivesItsSeriesFromTheBirthsReadColumnWise() {
+        ManifestEntry success = mutationSuccess(plugin);
+
+        assertThat(success.visualization.type).isEqualTo("band-chart");
+        assertThat(success.visualization.config)
+            .containsEntry("derived", "mutation-success")
+            // The derivation reads the births under this name and resolves their classes through
+            // the list given here
+            .containsEntry("birthsMetric", "births")
+            .containsEntry("variationClasses", COUNT_COLUMNS)
+            .containsEntry("yMin", 0)
+            // The value is held against the births no plugin touched, which is one by definition
+            .containsEntry("reference", 1);
+        // One band per kind: the range the value could as well be, with the value in the middle
+        assertThat(bandsOf(success).keySet()).containsExactlyElementsOf(MUTATION_KINDS);
+        for (String kind : MUTATION_KINDS) {
+            assertThat(bandsOf(success).get(kind))
+                .isEqualTo(List.of(kind + "_low", kind, kind + "_high"));
+        }
+        assertThat(success.companions).singleElement().satisfies(companion -> {
+            assertThat(companion.metricId()).isEqualTo("births");
+            assertThat(companion.columnar()).isTrue();
+            assertThat(companion.followsLevel()).isFalse();
+            // Only what the derivation reads: a genome hash needs all 64 bits, and a query that
+            // sorts a result carrying one fails in the browser's DuckDB
+            assertThat(companion.query())
+                .contains("parent_birth_tick")
+                .contains("variation")
+                .doesNotContain("genome_hash")
+                .doesNotContain("ORDER BY");
+        });
+    }
+
+    @Test
+    void theBirthsTableCanBeConfiguredUnderAnotherName() {
+        VariationSourcesPlugin renamed = new VariationSourcesPlugin();
+        renamed.configure(ConfigFactory.parseMap(Map.of(
+            "metricId", "variation_sources", "birthsMetricId", "life_table")));
+        renamed.initialize(context());
+
+        assertThat(mutationSuccess(renamed).companions).singleElement()
+            .satisfies(companion -> assertThat(companion.metricId()).isEqualTo("life_table"));
+    }
+
+    @Test
+    void aBirthsTableWithoutANameIsRefused() {
+        // The card would look for a table under no name and show nothing
+        assertThatThrownBy(() -> new VariationSourcesPlugin().configure(ConfigFactory.parseMap(
+                Map.of("metricId", "variation_sources", "birthsMetricId", "  "))))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("birthsMetricId");
+    }
+
+    @Test
+    void theCountsSayThatTheyMayNotBeDropped() {
+        // The common part of an entry, this among it, is filled in where the plugin hands its
+        // entries over
+        ManifestEntry entry = plugin.getManifestEntries().get(0);
+
+        // The browser thins rows to fit a card; a count dropped with its row would make the card
+        // say that fewer were born than were, so the entry names the columns that are counts
+        assertThat(entry.summedColumns).containsExactlyElementsOf(COUNT_COLUMNS);
+    }
+
+    @Test
+    void theStackedBarsNameTheirColoursAndTheBandsLeaveThemToTheChart() {
+        List<ManifestEntry> entries = plugin.getManifestEntries();
+
+        // The stacked bars colour every class, since a class has to keep its colour across the
+        // levels whatever is in the window; the card of bands takes the chart's palette by
+        // position, as every other card of the analyzer does
+        assertThat(colorsOf(entries.get(0))).containsOnlyKeys(COUNT_COLUMNS);
+        assertThat(groupsOf(entries.get(1))).allSatisfy(group ->
+            assertThat(group).doesNotContainKey("color"));
+    }
+
+    @Test
+    void theClassesKeepTheColoursOfTheChartsPalette() {
+        // The palette the stacked bar chart hands out by series position, written down so that both
+        // cards can name the same colour for the same kind
+        Map<String, String> colors = colorsOf(plugin.getManifestEntry());
+
+        assertThat(colors.values()).containsExactly(
+            "#4a9eff", "#a0e0a0", "#ffb366", "#dda0dd", "#87ceeb",
+            "#ffd700", "#ff6b6b", "#98d8c8", "#f08080", "#c79ecf");
+    }
+
+    /**
+     * The colours one card gives its series, by series key.
+     */
+    @SuppressWarnings("unchecked")
+    private static Map<String, String> colorsOf(ManifestEntry entry) {
+        return (Map<String, String>) entry.visualization.config.get("colors");
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<Map<String, Object>> groupsOf(ManifestEntry entry) {
+        List<Map<String, Object>> groups =
+            (List<Map<String, Object>>) entry.visualization.config.get("groups");
+        return groups == null ? List.of() : groups;
+    }
+
+    /**
+     * The keys of every band group of a card, by the group's name.
+     */
+    @SuppressWarnings("unchecked")
+    private static Map<String, List<String>> bandsOf(ManifestEntry entry) {
+        Map<String, List<String>> bands = new java.util.LinkedHashMap<>();
+        for (Map<String, Object> group : groupsOf(entry)) {
+            bands.put((String) group.get("name"), (List<String>) group.get("y"));
+        }
+        return bands;
+    }
+
+    /**
+     * The second of the plugin's cards, the one derived from the births table.
+     */
+    private static ManifestEntry mutationSuccess(VariationSourcesPlugin plugin) {
+        List<ManifestEntry> entries = plugin.getManifestEntries();
+        assertThat(entries).hasSize(2);
+        return entries.get(1);
     }
 
     /**

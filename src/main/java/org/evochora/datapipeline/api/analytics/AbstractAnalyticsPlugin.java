@@ -404,6 +404,13 @@ public abstract class AbstractAnalyticsPlugin implements IAnalyticsPlugin {
         for (int level = 0; level < lodLevels; level++) {
             entry.tickIntervals.put(lodLevelName(level), getEffectiveSamplingInterval(level));
         }
+
+        // Counts may not be dropped to fit a card, only added up; the browser has to know which
+        // columns those are before it thins anything
+        java.util.List<String> summed = getSchema().summedColumnNames();
+        if (!summed.isEmpty()) {
+            entry.summedColumns = summed;
+        }
     }
 
     // Abstract methods that subclasses MUST implement:

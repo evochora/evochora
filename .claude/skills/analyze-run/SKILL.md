@@ -222,6 +222,14 @@ facts, not a reconstruction, and need no node:
   recorded only for a birth whose namespace flip fired (one bit with the default strategy), with
   `cell_count` 0, `position` `[]` and the mask in `params`; it changes no genome hash and is not a
   mutation.
+- `births` — one row per birth, the life table of a run: `tick`, `birth_tick`, `organism_id`,
+  `parent_id`, `parent_birth_tick` (the parent is in the same recording, so a generation step is
+  one subtraction), `generation`, `genome_hash`, `parent_genome_hash` and `variation` (the index
+  of the class within the list the card names, the same classes `variation_sources` counts). It
+  has one level of detail: a selection from a table of individual births is not a coarser picture
+  of them but a different set of them. The analyzer's cards "Generation Time" and "Mutation
+  Success" are derived from this table alone, so a run indexed without the births plugin draws
+  neither of them.
 - `variation_sources` — births per recording by what changed the genome: `unchanged`, `bodiless`
   (hash 0), `no_event`, one column per built-in kind, `multiple` (several kinds in one birth),
   `other` (a kind outside the built-in set). Its count columns are *summed* into the coarser LOD

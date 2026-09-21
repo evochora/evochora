@@ -7,6 +7,8 @@ import com.typesafe.config.ConfigFactory;
 import io.javalin.Javalin;
 import io.javalin.testtools.JavalinTest;
 import org.evochora.datapipeline.api.resources.storage.IAnalyticsStorageRead;
+import org.evochora.junit.extensions.logging.ExpectLog;
+import org.evochora.junit.extensions.logging.LogLevel;
 import org.evochora.node.spi.ServiceRegistry;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -105,6 +107,73 @@ class AnalyticsControllerTest {
             assertThat(second.get("id").getAsString()).isEqualTo("age_distribution");
             assertThat(second.get("fullWidth").getAsBoolean()).isTrue();
             assertThat(second.get("order").getAsInt()).isEqualTo(1);
+        });
+    }
+
+    @Test
+    @ExpectLog(level = LogLevel.WARN, messagePattern = "Run run1: the card 'mutation_success' reads the table 'births', which this run holds nothing under and no plugin of this node writes.*")
+    void aCardWhoseCompanionTableTheRunDoesNotHoldIsReported() throws Exception {
+        IAnalyticsStorageRead storage = mock(IAnalyticsStorageRead.class);
+        when(storage.listAnalyticsFiles(eq("run1"), eq("")))
+            .thenReturn(List.of("mutation_success/metadata.json", "genome_diversity/metadata.json",
+                "generation_time/metadata.json", "generation_time/lod0/0/t_0_9.parquet",
+                "genome/lod0/0/g_0_9.parquet"));
+        // Reads a table no entry of the run is stored under
+        when(storage.openAnalyticsInputStream(eq("run1"), eq("mutation_success/metadata.json")))
+            .thenReturn(new ByteArrayInputStream(("{\"id\":\"mutation_success\","
+                + "\"storageMetricId\":\"variation_sources\","
+                + "\"companions\":[{\"metricId\":\"births\",\"query\":\"q\"}]}").getBytes()));
+        // Reads the table another card is stored under, and the one it is stored under itself
+        when(storage.openAnalyticsInputStream(eq("run1"), eq("genome_diversity/metadata.json")))
+            .thenReturn(new ByteArrayInputStream(("{\"id\":\"genome_diversity\","
+                + "\"storageMetricId\":\"genome\","
+                + "\"companions\":[{\"metricId\":\"generation_time\",\"query\":\"q\"},"
+                + "{\"metricId\":\"genome\",\"query\":\"q\"}]}").getBytes()));
+        when(storage.openAnalyticsInputStream(eq("run1"), eq("generation_time/metadata.json")))
+            .thenReturn(new ByteArrayInputStream("{\"id\":\"generation_time\"}".getBytes()));
+        ServiceRegistry registry = new ServiceRegistry();
+        registry.register(IAnalyticsStorageRead.class, storage);
+
+        // A node that writes the variation sources but no births: nothing will ever fill that table
+        AnalyticsController controller = new AnalyticsController(registry, ConfigFactory.parseString("""
+            analyticsManifestCacheTtlSeconds = 1
+            plugins = [
+              { className = "V", options { metricId = "variation_sources", group = "Evolution" } }
+            ]
+            """));
+        Javalin app = Javalin.create();
+        controller.registerRoutes(app, "/api");
+
+        JavalinTest.test(app, (server, client) -> {
+            assertThat(client.get("/api/manifest?runId=run1").code()).isEqualTo(200);
+        });
+    }
+
+    @Test
+    void aCompanionTableWithFilesIsHeldEvenWhereItWritesNoManifestEntry() throws Exception {
+        IAnalyticsStorageRead storage = mock(IAnalyticsStorageRead.class);
+        // A plugin that writes no card writes no metadata.json, only its files
+        when(storage.listAnalyticsFiles(eq("run1"), eq("")))
+            .thenReturn(List.of("mutation_success/metadata.json", "births/lod0/0/births_0_9.parquet"));
+        when(storage.openAnalyticsInputStream(eq("run1"), eq("mutation_success/metadata.json")))
+            .thenReturn(new ByteArrayInputStream(("{\"id\":\"mutation_success\","
+                + "\"storageMetricId\":\"variation_sources\","
+                + "\"companions\":[{\"metricId\":\"births\",\"query\":\"q\"}]}").getBytes()));
+        ServiceRegistry registry = new ServiceRegistry();
+        registry.register(IAnalyticsStorageRead.class, storage);
+
+        // Not configured here either, so only its files can say the run holds it
+        AnalyticsController controller = new AnalyticsController(registry, ConfigFactory.parseString("""
+            analyticsManifestCacheTtlSeconds = 1
+            plugins = [
+              { className = "V", options { metricId = "variation_sources", group = "Evolution" } }
+            ]
+            """));
+        Javalin app = Javalin.create();
+        controller.registerRoutes(app, "/api");
+
+        JavalinTest.test(app, (server, client) -> {
+            assertThat(client.get("/api/manifest?runId=run1").code()).isEqualTo(200);
         });
     }
 

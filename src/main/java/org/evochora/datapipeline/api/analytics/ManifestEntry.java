@@ -145,6 +145,15 @@ public class ManifestEntry {
     public java.util.List<Companion> companions;
 
     /**
+     * The columns whose values are counts, added up when a coarser level of detail is built.
+     * <p>
+     * The browser may not drop rows of such a metric to fit a card: a dropped row takes its counts
+     * with it, and the chart would then say that fewer were born than were. It says so here so
+     * that a card can refuse rather than undercount.
+     */
+    public java.util.List<String> summedColumns;
+
+    /**
      * One table a chart reads alongside its own data.
      * <p>
      * A companion is read at the finest level of detail unless it follows the chart's level: a
@@ -155,17 +164,32 @@ public class ManifestEntry {
      * @param query        SQL query for that table, with the same {@code {table}} placeholder
      *                     {@link #generatedQuery} uses
      * @param followsLevel whether the table is read at the level of detail the chart shows
+     * @param columnar     whether the frontend hands the chart one array per column instead of one
+     *                     object per row; for a table too large to turn into objects, where the
+     *                     per-row objects cost more than the values they carry
      */
-    public record Companion(String metricId, String query, boolean followsLevel) {
+    public record Companion(String metricId, String query, boolean followsLevel, boolean columnar) {
 
         /**
-         * A companion read at the finest level of detail.
+         * A companion read at the finest level of detail, row by row.
          *
          * @param metricId storage metric identifier under which the table's Parquet files are found
          * @param query    SQL query for that table
          */
         public Companion(String metricId, String query) {
-            this(metricId, query, false);
+            this(metricId, query, false, false);
+        }
+
+        /**
+         * A companion read row by row.
+         *
+         * @param metricId     storage metric identifier under which the table's Parquet files are
+         *                     found
+         * @param query        SQL query for that table
+         * @param followsLevel whether the table is read at the level of detail the chart shows
+         */
+        public Companion(String metricId, String query, boolean followsLevel) {
+            this(metricId, query, followsLevel, false);
         }
     }
 }
