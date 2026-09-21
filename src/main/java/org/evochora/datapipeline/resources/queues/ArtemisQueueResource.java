@@ -722,8 +722,11 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
      *
      * @param messages list to add messages to
      * @param max maximum number of messages to receive
+     * @throws InterruptedException if the receive was interrupted, which Artemis reports as a
+     *                              {@link JMSException} wrapping an {@code InterruptedException}
      */
-    private void receiveAvailable(List<jakarta.jms.Message> messages, int max) {
+    private void receiveAvailable(List<jakarta.jms.Message> messages, int max)
+            throws InterruptedException {
         try {
             while (messages.size() < max) {
                 jakarta.jms.Message msg = dataConsumer.receiveNoWait();
@@ -740,8 +743,11 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
                 messages.add(msg);
             }
         } catch (JMSException e) {
-            log.warn("Failed during non-blocking receive on queue '{}' (received {} before error)",
-                queueName, messages.size());
+            if (JmsUtils.isInterruptedException(e)) {
+                throw new InterruptedException("receiveAvailable() interrupted draining the queue");
+            }
+            log.warn("Failed during non-blocking receive on queue '{}' (received {} before error): {}",
+                queueName, messages.size(), e.getMessage());
             recordError("RECEIVE_FAILED", "Failed during batch receive", e.getMessage());
         }
     }

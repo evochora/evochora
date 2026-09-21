@@ -211,9 +211,10 @@ class SimulationMetadataIntegrationTest {
 
         serviceManager.startAll();
 
-        // Wait briefly for services to transition to RUNNING state
-        // This tests that shutdown doesn't lose the metadata message
-        await().atMost(1, java.util.concurrent.TimeUnit.SECONDS)
+        // Wait for the services to reach RUNNING state, so that the shutdown below is the one
+        // of a running pipeline. The limit is an upper bound only - the poll returns as soon as
+        // the engine runs, and a loaded machine does not fail the test for taking longer.
+        await().atMost(5, java.util.concurrent.TimeUnit.SECONDS)
             .until(() -> {
                 var status = serviceManager.getServiceStatus("simulation-engine");
                 return status != null && status.state() == org.evochora.datapipeline.api.services.IService.State.RUNNING;
