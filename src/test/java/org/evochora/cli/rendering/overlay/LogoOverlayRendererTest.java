@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 import java.awt.image.BufferedImage;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 
 /**
  * Smoke tests for the LogoOverlayRenderer.
@@ -49,8 +50,8 @@ public class LogoOverlayRendererTest {
 
         TickData snapshot = TickData.newBuilder().setTickNumber(0).build();
 
-        // Should not throw even on small images
-        overlay.render(image, snapshot);
+        // The overlay is larger than the frame it is drawn on.
+        assertThatCode(() -> overlay.render(image, snapshot)).doesNotThrowAnyException();
     }
 
     @Test

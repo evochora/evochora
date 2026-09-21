@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 import java.awt.image.BufferedImage;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 
 /**
  * Smoke tests for the InfoOverlayRenderer.
@@ -61,8 +62,8 @@ public class InfoOverlayRendererTest {
             .setTickNumber(0)
             .build();
 
-        // Should not throw even on small images
-        overlay.render(image, snapshot);
+        // The overlay is larger than the frame it is drawn on.
+        assertThatCode(() -> overlay.render(image, snapshot)).doesNotThrowAnyException();
     }
 
     @Test
@@ -83,20 +84,29 @@ public class InfoOverlayRendererTest {
     }
 
     @Test
-    void testFontCachingOnRepeatedRenders() {
-        InfoOverlayRenderer overlay = new InfoOverlayRenderer();
-        BufferedImage image = new BufferedImage(400, 400, BufferedImage.TYPE_INT_RGB);
-
+    void warmFontCacheRendersIdenticallyToColdCache() {
         TickData snapshot = TickData.newBuilder()
             .setTickNumber(1)
             .build();
 
-        // Render multiple times - font should be cached after first render
-        for (int i = 0; i < 10; i++) {
-            overlay.render(image, snapshot);
-        }
+        InfoOverlayRenderer cold = new InfoOverlayRenderer();
+        BufferedImage fromColdCache = new BufferedImage(400, 400, BufferedImage.TYPE_INT_RGB);
+        cold.render(fromColdCache, snapshot);
 
-        // If we got here without issues, caching is working
-        assertThat(true).isTrue();
+        InfoOverlayRenderer warm = new InfoOverlayRenderer();
+        BufferedImage scratch = new BufferedImage(400, 400, BufferedImage.TYPE_INT_RGB);
+        for (int i = 0; i < 10; i++) {
+            warm.render(scratch, snapshot);
+        }
+        BufferedImage fromWarmCache = new BufferedImage(400, 400, BufferedImage.TYPE_INT_RGB);
+        warm.render(fromWarmCache, snapshot);
+
+        assertThat(pixelsOf(fromWarmCache))
+            .as("A cached font renders the same frame as a font built for this frame")
+            .isEqualTo(pixelsOf(fromColdCache));
+    }
+
+    private static int[] pixelsOf(BufferedImage image) {
+        return image.getRGB(0, 0, image.getWidth(), image.getHeight(), null, 0, image.getWidth());
     }
 }

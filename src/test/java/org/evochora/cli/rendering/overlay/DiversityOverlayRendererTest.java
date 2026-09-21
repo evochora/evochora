@@ -10,6 +10,7 @@ import java.awt.image.BufferedImage;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.within;
 
 /**
@@ -64,8 +65,8 @@ public class DiversityOverlayRendererTest {
 
         TickData snapshot = TickData.newBuilder().setTickNumber(0).build();
 
-        // Should not throw even on small images
-        overlay.render(image, snapshot);
+        // The overlay is larger than the frame it is drawn on.
+        assertThatCode(() -> overlay.render(image, snapshot)).doesNotThrowAnyException();
     }
 
     // ========================================================================

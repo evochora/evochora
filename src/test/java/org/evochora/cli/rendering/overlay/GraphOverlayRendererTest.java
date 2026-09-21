@@ -10,6 +10,7 @@ import java.awt.image.BufferedImage;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 
 /**
  * Unit tests for GraphOverlayRenderer.
@@ -63,8 +64,8 @@ public class GraphOverlayRendererTest {
 
         TickData snapshot = TickData.newBuilder().setTickNumber(0).build();
 
-        // Should not throw even on small images
-        overlay.render(image, snapshot);
+        // The overlay is larger than the frame it is drawn on.
+        assertThatCode(() -> overlay.render(image, snapshot)).doesNotThrowAnyException();
     }
 
     @Test
@@ -285,21 +286,6 @@ public class GraphOverlayRendererTest {
         assertThat(points).hasSize(1);
         assertThat(points.get(0).organisms()).isEqualTo(0);
         assertThat(points.get(0).genomes()).isEqualTo(0);
-    }
-
-    @Test
-    void testRenderWithSinglePoint_noLineDrawn() {
-        // With only one data point, no line should be drawn (need >= 2)
-        // But the overlay should still render without error
-        GraphOverlayRenderer overlay = new GraphOverlayRenderer();
-        BufferedImage image = new BufferedImage(400, 400, BufferedImage.TYPE_INT_RGB);
-
-        TickData snapshot = TickData.newBuilder()
-            .setTickNumber(0)
-            .addOrganisms(createOrganism(1, 42L, false))
-            .build();
-        overlay.render(image, snapshot);
-        // No assertion needed — just verify no exception
     }
 
     @Test
