@@ -160,6 +160,10 @@ public class GenomePopulationPlugin extends AbstractAnalyticsPlugin {
         entry.generatedQuery = "SELECT tick, genome_hash::VARCHAR AS genome_hash, count "
             + "FROM {table} ORDER BY tick";
         entry.outputColumns = List.of("tick", "genome_hash", "count");
+        // One row per recording and genome: a card of a few hundred points reads hundreds of
+        // thousands of them, and the objects those rows would become cost more than the chart
+        // spends on everything else together
+        entry.columnar = true;
 
         // Both companions arrive as written, row for row. Neither is condensed here: which of
         // several rows of a genome counts is a question the chart answers anyway - the earliest

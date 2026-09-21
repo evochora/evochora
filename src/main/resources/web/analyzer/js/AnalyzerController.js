@@ -588,11 +588,11 @@ export async function loadDashboard(runId) {
      */
     function fitToCard(rows, limit, metric) {
         const thinned = thinToLimit(rows, limit);
-        if (thinned.length < rows.length && metric.summedColumns?.length > 0) {
+        if (rowCount(thinned) < rowCount(rows) && metric.summedColumns?.length > 0) {
             throw new Error(
                 `Metric ${metric.id} holds counts in ${metric.summedColumns.join(', ')} and `
-                + `returned ${rows.length} rows for a card drawing ${limit}: its query has to add `
-                + `them up per window, since dropping rows would drop what they counted`);
+                + `returned ${rowCount(rows)} rows for a card drawing ${limit}: its query has to `
+                + `add them up per window, since dropping rows would drop what they counted`);
         }
         return thinned;
     }
@@ -609,6 +609,9 @@ export async function loadDashboard(runId) {
      * @returns {Array<Object>} The thinned rows
      */
     function thinToLimit(rows, limit) {
+        if (!Array.isArray(rows)) {
+            return thinColumnsToLimit(rows, limit);
+        }
         const ticks = [...new Set(rows.map(row => Number(row.tick)))];
         if (ticks.length <= limit) {
             return rows;
@@ -617,6 +620,52 @@ export async function loadDashboard(runId) {
         const step = Math.ceil(ticks.length / limit);
         const kept = new Set(ticks.filter((_, index) => index % step === 0));
         return rows.filter(row => kept.has(Number(row.tick)));
+    }
+
+    /**
+     * Keeps the same moments as {@link thinToLimit}, for data that arrived column by column.
+     *
+     * @param {Object<string, ArrayLike<*>>} columns - One array of values per column
+     * @param {number} limit - Greatest number of ticks to keep
+     * @returns {Object<string, Array<*>>} The columns, thinned the same way in each of them
+     */
+    function thinColumnsToLimit(columns, limit) {
+        const tickColumn = columns.tick;
+        if (!tickColumn) {
+            return columns;
+        }
+        const ticks = [...new Set(Array.from(tickColumn, Number))];
+        if (ticks.length <= limit) {
+            return columns;
+        }
+
+        const step = Math.ceil(ticks.length / limit);
+        const kept = new Set(ticks.filter((_, index) => index % step === 0));
+        const keptRows = [];
+        for (let index = 0; index < tickColumn.length; index++) {
+            if (kept.has(Number(tickColumn[index]))) {
+                keptRows.push(index);
+            }
+        }
+        const thinned = {};
+        for (const [name, values] of Object.entries(columns)) {
+            thinned[name] = keptRows.map(index => values[index]);
+        }
+        return thinned;
+    }
+
+    /**
+     * How many rows a query answered with, whether it came row by row or column by column.
+     *
+     * @param {Array<Object>|Object<string, ArrayLike<*>>} data - The answer
+     * @returns {number} The number of rows behind it
+     */
+    function rowCount(data) {
+        if (Array.isArray(data)) {
+            return data.length;
+        }
+        const first = Object.values(data || {})[0];
+        return first ? first.length : 0;
     }
 
     /**
@@ -725,7 +774,7 @@ export async function loadDashboard(runId) {
             MetricCardView.setActiveResolution(card, resolution,
                 { pinned: card.pinnedResolution != null, tooFine });
 
-            if (!derived && data.length === 0) {
+            if (!derived && rowCount(data) === 0) {
                 showNoDataOrRetry(card);
                 return;
             }
