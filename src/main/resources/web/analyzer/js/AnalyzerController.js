@@ -100,8 +100,9 @@ import {
 
     /**
      * Tick range each metric was last found to hold, keyed by metric ID. Listing a metric's files
-     * is what a load costs before any data, so the answer is asked for once per run and again
-     * only when a card is reloaded, which is when a running run may have grown.
+     * is what a load costs before any data, so the answer is asked for once per run, and again
+     * when the page asks for a stretch reaching past the one the cards were read over - which is
+     * where a run that is being written has grown since those answers were given.
      */
     const tickRanges = {};
 
@@ -941,10 +942,19 @@ export async function loadDashboard(runId) {
      * @param {?{from: number, to: number}} next - The window, or null for the whole run
      */
     function handleTickWindowChange(next) {
+        const loadedBefore = shownWindow();
         tickWindow = next;
         // What the cards are about to read is the run as far as it has come, so the timeline shows
         // the whole of it as chosen until the next round finds it has come further
         loadedExtent = runExtent;
+        const toLoad = shownWindow();
+        // A stretch reaching past the one the cards were read over needs the ticks each metric
+        // holds asked again: those answers are from that earlier reading, and a run that is being
+        // written has grown since. A stretch lying inside it is cut by none of them, so they stand
+        if (loadedBefore && toLoad
+                && (toLoad.to > loadedBefore.to || toLoad.from < loadedBefore.from)) {
+            Object.keys(tickRanges).forEach(metricId => delete tickRanges[metricId]);
+        }
         writeTickWindowToUrl();
         Object.values(DashboardView.getAllCards()).forEach(card => {
             card.dataRequested = false;
