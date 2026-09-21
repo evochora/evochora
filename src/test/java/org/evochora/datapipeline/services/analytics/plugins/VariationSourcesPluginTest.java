@@ -330,6 +330,33 @@ class VariationSourcesPluginTest {
     }
 
     @Test
+    void theQueryDrawsAsManyWindowsAsTheCardAsksAndKeepsEveryBirth() throws java.sql.SQLException {
+        // The rows of a run start where its first recording lies, not at tick zero, and the browser
+        // may not drop a row of counts to fit the card: the windows have to start at those rows and
+        // end with them, however the width of one divides the ticks they cover
+        String query = plugin.getManifestEntry().generatedQuery.replace("{table}", "sources");
+        try (java.sql.Connection connection = java.sql.DriverManager.getConnection("jdbc:duckdb:");
+             java.sql.Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE sources (tick BIGINT, " + COUNT_COLUMNS.stream()
+                .map(column -> column + " BIGINT").collect(java.util.stream.Collectors.joining(", "))
+                + ")");
+            for (long tick = 260_000; tick <= 27_790_000; tick += 10_000) {
+                statement.execute("INSERT INTO sources VALUES (" + tick + ", "
+                    + "1, 0, 0, 0, 0, 0, 0, 0, 0, 0)");
+            }
+            for (int windows : new int[] {85, 64, 42, 21, 10, 2, 1}) {
+                try (java.sql.ResultSet rows = statement.executeQuery(
+                        "SELECT COUNT(*) AS windows, SUM(unchanged) AS births FROM ("
+                        + query.replace("{buckets}", String.valueOf(windows)) + ")")) {
+                    assertThat(rows.next()).isTrue();
+                    assertThat(rows.getInt("windows")).isEqualTo(windows);
+                    assertThat(rows.getLong("births")).isEqualTo(2754);
+                }
+            }
+        }
+    }
+
+    @Test
     void everyRecordedTickIsRead() {
         assertThat(plugin.getSamplingInterval()).isEqualTo(1);
     }

@@ -381,18 +381,14 @@ public class VariationSourcesPlugin extends AbstractAnalyticsPlugin {
             .map(name -> "COALESCE(SUM(" + name + "), 0)::BIGINT AS " + name)
             .collect(java.util.stream.Collectors.joining(",\n                "));
         return """
-            WITH params AS (
-                SELECT GREATEST(1, (MAX(tick) - MIN(tick)) / {buckets})::BIGINT AS bucket_size
-                FROM {table}
-            )
+            WITH %s
             SELECT
-                (FLOOR(tick / (SELECT bucket_size FROM params))
-                    * (SELECT bucket_size FROM params))::BIGINT AS tick,
+                %s AS tick,
                 %s
             FROM {table}
             GROUP BY 1
             ORDER BY tick
-            """.formatted(sums);
+            """.formatted(windowParams(), windowTick(), sums);
     }
 
     @Override

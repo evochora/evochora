@@ -109,10 +109,7 @@ public class AgeDistributionPlugin extends AbstractAnalyticsPlugin {
     private String generateAggregatedQuery() {
         return """
             WITH
-            params AS (
-                SELECT GREATEST(1, (MAX(tick) - MIN(tick)) / {buckets})::BIGINT AS bucket_size
-                FROM {table}
-            )
+            %s
             SELECT
                 MIN(tick)::BIGINT AS tick,
                 ARG_MIN(p0, tick)::INTEGER AS p0,
@@ -123,9 +120,9 @@ public class AgeDistributionPlugin extends AbstractAnalyticsPlugin {
                 ARG_MIN(p90, tick)::INTEGER AS p90,
                 ARG_MIN(p100, tick)::INTEGER AS p100
             FROM {table}
-            GROUP BY FLOOR(tick / (SELECT bucket_size FROM params))
+            GROUP BY %s
             ORDER BY tick
-            """;
+            """.formatted(windowParams(), windowTick());
     }
 
     @Override

@@ -413,6 +413,48 @@ public abstract class AbstractAnalyticsPlugin implements IAnalyticsPlugin {
         }
     }
 
+    /**
+     * The common table expression a query cuts its rows into windows with.
+     * <p>
+     * A card says how many windows it draws, as {@code {buckets}}, and the width of one follows
+     * from the ticks the loaded rows themselves cover - the only thing that cannot be out of date
+     * while a run goes on. The width is rounded up, so that the asked number of windows covers the
+     * rows rather than falling just short of them.
+     * <p>
+     * The windows start at the first tick of those rows. A grid of absolute multiples would start
+     * somewhere inside the first window and need one window more than the card asked for, which
+     * for a card whose columns are counts is not a rounding difference but a row the browser may
+     * not drop.
+     *
+     * @return the CTE named {@code params}, to stand first in a query's {@code WITH}
+     */
+    protected static String windowParams() {
+        return """
+            params AS (
+                SELECT MIN(tick) AS first_tick,
+                       GREATEST(1, CEIL((MAX(tick) - MIN(tick)) / {buckets}))::BIGINT AS bucket_size
+                FROM {table}
+            )""";
+    }
+
+    /**
+     * The tick that stands for the window a row falls into, for a query carrying
+     * {@link #windowParams()}.
+     * <p>
+     * The last window holds the rows that would fall past it: a span that divides evenly by the
+     * number of windows puts its very last tick on the edge of one more, and that one window would
+     * carry a single tick.
+     *
+     * @return the SQL expression, reading the column {@code tick} of the rows it is applied to
+     */
+    protected static String windowTick() {
+        return """
+            ((SELECT first_tick FROM params)
+                    + LEAST({buckets} - 1, FLOOR((tick - (SELECT first_tick FROM params))
+                        / (SELECT bucket_size FROM params)))
+                      * (SELECT bucket_size FROM params))::BIGINT""";
+    }
+
     // Abstract methods that subclasses MUST implement:
     // - getSchema()
     // - extractRows(TickData)

@@ -157,14 +157,11 @@ public class InstructionUsagePlugin extends AbstractAnalyticsPlugin {
 
         return """
             WITH
-            params AS (
-                SELECT GREATEST(1, (MAX(tick) - MIN(tick)) / {buckets})::BIGINT AS bucket_size
-                FROM {table}
-            ),
+            %s,
             per_tick AS (
                 SELECT
                     tick,
-                    (FLOOR(tick / (SELECT bucket_size FROM params)) * (SELECT bucket_size FROM params))::BIGINT AS bucket_tick,
+                    %s AS bucket_tick,
                     CASE
                         WHEN (%s) = 0 THEN 0.0
                         ELSE (failure_count::DOUBLE * 100.0 / (%s))
@@ -181,7 +178,7 @@ public class InstructionUsagePlugin extends AbstractAnalyticsPlugin {
             FROM per_tick
             GROUP BY 1
             ORDER BY tick
-            """.formatted(totalExpr, totalExpr,
+            """.formatted(windowParams(), windowTick(), totalExpr, totalExpr,
                          FAMILY_NAMES.stream().collect(Collectors.joining(", ")),
                          sumColumns);
     }

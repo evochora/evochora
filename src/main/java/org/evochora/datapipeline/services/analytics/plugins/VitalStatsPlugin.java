@@ -144,11 +144,7 @@ public class VitalStatsPlugin extends AbstractAnalyticsPlugin {
     private String generateAggregatedQuery() {
         return """
             WITH
-            params AS (
-                -- The width of one window, as the card asks for it
-                SELECT GREATEST(1, (MAX(tick) - MIN(tick)) / {buckets})::BIGINT AS bucket_size
-                FROM {table}
-            ),
+            %s,
             raw AS (
                 -- Rows written before the causes were recorded have no cause columns; they read as
                 -- none counted, so their deaths show as unclassified
@@ -175,7 +171,7 @@ public class VitalStatsPlugin extends AbstractAnalyticsPlugin {
             ),
             buckets AS (
                 SELECT
-                    (FLOOR(tick / (SELECT bucket_size FROM params)) * (SELECT bucket_size FROM params))::BIGINT AS tick,
+                    %s AS tick,
                     SUM(births)::BIGINT AS births,
                     GREATEST(0, SUM(deaths))::DOUBLE AS deaths,
                     SUM(deaths_energy)::DOUBLE AS energy,
@@ -196,7 +192,7 @@ public class VitalStatsPlugin extends AbstractAnalyticsPlugin {
                 CASE WHEN energy + entropy + other = 0 THEN -deaths ELSE 0 END AS deaths_unclassified
             FROM buckets
             ORDER BY tick
-            """;
+            """.formatted(windowParams(), windowTick());
     }
 
     @Override
