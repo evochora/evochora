@@ -142,6 +142,8 @@ public class ManifestEntry {
      * <p>
      * If {@code null} or empty, the chart reads only its own data, which is the common case.
      */
+    public java.util.List<Companion> companions;
+
     /**
      * The columns whose values are counts, added up when a coarser level of detail is built.
      * <p>
@@ -150,8 +152,6 @@ public class ManifestEntry {
      * that a card can refuse rather than undercount.
      */
     public java.util.List<String> summedColumns;
-
-    public java.util.List<Companion> companions;
 
     /**
      * One table a chart reads alongside its own data.

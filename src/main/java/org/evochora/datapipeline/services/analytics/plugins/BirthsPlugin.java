@@ -205,7 +205,6 @@ public class BirthsPlugin extends AbstractAnalyticsPlugin {
      * detail of its own: there is nothing of this table for the card to read twice, and a level
      * would offer a choice that changes nothing it draws.
      * <p>
-     * <p>
      * The companion carries the five columns the derivation reads and leaves the genome hashes
      * where they are: a hash uses all 64 bits, which a JavaScript number cannot hold, and a query
      * that sorts a result carrying one fails in the browser's DuckDB. A derivation that needs a
