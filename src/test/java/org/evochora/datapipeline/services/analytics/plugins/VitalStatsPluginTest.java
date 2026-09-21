@@ -195,7 +195,11 @@ class VitalStatsPluginTest {
                 statement.execute("INSERT INTO facts VALUES (%s, %s, %s, %s, %s, %s)"
                     .formatted(r[0], r[1], r[2], r[3], r[4], r[5]));
             }
-            String query = plugin.getManifestEntry().generatedQuery.replace("{table}", "facts");
+            // The card fills in how wide one window is; here every recording is its own window,
+            // so that the rows the query returns are the rows the test wrote
+            String query = plugin.getManifestEntry().generatedQuery
+                .replace("{table}", "facts")
+                .replace("{tickInterval}", "1");
             List<Map<String, Number>> result = new ArrayList<>();
             try (ResultSet rs = statement.executeQuery(query)) {
                 while (rs.next()) {

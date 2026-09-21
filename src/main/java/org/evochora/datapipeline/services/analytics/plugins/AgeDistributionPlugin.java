@@ -33,13 +33,10 @@ import org.evochora.datapipeline.api.memory.SimulationParameters;
  * This provides a robust visualization of age structure that scales automatically
  * with the lifespan of organisms (whether 100 or 1,000,000 ticks).
  * <p>
- * <strong>Bucket Aggregation:</strong> Data is aggregated into ~100 buckets using AVG()
+ * <strong>Bucket Aggregation:</strong> Data is aggregated into one point per window using AVG()
  * for smooth visualization regardless of total tick count.
  */
 public class AgeDistributionPlugin extends AbstractAnalyticsPlugin {
-    
-    /** Target number of buckets for aggregation (~100 points in chart) */
-    private static final int TARGET_BUCKETS = 100;
 
     private static final ParquetSchema SCHEMA = ParquetSchema.builder()
         .column("tick", ColumnType.BIGINT)
@@ -106,8 +103,7 @@ public class AgeDistributionPlugin extends AbstractAnalyticsPlugin {
         return """
             WITH
             params AS (
-                SELECT GREATEST(1, (MAX(tick) - MIN(tick)) / %d)::BIGINT AS bucket_size
-                FROM {table}
+                SELECT {tickInterval}::BIGINT AS bucket_size
             )
             SELECT
                 (FLOOR(tick / (SELECT bucket_size FROM params)) * (SELECT bucket_size FROM params))::BIGINT AS tick,
@@ -121,7 +117,7 @@ public class AgeDistributionPlugin extends AbstractAnalyticsPlugin {
             FROM {table}
             GROUP BY 1
             ORDER BY tick
-            """.formatted(TARGET_BUCKETS);
+            """;
     }
 
     @Override
@@ -130,7 +126,7 @@ public class AgeDistributionPlugin extends AbstractAnalyticsPlugin {
         entry.id = metricId;
         entry.name = "Age Distribution";
         entry.description = "Percentiles of organism age distribution. "
-            + "Data is aggregated into ~" + TARGET_BUCKETS + " time buckets for smooth visualization.";
+            + "One point per time window of the resolution shown.";
         
         entry.dataSources = new HashMap<>();
         for (int level = 0; level < lodLevels; level++) {

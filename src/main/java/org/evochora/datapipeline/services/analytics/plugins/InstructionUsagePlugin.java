@@ -23,7 +23,7 @@ import com.typesafe.config.Config;
  * Tracks the usage of different instruction families over time.
  * <p>
  * This plugin dynamically discovers instruction families from the runtime and
- * stores raw counts per tick. The query aggregates data into ~100 buckets for
+ * stores raw counts per tick. The query aggregates data into one point per window for
  * visualization as a stacked bar chart with percentage normalization.
  * <p>
  * Additionally tracks instruction failure rates on a secondary Y-axis,
@@ -38,15 +38,12 @@ import com.typesafe.config.Config;
  * <ul>
  *   <li>Stateless: only extracts current tick's instruction counts</li>
  *   <li>Dynamic: instruction families discovered at startup</li>
- *   <li>Bucket aggregation: ~100 time buckets for readable visualization</li>
+ *   <li>Bucket aggregation: one window per point the card draws</li>
  *   <li>Percentage mode: each bar totals 100%</li>
  *   <li>Failure rate: secondary line showing % failed instructions</li>
  * </ul>
  */
 public class InstructionUsagePlugin extends AbstractAnalyticsPlugin {
-    
-    /** Target number of buckets for aggregation (~100 bars in chart) */
-    private static final int TARGET_BUCKETS = 100;
 
     /** Largest number of instructions the failure half names; the rest is one group. */
     private static final int FAILURE_GROUPS = 8;
@@ -137,7 +134,7 @@ public class InstructionUsagePlugin extends AbstractAnalyticsPlugin {
     /**
      * Generates the aggregated SQL query with dynamic bucket sizing.
      * <p>
-     * The query aggregates instruction counts into ~100 buckets, summing
+     * The query aggregates instruction counts into one point per window, summing
      * all counts per family within each bucket. Percentage normalization
      * is done client-side by the chart component.
      * <p>
@@ -161,8 +158,7 @@ public class InstructionUsagePlugin extends AbstractAnalyticsPlugin {
         return """
             WITH
             params AS (
-                SELECT GREATEST(1, (MAX(tick) - MIN(tick)) / %d)::BIGINT AS bucket_size
-                FROM {table}
+                SELECT {tickInterval}::BIGINT AS bucket_size
             ),
             per_tick AS (
                 SELECT
@@ -184,7 +180,7 @@ public class InstructionUsagePlugin extends AbstractAnalyticsPlugin {
             FROM per_tick
             GROUP BY 1
             ORDER BY tick
-            """.formatted(TARGET_BUCKETS, totalExpr, totalExpr,
+            """.formatted(totalExpr, totalExpr,
                          FAMILY_NAMES.stream().collect(Collectors.joining(", ")),
                          sumColumns);
     }
