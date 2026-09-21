@@ -15,11 +15,10 @@ on:
 
 jobs:
   claude-review:
-    # Optional: Filter by PR author
-    # if: |
-    #   github.event.pull_request.user.login == 'external-contributor' ||
-    #   github.event.pull_request.user.login == 'new-developer' ||
-    #   github.event.pull_request.author_association == 'FIRST_TIME_CONTRIBUTOR'
+    # A pull request opened from a fork runs without the repository's secrets, so the review
+    # step could not authenticate and the job would fail every time. Skipping it there keeps a
+    # contributor's pull request free of a check that cannot pass.
+    if: github.event.pull_request.head.repo.full_name == github.repository
 
     runs-on: ubuntu-latest
     permissions:
