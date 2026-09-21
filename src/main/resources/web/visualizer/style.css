@@ -122,9 +122,12 @@ body {
     opacity: 0.7;
 }
 
+/* The footer is the wheel switch itself, so padding here would press its segments against its
+   own frame and the border would recolour that frame: the spacing goes outside the switch. */
 #logo-panel .app-switcher-footer {
-    padding: 8px 10px 2px;
-    border-top-color: #333;
+    margin-top: 8px;
+    padding: 0;
+    border-top-color: #3a3a4a;
     font-size: 11px;
 }
 
