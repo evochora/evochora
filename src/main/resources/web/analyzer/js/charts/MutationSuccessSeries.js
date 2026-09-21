@@ -35,6 +35,9 @@ const HIGH_SUFFIX = '_high';
 /** How many standard errors the drawn range reaches on each side. */
 const SPREAD_SIGMA = 1.96;
 
+/** The share of the outcomes each end of the range cuts off, which those standard errors leave. */
+const SPREAD_TAIL = 0.025;
+
 /** The classes that form the control group: no mutation plugin touched these births. */
 const CONTROL_CLASSES = ['unchanged', 'no_event'];
 
@@ -71,8 +74,8 @@ function groupsByClass(classes, classCount) {
  * Both sides of the ratio are shares of births that founded a line, and a share is the less certain
  * the fewer births it rests on. The uncertainty of the ratio follows from both, taken on the
  * logarithm where the two add, and comes back as the factor the value is divided and multiplied by.
- * A window whose kind founded no line at all has no such factor: nothing says how far above zero
- * the truth lies.
+ * A window whose kind founded no line at all has no such factor - a zero cannot be multiplied into
+ * a range - and gets its range from {@link ceilingWithoutSuccess} instead.
  *
  * @param {number} rate - Share of the kind's births that founded a line
  * @param {number} births - The kind's births in the window, each parent counted once
@@ -86,6 +89,36 @@ function spread(rate, births, controlRate, controlBirths) {
     }
     const variance = (1 - rate) / (births * rate) + (1 - controlRate) / (controlBirths * controlRate);
     return Math.exp(-SPREAD_SIGMA * Math.sqrt(variance));
+}
+
+/**
+ * How high the value could still stand where a kind founded no line at all in a window.
+ *
+ * A share of zero is an observation, not a certainty: it rests on the births of that window, and a
+ * few of them leave almost everything open while many of them leave little. The ceiling is the
+ * highest share that would still leave all these births without a line as often as the end of a
+ * range is allowed to happen - exactly, so that a window of four births is not read through an
+ * approximation made for large numbers. It is held against the lowest the control rate could be,
+ * so that the uncertainty of both sides stands in it the way it does in every other range here.
+ *
+ * The ceiling is the upper end of a range whose lower end is the observed zero, and it errs on the
+ * wide side: the two ends are taken at the same share of the outcomes, which together cut off a
+ * little more than the range of a window that founded lines.
+ *
+ * @param {number} births - The kind's births in the window, each parent counted once
+ * @param {number} controlRate - Share of the births no plugin touched that founded a line
+ * @param {number} controlBirths - Those births, counted the same way
+ * @returns {number|null} The upper end of the range, or null where there is nothing to hold it
+ *          against
+ */
+function ceilingWithoutSuccess(births, controlRate, controlBirths) {
+    if (!(births > 0) || !(controlRate > 0) || !(controlBirths > 0)) {
+        return null;
+    }
+    const highestRate = 1 - Math.pow(SPREAD_TAIL, 1 / births);
+    const controlVariance = (1 - controlRate) / (controlBirths * controlRate);
+    const lowestControlRate = controlRate * Math.exp(-SPREAD_SIGMA * Math.sqrt(controlVariance));
+    return highestRate / lowestControlRate;
 }
 
 /**
@@ -207,9 +240,14 @@ export function derive(companion, config, window, points) {
                 ? (counts.founded[cell] / births) / controlOdds : null;
             const range = value === null ? null
                 : spread(counts.founded[cell] / births, births, controlRate, controlBirths);
+            // A kind that founded no line in its window stands at zero, and the births it stands on
+            // say how far above zero the truth could still be. Without that ceiling the point would
+            // be drawn bare, which reads as a number beyond doubt
+            const ceiling = value === 0
+                ? ceilingWithoutSuccess(births, controlRate, controlBirths) : null;
             row[name] = value;
-            row[name + LOW_SUFFIX] = range ? value * range : null;
-            row[name + HIGH_SUFFIX] = range ? value / range : null;
+            row[name + LOW_SUFFIX] = range ? value * range : (ceiling === null ? null : 0);
+            row[name + HIGH_SUFFIX] = range ? value / range : ceiling;
         });
         rows.push(row);
     }
