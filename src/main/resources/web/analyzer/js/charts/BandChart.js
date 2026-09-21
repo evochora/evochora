@@ -25,10 +25,6 @@ import { formatTickValue, axisTicks, tooltipTitle, tooltipValue } from './ChartU
     /** The colour of the line the bands are held against, where a metric names one. */
     const REFERENCE_COLOR = '#9aa0a6';
 
-    const PALETTE = {
-        medianLine: '#a0e0a0',
-    };
-
     // The palette every chart of the analyzer hands out, by the position of the series
     const COLORS = [
         '#4a9eff', '#a0e0a0', '#ffb366', '#dda0dd', '#87ceeb',
@@ -88,12 +84,13 @@ function bandGroups(config) {
             return {
                 name: group.name || '',
                 base: color,
-                    median: config.groups.length > 1 || group.color ? color : PALETTE.medianLine,
+                // The line and the bands around it are one quantity, so they are one colour
+                median: color,
                 keys: group.y || []
             };
         });
     }
-    return [{ name: '', base: BAND_BASE, median: PALETTE.medianLine, keys: config.y || [] }];
+    return [{ name: '', base: BAND_BASE, median: BAND_BASE, keys: config.y || [] }];
 }
 
 /**
@@ -172,19 +169,23 @@ function tooYoungPlugin(data, config) {
             const x = chart.scales.x.getPixelForValue(first);
             const ctx = chart.ctx;
             ctx.save();
-            ctx.fillStyle = 'rgba(224, 224, 224, 0.05)';
+            ctx.fillStyle = 'rgba(224, 224, 224, 0.09)';
             ctx.fillRect(x, area.top, area.right - x, area.bottom - area.top);
-            ctx.strokeStyle = 'rgba(224, 224, 224, 0.25)';
+            ctx.strokeStyle = 'rgba(224, 224, 224, 0.4)';
             ctx.setLineDash([4, 4]);
             ctx.beginPath();
             ctx.moveTo(x, area.top);
             ctx.lineTo(x, area.bottom);
             ctx.stroke();
             ctx.setLineDash([]);
+            // The label belongs to the stretch, and where the stretch is too narrow to hold it,
+            // it stands to the left of the line rather than running off the plot
+            const text = config.tooYoungLabel || 'too young to judge';
             ctx.fillStyle = '#9aa0a6';
             ctx.font = "10px 'Courier New', monospace";
             ctx.textAlign = 'right';
-            ctx.fillText(config.tooYoungLabel || 'too young to judge', area.right - 6, area.top + 12);
+            const fits = area.right - x > ctx.measureText(text).width + 12;
+            ctx.fillText(text, fits ? area.right - 6 : x - 6, area.top + 12);
             ctx.restore();
         }
     }];
