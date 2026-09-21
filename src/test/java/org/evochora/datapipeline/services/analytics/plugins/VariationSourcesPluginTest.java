@@ -364,7 +364,8 @@ class VariationSourcesPluginTest {
             // the list given here
             .containsEntry("birthsMetric", "births")
             .containsEntry("variationClasses", COUNT_COLUMNS)
-            .containsEntry("yMin", 0)
+            // A ratio is read on a scale where a half and a double are the same step away from one
+            .containsEntry("ratioScale", true)
             // The value is held against the births no plugin touched, which is one by definition
             .containsEntry("reference", 1);
         // One band per kind: the range the value could as well be, with the value in the middle

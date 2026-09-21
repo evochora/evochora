@@ -295,6 +295,10 @@ public class VariationSourcesPlugin extends AbstractAnalyticsPlugin {
      * detail of its own: reading this plugin's table for the card would cost a second pass over
      * every file of it and give the card nothing it draws.
      * <p>
+     * {@code ratioScale} asks for the axis a ratio is read on: a half and a double are the same
+     * step away from one, and a window whose few births leave a wide interval would otherwise
+     * stretch the axis until every later difference is a flat line. The scale stays linear close
+     * to zero, so a kind that founded no line at all keeps its place on it.
      * <p>
      * The companion carries the five columns the derivation reads and leaves the genome hashes
      * where they are: a hash uses all 64 bits, which a JavaScript number cannot hold, and a query
@@ -327,7 +331,7 @@ public class VariationSourcesPlugin extends AbstractAnalyticsPlugin {
             .with("groups", successGroups())
             .with("yFormat", "decimal")
             .with("yLabel", "Success against no plugin mutation")
-            .with("yMin", 0)
+            .with("ratioScale", true)
             .with("bandLabel", "95% CI")
             .with("reference", 1)
             .with("referenceLabel", "No plugin mutation (= 1)");
