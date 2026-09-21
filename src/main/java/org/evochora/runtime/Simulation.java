@@ -137,7 +137,7 @@ public class Simulation {
         this.workerPool = (effectiveParallelism > 1) ? new TickWorkerPool(effectiveParallelism) : null;
         this.executionContexts = new ExecutionContext[effectiveParallelism];
         for (int i = 0; i < effectiveParallelism; i++) {
-            this.executionContexts[i] = new ExecutionContext(environment, false);
+            this.executionContexts[i] = new ExecutionContext(environment);
         }
         if (workerPool != null) {
             this.parallelInterceptContexts = new InterceptionContext[effectiveParallelism];

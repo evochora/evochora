@@ -36,7 +36,6 @@ public class ExecutionContext {
     private static final int KIND_WRITE = 1;
 
     private final Environment environment;
-    private final boolean isPerformanceMode;
 
     private Organism organism;
 
@@ -47,16 +46,18 @@ public class ExecutionContext {
     /**
      * Constructs a new ExecutionContext.
      * @param environment The environment in which instructions are executed.
-     * @param isPerformanceMode A flag indicating if the simulation is in performance mode.
      */
-    public ExecutionContext(Environment environment, boolean isPerformanceMode) {
+    public ExecutionContext(Environment environment) {
         this.environment = environment;
-        this.isPerformanceMode = isPerformanceMode;
     }
 
     /**
      * Prepares the context for one execution: binds the organism and discards the effects of
      * whatever ran before.
+     * <p>
+     * This belongs to the virtual machine, which calls it before handing the context to an
+     * instruction. An instruction must not call it: it would discard the effects the
+     * instruction has already recorded, and they would go unpriced.
      *
      * @param organism The organism whose instruction is about to execute.
      */
@@ -79,14 +80,6 @@ public class ExecutionContext {
      */
     public Environment getWorld() {
         return environment;
-    }
-
-    /**
-     * Checks if the simulation is running in performance mode.
-     * @return true if in performance mode, false otherwise.
-     */
-    public boolean isPerformanceMode() {
-        return isPerformanceMode;
     }
 
     /**
@@ -135,6 +128,7 @@ public class ExecutionContext {
      *
      * @param index The effect to ask about, below {@link #effectCount()}.
      * @return {@code true} if the effect stored a molecule, {@code false} if it took one out.
+     * @throws IndexOutOfBoundsException if the index is not below {@link #effectCount()}
      */
     public boolean isWriteAt(int index) {
         return effects[Objects.checkIndex(index, effectCount) * EFFECT_STRIDE] == KIND_WRITE;
@@ -145,6 +139,7 @@ public class ExecutionContext {
      *
      * @param index The effect to ask about, below {@link #effectCount()}.
      * @return The molecule, in the packed form the environment stores.
+     * @throws IndexOutOfBoundsException if the index is not below {@link #effectCount()}
      */
     public int moleculeAt(int index) {
         return effects[Objects.checkIndex(index, effectCount) * EFFECT_STRIDE + 1];
@@ -155,6 +150,7 @@ public class ExecutionContext {
      *
      * @param index The effect to ask about, below {@link #effectCount()}.
      * @return The cell's owner before the effect; 0 for an unowned cell.
+     * @throws IndexOutOfBoundsException if the index is not below {@link #effectCount()}
      */
     public int ownerAt(int index) {
         return effects[Objects.checkIndex(index, effectCount) * EFFECT_STRIDE + 2];

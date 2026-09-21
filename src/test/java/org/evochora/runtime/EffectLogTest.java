@@ -48,6 +48,11 @@ class EffectLogTest {
      * readable from the outside without the runtime having to expose it.
      */
     public static final class RecordingPolicy implements IThermodynamicPolicy {
+        /**
+         * Static because the policy manager builds the policy by reflection and hands the test no
+         * reference to it. Safe here: the test class runs its methods one after another, each
+         * clearing the list first, and no other test installs this policy.
+         */
         static final List<Effect> RECORDED = new ArrayList<>();
 
         @Override
@@ -262,26 +267,90 @@ class EffectLogTest {
         assertThat(RecordingPolicy.RECORDED).isEmpty();
     }
 
-    /**
-     * A read that cannot deliver its value takes nothing: the cell stays as it was, so there is
-     * no effect to charge - not even the energy the molecule would have been worth.
-     */
+    // ===================================================================================
+    // The remaining opcode variants: same handlers, other operand sources
+    // ===================================================================================
+
     @Test
-    void peekThatOverflowsTheDataStackRecordsNothing() {
-        Molecule stored = new Molecule(Config.TYPE_ENERGY, 500);
-        env.setMolecule(stored, 0, target);
-        for (int i = 0; i < Config.DS_MAX_DEPTH; i++) {
-            assertThat(organism.pushData(0)).isTrue();
-        }
-        organism.writeOperand(1, TO_TARGET);
-        placeWithRegisters("PEKS", 1, 1);
+    void pekiRecordsTheReadItPerformed() {
+        Molecule stored = new Molecule(Config.TYPE_DATA, 33, 1);
+        env.setMolecule(stored, 999, target);
+        placeWithVector("PEKI", 0, TO_TARGET);
 
-        int before = env.getMolecule(target).toInt();
-        sim.tick();
+        tickAndVerify();
 
-        assertThat(organism.isInstructionFailed()).isTrue();
-        assertThat(env.getMolecule(target).toInt()).as("the cell keeps its molecule").isEqualTo(before);
-        assertThat(RecordingPolicy.RECORDED).isEmpty();
+        assertThat(RecordingPolicy.RECORDED)
+                .containsExactly(new Effect(false, stored.toInt(), 999, organism.getId()));
+    }
+
+    @Test
+    void peksRecordsTheReadItPerformed() {
+        Molecule stored = new Molecule(Config.TYPE_DATA, 33, 1);
+        env.setMolecule(stored, 999, target);
+        organism.pushData(TO_TARGET);
+        placeWithoutArguments("PEKS");
+
+        tickAndVerify();
+
+        assertThat(RecordingPolicy.RECORDED)
+                .containsExactly(new Effect(false, stored.toInt(), 999, organism.getId()));
+    }
+
+    @Test
+    void pokiRecordsTheWriteItPerformed() {
+        organism.setMr(1);
+        organism.writeOperand(0, new Molecule(Config.TYPE_DATA, 50).toInt());
+        placeWithVector("POKI", 0, TO_TARGET);
+
+        tickAndVerify();
+
+        assertThat(RecordingPolicy.RECORDED)
+                .containsExactly(new Effect(true, new Molecule(Config.TYPE_DATA, 50, 1).toInt(), 0, organism.getId()));
+    }
+
+    @Test
+    void poksRecordsTheWriteItPerformed() {
+        organism.setMr(1);
+        // The vector is the last operand, so it goes on the stack first; the value ends up on top.
+        organism.pushData(TO_TARGET);
+        organism.pushData(new Molecule(Config.TYPE_DATA, 50).toInt());
+        placeWithoutArguments("POKS");
+
+        tickAndVerify();
+
+        assertThat(RecordingPolicy.RECORDED)
+                .containsExactly(new Effect(true, new Molecule(Config.TYPE_DATA, 50, 1).toInt(), 0, organism.getId()));
+    }
+
+    @Test
+    void ppkiRecordsTheReadAndTheWrite() {
+        Molecule stored = new Molecule(Config.TYPE_DATA, 33, 1);
+        env.setMolecule(stored, 999, target);
+        organism.setMr(1);
+        organism.writeOperand(0, new Molecule(Config.TYPE_DATA, 50).toInt());
+        placeWithVector("PPKI", 0, TO_TARGET);
+
+        tickAndVerify();
+
+        assertThat(RecordingPolicy.RECORDED).containsExactly(
+                new Effect(false, stored.toInt(), 999, organism.getId()),
+                new Effect(true, new Molecule(Config.TYPE_DATA, 50, 1).toInt(), 0, organism.getId()));
+    }
+
+    @Test
+    void ppksRecordsTheReadAndTheWrite() {
+        Molecule stored = new Molecule(Config.TYPE_DATA, 33, 1);
+        env.setMolecule(stored, 999, target);
+        organism.setMr(1);
+        organism.pushData(TO_TARGET);
+        organism.pushData(new Molecule(Config.TYPE_DATA, 50).toInt());
+        placeWithoutArguments("PPKS");
+
+        tickAndVerify();
+
+        assertThat(RecordingPolicy.RECORDED).containsExactly(
+                new Effect(false, stored.toInt(), 999, organism.getId()),
+                new Effect(true, new Molecule(Config.TYPE_DATA, 50, 1).toInt(), 0, organism.getId()));
     }
 
     // ===================================================================================
@@ -324,5 +393,23 @@ class EffectLogTest {
         env.setMolecule(new Molecule(Config.TYPE_DATA, first), organism.getId(), pos);
         pos = organism.getNextInstructionPosition(pos, organism.getDv(), env);
         env.setMolecule(new Molecule(Config.TYPE_DATA, second), organism.getId(), pos);
+    }
+
+    /** Places {@code NAME %r <vector>} at the organism's instruction pointer. */
+    private void placeWithVector(String name, int register, int[] vector) {
+        int[] pos = organism.getInitialPosition();
+        env.setMolecule(new Molecule(Config.TYPE_CODE, Instruction.getInstructionIdByName(name)), organism.getId(), pos);
+        pos = organism.getNextInstructionPosition(pos, organism.getDv(), env);
+        env.setMolecule(new Molecule(Config.TYPE_DATA, register), organism.getId(), pos);
+        for (int component : vector) {
+            pos = organism.getNextInstructionPosition(pos, organism.getDv(), env);
+            env.setMolecule(new Molecule(Config.TYPE_DATA, component), organism.getId(), pos);
+        }
+    }
+
+    /** Places {@code NAME} at the organism's instruction pointer; its operands come from the stack. */
+    private void placeWithoutArguments(String name) {
+        env.setMolecule(new Molecule(Config.TYPE_CODE, Instruction.getInstructionIdByName(name)),
+                organism.getId(), organism.getInitialPosition());
     }
 }

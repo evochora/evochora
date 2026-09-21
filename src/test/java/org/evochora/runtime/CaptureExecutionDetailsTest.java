@@ -104,7 +104,7 @@ class CaptureExecutionDetailsTest {
 
     @Test
     void executionRecordIsPresentAfterVmRuntimeError() {
-        new VirtualMachine(simulation).execute(throwingInstruction(), new ExecutionContext(simulation.getEnvironment(), false));
+        new VirtualMachine(simulation).execute(throwingInstruction(), new ExecutionContext(simulation.getEnvironment()));
 
         Organism.InstructionExecutionData record = organism.getLastInstructionExecution();
         assertThat(organism.isInstructionFailed()).isTrue();
@@ -118,7 +118,7 @@ class CaptureExecutionDetailsTest {
     void executionRecordIsPresentWhenVmRuntimeErrorKills() {
         organism.takeEr(organism.getEr() - 5);
 
-        new VirtualMachine(simulation).execute(throwingInstruction(), new ExecutionContext(simulation.getEnvironment(), false));
+        new VirtualMachine(simulation).execute(throwingInstruction(), new ExecutionContext(simulation.getEnvironment()));
 
         assertThat(organism.isDead()).isTrue();
         assertThat(organism.getLastInstructionExecution()).isNotNull();

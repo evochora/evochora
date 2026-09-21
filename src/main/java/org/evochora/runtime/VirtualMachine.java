@@ -218,7 +218,7 @@ public class VirtualMachine {
 
             // Whatever the instruction managed to do before it threw is priced like any other
             // effect; what it did not do left no record and costs nothing. A throw from before the
-            // base values were charged leaves them unpaid, as it always has.
+            // base values were charged leaves them unpaid.
             if (policy != null && !effectsCharged) {
                 chargeEffects(policy, organism, context);
             }

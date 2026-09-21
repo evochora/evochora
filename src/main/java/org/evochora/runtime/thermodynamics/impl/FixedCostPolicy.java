@@ -23,11 +23,8 @@ public class FixedCostPolicy implements IThermodynamicPolicy {
 
     @Override
     public void initialize(Config options) {
-        // Support both old and new names for backward compatibility
-        this.energyCost = options.hasPath("energy") ? options.getInt("energy") 
-            : (options.hasPath("energy-cost") ? options.getInt("energy-cost") : 1);
-        this.entropyDelta = options.hasPath("entropy") ? options.getInt("entropy")
-            : (options.hasPath("entropy-delta") ? options.getInt("entropy-delta") : 1);
+        this.energyCost = options.hasPath("energy") ? options.getInt("energy") : 1;
+        this.entropyDelta = options.hasPath("entropy") ? options.getInt("entropy") : 1;
     }
 
     @Override

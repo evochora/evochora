@@ -20,8 +20,11 @@ import com.typesafe.config.Config;
  * The effects are summed before they are booked, so a policy may return values of either sign for
  * either quantity without the order of the effects influencing the result - which is what keeps
  * the outcome reproducible when an organism's registers sit against a clamp. The base values are
- * booked separately and therefore before the effects; a negative {@link #baseEntropy()} would be
- * lost against the entropy floor where the effects, booked with it, would have carried it.
+ * booked separately and therefore before the effects, which matters at either clamp: a negative
+ * {@link #baseEntropy()} is lost against the entropy floor, and a negative {@link #baseEnergy()}
+ * against the energy ceiling, where the effects, booked together with them, would have carried
+ * them. Every shipped configuration charges positive base values, for which the split makes no
+ * difference.
  */
 public interface IThermodynamicPolicy {
 

@@ -45,6 +45,10 @@ class DeterministicExecutionTest {
     private static final int SOFT_GATE_TICKS = 40;
     private static final int SOFT_GATE_VALUE = 500;
     private static final int SOFT_GATE_BOUND = 1000;
+    private static final int POKERS = 8;
+    private static final int POKER_TICKS = 40;
+    /** Rows between two pokers, so that no organism's target cell belongs to its neighbour. */
+    private static final int POKER_ROW_SPACING = 4;
 
     private final List<Simulation> simulations = new ArrayList<>();
 
@@ -462,6 +466,110 @@ class DeterministicExecutionTest {
             pos = organism.getNextInstructionPosition(pos, organism.getDv(), env);
             env.setMolecule(new Molecule(Config.TYPE_DATA, component), organism.getId(), pos);
         }
+    }
+
+
+    // ===================================================================================
+    // Thermodynamics of environment writes across thread counts
+    // ===================================================================================
+
+    /**
+     * Organisms that write a molecule and take it back must be charged the same whatever the
+     * thread count.
+     * <p>
+     * The two other invariance tests cannot see this. {@code labelSelection_isParallelismInvariant}
+     * runs organisms that only jump, so no instruction records an effect, and it compares
+     * instruction pointers rather than registers; {@code tickVisibility_isParallelismInvariant}
+     * writes once but asserts only what the reader read.
+     * <p>
+     * What makes the thread count relevant here is which execution context an organism gets. The
+     * parallel wave spreads the organisms over one context per thread while the environment wave
+     * always uses the first one, so the sequence of organisms passing through that context differs
+     * between one thread and four. A value surviving from one instruction to the next would be
+     * charged to a different organism in each setting, and energy and entropy would diverge while
+     * the instruction pointers still agreed.
+     */
+    @Test
+    void thermodynamics_isParallelismInvariantUnderEnvironmentWrites() {
+        List<int[][]> sequential = runPokers(1);
+        List<int[][]> parallel = runPokers(4);
+
+        assertThat(parallel).as("tick count").hasSameSizeAs(sequential);
+        for (int t = 0; t < sequential.size(); t++) {
+            assertThat(parallel.get(t))
+                    .as("energy and entropy after tick %d differ (parallelism=1 vs parallelism=4)", t + 1)
+                    .isDeepEqualTo(sequential.get(t));
+        }
+    }
+
+    private List<int[][]> runPokers(int parallelism) {
+        Environment env = new Environment(new EnvironmentProperties(new int[]{64, 64}, true));
+        Simulation sim = SimulationTestUtils.createSimulation(env, parallelism);
+        simulations.add(sim);
+        sim.setRandomProvider(new SeededRandomProvider(SEED));
+
+        for (int i = 0; i < POKERS; i++) {
+            Organism organism = Organism.create(sim, new int[]{0, i * POKER_ROW_SPACING}, 10_000);
+            sim.addOrganism(organism);
+            // The data pointer stays where it starts, so every write and every read of this
+            // organism addresses the one cell below its own row.
+            organism.setDp(0, organism.getIp());
+            organism.setMr(1);
+            layoutPokerRow(env, organism);
+        }
+
+        List<int[][]> vitals = new ArrayList<>(POKER_TICKS);
+        for (int i = 0; i < POKER_TICKS; i++) {
+            sim.tick();
+            for (Organism organism : sim.getOrganisms()) {
+                assertThat(organism.isInstructionFailed())
+                        .as("organism %d failed at tick %d: %s", organism.getId(), sim.getCurrentTick(), organism.getFailureReason())
+                        .isFalse();
+            }
+            vitals.add(vitalsOf(sim));
+        }
+        return vitals;
+    }
+
+    /**
+     * Fills the organism's row with repetitions of {@code SETI; POKI; PEKI}: one instruction that
+     * records nothing and runs in the parallel wave, one that records a write and one that records
+     * a read, both in the environment wave. The row wraps on the torus, so the pattern repeats for
+     * as many ticks as the test runs.
+     */
+    private static void layoutPokerRow(Environment env, Organism organism) {
+        int[] pos = organism.getIp().clone();
+        int y = pos[1];
+        int[] toTargetCell = {0, 1};
+        for (int cycle = 0; cycle * 11 + 11 <= env.properties.getWorldShape()[0]; cycle++) {
+            pos = placeInRow(env, organism, y, pos, "SETI", 0, new int[]{new Molecule(Config.TYPE_DATA, 50).toInt()});
+            pos = placeInRow(env, organism, y, pos, "POKI", 0, toTargetCell);
+            pos = placeInRow(env, organism, y, pos, "PEKI", 1, toTargetCell);
+        }
+    }
+
+    /** Writes one instruction with a register operand and trailing argument cells into the row. */
+    private static int[] placeInRow(Environment env, Organism organism, int y, int[] pos,
+                                    String name, int register, int[] arguments) {
+        env.setMolecule(new Molecule(Config.TYPE_CODE, Instruction.getInstructionIdByName(name)), organism.getId(), pos);
+        pos = new int[]{pos[0] + 1, y};
+        env.setMolecule(new Molecule(Config.TYPE_DATA, register), organism.getId(), pos);
+        for (int argument : arguments) {
+            pos = new int[]{pos[0] + 1, y};
+            env.setMolecule(Molecule.fromInt(argument), organism.getId(), pos);
+        }
+        return new int[]{pos[0] + 1, y};
+    }
+
+    /** Energy and entropy of every organism, in organism order. */
+    private static int[][] vitalsOf(Simulation sim) {
+        List<Organism> organisms = sim.getOrganisms();
+        int[][] vitals = new int[organisms.size()][];
+        for (int i = 0; i < organisms.size(); i++) {
+            Organism organism = organisms.get(i);
+            vitals[i] = new int[]{organism.getId(), organism.getEr(), organism.getSr()};
+        }
+        return vitals;
     }
 
     // ===================================================================================

@@ -162,7 +162,11 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
         if (targetReg != -1) {
             writeOperand(targetReg, valueToStore);
         } else if (!organism.pushData(valueToStore)) {
-            // The data stack had no room: nothing was taken, and the cell stays as it is.
+            // A value that cannot be delivered must leave the cell untouched: clearing it here
+            // would destroy the molecule and charge the organism for a read it did not get.
+            // The guard cannot trigger as the tick stands - the virtual machine pops an
+            // instruction's stack operands before executing it, and this variant pops one slot
+            // and pushes one - but the order it relies on lives in another class.
             return;
         }
 
@@ -210,7 +214,9 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
             if (targetReg != -1) {
                 writeOperand(targetReg, valueToStore);
             } else if (!organism.pushData(valueToStore)) {
-                // The data stack had no room: nothing was taken, and the cell stays as it is.
+                // As in PEEK: a value that cannot be delivered leaves the cell untouched. The
+                // guard cannot trigger as the tick stands, because this variant pops two stack
+                // slots before execution and pushes one.
                 return;
             }
 

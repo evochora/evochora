@@ -171,4 +171,29 @@ class UniversalThermodynamicPolicyTest {
         assertThat(policy.priceEffect(READ, packed(Config.TYPE_ENERGY, 1000), 0, ACTOR))
                 .isEqualTo(new Thermodynamics(5 - 1000, 0));
     }
+
+    /**
+     * Production embeds the organism's marker register into every written molecule, so the packed
+     * int a policy is handed carries marker bits. They belong to neither the type nor the value and
+     * must not reach rule resolution.
+     */
+    @Test
+    void theMarkerBitsOfAMoleculeDoNotAffectRuleResolution() {
+        var policy = policy("""
+            write-rules: {
+              DATA: {
+                energy = 5, entropy = -50
+                values: { "50": { energy = 9, entropy = -90 } }
+              }
+            }
+            """);
+
+        int unmarked = new Molecule(Config.TYPE_DATA, 50, 0).toInt();
+        int marked = new Molecule(Config.TYPE_DATA, 50, 7).toInt();
+
+        assertThat(marked).isNotEqualTo(unmarked);
+        assertThat(policy.priceEffect(WRITE, marked, 0, ACTOR))
+                .isEqualTo(policy.priceEffect(WRITE, unmarked, 0, ACTOR))
+                .isEqualTo(new Thermodynamics(9, -90));
+    }
 }
