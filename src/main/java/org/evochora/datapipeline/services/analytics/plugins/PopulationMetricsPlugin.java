@@ -48,6 +48,14 @@ import com.typesafe.config.Config;
  * so they contribute to population and birth counts without contributing to any genome-based
  * metric.
  * <p>
+ * The card draws {@code alive_count} alone. A body without genome molecules holds no instruction
+ * to execute, so such an organism does nothing from its birth on and leaves the population again
+ * within a few ticks, while a recording lies thousands of ticks from the next: the two counts fall
+ * on each other, and a second line on top of the first reads as a fault rather than as a
+ * measurement. How many organisms are born that way is a question about births, which the
+ * variation sources card answers. The column stays in the table, where a run whose organisms keep
+ * such a body longer can be read.
+ * <p>
  * Maximum values for normalization are read from simulation metadata
  * ({@code runtime.organism.max-energy} and {@code runtime.organism.max-entropy}).
  * Both are normalized to 0-100% so they are directly comparable on the same Y-axis.
@@ -167,11 +175,11 @@ public class PopulationMetricsPlugin extends AbstractAnalyticsPlugin {
                 band("Entropy", "#ffb366", ENTROPY_COLUMNS)))
             .with("yFormat", "percent")
             .with("yLabel", "% of maximum")
-            .with("y2", List.of("alive_count", "bodied_count"))
+            .with("y2", List.of("alive_count"))
             .with("y2Format", "integer")
             .with("y2Label", "Organisms")
             .with("y2Solid", true)
-            .with("y2Colors", List.of("#e0e0e0", "#a0e0a0"));
+            .with("y2Colors", List.of("#e0e0e0"));
 
         return entry;
     }
