@@ -31,6 +31,10 @@ class NodeTest {
 
     @BeforeEach
     void setUp() {
+        TestProcess1.started = false;
+        TestProcess1.stopped = false;
+        TestProcess2.started = false;
+        TestProcess2.stopped = false;
         testConfig = ConfigFactory.parseString("""
             node {
               processes {
@@ -55,32 +59,15 @@ class NodeTest {
     }
 
     @Test
-    @DisplayName("Should parse configuration and instantiate processes via reflection")
-    void constructor_shouldParseConfigurationAndInstantiateProcesses() {
+    @DisplayName("Should instantiate and start the configured processes via reflection")
+    void constructor_shouldInstantiateAndStartConfiguredProcesses() {
         // Act
         testNode = new Node(testConfig);
 
-        // Assert - Verify that the node was created successfully
+        // Assert
         assertThat(testNode).isNotNull();
-
-        // The actual process instantiation happens in the constructor,
-        // so we verify the node was created without exceptions
-        // In a real scenario, we would need to expose the processes for verification
-    }
-
-    @Test
-    @DisplayName("Should start all configured processes")
-    void start_shouldStartAllConfiguredProcesses() {
-        // Arrange
-        testNode = new Node(testConfig);
-
-        // Act
-        testNode.start();
-
-        // Assert - Verify that start() was called on each process
-        // Note: Since we can't easily verify the reflection-instantiated processes,
-        // we verify that start() completes without exceptions
-        // In a real implementation, we might want to expose the processes for verification
+        assertThat(TestProcess1.started).as("First configured process was started").isTrue();
+        assertThat(TestProcess2.started).as("Second configured process was started").isTrue();
     }
 
     @Test
@@ -89,13 +76,13 @@ class NodeTest {
         // Arrange
         testNode = new Node(testConfig);
         testNode.start();
-        
+
         // Act
         testNode.stop();
 
-        // Assert - Verify that stop() was called on each process
-        // Note: Since we can't easily verify the reflection-instantiated processes,
-        // we verify that stop() completes without exceptions
+        // Assert
+        assertThat(TestProcess1.stopped).as("First configured process was stopped").isTrue();
+        assertThat(TestProcess2.stopped).as("Second configured process was stopped").isTrue();
     }
 
     @Test
@@ -266,8 +253,8 @@ class NodeTest {
      */
     @SuppressWarnings("unused") // Used via reflection in tests
     private static class TestProcess1 implements IProcess {
-        private boolean started = false;
-        private boolean stopped = false;
+        static boolean started = false;
+        static boolean stopped = false;
 
         /**
          * Constructs a new TestProcess. The parameters are required by the Node's
@@ -307,8 +294,8 @@ class NodeTest {
      */
     @SuppressWarnings("unused") // Used via reflection in tests
     private static class TestProcess2 implements IProcess {
-        private boolean started = false;
-        private boolean stopped = false;
+        static boolean started = false;
+        static boolean stopped = false;
 
         /**
          * Constructs a new TestProcess. The parameters are required by the Node's
