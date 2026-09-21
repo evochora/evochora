@@ -58,13 +58,6 @@ public class DummyConsumerServiceTest {
     }
 
     @Test
-    void testConfiguration() {
-        Config config = ConfigFactory.parseString("processingDelayMs=100, logReceivedMessages=true, maxMessages=50");
-        DummyConsumerService<DummyMessage> service = new DummyConsumerService<>("test-consumer", config, resources);
-        assertNotNull(service);
-    }
-
-    @Test
     void testMessageReceiving() throws InterruptedException {
         Config config = ConfigFactory.parseString("maxMessages=2");
         DummyConsumerService<DummyMessage> service = new DummyConsumerService<>("test-consumer", config, resources);

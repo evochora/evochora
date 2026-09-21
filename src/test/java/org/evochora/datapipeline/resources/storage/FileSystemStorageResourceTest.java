@@ -187,8 +187,10 @@ class FileSystemStorageResourceTest {
             .withFallback(varsConfig)
             .resolve();
 
-        FileSystemStorageResource storage = new FileSystemStorageResource("test-storage", config);
-        assertNotNull(storage);
+        new FileSystemStorageResource("test-storage", config);
+
+        assertTrue(Files.isDirectory(testDir),
+            "The system property should be expanded and the directory created under it: " + testDir);
     }
 
     @Test
@@ -205,8 +207,10 @@ class FileSystemStorageResourceTest {
             .withFallback(varsConfig)
             .resolve();
 
-        FileSystemStorageResource storage = new FileSystemStorageResource("test-storage", config);
-        assertNotNull(storage);
+        new FileSystemStorageResource("test-storage", config);
+
+        assertTrue(Files.isDirectory(testDir),
+            "The variable should be expanded and the directory created under it: " + testDir);
     }
 
     @Test
@@ -225,8 +229,11 @@ class FileSystemStorageResourceTest {
             .withFallback(varsConfig)
             .resolve();
 
-        FileSystemStorageResource storage = new FileSystemStorageResource("test-storage", config);
-        assertNotNull(storage);
+        new FileSystemStorageResource("test-storage", config);
+
+        Path expanded = testDir.resolve("data");
+        assertTrue(Files.isDirectory(expanded),
+            "Both variables should be expanded and the directory created under the result: " + expanded);
     }
 
     @Test
@@ -268,11 +275,13 @@ class FileSystemStorageResourceTest {
     @Test
     void testVariableExpansion_NoVariables() {
         // Test that paths without variables still work
-        Map<String, String> configMap = Map.of("rootDirectory", tempDir.toAbsolutePath().toString());
-        Config config = ConfigFactory.parseMap(configMap);
+        Path plainDir = tempDir.resolve("no-variables");
+        Config config = ConfigFactory.parseMap(Map.of("rootDirectory", plainDir.toAbsolutePath().toString()));
 
-        FileSystemStorageResource storage = new FileSystemStorageResource("test-storage", config);
-        assertNotNull(storage);
+        new FileSystemStorageResource("test-storage", config);
+
+        assertTrue(Files.isDirectory(plainDir),
+            "A path without variables should be used as it stands: " + plainDir);
     }
 
     @Test
@@ -289,8 +298,10 @@ class FileSystemStorageResourceTest {
             .withFallback(varsConfig)
             .resolve();
 
-        FileSystemStorageResource storage = new FileSystemStorageResource("test-storage", config);
-        assertNotNull(storage);
+        new FileSystemStorageResource("test-storage", config);
+
+        assertTrue(Files.isDirectory(testDir),
+            "The system property should be expanded and the directory created under it: " + testDir);
     }
 
     @Test

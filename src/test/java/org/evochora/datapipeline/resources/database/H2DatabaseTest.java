@@ -74,16 +74,17 @@ class H2DatabaseTest {
 
     @Test
     void testJdbcUrl_DirectJdbcUrlProvided() {
-        // When jdbcUrl is directly provided, it should be used as-is
-        String expectedUrl = "jdbc:h2:mem:custom-test;MODE=PostgreSQL";
-        Config config = ConfigFactory.parseString("jdbcUrl = \"" + expectedUrl + "\"");
-        
+        // A directly provided URL is used as it stands, so the database file appears where it points.
+        String dbName = "h2-direct-" + UUID.randomUUID();
+        Path dbPath = Path.of(System.getProperty("java.io.tmpdir"), dbName);
+        Config config = ConfigFactory.parseString(
+            "jdbcUrl = \"jdbc:h2:" + dbPath.toString().replace("\\", "/") + ";MODE=PostgreSQL\"");
+
         H2Database db = new H2Database("test", config);
-        
-        // We can't directly test getJdbcUrl(), but we can verify the database was created successfully
-        // and that it's using the correct URL by checking it doesn't throw an exception
-        assertNotNull(db);
         db.close();
+
+        assertTrue(Files.exists(Path.of(dbPath + ".mv.db")),
+            "The provided URL should be used as it stands: " + dbPath);
     }
 
     @Test

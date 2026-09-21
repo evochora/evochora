@@ -1,6 +1,7 @@
 package org.evochora.datapipeline.services.indexers;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 
@@ -144,14 +145,15 @@ class OrganismIndexerTest {
     }
 
     @Test
-    void testCommitProcessedChunks_Idempotent() throws Exception {
+    void commitWithoutProcessedChunksIsSafeToRepeat() throws Exception {
         // Given: tables created, no data written
         wrapper.createOrganismTables();
 
-        // When: commit without any processChunk calls
-        indexer.callCommitProcessedChunks();
-
-        // Then: no exception thrown
+        // When and then: committing an empty set of chunks stays harmless when repeated
+        assertThatCode(() -> {
+            indexer.callCommitProcessedChunks();
+            indexer.callCommitProcessedChunks();
+        }).doesNotThrowAnyException();
     }
 
     @Test

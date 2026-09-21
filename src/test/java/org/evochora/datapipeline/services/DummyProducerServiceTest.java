@@ -34,16 +34,6 @@ public class DummyProducerServiceTest {
     }
 
     @Test
-    void testConfiguration() {
-        Config config = ConfigFactory.parseString("intervalMs=500, messagePrefix=\"Test\", maxMessages=100");
-        DummyProducerService service = new DummyProducerService("test-producer", config, resources);
-
-        // Use reflection to check private fields or test behavior dependent on them
-        // For this example, we'll assume the service's behavior reflects its config
-        assertNotNull(service);
-    }
-
-    @Test
     void testMessageSending() throws InterruptedException {
         Config config = ConfigFactory.parseString("intervalMs=10, maxMessages=3, messagePrefix=\"Test\"");
         DummyProducerService service = new DummyProducerService("test-producer", config, resources);

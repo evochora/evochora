@@ -143,7 +143,7 @@ class MetadataPersistenceServiceTest {
     }
 
     @Test
-    @AllowLog(level = LogLevel.WARN, messagePattern = "MetadataPersistenceService initialized WITHOUT topic.*")
+    @ExpectLog(level = LogLevel.WARN, messagePattern = "MetadataPersistenceService initialized WITHOUT topic.*")
     void testConstructorWithMissingTopicResource() {
         resources.remove("topic");
 
@@ -154,13 +154,11 @@ class MetadataPersistenceServiceTest {
     }
 
     @Test
-    void testConstructorWithDefaultConfiguration() {
+    void constructorAcceptsEmptyConfiguration() {
         Config emptyConfig = ConfigFactory.parseMap(Map.of());
 
-        service = new MetadataPersistenceService("test-metadata-persistence", emptyConfig, resources);
-
-        assertNotNull(service);
-        // Default values: maxRetries=3, retryBackoffMs=1000
+        assertDoesNotThrow(() ->
+            service = new MetadataPersistenceService("test-metadata-persistence", emptyConfig, resources));
     }
 
     // ========== Message Processing Tests ==========
