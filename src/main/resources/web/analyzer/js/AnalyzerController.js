@@ -948,12 +948,17 @@ export async function loadDashboard(runId) {
         // the whole of it as chosen until the next round finds it has come further
         loadedExtent = runExtent;
         const toLoad = shownWindow();
-        // A stretch reaching past the one the cards were read over needs the ticks each metric
-        // holds asked again: those answers are from that earlier reading, and a run that is being
-        // written has grown since. A stretch lying inside it is cut by none of them, so they stand
+        // A stretch reaching past the one the cards were read over is the one case in which what
+        // they read earlier can be short of it: a run that is being written has grown since. Both
+        // answers of that reading are therefore dropped - how far each metric reaches, and the
+        // companion tables, which a card that derives everything it draws reads its own stretch
+        // from. A stretch lying inside the earlier one is covered by both, so they stand.
         if (loadedBefore && toLoad
                 && (toLoad.to > loadedBefore.to || toLoad.from < loadedBefore.from)) {
             Object.keys(tickRanges).forEach(metricId => delete tickRanges[metricId]);
+            Object.values(loadedData).forEach(loaded => {
+                loaded.companion = null;
+            });
         }
         writeTickWindowToUrl();
         Object.values(DashboardView.getAllCards()).forEach(card => {
