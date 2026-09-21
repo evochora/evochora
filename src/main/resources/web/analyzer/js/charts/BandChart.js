@@ -478,12 +478,20 @@ export function render(canvas, data, config) {
                         onClick: (event, item, legend) => {
                             const chart = legend.chart;
                             const group = chart.data.datasets[item.datasetIndex].bandGroup;
-                            const hidden = !chart.isDatasetVisible(item.datasetIndex);
-                            chart.data.datasets.forEach((dataset, index) => {
-                                if (dataset.bandGroup === group) {
-                                    chart.setDatasetVisibility(index, hidden);
-                                }
-                            });
+                            const visible = !chart.isDatasetVisible(item.datasetIndex);
+                            // A group's bands belong to its middle and go with it. A series that
+                            // belongs to no group - one of the second axis, the reference line -
+                            // answers for itself: they share no group, and taking them together
+                            // would hide the one the reader did not click
+                            if (group === undefined) {
+                                chart.setDatasetVisibility(item.datasetIndex, visible);
+                            } else {
+                                chart.data.datasets.forEach((dataset, index) => {
+                                    if (dataset.bandGroup === group) {
+                                        chart.setDatasetVisibility(index, visible);
+                                    }
+                                });
+                            }
                             chart.update();
                         }
                     },
