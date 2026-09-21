@@ -181,18 +181,19 @@ function tooYoungPlugin(data, config) {
             ctx.lineTo(x, area.bottom);
             ctx.stroke();
             ctx.setLineDash([]);
-            // The label stands along the line, where it needs the height of the plot rather than
-            // its width: a stretch of a few windows is narrow, and a card is never that short.
-            // Where even the height does not hold it, the shading and the line say it alone
+            // The label stands along the line and centred on it, where it needs the height of the
+            // plot rather than its width: a stretch of a few windows is narrow, and a card is
+            // never that short. Where even the height does not hold it, the shading and the line
+            // say it alone
             const text = config.tooYoungLabel || 'too young to judge';
             ctx.fillStyle = '#9aa0a6';
             ctx.font = "10px 'Courier New', monospace";
             const height = area.bottom - area.top;
             if (ctx.measureText(text).width + 16 <= height) {
                 const wide = area.right - x >= LABEL_LINE_HEIGHT;
-                ctx.translate(x + (wide ? LABEL_LINE_HEIGHT - 3 : -3), area.bottom - 8);
+                ctx.translate(x + (wide ? LABEL_LINE_HEIGHT - 3 : -3), (area.top + area.bottom) / 2);
                 ctx.rotate(-Math.PI / 2);
-                ctx.textAlign = 'left';
+                ctx.textAlign = 'center';
                 ctx.fillText(text, 0, 0);
             }
             ctx.restore();
