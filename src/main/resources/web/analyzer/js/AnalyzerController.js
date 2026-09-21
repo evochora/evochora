@@ -312,7 +312,9 @@ export async function loadDashboard(runId) {
                             { pinned: true, tooFine: card.tooFine });
                         return;
                     }
-                    loadMetricData(card).catch(error => {
+                    // A resolution changes how dense the points are, not which stretch is read:
+                    // a companion that does not follow the level is kept
+                    loadMetricData(card, { keepCompanion: true }).catch(error => {
                         if (error.name !== 'AbortError') {
                             let message = error.message || 'Failed to load data';
                             if (message.includes('Binder Error') || message.includes('Parser Error')) {
