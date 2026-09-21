@@ -154,6 +154,7 @@ public class AgeDistributionPlugin extends AbstractAnalyticsPlugin {
             .with("yLabel", "Age of the living, in ticks")
             .with("yFormat", "integer")
             .with("y2", List.of("p100"))
+            .with("labels", java.util.Map.of("p100", "Oldest organism"))
             .with("y2Label", "Oldest organism, in ticks")
             .with("y2Format", "integer");
 

@@ -7,6 +7,8 @@ import { formatTickValue, axisTicks, tooltipTitle, tooltipValue } from './ChartU
  * Renders percentile data as layered bands to show distribution over time.
  * This is ideal for visualizing age distributions, showing min/max, interquartile range, etc.
  *
+ * A metric may name its second-axis series through {@code labels}, a map from column to label.
+ *
  * A group may ask for a fainter shading than the default through {@code alpha}, which a chart
  * holding several groups needs so that their lines stay the strongest thing on it.
  *
@@ -282,9 +284,13 @@ export function render(canvas, data, config) {
         // Series on a second axis, for a quantity of a different kind - how many measurements
         // are behind the percentiles, say, which a band of three says something else than one
         // of three hundred. Dashed, unless the metric draws them as a quantity of its own.
+        const seriesLabels = config.labels || {};
         y2Keys.forEach((key, index) => {
             datasets.push({
-                label: formatLabel(key),
+                // A metric may say what a series is rather than leave its column name to be read:
+                // a column called p100 is the oldest organism, and on an axis of its own it has to
+                // say so instead of naming the rank it happens to be
+                label: seriesLabels[key] || formatLabel(key),
                 data: data.map(row => toNumber(row[key])),
                 borderColor: y2Colors[index % y2Colors.length],
                 borderWidth: 1,
