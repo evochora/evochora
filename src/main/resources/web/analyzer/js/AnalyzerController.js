@@ -82,6 +82,23 @@ import {
     let runExtent = null;
 
     /**
+     * The range the cards were last loaded over, where no tick window is set.
+     *
+     * A run that is being written grows under the page. The cards keep what they drew, so the
+     * timeline keeps showing that stretch rather than stretching itself over ticks no chart has
+     * read: the reader sees the run grow past what is on the screen, and the button that shows the
+     * whole run becomes the way to fetch it.
+     * @type {?{min: number, max: number}}
+     */
+    let loadedExtent = null;
+
+    /** How often a run that is being written is asked how far it has come. */
+    const RUN_RANGE_POLL_MS = 30000;
+
+    /** Runs while the run shown is the one being written and the page is in front. */
+    let runRangePoll = null;
+
+    /**
      * Tick range each metric was last found to hold, keyed by metric ID. Listing a metric's files
      * is what a load costs before any data, so the answer is asked for once per run and again
      * only when a card is reloaded, which is when a running run may have grown.
@@ -162,6 +179,7 @@ export async function init() {
             writeTickWindowToUrl();
         }
         runExtent = null;
+        loadedExtent = null;
         currentRunId = runId;
         updateUrlRunId(runId);
         window.footer?.updateCurrent?.();
@@ -190,45 +208,72 @@ export async function init() {
     }
     
     /**
-     * Reloads one card. The manifest entry is read again, because a running run gains levels of
-     * detail; a pinned level stays pinned, and the tick window stays the page's.
-     *
-     * @param {Object} card - MetricCard instance
+     * Asks the run being written how far it has come, and stops asking a run that is not.
+     * <p>
+     * Called whenever the run shown or the pipeline state changes, and whenever the page comes to
+     * the front or leaves it: a page nobody is looking at asks nothing.
      */
-    async function refreshCard(card) {
-        const runId = currentRunId;
-        const metricId = card.metric.id;
-        MetricCardView.setRefreshEnabled(card, false);
-        try {
-            const fresh = await AnalyticsApi.getManifest(runId);
-            if (runId !== currentRunId || DashboardView.getAllCards()[metricId] !== card) return;
-            const entry = (fresh.metrics || []).find(metric => metric.id === metricId);
-            if (entry) MetricCardView.updateMetric(card, entry);
-            delete tickRanges[metricId];
-
-            await loadMetricData(card);
-        } catch (error) {
-            if (error.name === 'AbortError') return;
-            console.error(`[AnalyzerController] Failed to reload metric ${metricId}:`, error);
-            MetricCardView.showError(card, error.message || 'Failed to load data');
-        } finally {
-            MetricCardView.setRefreshEnabled(card, true);
+export function updateRunRangePoll() {
+        const state = window.footer?.pipelineState?.();
+        const live = !!currentRunId && startingRunId(state) === currentRunId;
+        const wanted = live && !document.hidden;
+        if (wanted === !!runRangePoll) {
+            return;
+        }
+        if (wanted) {
+            runRangePoll = setInterval(pollRunRange, RUN_RANGE_POLL_MS);
+        } else {
+            clearInterval(runRangePoll);
+            runRangePoll = null;
         }
     }
 
     /**
-     * Shows the reload button of every card while the run shown is the one the pipeline is
-     * producing data for, and hides it otherwise: a run that is not being written cannot change.
-     * Called whenever the run shown or the pipeline state changes.
+     * Takes over how far the run has come, where it has come further than the timeline says.
+     *
+     * Only the timeline changes: the cards keep the stretch they read, and the stretch they read
+     * stays the one the timeline shows as chosen. What the run has gained since is the difference
+     * between the two, which is what makes the button for the whole run something to press.
      */
-export function updateRefreshVisibility() {
-        const pipeline = window.footer?.pipelineState?.();
-        const live = !!currentRunId && startingRunId(pipeline) === currentRunId;
-        Object.values(DashboardView.getAllCards()).forEach(card => {
-            MetricCardView.setRefreshVisible(card, live);
-        });
+    async function pollRunRange() {
+        const runId = currentRunId;
+        if (!runId || isLoading) {
+            return;
+        }
+        try {
+            const range = await AnalyticsApi.fetchRunRange(runId);
+            if (runId !== currentRunId || range.tickMin == null || range.tickMax == null) {
+                return;
+            }
+            const grown = !runExtent || range.tickMin < runExtent.min || range.tickMax > runExtent.max;
+            if (!grown) {
+                return;
+            }
+            runExtent = {
+                min: runExtent ? Math.min(runExtent.min, range.tickMin) : range.tickMin,
+                max: runExtent ? Math.max(runExtent.max, range.tickMax) : range.tickMax
+            };
+            TickWindowView.show(runExtent, shownWindow());
+        } catch (error) {
+            // A run says nothing about its range until its first files are written, and a round
+            // that finds nothing changes nothing: the next one asks again
+            console.debug('[AnalyzerController] The run did not say how far it has come:', error);
+        }
     }
-    
+
+    /**
+     * The stretch the timeline shows as chosen: the reader's window, or the run as far as the
+     * cards have read it.
+     *
+     * @returns {?{from: number, to: number}} The window, or null while nothing has been read
+     */
+    function shownWindow() {
+        if (tickWindow) {
+            return tickWindow;
+        }
+        return loadedExtent ? { from: loadedExtent.min, to: loadedExtent.max } : null;
+    }
+
     /**
      * Loads the dashboard for a specific run.
      * 
@@ -267,7 +312,9 @@ export async function loadDashboard(runId) {
                             { pinned: true, tooFine: card.tooFine });
                         return;
                     }
-                    loadMetricData(card).catch(error => {
+                    // A resolution changes how dense the points are, not which stretch is read:
+                    // a companion that does not follow the level is kept
+                    loadMetricData(card, { keepCompanion: true }).catch(error => {
                         if (error.name !== 'AbortError') {
                             let message = error.message || 'Failed to load data';
                             if (message.includes('Binder Error') || message.includes('Parser Error')) {
@@ -279,12 +326,25 @@ export async function loadDashboard(runId) {
                     });
                 });
 
-                MetricCardView.setOnRefresh(card, () => refreshCard(card));
+                // The screen holds several times the points a card in the dashboard does, so the
+                // card reads the stretch it shows again at that density - and again on the way
+                // back. Only the density changes, so a companion that does not follow the level is
+                // kept: reading it again would cost seconds of the browser's one thread for a
+                // table that the width of the card says nothing about
+                MetricCardView.setOnFullscreenChange(card, () => {
+                    loadMetricData(card, { keepCompanion: true }).catch(error => {
+                        if (error.name !== 'AbortError') {
+                            console.error(`[AnalyzerController] Failed to load metric ${metricId}:`, error);
+                            MetricCardView.showError(card, error.message || 'Failed to load data');
+                        }
+                    });
+                });
             }
 
-            updateRefreshVisibility();
+            updateRunRangePoll();
 
             runExtent = await fetchRunExtent(runId, manifest.metrics);
+            loadedExtent = runExtent;
             TickWindowView.show(runExtent, tickWindow);
 
             // Load the group in view; the others load when they are first opened
@@ -485,19 +545,31 @@ export async function loadDashboard(runId) {
     }
 
     /**
-     * Fills the number of windows a card draws into a query that asks for it.
+     * Fills the stretch a card draws, and how many windows it cuts it into, into a query that asks
+     * for them.
      *
      * A metric whose rows are counts writes one row per window of its level, and another whenever a
      * batch ends inside one, so its rows lie closer together than its window is wide. Such a query
-     * says {@code {buckets}} where the number of windows belongs and works out their width from the
-     * ticks its own rows cover - the run may have grown since anything else was measured.
+     * says {@code {buckets}} where the number of windows belongs, and {@code {from}} and
+     * {@code {to}} where the stretch does. The stretch is the page's, not the level's: a coarse
+     * level holds its newest row further back, and a card reading its own rows for the answer would
+     * end earlier than the card beside it.
+     *
+     * Where the page knows no stretch, because the metric holds no tick at all, the placeholders
+     * become the first and last tick of the rows themselves - which is what the query would have
+     * asked of them in any case.
      *
      * @param {string} query - The metric's query
      * @param {number} points - How many points the card draws
-     * @returns {string} The query with the number filled in
+     * @param {?number} from - First tick drawn
+     * @param {?number} to - Last tick drawn
+     * @returns {string} The query with the numbers filled in
      */
-    function withBuckets(query, points) {
-        return query.replaceAll('{buckets}', String(Math.max(1, points)));
+    function fillWindow(query, points, from, to) {
+        return query
+            .replaceAll('{buckets}', String(Math.max(1, points)))
+            .replaceAll('{from}', from != null ? String(from) : 'SELECT MIN(tick) FROM {table}')
+            .replaceAll('{to}', to != null ? String(to) : 'SELECT MAX(tick) FROM {table}');
     }
 
     /**
@@ -516,11 +588,11 @@ export async function loadDashboard(runId) {
      */
     function fitToCard(rows, limit, metric) {
         const thinned = thinToLimit(rows, limit);
-        if (thinned.length < rows.length && metric.summedColumns?.length > 0) {
+        if (rowCount(thinned) < rowCount(rows) && metric.summedColumns?.length > 0) {
             throw new Error(
                 `Metric ${metric.id} holds counts in ${metric.summedColumns.join(', ')} and `
-                + `returned ${rows.length} rows for a card drawing ${limit}: its query has to add `
-                + `them up per window, since dropping rows would drop what they counted`);
+                + `returned ${rowCount(rows)} rows for a card drawing ${limit}: its query has to `
+                + `add them up per window, since dropping rows would drop what they counted`);
         }
         return thinned;
     }
@@ -537,6 +609,9 @@ export async function loadDashboard(runId) {
      * @returns {Array<Object>} The thinned rows
      */
     function thinToLimit(rows, limit) {
+        if (!Array.isArray(rows)) {
+            return thinColumnsToLimit(rows, limit);
+        }
         const ticks = [...new Set(rows.map(row => Number(row.tick)))];
         if (ticks.length <= limit) {
             return rows;
@@ -545,6 +620,52 @@ export async function loadDashboard(runId) {
         const step = Math.ceil(ticks.length / limit);
         const kept = new Set(ticks.filter((_, index) => index % step === 0));
         return rows.filter(row => kept.has(Number(row.tick)));
+    }
+
+    /**
+     * Keeps the same moments as {@link thinToLimit}, for data that arrived column by column.
+     *
+     * @param {Object<string, ArrayLike<*>>} columns - One array of values per column
+     * @param {number} limit - Greatest number of ticks to keep
+     * @returns {Object<string, Array<*>>} The columns, thinned the same way in each of them
+     */
+    function thinColumnsToLimit(columns, limit) {
+        const tickColumn = columns.tick;
+        if (!tickColumn) {
+            return columns;
+        }
+        const ticks = [...new Set(Array.from(tickColumn, Number))];
+        if (ticks.length <= limit) {
+            return columns;
+        }
+
+        const step = Math.ceil(ticks.length / limit);
+        const kept = new Set(ticks.filter((_, index) => index % step === 0));
+        const keptRows = [];
+        for (let index = 0; index < tickColumn.length; index++) {
+            if (kept.has(Number(tickColumn[index]))) {
+                keptRows.push(index);
+            }
+        }
+        const thinned = {};
+        for (const [name, values] of Object.entries(columns)) {
+            thinned[name] = keptRows.map(index => values[index]);
+        }
+        return thinned;
+    }
+
+    /**
+     * How many rows a query answered with, whether it came row by row or column by column.
+     *
+     * @param {Array<Object>|Object<string, ArrayLike<*>>} data - The answer
+     * @returns {number} The number of rows behind it
+     */
+    function rowCount(data) {
+        if (Array.isArray(data)) {
+            return data.length;
+        }
+        const first = Object.values(data || {})[0];
+        return first ? first.length : 0;
     }
 
     /**
@@ -591,10 +712,13 @@ export async function loadDashboard(runId) {
             const tickMin = rangeInfo.tickMin;
             const tickMax = rangeInfo.tickMax;
             const hasRange = tickMin != null && tickMax != null;
-            if (hasRange) extendRunExtent(tickMin, tickMax);
 
-            const from = hasRange ? Math.max(tickMin, tickWindow ? tickWindow.from : tickMin) : null;
-            const to = hasRange ? Math.min(tickMax, tickWindow ? tickWindow.to : tickMax) : null;
+            // Every card covers the same stretch, the one the timeline shows: a moment found in one
+            // chart is looked at in all of them. A metric that holds less of it ends where its rows
+            // end, and one that holds more is cut to it rather than reaching further than the rest
+            const shown = shownWindow();
+            const from = hasRange ? Math.max(tickMin, shown ? shown.from : tickMin) : null;
+            const to = hasRange ? Math.min(tickMax, shown ? shown.to : tickMax) : null;
             if (hasRange && from > to) {
                 MetricCardView.showNoData(card);
                 return;
@@ -617,8 +741,10 @@ export async function loadDashboard(runId) {
             // The finest stored level that still holds more moments than the card draws; a coarser
             // one would have to be stretched, a finer one only costs transfer
             const storageLevel = derived ? null : finestLevelFor(metric, points, from, to);
-            const viewFrom = tickWindow ? from : null;
-            const viewTo = tickWindow ? to : null;
+            // Only the files the shown stretch reaches into are fetched, whether the reader set a
+            // window or is looking at the whole run: what lies past it is drawn by no card
+            const viewFrom = from;
+            const viewTo = to;
 
             // Phase 3: fetch the data of the window
             let data;
@@ -630,8 +756,12 @@ export async function loadDashboard(runId) {
                 );
                 const blobKey = `${metricId}_${storageLevel || 'auto'}`;
                 await DuckDBClient.registerParquetBlob(blobKey, parquetBlob);
-                data = await DuckDBClient.queryRegisteredBlob(blobKey,
-                    withBuckets(metric.generatedQuery, points));
+                // A metric whose rows carry a second dimension is read column by column: the same
+                // values, without an object per row (see ManifestEntry.columnar)
+                const query = fillWindow(metric.generatedQuery, points, from, to);
+                data = metric.columnar
+                    ? await DuckDBClient.queryRegisteredBlobColumns(blobKey, query)
+                    : await DuckDBClient.queryRegisteredBlob(blobKey, query);
             } else {
                 const result = await AnalyticsApi.queryData(
                     currentRunId, metricId, storageLevel, controller.signal, viewFrom, viewTo
@@ -644,7 +774,7 @@ export async function loadDashboard(runId) {
             MetricCardView.setActiveResolution(card, resolution,
                 { pinned: card.pinnedResolution != null, tooFine });
 
-            if (!derived && data.length === 0) {
+            if (!derived && rowCount(data) === 0) {
                 showNoDataOrRetry(card);
                 return;
             }
@@ -805,21 +935,6 @@ export async function loadDashboard(runId) {
     }
 
     /**
-     * Widens the tick range of the run by what a metric turned out to hold, as a running run does
-     * between two loads.
-     *
-     * @param {number} tickMin - First tick of a metric
-     * @param {number} tickMax - Last tick of a metric
-     */
-    function extendRunExtent(tickMin, tickMax) {
-        if (runExtent && tickMin >= runExtent.min && tickMax <= runExtent.max) return;
-        runExtent = runExtent
-            ? { min: Math.min(runExtent.min, tickMin), max: Math.max(runExtent.max, tickMax) }
-            : { min: tickMin, max: tickMax };
-        TickWindowView.show(runExtent, tickWindow);
-    }
-
-    /**
      * Takes over the tick window the reader set. The group in view loads at once; the cards of
      * the other groups load when their group is opened.
      *
@@ -827,6 +942,9 @@ export async function loadDashboard(runId) {
      */
     function handleTickWindowChange(next) {
         tickWindow = next;
+        // What the cards are about to read is the run as far as it has come, so the timeline shows
+        // the whole of it as chosen until the next round finds it has come further
+        loadedExtent = runExtent;
         writeTickWindowToUrl();
         Object.values(DashboardView.getAllCards()).forEach(card => {
             card.dataRequested = false;

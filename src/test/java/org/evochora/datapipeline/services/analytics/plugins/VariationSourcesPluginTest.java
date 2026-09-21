@@ -322,11 +322,75 @@ class VariationSourcesPluginTest {
         ManifestEntry entry = plugin.getManifestEntry();
 
         assertThat(entry.outputColumns).startsWith("tick").containsAll(COUNT_COLUMNS);
-        // A bar covers one window of the level loaded, so that choosing a level widens the bars
+        // A bar covers one window of the stretch the card draws, so that choosing a coarser
+        // resolution widens the bars rather than shortening the stretch
         for (String column : COUNT_COLUMNS) {
-            assertThat(entry.generatedQuery).contains("COALESCE(SUM(" + column + "), 0)::BIGINT AS " + column);
+            assertThat(entry.generatedQuery).contains("SUM(rows." + column + ")");
         }
-        assertThat(entry.generatedQuery).contains("{buckets}").contains("GROUP BY 1");
+        assertThat(entry.generatedQuery)
+            .contains("{buckets}").contains("{from}").contains("{to}")
+            .contains("GROUP BY windows.window_tick");
+    }
+
+    @Test
+    void theQueryDrawsAsManyWindowsAsTheCardAsksAndKeepsEveryBirth() throws java.sql.SQLException {
+        // The card says which stretch it draws, and the browser may not drop a row of counts to fit
+        // it: the windows have to start where the stretch starts and end with it, however the width
+        // of one divides the ticks between
+        String query = plugin.getManifestEntry().generatedQuery.replace("{table}", "sources")
+            .replace("{from}", "260000").replace("{to}", "27790000");
+        try (java.sql.Connection connection = java.sql.DriverManager.getConnection("jdbc:duckdb:");
+             java.sql.Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE sources (tick BIGINT, " + COUNT_COLUMNS.stream()
+                .map(column -> column + " BIGINT").collect(java.util.stream.Collectors.joining(", "))
+                + ")");
+            for (long tick = 260_000; tick <= 27_790_000; tick += 10_000) {
+                statement.execute("INSERT INTO sources VALUES (" + tick + ", "
+                    + "1, 0, 0, 0, 0, 0, 0, 0, 0, 0)");
+            }
+            for (int windows : new int[] {85, 64, 42, 21, 10, 2, 1}) {
+                try (java.sql.ResultSet rows = statement.executeQuery(
+                        "SELECT COUNT(*) AS windows, SUM(unchanged) AS births FROM ("
+                        + query.replace("{buckets}", String.valueOf(windows)) + ")")) {
+                    assertThat(rows.next()).isTrue();
+                    assertThat(rows.getInt("windows")).isEqualTo(windows);
+                    assertThat(rows.getLong("births")).isEqualTo(2754);
+                }
+            }
+        }
+    }
+
+    @Test
+    void theWindowsSpanTheStretchTheCardDrawsAndCountNothingOutsideIt()
+            throws java.sql.SQLException {
+        // Every card of the analyzer shows the same stretch. A coarse level writes its newest row
+        // further back, so a query that took the stretch from its own rows would end earlier than
+        // the card beside it; and a file is fetched whole where it reaches into the stretch, so a
+        // row outside it must not be counted into the window at the edge
+        String query = plugin.getManifestEntry().generatedQuery.replace("{table}", "sources")
+            .replace("{from}", "1000").replace("{to}", "11000").replace("{buckets}", "10");
+        try (java.sql.Connection connection = java.sql.DriverManager.getConnection("jdbc:duckdb:");
+             java.sql.Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE sources (tick BIGINT, " + COUNT_COLUMNS.stream()
+                .map(column -> column + " BIGINT").collect(java.util.stream.Collectors.joining(", "))
+                + ")");
+            // Rows of a level that ends halfway through the stretch, one before it and one past it
+            for (long tick : new long[] {0, 1000, 3000, 5000, 20000}) {
+                statement.execute("INSERT INTO sources VALUES (" + tick
+                    + ", 1, 0, 0, 0, 0, 0, 0, 0, 0, 0)");
+            }
+            try (java.sql.ResultSet rows = statement.executeQuery(
+                    "SELECT MIN(tick) AS first_window, MAX(tick) AS last_window, "
+                    + "SUM(unchanged) AS births FROM (" + query + ")")) {
+                assertThat(rows.next()).isTrue();
+                // The windows are 1000 ticks wide and start where the stretch does, whatever the
+                // rows hold; the last one is the tenth
+                assertThat(rows.getLong("first_window")).isEqualTo(1000L);
+                assertThat(rows.getLong("last_window")).isEqualTo(10000L);
+                // The recordings at 0 and at 20000 lie outside the stretch and are not counted
+                assertThat(rows.getLong("births")).isEqualTo(3L);
+            }
+        }
     }
 
     @Test
@@ -364,7 +428,8 @@ class VariationSourcesPluginTest {
             // the list given here
             .containsEntry("birthsMetric", "births")
             .containsEntry("variationClasses", COUNT_COLUMNS)
-            .containsEntry("yMin", 0)
+            // A ratio is read on a scale where a half and a double are the same step away from one
+            .containsEntry("ratioScale", true)
             // The value is held against the births no plugin touched, which is one by definition
             .containsEntry("reference", 1);
         // One band per kind: the range the value could as well be, with the value in the middle

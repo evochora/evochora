@@ -57,11 +57,13 @@ class AgeDistributionPluginTest {
 
     @Test
     void theWindowKeepsOneRecordingRatherThanAveragingItsPercentiles() throws java.sql.SQLException {
-        // Two recordings fall into one window, one of a young population and one of an old one:
-        // the window keeps the earlier one rather than averaging the two
+        // Three recordings fall into the one window the card asks for, a young population and two
+        // old ones: the window keeps the earliest recording rather than averaging them
         String query = plugin.getManifestEntry().generatedQuery
             .replace("{table}", "ages")
-            .replace("{buckets}", "1");
+            .replace("{buckets}", "1")
+            .replace("{from}", "0")
+            .replace("{to}", "900");
         try (java.sql.Connection connection = java.sql.DriverManager.getConnection("jdbc:duckdb:");
              java.sql.Statement statement = connection.createStatement()) {
             statement.execute("CREATE TABLE ages (tick BIGINT, p0 INTEGER, p10 INTEGER, "
@@ -71,11 +73,13 @@ class AgeDistributionPluginTest {
             statement.execute("INSERT INTO ages VALUES (900, 0, 5, 50, 500, 900, 950, 999)");
             try (java.sql.ResultSet rows = statement.executeQuery(query)) {
                 assertThat(rows.next()).isTrue();
-                // The first window holds the first two recordings; their medians are 10 and 500,
-                // and the mean of those, 255, is a number neither moment ever had
+                // The window holds all three recordings; the medians are 10, 500 and 500, and
+                // their mean, 337, is a number no moment of the run ever had
                 assertThat(rows.getLong("tick")).isZero();
                 assertThat(rows.getInt("p50")).isEqualTo(10);
                 assertThat(rows.getInt("p100")).isEqualTo(40);
+                // The card asked for one window and gets one
+                assertThat(rows.next()).isFalse();
             }
         }
     }

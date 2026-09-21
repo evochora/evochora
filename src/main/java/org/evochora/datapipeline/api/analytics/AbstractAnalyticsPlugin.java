@@ -413,6 +413,53 @@ public abstract class AbstractAnalyticsPlugin implements IAnalyticsPlugin {
         }
     }
 
+    /**
+     * The common table expressions a windowed query reads its rows through.
+     * <p>
+     * A card says which stretch of the run it draws, as {@code {from}} and {@code {to}}, and into
+     * how many windows it cuts it, as {@code {buckets}}. All three come from the page and not from
+     * the rows: every card of the analyzer shows the same stretch, and which of the stored levels
+     * is read to fill it is a choice about how dense the points are. Read from the rows instead,
+     * the stretch would be a property of that level - a coarse level writes its newest row further
+     * back, and the card would quietly end earlier than the card beside it.
+     * <p>
+     * {@code window_rows} therefore holds the rows of that stretch and nothing else, each carrying
+     * the window it falls into: a file is fetched whole where it reaches into the stretch, and a
+     * row of it that lies outside would otherwise be counted into the window at the edge. The last
+     * window holds what would fall past it, since a stretch that divides evenly puts its very last
+     * tick on the edge of one more.
+     * <p>
+     * {@code windows} holds every window of the stretch, so that a query joins its rows into them
+     * and answers for all of them. A window the loaded level holds nothing in belongs in the answer
+     * as an empty one: the level knows nothing there, which is not the same as nothing having
+     * happened, and a card that simply ended early would show a shorter stretch than the card
+     * beside it.
+     *
+     * @return the CTEs {@code params}, {@code windows} and {@code window_rows}, to stand first in a
+     *         query's {@code WITH}
+     */
+    protected static String windowSource() {
+        return """
+            params AS (
+                SELECT ({from})::BIGINT AS first_tick,
+                       GREATEST(1, CEIL((({to})::BIGINT - ({from})::BIGINT) / {buckets}))::BIGINT
+                           AS bucket_size
+            ),
+            windows AS (
+                SELECT (first_tick + step * bucket_size)::BIGINT AS window_tick
+                FROM params, range(0, {buckets}) AS steps(step)
+            ),
+            window_rows AS (
+                SELECT *,
+                    ((SELECT first_tick FROM params)
+                        + LEAST({buckets} - 1, FLOOR((tick - (SELECT first_tick FROM params))
+                            / (SELECT bucket_size FROM params)))
+                          * (SELECT bucket_size FROM params))::BIGINT AS window_tick
+                FROM {table}
+                WHERE tick >= ({from})::BIGINT AND tick <= ({to})::BIGINT
+            )""";
+    }
+
     // Abstract methods that subclasses MUST implement:
     // - getSchema()
     // - extractRows(TickData)

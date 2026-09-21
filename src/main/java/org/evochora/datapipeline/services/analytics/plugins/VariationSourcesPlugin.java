@@ -295,6 +295,10 @@ public class VariationSourcesPlugin extends AbstractAnalyticsPlugin {
      * detail of its own: reading this plugin's table for the card would cost a second pass over
      * every file of it and give the card nothing it draws.
      * <p>
+     * {@code ratioScale} asks for the axis a ratio is read on: a half and a double are the same
+     * step away from one, and a window whose few births leave a wide interval would otherwise
+     * stretch the axis until every later difference is a flat line. The scale stays linear close
+     * to zero, so a kind that founded no line at all keeps its place on it.
      * <p>
      * The companion carries the five columns the derivation reads and leaves the genome hashes
      * where they are: a hash uses all 64 bits, which a JavaScript number cannot hold, and a query
@@ -327,7 +331,7 @@ public class VariationSourcesPlugin extends AbstractAnalyticsPlugin {
             .with("groups", successGroups())
             .with("yFormat", "decimal")
             .with("yLabel", "Success against no plugin mutation")
-            .with("yMin", 0)
+            .with("ratioScale", true)
             .with("bandLabel", "95% CI")
             .with("reference", 1)
             .with("referenceLabel", "No plugin mutation (= 1)");
@@ -373,22 +377,22 @@ public class VariationSourcesPlugin extends AbstractAnalyticsPlugin {
      * @return the SQL with {@code {table}} standing for the loaded rows
      */
     private static String windowSumQuery() {
+        // A window the level holds no recording in carries no count at all: nothing was counted
+        // there, which is not the same as nothing having happened. A zero would say the second
         String sums = COUNT_COLUMNS.stream()
-            .map(name -> "COALESCE(SUM(" + name + "), 0)::BIGINT AS " + name)
+            .map(name -> "CASE WHEN COUNT(rows.tick) = 0 THEN NULL"
+                + " ELSE COALESCE(SUM(rows." + name + "), 0) END::BIGINT AS " + name)
             .collect(java.util.stream.Collectors.joining(",\n                "));
         return """
-            WITH params AS (
-                SELECT GREATEST(1, (MAX(tick) - MIN(tick)) / {buckets})::BIGINT AS bucket_size
-                FROM {table}
-            )
+            WITH %s
             SELECT
-                (FLOOR(tick / (SELECT bucket_size FROM params))
-                    * (SELECT bucket_size FROM params))::BIGINT AS tick,
+                windows.window_tick AS tick,
                 %s
-            FROM {table}
-            GROUP BY 1
+            FROM windows LEFT JOIN window_rows rows
+                ON rows.window_tick = windows.window_tick
+            GROUP BY windows.window_tick
             ORDER BY tick
-            """.formatted(sums);
+            """.formatted(windowSource(), sums);
     }
 
     @Override

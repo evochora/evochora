@@ -179,7 +179,7 @@ function mapToBands(genomes, parents, bands) {
  * largest few carry what there is to see; everything else is one band, which stays honest because
  * the shares still add up to the whole population.
  *
- * @param {Array<Object>} data - Rows with tick, genome_hash, count
+ * @param {Object<string, ArrayLike<*>>} data - One array per column: tick, genome_hash, count
  * @param {Map<string, string>} bandOf - Genome to band key
  * @param {Map<string, string>} labels - Band key to label
  * @param {number} maxBands - Greatest number of named bands to keep besides those always kept
@@ -192,14 +192,17 @@ function foldIntoBands(data, bandOf, labels, maxBands, alwaysKept) {
     const population = new Map();
     const totals = new Map();
 
-    for (const row of data) {
-        const tick = Number(row.tick);
-        const count = Number(row.count || 0);
+    const ticks = data.tick;
+    const counts = data.count;
+    const hashes = data.genome_hash;
+    for (let index = 0; index < ticks.length; index++) {
+        const tick = Number(ticks[index]);
+        const count = Number(counts[index] || 0);
         population.set(tick, (population.get(tick) || 0) + count);
 
         // Genomes outside the opened genome are not shown, but they are still population and
         // count towards what a share is a share of
-        const band = bandOf.get(row.genome_hash);
+        const band = bandOf.get(hashes[index]);
         if (band == null) {
             continue;
         }
@@ -450,7 +453,7 @@ function bandAt(chart, x, y) {
  * Renders the clade shares.
  *
  * @param {HTMLCanvasElement} canvas - Canvas element
- * @param {Array<Object>} data - Rows with tick, genome_hash, count
+ * @param {Object<string, ArrayLike<*>>} data - One array per column: tick, genome_hash, count
  * @param {Object} config - Visualization config; {@code maxBands} caps the named bands (default 8),
  *        {@code lineageMetric} and {@code causeMetric} name the companions to read
  * @param {Object} context - Render context with companion rows and view state
@@ -484,7 +487,7 @@ export function render(canvas, data, config, context = {}) {
     const bands = bandsFor(parents, children, openPath);
     const { labels, causes } = labelBands(bands, founding);
 
-    const genomes = new Set(data.map(row => row.genome_hash));
+    const genomes = new Set(data.genome_hash);
     const bandOf = mapToBands(genomes, parents, bands);
     // The opened genome's own carriers first and always named, the clades by size, what is left
     // over last
@@ -541,7 +544,7 @@ export function render(canvas, data, config, context = {}) {
  * Updates an existing chart. The clade grouping is rebuilt on every render, so an update redraws.
  *
  * @param {Chart} chart - Chart.js instance
- * @param {Array<Object>} data - New data
+ * @param {Object<string, ArrayLike<*>>} data - New data, one array per column
  * @param {Object} config - Visualization config
  * @returns {Chart} The chart
  */

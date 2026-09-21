@@ -95,7 +95,9 @@ function initFooter() {
             window.footer?.updateCurrent?.();
         },
     });
-    window.footer.onPipelineChange(() => AnalyzerController.updateRefreshVisibility());
+    window.footer.onPipelineChange(() => AnalyzerController.updateRunRangePoll());
+    // A page in the background asks nothing; it takes up again when it is looked at
+    document.addEventListener('visibilitychange', () => AnalyzerController.updateRunRangePoll());
 }
 
 // Initialize when DOM is ready

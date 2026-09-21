@@ -273,14 +273,16 @@ class PopulationMetricsPluginTest {
         assertThat(entry.visualization.config.get("yFormat")).isEqualTo("percent");
         assertThat(entry.visualization.config.get("yLabel")).isEqualTo("% of maximum");
 
-        // The counts move to the right axis, drawn solid
+        // The count moves to the right axis, drawn solid. The organisms whose body holds no genome
+        // leave the population within a few ticks, so their count lies on the count of the living
+        // and is left to the card that counts births by what they carried
         @SuppressWarnings("unchecked")
         List<String> y2Axis = (List<String>) entry.visualization.config.get("y2");
-        assertThat(y2Axis).containsExactly("alive_count", "bodied_count");
+        assertThat(y2Axis).containsExactly("alive_count");
         assertThat(entry.visualization.config.get("y2Format")).isEqualTo("integer");
         assertThat(entry.visualization.config.get("y2Label")).isEqualTo("Organisms");
         assertThat(entry.visualization.config.get("y2Solid")).isEqualTo(true);
-        assertThat(entry.visualization.config.get("y2Colors")).isEqualTo(List.of("#e0e0e0", "#a0e0a0"));
+        assertThat(entry.visualization.config.get("y2Colors")).isEqualTo(List.of("#e0e0e0"));
     }
 
     @Test

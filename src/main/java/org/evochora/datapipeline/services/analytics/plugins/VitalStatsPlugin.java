@@ -144,26 +144,24 @@ public class VitalStatsPlugin extends AbstractAnalyticsPlugin {
     private String generateAggregatedQuery() {
         return """
             WITH
-            params AS (
-                -- The width of one window, as the card asks for it
-                SELECT GREATEST(1, (MAX(tick) - MIN(tick)) / {buckets})::BIGINT AS bucket_size
-                FROM {table}
-            ),
+            %s,
             raw AS (
                 -- Rows written before the causes were recorded have no cause columns; they read as
                 -- none counted, so their deaths show as unclassified
                 SELECT
                     tick,
+                    window_tick,
                     total_born,
                     alive_count,
                     COALESCE(deaths_energy, 0) AS deaths_energy,
                     COALESCE(deaths_entropy, 0) AS deaths_entropy,
                     COALESCE(deaths_other, 0) AS deaths_other
-                FROM {table}
+                FROM window_rows
             ),
             computed AS (
                 SELECT
                     tick,
+                    window_tick,
                     COALESCE(total_born - LAG(total_born) OVER (ORDER BY tick), 0) AS births,
                     COALESCE((total_born - alive_count)
                         - LAG(total_born - alive_count) OVER (ORDER BY tick),
@@ -174,29 +172,38 @@ public class VitalStatsPlugin extends AbstractAnalyticsPlugin {
                 FROM raw
             ),
             buckets AS (
+                -- A window the level holds no recording in carries nothing rather than zeros: the
+                -- level knows nothing there, which is not the same as nobody having been born
                 SELECT
-                    (FLOOR(tick / (SELECT bucket_size FROM params)) * (SELECT bucket_size FROM params))::BIGINT AS tick,
-                    SUM(births)::BIGINT AS births,
-                    GREATEST(0, SUM(deaths))::DOUBLE AS deaths,
+                    windows.window_tick AS tick,
+                    CASE WHEN COUNT(computed.tick) = 0 THEN NULL
+                         ELSE SUM(births) END::BIGINT AS births,
+                    CASE WHEN COUNT(computed.tick) = 0 THEN NULL
+                         ELSE GREATEST(0, SUM(deaths)) END::DOUBLE AS deaths,
                     SUM(deaths_energy)::DOUBLE AS energy,
                     SUM(deaths_entropy)::DOUBLE AS entropy,
                     SUM(deaths_other)::DOUBLE AS other
-                FROM computed
-                GROUP BY 1
+                FROM windows LEFT JOIN computed
+                    ON computed.window_tick = windows.window_tick
+                GROUP BY windows.window_tick
             )
             SELECT
                 tick,
                 births,
-                CASE WHEN energy + entropy + other = 0 THEN 0
+                CASE WHEN deaths IS NULL THEN NULL
+                     WHEN energy + entropy + other = 0 THEN 0
                      ELSE -deaths * energy / (energy + entropy + other) END AS deaths_energy,
-                CASE WHEN energy + entropy + other = 0 THEN 0
+                CASE WHEN deaths IS NULL THEN NULL
+                     WHEN energy + entropy + other = 0 THEN 0
                      ELSE -deaths * entropy / (energy + entropy + other) END AS deaths_entropy,
-                CASE WHEN energy + entropy + other = 0 THEN 0
+                CASE WHEN deaths IS NULL THEN NULL
+                     WHEN energy + entropy + other = 0 THEN 0
                      ELSE -deaths * other / (energy + entropy + other) END AS deaths_other,
-                CASE WHEN energy + entropy + other = 0 THEN -deaths ELSE 0 END AS deaths_unclassified
+                CASE WHEN deaths IS NULL THEN NULL
+                     WHEN energy + entropy + other = 0 THEN -deaths ELSE 0 END AS deaths_unclassified
             FROM buckets
             ORDER BY tick
-            """;
+            """.formatted(windowSource());
     }
 
     @Override

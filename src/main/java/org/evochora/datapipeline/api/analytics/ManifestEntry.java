@@ -86,6 +86,20 @@ public class ManifestEntry {
      * </pre>
      */
     public String generatedQuery;
+
+    /**
+     * Whether the browser hands the chart one array per column instead of one object per row.
+     * <p>
+     * A card drawing a few hundred points reads a few hundred rows, and an object per row costs
+     * nothing. A card whose rows carry a second dimension - one row per recording <em>and</em>
+     * genome, say - reads hundreds of thousands of them to draw the same points, and building an
+     * object for each of them, converting every value in it and collecting them again afterwards
+     * takes seconds of the browser's one thread. The values themselves are the same either way.
+     * <p>
+     * A chart of such an entry takes the columns as they come; {@code null} or {@code false} keeps
+     * the rows.
+     */
+    public Boolean columnar;
     
     /**
      * List of column names in the query output.
