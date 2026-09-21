@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
+import org.evochora.runtime.internal.services.ExecutionContext;
 import org.evochora.runtime.isa.IEnvironmentModifyingInstruction;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.label.LabelRewrite;
@@ -67,6 +68,14 @@ public class Simulation {
     private final LabelRewrite labelRewrite = new LabelRewrite();
     private final InterceptionContext interceptContext = new InterceptionContext();  // Used when the calling thread runs wave 1 alone
     private final InterceptionContext[] parallelInterceptContexts;  // Used by the worker pool, one per thread
+
+    /**
+     * Execution contexts, one per thread of the parallel wave; index 0 also serves the sequential
+     * wave and wave 2, both of which run on the calling thread. Reused across instructions, which
+     * is safe because the virtual machine resets one before every execution - see
+     * {@link ExecutionContext} for why a value surviving that boundary would break reproducibility.
+     */
+    private final ExecutionContext[] executionContexts;
     private final DeathContext deathContext = new DeathContext();  // Main thread only, reused across ticks
     private final TickWorkerPool workerPool;
     private final int effectiveParallelism;
@@ -126,6 +135,10 @@ public class Simulation {
         this.vm = new VirtualMachine(this);
         this.effectiveParallelism = resolveParallelism(parallelism);
         this.workerPool = (effectiveParallelism > 1) ? new TickWorkerPool(effectiveParallelism) : null;
+        this.executionContexts = new ExecutionContext[effectiveParallelism];
+        for (int i = 0; i < effectiveParallelism; i++) {
+            this.executionContexts[i] = new ExecutionContext(environment, false);
+        }
         if (workerPool != null) {
             this.parallelInterceptContexts = new InterceptionContext[effectiveParallelism];
             for (int i = 0; i < effectiveParallelism; i++) {
@@ -505,14 +518,15 @@ public class Simulation {
             InterceptionContext[] contexts = instructionInterceptors.isEmpty() ? null : parallelInterceptContexts;
             Thread mainThread = Thread.currentThread();
             workerPool.dispatch(size, activeThreads, (from, to) -> {
-                InterceptionContext context = contexts != null ? contexts[TickWorkerPool.getThreadIndex()] : null;
-                planAndExecuteLocal(from, to, context, mainThread, planned, diedInWave1);
+                int threadIndex = TickWorkerPool.getThreadIndex();
+                InterceptionContext context = contexts != null ? contexts[threadIndex] : null;
+                planAndExecuteLocal(from, to, context, executionContexts[threadIndex], mainThread, planned, diedInWave1);
             });
         } else {
             InterceptionContext context = instructionInterceptors.isEmpty() ? null : interceptContext;
             ParallelWave.enter();
             try {
-                planAndExecuteLocal(0, size, context, Thread.currentThread(), planned, diedInWave1);
+                planAndExecuteLocal(0, size, context, executionContexts[0], Thread.currentThread(), planned, diedInWave1);
             } finally {
                 ParallelWave.leave();
             }
@@ -529,7 +543,7 @@ public class Simulation {
 
         boolean[] diedInWave2 = new boolean[wave2.size()];
         for (int i = 0; i < wave2.size(); i++) {
-            executeSingleInstruction(wave2.get(i));
+            executeSingleInstruction(wave2.get(i), executionContexts[0]);
             if (wave2.get(i).getOrganism().isDead()) {
                 diedInWave2[i] = true;
             }
@@ -557,11 +571,13 @@ public class Simulation {
      * @param to last organism index (exclusive)
      * @param context the interception context of the executing thread, or {@code null} when no
      *                interceptors are registered
+     * @param executionContext the execution context of the executing thread
      * @param mainThread the thread that drives the simulation; an interrupt on it aborts the wave
      * @param planned receives each organism's planned instruction at the organism's index
      * @param diedInWave1 set at the organism's index when it dies during wave 1
      */
-    private void planAndExecuteLocal(int from, int to, InterceptionContext context, Thread mainThread,
+    private void planAndExecuteLocal(int from, int to, InterceptionContext context,
+                                     ExecutionContext executionContext, Thread mainThread,
                                      Instruction[] planned, boolean[] diedInWave1) {
         // Yield periodically so that other threads (control API, data pipeline) get scheduled
         // during long stretches of ticking. On the calling thread the counter carries over from
@@ -596,7 +612,7 @@ public class Simulation {
             instruction.setConflictStatus(Instruction.ConflictResolutionStatus.NOT_APPLICABLE);
             if (Instruction.isParallelExecuteSafe(instruction.getFullOpcodeId())) {
                 instruction.setProcessedInTick(true);
-                executeSingleInstruction(instruction);
+                executeSingleInstruction(instruction, executionContext);
                 if (organism.isDead()) {
                     diedInWave1[i] = true;
                 }
@@ -616,12 +632,13 @@ public class Simulation {
      * and applies error penalty if a post-execution failure occurred.
      *
      * @param instruction The instruction to execute
+     * @param executionContext The execution context of the calling thread
      */
-    private void executeSingleInstruction(Instruction instruction) {
+    private void executeSingleInstruction(Instruction instruction, ExecutionContext executionContext) {
         if (!instruction.isProcessedInTick()) return;
         Organism organism = instruction.getOrganism();
 
-        vm.execute(instruction);
+        vm.execute(instruction, executionContext);
 
         boolean failedInExecution = organism.isInstructionFailed();
         organism.skipNopCells(environment);

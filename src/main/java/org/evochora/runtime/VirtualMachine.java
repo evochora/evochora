@@ -1,12 +1,10 @@
 package org.evochora.runtime;
 
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
 import org.evochora.runtime.internal.services.ExecutionContext;
-import org.evochora.runtime.isa.IEnvironmentModifyingInstruction;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.isa.InstructionArgumentType;
 import org.evochora.runtime.isa.InstructionSignature;
@@ -14,7 +12,6 @@ import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
 import org.evochora.runtime.spi.thermodynamics.IThermodynamicPolicy;
-import org.evochora.runtime.spi.thermodynamics.ThermodynamicContext;
 
 /**
  * The core of the execution environment.
@@ -87,16 +84,29 @@ public class VirtualMachine {
     }
 
     /**
-     * Phase 2: Executes a previously planned instruction.
+     * Phase 2: Executes a previously planned instruction and charges what it did.
      * This method potentially modifies the state of the organism and the environment.
+     * <p>
+     * The base values are charged before the instruction runs, because they do not depend on what
+     * it does: an instruction that asks for its own energy or entropy sees its own base cost
+     * already paid, and one that decides by how much energy it has left decides against that same
+     * figure. What it does to the world it records in the execution context as it goes, and the
+     * policy prices those effects afterwards. An instruction that failed, or that lost its write
+     * conflict, recorded no effect and therefore pays its base values and the error penalty alone
+     * - there is no separate case for it anywhere.
      *
      * @param instruction The planned instruction to be executed.
+     * @param context The execution context of the calling thread; reset here before use.
      */
-    public void execute(Instruction instruction) {
+    public void execute(Instruction instruction, ExecutionContext context) {
         Organism organism = instruction.getOrganism();
         if (organism.isDead()) {
             return;
         }
+
+        // Before anything else, so that no value of the previous instruction can reach this one -
+        // not even on the path through the catch-all below.
+        context.reset(organism);
 
         // A conflict loser is booked as a failure but not executed; it leaves no execution
         // record, so the argument and register capture below is skipped for it.
@@ -119,13 +129,17 @@ public class VirtualMachine {
 
         int[] rawArgs = null;
         Map<Integer, Object> registerValuesBefore = null;
+        // Resolved once the instruction is known to run, and kept so that the catch-all below can
+        // still price whatever the instruction managed to do before it threw.
+        IThermodynamicPolicy policy = null;
+        // Guards the catch-all against charging the effects a second time when the exception was
+        // thrown after they were already priced.
+        boolean effectsCharged = false;
 
         try {
-            // --- Thermodynamic Logic Start ---
-
-            // 1. Resolve operands (idempotent - can be called multiple times safely)
+            // Resolve operands (idempotent - can be called multiple times safely)
             // Note: resolveOperands only PEEKs stack values, actual POPs happen in commitStackReads()
-            List<Instruction.Operand> resolvedOperands = instruction.resolveOperands(this.environment);
+            instruction.resolveOperands(this.environment);
 
             if (!lostConflict) {
                 // Shares the array resolveOperands filled: an instruction's argument
@@ -137,45 +151,14 @@ public class VirtualMachine {
                 registerValuesBefore = collectRegisterValues(organism, instruction.getFullOpcodeId(), rawArgs);
             }
 
-            // 2. Commit the stack reads now that we know this instruction will execute. A conflict
-            //    loser consumes nothing: it retries with the same operands next tick.
+            // Commit the stack reads now that we know this instruction will execute. A conflict
+            // loser consumes nothing: it retries with the same operands next tick.
             if (!lostConflict) {
                 instruction.commitStackReads();
             }
 
-            // 3. Determine target info (only for env-modifying instructions that need it)
-            Optional<ThermodynamicContext.TargetInfo> targetInfo = Optional.empty();
-            if (instruction instanceof IEnvironmentModifyingInstruction envInstr) {
-                List<int[]> targets = envInstr.getTargetCoordinates();
-                if (targets != null && !targets.isEmpty()) {
-                    // For simplicity, we only consider the first target for thermodynamics of single-cell ops like PEEK/POKE
-                    int[] coord = targets.get(0);
-                    Molecule molecule = this.environment.getMolecule(coord);
-                    int ownerId = this.environment.getOwnerId(coord);
-                    targetInfo = Optional.of(new ThermodynamicContext.TargetInfo(coord, molecule, ownerId));
-                }
-            }
-
-            // 4. Create Context (minimal overhead - record allocation)
-            ThermodynamicContext thermoContext = new ThermodynamicContext(
-                instruction, organism, this.environment, resolvedOperands, targetInfo
-            );
-
-            // 5. Calculate Thermodynamics using Policy (optimized: single call, array lookup)
-            IThermodynamicPolicy policy = this.simulation.getPolicyManager().getPolicy(instruction);
-            IThermodynamicPolicy.Thermodynamics thermo = policy.getThermodynamics(thermoContext);
-
-            // 6. Apply effects
-            // Energy: positive = consumption (takeEr), negative = gain (addEr with clamping)
-            int energyCost = thermo.energyCost();
-            if (energyCost > 0) {
-                organism.takeEr(energyCost);
-            } else if (energyCost < 0) {
-                organism.addEr(-energyCost); // addEr clamps to maxEnergy
-            }
-            organism.addSr(thermo.entropyDelta());
-            
-            // --- Thermodynamic Logic End ---
+            policy = this.simulation.getPolicyManager().getPolicy(instruction);
+            chargeBase(policy, organism);
 
             if (lostConflict) {
                 // Booked like any failed instruction (penalty, death checks below), but the
@@ -183,9 +166,11 @@ public class VirtualMachine {
                 organism.instructionFailed(LOST_WRITE_CONFLICT);
                 organism.setSkipIpAdvance(true);
             } else {
-                ExecutionContext context = new ExecutionContext(organism, this.environment, false); // Always run in debug mode
                 instruction.execute(context);
             }
+
+            chargeEffects(policy, organism, context);
+            effectsCharged = true;
 
             if (organism.isInstructionFailed()) {
                 int penalty = this.simulation.getOrganismConfig().getInt("error-penalty-cost");
@@ -231,6 +216,13 @@ public class VirtualMachine {
             // Global Catch-All to prevent simulation crash
             organism.instructionFailed("VM Runtime Error: " + e);
 
+            // Whatever the instruction managed to do before it threw is priced like any other
+            // effect; what it did not do left no record and costs nothing. A throw from before the
+            // base values were charged leaves them unpaid, as it always has.
+            if (policy != null && !effectsCharged) {
+                chargeEffects(policy, organism, context);
+            }
+
             // Apply penalty
             int penalty = this.simulation.getOrganismConfig().getInt("error-penalty-cost");
             organism.takeEr(penalty);
@@ -261,6 +253,61 @@ public class VirtualMachine {
                     organism.kill("Fatal VM Error: " + e.getMessage());
                 }
             }
+        }
+    }
+
+    /**
+     * Charges what the instruction costs before it does anything, so that an instruction reading
+     * its own energy or entropy sees the same figure it has always seen.
+     *
+     * @param policy The policy assigned to the instruction.
+     * @param organism The organism to charge.
+     */
+    private void chargeBase(IThermodynamicPolicy policy, Organism organism) {
+        applyThermodynamics(organism, policy.baseEnergy(), policy.baseEntropy());
+    }
+
+    /**
+     * Charges the price of every effect the instruction recorded.
+     * <p>
+     * The effects are summed before they are booked, so the order in which an instruction recorded
+     * them cannot change the outcome even where a register sits against its clamp: an organism at
+     * zero entropy that reads and rewrites one of its own cells ends at zero whichever effect came
+     * first.
+     *
+     * @param policy The policy assigned to the instruction.
+     * @param organism The organism to charge.
+     * @param context The context holding the recorded effects.
+     */
+    private void chargeEffects(IThermodynamicPolicy policy, Organism organism, ExecutionContext context) {
+        int energyCost = 0;
+        int entropyDelta = 0;
+
+        int effectCount = context.effectCount();
+        for (int i = 0; i < effectCount; i++) {
+            IThermodynamicPolicy.Thermodynamics effect = policy.priceEffect(
+                    context.isWriteAt(i), context.moleculeAt(i), context.ownerAt(i), organism.getId());
+            energyCost += effect.energyCost();
+            entropyDelta += effect.entropyDelta();
+        }
+        applyThermodynamics(organism, energyCost, entropyDelta);
+    }
+
+    /**
+     * Books one energy and entropy amount on the organism.
+     *
+     * @param organism The organism to charge.
+     * @param energyCost Positive consumes energy, negative gains it and is clamped to the maximum.
+     * @param entropyDelta Positive generates entropy, negative dissipates it and is clamped at zero.
+     */
+    private static void applyThermodynamics(Organism organism, int energyCost, int entropyDelta) {
+        if (energyCost > 0) {
+            organism.takeEr(energyCost);
+        } else if (energyCost < 0) {
+            organism.addEr(-energyCost); // addEr clamps to maxEnergy
+        }
+        if (entropyDelta != 0) {
+            organism.addSr(entropyDelta);
         }
     }
 
@@ -300,7 +347,7 @@ public class VirtualMachine {
 
     /**
      * Collects register values for the given instruction's register arguments.
-     * Used both by {@link #execute(Instruction)} (to capture values before execution)
+     * Used both by {@link #execute(Instruction, ExecutionContext)} (to capture values before execution)
      * and by {@link #peekNextInstruction(Organism)} (to capture current values as preview).
      *
      * @param organism The organism whose registers to read.

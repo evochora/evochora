@@ -2,11 +2,13 @@ package org.evochora.runtime.thermodynamics.impl;
 
 import com.typesafe.config.Config;
 import org.evochora.runtime.spi.thermodynamics.IThermodynamicPolicy;
-import org.evochora.runtime.spi.thermodynamics.ThermodynamicContext;
 
 /**
  * A simple policy that applies fixed energy costs and entropy deltas.
  * Useful for default behavior and simple instructions like NOP or basic arithmetic.
+ * <p>
+ * It prices nothing beyond its base values: an instruction under this policy costs the same
+ * whether it touched a cell or not.
  * <p>
  * Configuration options:
  * <ul>
@@ -29,13 +31,17 @@ public class FixedCostPolicy implements IThermodynamicPolicy {
     }
 
     @Override
-    public int getEnergyCost(ThermodynamicContext context) {
+    public int baseEnergy() {
         return this.energyCost;
     }
 
     @Override
-    public int getEntropyDelta(ThermodynamicContext context) {
+    public int baseEntropy() {
         return this.entropyDelta;
     }
-}
 
+    @Override
+    public Thermodynamics priceEffect(boolean isWrite, int moleculeInt, int ownerId, int actorId) {
+        return FREE;
+    }
+}

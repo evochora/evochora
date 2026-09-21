@@ -1,300 +1,174 @@
 package org.evochora.runtime.thermodynamics.impl;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
-
-import java.util.List;
-import java.util.Optional;
 
 import com.typesafe.config.ConfigFactory;
 import org.evochora.runtime.Config;
-import org.evochora.runtime.isa.Instruction;
-import org.evochora.runtime.isa.Instruction.ConflictResolutionStatus;
-import org.evochora.runtime.isa.Instruction.Operand;
 import org.evochora.runtime.model.Molecule;
-import org.evochora.runtime.model.Organism;
-import org.evochora.runtime.spi.thermodynamics.ThermodynamicContext;
+import org.evochora.runtime.spi.thermodynamics.IThermodynamicPolicy.Thermodynamics;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 /**
- * Unit tests for {@link UniversalThermodynamicPolicy}, focusing on the value-specific
- * override feature in write-rules and read-rules.
+ * Unit tests for {@link UniversalThermodynamicPolicy}: base values, the resolution of read and
+ * write rules from a packed molecule, and the value-specific overrides.
+ * <p>
+ * The policy prices one effect at a time and knows nothing about instructions. Which effects an
+ * instruction records - and that a failed one records none - is covered by
+ * {@code org.evochora.runtime.EffectLogTest}.
  */
 @Tag("unit")
 class UniversalThermodynamicPolicyTest {
 
-    /**
-     * Creates a ThermodynamicContext for write-rule testing (POKE-like).
-     * The context has no targetInfo (writing to an empty cell) and a single operand
-     * containing the molecule to write.
-     */
-    private ThermodynamicContext writeContext(Molecule toWrite) {
-        return writeContext(toWrite, 0);
+    private static final int ACTOR = 1;
+    private static final boolean WRITE = true;
+    private static final boolean READ = false;
+
+    private static UniversalThermodynamicPolicy policy(String config) {
+        var policy = new UniversalThermodynamicPolicy();
+        policy.initialize(ConfigFactory.parseString(config));
+        return policy;
     }
 
-    /**
-     * Creates a write context for an organism whose marker register holds the given value. The
-     * marker register decides the stored form of the written molecule, which is what the write
-     * rules are resolved for.
-     */
-    private ThermodynamicContext writeContext(Molecule toWrite, int markerRegister) {
-        Instruction instruction = mock(Instruction.class);
-        when(instruction.getConflictStatus()).thenReturn(ConflictResolutionStatus.NOT_APPLICABLE);
-        when(instruction.getName()).thenReturn("POKE");
-
-        Organism organism = mock(Organism.class);
-        when(organism.getId()).thenReturn(1);
-        when(organism.getMr()).thenReturn(markerRegister);
-
-        List<Operand> operands = List.of(new Operand(toWrite.toInt(), 0));
-
-        return new ThermodynamicContext(instruction, organism, null, operands, Optional.empty());
+    private static int packed(int type, int value) {
+        return new Molecule(type, value, 0).toInt();
     }
 
-    /**
-     * Creates a ThermodynamicContext for read-rule testing (PEEK-like).
-     * The context has targetInfo containing the molecule being read.
-     */
-    private ThermodynamicContext readContext(Molecule target, int targetOwnerId, int organismId) {
-        Instruction instruction = mock(Instruction.class);
-        when(instruction.getConflictStatus()).thenReturn(ConflictResolutionStatus.NOT_APPLICABLE);
-        when(instruction.getName()).thenReturn("PEEK");
+    @Test
+    void baseValuesAreReportedAsConfigured() {
+        var policy = policy("base-energy = 3\nbase-entropy = -4\n");
+        assertThat(policy.baseEnergy()).isEqualTo(3);
+        assertThat(policy.baseEntropy()).isEqualTo(-4);
+    }
 
-        Organism organism = mock(Organism.class);
-        when(organism.getId()).thenReturn(organismId);
-
-        var targetInfo = new ThermodynamicContext.TargetInfo(new int[]{0, 0}, target, targetOwnerId);
-        return new ThermodynamicContext(instruction, organism, null, List.of(), Optional.of(targetInfo));
+    @Test
+    void anEffectWithoutAnyRuleIsFree() {
+        var policy = policy("base-energy = 1\nbase-entropy = 1\n");
+        assertThat(policy.priceEffect(WRITE, packed(Config.TYPE_CODE, 42), 0, ACTOR)).isEqualTo(new Thermodynamics(0, 0));
+        assertThat(policy.priceEffect(READ, packed(Config.TYPE_CODE, 42), 0, ACTOR)).isEqualTo(new Thermodynamics(0, 0));
     }
 
     @Test
     void writeRuleValueOverrideAppliesToMatchingValue() {
-        var policy = new UniversalThermodynamicPolicy();
-        policy.initialize(ConfigFactory.parseString("""
-            base-energy = 0
-            base-entropy = 0
+        var policy = policy("""
             write-rules: {
               CODE: {
                 energy = 5, entropy = -50
-                values: {
-                  "0": { energy = 1, entropy = -10 }
-                }
+                values: { "0": { energy = 1, entropy = -10 } }
               }
             }
-            """));
+            """);
 
-        // CODE:0 (NOP) should use the value override: energy=1, entropy=-10
-        ThermodynamicContext nopCtx = writeContext(new Molecule(Config.TYPE_CODE, 0, 0));
-        assertThat(policy.getEnergyCost(nopCtx)).isEqualTo(1);
-        assertThat(policy.getEntropyDelta(nopCtx)).isEqualTo(-10);
+        assertThat(policy.priceEffect(WRITE, packed(Config.TYPE_CODE, 0), 0, ACTOR)).isEqualTo(new Thermodynamics(1, -10));
+        assertThat(policy.priceEffect(WRITE, packed(Config.TYPE_CODE, 42), 0, ACTOR)).isEqualTo(new Thermodynamics(5, -50));
     }
 
     @Test
-    void writeRuleFallsBackToTypeDefaultWhenNoValueMatch() {
-        var policy = new UniversalThermodynamicPolicy();
-        policy.initialize(ConfigFactory.parseString("""
-            base-energy = 0
-            base-entropy = 0
-            write-rules: {
-              CODE: {
-                energy = 5, entropy = -50
-                values: {
-                  "0": { energy = 1, entropy = -10 }
-                }
-              }
-            }
-            """));
+    void writeRuleWithoutValuesBlockPricesEveryValueTheSame() {
+        var policy = policy("write-rules: { CODE: { energy = 5, entropy = -50 } }");
 
-        // CODE:42 should use the type default: energy=5, entropy=-50
-        ThermodynamicContext codeCtx = writeContext(new Molecule(Config.TYPE_CODE, 42, 0));
-        assertThat(policy.getEnergyCost(codeCtx)).isEqualTo(5);
-        assertThat(policy.getEntropyDelta(codeCtx)).isEqualTo(-50);
+        assertThat(policy.priceEffect(WRITE, packed(Config.TYPE_CODE, 0), 0, ACTOR).energyCost()).isEqualTo(5);
+        assertThat(policy.priceEffect(WRITE, packed(Config.TYPE_CODE, 42), 0, ACTOR).energyCost()).isEqualTo(5);
     }
 
     @Test
-    void writeRuleWithoutValuesBlockIsBackwardCompatible() {
-        var policy = new UniversalThermodynamicPolicy();
-        policy.initialize(ConfigFactory.parseString("""
-            base-energy = 0
-            base-entropy = 0
-            write-rules: {
-              CODE: { energy = 5, entropy = -50 }
+    void writeRuleFallsBackToTheDefaultTypeRule() {
+        var policy = policy("write-rules: { _default: { energy = 7, entropy = -70 }, CODE: { energy = 5, entropy = -50 } }");
+
+        assertThat(policy.priceEffect(WRITE, packed(Config.TYPE_CODE, 1), 0, ACTOR)).isEqualTo(new Thermodynamics(5, -50));
+        assertThat(policy.priceEffect(WRITE, packed(Config.TYPE_DATA, 1), 0, ACTOR)).isEqualTo(new Thermodynamics(7, -70));
+    }
+
+    @Test
+    void readRulesAreResolvedByTheOwnershipOfTheCell() {
+        var policy = policy("""
+            read-rules: {
+              own:     { CODE: { energy = 1,   entropy = 500 } }
+              foreign: { CODE: { energy = 500, entropy = 500 } }
+              unowned: { CODE: { energy = 5,   entropy = 5 } }
             }
-            """));
+            """);
+        int code = packed(Config.TYPE_CODE, 42);
 
-        // Both CODE:0 and CODE:42 should cost the same (no value overrides)
-        ThermodynamicContext nopCtx = writeContext(new Molecule(Config.TYPE_CODE, 0, 0));
-        ThermodynamicContext codeCtx = writeContext(new Molecule(Config.TYPE_CODE, 42, 0));
-
-        assertThat(policy.getEnergyCost(nopCtx)).isEqualTo(5);
-        assertThat(policy.getEnergyCost(codeCtx)).isEqualTo(5);
+        assertThat(policy.priceEffect(READ, code, ACTOR, ACTOR)).isEqualTo(new Thermodynamics(1, 500));
+        assertThat(policy.priceEffect(READ, code, ACTOR + 1, ACTOR)).isEqualTo(new Thermodynamics(500, 500));
+        assertThat(policy.priceEffect(READ, code, 0, ACTOR)).isEqualTo(new Thermodynamics(5, 5));
     }
 
     @Test
     void readRuleValueOverrideAppliesToMatchingValue() {
-        var policy = new UniversalThermodynamicPolicy();
-        policy.initialize(ConfigFactory.parseString("""
-            base-energy = 0
-            base-entropy = 0
+        var policy = policy("""
             read-rules: {
               own: {
                 CODE: {
                   energy = 3, entropy = 1
-                  values: {
-                    "0": { energy = 0, entropy = 0 }
-                  }
+                  values: { "0": { energy = 0, entropy = 0 } }
                 }
               }
             }
-            """));
+            """);
 
-        // PEEKing own CODE:0 → value override: energy=0
-        ThermodynamicContext nopCtx = readContext(new Molecule(Config.TYPE_CODE, 0, 0), 1, 1);
-        assertThat(policy.getEnergyCost(nopCtx)).isEqualTo(0);
-        assertThat(policy.getEntropyDelta(nopCtx)).isEqualTo(0);
-
-        // PEEKing own CODE:42 → type default: energy=3
-        ThermodynamicContext codeCtx = readContext(new Molecule(Config.TYPE_CODE, 42, 0), 1, 1);
-        assertThat(policy.getEnergyCost(codeCtx)).isEqualTo(3);
-        assertThat(policy.getEntropyDelta(codeCtx)).isEqualTo(1);
+        assertThat(policy.priceEffect(READ, packed(Config.TYPE_CODE, 0), ACTOR, ACTOR)).isEqualTo(new Thermodynamics(0, 0));
+        assertThat(policy.priceEffect(READ, packed(Config.TYPE_CODE, 42), ACTOR, ACTOR)).isEqualTo(new Thermodynamics(3, 1));
     }
 
     @Test
-    void multipleValueOverridesResolvCorrectly() {
-        var policy = new UniversalThermodynamicPolicy();
-        policy.initialize(ConfigFactory.parseString("""
-            base-energy = 0
-            base-entropy = 0
-            write-rules: {
-              CODE: {
-                energy = 5, entropy = -50
-                values: {
-                  "0": { energy = 1, entropy = -10 }
-                  "1": { energy = 2, entropy = -20 }
-                }
-              }
-            }
-            """));
+    void writeRulesDoNotApplyToReadsAndReadRulesNotToWrites() {
+        var policy = policy("""
+            read-rules:  { unowned: { CODE: { energy = 5,  entropy = 5 } } }
+            write-rules: { CODE:    { energy = 11, entropy = -11 } }
+            """);
+        int code = packed(Config.TYPE_CODE, 42);
 
-        ThermodynamicContext ctx0 = writeContext(new Molecule(Config.TYPE_CODE, 0, 0));
-        ThermodynamicContext ctx1 = writeContext(new Molecule(Config.TYPE_CODE, 1, 0));
-        ThermodynamicContext ctx99 = writeContext(new Molecule(Config.TYPE_CODE, 99, 0));
-
-        assertThat(policy.getEnergyCost(ctx0)).isEqualTo(1);
-        assertThat(policy.getEnergyCost(ctx1)).isEqualTo(2);
-        assertThat(policy.getEnergyCost(ctx99)).isEqualTo(5);
-    }
-
-    @Test
-    void valueOverrideCanUsePermille() {
-        var policy = new UniversalThermodynamicPolicy();
-        policy.initialize(ConfigFactory.parseString("""
-            base-energy = 0
-            base-entropy = 0
-            write-rules: {
-              CODE: {
-                energy = 5, entropy = -50
-                values: {
-                  "0": { energy = 0, energy-permille = 1000, entropy = -50 }
-                }
-              }
-            }
-            """));
-
-        // CODE:0 with permille: 0 + (0 * 1000 / 1000) = 0
-        ThermodynamicContext ctx0 = writeContext(new Molecule(Config.TYPE_CODE, 0, 0));
-        assertThat(policy.getEnergyCost(ctx0)).isEqualTo(0);
-
-        // CODE:42 falls back to type default: energy=5
-        ThermodynamicContext ctx42 = writeContext(new Molecule(Config.TYPE_CODE, 42, 0));
-        assertThat(policy.getEnergyCost(ctx42)).isEqualTo(5);
-    }
-
-    @Test
-    void writeOfDataIsPricedByTheRuleOfItsStoredForm() {
-        var policy = new UniversalThermodynamicPolicy();
-        policy.initialize(ConfigFactory.parseString("""
-            base-energy = 0
-            base-entropy = 0
-            write-rules: {
-              DATA:  { energy = 6, entropy = -60 }
-              STATE: { energy = 2, entropy = -20 }
-            }
-            """));
-
-        // With marker register 0 the DATA value is stored as STATE, so the STATE rule applies.
-        ThermodynamicContext ephemeral = writeContext(new Molecule(Config.TYPE_DATA, 50, 0), 0);
-        assertThat(policy.getEnergyCost(ephemeral)).isEqualTo(2);
-        assertThat(policy.getEntropyDelta(ephemeral)).isEqualTo(-20);
-
-        // With a non-zero marker register the molecule stays DATA and is priced by the DATA rule.
-        ThermodynamicContext durable = writeContext(new Molecule(Config.TYPE_DATA, 50, 0), 3);
-        assertThat(policy.getEnergyCost(durable)).isEqualTo(6);
-        assertThat(policy.getEntropyDelta(durable)).isEqualTo(-60);
+        assertThat(policy.priceEffect(READ, code, 0, ACTOR)).isEqualTo(new Thermodynamics(5, 5));
+        assertThat(policy.priceEffect(WRITE, code, 0, ACTOR)).isEqualTo(new Thermodynamics(11, -11));
     }
 
     /**
-     * Creates a ThermodynamicContext for a write whose target cell already holds a molecule.
-     * The instruction's full opcode id is wired to the registry's id for the given name when
-     * the registry is initialized, so the policy's PPK detection works in both modes.
+     * A molecule's value is stored in two's complement across the value bits, so a negative one
+     * reads as a large positive number unless it is sign-extended. Permille rules multiply by that
+     * value, which is where an unextended bit pattern would turn a small cost into an enormous one.
      */
-    private ThermodynamicContext writeContextWithOccupiedTarget(Molecule toWrite, String instructionName) {
-        Instruction instruction = mock(Instruction.class);
-        when(instruction.getConflictStatus()).thenReturn(ConflictResolutionStatus.NOT_APPLICABLE);
-        when(instruction.getName()).thenReturn(instructionName);
-        Integer opcodeId = Instruction.getInstructionIdByName(instructionName);
-        when(instruction.getFullOpcodeId()).thenReturn(opcodeId != null ? opcodeId : -1);
+    @Test
+    void permilleRulesUseTheSignExtendedValue() {
+        var policy = policy("""
+            read-rules: { unowned: { DATA: { energy-permille = 1000, entropy-permille = 1000 } } }
+            """);
 
-        Organism organism = mock(Organism.class);
-        when(organism.getId()).thenReturn(1);
+        Thermodynamics positive = policy.priceEffect(READ, packed(Config.TYPE_DATA, 50), 0, ACTOR);
+        Thermodynamics negative = policy.priceEffect(READ, packed(Config.TYPE_DATA, -50), 0, ACTOR);
 
-        List<Operand> operands = List.of(new Operand(toWrite.toInt(), 0));
-        Molecule occupied = new Molecule(Config.TYPE_DATA, 7, 0);
-        var targetInfo = new ThermodynamicContext.TargetInfo(new int[]{0, 0}, occupied, 0);
-        return new ThermodynamicContext(instruction, organism, null, operands, Optional.of(targetInfo));
+        // The magnitude decides the price, and -50 has the magnitude of 50 - not of 2^20 - 50.
+        assertThat(positive).isEqualTo(new Thermodynamics(50, 50));
+        assertThat(negative).isEqualTo(new Thermodynamics(50, 50));
+    }
+
+    /**
+     * A value override is keyed by the signed value, so the rule for -1 must be found for the
+     * molecule that carries -1 and not for the one whose bit pattern happens to read as 2^20 - 1.
+     */
+    @Test
+    void valueOverridesAreKeyedByTheSignedValue() {
+        var policy = policy("""
+            write-rules: {
+              DATA: {
+                energy = 5, entropy = -50
+                values: { "-1": { energy = 9, entropy = -90 } }
+              }
+            }
+            """);
+
+        assertThat(policy.priceEffect(WRITE, packed(Config.TYPE_DATA, -1), 0, ACTOR)).isEqualTo(new Thermodynamics(9, -90));
+        assertThat(policy.priceEffect(WRITE, packed(Config.TYPE_DATA, 1), 0, ACTOR)).isEqualTo(new Thermodynamics(5, -50));
     }
 
     @Test
-    void writeOnOccupiedTargetChargesNeitherWriteEnergyNorWriteEntropy() {
-        var policy = new UniversalThermodynamicPolicy();
-        policy.initialize(ConfigFactory.parseString("""
-            base-energy = 0
-            base-entropy = 0
-            write-rules: {
-              CODE: { energy = 5, entropy = -500 }
-            }
-            """));
+    void fixedAndPermilleComponentsOfARuleAreAdded() {
+        var policy = policy("""
+            read-rules: { unowned: { ENERGY: { energy = 5, energy-permille = -1000, entropy = 0 } } }
+            """);
 
-        // A POKE onto an occupied cell fails in execution and must not book any write
-        // thermodynamics - neither the energy cost nor the entropy dissipation.
-        ThermodynamicContext ctx = writeContextWithOccupiedTarget(new Molecule(Config.TYPE_CODE, 42, 0), "POKE");
-        assertThat(policy.getEnergyCost(ctx)).isEqualTo(0);
-        assertThat(policy.getEntropyDelta(ctx)).isEqualTo(0);
-        var combined = policy.getThermodynamics(ctx);
-        assertThat(combined.energyCost()).isEqualTo(0);
-        assertThat(combined.entropyDelta()).isEqualTo(0);
-    }
-
-    @Test
-    void ppkWriteOnOccupiedTargetIsStillCharged() {
-        var policy = new UniversalThermodynamicPolicy();
-        policy.initialize(ConfigFactory.parseString("""
-            base-energy = 0
-            base-entropy = 0
-            write-rules: {
-              CODE: { energy = 5, entropy = -500 }
-            }
-            """));
-
-        // PPK instructions peek first, which empties the cell, so their write succeeds
-        // even when the target currently holds a molecule - the write costs apply.
-        ThermodynamicContext ctx = writeContextWithOccupiedTarget(new Molecule(Config.TYPE_CODE, 42, 0), "PPKR");
-        assertThat(policy.getEnergyCost(ctx)).isEqualTo(5);
-        assertThat(policy.getEntropyDelta(ctx)).isEqualTo(-500);
-        var combined = policy.getThermodynamics(ctx);
-        assertThat(combined.energyCost()).isEqualTo(5);
-        assertThat(combined.entropyDelta()).isEqualTo(-500);
+        assertThat(policy.priceEffect(READ, packed(Config.TYPE_ENERGY, 1000), 0, ACTOR))
+                .isEqualTo(new Thermodynamics(5 - 1000, 0));
     }
 }

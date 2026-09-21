@@ -109,12 +109,12 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
             }
             Molecule toWrite = Molecule.fromInt(Molecule.storedFormOfWrite((Integer) valueToWrite, organism.getMr()));
 
-            // Energy costs and entropy dissipation are now handled by the thermodynamic policy in VirtualMachine
-
             if (environment.getMolecule(targetCoordinate).isEmpty()) {
                 // CODE:0 should always have owner=0 (represents empty cell)
                 int ownerId = (toWrite.type() == Config.TYPE_CODE && toWrite.toScalarValue() == 0) ? 0 : organism.getId();
                 environment.setMolecule(toWrite, ownerId, targetCoordinate);
+                // The cell was empty, so it was unowned; the write is priced for what now stands in it.
+                context.recordWrite(toWrite.toInt(), 0);
             } else {
                 organism.instructionFailed("POKE: Target cell is not empty.");
                 if (getConflictStatus() != ConflictResolutionStatus.NOT_APPLICABLE) setConflictStatus(ConflictResolutionStatus.LOST_TARGET_OCCUPIED);
@@ -153,18 +153,22 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
             return;
         }
 
-        // Store the actual value read from the environment.
-        // Energy gains for the organism are handled separately by the thermodynamic policy.
+        // The register receives what stood in the cell. What of it reaches the organism is the
+        // policy's business: an ENERGY molecule beyond the energy register's room is clamped
+        // there, and the difference is lost - the cell is emptied either way.
         Object valueToStore = s.toInt();
+        int ownerId = environment.getOwnerId(targetCoordinate);
 
         if (targetReg != -1) {
             writeOperand(targetReg, valueToStore);
         } else if (!organism.pushData(valueToStore)) {
+            // The data stack had no room: nothing was taken, and the cell stays as it is.
             return;
         }
 
         environment.setMolecule(new Molecule(Config.TYPE_CODE, 0), targetCoordinate);
         environment.clearOwner(targetCoordinate);
+        context.recordRead(s.toInt(), ownerId);
     }
 
     private void handlePeekPoke(ExecutionContext context) {
@@ -194,26 +198,19 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
             
             // First, handle the PEEK part
             Molecule currentMolecule = environment.getMolecule(targetCoordinate);
-            
-            
-            Object valueToStore;
-            if (currentMolecule.isEmpty()) {
-                // If cell is empty, store empty molecule (CODE:0)
-                valueToStore = new Molecule(Config.TYPE_CODE, 0).toInt();
-            } else {
-                // Energy costs and gains are now handled by the thermodynamic policy in VirtualMachine
-                if (currentMolecule.type() == Config.TYPE_ENERGY) {
-                    int energyToTake = Math.min(currentMolecule.toScalarValue(), organism.getMaxEnergy() - organism.getEr());
-                    valueToStore = new Molecule(Config.TYPE_ENERGY, energyToTake).toInt();
-                } else {
-                    valueToStore = currentMolecule.toInt();
-                }
-            }
+            int currentOwnerId = environment.getOwnerId(targetCoordinate);
+
+            // The register receives what stood in the cell, of whatever type; an empty cell gives
+            // CODE:0 and is not a read at all, because nothing was consumed.
+            Object valueToStore = currentMolecule.isEmpty()
+                    ? new Molecule(Config.TYPE_CODE, 0).toInt()
+                    : currentMolecule.toInt();
 
             // Store the peeked value (or empty molecule if cell was empty)
             if (targetReg != -1) {
                 writeOperand(targetReg, valueToStore);
             } else if (!organism.pushData(valueToStore)) {
+                // The data stack had no room: nothing was taken, and the cell stays as it is.
                 return;
             }
 
@@ -221,6 +218,7 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
             if (!currentMolecule.isEmpty()) {
                 environment.setMolecule(new Molecule(Config.TYPE_CODE, 0), targetCoordinate);
                 environment.clearOwner(targetCoordinate);
+                context.recordRead(currentMolecule.toInt(), currentOwnerId);
             }
 
             // Now handle the POKE part
@@ -230,12 +228,12 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
             }
             Molecule toWrite = Molecule.fromInt(Molecule.storedFormOfWrite((Integer) valueToWrite, organism.getMr()));
 
-            // Energy costs and entropy dissipation are now handled by the thermodynamic policy in VirtualMachine
-
             // Write the new value (cell is now empty, so this should always succeed)
             // CODE:0 should always have owner=0 (represents empty cell)
             int ownerId = (toWrite.type() == Config.TYPE_CODE && toWrite.toScalarValue() == 0) ? 0 : organism.getId();
             environment.setMolecule(toWrite, ownerId, targetCoordinate);
+            // The peek left the cell empty and unowned, whatever stood in it before.
+            context.recordWrite(toWrite.toInt(), 0);
         }
     }
 

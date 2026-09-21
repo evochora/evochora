@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.Map;
 
+import org.evochora.runtime.internal.services.ExecutionContext;
 import org.evochora.runtime.internal.services.SeededRandomProvider;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Environment;
@@ -103,13 +104,13 @@ class CaptureExecutionDetailsTest {
 
     @Test
     void executionRecordIsPresentAfterVmRuntimeError() {
-        new VirtualMachine(simulation).execute(throwingInstruction());
+        new VirtualMachine(simulation).execute(throwingInstruction(), new ExecutionContext(simulation.getEnvironment(), false));
 
         Organism.InstructionExecutionData record = organism.getLastInstructionExecution();
         assertThat(organism.isInstructionFailed()).isTrue();
         assertThat(record).isNotNull();
         assertThat(record.opcodeId()).isEqualTo(Instruction.getInstructionIdByName("NOP"));
-        // Base energy (1) was charged before the throw, the error penalty (10) after it.
+        // The throw left no effect behind, so only the base energy (1) and the error penalty (10) apply.
         assertThat(record.energyCost()).isEqualTo(11);
     }
 
@@ -117,7 +118,7 @@ class CaptureExecutionDetailsTest {
     void executionRecordIsPresentWhenVmRuntimeErrorKills() {
         organism.takeEr(organism.getEr() - 5);
 
-        new VirtualMachine(simulation).execute(throwingInstruction());
+        new VirtualMachine(simulation).execute(throwingInstruction(), new ExecutionContext(simulation.getEnvironment(), false));
 
         assertThat(organism.isDead()).isTrue();
         assertThat(organism.getLastInstructionExecution()).isNotNull();
