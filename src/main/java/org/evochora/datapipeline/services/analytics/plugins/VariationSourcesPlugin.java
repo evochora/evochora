@@ -255,7 +255,7 @@ public class VariationSourcesPlugin extends AbstractAnalyticsPlugin {
             entry.dataSources.put(lodName, metricId + "/" + lodName + "/**/*.parquet");
         }
 
-        entry.generatedQuery = levelWindowQuery();
+        entry.generatedQuery = windowSumQuery();
         List<String> outputColumns = new java.util.ArrayList<>();
         outputColumns.add("tick");
         outputColumns.addAll(COUNT_COLUMNS);
@@ -362,28 +362,32 @@ public class VariationSourcesPlugin extends AbstractAnalyticsPlugin {
     }
 
     /**
-     * Builds the query the browser runs over the loaded rows: the births of one window of the
-     * loaded level, added up, one row per window.
+     * Builds the query the browser runs over the loaded rows: the births of one window, added up,
+     * one row per window.
      * <p>
-     * A bar therefore covers exactly the window its level stands for, and choosing a coarser level
-     * makes the bars wider rather than leaving the picture as it was. The rows of a level do not
-     * already say this: a level writes what it holds when a batch ends too, so its rows fall on
-     * ticks closer together than its window is wide. {@code {tickInterval}} is the width of that
-     * window, which the browser knows from the manifest and fills in before the query runs.
+     * The rows of a level do not already say this: a level writes what it holds when a batch ends
+     * too, so its rows fall on ticks closer together than its window is wide. How many windows the
+     * card draws it fills in for {@code {buckets}}; how wide one of them is follows from the ticks
+     * the loaded rows actually cover, which is the only thing that cannot be out of date.
      *
      * @return the SQL with {@code {table}} standing for the loaded rows
      */
-    private static String levelWindowQuery() {
+    private static String windowSumQuery() {
         String sums = COUNT_COLUMNS.stream()
             .map(name -> "COALESCE(SUM(" + name + "), 0)::BIGINT AS " + name)
             .collect(java.util.stream.Collectors.joining(",\n                "));
         return """
+            WITH params AS (
+                SELECT GREATEST(1, (MAX(tick) - MIN(tick)) / {buckets})::BIGINT AS bucket_size
+                FROM {table}
+            )
             SELECT
-                (tick / {tickInterval})::BIGINT * {tickInterval} AS tick,
+                (FLOOR(tick / (SELECT bucket_size FROM params))
+                    * (SELECT bucket_size FROM params))::BIGINT AS tick,
                 %s
             FROM {table}
             GROUP BY 1
-            ORDER BY 1
+            ORDER BY tick
             """.formatted(sums);
     }
 

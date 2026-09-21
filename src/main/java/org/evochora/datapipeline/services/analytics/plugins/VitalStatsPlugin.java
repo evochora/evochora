@@ -146,7 +146,8 @@ public class VitalStatsPlugin extends AbstractAnalyticsPlugin {
             WITH
             params AS (
                 -- The width of one window, as the card asks for it
-                SELECT {tickInterval}::BIGINT AS bucket_size
+                SELECT GREATEST(1, (MAX(tick) - MIN(tick)) / {buckets})::BIGINT AS bucket_size
+                FROM {table}
             ),
             raw AS (
                 -- Rows written before the causes were recorded have no cause columns; they read as

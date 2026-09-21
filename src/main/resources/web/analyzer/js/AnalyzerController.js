@@ -485,32 +485,19 @@ export async function loadDashboard(runId) {
     }
 
     /**
-     * Fills the width of the loaded level's window into a query that asks for it.
+     * Fills the number of windows a card draws into a query that asks for it.
      *
      * A metric whose rows are counts writes one row per window of its level, and another whenever a
-     * batch ends inside one, so its rows lie closer together than its window is wide. A query that
-     * wants one row per window says {@code {tickInterval}} where that width belongs, and the
-     * manifest states it per level.
+     * batch ends inside one, so its rows lie closer together than its window is wide. Such a query
+     * says {@code {buckets}} where the number of windows belongs and works out their width from the
+     * ticks its own rows cover - the run may have grown since anything else was measured.
      *
      * @param {string} query - The metric's query
-     * @param {Object} metric - Manifest entry, carrying the tick interval of every level
-     * @param {string|null} lod - The level the rows were loaded from
-     * @param {number} span - The ticks the card shows, or 0 where it shows all of them
-     * @param {number} limit - How many rows the card can show apart
-     * @returns {string} The query with the width filled in
+     * @param {number} points - How many points the card draws
+     * @returns {string} The query with the number filled in
      */
-    function withTickInterval(query, metric, lod, span, limit) {
-        if (!query.includes('{tickInterval}')) {
-            return query;
-        }
-        const interval = metric.tickIntervals?.[lod];
-        if (!interval) {
-            throw new Error(
-                `Metric ${metric.id} asks for the width of ${lod}, which its manifest does not state`);
-        }
-        // Never finer than the level loaded, and never finer than the card can show
-        const wanted = span > 0 ? Math.ceil(span / limit) : interval;
-        return query.replaceAll('{tickInterval}', String(Math.max(interval, wanted)));
+    function withBuckets(query, points) {
+        return query.replaceAll('{buckets}', String(Math.max(1, points)));
     }
 
     /**
@@ -644,8 +631,7 @@ export async function loadDashboard(runId) {
                 const blobKey = `${metricId}_${storageLevel || 'auto'}`;
                 await DuckDBClient.registerParquetBlob(blobKey, parquetBlob);
                 data = await DuckDBClient.queryRegisteredBlob(blobKey,
-                    withTickInterval(metric.generatedQuery, metric, storageLevel,
-                        hasRange ? to - from : 0, points));
+                    withBuckets(metric.generatedQuery, points));
             } else {
                 const result = await AnalyticsApi.queryData(
                     currentRunId, metricId, storageLevel, controller.signal, viewFrom, viewTo

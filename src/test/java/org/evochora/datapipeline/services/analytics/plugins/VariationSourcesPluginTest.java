@@ -326,7 +326,7 @@ class VariationSourcesPluginTest {
         for (String column : COUNT_COLUMNS) {
             assertThat(entry.generatedQuery).contains("COALESCE(SUM(" + column + "), 0)::BIGINT AS " + column);
         }
-        assertThat(entry.generatedQuery).contains("{tickInterval}").contains("GROUP BY 1");
+        assertThat(entry.generatedQuery).contains("{buckets}").contains("GROUP BY 1");
     }
 
     @Test

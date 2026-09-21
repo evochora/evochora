@@ -110,7 +110,8 @@ public class AgeDistributionPlugin extends AbstractAnalyticsPlugin {
         return """
             WITH
             params AS (
-                SELECT {tickInterval}::BIGINT AS bucket_size
+                SELECT GREATEST(1, (MAX(tick) - MIN(tick)) / {buckets})::BIGINT AS bucket_size
+                FROM {table}
             )
             SELECT
                 MIN(tick)::BIGINT AS tick,
