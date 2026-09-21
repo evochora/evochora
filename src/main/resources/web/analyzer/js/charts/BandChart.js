@@ -7,6 +7,9 @@ import { formatTickValue, axisTicks, tooltipTitle, tooltipValue } from './ChartU
  * Renders percentile data as layered bands to show distribution over time.
  * This is ideal for visualizing age distributions, showing min/max, interquartile range, etc.
  *
+ * A group may ask for a fainter shading than the default through {@code alpha}, which a chart
+ * holding several groups needs so that their lines stay the strongest thing on it.
+ *
  * A metric may draw more than one distribution in one chart: {@code groups} names each of them
  * with its own colour and its own percentile columns, and the legend tells them apart by name.
  * Without it the chart draws the single distribution of its {@code y} columns.
@@ -18,9 +21,18 @@ import { formatTickValue, axisTicks, tooltipTitle, tooltipValue } from './ChartU
     const BAND_ALPHA = ['20', '40', '60', '80'];
     const BAND_BASE = '#4a9eff';
 
+    /** The colour of the line the bands are held against, where a metric names one. */
+    const REFERENCE_COLOR = '#9aa0a6';
+
     const PALETTE = {
         medianLine: '#a0e0a0',
     };
+
+    // The palette every chart of the analyzer hands out, by the position of the series
+    const COLORS = [
+        '#4a9eff', '#a0e0a0', '#ffb366', '#dda0dd', '#87ceeb',
+        '#ffd700', '#ff6b6b', '#98d8c8', '#f08080', '#c79ecf'
+    ];
 
     const SECOND_AXIS_COLORS = ['#ffb366', '#dda0dd'];
 
@@ -32,7 +44,15 @@ import { formatTickValue, axisTicks, tooltipTitle, tooltipValue } from './ChartU
      * @param {number} total - How many bands there are
      * @returns {string} An rgba-style hex colour
      */
+    // A band is shaded by how wide it is: the outermost is the faintest. A group of five
+    // percentiles fills the ramp from the middle outwards, a group of one band takes the faintest,
+    // which is what a chart holding several groups needs so their lines stay readable
     function bandColor(base, index, total) {
+        // One band is the whole spread of its group, and several groups of one band share the
+        // chart: it takes the faintest shading, so the lines stay the strongest thing on the plot
+        if (total === 1) {
+            return base + BAND_ALPHA[0];
+        }
         const step = Math.max(0, BAND_ALPHA.length - total);
         return base + BAND_ALPHA[Math.min(BAND_ALPHA.length - 1, index + step)];
     }
@@ -59,12 +79,19 @@ function formatLabel(key) {
  */
 function bandGroups(config) {
     if (Array.isArray(config.groups) && config.groups.length > 0) {
-        return config.groups.map(group => ({
-            name: group.name || '',
-            base: group.color || BAND_BASE,
-            median: group.color || PALETTE.medianLine,
-            keys: group.y || []
-        }));
+        return config.groups.map((group, index) => {
+            // One group keeps the chart's own blue; several take the palette, so that a chart of
+            // bands looks like every other chart of the analyzer
+            const color = group.color
+                || (config.groups.length > 1 ? COLORS[index % COLORS.length] : BAND_BASE);
+            return {
+                name: group.name || '',
+                base: color,
+                alpha: group.alpha || null,
+                median: config.groups.length > 1 || group.color ? color : PALETTE.medianLine,
+                keys: group.y || []
+            };
+        });
     }
     return [{ name: '', base: BAND_BASE, median: PALETTE.medianLine, keys: config.y || [] }];
 }
@@ -79,25 +106,61 @@ function bandGroups(config) {
  * @param {string} key - The column
  * @returns {string} The label of that column
  */
+/**
+ * What a group of bands is called: its own name, or the name of the card where a chart draws only
+ * one quantity and the group carries no name of its own.
+ *
+ * @param {Object} group - The band group
+ * @param {Object} config - Visualization config, carrying the card's name
+ * @returns {string} The name of the quantity the group draws
+ */
+function quantityOf(group, config) {
+    if (group.name) {
+        return formatLabel(group.name);
+    }
+    return config.metricName || config.yLabel || 'Value';
+}
+
+/**
+ * The percentiles a group draws, where its columns name them, so that a tooltip reads
+ * "Energy 10/25/50/75/90" rather than five column names. A group whose columns are not percentiles
+ * - a value with a range around it, say - has none.
+ *
+ * @param {Object} group - The band group
+ * @returns {Array<string>|null} The percentiles, or null where the columns name none
+ */
+function percentilesOf(group) {
+    const parts = group.keys.map(key => key.split('_').pop().replace(/^p(?=\d)/i, ''));
+    return parts.every(part => /^\d+$/.test(part)) ? parts : null;
+}
+
 function percentileLabel(name, key) {
-    const prefix = name.toLowerCase().replace(/\s+/g, '_') + '_';
+    const stem = name.toLowerCase().replace(/\s+/g, '_');
+    if (key.toLowerCase() === stem) {
+        return '';
+    }
+    const prefix = stem + '_';
     const bare = name && key.toLowerCase().startsWith(prefix) ? key.slice(prefix.length) : key;
     return formatLabel(bare);
 }
 
 /**
- * What the left axis is called where the metric does not name it: the groups, or, for a single
- * unnamed group, the columns it is drawn from.
+ * What the left axis is called where the metric does not name it: the quantities its groups draw,
+ * or, where they carry no names, the name of the card. The columns are never used: a list of
+ * percentile names is not the name of a quantity.
  *
  * @param {Array<{name: string, keys: Array<string>}>} groups - The band groups
+ * @param {Object} config - Visualization config, carrying the card's name
  * @returns {string} The title of the axis
  */
-function axisTitleOf(groups) {
+function axisTitleOf(groups, config) {
     const named = groups.map(group => group.name).filter(Boolean);
     if (named.length > 0) {
-        return named.join(', ');
+        return named.map(formatLabel).join(', ');
     }
-    return groups.flatMap(group => group.keys).map(formatLabel).join(', ');
+    // The quantity the card draws, never the list of its columns: an axis called
+    // "P10, P25, P50, P75, P90" names five columns and no quantity at all
+    return config.metricName || '';
 }
 
 /**
@@ -108,7 +171,10 @@ function axisTitleOf(groups) {
  * @returns {string} The label of the dataset
  */
 function groupLabel(name, text) {
-    return name ? `${name} ${text}` : text;
+    if (!name) {
+        return text;
+    }
+    return text ? `${formatLabel(name)} ${text}` : formatLabel(name);
 }
 
 /**
@@ -165,7 +231,7 @@ export function render(canvas, data, config) {
 
         // --- Create datasets for bands ---
         // Each band needs TWO datasets: lower boundary + upper boundary with fill
-        groups.forEach(group => {
+        groups.forEach((group, groupIndex) => {
             const bandCount = Math.floor(group.keys.length / 2);
             for (let i = 0; i < bandCount; i++) {
                 const lower = group.keys[i];
@@ -173,16 +239,22 @@ export function render(canvas, data, config) {
                 const label = groupLabel(group.name,
                     percentileLabel(group.name, lower) + '-' + percentileLabel(group.name, upper));
                 addBandDatasets(datasets, data, lower, upper, label,
-                    bandColor(group.base, i, bandCount));
+                    group.alpha ? group.base + group.alpha : bandColor(group.base, i, bandCount));
+                datasets[datasets.length - 1].bandGroup = groupIndex;
+                datasets[datasets.length - 2].bandGroup = groupIndex;
             }
         });
 
         // Median lines, above every band so that no group's shading covers another's middle
-        groups.forEach(group => {
+        groups.forEach((group, groupIndex) => {
             if (group.keys.length % 2 === 1) {
                 const middle = group.keys[(group.keys.length - 1) / 2];
                 datasets.push({
-                    label: groupLabel(group.name, percentileLabel(group.name, middle)),
+                    bandGroup: groupIndex,
+                    isMedian: true,
+                    // One entry per group, and it carries the quantity: the entry hides the whole
+                    // group, so naming it after one of its percentiles would say the wrong thing
+                    label: quantityOf(group, config),
                     data: data.map(row => toNumber(row[middle])),
                     borderColor: group.median,
                     borderWidth: 2,
@@ -192,6 +264,20 @@ export function render(canvas, data, config) {
                 });
             }
         });
+
+        // The value the bands are held against, where the metric names one: a dashed line without
+        // a scale of its own, since it is the same quantity the left axis carries
+        if (Number.isFinite(config.reference)) {
+            datasets.push({
+                label: config.referenceLabel || String(config.reference),
+                data: data.map(() => config.reference),
+                borderColor: REFERENCE_COLOR,
+                borderDash: [6, 4],
+                borderWidth: 1.5,
+                pointRadius: 0,
+                fill: false
+            });
+        }
 
         // Series on a second axis, for a quantity of a different kind - how many measurements
         // are behind the percentiles, say, which a band of three says something else than one
@@ -227,8 +313,20 @@ export function render(canvas, data, config) {
                             color: '#e0e0e0',
                             font: { family: "'Courier New', monospace", size: 11 },
                             usePointStyle: true,
-                            // Filter out boundary datasets from legend
-                            filter: item => !item.text.startsWith('_')
+                            // A group is one entry: its bands belong to its line and are hidden
+                            // and shown with it, since a percentile on its own says nothing
+                            filter: item => !item.text.startsWith('_') && !/-/.test(item.text)
+                        },
+                        onClick: (event, item, legend) => {
+                            const chart = legend.chart;
+                            const group = chart.data.datasets[item.datasetIndex].bandGroup;
+                            const hidden = !chart.isDatasetVisible(item.datasetIndex);
+                            chart.data.datasets.forEach((dataset, index) => {
+                                if (dataset.bandGroup === group) {
+                                    chart.setDatasetVisibility(index, hidden);
+                                }
+                            });
+                            chart.update();
                         }
                     },
                     tooltip: {
@@ -238,18 +336,42 @@ export function render(canvas, data, config) {
                         borderColor: '#333',
                         borderWidth: 1,
                         padding: 12,
+                        // A group reads as one line, so only the dataset carrying its middle
+                        // speaks; its bands and the boundary lines stay silent
+                        filter: item => !item.dataset.label.startsWith('_')
+                            && (item.dataset.bandGroup === undefined || item.dataset.isMedian),
                         callbacks: {
                             title: tooltipTitle,
                             label: context => {
-                                const name = context.dataset.label || '';
+                                const dataset = context.dataset;
                                 // The second axis carries its own quantity, and its own format
-                                const format = context.dataset.yAxisID === 'y2'
+                                const format = dataset.yAxisID === 'y2'
                                     ? config.y2Format : config.yFormat;
-                                return (name ? name + ': ' : '')
-                                    + tooltipValue(context.parsed.y, format);
+                                if (dataset.bandGroup === undefined) {
+                                    const name = dataset.label || '';
+                                    return (name ? name + ': ' : '')
+                                        + tooltipValue(context.parsed.y, format);
+                                }
+                                // A group reads as one line: its percentiles belong together, and
+                                // apart they say nothing about the spread they describe
+                                const group = groups[dataset.bandGroup];
+                                const row = data[context.dataIndex];
+                                const value = key => tooltipValue(toNumber(row[key]), format);
+                                const name = quantityOf(group, config);
+                                const percentiles = percentilesOf(group);
+                                if (percentiles) {
+                                    return `${name} ${percentiles.join('/')}: `
+                                        + group.keys.map(value).join(' / ');
+                                }
+                                // Three keys are a value and the range around it, and the range
+                                // says what it is rather than leaving the reader to guess
+                                const middle = group.keys[(group.keys.length - 1) / 2];
+                                const ends = [group.keys[0], group.keys[group.keys.length - 1]];
+                                const spread = config.bandLabel ? config.bandLabel + ' ' : '';
+                                return `${name}: ${value(middle)} (${spread}`
+                                    + `${value(ends[0])}\u2013${value(ends[1])})`;
                             },
-                            // Hide tooltips for boundary lines
-                            filter: item => !item.dataset.label.startsWith('_')
+
                         }
                     }
                 },
@@ -272,7 +394,7 @@ export function render(canvas, data, config) {
                     y: {
                         title: {
                             display: true,
-                            text: config.yLabel || axisTitleOf(groups),
+                            text: config.yLabel || axisTitleOf(groups, config),
                             color: '#888'
                         },
                         ticks: { color: '#888', ...axisTicks(config.yFormat) },

@@ -322,10 +322,11 @@ class VariationSourcesPluginTest {
         ManifestEntry entry = plugin.getManifestEntry();
 
         assertThat(entry.outputColumns).startsWith("tick").containsAll(COUNT_COLUMNS);
+        // A bar covers one window of the level loaded, so that choosing a level widens the bars
         for (String column : COUNT_COLUMNS) {
             assertThat(entry.generatedQuery).contains("COALESCE(SUM(" + column + "), 0)::BIGINT AS " + column);
         }
-        assertThat(entry.generatedQuery).contains("bucket_size").contains("LEFT JOIN").contains("GROUP BY b.bucket_tick");
+        assertThat(entry.generatedQuery).contains("{tickInterval}").contains("GROUP BY 1");
     }
 
     @Test
@@ -341,39 +342,48 @@ class VariationSourcesPluginTest {
     }
 
     @Test
-    void theSecondCardReadsTheParquetFilesOfThisMetric() {
+    void theSecondCardReadsNothingOfThisMetricsOwnFiles() {
         ManifestEntry success = mutationSuccess(plugin);
 
         assertThat(success.storageMetricId).isEqualTo("variation_sources");
-        assertThat(success.dataSources).containsOnlyKeys("lod0");
         assertThat(success.name).isEqualTo("Mutation Success");
-        assertThat(success.generatedQuery).isEqualTo(
-            "SELECT MIN(tick) AS first_tick, MAX(tick) AS last_tick FROM {table}");
+        // The card draws only what it derives from the births table, so it reads nothing of this
+        // plugin's own files - naming them would cost a pass over every one of them for nothing
+        assertThat(success.dataSources).isNull();
+        assertThat(success.generatedQuery).isNull();
     }
 
     @Test
     void theSecondCardDerivesItsSeriesFromTheBirthsReadColumnWise() {
         ManifestEntry success = mutationSuccess(plugin);
 
-        assertThat(success.visualization.type).isEqualTo("line-chart");
+        assertThat(success.visualization.type).isEqualTo("band-chart");
         assertThat(success.visualization.config)
             .containsEntry("derived", "mutation-success")
             // The derivation reads the births under this name and resolves their classes through
             // the list given here
             .containsEntry("birthsMetric", "births")
             .containsEntry("variationClasses", COUNT_COLUMNS)
-            .containsEntry("y", List.of("no_plugin_mutation", "duplication", "deletion",
-                "instruction_insertion", "label_insertion", "substitution"))
             .containsEntry("yMin", 0)
-            .containsEntry("reference", "no_plugin_mutation");
+            // The value is held against the births no plugin touched, which is one by definition
+            .containsEntry("reference", 1);
+        // One band per kind: the range the value could as well be, with the value in the middle
+        assertThat(bandsOf(success).keySet()).containsExactlyElementsOf(MUTATION_KINDS);
+        for (String kind : MUTATION_KINDS) {
+            assertThat(bandsOf(success).get(kind))
+                .isEqualTo(List.of(kind + "_low", kind, kind + "_high"));
+        }
         assertThat(success.companions).singleElement().satisfies(companion -> {
             assertThat(companion.metricId()).isEqualTo("births");
             assertThat(companion.columnar()).isTrue();
             assertThat(companion.followsLevel()).isFalse();
+            // Only what the derivation reads: a genome hash needs all 64 bits, and a query that
+            // sorts a result carrying one fails in the browser's DuckDB
             assertThat(companion.query())
                 .contains("parent_birth_tick")
                 .contains("variation")
-                .contains("ORDER BY birth_tick");
+                .doesNotContain("genome_hash")
+                .doesNotContain("ORDER BY");
         });
     }
 
@@ -398,18 +408,15 @@ class VariationSourcesPluginTest {
     }
 
     @Test
-    void aKindHasTheSameColourOnBothCards() {
+    void theStackedBarsNameTheirColoursAndTheBandsLeaveThemToTheChart() {
         List<ManifestEntry> entries = plugin.getManifestEntries();
-        Map<String, String> sourceColors = colorsOf(entries.get(0));
-        Map<String, String> successColors = colorsOf(entries.get(1));
 
-        // The stacked bars colour every class; the second card draws the five kinds and leaves the
-        // series they are measured against to the chart, which styles its reference line itself
-        assertThat(sourceColors).containsOnlyKeys(COUNT_COLUMNS);
-        assertThat(successColors.keySet()).containsExactlyElementsOf(MUTATION_KINDS);
-        for (String kind : MUTATION_KINDS) {
-            assertThat(successColors).containsEntry(kind, sourceColors.get(kind));
-        }
+        // The stacked bars colour every class, since a class has to keep its colour across the
+        // levels whatever is in the window; the card of bands takes the chart's palette by
+        // position, as every other card of the analyzer does
+        assertThat(colorsOf(entries.get(0))).containsOnlyKeys(COUNT_COLUMNS);
+        assertThat(groupsOf(entries.get(1))).allSatisfy(group ->
+            assertThat(group).doesNotContainKey("color"));
     }
 
     @Test
@@ -429,6 +436,25 @@ class VariationSourcesPluginTest {
     @SuppressWarnings("unchecked")
     private static Map<String, String> colorsOf(ManifestEntry entry) {
         return (Map<String, String>) entry.visualization.config.get("colors");
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<Map<String, Object>> groupsOf(ManifestEntry entry) {
+        List<Map<String, Object>> groups =
+            (List<Map<String, Object>>) entry.visualization.config.get("groups");
+        return groups == null ? List.of() : groups;
+    }
+
+    /**
+     * The keys of every band group of a card, by the group's name.
+     */
+    @SuppressWarnings("unchecked")
+    private static Map<String, List<String>> bandsOf(ManifestEntry entry) {
+        Map<String, List<String>> bands = new java.util.LinkedHashMap<>();
+        for (Map<String, Object> group : groupsOf(entry)) {
+            bands.put((String) group.get("name"), (List<String>) group.get("y"));
+        }
+        return bands;
     }
 
     /**

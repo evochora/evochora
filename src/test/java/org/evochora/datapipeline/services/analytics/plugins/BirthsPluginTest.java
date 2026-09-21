@@ -186,6 +186,9 @@ class BirthsPluginTest {
         assertThat(entry.id).isEqualTo("births");
         assertThat(entry.name).isEqualTo("Generation Time");
         assertThat(entry.visualization.type).isEqualTo("band-chart");
+        // Everything drawn is derived, so the card reads none of its own files and offers no level
+        assertThat(entry.dataSources).isNull();
+        assertThat(entry.generatedQuery).isNull();
         // The columns the card draws are the ones the derivation produces, over the births table it
         // names, whose classes it resolves through the list given here
         assertThat(entry.visualization.config)
@@ -202,10 +205,13 @@ class BirthsPluginTest {
             assertThat(companion.metricId()).isEqualTo("births");
             assertThat(companion.columnar()).isTrue();
             assertThat(companion.followsLevel()).isFalse();
+            // Only what the derivation reads: a genome hash needs all 64 bits, and a query that
+            // sorts a result carrying one fails in the browser's DuckDB
             assertThat(companion.query())
                 .contains("parent_birth_tick")
                 .contains("variation")
-                .contains("ORDER BY birth_tick");
+                .doesNotContain("genome_hash")
+                .doesNotContain("ORDER BY");
         });
     }
 

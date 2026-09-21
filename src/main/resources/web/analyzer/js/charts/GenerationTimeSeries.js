@@ -22,8 +22,8 @@ import * as BirthLines from './BirthLines.js';
  * @module GenerationTimeSeries
  */
 
-/** How many windows of equal width the run is cut into. */
-const WINDOW_COUNT = 40;
+/** How many windows of equal width the shown ticks are cut into where the config names none. */
+const DEFAULT_WINDOWS = 40;
 
 /** The percentiles the bands are drawn between, from the outermost pair to the median. */
 const PERCENTILES = [
@@ -65,14 +65,18 @@ function completedSteps(table, firstChild, bodiless, censorFrom) {
  * Sorts the generation times into the windows they were completed in.
  *
  * @param {Array<{childTick: number, parentBirthTick: number}>} steps - The completed steps
- * @param {number} first - The start of the range
+ * @param {number} from - The first tick the card shows
+ * @param {number} to - The last tick the card shows
  * @param {number} width - The width of one window
  * @returns {Array<Array<number>>} Per window its generation times, in ascending order
  */
-function timesByWindow(steps, first, width) {
-    const times = Array.from({ length: WINDOW_COUNT }, () => []);
+function timesByWindow(steps, from, to, width, count) {
+    const times = Array.from({ length: count }, () => []);
     for (const step of steps) {
-        times[BirthLines.windowOf(step.childTick, first, width, WINDOW_COUNT)]
+        if (step.childTick < from || step.childTick > to) {
+            continue;
+        }
+        times[BirthLines.windowOf(step.childTick, from, width, count)]
             .push(step.childTick - step.parentBirthTick);
     }
     for (const window of times) {
@@ -89,15 +93,17 @@ function timesByWindow(steps, first, width) {
  * @param {Set<number>} succeeded - The organisms that founded a line
  * @param {number} bodiless - The class of a birth without a body
  * @param {number} censorFrom - The first tick whose births are left out
- * @param {number} first - The start of the range
+ * @param {number} from - The first tick the card shows
+ * @param {number} to - The last tick the card shows
  * @param {number} width - The width of one window
  * @returns {Array<{births: number, founded: number}>} The weighted counts per window
  */
-function foundedByWindow(table, succeeded, bodiless, censorFrom, first, width) {
+function foundedByWindow(table, succeeded, bodiless, censorFrom, from, to, width, count) {
     const counted = birth => table.variation[birth] !== bodiless
-        && table.birthTick[birth] < censorFrom;
-    const keyOf = birth => table.parentId[birth] * WINDOW_COUNT
-        + BirthLines.windowOf(table.birthTick[birth], first, width, WINDOW_COUNT);
+        && table.birthTick[birth] < censorFrom
+        && table.birthTick[birth] >= from && table.birthTick[birth] <= to;
+    const keyOf = birth => table.parentId[birth] * count
+        + BirthLines.windowOf(table.birthTick[birth], from, width, count);
 
     const perParent = new Map();
     for (let index = 0; index < table.count; index++) {
@@ -107,12 +113,12 @@ function foundedByWindow(table, succeeded, bodiless, censorFrom, first, width) {
         }
     }
 
-    const windows = Array.from({ length: WINDOW_COUNT }, () => ({ births: 0, founded: 0 }));
+    const windows = Array.from({ length: count }, () => ({ births: 0, founded: 0 }));
     for (let index = 0; index < table.count; index++) {
         if (!counted(index)) {
             continue;
         }
-        const window = windows[BirthLines.windowOf(table.birthTick[index], first, width, WINDOW_COUNT)];
+        const window = windows[BirthLines.windowOf(table.birthTick[index], from, width, count)];
         const weight = 1 / perParent.get(keyOf(index));
         window.births += weight;
         if (succeeded.has(table.organismId[index])) {
@@ -132,9 +138,11 @@ function foundedByWindow(table, succeeded, bodiless, censorFrom, first, width) {
  *
  * @param {Object<string, Object<string, ArrayLike<*>>>|null} companion - The companions' columns
  * @param {Object} config - Visualization config naming the births metric and the classes
+ * @param {{from: number, to: number}|null} window - The ticks the card shows, or null for all
+ * @param {number} points - How many windows to cut the shown ticks into
  * @returns {Array<Object>} One row per window, or an empty list where there is nothing to draw
  */
-export function derive(companion, config) {
+export function derive(companion, config, window, points) {
     const table = BirthLines.readBirths(companion, config);
     const classes = BirthLines.classIndices(config, ['bodiless']);
     if (!table || !classes) {
@@ -148,24 +156,32 @@ export function derive(companion, config) {
         return [];
     }
 
-    const width = (table.last - table.first) / WINDOW_COUNT;
+    // The card covers the ticks the window names, the same ones every other card covers: a window
+    // whose births are too young to judge carries no value rather than shortening the axis. What
+    // decides whether a birth founded a line is read from the whole table, as it has to be
+    const from = window?.from ?? table.first;
+    const to = window?.to ?? table.last;
+    if (!(to > from)) {
+        return [];
+    }
+    const count = Math.max(2, Math.round(points || DEFAULT_WINDOWS));
+    const width = (to - from) / count;
     const steps = completedSteps(table, firstChild, classes.bodiless, censorFrom);
-    const times = timesByWindow(steps, table.first, width);
-    const founded = foundedByWindow(table, succeeded, classes.bodiless, censorFrom,
-        table.first, width);
+    const times = timesByWindow(steps, from, to, width, count);
+    const founded = foundedByWindow(table, succeeded, classes.bodiless, censorFrom, from, to,
+        width, count);
 
     const rows = [];
-    for (let window = 0; window < WINDOW_COUNT; window++) {
-        const tick = Math.round(table.first + (window + 0.5) * width);
+    for (let index = 0; index < count; index++) {
+        const tick = Math.round(from + (index + 0.5) * width);
         const judged = tick < censorFrom;
         const row = { tick };
         for (const percentile of PERCENTILES) {
             row[percentile.key] = judged
-                ? BirthLines.quantile(times[window], percentile.rank) : null;
+                ? BirthLines.quantile(times[index], percentile.rank) : null;
         }
-        row.newborns_that_found_a_line =
-            judged && founded[window].births >= BirthLines.MIN_WEIGHTED_BIRTHS
-                ? 100 * founded[window].founded / founded[window].births : null;
+        row.newborns_that_found_a_line = judged && founded[index].births > 0
+            ? 100 * founded[index].founded / founded[index].births : null;
         rows.push(row);
     }
     return rows;

@@ -95,6 +95,9 @@ public class VariationSourcesPlugin extends AbstractAnalyticsPlugin {
      * plugin touched, which the other series are measured against, and then the five kinds a
      * mutation plugin of this project reports.
      */
+    /** The series the kinds are held against, which rests on no kind's births. */
+    private static final String CONTROL_SERIES = "no_plugin_mutation";
+
     private static final List<String> SUCCESS_SERIES = List.of(
         "no_plugin_mutation",
         "duplication",
@@ -110,9 +113,6 @@ public class VariationSourcesPlugin extends AbstractAnalyticsPlugin {
      * would otherwise give the same kind another colour.
      */
     private static final Map<String, String> CLASS_COLORS = classColors();
-
-    /** How many time buckets the chart's query cuts the loaded ticks into. */
-    private static final int TARGET_BUCKETS = 50;
 
     private static final ParquetSchema SCHEMA = buildSchema();
 
@@ -255,7 +255,7 @@ public class VariationSourcesPlugin extends AbstractAnalyticsPlugin {
             entry.dataSources.put(lodName, metricId + "/" + lodName + "/**/*.parquet");
         }
 
-        entry.generatedQuery = bucketSumQuery();
+        entry.generatedQuery = levelWindowQuery();
         List<String> outputColumns = new java.util.ArrayList<>();
         outputColumns.add("tick");
         outputColumns.addAll(COUNT_COLUMNS);
@@ -291,9 +291,16 @@ public class VariationSourcesPlugin extends AbstractAnalyticsPlugin {
      * The card draws no series this table holds. Whether a birth founded a line that goes on is a
      * question about single births and their descendants, which exists only across the rows of the
      * births table and over the whole run, so the browser derives the series from that table, read
-     * column by column and unfiltered. What this entry's own query returns is the tick range this
-     * plugin's table covers, so that the card knows where its data begins and ends.
+     * column by column and unfiltered. The entry therefore names neither a query nor a level of
+     * detail of its own: reading this plugin's table for the card would cost a second pass over
+     * every file of it and give the card nothing it draws.
      * <p>
+     * <p>
+     * The companion carries the five columns the derivation reads and leaves the genome hashes
+     * where they are: a hash uses all 64 bits, which a JavaScript number cannot hold, and a query
+     * that sorts a result carrying one fails in the browser's DuckDB. A derivation that needs a
+     * hash asks for it as text, the way the lineage table hands its hashes over. The rows arrive
+     * in no particular order, since the derivation reads them as a set and not as a sequence.
      * {@code birthsMetric} names that table for the derivation, and {@code variationClasses} lets
      * the browser resolve a class name to the index the table's {@code variation} column holds, so
      * that the order of the classes is stated once.
@@ -309,30 +316,21 @@ public class VariationSourcesPlugin extends AbstractAnalyticsPlugin {
             + "received, against the births the mutation plugins left alone (= 1). A kind that "
             + "stays far below the others is a cliff.";
 
-        entry.dataSources = new HashMap<>();
-        for (int level = 0; level < lodLevels; level++) {
-            String lodName = lodLevelName(level);
-            entry.dataSources.put(lodName, metricId + "/" + lodName + "/**/*.parquet");
-        }
-
-        entry.generatedQuery = "SELECT MIN(tick) AS first_tick, MAX(tick) AS last_tick FROM {table}";
-
         entry.companions = List.of(new ManifestEntry.Companion(birthsMetricId,
-            "SELECT tick, birth_tick, organism_id, parent_id, parent_birth_tick, generation, "
-                + "genome_hash, parent_genome_hash, variation FROM {table} ORDER BY birth_tick",
+            "SELECT birth_tick, parent_birth_tick, organism_id, parent_id, variation FROM {table}",
             false, true));
 
-        entry.visualization = VisualizationHint.chart("line-chart", "tick")
+        entry.visualization = VisualizationHint.chart("band-chart", "tick")
             .with("derived", "mutation-success")
             .with("birthsMetric", birthsMetricId)
             .with("variationClasses", BirthVariation.CLASSES)
-            .with("y", SUCCESS_SERIES)
+            .with("groups", successGroups())
             .with("yFormat", "decimal")
             .with("yLabel", "Success against no plugin mutation")
             .with("yMin", 0)
-            .with("reference", "no_plugin_mutation")
-            .with("referenceLabel", "No plugin mutation (= 1)")
-            .with("colors", successColors());
+            .with("bandLabel", "95% CI")
+            .with("reference", 1)
+            .with("referenceLabel", "No plugin mutation (= 1)");
 
         return entry;
     }
@@ -343,50 +341,50 @@ public class VariationSourcesPlugin extends AbstractAnalyticsPlugin {
      *
      * @return the hex colour of each kind, in the order the card draws them
      */
-    private static Map<String, String> successColors() {
-        Map<String, String> colors = new LinkedHashMap<>();
+    /**
+     * Describes the band of every kind: the range its value could as well be at the births behind
+     * it, with the value in the middle. The colours are the chart's own, as on every other card.
+     *
+     * @return one band group per kind, in the order the kinds are listed
+     */
+    private static List<Map<String, Object>> successGroups() {
+        List<Map<String, Object>> groups = new java.util.ArrayList<>();
         for (String series : SUCCESS_SERIES) {
-            String color = CLASS_COLORS.get(series);
-            if (color != null) {
-                colors.put(series, color);
+            if (CONTROL_SERIES.equals(series)) {
+                continue;
             }
+            Map<String, Object> group = new LinkedHashMap<>();
+            group.put("name", series);
+            group.put("y", List.of(series + "_low", series, series + "_high"));
+            groups.add(group);
         }
-        return colors;
+        return groups;
     }
 
     /**
-     * Builds the query the browser runs over the loaded rows: the ticks are cut into
-     * {@link #TARGET_BUCKETS} buckets of equal width and the counts of every recording in a bucket
-     * are added up, so a bar stands for the births of a window. Every bucket gets a row, a bucket
-     * without a recording in it one of zeros, so that the bars stand at equal width across the
-     * whole range.
+     * Builds the query the browser runs over the loaded rows: the births of one window of the
+     * loaded level, added up, one row per window.
+     * <p>
+     * A bar therefore covers exactly the window its level stands for, and choosing a coarser level
+     * makes the bars wider rather than leaving the picture as it was. The rows of a level do not
+     * already say this: a level writes what it holds when a batch ends too, so its rows fall on
+     * ticks closer together than its window is wide. {@code {tickInterval}} is the width of that
+     * window, which the browser knows from the manifest and fills in before the query runs.
      *
      * @return the SQL with {@code {table}} standing for the loaded rows
      */
-    private static String bucketSumQuery() {
+    private static String levelWindowQuery() {
         String sums = COUNT_COLUMNS.stream()
             .map(name -> "COALESCE(SUM(" + name + "), 0)::BIGINT AS " + name)
             .collect(java.util.stream.Collectors.joining(",\n                "));
         return """
-            WITH params AS (
-                SELECT MIN(tick) AS first_tick,
-                       GREATEST(1, (MAX(tick) - MIN(tick)) / %d)::BIGINT AS bucket_size
-                FROM {table}
-            ),
-            buckets AS (
-                SELECT (first_tick + n * bucket_size)::BIGINT AS bucket_tick
-                FROM params, range(0, %d + 1) AS r(n)
-                WHERE first_tick + n * bucket_size <= (SELECT MAX(tick) FROM {table})
-            )
             SELECT
-                b.bucket_tick AS tick,
+                (tick / {tickInterval})::BIGINT * {tickInterval} AS tick,
                 %s
-            FROM buckets b
-            LEFT JOIN {table} t
-              ON t.tick >= b.bucket_tick AND t.tick < b.bucket_tick + (SELECT bucket_size FROM params)
-            GROUP BY b.bucket_tick
-            ORDER BY tick
-            """.formatted(TARGET_BUCKETS, TARGET_BUCKETS, sums);
+            FROM {table}
+            GROUP BY 1
+            ORDER BY 1
+            """.formatted(sums);
     }
 
     @Override

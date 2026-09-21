@@ -201,9 +201,16 @@ public class BirthsPlugin extends AbstractAnalyticsPlugin {
      * The card draws no series this table holds. Generation time is the distance from a birth to
      * the birth of the first child that reproduces in turn, which exists only across rows and over
      * the whole run, so the browser derives the bands and the share from the table itself, read
-     * column by column and unfiltered. What this entry's own query returns is the tick range the
-     * table covers, so that the card knows where its data begins and ends.
+     * column by column and unfiltered. The entry therefore names neither a query nor a level of
+     * detail of its own: there is nothing of this table for the card to read twice, and a level
+     * would offer a choice that changes nothing it draws.
      * <p>
+     * <p>
+     * The companion carries the five columns the derivation reads and leaves the genome hashes
+     * where they are: a hash uses all 64 bits, which a JavaScript number cannot hold, and a query
+     * that sorts a result carrying one fails in the browser's DuckDB. A derivation that needs a
+     * hash asks for it as text, the way the lineage table hands its hashes over. The rows arrive
+     * in no particular order, since the derivation reads them as a set and not as a sequence.
      * The columns named under {@code y} and {@code y2} are the ones the derivation produces, not
      * columns of this table; {@code variationClasses} lets the browser resolve a class name to the
      * index the {@code variation} column holds, so that the order of the classes is stated once.
@@ -217,17 +224,8 @@ public class BirthsPlugin extends AbstractAnalyticsPlugin {
             + "first child that reproduces in turn. The longer it takes, the slower the population "
             + "can change. Right axis: the share of newborns that found such a line at all.";
 
-        entry.dataSources = new HashMap<>();
-        for (int level = 0; level < lodLevels; level++) {
-            String lodName = lodLevelName(level);
-            entry.dataSources.put(lodName, metricId + "/" + lodName + "/**/*.parquet");
-        }
-
-        entry.generatedQuery = "SELECT MIN(tick) AS first_tick, MAX(tick) AS last_tick FROM {table}";
-
         entry.companions = List.of(new ManifestEntry.Companion(metricId,
-            "SELECT tick, birth_tick, organism_id, parent_id, parent_birth_tick, generation, "
-                + "genome_hash, parent_genome_hash, variation FROM {table} ORDER BY birth_tick",
+            "SELECT birth_tick, parent_birth_tick, organism_id, parent_id, variation FROM {table}",
             false, true));
 
         entry.visualization = VisualizationHint.chart("band-chart", "tick")

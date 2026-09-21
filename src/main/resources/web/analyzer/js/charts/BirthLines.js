@@ -8,6 +8,11 @@
  * and differ only in how they cut the run and what they hold the answer against. The rules they
  * share live here, so that a line means the same thing on either card.
  *
+ * The rows arrive as columns and in no particular order: nothing here reads them as a sequence.
+ * The first and the last tick are scanned for, and every parent's earliest child is the smallest
+ * tick found for it, so a table read in whatever order the files hand it over gives the same
+ * answer.
+ *
  * <strong>A birth without a body is no reproduction.</strong> Nothing was handed over, so such a
  * birth counts neither as a child of its parent nor as a carrier of anything of its own.
  *
@@ -36,11 +41,6 @@ const COLUMNS = {
     variation: 'variation'
 };
 
-/**
- * How many weighted births a window must carry for a point to be drawn. Below that the point says
- * more about the handful of parents behind it than about the run.
- */
-export const MIN_WEIGHTED_BIRTHS = 100;
 
 /**
  * The births table as the cards read it.
@@ -81,6 +81,7 @@ function toNumbers(column) {
     }
     return values;
 }
+
 
 /**
  * Reads the births table a card names as its companion.
