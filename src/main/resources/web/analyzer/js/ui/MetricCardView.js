@@ -149,7 +149,9 @@ function renderResolutionChips(container, metric) {
         const chip = document.createElement('button');
         chip.className = 'resolution-chip';
         chip.dataset.resolution = resolution;
-        chip.textContent = 'L' + resolution;
+        // The chips choose how dense the points are, not which of the stored levels is read: that
+        // is the loader's business, and a reader who is offered it would be choosing twice
+        chip.textContent = 'R' + resolution;
         chip.addEventListener('click', () => {
             const card = cards[metric.id];
             if (card && card.onResolutionChange) {
