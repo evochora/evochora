@@ -306,9 +306,7 @@ public class VirtualMachine {
         } else if (energyCost < 0) {
             organism.addEr(-energyCost); // addEr clamps to maxEnergy
         }
-        if (entropyDelta != 0) {
-            organism.addSr(entropyDelta);
-        }
+        organism.addSr(entropyDelta);
     }
 
     /**

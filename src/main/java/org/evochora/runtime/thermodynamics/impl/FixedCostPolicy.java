@@ -1,5 +1,7 @@
 package org.evochora.runtime.thermodynamics.impl;
 
+import java.util.Set;
+
 import com.typesafe.config.Config;
 import org.evochora.runtime.spi.thermodynamics.IThermodynamicPolicy;
 
@@ -18,11 +20,27 @@ import org.evochora.runtime.spi.thermodynamics.IThermodynamicPolicy;
  */
 public class FixedCostPolicy implements IThermodynamicPolicy {
 
+    /** Keys this policy accepts under its {@code options} block. */
+    private static final Set<String> OPTION_KEYS = Set.of("energy", "entropy");
+
     private int energyCost;
     private int entropyDelta;
 
+    /**
+     * {@inheritDoc}
+     *
+     * @throws IllegalStateException if the options carry a key this policy does not understand,
+     *         which would otherwise be dropped in silence and leave the instruction priced by
+     *         the defaults.
+     */
     @Override
     public void initialize(Config options) {
+        for (String key : options.root().keySet()) {
+            if (!OPTION_KEYS.contains(key)) {
+                throw new IllegalStateException("Unknown key '" + key
+                        + "' in options of FixedCostPolicy. Accepted keys: energy, entropy");
+            }
+        }
         this.energyCost = options.hasPath("energy") ? options.getInt("energy") : 1;
         this.entropyDelta = options.hasPath("entropy") ? options.getInt("entropy") : 1;
     }

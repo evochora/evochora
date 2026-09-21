@@ -1,6 +1,7 @@
 package org.evochora.runtime.thermodynamics.impl;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.typesafe.config.ConfigFactory;
 import org.evochora.runtime.Config;
@@ -195,5 +196,87 @@ class UniversalThermodynamicPolicyTest {
         assertThat(policy.priceEffect(WRITE, marked, 0, ACTOR))
                 .isEqualTo(policy.priceEffect(WRITE, unmarked, 0, ACTOR))
                 .isEqualTo(new Thermodynamics(9, -90));
+    }
+
+    // ===================================================================================
+    // A key the policy cannot place is a misspelling, not a default
+    // ===================================================================================
+
+    @Test
+    void anUnknownOptionKeyIsRejected() {
+        assertThatThrownBy(() -> policy("base-energy = 1\nbase-enrtopy = 1\n"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("base-enrtopy")
+                .hasMessageContaining("options");
+    }
+
+    @Test
+    void anUnknownOwnershipClassIsRejected() {
+        assertThatThrownBy(() -> policy("read-rules: { mine: { CODE: { energy = 1, entropy = 1 } } }"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("mine")
+                .hasMessageContaining("read-rules");
+    }
+
+    @Test
+    void anUnknownMoleculeTypeIsRejected() {
+        assertThatThrownBy(() -> policy("write-rules: { PLASMA: { energy = 1, entropy = 1 } }"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("PLASMA")
+                .hasMessageContaining("write-rules");
+    }
+
+    @Test
+    void anUnknownKeyInsideARuleIsRejected() {
+        assertThatThrownBy(() -> policy("write-rules: { CODE: { energy = 1, entropy = 1, enrgy-permille = 5 } }"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("enrgy-permille")
+                .hasMessageContaining("write-rules.CODE");
+    }
+
+    @Test
+    void anUnknownKeyInsideAValueOverrideIsRejected() {
+        assertThatThrownBy(() -> policy("""
+                write-rules: {
+                  CODE: {
+                    energy = 1, entropy = 1
+                    values: { "0": { energy = 0, entrpy = 0 } }
+                  }
+                }
+                """))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("entrpy");
+    }
+
+    @Test
+    void aValueOverrideKeyedBySomethingOtherThanAValueIsRejected() {
+        assertThatThrownBy(() -> policy("""
+                write-rules: {
+                  CODE: {
+                    energy = 1, entropy = 1
+                    values: { "zero": { energy = 0, entropy = 0 } }
+                  }
+                }
+                """))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("zero");
+    }
+
+    @Test
+    void theShippedConfigurationIsAccepted() {
+        // The two configuration files the project ships must pass the check they introduce.
+        // The thermodynamics block carries no substitutions of its own; the rest of the file
+        // does, and resolving it is the node's business, not this test's.
+        var config = com.typesafe.config.ConfigFactory.parseFile(new java.io.File("config/evochora.conf"))
+                .resolve(com.typesafe.config.ConfigResolveOptions.defaults().setAllowUnresolved(true));
+        var options = config.getConfig(
+                "pipeline.services.simulation-engine.options.runtime.thermodynamics.overrides.instructions")
+                .getConfig("\"PEEK, PEKI, PEKS, POKE, POKI, POKS, PPKR, PPKI, PPKS\"")
+                .getConfig("options");
+
+        var policy = new UniversalThermodynamicPolicy();
+        policy.initialize(options);
+
+        assertThat(policy.baseEnergy()).isZero();
     }
 }

@@ -3,13 +3,10 @@ package org.evochora.runtime.thermodynamics.impl;
 import com.typesafe.config.Config;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.spi.thermodynamics.IThermodynamicPolicy;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Optional;
+import java.util.Set;
 
 /**
  * A universal thermodynamic policy that supports base values, read rules, and write rules.
@@ -55,9 +52,55 @@ import java.util.Optional;
  */
 public class UniversalThermodynamicPolicy implements IThermodynamicPolicy {
 
-    private static final Logger LOG = LoggerFactory.getLogger(UniversalThermodynamicPolicy.class);
-
     private static final int DEFAULT_TYPE_KEY = -1;
+
+    /** Keys this policy accepts directly under its {@code options} block. */
+    private static final Set<String> OPTION_KEYS = Set.of("base-energy", "base-entropy", "read-rules", "write-rules");
+
+    /** Keys {@code read-rules} accepts: one block per ownership class. */
+    private static final Set<String> OWNERSHIP_KEYS = Set.of("own", "foreign", "unowned");
+
+    /** Keys a rule accepts. A value override is a rule too, but cannot nest further overrides. */
+    private static final Set<String> RULE_KEYS = Set.of("energy", "energy-permille", "entropy", "entropy-permille", "values");
+    private static final Set<String> VALUE_OVERRIDE_KEYS = Set.of("energy", "energy-permille", "entropy", "entropy-permille");
+
+    /**
+     * Rejects any key a configuration block carries that this policy does not understand.
+     * <p>
+     * A key the policy cannot place would otherwise be dropped in silence and the run would
+     * price its instructions by whatever the defaults are - a misspelling that changes the
+     * physics of an experiment without saying so. The same holds for a rule that omits a value
+     * it must state, which is why that case fails here too.
+     *
+     * @param config The block to check.
+     * @param path Where the block sits, for the message.
+     * @param allowed The keys the block may carry.
+     * @throws IllegalStateException if the block carries any other key.
+     */
+    private static void requireKnownKeys(Config config, String path, Set<String> allowed) {
+        for (String key : config.root().keySet()) {
+            if (!allowed.contains(key)) {
+                throw new IllegalStateException("Unknown key '" + key + "' in " + path
+                        + " of UniversalThermodynamicPolicy. Accepted keys: " + new java.util.TreeSet<>(allowed));
+            }
+        }
+    }
+
+    /**
+     * Resolves a molecule type name, or the placeholder for the type-level default.
+     *
+     * @param typeName The key naming the type.
+     * @param path Where the key sits, for the message.
+     * @return The type constant, or {@link #DEFAULT_TYPE_KEY} for {@code _default}.
+     * @throws IllegalStateException if the name is no molecule type.
+     */
+    private static int requireTypeKey(String typeName, String path) {
+        if ("_default".equalsIgnoreCase(typeName)) {
+            return DEFAULT_TYPE_KEY;
+        }
+        return Molecule.getTypeConstantByName(typeName).orElseThrow(() -> new IllegalStateException(
+                "Unknown molecule type '" + typeName + "' in " + path + " of UniversalThermodynamicPolicy."));
+    }
 
     /** One slot per possible value of the molecule's type field. */
     private static final int TYPE_SLOTS = 1 << org.evochora.runtime.Config.TYPE_BITS;
@@ -163,6 +206,8 @@ public class UniversalThermodynamicPolicy implements IThermodynamicPolicy {
 
     @Override
     public void initialize(Config options) {
+        requireKnownKeys(options, "options", OPTION_KEYS);
+
         // Parse base values
         this.baseEnergy = options.hasPath("base-energy") ? options.getInt("base-energy") : 0;
         this.baseEntropy = options.hasPath("base-entropy") ? options.getInt("base-entropy") : 0;
@@ -171,23 +216,16 @@ public class UniversalThermodynamicPolicy implements IThermodynamicPolicy {
         Map<Ownership, Map<Integer, TypeRule>> readRules = new EnumMap<>(Ownership.class);
         if (options.hasPath("read-rules")) {
             Config readRulesConfig = options.getConfig("read-rules");
+            requireKnownKeys(readRulesConfig, "read-rules", OWNERSHIP_KEYS);
             for (Ownership ownership : Ownership.values()) {
                 String ownerKey = ownership.name().toLowerCase();
                 if (!readRulesConfig.hasPath(ownerKey)) continue;
                 Config ownerConfig = readRulesConfig.getConfig(ownerKey);
                 Map<Integer, TypeRule> typeRules = new HashMap<>();
                 for (String typeName : ownerConfig.root().keySet()) {
-                    Config typeConfig = ownerConfig.getConfig(typeName);
-                    if ("_default".equalsIgnoreCase(typeName)) {
-                        typeRules.put(DEFAULT_TYPE_KEY, parseTypeRule(typeConfig));
-                    } else {
-                        Optional<Integer> typeConstant = Molecule.getTypeConstantByName(typeName);
-                        if (typeConstant.isPresent()) {
-                            typeRules.put(typeConstant.get(), parseTypeRule(typeConfig));
-                        } else {
-                            LOG.warn("Unknown molecule type '{}' in UniversalThermodynamicPolicy read-rules for '{}' will be ignored.", typeName, ownerKey);
-                        }
-                    }
+                    String path = "read-rules." + ownerKey + "." + typeName;
+                    typeRules.put(requireTypeKey(typeName, "read-rules." + ownerKey),
+                            parseTypeRule(ownerConfig.getConfig(typeName), path));
                 }
                 readRules.put(ownership, typeRules);
             }
@@ -198,17 +236,8 @@ public class UniversalThermodynamicPolicy implements IThermodynamicPolicy {
         if (options.hasPath("write-rules")) {
             Config writeRulesConfig = options.getConfig("write-rules");
             for (String key : writeRulesConfig.root().keySet()) {
-                Config typeConfig = writeRulesConfig.getConfig(key);
-                if ("_default".equalsIgnoreCase(key)) {
-                    writeRules.put(DEFAULT_TYPE_KEY, parseTypeRule(typeConfig));
-                } else {
-                    Optional<Integer> typeConstant = Molecule.getTypeConstantByName(key);
-                    if (typeConstant.isPresent()) {
-                        writeRules.put(typeConstant.get(), parseTypeRule(typeConfig));
-                    } else {
-                        LOG.warn("Unknown molecule type '{}' in UniversalThermodynamicPolicy write-rules will be ignored.", key);
-                    }
-                }
+                writeRules.put(requireTypeKey(key, "write-rules"),
+                        parseTypeRule(writeRulesConfig.getConfig(key), "write-rules." + key));
             }
         }
 
@@ -298,21 +327,29 @@ public class UniversalThermodynamicPolicy implements IThermodynamicPolicy {
      * </pre>
      *
      * @param config The config block for this type.
+     * @param path Where the block sits, for the messages of rejected keys.
      * @return A TypeRule containing the default rule and any value overrides.
+     * @throws IllegalStateException if the block or one of its overrides carries an unknown key,
+     *         or if an override is not keyed by a molecule value.
      */
-    private TypeRule parseTypeRule(Config config) {
+    private TypeRule parseTypeRule(Config config, String path) {
+        requireKnownKeys(config, path, RULE_KEYS);
         Rule defaultRule = new Rule(config);
         Map<Integer, Rule> valueOverrides = null;
         if (config.hasPath("values")) {
             Config valuesConfig = config.getConfig("values");
             valueOverrides = new HashMap<>();
             for (String valueKey : valuesConfig.root().keySet()) {
+                int value;
                 try {
-                    int value = Integer.parseInt(valueKey);
-                    valueOverrides.put(value, new Rule(valuesConfig.getConfig(valueKey)));
+                    value = Integer.parseInt(valueKey);
                 } catch (NumberFormatException e) {
-                    LOG.warn("Non-integer value key '{}' in UniversalThermodynamicPolicy values block will be ignored.", valueKey);
+                    throw new IllegalStateException("Value override '" + valueKey + "' in " + path
+                            + ".values of UniversalThermodynamicPolicy is not a molecule value.", e);
                 }
+                Config overrideConfig = valuesConfig.getConfig(valueKey);
+                requireKnownKeys(overrideConfig, path + ".values.\"" + valueKey + "\"", VALUE_OVERRIDE_KEYS);
+                valueOverrides.put(value, new Rule(overrideConfig));
             }
         }
         return new TypeRule(defaultRule, valueOverrides);
