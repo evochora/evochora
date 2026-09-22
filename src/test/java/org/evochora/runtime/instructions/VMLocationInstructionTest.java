@@ -1022,19 +1022,21 @@ public class VMLocationInstructionTest {
     }
 
     /**
-     * Tests that PSLI fails when no matching label exists.
+     * Tests that PSLI pushes no position when no matching label exists, so that the location
+     * stack still grows by the one entry the program expects.
      */
     @Test
     @Tag("unit")
-    void testPsliFailsWhenNoLabel() {
+    void testPsliPushesNoneWhenNoLabel() {
         int nonExistentHash = 88888 & Config.VALUE_MASK;
 
         placeInstruction(org, "PSLI", nonExistentHash);
         sim.tick();
 
-        assertThat(org.isInstructionFailed()).isTrue();
-        assertThat(org.getFailureReason()).contains("No matching label found");
-        assertThat(org.getLocationStack()).isEmpty();
+        assertThat(org.isInstructionFailed()).isFalse();
+        Deque<int[]> ls = org.getLocationStack();
+        assertThat(ls.size()).isEqualTo(1);
+        assertThat(LocationValue.isNone(ls.pop())).isTrue();
     }
 
     /**
@@ -1084,27 +1086,30 @@ public class VMLocationInstructionTest {
     }
 
     /**
-     * Tests that LRLI fails when no matching label exists.
+     * Tests that LRLI writes no position when no matching label exists, replacing the position
+     * the register held before.
      */
     @Test
     @Tag("unit")
-    void testLrliFailsWhenNoLabel() {
+    void testLrliWritesNoneWhenNoLabel() {
         int nonExistentHash = 77777 & Config.VALUE_MASK;
+        org.writeLocationOperand(RegisterBank.LR.base, new int[]{2, 3});
         int lr0 = new Molecule(Config.TYPE_REGISTER, RegisterBank.LR.base).toInt();
 
         placeInstruction(org, "LRLI", lr0, nonExistentHash);
         sim.tick();
 
-        assertThat(org.isInstructionFailed()).isTrue();
-        assertThat(org.getFailureReason()).contains("No matching label found");
+        assertThat(org.isInstructionFailed()).isFalse();
+        assertThat(LocationValue.isNone((int[]) org.readOperand(RegisterBank.LR.base))).isTrue();
     }
 
     /**
-     * Tests that PSLI fails when the label's target cell is owned by another organism.
+     * Tests that PSLI pushes no position when the label's target cell is owned by another
+     * organism, so that the position of a foreign cell never reaches the location stack.
      */
     @Test
     @Tag("unit")
-    void testPsliFailsWhenTargetOwnedByOther() {
+    void testPsliPushesNoneWhenTargetOwnedByOther() {
         Environment env = sim.getEnvironment();
         int labelHash = 11111 & Config.VALUE_MASK;
         int[] labelPos = new int[]{8, 8};
@@ -1119,17 +1124,19 @@ public class VMLocationInstructionTest {
         placeInstruction(org, "PSLI", labelHash);
         sim.tick();
 
-        assertThat(org.isInstructionFailed()).isTrue();
-        assertThat(org.getFailureReason()).contains("owned by another organism");
-        assertThat(org.getLocationStack()).isEmpty();
+        assertThat(org.isInstructionFailed()).isFalse();
+        Deque<int[]> ls = org.getLocationStack();
+        assertThat(ls.size()).isEqualTo(1);
+        assertThat(LocationValue.isNone(ls.pop())).isTrue();
     }
 
     /**
-     * Tests that LRLI fails when the label's target cell is owned by another organism.
+     * Tests that LRLI writes no position when the label's target cell is owned by another
+     * organism, replacing the position the register held before.
      */
     @Test
     @Tag("unit")
-    void testLrliFailsWhenTargetOwnedByOther() {
+    void testLrliWritesNoneWhenTargetOwnedByOther() {
         Environment env = sim.getEnvironment();
         int labelHash = 22222 & Config.VALUE_MASK;
         int[] labelPos = new int[]{9, 9};
@@ -1141,12 +1148,13 @@ public class VMLocationInstructionTest {
         sim.addOrganism(other);
         env.setOwnerId(other.getId(), labelPos);
 
+        org.writeLocationOperand(RegisterBank.LR.base, new int[]{2, 3});
         int lr0 = new Molecule(Config.TYPE_REGISTER, RegisterBank.LR.base).toInt();
         placeInstruction(org, "LRLI", lr0, labelHash);
         sim.tick();
 
-        assertThat(org.isInstructionFailed()).isTrue();
-        assertThat(org.getFailureReason()).contains("owned by another organism");
+        assertThat(org.isInstructionFailed()).isFalse();
+        assertThat(LocationValue.isNone((int[]) org.readOperand(RegisterBank.LR.base))).isTrue();
     }
 
     /**

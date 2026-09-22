@@ -2,6 +2,7 @@ package org.evochora.compiler.e2e;
 
 import org.evochora.compiler.Compiler;
 import org.evochora.compiler.api.ProgramArtifact;
+import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
@@ -434,6 +435,64 @@ public class RuntimeIntegrationTest {
         // LR0 should contain TARGET's resolved position [0,10]
         int[] lr0Value = (int[]) org.readOperand(RegisterBank.LR.base);
         assertThat(lr0Value).as("LR0 should contain TARGET's position [0,10] passed via LVAL").isEqualTo(new int[]{0, 10});
+    }
+
+    /**
+     * Tests LVAL with a label argument whose label no longer exists in the world.
+     * PSLI pushes no position in its place, so the procedure receives no position in FLR0
+     * and its POPL takes exactly the entry the caller pushed: the entry the caller had on
+     * the location stack before the CALL is still there after the RET.
+     */
+    @Test
+    @Tag("integration")
+    void lvalWithMissingLabelPassesNoPositionAndKeepsLocationStackDepth() throws Exception {
+        String source = String.join("\n",
+                ".ORG 0|10",
+                "TARGET:",
+                "NOP",
+                ".ORG 0|0",
+                "CALL SAVE_POS LVAL TARGET",
+                "WAIT",
+                ".ORG 0|3",
+                "EXPORT .PROC SAVE_POS LVAL lDest",
+                "  LRLR %LR0 lDest",        // Copy FLR0 into LR0
+                "  RET",
+                ".ENDP"
+        );
+
+        Compiler compiler = new Compiler();
+        EnvironmentProperties envProps = new EnvironmentProperties(new int[]{64, 64}, true);
+        ProgramArtifact artifact = compiler.compile(Arrays.asList(source.split("\\r?\\n")), "lval_missing_label_test.s", envProps);
+        assertThat(artifact).isNotNull();
+
+        Environment env = new Environment(envProps);
+        Simulation sim = SimulationTestUtils.createSimulation(env);
+
+        for (Map.Entry<int[], Integer> e : artifact.machineCodeLayout().entrySet()) {
+            env.setMolecule(Molecule.fromInt(e.getValue()), e.getKey());
+        }
+        env.setMolecule(new Molecule(Config.TYPE_CODE, 0), new int[]{0, 10});
+
+        Organism org = Organism.create(sim, new int[]{0, 0}, 1000);
+        org.setProgramId(artifact.programId());
+        org.writeLocationOperand(RegisterBank.LR.base, new int[]{5, 5});
+        int[] callerEntry = new int[]{7, 7};
+        org.getLocationStack().push(callerEntry);
+        sim.addOrganism(org);
+
+        // Run exactly 6 ticks: PSLI(1) + CALL(2) + POPL(3) + LRLR(4) + RET(5) + WAIT(6)
+        // Note: More ticks would wrap around the grid and start the CALL sequence again.
+        for (int i = 0; i < 6; i++) {
+            sim.tick();
+        }
+
+        assertThat(org.isInstructionFailed()).as("Failure: " + org.getFailureReason()).isFalse();
+        assertThat(LocationValue.isNone((int[]) org.readOperand(RegisterBank.LR.base)))
+                .as("LR0 must hold the no-position value the procedure received via LVAL")
+                .isTrue();
+        assertThat(org.getLocationStack())
+                .as("The caller's own entry must be the only one left on the location stack")
+                .containsExactly(callerEntry);
     }
 
     /**

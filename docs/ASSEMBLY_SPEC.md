@@ -407,7 +407,7 @@ Scans axis-aligned neighbors around the active DP and returns a bitmask indicati
     - `REF`: Passes registers by reference. Modifications inside the procedure affect the caller's register.
     - `VAL`: Passes registers or literal values by value. Modifications are local.
     - `LREF`: Passes location registers by reference. Modifications to the FLR inside the procedure are written back to the caller's location register on `RET`.
-    - `LVAL`: Passes location registers or label positions by value. When a label is passed, its position is resolved via fuzzy matching at call time.
+    - `LVAL`: Passes location registers or label positions by value. When a label is passed, its position is resolved via fuzzy matching at call time, as `PSLI` does: a label that matches nothing, or whose cell belongs to another organism, is passed as no position.
     - **Example**:
       ```
       CALL myProc REF %DR0 VAL %DR1 DATA:42 LREF %LR0 LVAL MY_LABEL
@@ -559,13 +559,13 @@ An `LS` entry holds a position or is empty, like a location register.
 * `DPLR %LOC_REG`: Copies the active `DP` into the location register.
 * `SKLR %LOC_REG`: Sets the active `DP` to the position stored in the location register.
 * `PUSL %LOC_REG`: Pushes the contents of the location register onto the `LS`.
-* `PSLI <Label>`: Resolves a label position via fuzzy matching and pushes it onto the `LS`. Target must be unowned or owned by self.
+* `PSLI <Label>`: Resolves a label position via fuzzy matching and pushes it onto the `LS`. If no label matches, or the target is owned by another organism, it pushes no position instead.
 * `POPL %LOC_REG`: Pops an entry from `LS` into the location register.
 * `LRDR %DEST_REG %LOC_REG`: Copies the position from the location register into the data register.
 * `LRDS %LOC_REG`: Pushes the position from the location register onto the `DS`.
 * `LSDR %DEST_REG`: Copies the top position from `LS` into the data register without popping.
 * `LRLR %LOC_DEST %LOC_SRC`: Copies the contents of one location register to another.
-* `LRLI %LOC_REG <Label>`: Resolves a label position via fuzzy matching and stores it in the location register. Target must be unowned or owned by self.
+* `LRLI %LOC_REG <Label>`: Resolves a label position via fuzzy matching and stores it in the location register. If no label matches, or the target is owned by another organism, it empties the register instead.
 * `CRLR %LOC_REG`: Empties the location register.
 * `SKJI <Label>`, `SKJR %REG`, `SKJS`: Sets the active `DP` to a label position using fuzzy matching (like `JMPI`). Target must be unowned or owned by self.
 
@@ -732,7 +732,7 @@ All paths in `.IMPORT`, `.REQUIRE`, and `.SOURCE` are resolved against configure
     - `REF`: **call-by-reference** parameters (mapped to `%FDRx`). Modifications inside the procedure affect the caller's register.
     - `VAL`: **call-by-value** parameters (mapped to `%FDRx`). Modifications are local.
     - `LREF`: Location **call-by-reference** parameters (mapped to `%FLRx`). Modifications to the FLR inside the procedure are written back to the caller's location register on `RET`.
-    - `LVAL`: Location **call-by-value** parameters (mapped to `%FLRx`). The caller can pass a location register or a label (resolved via fuzzy matching at call time).
+    - `LVAL`: Location **call-by-value** parameters (mapped to `%FLRx`). The caller can pass a location register or a label (resolved via fuzzy matching at call time; a label that cannot be resolved arrives as no position, which `IFSL`/`INSL` detect).
     - **Example**:
       ```
       .PROC myProc REF reg_a VAL val_b LREF loc_c
