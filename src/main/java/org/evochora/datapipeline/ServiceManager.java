@@ -582,27 +582,50 @@ public class ServiceManager implements IMonitorable {
     }
 
     /**
-     * Pauses every registered service, that is, every service that has been started at least once
-     * and not been replaced since.
+     * Pauses every service that is currently running.
      * <p>
-     * What pausing means in a service's current state is the service's own decision. A service that
-     * refuses is logged and skipped, and the remaining ones are still asked.
+     * A service in any other state is left alone and says nothing about it: a one-shot service that
+     * has finished its work is stopped for good, and a service that is already paused has nothing
+     * to pause. Only a service whose state changes between this decision and the call refuses, and
+     * that one is logged and skipped while the remaining ones are still asked.
      */
     public void pauseAll() {
-        log.info("Pausing all services...");
-        applyToAllServices(this::pauseService, new ArrayList<>(services.keySet()));
+        List<String> running = servicesInState(IService.State.RUNNING);
+        log.info("Pausing {} running service(s)...", running.size());
+        applyToAllServices(this::pauseService, running);
     }
 
     /**
-     * Resumes every registered service, that is, every service that has been started at least once
-     * and not been replaced since.
+     * Resumes every service that is currently paused, returning the pipeline to the state it was in
+     * before it was paused.
      * <p>
-     * What resuming means in a service's current state is the service's own decision. A service that
-     * refuses is logged and skipped, and the remaining ones are still asked.
+     * A service in any other state is left alone and says nothing about it; in particular, a service
+     * that was stopped before the pause stays stopped, because resuming is not starting. Only a
+     * service whose state changes between this decision and the call refuses, and that one is logged
+     * and skipped while the remaining ones are still asked.
      */
     public void resumeAll() {
-        log.info("Resuming all services...");
-        applyToAllServices(this::resumeService, new ArrayList<>(services.keySet()));
+        List<String> paused = servicesInState(IService.State.PAUSED);
+        log.info("Resuming {} paused service(s)...", paused.size());
+        applyToAllServices(this::resumeService, paused);
+    }
+
+    /**
+     * The registered services that are currently in the given state.
+     * <p>
+     * A snapshot: a service may have left that state by the time the caller acts on the name.
+     *
+     * @param state the state to look for
+     * @return the configured names of the services in that state, in no particular order
+     */
+    private List<String> servicesInState(IService.State state) {
+        List<String> names = new ArrayList<>();
+        for (Map.Entry<String, IService> entry : services.entrySet()) {
+            if (entry.getValue().getCurrentState() == state) {
+                names.add(entry.getKey());
+            }
+        }
+        return names;
     }
 
     /**

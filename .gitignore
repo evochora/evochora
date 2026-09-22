@@ -60,6 +60,10 @@ extensions/vscode/src/*.vsix
 # Local configuration file (user-specific overrides)
 local.conf
 
+# config/ carries machine-local overrides; only the shipped configuration is tracked
+config/*
+!config/evochora.conf
+
 # Python virtual environments
 .venv/
 

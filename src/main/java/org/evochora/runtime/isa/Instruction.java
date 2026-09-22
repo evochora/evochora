@@ -937,7 +937,7 @@ public abstract class Instruction {
         if (opcodeId == null) {
             throw new IllegalStateException("Instruction " + name + " is not registered");
         }
-        NEVER_FALLS_THROUGH.add(opcodeId);
+        NEVER_FALLS_THROUGH.add(opcodeId.intValue());
     }
 
     /**
