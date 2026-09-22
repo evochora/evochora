@@ -85,6 +85,36 @@ public class ServiceManagerTest {
     }
 
     @Test
+    void pausingAndResumingPassesOverAServiceThatHasFinished() {
+        ServiceManager sm = new ServiceManager(createTestConfig(true));
+
+        sm.startAll();
+        await().atMost(2, TimeUnit.SECONDS).untilAsserted(() -> {
+            assertEquals(IService.State.RUNNING, sm.getServiceStatus("producer").state());
+            assertEquals(IService.State.RUNNING, sm.getServiceStatus("consumer").state());
+        });
+
+        // A one-shot service that has done its work leaves the same trace: it is simply stopped
+        sm.stopService("consumer");
+        await().atMost(2, TimeUnit.SECONDS).untilAsserted(
+                () -> assertEquals(IService.State.STOPPED, sm.getServiceStatus("consumer").state()));
+
+        sm.pauseAll();
+        await().atMost(1, TimeUnit.SECONDS).untilAsserted(() -> {
+            assertEquals(IService.State.PAUSED, sm.getServiceStatus("producer").state());
+            assertEquals(IService.State.STOPPED, sm.getServiceStatus("consumer").state());
+        });
+
+        sm.resumeAll();
+        await().atMost(1, TimeUnit.SECONDS).untilAsserted(() -> {
+            assertEquals(IService.State.RUNNING, sm.getServiceStatus("producer").state());
+            assertEquals(IService.State.STOPPED, sm.getServiceStatus("consumer").state());
+        });
+
+        sm.stopAll();
+    }
+
+    @Test
     @AllowLog(level = LogLevel.WARN, messagePattern = ".* is not running or paused. Stop command ignored")
     void testLifecycleMethods() {
         ServiceManager sm = new ServiceManager(createTestConfig(true));
