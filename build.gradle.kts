@@ -284,6 +284,9 @@ distributions {
                 into("assembly")
             }
             from("config") {
+                // config/ is where a machine keeps its own overrides; only the configuration
+                // meant for everyone belongs in the distribution
+                include("evochora.conf")
                 into("config")
             }
             from("README.md")
