@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.concurrent.atomic.AtomicIntegerArray;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -11,6 +12,7 @@ import org.evochora.junit.extensions.logging.LogWatchExtension;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.extension.ExtendWith;
 
 @Tag("unit")
@@ -234,6 +236,93 @@ class TickWorkerPoolTest {
 
         for (int i = 0; i < counters.length(); i++) {
             assertThat(counters.get(i)).isEqualTo(500);
+        }
+    }
+
+    @Test
+    @Timeout(value = 10, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+    void dispatchReturnsWhenTheSlowestWorkerFinishesLongAfterTheMainThread() {
+        pool = new TickWorkerPool(4);
+        int[] data = new int[400];
+
+        pool.dispatch(data.length, (from, to) -> {
+            if (TickWorkerPool.getThreadIndex() == 3) {
+                try {
+                    Thread.sleep(200);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+            for (int i = from; i < to; i++) {
+                data[i] = i;
+            }
+        });
+
+        for (int i = 0; i < data.length; i++) {
+            assertThat(data[i]).isEqualTo(i);
+        }
+    }
+
+    @Test
+    @Timeout(value = 30, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+    void dispatchesWhoseWorkersFinishAroundTheMainThreadNeverHang() {
+        pool = new TickWorkerPool(4);
+        AtomicIntegerArray counters = new AtomicIntegerArray(64);
+
+        // The burn per thread shifts from round to round, so that workers finish before, with and
+        // after the main thread - the three orders in which the barrier hands over the wake-up.
+        for (int round = 0; round < 2000; round++) {
+            int spread = round % 7;
+            pool.dispatch(counters.length(), (from, to) -> {
+                int burn = TickWorkerPool.getThreadIndex() * spread * 200;
+                for (int b = 0; b < burn; b++) {
+                    Thread.onSpinWait();
+                }
+                for (int i = from; i < to; i++) {
+                    counters.incrementAndGet(i);
+                }
+            });
+        }
+
+        for (int i = 0; i < counters.length(); i++) {
+            assertThat(counters.get(i)).isEqualTo(2000);
+        }
+    }
+
+    @Test
+    @Timeout(value = 10, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+    void dispatchWakesTheDispatchingThreadWhenAnotherThreadCreatedThePool() throws InterruptedException {
+        // A service builds its simulation while it is being constructed and ticks it in its own
+        // thread afterwards, so the thread that creates the pool never is the one that dispatches.
+        pool = new TickWorkerPool(4);
+        int[] data = new int[400];
+        AtomicReference<Throwable> failure = new AtomicReference<>();
+
+        Thread dispatcher = new Thread(() -> {
+            try {
+                pool.dispatch(data.length, (from, to) -> {
+                    if (TickWorkerPool.getThreadIndex() == 3) {
+                        try {
+                            Thread.sleep(100);
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                        }
+                    }
+                    for (int i = from; i < to; i++) {
+                        data[i] = i;
+                    }
+                });
+            } catch (Throwable t) {
+                failure.set(t);
+            }
+        }, "dispatcher");
+
+        dispatcher.start();
+        dispatcher.join();
+
+        assertThat(failure.get()).isNull();
+        for (int i = 0; i < data.length; i++) {
+            assertThat(data[i]).isEqualTo(i);
         }
     }
 }

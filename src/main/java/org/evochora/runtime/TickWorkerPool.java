@@ -17,15 +17,18 @@ import java.util.concurrent.locks.LockSupport;
  *   <li>Main thread sets work parameters and increments the volatile {@code phase} counter</li>
  *   <li>Main thread unparks all workers and executes its own chunk (index 0)</li>
  *   <li>Workers wake, read the new phase, execute their chunks, and increment {@code workersCompleted}</li>
- *   <li>Main thread spin-waits until all workers have acknowledged completion</li>
+ *   <li>Main thread parks until the worker that completes the dispatch wakes it</li>
  * </ol>
  * <p>
- * Per-dispatch overhead is ~2-5µs (volatile write + unpark + spin-wait), compared to
- * ~20-25µs for ForkJoinPool (task allocation + park/unpark syscalls + join synchronization).
+ * No thread burns CPU while it waits: workers park between dispatches and the main thread parks
+ * for as long as the slowest worker of the current dispatch still runs. Per dispatch this costs
+ * one volatile write, one unpark per active worker and, unless the workers finish before the main
+ * thread reaches the barrier, one park/unpark pair for the main thread — against the ~20-25µs a
+ * ForkJoinPool spends on task allocation, deque handling and join synchronization.
  * <p>
- * <b>Thread safety:</b> {@link #dispatch(int, ChunkTask)} must only be called from the
- * main thread (the thread that created this pool). Multiple concurrent dispatches are
- * not supported. {@link #shutdown()} is idempotent and safe to call from any thread.
+ * <b>Thread safety:</b> {@link #dispatch(int, ChunkTask)} must not be called concurrently; the
+ * thread driving a dispatch is the one the workers wake at its end, and it need not be the thread
+ * that created the pool. {@link #shutdown()} is idempotent and safe to call from any thread.
  */
 public class TickWorkerPool {
 
@@ -47,6 +50,21 @@ public class TickWorkerPool {
 
     private final Thread[] workers;
     private final int totalThreads;
+    /**
+     * The thread that is driving the current dispatch and that the workers wake when they are done.
+     * Written before the phase counter is incremented, so every worker that reads the new phase
+     * reads this thread as well. It is not the thread that created the pool: a service typically
+     * builds its simulation in one thread and ticks it in another.
+     */
+    private Thread dispatchThread;
+
+    /**
+     * Set by the dispatching thread before it checks the completion count and cleared when it
+     * leaves the barrier. Together with the count it forms the handshake that decides who does the
+     * waking: both sides write their own flag before reading the other's, so a worker that misses
+     * the flag has already been seen by the dispatching thread, which then does not park.
+     */
+    private volatile boolean mainParked;
 
     private volatile int phase;
     private volatile int workSize;
@@ -131,7 +149,8 @@ public class TickWorkerPool {
      * with {@link ParallelWave#isActive()} set, on the main thread for the duration of its
      * chunk and on worker threads permanently.
      * <p>
-     * Must be called from the main thread only. Not reentrant.
+     * Drives the dispatch from the calling thread, which is also the thread the workers wake at
+     * its end. Not reentrant and never to be called by two threads at once.
      *
      * @param totalSize     the total number of work items (must be &gt;= 0)
      * @param activeThreads how many threads to use (1 = main only, up to {@code totalThreads}).
@@ -152,8 +171,9 @@ public class TickWorkerPool {
         this.task = task;
         workerException.set(null);
         workersCompleted.set(0);
+        dispatchThread = Thread.currentThread();
 
-        // Volatile write — happens-before for all workers reading phase
+        // Volatile write — happens-before for all workers reading phase and dispatchThread
         phase++;
 
         // Unpark only active workers
@@ -175,9 +195,18 @@ public class TickWorkerPool {
             ParallelWave.leave();
         }
 
-        // Wait for active workers to finish
-        while (workersCompleted.get() < activeWorkers) {
-            Thread.onSpinWait();
+        // Wait for active workers to finish. The flag goes up before the count is read, so a
+        // worker finishing in between still sees it and unparks; a stale permit from such a race
+        // only costs one extra loop iteration in a later dispatch. An interrupt on the dispatching
+        // thread makes park return immediately, so the loop then busy-waits for the short moment
+        // until the workers see the interrupt themselves and leave their chunks.
+        mainParked = true;
+        try {
+            while (workersCompleted.get() < activeWorkers) {
+                LockSupport.park();
+            }
+        } finally {
+            mainParked = false;
         }
 
         // Check for exceptions (worker exceptions take precedence if main also failed)
@@ -262,7 +291,9 @@ public class TickWorkerPool {
             } catch (Throwable t) {
                 workerException.compareAndSet(null, t);
             } finally {
-                workersCompleted.incrementAndGet();
+                if (workersCompleted.incrementAndGet() == active - 1 && mainParked) {
+                    LockSupport.unpark(dispatchThread);
+                }
             }
         }
     }
