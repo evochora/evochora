@@ -17,14 +17,14 @@ import java.util.concurrent.locks.LockSupport;
  *   <li>Main thread sets work parameters and increments the volatile {@code phase} counter</li>
  *   <li>Main thread unparks all workers and executes its own chunk (index 0)</li>
  *   <li>Workers wake, read the new phase, execute their chunks, and increment {@code workersCompleted}</li>
- *   <li>Main thread parks until the worker that completes the dispatch wakes it</li>
+ *   <li>Main thread spins for a bounded budget and then parks until a worker wakes it</li>
  * </ol>
  * <p>
- * No thread burns CPU while it waits: workers park between dispatches and the main thread parks
- * for as long as the slowest worker of the current dispatch still runs. Per dispatch this costs
- * one volatile write, one unpark per active worker and, unless the workers finish before the main
- * thread reaches the barrier, one park/unpark pair for the main thread — against the ~20-25µs a
- * ForkJoinPool spends on task allocation, deque handling and join synchronization.
+ * No thread holds a core for long while it waits: workers park between dispatches, and the main
+ * thread spins only for a bounded budget before it parks as well. Per dispatch this costs one
+ * volatile write, one unpark per active worker and, for waits that outlast the budget, one
+ * park/unpark pair for the main thread — against the ~20-25µs a ForkJoinPool spends on task
+ * allocation, deque handling and join synchronization.
  * <p>
  * <b>Thread safety:</b> {@link #dispatch(int, ChunkTask)} must not be called concurrently; the
  * thread driving a dispatch is the one the workers wake at its end, and it need not be the thread
@@ -57,6 +57,24 @@ public class TickWorkerPool {
      * builds its simulation in one thread and ticks it in another.
      */
     private Thread dispatchThread;
+
+    /**
+     * Spin iterations the dispatching thread runs before it looks at the clock for the first time.
+     * A wave whose workers finish within this window costs no time measurement at all, which is
+     * what makes the barrier cheap on systems where reading the clock is a system call.
+     */
+    private static final int SPINS_BEFORE_CLOCK = 64;
+
+    /** Spin iterations between two clock readings once the budget is being watched. */
+    private static final int SPINS_PER_CLOCK_CHECK = 64;
+
+    /**
+     * How long the dispatching thread may keep a core busy waiting before it parks. This is a
+     * budget, not a calibration: it caps what a wave may burn while it waits, whatever the
+     * hardware. Waits shorter than this stay in the spin, where they are cheaper than a park;
+     * longer ones are the waits that matter for the rest of the machine, and they go to sleep.
+     */
+    private static final long SPIN_BUDGET_NANOS = 10_000;
 
     /**
      * Set by the dispatching thread before it checks the completion count and cleared when it
@@ -195,19 +213,7 @@ public class TickWorkerPool {
             ParallelWave.leave();
         }
 
-        // Wait for active workers to finish. The flag goes up before the count is read, so a
-        // worker finishing in between still sees it and unparks; a stale permit from such a race
-        // only costs one extra loop iteration in a later dispatch. An interrupt on the dispatching
-        // thread makes park return immediately, so the loop then busy-waits for the short moment
-        // until the workers see the interrupt themselves and leave their chunks.
-        mainParked = true;
-        try {
-            while (workersCompleted.get() < activeWorkers) {
-                LockSupport.park();
-            }
-        } finally {
-            mainParked = false;
-        }
+        awaitWorkers(activeWorkers);
 
         // Check for exceptions (worker exceptions take precedence if main also failed)
         Throwable workerEx = workerException.get();
@@ -245,6 +251,49 @@ public class TickWorkerPool {
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
+        }
+    }
+
+    /**
+     * Waits until all active workers have reported completion.
+     * <p>
+     * A short spin covers the waits that are over before a park would have paid for itself. Once
+     * the spin budget is spent, the thread parks and the worker that fills the completion count
+     * wakes it, so a long wait leaves its core to the rest of the machine instead of holding it.
+     * <p>
+     * The park flag goes up before the count is read, so a worker finishing in between still sees
+     * it and unparks; a stale permit from such a race only costs one extra loop iteration in a
+     * later dispatch. An interrupt on the dispatching thread makes park return immediately, so the
+     * loop then busy-waits for the short moment until the workers see the interrupt themselves and
+     * leave their chunks.
+     *
+     * @param activeWorkers the number of workers expected to report completion
+     */
+    private void awaitWorkers(int activeWorkers) {
+        for (int i = 0; i < SPINS_BEFORE_CLOCK; i++) {
+            if (workersCompleted.get() >= activeWorkers) {
+                return;
+            }
+            Thread.onSpinWait();
+        }
+
+        long deadline = System.nanoTime() + SPIN_BUDGET_NANOS;
+        while (System.nanoTime() < deadline) {
+            for (int i = 0; i < SPINS_PER_CLOCK_CHECK; i++) {
+                if (workersCompleted.get() >= activeWorkers) {
+                    return;
+                }
+                Thread.onSpinWait();
+            }
+        }
+
+        mainParked = true;
+        try {
+            while (workersCompleted.get() < activeWorkers) {
+                LockSupport.park();
+            }
+        } finally {
+            mainParked = false;
         }
     }
 
