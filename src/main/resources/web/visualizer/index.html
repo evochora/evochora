@@ -32,6 +32,56 @@
     </div>
 </div>
 
+<!-- Help Panel (top-left, beside the logo) -->
+<button type="button" id="help-button" class="top-panel" title="Keyboard shortcuts (?)"
+        aria-label="Keyboard shortcuts" aria-expanded="false" aria-controls="help-overlay">?</button>
+
+<!-- Help (hidden until opened) -->
+<div id="help-overlay" hidden>
+    <div class="help-dialog" role="dialog" aria-modal="true" aria-labelledby="help-title" tabindex="-1">
+        <h2 id="help-title">Keyboard shortcuts</h2>
+        <p class="help-hint">? opens this, Esc closes it</p>
+        <div class="help-columns">
+            <div class="help-group">
+                <h3>Time</h3>
+                <div class="help-row">
+                    <div class="help-keys"><kbd>↑</kbd><span class="help-sep">/</span><kbd>↓</kbd></div>
+                    <span>One recorded tick back / forward, held down to repeat</span>
+                </div>
+                <div class="help-row">
+                    <div class="help-keys"><kbd>PgUp</kbd><span class="help-sep">/</span><kbd>PgDn</kbd></div>
+                    <span>Jump by the multiplier beside the tick field</span>
+                </div>
+                <div class="help-row">
+                    <div class="help-keys"><kbd>Enter</kbd></div>
+                    <span>Into the tick field &mdash; type a tick, Enter jumps</span>
+                </div>
+                <div class="help-row">
+                    <div class="help-keys"><kbd>End</kbd></div>
+                    <span>To the newest recorded tick</span>
+                </div>
+            </div>
+            <div class="help-group">
+                <h3>View</h3>
+                <div class="help-row">
+                    <div class="help-keys"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></div>
+                    <span>Move the view by one screen</span>
+                </div>
+                <div class="help-row">
+                    <div class="help-keys"><kbd>+</kbd><span class="help-sep">/</span><kbd>&minus;</kbd></div>
+                    <span>Zoom in / out one level</span>
+                </div>
+                <div class="help-row">
+                    <div class="help-keys"><kbd>Esc</kbd></div>
+                    <span>Close this help, or leave a field</span>
+                </div>
+            </div>
+        </div>
+        <p class="help-foot">A run records every n-th tick, not every one: the timeline moves from one
+            recorded tick to the next, and a tick typed in between lands on the nearest.</p>
+    </div>
+</div>
+
 <!-- Timeline Panel (bottom-center) -->
 <div id="timeline-panel" class="footer-panel">
     <div class="timeline-tick-input tick-input-wrapper">
@@ -39,14 +89,16 @@
         <span class="tick-total-suffix" id="tick-total-suffix">/N/A</span>
     </div>
     <div class="timeline-step-input tick-input-wrapper multiplier-wrapper" id="multiplier-wrapper" style="display: none;">
-        <input type="number" id="large-step-multiplier" class="tick-input" value="100" min="1">
-        <span id="multiplier-suffix" class="tick-total-suffix">x1</span>
+        <input type="number" id="large-step-multiplier" class="tick-input" value="100" min="1"
+               title="How many steps PgUp and PgDn jump at once">
+        <span id="multiplier-suffix" class="tick-total-suffix"
+              title="The recorded step here; a jump is this times the multiplier">x1</span>
     </div>
     <div class="timeline-nav-buttons">
-        <button class="timeline-nav-btn" id="btn-prev-large" title="Back ×100 (PgDn)">◀◀</button>
-        <button class="timeline-nav-btn" id="btn-prev-small" title="Previous sample (↓)">◀</button>
-        <button class="timeline-nav-btn" id="btn-next-small" title="Next sample (↑)">▶</button>
-        <button class="timeline-nav-btn" id="btn-next-large" title="Forward ×100 (PgUp)">▶▶</button>
+        <button class="timeline-nav-btn" id="btn-prev-large" title="Back (PgDn)">◀◀</button>
+        <button class="timeline-nav-btn" id="btn-prev-small" title="Back (↓)">◀</button>
+        <button class="timeline-nav-btn" id="btn-next-small" title="Forward (↑)">▶</button>
+        <button class="timeline-nav-btn" id="btn-next-large" title="Forward (PgUp)">▶▶</button>
     </div>
     <div class="timeline-track-container" id="timeline-track-container">
         <canvas id="timeline-track" height="24"></canvas>
@@ -62,7 +114,8 @@
             <span class="organism-count" id="organism-count">(0/0)</span>
         </div>
         <div class="organism-filter-wrapper" id="organism-filter-wrapper">
-            <input type="text" id="organism-filter" class="organism-filter-input" placeholder="Filter...">
+            <input type="text" id="organism-filter" class="organism-filter-input" placeholder="Filter..."
+                   title="Filter by id, genome or any value in the row">
             <button class="organism-filter-clear hidden" id="organism-filter-clear" title="Clear filter">✕</button>
         </div>
         <div class="organism-panel-controls">

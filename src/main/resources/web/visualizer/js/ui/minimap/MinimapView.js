@@ -21,6 +21,12 @@ export class MinimapView {
 
     /** Display labels for each overlay mode. */
     static MODE_LABELS = { org: 'Org', own: 'Own', off: 'Off' };
+    /** What each overlay mode shows, for the tooltip of the toggle. */
+    static MODE_TITLES = {
+        org: 'Organism dots — click for owner colours',
+        own: 'Cells coloured by owner — click to turn the overlay off',
+        off: 'Overlay off — click for organism dots',
+    };
 
     /**
      * Creates a new MinimapView.
@@ -457,6 +463,7 @@ export class MinimapView {
     _updateToggleButton() {
         if (!this.organismToggleBtn) return;
         this.organismToggleBtn.textContent = MinimapView.MODE_LABELS[this.overlayMode];
+        this.organismToggleBtn.title = MinimapView.MODE_TITLES[this.overlayMode];
         this.organismToggleBtn.classList.toggle('active', this.overlayMode !== 'off');
     }
 

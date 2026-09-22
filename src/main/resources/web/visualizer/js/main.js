@@ -2,13 +2,14 @@
 
 /**
  * @file Main entry point for the visualizer application.
- * Initializes all components: AppController, AppSwitcher, and RunSelectorPanel.
+ * Initializes all components: AppController, HelpOverlay, AppSwitcher, and RunSelectorPanel.
  */
 import { AppController } from './AppController.js';
 import { AppSwitcher } from '../../shared/app-switcher/AppSwitcher.js';
 import { RunSelectorPanel } from './ui/panels/RunSelectorPanel.js';
 import { showLoadFailedNotice } from '../../shared/run/RunAvailability.js';
 import { createWheelInputSwitch } from './ui/WheelInputSwitch.js';
+import { HelpOverlay } from './ui/HelpOverlay.js';
 
 // App controller instance (created after DOM is ready)
 export let appController = null;
@@ -82,6 +83,12 @@ async function init() {
     try {
         // Create the app controller (DOM is now ready)
         appController = new AppController();
+
+        new HelpOverlay({
+            button: document.getElementById('help-button'),
+            overlay: document.getElementById('help-overlay'),
+            anchor: document.getElementById('logo-panel')
+        });
 
         // Initialize shared components in parallel
         await Promise.all([

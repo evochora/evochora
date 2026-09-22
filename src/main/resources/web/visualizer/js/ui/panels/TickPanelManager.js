@@ -615,7 +615,8 @@ export class TickPanelManager {
 
     /**
      * Handles global keydown events for tick navigation.
-     * Up/Down = single step, PageUp/PageDown = large step.
+     * Up/Down = single step, PageUp/PageDown = large step, Enter = the tick field, End = the
+     * newest recorded tick.
      * @param {KeyboardEvent} e
      * @private
      */
@@ -637,6 +638,34 @@ export class TickPanelManager {
         } else if (e.key === 'PageDown') {
             e.preventDefault();
             this.navigateLargeStep('backward', true);
+        } else if (e.key === 'Enter') {
+            // Taken from whatever button holds the focus, which would fire its click instead
+            e.preventDefault();
+            this.focusTickInput();
+        } else if (e.key === 'End') {
+            e.preventDefault();
+            this.navigateToLastTick();
+        }
+    }
+
+    /**
+     * Puts the caret into the tick field with its text selected, so that a tick can be typed
+     * straight away.
+     */
+    focusTickInput() {
+        const { tickInput } = this.elements;
+        if (!tickInput) return;
+        tickInput.focus();
+        tickInput.select();
+    }
+
+    /**
+     * Navigates to the newest tick the run holds. A run that holds nothing stays where it is.
+     */
+    navigateToLastTick() {
+        const last = TickGrid.lastTick(this.getState().ranges || []);
+        if (last !== null) {
+            this.onNavigate(last);
         }
     }
 
@@ -831,8 +860,8 @@ export class TickPanelManager {
         const largeStep = this.getMultiplier() * this._localStep(base);
         const distance = (target) => target === null ? 0 : Math.abs(target - base);
 
-        if (prevSmallBtn) prevSmallBtn.title = `Previous sample: −${distance(TickGrid.previous(ranges, base))} (↓)`;
-        if (nextSmallBtn) nextSmallBtn.title = `Next sample: +${distance(TickGrid.next(ranges, base))} (↑)`;
+        if (prevSmallBtn) prevSmallBtn.title = `Back: −${this.formatNumber(distance(TickGrid.previous(ranges, base)))} (↓)`;
+        if (nextSmallBtn) nextSmallBtn.title = `Forward: +${this.formatNumber(distance(TickGrid.next(ranges, base)))} (↑)`;
         if (prevLargeBtn) prevLargeBtn.title = `Back: −${this.formatNumber(distance(TickGrid.jump(ranges, base, -largeStep)))} (PgDn)`;
         if (nextLargeBtn) nextLargeBtn.title = `Forward: +${this.formatNumber(distance(TickGrid.jump(ranges, base, largeStep)))} (PgUp)`;
     }
