@@ -1,14 +1,15 @@
 # main.evo
-# Primordial Organism
-# Main loop with reproduction and energy harvesting
-# Enclosed in a STRUCTURE shell
+# Primordial organism, shell-first variant
+#
+# The child's shell is built first, as a copy of this organism's own shell, and only
+# then is the body copied into it. Anything foreign encountered while the shell is
+# being built ends the attempt; inside the finished shell nothing is asked any more.
 
 # ----------------------------
-# Register Aliases (main state only)
+# Register aliases (main loop only)
 # ----------------------------
 .REG %ER  %DR0   # Current energy level
 .REG %SR  %DR1   # Current entropy level
-.REG %INI %DR2   # Initialization temp register
 
 # ----------------------------
 # Constants
@@ -17,52 +18,53 @@
 .DEFINE ENTROPY_REPRODUCTION_CONTINUE_THRESHOLD DATA:25000 # reproduce for certain from here on, below with probability SR / 25000
 
 # ----------------------------
-# STRUCTURE Shell (112x95)
+# STRUCTURE shell, with a label on the body cell diagonally inside each corner
+#
+# The wall is one molecule throughout, corners included: nothing in it is unique, so a lost
+# cell can be written back. The labels sit inside, on body cells, and are copied with the
+# body like any other cell. They are an abbreviation, nothing more — they let the copier jump
+# to the corner it starts from instead of walking there. The walk around the wall never looks
+# at them, so losing one costs a direction, not the ability to reproduce.
+#
+# The four names are chosen for the distance between their label values: a name's hash spreads
+# on its early characters, so the four differ in the prefix, far enough apart that no jump to
+# one of them can resolve to another.
 # ----------------------------
-.PLACE STRUCTURE:100 -1..110|-1      # Bottom edge
-.PLACE STRUCTURE:100 -1..110|93      # Top edge
-.PLACE STRUCTURE:100 -1|0..92        # Left edge
-.PLACE STRUCTURE:100 110|0..92       # Right edge
+.PLACE STRUCTURE:100 -1..110|-1      # North edge, corners included
+.PLACE STRUCTURE:100 -1..110|93      # South edge, corners included
+.PLACE STRUCTURE:100 -1|0..92        # West edge
+.PLACE STRUCTURE:100 110|0..92       # East edge
 
-# ===========================================================================
-# INITIALIZATION
-# ===========================================================================
-.ORG 0|0
-INIT: NOP^4
-  DPLS                                    # Save current DP to location stack
-  SKJI REPRODUCE.CONTINUE_STATE; NOP^4    # Jump DP to reproduction state location
-  JMPI LOCALSTATE_WRITE; NOP^12; JMPI LOCALSTATE_WRITE
-
-.ORG 0|2
-LOCALSTATE_WRITE: NOP^4
-  # Initialize reproduction state with default values
-  SETI %INI DATA:0; NOP^4                 # First value: 0 (DIRMASK)
-  PPKI %INI 1|0; NOP^4                    # Write to state slot 0
-  SEKI 1|0; NOP^4;                        # Move to next slot
-  SETI %INI DATA:-1; NOP^4                # Second value: -1 (SIDEVEC = left)
-  PPKI %INI 1|0; NOP^4                    # Write to state slot 1
-  SKLS; NOP^4                             # Restore original DP
-  JMPI MAIN_LOOP; NOP^8; JMPI MAIN_LOOP
+.ORG 109|0
+NE_CORNER:
+.ORG 109|92
+SE_CORNER:
+.ORG 0|92
+SW_CORNER:
 
 # ===========================================================================
 # MAIN LOOP - Decision between reproduction and energy harvesting
 # ===========================================================================
-.ORG 0|4
+.ORG 0|0
+NW_CORNER: JMPI MAIN_LOOP; NOP^4; JMPI MAIN_LOOP   # The IP starts on this label, one cell before the jump
+
+.ORG 0|2
 MAIN_LOOP:
   NRG %ER; NOP^4                          # Read current energy level
   NTR %SR; NOP^4                          # Read current entropy level
 
-  # Decide between reproduction and harvesting; both gates are dials, not switches
+  # Both gates are dials, not switches: below the threshold chance decides
   PGTI %ER REPRODUCTION_CONTINUE_THRESHOLD; NOP^4  # Energy against a draw below the threshold?
     JMPI MAIN_REPRODUCE; NOP^4            # ...reproduce
   PGTI %SR ENTROPY_REPRODUCTION_CONTINUE_THRESHOLD; NOP^4  # Entropy against a draw below the threshold?
     JMPI MAIN_REPRODUCE; NOP^4            # ...reproduce to dissipate entropy
   JMPI MAIN_HARVEST; NOP^4; JMPI MAIN_HARVEST
 
+.ORG 0|4
 MAIN_REPRODUCE: NOP^4
-  CALL REPRODUCE.CONTINUE REF %ER; NOP^4  # Call reproduction procedure
-  # The copier returns without writing when the energy is short, which leaves energy and entropy
-  # as they were: deciding again at once would decide the same. One harvest comes first
+  CALL REPRODUCE.CONTINUE REF %ER LVAL NW_CORNER LVAL NE_CORNER LVAL SE_CORNER LVAL SW_CORNER; NOP^4
+  # The copier returns without writing when the energy is short, which leaves energy and
+  # entropy as they were: deciding again at once would decide the same. One harvest first
   JMPI MAIN_HARVEST; NOP^4; JMPI MAIN_HARVEST
 
 .ORG 0|6
@@ -77,13 +79,13 @@ JMPI MAIN_LOOP; NOP^12; JMPI MAIN_LOOP
 # ENERGY HARVESTING MODULE
 # ===========================================================================
 .ORG 0|8
-.IMPORT "lib/energy.evo" AS ENERGY
+.IMPORT "shell-first/lib/energy.evo" AS ENERGY
 
 # ===========================================================================
 # REPRODUCTION MODULE
 # ===========================================================================
-.ORG 0|31
-.IMPORT "lib/reproduce.evo" AS REPRODUCE
+.ORG 0|30
+.IMPORT "shell-first/lib/reproduce.evo" AS REPRODUCE
 
 # ===========================================================================
 # SAFETY FALLBACK (mutation resistance)

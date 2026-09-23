@@ -1,0 +1,170 @@
+# lib/energy.evo
+# Exported energy harvesting procedure
+#
+# Movement strategy: Ballistic motion with periodic turns using prime periods.
+# Prime periods (89, 97, 101, 103) ensure varied exploration patterns and
+# reduce the chance of getting stuck in loops.
+#
+# What persists between calls lives in this procedure's static registers, which the
+# machine keeps per procedure. They start out as CODE:0, which no equality test against
+# a DATA value meets, so the procedure gives them their first values itself.
+
+# ===========================================================================
+# PROCEDURE ENTRY
+# ===========================================================================
+.ORG 0|0
+EXPORT .PROC HARVEST
+
+  # State that outlives a call
+  .REG %FWD_MASK %SDR0   # Cached forward direction as bitmask
+  .REG %KIDX     %SDR1   # Index 0..3 for prime periods
+  .REG %KLEFT    %SDR2   # Countdown until next periodic turn
+
+  # Working registers, gone with the return
+  .REG %DIR      %PDR3   # Current movement direction vector
+  .REG %MASK     %PDR4   # Bitmask from SNTI/SPNR operations
+  .REG %VEC      %PDR5   # Temporary direction vector
+
+  # Entry point with redundant jumps for mutation resistance
+  NOP; JMPI HARVEST_START; NOP^53; JMPI HARVEST_START
+
+  # ===========================================================================
+  # INITIALIZATION - Give the static registers their first values, pick a direction
+  # ===========================================================================
+  .ORG 0|4
+  HARVEST_START:
+    INTI %KIDX DATA:0                     # Untouched since birth, so still CODE-typed...
+      JMPI HARVEST_FIRST_RUN; NOP^4       # ...give the state its starting values
+    JMPI HARVEST_RANDOM_DIR; NOP^9; JMPI HARVEST_RANDOM_DIR
+
+  .ORG 0|2
+  HARVEST_FIRST_RUN: NOP^4
+    SETI %FWD_MASK DATA:1; NOP^4          # Forward is east until the first draw
+    SETI %KIDX DATA:0; NOP^4              # Start at the first prime period
+    SETI %KLEFT DATA:89; NOP^4            # ...and at its full count
+    JMPI HARVEST_RANDOM_DIR; NOP^4; JMPI HARVEST_RANDOM_DIR
+
+  .ORG 0|6
+  HARVEST_RANDOM_DIR: NOP^2
+    # Choose random passable direction
+    SPNR %MASK; NOP^4                     # Get bitmask of passable directions
+    IFI %MASK DATA:0                      # Any direction passable?
+      JMPI HARVEST_STUCK; NOP^4           # ...no, we're stuck
+    RBIR %DIR %MASK; NOP^4                # Random bit selection from passable
+    B2VR %DIR %DIR; NOP^4                 # Convert bitmask to unit vector
+    V2BR %FWD_MASK %DIR; NOP^4            # Store as forward bitmask
+    JMPI HARVEST_LOOP; NOP^15; JMPI HARVEST_LOOP
+
+  # ===========================================================================
+  # MAIN HARVEST LOOP - Scan for energy, consume if found, else move
+  # ===========================================================================
+  .ORG 0|8
+  HARVEST_LOOP: NOP^4
+    # Step 1: Scan surroundings for energy - if found, consume and return
+    SNTI %MASK ENERGY:0; NOP^2            # Scan neighbors for ENERGY type
+    IFI %MASK DATA:0                      # Any energy nearby?
+      JMPI HARVEST_MOVE; NOP^2            # ...no, proceed to movement
+
+    # Energy found - pick one and consume it
+    RBIR %VEC %MASK; NOP^2                # Random selection from energy neighbors
+    B2VR %VEC %VEC; NOP^2                 # Convert to direction vector
+
+    SCAN %MASK %VEC; NOP^2                # Read the cell again
+    LETI %MASK DATA:0                     # Does it hold anything? Our own ENERGY:0 operands
+      JMPI HARVEST_MOVE; NOP^2            # ...do not, and eating them blinds this scan
+    INTI %MASK ENERGY:0                   # Still energy? This is the last look before we take it,
+      JMPI HARVEST_MOVE; NOP^2            # ...so that a neighbour's wall is not what we take
+
+    PEEK %MASK %VEC; NOP^2                # Consume the energy molecule
+    JMPI HARVEST_RETURN; NOP^9; JMPI HARVEST_RETURN
+
+  # ===========================================================================
+  # RETURN - the state stands in the static registers, nothing to write back
+  # ===========================================================================
+  .ORG 0|10
+  HARVEST_RETURN:
+    # Multiple RET instructions for mutation resistance
+    NOP^8; RET; NOP^12; RET; NOP^4; RET
+
+  # ===========================================================================
+  # STUCK HANDLING - Reset to IP and restart
+  # ===========================================================================
+  .ORG 0|12
+  HARVEST_STUCK:
+    # No direction passable - sync DP to IP and restart
+    SYNC; NOP^4                           # Set DP = IP
+    JMPI HARVEST_START; NOP^34; JMPI HARVEST_START
+
+  # ===========================================================================
+  # MOVEMENT LOGIC - Move forward or turn if blocked
+  # ===========================================================================
+  .ORG 0|14
+  HARVEST_MOVE: NOP^2
+    # Step 2: Check if forward direction is passable
+    SPNR %MASK; NOP^4                     # Get passable directions
+    IFI %MASK DATA:0                      # Any direction passable?
+      JMPI HARVEST_STUCK; NOP^4           # ...no, we're stuck
+    ANDR %MASK %FWD_MASK; NOP^4           # Check if forward is passable
+    IFI %MASK DATA:0                      # Forward blocked?
+      JMPI HARVEST_TURN; NOP^2            # ...yes, turn
+
+    # Step 3: Move forward
+    SEEK %DIR; NOP^4                      # Take one step in current direction
+
+    # Step 4: Periodic turn countdown
+    DECR %KLEFT; NOP^5                    # Decrement steps until turn
+    IFI  %KLEFT DATA:0                    # Countdown reached zero?
+      JMPI HARVEST_TURN; NOP^5            # ...yes, time to turn
+    JMPI HARVEST_LOOP; NOP^4; JMPI HARVEST_LOOP
+
+  # ===========================================================================
+  # TURN LOGIC - Rotate 90° and load next prime period
+  # ===========================================================================
+  .ORG 0|16
+  HARVEST_TURN: NOP^2
+    # Rotate 90° clockwise in the XY plane
+    RTRI %DIR DATA:0 DATA:1; NOP^4        # Rotate direction vector CW
+    V2BR %FWD_MASK %DIR; NOP^4            # Update forward bitmask
+
+    # Advance to next prime period: KIDX = (KIDX + 1) mod 4
+    INCR %KIDX; NOP^5                     # Increment period index
+    GTI  %KIDX DATA:3                     # Index > 3?
+      JMPI HARVEST_PT_WRAP; NOP^4         # ...yes, wrap to 0
+    JMPI HARVEST_PT_LOAD; NOP^4; JMPI HARVEST_PT_LOAD
+
+  HARVEST_PT_WRAP: NOP^4
+    SETI %KIDX DATA:0; NOP^4              # Reset index to 0
+    JMPI HARVEST_PT_LOAD; NOP^2; JMPI HARVEST_PT_LOAD
+
+  # ===========================================================================
+  # PRIME PERIOD SELECTION - Load countdown for next period
+  # ===========================================================================
+  .ORG 0|18
+  HARVEST_PT_LOAD: NOP^4
+    # Select prime period based on KIDX and load KLEFT
+    IFI %KIDX DATA:0
+      JMPI HARVEST_PT_K0; NOP^4           # Period 0: 89 steps
+    IFI %KIDX DATA:1
+      JMPI HARVEST_PT_K1; NOP^4           # Period 1: 97 steps
+    IFI %KIDX DATA:2
+      JMPI HARVEST_PT_K2; NOP^4           # Period 2: 101 steps
+    # Default: Period 3
+    SETI %KLEFT DATA:103; NOP^4           # Period 3: 103 steps
+    JMPI HARVEST_LOOP; NOP^13; JMPI HARVEST_LOOP
+
+  .ORG 0|20
+  HARVEST_PT_K0: NOP^4
+    SETI %KLEFT DATA:89; NOP^4            # Prime period: 89 steps
+    JMPI HARVEST_LOOP; NOP^4; JMPI HARVEST_LOOP
+
+  HARVEST_PT_K1: NOP^4
+    SETI %KLEFT DATA:97; NOP^4            # Prime period: 97 steps
+    JMPI HARVEST_LOOP; NOP^4; JMPI HARVEST_LOOP
+
+  HARVEST_PT_K2: NOP^4
+    SETI %KLEFT DATA:101; NOP^4           # Prime period: 101 steps
+    JMPI HARVEST_LOOP; NOP^4; JMPI HARVEST_LOOP
+
+  # Safety jumps at end of procedure (in case mutation causes fall-through)
+  NOP; JMPI HARVEST_LOOP; NOP^3; JMPI HARVEST_LOOP
+.ENDP

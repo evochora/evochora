@@ -40,7 +40,8 @@ class AssemblyProgramsCompileTest {
             "assembly/examples,                 complex.evo",
             "assembly/examples/modules,         main.evo",
             "assembly/examples/duplicate-shell, main.evo",
-            "assembly/primordial,               main.evo",
+            "assembly/primordial,               classic/main.evo",
+            "assembly/primordial,               shell-first/main.evo",
     })
     @Tag("integration")
     void aProgramInThisRepositoryCompiles(String sourceRootPath, String fileName) throws Exception {

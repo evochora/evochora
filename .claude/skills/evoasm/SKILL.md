@@ -11,7 +11,7 @@ runtime source is the truth when the specification leaves a question open.
 
 - `docs/ASSEMBLY_SPEC.md`: the language and every instruction.
 - `src/main/java/org/evochora/runtime/isa/instructions/`: what an instruction really does.
-- `assembly/primordial/`: the self-replicator, the worked example for every idiom below.
+- `assembly/primordial/classic/`: the self-replicator, the worked example for every idiom below.
 - `assembly/examples/duplicate-shell/`: a small procedure with a driver, written with this
   workflow; `tools/trace/README.md` shows the queries that verified it.
 

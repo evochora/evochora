@@ -80,7 +80,7 @@ echo -e "  ${BOLD}Customization${NC}"
 echo -e "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 echo -e "  ${BOLD}Configuration:${NC}     ${DIM}evochora.conf${NC}"
-echo -e "  ${BOLD}Primordial Code:${NC}   ${DIM}assembly/primordial/main.evo${NC}"
+echo -e "  ${BOLD}Primordial Code:${NC}   ${DIM}assembly/primordial/classic/main.evo${NC}"
 echo -e "  ${BOLD}Assembly Docs:${NC}     ${DIM}docs/ASSEMBLY_SPEC.md${NC}"
 echo ""
 
