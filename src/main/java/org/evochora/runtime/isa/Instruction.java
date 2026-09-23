@@ -513,12 +513,25 @@ public abstract class Instruction {
      */
     protected boolean validateOwnership(int[] targetCoords, Organism organism,
                                         Environment environment, String instructionName) {
-        int ownerIdAtTarget = environment.getOwnerId(targetCoords);
-        if (ownerIdAtTarget != 0 && !organism.isCellAccessible(ownerIdAtTarget)) {
+        if (!isTargetAccessible(targetCoords, organism, environment)) {
             organism.instructionFailed(instructionName + ": Target cell is owned by another organism.");
             return false;
         }
         return true;
+    }
+
+    /**
+     * Tells whether the target coordinates are accessible to the organism, without failing the
+     * instruction: the target must be either unowned or owned by the organism itself.
+     *
+     * @param targetCoords The coordinates to check.
+     * @param organism     The organism performing the access.
+     * @param environment  The environment containing ownership data.
+     * @return {@code true} if the target is accessible
+     */
+    protected boolean isTargetAccessible(int[] targetCoords, Organism organism, Environment environment) {
+        int ownerIdAtTarget = environment.getOwnerId(targetCoords);
+        return ownerIdAtTarget == 0 || organism.isCellAccessible(ownerIdAtTarget);
     }
 
     /**

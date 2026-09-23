@@ -288,14 +288,7 @@ public class LocationInstruction extends Instruction {
                     org.instructionFailed("PSLI: label hash must be integer");
                     return;
                 }
-                int[] targetCoords = resolveLabelTarget(labelHash, org.getActiveDp(), org, env);
-                if (targetCoords == null) {
-                    org.instructionFailed("PSLI: No matching label found for hash "
-                            + labelHashText(labelHash));
-                    return;
-                }
-                if (!validateOwnership(targetCoords, org, env, "PSLI")) return;
-                if (!org.pushLocation(targetCoords)) { return; }
+                if (!org.pushLocation(labelLocation(labelHash, org, env))) { return; }
                 break;
             }
             case "LRLI": {
@@ -306,19 +299,33 @@ public class LocationInstruction extends Instruction {
                     org.instructionFailed("LRLI: label hash must be integer");
                     return;
                 }
-                int[] targetCoords = resolveLabelTarget(labelHash, org.getActiveDp(), org, env);
-                if (targetCoords == null) {
-                    org.instructionFailed("LRLI: No matching label found for hash "
-                            + labelHashText(labelHash));
-                    return;
-                }
-                if (!validateOwnership(targetCoords, org, env, "LRLI")) return;
-                if (!writeLocationOperand(destRegId, targetCoords)) return;
+                if (!writeLocationOperand(destRegId, labelLocation(labelHash, org, env))) return;
                 break;
             }
             default:
                 org.instructionFailed("Unknown location instruction: " + name);
         }
+    }
+
+    /**
+     * Turns a label into a location value: the position of the label that fuzzy matching finds
+     * from the active data pointer, or {@link LocationValue#NONE} when no label matches or the
+     * label's cell belongs to another organism. The instructions that read a location value as a
+     * coordinate refuse {@code NONE}, so a program learns of the missing label where it would use
+     * the position; the value itself still occupies its slot, which keeps a location stack that
+     * carries procedure parameters at the depth its callee expects.
+     *
+     * @param labelHash the hash of the label to resolve
+     * @param org       the organism resolving the label
+     * @param env       the environment holding the labels and their owners
+     * @return the label's position, or {@link LocationValue#NONE}
+     */
+    private int[] labelLocation(int labelHash, Organism org, Environment env) {
+        int[] targetCoords = resolveLabelTarget(labelHash, org.getActiveDp(), org, env);
+        if (targetCoords == null || !isTargetAccessible(targetCoords, org, env)) {
+            return LocationValue.NONE;
+        }
+        return targetCoords;
     }
 }
 

@@ -12,7 +12,7 @@ other in `ideas/`.
 ## Problem
 
 Replication capability currently hangs on a ~1000-instruction algorithm (read lines to the stack,
-write them back, manage the shell, mark ownership, FORK — `assembly/primordial/lib/reproduce.evo`).
+write them back, manage the shell, mark ownership, FORK — `assembly/primordial/classic/lib/reproduce.evo`).
 This is the single highest cliff in the fitness landscape: a large fraction of mutations landing
 *anywhere* in this algorithm destroys replication capability as a whole — and with it every future
 of the lineage. The algorithm also occupies most of the genome and execution time, leaving little

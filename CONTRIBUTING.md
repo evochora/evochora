@@ -28,7 +28,7 @@ Evochora is configured via HOCON configuration files. The experiment template [`
 
 ## Writing Your Own Organisms
 
-Organisms are programmed in **EvoASM**, Evochora's custom assembly language. The primordial organism in `assembly/primordial/main.evo` is a good starting point.
+Organisms are programmed in **EvoASM**, Evochora's custom assembly language. The primordial organism in `assembly/primordial/classic/main.evo` is a good starting point.
 
 **Quick Start:**
 1. Edit or create a `.evo` file in `assembly/`

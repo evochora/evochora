@@ -33,7 +33,7 @@ class AnnotationDiagnosticTest extends CompilerTestBase {
         CompilerOptions options = new CompilerOptions(List.of(new SourceRoot(assemblyRoot, null)));
 
         Compiler compiler = new Compiler();
-        ProgramArtifact artifact = compiler.compile("main.evo", testEnvProps, options);
+        ProgramArtifact artifact = compiler.compile("classic/main.evo", testEnvProps, options);
 
         assertNotNull(artifact.programId(), "programId must be present");
         assertNotNull(artifact.sources(), "sources must be present");
