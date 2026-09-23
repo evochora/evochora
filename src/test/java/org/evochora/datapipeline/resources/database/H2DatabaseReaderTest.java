@@ -502,4 +502,77 @@ class H2DatabaseReaderTest {
             assertThat(ancestors.get(2000L)).isEqualTo(1000L);
         }
     }
+
+    // --- readGenomeLineage tests ---
+
+    @Test
+    void readGenomeLineage_returnsEveryGenomeWithItsParent() throws Exception {
+        try (Connection conn = setupOrganismSchema()) {
+            insertOrganism(conn, 1, null, 0, 1000L);   // root
+            insertOrganism(conn, 2, 1, 10, 2000L);     // child of the root, new genome
+            insertOrganism(conn, 3, 2, 20, 2000L);     // inherits 2000 unchanged
+            insertOrganism(conn, 4, 2, 30, 3000L);     // new genome under 2000
+            conn.commit();
+        }
+
+        try (IDatabaseReader reader = provider.createReader(runId)) {
+            Map<Long, Long> lineage = reader.readGenomeLineage();
+
+            assertThat(lineage).hasSize(3);
+            assertThat(lineage.get(1000L)).isNull();
+            assertThat(lineage.get(2000L)).isEqualTo(1000L);
+            assertThat(lineage.get(3000L)).isEqualTo(2000L);
+        }
+    }
+
+    @Test
+    void readGenomeLineage_agreesWithTheWalkItReplaces() throws Exception {
+        try (Connection conn = setupOrganismSchema()) {
+            insertOrganism(conn, 1, null, 0, 1000L);
+            insertOrganism(conn, 2, 1, 10, 2000L);
+            insertOrganism(conn, 3, 2, 20, 3000L);
+            insertOrganism(conn, 4, 1, 30, 4000L);
+            conn.commit();
+        }
+
+        try (IDatabaseReader reader = provider.createReader(runId)) {
+            Map<Long, Long> lineage = reader.readGenomeLineage();
+            Map<Long, Long> walked = reader.readGenomeAncestors(List.of(3000L, 4000L));
+
+            assertThat(lineage).containsAllEntriesOf(walked);
+        }
+    }
+
+    @Test
+    void readGenomeLineage_takesTheEarliestCarrierOfAGenome() throws Exception {
+        // The same genome arising twice: the lowest organism id is where the line is drawn from
+        try (Connection conn = setupOrganismSchema()) {
+            insertOrganism(conn, 1, null, 0, 1000L);
+            insertOrganism(conn, 2, null, 0, 2000L);
+            insertOrganism(conn, 3, 1, 10, 5000L, 1000L);
+            insertOrganism(conn, 4, 2, 20, 5000L, 2000L);
+            conn.commit();
+        }
+
+        try (IDatabaseReader reader = provider.createReader(runId)) {
+            assertThat(reader.readGenomeLineage().get(5000L)).isEqualTo(1000L);
+        }
+    }
+
+    @Test
+    void readGenomeLineage_leavesOutGenomelessOrganisms() throws Exception {
+        try (Connection conn = setupOrganismSchema()) {
+            insertOrganism(conn, 1, null, 0, 0L);
+            insertOrganism(conn, 2, 1, 10, 1000L, 0L);
+            conn.commit();
+        }
+
+        try (IDatabaseReader reader = provider.createReader(runId)) {
+            Map<Long, Long> lineage = reader.readGenomeLineage();
+
+            assertThat(lineage).hasSize(1);
+            assertThat(lineage).containsKey(1000L);
+            assertThat(lineage.get(1000L)).isNull();   // a parent carrying no genome begins a line
+        }
+    }
 }

@@ -27,6 +27,7 @@ import org.evochora.datapipeline.api.resources.database.dto.LineageMutations;
 import org.evochora.datapipeline.api.resources.database.dto.OrganismRuntimeView;
 import org.evochora.datapipeline.api.resources.database.dto.OrganismStaticInfo;
 import org.evochora.datapipeline.api.resources.database.dto.OrganismTickDetails;
+import org.evochora.datapipeline.api.resources.database.dto.GenomeCarriers;
 import org.evochora.datapipeline.api.resources.database.dto.OrganismTickSummary;
 import org.evochora.datapipeline.resources.database.h2.IH2EnvStorageStrategy;
 import org.evochora.datapipeline.resources.database.h2.IH2OrgStorageStrategy;
@@ -235,6 +236,65 @@ public class H2DatabaseReader implements IDatabaseReader {
             }
         }
         return ancestors;
+    }
+
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Reads the index on {@code (genome_hash, organism_id, parent_genome_hash)} from end to end
+     * and keeps the first entry of each genome, which is its earliest carrier and therefore the
+     * organism the genome arose in. Because the index carries the parent genome as its last
+     * column, the table itself - whose rows hold wide binary fields - is never opened.
+     * <p>
+     * A genome whose every carrier inherited it unchanged has no entry that begins a line and is
+     * left out, exactly as the walk of {@link #readGenomeAncestors} leaves it out.
+     * <p>
+     * Not thread-safe — each {@link H2DatabaseReader} instance holds a dedicated connection
+     * and must not be shared across threads.
+     */
+    @Override
+    public Map<Long, Long> readGenomeLineage() throws SQLException {
+        ensureNotClosed();
+
+        String sql = """
+            SELECT genome_hash, organism_id, parent_genome_hash
+            FROM organisms
+            WHERE genome_hash <> 0
+              AND (parent_genome_hash IS NULL OR parent_genome_hash <> genome_hash)
+            ORDER BY genome_hash, organism_id
+            """;
+
+        Map<Long, Long> lineage = new LinkedHashMap<>();
+        try (PreparedStatement stmt = connection.prepareStatement(sql);
+             ResultSet rs = stmt.executeQuery()) {
+            while (rs.next()) {
+                long genomeHash = rs.getLong("genome_hash");
+                if (lineage.containsKey(genomeHash)) {
+                    continue;                       // a later carrier of a genome already recorded
+                }
+                long parent = rs.getLong("parent_genome_hash");
+                // NULL means the organism had no parent at all, 0 means its parent carried no
+                // genome. Neither is a node of the lineage, so both begin a line here.
+                lineage.put(genomeHash, rs.wasNull() || parent == 0L ? null : parent);
+            }
+        }
+        return lineage;
+    }
+
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Hands the question to the organism storage strategy, which answers it the way its layout
+     * allows: a strategy holding a tick in one blob counts what it decodes anyway, one holding a
+     * row per organism counts in the database.
+     * <p>
+     * Not thread-safe — each {@link H2DatabaseReader} instance holds a dedicated connection
+     * and must not be shared across threads.
+     */
+    @Override
+    public List<GenomeCarriers> readGenomeCounts(Collection<Long> ticks) throws SQLException {
+        ensureNotClosed();
+        return orgStrategy.countGenomesAtTicks(connection, ticks);
     }
 
     /**

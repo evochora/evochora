@@ -5,7 +5,11 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -13,6 +17,8 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.resources.database.dto.GenomeCarriers;
+import org.evochora.datapipeline.api.resources.database.dto.OrganismTickSummary;
 import org.evochora.datapipeline.api.resources.database.TickNotFoundException;
 import org.evochora.datapipeline.utils.H2SchemaUtil;
 import org.evochora.datapipeline.utils.compression.CompressionCodecFactory;
@@ -325,12 +331,45 @@ public abstract class AbstractH2OrgStorageStrategy implements IH2OrgStorageStrat
     }
 
     /**
+     * {@inheritDoc}
+     * <p>
+     * Counts what {@link #readOrganismsAtTick} returns, one tick at a time. A strategy that keeps
+     * a tick in one blob pays for that blob either way and is already at its best here; one that
+     * keeps a row per organism overrides this and counts in the database instead of decoding.
+     */
+    @Override
+    public List<GenomeCarriers> countGenomesAtTicks(Connection conn, Collection<Long> ticks)
+            throws SQLException {
+        List<GenomeCarriers> result = new ArrayList<>();
+        for (Long tick : ticks) {
+            if (tick == null) {
+                continue;
+            }
+            Map<Long, Integer> counts = new LinkedHashMap<>();
+            for (OrganismTickSummary organism : readOrganismsAtTick(conn, tick)) {
+                long genomeHash = organism.genomeHash;
+                if (genomeHash != 0L) {
+                    counts.merge(genomeHash, 1, Integer::sum);
+                }
+            }
+            counts.forEach((genomeHash, carriers) ->
+                    result.add(new GenomeCarriers(tick, genomeHash, carriers)));
+        }
+        return result;
+    }
+
+    /**
      * Creates the index that makes an ancestor walk over the static organism data affordable.
      * <p>
      * Resolving one genome's parent genome selects the lowest-id carrier of that genome. Without
      * this index every step of the walk is a full table scan; with it, a step is a seek. The index
      * is offered here rather than imposed: a strategy that lays out the static organism data
      * differently does not call this and provides its own answer.
+     * <p>
+     * It carries {@code parent_genome_hash} as a third column, which no lookup searches by: the
+     * answer a walk is after stands in the index itself, so reading the whole lineage of a run is
+     * a scan over this index and never touches the table, whose rows carry wide binary fields.
+     * The column costs eight bytes per organism and no additional index operation on a write.
      * <p>
      * On an already populated table the build is a one-off blocking operation. It is instant for a
      * new run, where the table is still empty when the strategy creates its schema.
@@ -341,7 +380,8 @@ public abstract class AbstractH2OrgStorageStrategy implements IH2OrgStorageStrat
     protected void createGenomeIndex(Statement stmt) throws SQLException {
         H2SchemaUtil.executeDdlIfNotExists(
             stmt,
-            "CREATE INDEX IF NOT EXISTS idx_organisms_genome ON organisms (genome_hash, organism_id)",
+            "CREATE INDEX IF NOT EXISTS idx_organisms_genome "
+                    + "ON organisms (genome_hash, organism_id, parent_genome_hash)",
             "idx_organisms_genome"
         );
     }

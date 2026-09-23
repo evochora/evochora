@@ -1,5 +1,6 @@
 package org.evochora.datapipeline.api.resources.database;
 
+import org.evochora.datapipeline.api.resources.database.dto.GenomeCarriers;
 import org.evochora.datapipeline.api.resources.database.dto.LineageMutations;
 import org.evochora.datapipeline.utils.LabelNamespaceMask;
 import org.evochora.datapipeline.api.resources.database.dto.OrganismTickDetails;
@@ -95,6 +96,36 @@ public interface IOrganismDataReader {
      * @throws SQLException if database read fails.
      */
     Map<Long, Long> readGenomeAncestors(Collection<Long> genomeHashes) throws SQLException;
+
+    /**
+     * Reads the descent of every genome the run holds, in one pass.
+     * <p>
+     * Answers the same relation as {@link #readGenomeAncestors}, and the two differ in how they
+     * are paid for: that one seeks to the few genomes it is given and walks upwards from them,
+     * this one reads everything once. Ask that one for the ancestry of a selected organism, and
+     * this one when the whole tree is needed before it is known which genomes will be asked
+     * about - a walk over tens of thousands of genomes is one statement per genome.
+     *
+     * @return Map of genomeHash → parentGenomeHash, null value for a genome that begins a line.
+     *         Genome hash 0 is left out. Never null.
+     * @throws SQLException if database read fails.
+     */
+    Map<Long, Long> readGenomeLineage() throws SQLException;
+
+    /**
+     * Counts the carriers of every genome at each of the given ticks.
+     * <p>
+     * How a population divides between its genomes is asked for several ticks at once, because
+     * what a line of descent is worth over a run is the sum of what its genomes carried at the
+     * ticks one looks at. Reading those ticks as full organism lists would decode positions,
+     * registers and runtime state for every organism of every one of them.
+     *
+     * @param ticks Ticks to count at; may be empty, may contain ticks with no data
+     * @return One entry per tick and genome, ordered by tick. Genome hash 0 and ticks without
+     *         data are left out. Never null.
+     * @throws SQLException if database read fails.
+     */
+    List<GenomeCarriers> readGenomeCounts(Collection<Long> ticks) throws SQLException;
 
     /**
      * Reads the birth mutations of one organism and of every ancestor along {@code parent_id}.

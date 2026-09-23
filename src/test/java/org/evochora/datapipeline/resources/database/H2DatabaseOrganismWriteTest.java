@@ -24,6 +24,12 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
+import java.util.List;
+import java.util.Map;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.evochora.datapipeline.api.resources.database.IDatabaseReader;
+import org.evochora.datapipeline.api.resources.database.dto.GenomeCarriers;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
@@ -174,6 +180,72 @@ class H2DatabaseOrganismWriteTest {
     private boolean tableExists(Connection conn, String tableName) throws SQLException {
         try (ResultSet rs = conn.getMetaData().getTables(null, null, tableName.toUpperCase(), null)) {
             return rs.next();
+        }
+    }
+
+    /**
+     * The clade view asks how many organisms carry which genome at a handful of ticks. Both
+     * organism storage strategies must answer that the same way, because the view is served
+     * whatever layout a run was written with - the blob strategy counts what it decodes anyway,
+     * the row strategy counts in the database.
+     */
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "org.evochora.datapipeline.resources.database.h2.SingleBlobOrgStrategy",
+        "org.evochora.datapipeline.resources.database.h2.RowPerOrganismStrategy"
+    })
+    void countGenomesAtTicks_agreesBetweenStorageStrategies(String strategyClass) throws Exception {
+        String dbPath = tempDir.toString().replace("\\", "/");
+        try (H2Database db = new H2Database("counts-db", ConfigFactory.parseString("""
+                jdbcUrl = "jdbc:h2:file:%s/test-counts-%s;MODE=PostgreSQL"
+                h2OrganismStrategy { className = "%s" }
+                """.formatted(dbPath, strategyClass.substring(strategyClass.lastIndexOf('.') + 1),
+                              strategyClass)))) {
+            String runId = "counts-run";
+            try (Connection conn = connectionWithSchema(db, runId)) {
+                db.doCreateOrganismTables(conn);
+                db.doWriteOrganismTick(conn, tickWithGenomes(10L, Map.of(1, 700L, 2, 700L, 3, 800L)),
+                        java.util.Map.of());
+                db.doWriteOrganismTick(conn, tickWithGenomes(20L, Map.of(1, 700L, 3, 800L, 4, 900L)),
+                        java.util.Map.of());
+                db.doCommitOrganismWrites(conn);
+            }
+
+            try (IDatabaseReader reader = db.createReader(runId)) {
+                List<GenomeCarriers> counts = reader.readGenomeCounts(List.of(10L, 20L));
+
+                assertThat(counts).containsExactlyInAnyOrder(
+                        new GenomeCarriers(10L, 700L, 2),
+                        new GenomeCarriers(10L, 800L, 1),
+                        new GenomeCarriers(20L, 700L, 1),
+                        new GenomeCarriers(20L, 800L, 1),
+                        new GenomeCarriers(20L, 900L, 1));
+            }
+        }
+    }
+
+    /** A tick holding one organism per entry, each carrying the genome the map gives it. */
+    private TickData tickWithGenomes(long tickNumber, Map<Integer, Long> genomeByOrganism) {
+        TickData.Builder tick = TickData.newBuilder().setTickNumber(tickNumber);
+        genomeByOrganism.forEach((organismId, genomeHash) ->
+                tick.addOrganisms(buildOrganismState(organismId).toBuilder()
+                        .setGenomeHash(genomeHash)
+                        .build()));
+        return tick.build();
+    }
+
+    private Connection connectionWithSchema(H2Database db, String runId) throws SQLException {
+        try {
+            java.lang.reflect.Field dataSourceField = H2Database.class.getDeclaredField("dataSource");
+            dataSourceField.setAccessible(true);
+            @SuppressWarnings("resource")
+            com.zaxxer.hikari.HikariDataSource dataSource =
+                    (com.zaxxer.hikari.HikariDataSource) dataSourceField.get(db);
+            Connection conn = dataSource.getConnection();
+            org.evochora.datapipeline.utils.H2SchemaUtil.setupRunSchema(conn, runId, (c, schemaName) -> { });
+            return conn;
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException(e);
         }
     }
 

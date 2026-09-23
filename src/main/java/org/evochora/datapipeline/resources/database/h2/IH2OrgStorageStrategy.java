@@ -2,11 +2,13 @@ package org.evochora.datapipeline.resources.database.h2;
 
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.resources.database.TickNotFoundException;
+import org.evochora.datapipeline.api.resources.database.dto.GenomeCarriers;
 import org.evochora.datapipeline.api.resources.database.dto.OrganismTickSummary;
 import org.evochora.datapipeline.api.resources.database.dto.TickRange;
 
@@ -120,6 +122,28 @@ public interface IH2OrgStorageStrategy {
      * @throws SQLException if database read fails
      */
     List<OrganismTickSummary> readOrganismsAtTick(Connection conn, long tickNumber) 
+            throws SQLException;
+
+    /**
+     * Counts the carriers of every genome at each of the given ticks.
+     * <p>
+     * Answers what a clade view needs and nothing more: not who lives where, only how many
+     * organisms carry which genome. Reading that through {@link #readOrganismsAtTick} would
+     * decode positions, registers and runtime state for tens of thousands of organisms, which is
+     * why it is asked for as its own question - a strategy whose layout allows it answers with a
+     * count instead of a decode.
+     * <p>
+     * Every organism the tick holds is counted, including one that died in it: which of them is
+     * dead is part of the state a strategy would have to decode, and one or two percent make no
+     * difference to which clades carry a population.
+     *
+     * @param conn Database connection (schema already set)
+     * @param ticks Ticks to count at; may be empty, may contain ticks with no data
+     * @return One entry per tick and genome, ordered by tick. Genome hash 0 and ticks without
+     *         data are left out. Never null.
+     * @throws SQLException if database read fails
+     */
+    List<GenomeCarriers> countGenomesAtTicks(Connection conn, Collection<Long> ticks)
             throws SQLException;
     
     /**

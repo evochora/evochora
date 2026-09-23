@@ -8,6 +8,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 
@@ -16,6 +17,7 @@ import org.evochora.datapipeline.api.contracts.OrganismRuntimeState;
 import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.Vector;
+import org.evochora.datapipeline.api.resources.database.dto.GenomeCarriers;
 import org.evochora.datapipeline.api.resources.database.dto.OrganismTickSummary;
 import org.evochora.datapipeline.api.resources.database.dto.TickRange;
 import org.evochora.datapipeline.resources.database.OrganismStateConverter;
@@ -250,6 +252,45 @@ public class RowPerOrganismStrategy extends AbstractH2OrgStorageStrategy {
         } catch (Exception e) {
             throw new SQLException("Failed to decompress runtime_state_blob", e);
         }
+    }
+
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Counts in the database rather than in the reader: the layout keeps one row per organism and
+     * tick, and the genome of an organism stands in the static table, so the count is a grouping
+     * over the primary key range of each tick joined to that table. The state columns, which carry
+     * the compressed runtime blob, are never touched.
+     */
+    @Override
+    public List<GenomeCarriers> countGenomesAtTicks(Connection conn, Collection<Long> ticks)
+            throws SQLException {
+        List<GenomeCarriers> result = new ArrayList<>();
+        if (ticks.isEmpty()) {
+            return result;
+        }
+        String sql = """
+                SELECT s.tick_number, o.genome_hash, COUNT(*) AS carriers
+                FROM organism_states s
+                JOIN organisms o ON o.organism_id = s.organism_id
+                WHERE s.tick_number = ? AND o.genome_hash <> 0
+                GROUP BY s.tick_number, o.genome_hash
+                """;
+        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+            for (Long tick : ticks) {
+                if (tick == null) {
+                    continue;
+                }
+                stmt.setLong(1, tick);
+                try (ResultSet rs = stmt.executeQuery()) {
+                    while (rs.next()) {
+                        result.add(new GenomeCarriers(tick, rs.getLong("genome_hash"),
+                                rs.getInt("carriers")));
+                    }
+                }
+            }
+        }
+        return result;
     }
 
     @Override
