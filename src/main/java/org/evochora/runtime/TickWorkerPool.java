@@ -80,7 +80,11 @@ public class TickWorkerPool {
      * How long the thread spins before it parks, tracked from the wake-up latencies this machine
      * actually shows. Spinning pays off exactly as long as a wake-up would cost, and that price
      * differs by an order of magnitude between bare metal and a virtual machine, so it is measured
-     * rather than assumed. Read and written only by the thread driving a dispatch.
+     * rather than assumed. Read and written only by the thread driving a dispatch, and therefore
+     * held without synchronization: a caller that drives successive dispatches from different
+     * threads has to provide the visibility edge between them, as starting a thread does. Without
+     * one, the new thread may start from a stale estimate, which costs a few dispatches of
+     * re-learning and nothing else.
      */
     private long spinBudgetNanos = INITIAL_SPIN_BUDGET_NANOS;
 
@@ -324,6 +328,12 @@ public class TickWorkerPool {
      * {@link #MAX_SPIN_BUDGET_NANOS}. A reading without a matching completion timestamp — a
      * leftover permit from an earlier dispatch, or a clock that jumped — is discarded rather
      * than allowed to distort the estimate.
+     * <p>
+     * The quarter and the tenfold threshold are chosen, not derived. A quarter settles the budget
+     * over about four dispatches, which follows a change of load without letting one reading move
+     * it far; ten times the cap is far beyond any wake-up and therefore catches readings that are
+     * artefacts rather than measurements. Both decide how quickly the estimate settles, never
+     * where it settles.
      *
      * @param wokeAt the moment the dispatching thread left the barrier
      */
