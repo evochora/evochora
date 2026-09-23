@@ -22,6 +22,8 @@ import org.evochora.datapipeline.utils.MetadataConfigHelper;
 import org.evochora.runtime.model.EnvironmentProperties;
 
 import java.util.ArrayList;
+import org.evochora.datapipeline.api.resources.database.dto.GenomeCarriers;
+import org.evochora.node.processes.http.api.visualizer.dto.CladesResponseDto;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.evochora.node.processes.http.api.pipeline.dto.ErrorResponseDto;
@@ -72,13 +74,15 @@ public class OrganismController extends VisualizerBaseController {
         final String detailPath = (basePath + "/{tick}/{organismId}").replaceAll("//", "/");
         final String mutationsPath = (basePath + "/{tick}/{organismId}/mutations").replaceAll("//", "/");
         final String ticksPath = (basePath + "/ticks").replaceAll("//", "/");
+        final String cladesPath = (basePath + "/clades").replaceAll("//", "/");
 
-        LOGGER.debug("Registering organism endpoints: list={}, detail={}, mutations={}, ticks={}",
-            listPath, detailPath, mutationsPath, ticksPath);
+        LOGGER.debug("Registering organism endpoints: list={}, detail={}, mutations={}, ticks={}, clades={}",
+            listPath, detailPath, mutationsPath, ticksPath, cladesPath);
 
-        // IMPORTANT: Register /ticks BEFORE /{tick} to avoid path parameter conflict
-        // Javalin matches routes in registration order, so /ticks must come first
+        // IMPORTANT: Register /ticks and /clades BEFORE /{tick} to avoid path parameter conflict
+        // Javalin matches routes in registration order, so the named paths must come first
         app.get(ticksPath, this::getTicks);
+        app.get(cladesPath, this::getClades);
         app.get(listPath, this::getOrganismsAtTick);
         app.get(detailPath, this::getOrganismDetails);
         app.get(mutationsPath, this::getOrganismMutations);
@@ -357,6 +361,164 @@ public class OrganismController extends VisualizerBaseController {
      * @param ancestors Genome hash to parent genome hash, null value for roots
      * @return The same mapping with string keys and values
      */
+    /**
+     * Handles GET requests for the descent of a run's genomes and the population at sampled ticks.
+     * <p>
+     * Route: GET /visualizer/api/organisms/clades?runId=...&amp;ticks=1000,2000,...
+     * <p>
+     * The ticks are given by the caller rather than chosen here: a viewer already knows which
+     * ticks the run recorded, because it navigates along them, and the ticks it asks about are
+     * the ones its own display is built on. Asking the database for them again would read every
+     * chunk of the run for an answer the caller holds.
+     * <p>
+     * Answers what a view colouring by kinship needs before it knows which genomes it will ask
+     * about: the whole tree, and the weight each line of descent carried over the run.
+     *
+     * @param ctx The Javalin context
+     * @throws SQLException if database access fails
+     */
+    @OpenApi(
+        path = "clades",
+        methods = {HttpMethod.GET},
+        summary = "Get the genome lineage of a run and the population at the given ticks",
+        description = "Returns every genome with its parent, and per requested tick how many "
+                + "organisms carried each genome. Genomes are named once and referred to by index.",
+        tags = {"visualizer / organism"},
+        queryParams = {
+            @OpenApiParam(name = "runId", description = "Optional simulation run ID (defaults to latest run)", required = false),
+            @OpenApiParam(name = "ticks", description = "Comma-separated ticks to sample the population at", required = true)
+        },
+        responses = {
+            @OpenApiResponse(status = "200", description = "OK", content = @OpenApiContent(from = CladesResponseDto.class)),
+            @OpenApiResponse(status = "304", description = "Not Modified (cached response, ETag matches)"),
+            @OpenApiResponse(status = "400", description = "Bad request (invalid ticks)", content = @OpenApiContent(from = ErrorResponseDto.class)),
+            @OpenApiResponse(status = "404", description = "Not found (run ID not found)", content = @OpenApiContent(from = ErrorResponseDto.class)),
+            @OpenApiResponse(status = "500", description = "Internal server error (database error)", content = @OpenApiContent(from = ErrorResponseDto.class))
+        }
+    )
+    void getClades(final Context ctx) throws SQLException {
+        final String runId = resolveRunId(ctx);
+        final List<Long> ticks = parseTicks(ctx.queryParam("ticks"));
+
+        LOGGER.debug("Retrieving clades for runId={} ticks={}", runId, ticks.size());
+
+        final CacheConfig cacheConfig = CacheConfig.fromConfig(options, "organisms");
+
+        try (final IDatabaseReader reader = databaseProvider.createReader(runId)) {
+            // The answer is settled by the run and the ticks asked about, so both name the version
+            final String etag = "\"" + runId + "_clades_" + ticks.hashCode() + "_" + ticks.size() + "\"";
+            if (applyCacheHeaders(ctx, cacheConfig, etag)) {
+                return;
+            }
+
+            final Map<Long, Long> lineage = reader.readGenomeLineage();
+            final List<GenomeCarriers> carriers = reader.readGenomeCounts(ticks);
+
+            ctx.status(HttpStatus.OK).json(toCladesResponse(ancestryOf(lineage, carriers), carriers));
+        } catch (RuntimeException e) {
+            handleDatabaseException(e, runId, "clades");
+        } catch (SQLException e) {
+            if (isSchemaNotFound(e)) {
+                throw new NoRunIdException("Run ID not found: " + runId);
+            }
+            throw e;
+        }
+    }
+
+    /**
+     * Turns the ticks of a request into numbers.
+     *
+     * @param raw The comma-separated parameter, may be null or empty
+     * @return The ticks in the order given, without duplicates
+     * @throws IllegalArgumentException if the parameter is missing or holds something that is no tick
+     */
+    private List<Long> parseTicks(final String raw) {
+        if (raw == null || raw.isBlank()) {
+            throw new IllegalArgumentException("Parameter 'ticks' is required");
+        }
+        final List<Long> ticks = new ArrayList<>();
+        for (final String part : raw.split(",")) {
+            final long tick = parseTickNumber(part.trim());
+            if (!ticks.contains(tick)) {
+                ticks.add(tick);
+            }
+        }
+        return ticks;
+    }
+
+    /**
+     * Narrows a run's descent to what the sampled ticks stand on.
+     * <p>
+     * A run holds far more genomes than any of its ticks: most arose, carried a handful of
+     * organisms and vanished between two samples. Sending all of them would make the answer
+     * several times larger for lines no sample ever touches. What a viewer needs is the tree
+     * above the genomes it sees, so every sampled genome is kept together with its ancestors, and
+     * nothing else. A genome the viewer meets later, at a tick between the samples, arrives with
+     * its own ancestry in the answer of the organism endpoint.
+     *
+     * @param lineage The descent of the whole run
+     * @param carriers The sampled population
+     * @return The entries of {@code lineage} on a path from a sampled genome upwards
+     */
+    static Map<Long, Long> ancestryOf(final Map<Long, Long> lineage,
+                                      final List<GenomeCarriers> carriers) {
+        final Map<Long, Long> kept = new LinkedHashMap<>();
+        for (final GenomeCarriers entry : carriers) {
+            Long genome = entry.genomeHash();
+            // Walk upwards until a genome already kept, which carries its own ancestors with it
+            while (genome != null && !kept.containsKey(genome) && lineage.containsKey(genome)) {
+                final Long parent = lineage.get(genome);
+                kept.put(genome, parent);
+                genome = parent;
+            }
+        }
+        return kept;
+    }
+
+    /**
+     * Names every genome once and refers to it by position from there on.
+     * <p>
+     * A genome that carries organisms at a sampled tick but has no lineage entry - one that only
+     * ever arose in an organism whose parent carried it unchanged - is named as well, so that no
+     * sample points past the end of the list.
+     *
+     * @param lineage Genome to parent genome, null value for a genome that begins a line
+     * @param carriers One entry per tick and genome
+     * @return The response as it goes over the wire
+     */
+    static CladesResponseDto toCladesResponse(final Map<Long, Long> lineage,
+                                              final List<GenomeCarriers> carriers) {
+        final Map<Long, Integer> positions = new LinkedHashMap<>();
+        final List<String> genomes = new ArrayList<>();
+        for (final Long genome : lineage.keySet()) {
+            positions.put(genome, genomes.size());
+            genomes.add(String.valueOf(genome));
+        }
+        for (final GenomeCarriers entry : carriers) {
+            positions.computeIfAbsent(entry.genomeHash(), genome -> {
+                genomes.add(String.valueOf(genome));
+                return genomes.size() - 1;
+            });
+        }
+
+        final List<Integer> parents = new ArrayList<>(genomes.size());
+        for (final String genome : genomes) {
+            final Long parent = lineage.get(Long.valueOf(genome));
+            final Integer position = parent == null ? null : positions.get(parent);
+            parents.add(position == null ? -1 : position);
+        }
+
+        final Map<Long, List<int[]>> byTick = new LinkedHashMap<>();
+        for (final GenomeCarriers entry : carriers) {
+            byTick.computeIfAbsent(entry.tickNumber(), tick -> new ArrayList<>())
+                .add(new int[] { positions.get(entry.genomeHash()), entry.carriers() });
+        }
+        final List<CladesResponseDto.CladeSampleDto> samples = new ArrayList<>(byTick.size());
+        byTick.forEach((tick, entries) -> samples.add(new CladesResponseDto.CladeSampleDto(tick, entries)));
+
+        return new CladesResponseDto(genomes, parents, samples);
+    }
+
     private static Map<String, String> toStringMap(final Map<Long, Long> ancestors) {
         final Map<String, String> result = new LinkedHashMap<>(ancestors.size());
         ancestors.forEach((genome, parent) ->

@@ -11,6 +11,8 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -18,6 +20,7 @@ import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.OrganismStateList;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.Vector;
+import org.evochora.datapipeline.api.resources.database.dto.GenomeCarriers;
 import org.evochora.datapipeline.api.resources.database.dto.OrganismTickSummary;
 import org.evochora.datapipeline.api.resources.database.dto.TickRange;
 import org.evochora.datapipeline.utils.H2SchemaUtil;
@@ -226,6 +229,35 @@ public class SingleBlobOrgStrategy extends AbstractH2OrgStorageStrategy {
     /**
      * Reads and deserializes the organisms BLOB for a specific tick.
      */
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Reads the blob of each tick, which is what this layout costs either way, and takes the one
+     * field the count is about. Going through {@link #readOrganismsAtTick} would build a summary
+     * per organism - position vectors, data pointers, registers, and the compressed runtime state
+     * decompressed for a flag nobody asked about - for every organism of every tick.
+     */
+    @Override
+    public List<GenomeCarriers> countGenomesAtTicks(Connection conn, Collection<Long> ticks)
+            throws SQLException {
+        List<GenomeCarriers> result = new ArrayList<>();
+        for (Long tick : ticks) {
+            if (tick == null) {
+                continue;
+            }
+            Map<Long, Integer> counts = new LinkedHashMap<>();
+            for (OrganismState organism : readOrganismsBlobForTick(conn, tick)) {
+                long genomeHash = organism.getGenomeHash();
+                if (genomeHash != 0L) {
+                    counts.merge(genomeHash, 1, Integer::sum);
+                }
+            }
+            counts.forEach((genomeHash, carriers) ->
+                    result.add(new GenomeCarriers(tick, genomeHash, carriers)));
+        }
+        return result;
+    }
+
     private List<OrganismState> readOrganismsBlobForTick(Connection conn, long tickNumber) 
             throws SQLException {
         String sql = "SELECT organisms_blob FROM organism_ticks WHERE tick_number = ?";

@@ -333,9 +333,11 @@ public abstract class AbstractH2OrgStorageStrategy implements IH2OrgStorageStrat
     /**
      * {@inheritDoc}
      * <p>
-     * Counts what {@link #readOrganismsAtTick} returns, one tick at a time. A strategy that keeps
-     * a tick in one blob pays for that blob either way and is already at its best here; one that
-     * keeps a row per organism overrides this and counts in the database instead of decoding.
+     * Counts what {@link #readOrganismsAtTick} returns, one tick at a time. That is correct for
+     * any layout and cheap for none: it builds a full summary per organism to read one field of
+     * it. Both strategies shipped here override it - the one keeping a row per organism counts in
+     * the database, the one keeping a tick in a blob reads the blob and takes the genome alone.
+     * A new strategy inherits a right answer and should replace it with its own.
      */
     @Override
     public List<GenomeCarriers> countGenomesAtTicks(Connection conn, Collection<Long> ticks)
