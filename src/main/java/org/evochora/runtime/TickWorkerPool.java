@@ -22,10 +22,9 @@ import java.util.concurrent.locks.LockSupport;
  * <p>
  * No thread holds a core for long while it waits: workers park between dispatches, and the main
  * thread spins only for a budget it derives from this machine's own wake-up latency before it
- * parks as well. Per dispatch this costs one
- * volatile write, one unpark per active worker and, for waits that outlast the budget, one
- * park/unpark pair for the main thread — against the ~20-25µs a ForkJoinPool spends on task
- * allocation, deque handling and join synchronization.
+ * parks as well. Every dispatch costs one volatile write and one unpark per active worker. A wait
+ * that outlasts the budget costs one park/unpark pair on top — against the ~20-25µs a ForkJoinPool
+ * spends on task allocation, deque handling and join synchronization.
  * <p>
  * <b>Thread safety:</b> {@link #dispatch(int, ChunkTask)} must not be called concurrently; the
  * thread driving a dispatch is the one the workers wake at its end, and it need not be the thread
@@ -280,9 +279,10 @@ public class TickWorkerPool {
      * <p>
      * The park flag goes up before the count is read, so a worker finishing in between still sees
      * it and unparks; a stale permit from such a race only costs one extra loop iteration in a
-     * later dispatch. An interrupt on the dispatching thread makes park return immediately, so the
-     * loop then busy-waits for the short moment until the workers see the interrupt themselves and
-     * leave their chunks.
+     * later dispatch. An interrupt on the dispatching thread makes park return at once, so the loop
+     * spins until the workers report completion — how long that is belongs to the task, because
+     * this pool neither interrupts its workers nor requires a {@link ChunkTask} to watch for it.
+     * The interrupt status stays set, for the next dispatch on this thread and for the caller.
      *
      * @param activeWorkers the number of workers expected to report completion
      */

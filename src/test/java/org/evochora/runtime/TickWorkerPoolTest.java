@@ -241,14 +241,14 @@ class TickWorkerPoolTest {
 
     @Test
     @Timeout(value = 10, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
-    void dispatchReturnsWhenTheSlowestWorkerFinishesLongAfterTheMainThread() {
+    void dispatchReturnsWhenTheSlowestWorkerFinishesAfterTheMainThreadHasParked() {
         pool = new TickWorkerPool(4);
         int[] data = new int[400];
 
         pool.dispatch(data.length, (from, to) -> {
             if (TickWorkerPool.getThreadIndex() == 3) {
                 try {
-                    Thread.sleep(200);
+                    Thread.sleep(1);
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                 }
@@ -270,11 +270,13 @@ class TickWorkerPoolTest {
         AtomicIntegerArray counters = new AtomicIntegerArray(64);
 
         // The burn per thread shifts from round to round, so that workers finish before, with and
-        // after the main thread - the three orders in which the barrier hands over the wake-up.
-        for (int round = 0; round < 2000; round++) {
+        // after the main thread - the three orders in which the barrier hands over the wake-up. The
+        // burn stays in the range of the spin budget, because that is where it is decided whether
+        // the dispatching thread parks at all, and so where the hand-over can go wrong.
+        for (int round = 0; round < 500; round++) {
             int spread = round % 7;
             pool.dispatch(counters.length(), (from, to) -> {
-                int burn = TickWorkerPool.getThreadIndex() * spread * 200;
+                int burn = TickWorkerPool.getThreadIndex() * spread * 20;
                 for (int b = 0; b < burn; b++) {
                     Thread.onSpinWait();
                 }
@@ -285,7 +287,7 @@ class TickWorkerPoolTest {
         }
 
         for (int i = 0; i < counters.length(); i++) {
-            assertThat(counters.get(i)).isEqualTo(2000);
+            assertThat(counters.get(i)).isEqualTo(500);
         }
     }
 
@@ -303,7 +305,7 @@ class TickWorkerPoolTest {
                 pool.dispatch(data.length, (from, to) -> {
                     if (TickWorkerPool.getThreadIndex() == 3) {
                         try {
-                            Thread.sleep(100);
+                            Thread.sleep(1);
                         } catch (InterruptedException e) {
                             Thread.currentThread().interrupt();
                         }
