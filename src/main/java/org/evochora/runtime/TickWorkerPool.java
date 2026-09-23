@@ -21,7 +21,8 @@ import java.util.concurrent.locks.LockSupport;
  * </ol>
  * <p>
  * No thread holds a core for long while it waits: workers park between dispatches, and the main
- * thread spins only for a bounded budget before it parks as well. Per dispatch this costs one
+ * thread spins only for a budget it derives from this machine's own wake-up latency before it
+ * parks as well. Per dispatch this costs one
  * volatile write, one unpark per active worker and, for waits that outlast the budget, one
  * park/unpark pair for the main thread — against the ~20-25µs a ForkJoinPool spends on task
  * allocation, deque handling and join synchronization.
@@ -59,22 +60,37 @@ public class TickWorkerPool {
     private Thread dispatchThread;
 
     /**
-     * Spin iterations the dispatching thread runs before it looks at the clock for the first time.
-     * A wave whose workers finish within this window costs no time measurement at all, which is
-     * what makes the barrier cheap on systems where reading the clock is a system call.
+     * Spin iterations between two readings of the clock. The first block runs before the clock is
+     * read at all, so a wave whose workers finish in time costs no time measurement — which is what
+     * keeps the barrier cheap on systems where reading the clock is a system call.
      */
-    private static final int SPINS_BEFORE_CLOCK = 64;
-
-    /** Spin iterations between two clock readings once the budget is being watched. */
     private static final int SPINS_PER_CLOCK_CHECK = 64;
 
+    /** Where the spin budget starts before the first wake-up has been timed. */
+    private static final long INITIAL_SPIN_BUDGET_NANOS = 10_000;
+
     /**
-     * How long the dispatching thread may keep a core busy waiting before it parks. This is a
-     * budget, not a calibration: it caps what a wave may burn while it waits, whatever the
-     * hardware. Waits shorter than this stay in the spin, where they are cheaper than a park;
-     * longer ones are the waits that matter for the rest of the machine, and they go to sleep.
+     * The most the dispatching thread may ever keep a core busy waiting. This is the policy, not a
+     * measurement: however slow a machine wakes a thread — a virtual machine losing its CPU to a
+     * neighbour can take milliseconds — the wait stops belonging to this simulation after this
+     * much, and the core goes back to whatever else the machine has to do.
      */
-    private static final long SPIN_BUDGET_NANOS = 10_000;
+    private static final long MAX_SPIN_BUDGET_NANOS = 30_000;
+
+    /**
+     * How long the thread spins before it parks, tracked from the wake-up latencies this machine
+     * actually shows. Spinning pays off exactly as long as a wake-up would cost, and that price
+     * differs by an order of magnitude between bare metal and a virtual machine, so it is measured
+     * rather than assumed. Read and written only by the thread driving a dispatch.
+     */
+    private long spinBudgetNanos = INITIAL_SPIN_BUDGET_NANOS;
+
+    /**
+     * When the worker that completed a dispatch called {@link LockSupport#unpark}, in
+     * {@link System#nanoTime()} terms. Written only when the dispatching thread was parked, so a
+     * dispatch that never sleeps pays for no time measurement at all.
+     */
+    private volatile long completionNanos;
 
     /**
      * Set by the dispatching thread before it checks the completion count and cleared when it
@@ -260,6 +276,7 @@ public class TickWorkerPool {
      * A short spin covers the waits that are over before a park would have paid for itself. Once
      * the spin budget is spent, the thread parks and the worker that fills the completion count
      * wakes it, so a long wait leaves its core to the rest of the machine instead of holding it.
+     * The budget follows the wake-up latencies this machine shows, within a fixed ceiling.
      * <p>
      * The park flag goes up before the count is read, so a worker finishing in between still sees
      * it and unparks; a stale permit from such a race only costs one extra loop iteration in a
@@ -270,23 +287,24 @@ public class TickWorkerPool {
      * @param activeWorkers the number of workers expected to report completion
      */
     private void awaitWorkers(int activeWorkers) {
-        for (int i = 0; i < SPINS_BEFORE_CLOCK; i++) {
-            if (workersCompleted.get() >= activeWorkers) {
-                return;
-            }
-            Thread.onSpinWait();
-        }
-
-        long deadline = System.nanoTime() + SPIN_BUDGET_NANOS;
-        while (System.nanoTime() < deadline) {
+        long deadline = 0;
+        while (true) {
             for (int i = 0; i < SPINS_PER_CLOCK_CHECK; i++) {
                 if (workersCompleted.get() >= activeWorkers) {
                     return;
                 }
                 Thread.onSpinWait();
             }
+            // The first block spins without asking the clock; only from here on is the budget watched.
+            long now = System.nanoTime();
+            if (deadline == 0) {
+                deadline = now + spinBudgetNanos;
+            } else if (now >= deadline) {
+                break;
+            }
         }
 
+        completionNanos = 0;
         mainParked = true;
         try {
             while (workersCompleted.get() < activeWorkers) {
@@ -295,6 +313,31 @@ public class TickWorkerPool {
         } finally {
             mainParked = false;
         }
+        adjustBudget(System.nanoTime());
+    }
+
+    /**
+     * Folds the latency of the wake-up that just happened into the spin budget.
+     * <p>
+     * Spinning is worth exactly as long as parking and waking would have cost, so the budget
+     * follows that latency, smoothed so a single outlier cannot move it far, and capped by
+     * {@link #MAX_SPIN_BUDGET_NANOS}. A reading without a matching completion timestamp — a
+     * leftover permit from an earlier dispatch, or a clock that jumped — is discarded rather
+     * than allowed to distort the estimate.
+     *
+     * @param wokeAt the moment the dispatching thread left the barrier
+     */
+    private void adjustBudget(long wokeAt) {
+        long completed = completionNanos;
+        if (completed == 0) {
+            return;
+        }
+        long latency = wokeAt - completed;
+        if (latency <= 0 || latency > MAX_SPIN_BUDGET_NANOS * 10) {
+            return;
+        }
+        long next = spinBudgetNanos + (latency - spinBudgetNanos) / 4;
+        spinBudgetNanos = Math.min(next, MAX_SPIN_BUDGET_NANOS);
     }
 
     /**
@@ -341,6 +384,8 @@ public class TickWorkerPool {
                 workerException.compareAndSet(null, t);
             } finally {
                 if (workersCompleted.incrementAndGet() == active - 1 && mainParked) {
+                    // Only on this path, so a dispatch that never parks costs no measurement.
+                    completionNanos = System.nanoTime();
                     LockSupport.unpark(dispatchThread);
                 }
             }
