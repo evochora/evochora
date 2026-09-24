@@ -25,13 +25,25 @@ class OrganismControllerCladesTest {
 
         assertThat(before).hasSizeLessThanOrEqualTo(60);
         assertThat(before.get(0)).isZero();
-        assertThat(before).endsWith(10_000_000L);
 
         // The run grows: what was sampled stays sampled, the new ticks come at the end
         List<Long> after = OrganismController.sampleTicks(0L, 11_000_000L, 10_000, 60);
 
-        assertThat(after).containsAll(before.subList(0, before.size() - 1));
-        assertThat(after).endsWith(11_000_000L);
+        assertThat(after).containsAll(before);
+        assertThat(after).hasSizeGreaterThan(before.size());
+    }
+
+    @Test
+    @DisplayName("Stands still while the run grows within a step of the grid")
+    void standsStillWhileTheRunGrowsWithinAStepOfTheGrid() {
+        // The grid of this run steps by 10,000 * 32; ticks in between move nothing
+        List<Long> atGridLine = OrganismController.sampleTicks(0L, 10_240_000L, 10_000, 60);
+        List<Long> shortlyAfter = OrganismController.sampleTicks(0L, 10_250_000L, 10_000, 60);
+
+        assertThat(shortlyAfter).isEqualTo(atGridLine);
+        // An answer is named by its last sample, so it stays the same answer
+        assertThat(shortlyAfter.get(shortlyAfter.size() - 1))
+                .isEqualTo(atGridLine.get(atGridLine.size() - 1));
     }
 
     @Test

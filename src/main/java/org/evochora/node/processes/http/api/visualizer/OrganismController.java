@@ -21,6 +21,9 @@ import org.evochora.datapipeline.api.resources.database.dto.TickRange;
 import org.evochora.datapipeline.utils.MetadataConfigHelper;
 import org.evochora.runtime.model.EnvironmentProperties;
 
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
+import java.time.Duration;
 import java.util.ArrayList;
 import org.evochora.datapipeline.api.resources.database.dto.GenomeCarriers;
 import org.evochora.node.processes.http.api.visualizer.dto.CladesResponseDto;
@@ -59,6 +62,9 @@ public class OrganismController extends VisualizerBaseController {
     /** How many ticks a run is sampled at; see {@code clades.samples} in reference.conf. */
     private final int cladeSamples;
 
+    /** Answers kept between requests, keyed by run and last sampled tick. */
+    private final Cache<String, CladesResponseDto> answerCache;
+
     private static final Logger LOGGER = LoggerFactory.getLogger(OrganismController.class);
 
     /**
@@ -71,6 +77,10 @@ public class OrganismController extends VisualizerBaseController {
         super(registry, options);
 
         this.cladeSamples = setting(options, "clades.samples", 60);
+        this.answerCache = Caffeine.newBuilder()
+            .maximumSize(setting(options, "clades.kept-answers", 4))
+            .expireAfterAccess(Duration.ofSeconds(setting(options, "clades.keep-answers-for", 600)))
+            .build();
     }
 
     /**
@@ -426,7 +436,7 @@ public class OrganismController extends VisualizerBaseController {
     void getClades(final Context ctx) throws SQLException {
         final String runId = resolveRunId(ctx);
 
-        final CacheConfig cacheConfig = CacheConfig.fromConfig(options, "organisms");
+        final CacheConfig cacheConfig = CacheConfig.fromConfig(options, "clades");
 
         try (final IDatabaseReader reader = databaseProvider.createReader(runId)) {
             final TickRange range = reader.getOrganismTickRange();
@@ -441,17 +451,17 @@ public class OrganismController extends VisualizerBaseController {
 
             LOGGER.debug("Retrieving clades for runId={} ticks={}", runId, ticks.size());
 
-            // What the answer holds is settled by the run's data and the grid, so the last tick
-            // indexed and the number of samples name its version
-            final String etag = "\"" + runId + "_clades_" + range.maxTick() + "\"";
+            // The answer is settled by the sampled ticks, so the last of them names its version.
+            // Not the last tick indexed: a run grows by a tick every few milliseconds while its
+            // samples move once in many minutes, and an answer that never validates is one that
+            // is rebuilt and resent for nothing.
+            final String version = ticks.isEmpty() ? "empty" : String.valueOf(ticks.get(ticks.size() - 1));
+            final String etag = "\"" + runId + "_clades_" + version + "\"";
             if (applyCacheHeaders(ctx, cacheConfig, etag)) {
                 return;
             }
 
-            final Map<Long, Long> lineage = reader.readGenomeLineage();
-            final List<GenomeCarriers> carriers = reader.readGenomeCounts(ticks);
-
-            ctx.status(HttpStatus.OK).json(toCladesResponse(ancestryOf(lineage, carriers), carriers));
+            ctx.status(HttpStatus.OK).json(answerFor(reader, runId + ":" + version, ticks));
         } catch (MetadataNotFoundException e) {
             throw new NoRunIdException("Metadata not found for run: " + runId, e);
         } catch (RuntimeException e) {
@@ -465,6 +475,34 @@ public class OrganismController extends VisualizerBaseController {
     }
 
     /**
+     * The answer for one set of sampled ticks, built once and kept until the ticks move.
+     * <p>
+     * Building it reads the descent of the whole run and counts its organisms, which takes about
+     * as long as everything else the endpoint does together. The sampled ticks move only when a
+     * run has grown by a whole step of their grid, so between two of those the same answer is
+     * asked for again and again - by a viewer that revalidates, by a second viewer, by a page
+     * that was reloaded.
+     *
+     * @param reader Reader of the run
+     * @param version Run and last sampled tick, which together settle what the answer holds
+     * @param ticks The sampled ticks, ascending
+     * @return The answer for these ticks
+     * @throws SQLException if database read fails
+     */
+    CladesResponseDto answerFor(final IDatabaseReader reader, final String version,
+                                        final List<Long> ticks) throws SQLException {
+        final CladesResponseDto cached = answerCache.getIfPresent(version);
+        if (cached != null) {
+            return cached;
+        }
+        final Map<Long, Long> lineage = reader.readGenomeLineage();
+        final List<GenomeCarriers> carriers = reader.readGenomeCounts(ticks);
+        final CladesResponseDto answer = toCladesResponse(ancestryOf(lineage, carriers), carriers);
+        answerCache.put(version, answer);
+        return answer;
+    }
+
+    /**
      * The ticks a run is sampled at, on a grid that only ever grows at its end.
      * <p>
      * Spreading a fixed number of samples over the run would move every one of them as soon as the
@@ -473,12 +511,18 @@ public class OrganismController extends VisualizerBaseController {
      * therefore sit on multiples of a step, and the step is the recording interval doubled until
      * the run fits into the number of samples asked for. Growing adds samples at the end; a
      * doubling drops every second one and leaves the rest exactly where they were.
+     * <p>
+     * The newest recorded tick is not added on top of the grid, however near a viewer usually
+     * stands to it. It moves with every tick indexed, and a sample that moves is one the answer
+     * changes with: it would be rebuilt and resent several times a minute for a run whose clades
+     * shift once in an hour. What the grid does not reach yet is left to the view to show as
+     * unanswered.
      *
      * @param minTick First recorded tick of the run
      * @param maxTick Last recorded tick of the run
      * @param interval The run's recording interval, at least 1
      * @param samples The most samples to return, at least 2
-     * @return The ticks to sample, ascending, the first and the last of the run among them
+     * @return The ticks to sample, ascending, the first of the run among them
      */
     static List<Long> sampleTicks(final long minTick, final long maxTick, final int interval,
                                   final int samples) {
@@ -487,10 +531,9 @@ public class OrganismController extends VisualizerBaseController {
             step *= 2;
         }
         final List<Long> ticks = new ArrayList<>();
-        for (long tick = minTick; tick < maxTick; tick += step) {
+        for (long tick = minTick; tick <= maxTick; tick += step) {
             ticks.add(tick);
         }
-        ticks.add(maxTick);          // the newest tick is where a viewer usually stands
         return ticks;
     }
 
