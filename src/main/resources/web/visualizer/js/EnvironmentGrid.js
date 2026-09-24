@@ -1791,8 +1791,6 @@ export class EnvironmentGrid {
     }
 
     _getOrganismColor(organismId, energy, genomeHash, isDead) {
-        const palette = this.config.organismPalette;
-
         // Selected organism is always white
         if (this.controller && String(organismId) === this.controller.state.selectedOrganismId) {
             return 0xffffff;
@@ -1803,10 +1801,9 @@ export class EnvironmentGrid {
             return 0x555555;
         }
 
-        if (this.controller && this.controller.state.colorMode === 'genome') {
-            return this.controller._genomeHashToLineageColor(genomeHash);
-        }
-        return palette[(organismId - 1) % palette.length];
+        return this.controller
+            ? this.controller._genomeHashToLineageColor(genomeHash)
+            : 0x808080;
     }
 }
 
