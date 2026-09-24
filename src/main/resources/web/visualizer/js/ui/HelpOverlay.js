@@ -1,4 +1,4 @@
-import { isTextEntry } from '../interaction/EditableTarget.js';
+import { isTextEntry } from '../../../shared/input/EditableTarget.js';
 
 /** The key that opens the help, on every layout that writes it with a shift. */
 const HELP_KEY = '?';

@@ -391,6 +391,7 @@ main.container {
 
 /* --- Clade Path --- */
 /* Its own row under the chart: laid over the canvas it would cover the axis labels. */
+/* One line: a path wider than the card leaves out its middle steps rather than wrapping. */
 .clade-path {
     display: flex;
     align-items: center;
@@ -398,6 +399,12 @@ main.container {
     padding-left: 4px;
     font-size: 0.7em;
     color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+.clade-path > * {
+    flex-shrink: 0;
 }
 
 .clade-path-step {
@@ -415,8 +422,17 @@ main.container {
     cursor: default;
 }
 
-.clade-path-separator {
+.clade-path-separator,
+.clade-path-ellipsis {
     color: var(--text-muted);
+}
+
+/* The last step, where even it alone does not fit */
+.clade-path > .clade-path-step-cut {
+    flex-shrink: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 /* --- Metric Card Chart Container --- */

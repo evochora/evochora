@@ -377,8 +377,14 @@ function labelBands(bands, founding) {
     return { labels, causes };
 }
 
+/** Lays out a path bar anew for its current width; set by {@link renderPath}, one per bar. */
+const pathLayouts = new WeakMap();
+
 /**
  * Draws the path of opened genomes under the chart, each step clickable to go back.
+ *
+ * A path wider than the card keeps "all" and the deepest steps; the steps between are left out
+ * behind an ellipsis, as many as the width requires. A change of width lays the path out again.
  *
  * @param {HTMLCanvasElement} canvas - Canvas the chart draws into
  * @param {string[]} openPath - Genomes opened, from the root downwards
@@ -395,31 +401,63 @@ function renderPath(canvas, openPath, onOpen) {
         bar = document.createElement('div');
         bar.className = 'clade-path';
         container.insertAdjacentElement('afterend', bar);
+        new ResizeObserver(() => pathLayouts.get(bar)?.()).observe(bar);
     }
 
-    bar.replaceChildren();
-
-    const steps = [{ label: 'all clades', path: [] }];
+    const steps = [{ label: 'all', path: [] }];
     openPath.forEach((genome, index) => {
         steps.push({ label: shortLabel(genome), path: openPath.slice(0, index + 1) });
     });
 
-    steps.forEach((step, index) => {
+    const layout = () => {
+        // Leaves out ever more steps after "all" until the path fits; the last step always stays
+        const mostOmitted = Math.max(0, steps.length - 2);
+        for (let omitted = 0; omitted <= mostOmitted; omitted++) {
+            fillPath(bar, steps, omitted, onOpen);
+            if (bar.scrollWidth <= bar.clientWidth) return;
+        }
+        // Even "all", the ellipsis and the last step alone are too wide: the last step is cut short
+        bar.lastElementChild.classList.add('clade-path-step-cut');
+    };
+    pathLayouts.set(bar, layout);
+    layout();
+
+    return bar;
+}
+
+/**
+ * Fills a path bar with its steps, leaving out the given number of steps after the first one.
+ *
+ * @param {HTMLElement} bar - The path element
+ * @param {Array<{label: string, path: string[]}>} steps - All steps, "all" first
+ * @param {number} omitted - Steps after "all" left out behind an ellipsis
+ * @param {Function} onOpen - Called with a new path when a step is clicked
+ */
+function fillPath(bar, steps, omitted, onOpen) {
+    bar.replaceChildren();
+    const shown = omitted > 0 ? [steps[0], null, ...steps.slice(1 + omitted)] : steps;
+
+    shown.forEach((step, index) => {
         if (index > 0) {
             const separator = document.createElement('span');
             separator.className = 'clade-path-separator';
             separator.textContent = ' › ';
             bar.appendChild(separator);
         }
+        if (step === null) {
+            const ellipsis = document.createElement('span');
+            ellipsis.className = 'clade-path-ellipsis';
+            ellipsis.textContent = '…';
+            bar.appendChild(ellipsis);
+            return;
+        }
         const button = document.createElement('button');
         button.className = 'clade-path-step';
         button.textContent = step.label;
-        button.disabled = index === steps.length - 1;
+        button.disabled = index === shown.length - 1;
         button.addEventListener('click', () => onOpen(step.path));
         bar.appendChild(button);
     });
-
-    return bar;
 }
 
 /**

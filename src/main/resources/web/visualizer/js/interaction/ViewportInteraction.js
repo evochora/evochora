@@ -2,7 +2,7 @@ import { clampSize, levelPosition, nearestLevelIndex, stepLevel, ZOOM_LEVELS } f
 import { pageCamera } from './ViewportMath.js';
 import { deviceOf, GESTURE_PAUSE_MS, WheelInputClassifier } from './WheelInputClassifier.js';
 import { readWheelInputMode } from './WheelInputSetting.js';
-import { isTextEntry } from './EditableTarget.js';
+import { isTextEntry } from '../../../shared/input/EditableTarget.js';
 
 /** Pixels a pointer must travel before a press becomes a drag. */
 const DRAG_THRESHOLD_PX = 5;

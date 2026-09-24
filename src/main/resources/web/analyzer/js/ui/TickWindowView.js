@@ -3,8 +3,8 @@
  *
  * The part of the run every card shows. A track stands for the whole run and carries the window:
  * dragging an edge sets that side, dragging the window moves it, dragging over the track outside
- * it draws a new one, and a double click or the button beside the last tick shows the whole run
- * again. The two ticks stand beside the track for typing, as "28M", "28.5M", "500k" or a plain
+ * it draws a new one, and a double click, the button beside the last tick or the End key shows the
+ * whole run again. The two ticks stand beside the track for typing, as "28M", "28.5M", "500k" or a plain
  * number, whose digits are grouped as they are typed. A field that holds no tick - a decimal part
  * without a suffix - is marked and keeps its text until it is completed, or Escape puts the tick
  * back.
@@ -15,6 +15,7 @@
  * @module TickWindowView
  */
 
+import { isTextEntry } from '../../../shared/input/EditableTarget.js';
 import { bindTickField, formatTick, parseTick } from '../../../shared/tick/TickText.js';
 
 /** Distance in pixels within which a press takes hold of an edge. */
@@ -61,7 +62,7 @@ export function init(container, handler) {
         </div>
         <input class="tick-window-input" type="text" inputmode="decimal" aria-label="Last tick shown">
         <button class="tick-window-reset" aria-label="Show the whole run"
-                data-tooltip="Show the whole run">\u2922</button>
+                data-tooltip="Show the whole run (End)">\u2922</button>
     `;
     container.appendChild(root);
 
@@ -99,6 +100,7 @@ export function init(container, handler) {
         bindTickField(input);
     });
     resetButton.addEventListener('click', () => commit(null));
+    document.addEventListener('keydown', handleKeyDown);
 
     new ResizeObserver(draw).observe(track);
 }
@@ -124,6 +126,18 @@ export function show(runExtent, tickWindow) {
         showInputs();
     }
     draw();
+}
+
+/**
+ * Shows the whole run on End, as the button beside the last tick does. While the view is shown the
+ * key always belongs to it, also when there is nothing to do, so that it never scrolls the page;
+ * End with a modifier and a key typed into a text field keep their usual meaning.
+ */
+function handleKeyDown(event) {
+    if (event.key !== 'End' || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
+    if (!extent || isTextEntry(document.activeElement)) return;
+    event.preventDefault();
+    if (!drag && !isWholeRun(view)) commit(null);
 }
 
 /** Smallest width a window may have on this run. */
