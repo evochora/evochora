@@ -8,7 +8,6 @@ import java.util.Map;
 
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.resources.database.TickNotFoundException;
-import org.evochora.datapipeline.api.resources.database.dto.GenomeCarriers;
 import org.evochora.datapipeline.api.resources.database.dto.OrganismTickSummary;
 import org.evochora.datapipeline.api.resources.database.dto.TickRange;
 
@@ -125,26 +124,21 @@ public interface IH2OrgStorageStrategy {
             throws SQLException;
 
     /**
-     * Counts the carriers of every genome at each of the given ticks.
+     * Moves each of the given ticks onto the nearest recorded tick at or before it.
      * <p>
-     * Answers what a clade view needs and nothing more: not who lives where, only how many
-     * organisms carry which genome. Reading that through {@link #readOrganismsAtTick} would
-     * decode positions, registers and runtime state for tens of thousands of organisms, which is
-     * why it is asked for as its own question - a strategy whose layout allows it answers with a
-     * count instead of a decode.
+     * A run records every n-th tick, and not always at the same n: it may hold stretches recorded
+     * at different steps, and a run continued later starts a stretch of its own. A caller that
+     * spreads sample points over a run therefore lands between recorded ticks, and reading those
+     * yields nothing - silently, because a tick without data is empty and not an error.
      * <p>
-     * Every organism the tick holds is counted, including one that died in it: which of them is
-     * dead is part of the state a strategy would have to decode, and one or two percent make no
-     * difference to which clades carry a population.
+     * Ticks before the first recorded one have nothing to move to and are dropped.
      *
      * @param conn Database connection (schema already set)
-     * @param ticks Ticks to count at; may be empty, may contain ticks with no data
-     * @return One entry per tick and genome, ordered by tick. Genome hash 0 and ticks without
-     *         data are left out. Never null.
+     * @param ticks Ticks to move, in any order
+     * @return The recorded ticks, ascending and without duplicates. Never null.
      * @throws SQLException if database read fails
      */
-    List<GenomeCarriers> countGenomesAtTicks(Connection conn, Collection<Long> ticks)
-            throws SQLException;
+    List<Long> snapToRecordedTicks(Connection conn, Collection<Long> ticks) throws SQLException;
     
     /**
      * Returns the available tick range for organism data.

@@ -18,6 +18,43 @@ import org.junit.jupiter.api.Test;
 class OrganismControllerCladesTest {
 
     @Test
+    @DisplayName("Samples on a grid that only grows at its end")
+    void samplesOnAGridThatOnlyGrowsAtItsEnd() {
+        // A run of 10 million ticks recorded every 10,000, sampled at most 60 times
+        List<Long> before = OrganismController.sampleTicks(0L, 10_000_000L, 10_000, 60);
+
+        assertThat(before).hasSizeLessThanOrEqualTo(60);
+        assertThat(before.get(0)).isZero();
+        assertThat(before).endsWith(10_000_000L);
+
+        // The run grows: what was sampled stays sampled, the new ticks come at the end
+        List<Long> after = OrganismController.sampleTicks(0L, 11_000_000L, 10_000, 60);
+
+        assertThat(after).containsAll(before.subList(0, before.size() - 1));
+        assertThat(after).endsWith(11_000_000L);
+    }
+
+    @Test
+    @DisplayName("Doubles the step instead of moving the samples")
+    void doublesTheStepInsteadOfMovingTheSamples() {
+        List<Long> before = OrganismController.sampleTicks(0L, 10_000_000L, 10_000, 20);
+        // Twice as long a run, same limit: the step doubles and every second sample remains
+        List<Long> after = OrganismController.sampleTicks(0L, 20_000_000L, 10_000, 20);
+
+        assertThat(after).hasSizeLessThanOrEqualTo(20);
+        assertThat(after).containsAll(
+                before.stream().filter(t -> t % (after.get(1) - after.get(0)) == 0).toList());
+    }
+
+    @Test
+    @DisplayName("Samples every recorded tick of a short run")
+    void samplesEveryRecordedTickOfAShortRun() {
+        List<Long> ticks = OrganismController.sampleTicks(0L, 30_000L, 10_000, 60);
+
+        assertThat(ticks).containsExactly(0L, 10_000L, 20_000L, 30_000L);
+    }
+
+    @Test
     @DisplayName("Names every genome once and points at parents by position")
     void namesGenomesOnceAndPointsAtParentsByPosition() {
         Map<Long, Long> lineage = new LinkedHashMap<>();

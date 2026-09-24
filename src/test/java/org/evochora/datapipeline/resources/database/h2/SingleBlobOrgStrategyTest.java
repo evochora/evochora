@@ -101,15 +101,15 @@ class SingleBlobOrgStrategyTest {
         strategy.createTables(mockConnection);
         
         // Then: Should execute DDL for organisms, organism_ticks, organism_tick_stats
-        //       and the genome index
-        verify(mockStatement, times(4)).execute(anyString());
+        //       and the genome and lifespan indexes
+        verify(mockStatement, times(5)).execute(anyString());
         
         // Verify SQL strings
         ArgumentCaptor<String> sqlCaptor = ArgumentCaptor.forClass(String.class);
-        verify(mockStatement, times(4)).execute(sqlCaptor.capture());
+        verify(mockStatement, times(5)).execute(sqlCaptor.capture());
         
         List<String> executedSql = sqlCaptor.getAllValues();
-        assertThat(executedSql).hasSize(4);
+        assertThat(executedSql).hasSize(5);
         
         // First call: CREATE TABLE organisms
         assertThat(executedSql.get(0))
@@ -128,10 +128,15 @@ class SingleBlobOrgStrategyTest {
             .contains("tick_number BIGINT PRIMARY KEY")
             .contains("total_organisms_created BIGINT NOT NULL");
 
-        // Fourth call: CREATE INDEX on the static organism data
+        // Fourth call: CREATE INDEX on the static organism data, for ancestor walks
         assertThat(executedSql.get(3))
             .contains("CREATE INDEX IF NOT EXISTS idx_organisms_genome")
-            .contains("organisms (genome_hash, organism_id)");
+            .contains("organisms (genome_hash, organism_id, parent_genome_hash)");
+
+        // Fifth call: CREATE INDEX on the static organism data, for population counts
+        assertThat(executedSql.get(4))
+            .contains("CREATE INDEX IF NOT EXISTS idx_organisms_lifespan")
+            .contains("organisms (birth_tick, death_tick, genome_hash)");
     }
     
     @Test

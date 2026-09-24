@@ -56,6 +56,9 @@ import java.util.List;
  */
 public class OrganismController extends VisualizerBaseController {
 
+    /** How many ticks a run is sampled at; see {@code clades.samples} in reference.conf. */
+    private final int cladeSamples;
+
     private static final Logger LOGGER = LoggerFactory.getLogger(OrganismController.class);
 
     /**
@@ -66,6 +69,30 @@ public class OrganismController extends VisualizerBaseController {
      */
     public OrganismController(final org.evochora.node.spi.ServiceRegistry registry, final Config options) {
         super(registry, options);
+
+        this.cladeSamples = setting(options, "clades.samples", 60);
+    }
+
+    /**
+     * Reads a setting a controller is expected to have, and says so when it is missing.
+     * <p>
+     * Every setting of this controller is stated in reference.conf, so a missing one means the
+     * configuration reaching it is not the one that was written - a controller declared without
+     * an options block is handed an empty configuration. That is worth a word in the log: the
+     * node keeps running on the documented value rather than failing to start, and whoever set
+     * it up can see that their setting never arrived.
+     *
+     * @param options The controller's configuration
+     * @param path The setting to read
+     * @param documented The value reference.conf states for it
+     * @return The configured value, or the documented one
+     */
+    private static int setting(final Config options, final String path, final int documented) {
+        if (options.hasPath(path)) {
+            return options.getInt(path);
+        }
+        LOGGER.warn("No configuration for '{}', using {} as stated in reference.conf", path, documented);
+        return documented;
     }
 
     @Override
@@ -232,11 +259,12 @@ public class OrganismController extends VisualizerBaseController {
             // The ancestry chain is coloured by genome, so the response carries the closure of the
             // genomes it names rather than relying on what the tick response happened to deliver.
             final List<Long> genomes = new ArrayList<>();
-            details.staticInfo.lineage.forEach(entry -> genomes.add(entry.genomeHash()));
+            details.lineage.forEach(entry -> genomes.add(entry.genomeHash()));
             final Map<String, String> genomeAncestors = toStringMap(reader.readGenomeAncestors(genomes));
 
             ctx.status(HttpStatus.OK).json(new OrganismDetailsResponseDto(
-                details.organismId, details.tick, details.staticInfo, details.state, genomeAncestors));
+                details.organismId, details.tick, details.staticInfo, details.lineage,
+                details.labelNamespaceMask, details.state, genomeAncestors));
         } catch (OrganismNotFoundException e) {
             throw e;
         } catch (RuntimeException e) {
@@ -364,12 +392,12 @@ public class OrganismController extends VisualizerBaseController {
     /**
      * Handles GET requests for the descent of a run's genomes and the population at sampled ticks.
      * <p>
-     * Route: GET /visualizer/api/organisms/clades?runId=...&amp;ticks=1000,2000,...
+     * Route: GET /visualizer/api/organisms/clades?runId=...
      * <p>
-     * The ticks are given by the caller rather than chosen here: a viewer already knows which
-     * ticks the run recorded, because it navigates along them, and the ticks it asks about are
-     * the ones its own display is built on. Asking the database for them again would read every
-     * chunk of the run for an answer the caller holds.
+     * Which ticks are sampled is decided here and not by the caller: they follow from the run's
+     * recorded range, its interval and the configured number of samples. Two callers choosing
+     * them for themselves would weigh the clades of a run differently and colour them
+     * differently, which is why this is configuration and not a request parameter.
      * <p>
      * Answers what a view colouring by kinship needs before it knows which genomes it will ask
      * about: the whole tree, and the weight each line of descent carried over the run.
@@ -381,32 +409,41 @@ public class OrganismController extends VisualizerBaseController {
         path = "clades",
         methods = {HttpMethod.GET},
         summary = "Get the genome lineage of a run and the population at the given ticks",
-        description = "Returns every genome with its parent, and per requested tick how many "
-                + "organisms carried each genome. Genomes are named once and referred to by index.",
+        description = "Returns the genomes above the sampled ticks with their parents, and per "
+                + "sampled tick how many organisms carried each. Genomes are named once and "
+                + "referred to by index. The ticks sit on a grid that only grows at its end.",
         tags = {"visualizer / organism"},
         queryParams = {
-            @OpenApiParam(name = "runId", description = "Optional simulation run ID (defaults to latest run)", required = false),
-            @OpenApiParam(name = "ticks", description = "Comma-separated ticks to sample the population at", required = true)
+            @OpenApiParam(name = "runId", description = "Optional simulation run ID (defaults to latest run)", required = false)
         },
         responses = {
             @OpenApiResponse(status = "200", description = "OK", content = @OpenApiContent(from = CladesResponseDto.class)),
             @OpenApiResponse(status = "304", description = "Not Modified (cached response, ETag matches)"),
-            @OpenApiResponse(status = "400", description = "Bad request (invalid ticks)", content = @OpenApiContent(from = ErrorResponseDto.class)),
-            @OpenApiResponse(status = "404", description = "Not found (run ID not found)", content = @OpenApiContent(from = ErrorResponseDto.class)),
+            @OpenApiResponse(status = "404", description = "Not found (run ID or metadata not found)", content = @OpenApiContent(from = ErrorResponseDto.class)),
             @OpenApiResponse(status = "500", description = "Internal server error (database error)", content = @OpenApiContent(from = ErrorResponseDto.class))
         }
     )
     void getClades(final Context ctx) throws SQLException {
         final String runId = resolveRunId(ctx);
-        final List<Long> ticks = parseTicks(ctx.queryParam("ticks"));
-
-        LOGGER.debug("Retrieving clades for runId={} ticks={}", runId, ticks.size());
 
         final CacheConfig cacheConfig = CacheConfig.fromConfig(options, "organisms");
 
         try (final IDatabaseReader reader = databaseProvider.createReader(runId)) {
-            // The answer is settled by the run and the ticks asked about, so both name the version
-            final String etag = "\"" + runId + "_clades_" + ticks.hashCode() + "_" + ticks.size() + "\"";
+            final TickRange range = reader.getOrganismTickRange();
+            if (range == null) {
+                ctx.status(HttpStatus.OK).json(new CladesResponseDto(List.of(), List.of(), List.of()));
+                return;
+            }
+            final int interval = MetadataConfigHelper.getSamplingInterval(reader.getMetadata());
+            // The grid gives candidates; which ticks a run actually recorded is its own answer
+            final List<Long> ticks = reader.snapToRecordedTicks(
+                    sampleTicks(range.minTick(), range.maxTick(), interval, cladeSamples));
+
+            LOGGER.debug("Retrieving clades for runId={} ticks={}", runId, ticks.size());
+
+            // What the answer holds is settled by the run's data and the grid, so the last tick
+            // indexed and the number of samples name its version
+            final String etag = "\"" + runId + "_clades_" + range.maxTick() + "\"";
             if (applyCacheHeaders(ctx, cacheConfig, etag)) {
                 return;
             }
@@ -415,6 +452,8 @@ public class OrganismController extends VisualizerBaseController {
             final List<GenomeCarriers> carriers = reader.readGenomeCounts(ticks);
 
             ctx.status(HttpStatus.OK).json(toCladesResponse(ancestryOf(lineage, carriers), carriers));
+        } catch (MetadataNotFoundException e) {
+            throw new NoRunIdException("Metadata not found for run: " + runId, e);
         } catch (RuntimeException e) {
             handleDatabaseException(e, runId, "clades");
         } catch (SQLException e) {
@@ -426,23 +465,32 @@ public class OrganismController extends VisualizerBaseController {
     }
 
     /**
-     * Turns the ticks of a request into numbers.
+     * The ticks a run is sampled at, on a grid that only ever grows at its end.
+     * <p>
+     * Spreading a fixed number of samples over the run would move every one of them as soon as the
+     * run grows by a tick: a viewer would see the weights of its clades change although nothing in
+     * the world did, and nothing computed for the run before would still fit. The samples
+     * therefore sit on multiples of a step, and the step is the recording interval doubled until
+     * the run fits into the number of samples asked for. Growing adds samples at the end; a
+     * doubling drops every second one and leaves the rest exactly where they were.
      *
-     * @param raw The comma-separated parameter, may be null or empty
-     * @return The ticks in the order given, without duplicates
-     * @throws IllegalArgumentException if the parameter is missing or holds something that is no tick
+     * @param minTick First recorded tick of the run
+     * @param maxTick Last recorded tick of the run
+     * @param interval The run's recording interval, at least 1
+     * @param samples The most samples to return, at least 2
+     * @return The ticks to sample, ascending, the first and the last of the run among them
      */
-    private List<Long> parseTicks(final String raw) {
-        if (raw == null || raw.isBlank()) {
-            throw new IllegalArgumentException("Parameter 'ticks' is required");
+    static List<Long> sampleTicks(final long minTick, final long maxTick, final int interval,
+                                  final int samples) {
+        long step = interval;
+        while ((maxTick - minTick) / step >= samples) {
+            step *= 2;
         }
         final List<Long> ticks = new ArrayList<>();
-        for (final String part : raw.split(",")) {
-            final long tick = parseTickNumber(part.trim());
-            if (!ticks.contains(tick)) {
-                ticks.add(tick);
-            }
+        for (long tick = minTick; tick < maxTick; tick += step) {
+            ticks.add(tick);
         }
+        ticks.add(maxTick);          // the newest tick is where a viewer usually stands
         return ticks;
     }
 

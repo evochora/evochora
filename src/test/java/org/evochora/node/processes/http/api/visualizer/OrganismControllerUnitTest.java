@@ -23,6 +23,8 @@ import org.evochora.node.spi.ServiceRegistry;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Tag;
+import org.evochora.junit.extensions.logging.AllowLog;
+import org.evochora.junit.extensions.logging.LogLevel;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
@@ -37,6 +39,9 @@ import com.typesafe.config.ConfigFactory;
 @Tag("unit")
 @ExtendWith(LogWatchExtension.class)
 @DisplayName("OrganismController Unit Tests")
+// The controller is built here without an options block, which it says so about:
+// its settings are stated in reference.conf and a node configured that way logs it.
+@AllowLog(level = LogLevel.WARN, messagePattern = "No configuration for .*")
 class OrganismControllerUnitTest {
 
     @Nested
@@ -101,8 +106,10 @@ class OrganismControllerUnitTest {
                     Collections.emptyList(), false, null, Collections.emptyList(),
                     instructions, 0, 0);
 
-            OrganismStaticInfo staticInfo = new OrganismStaticInfo(null, 0L, "prog-1", new int[]{0, 0}, List.of(), 0);
-            OrganismTickDetails details = new OrganismTickDetails(1, 1L, staticInfo, runtimeView);
+            OrganismStaticInfo staticInfo =
+                    new OrganismStaticInfo(null, 0L, -1L, "prog-1", new int[]{0, 0}, 0L, 0, null);
+            OrganismTickDetails details =
+                    new OrganismTickDetails(1, 1L, staticInfo, List.of(), 0, runtimeView);
 
             when(mockDatabase.createReader(any())).thenReturn(mockReader);
             when(mockReader.readOrganismDetails(anyLong(), anyInt())).thenReturn(details);

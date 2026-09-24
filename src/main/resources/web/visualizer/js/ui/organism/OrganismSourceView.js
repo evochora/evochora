@@ -67,8 +67,9 @@ export class OrganismSourceView {
      *
      * @param {object} organismState - The current dynamic state of the organism (e.g., IP).
      * @param {object} staticInfo - Static info for the organism, including `initialPosition`.
+     * @param {number} labelNamespaceMask - The label namespace the organism's body stands in.
      */
-    updateExecutionState(organismState, staticInfo) {
+    updateExecutionState(organismState, staticInfo, labelNamespaceMask) {
         if (!this.artifact || !this.dom.section) return;
 
         const activeLocation = this.calculateActiveLocation(organismState, staticInfo);
@@ -104,7 +105,8 @@ export class OrganismSourceView {
 
         // 5. Apply annotations to the active line
         if (activeLineNumber && activeLocation.fileName === this.selectedFile) {
-            this.applyAnnotations(activeLocation.fileName, activeLineNumber, staticInfo, organismState);
+            this.applyAnnotations(activeLocation.fileName, activeLineNumber, staticInfo, organismState,
+                labelNamespaceMask);
         }
     }
 
@@ -355,9 +357,10 @@ export class OrganismSourceView {
      * @param {number} lineNumber - The 1-based line number to annotate.
      * @param {object} staticInfo - Static info for the organism.
      * @param {object} organismState - The current dynamic state of the organism.
+     * @param {number} labelNamespaceMask - The label namespace the organism's body stands in.
      * @private
      */
-    applyAnnotations(fileName, lineNumber, staticInfo, organismState) {
+    applyAnnotations(fileName, lineNumber, staticInfo, organismState, labelNamespaceMask) {
         const lineElement = this.dom.codeContainer.querySelector(`.source-line[data-line="${lineNumber}"] .assembly-line`);
         if (!lineElement) return;
 
@@ -371,7 +374,7 @@ export class OrganismSourceView {
         };
 
         const annotations = this.annotator.annotate(fullState, this.artifact, fileName, originalLine,
-            lineNumber, staticInfo.labelNamespaceMask);
+            lineNumber, labelNamespaceMask);
         if (!annotations || annotations.length === 0) {
             // Ensure clean state just in case
             lineElement.textContent = originalLine;

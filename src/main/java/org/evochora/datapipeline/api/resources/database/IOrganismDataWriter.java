@@ -18,12 +18,16 @@ import java.util.Map;
  * </ul>
  * <pre>
  * CREATE TABLE IF NOT EXISTS organisms (
- *   organism_id      INT      PRIMARY KEY,
- *   parent_id        INT      NULL,
- *   birth_tick       BIGINT   NOT NULL,
- *   program_id       TEXT     NOT NULL,
- *   initial_position BYTEA    NOT NULL,
- *   birth_mutations  BYTEA    NULL
+ *   organism_id        INT      PRIMARY KEY,
+ *   parent_id          INT      NULL,
+ *   birth_tick         BIGINT   NOT NULL,
+ *   death_tick         BIGINT   NULL,
+ *   program_id         TEXT     NOT NULL,
+ *   initial_position   BYTEA    NOT NULL,
+ *   genome_hash        BIGINT   DEFAULT 0,
+ *   generation         INT      DEFAULT 0,
+ *   parent_genome_hash BIGINT   NULL,
+ *   birth_mutations    BYTEA    NULL
  * );
  * </pre>
  * <ul>
@@ -39,6 +43,7 @@ import java.util.Map;
  *   data_pointers      BYTEA    NOT NULL,
  *   active_dp_index    INT      NOT NULL,
  *   runtime_state_blob BYTEA    NOT NULL,
+ *   entropy            INT      DEFAULT 0,
  *   PRIMARY KEY (tick_number, organism_id)
  * );
  * </pre>

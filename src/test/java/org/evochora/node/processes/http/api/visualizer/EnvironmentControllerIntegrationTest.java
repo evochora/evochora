@@ -921,6 +921,34 @@ class EnvironmentControllerIntegrationTest {
             .then().statusCode(404);
     }
 
+    @Test
+    void organismBody_organismThatWasNotAliveAtTheTickIsNotFound() throws Exception {
+        String runId = "test-run-" + UUID.randomUUID();
+        indexMetadata(runId, createMetadata(runId, new int[]{10, 10}, false));
+
+        writeBatchAndNotify(runId, List.of(
+            TickData.newBuilder()
+                .setTickNumber(1L)
+                .setSimulationRunId(runId)
+                .setCellColumns(CellStateTestHelper.createColumnsFromCells(List.of(
+                    CellStateTestHelper.createCellStateBuilder(0, 7, 1, 50, 0).build()
+                )))
+                .build()));
+
+        // The organism is only born after the tick the body is asked for
+        writeOrganism(runId, 1L, organismAt(7, 0, 0).toBuilder().setBirthTick(5L).build());
+        startIndexer(runId);
+
+        int port = startControllerServer();
+
+        given()
+            .port(port)
+            .basePath("/visualizer/api/environment")
+            .queryParam("runId", runId)
+            .get("/1/organism/7")
+            .then().statusCode(404);
+    }
+
     /** Starts the environment indexer for a run and waits until the single tick is indexed. */
     private void startIndexer(String runId) throws Exception {
         indexer = createEnvironmentIndexer("test-indexer", ConfigFactory.parseString("""

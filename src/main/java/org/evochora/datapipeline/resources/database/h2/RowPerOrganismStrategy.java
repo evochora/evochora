@@ -17,7 +17,6 @@ import org.evochora.datapipeline.api.contracts.OrganismRuntimeState;
 import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.Vector;
-import org.evochora.datapipeline.api.resources.database.dto.GenomeCarriers;
 import org.evochora.datapipeline.api.resources.database.dto.OrganismTickSummary;
 import org.evochora.datapipeline.api.resources.database.dto.TickRange;
 import org.evochora.datapipeline.resources.database.OrganismStateConverter;
@@ -75,8 +74,8 @@ public class RowPerOrganismStrategy extends AbstractH2OrgStorageStrategy {
 
     private static final String STATES_MERGE_SQL =
             "MERGE INTO organism_states (" +
-                    "tick_number, organism_id, energy, ip, dv, data_pointers, active_dp_index, runtime_state_blob, entropy, molecule_marker" +
-                    ") KEY (tick_number, organism_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                    "tick_number, organism_id, energy, ip, dv, data_pointers, active_dp_index, runtime_state_blob, entropy" +
+                    ") KEY (tick_number, organism_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
     /**
      * Creates a new RowPerOrganismStrategy with the given configuration.
@@ -105,7 +104,6 @@ public class RowPerOrganismStrategy extends AbstractH2OrgStorageStrategy {
                             "  active_dp_index INT NOT NULL," +
                             "  runtime_state_blob BYTEA NOT NULL," +
                             "  entropy INT DEFAULT 0," +
-                            "  molecule_marker INT DEFAULT 0," +
                             "  PRIMARY KEY (tick_number, organism_id)" +
                             ")",
                     "organism_states"
@@ -120,6 +118,7 @@ public class RowPerOrganismStrategy extends AbstractH2OrgStorageStrategy {
 
             createTickStatsTable(stmt);
             createGenomeIndex(stmt);
+            createLifespanIndex(stmt);
         }
 
         conn.commit();
@@ -149,6 +148,7 @@ public class RowPerOrganismStrategy extends AbstractH2OrgStorageStrategy {
         StreamingSession session = ensureStreamingSession(conn);
         addOrganismMetadataBatch(session, tick);
         addBirthMutationsBatch(session, tick, birthMutations);
+        addDeathTickBatch(session, tick);
         addTickStatsBatch(session, tick);
 
         // Per-tick organism states (one row per organism)
@@ -174,7 +174,6 @@ public class RowPerOrganismStrategy extends AbstractH2OrgStorageStrategy {
             statesStmt.setInt(7, org.getActiveDpIndex());
             statesStmt.setBytes(8, runtimeBlob);
             statesStmt.setInt(9, org.getEntropyRegister());
-            statesStmt.setInt(10, org.getMoleculeMarkerRegister());
             statesStmt.addBatch();
         }
     }
@@ -182,8 +181,10 @@ public class RowPerOrganismStrategy extends AbstractH2OrgStorageStrategy {
     /**
      * Builds the compressed runtime_state_blob from an OrganismState.
      * <p>
-     * The blob contains an OrganismRuntimeState Protobuf message with:
-     * registers, stacks, call stacks, instruction execution data.
+     * The blob contains an OrganismRuntimeState Protobuf message with everything of a tick's
+     * organism state that neither stands in a column of {@code organism_states} nor in the static
+     * table {@code organisms}: registers, stacks, call stacks, the executed and the next
+     * instruction, and the per-procedure store of the PERSISTENT registers.
      */
     private byte[] buildRuntimeStateBlob(OrganismState org, ICompressionCodec codec) {
         OrganismRuntimeState.Builder runtimeStateBuilder = OrganismRuntimeState.newBuilder()
@@ -194,10 +195,12 @@ public class RowPerOrganismStrategy extends AbstractH2OrgStorageStrategy {
                 .setInstructionFailed(org.getInstructionFailed())
                 .setFailureReason(org.hasFailureReason() ? org.getFailureReason() : "")
                 .addAllFailureCallStack(org.getFailureCallStackList())
-                // Ensure entropy and marker registers are included in the runtime blob
-                .setEntropyRegister(org.getEntropyRegister())
+                // The entropy register has a column of its own; the marker register has not
                 .setMoleculeMarkerRegister(org.getMoleculeMarkerRegister())
-                .setIsDead(org.getIsDead());
+                .setIsDead(org.getIsDead())
+                .setCurrentProcLabelHash(org.getCurrentProcLabelHash())
+                .setStackSavedDirty(org.getStackSavedDirty())
+                .setPersistentDirty(org.getPersistentDirty());
 
         // Instruction execution data
         if (org.hasInstructionOpcodeId()) {
@@ -223,6 +226,21 @@ public class RowPerOrganismStrategy extends AbstractH2OrgStorageStrategy {
         }
         if (org.hasDeathTick()) {
             runtimeStateBuilder.setDeathTick(org.getDeathTick());
+        }
+
+        // Preview of the next instruction
+        if (org.hasNextInstructionOpcodeId()) {
+            runtimeStateBuilder.setNextInstructionOpcodeId(org.getNextInstructionOpcodeId());
+        }
+        if (org.getNextInstructionRawArgumentsCount() > 0) {
+            runtimeStateBuilder.addAllNextInstructionRawArguments(org.getNextInstructionRawArgumentsList());
+        }
+        if (org.getNextInstructionRegisterValuesBeforeCount() > 0) {
+            runtimeStateBuilder.putAllNextInstructionRegisterValuesBefore(
+                    org.getNextInstructionRegisterValuesBeforeMap());
+        }
+        if (org.hasPersistentRegisterStore()) {
+            runtimeStateBuilder.setPersistentRegisterStore(org.getPersistentRegisterStore());
         }
 
         OrganismRuntimeState runtimeState = runtimeStateBuilder.build();
@@ -252,45 +270,6 @@ public class RowPerOrganismStrategy extends AbstractH2OrgStorageStrategy {
         } catch (Exception e) {
             throw new SQLException("Failed to decompress runtime_state_blob", e);
         }
-    }
-
-    /**
-     * {@inheritDoc}
-     * <p>
-     * Counts in the database rather than in the reader: the layout keeps one row per organism and
-     * tick, and the genome of an organism stands in the static table, so the count is a grouping
-     * over the primary key range of each tick joined to that table. The state columns, which carry
-     * the compressed runtime blob, are never touched.
-     */
-    @Override
-    public List<GenomeCarriers> countGenomesAtTicks(Connection conn, Collection<Long> ticks)
-            throws SQLException {
-        List<GenomeCarriers> result = new ArrayList<>();
-        if (ticks.isEmpty()) {
-            return result;
-        }
-        String sql = """
-                SELECT s.tick_number, o.genome_hash, COUNT(*) AS carriers
-                FROM organism_states s
-                JOIN organisms o ON o.organism_id = s.organism_id
-                WHERE s.tick_number = ? AND o.genome_hash <> 0
-                GROUP BY s.tick_number, o.genome_hash
-                """;
-        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
-            for (Long tick : ticks) {
-                if (tick == null) {
-                    continue;
-                }
-                stmt.setLong(1, tick);
-                try (ResultSet rs = stmt.executeQuery()) {
-                    while (rs.next()) {
-                        result.add(new GenomeCarriers(tick, rs.getLong("genome_hash"),
-                                rs.getInt("carriers")));
-                    }
-                }
-            }
-        }
-        return result;
     }
 
     @Override
@@ -364,7 +343,7 @@ public class RowPerOrganismStrategy extends AbstractH2OrgStorageStrategy {
     public OrganismState readSingleOrganismState(Connection conn, long tickNumber, int organismId)
             throws SQLException {
         String sql = """
-                SELECT energy, ip, dv, data_pointers, active_dp_index, runtime_state_blob
+                SELECT energy, ip, dv, data_pointers, active_dp_index, entropy, runtime_state_blob
                 FROM organism_states
                 WHERE tick_number = ? AND organism_id = ?
                 """;
@@ -383,11 +362,13 @@ public class RowPerOrganismStrategy extends AbstractH2OrgStorageStrategy {
                 byte[] dvBytes = rs.getBytes("dv");
                 byte[] dpBytes = rs.getBytes("data_pointers");
                 int activeDpIndex = rs.getInt("active_dp_index");
+                int entropyRegister = rs.getInt("entropy");
                 byte[] blobBytes = rs.getBytes("runtime_state_blob");
 
                 // Reconstruct OrganismState from row columns + runtime_state_blob
                 return reconstructOrganismState(
-                        organismId, energy, ipBytes, dvBytes, dpBytes, activeDpIndex, blobBytes);
+                        organismId, energy, ipBytes, dvBytes, dpBytes, activeDpIndex,
+                        entropyRegister, blobBytes);
             }
         }
     }
@@ -395,8 +376,10 @@ public class RowPerOrganismStrategy extends AbstractH2OrgStorageStrategy {
     /**
      * Reconstructs an OrganismState Protobuf from the row-per-organism table columns.
      * <p>
-     * This merges the "hot path" columns (energy, ip, dv, data_pointers, active_dp_index)
-     * with the runtime_state_blob (registers, stacks, instruction data).
+     * This merges the "hot path" columns (energy, ip, dv, data_pointers, active_dp_index,
+     * entropy) with the runtime_state_blob (registers, stacks, instruction data). What the
+     * static table {@code organisms} holds is not part of it: the caller that needs the program,
+     * the birth tick or the genome reads them there.
      */
     private OrganismState reconstructOrganismState(
             int organismId,
@@ -405,6 +388,7 @@ public class RowPerOrganismStrategy extends AbstractH2OrgStorageStrategy {
             byte[] dvBytes,
             byte[] dpBytes,
             int activeDpIndex,
+            int entropyRegister,
             byte[] blobBytes) throws SQLException {
 
         // Decode Vector fields
@@ -444,9 +428,11 @@ public class RowPerOrganismStrategy extends AbstractH2OrgStorageStrategy {
                 .addAllCallStack(runtimeState.getCallStackList())
                 .setInstructionFailed(runtimeState.getInstructionFailed())
                 .addAllFailureCallStack(runtimeState.getFailureCallStackList())
-                // Restore entropy and marker registers from the runtime blob
-                .setEntropyRegister(runtimeState.getEntropyRegister())
-                .setMoleculeMarkerRegister(runtimeState.getMoleculeMarkerRegister());
+                .setEntropyRegister(entropyRegister)
+                .setMoleculeMarkerRegister(runtimeState.getMoleculeMarkerRegister())
+                .setCurrentProcLabelHash(runtimeState.getCurrentProcLabelHash())
+                .setStackSavedDirty(runtimeState.getStackSavedDirty())
+                .setPersistentDirty(runtimeState.getPersistentDirty());
 
         // Optional fields from runtime_state_blob
         if (!runtimeState.getFailureReason().isEmpty()) {
@@ -473,8 +459,31 @@ public class RowPerOrganismStrategy extends AbstractH2OrgStorageStrategy {
         if (runtimeState.getInstructionRegisterValuesBeforeCount() > 0) {
             builder.putAllInstructionRegisterValuesBefore(runtimeState.getInstructionRegisterValuesBeforeMap());
         }
+        if (runtimeState.hasNextInstructionOpcodeId()) {
+            builder.setNextInstructionOpcodeId(runtimeState.getNextInstructionOpcodeId());
+        }
+        if (runtimeState.getNextInstructionRawArgumentsCount() > 0) {
+            builder.addAllNextInstructionRawArguments(runtimeState.getNextInstructionRawArgumentsList());
+        }
+        if (runtimeState.getNextInstructionRegisterValuesBeforeCount() > 0) {
+            builder.putAllNextInstructionRegisterValuesBefore(
+                    runtimeState.getNextInstructionRegisterValuesBeforeMap());
+        }
+        if (runtimeState.hasPersistentRegisterStore()) {
+            builder.setPersistentRegisterStore(runtimeState.getPersistentRegisterStore());
+        }
 
         return builder.build();
+    }
+
+    /**
+     * {@inheritDoc}
+     * <p>
+     * The recorded ticks of this layout are the keys of {@code organism_states}.
+     */
+    @Override
+    public List<Long> snapToRecordedTicks(Connection conn, Collection<Long> ticks) throws SQLException {
+        return snapUsingTicksTable(conn, ticks, "organism_states");
     }
 
     @Override

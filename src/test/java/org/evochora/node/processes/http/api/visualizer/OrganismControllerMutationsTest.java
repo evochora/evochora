@@ -30,6 +30,8 @@ import org.evochora.runtime.label.LabelRewrite;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
+import org.evochora.junit.extensions.logging.AllowLog;
+import org.evochora.junit.extensions.logging.LogLevel;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
@@ -46,6 +48,9 @@ import io.javalin.Javalin;
  */
 @Tag("integration")
 @ExtendWith(LogWatchExtension.class)
+// The controller is built here without an options block, which it says so about:
+// its settings are stated in reference.conf and a node configured that way logs it.
+@AllowLog(level = LogLevel.WARN, messagePattern = "No configuration for .*")
 class OrganismControllerMutationsTest {
 
     private static final String RUN_ID = "run-mutations";

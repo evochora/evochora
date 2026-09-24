@@ -11,6 +11,7 @@ import java.util.Deque;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 import com.google.protobuf.InvalidProtocolBufferException;
 
@@ -284,9 +285,17 @@ public class H2DatabaseReader implements IDatabaseReader {
     /**
      * {@inheritDoc}
      * <p>
-     * Hands the question to the organism storage strategy, which answers it the way its layout
-     * allows: a strategy holding a tick in one blob counts what it decodes anyway, one holding a
-     * row per organism counts in the database.
+     * Reads the index on {@code (birth_tick, death_tick, genome_hash)} once and assigns every
+     * organism to the ticks its life spans. The question is about lifespans, not about what a tick
+     * stored, so it is settled by the static organism data alone and is the same whichever way a
+     * strategy lays out its per-tick state.
+     * <p>
+     * One scan answers all the ticks together. Asking the database per tick would mean one range
+     * scan over every organism born before it for each of them, which for the sixty ticks a clade
+     * view asks about is two orders of magnitude more index entries than the single pass.
+     * <p>
+     * An organism counts at a tick from its birth on and up to, but not including, the tick it
+     * died at; one that is still alive has no death tick and counts to the end.
      * <p>
      * Not thread-safe — each {@link H2DatabaseReader} instance holds a dedicated connection
      * and must not be shared across threads.
@@ -294,7 +303,86 @@ public class H2DatabaseReader implements IDatabaseReader {
     @Override
     public List<GenomeCarriers> readGenomeCounts(Collection<Long> ticks) throws SQLException {
         ensureNotClosed();
-        return orgStrategy.countGenomesAtTicks(connection, ticks);
+        final long[] sampled = ticks.stream().filter(Objects::nonNull)
+                .mapToLong(Long::longValue).sorted().distinct().toArray();
+        if (sampled.length == 0) {
+            return List.of();
+        }
+
+        final List<Map<Long, Integer>> perTick = new ArrayList<>(sampled.length);
+        for (int i = 0; i < sampled.length; i++) {
+            perTick.add(new LinkedHashMap<>());
+        }
+
+        String sql = """
+            SELECT birth_tick, death_tick, genome_hash
+            FROM organisms
+            WHERE genome_hash <> 0 AND birth_tick <= ?
+            ORDER BY birth_tick
+            """;
+
+        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
+            stmt.setLong(1, sampled[sampled.length - 1]);
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    long birthTick = rs.getLong("birth_tick");
+                    long deathTick = rs.getLong("death_tick");
+                    boolean alive = rs.wasNull();
+                    long genomeHash = rs.getLong("genome_hash");
+
+                    int from = firstAtOrAfter(sampled, birthTick);
+                    int to = alive ? sampled.length : firstAtOrAfter(sampled, deathTick);
+                    for (int i = from; i < to; i++) {
+                        perTick.get(i).merge(genomeHash, 1, Integer::sum);
+                    }
+                }
+            }
+        }
+
+        final List<GenomeCarriers> result = new ArrayList<>();
+        for (int i = 0; i < sampled.length; i++) {
+            long tick = sampled[i];
+            perTick.get(i).forEach((genomeHash, carriers) ->
+                    result.add(new GenomeCarriers(tick, genomeHash, carriers)));
+        }
+        return result;
+    }
+
+    /**
+     * The position of the first tick in the ascending array that is not before the given one, or
+     * the array's length when every tick is before it.
+     *
+     * @param ticks Ascending, duplicate-free ticks
+     * @param tick The tick to place among them
+     * @return Index in {@code [0, ticks.length]}
+     */
+    private static int firstAtOrAfter(long[] ticks, long tick) {
+        int low = 0;
+        int high = ticks.length;
+        while (low < high) {
+            int mid = (low + high) >>> 1;
+            if (ticks[mid] < tick) {
+                low = mid + 1;
+            } else {
+                high = mid;
+            }
+        }
+        return low;
+    }
+
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Hands the question to the organism storage strategy, which knows where the recorded ticks
+     * of this run stand.
+     * <p>
+     * Not thread-safe — each {@link H2DatabaseReader} instance holds a dedicated connection
+     * and must not be shared across threads.
+     */
+    @Override
+    public List<Long> snapToRecordedTicks(Collection<Long> ticks) throws SQLException {
+        ensureNotClosed();
+        return orgStrategy.snapToRecordedTicks(connection, ticks);
     }
 
     /**
@@ -399,12 +487,23 @@ public class H2DatabaseReader implements IDatabaseReader {
                     "No organism state for id " + organismId + " at tick " + tickNumber);
         }
         
-        // Convert OrganismState to OrganismRuntimeView (includes both last and next instruction from protobuf)
-        Map<Integer, String> labelValueToName = extractLabelValueToName(metadata, orgState.getProgramId());
-        OrganismRuntimeView state = convertOrganismStateToRuntimeView(
-                orgState, envDimensions, labelValueToName, staticInfo.labelNamespaceMask);
+        // The organism itself is the first entry of the chain; the lineage names only its ancestors
+        List<LineageMutations> chain = readLineageMutations(organismId);
+        List<LineageEntry> lineage = new ArrayList<>(chain.size() - 1);
+        for (LineageMutations ancestor : chain.subList(1, chain.size())) {
+            lineage.add(new LineageEntry(ancestor.organismId(), ancestor.genomeHash()));
+        }
+        int labelNamespaceMask = labelNamespaceMaskOf(chain);
 
-        return new OrganismTickDetails(organismId, tickNumber, staticInfo, state);
+        // Convert OrganismState to OrganismRuntimeView (includes both last and next instruction from protobuf)
+        // The program is what the organism was born with, so it stands in the static data and not
+        // in the state of a tick, which a strategy may rebuild without it
+        Map<Integer, String> labelValueToName = extractLabelValueToName(metadata, staticInfo.programId);
+        OrganismRuntimeView state = convertOrganismStateToRuntimeView(
+                orgState, envDimensions, labelValueToName, labelNamespaceMask);
+
+        return new OrganismTickDetails(organismId, tickNumber, staticInfo, lineage,
+                labelNamespaceMask, state);
     }
     
     /**
@@ -527,55 +626,49 @@ public class H2DatabaseReader implements IDatabaseReader {
     }
 
     /**
-     * Reads what does not change over an organism's life.
+     * {@inheritDoc}
      * <p>
-     * The ancestry is read through {@link #readLineageMutations(int)}, which walks the chain once
-     * and brings each birth's recorded events along. That one walk answers both things this view
-     * needs from the ancestry: the chain itself, and the label namespace the organism's body
-     * stands in, which {@link #labelNamespaceMaskOf} composes from those births.
-     *
-     * @param organismId The organism to describe
-     * @return The static view, or null if the organism has no row
-     * @throws SQLException if a query fails
-     * @throws OrganismNotFoundException if the ancestry walk finds no row for the organism, which
-     *         the lookup above has already answered with null unless the row was removed between
-     *         the two queries
+     * One row of {@code organisms}. The ancestry is deliberately not walked here: a caller that
+     * wants it asks {@link #readLineageMutations(int)} for it.
+     * <p>
+     * Not thread-safe — each {@link H2DatabaseReader} instance holds a dedicated connection
+     * and must not be shared across threads.
      */
-    private OrganismStaticInfo readOrganismStaticInfo(int organismId)
-            throws SQLException, OrganismNotFoundException {
+    @Override
+    public OrganismStaticInfo readOrganismStaticInfo(int organismId) throws SQLException {
+        ensureNotClosed();
+
         String sql = """
-            SELECT parent_id, birth_tick, program_id, initial_position
+            SELECT parent_id, birth_tick, death_tick, program_id, initial_position,
+                   genome_hash, generation, parent_genome_hash
             FROM organisms
             WHERE organism_id = ?
             """;
 
-        Integer parentId;
-        long birthTick;
-        String programId;
-        int[] initialPos;
         try (PreparedStatement stmt = connection.prepareStatement(sql)) {
             stmt.setInt(1, organismId);
             try (ResultSet rs = stmt.executeQuery()) {
                 if (!rs.next()) {
                     return null;
                 }
-                parentId = rs.getObject("parent_id") != null ? rs.getInt("parent_id") : null;
-                birthTick = rs.getLong("birth_tick");
-                programId = rs.getString("program_id");
-                initialPos = OrganismStateConverter.decodeVector(rs.getBytes("initial_position"));
+                Integer parentId = rs.getObject("parent_id") != null ? rs.getInt("parent_id") : null;
+                long deathTick = rs.getLong("death_tick");
+                if (rs.wasNull()) {
+                    deathTick = -1L;
+                }
+                long parentGenomeRaw = rs.getLong("parent_genome_hash");
+                Long parentGenomeHash = rs.wasNull() ? null : parentGenomeRaw;
+                return new OrganismStaticInfo(
+                        parentId,
+                        rs.getLong("birth_tick"),
+                        deathTick,
+                        rs.getString("program_id"),
+                        OrganismStateConverter.decodeVector(rs.getBytes("initial_position")),
+                        rs.getLong("genome_hash"),
+                        rs.getInt("generation"),
+                        parentGenomeHash);
             }
         }
-
-        // The organism itself is the first entry of the chain; the lineage names only its ancestors
-        List<LineageMutations> chain = readLineageMutations(organismId);
-        List<LineageEntry> lineage = new ArrayList<>(chain.size() - 1);
-        for (LineageMutations ancestor : chain.subList(1, chain.size())) {
-            lineage.add(new LineageEntry(ancestor.organismId(), ancestor.genomeHash()));
-        }
-        int labelNamespaceMask = labelNamespaceMaskOf(chain);
-
-        return new OrganismStaticInfo(parentId, birthTick, programId, initialPos, lineage,
-                labelNamespaceMask);
     }
 
     /**

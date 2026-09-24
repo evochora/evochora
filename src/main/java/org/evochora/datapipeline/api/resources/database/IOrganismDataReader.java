@@ -2,6 +2,7 @@ package org.evochora.datapipeline.api.resources.database;
 
 import org.evochora.datapipeline.api.resources.database.dto.GenomeCarriers;
 import org.evochora.datapipeline.api.resources.database.dto.LineageMutations;
+import org.evochora.datapipeline.api.resources.database.dto.OrganismStaticInfo;
 import org.evochora.datapipeline.utils.LabelNamespaceMask;
 import org.evochora.datapipeline.api.resources.database.dto.OrganismTickDetails;
 import org.evochora.datapipeline.api.resources.database.dto.OrganismTickSummary;
@@ -117,15 +118,45 @@ public interface IOrganismDataReader {
      * <p>
      * How a population divides between its genomes is asked for several ticks at once, because
      * what a line of descent is worth over a run is the sum of what its genomes carried at the
-     * ticks one looks at. Reading those ticks as full organism lists would decode positions,
-     * registers and runtime state for every organism of every one of them.
+     * ticks one looks at. The answer follows from the lifespans of the organisms and the genome
+     * each of them carried, all of which belong to the organism rather than to a tick.
+     * <p>
+     * An organism counts at a tick from its birth on and up to, but not including, the tick it
+     * died at.
      *
-     * @param ticks Ticks to count at; may be empty, may contain ticks with no data
+     * @param ticks Ticks to count at; may be empty, may contain ticks no organism lived at
      * @return One entry per tick and genome, ordered by tick. Genome hash 0 and ticks without
-     *         data are left out. Never null.
+     *         a population are left out. Never null.
      * @throws SQLException if database read fails.
      */
     List<GenomeCarriers> readGenomeCounts(Collection<Long> ticks) throws SQLException;
+
+    /**
+     * Moves each of the given ticks onto the nearest recorded tick at or before it.
+     * <p>
+     * A run records every n-th tick, and a run may hold stretches recorded at different steps.
+     * A caller that spreads sample points over a run therefore lands between recorded ticks, and
+     * reading those yields nothing - silently, because a tick without data is empty and no error.
+     * Ticks before the first recorded one are dropped.
+     *
+     * @param ticks Ticks to move, in any order
+     * @return The recorded ticks, ascending and without duplicates. Never null.
+     * @throws SQLException if database read fails.
+     */
+    List<Long> snapToRecordedTicks(Collection<Long> ticks) throws SQLException;
+
+    /**
+     * Reads what is recorded about one organism itself, as opposed to about one of its ticks.
+     * <p>
+     * This is one row and no tick state at all, which is what a caller needs that wants to know
+     * whether an organism existed at a tick, what it was born with, or where its body is
+     * anchored. The ancestry is not part of it; {@link #readLineageMutations(int)} answers that.
+     *
+     * @param organismId Organism to look up (must be &gt;= 0).
+     * @return Its static data, or {@code null} if no organism with that id is indexed.
+     * @throws SQLException if database read fails.
+     */
+    OrganismStaticInfo readOrganismStaticInfo(int organismId) throws SQLException;
 
     /**
      * Reads the birth mutations of one organism and of every ancestor along {@code parent_id}.
