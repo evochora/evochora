@@ -1,7 +1,7 @@
 import { TimelineLoadingOverlay } from '../TimelineLoadingOverlay.js';
 import * as TickGrid from '../../TickGrid.js';
 import { bindTickField, formatTick, groupDigits, parseTick } from '../../../../shared/tick/TickText.js';
-import { isTextEntry } from '../../interaction/EditableTarget.js';
+import { isTextEntry } from '../../../../shared/input/EditableTarget.js';
 
 /**
  * Milliseconds a click on the timeline waits for a second click before it jumps: a double click
