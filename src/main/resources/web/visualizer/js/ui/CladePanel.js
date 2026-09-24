@@ -19,21 +19,46 @@ export class CladePanel {
     /** Height of one line in the strip beside the chart, in CSS pixels. */
     static STRIP_LINE_HEIGHT = 15;
 
+    /** Where the open state of the chart is remembered between sessions. */
+    static OPEN_KEY = 'evochora-clade-panel-open';
+
+    /**
+     * How much of the chart's ground is mixed into a band's colour, darkening it.
+     * <p>
+     * The same colours carry the organisms in the environment, the list and the minimap, where a
+     * few pixels have to be seen at a glance and every bit of brightness counts. Here they cover
+     * broad areas right under the eye, and there they are quieter for it.
+     */
+    static MUTED = 0.30;
+
+    /** How far a band's colour is drawn towards its own grey, taking the edge off the hue. */
+    static DESATURATED = 0.16;
+
+    /** What the field says about itself while it holds a genome this run has. */
+    static FIELD_TITLE = 'The clade the colours stand for. '
+        + 'Type a genome to enter it, clear to go back to all.';
+
     /**
      * @param {object} callbacks
      * @param {function(): Array<object>} callbacks.getRanges - The run's recorded tick ranges.
      * @param {function(): number} callbacks.getCurrentTick - The tick shown in the environment.
+     * @param {function(): Array<object>} callbacks.getOrganisms - The organisms of the tick shown.
      * @param {function(): void} callbacks.onLevelChanged - Called after entering or leaving a clade.
      */
-    constructor({ getRanges, getCurrentTick, onLevelChanged }) {
+    constructor({ getRanges, getCurrentTick, getOrganisms, onLevelChanged }) {
         this._getRanges = getRanges;
         this._getCurrentTick = getCurrentTick;
+        this._getOrganisms = getOrganisms;
         this._onLevelChanged = onLevelChanged;
 
         this._model = null;
         this._hovered = null;
-        this._collapsed = false;
-        this._visible = false;
+        /** Whether the chart is shown; the strip and the field are always there. */
+        this._open = localStorage.getItem(CladePanel.OPEN_KEY) !== 'false';
+
+        this._field = document.getElementById('clade-input');
+        this._fold = document.getElementById('clade-fold');
+        this._ghost = document.getElementById('clade-ghost');
 
         this._panel = document.createElement('div');
         this._panel.id = 'clade-panel';
@@ -47,6 +72,24 @@ export class CladePanel {
         this._body.append(this._canvas, this._strip);
         this._panel.appendChild(this._body);
         document.body.appendChild(this._panel);
+
+        this._fold?.addEventListener('click', () => this.toggle());
+        this._field?.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                this._applyField();
+            } else if (e.key === 'Tab' && this._ghost?.dataset.rest) {
+                // Tab takes the completion instead of leaving the field
+                e.preventDefault();
+                this._field.value = this._ghost.dataset.whole;
+                this._suggest();
+            }
+            e.stopPropagation();          // the tick shortcuts must not fire while typing a genome
+        });
+        this._field?.addEventListener('input', () => this._suggest());
+        this._field?.addEventListener('blur', () => {
+            this._clearSuggestion();
+            this._applyField();
+        });
 
         this._canvas.addEventListener('mousemove', (e) => this._onMove(e));
         this._canvas.addEventListener('mouseleave', () => this._onLeave());
@@ -73,10 +116,17 @@ export class CladePanel {
      * @private
      */
     _follow() {
-        if (!this._visible) {
-            return;
+        if (this._field && document.activeElement !== this._field) {
+            this._field.value = this._model ? this._model.label : '';
+            this._field.disabled = !this._model;
+            this._clearSuggestion();
         }
-        if (this._chartHeight() === null) {
+        if (this._fold) {
+            this._fold.textContent = this._open ? '\u25bc' : '\u25b2';
+            this._fold.title = this._open ? 'Hide the clades over time' : 'Show the clades over time';
+            this._fold.disabled = !this._model;
+        }
+        if (!this._model || !this._open || this._chartHeight() === null) {
             this._panel.classList.remove('visible');
             return;
         }
@@ -94,11 +144,7 @@ export class CladePanel {
     setModel(model) {
         this._model = model;
         this._hovered = null;
-        if (this._visible) {
-            this._layout();
-            this._drawStrip();
-            this.redraw();
-        }
+        this._follow();
     }
 
     /** Whether a tree has been handed over. @returns {boolean} */
@@ -107,24 +153,92 @@ export class CladePanel {
     }
 
     /**
-     * Shows the panel. It always opens at full size: one made small stays small only while it is
-     * in use, so that switching away and back does not leave a bar with no chart.
+     * Enters the clade of a genome named by its label, as a click on one of its bands would.
+     * Called from elsewhere in the view, where a genome is written and can be clicked.
+     *
+     * @param {string} label Six characters as a genome is written everywhere else
      */
-    show() {
-        this._visible = true;
-        this._collapsed = false;
+    enterByLabel(label) {
+        if (!this._model || !this._field) {
+            return;
+        }
+        this._field.value = label;
+        this._applyField();
+    }
+
+    /** Shows or hides the chart; the level that is entered is kept either way. */
+    toggle() {
+        this._open = !this._open;
+        localStorage.setItem(CladePanel.OPEN_KEY, String(this._open));
         this._follow();
     }
 
-    /** Hides the panel without forgetting the level that is entered. */
-    hide() {
-        this._visible = false;
-        this._panel.classList.remove('visible');
+    /**
+     * Shows what the typed characters complete to, where only one genome of the run begins with
+     * them. The rest stands behind the field in a dimmed tone; Tab takes it.
+     * @private
+     */
+    _suggest() {
+        if (!this._ghost || !this._field) {
+            return;
+        }
+        const typed = this._field.value;
+        const whole = this._model && typed ? this._model.completeLabel(typed) : null;
+        if (!whole || whole === typed) {
+            this._clearSuggestion();
+            return;
+        }
+        this._ghost.dataset.rest = whole.slice(typed.length);
+        this._ghost.dataset.whole = whole;
+        // The field is monospace, so the offset of the rest is the number of characters typed
+        this._ghost.textContent = ' '.repeat(typed.length) + this._ghost.dataset.rest;
+    }
+
+    /** @private */
+    _clearSuggestion() {
+        if (!this._ghost) {
+            return;
+        }
+        this._ghost.textContent = '';
+        delete this._ghost.dataset.rest;
+        delete this._ghost.dataset.whole;
+    }
+
+    /** Takes what the field says and enters that clade, or reports that there is no such genome. */
+    _applyField() {
+        if (!this._model || !this._field) {
+            return;
+        }
+        const wanted = this._field.value.trim();
+        if (wanted === this._model.label) {
+            return;
+        }
+        if (this._model.enterByLabel(wanted)) {
+            this._clearSuggestion();
+            this._field.classList.remove('unknown');
+            this._field.title = CladePanel.FIELD_TITLE;
+            this._hovered = null;
+            this._follow();
+            this._onLevelChanged();
+        } else {
+            // Not silently ignored: the field says what it could not do until it is corrected
+            this._field.classList.add('unknown');
+            this._field.title = `No genome ${wanted} in this run`;
+        }
+    }
+
+    /** Draws the chart and the strip again, for a tick that has changed under them. */
+    refresh() {
+        if (!this._model || !this._open) {
+            return;
+        }
+        this._drawStrip();
+        this.redraw();
     }
 
     /** Draws the chart from the model's current level. */
     redraw() {
-        if (!this._visible || this._collapsed || !this._model) {
+        if (!this._model || !this._open) {
             return;
         }
         const height = this._chartHeight();
@@ -159,7 +273,7 @@ export class CladePanel {
                 ctx.lineTo(x(stacks[n].tick), height - stacks[n].tops[i] * height);
             }
             ctx.closePath();
-            ctx.fillStyle = bands[i].colour ?? OTHER_COLOUR;
+            ctx.fillStyle = CladePanel._muted(bands[i].colour ?? OTHER_COLOUR);
             ctx.fill();
             if (bands[i].kind !== 'clade') {
                 // Hatching marks the band that is not a clade one can open
@@ -209,6 +323,33 @@ export class CladePanel {
         ctx.restore();
     }
 
+    /**
+     * A band's colour as the chart draws it: mixed with the ground it lies on.
+     *
+     * @param {string} hex The colour of the band, as the model gives it
+     * @returns {string} The same colour, quieter
+     * @private
+     */
+    static _muted(hex) {
+        const value = parseInt(hex.slice(1), 16);
+        let r = (value >> 16) & 0xff;
+        let g = (value >> 8) & 0xff;
+        let b = value & 0xff;
+
+        // Towards its own brightness first, which takes the edge off without shifting the hue
+        const grey = 0.299 * r + 0.587 * g + 0.114 * b;
+        const towards = (channel) =>
+            channel * (1 - CladePanel.DESATURATED) + grey * CladePanel.DESATURATED;
+        r = towards(r);
+        g = towards(g);
+        b = towards(b);
+
+        // Then towards the ground it lies on, which darkens it
+        const mix = (channel, ground) =>
+            Math.round(channel * (1 - CladePanel.MUTED) + ground * CladePanel.MUTED);
+        return `rgb(${mix(r, 0x15)},${mix(g, 0x15)},${mix(b, 0x1d)})`;
+    }
+
     /** Diagonal lines over the current path or clip region. @private */
     _hatch(ctx, width, height, colour, lineWidth) {
         ctx.save();
@@ -231,48 +372,41 @@ export class CladePanel {
             return;
         }
         const path = this._model.path;
-        const fold = `<button class="clade-fold" title="${this._collapsed ? 'Expand' : 'Collapse'}">`
-            + (this._collapsed ? '▲' : '▼') + '</button>';
-        const step = (label, back, active) =>
-            `<div class="clade-step${active ? ' clickable' : ''}" data-back="${back}">${label}</div>`;
+        // What each step carries at the tick on screen, and how many clades stand under it
+        const living = (this._getOrganisms() ?? [])
+            .filter(organism => !organism.isDead)
+            .map(organism => organism.genomeHash);
+        const shares = this._model.sharesAlongPath(living);
 
-        if (this._collapsed) {
-            this._strip.innerHTML = '<div class="clade-strip-head">'
-                + '<div class="clade-step clickable" data-back="0">all</div>' + fold + '</div>';
-        } else {
-            // The steps stand under each other; a deep path keeps its start and its last steps.
-            // One line is always left free for the founder under the pointer, which appears and
-            // disappears while the panel stands still.
-            const room = Math.floor(((this._chartHeight() ?? 60) - 40) / CladePanel.STRIP_LINE_HEIGHT);
-            const fits = Math.max(2, room - 1);
-            const shown = path.length > fits ? path.slice(-fits) : path;
-            const skipped = path.length - shown.length;
-            this._strip.innerHTML = '<div class="clade-strip-head">'
-                + step('all', 0, path.length > 0) + fold + '</div>'
-                + (skipped ? step('…', skipped, true) : '')
-                + shown.map((genome, i) => step(ValueFormatter.formatGenomeHash(genome),
-                    skipped + i + 1, i < shown.length - 1)).join('')
-                + (this._hovered
-                    ? `<div class="clade-step hovered">${ValueFormatter.formatGenomeHash(this._hovered.founder)}</div>`
-                    : '');
-        }
+        const step = (label, back, active) => {
+            const share = shares[back];
+            const under = this._model.cladesUnderStep(back);
+            return `<div class="clade-step${active ? ' clickable' : ''}" data-back="${back}">`
+                + `<span class="clade-share">${share > 0 ? Math.round(share * 100) + '%' : ''}</span>`
+                + `<span class="clade-name">${label}</span>`
+                + `<span class="clade-under">${under > 0 ? '\u203a' + under : ''}</span></div>`;
+        };
+
+        // The steps stand under each other and the strip scrolls where they do not fit, held at
+        // its foot: what one needs is the way out of where one stands, not the way in
+        this._strip.innerHTML = step('all', 0, path.length > 0)
+            + path.map((genome, i) => step(ValueFormatter.formatGenomeHash(genome),
+                i + 1, i < path.length - 1)).join('')
+            + (this._hovered
+                ? '<div class="clade-step hovered"><span class="clade-share"></span>'
+                  + `<span class="clade-name">${ValueFormatter.formatGenomeHash(this._hovered.founder)}</span>`
+                  + '<span class="clade-under"></span></div>'
+                : '');
+        this._strip.scrollTop = this._strip.scrollHeight;
 
         this._strip.querySelectorAll('.clade-step.clickable').forEach(el => {
             el.addEventListener('click', (e) => {
                 e.stopPropagation();
                 this._model.backTo(Number(el.dataset.back));
                 this._hovered = null;
-                this._drawStrip();
-                this.redraw();
+                this._follow();
                 this._onLevelChanged();
             });
-        });
-        this._strip.querySelector('.clade-fold')?.addEventListener('click', (e) => {
-            e.stopPropagation();
-            this._collapsed = !this._collapsed;
-            this._layout();
-            this._drawStrip();
-            this.redraw();
         });
     }
 
@@ -280,16 +414,14 @@ export class CladePanel {
     _layout() {
         const track = this._trackRect();
         const timeline = document.getElementById('timeline-panel').getBoundingClientRect();
-        const left = this._collapsed ? track.right : track.left - 1;
+        const left = track.left - 1;
         this._panel.style.left = left + 'px';
         this._panel.style.width = (timeline.right - left + 1) + 'px';
-        this._panel.style.bottom = (window.innerHeight - timeline.top + (this._collapsed ? 0 : 4)) + 'px';
+        this._panel.style.bottom = (window.innerHeight - timeline.top + 4) + 'px';
         // The chart decides the height, not the strip beside it: a line appearing there, as the
         // hovered founder does, would otherwise push the panel upwards under the pointer
         const height = this._chartHeight();
-        this._panel.style.height = this._collapsed || height === null ? '' : (height + 2) + 'px';
-        this._panel.classList.toggle('collapsed', this._collapsed);
-        this._canvas.style.display = this._collapsed ? 'none' : 'block';
+        this._panel.style.height = height === null ? '' : (height + 2) + 'px';
         this._canvas.style.width = track.width + 'px';
     }
 
@@ -380,8 +512,7 @@ export class CladePanel {
         }
         this._model.enter(band);
         this._hovered = null;
-        this._drawStrip();
-        this.redraw();
+        this._follow();
         this._onLevelChanged();
     }
 }

@@ -104,8 +104,13 @@
         <canvas id="timeline-track" height="24"></canvas>
         <div class="timeline-tooltip" id="timeline-tooltip"></div>
     </div>
-    <button class="clade-mode-toggle" id="clade-mode-toggle"
-            title="Colour by: genome hash (click to switch to clade)">GH</button>
+    <div class="timeline-clade-input tick-input-wrapper">
+        <input type="text" id="clade-input" class="tick-input clade-input" placeholder="all"
+               maxlength="6" spellcheck="false" aria-label="Clade"
+               title="The clade the colours stand for. Type a genome to enter it, clear to go back to all.">
+        <span class="clade-ghost" id="clade-ghost" aria-hidden="true"></span>
+        <button class="clade-fold" id="clade-fold" title="Show the clades over time">&#9650;</button>
+    </div>
 </div>
 
 <!-- Organism Panel (top-right) -->

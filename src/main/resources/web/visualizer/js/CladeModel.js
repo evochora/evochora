@@ -1,3 +1,5 @@
+import { ValueFormatter } from './utils/ValueFormatter.js';
+
 /**
  * The clade tree of a run and the level of it that is currently entered.
  *
@@ -46,6 +48,9 @@ export const OUTSIDE_COLOUR = '#38405a';
 
 export class CladeModel {
 
+    /** Everything outside the opened clade, and every genome while no tree is known yet. */
+    static OUTSIDE = parseInt(OUTSIDE_COLOUR.slice(1), 16);
+
     /**
      * Builds the tree from what the clade endpoint answered.
      *
@@ -67,6 +72,7 @@ export class CladeModel {
         this._path = [];
         this._weight = new Map();
         this._level = null;
+        this._labels = null;
         this._lookUpParent = lookUpParent;
 
         const genomes = answer?.genomes ?? [];
@@ -117,6 +123,123 @@ export class CladeModel {
         }
         this._path.push(band.founder);
         this._level = null;
+    }
+
+    /**
+     * Enters the clade of a genome named by its label, wherever in the tree it sits.
+     * <p>
+     * The path becomes the ancestry of that genome, so the view arrives where a sequence of
+     * clicks would have led. Labels are the six characters a genome is written with everywhere
+     * else; they are the tail of a 64-bit hash and could in principle name two genomes, in which
+     * case the one carrying more organisms wins.
+     *
+     * @param {string} label Six characters as {@link ValueFormatter#formatGenomeHash} writes them
+     * @returns {boolean} Whether a genome of that label is in the tree
+     */
+    enterByLabel(label) {
+        const wanted = String(label).trim();
+        if (!wanted) {
+            this.backTo(0);
+            return true;
+        }
+        const found = this._byLabel().get(wanted) ?? null;
+        if (found === null) {
+            return false;
+        }
+        // The chain runs from the genome upwards; the path runs from the root down to it
+        this._path = this._chainOf(found).reverse();
+        this._level = null;
+        return true;
+    }
+
+    /**
+     * Completes a label that only one genome of the run begins with.
+     *
+     * @param {string} prefix What has been typed so far
+     * @returns {string|null} The whole label, or null where nothing or more than one matches
+     */
+    completeLabel(prefix) {
+        const typed = String(prefix).trim();
+        if (!typed) {
+            return null;
+        }
+        let only = null;
+        for (const label of this._byLabel().keys()) {
+            if (!label.startsWith(typed)) {
+                continue;
+            }
+            if (only !== null) {
+                return null;
+            }
+            only = label;
+        }
+        return only;
+    }
+
+    /**
+     * Every genome of the run by its label, built once.
+     * <p>
+     * A label is the tail of a 64-bit hash and could name two genomes; the one carrying more
+     * organisms wins, because that is the one a viewer means.
+     * @private
+     */
+    _byLabel() {
+        if (this._labels) {
+            return this._labels;
+        }
+        this._labels = new Map();
+        for (const genome of this._parents.keys()) {
+            const label = ValueFormatter.formatGenomeHash(genome);
+            const other = this._labels.get(label);
+            if (other === undefined || this._weightOf(genome) > this._weightOf(other)) {
+                this._labels.set(label, genome);
+            }
+        }
+        return this._labels;
+    }
+
+    /**
+     * What share of the given genomes each step of the path carries, the root of the tree first.
+     * <p>
+     * A step carries everything descended from it, so the shares only ever grow towards the root.
+     * The genomes are those on screen, which is why this is asked again at every tick.
+     *
+     * @param {Iterable<number|bigint|string>} genomeHashes The genomes of the organisms shown
+     * @returns {number[]} One share in [0, 1] per step, {@code all} first
+     */
+    sharesAlongPath(genomeHashes) {
+        const at = new Map();
+        this._path.forEach((genome, i) => at.set(genome, i + 1));
+        const carried = new Array(this._path.length + 1).fill(0);
+        let total = 0;
+        for (const hash of genomeHashes) {
+            total++;
+            carried[0]++;                        // everything is under the root of the tree
+            for (const node of this._chainOf(String(hash))) {
+                const step = at.get(node);
+                if (step !== undefined) {
+                    carried[step]++;
+                }
+            }
+        }
+        return carried.map(count => (total > 0 ? count / total : 0));
+    }
+
+    /**
+     * How many clades stand under a step of the path: the children that carried anything.
+     *
+     * @param {number} step Position in the path; zero is the root of the tree
+     * @returns {number} The number of clades one level down
+     */
+    cladesUnderStep(step) {
+        const opened = step === 0 ? null : (this._path[step - 1] ?? null);
+        return this._cladesUnder(opened).filter(genome => this._weightOf(genome) > 0).length;
+    }
+
+    /** The label of the level currently entered, empty above the roots of the run. */
+    get label() {
+        const entered = this._path[this._path.length - 1];
+        return entered ? ValueFormatter.formatGenomeHash(entered) : '';
     }
 
     /**
@@ -298,17 +421,6 @@ export class CladeModel {
             absorbs: ranked.filter(genome => !kept.includes(genome))
         });
 
-        // Every level takes the curated set for its number of clades, unchanged. Carrying the
-        // colour of the entered clade over to its largest child would leave out one of the set
-        // and put a combination on screen that was never looked at.
-        const colours = CladeModel._subsetFor(Math.max(1, kept.length));
-        let next = 0;
-        for (const band of list) {
-            if (band.kind === 'clade') {
-                band.colour = colours[next++ % colours.length];
-            }
-        }
-
         const byFounder = new Map();
         for (const band of list) {
             if (band.founder !== null) {
@@ -319,7 +431,47 @@ export class CladeModel {
             }
         }
         this._level = { list, byFounder, opened, stacks: null };
+        this._colour(list, kept.length);
         return this._level;
+    }
+
+    /**
+     * Gives the clades of a level their colours.
+     * <p>
+     * The set is the curated one for their number, unchanged. What is chosen is which clade gets
+     * which of them, and that follows time rather than size: clades are ordered by when their
+     * population sat, and the set is then handed out in a spread order, so that two clades alive
+     * at the same tick land far apart in the palette while two that succeed one another may share
+     * a corner of it. A viewer looking at one tick sees colours it can tell apart, and a viewer
+     * jumping to another tick sees every clade in the colour it had before.
+     * @private
+     */
+    _colour(list, clades) {
+        const colours = CladeModel._subsetFor(Math.max(1, clades));
+        const bands = list.filter(band => band.kind === 'clade');
+
+        // Where a clade's carriers sat on the timeline, as the mean sample weighted by them
+        const stacks = this.stacks();
+        const centre = new Map();
+        for (const band of bands) {
+            const at = list.indexOf(band);
+            let carried = 0;
+            let weighted = 0;
+            stacks.forEach((stack, i) => {
+                const share = stack.tops[at] - (at > 0 ? stack.tops[at - 1] : 0);
+                carried += share;
+                weighted += share * i;
+            });
+            centre.set(band, carried > 0 ? weighted / carried : 0);
+        }
+
+        const inTime = [...bands].sort((a, b) => centre.get(a) - centre.get(b));
+        const half = Math.ceil(colours.length / 2);
+        inTime.forEach((band, i) => {
+            // 0, half, 1, half + 1, ... - neighbours in time land opposite each other
+            const at = i % 2 === 0 ? i / 2 : half + (i - 1) / 2;
+            band.colour = colours[at % colours.length];
+        });
     }
 
     /** The colours for a level of this many clades. @private */

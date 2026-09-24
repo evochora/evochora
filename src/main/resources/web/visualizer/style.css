@@ -186,6 +186,12 @@ body {
     padding-right: 28px;
 }
 
+/* Six characters and the fold button, no wider: every pixel here is one the track loses */
+#timeline-panel .timeline-clade-input input.tick-input {
+    width: 48px;
+    padding-right: 22px;
+}
+
 /* Timeline navigation buttons */
 .timeline-nav-buttons {
     display: flex;
@@ -1359,33 +1365,69 @@ main.container {
     background-color: #2a4a3a;
 }
 
-/* Colour mode switch beside the timeline: genome hash or clade */
-.clade-mode-toggle {
-    background: transparent;
-    border: 1px solid #444;
-    border-radius: 3px;
-    color: #888;
+/* The clade the colours stand for, beside the timeline: shows where one is, takes where to go */
+.timeline-clade-input {
+    flex-shrink: 0;
+}
+
+.tick-input-wrapper input.clade-input {
+    letter-spacing: 0.5px;
+}
+
+/* The genome of a row in the organism list: entering its clade is one click, not a copy */
+.organism-col-genome.clickable-genome {
+    cursor: pointer;
+}
+
+.organism-col-genome.clickable-genome:hover {
+    color: #4a9eff;
+    text-decoration: underline;
+}
+
+/* What the typed characters complete to, behind the field and out of the way of the caret */
+.clade-ghost {
+    position: absolute;
+    left: 7px;
+    color: #5a5a5a;
     font-family: 'Roboto Mono', 'Courier New', monospace;
     font-size: 11px;
-    padding: 3px 8px;
+    letter-spacing: 0.5px;
+    pointer-events: none;
+    white-space: pre;
+}
+
+.tick-input-wrapper input.clade-input::placeholder {
+    color: #666;
+    letter-spacing: 0.5px;
+}
+
+.tick-input-wrapper input.clade-input.unknown {
+    border-color: #a04444;
+}
+
+.tick-input-wrapper input.clade-input:disabled {
+    opacity: 0.45;
+}
+
+/* Sits inside the field's right edge, where the tick field carries its suffix */
+.timeline-clade-input .clade-fold {
+    position: absolute;
+    right: 6px;
+    background: transparent;
+    border: none;
+    color: #888;
     cursor: pointer;
-    transition: color 0.15s, border-color 0.15s, background 0.15s;
-    flex-shrink: 0;
-    outline: none;
-    text-align: center;
+    padding: 0;
+    font-family: inherit;
+    font-size: 11px;
+    line-height: 1;
 }
 
-.clade-mode-toggle:hover:not(:disabled) {
-    background: rgba(255, 255, 255, 0.08);
-    color: #c0c0c0;
+.timeline-clade-input .clade-fold:hover:not(:disabled) {
+    color: #e0e0e0;
 }
 
-.clade-mode-toggle.active {
-    border-color: #4a9eff;
-    color: #4a9eff;
-}
-
-.clade-mode-toggle:disabled {
+.timeline-clade-input .clade-fold:disabled {
     cursor: default;
     opacity: 0.45;
 }
@@ -1409,13 +1451,12 @@ main.container {
     display: block;
 }
 
-.clade-panel.collapsed {
-    border-radius: 6px 6px 0 0;
-}
-
+/* Fills the panel, whose height the chart decides, so the strip is stretched onto it and
+   scrolls inside instead of pushing it */
 .clade-panel-body {
     display: flex;
     align-items: stretch;
+    height: 100%;
     overflow: hidden;
 }
 
@@ -1436,23 +1477,57 @@ main.container {
     gap: 1px;
     min-width: 0;
     min-height: 0;
-    overflow: hidden;
-    padding: 4px 6px 4px 8px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    scrollbar-width: thin;
+    scrollbar-color: #3a3a4a transparent;
+    padding: 4px 4px 4px 5px;
     color: #888;
 }
 
-.clade-strip-head {
-    display: flex;
-    align-items: center;
-    gap: 4px;
+.clade-strip::-webkit-scrollbar {
+    width: 6px;
+}
+
+.clade-strip::-webkit-scrollbar-thumb {
+    background: #3a3a4a;
+    border-radius: 3px;
+}
+
+.clade-strip::-webkit-scrollbar-track {
+    background: transparent;
 }
 
 .clade-step {
+    flex: none;              /* keeps its line height; the strip scrolls instead of squeezing */
+    display: flex;
+    align-items: baseline;
+    gap: 3px;
     color: #ccc;
     white-space: nowrap;
+    line-height: 15px;
+}
+
+/* What the step carries at the tick on screen, and how many clades stand under it: both in a
+   smaller, dimmer type, so the genome stays the thing one reads */
+.clade-share {
+    flex: none;
+    width: 24px;
+    text-align: right;
+    font-size: 10px;
+    color: #777;
+}
+
+.clade-name {
+    flex: 1;
     overflow: hidden;
     text-overflow: ellipsis;
-    line-height: 15px;
+}
+
+.clade-under {
+    flex: none;
+    font-size: 10px;
+    color: #777;
 }
 
 .clade-step.clickable {
@@ -1465,21 +1540,6 @@ main.container {
     color: #666;
 }
 
-.clade-fold {
-    background: transparent;
-    border: none;
-    color: #aaa;
-    cursor: pointer;
-    padding: 0;
-    margin-left: auto;
-    font-family: inherit;
-    font-size: 13px;
-    line-height: 1;
-}
-
-.clade-fold:hover {
-    color: #e0e0e0;
-}
 
 /* Minimap content */
 .minimap-content {
