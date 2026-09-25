@@ -94,13 +94,6 @@ public class RowPerOrganismStrategy extends AbstractH2OrgStorageStrategy {
                     "organism_states"
             );
 
-            // Optional helper index for per-organism history queries
-            H2SchemaUtil.executeDdlIfNotExists(
-                    stmt,
-                    "CREATE INDEX IF NOT EXISTS idx_organism_states_org ON organism_states (organism_id)",
-                    "idx_organism_states_org"
-            );
-
             createTickStatsTable(stmt);
             createGenomeIndex(stmt);
         }
