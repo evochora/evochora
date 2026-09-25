@@ -33,11 +33,6 @@ import java.util.Map;
  * CREATE TABLE IF NOT EXISTS organism_states (
  *   tick_number        BIGINT   NOT NULL,
  *   organism_id        INT      NOT NULL,
- *   energy             INT      NOT NULL,
- *   ip                 BYTEA    NOT NULL,
- *   dv                 BYTEA    NOT NULL,
- *   data_pointers      BYTEA    NOT NULL,
- *   active_dp_index    INT      NOT NULL,
  *   runtime_state_blob BYTEA    NOT NULL,
  *   PRIMARY KEY (tick_number, organism_id)
  * );
@@ -45,11 +40,8 @@ import java.util.Map;
  * <p>
  * The {@code organisms} table stores static metadata for each organism (ID, parent,
  * birth tick, program identifier, initial position). The {@code organism_states}
- * table stores per-tick dynamic state. Fields that are required for grid/dropdown
- * views (tick_number, organism_id, energy, ip, dv, data_pointers, active_dp_index)
- * are exposed as dedicated columns. All remaining runtime state (registers, stacks,
- * call stacks, failure details) is grouped into a single Protobuf message
- * {@code OrganismRuntimeState} and stored in {@code runtime_state_blob}.
+ * table stores per-tick dynamic state: the complete {@code OrganismState} message of the
+ * organism at that tick, in {@code runtime_state_blob}.
  * <p>
  * <strong>Idempotency:</strong> All writes MUST use MERGE semantics on the primary keys
  * ({@code organism_id} for {@code organisms}, {@code (tick_number, organism_id)} for

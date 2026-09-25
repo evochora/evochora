@@ -18,7 +18,7 @@ import java.util.Map;
  * This class provides database-agnostic conversion logic that can be used
  * by any database reader implementation. It handles:
  * <ul>
- *   <li>Protobuf deserialization (Vector, DataPointerList, OrganismRuntimeState)</li>
+ *   <li>Protobuf deserialization (Vector)</li>
  *   <li>Protobuf to DTO conversion (RegisterValue, ProcFrame)</li>
  *   <li>Instruction resolution (opcode name, argument types, resolved arguments)</li>
  *   <li>Register value resolution (by register ID)</li>
@@ -56,35 +56,6 @@ public final class OrganismStateConverter {
     }
     
     /**
-     * Decodes a Protobuf DataPointerList from bytes.
-     *
-     * @param bytes The serialized DataPointerList bytes
-     * @return Decoded data pointers as int[][], or empty array if bytes is null
-     * @throws SQLException if deserialization fails
-     */
-    public static int[][] decodeDataPointers(byte[] bytes) throws SQLException {
-        if (bytes == null) {
-            return new int[0][];
-        }
-        try {
-            org.evochora.datapipeline.api.contracts.DataPointerList list =
-                    org.evochora.datapipeline.api.contracts.DataPointerList.parseFrom(bytes);
-            int[][] result = new int[list.getDataPointersCount()][];
-            for (int i = 0; i < list.getDataPointersCount(); i++) {
-                Vector v = list.getDataPointers(i);
-                int[] components = new int[v.getComponentsCount()];
-                for (int j = 0; j < components.length; j++) {
-                    components[j] = v.getComponents(j);
-                }
-                result[i] = components;
-            }
-            return result;
-        } catch (Exception e) {
-            throw new SQLException("Failed to decode data pointers from bytes", e);
-        }
-    }
-    
-    /**
      * Converts a Protobuf Vector to a Java int array.
      *
      * @param v The Protobuf Vector
@@ -94,6 +65,20 @@ public final class OrganismStateConverter {
         int[] result = new int[v.getComponentsCount()];
         for (int i = 0; i < result.length; i++) {
             result[i] = v.getComponents(i);
+        }
+        return result;
+    }
+
+    /**
+     * Converts the data pointers of an organism state to Java int arrays.
+     *
+     * @param org The Protobuf organism state
+     * @return One int array per data pointer, in the order the state holds them
+     */
+    public static int[][] dataPointersToArray(org.evochora.datapipeline.api.contracts.OrganismState org) {
+        int[][] result = new int[org.getDataPointersCount()][];
+        for (int i = 0; i < result.length; i++) {
+            result[i] = vectorToArray(org.getDataPointers(i));
         }
         return result;
     }

@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.nio.file.Path;
 import java.sql.Connection;
 import java.util.UUID;
+import java.util.stream.Stream;
 
 import org.evochora.datapipeline.TestMetadataHelper;
 import org.evochora.datapipeline.api.contracts.OrganismState;
@@ -22,11 +23,12 @@ import org.evochora.junit.extensions.logging.LogWatchExtension;
 import org.evochora.runtime.label.HammingLabelMatchingStrategy;
 import org.evochora.runtime.label.LabelRewrite;
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Named;
 import org.junit.jupiter.api.Tag;
-import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 
 import com.typesafe.config.ConfigFactory;
 
@@ -37,7 +39,8 @@ import com.typesafe.config.ConfigFactory;
  * the program the organism descends from, after the organism's own label namespace has been taken
  * out of the hash. These tests cover the cases that arise: a hash the map knows, a hash it does
  * not, a run whose metadata carries no map at all, and a descendant whose ancestry rewrote the
- * labels it calls through.
+ * labels it calls through. Each case runs under every organism storage strategy, since the program
+ * the map is taken from is static data and must reach the reader whichever strategy stored it.
  */
 @Tag("integration")
 @ExtendWith(LogWatchExtension.class)
@@ -64,8 +67,20 @@ class H2DatabaseReaderProcedureNameResolutionTest {
     private IDatabaseReaderProvider provider;
     private String runId;
 
-    @BeforeEach
-    void setUp() {
+    static Stream<Named<String>> strategies() {
+        return Stream.of(
+            Named.of("SingleBlobOrgStrategy",
+                "org.evochora.datapipeline.resources.database.h2.SingleBlobOrgStrategy"),
+            Named.of("RowPerOrganismStrategy",
+                "org.evochora.datapipeline.resources.database.h2.RowPerOrganismStrategy"));
+    }
+
+    /**
+     * Opens a fresh database that stores organisms with the given strategy.
+     *
+     * @param organismStrategy fully qualified class name of the organism storage strategy
+     */
+    private void openDatabase(String organismStrategy) {
         String dbUrl = "jdbc:h2:mem:test-procname-resolution-" + UUID.randomUUID()
                 + ";DB_CLOSE_DELAY=-1;MODE=PostgreSQL";
         com.typesafe.config.Config dbConfig = ConfigFactory.parseString(
@@ -76,7 +91,8 @@ class H2DatabaseReaderProcedureNameResolutionTest {
             "h2EnvironmentStrategy {\n" +
             "  className = \"org.evochora.datapipeline.resources.database.h2.RowPerChunkStrategy\"\n" +
             "  options { chunkDirectory = \"" + tempChunkDir.toString().replace("\\", "/") + "\" }\n" +
-            "}\n"
+            "}\n" +
+            "h2OrganismStrategy { className = \"" + organismStrategy + "\" }\n"
         );
         database = new H2Database("test-db", dbConfig);
         provider = database;
@@ -90,8 +106,10 @@ class H2DatabaseReaderProcedureNameResolutionTest {
         }
     }
 
-    @Test
-    void resolvesNameOfAKnownLabelHash() throws Exception {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("strategies")
+    void resolvesNameOfAKnownLabelHash(String organismStrategy) throws Exception {
+        openDatabase(organismStrategy);
         setupDatabase(true);
         writeOrganismWithCallStack(KNOWN_HASH);
 
@@ -107,8 +125,10 @@ class H2DatabaseReaderProcedureNameResolutionTest {
      * target a hash the original program never held. Reporting no name is the truthful result, and
      * a placeholder would be wrong: callers tell named from unnamed frames by emptiness.
      */
-    @Test
-    void yieldsEmptyNameForAnUnknownLabelHash() throws Exception {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("strategies")
+    void yieldsEmptyNameForAnUnknownLabelHash(String organismStrategy) throws Exception {
+        openDatabase(organismStrategy);
         setupDatabase(true);
         writeOrganismWithCallStack(UNKNOWN_HASH);
 
@@ -123,8 +143,10 @@ class H2DatabaseReaderProcedureNameResolutionTest {
     }
 
     /** A run whose metadata holds no label map resolves every frame to an empty name. */
-    @Test
-    void yieldsEmptyNamesWhenTheRunHasNoLabelMap() throws Exception {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("strategies")
+    void yieldsEmptyNamesWhenTheRunHasNoLabelMap(String organismStrategy) throws Exception {
+        openDatabase(organismStrategy);
         setupDatabase(false);
         writeOrganismWithCallStack(KNOWN_HASH);
 
@@ -142,20 +164,22 @@ class H2DatabaseReaderProcedureNameResolutionTest {
      * the name the artifact knows. A chain of two would still pass if only the organism's own mask
      * were applied, which is the mistake worth catching.
      */
-    @Test
-    void resolvesNameThroughTheLabelMasksOfAWholeAncestry() throws Exception {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("strategies")
+    void resolvesNameThroughTheLabelMasksOfAWholeAncestry(String organismStrategy) throws Exception {
+        openDatabase(organismStrategy);
         setupDatabase(true);
         writeAncestryWithMaskedCallStack(KNOWN_HASH ^ CHILD_MASK ^ GRANDCHILD_MASK);
 
         try (IDatabaseReader reader = provider.createReader(runId)) {
             OrganismTickDetails grandchild = reader.readOrganismDetails(TICK, GRANDCHILD_ID);
-            assertThat(grandchild.staticInfo.labelNamespaceMask).isEqualTo(CHILD_MASK ^ GRANDCHILD_MASK);
+            assertThat(grandchild.labelNamespaceMask).isEqualTo(CHILD_MASK ^ GRANDCHILD_MASK);
             assertThat(grandchild.state.callStack).hasSize(1);
             assertThat(grandchild.state.callStack.get(0).procName).isEqualTo(KNOWN_NAME);
 
             // The founding organism of the same chain rewrote nothing and must stay untouched
             OrganismTickDetails founder = reader.readOrganismDetails(TICK, ORGANISM_ID);
-            assertThat(founder.staticInfo.labelNamespaceMask).isZero();
+            assertThat(founder.labelNamespaceMask).isZero();
             assertThat(founder.state.callStack.get(0).procName).isEqualTo(KNOWN_NAME);
         }
     }

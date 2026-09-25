@@ -19,6 +19,7 @@ import org.evochora.datapipeline.api.resources.database.PendingChunkRead;
 import org.evochora.datapipeline.api.resources.database.OrganismNotFoundException;
 import org.evochora.datapipeline.api.resources.database.TickNotFoundException;
 import org.evochora.datapipeline.api.resources.database.dto.ChunkIndexSummary;
+import org.evochora.datapipeline.api.resources.database.dto.OrganismStaticInfo;
 import org.evochora.datapipeline.api.resources.database.dto.SampledTickRange;
 import org.evochora.datapipeline.api.resources.database.dto.SpatialRegion;
 import org.evochora.datapipeline.api.resources.database.dto.TickRangeExtension;
@@ -430,18 +431,26 @@ public class EnvironmentController extends VisualizerBaseController {
         }
 
         try {
-            // Read the anchor first: it is a single row, and an unknown organism should fail
-            // before the chunk is loaded. The connection is released before that load.
-            final int[] initialPosition;
+            // Read the anchor first: it is a single row, and an organism that is unknown or was
+            // not alive here should fail before the chunk is loaded. The connection is released
+            // before that load.
+            final OrganismStaticInfo organism;
             try (final IDatabaseReader reader = databaseProvider.createReader(runId)) {
-                initialPosition = reader.readOrganismDetails(tickNumber, organismId)
-                    .staticInfo.initialPosition;
+                organism = reader.readOrganismStaticInfo(organismId);
             } catch (SQLException e) {
                 if (isSchemaNotFound(e)) {
                     throw new VisualizerBaseController.NoRunIdException("Run ID not found: " + runId);
                 }
                 throw e;
             }
+            if (organism == null) {
+                throw new OrganismNotFoundException("No organism metadata for id " + organismId);
+            }
+            if (!organism.aliveAt(tickNumber)) {
+                throw new OrganismNotFoundException(
+                    "Organism " + organismId + " was not alive at tick " + tickNumber);
+            }
+            final int[] initialPosition = organism.initialPosition;
 
             final EnvironmentProperties envProps = getOrLoadEnvProps(runId);
             if (initialPosition == null || initialPosition.length != envProps.getDimensions()) {

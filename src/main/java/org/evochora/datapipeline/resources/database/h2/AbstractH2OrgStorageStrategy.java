@@ -99,6 +99,8 @@ public abstract class AbstractH2OrgStorageStrategy implements IH2OrgStorageStrat
      * @param birthMutationsStmt prepared MERGE for the birth mutations column, batched only for organisms that carry events
      * @param seenOrganisms organism ids already batched through {@code organismsStmt} in the current commit window, cleared on commit, so the static row is batched once per organism and commit
      * @param seenBirthMutations organism ids already batched through {@code birthMutationsStmt} in the current commit window, cleared on commit
+     * @param deathTicksStmt prepared MERGE for the death tick column, batched only for organisms in their final appearance
+     * @param seenDeathTicks organism ids already batched through {@code deathTicksStmt} in the current commit window, cleared on commit
      */
     protected record StreamingSession(
             PreparedStatement organismsStmt,
@@ -106,7 +108,9 @@ public abstract class AbstractH2OrgStorageStrategy implements IH2OrgStorageStrat
             PreparedStatement tickStatsStmt,
             PreparedStatement birthMutationsStmt,
             Set<Integer> seenOrganisms,
-            Set<Integer> seenBirthMutations
+            Set<Integer> seenBirthMutations,
+            PreparedStatement deathTicksStmt,
+            Set<Integer> seenDeathTicks
     ) {}
 
     /** SQL for the per-tick statistics shared by all organism storage strategies. */
@@ -140,6 +144,18 @@ public abstract class AbstractH2OrgStorageStrategy implements IH2OrgStorageStrat
      */
     private static final String BIRTH_MUTATIONS_MERGE_SQL =
             "MERGE INTO organisms (organism_id, birth_mutations) "
+            + "KEY (organism_id) VALUES (?, ?)";
+
+    /**
+     * SQL for the tick an organism died at, written by {@link #addDeathTickBatch}.
+     * <p>
+     * Like {@link #BIRTH_MUTATIONS_MERGE_SQL} it names only {@code organism_id} and one column and
+     * therefore depends on the row already existing. It is a statement of its own rather than a
+     * column of {@link #ORGANISMS_MERGE_SQL} because the static data of an organism is written at
+     * its first appearance in a commit window, while its death becomes known at its last.
+     */
+    private static final String DEATH_TICK_MERGE_SQL =
+            "MERGE INTO organisms (organism_id, death_tick) "
             + "KEY (organism_id) VALUES (?, ?)";
 
     /** Per-connection sessions (thread-safe for competing consumers sharing this strategy instance). */
@@ -178,6 +194,8 @@ public abstract class AbstractH2OrgStorageStrategy implements IH2OrgStorageStrat
                             c.prepareStatement(TICK_STATS_MERGE_SQL),
                             c.prepareStatement(BIRTH_MUTATIONS_MERGE_SQL),
                             new HashSet<>(),
+                            new HashSet<>(),
+                            c.prepareStatement(DEATH_TICK_MERGE_SQL),
                             new HashSet<>()
                     );
                 } catch (SQLException e) {
@@ -273,6 +291,31 @@ public abstract class AbstractH2OrgStorageStrategy implements IH2OrgStorageStrat
     }
 
     /**
+     * Adds the death tick of this tick's organisms to the batch.
+     * <p>
+     * An organism is serialized one last time with its death tick set and is dropped from the
+     * simulation afterwards, so the value arrives exactly once, late in the organism's life, and
+     * never changes again. Writing it here rather than with the rest of the static data is what
+     * makes it arrive at all: that batch takes an organism at its first appearance in a commit
+     * window, which for a long-lived organism is a tick where it was still alive.
+     *
+     * @param session The streaming session for the current connection
+     * @param tick Tick data whose organisms are examined for a death tick
+     * @throws SQLException if parameter setting or addBatch fails
+     */
+    protected void addDeathTickBatch(StreamingSession session, TickData tick) throws SQLException {
+        PreparedStatement stmt = session.deathTicksStmt();
+        Set<Integer> seen = session.seenDeathTicks();
+        for (OrganismState org : tick.getOrganismsList()) {
+            if (org.hasDeathTick() && seen.add(org.getOrganismId())) {
+                stmt.setInt(1, org.getOrganismId());
+                stmt.setLong(2, org.getDeathTick());
+                stmt.addBatch();
+            }
+        }
+    }
+
+    /**
      * Creates the static organism data table shared by all organism storage strategies.
      * <p>
      * One row per organism of the run, holding what does not change over its life. The per-tick
@@ -281,6 +324,12 @@ public abstract class AbstractH2OrgStorageStrategy implements IH2OrgStorageStrat
      * <p>
      * {@code birth_mutations} holds a serialized {@code StoredMutationEvents} message and is null
      * for every organism no mutation plugin touched, which is the common case.
+     * <p>
+     * {@code death_tick} is the one value here that is not settled at birth: it stays null until a
+     * recorded tick reports the organism as dead, and is written once, from that tick. Null
+     * therefore says only that no such tick has been seen - the organism may be alive, or its
+     * death may lie in a tick that is not indexed yet. Together with {@code birth_tick} it answers
+     * whether an organism existed at a given tick without reading any of its per-tick state.
      *
      * @param stmt Statement on a connection with the run schema already set
      * @throws SQLException if the DDL fails for a reason other than the object already existing
@@ -297,7 +346,8 @@ public abstract class AbstractH2OrgStorageStrategy implements IH2OrgStorageStrat
             "  genome_hash BIGINT DEFAULT 0," +
             "  generation INT DEFAULT 0," +
             "  parent_genome_hash BIGINT NULL," +
-            "  birth_mutations BYTEA NULL" +
+            "  birth_mutations BYTEA NULL," +
+            "  death_tick BIGINT NULL" +
             ")",
             "organisms"
         );
@@ -380,11 +430,14 @@ public abstract class AbstractH2OrgStorageStrategy implements IH2OrgStorageStrat
             session.organismsStmt().executeBatch();
         }
         // After the static data, never before it: a MERGE inserts the row when it does not exist,
-        // and a row holding only the organism id and its events violates the NOT NULL columns of
-        // the table. Both batches carry the states of the same commit window, so the row the
-        // second statement updates is always in the first one's batch.
+        // and a row holding only the organism id and its events or its death tick violates the
+        // NOT NULL columns of the table. All batches carry the states of the same commit window,
+        // so the row the later statements update is always in the first one's batch.
         if (!session.seenBirthMutations().isEmpty()) {
             session.birthMutationsStmt().executeBatch();
+        }
+        if (!session.seenDeathTicks().isEmpty()) {
+            session.deathTicksStmt().executeBatch();
         }
         session.statesStmt().executeBatch();
         session.tickStatsStmt().executeBatch();
@@ -392,6 +445,7 @@ public abstract class AbstractH2OrgStorageStrategy implements IH2OrgStorageStrat
         // Reset per-commit state; statements stay open for reuse
         session.seenOrganisms().clear();
         session.seenBirthMutations().clear();
+        session.seenDeathTicks().clear();
     }
 
     /**
@@ -446,6 +500,7 @@ public abstract class AbstractH2OrgStorageStrategy implements IH2OrgStorageStrat
         closeQuietly(session.statesStmt());
         closeQuietly(session.tickStatsStmt());
         closeQuietly(session.birthMutationsStmt());
+        closeQuietly(session.deathTicksStmt());
     }
 
     /**

@@ -228,11 +228,12 @@ public class OrganismController extends VisualizerBaseController {
             // The ancestry chain is coloured by genome, so the response carries the closure of the
             // genomes it names rather than relying on what the tick response happened to deliver.
             final List<Long> genomes = new ArrayList<>();
-            details.staticInfo.lineage.forEach(entry -> genomes.add(entry.genomeHash()));
+            details.lineage.forEach(entry -> genomes.add(entry.genomeHash()));
             final Map<String, String> genomeAncestors = toStringMap(reader.readGenomeAncestors(genomes));
 
             ctx.status(HttpStatus.OK).json(new OrganismDetailsResponseDto(
-                details.organismId, details.tick, details.staticInfo, details.state, genomeAncestors));
+                details.organismId, details.tick, details.staticInfo, details.lineage,
+                details.labelNamespaceMask, details.state, genomeAncestors));
         } catch (OrganismNotFoundException e) {
             throw e;
         } catch (RuntimeException e) {
