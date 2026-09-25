@@ -76,10 +76,10 @@ public class OrganismController extends VisualizerBaseController {
     public OrganismController(final org.evochora.node.spi.ServiceRegistry registry, final Config options) {
         super(registry, options);
 
-        this.cladeSamples = setting(options, "clades.samples", 60);
+        this.cladeSamples = setting(options, "clades.samples", 60, 2);
         this.answerCache = Caffeine.newBuilder()
-            .maximumSize(setting(options, "clades.kept-answers", 4))
-            .expireAfterAccess(Duration.ofSeconds(setting(options, "clades.keep-answers-for", 600)))
+            .maximumSize(setting(options, "clades.kept-answers", 4, 0))
+            .expireAfterAccess(Duration.ofSeconds(setting(options, "clades.keep-answers-for", 600, 0)))
             .build();
     }
 
@@ -103,6 +103,32 @@ public class OrganismController extends VisualizerBaseController {
         }
         LOGGER.warn("No configuration for '{}', using {} as stated in reference.conf", path, documented);
         return documented;
+    }
+
+    /**
+     * Reads a setting that only makes sense from a value upwards, and refuses a smaller one.
+     * <p>
+     * A missing setting is a mishap in the setup and leaves the node running on the documented
+     * value; a value below what the code can work with is a decision, and one that would show
+     * itself far from where it was made - a sample count below two lets the sampling grid double
+     * its step until it overflows, and every clade request then fails. The node says so while
+     * starting instead.
+     *
+     * @param options The controller's configuration
+     * @param path The setting to read
+     * @param documented The value reference.conf states for it
+     * @param least The smallest value the setting may have
+     * @return The configured value, or the documented one
+     * @throws IllegalArgumentException if the configured value is below {@code least}
+     */
+    private static int setting(final Config options, final String path, final int documented,
+                               final int least) {
+        final int value = setting(options, path, documented);
+        if (value < least) {
+            throw new IllegalArgumentException(String.format(
+                "'%s' must be at least %d for the organism controller, but was %d", path, least, value));
+        }
+        return value;
     }
 
     @Override
@@ -391,15 +417,6 @@ public class OrganismController extends VisualizerBaseController {
     }
 
     /**
-     * Converts a genome ancestor map to string keys and values.
-     * <p>
-     * Genome hashes are 64-bit and lose precision as JSON numbers, so they travel as strings.
-     * A null value marks a root genome and is preserved as null.
-     *
-     * @param ancestors Genome hash to parent genome hash, null value for roots
-     * @return The same mapping with string keys and values
-     */
-    /**
      * Handles GET requests for the descent of a run's genomes and the population at sampled ticks.
      * <p>
      * Route: GET /visualizer/api/organisms/clades?runId=...
@@ -487,19 +504,23 @@ public class OrganismController extends VisualizerBaseController {
      * @param version Run and last sampled tick, which together settle what the answer holds
      * @param ticks The sampled ticks, ascending
      * @return The answer for these ticks
-     * @throws SQLException if database read fails
+     * @throws RuntimeException wrapping the {@link SQLException} of a failed read
      */
     CladesResponseDto answerFor(final IDatabaseReader reader, final String version,
-                                        final List<Long> ticks) throws SQLException {
-        final CladesResponseDto cached = answerCache.getIfPresent(version);
-        if (cached != null) {
-            return cached;
-        }
-        final Map<Long, Long> lineage = reader.readGenomeLineage();
-        final List<GenomeCarriers> carriers = reader.readGenomeCounts(ticks);
-        final CladesResponseDto answer = toCladesResponse(ancestryOf(lineage, carriers), carriers);
-        answerCache.put(version, answer);
-        return answer;
+                                        final List<Long> ticks) {
+        // Built under the cache's own lock: two requests arriving together in the moment the
+        // ticks have moved would otherwise both read the whole run, which is the one moment the
+        // database has the most to do anyway
+        return answerCache.get(version, key -> {
+            try {
+                final Map<Long, Long> lineage = reader.readGenomeLineage();
+                final List<GenomeCarriers> carriers = reader.readGenomeCounts(ticks);
+                return toCladesResponse(ancestryOf(lineage, carriers), carriers);
+            } catch (SQLException e) {
+                // The endpoint unwraps this again and keeps telling a missing run from a failed one
+                throw new RuntimeException("Failed to build the clade answer for " + version, e);
+            }
+        });
     }
 
     /**
@@ -610,6 +631,15 @@ public class OrganismController extends VisualizerBaseController {
         return new CladesResponseDto(genomes, parents, samples);
     }
 
+    /**
+     * Converts a genome ancestor map to string keys and values.
+     * <p>
+     * Genome hashes are 64-bit and lose precision as JSON numbers, so they travel as strings.
+     * A null value marks a root genome and is preserved as null.
+     *
+     * @param ancestors Genome hash to parent genome hash, null value for roots
+     * @return The same mapping with string keys and values
+     */
     private static Map<String, String> toStringMap(final Map<Long, Long> ancestors) {
         final Map<String, String> result = new LinkedHashMap<>(ancestors.size());
         ancestors.forEach((genome, parent) ->

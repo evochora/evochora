@@ -243,6 +243,27 @@ export class CladeModel {
     }
 
     /**
+     * Takes the path of an earlier model of the same run, as far as this tree still holds it.
+     * <p>
+     * A tree is rebuilt when the run has grown past another sample, and a viewer standing inside
+     * a clade stays where they were rather than being sent back to the roots. A step the new tree
+     * does not hold ends the path there; everything above it is still where it was.
+     *
+     * @param {string[]} path The steps of the earlier model, outermost first
+     */
+    followPath(path) {
+        const kept = [];
+        for (const genome of path ?? []) {
+            if (!this._parents.has(genome)) {
+                break;
+            }
+            kept.push(genome);
+        }
+        this._path = kept;
+        this._level = null;
+    }
+
+    /**
      * Goes back to the level of the given depth; zero is above all clades.
      *
      * @param {number} depth How many steps of the path to keep
@@ -274,13 +295,34 @@ export class CladeModel {
      */
     bandOf(genomeHash) {
         const level = this._levelOf();
-        for (const node of this._chainOf(String(genomeHash ?? 0))) {
-            const band = level.byFounder.get(node);
-            if (band) {
-                return band;
+        const key = String(genomeHash ?? 0);
+        // Everything walked past on the way up belongs to whatever is found at the end of it, so
+        // one walk settles a whole line rather than its lowest genome alone. A line already
+        // settled ends the walk where it is met, which is what keeps the cost at one step per
+        // genome of the tree instead of one per genome and sample.
+        const walked = [];
+        const seen = new Set();
+        let band = null;
+        let current = key;
+        while (current && current !== '0' && !seen.has(current)) {
+            if (level.bandAt.has(current)) {
+                band = level.bandAt.get(current);
+                break;
             }
+            const found = level.byFounder.get(current);
+            if (found) {
+                band = found;
+                break;
+            }
+            walked.push(current);
+            seen.add(current);
+            current = this._parentOf(current);
         }
-        return null;
+        level.bandAt.set(key, band);
+        for (const node of walked) {
+            level.bandAt.set(node, band);
+        }
+        return band;
     }
 
     /**
@@ -304,7 +346,7 @@ export class CladeModel {
                 total += carriers;
                 const band = this.bandOf(genome);
                 if (band) {
-                    shares[level.list.indexOf(band)] += carriers;
+                    shares[level.at.get(band)] += carriers;
                 }
             }
             const tops = [];
@@ -356,11 +398,20 @@ export class CladeModel {
         while (current && current !== '0' && !seen.has(current)) {
             chain.push(current);
             seen.add(current);
-            current = this._parents.has(current)
-                ? this._parents.get(current)
-                : (this._lookUpParent(current) ?? null);
+            current = this._parentOf(current);
         }
         return chain;
+    }
+
+    /**
+     * The parent of a genome: from the tree, or looked up for one that arose between two samples
+     * and is therefore not in it.
+     * @private
+     */
+    _parentOf(genome) {
+        return this._parents.has(genome)
+            ? this._parents.get(genome)
+            : (this._lookUpParent(genome) ?? null);
     }
 
     /** How many carriers a node and everything below it had, over all samples. @private */
@@ -430,7 +481,11 @@ export class CladeModel {
                 byFounder.set(absorbed, band);
             }
         }
-        this._level = { list, byFounder, opened, stacks: null };
+        // Where each band sits in the list, and which band a genome ends up in: both are asked
+        // once per genome and sample, which for a large run is millions of times
+        const at = new Map();
+        list.forEach((band, i) => at.set(band, i));
+        this._level = { list, byFounder, at, bandAt: new Map(), opened, stacks: null };
         this._colour(list, kept.length);
         return this._level;
     }

@@ -9,11 +9,13 @@ import java.util.Map;
 import org.evochora.datapipeline.api.resources.database.dto.GenomeCarriers;
 import org.evochora.node.processes.http.api.visualizer.dto.CladesResponseDto;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 /**
  * Tests the shape the clade endpoint answers in: genomes named once, referred to by position.
  */
+@Tag("unit")
 @DisplayName("OrganismController clades response")
 class OrganismControllerCladesTest {
 

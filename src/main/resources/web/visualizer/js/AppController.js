@@ -76,6 +76,8 @@ export class AppController {
         // Lineage-based color tracking (genome mode)
         /** The clade tree of the current run, null until it has been fetched. */
         this._cladeModel = null;
+        /** The last sampled tick the tree was built from; the same answer needs no new tree. */
+        this._cladeSamplesAt = null;
         this._cladeRequestController = null;
 
         this._genomeParent = new Map();       // String(genomeHash) → String(parentGenomeHash) | null
@@ -193,6 +195,7 @@ export class AppController {
             this._genomeColorCache.clear();
             this._cladeRequestController?.abort();
             this._cladeModel = null;
+            this._cladeSamplesAt = null;
             this.cladePanel?.setModel(null);
             this.minimapView?.organismOverlay?.clearSpriteCache();
             this.state.maxTick = null;
@@ -655,9 +658,20 @@ export class AppController {
             if (runId !== this.state.runId) {
                 return;
             }
+            // The samples move once in many minutes while this is asked every few seconds, and
+            // the answer is the same until they do. Rebuilding it regardless would throw away the
+            // clade the viewer entered, and pay for the shares of a level that has not changed.
+            const samples = answer?.samples ?? [];
+            const lastSample = samples.length ? samples[samples.length - 1].tick : null;
+            if (this._cladeModel && lastSample === this._cladeSamplesAt) {
+                return;
+            }
+            this._cladeSamplesAt = lastSample;
+
             // A genome that arose between two sampled ticks is not in the tree; its ancestry is
             // in the map the organism responses fill, which covers the tick on screen
             const model = new CladeModel(answer, (genome) => this._genomeParent.get(genome));
+            model.followPath(this._cladeModel?.path);
             this._cladeModel = model;
             this.cladePanel?.setModel(model);
             this.repaintOrganismColors();

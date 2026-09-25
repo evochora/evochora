@@ -937,6 +937,8 @@ class EnvironmentControllerIntegrationTest {
 
         // The organism is only born after the tick the body is asked for
         writeOrganism(runId, 1L, organismAt(7, 0, 0).toBuilder().setBirthTick(5L).build());
+        // The other one died at that very tick, which it no longer counts as alive at
+        writeOrganism(runId, 1L, organismAt(8, 1, 0).toBuilder().setDeathTick(1L).build());
         startIndexer(runId);
 
         int port = startControllerServer();
@@ -946,6 +948,13 @@ class EnvironmentControllerIntegrationTest {
             .basePath("/visualizer/api/environment")
             .queryParam("runId", runId)
             .get("/1/organism/7")
+            .then().statusCode(404);
+
+        given()
+            .port(port)
+            .basePath("/visualizer/api/environment")
+            .queryParam("runId", runId)
+            .get("/1/organism/8")
             .then().statusCode(404);
     }
 

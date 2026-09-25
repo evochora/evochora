@@ -956,26 +956,6 @@ export class EnvironmentGrid {
     }
 
     /**
-     * Takes the mutation marks of the selected organism's lineage, or drops them.
-     *
-     * Every cell that is marked before or after the change is drawn again, so a mark appears,
-     * changes its colour or disappears with the selection while the rest of what is on screen
-     * stays untouched. The zoomed-out renderer paints a whole region into one texture and keeps no
-     * cell data to draw from, so it drops its cache instead and paints the region again from the
-     * data of the next load.
-     *
-     * @param {Map<string, object>|null} marks - Cell key "x,y" to the mutation deciding that cell,
-     *                                          null when no organism is selected.
-     * @param {object} [lookups={}] - What the marks are drawn and described through.
-     * @param {function(): number|null} [lookups.colorOf] - The colour the selected organism is
-     *                                          drawn in, whose hue the marks take.
-     * @param {function(number): number|null} [lookups.generationsBackOf] - How many generations the
-     *                                          organism with the given id lies back from the selected
-     *                                          one, null while that is not known.
-     * @param {function(number): string|null} [lookups.opcodeNameOf] - Name of an opcode id, null for
-     *                                          an id without a name.
-     */
-    /**
      * Draws the marks again for a colour or a depth that has changed under them.
      * <p>
      * The marks of a selection arrive before its ancestry does — one request answers births, the
@@ -1014,6 +994,26 @@ export class EnvironmentGrid {
         return depth;
     }
 
+    /**
+     * Takes the mutation marks of the selected organism's lineage, or drops them.
+     *
+     * Every cell that is marked before or after the change is drawn again, so a mark appears,
+     * changes its colour or disappears with the selection while the rest of what is on screen
+     * stays untouched. The zoomed-out renderer paints a whole region into one texture and keeps no
+     * cell data to draw from, so it drops its cache instead and paints the region again from the
+     * data of the next load.
+     *
+     * @param {Map<string, object>|null} marks - Cell key "x,y" to the mutation deciding that cell,
+     *                                          null when no organism is selected.
+     * @param {object} [lookups={}] - What the marks are drawn and described through.
+     * @param {function(): number|null} [lookups.colorOf] - The colour the selected organism is
+     *                                          drawn in, whose hue the marks take.
+     * @param {function(number): number|null} [lookups.generationsBackOf] - How many generations the
+     *                                          organism with the given id lies back from the selected
+     *                                          one, null while that is not known.
+     * @param {function(number): string|null} [lookups.opcodeNameOf] - Name of an opcode id, null for
+     *                                          an id without a name.
+     */
     setMutationMarks(marks, { colorOf = null, generationsBackOf = null, opcodeNameOf = null } = {}) {
         const affected = new Set();
         if (this.mutationMarks) {
@@ -2709,8 +2709,6 @@ class ZoomedOutRendererStrategy extends BaseRendererStrategy {
         // the mark's colour instead of its own. Cells that the response names are collected while
         // they are drawn, so that a marked cell it does not name can be recognized as empty below.
         const named = this.grid.mutationMarks ? new Set() : null;
-
-
 
         for (let i = 0; i < cells.length; i++) {
             const cell = cells[i];

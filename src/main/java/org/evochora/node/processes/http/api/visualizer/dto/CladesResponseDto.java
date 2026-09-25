@@ -24,6 +24,11 @@ public record CladesResponseDto(
 ) {
     /**
      * What one sampled tick holds: the genomes alive in it and how many organisms carried each.
+     * <p>
+     * A shape for writing out, not for comparing. The pairs are arrays, so the record's generated
+     * {@code equals} asks whether two samples hold the same arrays rather than the same numbers,
+     * and two answers built from one run are never equal to each other. The arrays are what keeps
+     * an answer of tens of thousands of pairs small enough to hold several of them at once.
      *
      * @param tick The tick sampled
      * @param carriers Pairs of genome position and carrier count, as flat two-element arrays
