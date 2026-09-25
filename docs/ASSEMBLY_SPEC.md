@@ -283,12 +283,11 @@ A vector literal is used to define coordinates or direction vectors. The compone
 
 ### Labels as Literals
 
-When a label is used as an argument for an instruction that expects a vector (like `JMPI` or `SETV`), the compiler automatically calculates the relative vector from the instruction's location to the label's location. This allows for position-independent code.
+When a label is used as an argument for an instruction that expects a vector (like `SETV`), the compiler automatically calculates the relative vector from the instruction's location to the label's location. This allows for position-independent code.
 
 * **Example**:
     ```
     SETV %DR0 MY_TARGET  # DR0 will hold the vector pointing to MY_TARGET
-    JMPI MY_TARGET      # Jumps to the location of MY_TARGET
     ...
     MY_TARGET: NOP
     ```
@@ -401,8 +400,8 @@ Scans axis-aligned neighbors around the active DP and returns a bitmask indicati
 ### Control Flow
 
 * `JMPI <Label>`: Jumps to `<Label>`.
-* `JMPR %VEC_REG>`: Jumps to the vector address in `<%VEC_REG>`.
-* `JMPS`: Jumps to the vector address popped from the stack.
+* `JMPR %REG`: Jumps to the label whose hash is in `<%REG>`.
+* `JMPS`: Jumps to the label whose hash is popped from the stack.
   `CALL <Label> [REF %reg ...] [VAL %reg|Literal ...] [LREF %lreg ...] [LVAL %lreg|Label ...]`: Calls the procedure at `<Label>`, optionally passing parameters.
     - `REF`: Passes registers by reference. Modifications inside the procedure affect the caller's register.
     - `VAL`: Passes registers or literal values by value. Modifications are local.

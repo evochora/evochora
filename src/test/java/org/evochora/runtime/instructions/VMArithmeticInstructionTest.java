@@ -4,6 +4,7 @@ import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
 import org.evochora.test.utils.SimulationTestUtils;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.isa.RegisterBank;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
@@ -325,6 +326,26 @@ public class VMArithmeticInstructionTest {
         sim.tick();
         int crsS = Molecule.fromInt((Integer) org.getDataStack().pop()).toScalarValue();
         assertThat(crsS).isEqualTo(2*(-1) - 3*4);
+    }
+
+    /**
+     * A dot product of vectors of different lengths fails, and a failed instruction leaves the
+     * destination register as it was. A location register without position, named through a
+     * mutated register id, is such a vector.
+     */
+    @Test
+    @Tag("unit")
+    void dotrOfMismatchedVectorsFailsAndKeepsTheDestination() {
+        int previous = new Molecule(Config.TYPE_DATA, 77).toInt();
+        org.writeOperand(0, previous);
+        org.writeOperand(2, new int[]{4, -1});
+        placeInstruction("DOTR", 0, RegisterBank.LR.base, 2);
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).isTrue();
+        assertThat(org.readOperand(0)).isEqualTo(previous);
+
+        org.resetTickState();
     }
 
     /**

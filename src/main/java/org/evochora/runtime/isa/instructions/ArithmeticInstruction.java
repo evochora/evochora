@@ -225,6 +225,9 @@ public class ArithmeticInstruction extends Instruction {
                     case "CRSS" -> cross2d(v1, v2);
                     default -> 0;
                 };
+                if (organism.isInstructionFailed()) {
+                    return;
+                }
                 organism.pushData(new Molecule(Config.TYPE_DATA, result).toInt());
                 return;
             }
@@ -243,6 +246,9 @@ public class ArithmeticInstruction extends Instruction {
                 case "CRSR" -> cross2d(v1, v2);
                 default -> 0;
             };
+            if (organism.isInstructionFailed()) {
+                return;
+            }
             if (!writeOperand(destReg, new Molecule(Config.TYPE_DATA, result).toInt())) {
                 return;
             }

@@ -132,6 +132,28 @@ public class VMControlFlowInstructionTest {
     }
 
     /**
+     * A label hash is a scalar. A vector in the register names no label, so JMPR fails and the
+     * instruction pointer stays, even when a component of the vector equals a label's hash.
+     */
+    @Test
+    @Tag("unit")
+    void jmprWithAVectorFails() {
+        int[] labelPos = new int[]{17};
+        int labelHash = 11111 & Config.VALUE_MASK;
+        environment.setMolecule(new Molecule(Config.TYPE_LABEL, labelHash), labelPos);
+
+        org.writeOperand(0, new int[]{labelHash});
+        placeInstruction("JMPR", 0);
+
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).isTrue();
+        assertThat(org.getIp()).as("the IP does not land past the label").isNotEqualTo(new int[]{18});
+
+        org.resetTickState();
+    }
+
+    /**
      * Tests the JMPS (Jump Stack) instruction with fuzzy label matching.
      * Pushes a label hash onto the stack and places a LABEL molecule at the target.
      * This is a unit test for the VM's instruction logic.

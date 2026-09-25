@@ -145,26 +145,16 @@ public class ControlFlowInstruction extends Instruction {
 
     /**
      * Extracts a label hash from a register or stack value.
-     * Handles different value types that may be stored in registers/stack:
-     * <ul>
-     *   <li>Integer: uses directly as hash (masked to 20 bits)</li>
-     *   <li>Molecule: extracts the value field</li>
-     *   <li>int[] (legacy vector): uses first element as hash</li>
-     * </ul>
+     * <p>
+     * A label hash is a scalar, and its value bits are the hash. A vector names no label, so it
+     * yields no hash and the jump fails, as SKJR and SKJS do.
      *
      * @param value The value from register or stack
-     * @return The extracted label hash (20-bit), or -1 if extraction failed
+     * @return The extracted label hash (20-bit), or -1 if the value is not a scalar
      */
     private int extractLabelHash(Object value) {
         if (value instanceof Integer intVal) {
             return intVal & Config.VALUE_MASK;
-        }
-        if (value instanceof org.evochora.runtime.model.Molecule mol) {
-            return mol.value() & Config.VALUE_MASK;
-        }
-        if (value instanceof int[] arr && arr.length > 0) {
-            // Legacy: treat first element as hash for backwards compatibility
-            return arr[0] & Config.VALUE_MASK;
         }
         return -1;
     }
