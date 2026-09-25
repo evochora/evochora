@@ -110,6 +110,7 @@ public class SingleBlobOrgStrategy extends AbstractH2OrgStorageStrategy {
         StreamingSession session = ensureStreamingSession(conn);
         addOrganismMetadataBatch(session, tick);
         addBirthMutationsBatch(session, tick, birthMutations);
+        addDeathTickBatch(session, tick);
         addTickStatsBatch(session, tick);
 
         // Per-tick BLOB (all organisms serialized + compressed)

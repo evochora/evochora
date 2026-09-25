@@ -131,6 +131,7 @@ public class RowPerOrganismStrategy extends AbstractH2OrgStorageStrategy {
         StreamingSession session = ensureStreamingSession(conn);
         addOrganismMetadataBatch(session, tick);
         addBirthMutationsBatch(session, tick, birthMutations);
+        addDeathTickBatch(session, tick);
         addTickStatsBatch(session, tick);
 
         // Per-tick organism states (one row per organism)

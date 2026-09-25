@@ -2,6 +2,7 @@ package org.evochora.datapipeline.api.resources.database;
 
 import org.evochora.datapipeline.api.resources.database.dto.LineageMutations;
 import org.evochora.datapipeline.utils.LabelNamespaceMask;
+import org.evochora.datapipeline.api.resources.database.dto.OrganismStaticInfo;
 import org.evochora.datapipeline.api.resources.database.dto.OrganismTickDetails;
 import org.evochora.datapipeline.api.resources.database.dto.OrganismTickSummary;
 
@@ -35,6 +36,19 @@ public interface IOrganismDataReader {
      */
     OrganismTickDetails readOrganismDetails(long tickNumber, int organismId)
             throws SQLException, OrganismNotFoundException;
+
+    /**
+     * Reads what is recorded about one organism itself, as opposed to about one of its ticks.
+     * <p>
+     * This is one row and no tick state at all, which is what a caller needs that wants to know
+     * whether an organism existed at a tick, what it was born with, or where its body is
+     * anchored. The ancestry is not part of it; {@link #readLineageMutations(int)} answers that.
+     *
+     * @param organismId Organism to look up (must be &gt;= 0).
+     * @return Its static data, or {@code null} if no organism with that id is indexed.
+     * @throws SQLException if database read fails.
+     */
+    OrganismStaticInfo readOrganismStaticInfo(int organismId) throws SQLException;
 
     /**
      * Reads the total number of organisms created up to (and including) the given tick.

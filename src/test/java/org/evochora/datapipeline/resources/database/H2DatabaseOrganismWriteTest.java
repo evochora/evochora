@@ -7,6 +7,7 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.UUID;
 
 import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.OrganismStateList;
@@ -14,6 +15,8 @@ import org.evochora.datapipeline.api.contracts.ProcFrame;
 import org.evochora.datapipeline.api.contracts.RegisterValue;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.Vector;
+import org.evochora.datapipeline.api.resources.database.IDatabaseReader;
+import org.evochora.datapipeline.api.resources.database.dto.OrganismStaticInfo;
 import org.evochora.datapipeline.utils.compression.CompressionCodecFactory;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
 import org.evochora.test.utils.ProtoTestUtils;
@@ -27,6 +30,8 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import com.typesafe.config.ConfigFactory;
 
@@ -153,13 +158,83 @@ class H2DatabaseOrganismWriteTest {
         }
     }
 
+    /**
+     * An organism's death arrives at its last appearance, which for a long-lived one is not the
+     * tick its static data was written at. Both storage strategies must still end up with the
+     * death tick in its row, including when birth and death fall into the same commit window.
+     */
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "org.evochora.datapipeline.resources.database.h2.SingleBlobOrgStrategy",
+        "org.evochora.datapipeline.resources.database.h2.RowPerOrganismStrategy"
+    })
+    void deathTick_reachesTheRowWhateverTickItArrivesAt(String strategyClass) throws Exception {
+        try (H2Database db = new H2Database("death-db", ConfigFactory.parseString("""
+                jdbcUrl = "jdbc:h2:mem:test-death-%s;MODE=PostgreSQL"
+                h2OrganismStrategy { className = "%s" }
+                """.formatted(UUID.randomUUID(), strategyClass)))) {
+            String runId = "death-run";
+            try (Connection conn = getConnectionWithSchema(db, runId)) {
+                db.doCreateOrganismTables(conn);
+                // Organism 1 lives on, organism 2 is born and dies within the same commit window
+                db.doWriteOrganismTick(conn, tick(10L, alive(1, 0L)), java.util.Map.of());
+                db.doWriteOrganismTick(conn, tick(20L, alive(1, 0L), alive(2, 15L)),
+                        java.util.Map.of());
+                db.doWriteOrganismTick(conn, tick(30L, alive(1, 0L), dead(2, 15L, 25L)),
+                        java.util.Map.of());
+                db.doCommitOrganismWrites(conn);
+            }
+
+            try (IDatabaseReader reader = db.createReader(runId)) {
+                assertThat(reader.readOrganismStaticInfo(1).deathTick).isEqualTo(-1L);
+
+                OrganismStaticInfo shortLived = reader.readOrganismStaticInfo(2);
+                assertThat(shortLived.birthTick).isEqualTo(15L);
+                assertThat(shortLived.deathTick).isEqualTo(25L);
+                assertThat(shortLived.aliveAt(20L)).isTrue();
+                assertThat(shortLived.aliveAt(25L)).isFalse();
+                assertThat(shortLived.aliveAt(10L)).isFalse();
+
+                assertThat(reader.readOrganismStaticInfo(99)).isNull();
+            }
+        }
+    }
+
+    /** A tick holding exactly the given organisms. */
+    private TickData tick(long tickNumber, OrganismState... organisms) {
+        TickData.Builder tick = TickData.newBuilder().setTickNumber(tickNumber);
+        for (OrganismState organism : organisms) {
+            tick.addOrganisms(organism);
+        }
+        return tick.build();
+    }
+
+    /** An organism alive since the given tick. */
+    private OrganismState alive(int id, long birthTick) {
+        return buildOrganismState(id).toBuilder()
+                .setBirthTick(birthTick)
+                .build();
+    }
+
+    /** An organism in its final appearance: dead, with the tick it died at. */
+    private OrganismState dead(int id, long birthTick, long deathTick) {
+        return alive(id, birthTick).toBuilder()
+                .setIsDead(true)
+                .setDeathTick(deathTick)
+                .build();
+    }
+
     private Connection getConnectionWithSchema(String runId) throws SQLException {
+        return getConnectionWithSchema(database, runId);
+    }
+
+    private Connection getConnectionWithSchema(H2Database db, String runId) throws SQLException {
         try {
             java.lang.reflect.Field dataSourceField = H2Database.class.getDeclaredField("dataSource");
             dataSourceField.setAccessible(true);
             @SuppressWarnings("resource")
             com.zaxxer.hikari.HikariDataSource dataSource =
-                    (com.zaxxer.hikari.HikariDataSource) dataSourceField.get(database);
+                    (com.zaxxer.hikari.HikariDataSource) dataSourceField.get(db);
 
             Connection conn = dataSource.getConnection();
             org.evochora.datapipeline.utils.H2SchemaUtil.setupRunSchema(conn, runId,

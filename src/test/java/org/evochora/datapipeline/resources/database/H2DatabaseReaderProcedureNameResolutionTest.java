@@ -173,13 +173,13 @@ class H2DatabaseReaderProcedureNameResolutionTest {
 
         try (IDatabaseReader reader = provider.createReader(runId)) {
             OrganismTickDetails grandchild = reader.readOrganismDetails(TICK, GRANDCHILD_ID);
-            assertThat(grandchild.staticInfo.labelNamespaceMask).isEqualTo(CHILD_MASK ^ GRANDCHILD_MASK);
+            assertThat(grandchild.labelNamespaceMask).isEqualTo(CHILD_MASK ^ GRANDCHILD_MASK);
             assertThat(grandchild.state.callStack).hasSize(1);
             assertThat(grandchild.state.callStack.get(0).procName).isEqualTo(KNOWN_NAME);
 
             // The founding organism of the same chain rewrote nothing and must stay untouched
             OrganismTickDetails founder = reader.readOrganismDetails(TICK, ORGANISM_ID);
-            assertThat(founder.staticInfo.labelNamespaceMask).isZero();
+            assertThat(founder.labelNamespaceMask).isZero();
             assertThat(founder.state.callStack.get(0).procName).isEqualTo(KNOWN_NAME);
         }
     }

@@ -432,7 +432,7 @@ export class AppController {
                     : null;
                 this.stateView.setProgram(artifact);
                 this.instructionView.setProgram(artifact);
-                this.instructionView.setLabelNamespaceMask(staticInfo.labelNamespaceMask);
+                this.instructionView.setLabelNamespaceMask(details.labelNamespaceMask);
                 this.sourceView.setProgram(artifact);
 
                 // The ancestry chain names the parent first, so an ancestor's place in it is how
@@ -441,7 +441,7 @@ export class AppController {
                     organismId,
                     distances: new Map([
                         [organismId, 0],
-                        ...(staticInfo.lineage || []).map((entry, index) => [entry.organismId, index + 1])
+                        ...(details.lineage || []).map((entry, index) => [entry.organismId, index + 1])
                     ])
                 };
 
@@ -478,7 +478,7 @@ export class AppController {
                     }
 
                     // Build lineage display (direct parent first, oldest ancestor last)
-                    const lineageDisplay = this._buildLineageDisplay(staticInfo.lineage || [], organismId, isDead);
+                    const lineageDisplay = this._buildLineageDisplay(details.lineage || [], organismId, isDead);
 
                     infoEl.innerHTML = `<div class="organism-info-line">${birthDeathLabel}  MR: ${mrValue}  Lineage: <span class="lineage-chain">${lineageDisplay}</span></div>`;
 
@@ -514,7 +514,7 @@ export class AppController {
                 
                 // Update Source View with the current execution position
                 if (artifact) {
-                    this.sourceView.updateExecutionState(state, staticInfo);
+                    this.sourceView.updateExecutionState(state, staticInfo, details.labelNamespaceMask);
                 }
                 
                 // Save current details for next comparison
