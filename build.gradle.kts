@@ -344,6 +344,7 @@ tasks.register<Test>("unit") {
         includeTags("unit")
     }
     maxParallelForks = testForks
+    maxHeapSize = "2g" // Match test task heap size to avoid OOM
     jvmArgs("-Duser.language=en", "-Duser.country=US")
     jvmArgs("-Xshare:off")
     testLogging {
