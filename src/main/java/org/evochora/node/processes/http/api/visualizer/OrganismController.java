@@ -21,7 +21,12 @@ import org.evochora.datapipeline.api.resources.database.dto.TickRange;
 import org.evochora.datapipeline.utils.MetadataConfigHelper;
 import org.evochora.runtime.model.EnvironmentProperties;
 
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
+import java.time.Duration;
 import java.util.ArrayList;
+import org.evochora.datapipeline.api.resources.database.dto.GenomeCarriers;
+import org.evochora.node.processes.http.api.visualizer.dto.CladesResponseDto;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.evochora.node.processes.http.api.pipeline.dto.ErrorResponseDto;
@@ -54,6 +59,12 @@ import java.util.List;
  */
 public class OrganismController extends VisualizerBaseController {
 
+    /** How many ticks a run is sampled at; see {@code clades.samples} in reference.conf. */
+    private final int cladeSamples;
+
+    /** Answers kept between requests, keyed by run and last sampled tick. */
+    private final Cache<String, CladesResponseDto> answerCache;
+
     private static final Logger LOGGER = LoggerFactory.getLogger(OrganismController.class);
 
     /**
@@ -64,6 +75,60 @@ public class OrganismController extends VisualizerBaseController {
      */
     public OrganismController(final org.evochora.node.spi.ServiceRegistry registry, final Config options) {
         super(registry, options);
+
+        this.cladeSamples = setting(options, "clades.samples", 60, 2);
+        this.answerCache = Caffeine.newBuilder()
+            .maximumSize(setting(options, "clades.kept-answers", 4, 0))
+            .expireAfterAccess(Duration.ofSeconds(setting(options, "clades.keep-answers-for", 600, 0)))
+            .build();
+    }
+
+    /**
+     * Reads a setting a controller is expected to have, and says so when it is missing.
+     * <p>
+     * Every setting of this controller is stated in reference.conf, so a missing one means the
+     * configuration reaching it is not the one that was written - a controller declared without
+     * an options block is handed an empty configuration. That is worth a word in the log: the
+     * node keeps running on the documented value rather than failing to start, and whoever set
+     * it up can see that their setting never arrived.
+     *
+     * @param options The controller's configuration
+     * @param path The setting to read
+     * @param documented The value reference.conf states for it
+     * @return The configured value, or the documented one
+     */
+    private static int setting(final Config options, final String path, final int documented) {
+        if (options.hasPath(path)) {
+            return options.getInt(path);
+        }
+        LOGGER.warn("No configuration for '{}', using {} as stated in reference.conf", path, documented);
+        return documented;
+    }
+
+    /**
+     * Reads a setting that only makes sense from a value upwards, and refuses a smaller one.
+     * <p>
+     * A missing setting is a mishap in the setup and leaves the node running on the documented
+     * value; a value below what the code can work with is a decision, and one that would show
+     * itself far from where it was made - a sample count below two lets the sampling grid double
+     * its step until it overflows, and every clade request then fails. The node says so while
+     * starting instead.
+     *
+     * @param options The controller's configuration
+     * @param path The setting to read
+     * @param documented The value reference.conf states for it
+     * @param least The smallest value the setting may have
+     * @return The configured value, or the documented one
+     * @throws IllegalArgumentException if the configured value is below {@code least}
+     */
+    private static int setting(final Config options, final String path, final int documented,
+                               final int least) {
+        final int value = setting(options, path, documented);
+        if (value < least) {
+            throw new IllegalArgumentException(String.format(
+                "'%s' must be at least %d for the organism controller, but was %d", path, least, value));
+        }
+        return value;
     }
 
     @Override
@@ -72,13 +137,15 @@ public class OrganismController extends VisualizerBaseController {
         final String detailPath = (basePath + "/{tick}/{organismId}").replaceAll("//", "/");
         final String mutationsPath = (basePath + "/{tick}/{organismId}/mutations").replaceAll("//", "/");
         final String ticksPath = (basePath + "/ticks").replaceAll("//", "/");
+        final String cladesPath = (basePath + "/clades").replaceAll("//", "/");
 
-        LOGGER.debug("Registering organism endpoints: list={}, detail={}, mutations={}, ticks={}",
-            listPath, detailPath, mutationsPath, ticksPath);
+        LOGGER.debug("Registering organism endpoints: list={}, detail={}, mutations={}, ticks={}, clades={}",
+            listPath, detailPath, mutationsPath, ticksPath, cladesPath);
 
-        // IMPORTANT: Register /ticks BEFORE /{tick} to avoid path parameter conflict
-        // Javalin matches routes in registration order, so /ticks must come first
+        // IMPORTANT: Register /ticks and /clades BEFORE /{tick} to avoid path parameter conflict
+        // Javalin matches routes in registration order, so the named paths must come first
         app.get(ticksPath, this::getTicks);
+        app.get(cladesPath, this::getClades);
         app.get(listPath, this::getOrganismsAtTick);
         app.get(detailPath, this::getOrganismDetails);
         app.get(mutationsPath, this::getOrganismMutations);
@@ -228,11 +295,12 @@ public class OrganismController extends VisualizerBaseController {
             // The ancestry chain is coloured by genome, so the response carries the closure of the
             // genomes it names rather than relying on what the tick response happened to deliver.
             final List<Long> genomes = new ArrayList<>();
-            details.staticInfo.lineage.forEach(entry -> genomes.add(entry.genomeHash()));
+            details.lineage.forEach(entry -> genomes.add(entry.genomeHash()));
             final Map<String, String> genomeAncestors = toStringMap(reader.readGenomeAncestors(genomes));
 
             ctx.status(HttpStatus.OK).json(new OrganismDetailsResponseDto(
-                details.organismId, details.tick, details.staticInfo, details.state, genomeAncestors));
+                details.organismId, details.tick, details.staticInfo, details.lineage,
+                details.labelNamespaceMask, details.state, genomeAncestors));
         } catch (OrganismNotFoundException e) {
             throw e;
         } catch (RuntimeException e) {
@@ -346,6 +414,221 @@ public class OrganismController extends VisualizerBaseController {
             }
             throw e;
         }
+    }
+
+    /**
+     * Handles GET requests for the descent of a run's genomes and the population at sampled ticks.
+     * <p>
+     * Route: GET /visualizer/api/organisms/clades?runId=...
+     * <p>
+     * Which ticks are sampled is decided here and not by the caller: they follow from the run's
+     * recorded range, its interval and the configured number of samples. Two callers choosing
+     * them for themselves would weigh the clades of a run differently and colour them
+     * differently, which is why this is configuration and not a request parameter.
+     * <p>
+     * Answers what a view colouring by kinship needs before it knows which genomes it will ask
+     * about: the whole tree, and the weight each line of descent carried over the run.
+     *
+     * @param ctx The Javalin context
+     * @throws SQLException if database access fails
+     */
+    @OpenApi(
+        path = "clades",
+        methods = {HttpMethod.GET},
+        summary = "Get the genome lineage of a run and the population at the given ticks",
+        description = "Returns the genomes above the sampled ticks with their parents, and per "
+                + "sampled tick how many organisms carried each. Genomes are named once and "
+                + "referred to by index. The ticks sit on a grid that only grows at its end.",
+        tags = {"visualizer / organism"},
+        queryParams = {
+            @OpenApiParam(name = "runId", description = "Optional simulation run ID (defaults to latest run)", required = false)
+        },
+        responses = {
+            @OpenApiResponse(status = "200", description = "OK", content = @OpenApiContent(from = CladesResponseDto.class)),
+            @OpenApiResponse(status = "304", description = "Not Modified (cached response, ETag matches)"),
+            @OpenApiResponse(status = "404", description = "Not found (run ID or metadata not found)", content = @OpenApiContent(from = ErrorResponseDto.class)),
+            @OpenApiResponse(status = "500", description = "Internal server error (database error)", content = @OpenApiContent(from = ErrorResponseDto.class))
+        }
+    )
+    void getClades(final Context ctx) throws SQLException {
+        final String runId = resolveRunId(ctx);
+
+        final CacheConfig cacheConfig = CacheConfig.fromConfig(options, "clades");
+
+        try (final IDatabaseReader reader = databaseProvider.createReader(runId)) {
+            final TickRange range = reader.getOrganismTickRange();
+            if (range == null) {
+                ctx.status(HttpStatus.OK).json(new CladesResponseDto(List.of(), List.of(), List.of()));
+                return;
+            }
+            final int interval = MetadataConfigHelper.getSamplingInterval(reader.getMetadata());
+            // The grid gives candidates; which ticks a run actually recorded is its own answer
+            final List<Long> ticks = reader.snapToRecordedTicks(
+                    sampleTicks(range.minTick(), range.maxTick(), interval, cladeSamples));
+
+            LOGGER.debug("Retrieving clades for runId={} ticks={}", runId, ticks.size());
+
+            // The answer is settled by the sampled ticks, so the last of them names its version.
+            // Not the last tick indexed: a run grows by a tick every few milliseconds while its
+            // samples move once in many minutes, and an answer that never validates is one that
+            // is rebuilt and resent for nothing.
+            final String version = ticks.isEmpty() ? "empty" : String.valueOf(ticks.get(ticks.size() - 1));
+            final String etag = "\"" + runId + "_clades_" + version + "\"";
+            if (applyCacheHeaders(ctx, cacheConfig, etag)) {
+                return;
+            }
+
+            ctx.status(HttpStatus.OK).json(answerFor(reader, runId + ":" + version, ticks));
+        } catch (MetadataNotFoundException e) {
+            throw new NoRunIdException("Metadata not found for run: " + runId, e);
+        } catch (RuntimeException e) {
+            handleDatabaseException(e, runId, "clades");
+        } catch (SQLException e) {
+            if (isSchemaNotFound(e)) {
+                throw new NoRunIdException("Run ID not found: " + runId);
+            }
+            throw e;
+        }
+    }
+
+    /**
+     * The answer for one set of sampled ticks, built once and kept until the ticks move.
+     * <p>
+     * Building it reads the descent of the whole run and counts its organisms, which takes about
+     * as long as everything else the endpoint does together. The sampled ticks move only when a
+     * run has grown by a whole step of their grid, so between two of those the same answer is
+     * asked for again and again - by a viewer that revalidates, by a second viewer, by a page
+     * that was reloaded.
+     *
+     * @param reader Reader of the run
+     * @param version Run and last sampled tick, which together settle what the answer holds
+     * @param ticks The sampled ticks, ascending
+     * @return The answer for these ticks
+     * @throws RuntimeException wrapping the {@link SQLException} of a failed read
+     */
+    CladesResponseDto answerFor(final IDatabaseReader reader, final String version,
+                                        final List<Long> ticks) {
+        // Built under the cache's own lock: two requests arriving together in the moment the
+        // ticks have moved would otherwise both read the whole run, which is the one moment the
+        // database has the most to do anyway
+        return answerCache.get(version, key -> {
+            try {
+                final Map<Long, Long> lineage = reader.readGenomeLineage();
+                final List<GenomeCarriers> carriers = reader.readGenomeCounts(ticks);
+                return toCladesResponse(ancestryOf(lineage, carriers), carriers);
+            } catch (SQLException e) {
+                // The endpoint unwraps this again and keeps telling a missing run from a failed one
+                throw new RuntimeException("Failed to build the clade answer for " + version, e);
+            }
+        });
+    }
+
+    /**
+     * The ticks a run is sampled at, on a grid that only ever grows at its end.
+     * <p>
+     * Spreading a fixed number of samples over the run would move every one of them as soon as the
+     * run grows by a tick: a viewer would see the weights of its clades change although nothing in
+     * the world did, and nothing computed for the run before would still fit. The samples
+     * therefore sit on multiples of a step, and the step is the recording interval doubled until
+     * the run fits into the number of samples asked for. Growing adds samples at the end; a
+     * doubling drops every second one and leaves the rest exactly where they were.
+     * <p>
+     * The newest recorded tick is not added on top of the grid, however near a viewer usually
+     * stands to it. It moves with every tick indexed, and a sample that moves is one the answer
+     * changes with: it would be rebuilt and resent several times a minute for a run whose clades
+     * shift once in an hour. What the grid does not reach yet is left to the view to show as
+     * unanswered.
+     *
+     * @param minTick First recorded tick of the run
+     * @param maxTick Last recorded tick of the run
+     * @param interval The run's recording interval, at least 1
+     * @param samples The most samples to return, at least 2
+     * @return The ticks to sample, ascending, the first of the run among them
+     */
+    static List<Long> sampleTicks(final long minTick, final long maxTick, final int interval,
+                                  final int samples) {
+        long step = interval;
+        while ((maxTick - minTick) / step >= samples) {
+            step *= 2;
+        }
+        final List<Long> ticks = new ArrayList<>();
+        for (long tick = minTick; tick <= maxTick; tick += step) {
+            ticks.add(tick);
+        }
+        return ticks;
+    }
+
+    /**
+     * Narrows a run's descent to what the sampled ticks stand on.
+     * <p>
+     * A run holds far more genomes than any of its ticks: most arose, carried a handful of
+     * organisms and vanished between two samples. Sending all of them would make the answer
+     * several times larger for lines no sample ever touches. What a viewer needs is the tree
+     * above the genomes it sees, so every sampled genome is kept together with its ancestors, and
+     * nothing else. A genome the viewer meets later, at a tick between the samples, arrives with
+     * its own ancestry in the answer of the organism endpoint.
+     *
+     * @param lineage The descent of the whole run
+     * @param carriers The sampled population
+     * @return The entries of {@code lineage} on a path from a sampled genome upwards
+     */
+    static Map<Long, Long> ancestryOf(final Map<Long, Long> lineage,
+                                      final List<GenomeCarriers> carriers) {
+        final Map<Long, Long> kept = new LinkedHashMap<>();
+        for (final GenomeCarriers entry : carriers) {
+            Long genome = entry.genomeHash();
+            // Walk upwards until a genome already kept, which carries its own ancestors with it
+            while (genome != null && !kept.containsKey(genome) && lineage.containsKey(genome)) {
+                final Long parent = lineage.get(genome);
+                kept.put(genome, parent);
+                genome = parent;
+            }
+        }
+        return kept;
+    }
+
+    /**
+     * Names every genome once and refers to it by position from there on.
+     * <p>
+     * A genome that carries organisms at a sampled tick but has no lineage entry - one that only
+     * ever arose in an organism whose parent carried it unchanged - is named as well, so that no
+     * sample points past the end of the list.
+     *
+     * @param lineage Genome to parent genome, null value for a genome that begins a line
+     * @param carriers One entry per tick and genome
+     * @return The response as it goes over the wire
+     */
+    static CladesResponseDto toCladesResponse(final Map<Long, Long> lineage,
+                                              final List<GenomeCarriers> carriers) {
+        final Map<Long, Integer> positions = new LinkedHashMap<>();
+        final List<String> genomes = new ArrayList<>();
+        for (final Long genome : lineage.keySet()) {
+            positions.put(genome, genomes.size());
+            genomes.add(String.valueOf(genome));
+        }
+        for (final GenomeCarriers entry : carriers) {
+            positions.computeIfAbsent(entry.genomeHash(), genome -> {
+                genomes.add(String.valueOf(genome));
+                return genomes.size() - 1;
+            });
+        }
+
+        final List<Integer> parents = new ArrayList<>(genomes.size());
+        for (final String genome : genomes) {
+            final Long parent = lineage.get(Long.valueOf(genome));
+            final Integer position = parent == null ? null : positions.get(parent);
+            parents.add(position == null ? -1 : position);
+        }
+
+        final Map<Long, List<int[]>> byTick = new LinkedHashMap<>();
+        for (final GenomeCarriers entry : carriers) {
+            byTick.computeIfAbsent(entry.tickNumber(), tick -> new ArrayList<>())
+                .add(new int[] { positions.get(entry.genomeHash()), entry.carriers() });
+        }
+        final List<CladesResponseDto.CladeSampleDto> samples = new ArrayList<>(byTick.size());
+        byTick.forEach((tick, entries) -> samples.add(new CladesResponseDto.CladeSampleDto(tick, entries)));
+
+        return new CladesResponseDto(genomes, parents, samples);
     }
 
     /**

@@ -186,6 +186,12 @@ body {
     padding-right: 28px;
 }
 
+/* Six characters and the fold button, no wider: every pixel here is one the track loses */
+#timeline-panel .timeline-clade-input input.tick-input {
+    width: 48px;
+    padding-right: 22px;
+}
+
 /* Timeline navigation buttons */
 .timeline-nav-buttons {
     display: flex;
@@ -1359,36 +1365,181 @@ main.container {
     background-color: #2a4a3a;
 }
 
-/* Color mode toggle button (organism panel) */
-.color-mode-toggle {
-    background-color: #2a2a4a;
-    border: 1px solid #4a4a6a;
-    border-radius: 4px;
-    color: #808090;
+/* The clade the colours stand for, beside the timeline: shows where one is, takes where to go */
+.timeline-clade-input {
+    flex-shrink: 0;
+}
+
+.tick-input-wrapper input.clade-input {
+    letter-spacing: 0.5px;
+}
+
+/* The genome of a row in the organism list: entering its clade is one click, not a copy */
+.organism-col-genome.clickable-genome {
+    cursor: pointer;
+}
+
+.organism-col-genome.clickable-genome:hover {
+    color: #4a9eff;
+    text-decoration: underline;
+}
+
+/* What the typed characters complete to, behind the field and out of the way of the caret */
+.clade-ghost {
+    position: absolute;
+    left: 7px;
+    color: #5a5a5a;
     font-family: 'Roboto Mono', 'Courier New', monospace;
     font-size: 11px;
-    padding: 4px 8px;
+    letter-spacing: 0.5px;
+    pointer-events: none;
+    white-space: pre;
+}
+
+.tick-input-wrapper input.clade-input::placeholder {
+    color: #666;
+    letter-spacing: 0.5px;
+}
+
+.tick-input-wrapper input.clade-input.unknown {
+    border-color: #a04444;
+}
+
+.tick-input-wrapper input.clade-input:disabled {
+    opacity: 0.45;
+}
+
+/* Sits inside the field's right edge, where the tick field carries its suffix */
+.timeline-clade-input .clade-fold {
+    position: absolute;
+    right: 6px;
+    background: transparent;
+    border: none;
+    color: #888;
     cursor: pointer;
-    transition: all 0.15s ease;
-    min-width: 28px;
-    outline: none;
-    text-align: center;
+    padding: 0;
+    font-family: inherit;
+    font-size: 11px;
+    line-height: 1;
 }
 
-.color-mode-toggle:hover {
-    background-color: #3a3a5a;
-    color: #a0a0b0;
+.timeline-clade-input .clade-fold:hover:not(:disabled) {
+    color: #e0e0e0;
 }
 
-.color-mode-toggle.active {
-    background-color: #1a2a3a;
-    border-color: #4a7aaa;
-    color: #5a9aff;
+.timeline-clade-input .clade-fold:disabled {
+    cursor: default;
+    opacity: 0.45;
 }
 
-.color-mode-toggle.active:hover {
-    background-color: #2a3a4a;
+/* Clade panel, above the timeline and anchored to it */
+.clade-panel {
+    position: fixed;
+    box-sizing: border-box;
+    z-index: 998;
+    display: none;
+    overflow: hidden;
+    background: rgba(25, 25, 35, 0.9);
+    backdrop-filter: blur(8px);
+    border: 1px solid #333;
+    border-radius: 6px;
+    font-family: 'Roboto Mono', 'Courier New', monospace;
+    font-size: 11px;
 }
+
+.clade-panel.visible {
+    display: block;
+}
+
+/* Fills the panel, whose height the chart decides, so the strip is stretched onto it and
+   scrolls inside instead of pushing it */
+.clade-panel-body {
+    display: flex;
+    align-items: stretch;
+    height: 100%;
+    overflow: hidden;
+}
+
+.clade-chart {
+    display: block;
+    flex: none;
+    cursor: pointer;
+}
+
+/* The strip beside the chart: where one stands and the way back.
+   It never decides the panel's height - the chart does - so a line appearing in it, as the
+   hovered founder does, cannot make the panel jump. */
+.clade-strip {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 1px;
+    min-width: 0;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    scrollbar-width: thin;
+    scrollbar-color: #3a3a4a transparent;
+    padding: 4px 4px 4px 5px;
+    color: #888;
+}
+
+.clade-strip::-webkit-scrollbar {
+    width: 6px;
+}
+
+.clade-strip::-webkit-scrollbar-thumb {
+    background: #3a3a4a;
+    border-radius: 3px;
+}
+
+.clade-strip::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.clade-step {
+    flex: none;              /* keeps its line height; the strip scrolls instead of squeezing */
+    display: flex;
+    align-items: baseline;
+    gap: 3px;
+    color: #ccc;
+    white-space: nowrap;
+    line-height: 15px;
+}
+
+/* What the step carries at the tick on screen, and how many clades stand under it: both in a
+   smaller, dimmer type, so the genome stays the thing one reads */
+.clade-share {
+    flex: none;
+    width: 24px;
+    text-align: right;
+    font-size: 10px;
+    color: #777;
+}
+
+.clade-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.clade-under {
+    flex: none;
+    font-size: 10px;
+    color: #777;
+}
+
+.clade-step.clickable {
+    color: #4a9eff;
+    cursor: pointer;
+}
+
+/* The founder under the pointer, dimmed because it is not part of the path */
+.clade-step.hovered {
+    color: #666;
+}
+
 
 /* Minimap content */
 .minimap-content {

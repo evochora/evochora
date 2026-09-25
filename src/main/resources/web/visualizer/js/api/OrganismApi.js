@@ -128,6 +128,43 @@ export class OrganismApi {
     }
 
     /**
+     * Fetches the clade tree of a run: every genome above the sampled ticks with its parent, and
+     * per sampled tick how many organisms carried each.
+     *
+     * The answer holds no tick of its own and is the same whichever tick is on screen. It changes
+     * only when the run has grown by a whole step of the sample grid, which the endpoint states
+     * in its ETag — so asking again while nothing has changed costs a validation and no transfer.
+     *
+     * @param {string|null} [runId=null] - The specific run ID to query. Defaults to the latest run.
+     * @param {object} [options={}] - Optional parameters for the request.
+     * @param {AbortSignal|null} [options.signal=null] - An AbortSignal to allow for cancellation.
+     * @returns {Promise<{genomes: string[], parents: number[], samples: Array<object>}>} The tree.
+     * @throws {Error} If the network request fails or the server returns an error.
+     */
+    async fetchClades(runId = null, options = {}) {
+        const { signal = null } = options;
+        const params = new URLSearchParams();
+        if (runId) {
+            params.set('runId', runId);
+        }
+
+        const query = params.toString();
+        const url = `/visualizer/api/organisms/clades${query ? `?${query}` : ''}`;
+
+        const fetchOptions = {
+            method: 'GET',
+            headers: {
+                'Accept': 'application/json'
+            }
+        };
+        if (signal) {
+            fetchOptions.signal = signal;
+        }
+
+        return apiClient.fetch(url, fetchOptions);
+    }
+
+    /**
      * Fetches the available tick range (minTick, maxTick) for organism data.
      * Returns the ticks that have been indexed by the OrganismIndexer.
      * If no run ID is provided, the server will default to the latest available run.

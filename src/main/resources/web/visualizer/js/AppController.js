@@ -6,6 +6,8 @@ import { buildMarkMap } from './MutationMarks.js';
 import { moleculeTypeName } from './MoleculeTypePalette.js';
 import { MinimapView } from './ui/minimap/MinimapView.js';
 import { nearestLevelIndex, ZOOM_LEVELS } from './interaction/ZoomLevels.js';
+import { CladeModel } from './CladeModel.js';
+import { CladePanel } from './ui/CladePanel.js';
 import { OrganismInstructionView } from './ui/organism/OrganismInstructionView.js';
 import { OrganismSourceView } from './ui/organism/OrganismSourceView.js';
 import { OrganismStateView } from './ui/organism/OrganismStateView.js';
@@ -30,7 +32,6 @@ import {
  */
 export class AppController {
     /** Organism palette (hex) — keep in sync with ExactFrameRenderer and MinimapFrameRenderer. */
-    static ORGANISM_PALETTE = ['#32cd32', '#1e90ff', '#dc143c', '#ffd700', '#ffa500', '#9370db', '#00ffff'];
 
     /**
      * Initializes the AppController, creating instances of all APIs, views, and
@@ -70,13 +71,17 @@ export class AppController {
             previousOrganismDetails: null, // For change detection in details
             organisms: [], // Current organisms for the tick
             metadata: null, // Simulation metadata (includes organism config)
-            colorMode: localStorage.getItem('evochora-color-mode') || 'id', // 'id' or 'genome'
         };
         this.programArtifactCache = new Map(); // Cache for program artifacts
         // Lineage-based color tracking (genome mode)
+        /** The clade tree of the current run, null until it has been fetched. */
+        this._cladeModel = null;
+        /** The last sampled tick the tree was built from; the same answer needs no new tree. */
+        this._cladeSamplesAt = null;
+        this._cladeRequestController = null;
+
         this._genomeParent = new Map();       // String(genomeHash) → String(parentGenomeHash) | null
         this._genomeColorCache = new Map();   // String(genomeHash) → int 0xRRGGBB
-        this._genomeHslCache = new Map();     // String(genomeHash) → [h, s, l]
         // The organism the mutations of the selected lineage were fetched for
         this._mutationsOrganismId = null;     // int | null
         // How many generations each ancestor lies back from the organism whose details were loaded
@@ -86,8 +91,7 @@ export class AppController {
         const defaultConfig = {
             worldSize: [100, 30],
             cellSize: 22,
-            backgroundColor: '#1a1a28', // Border area visible when scrolling beyond grid
-            organismPalette: AppController.ORGANISM_PALETTE.map(hex => parseInt(hex.slice(1), 16))
+            backgroundColor: '#1a1a28' // Border area visible when scrolling beyond grid
         };
         
         // Components
@@ -189,7 +193,10 @@ export class AppController {
             this.state.previousOrganismDetails = null;
             this._genomeParent.clear();
             this._genomeColorCache.clear();
-            this._genomeHslCache.clear();
+            this._cladeRequestController?.abort();
+            this._cladeModel = null;
+            this._cladeSamplesAt = null;
+            this.cladePanel?.setModel(null);
             this.minimapView?.organismOverlay?.clearSpriteCache();
             this.state.maxTick = null;
             this.state.ranges = [];
@@ -208,6 +215,7 @@ export class AppController {
             this.tickPanelManager.updateTickDisplay(this.state.currentTick, this.state.maxTick);
 
             await this._loadRun(null, null);
+            this._loadClades();
 
             // Load initial tick for new run
             await this.navigateToTick(this.state.currentTick, true);
@@ -376,16 +384,12 @@ export class AppController {
             filterInput: document.getElementById('organism-filter'),
             filterClear: document.getElementById('organism-filter-clear'),
             onOrganismSelect: (organismId) => this.selectOrganism(organismId),
+            onGenomeClick: (label) => this.cladePanel?.enterByLabel(label),
             onPositionClick: (x, y) => this.renderer?.centerOn(x, y),
             onTickClick: (tick) => this.navigateToTick(tick)
         });
 
-        // Color mode toggle (ID vs Genome Hash)
-        const colorModeToggle = document.getElementById('color-mode-toggle');
-        if (colorModeToggle) {
-            colorModeToggle.addEventListener('click', () => this.toggleColorMode());
-            this._updateColorModeButton();
-        }
+
     }
     
     /**
@@ -432,7 +436,7 @@ export class AppController {
                     : null;
                 this.stateView.setProgram(artifact);
                 this.instructionView.setProgram(artifact);
-                this.instructionView.setLabelNamespaceMask(staticInfo.labelNamespaceMask);
+                this.instructionView.setLabelNamespaceMask(details.labelNamespaceMask);
                 this.sourceView.setProgram(artifact);
 
                 // The ancestry chain names the parent first, so an ancestor's place in it is how
@@ -441,9 +445,11 @@ export class AppController {
                     organismId,
                     distances: new Map([
                         [organismId, 0],
-                        ...(staticInfo.lineage || []).map((entry, index) => [entry.organismId, index + 1])
+                        ...(details.lineage || []).map((entry, index) => [entry.organismId, index + 1])
                     ])
                 };
+                // The marks were drawn before this arrived and are all in the youngest colour
+                this.renderer?.refreshMutationMarks();
 
                 // Update instruction view with last and next instructions
                 if (state && state.instructions) {
@@ -478,7 +484,7 @@ export class AppController {
                     }
 
                     // Build lineage display (direct parent first, oldest ancestor last)
-                    const lineageDisplay = this._buildLineageDisplay(staticInfo.lineage || [], organismId, isDead);
+                    const lineageDisplay = this._buildLineageDisplay(details.lineage || [], organismId, isDead);
 
                     infoEl.innerHTML = `<div class="organism-info-line">${birthDeathLabel}  MR: ${mrValue}  Lineage: <span class="lineage-chain">${lineageDisplay}</span></div>`;
 
@@ -514,7 +520,7 @@ export class AppController {
                 
                 // Update Source View with the current execution position
                 if (artifact) {
-                    this.sourceView.updateExecutionState(state, staticInfo);
+                    this.sourceView.updateExecutionState(state, staticInfo, details.labelNamespaceMask);
                 }
                 
                 // Save current details for next comparison
@@ -569,6 +575,13 @@ export class AppController {
             this.minimapView.updateZoomButton(this.renderer.getCurrentCellSize());
             this.minimapView.setOwnershipColorResolver(this._minimapOwnershipColorResolver());
 
+            this.cladePanel = new CladePanel({
+                getRanges: () => this.state.ranges,
+                getCurrentTick: () => this.state.currentTick,
+                getOrganisms: () => this.state.previousOrganisms,
+                onLevelChanged: () => this.repaintOrganismColors()
+            });
+
             // Abort previous request if it's still running
             this.waitingOverlay.cancel();
             if (this.simulationRequestController) {
@@ -578,6 +591,10 @@ export class AppController {
             const signal = this.simulationRequestController.signal;
 
             await this._loadRun(signal, (label, percent) => loadingManager.update(label, percent));
+
+            // The clade tree is fetched while the first tick is still being drawn: nobody waits
+            // for it, and by the time the switch beside the timeline is used it is usually there
+            this._loadClades();
 
             // Wait for layout to be calculated before loading initial viewport
             // This ensures correct viewport size calculation on first load,
@@ -621,6 +638,67 @@ export class AppController {
     }
     
     /**
+     * Fetches the clade tree of the current run and hands it to the panel.
+     * <p>
+     * Nobody waits for this: it is started when a run is opened and again, while the panel is
+     * open, whenever the run may have grown past the next step of the sample grid. The endpoint
+     * answers "not modified" until it has, so asking costs a validation and no transfer.
+     *
+     * @returns {Promise<void>} Resolves once the tree has arrived or the attempt has failed.
+     * @private
+     */
+    async _loadClades() {
+        const runId = this.state.runId;
+        this._cladeRequestController?.abort();
+        this._cladeRequestController = new AbortController();
+        const signal = this._cladeRequestController.signal;
+
+        try {
+            const answer = await this.organismApi.fetchClades(runId, { signal });
+            if (runId !== this.state.runId) {
+                return;
+            }
+            // The samples move once in many minutes while this is asked every few seconds, and
+            // the answer is the same until they do. Rebuilding it regardless would throw away the
+            // clade the viewer entered, and pay for the shares of a level that has not changed.
+            const samples = answer?.samples ?? [];
+            const lastSample = samples.length ? samples[samples.length - 1].tick : null;
+            if (this._cladeModel && lastSample === this._cladeSamplesAt) {
+                return;
+            }
+            this._cladeSamplesAt = lastSample;
+
+            // A genome that arose between two sampled ticks is not in the tree; its ancestry is
+            // in the map the organism responses fill, which covers the tick on screen
+            const model = new CladeModel(answer, (genome) => this._genomeParent.get(genome));
+            model.followPath(this._cladeModel?.path);
+            this._cladeModel = model;
+            this.cladePanel?.setModel(model);
+            this.repaintOrganismColors();
+        } catch (error) {
+            if (error.name === 'AbortError') {
+                return;
+            }
+            console.error(`Could not load the clades of run ${runId}:`, error);
+            showErrorNotice({
+                title: 'Could not load the clades of this run',
+                detail: error.message,
+                closable: true
+            });
+        }
+    }
+
+    /**
+     * Fetches the clade tree again if the run may have grown past the next sample.
+     * @private
+     */
+    _refreshCladesIfShown() {
+        if (this._cladeModel) {
+            this._loadClades();
+        }
+    }
+
+    /**
      * Periodically fetches and updates the maximum tick value from the server.
      * This method is designed to fail silently to avoid interrupting user navigation.
      *
@@ -631,6 +709,7 @@ export class AppController {
         try {
             if (await this._refreshTickRanges()) {
                 this.tickPanelManager.updateTickDisplay(this.state.currentTick, this.state.maxTick);
+                this._refreshCladesIfShown();
             }
         } catch (error) {
             // Silently fail - don't interrupt navigation if update fails
@@ -882,6 +961,9 @@ export class AppController {
         
         // Update headerbar with current values
         this.tickPanelManager.updateTickDisplay(this.state.currentTick, this.state.maxTick);
+        // The chart carries the same mark of the current tick as the track below it, and the
+        // strip shows what each step of the path carries there
+        this.cladePanel?.refresh();
         this._refreshStepInfo();
 
         // Update URL state
@@ -1135,12 +1217,7 @@ export class AppController {
             return '#ffffff'; // Default white for invalid IDs
         }
 
-        if (this.state.colorMode === 'genome') {
-            return this._genomeHashToLineageHex(genomeHash);
-        }
-
-        const palette = AppController.ORGANISM_PALETTE;
-        return palette[(organismId - 1) % palette.length];
+        return this._genomeHashToLineageHex(genomeHash);
     }
 
     /**
@@ -1184,7 +1261,7 @@ export class AppController {
                     resolveTypeName: (moleculeType) => this._resolveMoleculeTypeName(moleculeType)
                 }),
                 {
-                    colorOf: (genomeHash) => this._genomeHashToLineageColor(genomeHash),
+                    colorOf: () => this._selectedOrganismColor(),
                     generationsBackOf: (originOrganismId) => this._generationsBack(originOrganismId),
                     opcodeNameOf: (opcodeId) => this.state.metadata?.opcodes?.[String(opcodeId)] ?? null
                 }
@@ -1239,6 +1316,23 @@ export class AppController {
     }
 
     /**
+     * The colour the selected organism is drawn in, whose hue its mutation marks take.
+     *
+     * @returns {number|null} A packed RGB integer, null while nothing is selected or the organism
+     *     is not among those of the tick shown.
+     * @private
+     */
+    _selectedOrganismColor() {
+        const selected = this.state.selectedOrganismId;
+        if (!selected) {
+            return null;
+        }
+        const organism = (this.state.previousOrganisms || [])
+            .find(candidate => String(candidate.organismId) === String(selected));
+        return organism ? this._genomeHashToLineageColor(organism.genomeHash) : null;
+    }
+
+    /**
      * Tells how many generations back an organism of the selected lineage lies.
      *
      * The distances come with the organism details, whose ancestry chain is read the same way as
@@ -1273,7 +1367,6 @@ export class AppController {
     _applyGenomeAncestors(ancestors) {
         this._genomeParent.clear();
         this._genomeColorCache.clear();
-        this._genomeHslCache.clear();
         this._mergeGenomeAncestors(ancestors);
     }
 
@@ -1303,9 +1396,16 @@ export class AppController {
      */
     _genomeHashToLineageColor(genomeHash) {
         if (genomeHash == null || genomeHash === 0 || genomeHash === '0') return 0x808080;
+        if (!this._cladeModel) {
+            // Until the tree is there no genome has a clade; the tone outside the opened one says
+            // that as well as anything, and nothing pretends to a kinship it cannot know
+            return CladeModel.OUTSIDE;
+        }
         const key = String(genomeHash);
         if (!this._genomeColorCache.has(key)) {
-            this._computeLineageColor(key);
+            // Placing a genome walks its ancestry; every organism of every frame would walk it
+            // again without this. The cache is cleared when the level or the tick changes.
+            this._genomeColorCache.set(key, this._cladeModel.colourOf(key));
         }
         return this._genomeColorCache.get(key);
     }
@@ -1319,94 +1419,6 @@ export class AppController {
     _genomeHashToLineageHex(genomeHash) {
         const rgb = this._genomeHashToLineageColor(genomeHash);
         return '#' + rgb.toString(16).padStart(6, '0');
-    }
-
-    /**
-     * Computes and caches the lineage color for a genome hash.
-     * If the genome has a known parent, the color is derived by shifting the parent's hue.
-     * Otherwise, a new root color is assigned via the golden-ratio sequence.
-     * @param {string} genomeKey - String representation of the genome hash.
-     * @param {Set<string>} [visited] - Genomes already on the current path, guarding the recursion.
-     * @private
-     */
-    _computeLineageColor(genomeKey, visited = new Set()) {
-        if (this._genomeColorCache.has(genomeKey)) return;
-
-        const parentGenomeKey = this._genomeParent.get(genomeKey);
-        visited.add(genomeKey);
-
-        if (parentGenomeKey && parentGenomeKey !== '0' && !visited.has(parentGenomeKey)) {
-            // Ensure parent color is computed first (recursive)
-            if (!this._genomeColorCache.has(parentGenomeKey)) {
-                this._computeLineageColor(parentGenomeKey, visited);
-            }
-
-            const parentHsl = this._genomeHslCache.get(parentGenomeKey);
-            if (parentHsl) {
-                const hashBits = AppController._hashStringToInt(genomeKey);
-                // Hue shift: ±25° (noticeable but keeps family resemblance)
-                const direction = (hashBits & 1) ? 1 : -1;
-                const h = (parentHsl[0] + direction * 25 + 360) % 360;
-                // Small S/L perturbation for sibling differentiation
-                const satDelta = ((hashBits >> 1) & 0x3F) / 63 * 0.06 - 0.03;
-                const litDelta = ((hashBits >> 7) & 0x3F) / 63 * 0.06 - 0.03;
-                const s = Math.max(0.65, Math.min(0.95, parentHsl[1] + satDelta));
-                const l = Math.max(0.40, Math.min(0.60, parentHsl[2] + litDelta));
-
-                this._genomeHslCache.set(genomeKey, [h, s, l]);
-                this._genomeColorCache.set(genomeKey, AppController._hslToRgb(h, s, l));
-                return;
-            }
-        }
-
-        // Root genome: deterministic hue from genome hash (golden-ratio spread)
-        const h = (120.0 + AppController._hashStringToInt(genomeKey) * 137.508) % 360;
-        this._genomeHslCache.set(genomeKey, [h, 0.80, 0.50]);
-        this._genomeColorCache.set(genomeKey, AppController._hslToRgb(h, 0.80, 0.50));
-    }
-
-    /**
-     * Deterministic string hash to a non-negative 32-bit integer.
-     * Used to extract pseudo-random bits from genome hash strings for color perturbation.
-     * @param {string} str - Input string.
-     * @returns {number} Non-negative integer.
-     * @private
-     */
-    static _hashStringToInt(str) {
-        let hash = 0;
-        for (let i = 0; i < str.length; i++) {
-            hash = ((hash << 5) - hash + str.charCodeAt(i)) | 0;
-        }
-        return Math.abs(hash);
-    }
-
-    /**
-     * Converts HSL color values to a packed RGB integer.
-     * @param {number} h - Hue in degrees (0-360).
-     * @param {number} s - Saturation (0-1).
-     * @param {number} l - Lightness (0-1).
-     * @returns {number} Packed RGB integer (0xRRGGBB).
-     * @private
-     */
-    static _hslToRgb(h, s, l) {
-        const c = (1 - Math.abs(2 * l - 1)) * s;
-        const hPrime = h / 60;
-        const x = c * (1 - Math.abs(hPrime % 2 - 1));
-
-        let r1, g1, b1;
-        if (hPrime < 1) { r1 = c; g1 = x; b1 = 0; }
-        else if (hPrime < 2) { r1 = x; g1 = c; b1 = 0; }
-        else if (hPrime < 3) { r1 = 0; g1 = c; b1 = x; }
-        else if (hPrime < 4) { r1 = 0; g1 = x; b1 = c; }
-        else if (hPrime < 5) { r1 = x; g1 = 0; b1 = c; }
-        else { r1 = c; g1 = 0; b1 = x; }
-
-        const m = l - c / 2;
-        const r = Math.round(Math.max(0, Math.min(255, (r1 + m) * 255)));
-        const g = Math.round(Math.max(0, Math.min(255, (g1 + m) * 255)));
-        const b = Math.round(Math.max(0, Math.min(255, (b1 + m) * 255)));
-
-        return (r << 16) | (g << 8) | b;
     }
 
     /**
@@ -1439,14 +1451,7 @@ export class AppController {
             const id = entry.organismId;
             const isAlive = aliveIds.has(String(id));
 
-            // Color based on current color mode
-            let color;
-            if (this.state.colorMode === 'genome') {
-                color = this._genomeHashToLineageHex(entry.genomeHash);
-            } else {
-                const palette = AppController.ORGANISM_PALETTE;
-                color = palette[(id - 1) % palette.length];
-            }
+            const color = this._genomeHashToLineageHex(entry.genomeHash);
 
             if (isAlive) {
                 return `<span class="lineage-ancestor" data-organism-id="${id}" style="color:${color}">#${id}</span>`;
@@ -1463,41 +1468,26 @@ export class AppController {
     }
 
     /**
-     * Toggles the organism coloring mode between ID-based and genome-hash-based.
+     * Draws the organisms again with the colours of the current level, everywhere they appear.
+     * No server request is involved: what changes is how a genome is turned into a colour.
      */
-    toggleColorMode() {
-        this.state.colorMode = this.state.colorMode === 'id' ? 'genome' : 'id';
-        localStorage.setItem('evochora-color-mode', this.state.colorMode);
-        this._updateColorModeButton();
-
-        // Re-render organisms with new color mode (no server reload needed)
+    repaintOrganismColors() {
+        this._genomeColorCache.clear();
         const organisms = this.state.previousOrganisms;
-        if (organisms) {
-            this.updateOrganismPanel(organisms);
-            this.renderer.renderOrganisms(organisms);
-            this.minimapView?.organismOverlay?.clearSpriteCache();
-            this.minimapView?.setOwnershipColorResolver(this._minimapOwnershipColorResolver());
-            this.minimapView?.updateOrganisms(
-                organisms,
-                this._minimapColorResolver(),
-                this._minimapGroupKeyFn()
-            );
+        if (!organisms) {
+            return;
         }
-    }
-
-    /**
-     * Updates the color mode toggle button appearance.
-     * @private
-     */
-    _updateColorModeButton() {
-        const btn = document.getElementById('color-mode-toggle');
-        if (!btn) return;
-        const isGenome = this.state.colorMode === 'genome';
-        btn.textContent = isGenome ? 'GH' : 'ID';
-        btn.title = isGenome
-            ? 'Color by: Genome Hash (click to switch to ID)'
-            : 'Color by: Organism ID (click to switch to Genome)';
-        btn.classList.toggle('active', isGenome);
+        this.updateOrganismPanel(organisms);
+        this.renderer.renderOrganisms(organisms);
+        // The marks take the hue of the selected organism, which a change of level changes
+        this.renderer.refreshMutationMarks();
+        this.minimapView?.organismOverlay?.clearSpriteCache();
+        this.minimapView?.setOwnershipColorResolver(this._minimapOwnershipColorResolver());
+        this.minimapView?.updateOrganisms(
+            organisms,
+            this._minimapColorResolver(),
+            this._minimapGroupKeyFn()
+        );
     }
 
     /**
@@ -1506,11 +1496,7 @@ export class AppController {
      * @private
      */
     _minimapColorResolver() {
-        if (this.state.colorMode === 'genome') {
-            return (genomeHash) => this._genomeHashToLineageHex(genomeHash);
-        }
-        const palette = AppController.ORGANISM_PALETTE;
-        return (organismId) => palette[(parseInt(organismId, 10) - 1) % palette.length];
+        return (genomeHash) => this._genomeHashToLineageHex(genomeHash);
     }
 
     /**
@@ -1519,10 +1505,7 @@ export class AppController {
      * @private
      */
     _minimapGroupKeyFn() {
-        if (this.state.colorMode === 'genome') {
-            return (org) => String(org.genomeHash || 0);
-        }
-        return (org) => String(org.organismId);
+        return (org) => String(org.genomeHash || 0);
     }
 
     /**
@@ -1536,32 +1519,18 @@ export class AppController {
      */
     _minimapOwnershipColorResolver(organisms = null) {
         const orgs = organisms || this.state.previousOrganisms;
-        const livingIds = new Set();
+        const ownerToGenome = new Map();
         if (orgs) {
             for (const org of orgs) {
-                livingIds.add(org.organismId);
+                ownerToGenome.set(org.organismId, org.genomeHash);
             }
         }
-
-        if (this.state.colorMode === 'genome') {
-            const ownerToGenome = new Map();
-            if (orgs) {
-                for (const org of orgs) {
-                    ownerToGenome.set(org.organismId, org.genomeHash);
-                }
-            }
-            return (ownerId) => {
-                const genomeHash = ownerToGenome.get(ownerId);
-                if (genomeHash != null) {
-                    return this._genomeHashToLineageColor(genomeHash);
-                }
-                return -1;
-            };
-        }
-        const palette = AppController.ORGANISM_PALETTE;
         return (ownerId) => {
-            if (!livingIds.has(ownerId)) return -1;
-            return parseInt(palette[(ownerId - 1) % palette.length].slice(1), 16);
+            const genomeHash = ownerToGenome.get(ownerId);
+            if (genomeHash != null) {
+                return this._genomeHashToLineageColor(genomeHash);
+            }
+            return -1;
         };
     }
 

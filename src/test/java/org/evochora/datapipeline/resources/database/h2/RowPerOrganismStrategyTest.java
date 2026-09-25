@@ -99,15 +99,15 @@ class RowPerOrganismStrategyTest {
         strategy.createTables(mockConnection);
 
         // Then: Should execute DDL for organisms, organism_states, the per-organism index,
-        //       organism_tick_stats and the genome index
-        verify(mockStatement, times(5)).execute(anyString());
+        //       organism_tick_stats and the genome and lifespan indexes
+        verify(mockStatement, times(6)).execute(anyString());
 
         // Verify SQL strings
         ArgumentCaptor<String> sqlCaptor = ArgumentCaptor.forClass(String.class);
-        verify(mockStatement, times(5)).execute(sqlCaptor.capture());
+        verify(mockStatement, times(6)).execute(sqlCaptor.capture());
 
         List<String> executedSql = sqlCaptor.getAllValues();
-        assertThat(executedSql).hasSize(5);
+        assertThat(executedSql).hasSize(6);
 
         // First call: CREATE TABLE organisms
         assertThat(executedSql.get(0))
@@ -126,7 +126,6 @@ class RowPerOrganismStrategyTest {
                 .contains("active_dp_index INT NOT NULL")
                 .contains("runtime_state_blob BYTEA NOT NULL")
                 .contains("entropy INT DEFAULT 0")
-                .contains("molecule_marker INT DEFAULT 0")
                 .contains("PRIMARY KEY (tick_number, organism_id)");
 
         // Third call: CREATE INDEX for per-organism history queries
@@ -140,10 +139,15 @@ class RowPerOrganismStrategyTest {
                 .contains("tick_number BIGINT PRIMARY KEY")
                 .contains("total_organisms_created BIGINT NOT NULL");
 
-        // Fifth call: CREATE INDEX on the static organism data
+        // Fifth call: CREATE INDEX on the static organism data, for ancestor walks
         assertThat(executedSql.get(4))
                 .contains("CREATE INDEX IF NOT EXISTS idx_organisms_genome")
-                .contains("organisms (genome_hash, organism_id)");
+                .contains("organisms (genome_hash, organism_id, parent_genome_hash)");
+
+        // Sixth call: CREATE INDEX on the static organism data, for population counts
+        assertThat(executedSql.get(5))
+                .contains("CREATE INDEX IF NOT EXISTS idx_organisms_lifespan")
+                .contains("organisms (birth_tick, death_tick, genome_hash)");
     }
 
     @Test

@@ -22,6 +22,7 @@ export class OrganismPanelManager {
      * @param {HTMLElement} options.filterInput - Filter input element
      * @param {HTMLElement} options.filterClear - Filter clear button element
      * @param {Function} options.onOrganismSelect - Callback when an organism is selected
+     * @param {Function} options.onGenomeClick - Callback when the genome of a row is clicked
      * @param {Function} options.onPositionClick - Callback when a position link is clicked (x, y)
      * @param {Function} options.onTickClick - Callback when a tick link is clicked (tick)
      */
@@ -36,6 +37,7 @@ export class OrganismPanelManager {
         filterInput,
         filterClear,
         onOrganismSelect,
+        onGenomeClick,
         onPositionClick,
         onTickClick
     }) {
@@ -49,6 +51,7 @@ export class OrganismPanelManager {
         this.filterInput = filterInput;
         this.filterClear = filterClear;
         this.onOrganismSelect = onOrganismSelect;
+        this.onGenomeClick = onGenomeClick;
         this.onPositionClick = onPositionClick;
         this.onTickClick = onTickClick;
 
@@ -339,7 +342,8 @@ export class OrganismPanelManager {
             <div class="organism-list-item ${isSelected ? 'selected' : ''} ${deadClass}"
                  data-organism-id="${org.id}">
                 <span class="organism-col organism-col-id" style="color: ${org.color}">#${org.id}</span>
-                <span class="organism-col organism-col-genome">${genomeDisplay}</span>
+                <span class="organism-col organism-col-genome clickable-genome"
+                      title="Show the clade of this genome">${genomeDisplay}</span>
                 <span class="organism-col organism-col-er${erDeathCause}">ER:${org.energy}</span>
                 <span class="organism-col organism-col-sr${srDeathCause}">SR:${srDisplay}</span>
                 <span class="organism-col organism-col-ip"><span class="organism-label">IP:</span>${ipDisplay}</span>
@@ -363,6 +367,7 @@ export class OrganismPanelManager {
                 // Ignore clicks on links or deselect button
                 if (e.target.classList.contains('clickable-position') ||
                     e.target.classList.contains('clickable-tick') ||
+                    e.target.classList.contains('clickable-genome') ||
                     e.target.classList.contains('organism-deselect')) {
                     return;
                 }
@@ -374,6 +379,16 @@ export class OrganismPanelManager {
             });
         });
         
+        // The genome of a row: enters its clade, which is what the colours then stand for
+        container.querySelectorAll('.clickable-genome').forEach(el => {
+            el.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (this.onGenomeClick) {
+                    this.onGenomeClick(el.textContent.trim());
+                }
+            });
+        });
+
         // Deselect button
         container.querySelectorAll('.organism-deselect').forEach(btn => {
             btn.addEventListener('click', (e) => {

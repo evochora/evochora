@@ -24,6 +24,13 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
+import java.util.List;
+import java.util.Map;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.evochora.datapipeline.api.resources.database.IDatabaseReader;
+import org.evochora.datapipeline.api.resources.database.dto.GenomeCarriers;
+import org.evochora.datapipeline.api.resources.database.dto.OrganismStaticInfo;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
@@ -174,6 +181,184 @@ class H2DatabaseOrganismWriteTest {
     private boolean tableExists(Connection conn, String tableName) throws SQLException {
         try (ResultSet rs = conn.getMetaData().getTables(null, null, tableName.toUpperCase(), null)) {
             return rs.next();
+        }
+    }
+
+    /**
+     * The clade view asks how many organisms carry which genome at a handful of ticks. The answer
+     * comes from the lifespans in the static organism data, which both storage strategies write
+     * the same way - so the view is served alike whatever layout a run was written with.
+     */
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "org.evochora.datapipeline.resources.database.h2.SingleBlobOrgStrategy",
+        "org.evochora.datapipeline.resources.database.h2.RowPerOrganismStrategy"
+    })
+    void countGenomesAtTicks_agreesBetweenStorageStrategies(String strategyClass) throws Exception {
+        String dbPath = tempDir.toString().replace("\\", "/");
+        try (H2Database db = new H2Database("counts-db", ConfigFactory.parseString("""
+                jdbcUrl = "jdbc:h2:file:%s/test-counts-%s;MODE=PostgreSQL"
+                h2OrganismStrategy { className = "%s" }
+                """.formatted(dbPath, strategyClass.substring(strategyClass.lastIndexOf('.') + 1),
+                              strategyClass)))) {
+            String runId = "counts-run";
+            try (Connection conn = connectionWithSchema(db, runId)) {
+                db.doCreateOrganismTables(conn);
+                // Organism 2 dies between the two ticks and appears in the later one as dead;
+                // organism 4 is born between them
+                db.doWriteOrganismTick(conn, tick(10L,
+                        alive(1, 700L, 0L), alive(2, 700L, 0L), alive(3, 800L, 0L)),
+                        java.util.Map.of());
+                db.doWriteOrganismTick(conn, tick(20L,
+                        alive(1, 700L, 0L), dead(2, 700L, 0L, 15L), alive(3, 800L, 0L),
+                        alive(4, 900L, 15L)),
+                        java.util.Map.of());
+                db.doCommitOrganismWrites(conn);
+            }
+
+            try (IDatabaseReader reader = db.createReader(runId)) {
+                List<GenomeCarriers> counts = reader.readGenomeCounts(List.of(10L, 20L));
+
+                assertThat(counts).containsExactlyInAnyOrder(
+                        new GenomeCarriers(10L, 700L, 2),
+                        new GenomeCarriers(10L, 800L, 1),
+                        new GenomeCarriers(20L, 700L, 1),
+                        new GenomeCarriers(20L, 800L, 1),
+                        new GenomeCarriers(20L, 900L, 1));
+            }
+        }
+    }
+
+    /**
+     * An organism's death arrives at its last appearance, which for a long-lived one is not the
+     * tick its static data was written at. Both storage strategies must still end up with the
+     * death tick in its row, including when birth and death fall into the same commit window.
+     */
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "org.evochora.datapipeline.resources.database.h2.SingleBlobOrgStrategy",
+        "org.evochora.datapipeline.resources.database.h2.RowPerOrganismStrategy"
+    })
+    void deathTick_reachesTheRowWhateverTickItArrivesAt(String strategyClass) throws Exception {
+        String dbPath = tempDir.toString().replace("\\", "/");
+        try (H2Database db = new H2Database("death-db", ConfigFactory.parseString("""
+                jdbcUrl = "jdbc:h2:file:%s/test-death-%s;MODE=PostgreSQL"
+                h2OrganismStrategy { className = "%s" }
+                """.formatted(dbPath, strategyClass.substring(strategyClass.lastIndexOf('.') + 1),
+                              strategyClass)))) {
+            String runId = "death-run";
+            try (Connection conn = connectionWithSchema(db, runId)) {
+                db.doCreateOrganismTables(conn);
+                // Organism 1 lives on, organism 2 is born and dies within the same commit window
+                db.doWriteOrganismTick(conn, tick(10L, alive(1, 700L, 0L)), java.util.Map.of());
+                db.doWriteOrganismTick(conn, tick(20L, alive(1, 700L, 0L), alive(2, 800L, 15L)),
+                        java.util.Map.of());
+                db.doWriteOrganismTick(conn, tick(30L, alive(1, 700L, 0L), dead(2, 800L, 15L, 25L)),
+                        java.util.Map.of());
+                db.doCommitOrganismWrites(conn);
+            }
+
+            try (IDatabaseReader reader = db.createReader(runId)) {
+                assertThat(reader.readOrganismStaticInfo(1).deathTick).isEqualTo(-1L);
+
+                OrganismStaticInfo shortLived = reader.readOrganismStaticInfo(2);
+                assertThat(shortLived.birthTick).isEqualTo(15L);
+                assertThat(shortLived.deathTick).isEqualTo(25L);
+                assertThat(shortLived.aliveAt(20L)).isTrue();
+                assertThat(shortLived.aliveAt(25L)).isFalse();
+                assertThat(shortLived.aliveAt(10L)).isFalse();
+
+                assertThat(reader.readOrganismStaticInfo(99)).isNull();
+            }
+        }
+    }
+
+    /**
+     * A run does not record every tick, and it may hold stretches recorded at different steps.
+     * Sample points spread over such a run land between recorded ticks, where reading yields
+     * nothing and says nothing - so they are moved onto the ticks that are actually there.
+     */
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "org.evochora.datapipeline.resources.database.h2.SingleBlobOrgStrategy",
+        "org.evochora.datapipeline.resources.database.h2.RowPerOrganismStrategy"
+    })
+    void snapToRecordedTicks_movesSamplesOntoTicksThatExist(String strategyClass) throws Exception {
+        String dbPath = tempDir.toString().replace("\\", "/");
+        try (H2Database db = new H2Database("snap-db", ConfigFactory.parseString("""
+                jdbcUrl = "jdbc:h2:file:%s/test-snap-%s;MODE=PostgreSQL"
+                h2OrganismStrategy { className = "%s" }
+                """.formatted(dbPath, strategyClass.substring(strategyClass.lastIndexOf('.') + 1),
+                              strategyClass)))) {
+            String runId = "snap-run";
+            try (Connection conn = connectionWithSchema(db, runId)) {
+                db.doCreateOrganismTables(conn);
+                // One stretch recorded every 100 ticks, a second one every 10
+                for (long tick : new long[] { 0L, 100L, 200L, 300L, 1000L, 1010L, 1020L }) {
+                    db.doWriteOrganismTick(conn, tickWithGenomes(tick, Map.of(1, 700L)), java.util.Map.of());
+                }
+                db.doCommitOrganismWrites(conn);
+            }
+
+            try (IDatabaseReader reader = db.createReader(runId)) {
+                // 150 and 250 fall between recorded ticks, 1005 falls into the finer stretch
+                assertThat(reader.snapToRecordedTicks(List.of(0L, 150L, 250L, 1005L)))
+                        .containsExactly(0L, 100L, 200L, 1000L);
+                // Two samples landing on the same recorded tick are one
+                assertThat(reader.snapToRecordedTicks(List.of(310L, 400L))).containsExactly(300L);
+                // Before the first recorded tick there is nothing to move to
+                assertThat(reader.snapToRecordedTicks(List.of(-5L))).isEmpty();
+            }
+        }
+    }
+
+    /** A tick holding exactly the given organisms. */
+    private TickData tick(long tickNumber, OrganismState... organisms) {
+        TickData.Builder tick = TickData.newBuilder().setTickNumber(tickNumber);
+        for (OrganismState organism : organisms) {
+            tick.addOrganisms(organism);
+        }
+        return tick.build();
+    }
+
+    /** An organism carrying the given genome since the given tick. */
+    private OrganismState alive(int id, long genomeHash, long birthTick) {
+        return buildOrganismState(id).toBuilder()
+                .setGenomeHash(genomeHash)
+                .setBirthTick(birthTick)
+                .build();
+    }
+
+    /** An organism in its final appearance: dead, with the tick it died at. */
+    private OrganismState dead(int id, long genomeHash, long birthTick, long deathTick) {
+        return alive(id, genomeHash, birthTick).toBuilder()
+                .setIsDead(true)
+                .setDeathTick(deathTick)
+                .build();
+    }
+
+    /** A tick holding one organism per entry, each carrying the genome the map gives it. */
+    private TickData tickWithGenomes(long tickNumber, Map<Integer, Long> genomeByOrganism) {
+        TickData.Builder tick = TickData.newBuilder().setTickNumber(tickNumber);
+        genomeByOrganism.forEach((organismId, genomeHash) ->
+                tick.addOrganisms(buildOrganismState(organismId).toBuilder()
+                        .setGenomeHash(genomeHash)
+                        .build()));
+        return tick.build();
+    }
+
+    private Connection connectionWithSchema(H2Database db, String runId) throws SQLException {
+        try {
+            java.lang.reflect.Field dataSourceField = H2Database.class.getDeclaredField("dataSource");
+            dataSourceField.setAccessible(true);
+            @SuppressWarnings("resource")
+            com.zaxxer.hikari.HikariDataSource dataSource =
+                    (com.zaxxer.hikari.HikariDataSource) dataSourceField.get(db);
+            Connection conn = dataSource.getConnection();
+            org.evochora.datapipeline.utils.H2SchemaUtil.setupRunSchema(conn, runId, (c, schemaName) -> { });
+            return conn;
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException(e);
         }
     }
 

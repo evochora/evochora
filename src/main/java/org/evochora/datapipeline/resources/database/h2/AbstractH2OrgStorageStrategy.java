@@ -5,10 +5,14 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 
 import org.evochora.datapipeline.api.contracts.OrganismState;
@@ -97,16 +101,20 @@ public abstract class AbstractH2OrgStorageStrategy implements IH2OrgStorageStrat
      * @param statesStmt prepared MERGE for the per-tick organism state
      * @param tickStatsStmt prepared MERGE for the per-tick statistics row
      * @param birthMutationsStmt prepared MERGE for the birth mutations column, batched only for organisms that carry events
+     * @param deathTicksStmt prepared MERGE for the death tick column, batched only for organisms in their final appearance
      * @param seenOrganisms organism ids already batched through {@code organismsStmt} in the current commit window, cleared on commit, so the static row is batched once per organism and commit
      * @param seenBirthMutations organism ids already batched through {@code birthMutationsStmt} in the current commit window, cleared on commit
+     * @param seenDeathTicks organism ids already batched through {@code deathTicksStmt} in the current commit window, cleared on commit
      */
     protected record StreamingSession(
             PreparedStatement organismsStmt,
             PreparedStatement statesStmt,
             PreparedStatement tickStatsStmt,
             PreparedStatement birthMutationsStmt,
+            PreparedStatement deathTicksStmt,
             Set<Integer> seenOrganisms,
-            Set<Integer> seenBirthMutations
+            Set<Integer> seenBirthMutations,
+            Set<Integer> seenDeathTicks
     ) {}
 
     /** SQL for the per-tick statistics shared by all organism storage strategies. */
@@ -140,6 +148,18 @@ public abstract class AbstractH2OrgStorageStrategy implements IH2OrgStorageStrat
      */
     private static final String BIRTH_MUTATIONS_MERGE_SQL =
             "MERGE INTO organisms (organism_id, birth_mutations) "
+            + "KEY (organism_id) VALUES (?, ?)";
+
+    /**
+     * SQL for the tick an organism died at, written by {@link #addDeathTickBatch}.
+     * <p>
+     * Like {@link #BIRTH_MUTATIONS_MERGE_SQL} it names only {@code organism_id} and one column and
+     * therefore depends on the row already existing. It is a statement of its own rather than a
+     * column of {@link #ORGANISMS_MERGE_SQL} because the static data of an organism is written at
+     * its first appearance in a commit window, while its death becomes known at its last.
+     */
+    private static final String DEATH_TICK_MERGE_SQL =
+            "MERGE INTO organisms (organism_id, death_tick) "
             + "KEY (organism_id) VALUES (?, ?)";
 
     /** Per-connection sessions (thread-safe for competing consumers sharing this strategy instance). */
@@ -177,6 +197,8 @@ public abstract class AbstractH2OrgStorageStrategy implements IH2OrgStorageStrat
                             c.prepareStatement(getStreamStatesMergeSql()),
                             c.prepareStatement(TICK_STATS_MERGE_SQL),
                             c.prepareStatement(BIRTH_MUTATIONS_MERGE_SQL),
+                            c.prepareStatement(DEATH_TICK_MERGE_SQL),
+                            new HashSet<>(),
                             new HashSet<>(),
                             new HashSet<>()
                     );
@@ -273,6 +295,31 @@ public abstract class AbstractH2OrgStorageStrategy implements IH2OrgStorageStrat
     }
 
     /**
+     * Adds the death tick of this tick's organisms to the batch.
+     * <p>
+     * An organism is serialized one last time with its death tick set and is dropped from the
+     * simulation afterwards, so the value arrives exactly once, late in the organism's life, and
+     * never changes again. Writing it here rather than with the rest of the static data is what
+     * makes it arrive at all: that batch takes an organism at its first appearance in a commit
+     * window, which for a long-lived organism is a tick where it was still alive.
+     *
+     * @param session The streaming session for the current connection
+     * @param tick Tick data whose organisms are examined for a death tick
+     * @throws SQLException if parameter setting or addBatch fails
+     */
+    protected void addDeathTickBatch(StreamingSession session, TickData tick) throws SQLException {
+        PreparedStatement stmt = session.deathTicksStmt();
+        Set<Integer> seen = session.seenDeathTicks();
+        for (OrganismState org : tick.getOrganismsList()) {
+            if (org.hasDeathTick() && seen.add(org.getOrganismId())) {
+                stmt.setInt(1, org.getOrganismId());
+                stmt.setLong(2, org.getDeathTick());
+                stmt.addBatch();
+            }
+        }
+    }
+
+    /**
      * Creates the static organism data table shared by all organism storage strategies.
      * <p>
      * One row per organism of the run, holding what does not change over its life. The per-tick
@@ -281,6 +328,12 @@ public abstract class AbstractH2OrgStorageStrategy implements IH2OrgStorageStrat
      * <p>
      * {@code birth_mutations} holds a serialized {@code StoredMutationEvents} message and is null
      * for every organism no mutation plugin touched, which is the common case.
+     * <p>
+     * {@code death_tick} is the one value here that is not settled at birth: it stays null until a
+     * recorded tick reports the organism as dead, and is written once, from that tick. Null
+     * therefore says only that no such tick has been seen - the organism may be alive, or its
+     * death may lie in a tick that is not indexed yet. Together with {@code birth_tick} it bounds
+     * a lifespan, which is what a question about the population at a given tick is answered from.
      *
      * @param stmt Statement on a connection with the run schema already set
      * @throws SQLException if the DDL fails for a reason other than the object already existing
@@ -292,6 +345,7 @@ public abstract class AbstractH2OrgStorageStrategy implements IH2OrgStorageStrat
             "  organism_id INT PRIMARY KEY," +
             "  parent_id INT NULL," +
             "  birth_tick BIGINT NOT NULL," +
+            "  death_tick BIGINT NULL," +
             "  program_id TEXT NOT NULL," +
             "  initial_position BYTEA NOT NULL," +
             "  genome_hash BIGINT DEFAULT 0," +
@@ -325,12 +379,56 @@ public abstract class AbstractH2OrgStorageStrategy implements IH2OrgStorageStrat
     }
 
     /**
+     * Moves ticks onto the nearest recorded one at or before them, using a table that states its
+     * recorded ticks in a {@code tick_number} column.
+     * <p>
+     * Offered rather than imposed: a strategy that keeps its per-tick state that way answers
+     * {@link #snapToRecordedTicks(Connection, Collection)} with this and is done, and one that
+     * lays its state out differently answers the question its own way instead of being told that
+     * its ticks must live in a column.
+     *
+     * @param conn Database connection (schema already set)
+     * @param ticks Ticks to move, in any order
+     * @param ticksTable Unqualified name of the table stating the recorded ticks
+     * @return The recorded ticks, ascending and without duplicates
+     * @throws SQLException if database read fails
+     */
+    protected List<Long> snapUsingTicksTable(Connection conn, Collection<Long> ticks,
+                                             String ticksTable) throws SQLException {
+        Set<Long> snapped = new TreeSet<>();
+        // Reads the key backwards and stops at the first hit. An aggregate over the same
+        // condition is the obvious way to write this and the wrong one: it walks the rows, and a
+        // row of this table carries the tick's state with it.
+        String sql = "SELECT tick_number FROM " + ticksTable
+                + " WHERE tick_number <= ? ORDER BY tick_number DESC FETCH FIRST 1 ROW ONLY";
+        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+            for (Long tick : ticks) {
+                if (tick == null) {
+                    continue;
+                }
+                stmt.setLong(1, tick);
+                try (ResultSet rs = stmt.executeQuery()) {
+                    if (rs.next()) {
+                        snapped.add(rs.getLong(1));
+                    }
+                }
+            }
+        }
+        return new ArrayList<>(snapped);
+    }
+
+    /**
      * Creates the index that makes an ancestor walk over the static organism data affordable.
      * <p>
      * Resolving one genome's parent genome selects the lowest-id carrier of that genome. Without
      * this index every step of the walk is a full table scan; with it, a step is a seek. The index
      * is offered here rather than imposed: a strategy that lays out the static organism data
      * differently does not call this and provides its own answer.
+     * <p>
+     * It carries {@code parent_genome_hash} as a third column, which no lookup searches by: the
+     * answer a walk is after stands in the index itself, so reading the whole lineage of a run is
+     * a scan over this index and never touches the table, whose rows carry wide binary fields.
+     * The column costs eight bytes per organism and no additional index operation on a write.
      * <p>
      * On an already populated table the build is a one-off blocking operation. It is instant for a
      * new run, where the table is still empty when the strategy creates its schema.
@@ -341,8 +439,32 @@ public abstract class AbstractH2OrgStorageStrategy implements IH2OrgStorageStrat
     protected void createGenomeIndex(Statement stmt) throws SQLException {
         H2SchemaUtil.executeDdlIfNotExists(
             stmt,
-            "CREATE INDEX IF NOT EXISTS idx_organisms_genome ON organisms (genome_hash, organism_id)",
+            "CREATE INDEX IF NOT EXISTS idx_organisms_genome "
+                    + "ON organisms (genome_hash, organism_id, parent_genome_hash)",
             "idx_organisms_genome"
+        );
+    }
+
+    /**
+     * Creates the index that answers how many organisms of each genome a tick held.
+     * <p>
+     * The question is asked for a handful of ticks at once and is settled by three numbers per
+     * organism: when it was born, when it died and what genome it carried. All three stand in this
+     * index, so the answer is one scan over it and never opens the table. Leading with
+     * {@code birth_tick} lets the scan stop once it passes the last tick asked about.
+     * <p>
+     * Like {@link #createGenomeIndex} it is offered rather than imposed: a strategy that lays the
+     * static organism data out differently does not call it.
+     *
+     * @param stmt Statement on a connection with the run schema already set
+     * @throws SQLException if the DDL fails for a reason other than the object already existing
+     */
+    protected void createLifespanIndex(Statement stmt) throws SQLException {
+        H2SchemaUtil.executeDdlIfNotExists(
+            stmt,
+            "CREATE INDEX IF NOT EXISTS idx_organisms_lifespan "
+                    + "ON organisms (birth_tick, death_tick, genome_hash)",
+            "idx_organisms_lifespan"
         );
     }
 
@@ -386,12 +508,16 @@ public abstract class AbstractH2OrgStorageStrategy implements IH2OrgStorageStrat
         if (!session.seenBirthMutations().isEmpty()) {
             session.birthMutationsStmt().executeBatch();
         }
+        if (!session.seenDeathTicks().isEmpty()) {
+            session.deathTicksStmt().executeBatch();
+        }
         session.statesStmt().executeBatch();
         session.tickStatsStmt().executeBatch();
 
         // Reset per-commit state; statements stay open for reuse
         session.seenOrganisms().clear();
         session.seenBirthMutations().clear();
+        session.seenDeathTicks().clear();
     }
 
     /**
@@ -446,6 +572,7 @@ public abstract class AbstractH2OrgStorageStrategy implements IH2OrgStorageStrat
         closeQuietly(session.statesStmt());
         closeQuietly(session.tickStatsStmt());
         closeQuietly(session.birthMutationsStmt());
+        closeQuietly(session.deathTicksStmt());
     }
 
     /**

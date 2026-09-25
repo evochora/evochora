@@ -2,6 +2,7 @@ package org.evochora.datapipeline.resources.database.h2;
 
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 
@@ -121,6 +122,23 @@ public interface IH2OrgStorageStrategy {
      */
     List<OrganismTickSummary> readOrganismsAtTick(Connection conn, long tickNumber) 
             throws SQLException;
+
+    /**
+     * Moves each of the given ticks onto the nearest recorded tick at or before it.
+     * <p>
+     * A run records every n-th tick, and not always at the same n: it may hold stretches recorded
+     * at different steps, and a run continued later starts a stretch of its own. A caller that
+     * spreads sample points over a run therefore lands between recorded ticks, and reading those
+     * yields nothing - silently, because a tick without data is empty and not an error.
+     * <p>
+     * Ticks before the first recorded one have nothing to move to and are dropped.
+     *
+     * @param conn Database connection (schema already set)
+     * @param ticks Ticks to move, in any order
+     * @return The recorded ticks, ascending and without duplicates. Never null.
+     * @throws SQLException if database read fails
+     */
+    List<Long> snapToRecordedTicks(Connection conn, Collection<Long> ticks) throws SQLException;
     
     /**
      * Returns the available tick range for organism data.

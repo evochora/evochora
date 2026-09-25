@@ -37,6 +37,15 @@ function formatTooltipMolecule(typeName, value, opcodeName) {
  * @class EnvironmentGrid
  */
 export class EnvironmentGrid {
+
+    /** How light the youngest mutation of a selection is drawn. */
+    static MARK_LIGHTEST = 0.78;
+
+    /** How dark the oldest one is. */
+    static MARK_DARKEST = 0.22;
+
+    /** The least saturation a mark is drawn with, so that a greyish clade colour still reads as one. */
+    static MARK_MIN_SATURATION = 0.45;
     static MARGIN = 50;
     static BOTTOM_MARGIN = 90; // Extra space for footer panels
 
@@ -113,7 +122,8 @@ export class EnvironmentGrid {
         // --- Mutation marks of the selected organism's lineage ---
         this.mutationMarks = null;   // key "x,y" -> the mutation that decides that cell's mark
         this._markBounds = null;     // smallest rectangle the marked cells lie in
-        this._markColorOf = null;    // genome hash -> its lineage colour as 0xRRGGBB
+        this._markColorOf = null;    // the colour the selected organism is drawn in
+        this._markDepth = 0;         // how many generations the marks of the selection span
         this._markGenerationsBackOf = null; // organism id -> generations it lies back from the selected organism
         this._markOpcodeNameOf = null;      // opcode id -> opcode name
 
@@ -946,6 +956,45 @@ export class EnvironmentGrid {
     }
 
     /**
+     * Draws the marks again for a colour or a depth that has changed under them.
+     * <p>
+     * The marks of a selection arrive before its ancestry does — one request answers births, the
+     * other the organism — so when they are first drawn nothing is known about how far back they
+     * lie. And the hue they take is the selected organism's, which changes with the clade level.
+     */
+    refreshMutationMarks() {
+        if (!this.mutationMarks) {
+            return;
+        }
+        this._markDepth = this._depthOfMarks();
+        this.detailedRenderer.refreshMarks(new Set(this.mutationMarks.keys()));
+        this.zoomedOutRenderer.clearCache();
+        if (this.isZoomedOut) {
+            this.requestViewportLoad();
+        }
+    }
+
+    /**
+     * How many generations the marks of the current selection reach back.
+     * <p>
+     * The gradient spans exactly that, so a short ancestry uses the whole range of it rather than
+     * a sliver.
+     * @private
+     */
+    _depthOfMarks() {
+        let depth = 0;
+        if (this.mutationMarks && this._markGenerationsBackOf) {
+            for (const mark of this.mutationMarks.values()) {
+                const back = this._markGenerationsBackOf(mark.originOrganismId);
+                if (typeof back === 'number' && back > depth) {
+                    depth = back;
+                }
+            }
+        }
+        return depth;
+    }
+
+    /**
      * Takes the mutation marks of the selected organism's lineage, or drops them.
      *
      * Every cell that is marked before or after the change is drawn again, so a mark appears,
@@ -957,8 +1006,8 @@ export class EnvironmentGrid {
      * @param {Map<string, object>|null} marks - Cell key "x,y" to the mutation deciding that cell,
      *                                          null when no organism is selected.
      * @param {object} [lookups={}] - What the marks are drawn and described through.
-     * @param {function(string): number|null} [lookups.colorOf] - Lineage colour of a genome hash as
-     *                                          a packed RGB integer.
+     * @param {function(): number|null} [lookups.colorOf] - The colour the selected organism is
+     *                                          drawn in, whose hue the marks take.
      * @param {function(number): number|null} [lookups.generationsBackOf] - How many generations the
      *                                          organism with the given id lies back from the selected
      *                                          one, null while that is not known.
@@ -977,6 +1026,7 @@ export class EnvironmentGrid {
         this.mutationMarks = (marks && marks.size > 0) ? marks : null;
         this._markColorOf = colorOf;
         this._markGenerationsBackOf = generationsBackOf;
+        this._markDepth = this._depthOfMarks();
         this._markOpcodeNameOf = opcodeNameOf;
         this._markBounds = this._computeMarkBounds();
 
@@ -1040,14 +1090,79 @@ export class EnvironmentGrid {
     }
 
     /**
-     * Returns the colour a mark is drawn in: the lineage colour of the genome the mutation arose in.
+     * Returns the colour a mark is drawn in: the hue of the selected organism's clade, at a
+     * brightness that says how far back the birth it arose at lies.
+     * <p>
+     * The hue says whose mutations these are — the marks belong to the organism one selected, and
+     * carry its colour as its body does. The brightness says when: the youngest mutation is light,
+     * the oldest dark. It spans the whole range rather than starting at the organism's own
+     * brightness, so that the young ones stand out even where the organism itself is drawn in the
+     * dark tone of everything outside the opened clade.
      *
      * @param {object} mark - The mark to colour.
-     * @returns {number} A packed RGB integer, white when no colour is available.
+     * @returns {number} A packed RGB integer.
      */
     markColor(mark) {
-        const color = this._markColorOf ? this._markColorOf(mark.genomeHash) : null;
-        return typeof color === 'number' ? color : 0xffffff;
+        const base = this._markColorOf ? this._markColorOf() : null;
+        const hue = EnvironmentGrid._toHsl(typeof base === 'number' ? base : 0xffffff);
+        const back = this._markGenerationsBackOf
+            ? this._markGenerationsBackOf(mark.originOrganismId)
+            : null;
+        const far = typeof back === 'number' && this._markDepth > 0
+            ? Math.min(1, Math.max(0, back) / this._markDepth)
+            : 0;
+        const light = EnvironmentGrid.MARK_LIGHTEST
+            + (EnvironmentGrid.MARK_DARKEST - EnvironmentGrid.MARK_LIGHTEST) * far;
+        // A colourless base stays colourless: lifting its saturation would turn white into red
+        const saturation = hue.s === 0 ? 0 : Math.max(hue.s, EnvironmentGrid.MARK_MIN_SATURATION);
+        return EnvironmentGrid._fromHsl(hue.h, saturation, light);
+    }
+
+    /** A packed RGB integer as hue, saturation and lightness, each in [0, 1] but the hue in turns. @private */
+    static _toHsl(color) {
+        const r = ((color >> 16) & 0xff) / 255;
+        const g = ((color >> 8) & 0xff) / 255;
+        const b = (color & 0xff) / 255;
+        const max = Math.max(r, g, b);
+        const min = Math.min(r, g, b);
+        const l = (max + min) / 2;
+        if (max === min) {
+            return { h: 0, s: 0, l };
+        }
+        const d = max - min;
+        const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+        let h;
+        if (max === r) {
+            h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
+        } else if (max === g) {
+            h = ((b - r) / d + 2) / 6;
+        } else {
+            h = ((r - g) / d + 4) / 6;
+        }
+        return { h, s, l };
+    }
+
+    /** Hue, saturation and lightness as a packed RGB integer. @private */
+    static _fromHsl(h, s, l) {
+        if (s === 0) {
+            const grey = Math.round(l * 255);
+            return (grey << 16) | (grey << 8) | grey;
+        }
+        const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+        const p = 2 * l - q;
+        const channel = (t) => {
+            let value = t;
+            if (value < 0) value += 1;
+            if (value > 1) value -= 1;
+            if (value < 1 / 6) return p + (q - p) * 6 * value;
+            if (value < 1 / 2) return q;
+            if (value < 2 / 3) return p + (q - p) * (2 / 3 - value) * 6;
+            return p;
+        };
+        const r = Math.round(channel(h + 1 / 3) * 255);
+        const g = Math.round(channel(h) * 255);
+        const b = Math.round(channel(h - 1 / 3) * 255);
+        return (r << 16) | (g << 8) | b;
     }
 
     /**
@@ -1791,8 +1906,6 @@ export class EnvironmentGrid {
     }
 
     _getOrganismColor(organismId, energy, genomeHash, isDead) {
-        const palette = this.config.organismPalette;
-
         // Selected organism is always white
         if (this.controller && String(organismId) === this.controller.state.selectedOrganismId) {
             return 0xffffff;
@@ -1803,10 +1916,9 @@ export class EnvironmentGrid {
             return 0x555555;
         }
 
-        if (this.controller && this.controller.state.colorMode === 'genome') {
-            return this.controller._genomeHashToLineageColor(genomeHash);
-        }
-        return palette[(organismId - 1) % palette.length];
+        return this.controller
+            ? this.controller._genomeHashToLineageColor(genomeHash)
+            : 0x808080;
     }
 }
 

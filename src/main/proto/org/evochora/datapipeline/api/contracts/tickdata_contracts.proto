@@ -421,10 +421,23 @@ message OrganismRuntimeState {
 
   // ===== Special Registers =====
 
-  int32 entropy_register = 15;
+  reserved 15;                   // entropy_register: kept in the strategy's own column
   int32 molecule_marker_register = 16;
   bool is_dead = 17;
   optional int64 death_tick = 18;
+
+  // Preview of the instruction the organism will execute next, captured after execution.
+  optional int32 next_instruction_opcode_id = 19;
+  repeated int32 next_instruction_raw_arguments = 20;
+  map<int32, RegisterValue> next_instruction_register_values_before = 21;
+
+  // Per-procedure backing store for PERSISTENT registers, and which procedure is active.
+  PersistentRegisterStore persistent_register_store = 22;
+  int32 current_proc_label_hash = 23;
+
+  // Whether any STACK_SAVED or PERSISTENT register has been written in this organism's lifetime.
+  bool stack_saved_dirty = 24;
+  bool persistent_dirty = 25;
 }
 
 // Wrapper for encoding all data pointers in one column for indexing.

@@ -11,6 +11,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 
@@ -82,6 +83,7 @@ public class SingleBlobOrgStrategy extends AbstractH2OrgStorageStrategy {
 
             createTickStatsTable(stmt);
             createGenomeIndex(stmt);
+            createLifespanIndex(stmt);
         }
 
         markTablesCreated();
@@ -110,6 +112,7 @@ public class SingleBlobOrgStrategy extends AbstractH2OrgStorageStrategy {
         StreamingSession session = ensureStreamingSession(conn);
         addOrganismMetadataBatch(session, tick);
         addBirthMutationsBatch(session, tick, birthMutations);
+        addDeathTickBatch(session, tick);
         addTickStatsBatch(session, tick);
 
         // Per-tick BLOB (all organisms serialized + compressed)
@@ -200,6 +203,16 @@ public class SingleBlobOrgStrategy extends AbstractH2OrgStorageStrategy {
         return null;  // Not found
     }
     
+    /**
+     * {@inheritDoc}
+     * <p>
+     * The recorded ticks of this layout are the keys of {@code organism_ticks}.
+     */
+    @Override
+    public List<Long> snapToRecordedTicks(Connection conn, Collection<Long> ticks) throws SQLException {
+        return snapUsingTicksTable(conn, ticks, "organism_ticks");
+    }
+
     @Override
     public TickRange getAvailableTickRange(Connection conn) throws SQLException {
         String sql = "SELECT MIN(tick_number) as min_tick, MAX(tick_number) as max_tick FROM organism_ticks";
