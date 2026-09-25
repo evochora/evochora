@@ -339,8 +339,10 @@ public class H2DatabaseReader implements IDatabaseReader {
                     "No organism state for id " + organismId + " at tick " + tickNumber);
         }
         
-        // Convert OrganismState to OrganismRuntimeView (includes both last and next instruction from protobuf)
-        Map<Integer, String> labelValueToName = extractLabelValueToName(metadata, orgState.getProgramId());
+        // Convert OrganismState to OrganismRuntimeView (includes both last and next instruction from protobuf).
+        // The program is static data and is taken from the organisms table, like every static field:
+        // what a strategy's state carries for it is not read.
+        Map<Integer, String> labelValueToName = extractLabelValueToName(metadata, staticInfo.programId);
         OrganismRuntimeView state = convertOrganismStateToRuntimeView(
                 orgState, envDimensions, labelValueToName, staticInfo.labelNamespaceMask);
 
