@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 import org.evochora.datapipeline.CellStateTestHelper;
 import org.evochora.datapipeline.api.contracts.TickData;
@@ -37,16 +38,16 @@ class EnvironmentDataWriterWrapperTest {
     
     @BeforeEach
     void setUp() throws Exception {
-        // Create H2Database with file-based database
+        // Create H2Database with an in-memory database; the environment chunks go to the temp directory
         // Use forward slashes in path (works on all platforms, avoids Config parsing issues with backslashes)
         String dbPath = tempDir.toString().replace("\\", "/");
         var config = ConfigFactory.parseString("""
-            jdbcUrl = "jdbc:h2:file:%s/test-wrapper"
+            jdbcUrl = "jdbc:h2:mem:test-wrapper-%s"
             h2EnvironmentStrategy {
               className = "org.evochora.datapipeline.resources.database.h2.RowPerChunkStrategy"
               options { chunkDirectory = "%s/env-chunks" }
             }
-            """.formatted(dbPath, dbPath));
+            """.formatted(UUID.randomUUID(), dbPath));
         
         database = new H2Database("test-db", config);
         

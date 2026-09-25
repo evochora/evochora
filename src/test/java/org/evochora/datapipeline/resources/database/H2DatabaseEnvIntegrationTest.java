@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.nio.file.Path;
 import java.util.List;
+import java.util.UUID;
 
 import org.evochora.datapipeline.CellStateTestHelper;
 import org.evochora.datapipeline.api.contracts.TickData;
@@ -43,10 +44,9 @@ class H2DatabaseEnvIntegrationTest {
     @Test
     void testStrategyLoading_NoStrategyConfigured() throws Exception {
         // Given: H2Database without h2EnvironmentStrategy config
-        String dbPath = tempDir.toString().replace("\\", "/");
         Config config = ConfigFactory.parseString("""
-            jdbcUrl = "jdbc:h2:file:%s/test-no-strategy"
-            """.formatted(dbPath));
+            jdbcUrl = "jdbc:h2:mem:test-no-strategy-%s"
+            """.formatted(UUID.randomUUID()));
 
         // When: Create database (succeeds — strategy is not loaded eagerly)
         database = new H2Database("test-db", config);
@@ -71,7 +71,7 @@ class H2DatabaseEnvIntegrationTest {
         // Use forward slashes in path (works on all platforms, avoids Config parsing issues with backslashes)
         String dbPath = tempDir.toString().replace("\\", "/");
         Config config = ConfigFactory.parseString("""
-            jdbcUrl = "jdbc:h2:file:%s/test-custom-strategy"
+            jdbcUrl = "jdbc:h2:mem:test-custom-strategy-%s"
             h2EnvironmentStrategy {
                 className = "org.evochora.datapipeline.resources.database.h2.RowPerChunkStrategy"
                 options {
@@ -82,7 +82,7 @@ class H2DatabaseEnvIntegrationTest {
                     }
                 }
             }
-            """.formatted(dbPath, dbPath));
+            """.formatted(UUID.randomUUID(), dbPath));
         
         // When: Create database
         database = new H2Database("test-db", config);

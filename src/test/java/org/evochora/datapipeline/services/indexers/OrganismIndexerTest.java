@@ -5,10 +5,10 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 
-import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 
 import org.evochora.datapipeline.api.contracts.MutationEvent;
 import org.evochora.datapipeline.api.contracts.OrganismState;
@@ -37,7 +37,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.junit.jupiter.api.io.TempDir;
 
 import com.typesafe.config.ConfigFactory;
 
@@ -52,19 +51,15 @@ import com.typesafe.config.ConfigFactory;
 @ExtendWith(LogWatchExtension.class)
 class OrganismIndexerTest {
 
-    @TempDir
-    Path tempDir;
-
     private H2Database database;
     private OrganismDataWriterWrapper wrapper;
     private TestOrganismIndexer<?> indexer;
 
     @BeforeEach
     void setUp() throws Exception {
-        String dbPath = tempDir.toString().replace("\\", "/");
         var config = ConfigFactory.parseString("""
-            jdbcUrl = "jdbc:h2:file:%s/test-organism-indexer;MODE=PostgreSQL"
-            """.formatted(dbPath));
+            jdbcUrl = "jdbc:h2:mem:test-organism-indexer-%s;MODE=PostgreSQL"
+            """.formatted(UUID.randomUUID()));
 
         database = new H2Database("test-db", config);
 

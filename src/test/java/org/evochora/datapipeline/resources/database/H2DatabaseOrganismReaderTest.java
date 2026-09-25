@@ -4,11 +4,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.List;
+import java.util.UUID;
 
 import org.evochora.datapipeline.TestMetadataHelper;
 import org.evochora.datapipeline.api.contracts.OrganismState;
@@ -38,7 +38,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.junit.jupiter.api.io.TempDir;
 
 import com.typesafe.config.ConfigFactory;
 
@@ -49,17 +48,13 @@ import com.typesafe.config.ConfigFactory;
 @ExtendWith(LogWatchExtension.class)
 class H2DatabaseOrganismReaderTest {
 
-    @TempDir
-    Path tempDir;
-
     private H2Database database;
 
     @BeforeEach
     void setUp() {
-        String dbPath = tempDir.toString().replace("\\", "/");
         var config = ConfigFactory.parseString("""
-            jdbcUrl = "jdbc:h2:file:%s/test-organism-reader;MODE=PostgreSQL"
-            """.formatted(dbPath));
+            jdbcUrl = "jdbc:h2:mem:test-organism-reader-%s;MODE=PostgreSQL"
+            """.formatted(UUID.randomUUID()));
 
         database = new H2Database("test-db", config);
     }

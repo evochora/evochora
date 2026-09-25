@@ -2,7 +2,6 @@ package org.evochora.datapipeline.resources.database;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -29,7 +28,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
@@ -43,9 +41,6 @@ import com.typesafe.config.ConfigFactory;
 @ExtendWith(LogWatchExtension.class)
 class H2DatabaseOrganismWriteTest {
 
-    @TempDir
-    Path tempDir;
-
     private H2Database database;
 
     @BeforeAll
@@ -55,10 +50,9 @@ class H2DatabaseOrganismWriteTest {
 
     @BeforeEach
     void setUp() {
-        String dbPath = tempDir.toString().replace("\\", "/");
         var config = ConfigFactory.parseString("""
-            jdbcUrl = "jdbc:h2:file:%s/test-organism-write;MODE=PostgreSQL"
-            """.formatted(dbPath));
+            jdbcUrl = "jdbc:h2:mem:test-organism-write-%s;MODE=PostgreSQL"
+            """.formatted(UUID.randomUUID()));
 
         database = new H2Database("test-db", config);
     }
