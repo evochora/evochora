@@ -6,6 +6,7 @@ import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
 import org.evochora.test.utils.SimulationTestUtils;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.isa.RegisterBank;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
@@ -216,6 +217,28 @@ public class VMEnvironmentInteractionInstructionTest {
         int[] underPointer = org.getDp(0).clone();
 
         placeInstruction("POKI", 0, 0, 0);
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).as(org.getFailureReason()).isFalse();
+        assertThat(environment.getMolecule(underPointer).toInt())
+                .isEqualTo(storedUnderWriteMarker(payload));
+    }
+
+    /**
+     * A vector operand can name a location register, when a mutation has changed the register id
+     * in the argument cell. A location register that holds no position displaces by none, so the
+     * write lands on the cell the data pointer stands on instead of failing the instruction.
+     */
+    @Test
+    @Tag("unit")
+    void pokeThroughALocationRegisterWithoutPositionWritesUnderTheDataPointer() {
+        int payload = new Molecule(Config.TYPE_DATA, 88).toInt();
+        org.setMr(WRITE_MARKER);
+        org.writeOperand(0, payload);
+        org.setDp(0, new int[]{startPos[0], startPos[1] + 1});
+        int[] underPointer = org.getDp(0).clone();
+
+        placeInstruction("POKE", 0, RegisterBank.LR.base);
         sim.tick();
 
         assertThat(org.isInstructionFailed()).as(org.getFailureReason()).isFalse();
