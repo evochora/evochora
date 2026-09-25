@@ -391,47 +391,6 @@ message StoredMutationEvents {
   repeated StoredMutationEvent events = 2;
 }
 
-// Aggregated runtime state for organism indexing.
-// Used by OrganismIndexer to store sidebar-only data in a single BLOB.
-message OrganismRuntimeState {
-  // Flat register array in RegisterBank enum order.
-  // Slot layout matches RegisterBank.slotOffset().
-  // Location registers use the RegisterValue.vector variant. A location register that holds no
-  // position carries a vector with no components; a position has one component per dimension.
-  repeated RegisterValue registers = 1;
-  repeated RegisterValue data_stack = 2;
-  // An entry that holds no position carries a vector with no components.
-  repeated Vector        location_stack = 3;
-  repeated ProcFrame     call_stack = 4;
-  bool                   instruction_failed = 5;
-  string                 failure_reason = 6;
-  repeated ProcFrame     failure_call_stack = 7;
-
-  // ===== Instruction Execution Data =====
-
-  optional int32 instruction_opcode_id = 8;
-  repeated int32 instruction_raw_arguments = 9;
-  optional int32 instruction_energy_cost = 10;
-  optional int32 instruction_entropy_delta = 11;
-  optional Vector instruction_ip_before_fetch = 12;
-  optional Vector instruction_dv_before_fetch = 13;
-  // Collected only on sampled ticks: an organism that died between two samples
-  // carries its dying instruction without these values.
-  map<int32, RegisterValue> instruction_register_values_before = 14;
-
-  // ===== Special Registers =====
-
-  int32 entropy_register = 15;
-  int32 molecule_marker_register = 16;
-  bool is_dead = 17;
-  optional int64 death_tick = 18;
-}
-
-// Wrapper for encoding all data pointers in one column for indexing.
-message DataPointerList {
-  repeated Vector data_pointers = 1;
-}
-
 // Represents a procedure call frame on the call stack.
 // Maps to org.evochora.runtime.model.ProcFrame class.
 // Captures the state needed to return from a procedure call.

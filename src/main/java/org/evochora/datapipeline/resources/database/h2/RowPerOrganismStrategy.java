@@ -11,11 +11,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-import org.evochora.datapipeline.api.contracts.DataPointerList;
-import org.evochora.datapipeline.api.contracts.OrganismRuntimeState;
 import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.TickData;
-import org.evochora.datapipeline.api.contracts.Vector;
 import org.evochora.datapipeline.api.resources.database.dto.OrganismTickSummary;
 import org.evochora.datapipeline.api.resources.database.dto.TickRange;
 import org.evochora.datapipeline.resources.database.OrganismStateConverter;
@@ -37,12 +34,7 @@ import com.typesafe.config.Config;
  * CREATE TABLE organism_states (
  *   tick_number        BIGINT NOT NULL,
  *   organism_id        INT    NOT NULL,
- *   energy             INT    NOT NULL,
- *   ip                 BYTEA  NOT NULL,     -- Vector (Protobuf)
- *   dv                 BYTEA  NOT NULL,     -- Vector (Protobuf)
- *   data_pointers      BYTEA  NOT NULL,     -- DataPointerList (Protobuf)
- *   active_dp_index    INT    NOT NULL,
- *   runtime_state_blob BYTEA  NOT NULL,     -- OrganismRuntimeState (compressed)
+ *   runtime_state_blob BYTEA  NOT NULL,     -- OrganismState (compressed)
  *   PRIMARY KEY (tick_number, organism_id)
  * );
  * </pre>
@@ -73,8 +65,8 @@ public class RowPerOrganismStrategy extends AbstractH2OrgStorageStrategy {
 
     private static final String STATES_MERGE_SQL =
             "MERGE INTO organism_states (" +
-                    "tick_number, organism_id, energy, ip, dv, data_pointers, active_dp_index, runtime_state_blob, entropy, molecule_marker" +
-                    ") KEY (tick_number, organism_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                    "tick_number, organism_id, runtime_state_blob" +
+                    ") KEY (tick_number, organism_id) VALUES (?, ?, ?)";
 
     /**
      * Creates a new RowPerOrganismStrategy with the given configuration.
@@ -96,14 +88,7 @@ public class RowPerOrganismStrategy extends AbstractH2OrgStorageStrategy {
                     "CREATE TABLE IF NOT EXISTS organism_states (" +
                             "  tick_number BIGINT NOT NULL," +
                             "  organism_id INT NOT NULL," +
-                            "  energy INT NOT NULL," +
-                            "  ip BYTEA NOT NULL," +
-                            "  dv BYTEA NOT NULL," +
-                            "  data_pointers BYTEA NOT NULL," +
-                            "  active_dp_index INT NOT NULL," +
                             "  runtime_state_blob BYTEA NOT NULL," +
-                            "  entropy INT DEFAULT 0," +
-                            "  molecule_marker INT DEFAULT 0," +
                             "  PRIMARY KEY (tick_number, organism_id)" +
                             ")",
                     "organism_states"
@@ -136,9 +121,8 @@ public class RowPerOrganismStrategy extends AbstractH2OrgStorageStrategy {
     /**
      * {@inheritDoc}
      * <p>
-     * Writes one row per organism per tick with extracted columns (energy, ip, dv,
-     * data_pointers) and a compressed {@code runtime_state_blob} containing registers,
-     * stacks, and instruction data. Organism metadata deduplication is handled by
+     * Writes one row per organism per tick, holding the organism's complete state in a
+     * compressed {@code runtime_state_blob}. Organism metadata deduplication is handled by
      * {@link AbstractH2OrgStorageStrategy#addOrganismMetadataBatch(AbstractH2OrgStorageStrategy.StreamingSession, TickData)}.
      */
     @Override
@@ -155,24 +139,9 @@ public class RowPerOrganismStrategy extends AbstractH2OrgStorageStrategy {
         long tickNumber = tick.getTickNumber();
 
         for (OrganismState org : tick.getOrganismsList()) {
-            byte[] runtimeBlob = buildRuntimeStateBlob(org, codec);
-
-            DataPointerList.Builder dpBuilder = DataPointerList.newBuilder();
-            for (Vector dp : org.getDataPointersList()) {
-                dpBuilder.addDataPointers(dp);
-            }
-            byte[] dataPointersBytes = dpBuilder.build().toByteArray();
-
             statesStmt.setLong(1, tickNumber);
             statesStmt.setInt(2, org.getOrganismId());
-            statesStmt.setInt(3, org.getEnergy());
-            statesStmt.setBytes(4, org.getIp().toByteArray());
-            statesStmt.setBytes(5, org.getDv().toByteArray());
-            statesStmt.setBytes(6, dataPointersBytes);
-            statesStmt.setInt(7, org.getActiveDpIndex());
-            statesStmt.setBytes(8, runtimeBlob);
-            statesStmt.setInt(9, org.getEntropyRegister());
-            statesStmt.setInt(10, org.getMoleculeMarkerRegister());
+            statesStmt.setBytes(3, buildRuntimeStateBlob(org, codec));
             statesStmt.addBatch();
         }
     }
@@ -180,56 +149,16 @@ public class RowPerOrganismStrategy extends AbstractH2OrgStorageStrategy {
     /**
      * Builds the compressed runtime_state_blob from an OrganismState.
      * <p>
-     * The blob contains an OrganismRuntimeState Protobuf message with:
-     * registers, stacks, call stacks, instruction execution data.
+     * The blob holds the organism's state exactly as the indexer received it, and nothing of it is
+     * kept anywhere else in this table: a state copied field by field loses every field nobody
+     * remembered to copy, including every field added later. Its static fields are also in the
+     * organisms table, and are read from there.
      */
     private byte[] buildRuntimeStateBlob(OrganismState org, ICompressionCodec codec) {
-        OrganismRuntimeState.Builder runtimeStateBuilder = OrganismRuntimeState.newBuilder()
-                .addAllRegisters(org.getRegistersList())
-                .addAllDataStack(org.getDataStackList())
-                .addAllLocationStack(org.getLocationStackList())
-                .addAllCallStack(org.getCallStackList())
-                .setInstructionFailed(org.getInstructionFailed())
-                .setFailureReason(org.hasFailureReason() ? org.getFailureReason() : "")
-                .addAllFailureCallStack(org.getFailureCallStackList())
-                // Ensure entropy and marker registers are included in the runtime blob
-                .setEntropyRegister(org.getEntropyRegister())
-                .setMoleculeMarkerRegister(org.getMoleculeMarkerRegister())
-                .setIsDead(org.getIsDead());
-
-        // Instruction execution data
-        if (org.hasInstructionOpcodeId()) {
-            runtimeStateBuilder.setInstructionOpcodeId(org.getInstructionOpcodeId());
-        }
-        if (org.getInstructionRawArgumentsCount() > 0) {
-            runtimeStateBuilder.addAllInstructionRawArguments(org.getInstructionRawArgumentsList());
-        }
-        if (org.hasInstructionEnergyCost()) {
-            runtimeStateBuilder.setInstructionEnergyCost(org.getInstructionEnergyCost());
-        }
-        if (org.hasInstructionEntropyDelta()) {
-            runtimeStateBuilder.setInstructionEntropyDelta(org.getInstructionEntropyDelta());
-        }
-        if (org.hasIpBeforeFetch()) {
-            runtimeStateBuilder.setInstructionIpBeforeFetch(org.getIpBeforeFetch());
-        }
-        if (org.hasDvBeforeFetch()) {
-            runtimeStateBuilder.setInstructionDvBeforeFetch(org.getDvBeforeFetch());
-        }
-        if (org.getInstructionRegisterValuesBeforeCount() > 0) {
-            runtimeStateBuilder.putAllInstructionRegisterValuesBefore(org.getInstructionRegisterValuesBeforeMap());
-        }
-        if (org.hasDeathTick()) {
-            runtimeStateBuilder.setDeathTick(org.getDeathTick());
-        }
-
-        OrganismRuntimeState runtimeState = runtimeStateBuilder.build();
-
-        // Compress with configured codec
         try {
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
             try (OutputStream out = codec.wrapOutputStream(baos)) {
-                runtimeState.writeTo(out);
+                org.writeTo(out);
             }
             return baos.toByteArray();
         } catch (Exception e) {
@@ -238,14 +167,14 @@ public class RowPerOrganismStrategy extends AbstractH2OrgStorageStrategy {
     }
 
     /**
-     * Decompresses a runtime_state_blob into an OrganismRuntimeState.
+     * Decompresses a runtime_state_blob into the OrganismState it holds.
      */
-    private OrganismRuntimeState decompressRuntimeState(byte[] blobBytes) throws SQLException {
+    private OrganismState decompressRuntimeState(byte[] blobBytes) throws SQLException {
         try {
             ICompressionCodec codec = CompressionCodecFactory.detectFromMagicBytes(blobBytes);
             try (java.io.ByteArrayInputStream bais = new java.io.ByteArrayInputStream(blobBytes);
                  java.io.InputStream in = codec.wrapInputStream(bais)) {
-                return OrganismRuntimeState.parseFrom(in);
+                return OrganismState.parseFrom(in);
             }
         } catch (Exception e) {
             throw new SQLException("Failed to decompress runtime_state_blob", e);
@@ -256,8 +185,7 @@ public class RowPerOrganismStrategy extends AbstractH2OrgStorageStrategy {
     public List<OrganismTickSummary> readOrganismsAtTick(Connection conn, long tickNumber)
             throws SQLException {
         String sql = """
-                SELECT s.organism_id, s.energy, s.ip, s.dv, s.data_pointers, s.active_dp_index, s.entropy,
-                       s.runtime_state_blob, o.parent_id, o.birth_tick, o.genome_hash
+                SELECT s.organism_id, s.runtime_state_blob, o.parent_id, o.birth_tick, o.genome_hash
                 FROM organism_states s
                 LEFT JOIN organisms o ON s.organism_id = o.organism_id
                 WHERE s.tick_number = ?
@@ -269,49 +197,27 @@ public class RowPerOrganismStrategy extends AbstractH2OrgStorageStrategy {
             try (ResultSet rs = stmt.executeQuery()) {
                 List<OrganismTickSummary> result = new ArrayList<>();
                 while (rs.next()) {
-                    int organismId = rs.getInt("organism_id");
-                    int energy = rs.getInt("energy");
-                    byte[] ipBytes = rs.getBytes("ip");
-                    byte[] dvBytes = rs.getBytes("dv");
-                    byte[] dpBytes = rs.getBytes("data_pointers");
-                    int activeDpIndex = rs.getInt("active_dp_index");
+                    OrganismState org = decompressRuntimeState(rs.getBytes("runtime_state_blob"));
 
                     // Static info from organisms table (may be null if JOIN fails)
                     int parentIdRaw = rs.getInt("parent_id");
                     Integer parentId = rs.wasNull() ? null : parentIdRaw;
                     long birthTick = rs.getLong("birth_tick");
-
-                    int[] ip = OrganismStateConverter.decodeVector(ipBytes);
-                    int[] dv = OrganismStateConverter.decodeVector(dvBytes);
-                    int[][] dataPointers = OrganismStateConverter.decodeDataPointers(dpBytes);
-
-                    // SR is now stored as a separate column for full equivalence
-                    int entropyRegister = rs.getInt("entropy");
                     long genomeHash = rs.getLong("genome_hash");
 
-                    // Extract isDead/deathTick from runtime_state_blob
-                    boolean isDead = false;
-                    long deathTick = -1L;
-                    byte[] runtimeBlob = rs.getBytes("runtime_state_blob");
-                    if (runtimeBlob != null && runtimeBlob.length > 0) {
-                        OrganismRuntimeState runtimeState = decompressRuntimeState(runtimeBlob);
-                        isDead = runtimeState.getIsDead();
-                        deathTick = runtimeState.hasDeathTick() ? runtimeState.getDeathTick() : -1L;
-                    }
-
                     result.add(new OrganismTickSummary(
-                            organismId,
-                            energy,
-                            ip,
-                            dv,
-                            dataPointers,
-                            activeDpIndex,
+                            rs.getInt("organism_id"),
+                            org.getEnergy(),
+                            OrganismStateConverter.vectorToArray(org.getIp()),
+                            OrganismStateConverter.vectorToArray(org.getDv()),
+                            OrganismStateConverter.dataPointersToArray(org),
+                            org.getActiveDpIndex(),
                             parentId,
                             birthTick,
-                            entropyRegister,
+                            org.getEntropyRegister(),
                             genomeHash,
-                            isDead,
-                            deathTick
+                            org.getIsDead(),
+                            org.hasDeathTick() ? org.getDeathTick() : -1L
                     ));
                 }
                 return result;
@@ -323,7 +229,7 @@ public class RowPerOrganismStrategy extends AbstractH2OrgStorageStrategy {
     public OrganismState readSingleOrganismState(Connection conn, long tickNumber, int organismId)
             throws SQLException {
         String sql = """
-                SELECT energy, ip, dv, data_pointers, active_dp_index, runtime_state_blob
+                SELECT runtime_state_blob
                 FROM organism_states
                 WHERE tick_number = ? AND organism_id = ?
                 """;
@@ -336,104 +242,9 @@ public class RowPerOrganismStrategy extends AbstractH2OrgStorageStrategy {
                 if (!rs.next()) {
                     return null; // Not found
                 }
-
-                int energy = rs.getInt("energy");
-                byte[] ipBytes = rs.getBytes("ip");
-                byte[] dvBytes = rs.getBytes("dv");
-                byte[] dpBytes = rs.getBytes("data_pointers");
-                int activeDpIndex = rs.getInt("active_dp_index");
-                byte[] blobBytes = rs.getBytes("runtime_state_blob");
-
-                // Reconstruct OrganismState from row columns + runtime_state_blob
-                return reconstructOrganismState(
-                        organismId, energy, ipBytes, dvBytes, dpBytes, activeDpIndex, blobBytes);
+                return decompressRuntimeState(rs.getBytes("runtime_state_blob"));
             }
         }
-    }
-
-    /**
-     * Reconstructs an OrganismState Protobuf from the row-per-organism table columns.
-     * <p>
-     * This merges the "hot path" columns (energy, ip, dv, data_pointers, active_dp_index)
-     * with the runtime_state_blob (registers, stacks, instruction data).
-     */
-    private OrganismState reconstructOrganismState(
-            int organismId,
-            int energy,
-            byte[] ipBytes,
-            byte[] dvBytes,
-            byte[] dpBytes,
-            int activeDpIndex,
-            byte[] blobBytes) throws SQLException {
-
-        // Decode Vector fields
-        Vector ip;
-        Vector dv;
-        try {
-            ip = Vector.parseFrom(ipBytes);
-            dv = Vector.parseFrom(dvBytes);
-        } catch (Exception e) {
-            throw new SQLException("Failed to decode ip/dv vectors", e);
-        }
-
-        // Decode DataPointerList
-        List<Vector> dataPointers;
-        try {
-            DataPointerList dpList = DataPointerList.parseFrom(dpBytes);
-            dataPointers = dpList.getDataPointersList();
-        } catch (Exception e) {
-            throw new SQLException("Failed to decode data_pointers", e);
-        }
-
-        // Decode and decompress runtime_state_blob
-        OrganismRuntimeState runtimeState = decompressRuntimeState(blobBytes);
-
-        // Build complete OrganismState
-        OrganismState.Builder builder = OrganismState.newBuilder()
-                .setOrganismId(organismId)
-                .setEnergy(energy)
-                .setIp(ip)
-                .setDv(dv)
-                .addAllDataPointers(dataPointers)
-                .setActiveDpIndex(activeDpIndex)
-                // From runtime_state_blob
-                .addAllRegisters(runtimeState.getRegistersList())
-                .addAllDataStack(runtimeState.getDataStackList())
-                .addAllLocationStack(runtimeState.getLocationStackList())
-                .addAllCallStack(runtimeState.getCallStackList())
-                .setInstructionFailed(runtimeState.getInstructionFailed())
-                .addAllFailureCallStack(runtimeState.getFailureCallStackList())
-                // Restore entropy and marker registers from the runtime blob
-                .setEntropyRegister(runtimeState.getEntropyRegister())
-                .setMoleculeMarkerRegister(runtimeState.getMoleculeMarkerRegister());
-
-        // Optional fields from runtime_state_blob
-        if (!runtimeState.getFailureReason().isEmpty()) {
-            builder.setFailureReason(runtimeState.getFailureReason());
-        }
-        if (runtimeState.hasInstructionOpcodeId()) {
-            builder.setInstructionOpcodeId(runtimeState.getInstructionOpcodeId());
-        }
-        if (runtimeState.getInstructionRawArgumentsCount() > 0) {
-            builder.addAllInstructionRawArguments(runtimeState.getInstructionRawArgumentsList());
-        }
-        if (runtimeState.hasInstructionEnergyCost()) {
-            builder.setInstructionEnergyCost(runtimeState.getInstructionEnergyCost());
-        }
-        if (runtimeState.hasInstructionEntropyDelta()) {
-            builder.setInstructionEntropyDelta(runtimeState.getInstructionEntropyDelta());
-        }
-        if (runtimeState.hasInstructionIpBeforeFetch()) {
-            builder.setIpBeforeFetch(runtimeState.getInstructionIpBeforeFetch());
-        }
-        if (runtimeState.hasInstructionDvBeforeFetch()) {
-            builder.setDvBeforeFetch(runtimeState.getInstructionDvBeforeFetch());
-        }
-        if (runtimeState.getInstructionRegisterValuesBeforeCount() > 0) {
-            builder.putAllInstructionRegisterValuesBefore(runtimeState.getInstructionRegisterValuesBeforeMap());
-        }
-
-        return builder.build();
     }
 
     @Override

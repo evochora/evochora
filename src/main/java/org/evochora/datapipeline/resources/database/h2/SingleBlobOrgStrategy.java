@@ -17,9 +17,9 @@ import java.util.Map;
 import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.OrganismStateList;
 import org.evochora.datapipeline.api.contracts.TickData;
-import org.evochora.datapipeline.api.contracts.Vector;
 import org.evochora.datapipeline.api.resources.database.dto.OrganismTickSummary;
 import org.evochora.datapipeline.api.resources.database.dto.TickRange;
+import org.evochora.datapipeline.resources.database.OrganismStateConverter;
 import org.evochora.datapipeline.utils.H2SchemaUtil;
 import org.evochora.datapipeline.utils.compression.CompressionCodecFactory;
 import org.evochora.datapipeline.utils.compression.ICompressionCodec;
@@ -165,9 +165,9 @@ public class SingleBlobOrgStrategy extends AbstractH2OrgStorageStrategy {
             result.add(new OrganismTickSummary(
                 organismId,
                 org.getEnergy(),
-                vectorToArray(org.getIp()),
-                vectorToArray(org.getDv()),
-                dataPointersToArray(org),
+                OrganismStateConverter.vectorToArray(org.getIp()),
+                OrganismStateConverter.vectorToArray(org.getDv()),
+                OrganismStateConverter.dataPointersToArray(org),
                 org.getActiveDpIndex(),
                 parentId,
                 birthTick,
@@ -258,31 +258,5 @@ public class SingleBlobOrgStrategy extends AbstractH2OrgStorageStrategy {
                 }
             }
         }
-    }
-
-    /**
-     * Converts a Protobuf Vector to int[].
-     */
-    private static int[] vectorToArray(Vector v) {
-        if (v == null) {
-            return new int[0];
-        }
-        int[] result = new int[v.getComponentsCount()];
-        for (int i = 0; i < result.length; i++) {
-            result[i] = v.getComponents(i);
-        }
-        return result;
-    }
-    
-    /**
-     * Converts organism data pointers to int[][].
-     */
-    private static int[][] dataPointersToArray(OrganismState org) {
-        int count = org.getDataPointersCount();
-        int[][] result = new int[count][];
-        for (int i = 0; i < count; i++) {
-            result[i] = vectorToArray(org.getDataPointers(i));
-        }
-        return result;
     }
 }
