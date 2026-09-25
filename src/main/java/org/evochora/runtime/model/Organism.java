@@ -1204,9 +1204,10 @@ public class Organism {
      * from then on. {@link UnitVector} holds the rule and how a tie between equally near candidates
      * is settled.
      * <p>
-     * The zero vector names no direction, and this organism's own direction of travel answers for
-     * it. The result is a copy in that case, because a caller may hand it to another organism — the
-     * direction vector of a child, say — and two organisms must not share one array.
+     * The zero vector names no direction, nor does {@link LocationValue#NONE}, and this organism's
+     * own direction of travel answers for both. The result is a copy in that case, because a caller
+     * may hand it to another organism — the direction vector of a child, say — and two organisms
+     * must not share one array.
      * <p>
      * This is the mapping for a vector that names a direction. A vector that displaces the data
      * pointer goes through {@link #toDisplacement(int[])} instead, where a vector without components
@@ -1214,11 +1215,15 @@ public class Organism {
      *
      * @param vector The vector operand to map. Not modified
      * @return The nearest unit vector, which is the argument itself when it already is one, or
-     *         {@code null} when the component count does not match the world, in which case the
-     *         instruction has been marked failed
+     *         {@code null} when the vector is not {@link LocationValue#NONE} and its component count
+     *         does not match the world, in which case the instruction has been marked failed
      */
     public int[] toUnitVector(int[] vector) {
-        if (!hasWorldDimensions(vector)) {
+        if (vector.length != ip.length) {
+            if (LocationValue.isNone(vector)) {
+                return Arrays.copyOf(dv, dv.length);
+            }
+            rejectWorldDimensions(vector);
             return null;
         }
         int[] nearest = UnitVector.nearest(vector);
@@ -1236,17 +1241,23 @@ public class Organism {
      * A vector without components is a displacement of none, and it stays one: the instruction then
      * acts on the cell the data pointer already stands on. That is a direction fewer than the
      * {@code 2 · dimensions} neighbours, not one more — the reach never grows beyond adjacency.
+     * {@link LocationValue#NONE} displaces by none as well.
      * <p>
-     * A vector whose component count does not match the world is a defect in this code rather than a
-     * fault of the program being executed, and it is logged as one before the instruction is failed.
+     * Any other vector whose component count does not match the world is a defect in this code
+     * rather than a fault of the program being executed, and it is logged as one before the
+     * instruction is failed.
      *
      * @param vector The vector operand to map. Not modified
      * @return The displacement to use, which is the argument itself when it already reaches a cell,
-     *         or {@code null} when the component count does not match the world, in which case the
-     *         instruction has been marked failed
+     *         or {@code null} when the vector is not {@link LocationValue#NONE} and its component
+     *         count does not match the world, in which case the instruction has been marked failed
      */
     public int[] toDisplacement(int[] vector) {
-        if (!hasWorldDimensions(vector)) {
+        if (vector.length != ip.length) {
+            if (LocationValue.isNone(vector)) {
+                return new int[ip.length];
+            }
+            rejectWorldDimensions(vector);
             return null;
         }
         int[] nearest = UnitVector.nearest(vector);
@@ -1267,16 +1278,26 @@ public class Organism {
      *         marked failed because it does not
      */
     private boolean hasWorldDimensions(int[] vector) {
-        int dimensions = this.ip.length;
-        if (vector.length == dimensions) {
+        if (vector.length == this.ip.length) {
             return true;
         }
+        rejectWorldDimensions(vector);
+        return false;
+    }
+
+    /**
+     * Fails the instruction and logs a vector operand whose component count does not match the
+     * world, as the defect {@link #hasWorldDimensions(int[])} describes.
+     *
+     * @param vector The vector operand whose component count does not match the world.
+     */
+    private void rejectWorldDimensions(int[] vector) {
+        int dimensions = this.ip.length;
         LOG.error("Organism {} holds a vector of {} components in a world of {}",
                 id, vector.length, dimensions,
                 new IllegalStateException("Vector component count invariant violated"));
         this.instructionFailed("Vector has incorrect dimensions: expected " + dimensions
                 + ", got " + vector.length);
-        return false;
     }
 
     /**
