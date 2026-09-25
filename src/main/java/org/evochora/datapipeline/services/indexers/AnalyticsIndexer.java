@@ -315,7 +315,7 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
                     className, plugin.getMetricId(), schema.getColumnCount());
                 
             } catch (Exception e) {
-                log.error("Failed to load analytics plugin: {}", className);
+                log.error("Failed to load analytics plugin: {}", className, e);
                 throw new RuntimeException("Failed to load plugin: " + className, e);
             }
         }
@@ -347,7 +347,7 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
                 writePluginMetadata(runId, plugin);
                 
             } catch (Exception e) {
-                log.error("Failed to initialize analytics plugin: {}", plugin.getMetricId());
+                log.error("Failed to initialize analytics plugin: {}", plugin.getMetricId(), e);
                 throw new RuntimeException("Failed to initialize plugin: " + plugin.getMetricId(), e);
             }
         }
