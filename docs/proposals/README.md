@@ -17,6 +17,7 @@ table carries the whole order.
 
 | Document / Issue | Status | Summary |
 |---|---|---|
+| [CLADE_VIEW](CLADE_VIEW.md) | OPEN PROBLEMS | Clades begin where a new genome arises and follow the descent of organisms; a per-run model in an MVStore file owned by `OrganismController` answers clicks from precomputed courses on a growing time grid, caught up in the background or rebuilt when far behind; `/organisms/{tick}` carries each organism's origin for exact colouring. Not ready: the document lists its open problems, among them following a single organism in long runs |
 | [PERSISTED_FORMAT_VERSIONING](PERSISTED_FORMAT_VERSIONING.md) | TO BE REVIEWED | Storage batches, run database and run metadata carry no format version, so data written by an incompatible build is read silently or fails without naming the cause; one version constant plus fail-fast reads |
 | [DEPENDENCY_UPDATE](DEPENDENCY_UPDATE.md) | TO BE REVIEWED | 24 of 32 dependencies behind, six by a major version; removal of the unused JLine pair, three build hygiene fixes, and a staged update procedure derived from what the test suite can and cannot verify |
 
