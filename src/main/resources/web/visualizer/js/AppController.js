@@ -3,7 +3,7 @@ import { OrganismApi } from './api/OrganismApi.js';
 import { SimulationApi } from './api/SimulationApi.js';
 import { EnvironmentGrid } from './EnvironmentGrid.js';
 import { buildMarkMap } from './MutationMarks.js';
-import { buildGenomeChain, DescentColouring, depthColourInt } from './DescentColours.js';
+import { buildGenomeChain, DescentColouring, depthColourInt, LINE_PALETTE_PAIRS } from './DescentColours.js';
 import { moleculeTypeName } from './MoleculeTypePalette.js';
 import { MinimapView } from './ui/minimap/MinimapView.js';
 import { nearestLevelIndex, ZOOM_LEVELS } from './interaction/ZoomLevels.js';
@@ -80,6 +80,10 @@ export class AppController {
         this.programArtifactCache = new Map(); // Cache for program artifacts
         // Colours of the loaded tick's organisms, built from the descent of the same answer
         this.descentColouring = new DescentColouring(null);
+        this._palettePair = 0;         // pair of the palette the shown root's lines start at
+        this._colouredRootId = null;   // id of the root coloured last, null before the first
+        this._pairByRoot = new Map();  // root id -> the pair it was given in this session
+        this._lastPairHandedOut = 0;   // the pair given to the root that was new last
         // Tells the user, once the next tick has loaded, that the root asked for was not indexed
         this._rootNotice = null;              // { title, text, detail } | null
         // The organism the mutations of the selected lineage were fetched for
@@ -1323,6 +1327,32 @@ export class AppController {
     }
 
     /**
+     * Returns the pair of the palette a root's lines start at.
+     * <p>
+     * A root shown before in this session keeps its pair, so that going back over a change of the
+     * root shows the colours seen there before. A root shown for the first time takes the pair
+     * after the one handed out last, and one further if that is the pair of the root shown just
+     * now, so that a change of the root always shows in the colours.
+     *
+     * @param {number} rootId - Id of the root, 0 for `all`.
+     * @returns {number} The pair, 0 to {@link LINE_PALETTE_PAIRS} - 1.
+     * @private
+     */
+    _pairOfRoot(rootId) {
+        const known = this._pairByRoot.get(rootId);
+        if (known !== undefined) {
+            return known;
+        }
+        let pair = this._pairByRoot.size === 0 ? 0 : (this._lastPairHandedOut + 1) % LINE_PALETTE_PAIRS;
+        if (this._colouredRootId !== null && pair === this._palettePair) {
+            pair = (pair + 1) % LINE_PALETTE_PAIRS;
+        }
+        this._pairByRoot.set(rootId, pair);
+        this._lastPairHandedOut = pair;
+        return pair;
+    }
+
+    /**
      * Takes over the descent of a loaded tick: builds the colouring and places the root's birth on
      * the timeline. While the root is 'auto', the resolved root is shown but not held. A load that
      * asked for 'auto' in place of a held root, after that root was not found, holds the root it
@@ -1339,7 +1369,12 @@ export class AppController {
             this.state.root = descent?.root ? (descent.root.id === 0 ? 'all' : descent.root.id) : 'auto';
             this.updateUrlState();
         }
-        this.descentColouring = new DescentColouring(descent);
+        const rootId = descent?.root ? descent.root.id : null;
+        if (rootId !== null && rootId !== this._colouredRootId) {
+            this._palettePair = this._pairOfRoot(rootId);
+            this._colouredRootId = rootId;
+        }
+        this.descentColouring = new DescentColouring(descent, this._palettePair);
         const root = descent?.root;
         this.tickPanelManager?.setRootBirthTick(root && root.id !== 0 ? (root.birthTick ?? null) : null);
     }
@@ -1353,6 +1388,10 @@ export class AppController {
         this.state.descent = null;
         this._rootNotice = null;
         this.descentColouring = new DescentColouring(null);
+        this._palettePair = 0;
+        this._colouredRootId = null;
+        this._pairByRoot = new Map();
+        this._lastPairHandedOut = 0;
         this.descentSection?.clear();
         this.tickPanelManager?.setRootBirthTick(null);
     }

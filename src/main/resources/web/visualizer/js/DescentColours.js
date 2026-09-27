@@ -15,9 +15,9 @@
  */
 
 /**
- * The line palette in the order the lines take it: the largest line is green, the second magenta,
- * and every further colour lies far from all the colours handed out before it, so that the lines
- * that matter most stay apart wherever they meet. The server ranks at most eight lines.
+ * The line palette in the order the lines take it. Every colour lies far from all the colours
+ * before it, and the list falls into four pairs of colours that lie far apart: green and magenta,
+ * cyan and orange, blue and yellow, violet and teal. The server ranks at most eight lines.
  */
 export const LINE_PALETTE = Object.freeze([
     '#5cff3b',  // green
@@ -27,8 +27,11 @@ export const LINE_PALETTE = Object.freeze([
     '#3b5cff',  // blue
     '#ffe600',  // yellow
     '#b23bff',  // violet
-    '#ff3b3b'   // red
+    '#00ffc8'   // teal
 ]);
+
+/** Number of colour pairs in the palette; the pair a root starts at is counted modulo this. */
+export const LINE_PALETTE_PAIRS = LINE_PALETTE.length / 2;
 
 /** The tones outside the line palette, as CSS hex strings. */
 export const DESCENT_TONES = Object.freeze({
@@ -54,13 +57,22 @@ const UNKNOWN_LINE = -1;
 
 /**
  * Returns the palette colour of a coloured line.
+ * <p>
+ * A root starts the palette at one of its pairs, so that two roots shown one after the other do
+ * not hand the same two colours to their two largest lines: the largest line of a root that
+ * starts at pair 1 is cyan, its second orange, and the palette wraps round after teal.
  *
  * @param {number} rank - The line's rank among the coloured lines, 0 for the largest.
+ * @param {number} [pair=0] - The pair of the palette the root starts at.
  * @returns {string} The colour as a CSS hex string; the tone of other lines for a rank outside
  *     the palette.
  */
-export function lineColour(rank) {
-    return LINE_PALETTE[rank] ?? DESCENT_TONES.OTHER;
+export function lineColour(rank, pair = 0) {
+    if (!Number.isInteger(rank) || rank < 0 || rank >= LINE_PALETTE.length) {
+        return DESCENT_TONES.OTHER;
+    }
+    const start = ((pair % LINE_PALETTE_PAIRS) + LINE_PALETTE_PAIRS) % LINE_PALETTE_PAIRS * 2;
+    return LINE_PALETTE[(start + rank) % LINE_PALETTE.length];
 }
 
 /**
@@ -85,14 +97,15 @@ export class DescentColouring {
      * Builds the colouring of one answer.
      *
      * @param {object|null} descent - The `descent` object of the answer, or null when there is none.
+     * @param {number} [pair=0] - The pair of the palette the root's lines start at.
      */
-    constructor(descent) {
+    constructor(descent, pair = 0) {
         /** Id of the root, 0 for `all`, null while the root is not known. */
         this.rootId = descent?.root ? descent.root.id : null;
         this._lineOf = descent?.lineOf ?? {};
         const lines = Array.isArray(descent?.lines) ? descent.lines : [];
         const coloured = lines.filter(line => line.colour !== null && line.colour !== undefined);
-        this._lineColours = new Map(coloured.map(line => [line.id, lineColour(line.colour)]));
+        this._lineColours = new Map(coloured.map(line => [line.id, lineColour(line.colour, pair)]));
         this._ints = new Map();
     }
 
