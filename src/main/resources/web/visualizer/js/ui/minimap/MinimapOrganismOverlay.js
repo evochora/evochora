@@ -104,19 +104,25 @@ export class MinimapOrganismOverlay {
         const coreRadius = coreSize / 2;
 
         const rgb = this._parseColor(color);
+        const tint = (alpha) => `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${alpha})`;
 
-        // Draw glow (radial gradient)
-        const gradient = ctx.createRadialGradient(center, center, coreRadius, center, center, glowRadius);
-        gradient.addColorStop(0, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.6)`);
-        gradient.addColorStop(0.5, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.3)`);
-        gradient.addColorStop(1, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0)`);
+        // The glow eases out over four stops, so the rim fades instead of ending; it starts inside
+        // the core, which keeps the core's edge soft where the two meet.
+        const gradient = ctx.createRadialGradient(center, center, coreRadius * 0.6, center, center, glowRadius);
+        gradient.addColorStop(0, tint(0.85));
+        gradient.addColorStop(0.25, tint(0.5));
+        gradient.addColorStop(0.55, tint(0.22));
+        gradient.addColorStop(0.85, tint(0.06));
+        gradient.addColorStop(1, tint(0));
 
         ctx.fillStyle = gradient;
         ctx.fillRect(0, 0, size, size);
 
-        // Draw solid core
+        // A round core: a square reads as a block once the sprite is drawn at three times its size
         ctx.fillStyle = color;
-        ctx.fillRect(center - coreRadius, center - coreRadius, coreSize, coreSize);
+        ctx.beginPath();
+        ctx.arc(center, center, coreRadius * 0.9, 0, Math.PI * 2);
+        ctx.fill();
 
         return canvas;
     }
