@@ -14,26 +14,21 @@
  * @module DescentColours
  */
 
-/** The line palette, in the order of its indices; the subsets below pick from it. */
-export const LINE_PALETTE = Object.freeze([
-    '#ff3b3b', '#ff9f00', '#ffe600', '#5cff3b', '#00ffc8',
-    '#00c2ff', '#3b5cff', '#b23bff', '#ff3bc8', '#ff3b7a'
-]);
-
 /**
- * Palette indices taken by the coloured lines, keyed by their number: the n-th largest line takes
- * the n-th index. The server colours at most eight lines.
+ * The line palette in the order the lines take it: the largest line is green, the second magenta,
+ * and every further colour lies far from all the colours handed out before it, so that the lines
+ * that matter most stay apart wherever they meet. The server ranks at most eight lines.
  */
-export const LINE_PALETTE_SUBSETS = Object.freeze({
-    1: Object.freeze([3]),
-    2: Object.freeze([3, 8]),
-    3: Object.freeze([1, 4, 8]),
-    4: Object.freeze([1, 3, 6, 8]),
-    5: Object.freeze([1, 2, 4, 6, 8]),
-    6: Object.freeze([0, 1, 3, 5, 7, 8]),
-    7: Object.freeze([0, 1, 2, 4, 5, 7, 9]),
-    8: Object.freeze([0, 1, 2, 3, 5, 6, 7, 9])
-});
+export const LINE_PALETTE = Object.freeze([
+    '#5cff3b',  // green
+    '#ff3bc8',  // magenta
+    '#00c2ff',  // cyan
+    '#ff9f00',  // orange
+    '#3b5cff',  // blue
+    '#ffe600',  // yellow
+    '#b23bff',  // violet
+    '#ff3b3b'   // red
+]);
 
 /** The tones outside the line palette, as CSS hex strings. */
 export const DESCENT_TONES = Object.freeze({
@@ -61,14 +56,11 @@ const UNKNOWN_LINE = -1;
  * Returns the palette colour of a coloured line.
  *
  * @param {number} rank - The line's rank among the coloured lines, 0 for the largest.
- * @param {number} colouredLines - How many lines are coloured, 1 to 8.
  * @returns {string} The colour as a CSS hex string; the tone of other lines for a rank outside
  *     the palette.
  */
-export function lineColour(rank, colouredLines) {
-    const subset = LINE_PALETTE_SUBSETS[colouredLines];
-    const index = subset ? subset[rank] : rank;
-    return LINE_PALETTE[index] ?? DESCENT_TONES.OTHER;
+export function lineColour(rank) {
+    return LINE_PALETTE[rank] ?? DESCENT_TONES.OTHER;
 }
 
 /**
@@ -100,7 +92,7 @@ export class DescentColouring {
         this._lineOf = descent?.lineOf ?? {};
         const lines = Array.isArray(descent?.lines) ? descent.lines : [];
         const coloured = lines.filter(line => line.colour !== null && line.colour !== undefined);
-        this._lineColours = new Map(coloured.map(line => [line.id, lineColour(line.colour, coloured.length)]));
+        this._lineColours = new Map(coloured.map(line => [line.id, lineColour(line.colour)]));
         this._ints = new Map();
     }
 
