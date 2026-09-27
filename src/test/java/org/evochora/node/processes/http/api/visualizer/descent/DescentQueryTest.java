@@ -2,6 +2,7 @@ package org.evochora.node.processes.http.api.visualizer.descent;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.when;
 
 import java.lang.reflect.Field;
 import java.util.List;
@@ -61,6 +62,7 @@ class DescentQueryTest {
         final DescentDto d = describeReady(RootRequest.parse("1"), FakeRun.tick(new int[]{5, 3, 6}, 7));
 
         assertThat(d.state()).isEqualTo("ready");
+        assertThat(d.organismsInRun()).isEqualTo(7);
         assertThat(d.root().id()).isEqualTo(1);
         assertThat(d.root().birthTick()).isEqualTo(10L);
         assertThat(d.root().position()).containsExactly(1, 2);
@@ -119,6 +121,7 @@ class DescentQueryTest {
 
         final DescentDto byId = FakeRun.describe(view, RootRequest.parse("4"), FakeRun.tick(new int[]{5}), run.reader);
         assertThat(byId.state()).isEqualTo("loading");
+        assertThat(byId.organismsInRun()).as("no catch-up has read the newest tick yet").isZero();
         assertThat(byId.root().id()).isEqualTo(4);
         assertThat(byId.root().descendants()).isNull();
         assertThat(byId.lines()).isEmpty();
@@ -220,6 +223,33 @@ class DescentQueryTest {
         assertThat(nine.lines()).extracting(DescentDto.Line::id).containsExactly(11);
         assertThat(nine.up()).isEqualTo(new DescentDto.Up(8, new DescentDto.Landing(0, 1)));
         assertThat(nine.lineOf()).containsEntry(12, 11).containsEntry(10, 0);
+    }
+
+    @Test
+    void theOrganismsInAForkCountOnlyTheIdsAboveTheBoundary() throws Exception {
+        final FakeRun fork = new FakeRun().with(8, 3, 9, 8, 10, 5, 11, 9, 12, 11);
+        fork.forkedAt(500, 10);
+        final DescentQuery q = fork.indexes(3).forRun(FakeRun.RUN_ID);
+        q.view(12);
+        fork.executor.runAll();
+
+        final DescentDto all = FakeRun.describe(q.view(12), RootRequest.parse("all"),
+            FakeRun.tick(new int[]{12, 10}), fork.reader);
+
+        // The newest tick has created 12 organisms, 10 of them in the parent run
+        assertThat(all.organismsInRun()).isEqualTo(2);
+        assertThat(all.root().descendants()).as("the founders 8 and 10 lie at or below the boundary")
+            .isEqualTo(5L);
+    }
+
+    @Test
+    void theOrganismsInTheRunAreNeverFewerThanTheIndexHasRead() throws Exception {
+        // The newest tick's total was read before rows of later ticks arrived
+        when(run.reader.readTotalOrganismsCreated(100L)).thenReturn(5);
+
+        final DescentDto d = describeReady(RootRequest.parse("all"), FakeRun.tick(new int[]{5}));
+
+        assertThat(d.organismsInRun()).isEqualTo(7);
     }
 
     @Test
@@ -330,7 +360,7 @@ class DescentQueryTest {
     }
 
     @Test
-    void onlyTheTenLargestLinesGetARank() throws Exception {
+    void onlyTheEightLargestLinesGetARank() throws Exception {
         final FakeRun wide = new FakeRun().with(1, 0);
         for (int child = 2; child <= 13; child++) {
             wide.with(child, 1);
@@ -342,9 +372,9 @@ class DescentQueryTest {
         final DescentDto d = FakeRun.describe(q.view(13), RootRequest.parse("1"), FakeRun.tick(new int[]{2}), wide.reader);
 
         assertThat(d.lines()).hasSize(12);
-        assertThat(d.lines().subList(0, 10)).extracting(DescentDto.Line::colour)
-            .containsExactly(0, 1, 2, 3, 4, 5, 6, 7, 8, 9);
-        assertThat(d.lines().subList(10, 12)).extracting(DescentDto.Line::colour).containsOnlyNulls();
+        assertThat(d.lines().subList(0, 8)).extracting(DescentDto.Line::colour)
+            .containsExactly(0, 1, 2, 3, 4, 5, 6, 7);
+        assertThat(d.lines().subList(8, 12)).extracting(DescentDto.Line::colour).containsOnlyNulls();
     }
 
     @Test

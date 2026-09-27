@@ -130,8 +130,9 @@ public class OrganismController extends VisualizerBaseController {
      * {
      *   "organisms": [ OrganismTickSummary... ],
      *   "totalOrganismCount": 4711,
-     *   "descent": { "state": "ready", "progress": 1.0, "root": {...}, "lines": [...],
-     *                "up": {...}, "lineOf": { "4711": 12, ... } }    (only with root)
+     *   "descent": { "state": "ready", "progress": 1.0, "organismsInRun": 5120,
+     *                "root": {...}, "lines": [...], "up": {...},
+     *                "lineOf": { "4711": 12, ... } }    (only with root)
      * }
      * </pre>
      *

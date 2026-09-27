@@ -16,6 +16,15 @@ import com.fasterxml.jackson.annotation.JsonInclude;
  *
  * @param state    {@code "ready"}, {@code "loading"} or {@code "failed"}
  * @param progress How much of the run's ancestry has been read, between 0 and 1
+ * @param organismsInRun Organisms created in this run: the larger of the organisms created up to
+ *                 the run's newest tick, as the index last found it, and the highest id the index
+ *                 has read, less the fork boundary, so that the ids a fork took over from its
+ *                 parent run do not count; 0 while the boundary is not known. With
+ *                 {@code root.descendants} it gives the share of the run's organisms that do not
+ *                 descend from the root, {@code (organismsInRun - root.descendants) / organismsInRun},
+ *                 which the client shows for the organisms outside every line and clamps to
+ *                 [0, 1]: the founders of a fork sit at or below the boundary, yet count among
+ *                 the descendants.
  * @param error    Why reading the ancestry failed; present only in the failed state
  * @param root     The root; {@code null} while a requested {@code auto} root cannot be resolved:
  *                 while the ancestry is not ready, and while a living organism of the tick has an
@@ -32,6 +41,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 public record DescentDto(
     String state,
     double progress,
+    int organismsInRun,
     @JsonInclude(JsonInclude.Include.NON_NULL) String error,
     Root root,
     List<Line> lines,
@@ -64,7 +74,7 @@ public record DescentDto(
      *
      * @param id          The child's organism id
      * @param descendants Members of the line over the whole run, the child included
-     * @param colour      Rank of the line among the ten largest, 0 for the largest; {@code null}
+     * @param colour      Rank of the line among the eight largest, 0 for the largest; {@code null}
      *                    for a line outside them
      * @param living      Members of the line alive at the tick
      * @param landing     Where a step down into this line lands when the generations through

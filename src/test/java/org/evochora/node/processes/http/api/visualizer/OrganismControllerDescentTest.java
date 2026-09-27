@@ -166,12 +166,14 @@ class OrganismControllerDescentTest {
         tick(20, "auto").then()
             .statusCode(200)
             .body("descent.state", equalTo("loading"))
+            .body("descent.organismsInRun", equalTo(0))
             .body("descent.root", nullValue())
             .body("descent.lines", empty());
 
         awaitReady(20, "auto").then()
             .statusCode(200)
             .body("descent.progress", equalTo(1.0f))
+            .body("descent.organismsInRun", equalTo(5))
             .body("descent.root.id", equalTo(1))
             .body("descent.root.birthTick", equalTo(1))
             .body("descent.root.position", contains(1, 2))

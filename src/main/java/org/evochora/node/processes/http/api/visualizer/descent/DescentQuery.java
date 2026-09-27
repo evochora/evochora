@@ -53,7 +53,7 @@ import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
 public final class DescentQuery {
 
     /** Number of lines that get a colour rank. */
-    static final int COLOURED_LINES = 10;
+    static final int COLOURED_LINES = 8;
 
     /** Roots whose line sizes are kept. */
     static final int SIZE_CACHE_ROOTS = 32;
@@ -125,6 +125,7 @@ public final class DescentQuery {
         private final AncestryIndex.State state;
         private final double progress;
         private final int newestTotal;
+        private final int organismsInRun;
 
         private View(final AncestryIndex.Snapshot snapshot, final AncestryIndex.State state,
                      final double progress, final int newestTotal) {
@@ -132,6 +133,7 @@ public final class DescentQuery {
             this.state = state;
             this.progress = progress;
             this.newestTotal = newestTotal;
+            this.organismsInRun = organismsInRun(snapshot, newestTotal);
         }
 
         /**
@@ -184,8 +186,8 @@ public final class DescentQuery {
         /**
          * Describes how the organisms of the tick descend from the requested root.
          * <p>
-         * While the index is not ready the answer carries the state, the progress and the root,
-         * but no lines; an {@code auto} root is then {@code null}, because it cannot be resolved
+         * While the index is not ready the answer carries the state, the progress, the organisms
+         * in the run as far as they are known, and the root, but no lines; an {@code auto} root is then {@code null}, because it cannot be resolved
          * yet. It is also {@code null}, with no lines, when a living organism of the tick has an
          * unknown ancestry, since the common ancestor would then be resolved without it. An
          * organism of the tick whose ancestry turns out unknown asks for a catch-up that re-reads
@@ -213,7 +215,7 @@ public final class DescentQuery {
                 index.requestGapReread();
             }
             if (root.kind() == RootRequest.Kind.AUTO && tree.unknownLiving()) {
-                return new DescentDto(state.wireName(), progress, null, null, List.of(), null, Map.of());
+                return new DescentDto(state.wireName(), progress, organismsInRun, null, null, List.of(), null, Map.of());
             }
             final int rootId = switch (root.kind()) {
                 case ALL -> 0;
@@ -244,7 +246,7 @@ public final class DescentQuery {
             final DescentDto.Root rootDto = rootId == 0
                 ? new DescentDto.Root(0, null, null, null, sizes.total())
                 : rootDto(rootId, info, sizes.total());
-            return new DescentDto(state.wireName(), progress, null, rootDto,
+            return new DescentDto(state.wireName(), progress, organismsInRun, null, rootDto,
                 lines(sizes, livingPerLine, tree), up(rootId, tree), lineOf);
         }
 
@@ -254,7 +256,7 @@ public final class DescentQuery {
                 case ORGANISM -> rootDto(root.id(), rootInfo, null);
                 case AUTO -> null;
             };
-            return new DescentDto(state.wireName(), progress, error, rootDto, List.of(), null, Map.of());
+            return new DescentDto(state.wireName(), progress, organismsInRun, error, rootDto, List.of(), null, Map.of());
         }
 
         private List<DescentDto.Line> lines(final LineSizes sizes, final Int2IntOpenHashMap livingPerLine,
@@ -535,6 +537,24 @@ public final class DescentQuery {
             }
             return new DescentDto.Landing(x, skipped);
         }
+    }
+
+    /**
+     * The organisms of this run as the index knows them: the larger of the newest tick's total
+     * and the cursor, less the boundary. A fork's ids at or below the boundary were created in
+     * its parent run and do not count; the cursor can be ahead of the newest total, which is read
+     * before the pages of a catch-up.
+     *
+     * @param snapshot    The view of the index
+     * @param newestTotal Organisms created up to the run's newest tick, 0 while not known
+     * @return The count, 0 while the boundary is not known
+     */
+    static int organismsInRun(final AncestryIndex.Snapshot snapshot, final int newestTotal) {
+        final int b = snapshot.boundary();
+        if (b < 0) {
+            return 0;
+        }
+        return Math.max(0, Math.max(newestTotal, snapshot.cursor()) - b);
     }
 
     private static Int2IntOpenHashMap newMemo() {
