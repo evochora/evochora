@@ -271,13 +271,15 @@ export class OrganismPanelManager {
     }
 
     /**
-     * Updates the organism count display.
+     * Updates the organism count display: `(alive / total)`, the digits of both numbers in groups.
      * @param {number} alive - Number of alive organisms
      * @param {number} total - Total number of organisms
      */
     updateInfo(alive, total) {
-        const text = `(${alive}/${total})`;
-        if (this.organismCount) this.organismCount.textContent = text;
+        if (this.organismCount) {
+            this.organismCount.innerHTML = `(${ValueFormatter.formatGroupedHtml(alive ?? 0)} / `
+                + `${ValueFormatter.formatGroupedHtml(total ?? 0)})`;
+        }
     }
 
     /**

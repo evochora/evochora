@@ -114,7 +114,9 @@ export class EnvironmentApi {
      * @param {object} [options={}] - Optional parameters for the request.
      * @param {string|null} [options.runId=null] - The specific run ID to query. Defaults to the latest run if null.
      * @param {AbortSignal|null} [options.signal=null] - An AbortSignal to allow for request cancellation.
-     * @param {boolean} [options.includeMinimap=false] - Include minimap data in response.
+     * @param {boolean|number} [options.includeMinimap=false] - Include minimap data in the response:
+     *        true at the server's default size, a number for the length in pixels of the minimap's
+     *        longer edge, false for none.
      * @param {boolean} [options.showLoading=true] - Whether to trigger the loading indicator.
      * @returns {Promise<{cells: Array<object>, minimap?: {width: number, height: number, cellTypes: Uint8Array}}>} A promise that resolves to the environment data.
      * @throws {Error} If the network request fails, is aborted, or the server returns an error.
@@ -130,7 +132,9 @@ export class EnvironmentApi {
         if (runId) {
             url += `&runId=${encodeURIComponent(runId)}`;
         }
-        if (includeMinimap) {
+        if (typeof includeMinimap === 'number') {
+            url += `&minimap=${includeMinimap}`;
+        } else if (includeMinimap) {
             url += '&minimap';
         }
 

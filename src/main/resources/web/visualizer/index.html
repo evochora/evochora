@@ -24,6 +24,9 @@
 <!-- Tooltip für Zell-Informationen -->
 <div id="cell-tooltip" class="cell-tooltip"></div>
 
+<!-- Tooltip of the timeline, above every panel; placed by TickPanelManager -->
+<div class="timeline-tooltip" id="timeline-tooltip"></div>
+
 <!-- Logo Panel (top-left) -->
 <div id="logo-panel" class="top-panel">
     <div id="app-switcher-container"></div>
@@ -102,16 +105,17 @@
     </div>
     <div class="timeline-track-container" id="timeline-track-container">
         <canvas id="timeline-track" height="24"></canvas>
-        <div class="timeline-tooltip" id="timeline-tooltip"></div>
+        <div class="timeline-root-mark" id="timeline-root-mark" hidden></div>
     </div>
 </div>
 
 <!-- Organism Panel (top-right) -->
 <div id="organism-panel" class="top-panel">
+    <div class="descent-section" id="descent-section"></div>
     <div class="organism-panel-header" id="organism-panel-header">
         <div class="organism-panel-title">
             <span>Organisms</span>
-            <span class="organism-count" id="organism-count">(0/0)</span>
+            <span class="organism-count" id="organism-count">(0 / 0)</span>
         </div>
         <div class="organism-filter-wrapper" id="organism-filter-wrapper">
             <input type="text" id="organism-filter" class="organism-filter-input" placeholder="Filter..."
@@ -119,7 +123,6 @@
             <button class="organism-filter-clear hidden" id="organism-filter-clear" title="Clear filter">✕</button>
         </div>
         <div class="organism-panel-controls">
-            <button class="color-mode-toggle" id="color-mode-toggle" title="Color by: Organism ID">ID</button>
             <button class="panel-toggle" id="organism-list-collapse" title="Collapse/Expand list">▲</button>
         </div>
     </div>

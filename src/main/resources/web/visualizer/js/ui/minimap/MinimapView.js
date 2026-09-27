@@ -12,6 +12,13 @@ import { ZOOM_LEVELS } from '../../interaction/ZoomLevels.js';
  * - **Own**: Background colored by dominant owner organism (no dots)
  * - **Off**: Cell type background, no dots
  *
+ * The shown panel has two sizes, small and large, which its size button toggles; a click on the
+ * controls row collapses it to a tab in either size, and the tab expands it to the size it had.
+ * In large the server renders the picture at three times the small size; the controls row keeps
+ * its place, width and layout, and the picture stands above it. When the size changes, the shown
+ * picture is stretched to the new size at once and replaced when the picture rendered at that
+ * size arrives.
+ *
  * @class MinimapView
  */
 export class MinimapView {
@@ -28,20 +35,31 @@ export class MinimapView {
         off: 'Overlay off — click for organism dots',
     };
 
+    /** Length in pixels of the longer edge of the small picture, the server's default size. */
+    static DEFAULT_SIZE = 300;
+
+    /** Length in pixels of the longer edge of the large picture: three times the small one. */
+    static LARGE_SIZE = 900;
+
     /**
      * Creates a new MinimapView.
      *
      * @param {function(number, number): void} onNavigate - Callback when user navigates via minimap.
      * @param {function(number): void} onZoomChange - Callback when the zoom slider selects a level,
      *        with its size in pixels per cell.
+     * @param {function(): void} [onSizeChange] - Callback when the size the picture is to be
+     *        rendered at changes; see {@link requestedSize}.
      */
-    constructor(onNavigate, onZoomChange) {
+    constructor(onNavigate, onZoomChange, onSizeChange) {
         this.onNavigate = onNavigate;
         this.onZoomChange = onZoomChange;
+        this.onSizeChange = onSizeChange;
         this.worldShape = null;
         this.lastMinimapData = null;
         this.viewportBounds = null;
         this.expanded = true;
+        // Whether the panel shows the large picture when expanded; kept while it is collapsed
+        this.large = false;
         this.visible = false;
         this.minimapUseful = true; // True when world is larger than viewport
         // While a zoom gesture runs, the minimap neither appears nor disappears
@@ -80,7 +98,7 @@ export class MinimapView {
                 <input type="range" class="minimap-zoom-slider" min="1" max="${ZOOM_LEVELS.length}" value="1" title="Zoom level">
             </div>
             <div class="minimap-collapsed-right">
-                <span class="panel-arrow minimap-expand-arrow">▲</span>
+                <span class="panel-arrow minimap-expand-arrow" title="Show the minimap">▲</span>
             </div>
         `;
 
@@ -99,7 +117,7 @@ export class MinimapView {
                 </div>
                 <div class="minimap-panel-controls">
                     <button class="minimap-organism-toggle active" title="Toggle organism overlay">Org</button>
-                    <button class="panel-toggle" title="Collapse minimap">▼</button>
+                    <button class="panel-toggle minimap-size-toggle" title="Enlarge the minimap">⤢</button>
                 </div>
             </div>
         `;
@@ -145,10 +163,8 @@ export class MinimapView {
             this.collapse();
         });
 
-        // Collapse button
-        this.collapseBtn.addEventListener('click', () => {
-            this.collapse();
-        });
+        // Size button: small ⇄ large
+        this.collapseBtn.addEventListener('click', () => this.toggleLarge());
 
         // Zoom slider change handler
         const handleZoomSliderChange = (e) => {
@@ -213,6 +229,7 @@ export class MinimapView {
 
         // Sync collapsed panel width with expanded panel
         this.syncPanelWidths();
+        this._placeLargePicture();
 
         // Check if minimap is useful (after worldShape is set)
         this.updateMinimapUsefulness();
@@ -269,14 +286,12 @@ export class MinimapView {
      * Updates the organism overlay with new organism data.
      * Should be called when organisms are loaded for the current tick.
      *
-     * @param {Array} organisms - Array of organism objects with ip, dataPointers, genomeHash
-     * @param {function(string): string} [colorResolver] - Maps group key to hex color
-     * @param {function(object): string} [keyFn] - Extracts the grouping key from an organism
+     * @param {Array} organisms - Array of organism objects with ip, dataPointers
+     * @param {function(object): string} [colorOf] - Hex colour an organism is drawn in
      */
-    updateOrganisms(organisms, colorResolver, keyFn) {
+    updateOrganisms(organisms, colorOf) {
         this.currentOrganisms = organisms;
-        this.colorResolver = colorResolver || null;
-        this.groupKeyFn = keyFn || null;
+        this.organismColorOf = colorOf || null;
 
         // Re-render if we have minimap data (overlay draws on top of environment)
         if (this.lastMinimapData && this.worldShape) {
@@ -299,7 +314,7 @@ export class MinimapView {
             height: this.canvas.height
         };
 
-        this.organismOverlay.render(ctx, this.currentOrganisms, this.worldShape, canvasSize, this.colorResolver, this.groupKeyFn);
+        this.organismOverlay.render(ctx, this.currentOrganisms, this.worldShape, canvasSize, this.organismColorOf);
     }
 
     /**
@@ -576,11 +591,19 @@ export class MinimapView {
         if (minimapContent) {
             minimapContent.style.display = this.minimapUseful ? '' : 'none';
         }
+
+        // Without the picture the small panel is as wide as its controls row
+        this.syncPanelWidths();
     }
 
     /**
-     * Synchronizes the collapsed panel width to match the expanded panel.
-     * Measures the expanded panel's actual width for accurate matching.
+     * Sets the width of the expanded panel and of the collapsed tab: the same outer width in small
+     * and in large, so that the controls row keeps its width and layout. It is the wider of the
+     * controls row and the small picture with its padding; the small picture's width follows from
+     * the world's shape as the server sizes it, so it is known in large as well.
+     * <p>
+     * The controls row is measured with the picture out of the flow, as in large, and its width
+     * rounded up to whole pixels: a width rounded down would wrap its text.
      * @private
      */
     syncPanelWidths() {
@@ -594,8 +617,14 @@ export class MinimapView {
             this.element.classList.remove('hidden');
         }
 
-        // Get the actual rendered width of the expanded panel
-        const expandedWidth = this.element.offsetWidth;
+        this.element.style.width = '';
+        this.element.classList.add('large');
+        const rowWidth = Math.ceil(this.element.getBoundingClientRect().width);
+        this.element.classList.toggle('large', this.large);
+        const width = Math.max(rowWidth, this._smallPictureOuterWidth());
+        if (width > 0) {
+            this.element.style.width = `${width}px`;
+        }
 
         // Restore hidden state if it was hidden
         if (wasHidden) {
@@ -604,13 +633,143 @@ export class MinimapView {
         }
 
         // Apply the same width to collapsed panel (uses border-box sizing)
-        if (expandedWidth > 0) {
-            this.collapsedElement.style.width = `${expandedWidth}px`;
+        if (width > 0) {
+            this.collapsedElement.style.width = `${width}px`;
         }
     }
 
     /**
-     * Expands the minimap panel.
+     * Returns the outer width the expanded panel needs for the small picture: the picture, the
+     * padding around it and the panel's borders.
+     * @returns {number} The width in pixels; 0 while no picture is shown.
+     * @private
+     */
+    _smallPictureOuterWidth() {
+        if (!this.minimapUseful || !this.worldShape) {
+            return 0;
+        }
+        const picture = this._pictureSize(MinimapView.DEFAULT_SIZE);
+        if (!picture) {
+            return 0;
+        }
+        const content = getComputedStyle(this.element.querySelector('.minimap-content'));
+        const panel = getComputedStyle(this.element);
+        return picture.width
+            + (parseFloat(content.paddingLeft) || 0) + (parseFloat(content.paddingRight) || 0)
+            + (parseFloat(panel.borderLeftWidth) || 0) + (parseFloat(panel.borderRightWidth) || 0);
+    }
+
+    /**
+     * Returns the size of the picture the server renders for a requested length of the longer
+     * edge: the world's aspect ratio, never more pixels than cells.
+     * @param {number} size - Requested length in pixels of the longer edge.
+     * @returns {{width: number, height: number}|null} The picture's size, null without a world.
+     * @private
+     */
+    _pictureSize(size) {
+        const [worldWidth, worldHeight] = this.worldShape || [];
+        if (!(worldWidth > 0) || !(worldHeight > 0)) {
+            return null;
+        }
+        const edge = Math.min(size, Math.max(worldWidth, worldHeight));
+        return worldWidth >= worldHeight
+            ? { width: edge, height: Math.max(1, Math.round(edge * worldHeight / worldWidth)) }
+            : { width: Math.max(1, Math.round(edge * worldWidth / worldHeight)), height: edge };
+    }
+
+    /**
+     * Stretches the shown picture to the size it is rendered at now, until the picture rendered
+     * at that size arrives; the viewport rectangle is drawn anew on top.
+     * @private
+     */
+    _showStretchedPicture() {
+        const picture = this._pictureSize(this.requestedSize() ?? MinimapView.DEFAULT_SIZE);
+        if (!picture || !this.lastMinimapData) {
+            return;
+        }
+        this.renderer.scaleTo(picture.width, picture.height);
+        if (this.viewportBounds && !this._selectionAnimationId) {
+            this.renderer.drawViewportRect(this.viewportBounds, this.worldShape);
+        }
+    }
+
+    /**
+     * Lifts the large picture so that its lower edge clears the timeline panel beside the
+     * controls row, when that panel stands taller than the row.
+     * @private
+     */
+    _placeLargePicture() {
+        if (!this.large || this.element.classList.contains('hidden')) {
+            this.element.style.removeProperty('--minimap-lift');
+            return;
+        }
+        const timeline = document.getElementById('timeline-panel');
+        const panelTop = this.element.getBoundingClientRect().top;
+        const timelineTop = timeline ? timeline.getBoundingClientRect().top : panelTop;
+        const lift = Math.max(0, Math.ceil(panelTop - timelineTop));
+        this.element.style.setProperty('--minimap-lift', `${lift}px`);
+    }
+
+    /**
+     * Returns the size the picture is to be rendered at.
+     * @returns {number|null} The length in pixels of the longer edge in large, null for the
+     *     server's default size in small and while collapsed.
+     */
+    requestedSize() {
+        return this.expanded && this.large ? MinimapView.LARGE_SIZE : null;
+    }
+
+    /**
+     * Applies a size: the panel's class, the size button, the stored preferences, and, when the
+     * size the picture is rendered at changed, the shown picture stretched to it and a new one.
+     * Whether the panel is expanded and whether it is large are stored apart, so that a collapsed
+     * panel expands to the size it had.
+     * @param {boolean} expanded - Whether the panel is expanded.
+     * @param {boolean} large - Whether the panel shows the large picture when expanded.
+     * @private
+     */
+    _setSize(expanded, large) {
+        const sizeBefore = this.requestedSize();
+        this.expanded = expanded;
+        this.large = large;
+        this.element.classList.toggle('large', this.large);
+        this._updateSizeButton();
+        localStorage.setItem('minimapExpanded', expanded ? 'true' : 'false');
+        localStorage.setItem('minimapLarge', this.large ? 'true' : 'false');
+        const sizeChanged = this.requestedSize() !== sizeBefore;
+        if (sizeChanged) {
+            this._showStretchedPicture();
+        }
+        this.syncPanelWidths();
+        this._placeLargePicture();
+        if (sizeChanged) {
+            this.onSizeChange?.();
+        }
+    }
+
+    /**
+     * Shows the size button's glyph and title for the current size.
+     * @private
+     */
+    _updateSizeButton() {
+        if (!this.collapseBtn) return;
+        this.collapseBtn.textContent = this.large ? '⤡' : '⤢';
+        this.collapseBtn.title = this.large ? 'Shrink the minimap' : 'Enlarge the minimap';
+    }
+
+    /**
+     * Toggles the shown panel between the small and the large picture.
+     * Does nothing if minimap is not useful (world fits in viewport).
+     */
+    toggleLarge() {
+        if (!this.minimapUseful) {
+            return;
+        }
+        this._setSize(true, !this.large);
+    }
+
+    /**
+     * Expands the minimap panel to the size it had before it was collapsed.
      * Does nothing if minimap is not useful (world fits in viewport).
      */
     expand() {
@@ -619,26 +778,24 @@ export class MinimapView {
             return;
         }
 
-        this.expanded = true;
         this.collapsedElement.classList.add('hidden');
         if (this.visible) {
             this.element.classList.remove('hidden');
             this._applyMinimapUsefulness();
         }
-        localStorage.setItem('minimapExpanded', 'true');
+        this._setSize(true, this.large);
     }
 
     /**
-     * Collapses the minimap panel to just the tab.
+     * Collapses the minimap panel to just the tab; the size it had is kept for the next expand.
      */
     collapse() {
-        this.expanded = false;
         this.element.classList.add('hidden');
         if (this.visible) {
             this.collapsedElement.classList.remove('hidden');
             this._applyMinimapUsefulness();
         }
-        localStorage.setItem('minimapExpanded', 'false');
+        this._setSize(false, this.large);
     }
 
     /**
@@ -659,6 +816,7 @@ export class MinimapView {
 
         // Apply usefulness state (hides/shows content within current panel)
         this._applyMinimapUsefulness();
+        this._placeLargePicture();
     }
 
     /**
@@ -681,13 +839,16 @@ export class MinimapView {
     }
 
     /**
-     * Restores expanded state and overlay mode from localStorage.
+     * Restores the size (collapsed, small, large) and overlay mode from localStorage.
      */
     restoreState() {
         const expanded = localStorage.getItem('minimapExpanded');
         if (expanded === 'false') {
             this.expanded = false;
         }
+        this.large = localStorage.getItem('minimapLarge') === 'true';
+        this.element.classList.toggle('large', this.large);
+        this._updateSizeButton();
 
         // Restore overlay mode (default: 'org')
         const savedMode = localStorage.getItem('minimapOverlayMode');

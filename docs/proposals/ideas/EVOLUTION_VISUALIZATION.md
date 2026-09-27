@@ -55,7 +55,7 @@ biology for understanding descent with modification.
 - Vertical or horizontal tree layout, branch length proportional to time (ticks)
   or genetic distance (number of mutations).
 - Extinct branches rendered faded/dashed; living branches rendered solid/bright.
-- Nodes colored by genome hash (using existing lineage coloring).
+- Nodes colored by descent from a chosen root, as the visualizer colours its organisms.
 - Collapsible subtrees for managing large populations.
 - Click a node to jump to that organism in the Visualizer at its birth tick.
 - Zoom and pan for navigating deep trees.
@@ -98,7 +98,7 @@ chart for understanding population-level evolutionary dynamics at a glance.
 **Visual design ideas:**
 - Smooth stacked areas with the nesting property: child genomes are visually
   nested within their parent genome's area.
-- Colors assigned via the existing lineage hue algorithm.
+- Colors assigned per clade, as the analyzer's clade chart does.
 - Hover over a layer to see genome hash, current frequency, parent genome.
 - Click a layer to filter the Visualizer to organisms with that genome.
 - Time-range selection for zooming into interesting periods.
@@ -153,7 +153,7 @@ mutations have been accumulated at each point in the lineage.
 
 **Why Visualizer / Organism:**
 This is inherently about one selected organism's personal evolutionary history.
-It enhances the existing lineage chain display.
+It enhances the ancestry strip of the organism panel.
 
 **Data requirements:** Needs explicit mutation event tracking. Currently we can
 detect *that* a mutation occurred (genome_hash differs from parent), but not
@@ -343,7 +343,7 @@ counts per genome per tick would need to be computed.
 A radial tree diagram (sunburst chart) where the primordial ancestor(s) sit at
 the center, and each concentric ring represents one generation outward. Each
 sector's angular width is proportional to the number of living descendants at the
-current tick. Color follows the existing genome-hash lineage coloring.
+current tick. Color follows the descent colouring of the visualizer.
 
 **What a researcher learns:**
 - Which lineages are currently dominant (widest sectors)?
