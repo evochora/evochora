@@ -1,6 +1,7 @@
 package org.evochora.node.processes.http.api.visualizer;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import org.evochora.datapipeline.api.contracts.CellDataColumns;
 import org.evochora.runtime.Config;
@@ -19,6 +20,7 @@ import org.junit.jupiter.api.Test;
  * Tests cover:
  * <ul>
  *   <li>Aspect ratio preservation for various world shapes</li>
+ *   <li>The requested minimap size and its bounds</li>
  *   <li>Priority-based cell type aggregation</li>
  *   <li>Edge cases (empty worlds, single cells)</li>
  *   <li>Ownership aggregation (dominant owner per minimap pixel)</li>
@@ -45,7 +47,7 @@ class MinimapAggregatorUnitTest {
             var envProps = new EnvironmentProperties(new int[]{4000, 3000}, false);
             var columns = createEmptyColumns();
 
-            MinimapResult result = aggregator.aggregate(columns, envProps);
+            MinimapResult result = aggregator.aggregate(columns, envProps, MinimapAggregator.DEFAULT_SIZE);
 
             assertThat(result).isNotNull();
             assertThat(result.width()).isEqualTo(300);
@@ -59,7 +61,7 @@ class MinimapAggregatorUnitTest {
             var envProps = new EnvironmentProperties(new int[]{3000, 4000}, false);
             var columns = createEmptyColumns();
 
-            MinimapResult result = aggregator.aggregate(columns, envProps);
+            MinimapResult result = aggregator.aggregate(columns, envProps, MinimapAggregator.DEFAULT_SIZE);
 
             assertThat(result).isNotNull();
             assertThat(result.width()).isEqualTo(225); // 300 * 3000/4000 = 225
@@ -73,7 +75,7 @@ class MinimapAggregatorUnitTest {
             var envProps = new EnvironmentProperties(new int[]{1000, 1000}, false);
             var columns = createEmptyColumns();
 
-            MinimapResult result = aggregator.aggregate(columns, envProps);
+            MinimapResult result = aggregator.aggregate(columns, envProps, MinimapAggregator.DEFAULT_SIZE);
 
             assertThat(result).isNotNull();
             assertThat(result.width()).isEqualTo(300);
@@ -87,12 +89,80 @@ class MinimapAggregatorUnitTest {
             var envProps = new EnvironmentProperties(new int[]{1000, 100}, false);
             var columns = createEmptyColumns();
 
-            MinimapResult result = aggregator.aggregate(columns, envProps);
+            MinimapResult result = aggregator.aggregate(columns, envProps, MinimapAggregator.DEFAULT_SIZE);
 
             assertThat(result).isNotNull();
             assertThat(result.width()).isEqualTo(300);
             assertThat(result.height()).isEqualTo(30);
             assertThat(result.ownerIds()).hasSize(300 * 30);
+        }
+    }
+
+    @Nested
+    @DisplayName("Requested Size")
+    class RequestedSizeTests {
+
+        @Test
+        @DisplayName("Default size is 300 pixels on the longer edge")
+        void defaultSize_isThreeHundred() {
+            var envProps = new EnvironmentProperties(new int[]{4000, 3000}, false);
+
+            MinimapResult result = aggregator.aggregate(createEmptyColumns(), envProps,
+                    MinimapAggregator.DEFAULT_SIZE);
+
+            assertThat(result.width()).isEqualTo(300);
+            assertThat(result.height()).isEqualTo(225);
+            assertThat(result.cellTypes()).hasSize(300 * 225);
+        }
+
+        @Test
+        @DisplayName("Maximum size gives 1200 pixels on the longer edge, aspect ratio kept")
+        void maximumSize_keepsAspectRatio() {
+            var envProps = new EnvironmentProperties(new int[]{3000, 4000}, false);
+
+            MinimapResult result = aggregator.aggregate(createEmptyColumns(), envProps,
+                    MinimapAggregator.MAX_SIZE);
+
+            assertThat(result.width()).isEqualTo(900); // 1200 * 3000/4000
+            assertThat(result.height()).isEqualTo(1200);
+            assertThat(result.cellTypes()).hasSize(900 * 1200);
+            assertThat(result.ownerIds()).hasSize(900 * 1200);
+        }
+
+        @Test
+        @DisplayName("Size between default and maximum sets the longer edge, aspect ratio kept")
+        void intermediateSize_keepsAspectRatio() {
+            var envProps = new EnvironmentProperties(new int[]{4000, 3000}, false);
+
+            MinimapResult result = aggregator.aggregate(createEmptyColumns(), envProps, 600);
+
+            assertThat(result.width()).isEqualTo(600);
+            assertThat(result.height()).isEqualTo(450); // 600 * 3000/4000
+            assertThat(result.cellTypes()).hasSize(600 * 450);
+        }
+
+        @Test
+        @DisplayName("A size above the world's longer edge is capped at it")
+        void sizeAboveTheWorld_isCappedAtTheLongerEdge() {
+            var envProps = new EnvironmentProperties(new int[]{40, 30}, false);
+
+            MinimapResult result = aggregator.aggregate(createEmptyColumns(), envProps, 900);
+
+            assertThat(result.width()).isEqualTo(40);
+            assertThat(result.height()).isEqualTo(30);
+            assertThat(result.cellTypes()).hasSize(40 * 30);
+        }
+
+        @Test
+        @DisplayName("Size below 1 or above the maximum is rejected")
+        void sizeOutOfBounds_isRejected() {
+            var envProps = new EnvironmentProperties(new int[]{100, 100}, false);
+
+            assertThatThrownBy(() -> aggregator.aggregate(createEmptyColumns(), envProps, 0))
+                    .isInstanceOf(IllegalArgumentException.class);
+            assertThatThrownBy(() -> aggregator.aggregate(createEmptyColumns(), envProps,
+                    MinimapAggregator.MAX_SIZE + 1))
+                    .isInstanceOf(IllegalArgumentException.class);
         }
     }
 
@@ -112,7 +182,7 @@ class MinimapAggregatorUnitTest {
                 new int[]{packMolecule(3)} // TYPE_STRUCTURE = 3
             );
 
-            MinimapResult result = aggregator.aggregate(columns, envProps);
+            MinimapResult result = aggregator.aggregate(columns, envProps, MinimapAggregator.DEFAULT_SIZE);
 
             assertThat(result).isNotNull();
             // Center of 600x600 world (300, 300) maps to center of 300x300 minimap (150, 150)
@@ -133,7 +203,7 @@ class MinimapAggregatorUnitTest {
                     new int[]{packMolecule(rawIndex)}
                 );
 
-                MinimapResult result = aggregator.aggregate(columns, envProps);
+                MinimapResult result = aggregator.aggregate(columns, envProps, MinimapAggregator.DEFAULT_SIZE);
 
                 assertThat(result).isNotNull();
                 assertThat(result.cellTypes()[150 * 300 + 150])
@@ -162,7 +232,7 @@ class MinimapAggregatorUnitTest {
                 new int[]{packMolecule(0), packMolecule(3), packMolecule(3), packMolecule(3)}
             );
 
-            MinimapResult result = aggregator.aggregate(columns, envProps);
+            MinimapResult result = aggregator.aggregate(columns, envProps, MinimapAggregator.DEFAULT_SIZE);
 
             assertThat(result).isNotNull();
             // Minimap pixel: my * width + mx = 50 * 300 + 50
@@ -188,7 +258,7 @@ class MinimapAggregatorUnitTest {
                 new int[]{packMolecule(1), packMolecule(0), packMolecule(0), packMolecule(0)}
             );
 
-            MinimapResult result = aggregator.aggregate(columns, envProps);
+            MinimapResult result = aggregator.aggregate(columns, envProps, MinimapAggregator.DEFAULT_SIZE);
 
             assertThat(result).isNotNull();
             // Minimap pixel: my * width + mx = 25 * 300 + 25
@@ -219,7 +289,7 @@ class MinimapAggregatorUnitTest {
                 }
             );
 
-            MinimapResult result = aggregator.aggregate(columns, envProps);
+            MinimapResult result = aggregator.aggregate(columns, envProps, MinimapAggregator.DEFAULT_SIZE);
 
             assertThat(result).isNotNull();
             assertThat(result.width()).isEqualTo(300);
@@ -240,7 +310,7 @@ class MinimapAggregatorUnitTest {
             var envProps = new EnvironmentProperties(new int[]{600, 600}, false);
             var columns = createEmptyColumns();
 
-            MinimapResult result = aggregator.aggregate(columns, envProps);
+            MinimapResult result = aggregator.aggregate(columns, envProps, MinimapAggregator.DEFAULT_SIZE);
 
             assertThat(result).isNotNull();
             // Every pixel reports the EMPTY sentinel since there are no cells
@@ -259,7 +329,7 @@ class MinimapAggregatorUnitTest {
                 new int[]{packMolecule(0xFF)}
             );
 
-            MinimapResult result = aggregator.aggregate(columns, envProps);
+            MinimapResult result = aggregator.aggregate(columns, envProps, MinimapAggregator.DEFAULT_SIZE);
 
             assertThat(result).isNotNull();
             assertThat(result.cellTypes()[150 * 300 + 150]).isEqualTo(MinimapAggregator.TYPE_UNKNOWN);
@@ -271,7 +341,7 @@ class MinimapAggregatorUnitTest {
             var envProps = new EnvironmentProperties(new int[]{0, 100}, false);
             var columns = createEmptyColumns();
 
-            MinimapResult result = aggregator.aggregate(columns, envProps);
+            MinimapResult result = aggregator.aggregate(columns, envProps, MinimapAggregator.DEFAULT_SIZE);
 
             assertThat(result).isNull();
         }
@@ -282,7 +352,7 @@ class MinimapAggregatorUnitTest {
             var envProps = new EnvironmentProperties(new int[]{100}, false);
             var columns = createEmptyColumns();
 
-            MinimapResult result = aggregator.aggregate(columns, envProps);
+            MinimapResult result = aggregator.aggregate(columns, envProps, MinimapAggregator.DEFAULT_SIZE);
 
             assertThat(result).isNull();
         }
@@ -303,7 +373,7 @@ class MinimapAggregatorUnitTest {
                 new int[]{5, 5, 5, 3}
             );
 
-            MinimapResult result = aggregator.aggregate(columns, envProps);
+            MinimapResult result = aggregator.aggregate(columns, envProps, MinimapAggregator.DEFAULT_SIZE);
 
             assertThat(result).isNotNull();
             int minimapIndex = 50 * 300 + 50;
@@ -320,7 +390,7 @@ class MinimapAggregatorUnitTest {
                 new int[]{0, 0}
             );
 
-            MinimapResult result = aggregator.aggregate(columns, envProps);
+            MinimapResult result = aggregator.aggregate(columns, envProps, MinimapAggregator.DEFAULT_SIZE);
 
             assertThat(result).isNotNull();
             assertThat(result.ownerIds()[0]).isEqualTo(0);
@@ -332,7 +402,7 @@ class MinimapAggregatorUnitTest {
             var envProps = new EnvironmentProperties(new int[]{600, 600}, false);
             var columns = createEmptyColumns();
 
-            MinimapResult result = aggregator.aggregate(columns, envProps);
+            MinimapResult result = aggregator.aggregate(columns, envProps, MinimapAggregator.DEFAULT_SIZE);
 
             assertThat(result).isNotNull();
             for (int id : result.ownerIds()) {
@@ -351,7 +421,7 @@ class MinimapAggregatorUnitTest {
                 new int[]{0, 0, 7, 7}
             );
 
-            MinimapResult result = aggregator.aggregate(columns, envProps);
+            MinimapResult result = aggregator.aggregate(columns, envProps, MinimapAggregator.DEFAULT_SIZE);
 
             assertThat(result).isNotNull();
             assertThat(result.ownerIds()[0]).isEqualTo(7);
@@ -363,7 +433,7 @@ class MinimapAggregatorUnitTest {
             var envProps = new EnvironmentProperties(new int[]{600, 600}, false);
             var columns = createEmptyColumns();
 
-            MinimapResult result = aggregator.aggregate(columns, envProps);
+            MinimapResult result = aggregator.aggregate(columns, envProps, MinimapAggregator.DEFAULT_SIZE);
 
             assertThat(result).isNotNull();
             assertThat(result.ownerIds()).hasSize(result.width() * result.height());

@@ -1,6 +1,7 @@
 package org.evochora.node.processes.http.api.visualizer;
 
 import static io.restassured.RestAssured.given;
+import static org.hamcrest.Matchers.containsString;
 
 import org.evochora.datapipeline.api.resources.database.IDatabaseReaderProvider;
 import org.evochora.datapipeline.resources.database.H2Database;
@@ -13,6 +14,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.junit.jupiter.api.io.TempDir;
 
 import com.typesafe.config.Config;
@@ -26,7 +29,7 @@ import java.nio.file.Path;
  * Error handling tests for EnvironmentController: HTTP error responses and edge cases.
  * <p>
  * Tests various error conditions in the EnvironmentController:
- * - Invalid parameters (region, tick, runId)
+ * - Invalid parameters (region, tick, runId, minimap size)
  * - Empty database
  * - Database errors
  * - Connection pool exhaustion
@@ -116,6 +119,22 @@ class EnvironmentControllerErrorHandlingTest {
             .get("/invalid")
         .then()
             .statusCode(400);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"0", "5000", "abc"})
+    @ExpectLog(level = LogLevel.WARN, messagePattern = ".*Minimap size must be an integer from 1 to 1200.*")
+    void getEnvironment_returns400OnInvalidMinimapSize(String size) {
+        // When: Make request with a minimap size that is not an integer from 1 to the maximum
+        given()
+            .port(port)
+            .basePath("/visualizer/api/environment")
+            .queryParam("minimap", size)
+            .queryParam("runId", "test_run")
+            .get("/100")
+        .then()
+            .statusCode(400)
+            .body(containsString("from 1 to " + MinimapAggregator.MAX_SIZE));
     }
 
     @Test

@@ -3,8 +3,10 @@ package org.evochora.node.processes.http.api.visualizer;
 import java.sql.SQLException;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 import org.evochora.datapipeline.api.contracts.CellHttpResponse;
 import org.evochora.datapipeline.api.contracts.EnvironmentHttpResponse;
@@ -240,12 +242,17 @@ public class EnvironmentController extends VisualizerBaseController {
         queryParams = {
             @OpenApiParam(name = "region", description = "Optional spatial region as comma-separated bounds (e.g., \"0,100,0,100\")", required = false),
             @OpenApiParam(name = "runId", description = "Optional simulation run ID (defaults to latest run)", required = false),
-            @OpenApiParam(name = "minimap", description = "Include minimap data in response (presence of parameter enables)", required = false)
+            @OpenApiParam(name = "minimap", description = "Include minimap data in the response. The optional value is the "
+                    + "length in pixels of the minimap's longer edge, from 1 to " + MinimapAggregator.MAX_SIZE
+                    + "; the parameter without a value asks for " + MinimapAggregator.DEFAULT_SIZE
+                    + ". A minimap is never larger than the world: a larger size is capped at the world's longer edge, "
+                    + "and the width and height in the answer are authoritative",
+                    required = false, type = Integer.class, allowEmptyValue = true)
         },
         responses = {
             @OpenApiResponse(status = "200", description = "OK (application/x-protobuf binary)", content = @OpenApiContent(from = byte[].class)),
             @OpenApiResponse(status = "304", description = "Not Modified (cached response, ETag matches)"),
-            @OpenApiResponse(status = "400", description = "Bad request (invalid tick or region format)", content = @OpenApiContent(from = ErrorResponseDto.class)),
+            @OpenApiResponse(status = "400", description = "Bad request (invalid tick, region format or minimap size)", content = @OpenApiContent(from = ErrorResponseDto.class)),
             @OpenApiResponse(status = "404", description = "Not found (tick or run ID not found)", content = @OpenApiContent(from = ErrorResponseDto.class)),
             @OpenApiResponse(status = "429", description = "Too many requests (connection pool exhausted)", content = @OpenApiContent(from = ErrorResponseDto.class)),
             @OpenApiResponse(status = "500", description = "Internal server error (database error)", content = @OpenApiContent(from = ErrorResponseDto.class))
@@ -261,20 +268,23 @@ public class EnvironmentController extends VisualizerBaseController {
         final String regionParam = ctx.queryParam("region");
         final SpatialRegion region = parseRegion(regionParam);
 
-        // Parse minimap parameter (optional - presence enables minimap)
-        final boolean includeMinimap = ctx.queryParam("minimap") != null;
+        // Parse minimap parameter (optional - presence enables minimap, the value sizes it)
+        final Integer minimapSize = parseMinimapSize(ctx.queryParam("minimap"));
 
         // Resolve run ID (query parameter → latest)
         final String runId = resolveRunId(ctx);
 
         LOGGER.debug("Retrieving environment data: tick={}, runId={}, region={}, minimap={}",
-            tickNumber, runId, region, includeMinimap);
+            tickNumber, runId, region, minimapSize);
         
         // Parse cache configuration
         final CacheConfig cacheConfig = CacheConfig.fromConfig(options, "environment");
         
-        // Generate ETag: only runId (tick is already in URL path, so redundant in ETag)
-        final String etag = "\"" + runId + "\"";
+        // Generate ETag from everything that selects the response body
+        final String etag = "\"" + runId + "_" + tickNumber
+                + "_" + (region == null ? "all" : Arrays.stream(region.bounds).mapToObj(Integer::toString)
+                        .collect(Collectors.joining(",")))
+                + "_" + (minimapSize == null ? "nominimap" : minimapSize) + "\"";
         
         // Apply cache headers (may return 304 Not Modified if ETag matches)
         if (applyCacheHeaders(ctx, cacheConfig, etag)) {
@@ -322,7 +332,7 @@ public class EnvironmentController extends VisualizerBaseController {
 
             // Convert to Protobuf response format (using IDs instead of strings)
             final EnvironmentHttpResponse response = convertTickDataToProtobuf(
-                    tickData, tickNumber, region, envProps, includeMinimap);
+                    tickData, tickNumber, region, envProps, minimapSize);
             final int cellCount = response.getCellsCount();
             
             final long transformTimeMs = (System.nanoTime() - transformStartNs) / 1_000_000;
@@ -625,14 +635,14 @@ public class EnvironmentController extends VisualizerBaseController {
      * @param tickNumber The tick number for this response.
      * @param region Optional region filter (null for all cells).
      * @param envProps Environment properties for coordinate conversion.
-     * @param includeMinimap If true, generate and include minimap data in response.
+     * @param minimapSize Length in pixels of the minimap's longer edge, or null for no minimap.
      * @return Protobuf response ready for serialization.
      */
     private EnvironmentHttpResponse convertTickDataToProtobuf(final TickData tickData,
                                                                final long tickNumber,
                                                                final SpatialRegion region,
                                                                final EnvironmentProperties envProps,
-                                                               final boolean includeMinimap) {
+                                                               final Integer minimapSize) {
         final var cellColumns = tickData.getCellColumns();
         final int cellCount = cellColumns.getFlatIndicesCount();
         final int dimensions = envProps.getDimensions();
@@ -680,8 +690,8 @@ public class EnvironmentController extends VisualizerBaseController {
         }
 
         // Generate minimap if requested
-        if (includeMinimap) {
-            final var minimapResult = minimapAggregator.aggregate(cellColumns, envProps);
+        if (minimapSize != null) {
+            final var minimapResult = minimapAggregator.aggregate(cellColumns, envProps, minimapSize);
             if (minimapResult != null) {
                 final var minimapBuilder = MinimapData.newBuilder()
                         .setWidth(minimapResult.width())
@@ -758,6 +768,47 @@ public class EnvironmentController extends VisualizerBaseController {
         } catch (final NumberFormatException e) {
             throw new IllegalArgumentException("Invalid tick number: " + tickParam, e);
         }
+    }
+
+    /**
+     * Parses the minimap parameter into the length of the minimap's longer edge.
+     * <p>
+     * The parameter without a value asks for {@link MinimapAggregator#DEFAULT_SIZE}; a value must
+     * be an integer from 1 to {@link MinimapAggregator#MAX_SIZE}.
+     *
+     * @param minimapParam The minimap parameter string (null if absent, empty if given without a value)
+     * @return The edge length in pixels, or null if no minimap is requested
+     * @throws IllegalArgumentException if the value is not an integer within the bounds
+     */
+    private Integer parseMinimapSize(final String minimapParam) {
+        if (minimapParam == null) {
+            return null;
+        }
+        final String value = minimapParam.trim();
+        if (value.isEmpty()) {
+            return MinimapAggregator.DEFAULT_SIZE;
+        }
+        final int size;
+        try {
+            size = Integer.parseInt(value);
+        } catch (final NumberFormatException e) {
+            throw new IllegalArgumentException(minimapSizeBoundsMessage(minimapParam), e);
+        }
+        if (size < 1 || size > MinimapAggregator.MAX_SIZE) {
+            throw new IllegalArgumentException(minimapSizeBoundsMessage(minimapParam));
+        }
+        return size;
+    }
+
+    /**
+     * Builds the error message for a minimap size outside the accepted values.
+     *
+     * @param minimapParam The rejected parameter value
+     * @return A message naming the accepted bounds and the rejected value
+     */
+    private static String minimapSizeBoundsMessage(final String minimapParam) {
+        return "Minimap size must be an integer from 1 to " + MinimapAggregator.MAX_SIZE
+                + ", got: " + minimapParam;
     }
 
     /**
