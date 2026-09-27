@@ -7,6 +7,19 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import static org.awaitility.Awaitility.await;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+
+import java.lang.reflect.Field;
+import java.time.Duration;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+import org.evochora.datapipeline.api.contracts.SimulationMetadata;
+import org.evochora.datapipeline.api.resources.database.dto.ParentRows;
+import org.evochora.node.processes.http.api.visualizer.descent.AncestryIndexes;
 import java.util.Collections;
 import java.util.List;
 
@@ -116,6 +129,59 @@ class OrganismControllerUnitTest {
             assertThat(mockReader.readOrganismDetails(1L, 1).state.instructions).isNotNull();
             assertThat(mockReader.readOrganismDetails(1L, 1).state.instructions.last).isNotNull();
             assertThat(mockReader.readOrganismDetails(1L, 1).state.instructions.last.opcodeName).isEqualTo("SETI");
+        }
+    }
+
+    @Nested
+    @DisplayName("Closing")
+    class Closing {
+
+        /**
+         * The controller's close stops the real catch-up thread: it waits for the page being read
+         * to end, never interrupts it, and nothing is read afterwards.
+         */
+        @Test
+        @DisplayName("close() waits for the running page and stops the catch-up thread")
+        void closeWaitsForTheRunningPageAndStopsTheThread() throws Exception {
+            final CountDownLatch entered = new CountDownLatch(1);
+            final CountDownLatch release = new CountDownLatch(1);
+            final AtomicBoolean interrupted = new AtomicBoolean();
+            final ServiceRegistry serviceRegistry = new ServiceRegistry();
+            final IDatabaseReaderProvider provider = mock(IDatabaseReaderProvider.class);
+            final IDatabaseReader reader = mock(IDatabaseReader.class);
+            serviceRegistry.register(IDatabaseReaderProvider.class, provider);
+            when(provider.createReader(any())).thenReturn(reader);
+            when(reader.hasMetadata()).thenReturn(true);
+            when(reader.getMetadata()).thenReturn(SimulationMetadata.getDefaultInstance());
+            when(reader.readParents(anyInt(), anyInt())).thenAnswer(inv -> {
+                entered.countDown();
+                if (!release.await(10, TimeUnit.SECONDS)) {
+                    throw new IllegalStateException("never released");
+                }
+                interrupted.set(Thread.currentThread().isInterrupted());
+                return new ParentRows(new int[]{1}, new int[]{0});
+            });
+
+            final OrganismController controller = new OrganismController(serviceRegistry, ConfigFactory.empty());
+            final Field field = OrganismController.class.getDeclaredField("ancestryIndexes");
+            field.setAccessible(true);
+            final AncestryIndexes indexes = (AncestryIndexes) field.get(controller);
+            indexes.forRun("run").view(1);
+            assertThat(entered.await(10, TimeUnit.SECONDS)).isTrue();
+
+            final Thread closer = new Thread(controller::close, "closer");
+            closer.start();
+            await().atMost(Duration.ofSeconds(10)).until(() ->
+                closer.getState() == Thread.State.TIMED_WAITING || closer.getState() == Thread.State.WAITING);
+            assertThat(closer.isAlive()).as("close waits for the running page").isTrue();
+
+            release.countDown();
+            closer.join(10_000);
+            assertThat(closer.isAlive()).isFalse();
+            assertThat(interrupted).as("the catch-up thread is never interrupted").isFalse();
+
+            indexes.forRun("run").view(5);
+            verify(reader, times(1)).readParents(anyInt(), anyInt());
         }
     }
 }

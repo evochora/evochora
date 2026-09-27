@@ -14,6 +14,7 @@ import org.evochora.datapipeline.api.resources.database.IDatabaseReader;
 import org.evochora.datapipeline.api.resources.database.MetadataNotFoundException;
 import org.evochora.datapipeline.api.resources.database.OrganismNotFoundException;
 import org.evochora.datapipeline.api.resources.database.dto.LineageMutations;
+import org.evochora.datapipeline.api.resources.database.dto.OrganismStaticInfo;
 import org.evochora.datapipeline.api.resources.database.dto.OrganismTickDetails;
 import org.evochora.datapipeline.api.resources.database.TickNotFoundException;
 import org.evochora.datapipeline.api.resources.database.dto.OrganismTickSummary;
@@ -21,10 +22,11 @@ import org.evochora.datapipeline.api.resources.database.dto.TickRange;
 import org.evochora.datapipeline.utils.MetadataConfigHelper;
 import org.evochora.runtime.model.EnvironmentProperties;
 
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.Map;
 import org.evochora.node.processes.http.api.pipeline.dto.ErrorResponseDto;
+import org.evochora.node.processes.http.api.visualizer.descent.AncestryIndexes;
+import org.evochora.node.processes.http.api.visualizer.descent.DescentQuery;
+import org.evochora.node.processes.http.api.visualizer.descent.RootRequest;
+import org.evochora.node.processes.http.api.visualizer.dto.DescentDto;
 import org.evochora.node.processes.http.api.visualizer.dto.OrganismDetailsResponseDto;
 import org.evochora.node.processes.http.api.visualizer.dto.OrganismMutationsResponseDto;
 import org.evochora.node.processes.http.api.visualizer.dto.OrganismsResponseDto;
@@ -43,7 +45,8 @@ import java.util.List;
  * <p>
  * Key features:
  * <ul>
- *   <li>Tick-based organism listing for grid and dropdown views</li>
+ *   <li>Tick-based organism listing for grid and dropdown views, with the descent of the
+ *       listed organisms from a root on request</li>
  *   <li>Per-organism detailed state for sidebar view</li>
  *   <li>Run ID resolution (query parameter → latest run)</li>
  *   <li>Optional HTTP caching with ETags (disabled by default)</li>
@@ -56,14 +59,37 @@ public class OrganismController extends VisualizerBaseController {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(OrganismController.class);
 
+    /** Default of {@code descent.attribution-arrays}. */
+    private static final int DEFAULT_ATTRIBUTION_ARRAYS = 2;
+
+    /** The parent arrays of the runs asked about, which the descent of a tick is answered from. */
+    private final AncestryIndexes ancestryIndexes;
+
     /**
      * Constructs a new OrganismController.
      *
      * @param registry The central service registry for accessing shared services.
-     * @param options  The HOCON configuration specific to this controller instance.
+     * @param options  The HOCON configuration specific to this controller instance; its
+     *                 {@code descent.attribution-arrays} (default 2) sets how many roots per run keep
+     *                 their organism-to-line array.
+     * @throws com.typesafe.config.ConfigException.WrongType if {@code descent.attribution-arrays}
+     *                 is not a number
+     * @throws IllegalArgumentException if {@code descent.attribution-arrays} is negative
      */
     public OrganismController(final org.evochora.node.spi.ServiceRegistry registry, final Config options) {
         super(registry, options);
+        final int attributionArrays = options.hasPath("descent.attribution-arrays")
+            ? options.getInt("descent.attribution-arrays")
+            : DEFAULT_ATTRIBUTION_ARRAYS;
+        this.ancestryIndexes = new AncestryIndexes(databaseProvider, attributionArrays);
+    }
+
+    /**
+     * Stops the thread that reads the ancestry of the runs, waiting for a running page to end.
+     */
+    @Override
+    public void close() {
+        ancestryIndexes.close();
     }
 
     @Override
@@ -90,20 +116,29 @@ public class OrganismController extends VisualizerBaseController {
     /**
      * Handles GET requests for all organisms that are alive at a specific tick.
      * <p>
-     * Route: GET /visualizer/api/organisms/{tick}?runId=...
+     * Route: GET /visualizer/api/organisms/{tick}?runId=...&amp;root=&lt;id|all|auto&gt;
+     * <p>
+     * With {@code root}, the answer also carries how the organisms of the tick descend from that
+     * root, answered by {@link DescentQuery} from the run's ancestry index. The request never
+     * waits for the index: while it is being read the descent says so and carries no lines.
+     * With HTTP caching enabled, the ETag of an answer with a root names the root as requested,
+     * the state, version, cursor and newest total of the index, and the death tick of the root
+     * the answer names; an {@code auto} root is resolved before the ETag is known.
      * <p>
      * Response format:
      * <pre>
      * {
      *   "organisms": [ OrganismTickSummary... ],
      *   "totalOrganismCount": 4711,
-     *   "genomeAncestors": { "genomeHash": "parentGenomeHash or null", ... }
+     *   "descent": { "state": "ready", "progress": 1.0, "root": {...}, "lines": [...],
+     *                "up": {...}, "lineOf": { "4711": 12, ... } }    (only with root)
      * }
      * </pre>
      *
      * @param ctx The Javalin context containing request and response data.
-     * @throws IllegalArgumentException if the tick parameter is invalid
+     * @throws IllegalArgumentException if the tick or the root parameter is invalid
      * @throws NoRunIdException if no run ID is available
+     * @throws OrganismNotFoundException if the requested root is not indexed
      * @throws SQLException if database operations fail
      */
     @OpenApi(
@@ -116,42 +151,66 @@ public class OrganismController extends VisualizerBaseController {
             @OpenApiParam(name = "tick", description = "The tick number", required = true, type = Long.class)
         },
         queryParams = {
-            @OpenApiParam(name = "runId", description = "Optional simulation run ID (defaults to latest run)", required = false)
+            @OpenApiParam(name = "runId", description = "Optional simulation run ID (defaults to latest run)", required = false),
+            @OpenApiParam(name = "root", description = "Optional root of descent: an organism id, 'all' for the virtual root above the founders, or 'auto' for the common ancestor of the organisms alive at the tick. With it, the answer carries a 'descent' object.", required = false)
         },
         responses = {
             @OpenApiResponse(status = "200", description = "OK", content = @OpenApiContent(from = OrganismsResponseDto.class)),
             @OpenApiResponse(status = "304", description = "Not Modified (cached response, ETag matches)"),
-            @OpenApiResponse(status = "400", description = "Bad request (invalid tick)", content = @OpenApiContent(from = ErrorResponseDto.class)),
-            @OpenApiResponse(status = "404", description = "Not found (run ID not found)", content = @OpenApiContent(from = ErrorResponseDto.class)),
+            @OpenApiResponse(status = "400", description = "Bad request (invalid tick or root)", content = @OpenApiContent(from = ErrorResponseDto.class)),
+            @OpenApiResponse(status = "404", description = "Not found (run ID or root organism not found)", content = @OpenApiContent(from = ErrorResponseDto.class)),
             @OpenApiResponse(status = "429", description = "Too many requests (connection pool exhausted)", content = @OpenApiContent(from = ErrorResponseDto.class)),
             @OpenApiResponse(status = "500", description = "Internal server error (database error)", content = @OpenApiContent(from = ErrorResponseDto.class))
         }
     )
-    void getOrganismsAtTick(final Context ctx) throws SQLException, TickNotFoundException {
+    void getOrganismsAtTick(final Context ctx) throws SQLException, TickNotFoundException, OrganismNotFoundException {
         final long tickNumber = parseTickNumber(ctx.pathParam("tick"));
+        final String rootParam = ctx.queryParam("root");
+        final RootRequest root = rootParam == null ? null : RootRequest.parse(rootParam);
         final String runId = resolveRunId(ctx);
 
-        LOGGER.debug("Retrieving organisms for tick={} runId={}", tickNumber, runId);
+        LOGGER.debug("Retrieving organisms for tick={} runId={} root={}", tickNumber, runId, rootParam);
 
         // Parse cache configuration (separate namespace "organisms")
         final CacheConfig cacheConfig = CacheConfig.fromConfig(options, "organisms");
 
         try (final IDatabaseReader reader = databaseProvider.createReader(runId)) {
-            // Generate ETag: "runId_tick"
-            final String etag = "\"" + runId + "_" + tickNumber + "\"";
-
-            // Apply cache headers (may return 304 Not Modified if ETag matches)
-            if (applyCacheHeaders(ctx, cacheConfig, etag)) {
+            final String baseTag = "\"" + runId + "_" + tickNumber;
+            if (root == null) {
+                if (applyCacheHeaders(ctx, cacheConfig, baseTag + "\"")) {
+                    return;
+                }
+                final List<OrganismTickSummary> organisms = reader.readOrganismsAtTick(tickNumber);
+                final int totalOrganismCount = reader.readTotalOrganismsCreated(tickNumber);
+                ctx.status(HttpStatus.OK).json(new OrganismsResponseDto(organisms, totalOrganismCount, null));
                 return;
             }
 
-            final List<OrganismTickSummary> organisms = reader.readOrganismsAtTick(tickNumber);
             final int totalOrganismCount = reader.readTotalOrganismsCreated(tickNumber);
+            final DescentQuery.View view = ancestryIndexes.forRun(runId).view(totalOrganismCount);
+            final OrganismStaticInfo rootInfo = view.rootInfo(root, reader);
 
-            final List<Long> genomes = organisms.stream().map(o -> o.genomeHash).toList();
-            final Map<String, String> genomeAncestors = toStringMap(reader.readGenomeAncestors(genomes));
+            if (root.kind() == RootRequest.Kind.AUTO) {
+                // The root is known only once the descent is worked out, and the ETag names it
+                final List<OrganismTickSummary> organisms = reader.readOrganismsAtTick(tickNumber);
+                final DescentDto descent = view.describe(root, rootInfo, organisms, reader);
+                final Long deathTick = descent.root() == null ? null : descent.root().deathTick();
+                if (applyCacheHeaders(ctx, cacheConfig, baseTag + view.cacheKey(root, deathTick) + "\"")) {
+                    return;
+                }
+                ctx.status(HttpStatus.OK).json(new OrganismsResponseDto(organisms, totalOrganismCount, descent));
+                return;
+            }
 
-            ctx.status(HttpStatus.OK).json(new OrganismsResponseDto(organisms, totalOrganismCount, genomeAncestors));
+            final Long deathTick = rootInfo == null ? null : rootInfo.deathTick;
+            if (applyCacheHeaders(ctx, cacheConfig, baseTag + view.cacheKey(root, deathTick) + "\"")) {
+                return;
+            }
+            final List<OrganismTickSummary> organisms = reader.readOrganismsAtTick(tickNumber);
+            final DescentDto descent = view.describe(root, rootInfo, organisms, reader);
+            ctx.status(HttpStatus.OK).json(new OrganismsResponseDto(organisms, totalOrganismCount, descent));
+        } catch (OrganismNotFoundException e) {
+            throw e;
         } catch (RuntimeException e) {
             handleDatabaseException(e, runId, "organisms");
         } catch (SQLException e) {
@@ -173,8 +232,7 @@ public class OrganismController extends VisualizerBaseController {
      *   "organismId": 1,
      *   "tick": 1234,
      *   "staticInfo": { ... },
-     *   "state": { ... },
-     *   "genomeAncestors": { "genomeHash": "parentGenomeHash or null", ... }
+     *   "state": { ... }
      * }
      * </pre>
      *
@@ -225,15 +283,9 @@ public class OrganismController extends VisualizerBaseController {
 
             final OrganismTickDetails details = reader.readOrganismDetails(tickNumber, organismId);
 
-            // The ancestry chain is coloured by genome, so the response carries the closure of the
-            // genomes it names rather than relying on what the tick response happened to deliver.
-            final List<Long> genomes = new ArrayList<>();
-            details.lineage.forEach(entry -> genomes.add(entry.genomeHash()));
-            final Map<String, String> genomeAncestors = toStringMap(reader.readGenomeAncestors(genomes));
-
             ctx.status(HttpStatus.OK).json(new OrganismDetailsResponseDto(
                 details.organismId, details.tick, details.staticInfo, details.lineage,
-                details.labelNamespaceMask, details.state, genomeAncestors));
+                details.labelNamespaceMask, details.state));
         } catch (OrganismNotFoundException e) {
             throw e;
         } catch (RuntimeException e) {
@@ -347,22 +399,6 @@ public class OrganismController extends VisualizerBaseController {
             }
             throw e;
         }
-    }
-
-    /**
-     * Converts a genome ancestor map to string keys and values.
-     * <p>
-     * Genome hashes are 64-bit and lose precision as JSON numbers, so they travel as strings.
-     * A null value marks a root genome and is preserved as null.
-     *
-     * @param ancestors Genome hash to parent genome hash, null value for roots
-     * @return The same mapping with string keys and values
-     */
-    private static Map<String, String> toStringMap(final Map<Long, Long> ancestors) {
-        final Map<String, String> result = new LinkedHashMap<>(ancestors.size());
-        ancestors.forEach((genome, parent) ->
-            result.put(String.valueOf(genome), parent != null ? String.valueOf(parent) : null));
-        return result;
     }
 
     /**

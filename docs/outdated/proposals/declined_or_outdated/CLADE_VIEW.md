@@ -1,6 +1,13 @@
 # Clade View in the Visualizer
 
-**Status: OPEN PROBLEMS — not ready for implementation. The section "Open problems" lists every
+**Status: DECLINED (2026-09-27). Superseded by the lineage colouring of the visualizer, built without a clade
+model: the server keeps one parent array per run and colours the organisms of a tick by the child line of a
+chosen root organism; the common ancestor of the living is the default root, and the analyzer keeps the
+clade chart over time. The open problems below, above all following a single organism and the costs that
+grow with the run, were the reason: the root-based colouring makes the first the base case and has no
+structure to keep up to date. The frontend work of PR #189 was not reused either.**
+
+**Original status: OPEN PROBLEMS — not ready for implementation. The section "Open problems" lists every
 problem known when this version was written; it is to be revised before anything is built. Three
 further points are deliberately left open by the maintainer, see the last section.**
 

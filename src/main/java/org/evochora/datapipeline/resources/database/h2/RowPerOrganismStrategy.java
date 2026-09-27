@@ -95,7 +95,6 @@ public class RowPerOrganismStrategy extends AbstractH2OrgStorageStrategy {
             );
 
             createTickStatsTable(stmt);
-            createGenomeIndex(stmt);
         }
 
         conn.commit();

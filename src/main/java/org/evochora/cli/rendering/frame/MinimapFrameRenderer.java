@@ -59,7 +59,7 @@ public class MinimapFrameRenderer extends AbstractFrameRenderer {
     private static final int BASE_OUTPUT_WIDTH = 400;  // Reference width for glow scaling
 
     /**
-     * Organism palette — keep in sync with ExactFrameRenderer and AppController.ORGANISM_PALETTE.
+     * Organism palette — keep in sync with ExactFrameRenderer.
      * Colors are assigned in insertion order: first genome hash seen gets green, second gets blue, etc.
      */
     private static final int[] ORGANISM_PALETTE = {
