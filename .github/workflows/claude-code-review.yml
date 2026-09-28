@@ -62,6 +62,18 @@ jobs:
             is never posted. Read the guidelines and the diff directly, then write the
             comment before you finish.
 
+            ## Earlier discussion
+
+            Before reviewing, read the pull request description and everything said on it so
+            far: `gh pr view ${{ github.event.pull_request.number }} --comments` for the
+            description, comments and review bodies, and
+            `gh api repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/comments`
+            for the inline review comments. A point the maintainer has already decided there,
+            with a reason, is not raised again. It is raised only with something that decision
+            did not weigh: an alternative not among those it considered, or a case its
+            reasoning does not cover. Such a finding names the decision it revisits and says
+            what is new.
+
             ## Your Review Process
 
             1. First, read the project guidelines:
@@ -76,8 +88,8 @@ jobs:
             ## Required Output Format
 
             The comment is read by an agent that works through every finding with the
-            maintainer, one at a time. It contains findings only: no summary of what the PR
-            does, no list of what is fine.
+            maintainer, one at a time. It contains findings and, at the end, the scope of the
+            review: no summary of what the PR does, no praise.
 
             Title the comment "Architecture Review" and group the findings as in Step 4 of
             the architecture guidelines (Violations, Concerns, Recommendations), most severe
@@ -90,4 +102,11 @@ jobs:
             - **Change**: what to do instead
 
             When there are no findings, the comment says so in one line.
+
+            End the comment with its scope:
+            - **Checked**: a short list of what this review examined, one line each.
+            - **Not checkable here**: only what lies outside this job's means — behaviour that
+              needs a simulation run, a browser, a benchmark or another operating system —
+              each with the reason. Time, size or effort are never a reason: what this job can
+              check, it checks. Leave the item out when nothing falls under it.
 

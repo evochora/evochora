@@ -62,6 +62,18 @@ jobs:
             Do the review yourself, in this conversation. Do NOT delegate to subagents: this job
             ends when your turn ends, and a review left with a background agent is never posted.
 
+            ## Earlier discussion
+
+            Before reviewing, read the pull request description and everything said on it so
+            far: `gh pr view ${{ github.event.pull_request.number }} --comments` for the
+            description, comments and review bodies, and
+            `gh api repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/comments`
+            for the inline review comments. A point the maintainer has already decided there,
+            with a reason, is not raised again. It is raised only with something that decision
+            did not weigh: an alternative not among those it considered, or a case its
+            reasoning does not cover. Such a finding names the decision it revisits and says
+            what is new.
+
             ## How to work
 
             1. Read the testing section of AGENTS.md, then the diff (`gh pr diff`) and as much of
@@ -84,8 +96,8 @@ jobs:
             ## Comment format
 
             The comment is read by an agent that works through every finding with the
-            maintainer, one at a time. It contains findings only: no summary of the PR, no list
-            of what is fine.
+            maintainer, one at a time. It contains findings and, at the end, the scope of the
+            review: no summary of the PR, no praise.
 
             Post one PR comment (`gh pr comment`) titled "Correctness Review". For each finding:
             - **Status**: Confirmed by probe / Unconfirmed
@@ -93,5 +105,13 @@ jobs:
             - **What goes wrong**: the concrete input or state and the wrong outcome
             - **Probe**: for a confirmed finding, the probe test's code and its failure message
 
-            Order findings by severity. When there are none, say so in one line and name what
-            was probed. Never be silent: always post the comment.
+            Order findings by severity. When there are none, say so in one line. Never be
+            silent: always post the comment.
+
+            End the comment with its scope:
+            - **Checked**: a short list of what this review examined, one line each,
+              the probes among them.
+            - **Not checkable here**: only what lies outside this job's means — behaviour that
+              needs a simulation run, a browser, a benchmark or another operating system —
+              each with the reason. Time, size or effort are never a reason: what this job can
+              check, it checks. Leave the item out when nothing falls under it.
