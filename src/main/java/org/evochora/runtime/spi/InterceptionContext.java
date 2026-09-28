@@ -95,10 +95,28 @@ public class InterceptionContext {
      * <p>
      * Use this to substitute a different instruction. For example,
      * replace with NOP to effectively skip the instruction (zero cost).
+     * <p>
+     * The replacement must be created for the organism being intercepted, as returned by
+     * {@link #getOrganism()}. An instruction acts on the organism it was created for, so one
+     * created for another organism would change that organism from inside the parallel wave,
+     * possibly while another thread executes it. A rejected replacement leaves the planned
+     * instruction as it was.
      *
-     * @param newInstruction The instruction to execute instead
+     * @param newInstruction The instruction to execute instead (must not be null)
+     * @throws IllegalArgumentException if {@code newInstruction} is null or was created for an
+     *                                  organism other than the one being intercepted
      */
     public void setInstruction(Instruction newInstruction) {
+        if (newInstruction == null) {
+            throw new IllegalArgumentException("Replacement instruction must not be null");
+        }
+        if (newInstruction.getOrganism() != this.organism) {
+            Organism boundTo = newInstruction.getOrganism();
+            throw new IllegalArgumentException("Replacement instruction belongs to organism "
+                    + (boundTo == null ? "null" : String.valueOf(boundTo.getId()))
+                    + ", not to the intercepted organism "
+                    + (this.organism == null ? "null" : String.valueOf(this.organism.getId())));
+        }
         this.instruction = newInstruction;
     }
 

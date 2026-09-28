@@ -1,6 +1,7 @@
 package org.evochora.runtime.spi;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -36,6 +37,7 @@ import com.typesafe.config.ConfigFactory;
  *   <li>Interceptors are called during the Plan phase</li>
  *   <li>InterceptionContext provides correct organism and instruction</li>
  *   <li>Instruction replacement works</li>
+ *   <li>A replacement that is null or was created for another organism is rejected</li>
  *   <li>Operand modification works</li>
  *   <li>Multiple interceptors are called in registration order (chaining)</li>
  *   <li>NOP replacement leads to instruction skip</li>
@@ -189,6 +191,32 @@ class InstructionInterceptorTest {
 
         // NOP should have minimal energy cost
         assertThat(organism.getEr()).isLessThanOrEqualTo(initialEnergy);
+    }
+
+    @Test
+    void setInstruction_rejectsAnInstructionOfAnotherOrganism() {
+        int nopOpcode = Instruction.getInstructionIdByName("NOP");
+        Organism other = Organism.create(simulation, new int[]{9, 9}, 1000);
+        Instruction planned = new NopInstruction(organism, nopOpcode);
+        InterceptionContext context = new InterceptionContext();
+        context.reset(organism, planned);
+
+        assertThatThrownBy(() -> context.setInstruction(new NopInstruction(other, nopOpcode)))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining(String.valueOf(other.getId()))
+            .hasMessageContaining(String.valueOf(organism.getId()));
+        assertThat(context.getInstruction()).isSameAs(planned);
+    }
+
+    @Test
+    void setInstruction_rejectsNull() {
+        Instruction planned = new NopInstruction(organism, Instruction.getInstructionIdByName("NOP"));
+        InterceptionContext context = new InterceptionContext();
+        context.reset(organism, planned);
+
+        assertThatThrownBy(() -> context.setInstruction(null))
+            .isInstanceOf(IllegalArgumentException.class);
+        assertThat(context.getInstruction()).isSameAs(planned);
     }
 
     // ==================== Operand Access Tests ====================
