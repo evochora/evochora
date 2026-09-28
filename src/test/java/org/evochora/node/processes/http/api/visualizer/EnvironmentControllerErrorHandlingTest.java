@@ -122,10 +122,10 @@ class EnvironmentControllerErrorHandlingTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"0", "5000", "abc"})
-    @ExpectLog(level = LogLevel.WARN, messagePattern = ".*Minimap size must be an integer from 1 to 1200.*")
+    @ValueSource(strings = {"0", "299", "5000", "abc"})
+    @ExpectLog(level = LogLevel.WARN, messagePattern = ".*Minimap size must be an integer from 300 to 1200.*")
     void getEnvironment_returns400OnInvalidMinimapSize(String size) {
-        // When: Make request with a minimap size that is not an integer from 1 to the maximum
+        // When: Make request with a minimap size that is not an integer from the minimum to the maximum
         given()
             .port(port)
             .basePath("/visualizer/api/environment")
@@ -134,7 +134,7 @@ class EnvironmentControllerErrorHandlingTest {
             .get("/100")
         .then()
             .statusCode(400)
-            .body(containsString("from 1 to " + MinimapAggregator.MAX_SIZE));
+            .body(containsString("from " + MinimapAggregator.MIN_SIZE + " to " + MinimapAggregator.MAX_SIZE));
     }
 
     @Test

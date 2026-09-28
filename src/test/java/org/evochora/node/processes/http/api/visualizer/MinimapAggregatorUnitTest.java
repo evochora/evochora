@@ -154,11 +154,12 @@ class MinimapAggregatorUnitTest {
         }
 
         @Test
-        @DisplayName("Size below 1 or above the maximum is rejected")
+        @DisplayName("Size below the minimum or above the maximum is rejected")
         void sizeOutOfBounds_isRejected() {
             var envProps = new EnvironmentProperties(new int[]{100, 100}, false);
 
-            assertThatThrownBy(() -> aggregator.aggregate(createEmptyColumns(), envProps, 0))
+            assertThatThrownBy(() -> aggregator.aggregate(createEmptyColumns(), envProps,
+                    MinimapAggregator.MIN_SIZE - 1))
                     .isInstanceOf(IllegalArgumentException.class);
             assertThatThrownBy(() -> aggregator.aggregate(createEmptyColumns(), envProps,
                     MinimapAggregator.MAX_SIZE + 1))

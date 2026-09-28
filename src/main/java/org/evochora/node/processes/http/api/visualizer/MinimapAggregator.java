@@ -36,6 +36,12 @@ public class MinimapAggregator {
     public static final int DEFAULT_SIZE = 300;
 
     /**
+     * Smallest length in pixels a request may ask for. The vote counters of a pixel hold 32,767;
+     * at this size a world fills them only from a longer edge of some 54,000 cells on.
+     */
+    public static final int MIN_SIZE = 300;
+
+    /**
      * Largest size a caller may ask for: the length in pixels of the minimap's longer edge.
      */
     public static final int MAX_SIZE = 1200;
@@ -140,15 +146,15 @@ public class MinimapAggregator {
      *
      * @param columns  The cell data in columnar format from {@code TickData.getCellColumns()}
      * @param envProps Environment properties containing world shape
-     * @param size     Length in pixels of the minimap's longer edge, from 1 to {@link #MAX_SIZE}
+     * @param size     Length in pixels of the minimap's longer edge, from {@link #MIN_SIZE} to {@link #MAX_SIZE}
      * @return Minimap result with dimensions and cell type data, or null if environment is invalid
-     * @throws IllegalArgumentException if {@code size} is below 1 or above {@link #MAX_SIZE}
+     * @throws IllegalArgumentException if {@code size} is below {@link #MIN_SIZE} or above {@link #MAX_SIZE}
      */
     public MinimapResult aggregate(final CellDataColumns columns, final EnvironmentProperties envProps,
                                    final int size) {
-        if (size < 1 || size > MAX_SIZE) {
+        if (size < MIN_SIZE || size > MAX_SIZE) {
             throw new IllegalArgumentException(
-                    "Minimap size must be between 1 and " + MAX_SIZE + ", got " + size);
+                    "Minimap size must be between " + MIN_SIZE + " and " + MAX_SIZE + ", got " + size);
         }
         final int[] shape = envProps.getWorldShape();
         if (shape == null || shape.length < 2) {

@@ -358,20 +358,17 @@ class EnvironmentControllerIntegrationTest {
         new EnvironmentController(registry, ConfigFactory.empty())
             .registerRoutes(app, "/visualizer/api/environment");
 
-        // When: minimap without a value, with 900, and with a size below the world's edge
+        // When: minimap without a value and with 900
         EnvironmentHttpResponse byDefault = requestMinimap(app.port(), runId, "minimap");
         EnvironmentHttpResponse sized = requestMinimap(app.port(), runId, "minimap=900");
-        EnvironmentHttpResponse smaller = requestMinimap(app.port(), runId, "minimap=20");
 
         // Then: a minimap is never larger than the world, so the default and 900 are both capped
-        // at 40x30; a size below the world's longer edge is followed, the aspect ratio stays 4:3
+        // at 40x30, the aspect ratio stays 4:3
         assertThat(byDefault.getMinimap().getWidth()).isEqualTo(40);
         assertThat(byDefault.getMinimap().getHeight()).isEqualTo(30);
         assertThat(sized.getMinimap().getWidth()).isEqualTo(40);
         assertThat(sized.getMinimap().getHeight()).isEqualTo(30);
         assertThat(sized.getMinimap().getCellTypes().size()).isEqualTo(40 * 30);
-        assertThat(smaller.getMinimap().getWidth()).isEqualTo(20);
-        assertThat(smaller.getMinimap().getHeight()).isEqualTo(15);
     }
 
     /**

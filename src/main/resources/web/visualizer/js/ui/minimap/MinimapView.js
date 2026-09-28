@@ -336,6 +336,13 @@ export class MinimapView {
 
         this.renderer.cacheBackground();
 
+        // Data rendered at another size than the one chosen is shown stretched to the chosen
+        // size, until the picture rendered at that size arrives
+        const picture = this._pictureSize(this.requestedSize() ?? MinimapView.DEFAULT_SIZE);
+        if (picture) {
+            this.renderer.scaleTo(picture.width, picture.height);
+        }
+
         if (this.viewportBounds) {
             this.renderer.drawViewportRect(this.viewportBounds, this.worldShape);
         }

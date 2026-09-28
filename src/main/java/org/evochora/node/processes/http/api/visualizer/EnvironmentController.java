@@ -243,7 +243,7 @@ public class EnvironmentController extends VisualizerBaseController {
             @OpenApiParam(name = "region", description = "Optional spatial region as comma-separated bounds (e.g., \"0,100,0,100\")", required = false),
             @OpenApiParam(name = "runId", description = "Optional simulation run ID (defaults to latest run)", required = false),
             @OpenApiParam(name = "minimap", description = "Include minimap data in the response. The optional value is the "
-                    + "length in pixels of the minimap's longer edge, from 1 to " + MinimapAggregator.MAX_SIZE
+                    + "length in pixels of the minimap's longer edge, from " + MinimapAggregator.MIN_SIZE + " to " + MinimapAggregator.MAX_SIZE
                     + "; the parameter without a value asks for " + MinimapAggregator.DEFAULT_SIZE
                     + ". A minimap is never larger than the world: a larger size is capped at the world's longer edge, "
                     + "and the width and height in the answer are authoritative",
@@ -774,7 +774,7 @@ public class EnvironmentController extends VisualizerBaseController {
      * Parses the minimap parameter into the length of the minimap's longer edge.
      * <p>
      * The parameter without a value asks for {@link MinimapAggregator#DEFAULT_SIZE}; a value must
-     * be an integer from 1 to {@link MinimapAggregator#MAX_SIZE}.
+     * be an integer from {@link MinimapAggregator#MIN_SIZE} to {@link MinimapAggregator#MAX_SIZE}.
      *
      * @param minimapParam The minimap parameter string (null if absent, empty if given without a value)
      * @return The edge length in pixels, or null if no minimap is requested
@@ -794,7 +794,7 @@ public class EnvironmentController extends VisualizerBaseController {
         } catch (final NumberFormatException e) {
             throw new IllegalArgumentException(minimapSizeBoundsMessage(minimapParam), e);
         }
-        if (size < 1 || size > MinimapAggregator.MAX_SIZE) {
+        if (size < MinimapAggregator.MIN_SIZE || size > MinimapAggregator.MAX_SIZE) {
             throw new IllegalArgumentException(minimapSizeBoundsMessage(minimapParam));
         }
         return size;
@@ -807,7 +807,7 @@ public class EnvironmentController extends VisualizerBaseController {
      * @return A message naming the accepted bounds and the rejected value
      */
     private static String minimapSizeBoundsMessage(final String minimapParam) {
-        return "Minimap size must be an integer from 1 to " + MinimapAggregator.MAX_SIZE
+        return "Minimap size must be an integer from " + MinimapAggregator.MIN_SIZE + " to " + MinimapAggregator.MAX_SIZE
                 + ", got: " + minimapParam;
     }
 
