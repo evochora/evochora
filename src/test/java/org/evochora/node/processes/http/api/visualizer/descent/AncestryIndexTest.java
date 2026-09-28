@@ -139,7 +139,7 @@ class AncestryIndexTest {
 
     @Test
     @ExpectLog(level = LogLevel.ERROR, messagePattern = "Reading the ancestry of run 'run-descent' failed")
-    void aFailedCatchUpIsReportedAndTheNextRequestRetries() throws Exception {
+    void aFailedCatchUpIsReportedAndARequestAfterTheCooldownRetries() throws Exception {
         final FakeRun run = new FakeRun().with(1, 0, 2, 1);
         run.failure = new SQLException("disk gone");
         final AncestryIndex index = indexOf(run);
@@ -153,12 +153,57 @@ class AncestryIndexTest {
         assertThat(view.stateFor(0)).isEqualTo(AncestryIndex.State.FAILED);
 
         run.failure = null;
+        run.nanos += AncestryIndex.COOLDOWN_NANOS - 1;
         index.requestCatchUp(0);
+        assertThat(run.executor.queued()).as("no retry within the cooldown").isZero();
+
+        run.nanos += 1;
+        index.requestCatchUp(0);
+        assertThat(run.executor.queued()).isEqualTo(1);
         run.executor.runAll();
 
         view = index.snapshot();
         assertThat(view.failure()).isNull();
         assertThat(view.stateFor(2)).isEqualTo(AncestryIndex.State.READY);
+    }
+
+    @Test
+    void theIndexOfARunNobodyAskedForWithinTheIdleTimeIsDroppedWhenAnotherRunIsAskedFor() throws Exception {
+        final FakeRun run = new FakeRun().with(1, 0, 2, 1);
+        final long idle = 1_000;
+        final AncestryIndexes indexes =
+            new AncestryIndexes(run.provider, run.executor, PAGE, () -> run.nanos, 2, idle);
+        final AncestryIndex first = indexes.forRun("run-a").index();
+
+        run.nanos += idle;
+        indexes.forRun("run-b");
+        assertThat(indexes.keptRuns()).as("asked for within the idle time").isEqualTo(2);
+        assertThat(indexes.forRun("run-a").index()).isSameAs(first);
+
+        run.nanos += idle + 1;
+        assertThat(indexes.forRun("run-a").index()).as("never dropped by its own request").isSameAs(first);
+        assertThat(indexes.keptRuns()).as("run-b rested longer than the idle time").isEqualTo(1);
+
+        run.nanos += idle + 1;
+        indexes.forRun("run-b");
+        assertThat(indexes.keptRuns()).isEqualTo(1);
+        assertThat(indexes.forRun("run-a").index()).as("read anew").isNotSameAs(first);
+    }
+
+    @Test
+    void aDroppedIndexReadsNothingMore() throws Exception {
+        final FakeRun run = new FakeRun().with(1, 0, 2, 1);
+        final AncestryIndexes indexes =
+            new AncestryIndexes(run.provider, run.executor, PAGE, () -> run.nanos, 2, 1_000);
+        final AncestryIndex dropped = indexes.forRun("run-a").index();
+        dropped.requestCatchUp(2);
+
+        run.nanos += 1_001;
+        indexes.forRun("run-b");
+        run.executor.runAll();
+
+        assertThat(dropped.snapshot().stateFor(2)).isEqualTo(AncestryIndex.State.LOADING);
+        verify(run.reader, never()).readParents(anyInt(), anyInt());
     }
 
     @Test
@@ -213,7 +258,7 @@ class AncestryIndexTest {
 
         run.with(4, 1, 5, 4, 8, 1);
         clearInvocations(run.reader);
-        run.nanos += AncestryIndex.GAP_REREAD_COOLDOWN_NANOS;
+        run.nanos += AncestryIndex.COOLDOWN_NANOS;
         index.requestGapReread();
         run.executor.runAll();
         // Two pages of the gap: 4 and 5, then 8 and 10, which lies beyond it
@@ -226,7 +271,7 @@ class AncestryIndexTest {
 
         // What is still missing is 3, 6..7 and 9, each re-read on its own
         clearInvocations(run.reader);
-        run.nanos += AncestryIndex.GAP_REREAD_COOLDOWN_NANOS;
+        run.nanos += AncestryIndex.COOLDOWN_NANOS;
         index.requestGapReread();
         run.executor.runAll();
         verify(run.reader).readParents(2, 1);
@@ -253,7 +298,7 @@ class AncestryIndexTest {
         run.stopping = false;
         run.with(3, 1, 6, 1);
         run.onRead = after -> run.stopping |= after == 2;
-        run.nanos += AncestryIndex.GAP_REREAD_COOLDOWN_NANOS;
+        run.nanos += AncestryIndex.COOLDOWN_NANOS;
         index.requestGapReread();
         run.executor.runAll();
         assertThat(index.snapshot().parentOf(3)).isEqualTo(1);
@@ -261,7 +306,7 @@ class AncestryIndexTest {
 
         run.stopping = false;
         run.onRead = after -> { };
-        run.nanos += AncestryIndex.GAP_REREAD_COOLDOWN_NANOS;
+        run.nanos += AncestryIndex.COOLDOWN_NANOS;
         index.requestGapReread();
         run.executor.runAll();
         assertThat(index.snapshot().parentOf(6)).isEqualTo(1);

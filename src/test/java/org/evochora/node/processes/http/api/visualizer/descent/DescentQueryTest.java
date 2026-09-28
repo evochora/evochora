@@ -294,7 +294,7 @@ class DescentQueryTest {
         run.with(8, 3);
         query.view(8);
         run.executor.runAll();
-        run.nanos += AncestryIndex.GAP_REREAD_COOLDOWN_NANOS;
+        run.nanos += AncestryIndex.COOLDOWN_NANOS;
 
         final DescentDto d = FakeRun.describe(query.view(8), RootRequest.parse("auto"), FakeRun.tick(new int[]{5, 8}), run.reader);
 

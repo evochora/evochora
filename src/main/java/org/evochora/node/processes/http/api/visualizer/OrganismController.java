@@ -61,6 +61,7 @@ public class OrganismController extends VisualizerBaseController {
 
     /** Default of {@code descent.attribution-arrays}. */
     private static final int DEFAULT_ATTRIBUTION_ARRAYS = 2;
+    private static final int DEFAULT_KEEP_IDLE_MINUTES = 10;
 
     /** The parent arrays of the runs asked about, which the descent of a tick is answered from. */
     private final AncestryIndexes ancestryIndexes;
@@ -71,17 +72,21 @@ public class OrganismController extends VisualizerBaseController {
      * @param registry The central service registry for accessing shared services.
      * @param options  The HOCON configuration specific to this controller instance; its
      *                 {@code descent.attribution-arrays} (default 2) sets how many roots per run keep
-     *                 their organism-to-line array.
-     * @throws com.typesafe.config.ConfigException.WrongType if {@code descent.attribution-arrays}
-     *                 is not a number
-     * @throws IllegalArgumentException if {@code descent.attribution-arrays} is negative
+     *                 their organism-to-line array, its {@code descent.keep-idle-minutes}
+     *                 (default 10) after how many minutes without a request the ancestry of a
+     *                 run may be dropped.
+     * @throws com.typesafe.config.ConfigException.WrongType if one of the two is not a number
+     * @throws IllegalArgumentException if one of the two is negative
      */
     public OrganismController(final org.evochora.node.spi.ServiceRegistry registry, final Config options) {
         super(registry, options);
         final int attributionArrays = options.hasPath("descent.attribution-arrays")
             ? options.getInt("descent.attribution-arrays")
             : DEFAULT_ATTRIBUTION_ARRAYS;
-        this.ancestryIndexes = new AncestryIndexes(databaseProvider, attributionArrays);
+        final int keepIdleMinutes = options.hasPath("descent.keep-idle-minutes")
+            ? options.getInt("descent.keep-idle-minutes")
+            : DEFAULT_KEEP_IDLE_MINUTES;
+        this.ancestryIndexes = new AncestryIndexes(databaseProvider, attributionArrays, keepIdleMinutes);
     }
 
     /**

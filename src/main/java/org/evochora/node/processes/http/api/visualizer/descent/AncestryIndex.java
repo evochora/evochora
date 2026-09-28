@@ -61,11 +61,12 @@ import it.unimi.dsi.fastutil.ints.IntArrayList;
  * publishes the array reference (a larger copy when the page does not fit), then the cursor, then
  * a new version. A reader that has seen a cursor therefore sees every entry at or below it; an
  * entry above the cursor belongs to a page in progress and is reported as {@link Ancestry#UNREAD}. A gap
- * filled later is written in place and published by the gap-fill counter and the version, which
- * readers use as cache keys. A reader holding an older array reference sees an older but
- * consistent state.
+ * filled later is written in place, entry by entry, and published by the gap-fill counter and the
+ * version once every gap has been gone through; readers use the two as cache keys. While gaps are
+ * being filled a reader can therefore see some entries of a gap filled and others still
+ * {@link Ancestry#UNREAD} under the version before; the next version puts that right.
  * <p>
- * Cost: four bytes per organism of the run, kept for the life of the process.
+ * Cost: four bytes per organism of the run, for as long as {@link AncestryIndexes} keeps the index.
  */
 public final class AncestryIndex {
 
@@ -74,10 +75,11 @@ public final class AncestryIndex {
 
     /**
      * Least time between the end of a catch-up and a catch-up asked for by
-     * {@link #requestGapReread()}. It is the server's own protection: a gap that never fills costs
-     * at most one re-read per cooldown, whatever the clients do.
+     * {@link #requestGapReread()}, or by {@link #requestCatchUp(int)} after a catch-up that
+     * failed. It is the server's own protection: a gap that never fills or a database that does
+     * not answer costs at most one read per cooldown, whatever the clients do.
      */
-    static final long GAP_REREAD_COOLDOWN_NANOS = java.util.concurrent.TimeUnit.SECONDS.toNanos(5);
+    static final long COOLDOWN_NANOS = java.util.concurrent.TimeUnit.SECONDS.toNanos(5);
 
     private static final Logger LOGGER = LoggerFactory.getLogger(AncestryIndex.class);
 
@@ -91,7 +93,7 @@ public final class AncestryIndex {
         LOADING,
         /** Every id up to the requested tick's total has been read at least once. */
         READY,
-        /** The last catch-up threw; the cause is kept and the next request retries. */
+        /** The last catch-up threw; the cause is kept and a request after the cooldown retries. */
         FAILED;
 
         /**
@@ -259,7 +261,9 @@ public final class AncestryIndex {
      * Asks for a catch-up if the index lags behind a tick, has not found its boundary yet, or
      * failed last time. Returns at once; the catch-up runs on the executor.
      * <p>
-     * At most one catch-up per index is pending; a request while one is pending adds nothing.
+     * After a catch-up that failed nothing is submitted within {@link #COOLDOWN_NANOS} of its
+     * end. At most one catch-up per index is pending; a request while one is pending adds
+     * nothing.
      * <p>
      * <strong>Thread safety:</strong> safe from any thread.
      *
@@ -267,6 +271,9 @@ public final class AncestryIndex {
      */
     public void requestCatchUp(final int tickTotal) {
         if (failure == null && boundary >= 0 && Math.max(cursor, boundary) >= tickTotal) {
+            return;
+        }
+        if (failure != null && clock.getAsLong() - lastCatchUpEnd < COOLDOWN_NANOS) {
             return;
         }
         submit();
@@ -277,14 +284,14 @@ public final class AncestryIndex {
      * ancestry is unknown: the catch-up re-reads every gap, so rows of a chunk indexed after the
      * index passed it are picked up even when the run no longer grows. Returns at once.
      * <p>
-     * Nothing is submitted within {@link #GAP_REREAD_COOLDOWN_NANOS} of the end of the last
+     * Nothing is submitted within {@link #COOLDOWN_NANOS} of the end of the last
      * catch-up, so a gap that never fills is re-read once per cooldown however many requests meet
      * it. At most one catch-up per index is pending; a request while one is pending adds nothing.
      * <p>
      * <strong>Thread safety:</strong> safe from any thread.
      */
     public void requestGapReread() {
-        if (catchUpEnded && clock.getAsLong() - lastCatchUpEnd < GAP_REREAD_COOLDOWN_NANOS) {
+        if (catchUpEnded && clock.getAsLong() - lastCatchUpEnd < COOLDOWN_NANOS) {
             return;
         }
         submit();
