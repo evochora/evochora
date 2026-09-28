@@ -8,8 +8,11 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.stream.Stream;
 
+import org.evochora.datapipeline.api.contracts.TickDataChunk;
+import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -101,6 +104,30 @@ class DescentRecordTest {
             assertThat(read.limitAt(i)).isEqualTo(written.limitAt(i));
         }
         assertThat(filesIn(directory)).as("no temporary file is left").isEqualTo(1);
+    }
+
+    @Test
+    void aFileServesTheEndTickItWasWrittenForAlsoBetweenTwoRecordedTicks() throws Exception {
+        // Recorded ticks 0, 10 and 20; the range ends at tick 15, where nothing was recorded
+        final DescentRunFixture run = new DescentRunFixture();
+        run.batches.add(List.of(TickDataChunk.newBuilder()
+            .setFirstTick(0).setLastTick(20).setTickCount(3)
+            .setSnapshot(DescentRunFixture.snapshot(0, "1:0@10,10#1 2:0@20,20#2"))
+            .addDeltas(DescentRunFixture.delta(10, "1:0@10,10 2:0@20,20 3:1@30,30#3^1"))
+            .addDeltas(DescentRunFixture.delta(20, "1:0@10,10 3:1@30,30 4:3@40,40#4^3"))
+            .build()));
+        run.paths.add(StoragePath.of("run/raw/batch_0_20.pb"));
+        final Path file = directory.resolve("run.ancestry");
+
+        scan(run, 15).write(file, RUN);
+        final DescentRecord read = DescentRecord.read(file, RUN, 15);
+
+        assertThat(read.lastTick()).isEqualTo(10L);
+        assertThat(read.coveredTick()).isEqualTo(15L);
+        assertThat(read.maxId()).as("organism 4 of tick 20 was not read").isEqualTo(3);
+        assertThatThrownBy(() -> DescentRecord.read(file, RUN, 16))
+            .isInstanceOf(DescentRecord.UnusableFileException.class)
+            .hasMessageContaining("up to tick 15 only");
     }
 
     @Test

@@ -4,9 +4,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.awt.Rectangle;
+import java.util.List;
 
 import org.evochora.cli.commands.RenderVideoCommand;
 import org.evochora.cli.rendering.frame.shared.EnvironmentBackgroundLayer;
+import org.evochora.datapipeline.api.contracts.TickDataChunk;
+import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -101,6 +104,50 @@ class DescentRendererTest {
     void isRegisteredAsTheVideoSubcommandDescent() {
         assertThat(new CommandLine(new DescentRenderer()).getCommandName()).isEqualTo("descent");
         assertThat(new CommandLine(new RenderVideoCommand()).getSubcommands()).containsKey("descent");
+    }
+
+    @Test
+    void aTickOfAChunkOutsideTheRangeIsDrawnAsBackgroundAlone() throws Exception {
+        final DescentRenderer renderer = new DescentRenderer();
+        new CommandLine(renderer).parseArgs("--scale", "0.5");
+        renderer.init(ENV);
+        final DescentRunFixture run = new DescentRunFixture()
+            .batch(0, TICKS[0], TICKS[1], TICKS[2], TICKS[3], TICKS[4]);
+        renderer.prepare(run.storage(), run.paths, "run", 2, 3, 1);
+
+        // The engine renders the whole chunk 0..4 and writes the frames of ticks 2 and 3
+        final int[] before = renderer.renderSnapshot(DescentRunFixture.snapshot(0, TICKS[0])).clone();
+        renderer.renderDelta(DescentRunFixture.delta(1, TICKS[1]));
+        final int[] within = renderer.renderDelta(DescentRunFixture.delta(2, TICKS[2])).clone();
+        renderer.renderDelta(DescentRunFixture.delta(3, TICKS[3]));
+        final int[] after = renderer.renderDelta(DescentRunFixture.delta(4, TICKS[4])).clone();
+
+        assertThat(pixelAt(before, 10, 10)).as("organism 1 at tick 0").isEqualTo(EnvironmentBackgroundLayer.COLOR_EMPTY);
+        assertThat(pixelAt(within, 20, 20)).as("organism 3 at tick 2").isNotEqualTo(EnvironmentBackgroundLayer.COLOR_EMPTY);
+        assertThat(pixelAt(after, 20, 20)).as("organism 3 at tick 4").isEqualTo(EnvironmentBackgroundLayer.COLOR_EMPTY);
+    }
+
+    @Test
+    void aSampleTickIsShownByTheRecordedTickBeforeTheRange() throws Exception {
+        final DescentRenderer renderer = new DescentRenderer();
+        new CommandLine(renderer).parseArgs("--scale", "0.5");
+        renderer.init(ENV);
+        // Recorded ticks 0, 10 and 20; the range begins at the sample tick 15, shown by tick 10
+        final DescentRunFixture run = new DescentRunFixture();
+        run.batches.add(List.of(TickDataChunk.newBuilder()
+            .setFirstTick(0).setLastTick(20).setTickCount(3)
+            .setSnapshot(DescentRunFixture.snapshot(0, TICKS[0]))
+            .addDeltas(DescentRunFixture.delta(10, TICKS[1]))
+            .addDeltas(DescentRunFixture.delta(20, TICKS[2]))
+            .build()));
+        run.paths.add(StoragePath.of("run/raw/batch_0_20.pb"));
+        renderer.prepare(run.storage(), run.paths, "run", 15, 20, 5);
+
+        renderer.applySnapshotState(DescentRunFixture.snapshot(0, TICKS[0]));
+        renderer.applyDeltaState(DescentRunFixture.delta(10, TICKS[1]));
+        final int[] frame = renderer.renderCurrentState();
+
+        assertThat(pixelAt(frame, 20, 20)).as("organism 3 at tick 10").isNotEqualTo(EnvironmentBackgroundLayer.COLOR_EMPTY);
     }
 
     @Test

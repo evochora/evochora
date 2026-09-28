@@ -181,9 +181,33 @@ final class DescentHistory {
      *         organisms read up to its end, and the birth ticks from the whole record
      */
     static DescentHistory of(final DescentRecord record, final long startTick, final long endTick) {
+        return of(record, startTick, endTick, false);
+    }
+
+    /**
+     * Cuts a range from a record, for a video that may show a tick by the recorded tick before it.
+     * <p>
+     * A video that renders sample ticks shows a sample tick that was not recorded by the state of
+     * the last recorded tick before it. The first sample tick of the range can therefore be shown
+     * by a recorded tick before {@code startTick}, which the history then has to hold.
+     *
+     * @param record     What the pre-pass found, reaching at least as far as the range needs
+     * @param startTick  First tick of the range, inclusive
+     * @param endTick    Last tick of the range, inclusive
+     * @param withBefore Whether the history begins at the last recorded tick before
+     *                   {@code startTick} when {@code startTick} itself was not recorded
+     * @return The history of the range: its recorded ticks with their roots, the parents of the
+     *         organisms read up to its end, and the birth ticks from the whole record
+     */
+    static DescentHistory of(final DescentRecord record, final long startTick, final long endTick,
+                             final boolean withBefore) {
         int from = 0;
         while (from < record.tickCount() && record.tickAt(from) < startTick) {
             from++;
+        }
+        final boolean startRecorded = from < record.tickCount() && record.tickAt(from) == startTick;
+        if (withBefore && from > 0 && !startRecorded) {
+            from--;
         }
         int to = from;
         while (to < record.tickCount() && record.tickAt(to) <= endTick) {
@@ -273,6 +297,16 @@ final class DescentHistory {
      */
     long tickAt(final int index) {
         return ticks[index];
+    }
+
+    /**
+     * The position of a tick among the recorded ticks of the range, if it is one of them.
+     *
+     * @param tick The tick number
+     * @return The position, from 0, or a negative value if the range does not hold the tick
+     */
+    int find(final long tick) {
+        return Arrays.binarySearch(ticks, tick);
     }
 
     /**
@@ -602,12 +636,16 @@ final class DescentHistory {
         }
 
         /**
-         * Finishes the record.
+         * Finishes the record. A pass that is complete has read the run up to its end tick, also
+         * when the run recorded no tick at it; one that is not has read it up to the last tick
+         * given.
          *
          * @return The record of what was given
          */
         DescentRecord build() {
-            return new DescentRecord(parents, shades, maxId, ticks.toLongArray(), roots.toIntArray(), limits.toIntArray());
+            final long last = ticks.isEmpty() ? Long.MIN_VALUE : ticks.getLong(ticks.size() - 1);
+            return new DescentRecord(parents, shades, maxId, ticks.toLongArray(), roots.toIntArray(),
+                limits.toIntArray(), complete ? Math.max(last, endTick) : last);
         }
     }
 }

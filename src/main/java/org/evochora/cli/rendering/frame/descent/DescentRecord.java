@@ -37,7 +37,8 @@ import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
  *   int   MAGIC
  *   int   LAYOUT_VERSION
  *   UTF   run id (DataOutput.writeUTF)
- *   long  last recorded tick covered (Long.MIN_VALUE when no tick was read)
+ *   long  tick up to which the run was read (Long.MIN_VALUE when no tick was read); the last
+ *         recorded tick lies at or before it
  *   int   organisms: the highest organism id read
  *   int   recorded ticks
  *   int   parent of every id from 1 to organisms
@@ -68,9 +69,10 @@ final class DescentRecord {
     private final long[] ticks;
     private final int[] roots;
     private final int[] limits;
+    private final long coveredTick;
 
     /**
-     * Creates a record.
+     * Creates a record of a run read up to its last recorded tick.
      *
      * @param parents Parent of every id up to {@code maxId}, indexed by id; not copied
      * @param shades  Shade of every id up to {@code maxId}, indexed by id; not copied
@@ -84,6 +86,32 @@ final class DescentRecord {
      */
     DescentRecord(final int[] parents, final byte[] shades, final int maxId, final long[] ticks, final int[] roots,
                   final int[] limits) {
+        this(parents, shades, maxId, ticks, roots, limits,
+            ticks.length == 0 ? Long.MIN_VALUE : ticks[ticks.length - 1]);
+    }
+
+    /**
+     * Creates a record of a run read up to a tick.
+     *
+     * @param parents     Parent of every id up to {@code maxId}, indexed by id; not copied
+     * @param shades      Shade of every id up to {@code maxId}, indexed by id; not copied
+     * @param maxId       The highest organism id read (&gt;= 0, below the lengths of {@code parents}
+     *                    and {@code shades})
+     * @param ticks       The recorded ticks, ascending; not copied
+     * @param roots       The root of every recorded tick, parallel to {@code ticks}; not copied
+     * @param limits      The highest organism id read up to every recorded tick, parallel to
+     *                    {@code ticks}; not copied
+     * @param coveredTick The tick up to which the run was read, at or after the last recorded tick:
+     *                    the run recorded no tick between the two
+     * @throws IllegalArgumentException if the arrays do not fit together or the last recorded tick
+     *                                  lies after {@code coveredTick}
+     */
+    DescentRecord(final int[] parents, final byte[] shades, final int maxId, final long[] ticks, final int[] roots,
+                  final int[] limits, final long coveredTick) {
+        if (ticks.length > 0 && ticks[ticks.length - 1] > coveredTick) {
+            throw new IllegalArgumentException("Inconsistent descent record: last recorded tick "
+                + ticks[ticks.length - 1] + " lies after the tick " + coveredTick + " the run was read up to");
+        }
         if (maxId < 0 || maxId >= parents.length || maxId >= shades.length || roots.length != ticks.length
                 || limits.length != ticks.length) {
             throw new IllegalArgumentException("Inconsistent descent record: maxId " + maxId + ", "
@@ -96,6 +124,7 @@ final class DescentRecord {
         this.ticks = ticks;
         this.roots = roots;
         this.limits = limits;
+        this.coveredTick = coveredTick;
     }
 
     /**
@@ -175,6 +204,16 @@ final class DescentRecord {
     }
 
     /**
+     * The tick up to which the run was read. The run recorded no tick after {@link #lastTick()}
+     * and up to it, so the record serves every range that ends at or before it.
+     *
+     * @return The tick, {@link Long#MIN_VALUE} when none was read
+     */
+    long coveredTick() {
+        return coveredTick;
+    }
+
+    /**
      * The number of different roots over all recorded ticks.
      *
      * @return The count
@@ -202,7 +241,7 @@ final class DescentRecord {
                 data.writeInt(MAGIC);
                 data.writeInt(LAYOUT_VERSION);
                 data.writeUTF(runId);
-                data.writeLong(lastTick());
+                data.writeLong(coveredTick);
                 data.writeInt(maxId);
                 data.writeInt(ticks.length);
                 for (int id = 1; id <= maxId; id++) {
@@ -226,7 +265,7 @@ final class DescentRecord {
      *
      * @param file    The ancestry file
      * @param runId   The run it has to belong to
-     * @param endTick The tick its last recorded tick has to reach
+     * @param endTick The tick up to which it has to have read the run
      * @return The record it holds
      * @throws UnusableFileException if the file is not an ancestry file, has another layout
      *                               version, belongs to another run, ends before {@code endTick},
@@ -250,18 +289,18 @@ final class DescentRecord {
             if (!fileRunId.equals(runId)) {
                 throw new UnusableFileException("belongs to run " + fileRunId + ", not to run " + runId);
             }
-            final long lastTick = data.readLong();
-            if (lastTick < endTick) {
-                throw new UnusableFileException("covers the run up to tick " + lastTick
+            final long coveredTick = data.readLong();
+            if (coveredTick < endTick) {
+                throw new UnusableFileException("covers the run up to tick " + coveredTick
                     + " only, the rendered range ends at tick " + endTick);
             }
-            return readBody(data, lastTick);
+            return readBody(data, coveredTick);
         } catch (EOFException e) {
             throw new UnusableFileException("ends before the content its header announces");
         }
     }
 
-    private static DescentRecord readBody(final DataInputStream data, final long lastTick)
+    private static DescentRecord readBody(final DataInputStream data, final long coveredTick)
             throws UnusableFileException, IOException {
         final int maxId = data.readInt();
         final int count = data.readInt();
@@ -306,12 +345,11 @@ final class DescentRecord {
         if (data.read() >= 0) {
             throw new UnusableFileException("is damaged: it goes on after the content its header announces");
         }
-        final DescentRecord record = new DescentRecord(parents, shades, maxId, ticks, roots, limits);
-        if (record.lastTick() != lastTick) {
-            throw new UnusableFileException("is damaged: its header names tick " + lastTick
-                + " as the last, its content ends at tick " + record.lastTick());
+        if (count > 0 && ticks[count - 1] > coveredTick) {
+            throw new UnusableFileException("is damaged: its header says the run was read up to tick "
+                + coveredTick + ", its content ends at tick " + ticks[count - 1]);
         }
-        return record;
+        return new DescentRecord(parents, shades, maxId, ticks, roots, limits, coveredTick);
     }
 
     /**

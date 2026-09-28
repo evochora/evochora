@@ -340,7 +340,7 @@ public class DescentRenderer extends AbstractFrameRenderer {
         final DescentRecord record = ancestry == null
             ? scan(storage, batchPaths, endTick)
             : readOrWriteAncestry(ancestry.toPath(), storage, batchPaths, runId, endTick);
-        final DescentHistory history = DescentHistory.of(record, startTick, endTick);
+        final DescentHistory history = DescentHistory.of(record, startTick, endTick, samplingInterval > 1);
         this.prepared = Prepared.of(history, heldRoot, samplingInterval, unfolding, shiftPalette);
         this.legendPanel = newLegend();
     }
@@ -457,10 +457,12 @@ public class DescentRenderer extends AbstractFrameRenderer {
     /**
      * Draws the background, the organism glows and, with {@code --legend}, the legend of the state
      * applied last.
+     * <p>
+     * The engine renders every tick of a chunk that reaches into the range and writes only the
+     * frames within it. For a tick outside the prepared range the background alone is drawn.
      *
      * @return The pixel buffer of the frame.
-     * @throws IllegalStateException if no state was applied, {@link #prepare} has not run, or the
-     *                               tick was not read by it
+     * @throws IllegalStateException if no state was applied or {@link #prepare} has not run
      */
     @Override
     public int[] renderCurrentState() {
@@ -475,12 +477,14 @@ public class DescentRenderer extends AbstractFrameRenderer {
         final List<OrganismState> organisms = lastDelta != null
             ? lastDelta.getOrganismsList() : lastSnapshot.getOrganismsList();
 
-        final int index = prepared.history.indexOf(tick);
-        final Segment segment = prepared.segmentAt(index);
         background.renderTo(frameBuffer);
-        renderOrganismGlows(index, segment, organisms);
-        if (legendPanel != null) {
-            drawLegend(segment);
+        final int index = prepared.history.find(tick);
+        if (index >= 0) {
+            final Segment segment = prepared.segmentAt(index);
+            renderOrganismGlows(index, segment, organisms);
+            if (legendPanel != null) {
+                drawLegend(segment);
+            }
         }
 
         if (!calledFromTemplate) {
