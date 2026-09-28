@@ -31,6 +31,7 @@ async function initAppSwitcher() {
             getState: () => ({
                 tick: appController?.state?.currentTick,
                 organism: appController?.state?.selectedOrganismId,
+                root: appController?.state?.root,
                 runId: appController?.state?.runId
             }),
             footer: createWheelInputSwitch(mode => appController?.renderer?.interaction?.setWheelInputMode(mode))

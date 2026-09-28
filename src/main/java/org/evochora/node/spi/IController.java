@@ -15,4 +15,14 @@ public interface IController {
      * @param basePath The base path under which the controller's routes should be nested.
      */
     void registerRoutes(Javalin app, String basePath);
+
+    /**
+     * Releases what the controller holds beyond the lifetime of a request, such as threads or
+     * caches. Called once, after the HTTP server has stopped and before the resources the
+     * controller reads from are closed, so no request is running any more.
+     * <p>
+     * The default holds nothing and does nothing.
+     */
+    default void close() {
+    }
 }

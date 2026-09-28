@@ -14,11 +14,6 @@ parent's genome unchanged. Most of what earlier sessions found by accident (a li
 population shares, a class of children that never reproduces, variation the mutation plugins did
 not produce) shows in that table without being looked for.
 
-A current run needs nothing but the exports and the queries in this text. `scripts/sweep.py` is
-**temporary tooling for older runs only** — it reconstructs from organism snapshots what those runs
-have no export for, it sits on the snapshot JSON shape, which has changed before, and it is not
-part of the tested system. It disappears when those runs are no longer analyzed.
-
 ## 0 · Orientation (always first)
 
 1. Find the run: `<dataBaseDir>/storage/<runId>/` (raw + analytics) and the config that produced it
@@ -54,22 +49,18 @@ organism forking non-viable children than anything biological. The `death_lifeti
 it in one look: `death_lifetime_p10`, `p50` and `p90` collapsing onto a single constant value means
 many organisms dying at exactly the same age, which nothing biological does. `death_count` says how
 many deaths are behind the percentiles. The lifetimes are exact — the metric reads the death tick
-the simulation recorded, not the tick at which the corpse was observed. Runs whose analytics predate
-the metric need the fallback below.
+the simulation recorded, not the tick at which the corpse was observed.
 
 Scan for: population phases and crashes; birth-rate steps (see above); `genome_diversity.shannon_index` and `dominant_share` trends;
 `environment_composition` (see below); `age_distribution.p50` (turnover); `instruction_usage`
 failure rates. `generation_depth` is read from each organism and is therefore correct across
-indexer restarts; a drop to near zero in an older run is the restart artifact of #112, not biology.
+indexer restarts.
 
 **Environment composition counts every cell**, so all eleven columns are exact — including the small
 ones. `energy_cells` rising means the population cannot consume the input, falling means the world
 is being eaten empty. `structure_cells`, `label_cells` and `register_cells` are small fractions of
 a large world and are usable in absolute numbers: a step in them marks a change in what the
-organisms build, not sampling noise. Runs indexed before the counting was made exact carry
-Monte-Carlo estimates instead (1000 cells sampled and scaled), where anything below roughly a
-percent of the world was indistinguishable from zero — do not compare those numbers with exact
-ones, and do not read small categories out of them at all.
+organisms build, not sampling noise.
 
 **A selective sweep is invisible in every aggregate curve.** Do not stop here.
 
@@ -276,12 +267,6 @@ genealogy, not selection.
 (`0-9a-zA-Z`) of its *unsigned* 64-bit hash — the chart legends, the analysis scripts. Compute it
 the same way and a band in the Analyzer and a row in a notebook are recognisably the same genome.
 
-**Fallback for runs without the metric.** Older runs need the node: fetch organism snapshots
-(`/visualizer/api/organisms/{tick}`) on a grid of 10–15 sampled ticks, cache them as JSON, and
-merge the `genomeAncestors` field (`genomeLineageTree` on pre-#103 builds) into one tree
-(`scripts/sweep.py: build_tree` handles both names). Query strictly serially; a snapshot can cost
-~30 s on a multi-million-organism index.
-
 **Before starting a node, check what is already running** — two nodes on the same data directory
 collide on the H2 file lock:
 
@@ -350,25 +335,7 @@ field `resolved_config_json`, at `runtime.organism.genome-exclude`. Each entry i
 name, which excludes every molecule of that type, or `TYPE:VALUE`, which excludes only that value of
 it; the default is `["STATE", "STRUCTURE:100"]` (the organism's own working memory, and the
 structural shell the primordial program builds around itself). A body diff must drop exactly those
-molecules, nothing more and nothing less. A run from before the STATE type has no STATE cells at
-all: its state slots are DATA, its genome hash excluded every DATA cell, and its body diffs must
-drop DATA instead. Decide it before diffing — the `moleculeTypes` map of the run metadata lists
-STATE, and `environment_composition` carries a `state_cells` column.
-
-### Older runs: the environment strip and protoc
-
-Runs recorded before the chunk format gained its delta directory cannot be read by a current
-build at all — they need a build of their own epoch, which has neither the body endpoint nor a
-JSON format. For those runs body forensics goes the old way:
-
-- Organism detail → `staticInfo.initialPosition`, then an environment strip around it
-  (`/visualizer/api/environment/{tick}?region=x1,x2,y1,y2`; the primordial body fits
-  x0−2…x0+112, y0−2…y0+87). The strip contains the neighbours' cells too — filter by `ownerId`.
-- That endpoint answers protobuf only. Decode with
-  `protoc --decode=org.evochora.datapipeline.api.contracts.EnvironmentHttpResponse
-  -I src/main/proto src/main/proto/org/evochora/datapipeline/api/contracts/http_api_contracts.proto`
-  and parse cell blocks tolerantly: protobuf omits fields holding their default value, so a cell
-  with `owner_id` 0 carries no `owner_id` line at all.
+molecules, nothing more and nothing less.
 
 ## 3b · Recipes for questions a run raises
 
@@ -484,8 +451,6 @@ assay described in `docs/proposals/ideas/MUTATIONAL_ROBUSTNESS_ASSAY.md`.
 - `node run` without `autoStart=false` resumes and ADVANCES the run.
 - Organism snapshots can cost ~30 s each on multi-million-organism indexes; requests must be
   serial; environment chunks need ≥8 GB heap.
-- Old runs (pre-#103 proto renumbering) are unreadable by current builds — serve them with the
-  build that wrote them.
 - One organism per parent when sampling bodies (siblings bias the sample).
 - Batch chunks carry their first recording in `snapshot`, not in `deltas` (step 1b).
 - The H2 index file is locked by a running node; the H2 shell then fails or, worse, the node
@@ -502,16 +467,3 @@ assay described in `docs/proposals/ideas/MUTATIONAL_ROBUSTNESS_ASSAY.md`.
   differs from its parent in every label.
 - Empty cells (`CODE:0`) are unowned and absent from a body; inserted or duplicated code therefore
   appears as *new* cells, a deletion as *missing* cells.
-
-## Fallbacks for runs without the newer metrics
-
-- No `death_lifetimes`: fetch organism snapshots for a few ticks in the suspect window and build the
-  lifetime histogram by hand from `deathTick − birthTick` of the entries marked dead. Expensive and
-  it only sees the deaths of the sampled ticks, which is exactly why the metric exists.
-- No `mutation_events`, `mutation_summary`, `variation_sources`: what a mutation did has to be
-  reconstructed by diffing the child's body against the parent's (step 3), and births outside the
-  plugins are found by the ≥ 5-children heuristic of step 1b.
-- No `population.bodied_count`: sum the per-genome counts in `genome.genome_data`, the JSON column
-  older runs carry instead of the `genome_population` table. It holds the top genomes plus an
-  `other` bucket, and the plugin that wrote it skipped hash-0 organisms, so the sum is the same
-  quantity.

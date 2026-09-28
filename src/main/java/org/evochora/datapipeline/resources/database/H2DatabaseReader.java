@@ -4,15 +4,13 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Deque;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 import com.google.protobuf.InvalidProtocolBufferException;
+
+import it.unimi.dsi.fastutil.ints.IntArrayList;
 
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.StoredMutationEvents;
@@ -28,6 +26,7 @@ import org.evochora.datapipeline.api.resources.database.dto.OrganismRuntimeView;
 import org.evochora.datapipeline.api.resources.database.dto.OrganismStaticInfo;
 import org.evochora.datapipeline.api.resources.database.dto.OrganismTickDetails;
 import org.evochora.datapipeline.api.resources.database.dto.OrganismTickSummary;
+import org.evochora.datapipeline.api.resources.database.dto.ParentRows;
 import org.evochora.datapipeline.resources.database.h2.IH2EnvStorageStrategy;
 import org.evochora.datapipeline.resources.database.h2.IH2OrgStorageStrategy;
 import org.evochora.datapipeline.utils.MetadataConfigHelper;
@@ -173,68 +172,45 @@ public class H2DatabaseReader implements IDatabaseReader {
     /**
      * {@inheritDoc}
      * <p>
-     * Queries the {@code organisms} static table directly, one step of the walk per statement.
-     * The step selects the lowest-id carrier of a genome whose parent carries a different genome,
-     * which the {@code (genome_hash, organism_id)} index turns into a seek.
-     * <p>
-     * The walk is driven by the result map itself: a genome already present is not visited again,
-     * so it terminates on any input.
+     * One statement on the primary key of {@code organisms}. Keyset paging with {@code LIMIT}
+     * reads the same on H2, PostgreSQL and SQLite; H2 materializes a result set completely unless
+     * lazy execution is on, which the limit keeps to one page.
      * <p>
      * Not thread-safe — each {@link H2DatabaseReader} instance holds a dedicated connection
      * and must not be shared across threads.
      */
     @Override
-    public Map<Long, Long> readGenomeAncestors(Collection<Long> genomeHashes) throws SQLException {
+    public ParentRows readParents(int afterId, int limit) throws SQLException {
         ensureNotClosed();
 
-        // Each organism carries the genome its parent had, recorded at birth, so finding the
-        // organism in which a genome first arose is a lookup rather than a walk over parent ids:
-        // it is the one whose parent carried a different genome.
+        if (afterId < 0) {
+            throw new IllegalArgumentException("afterId must be non-negative");
+        }
+        if (limit <= 0) {
+            throw new IllegalArgumentException("limit must be positive");
+        }
+
         String sql = """
-            SELECT parent_genome_hash
+            SELECT organism_id, COALESCE(parent_id, 0) AS parent_id
             FROM organisms
-            WHERE genome_hash = ? AND genome_hash != 0
-              AND (parent_genome_hash IS NULL OR parent_genome_hash != genome_hash)
+            WHERE organism_id > ?
             ORDER BY organism_id
-            LIMIT 1
+            LIMIT ?
             """;
 
-        Map<Long, Long> ancestors = new LinkedHashMap<>();
-        Deque<Long> pending = new ArrayDeque<>();
-        for (Long genomeHash : genomeHashes) {
-            if (genomeHash != null && genomeHash != 0L) {
-                pending.add(genomeHash);
-            }
-        }
-
+        IntArrayList ids = new IntArrayList();
+        IntArrayList parents = new IntArrayList();
         try (PreparedStatement stmt = connection.prepareStatement(sql)) {
-            while (!pending.isEmpty()) {
-                long genomeHash = pending.poll();
-                if (ancestors.containsKey(genomeHash)) continue;
-
-                stmt.setLong(1, genomeHash);
-                Long parentGenomeHash = null;
-                boolean occurs;
-                try (ResultSet rs = stmt.executeQuery()) {
-                    occurs = rs.next();
-                    if (occurs) {
-                        // NULL means the organism had no parent at all, 0 means its parent carried
-                        // no genome. Neither is a node of the lineage, so both end the walk here.
-                        long parent = rs.getLong("parent_genome_hash");
-                        if (!rs.wasNull() && parent != 0L) {
-                            parentGenomeHash = parent;
-                        }
-                    }
-                }
-                if (!occurs) continue;   // genome does not occur in this run: no entry
-
-                ancestors.put(genomeHash, parentGenomeHash);
-                if (parentGenomeHash != null && !ancestors.containsKey(parentGenomeHash)) {
-                    pending.add(parentGenomeHash);
+            stmt.setInt(1, afterId);
+            stmt.setInt(2, limit);
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    ids.add(rs.getInt(1));
+                    parents.add(rs.getInt(2));
                 }
             }
         }
-        return ancestors;
+        return new ParentRows(ids.toIntArray(), parents.toIntArray());
     }
 
     /**

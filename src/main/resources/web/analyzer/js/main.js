@@ -51,11 +51,13 @@ function initAppSwitcher() {
         return;
     }
     
+    // The visualizer's state is kept in the URL and handed back unchanged when switching to it
     function getAppState() {
         const params = new URLSearchParams(window.location.search);
         return {
             tick: params.get('tick'),
             organism: params.get('organism'),
+            root: params.get('root'),
             runId: params.get('runId')
         };
     }

@@ -1,4 +1,4 @@
-package org.evochora.cli.rendering.frame;
+package org.evochora.cli.rendering.frame.shared;
 
 import org.evochora.datapipeline.api.contracts.CellDataColumns;
 import org.evochora.runtime.Config;

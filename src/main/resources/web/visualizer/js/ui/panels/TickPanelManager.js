@@ -1,6 +1,6 @@
 import { TimelineLoadingOverlay } from '../TimelineLoadingOverlay.js';
 import * as TickGrid from '../../TickGrid.js';
-import { bindTickField, formatTick, groupDigits, parseTick } from '../../../../shared/tick/TickText.js';
+import { bindTickField, formatTick, groupDigits, parseTick, SPACE_GROUP, ungroupDigits } from '../../../../shared/tick/TickText.js';
 import { isTextEntry } from '../../../../shared/input/EditableTarget.js';
 
 /**
@@ -37,6 +37,7 @@ export class TickPanelManager {
      * @param {HTMLElement} options.trackContainer - The timeline track container
      * @param {HTMLCanvasElement} options.trackCanvas - The timeline canvas element
      * @param {HTMLElement} options.tooltip - The hover tooltip element
+     * @param {HTMLElement} [options.rootMark] - The mark at the birth tick of the root of descent
      * @param {HTMLElement} options.multiplierInput - Input field for step multiplier
      * @param {HTMLElement} options.multiplierWrapper - Wrapper for multiplier (for visibility)
      * @param {HTMLElement} options.multiplierSuffix - Element showing "x1" etc.
@@ -54,6 +55,7 @@ export class TickPanelManager {
         trackContainer,
         trackCanvas,
         tooltip,
+        rootMark,
         multiplierInput,
         multiplierWrapper,
         multiplierSuffix,
@@ -71,6 +73,7 @@ export class TickPanelManager {
             trackContainer,
             trackCanvas,
             tooltip,
+            rootMark,
             multiplierInput,
             multiplierWrapper,
             multiplierSuffix
@@ -90,6 +93,10 @@ export class TickPanelManager {
 
         // Timeline hover state
         this._hoverTick = null;
+
+        // Birth tick of the root of descent, null for the virtual root or while it is not known
+        this._rootBirthTick = null;
+        this._rootMarkLeft = null;
 
         // Loading overlay state
         this._loadingOverlay = new TimelineLoadingOverlay();
@@ -119,7 +126,18 @@ export class TickPanelManager {
         });
         tickInput?.addEventListener('change', () => this.handleTickInputChange());
         tickInput?.addEventListener('click', () => tickInput.select());
-        if (tickInput) bindTickField(tickInput);
+        if (tickInput) {
+            bindTickField(tickInput, { group: SPACE_GROUP });
+            // The spaces group the digits for the eye only: a copied tick carries its digits
+            const copyDigits = (e) => {
+                const selected = tickInput.value.slice(tickInput.selectionStart, tickInput.selectionEnd);
+                if (!selected || !e.clipboardData) return;
+                e.clipboardData.setData('text/plain', ungroupDigits(selected));
+                e.preventDefault();
+            };
+            tickInput.addEventListener('copy', copyDigits);
+            tickInput.addEventListener('cut', copyDigits);
+        }
 
         // Multiplier input events
         multiplierInput?.addEventListener('change', () => this.handleMultiplierChange());
@@ -203,6 +221,8 @@ export class TickPanelManager {
         const ctx = this._ctx;
         if (!ctx) return;
 
+        this._placeRootMark();
+
         const w = this._canvasWidth || 0;
         const h = this._canvasHeight || 0;
         if (w === 0 || h === 0) return;
@@ -261,6 +281,45 @@ export class TickPanelManager {
     }
 
     /**
+     * Sets the tick the root of descent was born at and places its mark on the track.
+     * @param {number|null} birthTick - The root's birth tick; null hides the mark, as for the
+     *     virtual root above the founders.
+     */
+    setRootBirthTick(birthTick) {
+        this._rootBirthTick = (typeof birthTick === 'number') ? birthTick : null;
+        this._placeRootMark();
+    }
+
+    /**
+     * Places the root mark at the root's birth tick on the track, or hides it when there is no
+     * root, no recorded tick, or the birth lies outside the recorded ticks.
+     * @private
+     */
+    _placeRootMark() {
+        const { rootMark } = this.elements;
+        if (!rootMark) return;
+
+        const ranges = this.getState().ranges || [];
+        const first = TickGrid.firstTick(ranges);
+        const last = TickGrid.lastTick(ranges);
+        const tick = this._rootBirthTick;
+        const visible = tick !== null && first !== null && tick >= first && tick <= last
+            && (this._canvasWidth || 0) > 0;
+        if (!visible) {
+            rootMark.hidden = true;
+            this._rootMarkLeft = null;
+            return;
+        }
+
+        const left = Math.round(this._tickToPosition(tick)) - 1;
+        if (left !== this._rootMarkLeft) {
+            rootMark.style.left = `${left}px`;
+            this._rootMarkLeft = left;
+        }
+        rootMark.hidden = false;
+    }
+
+    /**
      * Draws the scale of the track: a mark every round step, its tick centred above it where it
      * fits. The step
      * is the 1-2-5 step that puts the marks about 90 pixels apart, whatever the length of the run.
@@ -310,11 +369,12 @@ export class TickPanelManager {
         this._hoverTick = snapped;
         this._renderTimeline();
 
-        // Position and show tooltip
+        // The tooltip is a child of the body, above every panel: placed in window coordinates
         if (tooltip) {
             const snappedX = this._tickToPosition(snapped);
-            tooltip.textContent = groupDigits(snapped);
-            tooltip.style.left = `${snappedX}px`;
+            tooltip.textContent = groupDigits(snapped, SPACE_GROUP);
+            tooltip.style.left = `${rect.left + snappedX}px`;
+            tooltip.style.top = `${rect.top}px`;
             tooltip.classList.add('visible');
         }
     }
@@ -569,7 +629,7 @@ export class TickPanelManager {
     showCurrentTick() {
         const { tickInput } = this.elements;
         if (!tickInput) return;
-        tickInput.value = groupDigits(this.getState().currentTick || 0);
+        tickInput.value = groupDigits(this.getState().currentTick || 0, SPACE_GROUP);
         tickInput.classList.remove('invalid');
     }
 
@@ -780,7 +840,7 @@ export class TickPanelManager {
         const { tickInput, tickSuffix } = this.elements;
 
         if (tickInput) {
-            tickInput.value = groupDigits(currentTick || 0);
+            tickInput.value = groupDigits(currentTick || 0, SPACE_GROUP);
             tickInput.classList.remove('invalid');
         }
 

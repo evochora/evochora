@@ -229,6 +229,8 @@ Available renderers:
 - `video minimap` — aggregated overview matching the web visualizer's minimap style
 - `video lineage` — organism glows colored by genome lineage; with `--clade` restricted to
   clade membership (given clades in distinct hues, everything else gray)
+- `video descent` — organism glows colored by line of descent below the youngest common ancestor
+  of the living; with `--root` below one organism for the whole video
 - `video density` — instruction-pointer density heatmap
 
 ```bash

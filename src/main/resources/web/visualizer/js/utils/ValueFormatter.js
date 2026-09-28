@@ -103,6 +103,31 @@ export class ValueFormatter {
     }
 
     /**
+     * Writes a whole number as HTML whose groups of three digits stand apart by a narrow gap.
+     * <p>
+     * Every group is an element of the class `num-group`; the gap is the style's margin between
+     * two groups, not a character, so that a copied number carries its digits only.
+     *
+     * @param {number|string} value - A whole number, or its digits, with an optional leading minus.
+     * @returns {string} The HTML of the number; the value as text when it is not a whole number.
+     */
+    static formatGroupedHtml(value) {
+        const text = String(value);
+        const match = /^(-?)([0-9]+)$/.exec(text);
+        if (!match) {
+            return text.replace(/[&<>"']/g, (c) => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+            })[c]);
+        }
+        const digits = match[2];
+        const groups = [];
+        for (let end = digits.length; end > 0; end -= 3) {
+            groups.unshift(digits.slice(Math.max(0, end - 3), end));
+        }
+        return match[1] + groups.map(group => `<span class="num-group">${group}</span>`).join('');
+    }
+
+    /**
      * Converts a DV vector into a Unicode arrow symbol for display.
      * @param {number[]} dv - The direction vector, e.g., [1, 0].
      * @returns {string} A string containing the arrow symbol ('→', '←', '↑', '↓') or 'x' for non-cardinal vectors.

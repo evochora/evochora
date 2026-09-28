@@ -46,7 +46,7 @@ public class InfoOverlayRenderer implements IOverlayRenderer {
      * Creates a new info overlay renderer.
      */
     public InfoOverlayRenderer() {
-        this.numberFormat = NumberFormat.getNumberInstance(Locale.GERMAN); // Uses . as thousands separator
+        this.numberFormat = NumberFormat.getNumberInstance(Locale.US); // Groups with a comma
     }
 
     @Override
@@ -78,24 +78,25 @@ public class InfoOverlayRenderer implements IOverlayRenderer {
     }
 
     /**
-     * Formats a number with appropriate notation.
+     * Formats a number with appropriate notation, the same on every machine: the signs are those
+     * of {@link Locale#US}, whatever the locale of the machine that renders.
      * <ul>
-     *   <li>Under 1,000,000: Full number with thousands separator (1.234.567)</li>
-     *   <li>1M+: Short form (1.2M)</li>
+     *   <li>Under 1,000,000: Full number with thousands separator (123,456)</li>
+     *   <li>1M+: Short form (1.23M, 12.3M, 123M)</li>
      * </ul>
      *
      * @param value The number to format.
      * @return Formatted string.
      */
-    private String formatNumber(long value) {
+    String formatNumber(long value) {
         if (value >= 1_000_000) {
             double millions = value / 1_000_000.0;
             if (millions >= 100) {
-                return String.format("%.0fM", millions);
+                return String.format(Locale.US, "%.0fM", millions);
             } else if (millions >= 10) {
-                return String.format("%.1fM", millions);
+                return String.format(Locale.US, "%.1fM", millions);
             } else {
-                return String.format("%.2fM", millions);
+                return String.format(Locale.US, "%.2fM", millions);
             }
         }
         return numberFormat.format(value);
