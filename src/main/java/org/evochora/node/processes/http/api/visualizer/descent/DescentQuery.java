@@ -301,12 +301,18 @@ public final class DescentQuery {
      * <p>
      * An entry of the same version is returned as it is. An entry of the same gap-fill count
      * that still holds its attribution array is extended by the ids the snapshot adds. Anything
-     * else is counted from scratch. An entry replaces the cached one only when it is newer.
+     * else is counted from scratch. An entry replaces the cached one only when it is newer: a
+     * snapshot older than the cached entry is counted for itself and leaves the cache as it is,
+     * so that the sizes of an answer belong to the snapshot the rest of the answer is made from.
      */
     synchronized LineSizes sizesOf(final AncestryIndex.Snapshot snapshot, final int root) {
         final RootSizes cached = sizeCache.get(root);
-        if (cached != null && cached.result.version() >= snapshot.version()) {
+        if (cached != null && cached.result.version() == snapshot.version()) {
             return cached.result;
+        }
+        if (cached != null && cached.result.version() > snapshot.version()) {
+            fullCounts++;
+            return RootSizes.count(snapshot, root).result;
         }
         final RootSizes updated;
         if (cached != null && cached.count != null && cached.gapFills == snapshot.gapFills()) {

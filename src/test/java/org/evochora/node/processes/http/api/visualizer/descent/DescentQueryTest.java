@@ -360,6 +360,31 @@ class DescentQueryTest {
     }
 
     @Test
+    void anAnswerFromAnOlderViewCountsItsOwnSnapshotAlthoughTheCacheIsNewer() throws Exception {
+        // 1 is the root, 2 its only descendant so far
+        final FakeRun grown = new FakeRun().with(1, 0, 2, 1);
+        final DescentQuery q = grown.indexes(3).forRun(FakeRun.RUN_ID);
+        q.view(2);
+        grown.executor.runAll();
+        final DescentQuery.View older = q.view(2);
+
+        grown.with(3, 2, 4, 3, 5, 4, 6, 5, 7, 6, 8, 7, 9, 8, 10, 9);
+        q.view(10);
+        grown.executor.runAll();
+        final DescentDto newerAnswer = FakeRun.describe(q.view(10), RootRequest.parse("1"),
+            FakeRun.tick(new int[]{10}), grown.reader);
+        assertThat(newerAnswer.root().descendants()).isEqualTo(9L);
+
+        final DescentDto olderAnswer = FakeRun.describe(older, RootRequest.parse("1"),
+            FakeRun.tick(new int[]{2}), grown.reader);
+
+        assertThat(olderAnswer.organismsInRun()).isEqualTo(2);
+        assertThat(olderAnswer.root().descendants()).isEqualTo(1L);
+        assertThat(FakeRun.describe(q.view(10), RootRequest.parse("1"), FakeRun.tick(new int[]{10}), grown.reader)
+            .root().descendants()).as("the cache still holds the newer sizes").isEqualTo(9L);
+    }
+
+    @Test
     void onlyTheEightLargestLinesGetARank() throws Exception {
         final FakeRun wide = new FakeRun().with(1, 0);
         for (int child = 2; child <= 13; child++) {
