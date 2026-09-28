@@ -328,9 +328,9 @@ class EnvironmentControllerIntegrationTest {
 
     @Test
     void minimap_sizeFollowsTheParameter() throws Exception {
-        // Given: A 40x30 world with one tick
+        // Given: A 600x450 world with one tick, larger than the default minimap and smaller than 900
         String runId = "test-run-" + UUID.randomUUID();
-        indexMetadata(runId, createMetadata(runId, new int[]{40, 30}, false));
+        indexMetadata(runId, createMetadata(runId, new int[]{600, 450}, false));
         writeBatchAndNotify(runId, List.of(
             TickData.newBuilder()
                 .setTickNumber(1L)
@@ -362,13 +362,13 @@ class EnvironmentControllerIntegrationTest {
         EnvironmentHttpResponse byDefault = requestMinimap(app.port(), runId, "minimap");
         EnvironmentHttpResponse sized = requestMinimap(app.port(), runId, "minimap=900");
 
-        // Then: a minimap is never larger than the world, so the default and 900 are both capped
-        // at 40x30, the aspect ratio stays 4:3
-        assertThat(byDefault.getMinimap().getWidth()).isEqualTo(40);
-        assertThat(byDefault.getMinimap().getHeight()).isEqualTo(30);
-        assertThat(sized.getMinimap().getWidth()).isEqualTo(40);
-        assertThat(sized.getMinimap().getHeight()).isEqualTo(30);
-        assertThat(sized.getMinimap().getCellTypes().size()).isEqualTo(40 * 30);
+        // Then: the default is 300 pixels on the longer edge; 900 is followed as far as the world
+        // goes, a minimap is never larger than the world; the aspect ratio stays 4:3
+        assertThat(byDefault.getMinimap().getWidth()).isEqualTo(300);
+        assertThat(byDefault.getMinimap().getHeight()).isEqualTo(225);
+        assertThat(sized.getMinimap().getWidth()).isEqualTo(600);
+        assertThat(sized.getMinimap().getHeight()).isEqualTo(450);
+        assertThat(sized.getMinimap().getCellTypes().size()).isEqualTo(600 * 450);
     }
 
     /**
