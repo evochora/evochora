@@ -48,6 +48,9 @@ public class VideoRenderEngine {
     private final VideoRenderOptions options;
     private final IVideoFrameRenderer frameRenderer;
 
+    /** Interval at which the run recorded its ticks, read from the run's metadata. */
+    private int recordingInterval = 1;
+
     /**
      * Container formats this command writes. mp4 and webm select their own encoder arguments;
      * the others are written with the default encoder and ffmpeg derives the container from the
@@ -323,10 +326,6 @@ public class VideoRenderEngine {
      */
     private boolean shouldProcessBatch(StoragePath batchPath, long effectiveStartTick,
                                        long effectiveEndTick, int samplingInterval) {
-        if (samplingInterval == 1) {
-            return true; // Process all batches when not sampling
-        }
-
         // Parse tick range from filename (e.g., "batch_0_99.pb")
         String filename = batchPath.asString();
         int batchIdx = filename.lastIndexOf("/batch_");
@@ -747,6 +746,7 @@ public class VideoRenderEngine {
 
         SimulationMetadata metadata = storage.readMessage(metaPath.get(), SimulationMetadata.parser());
         BuildRevisionCheck.warnIfWrittenByAnotherBuild(metadata, LOGGER);
+        recordingInterval = MetadataConfigHelper.getSamplingInterval(metadata);
         EnvironmentProperties envProps = new EnvironmentProperties(
             MetadataConfigHelper.getEnvironmentShape(metadata),
             MetadataConfigHelper.isEnvironmentToroidal(metadata));
@@ -830,6 +830,14 @@ public class VideoRenderEngine {
         return new BatchScanResult(paths, minTick, maxTick);
     }
 
+    /**
+     * Works out how many frames the video will have, from the tick range the batch files cover.
+     * <p>
+     * Without sampling every recorded tick becomes a frame, and the run records only every
+     * {@link #recordingInterval}-th tick. With sampling every sample tick inside a recorded chunk
+     * becomes a frame, so the count can be too high by the sample ticks that fall between the
+     * last recorded tick of one chunk and the first of the next.
+     */
     private long calculateTotalFrames(BatchScanResult scan, long effectiveStart, long effectiveEnd) {
         if (scan.maxTick < 0) return 0;
 
@@ -837,10 +845,11 @@ public class VideoRenderEngine {
         long actualMax = Math.min(scan.maxTick, effectiveEnd);
         if (actualMax < actualMin) return 0;
 
-        long firstRenderable = ceilToMultiple(actualMin, options.samplingInterval);
+        int frameStep = options.samplingInterval == 1 ? recordingInterval : options.samplingInterval;
+        long firstRenderable = ceilToMultiple(actualMin, frameStep);
         if (firstRenderable > actualMax) return 0;
 
-        return ((actualMax - firstRenderable) / options.samplingInterval) + 1;
+        return ((actualMax - firstRenderable) / frameStep) + 1;
     }
 
     // ─────────────────────────────────────────────────────────────────────────────
