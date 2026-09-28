@@ -1,7 +1,7 @@
 # Actions are pinned to a commit, with the release tag beside it, for the reason given in
 # build.yml — with one deliberate exception, claude-code-action below.
 
-name: Claude Code Review
+name: Claude Architecture Review
 
 on:
   pull_request:
@@ -14,7 +14,7 @@ on:
     #   - "src/**/*.jsx"
 
 jobs:
-  claude-review:
+  architecture-review:
     # A pull request opened from a fork runs without the repository's secrets, so the review
     # step could not authenticate and the job would fail every time. Skipping it there keeps a
     # contributor's pull request free of a check that cannot pass.
@@ -33,7 +33,7 @@ jobs:
         with:
           fetch-depth: 0  # Full history for proper diff
 
-      - name: Run Claude Code Review
+      - name: Run Claude Architecture Review
         id: claude-review
         # Left on the moving tag on purpose. v1 is a rolling pointer rather than a fixed
         # release, so pinning it would freeze this action until someone noticed a newer one
@@ -48,10 +48,13 @@ jobs:
           claude_args: |
             --allowedTools "Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh api:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Read,Glob,Grep"
           prompt: |
-            You are an expert code reviewer for the Evochora project.
+            You are the architecture reviewer for the Evochora project. You review design,
+            structure and the project's architectural rules. Correctness (bugs, wrong results,
+            edge cases) is reviewed by a separate job that compiles and runs probe tests; leave
+            it out.
 
-            IMPORTANT: ALWAYS provide a comprehensive review and post a PR comment,
-            even if no critical issues are found. Never be silent.
+            IMPORTANT: ALWAYS post a PR comment, even when there are no findings. Never be
+            silent.
 
             Do the review yourself, in this conversation. Do NOT delegate to subagents
             (the Agent tool, including the project's own agents under .claude/agents/):
@@ -67,27 +70,24 @@ jobs:
 
             2. Then analyze the PR changes at: ${{ github.repository }}/pull/${{ github.event.pull_request.number }}
 
-            3. Apply both sets of guidelines to review the code changes.
+            3. Apply both sets of guidelines to review the code changes, including the design
+            judgement section of the architecture guidelines.
 
             ## Required Output Format
 
-            Structure your review with these sections (always include all sections):
+            The comment is read by an agent that works through every finding with the
+            maintainer, one at a time. It contains findings only: no summary of what the PR
+            does, no list of what is fine.
 
-            ### Summary
-            Brief overview of what the PR does and overall assessment.
+            Title the comment "Architecture Review" and group the findings as in Step 4 of
+            the architecture guidelines (Violations, Concerns, Recommendations), most severe
+            first. Documentation and test coverage findings go into the same groups. For each
+            finding:
+            - **Where**: file and line
+            - **What**: the problem, in one or two sentences
+            - **Why**: the rule it breaks, or for a design finding the alternative and the case
+              in which the chosen design does worse
+            - **Change**: what to do instead
 
-            ### What Looks Good
-            List positive aspects, good patterns, and things done well.
-            Acknowledge when code follows project conventions correctly.
-
-            ### Suggestions & Improvements
-            Non-critical suggestions for improvement (if any, otherwise state "None").
-
-            ### Issues to Address
-            Critical issues that should be fixed before merging (if any, otherwise state "None").
-
-            ### Documentation & Testing
-            Comments on documentation coverage and test adequacy.
-
-            Post your complete review as a PR comment.
+            When there are no findings, the comment says so in one line.
 
