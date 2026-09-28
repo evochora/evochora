@@ -1,0 +1,97 @@
+# Actions are pinned to a commit, with the release tag beside it, for the reason given in
+# build.yml — with one deliberate exception, claude-code-action below.
+
+name: Claude Correctness Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review, reopened]
+    # A change to text alone has nothing to compile or test.
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
+      - ".agents/**"
+      - ".claude/**"
+
+jobs:
+  correctness-review:
+    # A pull request opened from a fork runs without the repository's secrets, so the review
+    # step could not authenticate and the job would fail every time. Skipping it there keeps a
+    # contributor's pull request free of a check that cannot pass. It also keeps code from
+    # outside the repository from being compiled and run by this job.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0  # Full history for proper diff
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: 'gradle'
+
+      - name: Run Claude Correctness Review
+        id: claude-review
+        # Left on the moving tag for the reason given in claude-code-review.yml.
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          show_full_output: true
+          # Gradle only compiles and runs tests: no `run`, no `build`, no `check`, which would
+          # repeat what build.yml already does. Write and Edit exist for the probe tests; nothing
+          # the job writes is committed, since it has no git command that could commit or push.
+          claude_args: |
+            --allowedTools "Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh api:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(./gradlew compileJava:*),Bash(./gradlew compileTestJava:*),Bash(./gradlew test --tests:*),Read,Write,Edit,Glob,Grep"
+          prompt: |
+            You review pull request ${{ github.repository }}/pull/${{ github.event.pull_request.number }}
+            of the Evochora project for correctness: bugs, wrong results, broken edge cases,
+            races, resource leaks, silent failures. Architecture, design and documentation are
+            reviewed by a separate job; leave them out entirely.
+
+            Do the review yourself, in this conversation. Do NOT delegate to subagents: this job
+            ends when your turn ends, and a review left with a background agent is never posted.
+
+            ## How to work
+
+            1. Read the testing section of AGENTS.md, then the diff (`gh pr diff`) and as much of
+               the surrounding code as a suspicion needs.
+            2. Collect suspected defects. Drop any you cannot tie to a concrete input or state.
+            3. Confirm suspicions with probes: a short JUnit 5 test under src/test/java, tagged
+               like the tests around it, that fails if the defect exists. Run it with
+               `./gradlew test --tests <fully.qualified.ProbeTest>`. Write a probe only with a
+               clear expectation of its outcome.
+            4. Match the depth to the pull request. A small, contained change gets a careful
+               read and a probe only where a suspicion is real; it may need none. A large change,
+               or one in the simulation runtime, the persisted data or concurrent code, deserves
+               a deeper look and as many probes as its risks call for. The first Gradle call
+               compiles the project and takes a few minutes; every probe costs time and tokens,
+               so each one has to earn them.
+            5. Existing tests are run by the build workflow; do not run the suite or a module's
+               tests to "see if anything breaks".
+            6. A finding that could not be probed is still reported, marked as unconfirmed.
+
+            ## Comment format
+
+            The comment is read by an agent that works through every finding with the
+            maintainer, one at a time. It contains findings only: no summary of the PR, no list
+            of what is fine.
+
+            Post one PR comment (`gh pr comment`) titled "Correctness Review". For each finding:
+            - **Status**: Confirmed by probe / Unconfirmed
+            - **Where**: file and line
+            - **What goes wrong**: the concrete input or state and the wrong outcome
+            - **Probe**: for a confirmed finding, the probe test's code and its failure message
+
+            Order findings by severity. When there are none, say so in one line and name what
+            was probed. Never be silent: always post the comment.
