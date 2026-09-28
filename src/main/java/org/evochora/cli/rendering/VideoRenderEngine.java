@@ -51,6 +51,9 @@ public class VideoRenderEngine {
     /** Interval at which the run recorded its ticks, read from the run's metadata. */
     private int recordingInterval = 1;
 
+    /** Number of recorded ticks a chunk of the run holds, read from the run's metadata. */
+    private int recordedTicksPerChunk = 1;
+
     /**
      * Container formats this command writes. mp4 and webm select their own encoder arguments;
      * the others are written with the default encoder and ffmpeg derives the container from the
@@ -90,6 +93,7 @@ public class VideoRenderEngine {
      */
     public Integer execute() throws Exception {
         if (!optionsAreValid()) return 1;
+        keepCoresFree();
 
         // Load configuration
         Config config = loadConfig();
@@ -312,6 +316,34 @@ public class VideoRenderEngine {
         return startIdx;
     }
 
+    /**
+     * Lowers the number of threads to what the machine has to spare: one core stays free on a
+     * machine with two or three cores, two stay free from four cores on, and at least one thread
+     * renders. The renderer's preparation reads the same option, so it keeps the cores free too.
+     */
+    private void keepCoresFree() {
+        int cores = Runtime.getRuntime().availableProcessors();
+        int free = cores >= 4 ? 2 : cores >= 2 ? 1 : 0;
+        int usable = Math.max(1, cores - free);
+        if (options.threadCount > usable) {
+            System.out.println(String.format("Threads: %d of the %d asked for, %d of %d core(s) stay free",
+                usable, options.threadCount, free, cores));
+            options.threadCount = usable;
+        }
+    }
+
+    /**
+     * The most frames a chunk of the run gives: every recorded tick of it without sampling, else
+     * the sample ticks that fall into the ticks it spans.
+     */
+    private long framesPerChunk() {
+        if (options.samplingInterval == 1) {
+            return recordedTicksPerChunk;
+        }
+        long ticksSpanned = (long) recordedTicksPerChunk * recordingInterval;
+        return Math.max(1, (ticksSpanned + options.samplingInterval - 1) / options.samplingInterval);
+    }
+
     private long ceilToMultiple(long value, int multiple) {
         return ((value + multiple - 1) / multiple) * multiple;
     }
@@ -473,9 +505,9 @@ public class VideoRenderEngine {
         }
 
         // Calculate safe in-flight limit based on memory
-        // Each chunk can have ~100 frames, each frame = width * height * 4 bytes
+        // Each chunk in flight holds its frames, each frame = width * height * 4 bytes
         int frameSize = frameRenderer.getImageWidth() * frameRenderer.getImageHeight() * 4;
-        long estimatedChunkBytes = (long) frameSize * 100;  // ~100 frames per chunk
+        long estimatedChunkBytes = (long) frameSize * framesPerChunk();
         long maxHeap = Runtime.getRuntime().maxMemory();
         long safeMemoryBudget = maxHeap / 2;  // Use at most half the heap for buffering
         int maxInFlight = Math.max(2, (int) (safeMemoryBudget / estimatedChunkBytes));
@@ -747,6 +779,9 @@ public class VideoRenderEngine {
         SimulationMetadata metadata = storage.readMessage(metaPath.get(), SimulationMetadata.parser());
         BuildRevisionCheck.warnIfWrittenByAnotherBuild(metadata, LOGGER);
         recordingInterval = MetadataConfigHelper.getSamplingInterval(metadata);
+        recordedTicksPerChunk = MetadataConfigHelper.getAccumulatedDeltaInterval(metadata)
+            * MetadataConfigHelper.getSnapshotInterval(metadata)
+            * MetadataConfigHelper.getChunkInterval(metadata);
         EnvironmentProperties envProps = new EnvironmentProperties(
             MetadataConfigHelper.getEnvironmentShape(metadata),
             MetadataConfigHelper.isEnvironmentToroidal(metadata));
