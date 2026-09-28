@@ -510,7 +510,9 @@ public class Simulation {
      */
     private void planResolveExecute() {
         int size = organisms.size();
-        Instruction[] planned = new Instruction[size];
+        // Holds an entry only where wave 1 left an instruction for wave 2, so that collecting them
+        // reads this array alone and never an instruction wave 1 has already executed.
+        Instruction[] wave2Candidates = new Instruction[size];
         boolean[] diedInWave1 = new boolean[size];
 
         int activeThreads = (workerPool != null && size > 1) ? resolveActiveParallelism(size) : 1;
@@ -520,13 +522,13 @@ public class Simulation {
             workerPool.dispatch(size, activeThreads, (from, to) -> {
                 int threadIndex = TickWorkerPool.getThreadIndex();
                 InterceptionContext context = contexts != null ? contexts[threadIndex] : null;
-                planAndExecuteLocal(from, to, context, executionContexts[threadIndex], mainThread, planned, diedInWave1);
+                planAndExecuteLocal(from, to, context, executionContexts[threadIndex], mainThread, wave2Candidates, diedInWave1);
             });
         } else {
             InterceptionContext context = instructionInterceptors.isEmpty() ? null : interceptContext;
             ParallelWave.enter();
             try {
-                planAndExecuteLocal(0, size, context, executionContexts[0], Thread.currentThread(), planned, diedInWave1);
+                planAndExecuteLocal(0, size, context, executionContexts[0], Thread.currentThread(), wave2Candidates, diedInWave1);
             } finally {
                 ParallelWave.leave();
             }
@@ -534,8 +536,8 @@ public class Simulation {
 
         // Wave 2: environment-modifying instructions, conflict-resolved, in organism order
         List<Instruction> wave2 = new ArrayList<>();
-        for (Instruction instruction : planned) {
-            if (instruction != null && !Instruction.isParallelExecuteSafe(instruction.getFullOpcodeId())) {
+        for (Instruction instruction : wave2Candidates) {
+            if (instruction != null) {
                 wave2.add(instruction);
             }
         }
@@ -550,8 +552,8 @@ public class Simulation {
         }
 
         // Death handling in organism order: wave 1 first, then wave 2
-        for (int i = 0; i < planned.length; i++) {
-            if (diedInWave1[i]) handleDeath(planned[i].getOrganism());
+        for (int i = 0; i < size; i++) {
+            if (diedInWave1[i]) handleDeath(organisms.get(i));
         }
         for (int i = 0; i < wave2.size(); i++) {
             if (diedInWave2[i]) handleDeath(wave2.get(i).getOrganism());
@@ -573,12 +575,14 @@ public class Simulation {
      *                interceptors are registered
      * @param executionContext the execution context of the executing thread
      * @param mainThread the thread that drives the simulation; an interrupt on it aborts the wave
-     * @param planned receives each organism's planned instruction at the organism's index
+     * @param wave2Candidates receives, at the organism's index, the instruction left for wave 2;
+     *                        the entry of an organism whose instruction ran in wave 1 stays
+     *                        {@code null}
      * @param diedInWave1 set at the organism's index when it dies during wave 1
      */
     private void planAndExecuteLocal(int from, int to, InterceptionContext context,
                                      ExecutionContext executionContext, Thread mainThread,
-                                     Instruction[] planned, boolean[] diedInWave1) {
+                                     Instruction[] wave2Candidates, boolean[] diedInWave1) {
         // Yield periodically so that other threads (control API, data pipeline) get scheduled
         // during long stretches of ticking. On the calling thread the counter carries over from
         // tick to tick, so small populations yield too; workers use a counter per chunk.
@@ -618,9 +622,8 @@ public class Simulation {
                 }
             } else {
                 instruction.setProcessedInTick(false);
+                wave2Candidates[i] = instruction;
             }
-
-            planned[i] = instruction;
         }
         if (onMainThread) {
             organismsSinceYield = processed;
