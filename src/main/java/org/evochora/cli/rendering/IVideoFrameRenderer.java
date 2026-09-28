@@ -5,6 +5,8 @@ import java.util.List;
 
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.TickDelta;
+import org.evochora.datapipeline.api.resources.storage.IBatchStorageRead;
+import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.runtime.model.EnvironmentProperties;
 
 /**
@@ -30,6 +32,31 @@ public interface IVideoFrameRenderer {
      * @param envProps Environment properties (world shape, topology).
      */
     void init(EnvironmentProperties envProps);
+
+    /**
+     * Lets the renderer read what it needs to know about the whole rendered range before the
+     * first frame is rendered.
+     * <p>
+     * Called once, after {@link #init(EnvironmentProperties)} and before any
+     * {@link #createThreadInstance()} and any rendering, with the batch files of the run in tick
+     * order and the range and sampling the frames will be rendered with. A renderer that needs
+     * nothing beyond the frame it draws leaves the default, which reads nothing.
+     *
+     * @param storage          The storage the frames are read from.
+     * @param batchPaths       Every batch file of the run, in tick order.
+     * @param runId            The run the batch files belong to.
+     * @param startTick        First tick that is rendered as a frame, inclusive.
+     * @param endTick          Last tick that is rendered as a frame, inclusive: at most the last
+     *                         tick the batch file names give ({@link Long#MAX_VALUE} for the end
+     *                         of the run only when the names give none).
+     * @param samplingInterval Only ticks that are a multiple of it are rendered (1 for every tick).
+     * @throws Exception if reading the storage fails, or if what it holds cannot be rendered
+     *                   with the renderer's options.
+     */
+    default void prepare(IBatchStorageRead storage, List<StoragePath> batchPaths, String runId,
+                         long startTick, long endTick, int samplingInterval) throws Exception {
+        // Nothing to read in advance
+    }
 
     /**
      * Sets the overlay renderers to apply after each frame.

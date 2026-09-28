@@ -13,7 +13,7 @@ import org.evochora.runtime.model.MoleculeTypeRegistry;
  * Aggregates environment cell data into a minimap representation.
  * <p>
  * This class is stateless and thread-safe. It performs downsampling of the environment
- * grid into a fixed-size minimap while preserving the aspect ratio. Cell types are
+ * grid into a minimap of a caller-chosen size while preserving the aspect ratio. Cell types are
  * aggregated using majority voting - the most common cell type in each block wins.
  * Owner IDs are aggregated similarly - the most frequent non-zero owner per pixel wins.
  * <p>
@@ -30,10 +30,21 @@ import org.evochora.runtime.model.MoleculeTypeRegistry;
 public class MinimapAggregator {
 
     /**
-     * Maximum dimension (width or height) of the generated minimap in pixels.
-     * The actual dimensions preserve the environment's aspect ratio.
+     * Size of a minimap whose caller names none: the length in pixels of its longer edge.
+     * The shorter edge follows from the environment's aspect ratio.
      */
-    private static final int MAX_SIZE = 300;
+    public static final int DEFAULT_SIZE = 300;
+
+    /**
+     * Smallest length in pixels a request may ask for. The vote counters of a pixel hold 32,767;
+     * at this size a world fills them only from a longer edge of some 54,000 cells on.
+     */
+    public static final int MIN_SIZE = 300;
+
+    /**
+     * Largest size a caller may ask for: the length in pixels of the minimap's longer edge.
+     */
+    public static final int MAX_SIZE = 1200;
 
     /**
      * Number of vote slots per minimap pixel: one for each registered molecule type, plus one for
@@ -124,17 +135,27 @@ public class MinimapAggregator {
     /**
      * Aggregates environment cell data into a minimap.
      * <p>
-     * The minimap dimensions are calculated to fit within {@link #MAX_SIZE} while
-     * preserving the environment's aspect ratio. Each minimap pixel represents a
+     * The longer edge of the minimap is {@code size} pixels long, the shorter edge follows from
+     * the environment's aspect ratio. A minimap is never larger than the world: a size above the
+     * world's longer edge is capped at it, since a pixel without a cell would leave a hole in the
+     * picture. The width and height of the result are therefore authoritative, not the size asked
+     * for. Each minimap pixel represents a
      * block of environment cells, with the cell type determined by majority voting
      * (the most common type wins). Ownership is aggregated similarly - the most
      * frequent non-zero owner per pixel wins.
      *
      * @param columns  The cell data in columnar format from {@code TickData.getCellColumns()}
      * @param envProps Environment properties containing world shape
+     * @param size     Length in pixels of the minimap's longer edge, from {@link #MIN_SIZE} to {@link #MAX_SIZE}
      * @return Minimap result with dimensions and cell type data, or null if environment is invalid
+     * @throws IllegalArgumentException if {@code size} is below {@link #MIN_SIZE} or above {@link #MAX_SIZE}
      */
-    public MinimapResult aggregate(final CellDataColumns columns, final EnvironmentProperties envProps) {
+    public MinimapResult aggregate(final CellDataColumns columns, final EnvironmentProperties envProps,
+                                   final int size) {
+        if (size < MIN_SIZE || size > MAX_SIZE) {
+            throw new IllegalArgumentException(
+                    "Minimap size must be between " + MIN_SIZE + " and " + MAX_SIZE + ", got " + size);
+        }
         final int[] shape = envProps.getWorldShape();
         if (shape == null || shape.length < 2) {
             return null;
@@ -147,15 +168,16 @@ public class MinimapAggregator {
             return null;
         }
 
-        // Calculate minimap dimensions preserving aspect ratio
+        // Calculate minimap dimensions preserving aspect ratio, never more pixels than cells
+        final int edge = Math.min(size, Math.max(worldWidth, worldHeight));
         final int minimapWidth;
         final int minimapHeight;
         if (worldWidth >= worldHeight) {
-            minimapWidth = MAX_SIZE;
-            minimapHeight = Math.max(1, Math.round((float) MAX_SIZE * worldHeight / worldWidth));
+            minimapWidth = edge;
+            minimapHeight = Math.max(1, Math.round((float) edge * worldHeight / worldWidth));
         } else {
-            minimapHeight = MAX_SIZE;
-            minimapWidth = Math.max(1, Math.round((float) MAX_SIZE * worldWidth / worldHeight));
+            minimapHeight = edge;
+            minimapWidth = Math.max(1, Math.round((float) edge * worldWidth / worldHeight));
         }
 
         final int minimapSize = minimapWidth * minimapHeight;

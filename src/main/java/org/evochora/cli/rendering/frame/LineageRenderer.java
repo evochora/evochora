@@ -3,7 +3,6 @@ package org.evochora.cli.rendering.frame;
 import java.awt.image.BufferedImage;
 import java.awt.image.DataBufferInt;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -15,6 +14,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import org.evochora.cli.rendering.AbstractFrameRenderer;
 import org.evochora.cli.rendering.IVideoFrameRenderer;
+import org.evochora.cli.rendering.frame.shared.EnvironmentBackgroundLayer;
+import org.evochora.cli.rendering.frame.shared.GlowLayer;
 import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.TickDelta;
@@ -104,20 +105,6 @@ public class LineageRenderer extends AbstractFrameRenderer {
     private float cladeSpread;
 
     // ─────────────────────────────────────────────────────────────────────────────
-    // Glow configuration (softer than minimap)
-    // ─────────────────────────────────────────────────────────────────────────────
-
-    /** Sprite sizes for density levels (scaled by output resolution). */
-    private static final int[] BASE_GLOW_SIZES = {8, 12, 16, 22};
-    /** Density thresholds for glow size selection. */
-    private static final int[] DENSITY_THRESHOLDS = {3, 10, 30};
-    /** Reference width for glow scaling. */
-    private static final int BASE_OUTPUT_WIDTH = 400;
-
-    /** Peak opacity at glow center. */
-    private static final int PEAK_ALPHA = 180;
-
-    // ─────────────────────────────────────────────────────────────────────────────
     // Color constants
     // ─────────────────────────────────────────────────────────────────────────────
 
@@ -151,11 +138,10 @@ public class LineageRenderer extends AbstractFrameRenderer {
     private EnvironmentBackgroundLayer background;
 
     // ─────────────────────────────────────────────────────────────────────────────
-    // Glow sprites (cached per color)
+    // Organism glows (softer than minimap)
     // ─────────────────────────────────────────────────────────────────────────────
 
-    private final Map<Integer, int[][]> glowSpriteCache = new HashMap<>();
-    private int[] glowSizes;
+    private GlowLayer glow;
 
     // ─────────────────────────────────────────────────────────────────────────────
     // Color state (shared across thread instances)
@@ -163,13 +149,6 @@ public class LineageRenderer extends AbstractFrameRenderer {
 
     /** Shared color state for lineage-aware hue assignment. Thread-safe. */
     private ColorState colorState;
-
-    // ─────────────────────────────────────────────────────────────────────────────
-    // Organism rendering state
-    // ─────────────────────────────────────────────────────────────────────────────
-
-    /** Reusable density buffer for glow rendering (avoids allocation per frame). */
-    private int[] glowDensity;
 
     // ─────────────────────────────────────────────────────────────────────────────
     // Overlay support for sampling mode
@@ -206,20 +185,11 @@ public class LineageRenderer extends AbstractFrameRenderer {
         this.frame = new BufferedImage(outputWidth, outputHeight, BufferedImage.TYPE_INT_RGB);
         this.frameBuffer = ((DataBufferInt) frame.getRaster().getDataBuffer()).getData();
 
-        // Scale glow sizes based on output resolution and user multiplier
-        double glowScale = (double) outputWidth / BASE_OUTPUT_WIDTH * glowSize;
-        this.glowSizes = new int[BASE_GLOW_SIZES.length];
-        for (int i = 0; i < BASE_GLOW_SIZES.length; i++) {
-            this.glowSizes[i] = Math.max(2, (int) (BASE_GLOW_SIZES[i] * glowScale));
-        }
-        this.glowSpriteCache.clear();
+        // Glow sizes scale with the output resolution and the user multiplier
+        this.glow = new GlowLayer(outputWidth, outputHeight, glowSize);
 
         // Environment background
         this.background = new EnvironmentBackgroundLayer(worldWidth, worldHeight, outputWidth, outputHeight);
-
-        // Glow density buffer
-        int outputSize = outputWidth * outputHeight;
-        this.glowDensity = new int[outputSize];
 
         if (cladeSpread <= 0 || cladeSpread >= 180) {
             throw new IllegalArgumentException(
@@ -403,33 +373,22 @@ public class LineageRenderer extends AbstractFrameRenderer {
             groups.computeIfAbsent(org.getGenomeHash(), k -> new ArrayList<>()).add(org);
         }
 
-        final int totalPixels = glowDensity.length;
-
         // Render each genome hash group with its lineage color
         for (final var entry : groups.entrySet()) {
             final long genomeHash = entry.getKey();
             final List<OrganismState> group = entry.getValue();
-            final int color = getGenomeColor(genomeHash);
-            final int[][] sprites = getOrCreateGlowSprites(color);
 
             // Build density for this group
-            java.util.Arrays.fill(glowDensity, 0);
+            glow.clear();
             for (final OrganismState org : group) {
-                addGlowDensity(org.getIp().getComponents(0), org.getIp().getComponents(1), totalPixels);
+                addGlowDensity(org.getIp().getComponents(0), org.getIp().getComponents(1));
                 for (final Vector dp : org.getDataPointersList()) {
-                    addGlowDensity(dp.getComponents(0), dp.getComponents(1), totalPixels);
+                    addGlowDensity(dp.getComponents(0), dp.getComponents(1));
                 }
             }
 
             // Render glows for this group
-            for (int my = 0; my < outputHeight; my++) {
-                for (int mx = 0; mx < outputWidth; mx++) {
-                    final int count = glowDensity[my * outputWidth + mx];
-                    if (count > 0) {
-                        blitGlowSprite(mx, my, selectSpriteIndex(count), sprites);
-                    }
-                }
-            }
+            glow.drawTo(frameBuffer, getGenomeColor(genomeHash));
         }
     }
 
@@ -438,132 +397,13 @@ public class LineageRenderer extends AbstractFrameRenderer {
      *
      * @param wx World x coordinate.
      * @param wy World y coordinate.
-     * @param totalPixels Total number of output pixels (for bounds checking).
      */
-    private void addGlowDensity(int wx, int wy, int totalPixels) {
+    private void addGlowDensity(int wx, int wy) {
         if (clusterGrid > 1) {
             wx = (wx / clusterGrid) * clusterGrid;
             wy = (wy / clusterGrid) * clusterGrid;
         }
-        int pixelIdx = background.worldCoordsToPixelIndex(wx, wy);
-        if (pixelIdx >= 0 && pixelIdx < totalPixels) {
-            glowDensity[pixelIdx]++;
-        }
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────────
-    // Glow sprite rendering (softer than minimap)
-    // ─────────────────────────────────────────────────────────────────────────────
-
-    /**
-     * Returns (or lazily creates) glow sprites for a given RGB color.
-     *
-     * @param color RGB color (0xRRGGBB).
-     * @return Array of glow sprites for each density level.
-     */
-    private int[][] getOrCreateGlowSprites(int color) {
-        return glowSpriteCache.computeIfAbsent(color, c -> {
-            final int[][] sprites = new int[glowSizes.length][];
-            for (int i = 0; i < glowSizes.length; i++) {
-                sprites[i] = createGlowSprite(glowSizes[i], c);
-            }
-            return sprites;
-        });
-    }
-
-    /**
-     * Creates a single glow sprite with the given size and color.
-     * Uses a smooth quartic radial falloff {@code (1 - r²)²} from center to edge,
-     * producing a soft bell curve without hard core/edge boundaries.
-     *
-     * @param size  Total sprite size in pixels.
-     * @param color RGB color (0xRRGGBB).
-     * @return Pixel array with ARGB values.
-     */
-    private static int[] createGlowSprite(int size, int color) {
-        int[] pixels = new int[size * size];
-        float center = size / 2.0f;
-        float radius = center;
-
-        int r = (color >> 16) & 0xFF;
-        int g = (color >> 8) & 0xFF;
-        int b = color & 0xFF;
-
-        for (int y = 0; y < size; y++) {
-            for (int x = 0; x < size; x++) {
-                float dx = x - center + 0.5f;
-                float dy = y - center + 0.5f;
-                float dist = (float) Math.sqrt(dx * dx + dy * dy);
-
-                int alpha;
-                if (dist >= radius) {
-                    alpha = 0;
-                } else {
-                    // Smooth quartic bell: (1 - r²)² — no hard core/edge boundary
-                    float t = dist / radius;
-                    float falloff = 1.0f - t * t;
-                    alpha = (int) (PEAK_ALPHA * falloff * falloff);
-                }
-
-                pixels[y * size + x] = (alpha << 24) | (r << 16) | (g << 8) | b;
-            }
-        }
-
-        return pixels;
-    }
-
-    /**
-     * Selects the glow sprite index based on organism density count.
-     *
-     * @param count Number of organisms at this pixel.
-     * @return Sprite index (larger sprite for higher density).
-     */
-    private int selectSpriteIndex(int count) {
-        for (int i = 0; i < DENSITY_THRESHOLDS.length; i++) {
-            if (count <= DENSITY_THRESHOLDS[i]) return i;
-        }
-        return glowSizes.length - 1;
-    }
-
-    /**
-     * Alpha-blends a glow sprite onto the frame buffer at the given center position.
-     *
-     * @param centerX    Center x in output pixels.
-     * @param centerY    Center y in output pixels.
-     * @param spriteIndex Index into the glow size/sprite arrays.
-     * @param sprites    Sprite arrays for each density level.
-     */
-    private void blitGlowSprite(int centerX, int centerY, int spriteIndex, int[][] sprites) {
-        int[] sprite = sprites[spriteIndex];
-        int size = glowSizes[spriteIndex];
-        int half = size / 2;
-        int startX = centerX - half;
-        int startY = centerY - half;
-
-        for (int sy = 0; sy < size; sy++) {
-            int fy = startY + sy;
-            if (fy < 0 || fy >= outputHeight) continue;
-
-            for (int sx = 0; sx < size; sx++) {
-                int fx = startX + sx;
-                if (fx < 0 || fx >= outputWidth) continue;
-
-                int src = sprite[sy * size + sx];
-                int alpha = (src >>> 24) & 0xFF;
-                if (alpha == 0) continue;
-
-                int idx = fy * outputWidth + fx;
-                int dst = frameBuffer[idx];
-
-                // Alpha blend
-                int invA = 255 - alpha;
-                int outR = (((src >> 16) & 0xFF) * alpha + ((dst >> 16) & 0xFF) * invA) / 255;
-                int outG = (((src >> 8) & 0xFF) * alpha + ((dst >> 8) & 0xFF) * invA) / 255;
-                int outB = ((src & 0xFF) * alpha + (dst & 0xFF) * invA) / 255;
-
-                frameBuffer[idx] = (outR << 16) | (outG << 8) | outB;
-            }
-        }
+        glow.add(background.worldCoordsToPixelIndex(wx, wy));
     }
 
     // ─────────────────────────────────────────────────────────────────────────────

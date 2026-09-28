@@ -51,6 +51,8 @@ public class HttpServerProcess extends AbstractProcess {
     private final ServiceRegistry controllerRegistry;
     // OpenAPI-specific: Map of controller class names to their base paths (for documentation only)
     private final Map<String, String> controllerBasePaths = new HashMap<>();
+    // Controllers of the running server, closed after it has stopped
+    private final List<IController> controllers = new ArrayList<>();
     private Javalin app;
 
     /**
@@ -231,8 +233,25 @@ public class HttpServerProcess extends AbstractProcess {
         if (app != null) {
             app.stop();
             app = null;
+            closeControllers();
             LOGGER.info("HTTP server stopped.");
         }
+    }
+
+    /**
+     * Closes every controller of the stopped server, the one created last first. A controller
+     * that fails to close does not keep the others from closing.
+     */
+    private void closeControllers() {
+        for (int i = controllers.size() - 1; i >= 0; i--) {
+            final IController controller = controllers.get(i);
+            try {
+                controller.close();
+            } catch (final RuntimeException e) {
+                LOGGER.warn("Failed to close controller '{}'", controller.getClass().getName(), e);
+            }
+        }
+        controllers.clear();
     }
 
     private void parseRoutes() {
@@ -319,6 +338,7 @@ public class HttpServerProcess extends AbstractProcess {
 
         final Constructor<?> constructor = controllerClass.getConstructor(ServiceRegistry.class, Config.class);
         final IController controller = (IController) constructor.newInstance(controllerRegistry, controllerOptions);
+        controllers.add(controller);
 
         controller.registerRoutes(app, def.basePath);
     }

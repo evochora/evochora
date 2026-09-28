@@ -1,5 +1,6 @@
 import { loadingManager } from './ui/LoadingManager.js';
 import { isMarkPresent } from './MutationMarks.js';
+import { DESCENT_TONES, hexToInt } from './DescentColours.js';
 import { moleculeTypeEntry, moleculeTypeName, NO_DATA_COLOR, VALUE_FORMAT } from './MoleculeTypePalette.js';
 import { AnnotationUtils } from './annotator/AnnotationUtils.js';
 import { ValueFormatter } from './utils/ValueFormatter.js';
@@ -113,7 +114,7 @@ export class EnvironmentGrid {
         // --- Mutation marks of the selected organism's lineage ---
         this.mutationMarks = null;   // key "x,y" -> the mutation that decides that cell's mark
         this._markBounds = null;     // smallest rectangle the marked cells lie in
-        this._markColorOf = null;    // genome hash -> its lineage colour as 0xRRGGBB
+        this._markColorOf = null;    // mark -> its colour as 0xRRGGBB, null for none
         this._markGenerationsBackOf = null; // organism id -> generations it lies back from the selected organism
         this._markOpcodeNameOf = null;      // opcode id -> opcode name
 
@@ -496,7 +497,9 @@ export class EnvironmentGrid {
      * Fetches and renders environment data for the current viewport.
      * @param {number} tick - The current tick number to load data for.
      * @param {string|null} [runId=null] - The optional run ID.
-     * @param {boolean} [includeMinimap=false] - Whether to include minimap data in the response.
+     * @param {boolean|number} [includeMinimap=false] - Whether to include minimap data in the
+     *        response: true at the server's default size, a number for the length in pixels of the
+     *        minimap's longer edge, false for none.
      * @returns {Promise<{minimap?: {width: number, height: number, cellTypes: Uint8Array}}>} Result with optional minimap data.
      */
     async loadViewport(tick, runId = null, includeMinimap = false) {
@@ -544,7 +547,7 @@ export class EnvironmentGrid {
                     const data = await this.environmentApi.fetchEnvironmentData(tick, viewport, {
                         runId: runId,
                         signal: minimapController.signal,
-                        includeMinimap: true
+                        includeMinimap
                     });
                     return { minimap: data.minimap };
                 } catch (error) {
@@ -612,7 +615,8 @@ export class EnvironmentGrid {
      * @param {number} tick - The tick to load.
      * @param {string|null} runId - The run.
      * @param {{x1: number, x2: number, y1: number, y2: number}} viewport - View region, unwrapped.
-     * @param {boolean} includeMinimap - Whether the minimap is wanted with the first request.
+     * @param {boolean|number} includeMinimap - Whether the minimap is wanted with the first
+     *        request, and at which size (see {@link loadViewport}).
      * @param {BaseRendererStrategy} renderer - The active renderer.
      * @returns {Promise<{minimap?: object}>}
      * @private
@@ -636,7 +640,7 @@ export class EnvironmentGrid {
             this.environmentApi.fetchEnvironmentData(tick, piece, {
                 runId,
                 signal: controller.signal,
-                includeMinimap: includeMinimap && i === 0
+                includeMinimap: i === 0 ? includeMinimap : false
             })));
 
         if (missing.length > 0) {
@@ -957,8 +961,8 @@ export class EnvironmentGrid {
      * @param {Map<string, object>|null} marks - Cell key "x,y" to the mutation deciding that cell,
      *                                          null when no organism is selected.
      * @param {object} [lookups={}] - What the marks are drawn and described through.
-     * @param {function(string): number|null} [lookups.colorOf] - Lineage colour of a genome hash as
-     *                                          a packed RGB integer.
+     * @param {function(object): number|null} [lookups.colorOf] - Colour of a mark as a packed RGB
+     *                                          integer, null when it has none yet.
      * @param {function(number): number|null} [lookups.generationsBackOf] - How many generations the
      *                                          organism with the given id lies back from the selected
      *                                          one, null while that is not known.
@@ -983,6 +987,19 @@ export class EnvironmentGrid {
         if (affected.size === 0) return;
 
         this.detailedRenderer.refreshMarks(affected);
+        this.zoomedOutRenderer.clearCache();
+        if (this.isZoomedOut) {
+            this.requestViewportLoad();
+        }
+    }
+
+    /**
+     * Draws every marked cell again, as when the colours the marks are drawn in have changed while
+     * the marks themselves stayed the same.
+     */
+    refreshMutationMarks() {
+        if (!this.mutationMarks) return;
+        this.detailedRenderer.refreshMarks(new Set(this.mutationMarks.keys()));
         this.zoomedOutRenderer.clearCache();
         if (this.isZoomedOut) {
             this.requestViewportLoad();
@@ -1040,13 +1057,13 @@ export class EnvironmentGrid {
     }
 
     /**
-     * Returns the colour a mark is drawn in: the lineage colour of the genome the mutation arose in.
+     * Returns the colour a mark is drawn in, as the lookup handed over with the marks decides it.
      *
      * @param {object} mark - The mark to colour.
      * @returns {number} A packed RGB integer, white when no colour is available.
      */
     markColor(mark) {
-        const color = this._markColorOf ? this._markColorOf(mark.genomeHash) : null;
+        const color = this._markColorOf ? this._markColorOf(mark) : null;
         return typeof color === 'number' ? color : 0xffffff;
     }
 
@@ -1790,23 +1807,20 @@ export class EnvironmentGrid {
         this.currentOrganisms = [];
     }
 
-    _getOrganismColor(organismId, energy, genomeHash, isDead) {
-        const palette = this.config.organismPalette;
-
-        // Selected organism is always white
+    /**
+     * Returns the colour an organism's markers are drawn in: white for the selected organism,
+     * otherwise its colour of descent (the dead tone for a dead one).
+     *
+     * @param {number} organismId - The organism's id.
+     * @param {boolean} isDead - Whether the organism is dead at the shown tick.
+     * @returns {number} The colour as 0xRRGGBB.
+     */
+    _getOrganismColor(organismId, isDead) {
         if (this.controller && String(organismId) === this.controller.state.selectedOrganismId) {
-            return 0xffffff;
+            return hexToInt(DESCENT_TONES.SELECTED);
         }
-
-        // Dead organisms are dimmed gray
-        if (isDead) {
-            return 0x555555;
-        }
-
-        if (this.controller && this.controller.state.colorMode === 'genome') {
-            return this.controller._genomeHashToLineageColor(genomeHash);
-        }
-        return palette[(organismId - 1) % palette.length];
+        const colouring = this.controller?.descentColouring;
+        return colouring ? colouring.colourIntOf(organismId, isDead) : hexToInt(DESCENT_TONES.UNKNOWN);
     }
 }
 
@@ -1896,8 +1910,14 @@ class BaseRendererStrategy {
         }
     }
 
-    _getOrganismColor(organismId, energy, genomeHash, isDead) {
-        return this.grid._getOrganismColor(organismId, energy, genomeHash, isDead);
+    /**
+     * Returns the colour an organism's markers are drawn in; see EnvironmentGrid._getOrganismColor.
+     * @param {number} organismId - The organism's id.
+     * @param {boolean} isDead - Whether the organism is dead at the shown tick.
+     * @returns {number} The colour as 0xRRGGBB.
+     */
+    _getOrganismColor(organismId, isDead) {
+        return this.grid._getOrganismColor(organismId, isDead);
     }
 }
 
@@ -2198,11 +2218,11 @@ class DetailedRendererStrategy extends BaseRendererStrategy {
         for (const organism of organisms) {
             if (!organism || !Array.isArray(organism.ip) || !Array.isArray(organism.dv)) continue;
 
-            const { organismId, ip, dv, energy } = organism;
+            const { organismId, ip, dv } = organism;
             const ipGraphics = ensureIpGraphics(organism);
             ipGraphics.clear();
 
-            const ipColor = this._getOrganismColor(organismId, energy, organism.genomeHash, organism.isDead);
+            const ipColor = this._getOrganismColor(organismId, organism.isDead);
             const ipCellX = ip[0] * cellSize;
             const ipCellY = ip[1] * cellSize;
             const cx = ipCellX + cellSize / 2;
@@ -2245,7 +2265,7 @@ class DetailedRendererStrategy extends BaseRendererStrategy {
         const aggregatedDps = new Map();
         for (const org of organisms) {
             if (!org || !Array.isArray(org.dataPointers)) continue;
-            const orgColor = this._getOrganismColor(org.organismId, org.energy, org.genomeHash, org.isDead);
+            const orgColor = this._getOrganismColor(org.organismId, org.isDead);
             const orgActiveIndex = typeof org.activeDpIndex === "number" ? org.activeDpIndex : 0;
             org.dataPointers.forEach((dp, idx) => {
                 if (!Array.isArray(dp) || dp.length < 2) return;
@@ -2694,7 +2714,7 @@ class ZoomedOutRendererStrategy extends BaseRendererStrategy {
         for (const organism of organisms) {
             if (!organism || !Array.isArray(organism.ip) || !Array.isArray(organism.dv)) continue;
 
-            const { organismId, ip, dv, energy } = organism;
+            const { organismId, ip, dv } = organism;
             let ipGraphics = this.ipGraphics.get(organismId);
             if (!ipGraphics) {
                 ipGraphics = new PIXI.Graphics();
@@ -2712,7 +2732,7 @@ class ZoomedOutRendererStrategy extends BaseRendererStrategy {
             }
             ipGraphics.clear();
 
-            const ipColor = this._getOrganismColor(organismId, energy, organism.genomeHash, organism.isDead);
+            const ipColor = this._getOrganismColor(organismId, organism.isDead);
             // Position at cell center, scaled to pixel coordinates
             const centerX = (ip[0] + 0.5) * scale;
             const centerY = (ip[1] + 0.5) * scale;
@@ -2761,7 +2781,7 @@ class ZoomedOutRendererStrategy extends BaseRendererStrategy {
              if (organismsAtPos.length === 0) continue;
 
             const prominentOrganism = organismsAtPos[0]; // Simple selection: pick the first one
-            const orgColor = this._getOrganismColor(prominentOrganism.organismId, prominentOrganism.energy, prominentOrganism.genomeHash, prominentOrganism.isDead);
+            const orgColor = this._getOrganismColor(prominentOrganism.organismId, prominentOrganism.isDead);
 
             let dpEntry = this.dpGraphics.get(cellKey);
             if (!dpEntry) {

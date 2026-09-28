@@ -549,6 +549,11 @@ val javadocLint by tasks.registering {
     val lintDir = layout.buildDirectory.dir("tmp/javadocLint")
     val javadocTool = javaToolchains.javadocToolFor(java.toolchain).map { it.executablePath }
     inputs.file(optionsFile)
+    // The options file names the sources by path only, so the sources and the classpath are
+    // inputs of their own: the lint runs again when the content of a source changes.
+    val javadocTask = tasks.named<Javadoc>("javadoc")
+    inputs.files(javadocTask.map { it.source }).withPathSensitivity(PathSensitivity.RELATIVE).withPropertyName("sources")
+    inputs.files(javadocTask.map { it.classpath }).withPropertyName("classpath")
     outputs.dir(lintDir)
     doLast {
         val source = optionsFile.get().asFile.readLines()

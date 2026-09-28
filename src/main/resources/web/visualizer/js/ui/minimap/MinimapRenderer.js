@@ -301,10 +301,39 @@ export class MinimapRenderer {
     }
 
     /**
+     * Stretches the cached background (environment + organisms) to a new canvas size and caches
+     * the result, as a stand-in until a picture rendered at that size arrives. A picture that
+     * grows keeps its pixels sharp; one that shrinks is smoothed. Does nothing before a picture
+     * was cached or when the size stays the same.
+     *
+     * @param {number} width - The new canvas width in pixels.
+     * @param {number} height - The new canvas height in pixels.
+     */
+    scaleTo(width, height) {
+        const from = this._cacheCanvas;
+        if (from.width === 0 || from.height === 0 || width < 1 || height < 1
+            || (this.canvas.width === width && this.canvas.height === height)) {
+            return;
+        }
+        // Resizing a canvas clears it: the picture is kept on a copy while both are resized
+        const copy = document.createElement('canvas');
+        copy.width = from.width;
+        copy.height = from.height;
+        copy.getContext('2d').drawImage(from, 0, 0);
+
+        this.canvas.width = width;
+        this.canvas.height = height;
+        this.ctx.imageSmoothingEnabled = width < copy.width;
+        this.ctx.drawImage(copy, 0, 0, width, height);
+        this.ctx.imageSmoothingEnabled = true;
+        this.cacheBackground();
+    }
+
+    /**
      * Renders minimap with ownership coloring instead of cell type coloring.
-     * Each pixel is colored by the dominant owner organism at that location.
-     * Unowned pixels (ownerId=0) and pixels where the resolver returns -1
-     * (unknown/dead organism) use the no-data background color.
+     * Each pixel is colored by the dominant owner organism at that location, in the colour the
+     * resolver gives it. Unowned pixels (ownerId=0) and pixels where the resolver returns -1
+     * (an owner not among the organisms of the tick) use the no-data background color.
      *
      * @param {{width: number, height: number, ownerIds: number[]}} minimapData - Minimap data with owner IDs.
      * @param {function(number): number} colorResolverFn - Maps ownerId to 0xRRGGBB color integer, or -1 for unknown.

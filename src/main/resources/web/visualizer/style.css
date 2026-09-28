@@ -1,4 +1,14 @@
 /* Grundlegende Stile und Farbschema */
+:root {
+    /* Layer of the tooltips: above every panel (999-1001), below the help (2000) and notices */
+    --z-tooltip: 1500;
+}
+
+/* A number whose groups of three digits stand apart by a narrow gap that is not a character */
+.num-group + .num-group {
+    margin-left: 0.5ch;
+}
+
 body {
     font-family: 'Roboto Mono', 'Courier New', monospace;
     background-color: #0a0a14;
@@ -235,11 +245,25 @@ body {
     border-radius: 3px;
 }
 
-/* Tooltip above the timeline showing target tick */
-.timeline-tooltip {
+/* Birth tick of the root of descent, at the top edge of the track; placed by TickPanelManager */
+.timeline-root-mark {
     position: absolute;
-    bottom: calc(100% + 6px);
-    transform: translateX(-50%);
+    top: 0;
+    width: 2px;
+    height: 7px;
+    background: #fff;
+    pointer-events: none;
+    z-index: 5;
+}
+
+/* Tooltip above the timeline showing target tick; a child of the body, so that it lies above
+   every panel, placed by TickPanelManager at the top edge of the track */
+.timeline-tooltip {
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: var(--z-tooltip);
+    transform: translate(-50%, calc(-100% - 6px));
     background: rgba(25, 25, 35, 0.95);
     border: 1px solid #444;
     border-radius: 4px;
@@ -410,11 +434,6 @@ body {
     color: #666;
 }
 
-.organism-list-item.dead .organism-col-id {
-    text-decoration: line-through;
-    text-decoration-thickness: 2px;
-}
-
 .organism-list-item.dead .death-cause {
     color: #cc4444;
 }
@@ -426,12 +445,12 @@ body {
 }
 
 .organism-col-id {
-    width: 50px;
+    width: 68px;
     font-weight: bold;
 }
 
 .organism-col-genome {
-    width: 55px;
+    width: 45px;
     font-family: monospace;
     font-size: 0.85em;
     color: #888;
@@ -501,9 +520,10 @@ body {
     color: #ff6666;
 }
 
-/* Clickable links in organism list */
+/* Clickable links in organism list and descent section */
 .organism-list-item .clickable-position,
-.organism-list-item .clickable-tick {
+.organism-list-item .clickable-tick,
+.descent-section .clickable-position {
     color: #4a9eff;
     cursor: pointer;
     text-decoration: underline;
@@ -511,8 +531,170 @@ body {
 }
 
 .organism-list-item .clickable-position:hover,
-.organism-list-item .clickable-tick:hover {
+.organism-list-item .clickable-tick:hover,
+.descent-section .clickable-position:hover {
     color: #7cb9ff;
+}
+
+/* Descent section above the organism panel: the root and its lines, two rows */
+.descent-section {
+    padding: 6px 12px;
+    border-bottom: 1px solid #333;
+    font-family: 'Roboto Mono', 'Courier New', monospace;
+    font-size: 12px;
+    color: #aaa;
+}
+
+.descent-section:empty {
+    display: none;
+}
+
+/* Row 1 never wraps: the fixed parts keep their width, the life text shrinks with an ellipsis */
+.descent-row-root {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: nowrap;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+.descent-row-root > * {
+    flex: 0 0 auto;
+}
+
+.descent-row-root > .descent-life,
+.descent-row-root > .descent-status {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.descent-root-id {
+    color: #fff;
+    font-weight: bold;
+}
+
+.descent-life {
+    color: #888;
+}
+
+.descent-state-unborn {
+    color: #c9a227;
+}
+
+.descent-state-alive {
+    color: #8f8;
+}
+
+.descent-state-dead {
+    color: #777;
+}
+
+.descent-error {
+    color: #f87171;
+}
+
+.descent-link {
+    color: #4a9eff;
+    cursor: pointer;
+}
+
+.descent-link:hover {
+    color: #7cb9ff;
+}
+
+.descent-reset {
+    margin-left: auto;
+    background-color: #2a2a4a;
+    border: 1px solid #4a4a6a;
+    border-radius: 4px;
+    color: #808090;
+    font-family: 'Roboto Mono', 'Courier New', monospace;
+    font-size: 11px;
+    padding: 2px 8px;
+    cursor: pointer;
+    outline: none;
+}
+
+.descent-reset:hover {
+    background-color: #3a3a5a;
+    color: #a0a0b0;
+}
+
+/* The root follows the common ancestor of the living */
+.descent-reset.active {
+    background-color: #1a2a3a;
+    border-color: #4a9eff;
+    color: #4a9eff;
+}
+
+.descent-reset.active:hover {
+    background-color: #223650;
+    color: #7cb9ff;
+}
+
+/* Row 2: the cells of the coloured lines in columns, whose number DescentSection sets with
+   grid-template-columns; the column gap is the one it computes with */
+.descent-row-lines {
+    display: grid;
+    column-gap: 20px;
+    row-gap: 2px;
+    justify-items: start;
+    margin-top: 3px;
+    font-size: 12px;
+    line-height: 16px;
+}
+
+/* One line's cell never breaks: swatch, id, skip and share flow as one */
+.descent-cell {
+    white-space: nowrap;
+}
+
+.descent-cell.extinct {
+    opacity: 0.45;
+}
+
+/* The closing line below the cells spans every column: the other lines and the outside */
+.descent-closing {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-wrap: wrap;
+    column-gap: 20px;
+}
+
+.descent-closing-item {
+    white-space: nowrap;
+}
+
+/* A colour square one character wide, so that a cell measures in characters */
+.descent-swatch {
+    display: inline-block;
+    width: 1ch;
+    height: 1ch;
+    vertical-align: middle;
+    margin-top: -2px;
+}
+
+/* Probe for the width of one character, laid out out of sight while the row is measured */
+.descent-measure {
+    position: absolute;
+    visibility: hidden;
+    width: 100ch;
+    height: 0;
+}
+
+.descent-chip-id {
+    cursor: pointer;
+}
+
+.descent-chip-id:hover {
+    color: #fff;
+}
+
+.descent-share {
+    color: #666;
 }
 
 /* Selected organism display (shown when list collapsed) */
@@ -633,7 +815,7 @@ body {
     font-family: 'Roboto Mono', 'Courier New', monospace;
     white-space: nowrap;
     pointer-events: none;
-    z-index: 1000;
+    z-index: var(--z-tooltip);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
     border: 1px solid rgba(255, 255, 255, 0.1);
     backdrop-filter: blur(4px);
@@ -799,39 +981,38 @@ main.container {
     color: #e0e0e0;
 }
 
-/* Lineage chain */
-.lineage-chain {
+/* Ancestry strip in the organism info line: one bar per ancestor, founder left */
+.lineage-line {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 0;
     white-space: nowrap;
 }
 
-.lineage-ancestor {
+.lineage-line-facts,
+.lineage-strip-label,
+.lineage-strip-summary {
+    flex: 0 0 auto;
+}
+
+.lineage-strip {
+    flex: 1 1 0;
+    min-width: 40px;
+    height: 12px;
+    background: #222;
+    border: 1px solid #333;
+    overflow: hidden;
+}
+
+.lineage-strip.selectable {
     cursor: pointer;
-    text-decoration: underline;
-    text-decoration-style: dotted;
-    transition: opacity 0.2s;
 }
 
-.lineage-ancestor:hover {
-    opacity: 0.7;
-}
-
-.lineage-ancestor-dead {
-    text-decoration: line-through;
-    text-decoration-thickness: 2px;
-}
-
-.lineage-separator {
-    color: #555;
-    margin: 0 1px;
-}
-
-.lineage-overflow {
-    color: #666;
-    font-style: italic;
-}
-
-.lineage-none {
-    color: #666;
+.lineage-strip-canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
 }
 
 .clickable-tick {
@@ -1225,7 +1406,8 @@ main.container {
     padding: 0;
     display: flex;
     flex-direction: column;
-    /* Width determined by minimap canvas content (up to 300px + padding) */
+    /* The width MinimapView sets is the outer width, the same in small and in large */
+    box-sizing: border-box;
 }
 
 #minimap-panel-collapsed {
@@ -1256,6 +1438,7 @@ main.container {
     gap: 8px;
     font-size: 12px;
     color: #e0e0e0;
+    white-space: nowrap;
 }
 
 .minimap-panel-title .panel-icon {
@@ -1359,40 +1542,24 @@ main.container {
     background-color: #2a4a3a;
 }
 
-/* Color mode toggle button (organism panel) */
-.color-mode-toggle {
-    background-color: #2a2a4a;
-    border: 1px solid #4a4a6a;
-    border-radius: 4px;
-    color: #808090;
-    font-family: 'Roboto Mono', 'Courier New', monospace;
-    font-size: 11px;
-    padding: 4px 8px;
-    cursor: pointer;
-    transition: all 0.15s ease;
-    min-width: 28px;
-    outline: none;
-    text-align: center;
-}
-
-.color-mode-toggle:hover {
-    background-color: #3a3a5a;
-    color: #a0a0b0;
-}
-
-.color-mode-toggle.active {
-    background-color: #1a2a3a;
-    border-color: #4a7aaa;
-    color: #5a9aff;
-}
-
-.color-mode-toggle.active:hover {
-    background-color: #2a3a4a;
-}
-
 /* Minimap content */
 .minimap-content {
     padding: 6px;
+}
+
+/* Large minimap: the picture stands above the controls row, which keeps its place and width;
+   the picture carries the panel's background and border */
+#minimap-panel.large .minimap-content {
+    position: absolute;
+    /* --minimap-lift: how far the timeline panel stands above the controls row, set at runtime */
+    bottom: calc(100% + var(--minimap-lift, 0px));
+    left: -1px;
+    background: rgba(25, 25, 35, 0.85);
+    backdrop-filter: blur(8px);
+    border: 1px solid #333;
+    border-bottom: none;
+    border-radius: 6px 6px 0 0;
+    box-shadow: 0 -4px 8px rgba(0, 0, 0, 0.3);
 }
 
 .minimap-canvas {

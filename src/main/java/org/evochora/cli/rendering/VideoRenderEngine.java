@@ -48,6 +48,12 @@ public class VideoRenderEngine {
     private final VideoRenderOptions options;
     private final IVideoFrameRenderer frameRenderer;
 
+    /** Interval at which the run recorded its ticks, read from the run's metadata. */
+    private int recordingInterval = 1;
+
+    /** Number of recorded ticks a chunk of the run holds, read from the run's metadata. */
+    private int recordedTicksPerChunk = 1;
+
     /**
      * Container formats this command writes. mp4 and webm select their own encoder arguments;
      * the others are written with the default encoder and ffmpeg derives the container from the
@@ -87,6 +93,7 @@ public class VideoRenderEngine {
      */
     public Integer execute() throws Exception {
         if (!optionsAreValid()) return 1;
+        keepCoresFree();
 
         // Load configuration
         Config config = loadConfig();
@@ -111,6 +118,20 @@ public class VideoRenderEngine {
         long effectiveStartTick = options.startTick != null ? options.startTick : 0;
         long effectiveEndTick = options.endTick != null ? options.endTick : Long.MAX_VALUE;
         long totalFrames = calculateTotalFrames(scanResult, effectiveStartTick, effectiveEndTick);
+
+        // Let the renderer read in advance what it needs over the whole range, which ends at the
+        // run's last recorded tick when no end tick was given
+        long prepareEndTick = scanResult.maxTick >= 0 ? Math.min(effectiveEndTick, scanResult.maxTick) : effectiveEndTick;
+        try {
+            frameRenderer.prepare(storage, scanResult.batchPaths, targetRunId, effectiveStartTick, prepareEndTick,
+                options.samplingInterval);
+        } catch (IllegalArgumentException e) {
+            // What the user asked for cannot be done with what the renderer found: an option or a
+            // file of theirs. That is said in a line, as every condition met before encoding is;
+            // a fault in the recorded data or in reading it is not caught here.
+            System.err.println(e.getMessage());
+            return 1;
+        }
 
         // Resolve output file and format
         String format = options.format.toLowerCase();
@@ -295,6 +316,34 @@ public class VideoRenderEngine {
         return startIdx;
     }
 
+    /**
+     * Lowers the number of threads to what the machine has to spare: one core stays free on a
+     * machine with two or three cores, two stay free from four cores on, and at least one thread
+     * renders. The renderer's preparation reads the same option, so it keeps the cores free too.
+     */
+    private void keepCoresFree() {
+        int cores = Runtime.getRuntime().availableProcessors();
+        int free = cores >= 4 ? 2 : cores >= 2 ? 1 : 0;
+        int usable = Math.max(1, cores - free);
+        if (options.threadCount > usable) {
+            System.out.println(String.format("Threads: %d of the %d asked for, %d of %d core(s) stay free",
+                usable, options.threadCount, free, cores));
+            options.threadCount = usable;
+        }
+    }
+
+    /**
+     * The most frames a chunk of the run gives: every recorded tick of it without sampling, else
+     * the sample ticks that fall into the ticks it spans.
+     */
+    private long framesPerChunk() {
+        if (options.samplingInterval == 1) {
+            return recordedTicksPerChunk;
+        }
+        long ticksSpanned = (long) recordedTicksPerChunk * recordingInterval;
+        return Math.max(1, (ticksSpanned + options.samplingInterval - 1) / options.samplingInterval);
+    }
+
     private long ceilToMultiple(long value, int multiple) {
         return ((value + multiple - 1) / multiple) * multiple;
     }
@@ -309,10 +358,6 @@ public class VideoRenderEngine {
      */
     private boolean shouldProcessBatch(StoragePath batchPath, long effectiveStartTick,
                                        long effectiveEndTick, int samplingInterval) {
-        if (samplingInterval == 1) {
-            return true; // Process all batches when not sampling
-        }
-
         // Parse tick range from filename (e.g., "batch_0_99.pb")
         String filename = batchPath.asString();
         int batchIdx = filename.lastIndexOf("/batch_");
@@ -460,9 +505,9 @@ public class VideoRenderEngine {
         }
 
         // Calculate safe in-flight limit based on memory
-        // Each chunk can have ~100 frames, each frame = width * height * 4 bytes
+        // Each chunk in flight holds its frames, each frame = width * height * 4 bytes
         int frameSize = frameRenderer.getImageWidth() * frameRenderer.getImageHeight() * 4;
-        long estimatedChunkBytes = (long) frameSize * 100;  // ~100 frames per chunk
+        long estimatedChunkBytes = (long) frameSize * framesPerChunk();
         long maxHeap = Runtime.getRuntime().maxMemory();
         long safeMemoryBudget = maxHeap / 2;  // Use at most half the heap for buffering
         int maxInFlight = Math.max(2, (int) (safeMemoryBudget / estimatedChunkBytes));
@@ -597,7 +642,13 @@ public class VideoRenderEngine {
         return currentTime;
     }
 
-    private String formatTime(long ms) {
+    /**
+     * Formats a duration for the progress line: {@code m:ss}, or {@code h:mm:ss} from an hour on.
+     *
+     * @param ms the duration in milliseconds; a negative value stands for an unknown duration
+     * @return the formatted duration, {@code ?} for an unknown one
+     */
+    public static String formatTime(long ms) {
         if (ms < 0) return "?";
         long sec = ms / 1000;
         long h = sec / 3600;
@@ -727,6 +778,10 @@ public class VideoRenderEngine {
 
         SimulationMetadata metadata = storage.readMessage(metaPath.get(), SimulationMetadata.parser());
         BuildRevisionCheck.warnIfWrittenByAnotherBuild(metadata, LOGGER);
+        recordingInterval = MetadataConfigHelper.getSamplingInterval(metadata);
+        recordedTicksPerChunk = MetadataConfigHelper.getAccumulatedDeltaInterval(metadata)
+            * MetadataConfigHelper.getSnapshotInterval(metadata)
+            * MetadataConfigHelper.getChunkInterval(metadata);
         EnvironmentProperties envProps = new EnvironmentProperties(
             MetadataConfigHelper.getEnvironmentShape(metadata),
             MetadataConfigHelper.isEnvironmentToroidal(metadata));
@@ -810,6 +865,14 @@ public class VideoRenderEngine {
         return new BatchScanResult(paths, minTick, maxTick);
     }
 
+    /**
+     * Works out how many frames the video will have, from the tick range the batch files cover.
+     * <p>
+     * Without sampling every recorded tick becomes a frame, and the run records only every
+     * {@link #recordingInterval}-th tick. With sampling every sample tick inside a recorded chunk
+     * becomes a frame, so the count can be too high by the sample ticks that fall between the
+     * last recorded tick of one chunk and the first of the next.
+     */
     private long calculateTotalFrames(BatchScanResult scan, long effectiveStart, long effectiveEnd) {
         if (scan.maxTick < 0) return 0;
 
@@ -817,10 +880,11 @@ public class VideoRenderEngine {
         long actualMax = Math.min(scan.maxTick, effectiveEnd);
         if (actualMax < actualMin) return 0;
 
-        long firstRenderable = ceilToMultiple(actualMin, options.samplingInterval);
+        int frameStep = options.samplingInterval == 1 ? recordingInterval : options.samplingInterval;
+        long firstRenderable = ceilToMultiple(actualMin, frameStep);
         if (firstRenderable > actualMax) return 0;
 
-        return ((actualMax - firstRenderable) / options.samplingInterval) + 1;
+        return ((actualMax - firstRenderable) / frameStep) + 1;
     }
 
     // ─────────────────────────────────────────────────────────────────────────────

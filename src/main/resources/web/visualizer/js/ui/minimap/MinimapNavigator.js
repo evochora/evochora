@@ -77,20 +77,21 @@ export class MinimapNavigator extends EventTarget {
 
     /**
      * Converts minimap coordinates to world coordinates and emits navigate event.
-     * Uses the same floating-point scale calculation as MinimapAggregator.java on the server.
+     * The pointer is mapped over the size the minimap is displayed at, which need not be the
+     * size of its picture.
      * @param {PointerEvent} e - The pointer event.
      * @private
      */
     emitNavigate(e) {
         const rect = this.canvas.getBoundingClientRect();
+        if (rect.width === 0 || rect.height === 0) return;
         const mx = e.clientX - rect.left;
         const my = e.clientY - rect.top;
 
-        // Use the SAME floating-point scale calculation as MinimapAggregator.java:
-        // scaleX = worldWidth / minimapWidth (float division)
-        // This ensures the entire world is mapped without clipping.
-        const scaleX = this.worldShape[0] / this.canvas.width;
-        const scaleY = this.worldShape[1] / this.canvas.height;
+        // The whole world spans the displayed minimap: worldWidth / displayed width (float
+        // division), so the entire world is mapped without clipping
+        const scaleX = this.worldShape[0] / rect.width;
+        const scaleY = this.worldShape[1] / rect.height;
 
         // Convert minimap pixel to world cell
         const worldX = mx * scaleX;

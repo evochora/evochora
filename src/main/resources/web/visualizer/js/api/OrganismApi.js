@@ -12,20 +12,31 @@ export class OrganismApi {
     /**
      * Fetches a list of organism summaries for a given tick.
      * Each summary contains high-level information like ID, position, and energy,
-     * suitable for rendering markers on the world grid.
+     * suitable for rendering markers on the world grid. With a root, the answer also tells how
+     * the organisms descend from it.
      *
      * @param {number} tick - The tick number to fetch organism data for.
      * @param {string|null} [runId=null] - The specific run ID to query. Defaults to the latest run if null.
      * @param {object} [options={}] - Optional parameters for the request.
      * @param {AbortSignal|null} [options.signal=null] - An AbortSignal to allow for request cancellation.
-     * @returns {Promise<Array<object>>} A promise that resolves to an array of organism summary objects.
-     * @throws {Error} If the network request fails or the server returns an error.
+     * @param {string|null} [options.root=null] - The root of descent: an organism id, 'all' for the
+     *        virtual root above the founders, or 'auto' for the common ancestor of the organisms
+     *        alive at the tick. Without it the answer carries no descent.
+     * @param {boolean} [options.showLoading=true] - Whether the request shows the loading indicator.
+     * @returns {Promise<{organisms: Array<object>, totalOrganismCount: number, descent: object|null}>}
+     *          A promise that resolves to the organism summaries, the number of organisms created up
+     *          to the tick, and the descent of the organisms from the root (null without a root).
+     * @throws {Error} If the network request fails or the server returns an error; a root that is
+     *         malformed answers with status 400, a root that is not indexed with status 404.
      */
     async fetchOrganismsAtTick(tick, runId = null, options = {}) {
-        const { signal = null } = options;
+        const { signal = null, root = null, showLoading = true } = options;
         const params = new URLSearchParams();
         if (runId) {
             params.set('runId', runId);
+        }
+        if (root !== null && root !== undefined) {
+            params.set('root', String(root));
         }
 
         const query = params.toString();
@@ -41,13 +52,13 @@ export class OrganismApi {
             fetchOptions.signal = signal;
         }
 
-        const data = await apiClient.fetch(url, fetchOptions);
+        const data = await apiClient.fetch(url, fetchOptions, { showLoading });
 
-        // API response shape: { organisms: [...], totalOrganismCount: N, genomeAncestors: {...} }
+        // API response shape: { organisms: [...], totalOrganismCount: N, descent: {...} (only with a root) }
         return {
             organisms: data.organisms,
             totalOrganismCount: data.totalOrganismCount,
-            genomeAncestors: data.genomeAncestors
+            descent: data.descent ?? null
         };
     }
 

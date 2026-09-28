@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.awt.image.BufferedImage;
+import java.util.Locale;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
@@ -104,6 +105,22 @@ public class InfoOverlayRendererTest {
         assertThat(pixelsOf(fromWarmCache))
             .as("A cached font renders the same frame as a font built for this frame")
             .isEqualTo(pixelsOf(fromColdCache));
+    }
+
+    @Test
+    void numbersTakeTheSignsOfTheUsLocaleOnEveryMachine() {
+        final Locale before = Locale.getDefault();
+        Locale.setDefault(Locale.GERMANY);
+        try {
+            InfoOverlayRenderer overlay = new InfoOverlayRenderer();
+
+            assertThat(overlay.formatNumber(123_456)).isEqualTo("123,456");
+            assertThat(overlay.formatNumber(1_234_567)).isEqualTo("1.23M");
+            assertThat(overlay.formatNumber(12_345_678)).isEqualTo("12.3M");
+            assertThat(overlay.formatNumber(192_750_000)).isEqualTo("193M");
+        } finally {
+            Locale.setDefault(before);
+        }
     }
 
     private static int[] pixelsOf(BufferedImage image) {

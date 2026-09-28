@@ -3,13 +3,17 @@ import { OrganismApi } from './api/OrganismApi.js';
 import { SimulationApi } from './api/SimulationApi.js';
 import { EnvironmentGrid } from './EnvironmentGrid.js';
 import { buildMarkMap } from './MutationMarks.js';
+import { buildGenomeChain, DescentColouring, depthColourInt, LINE_PALETTE_PAIRS } from './DescentColours.js';
 import { moleculeTypeName } from './MoleculeTypePalette.js';
 import { MinimapView } from './ui/minimap/MinimapView.js';
 import { nearestLevelIndex, ZOOM_LEVELS } from './interaction/ZoomLevels.js';
 import { OrganismInstructionView } from './ui/organism/OrganismInstructionView.js';
 import { OrganismSourceView } from './ui/organism/OrganismSourceView.js';
 import { OrganismStateView } from './ui/organism/OrganismStateView.js';
+import { LineageStrip } from './ui/organism/LineageStrip.js';
+import { ValueFormatter } from './utils/ValueFormatter.js';
 import { OrganismPanelManager } from './ui/panels/OrganismPanelManager.js';
+import { DescentSection } from './ui/panels/DescentSection.js';
 import { TickPanelManager } from './ui/panels/TickPanelManager.js';
 import * as TickGrid from './TickGrid.js';
 import { loadingManager } from './ui/LoadingManager.js';
@@ -29,9 +33,6 @@ import {
  * @class AppController
  */
 export class AppController {
-    /** Organism palette (hex) — keep in sync with ExactFrameRenderer and MinimapFrameRenderer. */
-    static ORGANISM_PALETTE = ['#32cd32', '#1e90ff', '#dc143c', '#ffd700', '#ffa500', '#9370db', '#00ffff'];
-
     /**
      * Initializes the AppController, creating instances of all APIs, views, and
      * setting up the initial state and event listeners.
@@ -70,24 +71,39 @@ export class AppController {
             previousOrganismDetails: null, // For change detection in details
             organisms: [], // Current organisms for the tick
             metadata: null, // Simulation metadata (includes organism config)
-            colorMode: localStorage.getItem('evochora-color-mode') || 'id', // 'id' or 'genome'
+            // Root of descent the organisms are coloured against: an organism id or 'all' for the
+            // virtual root above the founders, both held until changed; or 'auto', which every
+            // load resolves anew as the common ancestor of the living at the loaded tick
+            root: 'auto',
+            descent: null, // Descent of the loaded tick's organisms from the root, as the server answered
         };
         this.programArtifactCache = new Map(); // Cache for program artifacts
-        // Lineage-based color tracking (genome mode)
-        this._genomeParent = new Map();       // String(genomeHash) → String(parentGenomeHash) | null
-        this._genomeColorCache = new Map();   // String(genomeHash) → int 0xRRGGBB
-        this._genomeHslCache = new Map();     // String(genomeHash) → [h, s, l]
+        // Colours of the loaded tick's organisms, built from the descent of the same answer
+        this.descentColouring = new DescentColouring(null);
+        this._palettePair = 0;         // pair of the palette the shown root's lines start at
+        this._colouredRootId = null;   // id of the root coloured last, null before the first
+        this._pairByRoot = new Map();  // root id -> the pair it was given in this session
+        this._lastPairHandedOut = 0;   // the pair given to the root that was new last
+        // Tells the user, once the next tick has loaded, that the root asked for was not indexed
+        this._rootNotice = null;              // { title, text, detail } | null
         // The organism the mutations of the selected lineage were fetched for
         this._mutationsOrganismId = null;     // int | null
         // How many generations each ancestor lies back from the organism whose details were loaded
         this._lineageDistances = null;        // { organismId: int, distances: Map<int, int> } | null
+        // Genome changes along the ancestry of the organism whose details were loaded
+        this._genomeChain = null;             // result of buildGenomeChain | null
+        // Marks of the selected lineage's mutations, and the marks handed to the grid: none while
+        // the selected organism is dead at the shown tick
+        this._lineageMarkMap = null;          // Map<string, object> | null
+        this._marksShown = null;              // Map<string, object> | null
+        // The ancestry strip in the organism info line
+        this._lineageStrip = null;            // LineageStrip | null
 
         // Config for renderer
         const defaultConfig = {
             worldSize: [100, 30],
             cellSize: 22,
-            backgroundColor: '#1a1a28', // Border area visible when scrolling beyond grid
-            organismPalette: AppController.ORGANISM_PALETTE.map(hex => parseInt(hex.slice(1), 16))
+            backgroundColor: '#1a1a28' // Border area visible when scrolling beyond grid
         };
         
         // Components
@@ -98,6 +114,12 @@ export class AppController {
         // (renderer.init() clears the container, so we must add minimap after)
         this.minimapView = null;
         this.lastMinimapTick = null;
+        // How the shown minimap was asked for (a size, or true for the default), null before any
+        this._minimapShownRequest = null;
+        // Counts the minimap reloads sent, so that only the answer to the latest one is drawn
+        this._minimapReloadRequest = 0;
+        // Loads of the viewport under way; a minimap reload waits until none is
+        this._viewportLoadsInFlight = 0;
 
         // Apply the initial zoom level (persisted from localStorage)
         this.renderer.applyZoom(initialZoomSize, { x: 0, y: 0 });
@@ -123,7 +145,7 @@ export class AppController {
         this.stateView = new OrganismStateView(detailsRoot);
         this.sourceView = new OrganismSourceView(detailsRoot);
 
-        // Load initial state (runId, tick) from URL if present
+        // Load initial state (runId, tick, organism, root) from URL if present
         this.loadFromUrl();
 
         // Setup viewport change handler (environment only, organisms are cached per tick)
@@ -187,9 +209,7 @@ export class AppController {
             this.state.previousTick = null;
             this.state.previousOrganisms = null;
             this.state.previousOrganismDetails = null;
-            this._genomeParent.clear();
-            this._genomeColorCache.clear();
-            this._genomeHslCache.clear();
+            this._resetDescent();
             this.minimapView?.organismOverlay?.clearSpriteCache();
             this.state.maxTick = null;
             this.state.ranges = [];
@@ -297,6 +317,9 @@ export class AppController {
             });
         }
         
+        this._lineageStrip?.destroy();
+        this._lineageStrip = null;
+
         // Reset view states so they re-render on next selection
         this.sourceView.setProgram(null);
         this.stateView.setProgram(null);
@@ -351,6 +374,7 @@ export class AppController {
             trackContainer: document.getElementById('timeline-track-container'),
             trackCanvas: document.getElementById('timeline-track'),
             tooltip: document.getElementById('timeline-tooltip'),
+            rootMark: document.getElementById('timeline-root-mark'),
             multiplierInput: document.getElementById('large-step-multiplier'),
             multiplierWrapper: document.getElementById('multiplier-wrapper'),
             multiplierSuffix: document.getElementById('multiplier-suffix'),
@@ -380,12 +404,13 @@ export class AppController {
             onTickClick: (tick) => this.navigateToTick(tick)
         });
 
-        // Color mode toggle (ID vs Genome Hash)
-        const colorModeToggle = document.getElementById('color-mode-toggle');
-        if (colorModeToggle) {
-            colorModeToggle.addEventListener('click', () => this.toggleColorMode());
-            this._updateColorModeButton();
-        }
+        // Descent section above the organism panel
+        this.descentSection = new DescentSection({
+            container: document.getElementById('descent-section'),
+            onRootChange: (root) => this.setRoot(root),
+            onHoldRoot: () => this.holdRoot(),
+            onPositionClick: (x, y) => this.renderer?.centerOn(x, y)
+        });
     }
     
     /**
@@ -417,11 +442,6 @@ export class AppController {
             const staticInfo = details.static || details.staticInfo;
             const state = details.state;
 
-            // The ancestry chain is coloured by genome, and its ancestors need not appear at the
-            // current tick, so their parent links arrive with this response and are added before
-            // anything is drawn.
-            this._mergeGenomeAncestors(details.genomeAncestors);
-            
             if (details && staticInfo) {
                 // Resolve the program artifact once and give every view its context before any of
                 // them renders. Views read it while updating — the state view resolves procedure
@@ -445,6 +465,15 @@ export class AppController {
                     ])
                 };
 
+                // The genome depth of every ancestor colours the strip and the mutation marks; the
+                // marks are drawn again once the depths of a newly selected organism are known
+                const previousChain = this._genomeChain;
+                this._genomeChain = buildGenomeChain(
+                    { organismId, genomeHash: staticInfo.genomeHash }, details.lineage || []);
+                if (previousChain?.organismId !== organismId && this._marksShown) {
+                    this.renderer?.refreshMutationMarks();
+                }
+
                 // Update instruction view with last and next instructions
                 if (state && state.instructions) {
                     this.instructionView.update(state.instructions, this.state.currentTick);
@@ -465,22 +494,33 @@ export class AppController {
 
                     // Birth is clickable (navigates to tick)
                     const birthDisplay = birthTick != null
-                        ? `<span class="clickable-tick" data-tick="${birthTick}">${birthTick}</span>`
+                        ? `<span class="clickable-tick" data-tick="${birthTick}">${ValueFormatter.formatGroupedHtml(birthTick)}</span>`
                         : '-';
 
                     // Show Birth/Death when dead, otherwise just Birth
                     let birthDeathLabel;
                     if (isDead && deathTick != null && deathTick >= 0) {
-                        const deathDisplay = `<span class="clickable-tick" data-tick="${deathTick}">${deathTick}</span>`;
+                        const deathDisplay = `<span class="clickable-tick" data-tick="${deathTick}">${ValueFormatter.formatGroupedHtml(deathTick)}</span>`;
                         birthDeathLabel = `Birth/Death: ${birthDisplay}/${deathDisplay}`;
                     } else {
                         birthDeathLabel = `Birth: ${birthDisplay}`;
                     }
 
-                    // Build lineage display (direct parent first, oldest ancestor last)
-                    const lineageDisplay = this._buildLineageDisplay(details.lineage || [], organismId, isDead);
+                    infoEl.innerHTML = `<div class="organism-info-line lineage-line">`
+                        + `<span class="lineage-line-facts">${birthDeathLabel}  MR: ${mrValue}</span>`
+                        + `<span class="lineage-strip-label">Lineage:</span>`
+                        + `<div class="lineage-strip"></div>`
+                        + `<span class="lineage-strip-summary">${this._genomeChain.entries.length - 1} gen · `
+                        + `depth ${this._genomeChain.changes}</span></div>`;
 
-                    infoEl.innerHTML = `<div class="organism-info-line">${birthDeathLabel}  MR: ${mrValue}  Lineage: <span class="lineage-chain">${lineageDisplay}</span></div>`;
+                    // The ancestry strip: founder left, direct parent right
+                    this._lineageStrip?.destroy();
+                    this._lineageStrip = new LineageStrip(infoEl.querySelector('.lineage-strip'), {
+                        onSelect: (ancestorId) => this.selectOrganism(ancestorId)
+                    });
+                    const aliveIds = new Set((this.state.organisms || [])
+                        .filter(o => !o.isDead).map(o => o.organismId));
+                    this._lineageStrip.render(this._genomeChain, aliveIds);
 
                     // Bind click handlers
                     infoEl.querySelectorAll('.clickable-tick').forEach(el => {
@@ -489,15 +529,6 @@ export class AppController {
                             const tick = parseInt(el.dataset.tick, 10);
                             if (!isNaN(tick)) {
                                 this.navigateToTick(tick);
-                            }
-                        });
-                    });
-                    infoEl.querySelectorAll('.lineage-ancestor').forEach(el => {
-                        el.addEventListener('click', (e) => {
-                            e.stopPropagation();
-                            const aId = el.dataset.organismId;
-                            if (aId) {
-                                this.selectOrganism(aId);
                             }
                         });
                     });
@@ -562,7 +593,8 @@ export class AppController {
                 },
                 (size) => {
                     this.applyZoomSize(size, this.renderer.viewportCenter());
-                }
+                },
+                () => this._reloadMinimap()
             );
             this.minimapView.restoreState(); // Restore expanded/collapsed state
             this.minimapView.setTorus(this.renderer.torus);
@@ -823,13 +855,17 @@ export class AppController {
     }
 
     /**
-     * Starts periodic polling for maxTick updates (every 5 seconds).
-     * Stops any existing polling first.
+     * Starts periodic polling for maxTick updates (every 5 seconds). While the run's ancestry is
+     * still being read, or reading it failed, the same poll asks again for the organisms of the
+     * shown tick. Stops any existing polling first.
      * @private
      */
     _startMaxTickPolling() {
         this._stopMaxTickPolling();
-        this._maxTickPollTimer = setInterval(() => this.updateMaxTick(), 5000);
+        this._maxTickPollTimer = setInterval(() => {
+            this.updateMaxTick();
+            this._refreshPendingDescent();
+        }, 5000);
     }
 
     /**
@@ -892,17 +928,19 @@ export class AppController {
     }
     
     /**
-     * Updates the browser URL with the current application state (runId, tick).
-     * This enables deep linking and state persistence across page reloads.
+     * Updates the browser URL with the current application state (runId, tick, organism, root).
+     * This enables deep linking and state persistence across page reloads. The root is written
+     * as held, an organism id or 'all', or as 'auto'.
      * @private
      */
     updateUrlState() {
         try {
             const url = new URL(window.location.href);
 
-            // Rebuild params in desired order: tick, organism, runId
+            // Rebuild params in desired order: tick, organism, root, runId
             url.searchParams.delete('tick');
             url.searchParams.delete('organism');
+            url.searchParams.delete('root');
             url.searchParams.delete('runId');
 
             if (this.state.currentTick !== null && this.state.currentTick !== undefined) {
@@ -911,6 +949,7 @@ export class AppController {
             if (this.state.selectedOrganismId) {
                 url.searchParams.set('organism', this.state.selectedOrganismId);
             }
+            url.searchParams.set('root', String(this.state.root));
             if (this.state.runId) {
                 url.searchParams.set('runId', this.state.runId);
             }
@@ -929,10 +968,13 @@ export class AppController {
      * 
      * @param {boolean} [isForwardStep=false] - True if navigating forward, for change highlighting.
      * @param {number|null} [previousTick=null] - The previous tick number, for change detection.
+     * @param {object} [options={}]
+     * @param {boolean} [options.autoRoot=false] - Asks for the common ancestor of the living as the
+     *        root, whatever root is held; the answer's root is held only once it has arrived.
      * @returns {Promise<void>} A promise that resolves when the viewport data is loaded.
      * @private
      */
-    async loadViewport(isForwardStep = false, previousTick = null) {
+    async loadViewport(isForwardStep = false, previousTick = null, { autoRoot = false } = {}) {
         // Abort previous organism summary request
         if (this.organismSummaryRequestController) {
             this.organismSummaryRequestController.abort();
@@ -943,6 +985,12 @@ export class AppController {
         // Track load generation so aborted loads can clean up correctly
         this._loadGeneration = (this._loadGeneration || 0) + 1;
         const myGeneration = this._loadGeneration;
+
+        // The root this load asks for, as sent: an id, 'all', or 'auto'
+        const requestedRoot = autoRoot ? 'auto' : this._rootToken();
+        // Whether the organisms of this load were shown, and with them its root taken over
+        let organismsShown = false;
+        this._viewportLoadsInFlight++;
 
         // If init() is orchestrating progress, use its percentages; otherwise manage our own
         const managedExternally = loadingManager.isActive && this._initInProgress;
@@ -957,10 +1005,11 @@ export class AppController {
             const needMinimap = this.state.currentTick !== this.lastMinimapTick;
 
             // Fire both requests simultaneously — organisms are fast, environment is slow
+            const minimapRequest = needMinimap ? this._minimapRequest() : false;
             const environmentPromise = this.renderer.loadViewport(
                 this.state.currentTick,
                 this.state.runId,
-                needMinimap
+                minimapRequest
             );
             // The environment is awaited only after the organisms. When the organisms fail or a
             // newer load aborts this one first, the environment is never awaited; its failure is
@@ -970,21 +1019,24 @@ export class AppController {
             const organismPromise = this.organismApi.fetchOrganismsAtTick(
                 this.state.currentTick,
                 this.state.runId,
-                { signal: organismSignal }
+                { signal: organismSignal, root: requestedRoot }
             );
 
             // Process organisms as soon as they arrive (don't wait for environment)
             const organismResult = await organismPromise;
+            if (!autoRoot && requestedRoot !== this._rootToken()) {
+                // The resolved root was held while this load was on its way, and this answer
+                // resolved its own: the tick is asked for again against the held root
+                if (!managedExternally) {
+                    loadingManager.hide();
+                }
+                await this.loadViewport(isForwardStep, previousTick);
+                return;
+            }
             const organisms = organismResult.organisms;
             this.state.totalOrganismCount = organismResult.totalOrganismCount;
-            this._applyGenomeAncestors(organismResult.genomeAncestors);
-            this.updateOrganismPanel(organisms, isForwardStep);
-            this.minimapView?.setOwnershipColorResolver(this._minimapOwnershipColorResolver(organisms));
-            this.minimapView?.updateOrganisms(
-                organisms,
-                this._minimapColorResolver(),
-                this._minimapGroupKeyFn()
-            );
+            this._showOrganisms(organisms, organismResult.descent, requestedRoot, isForwardStep);
+            organismsShown = true;
 
             // Reload organism details if one is selected
             if (this.state.selectedOrganismId) {
@@ -993,6 +1045,7 @@ export class AppController {
                     const stillExists = organisms.some(o => String(o.organismId) === this.state.selectedOrganismId);
                     if (stillExists) {
                         await this._ensureLineageMutations(organismId);
+                        this._showLineageMarks();
                         await this.loadOrganismDetails(organismId, isForwardStep);
                     } else {
                         this.state.selectedOrganismId = null;
@@ -1011,6 +1064,7 @@ export class AppController {
             if (result?.minimap && this.state.worldShape) {
                 this.minimapView.update(result.minimap, this.state.worldShape);
                 this.lastMinimapTick = this.state.currentTick;
+                this._minimapShownRequest = minimapRequest;
             }
             this.updateMinimapViewport();
             this.renderer.renderOrganisms(organisms);
@@ -1021,6 +1075,12 @@ export class AppController {
 
             if (!managedExternally) {
                 loadingManager.hide();
+            }
+
+            // Shown last: loading the details of the selected organism dismisses closable notices
+            if (this._rootNotice) {
+                showErrorNotice({ ...this._rootNotice, closable: true });
+                this._rootNotice = null;
             }
         } catch (error) {
             if (error.name === 'AbortError') {
@@ -1033,10 +1093,152 @@ export class AppController {
             if (!managedExternally) {
                 loadingManager.hide();
             }
+            if (!organismsShown && error.status === 404 && AppController._isOrganismRoot(requestedRoot)) {
+                // Only the organisms request speaks about the root: once its answer is shown, a 404
+                // is another request's. The route answers 404 for a root that is not indexed, as
+                // from a link to another run, but also for a missing tick or run. The tick is asked
+                // for again against the common ancestor of the living; the held root and the URL
+                // change only when that answer arrives, and the notice is shown once the load has
+                // succeeded. Should the second request fail as well, the error is not the root's
+                // and is reported as such.
+                console.warn(`Tick ${this.state.currentTick} with root ${requestedRoot} was not found:`, error.message);
+                this._rootNotice = {
+                    title: 'The root is not in this run',
+                    text: `Organism #${requestedRoot} is not indexed in this run. The root is now the `
+                        + 'common ancestor of the organisms alive at this tick.',
+                    detail: error.message
+                };
+                await this.loadViewport(isForwardStep, previousTick, { autoRoot: true });
+                return;
+            }
+            // A notice waiting for a successful load would describe a root that was never changed
+            if (!organismsShown) {
+                this._rootNotice = null;
+            }
             console.error('Failed to load viewport:', error);
             showErrorNotice({ title: 'Could not load this tick', detail: error.message, closable: true });
             // Update panel with empty list on error
             this.updateOrganismPanel([]);
+        } finally {
+            this._viewportLoadsInFlight--;
+            // The minimap panel changed its size while a load was on its way
+            if (this._viewportLoadsInFlight === 0 && this._minimapShownRequest !== null
+                && this._minimapShownRequest !== this._minimapRequest()) {
+                this._reloadMinimap();
+            }
+        }
+    }
+
+    /**
+     * Returns how the minimap is asked for with an environment request, at the size the minimap
+     * panel shows it.
+     * @returns {boolean|number} A size in pixels of the longer edge, or true for the server's default.
+     * @private
+     */
+    _minimapRequest() {
+        return this.minimapView?.requestedSize() ?? true;
+    }
+
+    /**
+     * Loads the minimap of the shown tick again, at the size the minimap panel now shows it; the
+     * environment cells of the viewport come from the grid's cache.
+     * @returns {Promise<void>} A promise that resolves when the minimap is drawn.
+     * @private
+     */
+    async _reloadMinimap() {
+        if (!this.state.previousOrganisms || !this.state.worldShape || this._viewportLoadsInFlight > 0) {
+            return; // A load under way reloads the minimap at the current size when it ends
+        }
+        const tick = this.state.currentTick;
+        const runId = this.state.runId;
+        // Only the answer to the latest reload is drawn, whatever order the answers arrive in
+        const request = ++this._minimapReloadRequest;
+        const minimapRequest = this._minimapRequest();
+        try {
+            const result = await this.renderer.loadViewport(tick, runId, minimapRequest);
+            if (result?.minimap && request === this._minimapReloadRequest
+                && tick === this.state.currentTick && runId === this.state.runId) {
+                this.minimapView.update(result.minimap, this.state.worldShape);
+                this.lastMinimapTick = tick;
+                this._minimapShownRequest = minimapRequest;
+                this.updateMinimapViewport();
+            }
+        } catch (error) {
+            if (error.name !== 'AbortError') {
+                console.warn('Failed to load the minimap at its new size:', error);
+            }
+        }
+    }
+
+    /**
+     * Shows the organisms of the loaded tick with their descent: the colouring, the organism
+     * list, the descent section and the minimap overlay. The environment grid draws them once
+     * its cells are there.
+     *
+     * @param {Array<object>} organisms - The organisms of the tick.
+     * @param {object|null} descent - The `descent` object of the same answer.
+     * @param {string} requestedRoot - The root as the request sent it.
+     * @param {boolean} isForwardStep - True if navigating forward, for change highlighting.
+     * @private
+     */
+    _showOrganisms(organisms, descent, requestedRoot, isForwardStep) {
+        this._applyDescent(descent, requestedRoot);
+        this.updateOrganismPanel(organisms, isForwardStep);
+        this._renderDescentSection();
+        this.minimapView?.setOwnershipColorResolver(this._minimapOwnershipColorResolver(organisms));
+        this.minimapView?.updateOrganisms(organisms, this._minimapColorOf());
+    }
+
+    /**
+     * Draws the descent section from the descent and the organisms of the shown tick.
+     * @private
+     */
+    _renderDescentSection() {
+        this.descentSection?.render({
+            descent: this.state.descent,
+            colouring: this.descentColouring,
+            organisms: this.state.organisms,
+            tick: this.state.currentTick,
+            auto: this.state.root === 'auto'
+        });
+    }
+
+    /**
+     * Asks again for the organisms of the shown tick while the run's ancestry is still being read
+     * or reading it failed, so that the progress, and then the colours, arrive by themselves. The
+     * environment is not asked for. An answer is dropped when a load of a tick or a root has begun
+     * since the question was sent; a failed question is left to the next poll.
+     *
+     * @returns {Promise<void>} A promise that resolves when the answer is shown or dropped.
+     * @private
+     */
+    async _refreshPendingDescent() {
+        const descentState = this.state.descent?.state;
+        if (descentState !== 'loading' && descentState !== 'failed') {
+            return;
+        }
+        if (!this.state.previousOrganisms || this.state.previousTick !== this.state.currentTick) {
+            return; // The shown tick is still being loaded
+        }
+
+        const generation = this._loadGeneration;
+        const tick = this.state.currentTick;
+        const runId = this.state.runId;
+        const requestedRoot = this._rootToken();
+        try {
+            // Silent: the descent section shows the progress, the loading indicator stays off
+            const result = await this.organismApi.fetchOrganismsAtTick(tick, runId,
+                { root: requestedRoot, showLoading: false });
+            if (generation !== this._loadGeneration || tick !== this.state.currentTick
+                || runId !== this.state.runId || requestedRoot !== this._rootToken()) {
+                return;
+            }
+            this.state.totalOrganismCount = result.totalOrganismCount;
+            this._showOrganisms(result.organisms, result.descent, requestedRoot, false);
+            this.renderer.renderOrganisms(result.organisms);
+            this.state.previousOrganisms = result.organisms;
+        } catch (error) {
+            console.debug('Failed to refresh the descent of the shown tick:', error);
         }
     }
 
@@ -1073,6 +1275,130 @@ export class AppController {
     }
 
     /**
+     * Makes a new root of descent and loads the shown tick again against it.
+     *
+     * @param {number|string} root - An organism id or 'all' (also 0) for the virtual root above
+     *     the founders, held from now on; anything else sets 'auto', the common ancestor of the
+     *     organisms alive at every shown tick.
+     * @returns {Promise<void>} A promise that resolves when the tick is loaded again.
+     */
+    async setRoot(root) {
+        if (root === 0 || root === 'all') {
+            this.state.root = 'all';
+        } else if (Number.isInteger(root) && root > 0) {
+            this.state.root = root;
+        } else {
+            this.state.root = 'auto';
+        }
+        this.updateUrlState();
+        await this.loadViewport();
+    }
+
+    /**
+     * Holds the root that 'auto' resolved for the shown tick: it stays the root when the tick
+     * changes. The shown tick is not loaded again, its colours stay as they are. Does nothing
+     * while the root is not auto or not resolved yet.
+     */
+    holdRoot() {
+        const root = this.state.descent?.root;
+        if (this.state.root !== 'auto' || !root) {
+            return;
+        }
+        this.state.root = root.id === 0 ? 'all' : root.id;
+        this.updateUrlState();
+        this._renderDescentSection();
+    }
+
+    /**
+     * Returns the root as a tick request sends it.
+     * @returns {string} The organism id, 'all', or 'auto'.
+     * @private
+     */
+    _rootToken() {
+        return String(this.state.root);
+    }
+
+    /**
+     * Tells whether a root, as sent, names an organism.
+     * @param {string|null} token - The root as a tick request sent it.
+     * @returns {boolean} True for an organism id, false for 'all', 'auto' or none.
+     * @private
+     */
+    static _isOrganismRoot(token) {
+        return typeof token === 'string' && /^[0-9]+$/.test(token);
+    }
+
+    /**
+     * Returns the pair of the palette a root's lines start at.
+     * <p>
+     * A root shown before in this session keeps its pair, so that going back over a change of the
+     * root shows the colours seen there before. A root shown for the first time takes the pair
+     * after the one handed out last, and one further if that is the pair of the root shown just
+     * now, so that a change of the root always shows in the colours.
+     *
+     * @param {number} rootId - Id of the root, 0 for `all`.
+     * @returns {number} The pair, 0 to {@link LINE_PALETTE_PAIRS} - 1.
+     * @private
+     */
+    _pairOfRoot(rootId) {
+        const known = this._pairByRoot.get(rootId);
+        if (known !== undefined) {
+            return known;
+        }
+        let pair = this._pairByRoot.size === 0 ? 0 : (this._lastPairHandedOut + 1) % LINE_PALETTE_PAIRS;
+        if (this._colouredRootId !== null && pair === this._palettePair) {
+            pair = (pair + 1) % LINE_PALETTE_PAIRS;
+        }
+        this._pairByRoot.set(rootId, pair);
+        this._lastPairHandedOut = pair;
+        return pair;
+    }
+
+    /**
+     * Takes over the descent of a loaded tick: builds the colouring and places the root's birth on
+     * the timeline. While the root is 'auto', the resolved root is shown but not held. A load that
+     * asked for 'auto' in place of a held root, after that root was not found, holds the root it
+     * resolved; while the ancestry is still being read and nothing is resolved, the root becomes
+     * 'auto'.
+     *
+     * @param {object|null} descent - The `descent` object of the answer.
+     * @param {string} requestedRoot - The root as the request sent it.
+     * @private
+     */
+    _applyDescent(descent, requestedRoot) {
+        this.state.descent = descent;
+        if (requestedRoot === 'auto' && this.state.root !== 'auto') {
+            this.state.root = descent?.root ? (descent.root.id === 0 ? 'all' : descent.root.id) : 'auto';
+            this.updateUrlState();
+        }
+        const rootId = descent?.root ? descent.root.id : null;
+        if (rootId !== null && rootId !== this._colouredRootId) {
+            this._palettePair = this._pairOfRoot(rootId);
+            this._colouredRootId = rootId;
+        }
+        this.descentColouring = new DescentColouring(descent, this._palettePair);
+        const root = descent?.root;
+        this.tickPanelManager?.setRootBirthTick(root && root.id !== 0 ? (root.birthTick ?? null) : null);
+    }
+
+    /**
+     * Forgets the root and the descent, as for a run that is opened anew: the root becomes 'auto'.
+     * @private
+     */
+    _resetDescent() {
+        this.state.root = 'auto';
+        this.state.descent = null;
+        this._rootNotice = null;
+        this.descentColouring = new DescentColouring(null);
+        this._palettePair = 0;
+        this._colouredRootId = null;
+        this._pairByRoot = new Map();
+        this._lastPairHandedOut = 0;
+        this.descentSection?.clear();
+        this.tickPanelManager?.setRootBirthTick(null);
+    }
+
+    /**
      * Updates the organism panel with the list of organisms for the current tick.
      * It preserves the user's selection if the organism still exists and updates the summary counts.
      * 
@@ -1104,7 +1430,7 @@ export class AppController {
                 id: String(organism.organismId),
                 energy: organism.energy || 0,
                 entropyRegister: organism.entropyRegister || 0,
-                color: this.getOrganismColor(organism.organismId, organism.genomeHash),
+                color: this.descentColouring.colourOf(organism.organismId, organism.isDead || false),
                 ip: organism.ip,
                 dv: organism.dv,
                 dataPointers: organism.dataPointers,
@@ -1122,34 +1448,13 @@ export class AppController {
     }
     
     /**
-     * Gets a deterministic color for an organism based on its ID.
-     * Returns a hex color string suitable for CSS.
-     *
-     * @param {number} organismId - The ID of the organism.
-     * @param {number} genomeHash - The genome hash for genome-based coloring.
-     * @returns {string} A hex color string (e.g., "#32cd32").
-     * @private
-     */
-    getOrganismColor(organismId, genomeHash) {
-        if (typeof organismId !== 'number' || organismId < 1) {
-            return '#ffffff'; // Default white for invalid IDs
-        }
-
-        if (this.state.colorMode === 'genome') {
-            return this._genomeHashToLineageHex(genomeHash);
-        }
-
-        const palette = AppController.ORGANISM_PALETTE;
-        return palette[(organismId - 1) % palette.length];
-    }
-
-    /**
      * Loads the mutations of an organism's lineage once and hands their marks to the grid.
      *
      * The answer describes births, not ticks: it is the same at every tick of the run, so it is
      * fetched when the selection changes and kept until it changes again. The events themselves are
-     * not kept — what outlives the call is the map of marked cells the grid holds and the ancestry
-     * edges of the genomes the events name. A request that fails is not repeated for the same
+     * not kept — what outlives the call is the map of marked cells, which is handed to the grid
+     * while the selected organism is alive at the shown tick. A mark is coloured by the genome
+     * depth of the ancestor that received the mutation. A request that fails is not repeated for the same
      * organism either, so a run whose route answers with an error costs one request per selection.
      *
      * @param {number} organismId - The selected organism.
@@ -1179,16 +1484,10 @@ export class AppController {
             }
 
             const events = answer?.events || [];
-            this.renderer?.setMutationMarks(
-                buildMarkMap(events, {
-                    resolveTypeName: (moleculeType) => this._resolveMoleculeTypeName(moleculeType)
-                }),
-                {
-                    colorOf: (genomeHash) => this._genomeHashToLineageColor(genomeHash),
-                    generationsBackOf: (originOrganismId) => this._generationsBack(originOrganismId),
-                    opcodeNameOf: (opcodeId) => this.state.metadata?.opcodes?.[String(opcodeId)] ?? null
-                }
-            );
+            this._lineageMarkMap = buildMarkMap(events, {
+                resolveTypeName: (moleculeType) => this._resolveMoleculeTypeName(moleculeType)
+            });
+            this._showLineageMarks();
         } catch (error) {
             if (error.name === 'AbortError') {
                 return;
@@ -1214,7 +1513,49 @@ export class AppController {
         }
         this._mutationsOrganismId = null;
         this._lineageDistances = null;
+        this._genomeChain = null;
+        this._lineageMarkMap = null;
+        this._marksShown = null;
         this.renderer?.setMutationMarks(null);
+    }
+
+    /**
+     * Hands the marks of the selected lineage to the grid, or takes them away while the selected
+     * organism is dead at the shown tick. The grid is only told when that changes, since handing
+     * the marks over draws every marked cell again.
+     * @private
+     */
+    _showLineageMarks() {
+        const selected = (this.state.organisms || [])
+            .find(o => String(o.organismId) === this.state.selectedOrganismId);
+        const marks = selected?.isDead ? null : this._lineageMarkMap;
+        if (marks === this._marksShown) {
+            return;
+        }
+        this._marksShown = marks;
+        this.renderer?.setMutationMarks(marks, {
+            colorOf: (mark) => this._markColour(mark),
+            generationsBackOf: (originOrganismId) => this._generationsBack(originOrganismId),
+            opcodeNameOf: (opcodeId) => this.state.metadata?.opcodes?.[String(opcodeId)] ?? null
+        });
+    }
+
+    /**
+     * Returns the colour of a mark: the genome depth of the ancestor that received the mutation.
+     *
+     * @param {object} mark - A mark of the selected lineage.
+     * @returns {number|null} The colour as 0xRRGGBB; null while the depths of the organism the
+     *     marks belong to are not known, or when the ancestor that received the mutation carries
+     *     no genome change.
+     * @private
+     */
+    _markColour(mark) {
+        const chain = this._genomeChain;
+        if (!chain || chain.organismId !== this._mutationsOrganismId) {
+            return null;
+        }
+        const depth = chain.byOrganism.get(mark.originOrganismId);
+        return depth === undefined ? null : depthColourInt(depth, chain.changes);
     }
 
     /**
@@ -1259,314 +1600,37 @@ export class AppController {
     }
 
     /**
-     * Applies the genome ancestor closure from a backend API response.
-     * Replaces the genome→parentGenome map and clears derived color caches.
-     * <p>
-     * The map is replaced rather than merged: while a run is still being indexed, a genome whose
-     * parent organism has not been written yet reads as a root, and that answer corrects itself
-     * once the missing rows arrive. Keeping earlier answers would make such a colour last for the
-     * whole session.
-     * @param {Object} ancestors - Map of genomeHash → parentGenomeHash (null for roots), covering
-     *                             every genome the response displays and all of their ancestors.
+     * Returns the colour of an organism on the minimap organism overlay: its colour of descent,
+     * the dead tone for an organism dead at the tick.
+     * @returns {function(object): string} Hex colour of an organism
      * @private
      */
-    _applyGenomeAncestors(ancestors) {
-        this._genomeParent.clear();
-        this._genomeColorCache.clear();
-        this._genomeHslCache.clear();
-        this._mergeGenomeAncestors(ancestors);
-    }
-
-    /**
-     * Adds a genome ancestor closure to the current one without discarding it.
-     * <p>
-     * A view is served by more than one response: the organisms of a tick and, when one is
-     * selected, its ancestry chain. Their closures overlap but neither contains the other, and
-     * both come from the same relation, so a genome present in both carries the same parent.
-     * Adding is therefore safe, while replacing would drop what the other response delivered.
-     * @param {Object} ancestors - Map of genomeHash → parentGenomeHash (null for roots).
-     * @private
-     */
-    _mergeGenomeAncestors(ancestors) {
-        for (const [genomeHash, parentGenomeHash] of Object.entries(ancestors)) {
-            this._genomeParent.set(String(genomeHash), parentGenomeHash ? String(parentGenomeHash) : null);
-        }
-    }
-
-    /**
-     * Returns a lineage-derived color for a genome hash as a packed RGB integer.
-     * Root genomes get hues from a golden-ratio sequence. Derived genomes get a hue
-     * shifted from their parent's, creating visual continuity along lineages.
-     * @param {number|bigint|string} genomeHash - The genome hash value.
-     * @returns {number} Packed RGB integer (0xRRGGBB), or 0x808080 for null/zero.
-     * @private
-     */
-    _genomeHashToLineageColor(genomeHash) {
-        if (genomeHash == null || genomeHash === 0 || genomeHash === '0') return 0x808080;
-        const key = String(genomeHash);
-        if (!this._genomeColorCache.has(key)) {
-            this._computeLineageColor(key);
-        }
-        return this._genomeColorCache.get(key);
-    }
-
-    /**
-     * Returns a lineage-derived color as a CSS hex string (e.g., '#1e90ff').
-     * @param {number|bigint|string} genomeHash - The genome hash value.
-     * @returns {string} Hex color string.
-     * @private
-     */
-    _genomeHashToLineageHex(genomeHash) {
-        const rgb = this._genomeHashToLineageColor(genomeHash);
-        return '#' + rgb.toString(16).padStart(6, '0');
-    }
-
-    /**
-     * Computes and caches the lineage color for a genome hash.
-     * If the genome has a known parent, the color is derived by shifting the parent's hue.
-     * Otherwise, a new root color is assigned via the golden-ratio sequence.
-     * @param {string} genomeKey - String representation of the genome hash.
-     * @param {Set<string>} [visited] - Genomes already on the current path, guarding the recursion.
-     * @private
-     */
-    _computeLineageColor(genomeKey, visited = new Set()) {
-        if (this._genomeColorCache.has(genomeKey)) return;
-
-        const parentGenomeKey = this._genomeParent.get(genomeKey);
-        visited.add(genomeKey);
-
-        if (parentGenomeKey && parentGenomeKey !== '0' && !visited.has(parentGenomeKey)) {
-            // Ensure parent color is computed first (recursive)
-            if (!this._genomeColorCache.has(parentGenomeKey)) {
-                this._computeLineageColor(parentGenomeKey, visited);
-            }
-
-            const parentHsl = this._genomeHslCache.get(parentGenomeKey);
-            if (parentHsl) {
-                const hashBits = AppController._hashStringToInt(genomeKey);
-                // Hue shift: ±25° (noticeable but keeps family resemblance)
-                const direction = (hashBits & 1) ? 1 : -1;
-                const h = (parentHsl[0] + direction * 25 + 360) % 360;
-                // Small S/L perturbation for sibling differentiation
-                const satDelta = ((hashBits >> 1) & 0x3F) / 63 * 0.06 - 0.03;
-                const litDelta = ((hashBits >> 7) & 0x3F) / 63 * 0.06 - 0.03;
-                const s = Math.max(0.65, Math.min(0.95, parentHsl[1] + satDelta));
-                const l = Math.max(0.40, Math.min(0.60, parentHsl[2] + litDelta));
-
-                this._genomeHslCache.set(genomeKey, [h, s, l]);
-                this._genomeColorCache.set(genomeKey, AppController._hslToRgb(h, s, l));
-                return;
-            }
-        }
-
-        // Root genome: deterministic hue from genome hash (golden-ratio spread)
-        const h = (120.0 + AppController._hashStringToInt(genomeKey) * 137.508) % 360;
-        this._genomeHslCache.set(genomeKey, [h, 0.80, 0.50]);
-        this._genomeColorCache.set(genomeKey, AppController._hslToRgb(h, 0.80, 0.50));
-    }
-
-    /**
-     * Deterministic string hash to a non-negative 32-bit integer.
-     * Used to extract pseudo-random bits from genome hash strings for color perturbation.
-     * @param {string} str - Input string.
-     * @returns {number} Non-negative integer.
-     * @private
-     */
-    static _hashStringToInt(str) {
-        let hash = 0;
-        for (let i = 0; i < str.length; i++) {
-            hash = ((hash << 5) - hash + str.charCodeAt(i)) | 0;
-        }
-        return Math.abs(hash);
-    }
-
-    /**
-     * Converts HSL color values to a packed RGB integer.
-     * @param {number} h - Hue in degrees (0-360).
-     * @param {number} s - Saturation (0-1).
-     * @param {number} l - Lightness (0-1).
-     * @returns {number} Packed RGB integer (0xRRGGBB).
-     * @private
-     */
-    static _hslToRgb(h, s, l) {
-        const c = (1 - Math.abs(2 * l - 1)) * s;
-        const hPrime = h / 60;
-        const x = c * (1 - Math.abs(hPrime % 2 - 1));
-
-        let r1, g1, b1;
-        if (hPrime < 1) { r1 = c; g1 = x; b1 = 0; }
-        else if (hPrime < 2) { r1 = x; g1 = c; b1 = 0; }
-        else if (hPrime < 3) { r1 = 0; g1 = c; b1 = x; }
-        else if (hPrime < 4) { r1 = 0; g1 = x; b1 = c; }
-        else if (hPrime < 5) { r1 = x; g1 = 0; b1 = c; }
-        else { r1 = c; g1 = 0; b1 = x; }
-
-        const m = l - c / 2;
-        const r = Math.round(Math.max(0, Math.min(255, (r1 + m) * 255)));
-        const g = Math.round(Math.max(0, Math.min(255, (g1 + m) * 255)));
-        const b = Math.round(Math.max(0, Math.min(255, (b1 + m) * 255)));
-
-        return (r << 16) | (g << 8) | b;
-    }
-
-    /**
-     * Builds the HTML for the lineage chain display.
-     * Direct parent first (left), oldest ancestor last (right). Truncated with (+N) if too long.
-     * @param {Array} lineage - Array of {organismId, genomeHash} entries (parent first).
-     * @param {string|number} currentOrganismId - The currently selected organism's ID.
-     * @returns {string} HTML string for the lineage chain.
-     * @private
-     */
-    _buildLineageDisplay(lineage, currentOrganismId, isDead = false) {
-        if (!lineage || lineage.length === 0) {
-            return '<span class="lineage-none">-</span>';
-        }
-
-        const maxVisible = isDead ? 5 : 6;
-        const aliveIds = new Set(
-            (this.organismPanelManager?.currentOrganisms || []).map(o => String(o.id))
-        );
-
-        // Truncate: show first maxVisible-1 entries, then (+N) for the rest
-        let displayEntries = lineage;
-        let overflowCount = 0;
-        if (lineage.length > maxVisible) {
-            displayEntries = lineage.slice(0, maxVisible - 1);
-            overflowCount = lineage.length - (maxVisible - 1);
-        }
-
-        const parts = displayEntries.map(entry => {
-            const id = entry.organismId;
-            const isAlive = aliveIds.has(String(id));
-
-            // Color based on current color mode
-            let color;
-            if (this.state.colorMode === 'genome') {
-                color = this._genomeHashToLineageHex(entry.genomeHash);
-            } else {
-                const palette = AppController.ORGANISM_PALETTE;
-                color = palette[(id - 1) % palette.length];
-            }
-
-            if (isAlive) {
-                return `<span class="lineage-ancestor" data-organism-id="${id}" style="color:${color}">#${id}</span>`;
-            } else {
-                return `<span class="lineage-ancestor-dead" style="color:${color}">#${id}</span>`;
-            }
-        });
-
-        let html = parts.join('<span class="lineage-separator"> &gt; </span>');
-        if (overflowCount > 0) {
-            html += `<span class="lineage-separator"> &gt; </span><span class="lineage-overflow">(+${overflowCount})</span>`;
-        }
-        return html;
-    }
-
-    /**
-     * Toggles the organism coloring mode between ID-based and genome-hash-based.
-     */
-    toggleColorMode() {
-        this.state.colorMode = this.state.colorMode === 'id' ? 'genome' : 'id';
-        localStorage.setItem('evochora-color-mode', this.state.colorMode);
-        this._updateColorModeButton();
-
-        // Re-render organisms with new color mode (no server reload needed)
-        const organisms = this.state.previousOrganisms;
-        if (organisms) {
-            this.updateOrganismPanel(organisms);
-            this.renderer.renderOrganisms(organisms);
-            this.minimapView?.organismOverlay?.clearSpriteCache();
-            this.minimapView?.setOwnershipColorResolver(this._minimapOwnershipColorResolver());
-            this.minimapView?.updateOrganisms(
-                organisms,
-                this._minimapColorResolver(),
-                this._minimapGroupKeyFn()
-            );
-        }
-    }
-
-    /**
-     * Updates the color mode toggle button appearance.
-     * @private
-     */
-    _updateColorModeButton() {
-        const btn = document.getElementById('color-mode-toggle');
-        if (!btn) return;
-        const isGenome = this.state.colorMode === 'genome';
-        btn.textContent = isGenome ? 'GH' : 'ID';
-        btn.title = isGenome
-            ? 'Color by: Genome Hash (click to switch to ID)'
-            : 'Color by: Organism ID (click to switch to Genome)';
-        btn.classList.toggle('active', isGenome);
-    }
-
-    /**
-     * Returns a color resolver for the minimap organism overlay based on the current color mode.
-     * @returns {function(string): string} Maps group key to hex color
-     * @private
-     */
-    _minimapColorResolver() {
-        if (this.state.colorMode === 'genome') {
-            return (genomeHash) => this._genomeHashToLineageHex(genomeHash);
-        }
-        const palette = AppController.ORGANISM_PALETTE;
-        return (organismId) => palette[(parseInt(organismId, 10) - 1) % palette.length];
-    }
-
-    /**
-     * Returns a grouping key function for the minimap organism overlay based on the current color mode.
-     * @returns {function(object): string} Extracts the grouping key from an organism
-     * @private
-     */
-    _minimapGroupKeyFn() {
-        if (this.state.colorMode === 'genome') {
-            return (org) => String(org.genomeHash || 0);
-        }
-        return (org) => String(org.organismId);
+    _minimapColorOf() {
+        const colouring = this.descentColouring;
+        return (org) => colouring.colourOf(org.organismId, org.isDead || false);
     }
 
     /**
      * Returns a color resolver for minimap ownership mode.
-     * Maps ownerId (int) to 0xRRGGBB (int) based on current color mode.
-     * Only colors cells belonging to living organisms; returns -1 for unknown owners
+     * Maps ownerId (int) to its colour of descent (0xRRGGBB int), the dead tone for an organism
+     * dead at the tick. Only organisms of the tick are coloured; returns -1 for unknown owners
      * (renderer uses background color for -1).
      * @param {Array|null} [organisms=null] - Organisms to build the mapping from. Falls back to previousOrganisms.
      * @returns {function(number): number}
      * @private
      */
     _minimapOwnershipColorResolver(organisms = null) {
-        const orgs = organisms || this.state.previousOrganisms;
-        const livingIds = new Set();
-        if (orgs) {
-            for (const org of orgs) {
-                livingIds.add(org.organismId);
-            }
+        const orgs = organisms || this.state.previousOrganisms || [];
+        const colouring = this.descentColouring;
+        const colours = new Map();
+        for (const org of orgs) {
+            colours.set(org.organismId, colouring.colourIntOf(org.organismId, org.isDead || false));
         }
-
-        if (this.state.colorMode === 'genome') {
-            const ownerToGenome = new Map();
-            if (orgs) {
-                for (const org of orgs) {
-                    ownerToGenome.set(org.organismId, org.genomeHash);
-                }
-            }
-            return (ownerId) => {
-                const genomeHash = ownerToGenome.get(ownerId);
-                if (genomeHash != null) {
-                    return this._genomeHashToLineageColor(genomeHash);
-                }
-                return -1;
-            };
-        }
-        const palette = AppController.ORGANISM_PALETTE;
-        return (ownerId) => {
-            if (!livingIds.has(ownerId)) return -1;
-            return parseInt(palette[(ownerId - 1) % palette.length].slice(1), 16);
-        };
+        return (ownerId) => colours.get(ownerId) ?? -1;
     }
 
     /**
-     * Loads the initial state (runId, tick) from the URL query parameters on page load.
+     * Loads the initial state (runId, tick, organism, root) from the URL query parameters on page load.
      * This allows for direct linking to a specific point in a specific simulation.
      * @private
      */
@@ -1592,6 +1656,21 @@ export class AppController {
                 const organismNumber = parseInt(organism, 10);
                 if (!Number.isNaN(organismNumber) && organismNumber > 0) {
                     this.state.selectedOrganismId = String(organismNumber);
+                }
+            }
+
+            // A root that is neither 'auto', 'all' nor an organism id is 'auto', as without one
+            const root = urlParams.get('root');
+            if (root !== null) {
+                const trimmed = root.trim();
+                if (trimmed === 'auto') {
+                    this.state.root = 'auto';
+                } else if (trimmed === 'all') {
+                    this.state.root = 'all';
+                } else if (AppController._isOrganismRoot(trimmed) && parseInt(trimmed, 10) > 0) {
+                    this.state.root = parseInt(trimmed, 10);
+                } else {
+                    console.warn(`Ignoring the root '${root}' of the URL: neither 'auto', 'all' nor an organism id`);
                 }
             }
         } catch (error) {

@@ -140,6 +140,8 @@ public class VideoRenderOptions {
      * from the previous one. Higher values give every thread its own renderer instance, and
      * the number of chunks in flight is additionally capped so that the buffered frames stay
      * within half of the maximum heap; the effective thread count is reported on startup.
+     * The engine lowers a value the machine cannot spare: one core stays free on a machine with
+     * two or three cores, two from four cores on.
      */
     @Option(names = "--threads", description = "Number of threads for parallel chunk rendering. Default: 1", defaultValue = "1")
     public int threadCount;

@@ -13,14 +13,19 @@ export class ApiClient {
      * 
      * @param {string} url - The URL to fetch.
      * @param {object} [options={}] - Optional fetch options (method, headers, signal, etc.).
+     * @param {object} [behaviour={}] - How the request presents itself.
+     * @param {boolean} [behaviour.showLoading=true] - Whether the request counts towards the
+     *        loading indicator; false for a request the user did not start and need not see.
      * @returns {Promise<any>} A promise that resolves to the JSON response data, or null for 204 No Content responses.
      * @throws {Error} If the request fails due to network issues, an HTTP error status, or if it's aborted.
      */
-    async fetch(url, options = {}) {
-        if (loadingManager) {
-            loadingManager.incrementRequests();
-        } else {
-            console.error('ApiClient: loadingManager not available!');
+    async fetch(url, options = {}, { showLoading = true } = {}) {
+        if (showLoading) {
+            if (loadingManager) {
+                loadingManager.incrementRequests();
+            } else {
+                console.error('ApiClient: loadingManager not available!');
+            }
         }
 
         try {
@@ -47,7 +52,7 @@ export class ApiClient {
             throw error; // Re-throw AbortError and other server errors
         } finally {
             // This block ALWAYS runs, guaranteeing a single decrement per fetch call.
-            if (loadingManager) {
+            if (showLoading && loadingManager) {
                 loadingManager.decrementRequests();
             }
         }

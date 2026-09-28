@@ -322,8 +322,72 @@ class EnvironmentControllerIntegrationTest {
             .header("Cache-Control", equalTo("public, max-age=31536000, must-revalidate"))
             .header("ETag", notNullValue());
         
-        // ETag should contain runId (not _tick suffix, as per new implementation)
-        assertThat(resp.header("ETag")).contains(runId);
+        // The ETag names run, tick, region and minimap size
+        assertThat(resp.header("ETag")).isEqualTo("\"" + runId + "_1_0,10,0,10_nominimap\"");
+    }
+
+    @Test
+    void minimap_sizeFollowsTheParameter() throws Exception {
+        // Given: A 600x450 world with one tick, larger than the default minimap and smaller than 900
+        String runId = "test-run-" + UUID.randomUUID();
+        indexMetadata(runId, createMetadata(runId, new int[]{600, 450}, false));
+        writeBatchAndNotify(runId, List.of(
+            TickData.newBuilder()
+                .setTickNumber(1L)
+                .setSimulationRunId(runId)
+                .setCellColumns(CellStateTestHelper.createColumnsFromCells(List.of(
+                    CellStateTestHelper.createCellStateBuilder(0, 100, 1, 50, 0).build()
+                )))
+                .build()
+        ));
+
+        indexer = createEnvironmentIndexer("test-indexer", ConfigFactory.parseString("""
+            runId = "%s"
+            metadataPollIntervalMs = 100
+            metadataMaxPollDurationMs = 5000
+            insertBatchSize = 1
+            flushTimeoutMs = 1000
+            """.formatted(runId)));
+        indexer.start();
+        await().atMost(10, TimeUnit.SECONDS)
+            .until(() -> indexer.getMetrics().get("ticks_processed").longValue() >= 1);
+
+        app = Javalin.create().start(0);
+        ServiceRegistry registry = new ServiceRegistry();
+        registry.register(IDatabaseReaderProvider.class, testDatabase);
+        new EnvironmentController(registry, ConfigFactory.empty())
+            .registerRoutes(app, "/visualizer/api/environment");
+
+        // When: minimap without a value and with 900
+        EnvironmentHttpResponse byDefault = requestMinimap(app.port(), runId, "minimap");
+        EnvironmentHttpResponse sized = requestMinimap(app.port(), runId, "minimap=900");
+
+        // Then: the default is 300 pixels on the longer edge; 900 is followed as far as the world
+        // goes, a minimap is never larger than the world; the aspect ratio stays 4:3
+        assertThat(byDefault.getMinimap().getWidth()).isEqualTo(300);
+        assertThat(byDefault.getMinimap().getHeight()).isEqualTo(225);
+        assertThat(sized.getMinimap().getWidth()).isEqualTo(600);
+        assertThat(sized.getMinimap().getHeight()).isEqualTo(450);
+        assertThat(sized.getMinimap().getCellTypes().size()).isEqualTo(600 * 450);
+    }
+
+    /**
+     * Requests tick 1 of a run with the given minimap query and parses the answer.
+     *
+     * @param port The port of the running server.
+     * @param runId The run to read.
+     * @param minimapQuery The minimap part of the query string, e.g. {@code minimap=900}.
+     * @return The parsed environment response.
+     */
+    private EnvironmentHttpResponse requestMinimap(int port, String runId, String minimapQuery)
+            throws Exception {
+        Response resp = given()
+            .port(port)
+            .basePath("/visualizer/api/environment")
+            .urlEncodingEnabled(false)
+            .get("/1?runId=" + runId + "&" + minimapQuery);
+        resp.then().statusCode(200);
+        return EnvironmentHttpResponse.parseFrom(resp.asByteArray());
     }
 
     @Test

@@ -6,6 +6,7 @@ import org.evochora.cli.rendering.frame.DensityMapRenderer;
 import org.evochora.cli.rendering.frame.ExactFrameRenderer;
 import org.evochora.cli.rendering.frame.LineageRenderer;
 import org.evochora.cli.rendering.frame.MinimapFrameRenderer;
+import org.evochora.cli.rendering.frame.descent.DescentRenderer;
 
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
@@ -29,7 +30,8 @@ import picocli.CommandLine.Command;
         ExactFrameRenderer.class,
         MinimapFrameRenderer.class,
         DensityMapRenderer.class,
-        LineageRenderer.class
+        LineageRenderer.class,
+        DescentRenderer.class
     })
 public class RenderVideoCommand implements Callable<Integer> {
 
