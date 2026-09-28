@@ -1,4 +1,4 @@
-package org.evochora.cli.rendering.frame;
+package org.evochora.cli.rendering.frame.shared;
 
 import org.evochora.datapipeline.api.contracts.CellDataColumns;
 import org.evochora.runtime.Config;
@@ -8,8 +8,7 @@ import org.evochora.runtime.Config;
  * <p>
  * Manages cell type state for a scaled-down output grid and renders the background
  * using majority voting among cell types that map to each output pixel. Used as a
- * composable layer by renderers that need an environment background (e.g.
- * {@link MinimapFrameRenderer}, {@link DensityMapRenderer}).
+ * composable layer by any renderer that draws its own content over an environment background.
  * <p>
  * Cell colours come from {@link MoleculeTypeColors}; the empty background is this layer's own
  * {@link #COLOR_EMPTY}, because an empty cell is not a molecule type.

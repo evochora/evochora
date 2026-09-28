@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 
 import org.evochora.cli.rendering.AbstractFrameRenderer;
+import org.evochora.cli.rendering.frame.shared.EnvironmentBackgroundLayer;
 import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.TickDelta;

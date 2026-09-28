@@ -2,7 +2,6 @@ package org.evochora.node.processes.http.api.visualizer.descent;
 
 import java.sql.SQLException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -15,32 +14,28 @@ import org.evochora.datapipeline.api.resources.database.dto.OrganismTickSummary;
 import org.evochora.node.processes.http.api.visualizer.dto.DescentDto;
 
 import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap;
-import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
-import it.unimi.dsi.fastutil.ints.IntArrays;
-import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
 
 /**
  * Answers how the organisms of a tick descend from a root, from the {@link AncestryIndex} of one
- * run and without any SQL but the one row of the root.
+ * run and without any SQL but the one row of the root. The walks are those of {@link Ancestry},
+ * on the view an {@link AncestryIndex.Snapshot} carries.
  * <p>
  * Key features:
  * <ul>
  *   <li><em>Line of an organism</em>: the child of the root it descends from, by
- *       {@link AncestryIndex.Snapshot#lineOf}, with a memo and a path buffer per request that are
- *       discarded with the request.</li>
- *   <li><em>Tree of the living</em>: every living organism walks upward until an ancestor already
- *       visited, recording for each ancestor its children on the way. It gives the common
- *       ancestor of the living (descending from {@code all} while there is exactly one child and
- *       the node is not itself alive), the landing of every line (the same descent from the line's
- *       child) and the landing above the root (ascending until an ancestor that is alive or has
- *       two or more children, else {@code all}).</li>
- *   <li><em>Sizes of the lines</em>: every organism above the root is attributed to its line from
- *       the line of its parent, read before it, since a parent's id is below its child's. The
- *       attribution of the most recently used roots is kept as an array, so a page appended to
- *       the index costs only its new ids; a filled gap can change the line of organisms counted
- *       before and makes the next request count again from scratch. The sizes and their order are
- *       kept per root and version, so repeated requests on an unchanged index count nothing.</li>
+ *       {@link Ancestry#lineOf}, with a memo and a path buffer per request that are discarded
+ *       with the request.</li>
+ *   <li><em>Tree of the living</em>: by {@link Ancestry#living}. It gives the common ancestor of
+ *       the living (descending from {@code all} while there is exactly one child and the node is
+ *       not itself alive), the landing of every line (the same descent from the line's child) and
+ *       the landing above the root (ascending until an ancestor that is alive or has two or more
+ *       children, else {@code all}).</li>
+ *   <li><em>Sizes of the lines</em>: by an {@link Ancestry.LineCount}. The count of the most
+ *       recently used roots is kept with its attribution array, so a page appended to the index
+ *       costs only its new ids; a filled gap can change the line of organisms counted before and
+ *       makes the next request count again from scratch. The sizes and their order are kept per
+ *       root and version, so repeated requests on an unchanged index count nothing.</li>
  * </ul>
  * <p>
  * Heap: the attribution array of a root takes four bytes per organism above it; it is kept for as
@@ -209,8 +204,14 @@ public final class DescentQuery {
                 return notReady(root, rootInfo, error);
             }
 
-            final IntArrayList path = new IntArrayList();
-            final LivingTree tree = LivingTree.of(snapshot, organisms, path);
+            final Ancestry ancestry = snapshot.ancestry();
+            final IntArrayList living = new IntArrayList();
+            for (final OrganismTickSummary organism : organisms) {
+                if (!organism.isDead) {
+                    living.add(organism.organismId);
+                }
+            }
+            final Ancestry.Living tree = ancestry.living(living, Ancestry.NO_PARENT);
             if (tree.unknownLiving()) {
                 index.requestGapReread();
             }
@@ -220,20 +221,21 @@ public final class DescentQuery {
             final int rootId = switch (root.kind()) {
                 case ALL -> 0;
                 case ORGANISM -> root.id();
-                case AUTO -> tree.down(0).root();
+                case AUTO -> tree.commonAncestor();
             };
             final OrganismStaticInfo info = root.kind() == RootRequest.Kind.AUTO && rootId != 0
                 ? readRoot(reader, rootId) : rootInfo;
 
             final LineSizes sizes = sizesOf(snapshot, rootId);
-            final Int2IntOpenHashMap memo = newMemo();
+            final Int2IntOpenHashMap memo = Ancestry.newMemo();
+            final IntArrayList path = new IntArrayList();
             final Map<Integer, Integer> lineOf = new LinkedHashMap<>();
             final Int2IntOpenHashMap livingPerLine = new Int2IntOpenHashMap();
             boolean unknownMet = false;
             for (final OrganismTickSummary organism : organisms) {
-                final int line = snapshot.lineOf(rootId, organism.organismId, memo, path);
+                final int line = ancestry.lineOf(rootId, organism.organismId, memo, path);
                 lineOf.put(organism.organismId, line);
-                unknownMet |= line == AncestryIndex.UNKNOWN;
+                unknownMet |= line == Ancestry.UNKNOWN;
                 if (!organism.isDead && line > 0 && organism.organismId != rootId) {
                     livingPerLine.addTo(line, 1);
                 }
@@ -260,7 +262,7 @@ public final class DescentQuery {
         }
 
         private List<DescentDto.Line> lines(final LineSizes sizes, final Int2IntOpenHashMap livingPerLine,
-                                            final LivingTree tree) {
+                                            final Ancestry.Living tree) {
             final int[] ids = sizes.ids();
             final List<DescentDto.Line> lines = new ArrayList<>(ids.length);
             for (int rank = 0; rank < ids.length; rank++) {
@@ -268,9 +270,9 @@ public final class DescentQuery {
                 final int living = livingPerLine.get(id);
                 DescentDto.Landing landing = null;
                 if (living > 0) {
-                    final DescentDto.Landing down = tree.down(id);
+                    final Ancestry.Landing down = tree.down(id);
                     if (down.skipped() > 0) {
-                        landing = down;
+                        landing = new DescentDto.Landing(down.root(), down.skipped());
                     }
                 }
                 lines.add(new DescentDto.Line(id, sizes.sizes()[rank],
@@ -279,26 +281,18 @@ public final class DescentQuery {
             return lines;
         }
 
-        private DescentDto.Up up(final int rootId, final LivingTree tree) {
+        private DescentDto.Up up(final int rootId, final Ancestry.Living tree) {
             if (rootId == 0) {
                 return null;
             }
             final int parent = snapshot.parentOf(rootId);
-            if (parent == AncestryIndex.UNREAD) {
+            if (parent == Ancestry.UNREAD) {
                 return null;
             }
-            int x = parent;
-            int skipped = 0;
-            while (x != AncestryIndex.NO_PARENT && !tree.isLiving(x) && tree.childCount(x) < 2) {
-                final int above = snapshot.parentOf(x);
-                if (above == AncestryIndex.UNREAD) {
-                    // An ancestor on the way is not known: there is no landing to offer
-                    return new DescentDto.Up(parent, null);
-                }
-                x = above;
-                skipped++;
-            }
-            return new DescentDto.Up(parent, new DescentDto.Landing(x, skipped));
+            // No landing to offer when an ancestor on the way is not known
+            final Ancestry.Landing landing = tree.up(parent);
+            return new DescentDto.Up(parent,
+                landing == null ? null : new DescentDto.Landing(landing.root(), landing.skipped()));
         }
     }
 
@@ -315,7 +309,7 @@ public final class DescentQuery {
             return cached.result;
         }
         final RootSizes updated;
-        if (cached != null && cached.line != null && cached.gapFills == snapshot.gapFills()) {
+        if (cached != null && cached.count != null && cached.gapFills == snapshot.gapFills()) {
             updated = cached;
             updated.extend(snapshot);
         } else {
@@ -347,13 +341,13 @@ public final class DescentQuery {
         final List<RootSizes> byRecency = new ArrayList<>(sizeCache.values());
         for (int i = byRecency.size() - 1; i >= 0; i--) {
             final RootSizes entry = byRecency.get(i);
-            if (entry.line == null) {
+            if (entry.count == null) {
                 continue;
             }
             if (kept < attributionArrays) {
                 kept++;
             } else {
-                entry.line = null;
+                entry.count = null;
             }
         }
     }
@@ -370,20 +364,16 @@ public final class DescentQuery {
 
     /**
      * The mutable counting state of one root, guarded by the monitor of its {@link DescentQuery}.
+     * The count is dropped, and with it its attribution array, when the root falls out of the
+     * roots that keep one.
      */
     private static final class RootSizes {
-        private final int root;
         private long gapFills;
-        private int covered;
-        private int[] line;
-        private final Int2IntOpenHashMap counts = new Int2IntOpenHashMap();
-        private long total;
+        private Ancestry.LineCount count;
         private LineSizes result;
 
         private RootSizes(final int root) {
-            this.root = root;
-            this.covered = root;
-            this.line = new int[0];
+            this.count = new Ancestry.LineCount(root);
         }
 
         static RootSizes count(final AncestryIndex.Snapshot snapshot, final int root) {
@@ -398,144 +388,8 @@ public final class DescentQuery {
          */
         void extend(final AncestryIndex.Snapshot snapshot) {
             gapFills = snapshot.gapFills();
-            final int[] parents = snapshot.parents();
-            final int last = Math.min(snapshot.cursor(), parents.length - 1);
-            if (last > covered) {
-                if (last - root + 1 > line.length) {
-                    line = Arrays.copyOf(line, Math.max(last - root + 1, line.length + (line.length >> 1)));
-                }
-                for (int id = covered + 1; id <= last; id++) {
-                    final int p = parents[id];
-                    final int l;
-                    if (p == AncestryIndex.UNREAD) {
-                        l = AncestryIndex.UNKNOWN;
-                    } else if (p == root) {
-                        l = id;
-                    } else if (p < root) {
-                        l = AncestryIndex.OUTSIDE;
-                    } else {
-                        l = line[p - root];
-                    }
-                    line[id - root] = l;
-                    if (l > 0) {
-                        counts.addTo(l, 1);
-                        total++;
-                    }
-                }
-                covered = last;
-            }
-            result = sorted(snapshot.version());
-        }
-
-        private LineSizes sorted(final long version) {
-            final int[] ids = counts.keySet().toIntArray();
-            IntArrays.quickSort(ids, (a, b) -> {
-                final int bySize = Integer.compare(counts.get(b), counts.get(a));
-                return bySize != 0 ? bySize : Integer.compare(a, b);
-            });
-            final int[] sizes = new int[ids.length];
-            for (int i = 0; i < ids.length; i++) {
-                sizes[i] = counts.get(ids[i]);
-            }
-            return new LineSizes(version, ids, sizes, total);
-        }
-    }
-
-    /**
-     * The ancestors of the living organisms of a tick, with the children through which each of
-     * them leads to the living.
-     */
-    static final class LivingTree {
-        private final IntOpenHashSet living = new IntOpenHashSet();
-        private final Int2ObjectOpenHashMap<IntArrayList> children = new Int2ObjectOpenHashMap<>();
-        private boolean unknownLiving;
-
-        /**
-         * Builds the tree of the living organisms of a tick whose ancestry is known.
-         *
-         * @param snapshot  The view to walk
-         * @param organisms The organisms of the tick; the dead are left out
-         * @param path      Buffer for the walks, reused
-         * @return The tree; the founders are the children of 0
-         */
-        static LivingTree of(final AncestryIndex.Snapshot snapshot, final List<OrganismTickSummary> organisms,
-                             final IntArrayList path) {
-            final LivingTree tree = new LivingTree();
-            final Int2IntOpenHashMap memo = newMemo();
-            final IntOpenHashSet seen = new IntOpenHashSet();
-            for (final OrganismTickSummary organism : organisms) {
-                final int id = organism.organismId;
-                if (organism.isDead) {
-                    continue;
-                }
-                if (snapshot.lineOf(0, id, memo, path) == AncestryIndex.UNKNOWN) {
-                    tree.unknownLiving = true;
-                    continue;
-                }
-                tree.living.add(id);
-                int x = id;
-                while (seen.add(x)) {
-                    final int p = snapshot.parentOf(x);
-                    tree.children.computeIfAbsent(p, k -> new IntArrayList()).add(x);
-                    if (p == AncestryIndex.NO_PARENT) {
-                        break;
-                    }
-                    x = p;
-                }
-            }
-            return tree;
-        }
-
-        /**
-         * Whether a living organism of the tick has an ancestry that is not known, and is
-         * therefore missing from the tree.
-         *
-         * @return {@code true} if one was left out
-         */
-        boolean unknownLiving() {
-            return unknownLiving;
-        }
-
-        /**
-         * Whether an organism is one of the living of the tick.
-         *
-         * @param id Organism id
-         * @return {@code true} if it is alive at the tick and its ancestry is known
-         */
-        boolean isLiving(final int id) {
-            return living.contains(id);
-        }
-
-        /**
-         * The number of children through which a node leads to the living.
-         *
-         * @param id Organism id, 0 for {@code all}
-         * @return The number of such children, 0 for a node outside the tree
-         */
-        int childCount(final int id) {
-            final IntArrayList list = children.get(id);
-            return list == null ? 0 : list.size();
-        }
-
-        /**
-         * Descends from a node while it is not alive itself and leads to the living through
-         * exactly one child.
-         *
-         * @param start The node to start at, 0 for {@code all}
-         * @return Where the descent stops and how many generations it passed
-         */
-        DescentDto.Landing down(final int start) {
-            int x = start;
-            int skipped = 0;
-            while (!living.contains(x)) {
-                final IntArrayList list = children.get(x);
-                if (list == null || list.size() != 1) {
-                    break;
-                }
-                x = list.getInt(0);
-                skipped++;
-            }
-            return new DescentDto.Landing(x, skipped);
+            final Ancestry.LineSizes sizes = count.extend(snapshot.ancestry()).sizes();
+            result = new LineSizes(snapshot.version(), sizes.ids(), sizes.sizes(), sizes.total());
         }
     }
 
@@ -555,12 +409,6 @@ public final class DescentQuery {
             return 0;
         }
         return Math.max(0, Math.max(newestTotal, snapshot.cursor()) - b);
-    }
-
-    private static Int2IntOpenHashMap newMemo() {
-        final Int2IntOpenHashMap memo = new Int2IntOpenHashMap();
-        memo.defaultReturnValue(Integer.MIN_VALUE);
-        return memo;
     }
 
     private static OrganismStaticInfo readRoot(final IOrganismDataReader reader, final int id)

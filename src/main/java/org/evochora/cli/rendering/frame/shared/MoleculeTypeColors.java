@@ -1,4 +1,4 @@
-package org.evochora.cli.rendering.frame;
+package org.evochora.cli.rendering.frame.shared;
 
 import java.util.Arrays;
 

@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 
 import org.evochora.cli.rendering.AbstractFrameRenderer;
+import org.evochora.cli.rendering.frame.shared.MoleculeTypeColors;
 import org.evochora.datapipeline.api.contracts.CellDataColumns;
 import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.TickData;

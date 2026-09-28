@@ -112,6 +112,20 @@ public class VideoRenderEngine {
         long effectiveEndTick = options.endTick != null ? options.endTick : Long.MAX_VALUE;
         long totalFrames = calculateTotalFrames(scanResult, effectiveStartTick, effectiveEndTick);
 
+        // Let the renderer read in advance what it needs over the whole range, which ends at the
+        // run's last recorded tick when no end tick was given
+        long prepareEndTick = scanResult.maxTick >= 0 ? Math.min(effectiveEndTick, scanResult.maxTick) : effectiveEndTick;
+        try {
+            frameRenderer.prepare(storage, scanResult.batchPaths, targetRunId, effectiveStartTick, prepareEndTick,
+                options.samplingInterval);
+        } catch (IllegalArgumentException e) {
+            // What the user asked for cannot be done with what the renderer found: an option or a
+            // file of theirs. That is said in a line, as every condition met before encoding is;
+            // a fault in the recorded data or in reading it is not caught here.
+            System.err.println(e.getMessage());
+            return 1;
+        }
+
         // Resolve output file and format
         String format = options.format.toLowerCase();
         File outputFile = resolveOutputFile(format);
@@ -597,7 +611,13 @@ public class VideoRenderEngine {
         return currentTime;
     }
 
-    private String formatTime(long ms) {
+    /**
+     * Formats a duration for the progress line: {@code m:ss}, or {@code h:mm:ss} from an hour on.
+     *
+     * @param ms the duration in milliseconds; a negative value stands for an unknown duration
+     * @return the formatted duration, {@code ?} for an unknown one
+     */
+    public static String formatTime(long ms) {
         if (ms < 0) return "?";
         long sec = ms / 1000;
         long h = sec / 3600;

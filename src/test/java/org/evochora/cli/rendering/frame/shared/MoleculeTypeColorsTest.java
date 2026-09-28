@@ -1,4 +1,4 @@
-package org.evochora.cli.rendering.frame;
+package org.evochora.cli.rendering.frame.shared;
 
 import static org.assertj.core.api.Assertions.assertThat;
 

@@ -231,7 +231,7 @@ Cool colors (blue) = few mutations, warm colors (red) = many mutations.
 
 **Visual design ideas:**
 - Semi-transparent color overlay on the existing environment grid.
-- Toggle on/off alongside existing display modes (ID color, Genome color).
+- Toggle on/off over the existing colouring by line of descent below a root.
 - Color scale legend in the corner.
 - The heatmap updates as the user navigates between ticks.
 

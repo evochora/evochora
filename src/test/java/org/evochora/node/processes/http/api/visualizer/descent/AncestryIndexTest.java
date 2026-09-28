@@ -24,7 +24,7 @@ import it.unimi.dsi.fastutil.ints.IntArrayList;
 
 /**
  * Tests for {@link AncestryIndex}: the paged catch-up, gaps, the fork boundary, the states and
- * the line walk, against an in-memory table behind a mocked reader.
+ * the view it publishes, against an in-memory table behind a mocked reader.
  */
 @Tag("unit")
 @ExtendWith(LogWatchExtension.class)
@@ -37,9 +37,7 @@ class AncestryIndexTest {
     }
 
     private static Int2IntOpenHashMap memo() {
-        final Int2IntOpenHashMap memo = new Int2IntOpenHashMap();
-        memo.defaultReturnValue(Integer.MIN_VALUE);
-        return memo;
+        return Ancestry.newMemo();
     }
 
     @Test
@@ -58,36 +56,13 @@ class AncestryIndexTest {
         assertThat(view.stateFor(6)).isEqualTo(AncestryIndex.State.READY);
         assertThat(new int[]{view.parentOf(1), view.parentOf(2), view.parentOf(5), view.parentOf(6)})
             .containsExactly(0, 1, 4, 0);
-        assertThat(view.parentOf(7)).isEqualTo(AncestryIndex.UNREAD);
+        assertThat(view.parentOf(7)).isEqualTo(Ancestry.UNREAD);
         assertThat(index.progressOf(view)).isEqualTo(1.0);
         // Three full pages of two and the empty one that ends the table
         verify(run.reader).readParents(0, PAGE);
         verify(run.reader).readParents(2, PAGE);
         verify(run.reader).readParents(4, PAGE);
         verify(run.reader).readParents(6, PAGE);
-    }
-
-    @Test
-    void walksALineUpToTheChildOfTheRoot() throws Exception {
-        final FakeRun run = new FakeRun().with(1, 0, 2, 1, 3, 1, 4, 2, 5, 4, 6, 0);
-        final AncestryIndex index = indexOf(run);
-        index.requestCatchUp(6);
-        run.executor.runAll();
-        final AncestryIndex.Snapshot view = index.snapshot();
-
-        final Int2IntOpenHashMap memo = memo();
-        assertThat(view.lineOf(1, 5, memo, new IntArrayList())).isEqualTo(2);
-        assertThat(memo).containsEntry(4, 2).containsEntry(2, 2);
-        assertThat(view.lineOf(1, 4, memo, new IntArrayList())).isEqualTo(2);
-        assertThat(view.lineOf(1, 3, memo, new IntArrayList())).isEqualTo(3);
-        assertThat(view.lineOf(1, 6, memo, new IntArrayList())).isEqualTo(AncestryIndex.OUTSIDE);
-        assertThat(view.lineOf(1, 1, memo, new IntArrayList())).as("the root itself").isEqualTo(1);
-        // Below the root the walk ends at once
-        assertThat(view.lineOf(4, 3, memo(), new IntArrayList())).isEqualTo(AncestryIndex.OUTSIDE);
-
-        final Int2IntOpenHashMap all = memo();
-        assertThat(view.lineOf(0, 5, all, new IntArrayList())).isEqualTo(1);
-        assertThat(view.lineOf(0, 6, all, new IntArrayList())).isEqualTo(6);
     }
 
     @Test
@@ -100,8 +75,8 @@ class AncestryIndexTest {
 
         AncestryIndex.Snapshot view = index.snapshot();
         assertThat(view.stateFor(5)).isEqualTo(AncestryIndex.State.READY);
-        assertThat(view.lineOf(0, 5, memo(), new IntArrayList())).isEqualTo(AncestryIndex.UNKNOWN);
-        assertThat(view.lineOf(0, 2, memo(), new IntArrayList())).isEqualTo(1);
+        assertThat(view.ancestry().lineOf(0, 5, memo(), new IntArrayList())).isEqualTo(Ancestry.UNKNOWN);
+        assertThat(view.ancestry().lineOf(0, 2, memo(), new IntArrayList())).isEqualTo(1);
         final long before = view.version();
 
         run.with(3, 1, 6, 5);
@@ -110,8 +85,8 @@ class AncestryIndexTest {
         run.executor.runAll();
 
         view = index.snapshot();
-        assertThat(view.lineOf(0, 5, memo(), new IntArrayList())).isEqualTo(1);
-        assertThat(view.lineOf(0, 6, memo(), new IntArrayList())).isEqualTo(1);
+        assertThat(view.ancestry().lineOf(0, 5, memo(), new IntArrayList())).isEqualTo(1);
+        assertThat(view.ancestry().lineOf(0, 6, memo(), new IntArrayList())).isEqualTo(1);
         assertThat(view.version()).isGreaterThan(before);
         // The gap is re-read bounded to itself
         verify(run.reader).readParents(2, 1);
@@ -133,11 +108,11 @@ class AncestryIndexTest {
         assertThat(view.boundary()).isEqualTo(10);
         // Progress counts only the ids above the boundary: (13 - 10) / (20 - 10)
         assertThat(index.progressOf(view)).isCloseTo(0.3, within(1e-9));
-        assertThat(view.parentOf(8)).isEqualTo(AncestryIndex.NO_PARENT);
-        assertThat(view.parentOf(10)).isEqualTo(AncestryIndex.NO_PARENT);
+        assertThat(view.parentOf(8)).isEqualTo(Ancestry.NO_PARENT);
+        assertThat(view.parentOf(10)).isEqualTo(Ancestry.NO_PARENT);
         assertThat(view.parentOf(9)).isEqualTo(8);
-        assertThat(view.lineOf(0, 11, memo(), new IntArrayList())).isEqualTo(8);
-        assertThat(view.lineOf(0, 13, memo(), new IntArrayList())).isEqualTo(AncestryIndex.UNKNOWN);
+        assertThat(view.ancestry().lineOf(0, 11, memo(), new IntArrayList())).isEqualTo(8);
+        assertThat(view.ancestry().lineOf(0, 13, memo(), new IntArrayList())).isEqualTo(Ancestry.UNKNOWN);
 
         // The next catch-up re-reads the gap above the boundary, never the ids below it
         run.with(14, 13);
@@ -210,10 +185,9 @@ class AncestryIndexTest {
             final AncestryIndex.Snapshot view = index.snapshot();
             // A page starts where the published cursor ends, and everything below it is there
             assertThat(view.cursor()).isEqualTo(after);
-            assertThat(view.parents().length).isGreaterThan(view.cursor());
             if (view.cursor() > 0) {
                 assertThat(view.parentOf(view.cursor())).isEqualTo(view.cursor() - 1);
-                assertThat(view.parentOf(1)).isEqualTo(AncestryIndex.NO_PARENT);
+                assertThat(view.parentOf(1)).isEqualTo(Ancestry.NO_PARENT);
             }
         };
         index.requestCatchUp(3000);
@@ -221,7 +195,6 @@ class AncestryIndexTest {
 
         final AncestryIndex.Snapshot view = index.snapshot();
         assertThat(view.cursor()).isEqualTo(3000);
-        assertThat(view.parents().length).isGreaterThan(3000);
         assertThat(view.parentOf(3000)).isEqualTo(2999);
         // One reader for the boundary and the newest total, then one per page: six full pages
         // and the empty one that ends the table
@@ -249,7 +222,7 @@ class AncestryIndexTest {
         AncestryIndex.Snapshot view = index.snapshot();
         assertThat(view.parentOf(5)).isEqualTo(4);
         assertThat(view.parentOf(8)).isEqualTo(1);
-        assertThat(view.parentOf(3)).isEqualTo(AncestryIndex.UNREAD);
+        assertThat(view.parentOf(3)).isEqualTo(Ancestry.UNREAD);
 
         // What is still missing is 3, 6..7 and 9, each re-read on its own
         clearInvocations(run.reader);
@@ -260,7 +233,7 @@ class AncestryIndexTest {
         verify(run.reader).readParents(5, 2);
         verify(run.reader).readParents(8, 1);
         view = index.snapshot();
-        assertThat(view.parentOf(6)).isEqualTo(AncestryIndex.UNREAD);
+        assertThat(view.parentOf(6)).isEqualTo(Ancestry.UNREAD);
     }
 
     @Test
@@ -284,7 +257,7 @@ class AncestryIndexTest {
         index.requestGapReread();
         run.executor.runAll();
         assertThat(index.snapshot().parentOf(3)).isEqualTo(1);
-        assertThat(index.snapshot().parentOf(6)).as("the gap not reached is kept").isEqualTo(AncestryIndex.UNREAD);
+        assertThat(index.snapshot().parentOf(6)).as("the gap not reached is kept").isEqualTo(Ancestry.UNREAD);
 
         run.stopping = false;
         run.onRead = after -> { };

@@ -18,15 +18,15 @@ import org.evochora.datapipeline.api.resources.database.dto.TickRange;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 
 /**
  * The parent of every organism of one run, held in the heap of the web server.
  * <p>
  * The index is a plain {@code int[]} indexed by organism id: the entry of an id is the id of its
- * parent, {@link #NO_PARENT} for a founder, and {@link #UNREAD} for an id whose row has not been
- * read. It is derived from the {@code organisms} table alone and can be rebuilt from it at any
+ * parent, {@link Ancestry#NO_PARENT} for a founder, and {@link Ancestry#UNREAD} for an id whose row
+ * has not been read. The walks over it are those of {@link Ancestry}, which every
+ * {@link #snapshot()} carries as a view up to the cursor. It is derived from the {@code organisms} table alone and can be rebuilt from it at any
  * time, so nothing about it is persisted.
  * <p>
  * Key features:
@@ -60,7 +60,7 @@ import it.unimi.dsi.fastutil.ints.IntArrayList;
  * in that order, through {@link #snapshot()}. The writer fills a page into the array first, then
  * publishes the array reference (a larger copy when the page does not fit), then the cursor, then
  * a new version. A reader that has seen a cursor therefore sees every entry at or below it; an
- * entry above the cursor belongs to a page in progress and is reported as {@link #UNREAD}. A gap
+ * entry above the cursor belongs to a page in progress and is reported as {@link Ancestry#UNREAD}. A gap
  * filled later is written in place and published by the gap-fill counter and the version, which
  * readers use as cache keys. A reader holding an older array reference sees an older but
  * consistent state.
@@ -68,18 +68,6 @@ import it.unimi.dsi.fastutil.ints.IntArrayList;
  * Cost: four bytes per organism of the run, kept for the life of the process.
  */
 public final class AncestryIndex {
-
-    /** Value of an entry whose row has not been read. */
-    public static final int UNREAD = -1;
-
-    /** Value of an entry whose organism has no parent in this run. Never an organism id. */
-    public static final int NO_PARENT = 0;
-
-    /** Line value of an organism that does not descend from the root. */
-    public static final int OUTSIDE = 0;
-
-    /** Line value of an organism whose ancestry is not known. */
-    public static final int UNKNOWN = -1;
 
     /** Number of rows one read of the table returns at most. */
     static final int PAGE_SIZE = 100_000;
@@ -119,18 +107,27 @@ public final class AncestryIndex {
     /**
      * A consistent view of the array at one moment, taken by {@link #snapshot()}.
      * <p>
-     * Package-private because it hands out the live array: the array may receive further
-     * entries, but none at or below the cursor changes except a gap entry going from
-     * {@link #UNREAD} to its parent. Nothing outside this package may write into it.
+     * Package-private because its {@link Ancestry} reads the live array: the array may receive
+     * further entries, but none at or below the cursor changes except a gap entry going from
+     * {@link Ancestry#UNREAD} to its parent. Nothing outside this package may write into it.
      *
      * @param version  The version counter when the view was taken
      * @param gapFills The number of catch-ups that filled a gap, when the view was taken
-     * @param cursor   Every id at or below it has been read at least once
      * @param boundary The boundary B, or -1 while it is not known
-     * @param parents  The array, indexed by organism id
+     * @param ancestry The array as far as the cursor, with the walks over it; its limit is the
+     *                 cursor
      * @param failure  The failure of the last catch-up, {@code null} if it succeeded or none ran
      */
-    record Snapshot(long version, long gapFills, int cursor, int boundary, int[] parents, Throwable failure) {
+    record Snapshot(long version, long gapFills, int boundary, Ancestry ancestry, Throwable failure) {
+
+        /**
+         * Every id at or below the cursor has been read at least once.
+         *
+         * @return The cursor when the view was taken
+         */
+        int cursor() {
+            return ancestry.limit();
+        }
 
         /**
          * The state of the index for a tick, as this view shows it.
@@ -146,7 +143,7 @@ public final class AncestryIndex {
             if (failure != null) {
                 return State.FAILED;
             }
-            if (boundary < 0 || Math.max(cursor, boundary) < tickTotal) {
+            if (boundary < 0 || Math.max(cursor(), boundary) < tickTotal) {
                 return State.LOADING;
             }
             return State.READY;
@@ -156,66 +153,11 @@ public final class AncestryIndex {
          * The parent of an organism as far as this view knows it.
          *
          * @param id Organism id (must be &gt; 0)
-         * @return The parent id, {@link #NO_PARENT} for a founder, {@link #UNREAD} for an id this
-         *         view has not read
+         * @return The parent id, {@link Ancestry#NO_PARENT} for a founder, {@link Ancestry#UNREAD}
+         *         for an id this view has not read
          */
         int parentOf(final int id) {
-            if (id > cursor || id >= parents.length || id <= 0) {
-                return UNREAD;
-            }
-            return parents[id];
-        }
-
-        /**
-         * The line an organism belongs to relative to a root: the child of the root it descends
-         * from.
-         * <p>
-         * Walks the parents upward while the id is above the root; the last id before the root
-         * is the line. The walk ends at once when the id drops below the root, since ids grow
-         * with descent and nothing below the root descends from it. An unread entry on the way
-         * makes the organism unknown. Every id visited is entered into the memo with the same
-         * answer, so a tick costs one walk per distinct ancestor when the memo is shared.
-         *
-         * @param root The root, {@link #NO_PARENT} for the virtual root above the founders
-         * @param id   Organism id (must be &gt; 0)
-         * @param memo Answers known so far for this root; filled by this call. Its default
-         *             return value must be {@link Integer#MIN_VALUE}.
-         * @param path Buffer for the ids of one walk, reused across calls; cleared by this call
-         * @return The line id; the root's own id for the root itself; {@link #OUTSIDE} for an
-         *         organism not descended from the root; {@link #UNKNOWN} when the walk meets an
-         *         unread entry
-         */
-        int lineOf(final int root, final int id, final Int2IntOpenHashMap memo, final IntArrayList path) {
-            if (id == root) {
-                return root;
-            }
-            path.clear();
-            int x = id;
-            int last = id;
-            int result;
-            while (true) {
-                if (x <= root) {
-                    result = x == root ? last : OUTSIDE;
-                    break;
-                }
-                final int known = memo.get(x);
-                if (known != Integer.MIN_VALUE) {
-                    result = known;
-                    break;
-                }
-                path.add(x);
-                last = x;
-                final int p = parentOf(x);
-                if (p == UNREAD) {
-                    result = UNKNOWN;
-                    break;
-                }
-                x = p;
-            }
-            for (int i = 0; i < path.size(); i++) {
-                memo.put(path.getInt(i), result);
-            }
-            return result;
+            return ancestry.parentOf(id);
         }
     }
 
@@ -266,7 +208,7 @@ public final class AncestryIndex {
         this.clock = clock;
         this.stopping = stopping;
         final int[] initial = new int[INITIAL_CAPACITY];
-        Arrays.fill(initial, UNREAD);
+        Arrays.fill(initial, Ancestry.UNREAD);
         this.parents = initial;
     }
 
@@ -282,7 +224,7 @@ public final class AncestryIndex {
         final long g = gapFills;
         final int c = cursor;
         final int b = boundary;
-        return new Snapshot(v, g, c, b, parents, failure);
+        return new Snapshot(v, g, b, new Ancestry(parents, c), failure);
     }
 
     /**
@@ -590,11 +532,11 @@ public final class AncestryIndex {
      * that exists at all has been entered before its child is.
      */
     private int normalise(final int[] array, final int parent) {
-        if (parent == NO_PARENT) {
-            return NO_PARENT;
+        if (parent == Ancestry.NO_PARENT) {
+            return Ancestry.NO_PARENT;
         }
-        if (parent <= boundary && array[parent] == UNREAD) {
-            return NO_PARENT;
+        if (parent <= boundary && array[parent] == Ancestry.UNREAD) {
+            return Ancestry.NO_PARENT;
         }
         return parent;
     }
@@ -602,7 +544,7 @@ public final class AncestryIndex {
     private static int[] grow(final int[] array, final int needed) {
         final int capacity = Math.max(needed, array.length + (array.length >> 1));
         final int[] larger = Arrays.copyOf(array, capacity);
-        Arrays.fill(larger, array.length, capacity, UNREAD);
+        Arrays.fill(larger, array.length, capacity, Ancestry.UNREAD);
         return larger;
     }
 }
