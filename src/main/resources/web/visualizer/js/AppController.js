@@ -1093,12 +1093,14 @@ export class AppController {
             if (!managedExternally) {
                 loadingManager.hide();
             }
-            if (error.status === 404 && AppController._isOrganismRoot(requestedRoot)) {
-                // The route answers 404 for a root that is not indexed, as from a link to another
-                // run, but also for a missing tick or run. The tick is asked for again against the
-                // common ancestor of the living; the held root and the URL change only when that
-                // answer arrives, and the notice is shown once the load has succeeded. Should the
-                // second request fail as well, the error is not the root's and is reported as such.
+            if (!organismsShown && error.status === 404 && AppController._isOrganismRoot(requestedRoot)) {
+                // Only the organisms request speaks about the root: once its answer is shown, a 404
+                // is another request's. The route answers 404 for a root that is not indexed, as
+                // from a link to another run, but also for a missing tick or run. The tick is asked
+                // for again against the common ancestor of the living; the held root and the URL
+                // change only when that answer arrives, and the notice is shown once the load has
+                // succeeded. Should the second request fail as well, the error is not the root's
+                // and is reported as such.
                 console.warn(`Tick ${this.state.currentTick} with root ${requestedRoot} was not found:`, error.message);
                 this._rootNotice = {
                     title: 'The root is not in this run',

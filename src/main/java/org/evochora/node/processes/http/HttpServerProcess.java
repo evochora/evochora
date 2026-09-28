@@ -239,11 +239,12 @@ public class HttpServerProcess extends AbstractProcess {
     }
 
     /**
-     * Closes every controller of the stopped server. A controller that fails to close does not
-     * keep the others from closing.
+     * Closes every controller of the stopped server, the one created last first. A controller
+     * that fails to close does not keep the others from closing.
      */
     private void closeControllers() {
-        for (final IController controller : controllers) {
+        for (int i = controllers.size() - 1; i >= 0; i--) {
+            final IController controller = controllers.get(i);
             try {
                 controller.close();
             } catch (final RuntimeException e) {
