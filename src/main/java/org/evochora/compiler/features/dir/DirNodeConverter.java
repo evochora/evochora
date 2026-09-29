@@ -2,7 +2,6 @@ package org.evochora.compiler.features.dir;
 
 import org.evochora.compiler.frontend.irgen.IAstNodeToIrConverter;
 import org.evochora.compiler.frontend.irgen.IrGenContext;
-import org.evochora.compiler.model.ast.VectorLiteralNode;
 import org.evochora.compiler.model.ir.IrDirective;
 import org.evochora.compiler.model.ir.IrValue;
 
@@ -28,10 +27,7 @@ public final class DirNodeConverter implements IAstNodeToIrConverter<DirNode> {
 		Map<String, IrValue> args = new HashMap<>();
 		switch (node.mode()) {
 			case DirNode.Mode.Absolute absolute -> {
-				if (!(absolute.vector() instanceof VectorLiteralNode v)) {
-					return;
-				}
-				int[] comps = v.values().stream().mapToInt(Integer::intValue).toArray();
+				int[] comps = absolute.vector().values().stream().mapToInt(Integer::intValue).toArray();
 				args.put("direction", new IrValue.Vector(comps));
 			}
 			case DirNode.Mode.Rotation rotation -> {

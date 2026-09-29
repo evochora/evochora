@@ -19,7 +19,8 @@ public class DirDirectiveHandler implements IParserStatementHandler {
      * out, or <code>.DIR @+&lt;axis&gt;|&lt;axis&gt;</code>, which rotates the direction
      * currently in effect by 90 degrees in the plane those two axes span.
      * @param context The parsing context.
-     * @return A {@link DirNode} representing the directive.
+     * @return A {@link DirNode} representing the directive, or {@code null} after a reported
+     *         error, so that nothing but a vector or a rotation reaches the later phases.
      */
     @Override
     public AstNode parse(IParsingContext context) {
@@ -36,10 +37,11 @@ public class DirDirectiveHandler implements IParserStatementHandler {
         }
 
         AstNode vector = context.expression();
-        if (!(vector instanceof VectorLiteralNode)) {
+        if (!(vector instanceof VectorLiteralNode literal)) {
             context.getDiagnostics().reportError("Expected a vector literal or a rotation after .DIR.",
                     context.peek().fileName(), context.peek().line());
+            return null;
         }
-        return new DirNode(new DirNode.Mode.Absolute(vector), directive.toSourceInfo());
+        return new DirNode(new DirNode.Mode.Absolute(literal), directive.toSourceInfo());
     }
 }

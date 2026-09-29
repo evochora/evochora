@@ -155,7 +155,7 @@ public class LayoutDirectiveTest {
 
     /**
      * Verifies that a `.DIR` which is neither a direction nor a rotation is reported, and that
-     * nothing reaches the IR for it.
+     * no node is produced for it.
      * This is a unit test for the parser.
      */
     @Test
@@ -172,7 +172,7 @@ public class LayoutDirectiveTest {
         // Assert
         assertThat(diagnostics.hasErrors()).isTrue();
         assertThat(diagnostics.summary()).contains("Expected a vector literal or a rotation after .DIR.");
-        assertThat(ast).hasSize(1).first().isInstanceOf(DirNode.class);
+        assertThat(ast).isEmpty();
     }
 
     /**

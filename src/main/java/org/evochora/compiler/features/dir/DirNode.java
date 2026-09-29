@@ -3,6 +3,7 @@ package org.evochora.compiler.features.dir;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.ISourceLocatable;
+import org.evochora.compiler.model.ast.VectorLiteralNode;
 
 import java.util.List;
 
@@ -28,7 +29,7 @@ public record DirNode(
          *
          * @param vector The vector literal that specifies the direction.
          */
-        record Absolute(AstNode vector) implements Mode {}
+        record Absolute(VectorLiteralNode vector) implements Mode {}
 
         /**
          * A rotation of the current direction by 90 degrees in the plane spanned by two axes.
