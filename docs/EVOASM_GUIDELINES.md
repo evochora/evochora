@@ -26,7 +26,7 @@ duplicated block to land in. A relative `.ORG` starts the next row two cells bel
 one:
 
 ```
-  .ORG ~0|~2
+  .ORG 0|@+2
 NEXT_SECTION:
   ...
 ```
@@ -172,17 +172,21 @@ copy exists.
 
 Write a long procedure in rows, each begun by its own `.ORG` and ended by a jump to the next,
 so that no row runs past the width of the world it is meant for; inside an imported module the
-origin is relative to the place of the import:
+origin is relative to the place of the import. A row that continues the one before it says how
+far it moves on, so that a section inserted or moved carries the ones after it along:
 
 ```
   .ORG 0|2
 FIND_EDGES:
   ...
   JMPI ORIENT
-  .ORG 0|4
+  .ORG 0|@+2
 ORIENT:
   ...
 ```
+
+Where a row belongs at a place of its own rather than after the row before it — the entry of a
+module, a corner of a shell — the absolute form says so and stays.
 
 ## Check what a program does
 
