@@ -129,6 +129,21 @@ public class Environment implements IEnvironmentReader {
         }
     }
 
+    /**
+     * Rejects a world no environment can be created for, without creating one.
+     * <p>
+     * A caller that has further work to do before it creates the environment - compiling the
+     * programs that are laid out for this world, say - asks here first and fails on the world
+     * itself. The rule is the one the constructors apply, and only this class knows it.
+     *
+     * @param properties The shape and topology of the world.
+     * @throws IllegalArgumentException if the constructors would reject the world; the message names
+     *                                  the dimension at fault and the nearest sizes that are valid
+     */
+    public static void requireValidWorld(EnvironmentProperties properties) {
+        new GridLayout(properties, TILE_SIDE);
+    }
+
     // ==================== Constructors ====================
 
     /**

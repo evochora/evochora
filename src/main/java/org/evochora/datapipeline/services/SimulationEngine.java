@@ -688,13 +688,15 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                 throw new IllegalArgumentException(
                     "environment.shape[" + i + "] must be >= 1, got " + shape[i]);
             }
-            if (shape[i] % Environment.TILE_SIDE != 0) {
-                throw new IllegalArgumentException(
-                    "environment.shape[" + i + "] must be a multiple of " + Environment.TILE_SIDE
-                    + ", got " + shape[i]);
-            }
         }
         EnvironmentProperties envProps = new EnvironmentProperties(shape, isToroidal);
+        // Asked before anything is compiled for this world, so that a shape the environment cannot
+        // hold is reported as such and not after, or instead of, a program's compile error
+        try {
+            Environment.requireValidWorld(envProps);
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("environment.shape: " + e.getMessage(), e);
+        }
 
         for (Config orgConfig : organismConfigs) {
             String programPath = orgConfig.getString("program");

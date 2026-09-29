@@ -202,6 +202,20 @@ class EnvironmentCellAccessTest {
                 .as("the environment visits again after the failed nested visit").hasSize(2);
     }
 
+    @Test
+    void aWorldNoEnvironmentCanHoldIsRejectedWithoutBuildingOne() {
+        Environment.requireValidWorld(new EnvironmentProperties(new int[]{64, 96}, false));
+
+        EnvironmentProperties invalid = new EnvironmentProperties(new int[]{64, 40}, true);
+        assertThatThrownBy(() -> Environment.requireValidWorld(invalid))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("World dimension 1 is 40, which is not a multiple of 32; the nearest valid sizes are 32 and 64");
+        assertThatThrownBy(() -> new Environment(invalid))
+                .as("the constructor rejects the same world with the same words")
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("World dimension 1 is 40, which is not a multiple of 32; the nearest valid sizes are 32 and 64");
+    }
+
     private static List<Integer> flatIndices(java.util.function.Consumer<FlatIndexCellVisitor> visit) {
         List<Integer> out = new ArrayList<>();
         visit.accept((flatIndex, molecule, owner) -> out.add(flatIndex));
