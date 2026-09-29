@@ -2,7 +2,6 @@ package org.evochora.compiler.features.org;
 
 import org.evochora.compiler.frontend.irgen.IAstNodeToIrConverter;
 import org.evochora.compiler.frontend.irgen.IrGenContext;
-import org.evochora.compiler.model.ast.VectorLiteralNode;
 import org.evochora.compiler.model.ir.IrDirective;
 import org.evochora.compiler.model.ir.IrValue;
 
@@ -27,16 +26,14 @@ public final class OrgNodeConverter implements IAstNodeToIrConverter<OrgNode> {
 	 */
 	@Override
 	public void convert(OrgNode node, IrGenContext ctx) {
-		if (node.originVector() instanceof VectorLiteralNode v) {
-			int[] comps = v.values().stream().mapToInt(Integer::intValue).toArray();
-			List<IrValue> relative = new ArrayList<>(node.relative().size());
-			for (boolean marked : node.relative()) {
-				relative.add(new IrValue.Bool(marked));
-			}
-			Map<String, IrValue> args = new HashMap<>();
-			args.put("position", new IrValue.Vector(comps));
-			args.put("relative", new IrValue.ListVal(List.copyOf(relative)));
-			ctx.emit(new IrDirective("core", "org", args, ctx.sourceOf(node)));
+		int[] comps = node.originVector().values().stream().mapToInt(Integer::intValue).toArray();
+		List<IrValue> relative = new ArrayList<>(node.relative().size());
+		for (boolean marked : node.relative()) {
+			relative.add(new IrValue.Bool(marked));
 		}
+		Map<String, IrValue> args = new HashMap<>();
+		args.put("position", new IrValue.Vector(comps));
+		args.put("relative", new IrValue.ListVal(List.copyOf(relative)));
+		ctx.emit(new IrDirective("core", "org", args, ctx.sourceOf(node)));
 	}
 }

@@ -14,6 +14,9 @@ import java.util.List;
  * Layout handler for the {@code core:org} IR directive (Phase 9). Sets the current layout
  * position, taking each component either from the base position of the enclosing module context
  * or, where the component was marked relative, from the layout cursor.
+ * <p>
+ * The directive carries the position as a vector and, under {@code relative}, one flag per
+ * component of it. Both are required, and the flags are as many as the components.
  */
 public final class OrgLayoutHandler implements ILayoutDirectiveHandler {
 	/**

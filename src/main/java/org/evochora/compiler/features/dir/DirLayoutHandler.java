@@ -8,6 +8,8 @@ import org.evochora.compiler.backend.layout.Nd;
 import org.evochora.compiler.model.ir.IrDirective;
 import org.evochora.compiler.model.ir.IrValue;
 
+import java.util.Arrays;
+
 /**
  * Layout handler for the {@code core:dir} IR directive (Phase 9). Sets the direction in which
  * subsequent instructions are placed, either from the vector the directive carries or by rotating
@@ -21,6 +23,14 @@ public final class DirLayoutHandler implements ILayoutDirectiveHandler {
 	public void handle(IrDirective directive, LayoutContext context) throws CompilationException {
 		IrValue.Vector vec = (IrValue.Vector) directive.args().get("direction");
 		if (vec != null) {
+			// Checked here rather than at the first cell placed afterwards, and because everything
+			// that follows reads the dimensionality of the world off the direction vector.
+			int dims = context.currentDv().length;
+			if (vec.components().length != dims) {
+				throw new CompilationException(SourceInfo.locate(directive.source(), String.format(
+						"Direction %s has %d components, the world has %d dimensions.",
+						Arrays.toString(vec.components()), vec.components().length, dims)));
+			}
 			context.setCurrentDv(Nd.copy(vec.components()));
 			return;
 		}

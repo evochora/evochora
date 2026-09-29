@@ -56,7 +56,8 @@ public class LayoutDirectiveTest {
     void testOrgDirectiveWithRelativeComponents() {
         // Arrange
         String source = ".ORG 0|@+2";
-        Parser parser = new Parser(new Lexer(source, new DiagnosticsEngine()).scanTokens(), new DiagnosticsEngine(), registry());
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Parser parser = new Parser(new Lexer(source, diagnostics).scanTokens(), diagnostics, registry());
 
         // Act
         List<AstNode> ast = parser.parse();
@@ -77,7 +78,8 @@ public class LayoutDirectiveTest {
     void testOrgDirectiveWithBackwardMarker() {
         // Arrange
         String source = ".ORG @-3|@+2";
-        Parser parser = new Parser(new Lexer(source, new DiagnosticsEngine()).scanTokens(), new DiagnosticsEngine(), registry());
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Parser parser = new Parser(new Lexer(source, diagnostics).scanTokens(), diagnostics, registry());
 
         // Act
         List<AstNode> ast = parser.parse();
@@ -99,7 +101,7 @@ public class LayoutDirectiveTest {
         // Arrange
         String source = ".ORG 0|@+-2";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Parser parser = new Parser(new Lexer(source, new DiagnosticsEngine()).scanTokens(), diagnostics, registry());
+        Parser parser = new Parser(new Lexer(source, diagnostics).scanTokens(), diagnostics, registry());
 
         // Act
         parser.parse();
@@ -138,7 +140,8 @@ public class LayoutDirectiveTest {
     void testDirDirectiveWithRotation() {
         // Arrange
         String source = ".DIR @+0|1\n.DIR @-1|2\n.DIR 1|0";
-        Parser parser = new Parser(new Lexer(source, new DiagnosticsEngine()).scanTokens(), new DiagnosticsEngine(), registry());
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Parser parser = new Parser(new Lexer(source, diagnostics).scanTokens(), diagnostics, registry());
 
         // Act
         List<AstNode> ast = parser.parse();

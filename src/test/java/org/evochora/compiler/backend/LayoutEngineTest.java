@@ -17,6 +17,7 @@ import org.junit.jupiter.api.Test;
 import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 import org.junit.jupiter.api.Tag;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -78,7 +79,7 @@ public class LayoutEngineTest {
     private static IrDirective org(int[] components, boolean[] relative, SourceInfo source) {
         Map<String, IrValue> args = new HashMap<>();
         args.put("position", new IrValue.Vector(components));
-        List<IrValue> marks = new java.util.ArrayList<>(relative.length);
+        List<IrValue> marks = new ArrayList<>(relative.length);
         for (boolean marked : relative) {
             marks.add(new IrValue.Bool(marked));
         }
@@ -86,14 +87,23 @@ public class LayoutEngineTest {
         return new IrDirective("core", "org", args, source);
     }
 
+    /**
+     * Builds an instruction of three cells: the opcode, a register and a typed literal.
+     */
     private static IrInstruction seti(int line) {
         return new IrInstruction("SETI", List.of(new IrReg("%DR0"), new IrTypedImm("DATA", 1)), src("main.s", line));
     }
 
+    /**
+     * Lays the items out in a two-dimensional world of 100 by 100 cells.
+     */
     private static LayoutResult layout(List<IrItem> items) throws Exception {
         return layout(items, new int[]{100, 100});
     }
 
+    /**
+     * Lays the items out in a toroidal world of the given shape.
+     */
     private static LayoutResult layout(List<IrItem> items, int[] worldShape) throws Exception {
         Instruction.init();
         return new LayoutEngine().layout(new IrProgram("Test", items), new RuntimeInstructionSetAdapter(),
@@ -182,6 +192,24 @@ public class LayoutEngineTest {
     }
 
     /**
+     * A direction with more or fewer components than the world has dimensions names no direction,
+     * and is reported at the directive.
+     */
+    @Test
+    void aDirectionWithTheWrongNumberOfComponentsIsReported() {
+        Map<String, IrValue> args = new HashMap<>();
+        args.put("direction", new IrValue.Vector(new int[]{1, 0, 0}));
+
+        assertThatThrownBy(() -> layout(List.of(
+                org(new int[]{0, 0}, new boolean[]{false, false}, src("main.s", 1)),
+                new IrDirective("core", "dir", args, src("main.s", 2)),
+                seti(3))))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("Direction [1, 0, 0] has 3 components, the world has 2 dimensions.")
+                .hasMessageContaining("main.s:2");
+    }
+
+    /**
      * A plane needs two different axes of the world, and a one-dimensional world has no plane at
      * all. Each of the three is reported at the directive.
      */
@@ -225,6 +253,21 @@ public class LayoutEngineTest {
         // The first row occupies (0,4) to (2,4); the second starts two rows below it, at column 0.
         assertThat(res.linearAddressToCoord().get(0)).containsExactly(0, 4);
         assertThat(res.linearAddressToCoord().get(3)).containsExactly(0, 6);
+    }
+
+    /**
+     * An unmarked component counts from the origin of the enclosing module, a minus sign
+     * included: without the marker there is nothing relative about it.
+     */
+    @Test
+    void anUnmarkedComponentStaysAbsoluteWithASign() throws Exception {
+        LayoutResult res = layout(List.of(
+                org(new int[]{5, 5}, new boolean[]{false, false}, src("main.s", 1)),
+                seti(2),
+                org(new int[]{-3, 0}, new boolean[]{false, false}, src("main.s", 3)),
+                seti(4)));
+
+        assertThat(res.linearAddressToCoord().get(3)).containsExactly(-3, 0);
     }
 
     /**

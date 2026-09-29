@@ -525,7 +525,7 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining(".PLACE uses 3 dimensions, the world has 2.")
+                .hasMessageContaining(".PLACE uses 3 components, the world has 2 dimensions.")
                 .hasMessageContaining("main.evo:3");
     }
 
@@ -538,7 +538,7 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Coordinate [5, 5, 7] has 3 dimensions, the world has 2.")
+                .hasMessageContaining("Coordinate [5, 5, 7] has 3 components, the world has 2 dimensions.")
                 .hasMessageContaining("main.evo:3");
     }
 

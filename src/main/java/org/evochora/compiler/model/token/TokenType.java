@@ -16,9 +16,9 @@ public enum TokenType {
     // Two-character tokens
     /** The '..' character, used for ranges. */
     DOT_DOT,
-    /** The '@+' marker, which makes the value that follows it relative, counted forwards. */
+    /** The '@+' character pair, which marks what follows it. */
     AT_PLUS,
-    /** The '@-' marker, which makes the value that follows it relative, counted backwards. */
+    /** The '@-' character pair, which marks what follows it, with the opposite sign. */
     AT_MINUS,
 
     // Literals.
