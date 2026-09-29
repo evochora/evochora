@@ -502,6 +502,30 @@ public abstract class Instruction {
     }
 
     /**
+     * The active data pointer of the organism, for an instruction that addresses the cell it
+     * stands on or one next to it.
+     * <p>
+     * A cell can only be addressed from inside the world. In a bounded world the data pointer may
+     * have left it, and then the instruction fails, with the pointer where it is: the environment's
+     * in-range accessors would reject the position, and the failure belongs to the organism, not
+     * to the virtual machine. In a toroidal world the pointer is always inside.
+     *
+     * @param environment The environment whose world the pointer has to lie in.
+     * @return A copy of the active data pointer, or {@code null} when the instruction has been
+     *         marked failed: the pointer lies outside the world, or the organism has no active
+     *         data pointer.
+     */
+    protected int[] dataPointerInsideWorld(Environment environment) {
+        int[] dp = organism.getActiveDp();
+        if (dp != null && !environment.contains(dp)) {
+            organism.instructionFailed(getName() + ": Data pointer " + java.util.Arrays.toString(dp)
+                    + " lies outside the world.");
+            return null;
+        }
+        return dp;
+    }
+
+    /**
      * Validates that the target coordinates are accessible to the organism.
      * The target must be either unowned or owned by the organism itself.
      *

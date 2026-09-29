@@ -192,7 +192,11 @@ public class ConditionalInstruction extends Instruction {
                 if (vector == null) {
                     return;
                 }
-                int ownerId = environment.getOwnerIdAt(organism.getActiveDp(), vector);
+                int[] dp = dataPointerInsideWorld(environment);
+                if (dp == null) {
+                    return;
+                }
+                int ownerId = environment.getOwnerIdAt(dp, vector);
                 boolean isAccessible = organism.isCellAccessible(ownerId);
                 boolean conditionMet = opName.startsWith("IFM") ? isAccessible : !isAccessible;
                 if (!conditionMet) {
@@ -205,7 +209,10 @@ public class ConditionalInstruction extends Instruction {
                 if (vector == null) {
                     return;
                 }
-                int[] dp = organism.getActiveDp();
+                int[] dp = dataPointerInsideWorld(environment);
+                if (dp == null) {
+                    return;
+                }
                 boolean isPassable = environment.getMoleculeIntAt(dp, vector) == 0
                         || organism.isCellAccessible(environment.getOwnerIdAt(dp, vector));
                 boolean conditionMet = opName.startsWith("IFP") ? isPassable : !isPassable;
@@ -220,7 +227,11 @@ public class ConditionalInstruction extends Instruction {
                 if (vector == null) {
                     return;
                 }
-                int ownerId = environment.getOwnerIdAt(organism.getActiveDp(), vector);
+                int[] dp = dataPointerInsideWorld(environment);
+                if (dp == null) {
+                    return;
+                }
+                int ownerId = environment.getOwnerIdAt(dp, vector);
                 boolean isForeign = (ownerId != 0 && ownerId != organism.getId());
                 boolean conditionMet = opName.startsWith("IFF") ? isForeign : !isForeign;
                 if (!conditionMet) {
@@ -234,7 +245,11 @@ public class ConditionalInstruction extends Instruction {
                 if (vector == null) {
                     return;
                 }
-                int ownerId = environment.getOwnerIdAt(organism.getActiveDp(), vector);
+                int[] dp = dataPointerInsideWorld(environment);
+                if (dp == null) {
+                    return;
+                }
+                int ownerId = environment.getOwnerIdAt(dp, vector);
                 boolean isVacant = (ownerId == 0);
                 boolean conditionMet = opName.startsWith("IFV") ? isVacant : !isVacant;
                 if (!conditionMet) {

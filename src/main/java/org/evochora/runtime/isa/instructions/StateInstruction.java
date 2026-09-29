@@ -424,7 +424,10 @@ public class StateInstruction extends Instruction {
         if (vector == null) {
             return;
         }
-        int[] dp = organism.getActiveDp();
+        int[] dp = dataPointerInsideWorld(environment);
+        if (dp == null) {
+            return;
+        }
         if (isPassable(environment, dp, vector)) {
             organism.setActiveDp(organism.getTargetCoordinate(dp, vector, environment));
         } else {
@@ -541,7 +544,11 @@ public class StateInstruction extends Instruction {
         if (vector == null) {
             return;
         }
-        int scanned = environment.getMoleculeIntAt(organism.getActiveDp(), vector);
+        int[] dp = dataPointerInsideWorld(environment);
+        if (dp == null) {
+            return;
+        }
+        int scanned = environment.getMoleculeIntAt(dp, vector);
         if (toStack) {
             organism.pushData(scanned);
         } else {
@@ -617,7 +624,10 @@ public class StateInstruction extends Instruction {
     private void handleScanPassableNeighbors(String opName, List<Operand> operands, Environment environment) {
         int dims = environment.properties.getDimensions();
         int scanDims = Math.min(dims, Config.VALUE_BITS / 2);
-        int[] dp = organism.getActiveDp();
+        int[] dp = dataPointerInsideWorld(environment);
+        if (dp == null) {
+            return;
+        }
         // One step, turned from neighbour to neighbour
         int[] step = new int[dims];
         int mask = 0;
@@ -670,7 +680,10 @@ public class StateInstruction extends Instruction {
 
         int dims = environment.properties.getDimensions();
         int scanDims = Math.min(dims, Config.VALUE_BITS / 2);
-        int[] dp = organism.getActiveDp();
+        int[] dp = dataPointerInsideWorld(environment);
+        if (dp == null) {
+            return;
+        }
         // One step, turned from neighbour to neighbour
         int[] step = new int[dims];
         int mask = 0;

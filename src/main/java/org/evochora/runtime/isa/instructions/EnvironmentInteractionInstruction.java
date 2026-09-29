@@ -285,10 +285,8 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
         if (displacement == null) {
             return null;
         }
-        int[] dp = organism.getActiveDp();
-        if (!environment.contains(dp)) {
-            organism.instructionFailed(getName() + ": Data pointer " + Arrays.toString(dp)
-                    + " lies outside the world.");
+        int[] dp = dataPointerInsideWorld(environment);
+        if (dp == null) {
             return null;
         }
         int[] target = organism.getTargetCoordinate(dp, displacement, environment);
