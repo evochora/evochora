@@ -1165,20 +1165,18 @@ public class Organism {
      * Skips the next real instruction following the currently executing one.
      * Only CODE molecules (non-NOP) are considered real instructions; all other
      * molecule types are skipped over to find the actual instruction to skip.
+     * <p>
+     * The walk starts at the position the current instruction was read from and moves the
+     * instruction pointer itself, with the steps {@link #advanceIpBy(int, Environment)} and
+     * {@link #skipNopCells(Environment)} take, so it needs no coordinate of its own.
      *
      * @param environment The simulation environment.
      */
     public void skipNextInstruction(Environment environment) {
         // Move IP past current instruction
-        int[] currentIp = this.getIpBeforeFetch();
-        int currentOpcode = environment.getMolecule(currentIp).value();
-        int currentLength = Instruction.getInstructionLengthById(currentOpcode, environment);
-
-        int[] pos = currentIp;
-        for (int i = 0; i < currentLength; i++) {
-            pos = getNextInstructionPosition(pos, this.getDvBeforeFetch(), environment);
-        }
-        this.setIp(pos);
+        System.arraycopy(this.ipBeforeFetch, 0, this.ip, 0, this.ip.length);
+        int currentLength = Instruction.getInstructionLengthById(valueAtIp(environment), environment);
+        advanceIpBy(currentLength, environment);
 
         // Skip NOPs at new position
         skipNopCells(environment);
@@ -1188,11 +1186,27 @@ public class Organism {
         }
 
         // Skip the real instruction
-        int nextOpcode = environment.getMolecule(ip).value();
-        int lengthToSkip = Instruction.getInstructionLengthById(nextOpcode, environment);
+        int lengthToSkip = Instruction.getInstructionLengthById(valueAtIp(environment), environment);
         advanceIpBy(lengthToSkip, environment);
 
         setSkipIpAdvance(true);
+    }
+
+    /**
+     * Reads the value of the molecule the instruction pointer stands on, whatever its type.
+     * <p>
+     * Both places that ask stand inside the world: the position an instruction was read from,
+     * which the virtual machine has read through the same accessor, and the cell at which
+     * {@link #skipNopCells(Environment)} stopped without failing, which is a cell it has read.
+     * The accessor rejects a position outside the world.
+     *
+     * @param environment The simulation environment.
+     * @return The signed value of the molecule at the instruction pointer, {@code 0} for an empty
+     *         cell.
+     * @throws IllegalArgumentException if the instruction pointer lies outside the world
+     */
+    private int valueAtIp(Environment environment) {
+        return Molecule.extractSignedValue(environment.getMoleculeIntAt(ip));
     }
 
     /**
