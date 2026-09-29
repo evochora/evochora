@@ -152,6 +152,19 @@ public class SimulationBenchmark {
                       CRLR %LR2
                       JMPI MAIN
                     """,
+            "NEIGHBOURS", """
+                    START:
+                      SEKI 0|1
+                      SEKI 0|-1
+                      SPNR %DR0
+                      SNTI %DR1 ENERGY:0
+                      SCNI %DR2 0|1
+                      IFPI 0|1
+                      IFVI 0|1
+                      IFMI 1|0
+                      INFI 1|0
+                      JMPI START
+                    """,
             "SKIP", """
                     START:
                       SETI %DR0 DATA:1
@@ -182,7 +195,7 @@ public class SimulationBenchmark {
     );
 
     /** Assembly program to execute. */
-    @Param({/* "ARITHMETIC", "ENVIRONMENT", "LOCATION", "SKIP", */ "REALISTIC", "PROC_CALL"})
+    @Param({/* "ARITHMETIC", "ENVIRONMENT", "LOCATION", "NEIGHBOURS", "SKIP", */ "REALISTIC", "PROC_CALL"})
     private String assembly;
 
     /** Number of organisms in the simulation. */
