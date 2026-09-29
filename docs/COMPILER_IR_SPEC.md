@@ -41,8 +41,8 @@ This represents a compiler directive, which provides instructions to the compile
 
 #### Core Directives
 
--   `core:org`: Sets the layout origin.
--   `core:dir`: Sets the layout direction.
+-   `core:org`: Sets the layout origin. Its `args` map holds `position`, the vector, and `relative`, a `ListVal` of `Bool` with one entry per component: `true` where the component counts from the write cursor rather than from the base position of the enclosing module.
+-   `core:dir`: Sets the layout direction. Either `direction`, the vector, or a rotation of the direction in effect: `forward` (`Bool`) and the two axes `axisA` and `axisB` (`Int64`) spanning the plane it turns in.
 -   `core:place`: Places a molecule at one or more locations. Its `args` map contains the literal's `type` and `value`, and a special `placements` argument holding a `PlacementListVal`.
 -   `core:push_ctx` / `core:pop_ctx`: Internal directives injected by the preprocessor around an included file's content. These instruct the layout engine to push and pop the current layout context (base position and direction vector), enabling relative addressing and context restoration.
 -   `core:scope_enter` / `core:scope_exit`: Mark the boundaries of a named scope.

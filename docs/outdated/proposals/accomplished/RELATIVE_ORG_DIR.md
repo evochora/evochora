@@ -1,6 +1,7 @@
 # Relative `.ORG` and `.DIR`
 
-**Status: TO BE REVIEWED**
+**Status: ACCOMPLISHED — implemented on branch `feature/relative-org-dir`, together with the
+assembly programs rewritten to use the relative form.**
 
 ## Problem
 
