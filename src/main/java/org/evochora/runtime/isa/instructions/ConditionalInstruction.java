@@ -213,8 +213,7 @@ public class ConditionalInstruction extends Instruction {
                 if (dp == null) {
                     return;
                 }
-                boolean isPassable = environment.getMoleculeIntAt(dp, vector) == 0
-                        || organism.isCellAccessible(environment.getOwnerIdAt(dp, vector));
+                boolean isPassable = isPassable(environment, dp, vector);
                 boolean conditionMet = opName.startsWith("IFP") ? isPassable : !isPassable;
                 if (!conditionMet) {
                     organism.skipNextInstruction(environment);

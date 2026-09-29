@@ -436,21 +436,6 @@ public class StateInstruction extends Instruction {
     }
 
     /**
-     * Tells whether the organism may move its data pointer onto the cell a displacement away
-     * from a position: the cell is empty, or it is the organism's own.
-     *
-     * @param environment  the environment the cell lies in
-     * @param position     the position to start from, within the world
-     * @param displacement no step or one step along an axis
-     * @return {@code true} if the cell is passable for this organism; a cell beyond the edge of a
-     *         bounded world reads as empty and is therefore passable
-     */
-    private boolean isPassable(Environment environment, int[] position, int[] displacement) {
-        return environment.getMoleculeIntAt(position, displacement) == 0
-                || organism.isCellAccessible(environment.getOwnerIdAt(position, displacement));
-    }
-
-    /**
      * Handles the extended FORK variants (FRKI / FRKS).
      * FRKI takes immediate operands; FRKS pops delta, energy, and child DV from the data stack.
      * Otherwise identical to {@link #handleFork}: requires a non-zero marker register, places the
