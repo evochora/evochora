@@ -37,7 +37,7 @@ EXPORT .PROC HARVEST
       JMPI HARVEST_FIRST_RUN; NOP^4       # ...give the state its starting values
     JMPI HARVEST_RANDOM_DIR; NOP^9; JMPI HARVEST_RANDOM_DIR
 
-  .ORG 0|@-2
+  .ORG 0|2
   HARVEST_FIRST_RUN: NOP^4
     SETI %FWD_MASK DATA:1; NOP^4          # Forward is east until the first draw
     SETI %KIDX DATA:0; NOP^4              # Start at the first prime period

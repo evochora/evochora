@@ -16,7 +16,7 @@ EXPORT CONTINUE_STATE:
 .PLACE STATE:0   1|2       # %DIRMASK
 .PLACE STATE:-1  2|2       # %DIRVEC
 
-.ORG 0|@-2
+.ORG 0|0
 EXPORT .PROC CONTINUE REF ER
 
   .REG %SHELL   %PDR0     # Shell molecule used as terminator symbol

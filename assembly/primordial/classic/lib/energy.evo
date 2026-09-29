@@ -20,7 +20,7 @@ EXPORT HARVEST_STATE:
 # ===========================================================================
 # PROCEDURE ENTRY
 # ===========================================================================
-.ORG 0|@-2
+.ORG 0|0
 EXPORT .PROC HARVEST
 
   # Register aliases for clarity
