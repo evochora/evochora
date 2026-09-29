@@ -1,5 +1,6 @@
 package org.evochora.runtime.isa.instructions;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.NoSuchElementException;
 
@@ -21,6 +22,9 @@ import static org.evochora.runtime.isa.Instruction.OperandSource.*;
 public class EnvironmentInteractionInstruction extends Instruction implements IEnvironmentModifyingInstruction {
 
     private static int family;
+
+    /** What a cell holds after its molecule has been taken out of it. */
+    private static final Molecule EMPTY = new Molecule(Config.TYPE_CODE, 0);
 
     /**
      * Registers all environment interaction instructions with the instruction registry.
@@ -109,10 +113,10 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
             }
             Molecule toWrite = Molecule.fromInt(Molecule.storedFormOfWrite((Integer) valueToWrite, organism.getMr()));
 
-            if (environment.getMolecule(targetCoordinate).isEmpty()) {
+            if (environment.getMoleculeIntAt(targetCoordinate) == 0) {
                 // CODE:0 should always have owner=0 (represents empty cell)
                 int ownerId = (toWrite.type() == Config.TYPE_CODE && toWrite.toScalarValue() == 0) ? 0 : organism.getId();
-                environment.setMolecule(toWrite, ownerId, targetCoordinate);
+                environment.setMoleculeAt(targetCoordinate, toWrite, ownerId);
                 // The cell was empty, so it was unowned; the write is priced for what now stands in it.
                 context.recordWrite(toWrite.toInt(), 0);
             } else {
@@ -146,9 +150,9 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
             return;
         }
 
-        Molecule s = environment.getMolecule(targetCoordinate);
+        int taken = environment.getMoleculeIntAt(targetCoordinate);
 
-        if (s.isEmpty()) {
+        if (taken == 0) {
             organism.instructionFailed("PEEK: Target cell is empty.");
             return;
         }
@@ -156,8 +160,8 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
         // The register receives what stood in the cell. What of it reaches the organism is the
         // policy's business: an ENERGY molecule beyond the energy register's room is clamped
         // there, and the difference is lost - the cell is emptied either way.
-        Object valueToStore = s.toInt();
-        int ownerId = environment.getOwnerId(targetCoordinate);
+        Object valueToStore = taken;
+        int ownerId = environment.getOwnerIdAt(targetCoordinate);
 
         if (targetReg != -1) {
             writeOperand(targetReg, valueToStore);
@@ -170,9 +174,8 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
             return;
         }
 
-        environment.setMolecule(new Molecule(Config.TYPE_CODE, 0), targetCoordinate);
-        environment.clearOwner(targetCoordinate);
-        context.recordRead(s.toInt(), ownerId);
+        environment.setMoleculeAt(targetCoordinate, EMPTY, 0);
+        context.recordRead(taken, ownerId);
     }
 
     private void handlePeekPoke(ExecutionContext context) {
@@ -201,14 +204,13 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
         if (getConflictStatus() == ConflictResolutionStatus.WON_EXECUTION || getConflictStatus() == ConflictResolutionStatus.NOT_APPLICABLE) {
             
             // First, handle the PEEK part
-            Molecule currentMolecule = environment.getMolecule(targetCoordinate);
-            int currentOwnerId = environment.getOwnerId(targetCoordinate);
+            int current = environment.getMoleculeIntAt(targetCoordinate);
+            int currentOwnerId = environment.getOwnerIdAt(targetCoordinate);
 
             // The register receives what stood in the cell, of whatever type; an empty cell gives
-            // CODE:0 and is not a read at all, because nothing was consumed.
-            Object valueToStore = currentMolecule.isEmpty()
-                    ? new Molecule(Config.TYPE_CODE, 0).toInt()
-                    : currentMolecule.toInt();
+            // CODE:0, which is what it holds, and is not a read at all, because nothing was
+            // consumed.
+            Object valueToStore = current;
 
             // Store the peeked value (or empty molecule if cell was empty)
             if (targetReg != -1) {
@@ -221,10 +223,9 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
             }
 
             // Clear the cell (if it wasn't already empty)
-            if (!currentMolecule.isEmpty()) {
-                environment.setMolecule(new Molecule(Config.TYPE_CODE, 0), targetCoordinate);
-                environment.clearOwner(targetCoordinate);
-                context.recordRead(currentMolecule.toInt(), currentOwnerId);
+            if (current != 0) {
+                environment.setMoleculeAt(targetCoordinate, EMPTY, 0);
+                context.recordRead(current, currentOwnerId);
             }
 
             // Now handle the POKE part
@@ -237,7 +238,7 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
             // Write the new value (cell is now empty, so this should always succeed)
             // CODE:0 should always have owner=0 (represents empty cell)
             int ownerId = (toWrite.type() == Config.TYPE_CODE && toWrite.toScalarValue() == 0) ? 0 : organism.getId();
-            environment.setMolecule(toWrite, ownerId, targetCoordinate);
+            environment.setMoleculeAt(targetCoordinate, toWrite, ownerId);
             // The peek left the cell empty and unowned, whatever stood in it before.
             context.recordWrite(toWrite.toInt(), 0);
         }
@@ -253,14 +254,16 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
      * or one adjacent to it. The result is derived once and kept in {@code this.targetCoordinate},
      * which is what makes conflict resolution and execution address the same cell.
      * <p>
-     * Two things leave the coordinate underived, and they are answered differently. An operand that
-     * is not a vector — a register or a stack slot may hold a scalar — names no cell, and that is
-     * failed here, because nothing else would. Too few operands is left to the handler, which knows
-     * what its own variant expected. Conflict resolution reads an instruction without a target as
-     * one that runs and fails on its own.
+     * Three things leave the coordinate underived, and they are answered differently. An operand
+     * that is not a vector — a register or a stack slot may hold a scalar — names no cell, and that
+     * is failed here, because nothing else would. So is a cell that does not exist: in a bounded
+     * world the data pointer may have left the world, or the step from it may lead across the edge.
+     * Too few operands is left to the handler, which knows what its own variant expected. Conflict
+     * resolution reads an instruction without a target as one that runs and fails on its own.
      *
      * @param environment The environment the coordinate is resolved in.
-     * @return The target coordinate, or {@code null} when the operands name no direction.
+     * @return The target coordinate, which lies within the world, or {@code null} when the operands
+     *         name no direction or no cell of the world.
      */
     private int[] targetCoordinate(Environment environment) {
         if (this.targetCoordinate != null) {
@@ -282,8 +285,36 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
         if (displacement == null) {
             return null;
         }
-        this.targetCoordinate = organism.getTargetCoordinate(organism.getActiveDp(), displacement, environment);
+        int[] dp = organism.getActiveDp();
+        if (!liesWithinWorld(dp, environment)) {
+            organism.instructionFailed(getName() + ": Data pointer " + Arrays.toString(dp)
+                    + " lies outside the world.");
+            return null;
+        }
+        int[] target = organism.getTargetCoordinate(dp, displacement, environment);
+        if (!liesWithinWorld(target, environment)) {
+            organism.instructionFailed(getName() + ": Target cell " + Arrays.toString(target)
+                    + " lies outside the world.");
+            return null;
+        }
+        this.targetCoordinate = target;
         return this.targetCoordinate;
+    }
+
+    /**
+     * Tells whether a coordinate names a cell of the world.
+     *
+     * @param coordinate  the coordinate, one component per dimension
+     * @param environment the environment whose world is asked about
+     * @return {@code true} if every component lies within the world's size along its dimension
+     */
+    private static boolean liesWithinWorld(int[] coordinate, Environment environment) {
+        for (int i = 0; i < coordinate.length; i++) {
+            if (coordinate[i] < 0 || coordinate[i] >= environment.properties.getDimensionSize(i)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /**
