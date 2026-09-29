@@ -70,26 +70,27 @@ public class EnvironmentProperties {
         }
         
         if (isToroidal) {
-            return normalizePosition(nextPos);
+            wrapIntoWorld(nextPos);
         }
         return nextPos;
     }
     
     /**
-     * Normalizes a position to handle toroidal wrapping.
+     * Wraps a position into a toroidal world, component by component, in the array it is given.
+     * <p>
+     * The callers hand in the array they have just created for their result, so the wrapped
+     * position needs no array of its own and no argument of theirs is written into.
      * 
-     * @param pos The position to normalize
-     * @return The normalized position
+     * @param pos The position to wrap; holds the wrapped position afterwards
      */
-    private int[] normalizePosition(int[] pos) {
-        int[] normalized = new int[pos.length];
+    private void wrapIntoWorld(int[] pos) {
         for (int i = 0; i < pos.length; i++) {
-            normalized[i] = pos[i] % worldShape[i];
-            if (normalized[i] < 0) {
-                normalized[i] += worldShape[i];
+            int wrapped = pos[i] % worldShape[i];
+            if (wrapped < 0) {
+                wrapped += worldShape[i];
             }
+            pos[i] = wrapped;
         }
-        return normalized;
     }
     
     /**
@@ -106,7 +107,7 @@ public class EnvironmentProperties {
         }
         
         if (isToroidal) {
-            return normalizePosition(targetPos);
+            wrapIntoWorld(targetPos);
         }
         return targetPos;
     }

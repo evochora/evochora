@@ -424,12 +424,12 @@ public class StateInstruction extends Instruction {
         if (vector == null) {
             return;
         }
-        int[] targetCoordinate = organism.getTargetCoordinate(organism.getActiveDp(), vector, environment);
-
-        Molecule moleculeAtTarget = environment.getMolecule(targetCoordinate);
-        int ownerIdAtTarget = environment.getOwnerId(targetCoordinate);
-        if (moleculeAtTarget.isEmpty() || organism.isCellAccessible(ownerIdAtTarget)) {
-            organism.setActiveDp(targetCoordinate);
+        int[] dp = dataPointerInsideWorld(environment);
+        if (dp == null) {
+            return;
+        }
+        if (isPassable(environment, dp, vector)) {
+            organism.setActiveDp(organism.getTargetCoordinate(dp, vector, environment));
         } else {
             organism.instructionFailed("SEEK: Target cell is owned by another organism.");
         }
@@ -513,9 +513,10 @@ public class StateInstruction extends Instruction {
     }
 
     private void handleScan(String opName, List<Operand> operands, Environment environment) {
+        boolean toStack = "SCNS".equals(opName);
         int targetReg;
         int[] vector;
-        if (opName.endsWith("S")) {
+        if (toStack) {
             if (operands.size() != 1) { organism.instructionFailed("Invalid operands for " + opName); return; }
             vector = (int[]) operands.get(0).value();
             targetReg = -1;
@@ -528,12 +529,15 @@ public class StateInstruction extends Instruction {
         if (vector == null) {
             return;
         }
-        int[] target = organism.getTargetCoordinate(organism.getActiveDp(), vector, environment);
-        Molecule s = environment.getMolecule(target);
-        if (opName.endsWith("S")) {
-            organism.pushData(s.toInt());
+        int[] dp = dataPointerInsideWorld(environment);
+        if (dp == null) {
+            return;
+        }
+        int scanned = environment.getMoleculeIntAt(dp, vector);
+        if (toStack) {
+            organism.pushData(scanned);
         } else {
-            writeOperand(targetReg, s.toInt());
+            writeOperand(targetReg, scanned);
         }
     }
 
@@ -603,32 +607,25 @@ public class StateInstruction extends Instruction {
     }
 
     private void handleScanPassableNeighbors(String opName, List<Operand> operands, Environment environment) {
-        int dims = environment.getShape().length;
+        int dims = environment.properties.getDimensions();
         int scanDims = Math.min(dims, Config.VALUE_BITS / 2);
-        int[] dp = organism.getActiveDp();
+        int[] dp = dataPointerInsideWorld(environment);
+        if (dp == null) {
+            return;
+        }
+        // One step, turned from neighbour to neighbour
+        int[] step = new int[dims];
         int mask = 0;
         for (int d = 0; d < scanDims; d++) {
-            // + direction
-            int[] vecPlus = new int[dims];
-            vecPlus[d] = 1;
-            int[] tgtPlus = organism.getTargetCoordinate(dp, vecPlus, environment);
-            org.evochora.runtime.model.Molecule mPlus = environment.getMolecule(tgtPlus);
-            int ownerPlus = environment.getOwnerId(tgtPlus);
-            boolean passablePlus = mPlus.isEmpty() || organism.isCellAccessible(ownerPlus);
-            if (passablePlus) {
+            step[d] = 1;
+            if (isPassable(environment, dp, step)) {
                 mask |= (1 << (2 * d));
             }
-
-            // - direction
-            int[] vecMinus = new int[dims];
-            vecMinus[d] = -1;
-            int[] tgtMinus = organism.getTargetCoordinate(dp, vecMinus, environment);
-            org.evochora.runtime.model.Molecule mMinus = environment.getMolecule(tgtMinus);
-            int ownerMinus = environment.getOwnerId(tgtMinus);
-            boolean passableMinus = mMinus.isEmpty() || organism.isCellAccessible(ownerMinus);
-            if (passableMinus) {
+            step[d] = -1;
+            if (isPassable(environment, dp, step)) {
                 mask |= (1 << (2 * d + 1));
             }
+            step[d] = 0;
         }
 
         if ("SPNS".equals(opName)) {
@@ -642,7 +639,7 @@ public class StateInstruction extends Instruction {
 
     private void handleScanNeighborsByType(String opName, List<Operand> operands, Environment environment) {
         // Determine destination (register or stack) and the requested type
-        boolean toStack = opName.endsWith("S");
+        boolean toStack = false;
         int destReg = -1;
         int requestedType;
 
@@ -666,26 +663,25 @@ public class StateInstruction extends Instruction {
             toStack = true;
         }
 
-        int dims = environment.getShape().length;
+        int dims = environment.properties.getDimensions();
         int scanDims = Math.min(dims, Config.VALUE_BITS / 2);
-        int[] dp = organism.getActiveDp();
+        int[] dp = dataPointerInsideWorld(environment);
+        if (dp == null) {
+            return;
+        }
+        // One step, turned from neighbour to neighbour
+        int[] step = new int[dims];
         int mask = 0;
         for (int d = 0; d < scanDims; d++) {
-            int[] vecPlus = new int[dims];
-            vecPlus[d] = 1;
-            int[] tgtPlus = organism.getTargetCoordinate(dp, vecPlus, environment);
-            Molecule mPlus = environment.getMolecule(tgtPlus);
-            if (mPlus.type() == requestedType) {
+            step[d] = 1;
+            if ((environment.getMoleculeIntAt(dp, step) & Config.TYPE_MASK) == requestedType) {
                 mask |= (1 << (2 * d));
             }
-
-            int[] vecMinus = new int[dims];
-            vecMinus[d] = -1;
-            int[] tgtMinus = organism.getTargetCoordinate(dp, vecMinus, environment);
-            Molecule mMinus = environment.getMolecule(tgtMinus);
-            if (mMinus.type() == requestedType) {
+            step[d] = -1;
+            if ((environment.getMoleculeIntAt(dp, step) & Config.TYPE_MASK) == requestedType) {
                 mask |= (1 << (2 * d + 1));
             }
+            step[d] = 0;
         }
 
         if (toStack) {

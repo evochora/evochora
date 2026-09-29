@@ -502,6 +502,30 @@ public abstract class Instruction {
     }
 
     /**
+     * The active data pointer of the organism, for an instruction that addresses the cell it
+     * stands on or one next to it.
+     * <p>
+     * A cell can only be addressed from inside the world. In a bounded world the data pointer may
+     * have left it, and then the instruction fails, with the pointer where it is: the environment's
+     * in-range accessors would reject the position, and the failure belongs to the organism, not
+     * to the virtual machine. In a toroidal world the pointer is always inside.
+     *
+     * @param environment The environment whose world the pointer has to lie in.
+     * @return A copy of the active data pointer, or {@code null} when the instruction has been
+     *         marked failed: the pointer lies outside the world, or the organism has no active
+     *         data pointer.
+     */
+    protected int[] dataPointerInsideWorld(Environment environment) {
+        int[] dp = organism.getActiveDp();
+        if (dp != null && !environment.contains(dp)) {
+            organism.instructionFailed(getName() + ": Data pointer " + java.util.Arrays.toString(dp)
+                    + " lies outside the world.");
+            return null;
+        }
+        return dp;
+    }
+
+    /**
      * Validates that the target coordinates are accessible to the organism.
      * The target must be either unowned or owned by the organism itself.
      *
@@ -523,6 +547,10 @@ public abstract class Instruction {
     /**
      * Tells whether the target coordinates are accessible to the organism, without failing the
      * instruction: the target must be either unowned or owned by the organism itself.
+     * <p>
+     * Accessible asks about the owner alone. {@link #isPassable(Environment, int[], int[])} asks
+     * the other question the instructions have: whether the organism may move onto a cell, which
+     * an empty cell allows whoever owns it.
      *
      * @param targetCoords The coordinates to check.
      * @param organism     The organism performing the access.
@@ -532,6 +560,25 @@ public abstract class Instruction {
     protected boolean isTargetAccessible(int[] targetCoords, Organism organism, Environment environment) {
         int ownerIdAtTarget = environment.getOwnerId(targetCoords);
         return ownerIdAtTarget == 0 || organism.isCellAccessible(ownerIdAtTarget);
+    }
+
+    /**
+     * Tells whether the organism may move its data pointer onto the cell a displacement away from
+     * a position: the cell is empty, or it is the organism's own. This is the one rule SEEK, the
+     * scan for passable neighbours and the condition on a passable cell share.
+     * <p>
+     * Unlike {@link #isTargetAccessible(int[], Organism, Environment)} an empty cell passes
+     * whoever owns it, and an occupied cell of nobody's does not.
+     *
+     * @param environment  The environment the cell lies in.
+     * @param position     The position to start from, within the world.
+     * @param displacement No step or one step along an axis.
+     * @return {@code true} if the cell is passable for this organism; a cell beyond the edge of a
+     *         bounded world reads as empty and is therefore passable
+     */
+    protected boolean isPassable(Environment environment, int[] position, int[] displacement) {
+        return environment.getMoleculeIntAt(position, displacement) == 0
+                || organism.isCellAccessible(environment.getOwnerIdAt(position, displacement));
     }
 
     /**

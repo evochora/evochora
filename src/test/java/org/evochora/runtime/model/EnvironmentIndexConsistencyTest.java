@@ -84,9 +84,9 @@ class EnvironmentIndexConsistencyTest {
     @Test
     void transferOwnership_keepsTheOccupiedSetConsistent() {
         Environment env = new Environment(new EnvironmentProperties(new int[]{32, 32}, true));
-        env.setMolecule(new Molecule(Config.TYPE_CODE, 0, 1), 5, new int[]{1, 1}); // empty, owned, marker 1
+        env.setMolecule(new Molecule(Config.TYPE_CODE, 0), 5, new int[]{1, 1}); // empty but owned
 
-        env.transferOwnership(5, 0, 1); // hand the marked cell to "nobody"
+        env.transferOwnership(5, 0, 0); // hand the cell to "nobody"; an empty cell carries no marker
 
         assertThat(env.getOwnerId(1, 1)).isZero();
         assertThat(occupied(env)).isZero();

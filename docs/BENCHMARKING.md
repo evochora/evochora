@@ -19,10 +19,11 @@ with `organisms` copies of one assembly program and runs ticks back to back.
 | `selectionSpread` | `0` (default) | Selection spread of the label-matching strategy. `0` takes the nearest of several own labels on the best Hamming stage; a positive value (production default `50`) draws one of them by lottery, exercising the organism's random source on the control-flow path. A jump with a single own candidate draws nothing either way. Override on the command line, e.g. `-p selectionSpread=0,50`. |
 | `orphanedPercent` | `0` (default) | Share of the organisms placed without their `LABEL` molecules, spread evenly among the others. Their references have no own match, so every jump and call of theirs runs the foreign search and resolves to a neighbour's label; all organisms carry the same label values. Select with e.g. `-p orphanedPercent=50`. |
 
-`ARITHMETIC`, `ENVIRONMENT`, `LOCATION` and `SKIP` are defined but outside the default set;
-select one with `-p assembly=LOCATION`. `LOCATION` executes nothing but location-register and
-location-stack instructions, which no other program touches; `SKIP` executes conditions that
-are all false, so each skips the instruction behind it.
+`ARITHMETIC`, `ENVIRONMENT`, `LOCATION`, `NEIGHBOURS` and `SKIP` are defined but outside the
+default set; select one with `-p assembly=LOCATION`. `LOCATION` executes nothing but
+location-register and location-stack instructions, which no other program touches;
+`NEIGHBOURS` reads and tests the cells around the data pointer; `SKIP` executes conditions
+that are all false, so each skips the instruction behind it.
 
 The benchmark deliberately isolates the instruction-execution hot path:
 

@@ -8,20 +8,24 @@ import org.slf4j.LoggerFactory;
 /**
  * Represents a molecule in the environment, with a type and a value.
  * <p>
- * <strong>{@code CODE:0} is the empty cell</strong> and carries two invariants that this record does
- * not enforce itself: an empty cell has <em>no marker</em> and <em>no owner</em>. Both hold because
- * every path that writes into the grid upholds them, not because construction is checked:
+ * <strong>{@code CODE:0} is the empty cell</strong> and carries two invariants: an empty cell has
+ * <em>no marker</em> and <em>no owner</em>.
+ * <p>
+ * The first holds for whatever is written into the grid as a molecule: {@link #toInt()} packs
+ * {@code CODE:0} as {@code 0}, with or without a marker on the record, so that the packed value
+ * {@code 0} and the empty cell are one and the same. The second this record cannot see, and it
+ * holds because every path that writes into the grid upholds it:
  * <ul>
  *   <li>The world-interaction instructions clear the marker when writing {@code CODE:0}, whatever the
- *       organism's marker register holds.</li>
+ *       organism's marker register holds, and leave the cell they empty without an owner.</li>
  *   <li>Reading a molecule consumes it and clears the cell's ownership.</li>
  *   <li>The death handlers may leave an organism's cells empty but owned; the simulation clears that
  *       organism's ownership immediately afterwards, which is why handlers must not clear it
  *       themselves.</li>
  *   <li>{@link #fromInt(int)} repairs a marked {@code CODE:0} it finds in stored data and reports it,
- *       since such a value can only come from outside these paths.</li>
+ *       since such a value can only come from a path that writes packed values of its own.</li>
  * </ul>
- * Anything that gains write access to the grid has to uphold them too. A marked or owned empty cell
+ * Anything that gains write access to the grid has to uphold both. A marked or owned empty cell
  * is not merely untidy: ownership decides what a newborn inherits and which cells the mutation
  * operators may write into, and an empty cell that carries a marker survives in memory but not
  * through serialization — a run would then continue differently after a resume than without one.
@@ -45,12 +49,15 @@ public record Molecule(int type, int value, int marker) {
 
     /**
      * Converts the molecule to its integer representation.
-     * This logic prevents DATA:0 or STRUCTURE:0 from being incorrectly
-     * stored as the integer 0 (reserved for CODE:0).
+     * <p>
+     * {@code 0} is reserved for {@code CODE:0}, the empty cell: {@code DATA:0} or
+     * {@code STRUCTURE:0} pack to their type bits, and {@code CODE:0} packs to {@code 0} whatever
+     * marker the record carries, because an empty cell has none.
+     *
      * @return The integer representation of the molecule.
      */
     public int toInt() {
-        if (this.value() == 0 && this.type() == Config.TYPE_CODE && this.marker() == 0) {
+        if (this.value() == 0 && this.type() == Config.TYPE_CODE) {
             return 0;
         }
         // Otherwise, the type is always combined with the value.
@@ -69,11 +76,13 @@ public record Molecule(int type, int value, int marker) {
     }
 
     /**
-     * Checks if the molecule is empty (CODE:0).
-     * @return true if the molecule is empty, false otherwise.
+     * Tells whether the molecule is the empty cell, {@code CODE:0}. A marker on the record makes
+     * no difference, as it makes none to {@link #toInt()}: an empty cell has no marker.
+     *
+     * @return {@code true} if the molecule is {@code CODE:0}
      */
     public boolean isEmpty() {
-        return this.type() == Config.TYPE_CODE && this.value() == 0 && this.marker() == 0;
+        return this.type() == Config.TYPE_CODE && this.value() == 0;
     }
 
     /**

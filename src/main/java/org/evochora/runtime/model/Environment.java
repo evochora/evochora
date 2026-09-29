@@ -129,6 +129,21 @@ public class Environment implements IEnvironmentReader {
         }
     }
 
+    /**
+     * Rejects a world no environment can be created for, without creating one.
+     * <p>
+     * A caller that has further work to do before it creates the environment - compiling the
+     * programs that are laid out for this world, say - asks here first and fails on the world
+     * itself. The rule is the one the constructors apply, and only this class knows it.
+     *
+     * @param properties The shape and topology of the world.
+     * @throws IllegalArgumentException if the constructors would reject the world; the message names
+     *                                  the dimension at fault and the nearest sizes that are valid
+     */
+    public static void requireValidWorld(EnvironmentProperties properties) {
+        new GridLayout(properties, TILE_SIDE);
+    }
+
     // ==================== Constructors ====================
 
     /**
@@ -237,6 +252,18 @@ public class Environment implements IEnvironmentReader {
     }
 
     /**
+     * Tells whether a coordinate names a cell of the world: it has one component per dimension,
+     * and every component lies within the world's size along it. This is the question the
+     * in-range accessors answer with a rejection; a caller that must not run into one asks first.
+     *
+     * @param coord the coordinate to ask about
+     * @return {@code true} if the in-range accessors accept the coordinate
+     */
+    public boolean contains(int[] coord) {
+        return layout.contains(coord);
+    }
+
+    /**
      * Reads the packed molecule value of the cell at a coordinate that lies within the world.
      * Unlike {@link #getMolecule(int...)} this neither normalizes nor allocates; every component
      * must already be in range, and a coordinate outside the world is rejected.
@@ -259,6 +286,45 @@ public class Environment implements IEnvironmentReader {
      */
     public int getOwnerIdAt(int[] coord) {
         return ownerGrid[indexOfInRange(coord)];
+    }
+
+    /**
+     * Reads the packed molecule value of the cell a displacement away from a position: of the
+     * cell at the position itself for a displacement without a step, of the adjacent cell along
+     * one axis for a displacement of one step.
+     * <p>
+     * In a toroidal world a step across the edge reaches the cell on the opposite side. In a
+     * bounded world it reaches no cell, and what is read is what an empty cell holds. Nothing is
+     * allocated, and neither argument is written into.
+     *
+     * @param position     the coordinate to start from; every component lies within the world
+     * @param displacement the zero vector or a unit vector, one component per dimension
+     * @return the packed molecule value, {@code 0} for an empty cell and for a step that leaves
+     *         a bounded world
+     * @throws IllegalArgumentException if the position lies outside the world, or if the
+     *                                  displacement is neither the zero vector nor a unit vector
+     *                                  of the world's dimensions
+     */
+    public int getMoleculeIntAt(int[] position, int[] displacement) {
+        int index = indexOfDisplaced(position, displacement);
+        return index >= 0 ? grid[index] : 0;
+    }
+
+    /**
+     * Reads the owner of the cell a displacement away from a position; see
+     * {@link #getMoleculeIntAt(int[], int[])} for the contract.
+     *
+     * @param position     the coordinate to start from; every component lies within the world
+     * @param displacement the zero vector or a unit vector, one component per dimension
+     * @return the owner id, {@code 0} for an unowned cell and for a step that leaves a bounded
+     *         world
+     * @throws IllegalArgumentException if the position lies outside the world, or if the
+     *                                  displacement is neither the zero vector nor a unit vector
+     *                                  of the world's dimensions
+     */
+    public int getOwnerIdAt(int[] position, int[] displacement) {
+        int index = indexOfDisplaced(position, displacement);
+        return index >= 0 ? ownerGrid[index] : 0;
     }
 
     /**
@@ -686,6 +752,50 @@ public class Environment implements IEnvironmentReader {
                     + " lies outside the world of shape " + Arrays.toString(properties.getWorldShape()));
         }
         return layout.layoutIndex(coord);
+    }
+
+    /**
+     * Resolves the cell a displacement away from a position that lies within the world.
+     *
+     * @param position     the coordinate to start from
+     * @param displacement the zero vector or a unit vector
+     * @return the layout index of the cell, or {@code -1} if the step leaves a bounded world
+     * @throws IllegalArgumentException if the position lies outside the world, or if the
+     *                                  displacement is neither the zero vector nor a unit vector
+     *                                  of the world's dimensions
+     */
+    private int indexOfDisplaced(int[] position, int[] displacement) {
+        int index = indexOfInRange(position);
+        if (displacement.length != shape.length) {
+            throw notAStep(displacement);
+        }
+        int axis = -1;
+        for (int i = 0; i < displacement.length; i++) {
+            int component = displacement[i];
+            if (component == 0) {
+                continue;
+            }
+            if (axis >= 0 || (component != 1 && component != -1)) {
+                throw notAStep(displacement);
+            }
+            axis = i;
+        }
+        if (axis < 0) {
+            return index;
+        }
+        return layout.step(index, axis, displacement[axis] > 0);
+    }
+
+    /**
+     * Builds the rejection of a displacement that names neither a cell's own position nor one
+     * step from it.
+     *
+     * @param displacement the rejected displacement
+     * @return the exception to throw
+     */
+    private IllegalArgumentException notAStep(int[] displacement) {
+        return new IllegalArgumentException("Displacement " + Arrays.toString(displacement)
+                + " is neither the zero vector nor a unit vector of " + shape.length + " dimensions");
     }
 
     /**

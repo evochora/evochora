@@ -326,7 +326,7 @@ class SimulationEngineTest {
     }
 
     @Test
-    void constructor_shouldRejectShapeThatIsNotAMultipleOfTheTileSide() {
+    void constructor_shouldRejectShapeTheEnvironmentCannotHold() {
         Config config = createValidConfig().withValue(
                 "environment.shape",
                 ConfigValueFactory.fromAnyRef(List.of(32, 40))
@@ -335,7 +335,8 @@ class SimulationEngineTest {
                 IllegalArgumentException.class,
                 () -> new SimulationEngine("test-engine", config, resources)
         );
-        assertEquals("environment.shape[1] must be a multiple of 32, got 40", exception.getMessage());
+        assertEquals("environment.shape: World dimension 1 is 40, which is not a multiple of 32; "
+                + "the nearest valid sizes are 32 and 64", exception.getMessage());
     }
 
     @Test
