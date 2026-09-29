@@ -5,8 +5,9 @@ description: Measure the performance effect of a code change in Evochora — JMH
 
 # Benchmarking a change
 
-Two instruments exist. They answer different questions, and a decision about a hot-path change
-normally needs both. Conditions, validity criteria and how to interpret a difference are in
+Two instruments exist. They answer different questions, and neither is run by habit: pick the
+one that can show what this change does, and run both only where each adds something the other
+cannot. Conditions, validity criteria and how to interpret a difference are in
 `docs/BENCHMARKING.md`; read it first and do not restate it here — this skill is the procedure.
 
 | | JMH tick benchmark | Real-run comparison |
@@ -30,6 +31,13 @@ never two measurements at once, never from a working tree with uncommitted chang
    scripts refuse a loaded host, but a queued run still collides with theirs.
 
 ## 1 · JMH tick benchmark
+
+The programs of the tick benchmark are a toolbox, not a fixed suite. Find out first which
+program executes the code the change touches: a method no program reaches measures as "within
+error" whatever was done to it. Where none reaches it, add a program that does little else,
+outside the default set, and select it with `-p assembly=<NAME>`; both sides are built with it.
+Whether it stays is decided once the measurement is done. Measure `REALISTIC` along with it: the
+dedicated program shows the gain, `REALISTIC` a regression in the instructions around it.
 
 Build each side from a clean checkout — `git archive <commit> | tar -x -C <dir>`, then
 `./gradlew jmhJar --no-daemon` in that directory. Then, per side:
@@ -103,6 +111,11 @@ Run all variants in one invocation, then again in the opposite order:
 Two rounds with swapped order separate the change from drift. Read `progress.txt`: seconds and
 hash per variant. The spread of one variant between its two rounds is the noise of the
 measurement; report a difference against that spread, not as a single number.
+
+The two rounds run base, candidate, candidate, base: the candidate's runs are adjacent, the
+base's are the first and the last of the session. Identical code has run up to 5 % slower in
+the outer positions than in the middle ones, so the candidate's spread understates the noise
+and a difference below that is not a result. The hashes are not affected.
 
 `pauseTicks = [10000000]` is the standard length: the population grows past the parallelism
 thresholds and deaths accumulate in the organism list, both part of production behaviour that a
