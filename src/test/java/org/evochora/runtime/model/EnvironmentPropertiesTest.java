@@ -189,4 +189,27 @@ class EnvironmentPropertiesTest {
         assertArrayEquals(new int[]{-9, -19}, props.getRelativeVector(new int[]{10, 20}, new int[]{1, 1}));
         assertArrayEquals(new int[]{89, 29}, props.getRelativeVector(new int[]{10, 20}, new int[]{99, 49}));
     }
+    @Test
+    void aStepWrapsAroundATorusAndLeavesItsArgumentsUntouched() {
+        EnvironmentProperties torus = new EnvironmentProperties(new int[]{64, 32}, true);
+        int[] start = {63, 0};
+        int[] step = {1, -1};
+
+        assertArrayEquals(new int[]{0, 31}, torus.getTargetCoordinate(start, step));
+        assertArrayEquals(new int[]{0, 31}, torus.getNextPosition(start, step));
+        assertArrayEquals(new int[]{5, 3}, torus.getTargetCoordinate(new int[]{-59, 67}, new int[]{0, 0}),
+                "a position outside the world is wrapped into it, however far outside");
+        assertArrayEquals(new int[]{63, 0}, start, "the start is not written into");
+        assertArrayEquals(new int[]{1, -1}, step, "the step is not written into");
+        assertNotSame(start, torus.getTargetCoordinate(start, new int[]{0, 0}),
+                "the result is an array of its own even where it equals the start");
+    }
+
+    @Test
+    void aStepLeavesABoundedWorldWithoutWrapping() {
+        EnvironmentProperties bounded = new EnvironmentProperties(new int[]{64, 32}, false);
+
+        assertArrayEquals(new int[]{64, -1}, bounded.getTargetCoordinate(new int[]{63, 0}, new int[]{1, -1}));
+        assertArrayEquals(new int[]{64, -1}, bounded.getNextPosition(new int[]{63, 0}, new int[]{1, -1}));
+    }
 }
