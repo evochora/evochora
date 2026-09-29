@@ -69,3 +69,11 @@ MARK:
   ADDR X %TMP
   RET
 .ENDP
+
+# The relative forms: a row started from the write cursor, and a direction turned by 90 degrees
+# instead of written out.
+.ORG 0|@+2
+RELATIVE_ROW:
+  NOP^2
+.DIR @+1|0
+  NOP^2

@@ -290,7 +290,7 @@ public final class LayoutContext {
      */
     private String occupy(int[] coord, Occupant occupant) throws CompilationException {
         if (envProps != null && envProps.getWorldShape() != null && coord.length != envProps.getWorldShape().length) {
-            throw new CompilationException(String.format("%s: Coordinate %s has %d dimensions, the world has %d.",
+            throw new CompilationException(String.format("%s: Coordinate %s has %d components, the world has %d dimensions.",
                     occupant.location(), Arrays.toString(coord), coord.length, envProps.getWorldShape().length));
         }
         String coordKey = coordToStringKey(coord);

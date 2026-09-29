@@ -25,8 +25,8 @@ feature package under `src/main/java/org/evochora/compiler/features/`.
 | `define` | Constants `[EXPORT] .DEFINE NAME VALUE` | parser, analysis, IR conversion |
 | `macro` | `.MACRO NAME [PARAMS] … .ENDM`, macro invocation by name, file-local macro scope | preprocessor |
 | `repeat` | `.REPEAT n body`, `.REPEAT n … .ENDR`, the shorthand `body^n` | preprocessor `.REPEAT` and `^` |
-| `org` | `.ORG vector`, absolute in the main file, relative inside an imported module | parser, IR conversion, layout |
-| `dir` | `.DIR vector`, the direction in which code is laid out | parser, IR conversion, layout |
+| `org` | `.ORG vector`, absolute in the main file, relative inside an imported module; a component marked `@+` or `@-` counts from the write cursor instead | parser, IR conversion, layout |
+| `dir` | `.DIR vector`, the direction in which code is laid out; `.DIR @+i\|j`, a 90-degree rotation of that direction in the plane of two axes | parser, IR conversion, layout |
 | `place` | `.PLACE literal placement…` with vectors, ranges, stepped ranges and wildcards; the initial world objects of the artifact | parser, IR conversion, layout |
 | `importdir` | `[EXPORT] .IMPORT "path" AS ALIAS [USING x AS y]…`, qualified names `ALIAS.NAME`, dependency injection with `USING`, re-export of an import | dependency scan, preprocessor, parser, module setup, symbol collection, analysis, IR conversion |
 | `require` | `.REQUIRE "path" AS ALIAS`, a dependency the importer satisfies | dependency scan, parser, module setup, symbol collection, analysis, IR conversion |
@@ -65,6 +65,11 @@ concept in AGENTS.md; they are listed here because they are where the coupling l
 Smaller instances: the lexer emits a directive token for `^` (repeat) and a colon token for
 `:` (label); `Symbol.Type` is a closed enum whose eight members are named after individual
 features, mapped exhaustively in `TokenKindMapper`.
+
+The lexer also holds character tokens that a single feature reads: `*`, `..` and `,` for
+`place`, `@+` and `@-` for `org` and `dir`. These name the character, not what a directive makes
+of it, so the core learns no feature from them — but the lexer is the one phase without a
+registry, so a feature cannot add one without this file changing.
 
 ## What the probe showed
 

@@ -71,7 +71,7 @@ EDGE_FOUND:
 
   # Of the two edges, the one leaving the corner clockwise is walked first; the copy lies beyond
   # it, away from the other edge.
-  .ORG 0|4
+  .ORG 0|@+2
 ORIENT:
   CRSR %TMP %EDGE_A %EDGE_B
   GTI %TMP DATA:0
@@ -86,7 +86,7 @@ ORIENTED:
 
   # The extent along the other edge: steps to the cell before its far corner, plus the corner,
   # plus one cell beyond it, where the copy begins.
-  .ORG 0|6
+  .ORG 0|@+2
 MEASURE:
   SCAN %TMP %EDGE_B
   IFTI %TMP LABEL:0
@@ -105,7 +105,7 @@ MEASURED:
   JMPI SHIFT_STEP
 
   # The write pointer walks outward to the copy's corner.
-  .ORG 0|8
+  .ORG 0|@+2
 SHIFT_STEP:
   IFFR %SHIFT
     JMPI ABANDON_MARKED
@@ -121,7 +121,7 @@ SHIFT_STEP:
 
   # Around the frame: read under DP0, write under DP1, step both, turn at every corner. The
   # fourth corner reached is the one the copy started from.
-  .ORG 0|10
+  .ORG 0|@+2
 COPY_CELL:
   ADPI DATA:0
   SCNI %TMP 0|0
@@ -147,7 +147,7 @@ COPY_CELL:
   SETI RESULT DATA:1
   JMPI RESTORE
 
-  .ORG 0|12
+  .ORG 0|@+2
 ABANDON_MARKED:
   SMR %SAVEDMR
 ABANDON:

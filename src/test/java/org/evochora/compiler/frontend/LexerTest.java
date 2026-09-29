@@ -27,6 +27,50 @@ public class LexerTest {
     }
 
     /**
+     * Verifies that the relative marker is one token carrying its sign, so that the number after
+     * it is read as an unsigned number.
+     * This is a unit test for the lexer.
+     */
+    @Test
+    @Tag("unit")
+    void testRelativeMarkerIsOneTokenWithItsSign() {
+        // Arrange
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Lexer lexer = new Lexer(".ORG @+2|@-3", diagnostics);
+
+        // Act
+        List<Token> tokens = lexer.scanTokens();
+
+        // Assert
+        assertThat(diagnostics.hasErrors()).isFalse();
+        assertThat(tokens.get(1)).extracting(Token::type, Token::text).containsExactly(TokenType.AT_PLUS, "@+");
+        assertThat(tokens.get(2)).extracting(Token::type, Token::value).containsExactly(TokenType.NUMBER, 2);
+        assertThat(tokens.get(3)).extracting(Token::type).isEqualTo(TokenType.PIPE);
+        assertThat(tokens.get(4)).extracting(Token::type, Token::text).containsExactly(TokenType.AT_MINUS, "@-");
+        assertThat(tokens.get(5)).extracting(Token::type, Token::value).containsExactly(TokenType.NUMBER, 3);
+    }
+
+    /**
+     * Verifies that the marker character without a sign is rejected, which keeps it free for a
+     * later meaning.
+     * This is a unit test for the lexer.
+     */
+    @Test
+    @Tag("unit")
+    void testMarkerWithoutSignIsAnError() {
+        // Arrange
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Lexer lexer = new Lexer(".ORG 0|@2", diagnostics);
+
+        // Act
+        lexer.scanTokens();
+
+        // Assert
+        assertThat(diagnostics.hasErrors()).isTrue();
+        assertThat(diagnostics.summary()).contains("Expected '+' or '-' after '@'.");
+    }
+
+    /**
      * Verifies that the lexer correctly tokenizes a source string containing various language elements,
      * including directives, identifiers, numbers, labels, opcodes, registers, and comments.
      * The test asserts that the resulting token stream has the correct types and values.

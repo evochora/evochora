@@ -53,7 +53,7 @@ EXPORT .PROC CONTINUE REF ER LVAL CNW LVAL CNE LVAL CSE LVAL CSW
   # ===========================================================================
   # ENTER - nothing is touched before the energy is known
   # ===========================================================================
-  .ORG 0|2
+  .ORG 0|@+2
   CONTINUE_ENTER:
     NRG ER; NOP^4                           # Read the energy into the caller's register
     LTI ER PAUSE_THRESHOLD;                 # Too little for the next stretch of work...
@@ -81,7 +81,7 @@ EXPORT .PROC CONTINUE REF ER LVAL CNW LVAL CNE LVAL CSE LVAL CSW
   # ===========================================================================
   # BEGIN - draw a direction and take position at the corner it starts from
   # ===========================================================================
-  .ORG 0|4
+  .ORG 0|@+2
   CONTINUE_BEGIN: NOP^4
     SETI %DIRMASK DATA:15; NOP^4            # All four directions to choose from
     RBIR %DIRMASK %DIRMASK; NOP^4           # Draw one of them
@@ -113,7 +113,7 @@ EXPORT .PROC CONTINUE REF ER LVAL CNW LVAL CNE LVAL CSE LVAL CSW
   # The walk runs clockwise, so the starting corner is the one whose first edge points
   # the way the copy goes: NW for east, NE for south, SE for west, SW for north.
   # ===========================================================================
-  .ORG 0|6
+  .ORG 0|@+2
   CONTINUE_TAKE_CORNER: NOP^4
     IFI %DIRMASK DIR_EAST
       JMPI CONTINUE_CORNER_EAST; NOP^4
@@ -132,7 +132,7 @@ EXPORT .PROC CONTINUE REF ER LVAL CNW LVAL CNE LVAL CSE LVAL CSW
     ADPI DATA:1; SKLR CNE; SEKI 1|0; SEKI 0|-1            # Write pointer on the north-east corner...
     JMPI CONTINUE_CORNER_STEP; NOP^6; JMPI CONTINUE_CORNER_STEP
 
-  .ORG 0|8
+  .ORG 0|@+2
   CONTINUE_CORNER_SOUTH: NOP^4
     INSL CNE
       JMPI CONTINUE_GIVE_UP; NOP^4    # this draw needs these two corners;
@@ -151,7 +151,7 @@ EXPORT .PROC CONTINUE REF ER LVAL CNW LVAL CNE LVAL CSE LVAL CSW
     ADPI DATA:1; SKLR CSW; SEKI -1|0; SEKI 0|1            # Write pointer on the south-west corner...
     JMPI CONTINUE_CORNER_STEP; NOP^6; JMPI CONTINUE_CORNER_STEP
 
-  .ORG 0|10
+  .ORG 0|@+2
   CONTINUE_CORNER_NORTH: NOP^4
     INSL CSW
       JMPI CONTINUE_GIVE_UP; NOP^4    # this draw needs these two corners;
@@ -176,7 +176,7 @@ EXPORT .PROC CONTINUE REF ER LVAL CNW LVAL CNE LVAL CSE LVAL CSW
   # ===========================================================================
   # THE PHASES
   # ===========================================================================
-  .ORG 0|12
+  .ORG 0|@+2
   CONTINUE_SHELL: NOP^4
     CALL BUILD_SHELL VAL %DIRVEC REF %RESULT LVAL %OWNNW LREF %CHILDNW; NOP^4
     IFI %RESULT RESULT_DONE
@@ -189,7 +189,7 @@ EXPORT .PROC CONTINUE REF ER LVAL CNW LVAL CNE LVAL CSE LVAL CSW
     SETI %PHASE PHASE_BODY; NOP^4           # Remember it for the next call...
     JMPI CONTINUE_BODY; NOP^4               # ...and go on at once while the energy lasts
 
-  .ORG 0|14
+  .ORG 0|@+2
   CONTINUE_BODY: NOP^4
     CALL COPY_BODY REF %RESULT LVAL CNW LVAL %CHILDNW; NOP^4
     IFI %RESULT RESULT_DONE
@@ -211,7 +211,7 @@ EXPORT .PROC CONTINUE REF ER LVAL CNW LVAL CNE LVAL CSE LVAL CSW
   # ===========================================================================
   # ENDINGS
   # ===========================================================================
-  .ORG 0|16
+  .ORG 0|@+2
   CONTINUE_FINISH: NOP^4
     # The fork reset the markers of everything it handed over, so nothing is left to orphan
     SETI %PHASE DATA:0; NOP^4               # The next attempt starts fresh
@@ -233,7 +233,7 @@ EXPORT .PROC CONTINUE REF ER LVAL CNW LVAL CNE LVAL CSE LVAL CSW
     SKLS; NOP^2
     JMPI CONTINUE_RET; NOP^6; JMPI CONTINUE_RET
 
-  .ORG 0|18
+  .ORG 0|@+2
   CONTINUE_RET:
     # Multiple RET instructions for mutation resistance
     NOP^8; RET; NOP^20; RET; NOP^4; RET
@@ -251,7 +251,7 @@ EXPORT .PROC CONTINUE REF ER LVAL CNW LVAL CNE LVAL CSE LVAL CSW
 # IFB along the walk says whether the body still goes on: if it does, the wall has a gap here
 # and we mend it; if it does not, the corner belongs here, however much of it is missing.
 # ===========================================================================
-.ORG 0|20
+.ORG 0|@+2
 .PROC BUILD_SHELL VAL DIRVEC REF RESULT LVAL OWNNW LREF CHILDNW
 
   # State that outlives a pause
@@ -274,7 +274,7 @@ EXPORT .PROC CONTINUE REF ER LVAL CNW LVAL CNE LVAL CSE LVAL CSW
   # ===========================================================================
   # ENTER - resume, or set out from the corner the caller put us on
   # ===========================================================================
-  .ORG 0|22
+  .ORG 0|@+2
   SHELL_ENTER: NOP^4
     IFSL %READPOS                           # A place to continue from...
       JMPI SHELL_RESUME; NOP^4              # ...so take it up again
@@ -299,7 +299,7 @@ EXPORT .PROC CONTINUE REF ER LVAL CNW LVAL CNE LVAL CSE LVAL CSW
       JMPI SHELL_NOTE_NW_START; NOP^8
     JMPI SHELL_STEP; NOP^6; JMPI SHELL_STEP # ...and the walk sets off from the next cell
 
-  .ORG 0|24
+  .ORG 0|@+2
   SHELL_NOTE_NW_START: NOP^4
     ADPI DATA:1; NOP^2                      # The write pointer stands on the child's north-west
     DPLR CHILDNW; NOP^2                     # corner, which the copier and the fork both need
@@ -316,7 +316,7 @@ EXPORT .PROC CONTINUE REF ER LVAL CNW LVAL CNE LVAL CSE LVAL CSW
   # ===========================================================================
   # LOOP - write this cell into the child, then decide what lies ahead
   # ===========================================================================
-  .ORG 0|26
+  .ORG 0|@+2
   SHELL_LOOP: NOP^4
     ADPI DATA:1; NOP^2                      # Through the write pointer
     SETR %M %SHELL; NOP^2                   # The wall to put down, in the register PPK swaps
@@ -345,7 +345,7 @@ EXPORT .PROC CONTINUE REF ER LVAL CNW LVAL CNE LVAL CSE LVAL CSW
     SKLR %HERE; NOP^2                       # Back onto the wall line
     JMPI SHELL_CORNER; NOP^6; JMPI SHELL_CORNER
 
-  .ORG 0|28
+  .ORG 0|@+2
   SHELL_DOUBT_GAP: NOP^4
     SKLR %HERE; NOP^2                       # Back onto the wall line
     JMPI SHELL_GAP; NOP^6; JMPI SHELL_GAP
@@ -367,7 +367,7 @@ EXPORT .PROC CONTINUE REF ER LVAL CNW LVAL CNE LVAL CSE LVAL CSW
     SMRI DATA:1; NOP^2                      # Back to writing for the child
     JMPI SHELL_GAP_FOLLOW; NOP^6; JMPI SHELL_GAP_FOLLOW
 
-  .ORG 0|30
+  .ORG 0|@+2
   SHELL_GAP_FOLLOW: NOP^4                   # The write pointer follows onto its own cell
     ADPI DATA:1; NOP^2
     IFFR %RUN                               # The child's shell cannot go into a foreign cell
@@ -400,7 +400,7 @@ EXPORT .PROC CONTINUE REF ER LVAL CNW LVAL CNE LVAL CSE LVAL CSW
   # ===========================================================================
   # CORNER - the ring closes here, or the walk turns
   # ===========================================================================
-  .ORG 0|32
+  .ORG 0|@+2
   SHELL_CORNER: NOP^4
     DPLR %HERE; NOP^2                       # Where the read pointer stands...
     LRDR %A %HERE; NOP^2                    # ...as a position
@@ -418,7 +418,7 @@ EXPORT .PROC CONTINUE REF ER LVAL CNW LVAL CNE LVAL CSE LVAL CSW
     ADPI DATA:0; NOP^2
     JMPI SHELL_TURN; NOP^6; JMPI SHELL_TURN
 
-  .ORG 0|34
+  .ORG 0|@+2
   SHELL_TURN: NOP^4
     RTRI %RUN DATA:1 DATA:0; NOP^2          # Turn into the next edge
     SETR %Q %RUN; RTRI %Q DATA:1 DATA:0     # ...across turns with it
@@ -444,7 +444,7 @@ EXPORT .PROC CONTINUE REF ER LVAL CNW LVAL CNE LVAL CSE LVAL CSW
     SETI RESULT RESULT_DONE; NOP^2
     JMPI SHELL_RET; NOP^6; JMPI SHELL_RET
 
-  .ORG 0|36
+  .ORG 0|@+2
   SHELL_ABORT: NOP^4
     CRLR %READPOS; NOP^2
     CRLR %WRITEPOS; NOP^2
@@ -466,7 +466,7 @@ EXPORT .PROC CONTINUE REF ER LVAL CNW LVAL CNE LVAL CSE LVAL CSW
 # owns a cell: PPK clears and writes in one tick, and the energy is looked at between
 # rows, which is where a pause may fall.
 # ===========================================================================
-.ORG 0|38
+.ORG 0|@+2
 .PROC COPY_BODY REF RESULT LVAL OWNNW LVAL CHILDNW
 
   # State that outlives a pause
@@ -485,7 +485,7 @@ EXPORT .PROC CONTINUE REF ER LVAL CNW LVAL CNE LVAL CSE LVAL CSW
   # ===========================================================================
   # ENTER - take the rows up again, or set both pointers to the first cell
   # ===========================================================================
-  .ORG 0|40
+  .ORG 0|@+2
   BODY_ENTER: NOP^4
     SETV %ALONG 1|0; NOP^2                  # A row runs east...
     SETV %DOWN 0|1; NOP^2                   # ...and the next one lies south
@@ -507,7 +507,7 @@ EXPORT .PROC CONTINUE REF ER LVAL CNW LVAL CNE LVAL CSE LVAL CSW
     DPLR %WRITEPOS; NOP^2
     JMPI BODY_ROW; NOP^6; JMPI BODY_ROW
 
-  .ORG 0|42
+  .ORG 0|@+2
   BODY_RESUME: NOP^4
     ADPI DATA:0; SKLR %READPOS; NOP^2       # Both pointers back to the row they rest at
     ADPI DATA:1; SKLR %WRITEPOS; NOP^2
@@ -526,7 +526,7 @@ EXPORT .PROC CONTINUE REF ER LVAL CNW LVAL CNE LVAL CSE LVAL CSW
   # CELL - carry one molecule over. Both pointers stand before the cell they work on,
   # so the look that fetches the molecule is the same one that finds the wall.
   # ===========================================================================
-  .ORG 0|44
+  .ORG 0|@+2
   BODY_CELL: NOP^4
     ADPI DATA:0; NOP^2                      # Through the read pointer
     SCAN %M %ALONG; NOP^2                   # The next cell of our own row
@@ -551,7 +551,7 @@ EXPORT .PROC CONTINUE REF ER LVAL CNW LVAL CNE LVAL CSE LVAL CSW
     SCNI %M 0|0; NOP^2                      # ...body's: read what the cell holds now
     JMPI BODY_WRITE_CELL; NOP^6; JMPI BODY_WRITE_CELL
 
-  .ORG 0|46
+  .ORG 0|@+2
   BODY_WRITE_CELL: NOP^4
     ADPI DATA:1; NOP^2                      # Through the write pointer
     PPKR %M %ALONG; NOP^2                   # Write what our body holds there now
@@ -581,7 +581,7 @@ EXPORT .PROC CONTINUE REF ER LVAL CNW LVAL CNE LVAL CSE LVAL CSW
     DPLR %READPOS; NOP^2                    # Here the next row begins
     JMPI BODY_ROW_DOWN; NOP^6; JMPI BODY_ROW_DOWN
 
-  .ORG 0|48
+  .ORG 0|@+2
   BODY_ROW_DOWN: NOP^4
     ADPI DATA:1; NOP^2                      # Through the write pointer
     SKLR %WRITEPOS; NOP^2                   # Back to where its row began
@@ -606,7 +606,7 @@ EXPORT .PROC CONTINUE REF ER LVAL CNW LVAL CNE LVAL CSE LVAL CSW
     SETI RESULT RESULT_ABORTED; NOP^2
     JMPI BODY_RET; NOP^6; JMPI BODY_RET
 
-  .ORG 0|50
+  .ORG 0|@+2
   BODY_DONE: NOP^4
     CRLR %READPOS; NOP^2                    # Nothing to continue: the next call starts over
     CRLR %WRITEPOS; NOP^2
@@ -620,14 +620,14 @@ EXPORT .PROC CONTINUE REF ER LVAL CNW LVAL CNE LVAL CSE LVAL CSW
 # ===========================================================================
 # SPAWN - put the child into the shell that now stands filled
 # ===========================================================================
-.ORG 0|52
+.ORG 0|@+2
 .PROC SPAWN REF RESULT LVAL CHILDNW
 
   .REG %TMP %PDR0   # Scratch
 
   NOP^4; JMPI SPAWN_ENTER; NOP^6; JMPI SPAWN_ENTER
 
-  .ORG 0|54
+  .ORG 0|@+2
   SPAWN_ENTER: NOP^4
     SETI RESULT RESULT_ABORTED; NOP^4       # Until the fork has happened, it has not
     INSL CHILDNW                            # No corner of the child's known: SKLR would fail
@@ -649,7 +649,7 @@ EXPORT .PROC CONTINUE REF ER LVAL CNW LVAL CNE LVAL CSE LVAL CSW
     SETI RESULT RESULT_DONE; NOP^4          # The child lives
     JMPI SPAWN_RET; NOP^6; JMPI SPAWN_RET
 
-  .ORG 0|56
+  .ORG 0|@+2
   SPAWN_RET:
     NOP^4; RET; NOP^12; RET; NOP^4; RET
 .ENDP

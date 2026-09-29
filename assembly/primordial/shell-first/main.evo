@@ -48,7 +48,7 @@ SW_CORNER:
 .ORG 0|0
 NW_CORNER: JMPI MAIN_LOOP; NOP^4; JMPI MAIN_LOOP   # The IP starts on this label, one cell before the jump
 
-.ORG 0|2
+.ORG 0|@+2
 MAIN_LOOP:
   NRG %ER; NOP^4                          # Read current energy level
   NTR %SR; NOP^4                          # Read current entropy level
@@ -60,14 +60,14 @@ MAIN_LOOP:
     JMPI MAIN_REPRODUCE; NOP^4            # ...reproduce to dissipate entropy
   JMPI MAIN_HARVEST; NOP^4; JMPI MAIN_HARVEST
 
-.ORG 0|4
+.ORG 0|@+2
 MAIN_REPRODUCE: NOP^4
   CALL REPRODUCE.CONTINUE REF %ER LVAL NW_CORNER LVAL NE_CORNER LVAL SE_CORNER LVAL SW_CORNER; NOP^4
   # The copier returns without writing when the energy is short, which leaves energy and
   # entropy as they were: deciding again at once would decide the same. One harvest first
   JMPI MAIN_HARVEST; NOP^4; JMPI MAIN_HARVEST
 
-.ORG 0|6
+.ORG 0|@+2
 MAIN_HARVEST: NOP^4
   CALL ENERGY.HARVEST; NOP^4              # Call energy harvesting procedure
   JMPI MAIN_LOOP; NOP^4
@@ -78,17 +78,17 @@ JMPI MAIN_LOOP; NOP^12; JMPI MAIN_LOOP
 # ===========================================================================
 # ENERGY HARVESTING MODULE
 # ===========================================================================
-.ORG 0|8
+.ORG 0|@+2
 .IMPORT "shell-first/lib/energy.evo" AS ENERGY
 
 # ===========================================================================
 # REPRODUCTION MODULE
 # ===========================================================================
-.ORG 0|30
+.ORG 0|@+2
 .IMPORT "shell-first/lib/reproduce.evo" AS REPRODUCE
 
 # ===========================================================================
 # SAFETY FALLBACK (mutation resistance)
 # ===========================================================================
-.ORG 0|91
+.ORG 0|@+5
 JMPI MAIN_LOOP; NOP^54; JMPI MAIN_LOOP

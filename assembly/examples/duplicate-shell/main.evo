@@ -32,7 +32,7 @@ DONE:
   NOP
   JMPI DONE
 
-.ORG 0|4
+.ORG 0|@+4
 .IMPORT "lib/duplicate.evo" AS FRAME
 
 # The frame: 21 by 11 cells, corners are labels, edges are structure. Each of the four edges has

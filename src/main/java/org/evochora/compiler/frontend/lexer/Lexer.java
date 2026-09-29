@@ -134,6 +134,15 @@ public class Lexer {
                     identifier();
                 }
                 break;
+            case '@':
+                // The relative marker carries its sign, so that a lone '+' stays invalid
+                // everywhere and a lone '@' remains free for a later meaning.
+                if (peek() == '+' || peek() == '-') {
+                    addToken(advance() == '+' ? TokenType.AT_PLUS : TokenType.AT_MINUS);
+                } else {
+                    diagnostics.reportError("Expected '+' or '-' after '@'.", logicalFileName, line);
+                }
+                break;
             case '#':
                 // A comment goes until the end of the line.
                 while (peek() != '\n' && !isAtEnd()) advance();
