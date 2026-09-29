@@ -91,9 +91,123 @@ public class LayoutEngineTest {
     }
 
     private static LayoutResult layout(List<IrItem> items) throws Exception {
+        return layout(items, new int[]{100, 100});
+    }
+
+    private static LayoutResult layout(List<IrItem> items, int[] worldShape) throws Exception {
         Instruction.init();
         return new LayoutEngine().layout(new IrProgram("Test", items), new RuntimeInstructionSetAdapter(),
-                new EnvironmentProperties(new int[]{100, 100}, true), allLayoutHandlers());
+                new EnvironmentProperties(worldShape, true), allLayoutHandlers());
+    }
+
+    /**
+     * Builds a {@code core:dir} directive that rotates the current direction.
+     */
+    private static IrDirective rotation(boolean forward, int axisA, int axisB, SourceInfo source) {
+        Map<String, IrValue> args = new HashMap<>();
+        args.put("forward", new IrValue.Bool(forward));
+        args.put("axisA", new IrValue.Int64(axisA));
+        args.put("axisB", new IrValue.Int64(axisB));
+        return new IrDirective("core", "dir", args, source);
+    }
+
+    /**
+     * The marker turns the direction by 90 degrees, and its sign decides the way round.
+     */
+    @Test
+    void aRotationTurnsTheDirectionByNinetyDegrees() throws Exception {
+        LayoutResult forwards = layout(List.of(
+                org(new int[]{0, 0}, new boolean[]{false, false}, src("main.s", 1)),
+                rotation(true, 0, 1, src("main.s", 2)),
+                seti(3)));
+        // From a step along the first axis, the cells now run along the second.
+        assertThat(forwards.linearAddressToCoord().get(0)).containsExactly(0, 0);
+        assertThat(forwards.linearAddressToCoord().get(1)).containsExactly(0, 1);
+
+        LayoutResult backwards = layout(List.of(
+                org(new int[]{5, 5}, new boolean[]{false, false}, src("main.s", 1)),
+                rotation(false, 0, 1, src("main.s", 2)),
+                seti(3)));
+        assertThat(backwards.linearAddressToCoord().get(1)).containsExactly(5, 4);
+    }
+
+    /**
+     * Four rotations in the same plane and the same way round return to the direction they
+     * started from.
+     */
+    @Test
+    void fourRotationsReturnToTheStart() throws Exception {
+        LayoutResult res = layout(List.of(
+                org(new int[]{10, 10}, new boolean[]{false, false}, src("main.s", 1)),
+                rotation(true, 0, 1, src("main.s", 2)),
+                rotation(true, 0, 1, src("main.s", 3)),
+                rotation(true, 0, 1, src("main.s", 4)),
+                rotation(true, 0, 1, src("main.s", 5)),
+                seti(6)));
+
+        assertThat(res.linearAddressToCoord().get(1)).containsExactly(11, 10);
+    }
+
+    /**
+     * In a three-dimensional world the plane decides which way the direction turns, and the two
+     * spellings of the same rotation give the same direction.
+     */
+    @Test
+    void theNamedPlaneDecidesTheRotation() throws Exception {
+        LayoutResult intoTheThirdAxis = layout(List.of(
+                org(new int[]{0, 0, 0}, new boolean[]{false, false, false}, src("main.s", 1)),
+                rotation(true, 0, 2, src("main.s", 2)),
+                seti(3)), new int[]{32, 32, 32});
+        assertThat(intoTheThirdAxis.linearAddressToCoord().get(1)).containsExactly(0, 0, 1);
+
+        LayoutResult theOtherSpelling = layout(List.of(
+                org(new int[]{0, 0, 0}, new boolean[]{false, false, false}, src("main.s", 1)),
+                rotation(false, 2, 0, src("main.s", 2)),
+                seti(3)), new int[]{32, 32, 32});
+        assertThat(theOtherSpelling.linearAddressToCoord().get(1)).containsExactly(0, 0, 1);
+    }
+
+    /**
+     * A direction without a component in the named plane comes out of the rotation unchanged.
+     * That follows from the arithmetic and is not an error.
+     */
+    @Test
+    void aRotationBesideTheDirectionChangesNothing() throws Exception {
+        LayoutResult res = layout(List.of(
+                org(new int[]{0, 0, 0}, new boolean[]{false, false, false}, src("main.s", 1)),
+                rotation(true, 1, 2, src("main.s", 2)),
+                seti(3)), new int[]{32, 32, 32});
+
+        assertThat(res.linearAddressToCoord().get(1)).containsExactly(1, 0, 0);
+    }
+
+    /**
+     * A plane needs two different axes of the world, and a one-dimensional world has no plane at
+     * all. Each of the three is reported at the directive.
+     */
+    @Test
+    void aRotationWithoutAPlaneIsReported() {
+        assertThatThrownBy(() -> layout(List.of(
+                org(new int[]{0, 0}, new boolean[]{false, false}, src("main.s", 1)),
+                rotation(true, 1, 1, src("main.s", 2)),
+                seti(3))))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("needs two different axes, both are 1")
+                .hasMessageContaining("main.s:2");
+
+        assertThatThrownBy(() -> layout(List.of(
+                org(new int[]{0, 0}, new boolean[]{false, false}, src("main.s", 1)),
+                rotation(true, 0, 5, src("main.s", 2)),
+                seti(3))))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("Axis 5 is not an axis of a 2-dimensional world.");
+
+        assertThatThrownBy(() -> layout(List.of(
+                org(new int[]{0}, new boolean[]{false}, src("main.s", 1)),
+                rotation(true, 0, 1, src("main.s", 2)),
+                seti(3)), new int[]{32}))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("one-dimensional world");
     }
 
     /**

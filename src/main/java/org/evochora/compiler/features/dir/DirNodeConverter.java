@@ -17,18 +17,29 @@ public final class DirNodeConverter implements IAstNodeToIrConverter<DirNode> {
 	/**
 	 * {@inheritDoc}
 	 * <p>
-	 * This implementation converts the {@link DirNode} to an {@link IrDirective}.
+	 * This implementation converts the {@link DirNode} to an {@link IrDirective}. A written-out
+	 * direction carries a {@code direction} vector, a rotation the plane and the way round.
 	 *
 	 * @param node The node to convert.
 	 * @param ctx  The generation context.
 	 */
 	@Override
 	public void convert(DirNode node, IrGenContext ctx) {
-		if (node.directionVector() instanceof VectorLiteralNode v) {
-			int[] comps = v.values().stream().mapToInt(Integer::intValue).toArray();
-			Map<String, IrValue> args = new HashMap<>();
-			args.put("direction", new IrValue.Vector(comps));
-			ctx.emit(new IrDirective("core", "dir", args, ctx.sourceOf(node)));
+		Map<String, IrValue> args = new HashMap<>();
+		switch (node.mode()) {
+			case DirNode.Mode.Absolute absolute -> {
+				if (!(absolute.vector() instanceof VectorLiteralNode v)) {
+					return;
+				}
+				int[] comps = v.values().stream().mapToInt(Integer::intValue).toArray();
+				args.put("direction", new IrValue.Vector(comps));
+			}
+			case DirNode.Mode.Rotation rotation -> {
+				args.put("forward", new IrValue.Bool(rotation.forward()));
+				args.put("axisA", new IrValue.Int64(rotation.axisA()));
+				args.put("axisB", new IrValue.Int64(rotation.axisB()));
+			}
 		}
+		ctx.emit(new IrDirective("core", "dir", args, ctx.sourceOf(node)));
 	}
 }

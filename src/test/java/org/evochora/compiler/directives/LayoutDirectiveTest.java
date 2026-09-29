@@ -129,6 +129,28 @@ public class LayoutDirectiveTest {
     }
 
     /**
+     * Verifies that a marked `.DIR` is read as a rotation naming its plane, while the written-out
+     * form stays a direction.
+     * This is a unit test for the parser.
+     */
+    @Test
+    @Tag("unit")
+    void testDirDirectiveWithRotation() {
+        // Arrange
+        String source = ".DIR @+0|1\n.DIR @-1|2\n.DIR 1|0";
+        Parser parser = new Parser(new Lexer(source, new DiagnosticsEngine()).scanTokens(), new DiagnosticsEngine(), registry());
+
+        // Act
+        List<AstNode> ast = parser.parse();
+
+        // Assert
+        assertThat(parser.getDiagnostics().hasErrors()).isFalse();
+        assertThat(((DirNode) ast.get(0)).mode()).isEqualTo(new DirNode.Mode.Rotation(true, 0, 1));
+        assertThat(((DirNode) ast.get(1)).mode()).isEqualTo(new DirNode.Mode.Rotation(false, 1, 2));
+        assertThat(((DirNode) ast.get(2)).mode()).isInstanceOf(DirNode.Mode.Absolute.class);
+    }
+
+    /**
      * Verifies that the parser correctly parses a `.PLACE` directive into a {@link PlaceNode}.
      * It also checks that the literal and position components of the node are of the correct type.
      * This is a unit test for the parser.
