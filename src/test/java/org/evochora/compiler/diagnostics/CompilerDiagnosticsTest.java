@@ -543,7 +543,7 @@ class CompilerDiagnosticsTest {
     }
 
     @Test
-    void anOriginWithMoreDimensionsThanTheWorldIsRejectedAtTheFirstCellPlacedThere() throws Exception {
+    void anOriginWithMoreDimensionsThanTheWorldIsRejectedAtTheDirective() throws Exception {
         write("main.evo",
                 ".ORG 1|2|3",
                 "START:",
@@ -551,8 +551,8 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Coordinate [1, 2, 3] has 3 dimensions, the world has 2.")
-                .hasMessageContaining("main.evo:2");
+                .hasMessageContaining("Origin [1, 2, 3] has 3 components, the world has 2 dimensions.")
+                .hasMessageContaining("main.evo:1");
     }
 
     @Test

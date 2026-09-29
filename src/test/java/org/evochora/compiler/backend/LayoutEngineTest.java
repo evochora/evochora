@@ -21,7 +21,10 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import org.evochora.compiler.api.CompilationException;
+
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @Tag("unit")
 public class LayoutEngineTest {
@@ -33,9 +36,7 @@ public class LayoutEngineTest {
     @Test
     void laysOutOrgDirPlaceAndInstructions() throws Exception {
         Instruction.init();
-        Map<String, IrValue> orgArgs = new HashMap<>();
-        orgArgs.put("position", new IrValue.Vector(new int[]{2, 3}));
-        IrDirective org = new IrDirective("core", "org", orgArgs, src("main.s", 1));
+        IrDirective org = org(new int[]{2, 3}, new boolean[]{false, false}, src("main.s", 1));
 
         Map<String, IrValue> dirArgs = new HashMap<>();
         dirArgs.put("direction", new IrValue.Vector(new int[]{1, 0}));
@@ -69,6 +70,107 @@ public class LayoutEngineTest {
         boolean foundPlace = res.initialWorldObjects().keySet().stream()
                 .anyMatch(c -> java.util.Arrays.equals(c, new int[]{11, 3}));
         assertThat(foundPlace).isTrue();
+    }
+
+    /**
+     * Builds a {@code core:org} directive with one mark per component.
+     */
+    private static IrDirective org(int[] components, boolean[] relative, SourceInfo source) {
+        Map<String, IrValue> args = new HashMap<>();
+        args.put("position", new IrValue.Vector(components));
+        List<IrValue> marks = new java.util.ArrayList<>(relative.length);
+        for (boolean marked : relative) {
+            marks.add(new IrValue.Bool(marked));
+        }
+        args.put("relative", new IrValue.ListVal(List.copyOf(marks)));
+        return new IrDirective("core", "org", args, source);
+    }
+
+    private static IrInstruction seti(int line) {
+        return new IrInstruction("SETI", List.of(new IrReg("%DR0"), new IrTypedImm("DATA", 1)), src("main.s", line));
+    }
+
+    private static LayoutResult layout(List<IrItem> items) throws Exception {
+        Instruction.init();
+        return new LayoutEngine().layout(new IrProgram("Test", items), new RuntimeInstructionSetAdapter(),
+                new EnvironmentProperties(new int[]{100, 100}, true), allLayoutHandlers());
+    }
+
+    /**
+     * A marked component counts from the cursor, so a row starts below the row before it however
+     * long that row was, while the unmarked component still counts from the module's origin.
+     */
+    @Test
+    void aMarkedComponentStartsTheNextRowBelowTheRowBefore() throws Exception {
+        LayoutResult res = layout(List.of(
+                org(new int[]{0, 4}, new boolean[]{false, false}, src("main.s", 1)),
+                seti(2),
+                org(new int[]{0, 2}, new boolean[]{false, true}, src("main.s", 3)),
+                seti(4)));
+
+        // The first row occupies (0,4) to (2,4); the second starts two rows below it, at column 0.
+        assertThat(res.linearAddressToCoord().get(0)).containsExactly(0, 4);
+        assertThat(res.linearAddressToCoord().get(3)).containsExactly(0, 6);
+    }
+
+    /**
+     * Both components may be marked, and the marker's sign decides the direction.
+     */
+    @Test
+    void markedComponentsCountForwardsAndBackwards() throws Exception {
+        LayoutResult res = layout(List.of(
+                org(new int[]{5, 10}, new boolean[]{false, false}, src("main.s", 1)),
+                org(new int[]{2, -3}, new boolean[]{true, true}, src("main.s", 2)),
+                seti(3)));
+
+        assertThat(res.linearAddressToCoord().get(0)).containsExactly(7, 7);
+    }
+
+    /**
+     * A marked zero leaves the cursor where it stands.
+     */
+    @Test
+    void aMarkedZeroPlacesWhereTheCursorStands() throws Exception {
+        LayoutResult res = layout(List.of(
+                org(new int[]{2, 3}, new boolean[]{false, false}, src("main.s", 1)),
+                seti(2),
+                org(new int[]{0, 0}, new boolean[]{true, true}, src("main.s", 3)),
+                seti(4)));
+
+        assertThat(res.linearAddressToCoord().get(3)).containsExactly(5, 3);
+    }
+
+    /**
+     * An included module leaves the cursor where its code ended, so a marked component continues
+     * below that code without the including file knowing how many rows the module occupies.
+     */
+    @Test
+    void aMarkedComponentContinuesBelowIncludedCode() throws Exception {
+        LayoutResult res = layout(List.of(
+                org(new int[]{0, 0}, new boolean[]{false, false}, src("main.s", 1)),
+                seti(2),
+                new IrDirective("core", "push_ctx", new HashMap<>(), src("lib.inc", 1)),
+                org(new int[]{0, 3}, new boolean[]{false, false}, src("lib.inc", 2)),
+                seti(3),
+                new IrDirective("core", "pop_ctx", new HashMap<>(), src("lib.inc", 4)),
+                org(new int[]{0, 2}, new boolean[]{false, true}, src("main.s", 5)),
+                seti(6)));
+
+        // The module placed its last cell in row 3, and the code after the include starts in row 5.
+        assertThat(res.linearAddressToCoord().get(6)).containsExactly(0, 5);
+    }
+
+    /**
+     * A vector with more components than the world has dimensions names no cell, and is reported
+     * instead of being padded or cut.
+     */
+    @Test
+    void aWrongNumberOfComponentsIsReported() {
+        assertThatThrownBy(() -> layout(List.of(
+                org(new int[]{0, 0, 0}, new boolean[]{false, false, false}, src("main.s", 1)),
+                seti(2))))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("Origin [0, 0, 0] has 3 components, the world has 2 dimensions.");
     }
 
     private static LayoutDirectiveRegistry allLayoutHandlers() {

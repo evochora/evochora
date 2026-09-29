@@ -9,6 +9,7 @@ import org.evochora.compiler.features.place.PlaceDirectiveHandler;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.model.ast.TypedLiteralNode;
+import org.evochora.compiler.model.ast.VectorLiteralNode;
 import org.evochora.compiler.features.place.placement.VectorPlacementNode;
 import org.evochora.compiler.features.dir.DirNode;
 import org.evochora.compiler.features.org.OrgNode;
@@ -43,6 +44,69 @@ public class LayoutDirectiveTest {
         // Assert
         assertThat(parser.getDiagnostics().hasErrors()).isFalse();
         assertThat(ast).hasSize(1).first().isInstanceOf(OrgNode.class);
+    }
+
+    /**
+     * Verifies that each component of an `.ORG` vector carries its own mark, and that a marked
+     * component keeps the sign of its marker.
+     * This is a unit test for the parser.
+     */
+    @Test
+    @Tag("unit")
+    void testOrgDirectiveWithRelativeComponents() {
+        // Arrange
+        String source = ".ORG 0|@+2";
+        Parser parser = new Parser(new Lexer(source, new DiagnosticsEngine()).scanTokens(), new DiagnosticsEngine(), registry());
+
+        // Act
+        List<AstNode> ast = parser.parse();
+
+        // Assert
+        assertThat(parser.getDiagnostics().hasErrors()).isFalse();
+        OrgNode org = (OrgNode) ast.get(0);
+        assertThat(org.relative()).containsExactly(false, true);
+        assertThat(((VectorLiteralNode) org.originVector()).values()).containsExactly(0, 2);
+    }
+
+    /**
+     * Verifies that the marker's sign is applied to the component.
+     * This is a unit test for the parser.
+     */
+    @Test
+    @Tag("unit")
+    void testOrgDirectiveWithBackwardMarker() {
+        // Arrange
+        String source = ".ORG @-3|@+2";
+        Parser parser = new Parser(new Lexer(source, new DiagnosticsEngine()).scanTokens(), new DiagnosticsEngine(), registry());
+
+        // Act
+        List<AstNode> ast = parser.parse();
+
+        // Assert
+        assertThat(parser.getDiagnostics().hasErrors()).isFalse();
+        OrgNode org = (OrgNode) ast.get(0);
+        assertThat(org.relative()).containsExactly(true, true);
+        assertThat(((VectorLiteralNode) org.originVector()).values()).containsExactly(-3, 2);
+    }
+
+    /**
+     * Verifies that a marked component may not carry a sign of its own.
+     * This is a unit test for the parser.
+     */
+    @Test
+    @Tag("unit")
+    void testOrgDirectiveRejectsASignAfterTheMarker() {
+        // Arrange
+        String source = ".ORG 0|@+-2";
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Parser parser = new Parser(new Lexer(source, new DiagnosticsEngine()).scanTokens(), diagnostics, registry());
+
+        // Act
+        parser.parse();
+
+        // Assert
+        assertThat(diagnostics.hasErrors()).isTrue();
+        assertThat(diagnostics.summary()).contains("carries no sign of its own");
     }
 
     /**
