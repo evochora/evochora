@@ -111,7 +111,7 @@ public final class PlaceLayoutHandler implements ILayoutDirectiveHandler {
             }
             int[] shape = envProps.getWorldShape();
             if (dimIndex >= shape.length) {
-                throw new CompilationException(SourceInfo.locate(src, ".PLACE uses " + dimensions + " dimensions, the world has " + shape.length + "."));
+                throw new CompilationException(SourceInfo.locate(src, ".PLACE uses " + dimensions + " components, the world has " + shape.length + " dimensions."));
             }
             List<Integer> values = new ArrayList<>();
             for (int i = 0; i < shape[dimIndex]; i++) {

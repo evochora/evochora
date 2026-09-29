@@ -630,8 +630,8 @@ Directives are special commands that instruct the compiler on how to assemble th
 
 ### Layout Control
 
-* `.ORG <Vector>`: Sets the starting coordinate for the following code. In the main source file, this coordinate is absolute. Inside a file brought in with `.IMPORT` or `.SOURCE`, the coordinate is **relative** to the position where that directive was invoked.
-* `.DIR <Vector>`: Sets the direction in which the compiler places subsequent instructions. This is always an absolute direction vector. When an included file finishes, the direction is restored to what it was before the include.
+* `.ORG <Vector>`: Sets the starting coordinate for the following code. In the main source file, this coordinate is absolute. Inside a file brought in with `.IMPORT` or `.SOURCE`, the coordinate is **relative** to the position where that directive was invoked. A component written with the marker `@+` or `@-` counts from the write cursor instead, the cell that follows the one placed last: `.ORG 0|@+2` starts a row two below the row before it whatever its length, and after an include it continues below the included code. The marker carries the sign and the number after it carries none, so `@-3` moves three back.
+* `.DIR <Vector>`: Sets the direction in which the compiler places subsequent instructions. A vector sets the direction outright. The form `.DIR @+<Axis>|<Axis>` turns the direction currently in effect by 90 degrees in the plane the two axes span — `@+0|1` turns the first axis towards the second, `@-0|1` the other way — and the plane is named in worlds of every dimensionality. When an included file finishes, the direction is restored to what it was before the include.
 * `.PLACE <Literal> <Placement> [, <Placement> ...]`: Places one or more molecules with the specified `<Literal>` value at various coordinates. The coordinates are relative to the current origin (`.ORG`). Multiple placements can be specified on a single line, separated by commas. A `<Placement>` can be one of the following:
   * **Vector Literal**: A standard vector like `10|20` places a single molecule.
   * **Range**: A range like `1..10|20` places molecules along a line.

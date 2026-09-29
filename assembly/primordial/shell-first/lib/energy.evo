@@ -31,7 +31,7 @@ EXPORT .PROC HARVEST
   # ===========================================================================
   # INITIALIZATION - Give the static registers their first values, pick a direction
   # ===========================================================================
-  .ORG 0|4
+  .ORG 0|@+4
   HARVEST_START:
     INTI %KIDX DATA:0                     # Untouched since birth, so still CODE-typed...
       JMPI HARVEST_FIRST_RUN; NOP^4       # ...give the state its starting values
@@ -44,7 +44,7 @@ EXPORT .PROC HARVEST
     SETI %KLEFT DATA:89; NOP^4            # ...and at its full count
     JMPI HARVEST_RANDOM_DIR; NOP^4; JMPI HARVEST_RANDOM_DIR
 
-  .ORG 0|6
+  .ORG 0|@+4
   HARVEST_RANDOM_DIR: NOP^2
     # Choose random passable direction
     SPNR %MASK; NOP^4                     # Get bitmask of passable directions
@@ -58,7 +58,7 @@ EXPORT .PROC HARVEST
   # ===========================================================================
   # MAIN HARVEST LOOP - Scan for energy, consume if found, else move
   # ===========================================================================
-  .ORG 0|8
+  .ORG 0|@+2
   HARVEST_LOOP: NOP^4
     # Step 1: Scan surroundings for energy - if found, consume and return
     SNTI %MASK ENERGY:0; NOP^2            # Scan neighbors for ENERGY type
@@ -81,7 +81,7 @@ EXPORT .PROC HARVEST
   # ===========================================================================
   # RETURN - the state stands in the static registers, nothing to write back
   # ===========================================================================
-  .ORG 0|10
+  .ORG 0|@+2
   HARVEST_RETURN:
     # Multiple RET instructions for mutation resistance
     NOP^8; RET; NOP^12; RET; NOP^4; RET
@@ -89,7 +89,7 @@ EXPORT .PROC HARVEST
   # ===========================================================================
   # STUCK HANDLING - Reset to IP and restart
   # ===========================================================================
-  .ORG 0|12
+  .ORG 0|@+2
   HARVEST_STUCK:
     # No direction passable - sync DP to IP and restart
     SYNC; NOP^4                           # Set DP = IP
@@ -98,7 +98,7 @@ EXPORT .PROC HARVEST
   # ===========================================================================
   # MOVEMENT LOGIC - Move forward or turn if blocked
   # ===========================================================================
-  .ORG 0|14
+  .ORG 0|@+2
   HARVEST_MOVE: NOP^2
     # Step 2: Check if forward direction is passable
     SPNR %MASK; NOP^4                     # Get passable directions
@@ -120,7 +120,7 @@ EXPORT .PROC HARVEST
   # ===========================================================================
   # TURN LOGIC - Rotate 90° and load next prime period
   # ===========================================================================
-  .ORG 0|16
+  .ORG 0|@+2
   HARVEST_TURN: NOP^2
     # Rotate 90° clockwise in the XY plane
     RTRI %DIR DATA:0 DATA:1; NOP^4        # Rotate direction vector CW
@@ -139,7 +139,7 @@ EXPORT .PROC HARVEST
   # ===========================================================================
   # PRIME PERIOD SELECTION - Load countdown for next period
   # ===========================================================================
-  .ORG 0|18
+  .ORG 0|@+2
   HARVEST_PT_LOAD: NOP^4
     # Select prime period based on KIDX and load KLEFT
     IFI %KIDX DATA:0
@@ -152,7 +152,7 @@ EXPORT .PROC HARVEST
     SETI %KLEFT DATA:103; NOP^4           # Period 3: 103 steps
     JMPI HARVEST_LOOP; NOP^13; JMPI HARVEST_LOOP
 
-  .ORG 0|20
+  .ORG 0|@+2
   HARVEST_PT_K0: NOP^4
     SETI %KLEFT DATA:89; NOP^4            # Prime period: 89 steps
     JMPI HARVEST_LOOP; NOP^4; JMPI HARVEST_LOOP

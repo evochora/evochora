@@ -49,6 +49,10 @@ session an iteration.
 - Inside an imported file `.ORG` is relative to the import position. Code runs along the
   direction vector until a jump, so long procedures are laid out in rows, each `.ORG` on its own
   line and each row ending in a jump, as the primordial does. The world's width is the hard bound.
+- A row that continues the one before it is written `.ORG 0|@+2`: the marked component counts from
+  the cell placed last, so inserting or moving a section carries the sections after it along, and
+  after an `.IMPORT` the code continues below the module without its size being known. A row that
+  belongs at a place of its own keeps its absolute coordinate.
 - A label resolves by fuzzy matching among the organism's own labels first; a foreign label is
   reached only when no own label matches, and only within the configured reach. A label written
   with a non-zero marker is no target at all until the `FORK` resets the marker, so the labels

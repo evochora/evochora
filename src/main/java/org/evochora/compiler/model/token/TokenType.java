@@ -7,8 +7,6 @@ public enum TokenType {
     // Single-character tokens.
     /** The '|' character, used in vector literals. */
     PIPE,
-    /** The '#' character, used for comments. */
-    HASH,
     /** The ':' character, used for labels and typed literals. */
     COLON,
     /** The '*' character, used as a wildcard. */
@@ -18,6 +16,10 @@ public enum TokenType {
     // Two-character tokens
     /** The '..' character, used for ranges. */
     DOT_DOT,
+    /** The '@+' character pair, which marks what follows it. */
+    AT_PLUS,
+    /** The '@-' character pair, which marks what follows it, with the opposite sign. */
+    AT_MINUS,
 
     // Literals.
     /** An identifier, such as a variable or label name. */
