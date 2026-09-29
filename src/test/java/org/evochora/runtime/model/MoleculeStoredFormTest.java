@@ -80,6 +80,19 @@ class MoleculeStoredFormTest {
     }
 
     @Test
+    void testAnEmptyCellPacksToZeroWhateverMarkerTheRecordCarries() {
+        assertThat(new Molecule(Config.TYPE_CODE, 0, 4).toInt()).isZero();
+        assertThat(new Molecule(Config.TYPE_CODE, 0).toInt()).isZero();
+
+        assertThat(new Molecule(Config.TYPE_CODE, 3, 4).toInt())
+                .as("an instruction keeps its marker")
+                .isEqualTo(((4 & Config.MARKER_VALUE_MASK) << Config.MARKER_SHIFT) | Config.TYPE_CODE | 3);
+        assertThat(new Molecule(Config.TYPE_DATA, 0, 4).toInt())
+                .as("a value of 0 of another type is no empty cell")
+                .isEqualTo(((4 & Config.MARKER_VALUE_MASK) << Config.MARKER_SHIFT) | Config.TYPE_DATA);
+    }
+
+    @Test
     @ExpectLog(level = LogLevel.ERROR, loggerPattern = ".*Molecule.*",
                messagePattern = "CODE:0 molecule with marker.*")
     void testAWrittenEmptyCellCarryingAMarkerIsReported() {
