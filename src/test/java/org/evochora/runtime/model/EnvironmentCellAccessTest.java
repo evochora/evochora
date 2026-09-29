@@ -203,6 +203,79 @@ class EnvironmentCellAccessTest {
     }
 
     @Test
+    void aDisplacedReadAgreesWithTheNormalizingAccessorsEverywhereInATorus() {
+        for (int tileSide : new int[]{1, 32}) {
+            Environment env = new Environment(new EnvironmentProperties(new int[]{64, 32}, true),
+                    new HammingLabelMatchingStrategy(), tileSide);
+            for (int x = 0; x < 64; x++) {
+                for (int y = 0; y < 32; y++) {
+                    env.setMoleculeAt(new int[]{x, y}, data(1 + x * 32 + y), 1 + (x + y) % 5);
+                }
+            }
+            int[][] steps = {{0, 0}, {1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+            for (int x = 0; x < 64; x++) {
+                for (int y = 0; y < 32; y++) {
+                    int[] position = {x, y};
+                    for (int[] step : steps) {
+                        int[] target = {x + step[0], y + step[1]};
+                        assertThat(env.getMoleculeIntAt(position, step))
+                                .as("molecule at %s + %s, tile side %d", java.util.Arrays.toString(position),
+                                        java.util.Arrays.toString(step), tileSide)
+                                .isEqualTo(env.getMolecule(target).toInt());
+                        assertThat(env.getOwnerIdAt(position, step))
+                                .as("owner at %s + %s, tile side %d", java.util.Arrays.toString(position),
+                                        java.util.Arrays.toString(step), tileSide)
+                                .isEqualTo(env.getOwnerId(target));
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
+    void aStepAcrossTheEdgeOfABoundedWorldReachesNoCell() {
+        Environment env = new Environment(new EnvironmentProperties(new int[]{64, 32}, false),
+                new HammingLabelMatchingStrategy(), 32);
+        env.setMoleculeAt(new int[]{0, 0}, data(1), 3);
+        env.setMoleculeAt(new int[]{63, 31}, data(2), 4);
+        env.setMoleculeAt(new int[]{62, 31}, data(5), 6);
+
+        assertThat(env.getMoleculeIntAt(new int[]{63, 31}, new int[]{1, 0})).as("beyond +x").isZero();
+        assertThat(env.getOwnerIdAt(new int[]{63, 31}, new int[]{1, 0})).as("beyond +x").isZero();
+        assertThat(env.getMoleculeIntAt(new int[]{63, 31}, new int[]{0, 1})).as("beyond +y").isZero();
+        assertThat(env.getMoleculeIntAt(new int[]{0, 0}, new int[]{-1, 0})).as("beyond -x").isZero();
+        assertThat(env.getOwnerIdAt(new int[]{0, 0}, new int[]{0, -1})).as("beyond -y").isZero();
+
+        assertThat(env.getMoleculeIntAt(new int[]{63, 31}, new int[]{-1, 0})).as("a step that stays inside")
+                .isEqualTo(data(5).toInt());
+        assertThat(env.getOwnerIdAt(new int[]{63, 31}, new int[]{-1, 0})).isEqualTo(6);
+        assertThat(env.getMoleculeIntAt(new int[]{63, 31}, new int[]{0, 0})).as("no step at all")
+                .isEqualTo(data(2).toInt());
+    }
+
+    @Test
+    void aDisplacedReadRejectsAPositionOutsideTheWorldAndWhatIsNoStep() {
+        Environment env = new Environment(new EnvironmentProperties(new int[]{64, 64}, false),
+                new HammingLabelMatchingStrategy(), 32);
+        int[] towardsTheWorld = {-1, 0};
+        for (int[] outside : new int[][]{{64, 0}, {0, -1}, {1}, {1, 2, 3}}) {
+            String expected = "Coordinate " + java.util.Arrays.toString(outside) + " lies outside the world of shape [64, 64]";
+            assertThatThrownBy(() -> env.getMoleculeIntAt(outside, towardsTheWorld))
+                    .isInstanceOf(IllegalArgumentException.class).hasMessage(expected);
+            assertThatThrownBy(() -> env.getOwnerIdAt(outside, towardsTheWorld))
+                    .isInstanceOf(IllegalArgumentException.class).hasMessage(expected);
+        }
+        for (int[] noStep : new int[][]{{1, 1}, {2, 0}, {0, -3}, {1}, {0, 0, 1}}) {
+            String expected = "Displacement " + java.util.Arrays.toString(noStep)
+                    + " is neither the zero vector nor a unit vector of 2 dimensions";
+            assertThatThrownBy(() -> env.getMoleculeIntAt(new int[]{5, 5}, noStep))
+                    .isInstanceOf(IllegalArgumentException.class).hasMessage(expected);
+            assertThatThrownBy(() -> env.getOwnerIdAt(new int[]{5, 5}, noStep))
+                    .isInstanceOf(IllegalArgumentException.class).hasMessage(expected);
+        }
+    }
+
+    @Test
     void aWorldNoEnvironmentCanHoldIsRejectedWithoutBuildingOne() {
         Environment.requireValidWorld(new EnvironmentProperties(new int[]{64, 96}, false));
 
