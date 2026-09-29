@@ -42,6 +42,19 @@ class EnvironmentCellAccessTest {
     }
 
     @Test
+    void theWorldContainsExactlyTheCoordinatesTheInRangeAccessorsAccept() {
+        Environment env = tiled();
+        for (int[] inside : new int[][]{{0, 0}, {63, 63}, {31, 32}, {40, 3}}) {
+            assertThat(env.contains(inside)).as(java.util.Arrays.toString(inside)).isTrue();
+            env.getMoleculeIntAt(inside);
+        }
+        for (int[] outside : new int[][]{{64, 0}, {0, 64}, {-1, 5}, {5, -1}, {96, 3}, {1}, {1, 2, 3}}) {
+            assertThat(env.contains(outside)).as(java.util.Arrays.toString(outside)).isFalse();
+            assertThatThrownBy(() -> env.getMoleculeIntAt(outside)).isInstanceOf(IllegalArgumentException.class);
+        }
+    }
+
+    @Test
     void aCoordinateOutsideTheWorldIsRejectedInsteadOfAddressingAnotherCell() {
         Environment env = tiled();
         int[][] outside = {{64, 0}, {0, 64}, {-1, 5}, {5, -1}, {96, 3}};

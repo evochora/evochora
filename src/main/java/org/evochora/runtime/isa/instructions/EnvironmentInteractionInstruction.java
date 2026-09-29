@@ -286,35 +286,19 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
             return null;
         }
         int[] dp = organism.getActiveDp();
-        if (!liesWithinWorld(dp, environment)) {
+        if (!environment.contains(dp)) {
             organism.instructionFailed(getName() + ": Data pointer " + Arrays.toString(dp)
                     + " lies outside the world.");
             return null;
         }
         int[] target = organism.getTargetCoordinate(dp, displacement, environment);
-        if (!liesWithinWorld(target, environment)) {
+        if (!environment.contains(target)) {
             organism.instructionFailed(getName() + ": Target cell " + Arrays.toString(target)
                     + " lies outside the world.");
             return null;
         }
         this.targetCoordinate = target;
         return this.targetCoordinate;
-    }
-
-    /**
-     * Tells whether a coordinate names a cell of the world.
-     *
-     * @param coordinate  the coordinate, one component per dimension
-     * @param environment the environment whose world is asked about
-     * @return {@code true} if every component lies within the world's size along its dimension
-     */
-    private static boolean liesWithinWorld(int[] coordinate, Environment environment) {
-        for (int i = 0; i < coordinate.length; i++) {
-            if (coordinate[i] < 0 || coordinate[i] >= environment.properties.getDimensionSize(i)) {
-                return false;
-            }
-        }
-        return true;
     }
 
     /**

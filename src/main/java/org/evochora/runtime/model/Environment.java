@@ -252,6 +252,18 @@ public class Environment implements IEnvironmentReader {
     }
 
     /**
+     * Tells whether a coordinate names a cell of the world: it has one component per dimension,
+     * and every component lies within the world's size along it. This is the question the
+     * in-range accessors answer with a rejection; a caller that must not run into one asks first.
+     *
+     * @param coord the coordinate to ask about
+     * @return {@code true} if the in-range accessors accept the coordinate
+     */
+    public boolean contains(int[] coord) {
+        return layout.contains(coord);
+    }
+
+    /**
      * Reads the packed molecule value of the cell at a coordinate that lies within the world.
      * Unlike {@link #getMolecule(int...)} this neither normalizes nor allocates; every component
      * must already be in range, and a coordinate outside the world is rejected.
