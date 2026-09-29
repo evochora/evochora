@@ -33,7 +33,7 @@ INIT: NOP^4
   SKJI REPRODUCE.CONTINUE_STATE; NOP^4    # Jump DP to reproduction state location
   JMPI LOCALSTATE_WRITE; NOP^12; JMPI LOCALSTATE_WRITE
 
-.ORG 0|2
+.ORG 0|@+2
 LOCALSTATE_WRITE: NOP^4
   # Initialize reproduction state with default values
   SETI %INI DATA:0; NOP^4                 # First value: 0 (DIRMASK)
@@ -47,7 +47,7 @@ LOCALSTATE_WRITE: NOP^4
 # ===========================================================================
 # MAIN LOOP - Decision between reproduction and energy harvesting
 # ===========================================================================
-.ORG 0|4
+.ORG 0|@+2
 MAIN_LOOP:
   NRG %ER; NOP^4                          # Read current energy level
   NTR %SR; NOP^4                          # Read current entropy level
@@ -65,7 +65,7 @@ MAIN_REPRODUCE: NOP^4
   # as they were: deciding again at once would decide the same. One harvest comes first
   JMPI MAIN_HARVEST; NOP^4; JMPI MAIN_HARVEST
 
-.ORG 0|6
+.ORG 0|@+2
 MAIN_HARVEST: NOP^4
   CALL ENERGY.HARVEST; NOP^4              # Call energy harvesting procedure
   JMPI MAIN_LOOP; NOP^4
@@ -76,17 +76,17 @@ JMPI MAIN_LOOP; NOP^12; JMPI MAIN_LOOP
 # ===========================================================================
 # ENERGY HARVESTING MODULE
 # ===========================================================================
-.ORG 0|8
+.ORG 0|@+2
 .IMPORT "classic/lib/energy.evo" AS ENERGY
 
 # ===========================================================================
 # REPRODUCTION MODULE
 # ===========================================================================
-.ORG 0|31
+.ORG 0|@+3
 .IMPORT "classic/lib/reproduce.evo" AS REPRODUCE
 
 # ===========================================================================
 # SAFETY FALLBACK (mutation resistance)
 # ===========================================================================
-.ORG 0|91
+.ORG 0|@+2
 JMPI MAIN_LOOP; NOP^54; JMPI MAIN_LOOP

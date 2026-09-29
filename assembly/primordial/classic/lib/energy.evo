@@ -20,7 +20,7 @@ EXPORT HARVEST_STATE:
 # ===========================================================================
 # PROCEDURE ENTRY
 # ===========================================================================
-.ORG 0|0
+.ORG 0|@-2
 EXPORT .PROC HARVEST
 
   # Register aliases for clarity
@@ -37,13 +37,13 @@ EXPORT .PROC HARVEST
   # ===========================================================================
   # INITIALIZATION - Load state and pick random direction
   # ===========================================================================
-  .ORG 0|4
+  .ORG 0|@+4
   HARVEST_START:
     # Load all state variables atomically
     STATIC3_LOAD HARVEST_STATE %FWD_MASK %KIDX %KLEFT; NOP^2
     JMPI HARVEST_RANDOM_DIR; NOP^4; JMPI HARVEST_RANDOM_DIR
 
-  .ORG 0|6
+  .ORG 0|@+2
   HARVEST_RANDOM_DIR: NOP^2
     # Choose random passable direction (after state load)
     SPNR %MASK; NOP^4                     # Get bitmask of passable directions
@@ -57,7 +57,7 @@ EXPORT .PROC HARVEST
   # ===========================================================================
   # MAIN HARVEST LOOP - Scan for energy, consume if found, else move
   # ===========================================================================
-  .ORG 0|8
+  .ORG 0|@+2
   HARVEST_LOOP: NOP^4
     # Step 1: Scan surroundings for energy - if found, consume and return
     SNTI %MASK ENERGY:0; NOP^2            # Scan neighbors for ENERGY type
@@ -80,13 +80,13 @@ EXPORT .PROC HARVEST
   # ===========================================================================
   # STATE PERSISTENCE AND RETURN
   # ===========================================================================
-  .ORG 0|10
+  .ORG 0|@+2
   HARVEST_SAVE_AND_RETURN:
     # Save all state variables atomically before return
     STATIC3_STORE HARVEST_STATE %FWD_MASK %KIDX %KLEFT
     JMPI HARVEST_SAVE_AND_RETURN2; NOP^6; JMPI HARVEST_SAVE_AND_RETURN2
 
-  .ORG 0|12
+  .ORG 0|@+2
   HARVEST_SAVE_AND_RETURN2: NOP^2
     # Multiple RET instructions for mutation resistance
     NOP^4; RET; NOP^4; RET; NOP^3
@@ -102,7 +102,7 @@ EXPORT .PROC HARVEST
   # ===========================================================================
   # MOVEMENT LOGIC - Move forward or turn if blocked
   # ===========================================================================
-  .ORG 0|14
+  .ORG 0|@+2
   HARVEST_MOVE: NOP^2
     # Step 2: Check if forward direction is passable
     SPNR %MASK; NOP^4                     # Get passable directions
@@ -124,7 +124,7 @@ EXPORT .PROC HARVEST
   # ===========================================================================
   # TURN LOGIC - Rotate 90° and load next prime period
   # ===========================================================================
-  .ORG 0|16
+  .ORG 0|@+2
   HARVEST_TURN: NOP^2
     # Rotate 90° clockwise in the XY plane
     RTRI %DIR DATA:0 DATA:1; NOP^4        # Rotate direction vector CW
@@ -143,7 +143,7 @@ EXPORT .PROC HARVEST
   # ===========================================================================
   # PRIME PERIOD SELECTION - Load countdown for next period
   # ===========================================================================
-  .ORG 0|18
+  .ORG 0|@+2
   HARVEST_PT_LOAD: NOP^4
     # Select prime period based on KIDX and load KLEFT
     IFI %KIDX DATA:0
@@ -156,7 +156,7 @@ EXPORT .PROC HARVEST
     SETI %KLEFT DATA:103; NOP^4           # Period 3: 103 steps
     JMPI HARVEST_LOOP; NOP^13; JMPI HARVEST_LOOP
 
-  .ORG 0|20
+  .ORG 0|@+2
   HARVEST_PT_K0: NOP^4
     SETI %KLEFT DATA:89; NOP^4            # Prime period: 89 steps
     JMPI HARVEST_LOOP; NOP^4; JMPI HARVEST_LOOP
