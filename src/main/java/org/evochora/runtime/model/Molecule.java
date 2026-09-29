@@ -76,11 +76,13 @@ public record Molecule(int type, int value, int marker) {
     }
 
     /**
-     * Checks if the molecule is empty (CODE:0).
-     * @return true if the molecule is empty, false otherwise.
+     * Tells whether the molecule is the empty cell, {@code CODE:0}. A marker on the record makes
+     * no difference, as it makes none to {@link #toInt()}: an empty cell has no marker.
+     *
+     * @return {@code true} if the molecule is {@code CODE:0}
      */
     public boolean isEmpty() {
-        return this.type() == Config.TYPE_CODE && this.value() == 0 && this.marker() == 0;
+        return this.type() == Config.TYPE_CODE && this.value() == 0;
     }
 
     /**

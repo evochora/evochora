@@ -83,6 +83,8 @@ class MoleculeStoredFormTest {
     void testAnEmptyCellPacksToZeroWhateverMarkerTheRecordCarries() {
         assertThat(new Molecule(Config.TYPE_CODE, 0, 4).toInt()).isZero();
         assertThat(new Molecule(Config.TYPE_CODE, 0).toInt()).isZero();
+        assertThat(new Molecule(Config.TYPE_CODE, 0, 4).isEmpty()).as("empty, marker or not").isTrue();
+        assertThat(new Molecule(Config.TYPE_DATA, 0).isEmpty()).as("DATA:0 is no empty cell").isFalse();
 
         assertThat(new Molecule(Config.TYPE_CODE, 3, 4).toInt())
                 .as("an instruction keeps its marker")
