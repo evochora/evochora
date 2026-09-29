@@ -1,331 +1,216 @@
-# Relative .ORG and .DIR + Layout Bounds Checking
+# Relative `.ORG` and `.DIR`
 
 **Status: TO BE REVIEWED**
 
 ## Problem
 
-### 1. Fragile absolute positioning in .ORG
+### 1. Absolute positions are maintained by hand
 
-All `.ORG` directives use absolute coordinates. Inserting code between two `.ORG` directives requires manually updating all subsequent positions:
+Every `.ORG` states an absolute coordinate, so the position of a routine is written down in the
+directive rather than following from where the routine stands in the source. Inserting a block,
+deleting one or moving one means recomputing the directives that follow it.
+
+`assembly/primordial/lib/reproduce.evo` has 26 `.ORG` directives, one per section, at consecutive
+even rows up to `0|58`; `lib/energy.evo` has 11. A section inserted at the top shifts all of them.
+
+The same arithmetic is done across module boundaries. `main.evo` places the two imported modules
+by hand:
 
 ```
-.ORG 0|4
-  ; ... code ...
-.ORG 0|6       ; ← insert code above → must change to 0|8
-  ; ... code ...
-.ORG 0|8       ; ← must change to 0|10
-  ; ... etc, cascading changes through entire file
+.ORG 0|8
+.IMPORT "lib/energy.evo" AS ENERGY
+.ORG 0|31                            ; where energy.evo happens to end, plus a gap
+.IMPORT "lib/reproduce.evo" AS REPRODUCE
+.ORG 0|91                            ; where reproduce.evo happens to end, plus a gap
 ```
 
-In `primordial/lib/reproduce.evo`, there are 25+ `.ORG` directives at consecutive even y-positions. Inserting one code block means updating all subsequent lines.
+Writing this requires knowing how many rows each module occupies, and editing a module means
+revisiting the file that imports it.
 
-### 2. No rotation support in .DIR
+### 2. `.DIR` has only absolute direction vectors
 
-`.DIR` only supports absolute direction vectors. Changing placement direction requires knowing the current direction and computing the new vector manually. A relative rotation ("turn 90 degrees") is more natural for sequential code layout.
+`.DIR` takes a direction vector and nothing else. Changing the direction therefore means knowing
+the current one and writing down the new one, where "turn by 90 degrees" is what is meant.
 
-### 3. Silent out-of-bounds placement in non-toroidal grids
-
-When code is placed at coordinates that fall outside the grid (e.g., negative absolute coordinates near a grid edge), `Environment.setMolecule` silently ignores the placement (`getFlatIndex` returns -1, the molecule is not placed). This means code is lost without any error. In toroidal grids, coordinates wrap correctly via `Math.floorMod`. In non-toroidal grids, out-of-bounds coordinates should be a compile-time error.
-
-### 4. Dead code: anchorPos in LayoutContext — done
-
-`LayoutContext.anchorPos` was set by `OrgLayoutHandler` but never read by any code. The field, getter, setter and the call have been deleted; nothing of this remains to do.
+`.DIR` and the runtime's `TURN`/`TRNI`/`TRNS` are unused today because turning does not fit the
+mutation plugins. They are kept for a later attempt, so `.DIR` gains the relative form together
+with `.ORG`: a language in which one half of the layout can be written relative to the current
+state and the other cannot teaches an exception that has no reason.
 
 ## Solution
 
-### Implementation Steps
+### The relative marker `@+` and `@-`
 
-Three vertical steps, each independently compilable and testable:
+The lexer reads `@+` and `@-` as one token each, the way it reads `..`. The sign is mandatory:
 
-```text
-Step 1 (Bounds Check) → Step 2 (Relative .ORG) → Step 3 (Relative .DIR)
-```
+- `@` followed by neither `+` nor `-` stays a lexical error. The character is thereby free for a
+  later meaning that does not start with a sign, such as `@NAME`.
+- `+` on its own never becomes a token, so a plus sign does not become valid anywhere else. This
+  keeps `.ORG 0|+2` an error rather than an absolute position that reads like a relative one.
 
-Step 1 is an independent bug fix. Step 2 introduces the `TILDE` token and relative vector components. Step 3 depends on Step 2 (reuses the `TILDE` token).
+The number after the marker carries no sign of its own, so both directions have the same shape:
+marker, then an unsigned number. A negative number after a marker (`@+-2`) is rejected by the
+directive handler.
 
-### Relative marker: `~` prefix
+Without a marker, values are absolute and mean exactly what they mean today, negative ones
+included.
 
-The `~` (tilde) prefix marks a vector component or .DIR directive as relative. Without `~`, values are absolute (unchanged behavior). This is necessary because `-` is already used for negative absolute values (e.g., `.ORG -3|0` places code 3 cells left of the organism origin).
+### `.ORG`: each component absolute or relative
 
-### .ORG: Relative position offsets
-
-Each component of the vector is independently absolute or relative. The `~` prefix marks a component as relative to the current position. Without `~`, the component is absolute.
-
-**Syntax:**
-
-```
-.ORG 0|6            ; absolute: position = (0, 6)
-.ORG ~0|~2          ; relative: position += (0, 2) — x unchanged, y += 2
-.ORG 0|~2           ; mixed: x = 0 (absolute), y relative += 2
-.ORG ~0|6           ; mixed: x unchanged (relative +0), y = 6 (absolute)
-.ORG ~2|~-3         ; relative: x += 2, y -= 3
-.ORG -3|0           ; absolute: position = (-3, 0) — negative absolute, valid
-```
-
-Key distinction: `0` = absolute zero, `~0` = relative zero (unchanged).
-
-**N-dimensional:** Each component follows the same rule. In 3D:
+Each component of the vector is independently absolute or relative:
 
 ```
-.ORG ~0|~2|~0       ; only y changes
-.ORG 0|~2|0         ; x and z set to 0, y relative
+.ORG 0|6            ; absolute: x = 0, y = 6
+.ORG 0|@+2          ; x = 0 absolute, y two rows further
+.ORG @+2|@-3        ; x two further, y three back
+.ORG -3|0           ; absolute, negative: unchanged behaviour
 ```
 
-The number of components must match the environment's dimensionality. Mismatch is a compile error.
+The number of components must match the dimensionality of the world, as it does today.
 
-### .DIR: Absolute direction (unchanged) + relative rotation (new)
+**Relative to what.** A relative component is relative to the layout cursor: the cell the next
+placed cell would occupy. After a row of code the cursor stands at the end of that row, so the
+form that advances by rows keeps the column absolute, `.ORG 0|@+2`.
 
-**Absolute (unchanged):** A vector literal with N components sets the direction vector directly.
-
-```
-.DIR 1|0            ; 2D: place along x
-.DIR 0|1            ; 2D: place along y
-.DIR -1|0           ; 2D: place in negative x direction
-.DIR 0|1|0          ; 3D: place along y
-```
-
-**Relative (new):** A `~` prefixed rotation. The `~+` / `~-` determines the rotation direction. The semantics depend on dimensionality:
-
-**1D — direction flip:**
+The cursor is not restored when an included file ends, and this is what makes the form useful
+across module boundaries:
 
 ```
-.DIR ~+              ; flip direction: (1) → (-1) → (1) → cycle
-.DIR ~-              ; flip direction: same as ~+ (only two states)
+.IMPORT "lib/energy.evo" AS ENERGY
+.ORG 0|@+2                           ; two rows below the module's last row
 ```
 
-In 1D, `~+` and `~-` are equivalent — both flip the single-axis direction.
+The writer of the importing file no longer needs to know how many rows the module occupies.
 
-**2D — single plane, no axis specification needed:**
+Precisely, `@+2` is two rows below the row in which the module placed its **last** cell, which is
+its lowest row unless the module jumps back up at its end. A module that does leaves the cursor
+higher, and the code that follows lands inside it; the layout's address-conflict check reports
+that as an occupied cell, naming both positions.
+
+### `.DIR`: absolute vector or rotation
+
+**Absolute (unchanged):** a vector with one component per dimension sets the direction.
 
 ```
-.DIR ~+              ; 90° rotation: (1,0) → (0,1) → (-1,0) → (0,-1) → cycle
-.DIR ~-              ; -90° rotation: (1,0) → (0,-1) → (-1,0) → (0,1) → cycle
+.DIR 1|0
+.DIR 0|1|0
 ```
 
-**3D+ — plane specified by two axis indices:**
+**Relative (new):** a rotation by 90 degrees in the plane spanned by two axes. The plane is always
+named, in every dimensionality:
 
 ```
-.DIR ~+0|1           ; 90° in (dim0, dim1) plane: rotates dim0 component toward dim1
-.DIR ~-0|1           ; -90° in (dim0, dim1) plane: rotates dim1 component toward dim0
-.DIR ~+0|2           ; 90° in (dim0, dim2) plane
-.DIR ~+1|2           ; 90° in (dim1, dim2) plane
+.DIR @+0|1          ; rotates axis 0 towards axis 1
+.DIR @-0|1          ; rotates axis 1 towards axis 0
+.DIR @+1|2          ; in the (1, 2) plane
 ```
 
-**Rotation semantics:** `~+i|j` rotates the current direction vector 90° in the (i, j) plane, moving the component in axis i toward axis j.
+`@+i|j` and `@-j|i` are the same rotation.
 
-Equivalence: `~+i|j` ≡ `~-j|i` (same rotation, expressed with flipped axes and negated sign).
+Naming the plane in two-dimensional worlds as well, where `0|1` is the only plane there is, keeps
+one rule for every dimensionality and lets the same source be laid out in a world of another
+dimensionality.
 
-**Examples in 3D, starting from (1, 0, 0):**
+Applied to the direction vector, with all other components unchanged:
 
-| Directive | Rotation | Result |
-|---|---|---|
-| `.DIR ~+0\|1` | dim0 → dim1 | (0, 1, 0) |
-| `.DIR ~+0\|2` | dim0 → dim2 | (0, 0, 1) |
-| `.DIR ~-0\|1` | dim1 → dim0 | (0, -1, 0) |
-| `.DIR ~+1\|0` | dim1 → dim0 | (0, -1, 0) |
+- `@+i|j`: `v[i], v[j] = -v[j], v[i]`
+- `@-i|j`: `v[i], v[j] = v[j], -v[i]`
 
-### Parser behavior
+Starting from `1|0|0` in a three-dimensional world, `@+0|1` gives `0|1|0`, `@+0|2` gives `0|0|1`,
+and `@-0|1` gives `0|-1|0`.
 
-The `~` prefix unambiguously marks relative mode. The parser does NOT know the environment dimensionality (that is only available in Phase 9 via EnvironmentProperties). Therefore the parser accepts all structurally valid forms and the dimensionality validation happens in Phase 9 (Layout).
+Rotating a direction that has no component in the named plane leaves it unchanged. That is a
+consequence of the arithmetic, not an error.
 
-**For .ORG:**
-- N components, each either bare number (absolute) or `~` prefixed (relative). The parser accepts any number of components; Phase 9 validates the count matches the environment dimensionality.
+### What the compiler rejects
 
-**For .DIR:**
-1. Starts with `~` → relative rotation. The parser accepts two structural forms:
-   - `~+` or `~-` alone (no axis specification)
-   - `~+` or `~-` followed by exactly 2 axis indices separated by `|`
-2. Starts with number → absolute direction vector (any number of `|`-separated components).
+The parser does not know the dimensionality of the world; it accepts both forms and the layout
+phase, which has the world shape, validates:
 
-Phase 9 validates:
-- 1D/2D rotation: axis specification must be absent. If present → compile error.
-- 3D+ rotation: axis specification must be present. If absent → compile error.
+- an axis index that is not a dimension of the world, or two equal axis indices;
+- a rotation in a one-dimensional world, where no plane exists. Reversing the single axis is
+  written as the absolute `.DIR -1`.
 
-### .DIR rotation validation (Phase 9)
+### Structure
 
-- Axis indices must be valid dimension indices (0 to N-1) and distinct. `.DIR ~+0|0` is a compile error.
-- Rotating a direction vector that has no component in the rotation plane leaves it unchanged. This is a no-op, not an error.
+`org` and `dir` stay separate features. What they share is the marker, which is two tokens and a
+sign to remember; everything after that differs, because a position is a place and a direction is
+an orientation. The few lines stand in both features rather than in a place both depend on.
 
-### Bounds checking for non-toroidal grids
+The token types the lexer gains name the characters, not their meaning, as `STAR`, `DOT_DOT` and
+`COMMA` do, which the `place` feature is the only reader of.
 
-In Phase 9 (Layout), after computing the final absolute coordinates (base position + .ORG vector), validate against the environment's world shape:
+### Not part of this proposal
 
-- **Toroidal grid:** coordinates wrap via `Math.floorMod` — no change needed, already works correctly.
-- **Non-toroidal grid:** any coordinate component `c` where `c < 0 || c >= shape[dim]` is a **compile error**: "Coordinate %s is out of bounds for non-toroidal grid with shape %s."
+An earlier version of this document proposed a compile-time bounds check for non-toroidal grids.
+That check belongs to the start of a simulation, not to the compiler: layout coordinates are
+relative to the program origin, and one artifact can be placed at several start positions. It was
+implemented there instead — an initial organism whose cells fall outside a bounded world, or onto
+a cell that is not empty, stops the start with an error (commit `5cacf4b5`).
 
-This check applies to all placed items (opcodes, operands, labels), not just .ORG directives. The check is in `LayoutContext.placeAtCurrent()`, before the existing address conflict check.
+## Implementation Steps
 
----
+Two steps. Step 2 depends on step 1 for the marker tokens.
 
-## Step 1: Bounds Check + Dead Code Removal
+### Step 1: Relative `.ORG`
 
-Independent bug fix. No new syntax.
+**Lexer** (`frontend/lexer/`): `TokenType` gains `AT_PLUS` and `AT_MINUS`; `scanToken` gains a
+case for `@` that looks at the next character, like the case for `.`, and reports a lexical error
+when no sign follows.
 
-**LayoutContext.java** (`backend/layout/`):
-- In `placeAtCurrent()`, add bounds check before the existing address conflict check:
+**`OrgNode`** (`features/org/`): carries, besides the vector, one flag per component saying
+whether it was marked. As a record it holds a `List<Boolean>`, not an array, so that two nodes
+with the same components are equal.
 
-```java
-if (!envProps.isToroidal()) {
-    for (int i = 0; i < currentPos.length; i++) {
-        if (currentPos[i] < 0 || currentPos[i] >= envProps.getWorldShape()[i]) {
-            throw new CompilationException(String.format(
-                "Coordinate %s is out of bounds for non-toroidal grid with shape %s.",
-                Arrays.toString(currentPos), Arrays.toString(envProps.getWorldShape())));
-        }
-    }
-}
-```
+**`OrgDirectiveHandler`**: parses the vector itself instead of asking the parser for an
+expression, reading an optional marker before each component. A negative number after a marker is
+reported as an error.
 
-- `LayoutContext` needs access to `EnvironmentProperties` for the toroidal check. It already has the field (`envProps`, line 17).
+**`OrgNodeConverter`**: emits the flags alongside the position in the `core:org` directive args.
+
+**`OrgLayoutHandler`**: computes the new position per component — a marked component is added to
+the cursor, an unmarked one to the base position, which is what `.ORG` does today.
 
 **Tests:**
-- Non-toroidal grid: placement at (-1, 0) with basePos (0, 0) → compile error
-- Non-toroidal grid: placement at (0, 1000) with shape (1000, 1000) → compile error
-- Toroidal grid: placement at (-1, 0) → wraps correctly, no error
-- Non-toroidal grid: valid coordinates → no error
-- Bounds check triggers on advancing past grid edge (not just .ORG)
-- All 5 existing CLI smoke tests remain green
+- `.ORG 0|6` and `.ORG -3|0` place where they place today
+- `.ORG 0|@+2` after a row of code starts a row two below it, whatever the row's length
+- `.ORG @+2|@-3` from a known cursor position
+- `.ORG 0|@+2` after `.SOURCE` and after `.IMPORT` continues below the included code
+- `.ORG @+0|@+0` places where the cursor stands
+- a marked component with a sign of its own (`@+-2`) is an error
+- `@` without a sign is a lexical error
+- a wrong number of components is an error
 
----
+### Step 2: Relative `.DIR`
 
-## Step 2: Relative .ORG
+**`DirNode`** (`features/dir/`): carries either the absolute vector or a rotation with its sign
+and its two axes.
 
-Depends on Step 1 (bounds check catches relative offsets that land out of bounds).
+**`DirDirectiveHandler`**: reads a marker followed by two axis indices, or a vector as before.
 
-### Lexer changes
+**`DirNodeConverter`**: emits either the direction or the rotation into the `core:dir` args.
 
-**Lexer** — recognize `~` as a new token type `TILDE`. Add alongside other single-character tokens.
-
-### AST changes
-
-**OrgNode** — extend to carry per-component relative flags:
-
-Currently `OrgNode(AstNode originVector)`. Change to `OrgNode(AstNode originVector, boolean[] relativeMask)`. The `relativeMask` array has one entry per vector component: `true` if that component was `~` prefixed, `false` otherwise. For fully absolute `.ORG` (unchanged syntax), all entries are `false`.
-
-`VectorLiteralNode` remains unchanged (`List<Integer>`). The relative information is carried solely in `OrgNode.relativeMask`, not in the vector literal. This avoids impacting other consumers of VectorLiteralNode (.PLACE, instruction operands, .DIR absolute mode).
-
-### Parser changes
-
-**OrgDirectiveHandler** — after consuming `.ORG`, parse each vector component: check for `TILDE` before each number. Build the `boolean[] relativeMask` alongside the vector values. For negative relative values, the token sequence is `TILDE`, `NUMBER(-3)`. Produce `OrgNode(vectorNode, relativeMask)`.
-
-### IR changes
-
-**OrgNodeConverter** — emit a `relativeMask` boolean list alongside the `position` vector in the IR directive args.
-
-### Layout changes (Phase 9)
-
-**OrgLayoutHandler** — compute new position per-component:
-
-```java
-int[] newPos = new int[N];
-for (int i = 0; i < N; i++) {
-    if (relativeMask[i]) {
-        newPos[i] = currentPos[i] + vec[i];
-    } else {
-        newPos[i] = basePos[i] + vec[i];
-    }
-}
-context.setCurrentPos(newPos);
-```
+**`DirLayoutHandler`**: applies the rotation to the current direction and reports the errors
+listed under "What the compiler rejects".
 
 **Tests:**
-- `.ORG 0|6` → absolute, position = (0, 6) — unchanged behavior
-- `.ORG -3|0` → absolute negative, position = (-3, 0) — unchanged behavior
-- `.ORG ~0|~2` from (0, 4) → position = (0, 6)
-- `.ORG 0|~2` from (3, 4) → position = (0, 6) — x reset to 0, y relative
-- `.ORG ~0|~0` → no-op
-- `.ORG ~2|~-3` from (5, 10) → position = (7, 7)
-- Mixed absolute/relative in 3D
-- Wrong number of components → compile error
-- All 5 existing CLI smoke tests remain green
-- Assembly file using relative `.ORG` compiles and produces correct layout
+- `.DIR 0|1` and `.DIR -1|0` set the direction they set today
+- 2D: `@+0|1` from `1|0` gives `0|1`; four of them return to the start
+- 2D: `@-0|1` from `1|0` gives `0|-1`
+- 3D: `@+0|1`, `@+0|2` and `@-0|1` from `1|0|0`
+- `@+0|1` and `@-1|0` give the same direction
+- a rotation in a plane the direction has no component in changes nothing
+- equal axes, an axis index outside the world, and a rotation in a one-dimensional world are
+  errors
+- code placed after a rotation runs in the rotated direction
 
----
+### Documentation that changes with the implementation
 
-## Step 3: Relative .DIR
+- `docs/ASSEMBLY_SPEC.md`: the `.ORG` and `.DIR` entries
+- `docs/COMPILER_CORE_BOUNDARY.md`: the `org` and `dir` rows of the feature table
+- `docs/COMPILER_IR_SPEC.md`: the args of `core:org` and `core:dir`
 
-Depends on Step 2 (reuses `TILDE` token).
-
-### AST changes
-
-**DirMode** — new sealed interface in `features/dir/`:
-
-```java
-public sealed interface DirMode {
-    record Absolute(AstNode vector, SourceInfo sourceInfo) implements DirMode {}
-    record Rotation(boolean positive, int axisA, int axisB,
-                    boolean axesExplicit, SourceInfo sourceInfo) implements DirMode {}
-}
-```
-
-`axesExplicit` distinguishes between the parser-inferred default plane (1D/2D: `axisA=0, axisB=1`, `axesExplicit=false`) and explicitly specified axes (3D+: `axesExplicit=true`). Phase 9 validates the combination against the actual dimensionality.
-
-In 1D, `axisA=0, axisB=0` — the rotation degenerates to a direction flip (special-cased in DirLayoutHandler).
-
-**DirNode** — change from `DirNode(AstNode directionVector)` to `DirNode(DirMode mode)`. `getChildren()` returns the vector's children for `Absolute`, empty list for `Rotation`.
-
-### Parser changes
-
-**DirDirectiveHandler** — if the first token after `.DIR` is `TILDE`:
-- Consume `TILDE`.
-- Next token determines sign: positive number or `+` prefix → `positive=true`, negative number or `-` prefix → `positive=false`.
-- If followed by `NUMBER PIPE NUMBER` → explicit axes: `Rotation(positive, axisA, axisB, true, src)`.
-- If no further tokens → implicit axes: `Rotation(positive, 0, 1, false, src)`.
-- In 1D implicit case, DirLayoutHandler handles the special semantics.
-
-Otherwise: absolute mode, parse vector as before, wrap in `Absolute`.
-
-### IR changes
-
-**DirNodeConverter** — for `Absolute`: emit direction vector (unchanged). For `Rotation`: emit `positive` (boolean), `axisA` (int), `axisB` (int), `axesExplicit` (boolean) into the IR directive args.
-
-### Layout changes (Phase 9)
-
-**DirLayoutHandler** — for absolute mode: set direction vector (unchanged). For rotation mode:
-
-First validate dimensionality:
-- `axesExplicit == false && N > 2` → compile error: "Rotation plane must be specified for %dD environments."
-- `axesExplicit == true && N <= 2` → compile error: "Rotation plane must not be specified for %dD environments."
-- `axisA == axisB` → compile error: "Rotation axes must be distinct."
-- `axisA >= N || axisB >= N` → compile error: "Axis index %d is out of range for %dD environment."
-
-Then apply rotation:
-
-**1D** — direction flip:
-```
-v[0] = -v[0]
-```
-
-**2D+** — 90° rotation in plane (i, j):
-
-Positive rotation (`~+i|j`):
-```
-v[i], v[j] = -v[j], v[i]
-```
-
-Negative rotation (`~-i|j`):
-```
-v[i], v[j] = v[j], -v[i]
-```
-
-All other components remain unchanged.
-
-**Tests:**
-- `.DIR 0|1` → absolute direction (0, 1) — unchanged behavior
-- `.DIR -1|0` → absolute direction (-1, 0) — unchanged behavior
-- 1D: `.DIR ~+` from (1) → direction (-1)
-- 1D: `.DIR ~-` from (1) → direction (-1) (equivalent to ~+)
-- 1D: `.DIR ~+` twice from (1) → direction (1) (back to start)
-- 2D: `.DIR ~+` from (1, 0) → direction (0, 1)
-- 2D: `.DIR ~-` from (1, 0) → direction (0, -1)
-- 2D: `.DIR ~+` four times cycles back to original direction
-- 3D: `.DIR ~+0|1` from (1, 0, 0) → direction (0, 1, 0)
-- 3D: `.DIR ~-0|1` from (1, 0, 0) → direction (0, -1, 0)
-- 3D: `.DIR ~+0|1` ≡ `.DIR ~-1|0` equivalence test
-- Rotation of zero-component → no-op (not an error)
-- `.DIR ~+0|0` → compile error (same axis)
-- Invalid axis index → compile error
-- 2D rotation with explicit axis specification → compile error
-- 3D rotation without axis specification → compile error
-- 1D rotation with axis specification → compile error
-- All 5 existing CLI smoke tests remain green
+The reference program under `src/test/resources/org/evochora/compiler/reference/` uses every
+feature of the compiler once, so it gains the new forms. Its checked-in artifact is regenerated
+with them, and the pull request says so — `CompilerOutputEquivalenceTest` compares against it, and
+the absolute forms have to compile to the same cells as before.
