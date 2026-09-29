@@ -66,6 +66,11 @@ Smaller instances: the lexer emits a directive token for `^` (repeat) and a colo
 `:` (label); `Symbol.Type` is a closed enum whose eight members are named after individual
 features, mapped exhaustively in `TokenKindMapper`.
 
+The lexer also holds character tokens that a single feature reads: `*`, `..` and `,` for
+`place`, `@+` and `@-` for `org` and `dir`. These name the character, not what a directive makes
+of it, so the core learns no feature from them — but the lexer is the one phase without a
+registry, so a feature cannot add one without this file changing.
+
 ## What the probe showed
 
 - With no feature registered, the core compiles nothing and reports `Expected instruction or

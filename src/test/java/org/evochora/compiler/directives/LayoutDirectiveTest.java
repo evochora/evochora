@@ -154,6 +154,28 @@ public class LayoutDirectiveTest {
     }
 
     /**
+     * Verifies that a `.DIR` which is neither a direction nor a rotation is reported, and that
+     * nothing reaches the IR for it.
+     * This is a unit test for the parser.
+     */
+    @Test
+    @Tag("unit")
+    void testDirDirectiveRejectsWhatIsNeitherDirectionNorRotation() {
+        // Arrange
+        String source = ".DIR %DR0";
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Parser parser = new Parser(new Lexer(source, diagnostics).scanTokens(), diagnostics, registry());
+
+        // Act
+        List<AstNode> ast = parser.parse();
+
+        // Assert
+        assertThat(diagnostics.hasErrors()).isTrue();
+        assertThat(diagnostics.summary()).contains("Expected a vector literal or a rotation after .DIR.");
+        assertThat(ast).hasSize(1).first().isInstanceOf(DirNode.class);
+    }
+
+    /**
      * Verifies that the parser correctly parses a `.PLACE` directive into a {@link PlaceNode}.
      * It also checks that the literal and position components of the node are of the correct type.
      * This is a unit test for the parser.
