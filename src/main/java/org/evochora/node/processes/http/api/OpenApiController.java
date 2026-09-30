@@ -367,7 +367,7 @@ public class OpenApiController extends AbstractController {
                 // We need to recursively extract all string values
                 extractBasePathsRecursive(basePathsConfig.root(), "", controllerBasePaths);
             } catch (final Exception e) {
-                LOGGER.warn("OpenAPI: Failed to read basePaths from options: {}", e.getMessage(), e);
+                LOGGER.warn("OpenAPI: Failed to read basePaths from options: {}", e.getMessage());
             }
         } else {
             LOGGER.warn("OpenAPI: No 'basePaths' key found in options! Available keys: {}", options.root().keySet());

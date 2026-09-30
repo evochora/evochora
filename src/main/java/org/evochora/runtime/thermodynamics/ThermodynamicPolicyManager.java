@@ -98,9 +98,14 @@ public class ThermodynamicPolicyManager {
         // Extract opcode value from fullOpcodeId (remove TYPE_CODE bits)
         int opcodeId = instruction.getFullOpcodeId() & org.evochora.runtime.Config.VALUE_MASK;
 
-        // No bounds check: an instruction only exists if its opcode is registered — the virtual
-        // machine rejects anything else before it gets this far — and the array covers every
-        // registered opcode.
+        // The array covers every registered opcode. An unknown opcode - a CODE molecule whose value
+        // names no instruction, which a mutation or a POKE can write anywhere - reaches this method
+        // too: the virtual machine plans it as a NOP that keeps the unknown id, so that the record
+        // of the failed instruction shows what was executed. Such an id is resolved by the
+        // instruction's class like any other and, lying outside the array, is not cached.
+        if (opcodeId >= policyByOpcodeId.length) {
+            return resolvePolicy(instruction);
+        }
         IThermodynamicPolicy cached = policyByOpcodeId[opcodeId];
         if (cached != null) {
             return cached;

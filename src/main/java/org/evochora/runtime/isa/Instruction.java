@@ -66,6 +66,13 @@ public abstract class Instruction {
     protected final int fullOpcodeId;
 
     /**
+     * Failure reason of an instruction whose argument cells reach beyond the edge of a bounded
+     * world. Its record holds the argument cells as every record does, one per slot; the slots
+     * beyond the edge read as empty, and this reason says why the instruction did not run.
+     */
+    public static final String ARGUMENT_CELL_BEYOND_THE_EDGE = "Argument cell lies beyond the edge of the world";
+
+    /**
      * Defines the possible sources for an instruction's operands.
      */
     public enum OperandSource {
@@ -341,7 +348,17 @@ public abstract class Instruction {
         // The argument cells are fetched here, once per instruction. Operand resolution
         // below and the execution record both work from this array; nothing else reads the
         // code stream on their behalf.
-        this.rawArguments = organism.getRawArgumentsFromEnvironment(getLength(environment), environment);
+        int length = getLength(environment);
+        this.rawArguments = organism.getRawArgumentsFromEnvironment(length, environment);
+        if (!organism.argumentCellsExist(length, environment)) {
+            // In a bounded world the argument cells can reach beyond the edge, where no cell
+            // exists. Read as empty they would hand the instruction values it never had - an empty
+            // cell as a register argument names %DR0 - so the instruction fails here, while it is
+            // planned, and is not executed. The last cell stands for all: they follow one another.
+            organism.instructionFailed(ARGUMENT_CELL_BEYOND_THE_EDGE);
+            this.cachedOperands = List.of();
+            return this.cachedOperands;
+        }
 
         List<Operand> resolved = new ArrayList<>(sources.size());
         int dims = environment.properties.getDimensions();
@@ -517,7 +534,7 @@ public abstract class Instruction {
      */
     protected int[] dataPointerInsideWorld(Environment environment) {
         int[] dp = organism.getActiveDp();
-        if (dp != null && !environment.contains(dp)) {
+        if (dp != null && !environment.exists(dp)) {
             organism.instructionFailed(getName() + ": Data pointer " + java.util.Arrays.toString(dp)
                     + " lies outside the world.");
             return null;
@@ -574,9 +591,14 @@ public abstract class Instruction {
      * @param position     The position to start from, within the world.
      * @param displacement No step or one step along an axis.
      * @return {@code true} if the cell is passable for this organism; a cell beyond the edge of a
-     *         bounded world reads as empty and is therefore passable
+     *         bounded world does not exist and is not
      */
     protected boolean isPassable(Environment environment, int[] position, int[] displacement) {
+        // A cell beyond the edge of a bounded world does not exist, and what does not exist
+        // cannot be moved onto; the accessors below would read it as empty.
+        if (!environment.exists(position, displacement)) {
+            return false;
+        }
         return environment.getMoleculeIntAt(position, displacement) == 0
                 || organism.isCellAccessible(environment.getOwnerIdAt(position, displacement));
     }

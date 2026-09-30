@@ -31,9 +31,9 @@ import com.typesafe.config.Config;
  * </ul>
  * <p>
  * <strong>Causes.</strong> The runtime kills an organism when its energy has dropped to zero or
- * below, when its entropy exceeds the configured maximum, or on a fatal VM error, and it checks in
- * that order. Killing changes neither value, so the cause is read back from the dead organism's
- * state in the same order: energy first, then entropy, and anything else is "other".
+ * below, or when its entropy exceeds the configured maximum, and it checks in that order. Killing
+ * changes neither value, so the cause is read back from the dead organism's state in the same
+ * order: energy first, then entropy, and anything else is "other".
  * <p>
  * <strong>Why this plugin must see every recording.</strong> A dead organism appears in exactly one
  * recording and is removed afterwards, so the per-cause counts are complete only if no recording

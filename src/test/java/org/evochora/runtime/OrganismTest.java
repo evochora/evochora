@@ -84,6 +84,35 @@ public class OrganismTest {
     }
 
     /**
+     * An unknown opcode is an organism's failure like any other and is priced like any other: the
+     * base cost of the NOP it is planned as, and the error penalty. Whether the id lies inside the
+     * range the registered opcodes span or beyond it makes no difference - both can be written
+     * into a CODE cell by a mutation or a POKE.
+     */
+    @Test
+    @Tag("unit")
+    void anUnknownOpcodePaysBaseCostAndPenaltyWhereverItsIdLies() {
+        int highestRegistered = Instruction.getInstructionSetInfo().stream()
+                .mapToInt(Instruction.InstructionInfo::opcodeId).max().orElseThrow();
+        int unregisteredInside = java.util.stream.IntStream.range(0, highestRegistered)
+                .filter(id -> Instruction.getSignatureById(id).isEmpty()).findFirst().orElseThrow();
+        for (int opcode : new int[]{unregisteredInside, highestRegistered + 1, 8192, -5}) {
+            Organism org = Organism.create(sim, new int[]{0, 0}, 100);
+            sim.addOrganism(org);
+            environment.setMolecule(new Molecule(Config.TYPE_CODE, opcode), org.getIp());
+
+            sim.tick();
+
+            assertThat(org.isInstructionFailed()).as("opcode %d", opcode).isTrue();
+            assertThat(org.getFailureReason()).as("opcode %d", opcode).contains("Unknown opcode");
+            assertThat(org.getEr()).as("energy after opcode %d: base cost 1 and penalty 10", opcode)
+                    .isEqualTo(100 - 1 - 10);
+            org.kill("done");
+            sim.pruneDeadOrganisms();
+        }
+    }
+
+    /**
      * Verifies the basic energy consumption logic, ensuring that an organism
      * with minimal energy dies after executing instructions.
      * This is a unit test for the organism's lifecycle.

@@ -1147,4 +1147,108 @@ public class VMStateInstructionTest {
 
         org.resetTickState();
     }
+    /**
+     * The register operand of an instruction that needs a vector holds a scalar - a mutation of
+     * the argument cell or of the register makes that ordinary. The instruction fails with a
+     * reason that names it; nothing throws, and the organism's direction stays.
+     */
+    @Test
+    @Tag("unit")
+    void aScalarWhereAVectorIsNeededFailsTheInstruction() {
+        int[] dvBefore = org.getDv();
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 7).toInt());
+        placeInstruction("TURN", 0);
+        sim.tick();
+        assertThat(org.isInstructionFailed()).isTrue();
+        assertThat(org.getFailureReason()).isEqualTo("TURN requires a vector operand.");
+        assertThat(org.getDv()).isEqualTo(dvBefore);
+        org.resetTickState();
+    }
+
+    @Test
+    @Tag("unit")
+    void aScalarInTheVectorRegisterOfSeekFailsTheInstruction() {
+        int[] dpBefore = org.getActiveDp();
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 7).toInt());
+        placeInstruction("SEEK", 0);
+        sim.tick();
+        assertThat(org.getFailureReason()).isEqualTo("SEEK requires a vector operand.");
+        assertThat(org.getActiveDp()).isEqualTo(dpBefore);
+        org.resetTickState();
+    }
+
+    @Test
+    @Tag("unit")
+    void aScalarOnTheStackWhereSeksNeedsAVectorFailsTheInstruction() {
+        org.getDataStack().push(new Molecule(Config.TYPE_DATA, 7).toInt());
+        placeInstruction("SEKS");
+        sim.tick();
+        assertThat(org.getFailureReason()).isEqualTo("SEKS requires a vector operand.");
+        org.resetTickState();
+    }
+
+    @Test
+    @Tag("unit")
+    void aScalarInTheVectorRegisterOfScanFailsTheInstruction() {
+        org.writeOperand(1, new Molecule(Config.TYPE_DATA, 7).toInt());
+        placeInstruction("SCAN", 0, 1);
+        sim.tick();
+        assertThat(org.getFailureReason()).isEqualTo("SCAN requires a vector operand.");
+        org.resetTickState();
+    }
+
+    @Test
+    @Tag("unit")
+    void aScalarOnTheStackWhereScnsNeedsAVectorFailsTheInstruction() {
+        org.getDataStack().push(new Molecule(Config.TYPE_DATA, 7).toInt());
+        placeInstruction("SCNS");
+        sim.tick();
+        assertThat(org.getFailureReason()).isEqualTo("SCNS requires a vector operand.");
+        org.resetTickState();
+    }
+
+    @Test
+    @Tag("unit")
+    void aVectorWhereRandNeedsAScalarFailsTheInstruction() {
+        org.writeOperand(0, new int[]{1, 0});
+        placeInstruction("RAND", 0);
+        sim.tick();
+        assertThat(org.getFailureReason()).isEqualTo("RAND requires a scalar operand.");
+        assertThat(org.readOperand(0)).isEqualTo(new int[]{1, 0});
+        org.resetTickState();
+    }
+
+    @Test
+    @Tag("unit")
+    void aForkWithOperandsOfTheWrongKindFailsWithoutAChild() {
+        org.setMr(1);
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 7).toInt());
+        org.writeOperand(1, new Molecule(Config.TYPE_DATA, 100).toInt());
+        org.writeOperand(2, new int[]{1, 0});
+        placeInstruction("FORK", 0, 1, 2);
+        sim.tick();
+        assertThat(org.getFailureReason()).isEqualTo("FORK requires a vector, a scalar and a vector operand.");
+        assertThat(sim.getOrganisms()).containsExactly(org);
+        org.resetTickState();
+    }
+
+    /**
+     * An argument cell that names no register fails the instruction while it is planned, and the
+     * value it would have carried is null. The handlers of this family never see that null: the
+     * failure is what the organism keeps, with the reason planning gave.
+     */
+    @Test
+    @Tag("unit")
+    void anInvalidRegisterIdFailsInPlanningAndNoHandlerRuns() {
+        int[] dvBefore = org.getDv();
+        for (String instruction : new String[]{"TURN", "RAND", "SEEK"}) {
+            placeInstruction(instruction, 100);
+            sim.tick();
+            assertThat(org.isInstructionFailed()).as(instruction).isTrue();
+            assertThat(org.getFailureReason()).as(instruction).isEqualTo("Invalid register ID: 100");
+            org.setIp(startPos.clone());
+            org.resetTickState();
+        }
+        assertThat(org.getDv()).isEqualTo(dvBefore);
+    }
 }

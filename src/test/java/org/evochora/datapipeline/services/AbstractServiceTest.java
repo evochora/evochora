@@ -5,6 +5,13 @@ import com.typesafe.config.ConfigFactory;
 import com.typesafe.config.ConfigValueFactory;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.services.IService;
+import org.slf4j.LoggerFactory;
+import org.slf4j.Marker;
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.LoggerContext;
+import ch.qos.logback.classic.turbo.TurboFilter;
+import ch.qos.logback.core.spi.FilterReply;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -67,6 +74,73 @@ public class AbstractServiceTest {
 
         public void awaitTermination() throws InterruptedException {
             latch.await(5, TimeUnit.SECONDS);
+        }
+    }
+
+    /** A service whose loop throws, as a defect in a service would. */
+    private static class FailingService extends AbstractService {
+        private final CountDownLatch terminated = new CountDownLatch(1);
+
+        protected FailingService(String name, Config options, Map<String, List<IResource>> resources) {
+            super(name, options, resources);
+        }
+
+        @Override
+        protected void run() {
+            try {
+                throw new IllegalStateException("test-induced defect");
+            } finally {
+                terminated.countDown();
+            }
+        }
+    }
+
+    /**
+     * Sees the ERROR call of the failing service before any other filter and takes it out of the
+     * log, so the test harness, which fails a test on an unexpected ERROR, never sees it. Records
+     * the call's format and the throwable it was made with: logback hands a trailing throwable
+     * argument to the filter as the last parameter, not yet as {@code t}.
+     */
+    private static class ErrorCallRecorder extends TurboFilter {
+        volatile String message;
+        volatile Throwable throwable;
+
+        @Override
+        public FilterReply decide(Marker marker, Logger logger, Level level, String format,
+                                  Object[] params, Throwable t) {
+            if (level != Level.ERROR || message != null) {
+                return FilterReply.NEUTRAL;
+            }
+            message = format;
+            if (t != null) {
+                throwable = t;
+            } else if (params != null && params.length > 0 && params[params.length - 1] instanceof Throwable last) {
+                throwable = last;
+            }
+            return FilterReply.DENY;
+        }
+    }
+
+    @Test
+    void anExceptionFromRunIsLoggedWithItsStackTraceAndStopsTheServiceWithError() throws InterruptedException {
+        FailingService service = new FailingService("failing-service", config, resources);
+        LoggerContext loggerContext = (LoggerContext) LoggerFactory.getILoggerFactory();
+        ErrorCallRecorder recorder = new ErrorCallRecorder();
+        recorder.start();
+        loggerContext.getTurboFilterList().add(0, recorder);
+        try {
+            service.start();
+            assertTrue(service.terminated.await(5, TimeUnit.SECONDS));
+            await().atMost(2, TimeUnit.SECONDS).untilAsserted(() ->
+                assertEquals(IService.State.ERROR, service.getCurrentState()));
+
+            // The cause of an exception that left run() is unknown to the service, so the log
+            // line carries the trace that finds it - at ERROR, where a production run sees it.
+            assertEquals("{} stopped with ERROR", recorder.message);
+            assertNotNull(recorder.throwable, "the stack trace is part of the ERROR line");
+            assertEquals("test-induced defect", recorder.throwable.getMessage());
+        } finally {
+            loggerContext.getTurboFilterList().remove(recorder);
         }
     }
 

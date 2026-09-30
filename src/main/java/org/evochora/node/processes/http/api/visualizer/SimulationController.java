@@ -253,8 +253,8 @@ public class SimulationController extends VisualizerBaseController {
 
             return mapper.writeValueAsString(root);
         } catch (Exception e) {
-            // If JSON manipulation fails, return original (shouldn't happen)
-            LOGGER.warn("Failed to add type mappings to metadata JSON", e);
+            // The JSON was built by this class from its own data, so a failure here is a defect
+            LOGGER.error("Failed to add type mappings to metadata JSON", e);
             return metadataJson;
         }
     }

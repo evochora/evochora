@@ -27,7 +27,7 @@ package org.evochora.runtime.spi;
  * The {@code IRandomProvider} passed to the constructor serves the sequential hooks a plugin may
  * implement in addition (for example {@link IBirthHandler}); a draw from it inside
  * {@code intercept} fails with a {@link org.evochora.runtime.ParallelWaveViolation}, which
- * aborts the tick.
+ * ends the run as the cause of a {@link org.evochora.runtime.SimulationFault}.
  *
  * @see InterceptionContext
  * @see ITickPlugin

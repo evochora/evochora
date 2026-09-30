@@ -12,8 +12,6 @@ import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
 import org.evochora.runtime.spi.thermodynamics.IThermodynamicPolicy;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * The core of the execution environment.
@@ -25,8 +23,6 @@ import org.slf4j.LoggerFactory;
  * threads, provided each organism is only accessed by one thread at a time.
  */
 public class VirtualMachine {
-
-    private static final Logger LOG = LoggerFactory.getLogger(VirtualMachine.class);
 
     /**
      * Failure reason recorded for an instruction that lost a write conflict. The instruction was
@@ -109,8 +105,7 @@ public class VirtualMachine {
             return;
         }
 
-        // Before anything else, so that no value of the previous instruction can reach this one -
-        // not even on the path through the catch-all below.
+        // Before anything else, so that no value of the previous instruction can reach this one.
         context.reset(organism);
 
         // A conflict loser is booked as a failure but not executed; it leaves no execution
@@ -132,141 +127,89 @@ public class VirtualMachine {
         // signature lookup, register reads and copies.
         boolean captureRegisterValues = !lostConflict && this.simulation.isCaptureExecutionDetails();
 
+        // Resolve operands (idempotent - can be called multiple times safely)
+        // Note: resolveOperands only PEEKs stack values, actual POPs happen in commitStackReads()
+        instruction.resolveOperands(this.environment);
+
         int[] rawArgs = null;
+        if (!lostConflict) {
+            // Shares the array resolveOperands filled: an instruction's argument
+            // cells are read once, and every consumer works from that one read.
+            rawArgs = instruction.getRawArguments();
+        }
         Map<Integer, Object> registerValuesBefore = null;
-        // Resolved once the instruction is known to run, and kept so that the catch-all below can
-        // still price whatever the instruction managed to do before it threw.
-        IThermodynamicPolicy policy = null;
-        // Guards the catch-all against charging the effects a second time when the exception was
-        // thrown after they were already priced.
-        boolean effectsCharged = false;
+        if (captureRegisterValues) {
+            // Collect register values BEFORE execution (for annotation display)
+            registerValuesBefore = collectRegisterValues(organism, instruction.getFullOpcodeId(), rawArgs);
+        }
 
-        try {
-            // Resolve operands (idempotent - can be called multiple times safely)
-            // Note: resolveOperands only PEEKs stack values, actual POPs happen in commitStackReads()
-            instruction.resolveOperands(this.environment);
+        // Commit the stack reads now that we know this instruction will execute. A conflict
+        // loser consumes nothing: it retries with the same operands next tick.
+        if (!lostConflict) {
+            instruction.commitStackReads();
+        }
 
-            if (!lostConflict) {
-                // Shares the array resolveOperands filled: an instruction's argument
-                // cells are read once, and every consumer works from that one read.
-                rawArgs = instruction.getRawArguments();
-            }
-            if (captureRegisterValues) {
-                // Collect register values BEFORE execution (for annotation display)
-                registerValuesBefore = collectRegisterValues(organism, instruction.getFullOpcodeId(), rawArgs);
-            }
+        IThermodynamicPolicy policy = this.simulation.getPolicyManager().getPolicy(instruction);
+        chargeBase(policy, organism);
 
-            // Commit the stack reads now that we know this instruction will execute. A conflict
-            // loser consumes nothing: it retries with the same operands next tick.
-            if (!lostConflict) {
-                instruction.commitStackReads();
-            }
-
-            policy = this.simulation.getPolicyManager().getPolicy(instruction);
-            chargeBase(policy, organism);
-
-            if (lostConflict) {
-                // Booked like any failed instruction (penalty, death checks below), but the
-                // instruction pointer is held so the write is retried next tick.
-                organism.instructionFailed(LOST_WRITE_CONFLICT);
-                organism.setSkipIpAdvance(true);
-            } else {
-                instruction.execute(context);
-            }
-
-            chargeEffects(policy, organism, context);
-            effectsCharged = true;
-
-            if (organism.isInstructionFailed()) {
-                int penalty = this.simulation.getOrganismConfig().getInt("error-penalty-cost");
-                organism.takeEr(penalty);
-            }
-
-            // Calculate total energy cost and entropy delta
-            int energyAfter = organism.getEr();
-            int totalEnergyCost = energyBefore - energyAfter;
-            int entropyAfter = organism.getSr();
-            int totalEntropyDelta = entropyAfter - entropyBefore;
-
-            // Store instruction execution data for history tracking. A conflict loser was not
-            // executed, so it leaves no execution record; its failure reason is the trace.
-            if (!lostConflict) {
-                Organism.InstructionExecutionData executionData = new Organism.InstructionExecutionData(
-                    instruction.getFullOpcodeId(),
-                    rawArgs,
-                    totalEnergyCost,
-                    totalEntropyDelta,
-                    registerValuesBefore
-                );
-                organism.setLastInstructionExecution(executionData);
-            }
-
-            if (organism.getEr() <= 0) {
-                organism.kill("Ran out of energy");
-                return;
-            }
-
-            // Strictly greater: max-entropy is a limit the organism may reach and still live,
-            // as the assembly specification and the overview both describe it. Energy is the
-            // other way round — zero is already fatal.
-            if (organism.getSr() > organism.getMaxEntropy()) {
-                organism.kill("Entropy limit exceeded");
-                return;
-            }
-
-            if (!organism.shouldSkipIpAdvance()) {
-                organism.advanceIpBy(instruction.getLength(this.environment), this.environment);
-            }
-        } catch (Exception e) {
-            // Global Catch-All to prevent simulation crash
-            organism.instructionFailed("VM Runtime Error: " + e);
-
-            // Whatever the instruction managed to do before it threw is priced like any other
-            // effect; what it did not do left no record and costs nothing. A throw from before the
-            // base values were charged leaves them unpaid.
+        if (lostConflict) {
+            // Booked like any failed instruction (penalty, death checks below), but the
+            // instruction pointer is held so the write is retried next tick.
+            organism.instructionFailed(LOST_WRITE_CONFLICT);
+            organism.setSkipIpAdvance(true);
+        } else if (!organism.isInstructionFailed()) {
+            // An instruction that failed while it was planned - an argument that names no
+            // register, an argument cell beyond the edge of a bounded world - is not executed:
+            // its operands are not what its code says, and it pays for the failure below.
             //
-            // Pricing is guarded in turn: this is the catch-all that keeps one organism's failure
-            // from taking the tick with it, and a policy that throws while pricing would escape
-            // through it. The instruction then pays its base values and the error penalty alone.
-            if (policy != null && !effectsCharged) {
-                try {
-                    chargeEffects(policy, organism, context);
-                } catch (Exception pricingFailure) {
-                    LOG.error("Thermodynamic policy {} failed to price the effects of organism {}: {}",
-                            policy.getClass().getName(), organism.getId(), pricingFailure.toString(), pricingFailure);
-                }
-            }
+            // Whatever the execution throws is a defect in the runtime, never the organism's
+            // doing: an organism's failure is always booked through instructionFailed and never
+            // thrown. The exception therefore leaves the tick and ends the run, and nothing here
+            // catches it.
+            instruction.execute(context);
+        }
 
-            // Apply penalty
+        chargeEffects(policy, organism, context);
+
+        if (organism.isInstructionFailed()) {
             int penalty = this.simulation.getOrganismConfig().getInt("error-penalty-cost");
             organism.takeEr(penalty);
+        }
 
-            // A throwing instruction still leaves an execution record: what ran and what it
-            // cost (penalty included) stays observable, even if the organism dies of it.
-            if (!lostConflict) {
-                organism.setLastInstructionExecution(new Organism.InstructionExecutionData(
-                    instruction.getFullOpcodeId(),
-                    rawArgs,
-                    energyBefore - organism.getEr(),
-                    organism.getSr() - entropyBefore,
-                    registerValuesBefore
-                ));
-            }
+        // Calculate total energy cost and entropy delta
+        int energyAfter = organism.getEr();
+        int totalEnergyCost = energyBefore - energyAfter;
+        int entropyAfter = organism.getSr();
+        int totalEntropyDelta = entropyAfter - entropyBefore;
 
-            if (organism.getEr() <= 0) {
-                organism.kill("Ran out of energy");
-                return;
-            }
+        // Store instruction execution data for history tracking. A conflict loser was not
+        // executed, so it leaves no execution record; its failure reason is the trace.
+        if (!lostConflict) {
+            Organism.InstructionExecutionData executionData = new Organism.InstructionExecutionData(
+                instruction.getFullOpcodeId(),
+                rawArgs,
+                totalEnergyCost,
+                totalEntropyDelta,
+                registerValuesBefore
+            );
+            organism.setLastInstructionExecution(executionData);
+        }
 
-            // Ensure IP advances so we don't get stuck in a loop on the same failing instruction
-            if (!organism.shouldSkipIpAdvance()) {
-                try {
-                    organism.advanceIpBy(instruction.getLength(this.environment), this.environment);
-                } catch (Exception ex) {
-                    // If even advancing fails (e.g. strict math error in geometry), kill the organism
-                    organism.kill("Fatal VM Error: " + e.getMessage());
-                }
-            }
+        if (organism.getEr() <= 0) {
+            organism.kill("Ran out of energy");
+            return;
+        }
+
+        // Strictly greater: max-entropy is a limit the organism may reach and still live,
+        // as the assembly specification and the overview both describe it. Energy is the
+        // other way round — zero is already fatal.
+        if (organism.getSr() > organism.getMaxEntropy()) {
+            organism.kill("Entropy limit exceeded");
+            return;
+        }
+
+        if (!organism.shouldSkipIpAdvance()) {
+            organism.advanceIpBy(instruction.getLength(this.environment), this.environment);
         }
     }
 
