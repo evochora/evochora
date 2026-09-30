@@ -12,7 +12,11 @@ import org.evochora.runtime.isa.instructions.NopInstruction;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
+import org.evochora.runtime.spi.DeathContext;
+import org.evochora.runtime.spi.IBirthHandler;
+import org.evochora.runtime.spi.IDeathHandler;
 import org.evochora.runtime.spi.IInstructionInterceptor;
+import org.evochora.runtime.spi.ITickPlugin;
 import org.evochora.runtime.spi.InterceptionContext;
 import org.evochora.runtime.thermodynamics.ThermodynamicPolicyManager;
 import org.junit.jupiter.api.AfterEach;
@@ -153,6 +157,96 @@ class SimulationFaultTest {
             .isInstanceOf(SimulationFault.class)
             .cause()
             .isInstanceOf(IllegalStateException.class)
+            .hasMessage(DEFECT);
+    }
+    /** A plugin of every kind the tick loop runs, each one throwing when it is called. */
+    private static final class ThrowingPlugin implements ITickPlugin, IBirthHandler, IDeathHandler,
+            IInstructionInterceptor {
+        @Override
+        public void execute(Simulation simulation) {
+            throw new IllegalStateException(DEFECT);
+        }
+
+        @Override
+        public void onBirth(Organism child, Environment environment) {
+            throw new IllegalStateException(DEFECT);
+        }
+
+        @Override
+        public void onDeath(DeathContext context) {
+            throw new IllegalStateException(DEFECT);
+        }
+
+        @Override
+        public void intercept(InterceptionContext context) {
+            throw new IllegalStateException(DEFECT);
+        }
+
+        @Override
+        public byte[] saveState() {
+            return new byte[0];
+        }
+
+        @Override
+        public void loadState(byte[] state) {
+            // Stateless
+        }
+    }
+
+    @Test
+    void faultInATickPluginNamesThePluginAndTheTick() {
+        createSimulation(true, 1, new int[]{5, 5});
+        simulation.addTickPlugin(new ThrowingPlugin());
+
+        assertThatThrownBy(simulation::tick)
+            .isInstanceOf(SimulationFault.class)
+            .hasMessageContaining(ThrowingPlugin.class.getName())
+            .hasMessageContaining("at tick 0")
+            .hasMessageNotContaining("for organism")
+            .cause()
+            .hasMessage(DEFECT);
+    }
+
+    @Test
+    void faultInAnInterceptorNamesTheOrganism() {
+        createSimulation(true, 1, new int[]{5, 5});
+        simulation.addInstructionInterceptor(new ThrowingPlugin());
+
+        assertThatThrownBy(simulation::tick)
+            .isInstanceOf(SimulationFault.class)
+            .hasMessageContaining(ThrowingPlugin.class.getName())
+            .hasMessageContaining("for organism " + organism.getId())
+            .cause()
+            .hasMessage(DEFECT);
+    }
+
+    @Test
+    void faultInABirthHandlerNamesTheNewborn() {
+        createSimulation(true, 1, new int[]{5, 5});
+        simulation.addBirthHandler(new ThrowingPlugin());
+        Organism newborn = Organism.create(simulation, new int[]{9, 9}, 100);
+        simulation.addNewOrganism(newborn);
+
+        assertThatThrownBy(simulation::tick)
+            .isInstanceOf(SimulationFault.class)
+            .hasMessageContaining(ThrowingPlugin.class.getName())
+            .hasMessageContaining("for organism " + newborn.getId())
+            .cause()
+            .hasMessage(DEFECT);
+    }
+
+    @Test
+    void faultInADeathHandlerNamesTheDeadOrganism() {
+        createSimulation(true, 1, new int[]{5, 5});
+        simulation.addDeathHandler(new ThrowingPlugin());
+        // One unit of energy: the base cost of the NOP at the start position kills the organism.
+        organism.takeEr(organism.getEr() - 1);
+
+        assertThatThrownBy(simulation::tick)
+            .isInstanceOf(SimulationFault.class)
+            .hasMessageContaining(ThrowingPlugin.class.getName())
+            .hasMessageContaining("for organism " + organism.getId())
+            .cause()
             .hasMessage(DEFECT);
     }
 }

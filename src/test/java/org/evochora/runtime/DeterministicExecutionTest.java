@@ -256,12 +256,18 @@ class DeterministicExecutionTest {
 
     @Test
     void rootProvider_drawFromInstructionInterceptor_failsTheTick() {
+        // The violation ends the tick as a fault that names the interceptor and the organism,
+        // with the violation as its cause.
         assertThatThrownBy(() -> tickWithRootDrawingInterceptor(1))
                 .as("single-thread wave")
+                .isInstanceOf(SimulationFault.class)
+                .cause()
                 .isInstanceOf(ParallelWaveViolation.class)
                 .hasMessageContaining("Organism.getRandom()");
         assertThatThrownBy(() -> tickWithRootDrawingInterceptor(2))
                 .as("multi-thread wave: the pool propagates the worker's exception unchanged")
+                .isInstanceOf(SimulationFault.class)
+                .cause()
                 .isInstanceOf(ParallelWaveViolation.class)
                 .hasMessageContaining("Organism.getRandom()");
     }

@@ -22,8 +22,6 @@ import org.evochora.runtime.spi.InterceptionContext;
 import org.evochora.runtime.spi.IRandomProvider;
 import org.evochora.runtime.spi.ITickPlugin;
 import org.evochora.runtime.thermodynamics.ThermodynamicPolicyManager;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import com.typesafe.config.Config;
 
@@ -40,7 +38,6 @@ import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
  * The number of threads used for a tick changes only its speed, never its result.
  */
 public class Simulation {
-    private static final Logger LOG = LoggerFactory.getLogger(Simulation.class);
     private final Environment environment;
     private final ThermodynamicPolicyManager policyManager;
     private final Config organismConfig;
@@ -426,14 +423,6 @@ public class Simulation {
     }
 
     /**
-     * Returns the logger for this class.
-     * @return The SLF4J logger.
-     */
-    public Logger getLogger() {
-        return LOG;
-    }
-
-    /**
      * Executes a single simulation tick: tick plugins run first, then all organisms plan and
      * execute under snapshot semantics (see {@link #planResolveExecute()}), then birth handlers
      * run for the organisms born in this tick.
@@ -454,12 +443,14 @@ public class Simulation {
         tickSeed = SplitMix64.mix(seed ^ SplitMix64.mix(currentTick));
 
         // Execute tick plugins before Plan-Resolve-Execute cycle
+        // A plugin, a handler or an interceptor that throws is a defect like a throwing
+        // instruction: what it left behind is no state a complete tick produces, so the tick ends
+        // here and the fault names the plugin, the tick and, where there is one, the organism.
         for (ITickPlugin plugin : tickPlugins) {
             try {
                 plugin.execute(this);
-            } catch (Exception e) {
-                LOG.warn("Tick plugin '{}' failed at tick {}: {}",
-                        plugin.getClass().getSimpleName(), currentTick, e.getMessage());
+            } catch (RuntimeException e) {
+                throw SimulationFault.inPlugin(currentTick, plugin, null, e);
             }
         }
 
@@ -470,9 +461,8 @@ public class Simulation {
             for (IBirthHandler handler : birthHandlers) {
                 try {
                     handler.onBirth(newborn, environment);
-                } catch (Exception e) {
-                    LOG.warn("Birth handler '{}' failed for organism {}: {}",
-                            handler.getClass().getSimpleName(), newborn.getId(), e.getMessage());
+                } catch (RuntimeException e) {
+                    throw SimulationFault.inPlugin(currentTick, handler, newborn, e);
                 }
             }
             // After the mutation operators, so that what they wrote moves into the newborn's label
@@ -606,13 +596,8 @@ public class Simulation {
                 for (IInstructionInterceptor interceptor : instructionInterceptors) {
                     try {
                         interceptor.intercept(context);
-                    } catch (ParallelWaveViolation e) {
-                        // The run is irreproducible from here on; never downgrade this to a warning.
-                        throw e;
-                    } catch (Exception e) {
-                        LOG.warn("Interceptor '{}' failed for organism {} at tick {}: {}",
-                                interceptor.getClass().getSimpleName(), organism.getId(),
-                                currentTick, e.getMessage());
+                    } catch (RuntimeException e) {
+                        throw SimulationFault.inPlugin(currentTick, interceptor, organism, e);
                     }
                 }
                 instruction = context.getInstruction();
@@ -679,9 +664,8 @@ public class Simulation {
         for (IDeathHandler handler : deathHandlers) {
             try {
                 handler.onDeath(deathContext);
-            } catch (Exception e) {
-                LOG.warn("Death handler '{}' failed for organism {}: {}",
-                        handler.getClass().getSimpleName(), organism.getId(), e.getMessage());
+            } catch (RuntimeException e) {
+                throw SimulationFault.inPlugin(currentTick, handler, organism, e);
             }
         }
         environment.clearOwnershipFor(organism.getId());

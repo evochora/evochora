@@ -4,9 +4,8 @@ package org.evochora.runtime;
  * Signals that code running inside the parallel wave of a tick used a facility reserved for the
  * sequential parts of a tick — for example, drew from the simulation's root random provider.
  * <p>
- * Such a violation makes the run depend on thread scheduling and therefore irreproducible, so it
- * is never downgraded to a warning: the tick loop lets it propagate even where it otherwise logs
- * and tolerates plugin failures.
+ * Such a violation makes the run depend on thread scheduling and therefore irreproducible. Like
+ * every exception a tick lets through, it ends the run.
  */
 public final class ParallelWaveViolation extends IllegalStateException {
 
