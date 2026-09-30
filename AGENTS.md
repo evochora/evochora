@@ -220,6 +220,8 @@ runtime      →  (nothing)
 - **Immutable Environment**: Environment is read-only during conflict resolution
 - **Opaque Cell Index**: The environment stores its grid in 32-cell tiles, and every world dimension must be a multiple of 32. Outside `org.evochora.runtime.model` no method takes or returns a layout index: code and plugins see cells through coordinates, the `CellView` handed to owned-cell visitors, and the flat-index visits used for serialization. Every order that can influence a result — mutation operators, label candidates, seeding, death handlers, persisted cells — is defined over the flat index, the row-major numbering of `EnvironmentProperties` in which cells are persisted, so results and persisted bytes do not depend on the memory layout; `DeterministicExecutionTest` and `ResumeForkNeutralityTest` prove this by running scenarios under tile sides 1 and 32
 - **Energy-First**: Every action costs energy; zero energy = organism death
+- **An Organism's Failure Is Never an Exception**: Whatever an organism can do wrong — an operand of the wrong type, an empty stack, a cell it may not touch, a step across the edge of a bounded world — is detected by an explicit check and reported through `organism.instructionFailed(reason)`; no instruction, helper or accessor throws for it, and no `catch` turns an exception into a failure. Every exception that escapes a tick is therefore a defect in the runtime or in a plugin: it ends the run (the engine goes to `ERROR`, the run is continued with the corrected build through `node resume`), and it is logged once, with its stack trace and the tick, organism and instruction it happened in
+- **Bounded Worlds**: In a world with topology `BOUND`, the instruction pointer, the data pointers and the birth position lie inside the world at every moment. A step that would leave it is the organism's failure: the instruction fails and the stall recovery moves the instruction pointer on, as it does when the skip budget is exhausted. A return address beyond the edge is a legitimate frame content; the `RET` to it is the step that fails
 - **Molecule Types**: Adding a molecule type touches four places and no more: its constant in `Config`, its registration in `MoleculeTypeRegistry` (name and value format), its colour in `MoleculeTypeColors`, and its entry in the visualizer's `MoleculeTypePalette.js`. Tests fail when the registration or the colour is missing; the visualizer's table has no test yet. Code may react to a particular type, but it must not enumerate types so that every new type forces an edit: no exhaustive `switch`, no "every type except …" list, no further per-type table. How a value is read and written follows the value format the type declares (`MoleculeValueFormat`), never the type itself. A central class such as `Molecule` carries no type-specific method in its public interface
 
 ## Data Pipeline (`src/main/java/org/evochora/datapipeline/`)
@@ -252,7 +254,7 @@ runtime      →  (nothing)
 - **Fatal Errors** (service/resource cannot serve any caller): `log.error("msg", args)` - `recordError(code, msg, details)` + THROW exception. Recording is required: a resource does not stop itself, so its state is invisible unless it is recorded
 - **Normal Shutdown** (InterruptedException): `log.debug("msg", args)` - re-throw exception - NO recordError()
 - **Retry Logic**: Use `log.debug()` during retries, then follow transient/fatal rules after exhaustion
-- **Stack Traces**: pass the exception ONLY for bugs and system faults (see below) - never for expected errors
+- **Stack Traces**: pass the exception ONLY when the cause is a bug or unknown (see below) - never when the message can say what went wrong
 - **Health Status**: Services/Resources are unhealthy if `errors.isEmpty() == false` or state == ERROR
 - **No Fallbacks**: Never hide problematic states or errors with fallback behavior — always fail early!
 
@@ -389,20 +391,21 @@ See `.agents/architecture-guidelines.md` for full review criteria.
 - `DEBUG`: All operations (connection pool started/closed, schema setup, delegate creation, message claim/ack, wrapper close, compression setup, sampling)
 
 **Format:**
-- Single-line logs only (no multi-line output)
+- Single-line logs only (no multi-line output). This is strict for every message without a stack trace; a stack trace is multi-line by nature and is the one exception
 - No phase/version prefixes in log messages
 - Include context: service name, resource name, consumer group, relevant parameters
 - For orchestration logs: use ServiceManager/Node for INFO, keep service/resource details at DEBUG
 
 **Stack Traces:**
-- **Expected errors** (configuration, user input, known failure modes): NO stack trace
+A stack trace exists to find out what went wrong. When the system already knows, it is noise: it hides
+the message that tells the operator what to do and makes a system that reacted exactly as intended look
+unstable. So the one question is whether the cause is known.
+- **Known cause** (configuration, user input, a resource that is gone, a broker that does not answer — everything the system anticipated and handles): NO stack trace
   - `log.warn("msg", args)` or `log.error("msg", args)` without exception parameter
-  - A stack trace adds nothing: the message already states the cause
-- **Bugs** (invariant violations, should-never-happen conditions): WITH stack trace
-  - `log.error("msg", args, new IllegalStateException("Invariant violation"))`
-  - These indicate bugs that need immediate attention and debugging
-- **System faults** (cause lies outside the application: pool cannot create connections, storage gone, broker unreachable): WITH stack trace
-  - `log.error("msg", args, exception)` - the chained causes carry the diagnosis, and no message can replace them
+  - The message says what went wrong and what to change. Where the cause reached the catch site as an exception — a pool that cannot connect, a file that cannot be read — the message carries the messages of the cause chain (`e.getMessage()` and the causes below it), because that is where the diagnosis is; the frames add nothing to it
+- **Bug** (invariant violation, should-never-happen condition) or **unknown cause** (a broad `catch` at a boundary that cannot tell a bug from anything else): WITH stack trace
+  - `log.error("msg", args, exception)` or `log.error("msg", args, new IllegalStateException("Invariant violation"))`
+  - The trace is for the developer: it is what finds the defect
   - At ERROR, not DEBUG: production runs at INFO, and a cause that is only visible at DEBUG is not visible when it matters
 - For transient errors: `log.warn("msg", args)` without exception parameter
 - For fatal errors: `log.error("msg", args)` then throw exception

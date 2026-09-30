@@ -17,6 +17,7 @@ table carries the whole order.
 
 | Document / Issue | Status | Summary |
 |---|---|---|
+| [RUNTIME_FAULT_SEPARATION](RUNTIME_FAULT_SEPARATION.md) | AGREED | An organism's failure is never an exception, every exception is a fault that ends the run and is logged once with its context; explicit checks for the paths an organism can reach today, bounded worlds made usable (#148), the stack-trace rule sharpened |
 | [PERSISTED_FORMAT_VERSIONING](PERSISTED_FORMAT_VERSIONING.md) | TO BE REVIEWED | Storage batches, run database and run metadata carry no format version, so data written by an incompatible build is read silently or fails without naming the cause; one version constant plus fail-fast reads |
 | [DEPENDENCY_UPDATE](DEPENDENCY_UPDATE.md) | TO BE REVIEWED | 24 of 32 dependencies behind, six by a major version; removal of the unused JLine pair, three build hygiene fixes, and a staged update procedure derived from what the test suite can and cannot verify |
 
