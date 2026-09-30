@@ -1,6 +1,7 @@
 package org.evochora.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.Map;
 
@@ -89,8 +90,7 @@ class CaptureExecutionDetailsTest {
     }
 
     /**
-     * Builds an instruction whose execution throws, driving the VM through its
-     * runtime-error path (failure booking, penalty, possible death).
+     * Builds an instruction whose execution throws, as a defect in an instruction would.
      */
     private Instruction throwingInstruction() {
         int nopOpcode = Instruction.getInstructionIdByName("NOP");
@@ -103,24 +103,18 @@ class CaptureExecutionDetailsTest {
     }
 
     @Test
-    void executionRecordIsPresentAfterVmRuntimeError() {
-        new VirtualMachine(simulation).execute(throwingInstruction(), new ExecutionContext(simulation.getEnvironment()));
+    void aThrowingInstructionLeavesNoRecordAndNoBooking() {
+        VirtualMachine vm = new VirtualMachine(simulation);
+        ExecutionContext context = new ExecutionContext(simulation.getEnvironment());
 
-        Organism.InstructionExecutionData record = organism.getLastInstructionExecution();
-        assertThat(organism.isInstructionFailed()).isTrue();
-        assertThat(record).isNotNull();
-        assertThat(record.opcodeId()).isEqualTo(Instruction.getInstructionIdByName("NOP"));
-        // The throw left no effect behind, so only the base energy (1) and the error penalty (10) apply.
-        assertThat(record.energyCost()).isEqualTo(11);
-    }
+        assertThatThrownBy(() -> vm.execute(throwingInstruction(), context))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessage("test-induced VM failure");
 
-    @Test
-    void executionRecordIsPresentWhenVmRuntimeErrorKills() {
-        organism.takeEr(organism.getEr() - 5);
-
-        new VirtualMachine(simulation).execute(throwingInstruction(), new ExecutionContext(simulation.getEnvironment()));
-
-        assertThat(organism.isDead()).isTrue();
-        assertThat(organism.getLastInstructionExecution()).isNotNull();
+        // A throw is a defect in the runtime, not the organism's failure: nothing is booked
+        // against the organism, and the instruction leaves no execution record.
+        assertThat(organism.isInstructionFailed()).isFalse();
+        assertThat(organism.getLastInstructionExecution()).isNull();
+        assertThat(organism.isDead()).isFalse();
     }
 }

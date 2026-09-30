@@ -286,10 +286,9 @@ public abstract class AbstractService implements IService, IMonitorable {
                 log.debug("Service thread interrupted, shutting down.");
                 Thread.currentThread().interrupt();
             } else {
-                log.error("{} stopped with ERROR due to {}",
-                    this.getClass().getSimpleName(),
-                    e.getClass().getSimpleName());
-                log.debug("Exception details:", e);
+                // The service's own loop let the exception through, so its cause is not one the
+                // service knows how to handle: a defect, and the trace is what finds it.
+                log.error("{} stopped with ERROR", this.getClass().getSimpleName(), e);
                 currentState.set(State.ERROR);
             }
         } finally {

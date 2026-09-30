@@ -594,7 +594,12 @@ public class Simulation {
             Organism organism = organisms.get(i);
             if (organism.isDead()) continue;
 
-            Instruction instruction = vm.plan(organism);
+            Instruction instruction;
+            try {
+                instruction = vm.plan(organism);
+            } catch (RuntimeException e) {
+                throw SimulationFault.inInstruction(currentTick, organism, null, e);
+            }
 
             if (context != null) {
                 context.reset(organism, instruction);
@@ -641,10 +646,16 @@ public class Simulation {
         if (!instruction.isProcessedInTick()) return;
         Organism organism = instruction.getOrganism();
 
-        vm.execute(instruction, executionContext);
-
-        boolean failedInExecution = organism.isInstructionFailed();
-        organism.skipNopCells(environment);
+        boolean failedInExecution;
+        try {
+            vm.execute(instruction, executionContext);
+            failedInExecution = organism.isInstructionFailed();
+            organism.skipNopCells(environment);
+        } catch (RuntimeException e) {
+            // A defect in the runtime, never the organism's doing (see SimulationFault); it ends
+            // the run with the organism and the instruction named.
+            throw SimulationFault.inInstruction(currentTick, organism, instruction, e);
+        }
 
         // Apply error penalty for post-execution failures (e.g., max-skip)
         // not already penalized inside vm.execute()
@@ -799,7 +810,12 @@ public class Simulation {
             // Every instruction is processed by the VM; losers are booked as failures there.
             instruction.setProcessedInTick(true);
             if (instruction instanceof IEnvironmentModifyingInstruction modInstruction) {
-                List<int[]> targetCoords = modInstruction.getTargetCoordinates();
+                List<int[]> targetCoords;
+                try {
+                    targetCoords = modInstruction.getTargetCoordinates();
+                } catch (RuntimeException e) {
+                    throw SimulationFault.inInstruction(currentTick, instruction.getOrganism(), instruction, e);
+                }
                 // Without a target cell (e.g. invalid arguments) the instruction runs, detects the
                 // error itself and fails gracefully.
                 if (targetCoords == null || targetCoords.isEmpty()) {

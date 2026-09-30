@@ -210,11 +210,14 @@ their own.
 ## Implementation order
 
 1. AGENTS.md rules and this document.
-2. Systematic test (red), then D5, D6, D7 (green).
-3. D1, D2, D3, D4 with their tests.
-4. D8 with its tests.
-5. D9: review of the 23 log calls.
-6. Benchmark, acceptance run; #165 closed as a duplicate; this document moved to
+2. D1, D2, D3 with their tests — first, because the systematic test can only go red once the
+   catch-all no longer swallows what the family catches let through.
+3. Systematic test (red once the family catches are removed), then D5, D6, D7 (green), with a
+   targeted test per path the audit found.
+4. D4 with its tests.
+5. D8 with its tests.
+6. D9: review of the 23 log calls.
+7. Benchmark, acceptance run; #165 closed as a duplicate; this document moved to
    `docs/outdated/proposals/accomplished/`.
 
 ## Related, not part of this work
