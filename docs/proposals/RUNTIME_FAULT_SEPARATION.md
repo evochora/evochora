@@ -161,6 +161,13 @@ has never been used in a production run; this is what makes it usable.
 - **Restore.** A checkpoint whose instruction pointer, data pointers or birth position lie outside the
   world is rejected with `InvalidRestoreState`, like every other violated invariant. Return addresses are
   checked for their dimension count only.
+- **A program can ask whether a cell exists.** A cell beyond the edge reads as empty and vacant
+  and is not passable, a combination no cell inside the world shows, so the edge was already
+  inferable from `IFP` and `IFV`. The conditional pair `IFX*`/`INX*` (register, immediate vector,
+  stack variants, like the other cell conditions) asks the question directly: it holds when the
+  cell at `DP` + vector exists, which in a toroidal environment every cell does. It is what lets a
+  program that meets a blockage decide between clearing a molecule and turning at the edge, and it
+  closes #168 together with the invariant above.
 - **The environment's guards stay.** The in-range accessors keep throwing `IllegalArgumentException` for
   a coordinate outside the world, in production, not as assertions: once no pointer leaves the world,
   such a throw is a fault in the runtime, and D1 treats it as one. An assertion would run only in tests

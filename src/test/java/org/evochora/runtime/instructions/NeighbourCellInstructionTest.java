@@ -232,6 +232,9 @@ class NeighbourCellInstructionTest {
         world(true);
         environment.setMolecule(data(1), new int[]{SIDE - 1, SIDE - 1});
         assertThat(holds("IFVI", 0, -1)).as("the cell has no owner").isTrue();
+
+        world(true);
+        assertThat(holds("IFXI", 1, 0)).as("every cell of a torus exists").isTrue();
     }
 
     @Test
@@ -321,6 +324,45 @@ class NeighbourCellInstructionTest {
         assertThat(holds("IFFI", 0, -1)).as("another's").isFalse();
     }
 
+    /**
+     * The one question that tells the edge from a blocking molecule: a cell beyond the edge reads
+     * as empty and vacant and is not passable, and no cell inside the world combines the three.
+     */
+    @Test
+    void aCellBeyondTheEdgeOfABoundedWorldDoesNotExist() {
+        world(false);
+        assertThat(holds("IFXI", 1, 0)).as("beyond the edge towards +x").isFalse();
+        world(false);
+        assertThat(holds("IFXI", 0, -1)).as("beyond the edge towards -y").isFalse();
+        world(false);
+        assertThat(holds("INXI", 1, 0)).as("the negation").isTrue();
+        world(false);
+        assertThat(holds("IFXI", -1, 0)).as("the neighbour inside").isTrue();
+        world(false);
+        assertThat(holds("IFXI", 0, 0)).as("the cell under the data pointer").isTrue();
+
+        // The register and stack variants ask the same question of the vector they are given
+        world(false);
+        organism.writeOperand(DR0, new int[]{1, 0});
+        int length = place("IFXR", data(DR0));
+        int next = placeAt(length, "ADDI", data(DR1), data(1));
+        placeAt(length + next, "WAIT");
+        simulation.tick();
+        assertThat(organism.isInstructionFailed()).isFalse();
+        assertThat(organism.getIp()[0] - CODE_START[0]).as("IFXR skipped the instruction behind it")
+                .isEqualTo(length + next);
+
+        world(false);
+        organism.getDataStack().push(new int[]{1, 0});
+        length = place("INXS");
+        next = placeAt(length, "ADDI", data(DR1), data(1));
+        placeAt(length + next, "WAIT");
+        simulation.tick();
+        assertThat(organism.isInstructionFailed()).isFalse();
+        assertThat(organism.getIp()[0] - CODE_START[0]).as("INXS held and ran the instruction behind it")
+                .isEqualTo(length);
+    }
+
     @Test
     void seekFailsAtTheEdgeOfABoundedWorld() {
         world(false);
@@ -401,7 +443,7 @@ class NeighbourCellInstructionTest {
 
     @Test
     void anOrganismWhoseDataPointerHasLeftTheWorldFailsToTestACell() {
-        for (String name : new String[]{"IFMI", "IFPI", "IFFI", "IFVI"}) {
+        for (String name : new String[]{"IFMI", "IFPI", "IFFI", "IFVI", "IFXI"}) {
             world(false);
             organism.setActiveDp(new int[]{SIDE, 0});
             place(name, data(-1), data(0));

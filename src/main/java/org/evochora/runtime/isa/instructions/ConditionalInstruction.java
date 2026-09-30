@@ -111,6 +111,10 @@ public class ConditionalInstruction extends Instruction {
         regPair(24, 25, 64, 65, "IFBR", "INBR", REGISTER);
         regPair(24, 25, 66, 67, "IFBI", "INBI", VECTOR);  // Note: uses VECTOR operand despite "I" suffix
         regPair(24, 25, 68, 69, "IFBS", "INBS", STACK);
+        // Operations 26 and 27: the cell exists / does not exist (beyond the edge of a bounded world)
+        regPair(26, 27, 70, 71, "IFXR", "INXR", REGISTER);
+        regPair(26, 27, 72, 73, "IFXI", "INXI", VECTOR);  // Note: uses VECTOR operand despite "I" suffix
+        regPair(26, 27, 74, 75, "IFXS", "INXS", STACK);
     }
 
     /**
@@ -249,6 +253,26 @@ public class ConditionalInstruction extends Instruction {
             int ownerId = environment.getOwnerIdAt(dp, vector);
             boolean isVacant = (ownerId == 0);
             boolean conditionMet = opName.startsWith("IFV") ? isVacant : !isVacant;
+            if (!conditionMet) {
+                organism.skipNextInstruction(environment);
+            }
+            return;
+        }
+        if (opName.startsWith("IFX") || opName.startsWith("INX")) {
+            // Existence check: a cell beyond the edge of a bounded world does not exist. It reads as
+            // empty and unowned and is not passable, which no cell inside the world combines; this
+            // is the direct question, so that a program can tell the edge from a blocking molecule
+            // without inferring it from two conditions. In a toroidal world every cell exists.
+            int[] vector = resolveDisplacementOperand(environment, opName);
+            if (vector == null) {
+                return;
+            }
+            int[] dp = dataPointerInsideWorld(environment);
+            if (dp == null) {
+                return;
+            }
+            boolean exists = environment.properties.isToroidal() || environment.contains(dp, vector);
+            boolean conditionMet = opName.startsWith("IFX") ? exists : !exists;
             if (!conditionMet) {
                 organism.skipNextInstruction(environment);
             }
