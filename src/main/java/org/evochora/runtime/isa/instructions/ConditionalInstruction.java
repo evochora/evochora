@@ -13,7 +13,6 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.NoSuchElementException;
 import java.util.Optional;
 
 import static org.evochora.runtime.isa.Instruction.OperandSource.*;
@@ -154,166 +153,160 @@ public class ConditionalInstruction extends Instruction {
     public void execute(ExecutionContext context) {
         Organism organism = context.getOrganism();
         Environment environment = context.getWorld();
-        try {
-            String opName = getName();
-            // Matched by full name ahead of everything below, which ends in a path that expects
-            // two operands and reads a name beginning with "IN" as a negated comparison — INSL
-            // among them.
-            if ("IFSL".equals(opName) || "INSL".equals(opName)) {
-                List<Operand> operands = resolveOperands(environment);
-                if (organism.isInstructionFailed()) {
-                    return;
-                }
-                if (operands.size() != 1) {
-                    organism.instructionFailed("Invalid operand count for " + opName);
-                    return;
-                }
-                Object value = organism.readOperand(operands.get(0).rawSourceId());
-                if (organism.isInstructionFailed()) {
-                    return;
-                }
-                boolean holdsPosition = !LocationValue.isNone((int[]) value);
-                boolean conditionMet = "IFSL".equals(opName) ? holdsPosition : !holdsPosition;
-                if (!conditionMet) {
-                    organism.skipNextInstruction(environment);
-                }
-                return;
-            }
-            if ("IFER".equals(opName) || "INER".equals(opName)) {
-                boolean prevFailed = organism.wasPreviousInstructionFailed();
-                boolean conditionMet = "IFER".equals(opName) ? prevFailed : !prevFailed;
-                if (!conditionMet) {
-                    organism.skipNextInstruction(environment);
-                }
-                return;
-            }
-            if (opName.startsWith("IFM") || opName.startsWith("INM")) {
-                int[] vector = resolveDisplacementOperand(environment, opName);
-                if (vector == null) {
-                    return;
-                }
-                int[] dp = dataPointerInsideWorld(environment);
-                if (dp == null) {
-                    return;
-                }
-                int ownerId = environment.getOwnerIdAt(dp, vector);
-                boolean isAccessible = organism.isCellAccessible(ownerId);
-                boolean conditionMet = opName.startsWith("IFM") ? isAccessible : !isAccessible;
-                if (!conditionMet) {
-                    organism.skipNextInstruction(environment);
-                }
-                return;
-            }
-            if (opName.startsWith("IFP") || opName.startsWith("INP")) {
-                int[] vector = resolveDisplacementOperand(environment, opName);
-                if (vector == null) {
-                    return;
-                }
-                int[] dp = dataPointerInsideWorld(environment);
-                if (dp == null) {
-                    return;
-                }
-                boolean isPassable = isPassable(environment, dp, vector);
-                boolean conditionMet = opName.startsWith("IFP") ? isPassable : !isPassable;
-                if (!conditionMet) {
-                    organism.skipNextInstruction(environment);
-                }
-                return;
-            }
-            if (opName.startsWith("IFF") || opName.startsWith("INF")) {
-                // Foreign ownership check: ownerId != 0 && ownerId != self.id
-                int[] vector = resolveDisplacementOperand(environment, opName);
-                if (vector == null) {
-                    return;
-                }
-                int[] dp = dataPointerInsideWorld(environment);
-                if (dp == null) {
-                    return;
-                }
-                int ownerId = environment.getOwnerIdAt(dp, vector);
-                boolean isForeign = (ownerId != 0 && ownerId != organism.getId());
-                boolean conditionMet = opName.startsWith("IFF") ? isForeign : !isForeign;
-                if (!conditionMet) {
-                    organism.skipNextInstruction(environment);
-                }
-                return;
-            }
-            if (opName.startsWith("IFV") || opName.startsWith("INV")) {
-                // Vacant ownership check: ownerId == 0
-                int[] vector = resolveDisplacementOperand(environment, opName);
-                if (vector == null) {
-                    return;
-                }
-                int[] dp = dataPointerInsideWorld(environment);
-                if (dp == null) {
-                    return;
-                }
-                int ownerId = environment.getOwnerIdAt(dp, vector);
-                boolean isVacant = (ownerId == 0);
-                boolean conditionMet = opName.startsWith("IFV") ? isVacant : !isVacant;
-                if (!conditionMet) {
-                    organism.skipNextInstruction(environment);
-                }
-                return;
-            }
-            if (opName.startsWith("IFB") || opName.startsWith("INB")) {
-                // Body check: does the data pointer lie within the own body on the line the vector names
-                int[] vector = resolveDisplacementOperand(environment, opName);
-                if (vector == null) {
-                    return;
-                }
-                boolean isWithinBody = isWithinOwnBody(organism, environment, vector);
-                boolean conditionMet = opName.startsWith("IFB") ? isWithinBody : !isWithinBody;
-                if (!conditionMet) {
-                    organism.skipNextInstruction(environment);
-                }
-                return;
-            }
+        String opName = getName();
+        // Matched by full name ahead of everything below, which ends in a path that expects
+        // two operands and reads a name beginning with "IN" as a negated comparison — INSL
+        // among them.
+        if ("IFSL".equals(opName) || "INSL".equals(opName)) {
             List<Operand> operands = resolveOperands(environment);
             if (organism.isInstructionFailed()) {
                 return;
             }
-            if (operands.size() != 2) {
-                organism.instructionFailed("Invalid operand count for conditional operation.");
+            if (operands.size() != 1) {
+                organism.instructionFailed("Invalid operand count for " + opName);
                 return;
             }
-
-            Operand op1 = operands.get(0);
-            Operand op2 = operands.get(1);
-            boolean conditionMet = false;
-
-            if (opName.startsWith("IFT") || opName.startsWith("INT")) { // Type comparison
-                int type1 = (op1.value() instanceof Integer i) ? Molecule.fromInt(i).type() : -1; // -1 for vectors
-                int type2 = (op2.value() instanceof Integer i) ? Molecule.fromInt(i).type() : -1;
-                if (opName.startsWith("INT")) {
-                    conditionMet = (type1 != type2);
-                } else {
-                    conditionMet = (type1 == type2);
-                }
-            } else if (op1.value() instanceof Integer i1 && op2.value() instanceof Integer i2) {
-                Molecule s1 = Molecule.fromInt(i1);
-                Molecule s2 = Molecule.fromInt(i2);
-                conditionMet = isEqualityComparison(opName)
-                        ? equalityHolds(opName, s1.type(), s1.toScalarValue(), s2.type(), s2.toScalarValue())
-                        : compare(opName, s1.toScalarValue(), s2.toScalarValue(), organism);
-            } else if (isEqualityComparison(opName)
-                    && op1.value() instanceof int[] v1 && op2.value() instanceof int[] v2) {
-                boolean areEqual = Arrays.equals(v1, v2);
-                conditionMet = opName.startsWith("IN") ? !areEqual : areEqual;
-            } else { // At least one vector, which enters as a DATA value, its magnitude
-                conditionMet = isEqualityComparison(opName)
-                        ? equalityHolds(opName, typeOf(op1.value()), magnitudeOf(op1.value()),
-                                typeOf(op2.value()), magnitudeOf(op2.value()))
-                        : compare(opName, magnitudeOf(op1.value()), magnitudeOf(op2.value()), organism);
+            Object value = organism.readOperand(operands.get(0).rawSourceId());
+            if (organism.isInstructionFailed()) {
+                return;
             }
-
+            boolean holdsPosition = !LocationValue.isNone((int[]) value);
+            boolean conditionMet = "IFSL".equals(opName) ? holdsPosition : !holdsPosition;
             if (!conditionMet) {
                 organism.skipNextInstruction(environment);
             }
-
-        } catch (NoSuchElementException e) {
-            organism.instructionFailed("Stack underflow during conditional operation.");
             return;
+        }
+        if ("IFER".equals(opName) || "INER".equals(opName)) {
+            boolean prevFailed = organism.wasPreviousInstructionFailed();
+            boolean conditionMet = "IFER".equals(opName) ? prevFailed : !prevFailed;
+            if (!conditionMet) {
+                organism.skipNextInstruction(environment);
+            }
+            return;
+        }
+        if (opName.startsWith("IFM") || opName.startsWith("INM")) {
+            int[] vector = resolveDisplacementOperand(environment, opName);
+            if (vector == null) {
+                return;
+            }
+            int[] dp = dataPointerInsideWorld(environment);
+            if (dp == null) {
+                return;
+            }
+            int ownerId = environment.getOwnerIdAt(dp, vector);
+            boolean isAccessible = organism.isCellAccessible(ownerId);
+            boolean conditionMet = opName.startsWith("IFM") ? isAccessible : !isAccessible;
+            if (!conditionMet) {
+                organism.skipNextInstruction(environment);
+            }
+            return;
+        }
+        if (opName.startsWith("IFP") || opName.startsWith("INP")) {
+            int[] vector = resolveDisplacementOperand(environment, opName);
+            if (vector == null) {
+                return;
+            }
+            int[] dp = dataPointerInsideWorld(environment);
+            if (dp == null) {
+                return;
+            }
+            boolean isPassable = isPassable(environment, dp, vector);
+            boolean conditionMet = opName.startsWith("IFP") ? isPassable : !isPassable;
+            if (!conditionMet) {
+                organism.skipNextInstruction(environment);
+            }
+            return;
+        }
+        if (opName.startsWith("IFF") || opName.startsWith("INF")) {
+            // Foreign ownership check: ownerId != 0 && ownerId != self.id
+            int[] vector = resolveDisplacementOperand(environment, opName);
+            if (vector == null) {
+                return;
+            }
+            int[] dp = dataPointerInsideWorld(environment);
+            if (dp == null) {
+                return;
+            }
+            int ownerId = environment.getOwnerIdAt(dp, vector);
+            boolean isForeign = (ownerId != 0 && ownerId != organism.getId());
+            boolean conditionMet = opName.startsWith("IFF") ? isForeign : !isForeign;
+            if (!conditionMet) {
+                organism.skipNextInstruction(environment);
+            }
+            return;
+        }
+        if (opName.startsWith("IFV") || opName.startsWith("INV")) {
+            // Vacant ownership check: ownerId == 0
+            int[] vector = resolveDisplacementOperand(environment, opName);
+            if (vector == null) {
+                return;
+            }
+            int[] dp = dataPointerInsideWorld(environment);
+            if (dp == null) {
+                return;
+            }
+            int ownerId = environment.getOwnerIdAt(dp, vector);
+            boolean isVacant = (ownerId == 0);
+            boolean conditionMet = opName.startsWith("IFV") ? isVacant : !isVacant;
+            if (!conditionMet) {
+                organism.skipNextInstruction(environment);
+            }
+            return;
+        }
+        if (opName.startsWith("IFB") || opName.startsWith("INB")) {
+            // Body check: does the data pointer lie within the own body on the line the vector names
+            int[] vector = resolveDisplacementOperand(environment, opName);
+            if (vector == null) {
+                return;
+            }
+            boolean isWithinBody = isWithinOwnBody(organism, environment, vector);
+            boolean conditionMet = opName.startsWith("IFB") ? isWithinBody : !isWithinBody;
+            if (!conditionMet) {
+                organism.skipNextInstruction(environment);
+            }
+            return;
+        }
+        List<Operand> operands = resolveOperands(environment);
+        if (organism.isInstructionFailed()) {
+            return;
+        }
+        if (operands.size() != 2) {
+            organism.instructionFailed("Invalid operand count for conditional operation.");
+            return;
+        }
+
+        Operand op1 = operands.get(0);
+        Operand op2 = operands.get(1);
+        boolean conditionMet = false;
+
+        if (opName.startsWith("IFT") || opName.startsWith("INT")) { // Type comparison
+            int type1 = (op1.value() instanceof Integer i) ? Molecule.fromInt(i).type() : -1; // -1 for vectors
+            int type2 = (op2.value() instanceof Integer i) ? Molecule.fromInt(i).type() : -1;
+            if (opName.startsWith("INT")) {
+                conditionMet = (type1 != type2);
+            } else {
+                conditionMet = (type1 == type2);
+            }
+        } else if (op1.value() instanceof Integer i1 && op2.value() instanceof Integer i2) {
+            Molecule s1 = Molecule.fromInt(i1);
+            Molecule s2 = Molecule.fromInt(i2);
+            conditionMet = isEqualityComparison(opName)
+                    ? equalityHolds(opName, s1.type(), s1.toScalarValue(), s2.type(), s2.toScalarValue())
+                    : compare(opName, s1.toScalarValue(), s2.toScalarValue(), organism);
+        } else if (isEqualityComparison(opName)
+                && op1.value() instanceof int[] v1 && op2.value() instanceof int[] v2) {
+            boolean areEqual = Arrays.equals(v1, v2);
+            conditionMet = opName.startsWith("IN") ? !areEqual : areEqual;
+        } else { // At least one vector, which enters as a DATA value, its magnitude
+            conditionMet = isEqualityComparison(opName)
+                    ? equalityHolds(opName, typeOf(op1.value()), magnitudeOf(op1.value()),
+                            typeOf(op2.value()), magnitudeOf(op2.value()))
+                    : compare(opName, magnitudeOf(op1.value()), magnitudeOf(op2.value()), organism);
+        }
+
+        if (!conditionMet) {
+            organism.skipNextInstruction(environment);
         }
     }
 

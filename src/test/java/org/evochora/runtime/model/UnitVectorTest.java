@@ -120,6 +120,25 @@ class UnitVectorTest {
     }
 
     /**
+     * Vector arithmetic leaves components of any size, and the absolute value of
+     * {@code Integer.MIN_VALUE} is itself negative in {@code int}. A sum taken in {@code int} would
+     * overflow: to 0 for two such components, which would pass the vector off as the zero vector,
+     * to 1 for two of them and a 1, which would pass it off as a unit vector, and in a world with an
+     * odd number of dimensions it would leave no axis at all. Each of them is a unit vector like
+     * any other vector with a largest component.
+     */
+    @Test
+    @Tag("unit")
+    void componentsOfAnySizeYieldAUnitVector() {
+        int min = Integer.MIN_VALUE;
+
+        assertThat(UnitVector.nearest(new int[]{min, min})).isEqualTo(new int[]{-1, 0});
+        assertThat(UnitVector.nearest(new int[]{min, min, min})).isEqualTo(new int[]{-1, 0, 0});
+        assertThat(UnitVector.nearest(new int[]{min, min, 1})).isEqualTo(new int[]{-1, 0, 0});
+        assertThat(UnitVector.nearest(new int[]{Integer.MAX_VALUE, min})).isEqualTo(new int[]{0, -1});
+    }
+
+    /**
      * The argument may be an organism's live register or an entry still held on its data stack, and
      * a conflict loser retries the same instruction with the same operands in the next tick. Writing
      * into it would change what the organism retries with.

@@ -1,7 +1,6 @@
 package org.evochora.runtime.isa.instructions;
 
 import java.util.List;
-import java.util.NoSuchElementException;
 
 import org.evochora.runtime.Config;
 import org.evochora.runtime.internal.services.ExecutionContext;
@@ -100,104 +99,39 @@ public class BitwiseInstruction extends Instruction {
     @Override
     public void execute(ExecutionContext context) {
         Organism organism = context.getOrganism();
-        try {
-            List<Operand> operands = resolveOperands(context.getWorld());
-            if (organism.isInstructionFailed()) {
+        List<Operand> operands = resolveOperands(context.getWorld());
+        if (organism.isInstructionFailed()) {
+            return;
+        }
+        String opName = getName();
+
+        // --- New: Rotation (ROT*), Population Count (PCN*), Bit Scan N-th (BSN*) ---
+        if (opName.startsWith("ROT")) {
+            handleRotate(opName, operands);
+            return;
+        }
+
+        if (opName.startsWith("PCN")) {
+            handlePopCount(opName, operands);
+            return;
+        }
+
+        if (opName.startsWith("BSN")) {
+            handleBitScanNth(opName, operands);
+            return;
+        }
+
+        // Handle NOT separately as it has only one operand
+        if (opName.contains("NOT")) {
+            if (operands.size() != 1) {
+                organism.instructionFailed("Invalid operand count for NOT operation.");
                 return;
             }
-            String opName = getName();
-
-            // --- New: Rotation (ROT*), Population Count (PCN*), Bit Scan N-th (BSN*) ---
-            if (opName.startsWith("ROT")) {
-                handleRotate(opName, operands);
-                return;
-            }
-
-            if (opName.startsWith("PCN")) {
-                handlePopCount(opName, operands);
-                return;
-            }
-
-            if (opName.startsWith("BSN")) {
-                handleBitScanNth(opName, operands);
-                return;
-            }
-
-            // Handle NOT separately as it has only one operand
-            if (opName.contains("NOT")) {
-                if (operands.size() != 1) {
-                    organism.instructionFailed("Invalid operand count for NOT operation.");
-                    return;
-                }
-                Operand op1 = operands.get(0);
-                if (op1.value() instanceof Integer i1) {
-                    Molecule s1 = org.evochora.runtime.model.Molecule.fromInt(i1);
-                    int resultValue = ~s1.toScalarValue();
-                    Object result = new Molecule(s1.type(), resultValue).toInt();
-
-                    if (op1.rawSourceId() != -1) {
-                        if (!writeOperand(op1.rawSourceId(), result)) {
-                            return;
-                        }
-                    } else {
-                        organism.pushData(result);
-                    }
-                } else {
-                    organism.instructionFailed("NOT operations only support scalar values.");
-                }
-                return;
-            }
-
-            // All other bitwise operations have two operands
-            if (operands.size() != 2) {
-                organism.instructionFailed("Invalid operand count for bitwise operation.");
-                return;
-            }
-
             Operand op1 = operands.get(0);
-            Operand op2 = operands.get(1);
-
-            if (op1.value() instanceof Integer i1 && op2.value() instanceof Integer i2) {
+            if (op1.value() instanceof Integer i1) {
                 Molecule s1 = org.evochora.runtime.model.Molecule.fromInt(i1);
-                Molecule s2;
-                if (op2.rawSourceId() == -1) { // Immediate
-                    Molecule imm = org.evochora.runtime.model.Molecule.fromInt(i2);
-                    s2 = new Molecule(s1.type(), imm.toScalarValue());
-                } else { // Register
-                    s2 = org.evochora.runtime.model.Molecule.fromInt(i2);
-                }
-
-                if (!Molecule.areValueCompatible(s1.type(), s2.type())) {
-                    organism.instructionFailed("Operand types must be value-compatible for bitwise operations.");
-                    return;
-                }
-
-                // For shifts, the second operand must be a scalar that counts as DATA
-                if (opName.contains("SH") && !Molecule.areValueCompatible(s2.type(), Config.TYPE_DATA)) {
-                    organism.instructionFailed("Shift amount must be a DATA-compatible scalar.");
-                    return;
-                }
-
-                long scalarResult;
-                String baseOp = opName.substring(0, opName.length() - 1); // "ANDR" -> "AND"
-
-                switch (baseOp) {
-                    case "NAD" -> scalarResult = ~(s1.toScalarValue() & s2.toScalarValue());
-                    case "AND" -> scalarResult = s1.toScalarValue() & s2.toScalarValue();
-                    case "OR" -> scalarResult = s1.toScalarValue() | s2.toScalarValue();
-                    case "XOR" -> scalarResult = s1.toScalarValue() ^ s2.toScalarValue();
-                    case "NOR" -> scalarResult = ~(s1.toScalarValue() | s2.toScalarValue());
-                    case "EQU" -> scalarResult = ~(s1.toScalarValue() ^ s2.toScalarValue());
-                    case "ADN" -> scalarResult = s1.toScalarValue() & ~s2.toScalarValue();
-                    case "ORN" -> scalarResult = s1.toScalarValue() | ~s2.toScalarValue();
-                    case "SHL" -> scalarResult = s1.toScalarValue() << s2.toScalarValue();
-                    case "SHR" -> scalarResult = s1.toScalarValue() >> s2.toScalarValue();
-                    default -> {
-                        organism.instructionFailed("Unknown bitwise operation: " + opName);
-                        return;
-                    }
-                }
-                Object result = new Molecule(s1.type(), (int)scalarResult).toInt();
+                int resultValue = ~s1.toScalarValue();
+                Object result = new Molecule(s1.type(), resultValue).toInt();
 
                 if (op1.rawSourceId() != -1) {
                     if (!writeOperand(op1.rawSourceId(), result)) {
@@ -206,14 +140,73 @@ public class BitwiseInstruction extends Instruction {
                 } else {
                     organism.pushData(result);
                 }
-
             } else {
-                organism.instructionFailed("Bitwise operations only support scalar values.");
+                organism.instructionFailed("NOT operations only support scalar values.");
+            }
+            return;
+        }
+
+        // All other bitwise operations have two operands
+        if (operands.size() != 2) {
+            organism.instructionFailed("Invalid operand count for bitwise operation.");
+            return;
+        }
+
+        Operand op1 = operands.get(0);
+        Operand op2 = operands.get(1);
+
+        if (op1.value() instanceof Integer i1 && op2.value() instanceof Integer i2) {
+            Molecule s1 = org.evochora.runtime.model.Molecule.fromInt(i1);
+            Molecule s2;
+            if (op2.rawSourceId() == -1) { // Immediate
+                Molecule imm = org.evochora.runtime.model.Molecule.fromInt(i2);
+                s2 = new Molecule(s1.type(), imm.toScalarValue());
+            } else { // Register
+                s2 = org.evochora.runtime.model.Molecule.fromInt(i2);
             }
 
-        } catch (NoSuchElementException e) {
-            organism.instructionFailed("Stack underflow during bitwise operation.");
-            return;
+            if (!Molecule.areValueCompatible(s1.type(), s2.type())) {
+                organism.instructionFailed("Operand types must be value-compatible for bitwise operations.");
+                return;
+            }
+
+            // For shifts, the second operand must be a scalar that counts as DATA
+            if (opName.contains("SH") && !Molecule.areValueCompatible(s2.type(), Config.TYPE_DATA)) {
+                organism.instructionFailed("Shift amount must be a DATA-compatible scalar.");
+                return;
+            }
+
+            long scalarResult;
+            String baseOp = opName.substring(0, opName.length() - 1); // "ANDR" -> "AND"
+
+            switch (baseOp) {
+                case "NAD" -> scalarResult = ~(s1.toScalarValue() & s2.toScalarValue());
+                case "AND" -> scalarResult = s1.toScalarValue() & s2.toScalarValue();
+                case "OR" -> scalarResult = s1.toScalarValue() | s2.toScalarValue();
+                case "XOR" -> scalarResult = s1.toScalarValue() ^ s2.toScalarValue();
+                case "NOR" -> scalarResult = ~(s1.toScalarValue() | s2.toScalarValue());
+                case "EQU" -> scalarResult = ~(s1.toScalarValue() ^ s2.toScalarValue());
+                case "ADN" -> scalarResult = s1.toScalarValue() & ~s2.toScalarValue();
+                case "ORN" -> scalarResult = s1.toScalarValue() | ~s2.toScalarValue();
+                case "SHL" -> scalarResult = s1.toScalarValue() << s2.toScalarValue();
+                case "SHR" -> scalarResult = s1.toScalarValue() >> s2.toScalarValue();
+                default -> {
+                    organism.instructionFailed("Unknown bitwise operation: " + opName);
+                    return;
+                }
+            }
+            Object result = new Molecule(s1.type(), (int)scalarResult).toInt();
+
+            if (op1.rawSourceId() != -1) {
+                if (!writeOperand(op1.rawSourceId(), result)) {
+                    return;
+                }
+            } else {
+                organism.pushData(result);
+            }
+
+        } else {
+            organism.instructionFailed("Bitwise operations only support scalar values.");
         }
     }
 

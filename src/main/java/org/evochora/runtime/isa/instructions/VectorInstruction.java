@@ -3,7 +3,6 @@ package org.evochora.runtime.isa.instructions;
 import java.util.Arrays;
 import java.util.Deque;
 import java.util.List;
-import java.util.NoSuchElementException;
 
 import org.evochora.runtime.Config;
 import org.evochora.runtime.internal.services.ExecutionContext;
@@ -68,33 +67,27 @@ public class VectorInstruction extends Instruction {
 
     @Override
     public void execute(ExecutionContext context) {
-        try {
-            String opName = getName();
-            List<Operand> operands = resolveOperands(context.getWorld());
-            if (organism.isInstructionFailed()) {
-                return;
-            }
+        String opName = getName();
+        List<Operand> operands = resolveOperands(context.getWorld());
+        if (organism.isInstructionFailed()) {
+            return;
+        }
 
-            int dims = context.getWorld().getShape().length;
-            switch (opName) {
-                case "VGTR", "VGTI" -> handleVectorGet(operands);
-                case "VGTS" -> handleVectorGetStack(operands);
-                case "VSTR", "VSTI" -> handleVectorSet(operands);
-                case "VSTS" -> handleVectorSetStack(operands);
-                case "VBLD" -> handleVectorBuild(operands, dims);
-                case "VBLS" -> handleVectorBuildStack(dims);  // Cannot use operands - dynamic count based on dims
-                case "B2VR", "B2VI" -> handleBitToVector(operands, dims);
-                case "B2VS" -> handleBitToVectorStack(operands, dims);
-                case "V2BR", "V2BI" -> handleVectorToBit(operands);
-                case "V2BS" -> handleVectorToBitStack(operands);
-                case "RTRR", "RTRI" -> handleVectorRotate(operands);
-                case "RTRS" -> handleVectorRotateStack(operands);
-                default -> organism.instructionFailed("Unknown vector instruction: " + opName);
-            }
-        } catch (NoSuchElementException e) {
-            organism.instructionFailed("Stack underflow during vector operation.");
-        } catch (ClassCastException | ArrayIndexOutOfBoundsException e) {
-            organism.instructionFailed("Invalid operand types for vector operation: " + e.getMessage());
+        int dims = context.getWorld().getShape().length;
+        switch (opName) {
+            case "VGTR", "VGTI" -> handleVectorGet(operands);
+            case "VGTS" -> handleVectorGetStack(operands);
+            case "VSTR", "VSTI" -> handleVectorSet(operands);
+            case "VSTS" -> handleVectorSetStack(operands);
+            case "VBLD" -> handleVectorBuild(operands, dims);
+            case "VBLS" -> handleVectorBuildStack(dims);  // Cannot use operands - dynamic count based on dims
+            case "B2VR", "B2VI" -> handleBitToVector(operands, dims);
+            case "B2VS" -> handleBitToVectorStack(operands, dims);
+            case "V2BR", "V2BI" -> handleVectorToBit(operands);
+            case "V2BS" -> handleVectorToBitStack(operands);
+            case "RTRR", "RTRI" -> handleVectorRotate(operands);
+            case "RTRS" -> handleVectorRotateStack(operands);
+            default -> organism.instructionFailed("Unknown vector instruction: " + opName);
         }
     }
 

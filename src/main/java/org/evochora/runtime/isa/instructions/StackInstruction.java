@@ -6,7 +6,6 @@ import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Organism;
 
 import java.util.Deque;
-import java.util.NoSuchElementException;
 
 /**
  * Handles stack manipulation instructions like DUP, SWAP, DROP, and ROT.
@@ -56,42 +55,37 @@ public class StackInstruction extends Instruction {
         Deque<Object> ds = organism.getDataStack();
         String opName = getName();
 
-        try {
-            switch (opName) {
-                case "DUP":
-                    if (ds.isEmpty()) { organism.instructionFailed("Stack Underflow for DUP."); return; }
-                    if (!organism.pushData(ds.peek())) { return; }
-                    break;
+        switch (opName) {
+            case "DUP":
+                if (ds.isEmpty()) { organism.instructionFailed("Stack Underflow for DUP."); return; }
+                if (!organism.pushData(ds.peek())) { return; }
+                break;
 
-                case "SWAP":
-                    if (ds.size() < 2) { organism.instructionFailed("Stack Underflow for SWAP."); return; }
-                    Object a = ds.pop();
-                    Object b = ds.pop();
-                    if (!organism.pushData(a)) { return; }
-                    if (!organism.pushData(b)) { return; }
-                    break;
+            case "SWAP":
+                if (ds.size() < 2) { organism.instructionFailed("Stack Underflow for SWAP."); return; }
+                Object a = ds.pop();
+                Object b = ds.pop();
+                if (!organism.pushData(a)) { return; }
+                if (!organism.pushData(b)) { return; }
+                break;
 
-                case "DROP":
-                    if (ds.isEmpty()) { organism.instructionFailed("Stack Underflow for DROP."); return; }
-                    ds.pop();
-                    break;
+            case "DROP":
+                if (ds.isEmpty()) { organism.instructionFailed("Stack Underflow for DROP."); return; }
+                ds.pop();
+                break;
 
-                case "ROT":
-                    if (ds.size() < 3) { organism.instructionFailed("Stack Underflow for ROT."); return; }
-                    Object c = ds.pop();
-                    Object b_rot = ds.pop();
-                    Object a_rot = ds.pop();
-                    if (!organism.pushData(b_rot)) { return; }
-                    if (!organism.pushData(c)) { return; }
-                    if (!organism.pushData(a_rot)) { return; }
-                    break;
+            case "ROT":
+                if (ds.size() < 3) { organism.instructionFailed("Stack Underflow for ROT."); return; }
+                Object c = ds.pop();
+                Object b_rot = ds.pop();
+                Object a_rot = ds.pop();
+                if (!organism.pushData(b_rot)) { return; }
+                if (!organism.pushData(c)) { return; }
+                if (!organism.pushData(a_rot)) { return; }
+                break;
 
-                default:
-                    organism.instructionFailed("Unknown stack instruction: " + opName);
-            }
-        } catch (NoSuchElementException e) {
-            organism.instructionFailed("Stack underflow during " + opName);
-            return;
+            default:
+                organism.instructionFailed("Unknown stack instruction: " + opName);
         }
     }
 

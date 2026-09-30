@@ -49,9 +49,12 @@ final class UnitVector {
      *         vector, and otherwise a newly allocated unit vector of the same length
      */
     static int[] nearest(int[] vector) {
-        int magnitudeSum = 0;
+        // Summed in long: Math.abs(Integer.MIN_VALUE) is negative in int, and vector arithmetic
+        // leaves components of any size, so an int sum could overflow to 0 or 1 and pass a vector
+        // off as the zero vector or as a unit vector.
+        long magnitudeSum = 0;
         for (int component : vector) {
-            magnitudeSum += Math.abs(component);
+            magnitudeSum += Math.abs((long) component);
         }
         if (magnitudeSum == 1) {
             return vector;
@@ -62,11 +65,11 @@ final class UnitVector {
 
         // The tied axes are collected while the largest magnitude is still being found: a larger
         // magnitude discards the candidates seen so far, an equal one joins them.
-        int largest = -1;
+        long largest = -1;
         int candidates = 0;
         int negativeCandidates = 0;
         for (int component : vector) {
-            int magnitude = Math.abs(component);
+            long magnitude = Math.abs((long) component);
             if (magnitude > largest) {
                 largest = magnitude;
                 candidates = 1;
@@ -86,7 +89,7 @@ final class UnitVector {
         int axis = -1;
         int seen = 0;
         for (int i = 0; i < vector.length; i++) {
-            if (Math.abs(vector[i]) == largest) {
+            if (Math.abs((long) vector[i]) == largest) {
                 if (seen == pick) {
                     axis = i;
                     break;
