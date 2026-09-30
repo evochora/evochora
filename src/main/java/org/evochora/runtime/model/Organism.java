@@ -1193,12 +1193,26 @@ public class Organism {
     }
 
     /**
-     * Reads the value of the molecule the instruction pointer stands on, whatever its type.
+     * Reads the molecule the instruction pointer stands on, in the packed form the environment
+     * stores it.
      * <p>
-     * Both places that ask stand inside the world: the position an instruction was read from,
-     * which the virtual machine has read through the same accessor, and the cell at which
-     * {@link #skipNopCells(Environment)} stopped without failing, which is a cell it has read.
-     * The accessor rejects a position outside the world.
+     * The pointer is read in place: no copy of it is handed out, because the cell is looked up
+     * and nothing else is done with the position. Every caller stands inside the world: the
+     * virtual machine fetches the instruction from where the pointer was left by the previous
+     * step, and {@link #valueAtIp(Environment)} asks for a cell that {@link #skipNopCells(Environment)}
+     * stopped on without failing, which is a cell it has read. The accessor rejects a position
+     * outside the world.
+     *
+     * @param environment The simulation environment.
+     * @return The packed molecule at the instruction pointer, {@code 0} for an empty cell.
+     * @throws IllegalArgumentException if the instruction pointer lies outside the world
+     */
+    public int moleculeAtIp(Environment environment) {
+        return environment.getMoleculeIntAt(ip);
+    }
+
+    /**
+     * Reads the value of the molecule the instruction pointer stands on, whatever its type.
      *
      * @param environment The simulation environment.
      * @return The signed value of the molecule at the instruction pointer, {@code 0} for an empty
@@ -1206,7 +1220,7 @@ public class Organism {
      * @throws IllegalArgumentException if the instruction pointer lies outside the world
      */
     private int valueAtIp(Environment environment) {
-        return Molecule.extractSignedValue(environment.getMoleculeIntAt(ip));
+        return Molecule.extractSignedValue(moleculeAtIp(environment));
     }
 
     /**

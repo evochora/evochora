@@ -58,8 +58,9 @@ public class VirtualMachine {
     public Instruction plan(Organism organism) {
         organism.resetTickState();
 
-        // The in-range accessor: the IP lies within the world, so no normalization and no allocation
-        int rawMol = this.environment.getMoleculeIntAt(organism.getIp());
+        // The organism reads its own pointer in place: the IP lies within the world, so no
+        // normalization, and no copy of the pointer is made for the lookup
+        int rawMol = organism.moleculeAtIp(this.environment);
 
         Instruction instruction;
 
