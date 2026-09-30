@@ -291,19 +291,7 @@ public final class OrganismStateConverter {
         int argIndex = 0;
         
         // Parse rawArguments using signature (only arguments that are actually in the code)
-        boolean beyondTheEdge = failed && Instruction.ARGUMENT_CELL_BEYOND_THE_EDGE.equals(failureReason);
         for (org.evochora.runtime.isa.InstructionArgumentType argType : argTypes) {
-            // A record ends before its operands do when the instruction stood at the edge of a
-            // bounded world and its cells reached beyond it. The runtime says so in the failure
-            // reason; the view then shows the operands that have no cell as missing. Without that
-            // reason a short record is a defect, which requireArgumentCells reports below.
-            int cellsNeeded = argType == org.evochora.runtime.isa.InstructionArgumentType.VECTOR
-                    ? envDimensions.length : 1;
-            if (beyondTheEdge && argIndex + cellsNeeded > rawArguments.size()) {
-                argumentTypesList.add("MISSING");
-                resolvedArgs.add(InstructionArgumentView.missing());
-                continue;
-            }
             if (argType == org.evochora.runtime.isa.InstructionArgumentType.REGISTER) {
                 // REGISTER: Extract register ID from raw argument
                 argumentTypesList.add("REGISTER");

@@ -27,6 +27,7 @@ import org.slf4j.LoggerFactory;
  * by exactly one thread. No organism may be accessed by multiple threads concurrently.
  */
 public class Organism {
+    private static final int[] EMPTY_INT_ARRAY = new int[0];
     private static final Logger LOG = LoggerFactory.getLogger(Organism.class);
 
     /**
@@ -959,38 +960,50 @@ public class Organism {
     }
 
     /**
-     * Reads the argument cells of the instruction the organism is executing into the given array:
-     * the cells behind the opcode at {@code ipBeforeFetch}, along {@code dvBeforeFetch}.
+     * Retrieves the raw integer values of an instruction's arguments from the environment.
+     * Uses the organism's {@code ipBeforeFetch} and {@code dvBeforeFetch} as starting position and direction.
      *
-     * @param cells receives one raw molecule value per argument cell; its length is the number of
-     *              argument cells the instruction has
+     * @param instructionLength The total length of the instruction (opcode + arguments).
      * @param environment The simulation environment.
-     * @return how many of the cells exist, see {@link #readArgumentCells(int[], Environment, int[], int[])}
+     * @return A list of raw integer values representing the arguments.
      */
-    public int readArgumentCells(int[] cells, Environment environment) {
-        return readArgumentCells(cells, environment, this.ipBeforeFetch, this.dvBeforeFetch);
+    public int[] getRawArgumentsFromEnvironment(int instructionLength, Environment environment) {
+        return getRawArgumentsFromEnvironment(instructionLength, environment, this.ipBeforeFetch, this.dvBeforeFetch);
     }
 
     /**
-     * Reads the argument cells that follow an opcode into the given array, starting from an
-     * explicit position and advancing along an explicit direction vector.
+     * Tells whether the argument cells of the instruction the organism is executing all exist:
+     * the cells follow the opcode at {@code ipBeforeFetch} along {@code dvBeforeFetch}, so they
+     * all exist exactly when the last one does. In a bounded world the last may lie beyond the
+     * edge. Asked of the environment with the organism's own position and direction, which the
+     * accessors for those hand out as copies.
+     *
+     * @param instructionLength The total length of the instruction (opcode + arguments).
+     * @param environment The simulation environment.
+     * @return {@code true} if every argument cell lies within the world
+     */
+    public boolean argumentCellsExist(int instructionLength, Environment environment) {
+        return environment.exists(this.ipBeforeFetch, this.dvBeforeFetch, instructionLength - 1);
+    }
+
+    /**
+     * Retrieves the raw integer values of an instruction's arguments from the environment,
+     * starting from an explicit position and advancing along an explicit direction vector.
      * <p>
      * Steps from cell to cell through the environment along the unit-vector DV, without
-     * allocating coordinates. In a bounded world the cells can reach beyond the edge, where no cell
-     * exists; the walk ends there, and the number it returns says how many cells it read. A caller
-     * that needs every argument compares that number with the array's length: the cells follow one
-     * another, so all of them exist exactly when the last one does. The entries behind the last
-     * existing cell keep the value {@code 0}. Nothing about the organism changes.
+     * allocating coordinates. A position outside a bounded world is a cell that does not exist:
+     * from there every argument reads as empty. Whether the argument cells exist is a question
+     * for the environment ({@link Environment#exists(int[], int[], int)}); this method only reads.
      *
-     * @param cells receives one raw molecule value per argument cell; its length is the number of
-     *              argument cells the instruction has
+     * @param instructionLength The total length of the instruction (opcode + arguments).
      * @param environment The simulation environment.
      * @param fromIp The starting position (opcode location).
      * @param withDv The direction vector for advancing to argument slots.
-     * @return the number of argument cells that exist, from {@code 0} to {@code cells.length}
+     * @return Raw integer values representing the arguments.
      */
-    public int readArgumentCells(int[] cells, Environment environment, int[] fromIp, int[] withDv) {
-        if (cells.length == 0) return 0;
+    public int[] getRawArgumentsFromEnvironment(int instructionLength, Environment environment, int[] fromIp, int[] withDv) {
+        int argCount = instructionLength - 1;
+        if (argCount <= 0) return EMPTY_INT_ARRAY;
 
         // The DV is a unit vector, so the first non-zero component is the only one, and its value
         // is the ±1 that decides the direction along that axis.
@@ -1009,16 +1022,14 @@ public class Organism {
         // A start outside a bounded world has no cell; the step keeps -1 for a bounded edge
         int index = (dimPos >= 0 && dimPos < inWorld) ? environment.getIndexFromCoordinate(fromIp) : -1;
 
-        for (int a = 0; a < cells.length; a++) {
+        int[] rawArgs = new int[argCount];
+        for (int a = 0; a < argCount; a++) {
             if (index >= 0) {
                 index = environment.stepIndex(index, dim, sign > 0);
             }
-            if (index < 0) {
-                return a;
-            }
-            cells[a] = environment.getMoleculeInt(index);
+            rawArgs[a] = index >= 0 ? environment.getMoleculeInt(index) : 0;
         }
-        return cells.length;
+        return rawArgs;
     }
 
     /**

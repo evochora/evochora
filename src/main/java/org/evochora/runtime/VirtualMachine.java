@@ -293,12 +293,8 @@ public class VirtualMachine {
         }
 
         int length = Instruction.getInstructionLengthById(opcodeId, this.environment);
-        int[] rawArgs = new int[length - 1];
-        int existing = organism.readArgumentCells(rawArgs, this.environment, organism.getIp(), organism.getDv());
-        if (existing < rawArgs.length) {
-            // The preview shows what the organism will find: the cells up to the edge of the world
-            rawArgs = java.util.Arrays.copyOf(rawArgs, existing);
-        }
+        int[] rawArgs = organism.getRawArgumentsFromEnvironment(
+                length, this.environment, organism.getIp(), organism.getDv());
         Map<Integer, Object> registerValues = collectRegisterValues(organism, opcodeId, rawArgs);
 
         return new Organism.InstructionExecutionData(opcodeId, rawArgs, 0, 0, registerValues);

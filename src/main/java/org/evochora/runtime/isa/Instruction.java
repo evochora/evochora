@@ -3,7 +3,6 @@
 package org.evochora.runtime.isa;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -68,8 +67,8 @@ public abstract class Instruction {
 
     /**
      * Failure reason of an instruction whose argument cells reach beyond the edge of a bounded
-     * world. The instruction's record then holds the cells that exist, fewer than its signature
-     * names; readers of the record use this reason to tell that shortfall from a defect.
+     * world. Its record holds the argument cells as every record does, one per slot; the slots
+     * beyond the edge read as empty, and this reason says why the instruction did not run.
      */
     public static final String ARGUMENT_CELL_BEYOND_THE_EDGE = "Argument cell lies beyond the edge of the world";
 
@@ -349,20 +348,17 @@ public abstract class Instruction {
         // The argument cells are fetched here, once per instruction. Operand resolution
         // below and the execution record both work from this array; nothing else reads the
         // code stream on their behalf.
-        int argumentCells = getLength(environment) - 1;
-        int[] cells = argumentCells > 0 ? new int[argumentCells] : EMPTY_RAW_ARGUMENTS;
-        int existing = organism.readArgumentCells(cells, environment);
-        if (existing < argumentCells) {
-            // In a bounded world the cells reach beyond the edge, where no cell exists. Read as
-            // empty they would hand the instruction values it never had - an empty cell as a
-            // register argument names %DR0 - so the instruction fails here, while it is planned,
-            // and is not executed. The record keeps the cells that do exist.
-            this.rawArguments = Arrays.copyOf(cells, existing);
+        int length = getLength(environment);
+        this.rawArguments = organism.getRawArgumentsFromEnvironment(length, environment);
+        if (!organism.argumentCellsExist(length, environment)) {
+            // In a bounded world the argument cells can reach beyond the edge, where no cell
+            // exists. Read as empty they would hand the instruction values it never had - an empty
+            // cell as a register argument names %DR0 - so the instruction fails here, while it is
+            // planned, and is not executed. The last cell stands for all: they follow one another.
             organism.instructionFailed(ARGUMENT_CELL_BEYOND_THE_EDGE);
             this.cachedOperands = List.of();
             return this.cachedOperands;
         }
-        this.rawArguments = cells;
 
         List<Operand> resolved = new ArrayList<>(sources.size());
         int dims = environment.properties.getDimensions();

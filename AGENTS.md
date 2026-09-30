@@ -162,7 +162,8 @@ projects that last make their decisions; everything built has to be carried for 
 - **A clean way or no way.** When no option can be implemented cleanly within the existing
   architecture, the idea is dropped or parked under `docs/proposals/ideas/`, not built in a
   reduced form. Half of a feature is worse than none, because it fixes the design before the
-  design is understood.
+  design is understood. A flaw does not become clean by moving to another layer, and a flaw
+  the proposer names is the objection, not a footnote.
 - **Decisions are recorded, not implied.** A decision with scope becomes a proposal
   (`docs/proposals/`), and a rejected one is kept with its reason; a small decision made along
   the way is stated in the commit message. Code never carries a decision that nothing recorded.

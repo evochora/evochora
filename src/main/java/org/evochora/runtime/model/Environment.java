@@ -327,20 +327,43 @@ public class Environment implements IEnvironmentReader {
     }
 
     /**
-     * Tells whether the cell a displacement away from a position exists; see
-     * {@link #getMoleculeIntAt(int[], int[])} for the contract. In a toroidal world it always
-     * does; in a bounded world a step across the edge reaches no cell. The same question as
-     * {@link #exists(int[])}, asked without building the neighbour's coordinate.
+     * Tells whether the cell one step away from a position exists: the same question as
+     * {@link #exists(int[])} for a neighbour, asked without building its coordinate.
      *
-     * @param position     the coordinate to start from; every component lies within the world
+     * @param position     the coordinate to start from
      * @param displacement the zero vector or a unit vector, one component per dimension
      * @return {@code true} if the displaced cell lies within the world
-     * @throws IllegalArgumentException if the position lies outside the world, or if the
-     *                                  displacement is neither the zero vector nor a unit vector
-     *                                  of the world's dimensions
      */
     public boolean exists(int[] position, int[] displacement) {
-        return indexOfDisplaced(position, displacement) >= 0;
+        return exists(position, displacement, 1);
+    }
+
+    /**
+     * Tells whether the cell a number of steps away from a position, along a direction of travel,
+     * exists: the last argument cell of an instruction, for example, which lies as many steps
+     * behind the opcode as the instruction has argument cells. In a toroidal world every cell
+     * exists; in a bounded world the position has to lie within it, and the steps may lead beyond
+     * the edge.
+     *
+     * @param position  the coordinate to start from
+     * @param direction the zero vector or a unit vector, one component per dimension
+     * @param steps     how many steps to take, zero or more
+     * @return {@code true} if the cell that many steps away lies within the world
+     */
+    public boolean exists(int[] position, int[] direction, int steps) {
+        if (properties.isToroidal()) {
+            return true;
+        }
+        if (!contains(position)) {
+            return false;
+        }
+        for (int axis = 0; axis < direction.length; axis++) {
+            if (direction[axis] != 0) {
+                int reached = position[axis] + direction[axis] * steps;
+                return reached >= 0 && reached < shape[axis];
+            }
+        }
+        return true;
     }
 
     /**
