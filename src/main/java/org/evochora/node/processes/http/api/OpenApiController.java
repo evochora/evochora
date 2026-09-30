@@ -81,20 +81,17 @@ public class OpenApiController extends AbstractController {
     )
     private void getOpenApiSpec(final Context ctx) {
         try {
-            // Load the generated OpenAPI file from classpath
-            final InputStream openApiStream = getClass().getClassLoader()
-                .getResourceAsStream("openapi-plugin/openapi-default.json");
-
-            if (openApiStream == null) {
-                LOGGER.warn("OpenAPI file not found in classpath");
-                ctx.status(HttpStatus.NOT_FOUND).result("OpenAPI specification not found");
-                return;
+            // Load the generated OpenAPI file from classpath and parse it
+            final ObjectNode openApiJson;
+            try (InputStream openApiStream = getClass().getClassLoader()
+                    .getResourceAsStream("openapi-plugin/openapi-default.json")) {
+                if (openApiStream == null) {
+                    LOGGER.warn("OpenAPI file not found in classpath");
+                    ctx.status(HttpStatus.NOT_FOUND).result("OpenAPI specification not found");
+                    return;
+                }
+                openApiJson = (ObjectNode) new ObjectMapper().readTree(openApiStream);
             }
-
-            // Parse JSON
-            final ObjectMapper mapper = new ObjectMapper();
-            final ObjectNode openApiJson = (ObjectNode) mapper.readTree(openApiStream);
-            openApiStream.close();
 
             // Get paths node
             final JsonNode pathsNode = openApiJson.get("paths");

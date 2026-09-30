@@ -171,39 +171,41 @@ class AncestryIndexTest {
     void theIndexOfARunNobodyAskedForWithinTheIdleTimeIsDroppedWhenAnotherRunIsAskedFor() throws Exception {
         final FakeRun run = new FakeRun().with(1, 0, 2, 1);
         final long idle = 1_000;
-        final AncestryIndexes indexes =
-            new AncestryIndexes(run.provider, run.executor, PAGE, () -> run.nanos, 2, idle);
-        final AncestryIndex first = indexes.forRun("run-a").index();
+        try (AncestryIndexes indexes =
+                 new AncestryIndexes(run.provider, run.executor, PAGE, () -> run.nanos, 2, idle)) {
+            final AncestryIndex first = indexes.forRun("run-a").index();
 
-        run.nanos += idle;
-        indexes.forRun("run-b");
-        assertThat(indexes.keptRuns()).as("asked for within the idle time").isEqualTo(2);
-        assertThat(indexes.forRun("run-a").index()).isSameAs(first);
+            run.nanos += idle;
+            indexes.forRun("run-b");
+            assertThat(indexes.keptRuns()).as("asked for within the idle time").isEqualTo(2);
+            assertThat(indexes.forRun("run-a").index()).isSameAs(first);
 
-        run.nanos += idle + 1;
-        assertThat(indexes.forRun("run-a").index()).as("never dropped by its own request").isSameAs(first);
-        assertThat(indexes.keptRuns()).as("run-b rested longer than the idle time").isEqualTo(1);
+            run.nanos += idle + 1;
+            assertThat(indexes.forRun("run-a").index()).as("never dropped by its own request").isSameAs(first);
+            assertThat(indexes.keptRuns()).as("run-b rested longer than the idle time").isEqualTo(1);
 
-        run.nanos += idle + 1;
-        indexes.forRun("run-b");
-        assertThat(indexes.keptRuns()).isEqualTo(1);
-        assertThat(indexes.forRun("run-a").index()).as("read anew").isNotSameAs(first);
+            run.nanos += idle + 1;
+            indexes.forRun("run-b");
+            assertThat(indexes.keptRuns()).isEqualTo(1);
+            assertThat(indexes.forRun("run-a").index()).as("read anew").isNotSameAs(first);
+        }
     }
 
     @Test
     void aDroppedIndexReadsNothingMore() throws Exception {
         final FakeRun run = new FakeRun().with(1, 0, 2, 1);
-        final AncestryIndexes indexes =
-            new AncestryIndexes(run.provider, run.executor, PAGE, () -> run.nanos, 2, 1_000);
-        final AncestryIndex dropped = indexes.forRun("run-a").index();
-        dropped.requestCatchUp(2);
+        try (AncestryIndexes indexes =
+                 new AncestryIndexes(run.provider, run.executor, PAGE, () -> run.nanos, 2, 1_000)) {
+            final AncestryIndex dropped = indexes.forRun("run-a").index();
+            dropped.requestCatchUp(2);
 
-        run.nanos += 1_001;
-        indexes.forRun("run-b");
-        run.executor.runAll();
+            run.nanos += 1_001;
+            indexes.forRun("run-b");
+            run.executor.runAll();
 
-        assertThat(dropped.snapshot().stateFor(2)).isEqualTo(AncestryIndex.State.LOADING);
-        verify(run.reader, never()).readParents(anyInt(), anyInt());
+            assertThat(dropped.snapshot().stateFor(2)).isEqualTo(AncestryIndex.State.LOADING);
+            verify(run.reader, never()).readParents(anyInt(), anyInt());
+        }
     }
 
     @Test

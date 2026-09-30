@@ -344,19 +344,20 @@ class DescentQueryTest {
 
     @Test
     void withoutAttributionArraysEveryNewVersionIsCountedFromScratch() throws Exception {
-        final DescentQuery none = new AncestryIndexes(run.provider, run.executor, 3, () -> run.nanos, 0)
-            .forRun(FakeRun.RUN_ID);
-        none.view(7);
-        run.executor.runAll();
-        none.sizesOf(none.index().snapshot(), 1);
+        try (AncestryIndexes indexes = new AncestryIndexes(run.provider, run.executor, 3, () -> run.nanos, 0)) {
+            final DescentQuery none = indexes.forRun(FakeRun.RUN_ID);
+            none.view(7);
+            run.executor.runAll();
+            none.sizesOf(none.index().snapshot(), 1);
 
-        run.with(8, 3);
-        none.view(8);
-        run.executor.runAll();
-        final DescentQuery.LineSizes sizes = none.sizesOf(none.index().snapshot(), 1);
+            run.with(8, 3);
+            none.view(8);
+            run.executor.runAll();
+            final DescentQuery.LineSizes sizes = none.sizesOf(none.index().snapshot(), 1);
 
-        assertThat(none.fullCounts()).isEqualTo(2);
-        assertThat(sizes.sizes()).containsExactly(4, 2);
+            assertThat(none.fullCounts()).isEqualTo(2);
+            assertThat(sizes.sizes()).containsExactly(4, 2);
+        }
     }
 
     @Test
