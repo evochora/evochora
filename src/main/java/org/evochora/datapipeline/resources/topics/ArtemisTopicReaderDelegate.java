@@ -14,6 +14,7 @@ import org.apache.activemq.artemis.api.jms.ActiveMQJMSConstants;
 import org.evochora.datapipeline.api.contracts.TopicEnvelope;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.utils.JmsUtils;
+import org.evochora.datapipeline.utils.CauseChain;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -121,7 +122,8 @@ public class ArtemisTopicReaderDelegate<T extends Message>
                 // worry about unsubscribing, as the old subscription will simply be abandoned.
                 this.consumer.close();
             } catch (JMSException e) {
-                log.warn("Error closing invalidated Artemis consumer for subscription '{}'. A new consumer will be created anyway.", activeSubscriptionName, e);
+                log.warn("Error closing invalidated Artemis consumer for subscription '{}': {}. A new consumer will be created anyway.",
+                        activeSubscriptionName, CauseChain.messages(e));
             } finally {
                 this.consumer = null;
                 this.activeTopicName = null;

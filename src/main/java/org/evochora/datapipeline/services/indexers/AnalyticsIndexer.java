@@ -348,8 +348,9 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
                 writePluginMetadata(runId, plugin);
                 
             } catch (Exception e) {
-                // Initializing writes to storage, so a failure here is a system fault whose chained
-                // causes carry the diagnosis; the service's own error log names only the wrapper
+                // Initializing writes to storage; what fails in there is not known at this point -
+                // storage or a defect of the plugin - so the trace stays. The service's own error
+                // log names only the wrapper
                 log.error("Failed to initialize analytics plugin: {}", plugin.getMetricId(), e);
                 throw new RuntimeException("Failed to initialize plugin: " + plugin.getMetricId(), e);
             }

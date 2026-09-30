@@ -243,7 +243,8 @@ public abstract class AbstractService implements IService, IMonitorable {
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            log.error("{} interrupted while waiting for service to stop before restarting", this.getClass().getSimpleName(), e);
+            // An interruption is the shutdown signal, not a failure of the restart
+            log.debug("{} interrupted while waiting for service to stop before restarting", this.getClass().getSimpleName());
             // Restore STOPPED state if interruption occurs
             currentState.set(State.STOPPED);
             return;

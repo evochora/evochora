@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Map;
 
 import org.evochora.node.processes.AbstractProcess;
+import org.evochora.datapipeline.utils.CauseChain;
 import org.h2.tools.Server;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -131,7 +132,9 @@ public class H2ConsoleProcess extends AbstractProcess {
             }
 
         } catch (final SQLException e) {
-            LOGGER.error("Failed to start H2 web console", e);
+            // Known ground: the port, the address or the database the console is configured for;
+            // the causes say which
+            LOGGER.error("Failed to start H2 web console: {}", CauseChain.messages(e));
             throw new RuntimeException("Failed to start H2 web console", e);
         }
     }
