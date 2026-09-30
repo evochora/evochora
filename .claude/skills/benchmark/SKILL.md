@@ -76,6 +76,8 @@ executed, one instruction each — and that line's hash.
 **Identical hashes on both sides are the proof that the change is behaviour-preserving.**
 Different hashes mean the change altered the simulation — a bug, or an intended semantic change
 that must be named as such — and the timing comparison is meaningless until that is understood.
+A version whose difference from a hashed one changes no execution path — a comment, a moved
+declaration — needs no hash run of its own.
 
 When a change alters behaviour on purpose, the two populations drift apart and wall seconds stop
 comparing: the side with fewer organisms does less work and finishes earlier for that reason alone.

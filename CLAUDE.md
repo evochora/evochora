@@ -19,6 +19,7 @@ For architectural review criteria see **[.agents/architecture-guidelines.md](.ag
 - Interface changes: analyze full impact (all implementations, all call sites, all tests)
 - Multi-file changes: present the plan and get explicit approval before writing code
 - Never silently rewrite working code - explain what and why first
+- A performance change never trades away understandability or flexibility; no stopgaps - solve it centrally or discuss it first
 
 **During Implementation:**
 - Any deviation from the agreed plan - one more file, a changed order, a finding taken along, a step that turns out infeasible - stops the work: state what was found, why a deviation is needed and what it would look like, then wait for the answer. Never start while asking
