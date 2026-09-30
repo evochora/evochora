@@ -370,6 +370,58 @@ class OrganismRestoreBuilderTest {
      * advance an instruction pointer in steps of more than one cell, or in a direction the state
      * does not name at all.
      */
+    /**
+     * No running organism holds a pointer outside a bounded world: every step across the edge
+     * fails and recovers the pointer. A checkpoint that says otherwise cannot come from this build.
+     * A return address beyond the edge is not checked, because a CALL at the edge stores one.
+     */
+    @Test
+    @Tag("unit")
+    void testRestoreBuilder_PointerOutsideABoundedWorld_IsRejected() {
+        Environment bounded = new Environment(new int[]{96, 96}, false);
+        Simulation boundedSimulation = SimulationTestUtils.createSimulation(bounded);
+
+        assertThatThrownBy(() ->
+            Organism.restore(1, 0L)
+                .ip(new int[]{96, 0})
+                .dv(new int[]{1, 0})
+                .initialPosition(new int[]{0, 0})
+                .build(boundedSimulation)
+        )
+            .isInstanceOf(Organism.InvalidRestoreState.class)
+            .hasMessageContaining("IP [96, 0] lies outside the world");
+
+        assertThatThrownBy(() ->
+            Organism.restore(1, 0L)
+                .ip(new int[]{0, 0})
+                .dv(new int[]{1, 0})
+                .initialPosition(new int[]{0, -1})
+                .build(boundedSimulation)
+        )
+            .isInstanceOf(Organism.InvalidRestoreState.class)
+            .hasMessageContaining("Initial position [0, -1] lies outside the world");
+
+        assertThatThrownBy(() ->
+            Organism.restore(1, 0L)
+                .ip(new int[]{0, 0})
+                .dv(new int[]{1, 0})
+                .initialPosition(new int[]{0, 0})
+                .dataPointers(Arrays.asList(new int[]{5, 5}, new int[]{-1, 5}))
+                .build(boundedSimulation)
+        )
+            .isInstanceOf(Organism.InvalidRestoreState.class)
+            .hasMessageContaining("Data pointer [-1, 5] lies outside the world");
+
+        // The same coordinates are legitimate in a toroidal world, which has no outside.
+        Organism restored = Organism.restore(1, 0L)
+                .ip(new int[]{96, 0})
+                .dv(new int[]{1, 0})
+                .initialPosition(new int[]{0, -1})
+                .dataPointers(Arrays.asList(new int[]{5, 5}, new int[]{-1, 5}))
+                .build(simulation);
+        assertThat(restored.getIp()).isEqualTo(new int[]{96, 0});
+    }
+
     @Test
     @Tag("unit")
     void testRestoreBuilder_NonUnitDv_ThrowsException() {

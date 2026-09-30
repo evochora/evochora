@@ -311,6 +311,22 @@ public class Environment implements IEnvironmentReader {
     }
 
     /**
+     * Tells whether the cell a displacement away from a position exists; see
+     * {@link #getMoleculeIntAt(int[], int[])} for the contract. In a toroidal world it always
+     * does; in a bounded world a step across the edge reaches no cell.
+     *
+     * @param position     the coordinate to start from; every component lies within the world
+     * @param displacement the zero vector or a unit vector, one component per dimension
+     * @return {@code true} if the displaced cell lies within the world
+     * @throws IllegalArgumentException if the position lies outside the world, or if the
+     *                                  displacement is neither the zero vector nor a unit vector
+     *                                  of the world's dimensions
+     */
+    public boolean contains(int[] position, int[] displacement) {
+        return indexOfDisplaced(position, displacement) >= 0;
+    }
+
+    /**
      * Reads the owner of the cell a displacement away from a position; see
      * {@link #getMoleculeIntAt(int[], int[])} for the contract.
      *

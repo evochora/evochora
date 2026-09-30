@@ -287,6 +287,10 @@ public class StateInstruction extends Instruction {
         // The VirtualMachine already deducted the base cost (10), now we need to deduct the energy given to child
         if (energy > 0 && organism.getEr() >= energy) {
             int[] childIp = organism.getTargetCoordinate(organism.getActiveDp(), delta, simulation.getEnvironment());
+            if (!cellExists(simulation.getEnvironment(), childIp)) {
+                organism.instructionFailed("FORK: Child position beyond the edge of the world");
+                return;
+            }
             organism.takeEr(energy); // Deduct the energy given to the child
             Organism child = Organism.create(simulation, childIp, energy);
             child.setDv(childDv);
@@ -447,6 +451,12 @@ public class StateInstruction extends Instruction {
         if (dp == null) {
             return;
         }
+        // Checked before passability, which would be false for the same reason: the cell beyond
+        // the edge of a bounded world does not exist, and the reason says so.
+        if (!environment.properties.isToroidal() && !environment.contains(dp, vector)) {
+            organism.instructionFailed(getName() + ": Target cell beyond the edge of the world");
+            return;
+        }
         if (isPassable(environment, dp, vector)) {
             organism.setActiveDp(organism.getTargetCoordinate(dp, vector, environment));
         } else {
@@ -481,6 +491,10 @@ public class StateInstruction extends Instruction {
             // The VirtualMachine already deducted the base cost (1), now we need to deduct the energy given to child
             if (energy > 0 && organism.getEr() >= energy) {
                 int[] childIp = organism.getTargetCoordinate(organism.getActiveDp(), delta, environment);
+                if (!cellExists(environment, childIp)) {
+                    organism.instructionFailed("FRKI: Child position beyond the edge of the world");
+                    return;
+                }
                 organism.takeEr(energy); // Deduct the energy given to the child
                 Organism child = Organism.create(simulation, childIp, energy);
                 child.setDv(childDv);
@@ -514,6 +528,10 @@ public class StateInstruction extends Instruction {
             // The VirtualMachine already deducted the base cost (1), now we need to deduct the energy given to child
             if (energy > 0 && organism.getEr() >= energy) {
                 int[] childIp = organism.getTargetCoordinate(organism.getActiveDp(), displacement, environment);
+                if (!cellExists(environment, childIp)) {
+                    organism.instructionFailed("FRKS: Child position beyond the edge of the world");
+                    return;
+                }
                 organism.takeEr(energy); // Deduct the energy given to the child
                 Organism child = Organism.create(simulation, childIp, energy);
                 child.setDv(snappedChildDv);

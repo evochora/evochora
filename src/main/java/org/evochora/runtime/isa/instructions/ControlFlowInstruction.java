@@ -91,10 +91,7 @@ public class ControlFlowInstruction extends Instruction {
                             + labelHashText(jmpiLabelHash));
                     return;
                 }
-                // Skip past the LABEL molecule to the actual code
-                int[] jmpiCodeIp = organism.getNextInstructionPosition(jmpiTargetIp, organism.getDv(), environment);
-                organism.setIp(jmpiCodeIp);
-                organism.setSkipIpAdvance(true);
+                jumpTo("JMPI", jmpiTargetIp, organism, environment);
                 break;
             case "JMPR":
                 // Register-based jump: read label hash from register
@@ -108,10 +105,7 @@ public class ControlFlowInstruction extends Instruction {
                             + labelHashText(jmprLabelHash));
                     return;
                 }
-                // Skip past the LABEL molecule to the actual code
-                int[] jmprCodeIp = organism.getNextInstructionPosition(jmprTargetIp, organism.getDv(), environment);
-                organism.setIp(jmprCodeIp);
-                organism.setSkipIpAdvance(true);
+                jumpTo("JMPR", jmprTargetIp, organism, environment);
                 break;
             case "JMPS":
                 // Stack-based jump: pop label hash from stack
@@ -125,15 +119,33 @@ public class ControlFlowInstruction extends Instruction {
                             + labelHashText(jmpsLabelHash));
                     return;
                 }
-                // Skip past the LABEL molecule to the actual code
-                int[] jmpsCodeIp = organism.getNextInstructionPosition(jmpsTargetIp, organism.getDv(), environment);
-                organism.setIp(jmpsCodeIp);
-                organism.setSkipIpAdvance(true);
+                jumpTo("JMPS", jmpsTargetIp, organism, environment);
                 break;
             default:
                 organism.instructionFailed("Unknown control flow instruction: " + opName);
                 break;
         }
+    }
+
+    /**
+     * Moves the instruction pointer to the code behind a label: the cell one step past the LABEL
+     * molecule along the direction of travel. In a bounded world that cell may lie beyond the
+     * edge, when the label stands on the last cell; the jump then fails like a jump that finds
+     * no label, and the pointer advances past the jump instruction as usual.
+     *
+     * @param opName      The jump instruction, for the failure reason.
+     * @param labelIp     The position of the label the jump resolved to.
+     * @param organism    The organism that jumps.
+     * @param environment The environment the code lies in.
+     */
+    private void jumpTo(String opName, int[] labelIp, Organism organism, Environment environment) {
+        int[] codeIp = organism.getNextInstructionPosition(labelIp, organism.getDv(), environment);
+        if (!cellExists(environment, codeIp)) {
+            organism.instructionFailed(opName + ": Code cell beyond the edge of the world");
+            return;
+        }
+        organism.setIp(codeIp);
+        organism.setSkipIpAdvance(true);
     }
 
     /**

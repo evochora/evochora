@@ -20,8 +20,8 @@ import org.junit.jupiter.api.Test;
  * The data pointer stands in the corner of the world whose neighbours towards larger x and
  * towards smaller y lie across the edge. In a toroidal world those two are the cells on the
  * opposite side. In a bounded world they do not exist: a cell beyond the edge reads as empty and
- * unowned, an instruction whose target lies there fails, and so does every instruction of an
- * organism whose data pointer has left the world.
+ * unowned and is not passable, an instruction whose target lies there fails, and so does every
+ * instruction of an organism whose data pointer has left the world.
  * <p>
  * The instructions run far from the corner, in a row of their own, so that what they are made of
  * is never among the cells they address.
@@ -297,8 +297,8 @@ class NeighbourCellInstructionTest {
         place("SPNR", data(DR0));
         simulation.tick();
         assertThat(organism.isInstructionFailed()).isFalse();
-        assertThat(organism.readOperand(DR0)).as("only the two beyond the edge are passable")
-                .isEqualTo(data(0b1001).toInt());
+        assertThat(organism.readOperand(DR0)).as("a cell beyond the edge does not exist and is not passable")
+                .isEqualTo(data(0).toInt());
 
         world(false);
         environment.setMolecule(energy(2), new int[]{SIDE - 2, 0});                      // -x
@@ -312,7 +312,7 @@ class NeighbourCellInstructionTest {
     @Test
     void conditionsTakeACellBeyondTheEdgeOfABoundedWorldForEmptyAndUnowned() {
         world(false);
-        assertThat(holds("IFPI", 1, 0)).as("passable").isTrue();
+        assertThat(holds("IFPI", 1, 0)).as("passable: a cell that does not exist is not").isFalse();
         world(false);
         assertThat(holds("IFVI", 0, -1)).as("without an owner").isTrue();
         world(false);
@@ -322,13 +322,14 @@ class NeighbourCellInstructionTest {
     }
 
     @Test
-    void seekLeavesABoundedWorld() {
+    void seekFailsAtTheEdgeOfABoundedWorld() {
         world(false);
         place("SEKI", data(1), data(0));
         simulation.tick();
 
-        assertThat(organism.isInstructionFailed()).isFalse();
-        assertThat(organism.getActiveDp()).containsExactly(SIDE, 0);
+        assertThat(organism.isInstructionFailed()).isTrue();
+        assertThat(organism.getFailureReason()).isEqualTo("SEKI: Target cell beyond the edge of the world");
+        assertThat(organism.getActiveDp()).as("the pointer stays").containsExactly(CORNER);
     }
 
     // ==================== Bounded world, target beyond the edge ====================

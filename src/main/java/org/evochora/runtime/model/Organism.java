@@ -745,7 +745,37 @@ public class Organism {
                         id, sr);
             }
             validateStateInvariants();
+            validatePositionsInsideWorld(simulation.getEnvironment());
             return new Organism(this, simulation);
+        }
+
+        /**
+         * Rejects a state whose instruction pointer, data pointers or birth position lie outside a
+         * bounded world: no running organism ever holds one there, because every step across the
+         * edge fails and recovers the pointer. A toroidal world has no outside. Return addresses
+         * on the call stack are not checked, because a {@code CALL} at the edge legitimately
+         * stores one beyond it.
+         *
+         * @param environment the world the organism is restored into
+         * @throws InvalidRestoreState if a pointer or the birth position lies outside the world
+         */
+        private void validatePositionsInsideWorld(Environment environment) {
+            if (environment.properties.isToroidal()) {
+                return;
+            }
+            if (!environment.contains(ip)) {
+                throw new InvalidRestoreState("IP " + Arrays.toString(ip) + " lies outside the world");
+            }
+            if (!environment.contains(initialPosition)) {
+                throw new InvalidRestoreState("Initial position " + Arrays.toString(initialPosition)
+                        + " lies outside the world");
+            }
+            for (int[] dp : dps) {
+                if (!environment.contains(dp)) {
+                    throw new InvalidRestoreState("Data pointer " + Arrays.toString(dp)
+                            + " lies outside the world");
+                }
+            }
         }
 
         /**
@@ -935,13 +965,42 @@ public class Organism {
     /**
      * Retrieves the raw integer values of an instruction's arguments from the environment.
      * Uses the organism's {@code ipBeforeFetch} and {@code dvBeforeFetch} as starting position and direction.
+     * <p>
+     * In a bounded world an argument cell can lie beyond the edge. Such a cell does not exist, and
+     * reading it as empty would hand the instruction a value it never had - as a register argument,
+     * an empty cell names {@code %DR0}. The instruction is therefore failed here, while it is
+     * planned, and the virtual machine does not execute it.
      *
      * @param instructionLength The total length of the instruction (opcode + arguments).
      * @param environment The simulation environment.
      * @return A list of raw integer values representing the arguments.
      */
     public int[] getRawArgumentsFromEnvironment(int instructionLength, Environment environment) {
-        return getRawArgumentsFromEnvironment(instructionLength, environment, this.ipBeforeFetch, this.dvBeforeFetch);
+        int[] rawArgs = getRawArgumentsFromEnvironment(instructionLength, environment, this.ipBeforeFetch, this.dvBeforeFetch);
+        if (!environment.properties.isToroidal() && rawArgs.length > 0
+                && !argumentsInsideWorld(instructionLength, environment)) {
+            instructionFailed("Argument cell lies beyond the edge of the world");
+        }
+        return rawArgs;
+    }
+
+    /**
+     * Tells whether every argument cell of the instruction at {@code ipBeforeFetch} lies inside
+     * the world. Only the last one needs looking at: the cells follow each other along the
+     * direction of travel, so if the last exists, all of them do.
+     */
+    private boolean argumentsInsideWorld(int instructionLength, Environment environment) {
+        int dim = 0;
+        int sign = 1;
+        for (int i = 0; i < dvBeforeFetch.length; i++) {
+            if (dvBeforeFetch[i] != 0) {
+                dim = i;
+                sign = dvBeforeFetch[i];
+                break;
+            }
+        }
+        int last = ipBeforeFetch[dim] + sign * (instructionLength - 1);
+        return last >= 0 && last < environment.properties.getDimensionSize(dim);
     }
 
     /**
@@ -1069,9 +1128,9 @@ public class Organism {
      * This is used both after instruction execution (instant-skip) and by conditional
      * instructions to find the next real instruction to skip.
      * <p>
-     * The walk steps from cell to cell through the environment; a position outside a bounded
-     * world is a cell that does not exist and counts as empty, so the walk continues until the
-     * skip budget is exhausted.
+     * The walk steps from cell to cell through the environment. In a bounded world a step across
+     * the edge reaches no cell: the instruction fails and the pointer is recovered at once, as it
+     * is when the skip budget is exhausted, so that it never stands outside the world.
      *
      * @param environment The simulation environment.
      */
@@ -1093,12 +1152,18 @@ public class Organism {
 
         int dimSize = props.getDimensionSize(dim);
         int dimPos = ip[dim];
-        // Outside a bounded world there is no cell: the index is -1 and every read yields empty,
-        // which is skippable, until the skip budget runs out.
+        // The pointer may already stand beyond the edge of a bounded world: the advance past the
+        // previous instruction does not stop at the edge. There is no cell there, so the index is
+        // -1, and the walk ends before it reads anything.
         int index = (dimPos >= 0 && dimPos < dimSize) ? environment.getIndexFromCoordinate(ip) : -1;
 
         for (int skips = 0; skips < maxSkipsPerTick && !isDead; skips++) {
-            int mol = index >= 0 ? environment.getMoleculeInt(index) : 0;
+            if (index < 0) {
+                recoverFromStall();
+                instructionFailed("Instruction pointer left the world");
+                return;
+            }
+            int mol = environment.getMoleculeInt(index);
             if ((mol & Config.TYPE_MASK) == Config.TYPE_CODE
                     && (mol & Config.VALUE_MASK) != nopOpcodeId) {
                 ip[dim] = dimPos;
@@ -1112,9 +1177,7 @@ public class Organism {
                     dimPos = 0;
                 }
             }
-            if (index >= 0) {
-                index = environment.stepIndex(index, dim, sign > 0);
-            }
+            index = environment.stepIndex(index, dim, sign > 0);
         }
         ip[dim] = dimPos;
         recoverFromStall();
@@ -1122,21 +1185,25 @@ public class Organism {
     }
 
     /**
-     * Recovers the instruction pointer after a stall (max-skip exceeded).
+     * Recovers the instruction pointer after a stall: the skip budget is exhausted, the pointer
+     * has stepped across the edge of a bounded world, or a {@code RET} would return to an address
+     * beyond that edge.
      * <p>
-     * If the call stack is non-empty, pops the top frame and restores the IP
-     * to the frame's return address, also restoring procedure-local data registers (PDRs)
-     * to the caller's saved state — matching the RET instruction's semantics.
-     * <p>
-     * If the call stack is empty, falls back to the organism's initial position
-     * (birth position), creating a genome-loop that re-executes from the start.
+     * Pops the top frame of the call stack and restores the IP to the frame's return address,
+     * also restoring procedure-local data registers (PDRs) to the caller's saved state — matching
+     * the RET instruction's semantics. A return address may itself lie beyond the edge of a
+     * bounded world, because a {@code CALL} on the last cells along its direction of travel stores
+     * one; such a frame is popped like any other and the next one is tried. When no frame with an
+     * address inside the world is left, falls back to the organism's initial position (birth
+     * position), creating a genome-loop that re-executes from the start.
      * <p>
      * This mechanism smooths the fitness landscape: organisms that occasionally
      * escape their code region can recover and continue useful execution, with
      * the error penalty on each recovery providing proportional selection pressure.
      */
-    private void recoverFromStall() {
-        if (!callStack.isEmpty()) {
+    public void recoverFromStall() {
+        Environment environment = simulation.getEnvironment();
+        while (!callStack.isEmpty()) {
             ProcFrame frame = callStack.pop();
             if (frame.savedRegisters() != null) {
                 restoreStackSavedRegisters(frame.savedRegisters());
@@ -1155,10 +1222,12 @@ public class Organism {
                 }
             }
             currentProcLabelHash = callerLabelHash;
-            setIp(frame.absoluteReturnIp());
-        } else {
-            setIp(Arrays.copyOf(initialPosition, initialPosition.length));
+            if (environment.contains(frame.absoluteReturnIp())) {
+                setIp(frame.absoluteReturnIp());
+                return;
+            }
         }
+        setIp(Arrays.copyOf(initialPosition, initialPosition.length));
     }
 
     /**

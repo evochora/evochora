@@ -30,8 +30,20 @@ public final class ProcedureCallHandler {
 
         int[] ipBeforeFetch = organism.getIpBeforeFetch();
 
+        // The procedure's code is the cell one step past its label. In a bounded world that cell
+        // may lie beyond the edge; the call then fails before anything of the caller's state is
+        // touched.
+        int[] codeIp = organism.getNextInstructionPosition(targetIp, organism.getDv(), environment);
+        if (!environment.properties.isToroidal() && !environment.contains(codeIp)) {
+            organism.instructionFailed("CALL: Code cell beyond the edge of the world");
+            return;
+        }
+
         // CALL now only consumes 1 operand (label hash) instead of N (coordinate delta)
         int instructionLength = 1 + 1; // opcode + label hash
+        // The return address may lie beyond the edge of a bounded world when the CALL stands on
+        // its last cells. It is stored as it is: returning there is the step that cannot be
+        // taken, and RET fails on it and recovers.
         int[] returnIp = ipBeforeFetch;
         for (int i = 0; i < instructionLength; i++) {
             returnIp = organism.getNextInstructionPosition(returnIp, organism.getDvBeforeFetch(), environment);
@@ -76,8 +88,6 @@ public final class ProcedureCallHandler {
         // Always track which procedure is active (needed for correct save on RET after first dirty write)
         organism.setCurrentProcLabelHash(labelHash);
 
-        // Skip past the LABEL molecule to the actual procedure code
-        int[] codeIp = organism.getNextInstructionPosition(targetIp, organism.getDv(), environment);
         organism.setIp(codeIp);
         organism.setSkipIpAdvance(true);
     }
@@ -123,7 +133,17 @@ public final class ProcedureCallHandler {
             }
         }
 
-        organism.setIp(returnFrame.absoluteReturnIp());
+        // The frame is popped and the caller's registers are back either way. In a bounded world
+        // the return address may lie beyond the edge; that step fails, and the pointer is
+        // recovered from the next frame or the birth position.
+        int[] returnIp = returnFrame.absoluteReturnIp();
+        Environment environment = context.getWorld();
+        if (!environment.properties.isToroidal() && !environment.contains(returnIp)) {
+            organism.instructionFailed("RET: Return address beyond the edge of the world");
+            organism.recoverFromStall();
+        } else {
+            organism.setIp(returnIp);
+        }
         organism.setSkipIpAdvance(true);
     }
 }

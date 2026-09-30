@@ -157,10 +157,14 @@ public class VirtualMachine {
             // instruction pointer is held so the write is retried next tick.
             organism.instructionFailed(LOST_WRITE_CONFLICT);
             organism.setSkipIpAdvance(true);
-        } else {
-            // Whatever this throws is a defect in the runtime, never the organism's doing: an
-            // organism's failure is always booked through instructionFailed and never thrown.
-            // The exception therefore leaves the tick and ends the run, and nothing here
+        } else if (!organism.isInstructionFailed()) {
+            // An instruction that failed while it was planned - an argument that names no
+            // register, an argument cell beyond the edge of a bounded world - is not executed:
+            // its operands are not what its code says, and it pays for the failure below.
+            //
+            // Whatever the execution throws is a defect in the runtime, never the organism's
+            // doing: an organism's failure is always booked through instructionFailed and never
+            // thrown. The exception therefore leaves the tick and ends the run, and nothing here
             // catches it.
             instruction.execute(context);
         }

@@ -574,11 +574,30 @@ public abstract class Instruction {
      * @param position     The position to start from, within the world.
      * @param displacement No step or one step along an axis.
      * @return {@code true} if the cell is passable for this organism; a cell beyond the edge of a
-     *         bounded world reads as empty and is therefore passable
+     *         bounded world does not exist and is not
      */
     protected boolean isPassable(Environment environment, int[] position, int[] displacement) {
+        // A cell beyond the edge of a bounded world does not exist, and what does not exist
+        // cannot be moved onto; the accessors below would read it as empty.
+        if (!environment.properties.isToroidal() && !environment.contains(position, displacement)) {
+            return false;
+        }
         return environment.getMoleculeIntAt(position, displacement) == 0
                 || organism.isCellAccessible(environment.getOwnerIdAt(position, displacement));
+    }
+
+    /**
+     * Tells whether a coordinate names a cell of the world: always in a toroidal world, whose
+     * coordinates wrap, and inside the edges of a bounded one. The check an instruction makes
+     * before it sets a pointer to a computed position, because no pointer of an organism ever
+     * stands outside the world.
+     *
+     * @param environment The environment whose world the coordinate has to lie in.
+     * @param coordinate  The coordinate, one component per dimension.
+     * @return {@code true} if the coordinate names a cell
+     */
+    protected static boolean cellExists(Environment environment, int[] coordinate) {
+        return environment.properties.isToroidal() || environment.contains(coordinate);
     }
 
     /**
