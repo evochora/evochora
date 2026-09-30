@@ -466,15 +466,20 @@ public class Simulation {
                 }
             }
             // After the mutation operators, so that what they wrote moves into the newborn's label
-            // namespace together with what it inherited
-            labelRewrite.apply(newborn, environment, randomProvider);
-            if (newborn.hasBirthMutations()) {
-                newbornsWithBirthMutations.add(newborn);
+            // namespace together with what it inherited. Wrapped like the work on an instruction,
+            // so that a defect in the rewrite or the hashing names the newborn and the tick.
+            try {
+                labelRewrite.apply(newborn, environment, randomProvider);
+                if (newborn.hasBirthMutations()) {
+                    newbornsWithBirthMutations.add(newborn);
+                }
+                long hash = GenomeHasher.computeGenomeHash(
+                        environment, newborn.getId(), newborn.getInitialPosition(), genomeRule);
+                newborn.setGenomeHash(hash);
+                registerGenomeHash(hash);
+            } catch (RuntimeException e) {
+                throw SimulationFault.inInstruction(currentTick, newborn, null, e);
             }
-            long hash = GenomeHasher.computeGenomeHash(
-                    environment, newborn.getId(), newborn.getInitialPosition(), genomeRule);
-            newborn.setGenomeHash(hash);
-            registerGenomeHash(hash);
         }
 
         this.organisms.addAll(newOrganismsThisTick);
@@ -794,22 +799,22 @@ public class Simulation {
             // Every instruction is processed by the VM; losers are booked as failures there.
             instruction.setProcessedInTick(true);
             if (instruction instanceof IEnvironmentModifyingInstruction modInstruction) {
-                List<int[]> targetCoords;
+                int flatIndex;
                 try {
-                    targetCoords = modInstruction.getTargetCoordinates();
+                    List<int[]> targetCoords = modInstruction.getTargetCoordinates();
+                    // Without a target cell (e.g. invalid arguments) the instruction runs, detects the
+                    // error itself and fails gracefully.
+                    if (targetCoords == null || targetCoords.isEmpty()) {
+                        continue;
+                    }
+                    if (targetCoords.size() > 1) {
+                        throw new IllegalStateException(instruction.getName()
+                                + " reports " + targetCoords.size() + " target cells; conflict resolution is defined for one");
+                    }
+                    flatIndex = this.environment.properties.toFlatIndex(targetCoords.get(0));
                 } catch (RuntimeException e) {
                     throw SimulationFault.inInstruction(currentTick, instruction.getOrganism(), instruction, e);
                 }
-                // Without a target cell (e.g. invalid arguments) the instruction runs, detects the
-                // error itself and fails gracefully.
-                if (targetCoords == null || targetCoords.isEmpty()) {
-                    continue;
-                }
-                if (targetCoords.size() > 1) {
-                    throw new IllegalStateException(instruction.getName()
-                            + " reports " + targetCoords.size() + " target cells; conflict resolution is defined for one");
-                }
-                int flatIndex = this.environment.properties.toFlatIndex(targetCoords.get(0));
                 contendersByFlatIndex.computeIfAbsent(flatIndex, k -> new ArrayList<>()).add(instruction);
             }
         }

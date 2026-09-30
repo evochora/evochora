@@ -264,6 +264,20 @@ public class Environment implements IEnvironmentReader {
     }
 
     /**
+     * Tells whether a computed position names a cell of the world. In a toroidal world every
+     * position does, because its coordinates wrap; in a bounded world a position beyond the edge
+     * names no cell. This is the question an instruction asks before it sets a pointer to a
+     * position it computed, since no pointer of an organism ever stands outside the world; the
+     * displaced accessors answer it for a neighbour through {@link #contains(int[], int[])}.
+     *
+     * @param position the computed position, one component per dimension
+     * @return {@code true} if the position names a cell of the world
+     */
+    public boolean exists(int[] position) {
+        return properties.isToroidal() || contains(position);
+    }
+
+    /**
      * Reads the packed molecule value of the cell at a coordinate that lies within the world.
      * Unlike {@link #getMolecule(int...)} this neither normalizes nor allocates; every component
      * must already be in range, and a coordinate outside the world is rejected.

@@ -365,12 +365,6 @@ class OrganismRestoreBuilderTest {
     }
 
     /**
-     * Every runtime path that sets a direction maps it to a unit vector, so a stored direction that
-     * is not one describes an organism no run of this build could have produced. Restoring it would
-     * advance an instruction pointer in steps of more than one cell, or in a direction the state
-     * does not name at all.
-     */
-    /**
      * No running organism holds a pointer outside a bounded world: every step across the edge
      * fails and recovers the pointer. A checkpoint that says otherwise cannot come from this build.
      * A return address beyond the edge is not checked, because a CALL at the edge stores one.
@@ -422,6 +416,12 @@ class OrganismRestoreBuilderTest {
         assertThat(restored.getIp()).isEqualTo(new int[]{96, 0});
     }
 
+    /**
+     * Every runtime path that sets a direction maps it to a unit vector, so a stored direction that
+     * is not one describes an organism no run of this build could have produced. Restoring it would
+     * advance an instruction pointer in steps of more than one cell, or in a direction the state
+     * does not name at all.
+     */
     @Test
     @Tag("unit")
     void testRestoreBuilder_NonUnitDv_ThrowsException() {

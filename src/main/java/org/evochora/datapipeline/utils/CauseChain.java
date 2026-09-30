@@ -19,7 +19,9 @@ public final class CauseChain {
     /**
      * Joins the messages of the throwable and every cause below it. A cause without a message
      * contributes its class name; a cause repeating its wrapper's message is left out, so that a
-     * wrapper that only re-states its cause does not double the line.
+     * wrapper that only re-states its cause does not double the line. Line breaks inside a
+     * message - a database driver appends the statement on a line of its own - become spaces,
+     * because the line this renders is logged without a stack trace and stays one line.
      *
      * @param throwable the exception whose chain is rendered
      * @return the messages, outermost first, separated by {@value #SEPARATOR}
@@ -35,7 +37,7 @@ public final class CauseChain {
             if (line.length() > 0) {
                 line.append(SEPARATOR);
             }
-            line.append(message);
+            line.append(message.replace('\r', ' ').replace('\n', ' '));
             previous = message;
         }
         return line.toString();

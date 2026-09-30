@@ -27,6 +27,16 @@ class CauseChainTest {
     }
 
     @Test
+    void lineBreaksInAMessageBecomeSpaces() {
+        Exception chain = new IllegalStateException("statement failed\nSELECT 1",
+                new IOException("line one\r\nline two"));
+
+        assertThat(CauseChain.messages(chain))
+                .isEqualTo("statement failed SELECT 1; caused by: line one  line two")
+                .doesNotContain("\n", "\r");
+    }
+
+    @Test
     void aWrapperThatRepeatsItsCauseIsNotDoubled() {
         IOException cause = new IOException("disk full");
         assertThat(CauseChain.messages(new RuntimeException("disk full", cause))).isEqualTo("disk full");

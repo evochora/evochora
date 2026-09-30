@@ -158,6 +158,50 @@ class BoundedWorldPointerTest {
     }
 
     @Test
+    void aCallToALabelOnTheLastCellFailsBeforeAnythingChanges() {
+        code(BIRTH[0], "CALL", data(LABEL_A));
+        code(BIRTH[0] + 2, "WAIT");
+        label(LAST, LABEL_A);
+
+        simulation.tick();
+
+        assertThat(organism.isInstructionFailed()).isTrue();
+        assertThat(organism.getFailureReason()).isEqualTo("CALL: Code cell beyond the edge of the world");
+        assertThat(organism.getCallStack()).as("no frame was pushed").isEmpty();
+        assertThat(organism.getIp()).as("past the call").containsExactly(BIRTH[0] + 2, ROW);
+    }
+
+    @Test
+    void aForkWithImmediateOperandsAcrossTheEdgeFailsWithoutAChild() {
+        organism.setMr(1);
+        organism.setActiveDp(new int[]{LAST, ROW});
+        code(BIRTH[0], "FRKI", data(1), data(0), data(100), data(1), data(0));
+
+        simulation.tick();
+
+        assertThat(organism.getFailureReason()).isEqualTo("FRKI: Child position beyond the edge of the world");
+        assertThat(simulation.getOrganisms()).containsExactly(organism);
+        assertThat(organism.getEr()).isEqualTo(ENERGY - BASE_COST - PENALTY);
+    }
+
+    @Test
+    void aForkWithStackOperandsAcrossTheEdgeFailsWithoutAChild() {
+        organism.setMr(1);
+        organism.setActiveDp(new int[]{LAST, ROW});
+        // The stack holds, from the bottom, the displacement, the energy and the child's direction
+        organism.getDataStack().push(new int[]{1, 0});
+        organism.getDataStack().push(data(100).toInt());
+        organism.getDataStack().push(new int[]{1, 0});
+        code(BIRTH[0], "FRKS");
+
+        simulation.tick();
+
+        assertThat(organism.getFailureReason()).isEqualTo("FRKS: Child position beyond the edge of the world");
+        assertThat(simulation.getOrganisms()).containsExactly(organism);
+        assertThat(organism.getEr()).isEqualTo(ENERGY - BASE_COST - PENALTY);
+    }
+
+    @Test
     void aForkAcrossTheEdgeFailsWithoutAChild() {
         organism.setMr(1);
         organism.setActiveDp(new int[]{LAST, ROW});

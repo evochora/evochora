@@ -271,7 +271,7 @@ public class ConditionalInstruction extends Instruction {
             if (dp == null) {
                 return;
             }
-            boolean exists = environment.properties.isToroidal() || environment.contains(dp, vector);
+            boolean exists = environment.contains(dp, vector);
             boolean conditionMet = opName.startsWith("IFX") ? exists : !exists;
             if (!conditionMet) {
                 organism.skipNextInstruction(environment);

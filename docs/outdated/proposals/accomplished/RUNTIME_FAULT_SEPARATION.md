@@ -1,10 +1,11 @@
 # Separating an Organism's Failure from a Fault in the Runtime
 
-**Status: AGREED — every decision below was made with the maintainer on 2026-09-29/30; implementation pending.**
+**Status: ACCOMPLISHED — implemented in #197 (2026-09-30); every decision below was made with the maintainer on 2026-09-29/30 and
+built in the same pull request.**
 
-Issues: #195 (the catch-all), #165 (the same catch-all seen from the logging side; closed as a duplicate
-once this is implemented), #148 (bounded worlds; implemented here because its decisions turned out to be
-few once the fault rule was settled).
+Issues: #195 (the catch-all), #165 (the same catch-all seen from the logging side; a duplicate), #148
+(bounded worlds; implemented here because its decisions turned out to be few once the fault rule was
+settled), #168 (the edge of a bounded world could be neither perceived nor kept).
 
 ## Problem
 
@@ -212,7 +213,9 @@ their own.
   comparison per instruction-pointer step and a `contains` check per jump, `CALL`, `RET`, `SEEK` and
   `FORK`; the condition is that execution without a fault is not measurably slower.
 - **Acceptance.** One real run with the new build under the production profile; the log must hold no
-  `ERROR`. Proposed with its duration and data directory before it is started.
+  `ERROR`. Run by the maintainer on the branch build with his `local.conf` — 7680 × 4320, `BOUND`,
+  sparse profile, twelve organisms — the first real `BOUND` run: past 84 million ticks, some 300 000
+  organisms born and 700 alive, every service running and healthy with no error counted.
 
 ## Implementation order
 
@@ -224,8 +227,8 @@ their own.
 4. D4 with its tests.
 5. D8 with its tests.
 6. D9: review of the 23 log calls.
-7. Benchmark, acceptance run; #165 closed as a duplicate; this document moved to
-   `docs/outdated/proposals/accomplished/`.
+7. Benchmark (neutral: all twelve combinations within error), acceptance run; this document moved to
+   `docs/outdated/proposals/accomplished/` with the pull request.
 
 ## Related, not part of this work
 

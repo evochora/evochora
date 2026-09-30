@@ -34,7 +34,7 @@ public final class ProcedureCallHandler {
         // may lie beyond the edge; the call then fails before anything of the caller's state is
         // touched.
         int[] codeIp = organism.getNextInstructionPosition(targetIp, organism.getDv(), environment);
-        if (!environment.properties.isToroidal() && !environment.contains(codeIp)) {
+        if (!environment.exists(codeIp)) {
             organism.instructionFailed("CALL: Code cell beyond the edge of the world");
             return;
         }
@@ -138,7 +138,7 @@ public final class ProcedureCallHandler {
         // recovered from the next frame or the birth position.
         int[] returnIp = returnFrame.absoluteReturnIp();
         Environment environment = context.getWorld();
-        if (!environment.properties.isToroidal() && !environment.contains(returnIp)) {
+        if (!environment.exists(returnIp)) {
             organism.instructionFailed("RET: Return address beyond the edge of the world");
             organism.recoverFromStall();
         } else {

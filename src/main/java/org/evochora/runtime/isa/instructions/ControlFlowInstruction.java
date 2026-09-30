@@ -140,7 +140,7 @@ public class ControlFlowInstruction extends Instruction {
      */
     private void jumpTo(String opName, int[] labelIp, Organism organism, Environment environment) {
         int[] codeIp = organism.getNextInstructionPosition(labelIp, organism.getDv(), environment);
-        if (!cellExists(environment, codeIp)) {
+        if (!environment.exists(codeIp)) {
             organism.instructionFailed(opName + ": Code cell beyond the edge of the world");
             return;
         }

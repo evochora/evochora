@@ -8,6 +8,7 @@ import java.util.Map;
 import org.evochora.runtime.internal.services.ExecutionContext;
 import org.evochora.runtime.internal.services.SeededRandomProvider;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.isa.instructions.EnvironmentInteractionInstruction;
 import org.evochora.runtime.isa.instructions.NopInstruction;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
@@ -144,6 +145,42 @@ class SimulationFaultTest {
             .hasMessageNotContaining("instruction")
             .cause()
             .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void faultInConflictResolutionNamesTheInstruction() {
+        createSimulation(true, 1, new int[]{5, 5});
+        // An environment-modifying instruction is resolved for conflicts before it runs; this one
+        // throws where its target cell is asked for.
+        int pokeOpcode = Instruction.getInstructionIdByName("POKE");
+        simulation.addInstructionInterceptor(new IInstructionInterceptor() {
+            @Override
+            public void intercept(InterceptionContext context) {
+                context.setInstruction(new EnvironmentInteractionInstruction(context.getOrganism(), pokeOpcode) {
+                    @Override
+                    public java.util.List<int[]> getTargetCoordinates() {
+                        throw new IllegalStateException(DEFECT);
+                    }
+                });
+            }
+
+            @Override
+            public byte[] saveState() {
+                return new byte[0];
+            }
+
+            @Override
+            public void loadState(byte[] state) {
+                // Stateless
+            }
+        });
+
+        assertThatThrownBy(simulation::tick)
+            .isInstanceOf(SimulationFault.class)
+            .hasMessageContaining("Organism " + organism.getId())
+            .hasMessageContaining("instruction POKE")
+            .cause()
+            .hasMessage(DEFECT);
     }
 
     @Test
