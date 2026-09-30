@@ -282,7 +282,7 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
             return null;
         }
         int[] target = organism.getTargetCoordinate(dp, displacement, environment);
-        if (!environment.contains(target)) {
+        if (!environment.exists(target)) {
             organism.instructionFailed(getName() + ": Target cell " + Arrays.toString(target)
                     + " lies outside the world.");
             return null;

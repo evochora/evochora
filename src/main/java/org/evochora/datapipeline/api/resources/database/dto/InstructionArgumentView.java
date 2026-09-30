@@ -8,7 +8,8 @@ package org.evochora.datapipeline.api.resources.database.dto;
 public final class InstructionArgumentView {
 
     /**
-     * Argument type: "REGISTER", "IMMEDIATE", "VECTOR", "LABEL", or "STACK".
+     * Argument type: "REGISTER", "IMMEDIATE", "VECTOR", "LABEL", "STACK", or "MISSING" for an
+     * operand whose cells lie beyond the edge of a bounded world and therefore do not exist.
      */
     public final String type;
 
@@ -136,6 +137,18 @@ public final class InstructionArgumentView {
      */
     public static InstructionArgumentView stack() {
         return new InstructionArgumentView("STACK", null, null, null, null, null, null, null);
+    }
+
+    /**
+     * Creates an argument view for an operand whose cells lie beyond the edge of a bounded world.
+     * <p>
+     * There is no cell there and so no value; the instruction failed for that reason, and its
+     * record ends where the world does.
+     *
+     * @return InstructionArgumentView for MISSING type
+     */
+    public static InstructionArgumentView missing() {
+        return new InstructionArgumentView("MISSING", null, null, null, null, null, null, null);
     }
 }
 

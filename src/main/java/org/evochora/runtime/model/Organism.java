@@ -63,7 +63,6 @@ public class Organism {
         java.util.Map<Integer, Object> registerValuesBefore
     ) {}
 
-    private static final int[] EMPTY_INT_ARRAY = new int[0];
 
     private final int id;
     private Integer parentId = null;
@@ -760,18 +759,15 @@ public class Organism {
          * @throws InvalidRestoreState if a pointer or the birth position lies outside the world
          */
         private void validatePositionsInsideWorld(Environment environment) {
-            if (environment.properties.isToroidal()) {
-                return;
-            }
-            if (!environment.contains(ip)) {
+            if (!environment.exists(ip)) {
                 throw new InvalidRestoreState("IP " + Arrays.toString(ip) + " lies outside the world");
             }
-            if (!environment.contains(initialPosition)) {
+            if (!environment.exists(initialPosition)) {
                 throw new InvalidRestoreState("Initial position " + Arrays.toString(initialPosition)
                         + " lies outside the world");
             }
             for (int[] dp : dps) {
-                if (!environment.contains(dp)) {
+                if (!environment.exists(dp)) {
                     throw new InvalidRestoreState("Data pointer " + Arrays.toString(dp)
                             + " lies outside the world");
                 }
@@ -963,63 +959,38 @@ public class Organism {
     }
 
     /**
-     * Retrieves the raw integer values of an instruction's arguments from the environment.
-     * Uses the organism's {@code ipBeforeFetch} and {@code dvBeforeFetch} as starting position and direction.
-     * <p>
-     * In a bounded world an argument cell can lie beyond the edge. Such a cell does not exist, and
-     * reading it as empty would hand the instruction a value it never had - as a register argument,
-     * an empty cell names {@code %DR0}. The instruction is therefore failed here, while it is
-     * planned, and the virtual machine does not execute it.
+     * Reads the argument cells of the instruction the organism is executing into the given array:
+     * the cells behind the opcode at {@code ipBeforeFetch}, along {@code dvBeforeFetch}.
      *
-     * @param instructionLength The total length of the instruction (opcode + arguments).
+     * @param cells receives one raw molecule value per argument cell; its length is the number of
+     *              argument cells the instruction has
      * @param environment The simulation environment.
-     * @return A list of raw integer values representing the arguments.
+     * @return how many of the cells exist, see {@link #readArgumentCells(int[], Environment, int[], int[])}
      */
-    public int[] getRawArgumentsFromEnvironment(int instructionLength, Environment environment) {
-        int[] rawArgs = getRawArgumentsFromEnvironment(instructionLength, environment, this.ipBeforeFetch, this.dvBeforeFetch);
-        if (!environment.properties.isToroidal() && rawArgs.length > 0
-                && !argumentsInsideWorld(instructionLength, environment)) {
-            instructionFailed("Argument cell lies beyond the edge of the world");
-        }
-        return rawArgs;
+    public int readArgumentCells(int[] cells, Environment environment) {
+        return readArgumentCells(cells, environment, this.ipBeforeFetch, this.dvBeforeFetch);
     }
 
     /**
-     * Tells whether every argument cell of the instruction at {@code ipBeforeFetch} lies inside
-     * the world. Only the last one needs looking at: the cells follow each other along the
-     * direction of travel, so if the last exists, all of them do.
-     */
-    private boolean argumentsInsideWorld(int instructionLength, Environment environment) {
-        int dim = 0;
-        int sign = 1;
-        for (int i = 0; i < dvBeforeFetch.length; i++) {
-            if (dvBeforeFetch[i] != 0) {
-                dim = i;
-                sign = dvBeforeFetch[i];
-                break;
-            }
-        }
-        int last = ipBeforeFetch[dim] + sign * (instructionLength - 1);
-        return last >= 0 && last < environment.properties.getDimensionSize(dim);
-    }
-
-    /**
-     * Retrieves the raw integer values of an instruction's arguments from the environment,
-     * starting from an explicit position and advancing along an explicit direction vector.
+     * Reads the argument cells that follow an opcode into the given array, starting from an
+     * explicit position and advancing along an explicit direction vector.
      * <p>
      * Steps from cell to cell through the environment along the unit-vector DV, without
-     * allocating coordinates. A position outside a bounded world is a cell that does not exist:
-     * from there every argument reads as empty.
+     * allocating coordinates. In a bounded world the cells can reach beyond the edge, where no cell
+     * exists; the walk ends there, and the number it returns says how many cells it read. A caller
+     * that needs every argument compares that number with the array's length: the cells follow one
+     * another, so all of them exist exactly when the last one does. The entries behind the last
+     * existing cell keep the value {@code 0}. Nothing about the organism changes.
      *
-     * @param instructionLength The total length of the instruction (opcode + arguments).
+     * @param cells receives one raw molecule value per argument cell; its length is the number of
+     *              argument cells the instruction has
      * @param environment The simulation environment.
      * @param fromIp The starting position (opcode location).
      * @param withDv The direction vector for advancing to argument slots.
-     * @return Raw integer values representing the arguments.
+     * @return the number of argument cells that exist, from {@code 0} to {@code cells.length}
      */
-    public int[] getRawArgumentsFromEnvironment(int instructionLength, Environment environment, int[] fromIp, int[] withDv) {
-        int argCount = instructionLength - 1;
-        if (argCount <= 0) return EMPTY_INT_ARRAY;
+    public int readArgumentCells(int[] cells, Environment environment, int[] fromIp, int[] withDv) {
+        if (cells.length == 0) return 0;
 
         // The DV is a unit vector, so the first non-zero component is the only one, and its value
         // is the ±1 that decides the direction along that axis.
@@ -1038,14 +1009,16 @@ public class Organism {
         // A start outside a bounded world has no cell; the step keeps -1 for a bounded edge
         int index = (dimPos >= 0 && dimPos < inWorld) ? environment.getIndexFromCoordinate(fromIp) : -1;
 
-        int[] rawArgs = new int[argCount];
-        for (int a = 0; a < argCount; a++) {
+        for (int a = 0; a < cells.length; a++) {
             if (index >= 0) {
                 index = environment.stepIndex(index, dim, sign > 0);
             }
-            rawArgs[a] = index >= 0 ? environment.getMoleculeInt(index) : 0;
+            if (index < 0) {
+                return a;
+            }
+            cells[a] = environment.getMoleculeInt(index);
         }
-        return rawArgs;
+        return cells.length;
     }
 
     /**
@@ -1159,8 +1132,7 @@ public class Organism {
 
         for (int skips = 0; skips < maxSkipsPerTick && !isDead; skips++) {
             if (index < 0) {
-                recoverFromStall();
-                instructionFailed("Instruction pointer left the world");
+                failAndRecover("Instruction pointer left the world");
                 return;
             }
             int mol = environment.getMoleculeInt(index);
@@ -1180,8 +1152,21 @@ public class Organism {
             index = environment.stepIndex(index, dim, sign > 0);
         }
         ip[dim] = dimPos;
+        failAndRecover("Max skips exceeded (" + maxSkipsPerTick + ")");
+    }
+
+    /**
+     * Books the failure of the current instruction and recovers the instruction pointer from it:
+     * the one way an instruction ends when the pointer can go no further - the skip budget is
+     * spent, a step would cross the edge of a bounded world, a {@code RET} would return beyond it.
+     * The two always go together, so that no recovery is free and no failure leaves the pointer
+     * where it cannot stand.
+     *
+     * @param reason The reason for the failure.
+     */
+    public void failAndRecover(String reason) {
+        instructionFailed(reason);
         recoverFromStall();
-        instructionFailed("Max skips exceeded (" + maxSkipsPerTick + ")");
     }
 
     /**
@@ -1201,7 +1186,7 @@ public class Organism {
      * escape their code region can recover and continue useful execution, with
      * the error penalty on each recovery providing proportional selection pressure.
      */
-    public void recoverFromStall() {
+    private void recoverFromStall() {
         Environment environment = simulation.getEnvironment();
         while (!callStack.isEmpty()) {
             ProcFrame frame = callStack.pop();
@@ -1222,7 +1207,7 @@ public class Organism {
                 }
             }
             currentProcLabelHash = callerLabelHash;
-            if (environment.contains(frame.absoluteReturnIp())) {
+            if (environment.exists(frame.absoluteReturnIp())) {
                 setIp(frame.absoluteReturnIp());
                 return;
             }

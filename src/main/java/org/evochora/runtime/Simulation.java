@@ -478,7 +478,7 @@ public class Simulation {
                 newborn.setGenomeHash(hash);
                 registerGenomeHash(hash);
             } catch (RuntimeException e) {
-                throw SimulationFault.inInstruction(currentTick, newborn, null, e);
+                throw SimulationFault.atBirth(currentTick, newborn, e);
             }
         }
 

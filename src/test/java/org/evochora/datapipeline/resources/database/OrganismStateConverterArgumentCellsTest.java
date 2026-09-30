@@ -110,7 +110,27 @@ class OrganismStateConverterArgumentCellsTest {
         assertThat(set.arguments.get(1).value).isEqualTo(Molecule.extractSignedValue(labelValue)).isNegative();
     }
 
-    /** A record that ends before the signature does is a defect and says so. */
+    /**
+     * At the edge of a bounded world an instruction's cells can reach beyond it; the runtime then
+     * records the cells that exist and fails the instruction for that reason. The view shows the
+     * operands that have no cell as missing, so a reader sees what the organism found without
+     * having to know how many operands the instruction takes.
+     */
+    @Test
+    void showsTheOperandsBeyondTheEdgeAsMissing() {
+        InstructionView view = OrganismStateConverter.resolveInstructionView(
+                setiId, List.of(new Molecule(Config.TYPE_REGISTER, 0).toInt()), 0, 0,
+                new int[]{99, 2}, new int[]{1, 0},
+                true, Instruction.ARGUMENT_CELL_BEYOND_THE_EDGE, List.of(), new int[]{100, 100}, null);
+
+        assertThat(view.argumentTypes).containsExactly("REGISTER", "MISSING");
+        assertThat(view.arguments).hasSize(2);
+        assertThat(view.arguments.get(0).registerId).isEqualTo(0);
+        assertThat(view.arguments.get(1).type).isEqualTo("MISSING");
+        assertThat(view.failed).isTrue();
+    }
+
+    /** A record that ends before the signature does, for any other reason, is a defect and says so. */
     @Test
     void failsOnARecordShorterThanTheSignature() {
         assertThatThrownBy(() -> resolve(List.of(new Molecule(Config.TYPE_REGISTER, 0).toInt())))

@@ -139,8 +139,7 @@ public final class ProcedureCallHandler {
         int[] returnIp = returnFrame.absoluteReturnIp();
         Environment environment = context.getWorld();
         if (!environment.exists(returnIp)) {
-            organism.instructionFailed("RET: Return address beyond the edge of the world");
-            organism.recoverFromStall();
+            organism.failAndRecover("RET: Return address beyond the edge of the world");
         } else {
             organism.setIp(returnIp);
         }

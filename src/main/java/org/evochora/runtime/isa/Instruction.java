@@ -3,6 +3,7 @@
 package org.evochora.runtime.isa;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -64,6 +65,13 @@ public abstract class Instruction {
      * outside the registered range must fall back rather than fail.
      */
     protected final int fullOpcodeId;
+
+    /**
+     * Failure reason of an instruction whose argument cells reach beyond the edge of a bounded
+     * world. The instruction's record then holds the cells that exist, fewer than its signature
+     * names; readers of the record use this reason to tell that shortfall from a defect.
+     */
+    public static final String ARGUMENT_CELL_BEYOND_THE_EDGE = "Argument cell lies beyond the edge of the world";
 
     /**
      * Defines the possible sources for an instruction's operands.
@@ -341,7 +349,20 @@ public abstract class Instruction {
         // The argument cells are fetched here, once per instruction. Operand resolution
         // below and the execution record both work from this array; nothing else reads the
         // code stream on their behalf.
-        this.rawArguments = organism.getRawArgumentsFromEnvironment(getLength(environment), environment);
+        int argumentCells = getLength(environment) - 1;
+        int[] cells = argumentCells > 0 ? new int[argumentCells] : EMPTY_RAW_ARGUMENTS;
+        int existing = organism.readArgumentCells(cells, environment);
+        if (existing < argumentCells) {
+            // In a bounded world the cells reach beyond the edge, where no cell exists. Read as
+            // empty they would hand the instruction values it never had - an empty cell as a
+            // register argument names %DR0 - so the instruction fails here, while it is planned,
+            // and is not executed. The record keeps the cells that do exist.
+            this.rawArguments = Arrays.copyOf(cells, existing);
+            organism.instructionFailed(ARGUMENT_CELL_BEYOND_THE_EDGE);
+            this.cachedOperands = List.of();
+            return this.cachedOperands;
+        }
+        this.rawArguments = cells;
 
         List<Operand> resolved = new ArrayList<>(sources.size());
         int dims = environment.properties.getDimensions();
@@ -517,7 +538,7 @@ public abstract class Instruction {
      */
     protected int[] dataPointerInsideWorld(Environment environment) {
         int[] dp = organism.getActiveDp();
-        if (dp != null && !environment.contains(dp)) {
+        if (dp != null && !environment.exists(dp)) {
             organism.instructionFailed(getName() + ": Data pointer " + java.util.Arrays.toString(dp)
                     + " lies outside the world.");
             return null;
@@ -579,7 +600,7 @@ public abstract class Instruction {
     protected boolean isPassable(Environment environment, int[] position, int[] displacement) {
         // A cell beyond the edge of a bounded world does not exist, and what does not exist
         // cannot be moved onto; the accessors below would read it as empty.
-        if (!environment.contains(position, displacement)) {
+        if (!environment.exists(position, displacement)) {
             return false;
         }
         return environment.getMoleculeIntAt(position, displacement) == 0

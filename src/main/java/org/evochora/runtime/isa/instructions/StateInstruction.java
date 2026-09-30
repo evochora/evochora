@@ -453,7 +453,7 @@ public class StateInstruction extends Instruction {
         }
         // Checked before passability, which would be false for the same reason: the cell beyond
         // the edge of a bounded world does not exist, and the reason says so.
-        if (!environment.contains(dp, vector)) {
+        if (!environment.exists(dp, vector)) {
             organism.instructionFailed(getName() + ": Target cell beyond the edge of the world");
             return;
         }

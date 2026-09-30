@@ -46,6 +46,19 @@ public final class SimulationFault extends IllegalStateException {
     }
 
     /**
+     * Creates the fault for the work the tick loop does on a newborn after its birth handlers
+     * ran: the label rewrite and the genome hash.
+     *
+     * @param tick the tick that was running
+     * @param newborn the organism born in this tick
+     * @param cause the exception the defect raised
+     * @return the fault, with the cause attached
+     */
+    public static SimulationFault atBirth(long tick, Organism newborn, RuntimeException cause) {
+        return new SimulationFault("Newborn " + newborn.getId() + " at tick " + tick + ": " + cause, cause);
+    }
+
+    /**
      * Creates the fault for a plugin or handler that the tick loop ran.
      *
      * @param tick the tick that was running

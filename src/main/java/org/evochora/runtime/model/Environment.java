@@ -252,14 +252,16 @@ public class Environment implements IEnvironmentReader {
     }
 
     /**
-     * Tells whether a coordinate names a cell of the world: it has one component per dimension,
-     * and every component lies within the world's size along it. This is the question the
-     * in-range accessors answer with a rejection; a caller that must not run into one asks first.
+     * Tells whether a coordinate lies within the world's extent: it has one component per
+     * dimension, and every component lies within the world's size along it. This is the range
+     * test the in-range accessors make before they reject a coordinate, and it knows nothing of
+     * the topology: in a toroidal world a coordinate that has not been wrapped fails it although
+     * it names a cell. Code outside the environment asks {@link #exists(int[])} instead.
      *
      * @param coord the coordinate to ask about
      * @return {@code true} if the in-range accessors accept the coordinate
      */
-    public boolean contains(int[] coord) {
+    boolean contains(int[] coord) {
         return layout.contains(coord);
     }
 
@@ -267,8 +269,8 @@ public class Environment implements IEnvironmentReader {
      * Tells whether a computed position names a cell of the world. In a toroidal world every
      * position does, because its coordinates wrap; in a bounded world a position beyond the edge
      * names no cell. This is the question an instruction asks before it sets a pointer to a
-     * position it computed, since no pointer of an organism ever stands outside the world; the
-     * displaced accessors answer it for a neighbour through {@link #contains(int[], int[])}.
+     * position it computed, since no pointer of an organism ever stands outside the world;
+     * {@link #exists(int[], int[])} asks it for a neighbour without building its coordinate.
      *
      * @param position the computed position, one component per dimension
      * @return {@code true} if the position names a cell of the world
@@ -327,7 +329,8 @@ public class Environment implements IEnvironmentReader {
     /**
      * Tells whether the cell a displacement away from a position exists; see
      * {@link #getMoleculeIntAt(int[], int[])} for the contract. In a toroidal world it always
-     * does; in a bounded world a step across the edge reaches no cell.
+     * does; in a bounded world a step across the edge reaches no cell. The same question as
+     * {@link #exists(int[])}, asked without building the neighbour's coordinate.
      *
      * @param position     the coordinate to start from; every component lies within the world
      * @param displacement the zero vector or a unit vector, one component per dimension
@@ -336,7 +339,7 @@ public class Environment implements IEnvironmentReader {
      *                                  displacement is neither the zero vector nor a unit vector
      *                                  of the world's dimensions
      */
-    public boolean contains(int[] position, int[] displacement) {
+    public boolean exists(int[] position, int[] displacement) {
         return indexOfDisplaced(position, displacement) >= 0;
     }
 

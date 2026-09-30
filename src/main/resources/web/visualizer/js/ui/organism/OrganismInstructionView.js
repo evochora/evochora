@@ -227,6 +227,9 @@ export class OrganismInstructionView {
             }
             case 'STACK':
                 return 'STACK';
+            case 'MISSING':
+                // The operand's cells lie beyond the edge of a bounded world: there is no cell there
+                return '∅';
             default:
                 return `?(${arg.type})`;
         }

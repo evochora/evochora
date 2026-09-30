@@ -17,6 +17,7 @@ import org.evochora.runtime.spi.DeathContext;
 import org.evochora.runtime.spi.IBirthHandler;
 import org.evochora.runtime.spi.IDeathHandler;
 import org.evochora.runtime.spi.IInstructionInterceptor;
+import org.evochora.runtime.spi.IRandomProvider;
 import org.evochora.runtime.spi.ITickPlugin;
 import org.evochora.runtime.spi.InterceptionContext;
 import org.evochora.runtime.thermodynamics.ThermodynamicPolicyManager;
@@ -72,7 +73,7 @@ class SimulationFaultTest {
 
         organism = Organism.create(simulation, organismPosition, 1000);
         simulation.addOrganism(organism);
-        if (environment.contains(organismPosition)) {
+        if (environment.exists(organismPosition)) {
             int nopOpcode = Instruction.getInstructionIdByName("NOP");
             environment.setMolecule(new Molecule(Config.TYPE_CODE, nopOpcode), organism.getId(), organismPosition);
         }
@@ -268,6 +269,54 @@ class SimulationFaultTest {
             .isInstanceOf(SimulationFault.class)
             .hasMessageContaining(ThrowingPlugin.class.getName())
             .hasMessageContaining("for organism " + newborn.getId())
+            .cause()
+            .hasMessage(DEFECT);
+    }
+
+    @Test
+    void faultAfterABirthNamesTheNewborn() {
+        createSimulation(true, 1, new int[]{5, 5});
+        Organism newborn = Organism.create(simulation, new int[]{9, 9}, 100);
+        simulation.addNewOrganism(newborn);
+        // The label rewrite of a newborn that owns a cell draws from the root random provider; a
+        // provider that throws there is the defect.
+        simulation.getEnvironment().setMolecule(new Molecule(Config.TYPE_DATA, 1), newborn.getId(), new int[]{9, 9});
+        simulation.setRandomProvider(new IRandomProvider() {
+            @Override
+            public long seed() {
+                return 42L;
+            }
+
+            @Override
+            public int nextInt(int bound) {
+                throw new IllegalStateException(DEFECT);
+            }
+
+            @Override
+            public double nextDouble() {
+                throw new IllegalStateException(DEFECT);
+            }
+
+            @Override
+            public java.util.Random asJavaRandom() {
+                throw new IllegalStateException(DEFECT);
+            }
+
+            @Override
+            public byte[] saveState() {
+                return new byte[0];
+            }
+
+            @Override
+            public void loadState(byte[] state) {
+                // Stateless
+            }
+        });
+
+        assertThatThrownBy(simulation::tick)
+            .isInstanceOf(SimulationFault.class)
+            .hasMessageContaining("Newborn " + newborn.getId())
+            .hasMessageContaining("at tick 0")
             .cause()
             .hasMessage(DEFECT);
     }
