@@ -566,13 +566,13 @@ the reference artifact is regenerated in each of them and the pull request says 
 
 ### Step 1: Rename `.DEFINE` → `.CONST`
 
-Pure rename. Package `features/define` → `features/const`; classes `DefineDirectiveHandler`,
+Pure rename. Package `features/define` → `features/constdir` (`const` is a Java reserved word, as `import` is for `features/importdir`); classes `DefineDirectiveHandler`,
 `DefineFeature`, `DefineNode`, `DefineNodeConverter`, `DefineAnalysisHandler` →
 `Const…`; registration `ctx.parserStatement(".CONST", …)`; JavaDoc in `Symbol`, `TokenKind`,
 `IParserStatementHandler`; `StandardFeatures`. Every `.DEFINE` in `assembly/`, in the test
-sources and test resources, in `docs/ASSEMBLY_SPEC.md`, `docs/COMPILER_CORE_BOUNDARY.md`,
-`docs/COMPILER_IR_SPEC.md` and `docs/proposals/ideas/LOCAL_STATE.md`. The error messages of the
-constant name `.CONST`.
+sources and test resources, in `docs/ASSEMBLY_SPEC.md` and `docs/COMPILER_CORE_BOUNDARY.md`, and
+in the directive list of the VS Code grammar `extensions/vscode/src/extension/syntaxes/evochora.tmLanguage.json`.
+The error messages of the constant name `.CONST`.
 
 **Tests:** all existing tests green after the rename; reference artifact regenerated.
 
@@ -581,7 +581,8 @@ constant name `.CONST`.
 Pure rename: `.ENDP` → `.ENDPROC` (`ProcDirectiveHandler`), `.ENDM` → `.ENDMACRO`
 (`MacroDirectiveHandler`), `.ENDR` → `.ENDREPEAT` (`RepeatDirectiveHandler`), including the
 string comparisons and error messages in those handlers, every occurrence in `assembly/`, the
-tests, the three documents, `LOCAL_STATE.md`, and the program embedded in
+tests, `docs/ASSEMBLY_SPEC.md`, `docs/COMPILER_CORE_BOUNDARY.md`, `docs/COMPILER_IR_SPEC.md`,
+`docs/proposals/ideas/LOCAL_STATE.md`, the directive list of the VS Code grammar `evochora.tmLanguage.json`, and the program embedded in
 `src/jmh/java/org/evochora/runtime/SimulationBenchmark.java`, which `gw check` does not
 compile.
 

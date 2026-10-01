@@ -1,4 +1,4 @@
-package org.evochora.compiler.features.define;
+package org.evochora.compiler.features.constdir;
 
 import org.evochora.compiler.frontend.parser.IParserStatementHandler;
 import org.evochora.compiler.model.token.Token;
@@ -7,25 +7,25 @@ import org.evochora.compiler.frontend.parser.IParsingContext;
 import org.evochora.compiler.model.ast.AstNode;
 
 /**
- * Handler for the <code>.DEFINE</code> directive.
- * Parses a constant definition and creates a {@link DefineNode} in the AST.
+ * Handler for the <code>.CONST</code> directive.
+ * Parses a constant definition and creates a {@link ConstNode} in the AST.
  */
-public class DefineDirectiveHandler implements IParserStatementHandler {
+public class ConstDirectiveHandler implements IParserStatementHandler {
 
     @Override
     public boolean supportsExport() { return true; }
 
     /**
-     * Parses a <code>.DEFINE</code> directive.
-     * The syntax is <code>.DEFINE &lt;name&gt; &lt;value&gt;</code>.
+     * Parses a <code>.CONST</code> directive.
+     * The syntax is <code>.CONST &lt;name&gt; &lt;value&gt;</code>.
      * @param context The parsing context.
-     * @return A {@link DefineNode} representing the constant definition.
+     * @return A {@link ConstNode} representing the constant definition.
      */
     @Override
     public AstNode parse(IParsingContext context) {
-        context.advance(); // consume .DEFINE
+        context.advance(); // consume .CONST
 
-        Token name = context.consume(TokenType.IDENTIFIER, "Expected a constant name after .DEFINE.");
+        Token name = context.consume(TokenType.IDENTIFIER, "Expected a constant name after .CONST.");
         boolean exported = context.isExported();
         AstNode valueNode = context.expression();
 
@@ -33,6 +33,6 @@ public class DefineDirectiveHandler implements IParserStatementHandler {
             return null;
         }
 
-        return new DefineNode(name.text(), name.toSourceInfo(), valueNode, exported);
+        return new ConstNode(name.text(), name.toSourceInfo(), valueNode, exported);
     }
 }

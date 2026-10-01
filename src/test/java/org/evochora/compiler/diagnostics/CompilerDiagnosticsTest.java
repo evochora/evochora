@@ -399,7 +399,7 @@ class CompilerDiagnosticsTest {
     @Test
     void aConstantWhereARegisterIsExpectedNamesTheKindItHas() throws Exception {
         write("main.evo",
-                ".DEFINE LIMIT DATA:5",
+                ".CONST LIMIT DATA:5",
                 "START:",
                 "  SETI LIMIT DATA:1");
 
@@ -476,8 +476,8 @@ class CompilerDiagnosticsTest {
     @Test
     void aCircularDefinitionNamesTheCircle() throws Exception {
         write("main.evo",
-                ".DEFINE A B",
-                ".DEFINE B A",
+                ".CONST A B",
+                ".CONST B A",
                 "START:",
                 "  SETI %DR0 A");
 
@@ -558,13 +558,13 @@ class CompilerDiagnosticsTest {
     @Test
     void constantsOfTheSameNameInTwoModulesAreNoCircle() throws Exception {
         write("lib.evo",
-                ".DEFINE A DATA:5",
-                "EXPORT .DEFINE B A",
+                ".CONST A DATA:5",
+                "EXPORT .CONST B A",
                 "HELPER:",
                 "  NOP");
         write("main.evo",
                 ".IMPORT \"lib.evo\" AS LIB",
-                ".DEFINE A LIB.B",
+                ".CONST A LIB.B",
                 "START:",
                 "  SETI %DR0 A");
 
@@ -608,8 +608,8 @@ class CompilerDiagnosticsTest {
     @Test
     void aSecondConstantOfTheSameNameNamesTheFirst() throws Exception {
         write("main.evo",
-                ".DEFINE MAX DATA:1",
-                ".DEFINE MAX DATA:2",
+                ".CONST MAX DATA:1",
+                ".CONST MAX DATA:2",
                 "START:",
                 "  NOP");
 

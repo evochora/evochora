@@ -81,7 +81,7 @@ public class LexerTest {
     void testLexerTokenization() {
         // Arrange
         String source = String.join("\n",
-                ".DEFINE HELLO 42",
+                ".CONST HELLO 42",
                 "L1: SETI %DR0 HELLO # Lade 42"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
@@ -93,7 +93,7 @@ public class LexerTest {
         // Assert
         assertThat(diagnostics.hasErrors()).isFalse();
         assertThat(tokens).hasSize(10);
-        assertThat(tokens.get(0)).extracting(Token::type, Token::text).containsExactly(TokenType.DIRECTIVE, ".DEFINE");
+        assertThat(tokens.get(0)).extracting(Token::type, Token::text).containsExactly(TokenType.DIRECTIVE, ".CONST");
         assertThat(tokens.get(1)).extracting(Token::type, Token::text).containsExactly(TokenType.IDENTIFIER, "HELLO");
         assertThat(tokens.get(2)).extracting(Token::type, Token::text, Token::value).containsExactly(TokenType.NUMBER, "42", 42);
         assertThat(tokens.get(3)).extracting(Token::type).isEqualTo(TokenType.NEWLINE);

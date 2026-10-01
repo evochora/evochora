@@ -7,7 +7,7 @@ import org.evochora.compiler.features.proc.CallAnalysisHandler;
 import org.evochora.compiler.features.proc.CallNode;
 import org.evochora.compiler.features.proc.ParameterBinding;
 import org.evochora.compiler.features.label.LabelNode;
-import org.evochora.compiler.features.define.DefineNode;
+import org.evochora.compiler.features.constdir.ConstNode;
 import org.evochora.compiler.model.ast.NumberLiteralNode;
 import org.evochora.compiler.features.proc.ProcedureNode;
 import org.evochora.compiler.features.reg.RegNode;
@@ -149,7 +149,7 @@ class CallAnalysisHandlerTypeSafetyTest {
 
     @Test
     void constantAsLref_reportsError() {
-        symbolTable.define(new Symbol("MY_CONST", SRC, Symbol.Type.CONSTANT, new DefineNode("MY_CONST", SRC, new NumberLiteralNode(1, SRC), false)));
+        symbolTable.define(new Symbol("MY_CONST", SRC, Symbol.Type.CONSTANT, new ConstNode("MY_CONST", SRC, new NumberLiteralNode(1, SRC), false)));
 
         CallNode call = callWithLref("MY_CONST");
         handler.analyze(call, symbolTable, diagnostics);

@@ -7,8 +7,8 @@
 .REG %TEMP %DR2
 
 # Define constants
-.DEFINE MAX_COUNT DATA:10
-.DEFINE INIT_VALUE DATA:1
+.CONST MAX_COUNT DATA:10
+.CONST INIT_VALUE DATA:1
 
 # Simple procedure that adds two values
 EXPORT .PROC ADD_TWO REF A B

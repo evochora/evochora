@@ -89,12 +89,12 @@ public class CompilerEndToEndTest {
 
 	/**
 	 * Compiles a program exercising multiple features simultaneously:
-	 * labels, procedures with REF/VAL, CALL, .DEFINE, .REG, .MACRO.
+	 * labels, procedures with REF/VAL, CALL, .CONST, .REG, .MACRO.
 	 */
 	@Test
 	void compilesMultiFeatureProgram() throws Exception {
 		String source = String.join("\n",
-				".DEFINE MAX_VAL DATA:42",
+				".CONST MAX_VAL DATA:42",
 				".REG %TEMP %DR1",
 				"",
 				".MACRO INC R",

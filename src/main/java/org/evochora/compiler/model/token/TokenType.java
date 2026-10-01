@@ -32,7 +32,7 @@ public enum TokenType {
     STRING,
 
     // Keywords & Directives.
-    /** A directive, such as .proc or .define. */
+    /** A directive, such as .proc or .const. */
     DIRECTIVE,
     /** An opcode, such as SETI or ADD. */
     OPCODE,

@@ -14,7 +14,7 @@ import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ParserStatementRegistry;
 import org.evochora.compiler.features.ctx.PopCtxDirectiveHandler;
 import org.evochora.compiler.features.ctx.PushCtxDirectiveHandler;
-import org.evochora.compiler.features.define.DefineDirectiveHandler;
+import org.evochora.compiler.features.constdir.ConstDirectiveHandler;
 import org.evochora.compiler.features.dir.DirDirectiveHandler;
 import org.evochora.compiler.features.importdir.ImportDirectiveHandler;
 import org.evochora.compiler.features.org.OrgDirectiveHandler;
@@ -56,10 +56,10 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Integration tests for {@code .SOURCE} + {@code .DEFINE} in multi-module compilation.
+ * Integration tests for {@code .SOURCE} + {@code .CONST} in multi-module compilation.
  * Exercises the full pipeline from Phase 0 (dependency scanning) through Phase 6 (AST post-processing).
  */
-class ModuleSourceDefineIntegrationTest {
+class ModuleSourceConstIntegrationTest {
 
     @TempDir
     Path tempDir;
@@ -73,7 +73,7 @@ class ModuleSourceDefineIntegrationTest {
     @Tag("integration")
     void singleModuleWithSourcedConstants_resolvesCorrectly() throws Exception {
         Files.writeString(tempDir.resolve("consts.evo"),
-                ".DEFINE FOO DATA:42\n");
+                ".CONST FOO DATA:42\n");
 
         Files.writeString(tempDir.resolve("lib.evo"),
                 ".SOURCE \"consts.evo\"\n" +
@@ -94,9 +94,9 @@ class ModuleSourceDefineIntegrationTest {
 
     @Test
     @Tag("integration")
-    void twoModulesSourceSameDefineFile_noCollision() throws Exception {
+    void twoModulesSourceSameConstFile_noCollision() throws Exception {
         Files.writeString(tempDir.resolve("consts.evo"),
-                ".DEFINE LIMIT DATA:99\n");
+                ".CONST LIMIT DATA:99\n");
 
         Files.writeString(tempDir.resolve("mod_a.evo"),
                 ".SOURCE \"consts.evo\"\n" +
@@ -139,10 +139,10 @@ class ModuleSourceDefineIntegrationTest {
     void twoModulesWithDifferentValuesForSameConstant_resolvesPerModule() throws Exception {
         // Each module has its own constants file with a different value for STEP
         Files.writeString(tempDir.resolve("fast_config.evo"),
-                ".DEFINE STEP DATA:10\n");
+                ".CONST STEP DATA:10\n");
 
         Files.writeString(tempDir.resolve("slow_config.evo"),
-                ".DEFINE STEP DATA:1\n");
+                ".CONST STEP DATA:1\n");
 
         Files.writeString(tempDir.resolve("fast.evo"),
                 ".SOURCE \"fast_config.evo\"\n" +
@@ -186,7 +186,7 @@ class ModuleSourceDefineIntegrationTest {
     @Tag("integration")
     void sourcedConstantResolvedInInstruction() throws Exception {
         Files.writeString(tempDir.resolve("consts.evo"),
-                ".DEFINE MAX DATA:255\n");
+                ".CONST MAX DATA:255\n");
 
         Files.writeString(tempDir.resolve("lib.evo"),
                 ".SOURCE \"consts.evo\"\n" +
@@ -224,9 +224,9 @@ class ModuleSourceDefineIntegrationTest {
         // a.evo sources b.evo, b.evo sources a.evo
         // Test at preprocessor level directly (DependencyScanner doesn't handle .SOURCE cycles)
         Files.writeString(tempDir.resolve("a.evo"),
-                ".SOURCE \"b.evo\"\n.DEFINE A_VAL DATA:1\n");
+                ".SOURCE \"b.evo\"\n.CONST A_VAL DATA:1\n");
         Files.writeString(tempDir.resolve("b.evo"),
-                ".SOURCE \"a.evo\"\n.DEFINE B_VAL DATA:2\n");
+                ".SOURCE \"a.evo\"\n.CONST B_VAL DATA:2\n");
 
         String mainSource = ".SOURCE \"a.evo\"\nNOP\n";
         String mainPath = tempDir.resolve("main.evo").toString();
@@ -265,7 +265,7 @@ class ModuleSourceDefineIntegrationTest {
     @Tag("integration")
     void mainFileSourcesConstantsDirectly() throws Exception {
         Files.writeString(tempDir.resolve("consts.evo"),
-                ".DEFINE INIT_VAL DATA:7\n");
+                ".CONST INIT_VAL DATA:7\n");
 
         String mainSource = ".SOURCE \"consts.evo\"\nSETI %DR0 INIT_VAL\n";
         String mainPath = tempDir.resolve("main.evo").toString();
@@ -361,7 +361,7 @@ class ModuleSourceDefineIntegrationTest {
 
     private static ParserStatementRegistry allHandlers() {
         ParserStatementRegistry reg = new ParserStatementRegistry();
-        reg.register(".DEFINE", new DefineDirectiveHandler());
+        reg.register(".CONST", new ConstDirectiveHandler());
         reg.register(".REG", new RegDirectiveHandler(new RuntimeInstructionSetAdapter()));
         reg.register(".PROC", new ProcDirectiveHandler(new RuntimeInstructionSetAdapter()));
         reg.register(".ORG", new OrgDirectiveHandler());

@@ -17,13 +17,13 @@
 # =============================================================================
 # CONSTANTS
 # =============================================================================
-.DEFINE MAX_ENERGY DATA:100
-.DEFINE MOVE_COST DATA:1
-.DEFINE ENERGY_GAIN DATA:5
-.DEFINE WORLD_SIZE DATA:1000
-.DEFINE STACK_SIZE DATA:50
-.DEFINE TRUE DATA:1
-.DEFINE FALSE DATA:0
+.CONST MAX_ENERGY DATA:100
+.CONST MOVE_COST DATA:1
+.CONST ENERGY_GAIN DATA:5
+.CONST WORLD_SIZE DATA:1000
+.CONST STACK_SIZE DATA:50
+.CONST TRUE DATA:1
+.CONST FALSE DATA:0
 
 # =============================================================================
 # MEMORY ORGANIZATION and .PLACE directives

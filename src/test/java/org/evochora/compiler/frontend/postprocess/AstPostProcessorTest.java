@@ -10,7 +10,7 @@ import org.evochora.compiler.model.ast.InstructionNode;
 import org.evochora.compiler.model.ast.NumberLiteralNode;
 import org.evochora.compiler.model.ast.RegisterNode;
 import org.evochora.compiler.model.ast.TypedLiteralNode;
-import org.evochora.compiler.features.define.DefineNode;
+import org.evochora.compiler.features.constdir.ConstNode;
 import org.evochora.compiler.frontend.module.ModuleContextTracker;
 import org.evochora.compiler.model.symbols.Symbol;
 import org.evochora.compiler.model.symbols.SymbolTable;
@@ -343,17 +343,17 @@ class AstPostProcessorTest {
         SourceInfo siB = new SourceInfo("/mod_b.evo", 1, 1);
         TypedLiteralNode valueA = new TypedLiteralNode("DATA", 10, siA);
         TypedLiteralNode valueB = new TypedLiteralNode("DATA", 1, siB);
-        DefineNode defineA = new DefineNode("STEP", siA, valueA);
-        DefineNode defineB = new DefineNode("STEP", siB, valueB);
+        ConstNode constA = new ConstNode("STEP", siA, valueA);
+        ConstNode constB = new ConstNode("STEP", siB, valueB);
 
         // Define STEP=10 in module A context, with the defining node as the symbol's node,
-        // as the analysis handler of .DEFINE does
+        // as the analysis handler of .CONST does
         st.setCurrentModule(modAChain);
-        st.define(new Symbol("STEP", siA, Symbol.Type.CONSTANT, defineA));
+        st.define(new Symbol("STEP", siA, Symbol.Type.CONSTANT, constA));
 
         // Define STEP=1 in module B context
         st.setCurrentModule(modBChain);
-        st.define(new Symbol("STEP", siB, Symbol.Type.CONSTANT, defineB));
+        st.define(new Symbol("STEP", siB, Symbol.Type.CONSTANT, constB));
 
         st.setCurrentModule(mainChain);
 
@@ -372,8 +372,8 @@ class AstPostProcessorTest {
         AstPostProcessor moduleProcessor = new AstPostProcessor(st, tracker, new ScopeTracker(st), TestRegistries.postProcessRegistry());
 
         List<AstNode> nodes = List.of(
-                new PushCtxNode("/mod_a.evo", modAChain), defineA, instrA, new PopCtxNode(),
-                new PushCtxNode("/mod_b.evo", modBChain), defineB, instrB, new PopCtxNode()
+                new PushCtxNode("/mod_a.evo", modAChain), constA, instrA, new PopCtxNode(),
+                new PushCtxNode("/mod_b.evo", modBChain), constB, instrB, new PopCtxNode()
         );
         List<AstNode> results = new ArrayList<>();
         for (AstNode node : nodes) {
@@ -396,8 +396,8 @@ class AstPostProcessorTest {
     void testProcess_SingleFileConstantResolutionStillWorks() {
         // Verify single-file mode (no module context) still resolves constants
         TypedLiteralNode constValue = new TypedLiteralNode("DATA", 99, new SourceInfo("test.s", 1, 1));
-        DefineNode defineNode = new DefineNode("MY_CONST", createSourceInfo(), constValue);
-        symbolTable.define(new Symbol("MY_CONST", createSourceInfo(), Symbol.Type.CONSTANT, defineNode));
+        ConstNode constNode = new ConstNode("MY_CONST", createSourceInfo(), constValue);
+        symbolTable.define(new Symbol("MY_CONST", createSourceInfo(), Symbol.Type.CONSTANT, constNode));
 
         IdentifierNode useNode = new IdentifierNode("MY_CONST", createSourceInfo());
         InstructionNode instr = new InstructionNode(
@@ -405,7 +405,7 @@ class AstPostProcessorTest {
                 createSourceInfo());
 
         // Process each node individually (matching the real Compiler pattern)
-        processor.process(defineNode);
+        processor.process(constNode);
         AstNode resultInstr = processor.process(instr);
 
         assertThat(resultInstr).isInstanceOf(InstructionNode.class);

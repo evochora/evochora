@@ -229,12 +229,12 @@ START:
 
 #### Exported Constants
 
-Constants defined with `.DEFINE` can also be exported. This allows modules to expose configuration values as part of their API:
+Constants defined with `.CONST` can also be exported. This allows modules to expose configuration values as part of their API:
 
 ```
 # In lib.evo
-EXPORT .DEFINE MAX_ENERGY DATA:1000
-EXPORT .DEFINE STEP_SIZE 1|0
+EXPORT .CONST MAX_ENERGY DATA:1000
+EXPORT .CONST STEP_SIZE 1|0
 
 # In main.evo
 .IMPORT "lib.evo" AS LIB
@@ -625,7 +625,7 @@ Directives are special commands that instruct the compiler on how to assemble th
 
 ### Definitions and Aliases
 
-* `[EXPORT] .DEFINE <NAME> <VALUE>`: Creates a compile-time constant. The compiler will replace every occurrence of `<NAME>` with `<VALUE>`. The optional `EXPORT` prefix makes the constant visible to importing modules.
+* `[EXPORT] .CONST <NAME> <VALUE>`: Creates a compile-time constant. The compiler will replace every occurrence of `<NAME>` with `<VALUE>`. The optional `EXPORT` prefix makes the constant visible to importing modules.
 * `.REG <%ALIAS> <%REGISTER>`: Assigns a custom name (`<%ALIAS>`) to a register. Supports both data registers (e.g., `.REG %COUNTER %DR0`) and location registers (e.g., `.REG %POSITION %LR0`).
 
 ### Layout Control
@@ -815,8 +815,8 @@ The `USING M AS MATH` clause tells the compiler: "the module that `utils.evo` kn
 
 ```
 # constants.evo — shared constants (no .IMPORT or .REQUIRE allowed)
-.DEFINE MAX_ENERGY DATA:1000
-.DEFINE STEP_SIZE 1|0
+.CONST MAX_ENERGY DATA:1000
+.CONST STEP_SIZE 1|0
 ```
 
 ```
@@ -836,7 +836,7 @@ Complete, compilable example programs are provided in [`assembly/examples/`](../
 
 | File | Description |
 |---|---|
-| [`simple.evo`](../assembly/examples/simple.evo) | Basic syntax: register aliases, `.DEFINE`, `.PROC`, labels, loops |
+| [`simple.evo`](../assembly/examples/simple.evo) | Basic syntax: register aliases, `.CONST`, `.PROC`, labels, loops |
 | [`complex.evo`](../assembly/examples/complex.evo) | Advanced features: `.PLACE`, `.MACRO`, `.REPEAT`, `.SOURCE`, multiple `.ORG` regions |
 | [`modules/main.evo`](../assembly/examples/modules/main.evo) | Module system: `.IMPORT`, `EXPORT .IMPORT`, `.REQUIRE`, `USING`, `.SOURCE` for shared constants, `EXPORT` |
 | [`duplicate-shell/main.evo`](../assembly/examples/duplicate-shell/main.evo) | A procedure that copies a labelled frame beside one of its edges: location parameters, marker handling, defensive writing, and a driver that calls it |

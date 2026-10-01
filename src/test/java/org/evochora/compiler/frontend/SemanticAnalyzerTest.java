@@ -10,7 +10,7 @@ import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ParserStatementRegistry;
 import org.evochora.compiler.features.ctx.PopCtxDirectiveHandler;
 import org.evochora.compiler.features.ctx.PushCtxDirectiveHandler;
-import org.evochora.compiler.features.define.DefineDirectiveHandler;
+import org.evochora.compiler.features.constdir.ConstDirectiveHandler;
 import org.evochora.compiler.features.dir.DirDirectiveHandler;
 import org.evochora.compiler.features.importdir.ImportDirectiveHandler;
 import org.evochora.compiler.features.org.OrgDirectiveHandler;
@@ -346,7 +346,7 @@ public class SemanticAnalyzerTest {
     void testJumpingToAConstantReportsError() {
         // Arrange
         String source = String.join("\n",
-                ".DEFINE MY_CONST 42",
+                ".CONST MY_CONST 42",
                 "JMPI MY_CONST  # Fehler: MY_CONST ist eine Konstante, kein Label"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
@@ -395,7 +395,7 @@ public class SemanticAnalyzerTest {
     void testUsingDefinedConstantAsLiteralIsAllowed() {
         // Arrange
         String source = String.join("\n",
-                ".DEFINE MY_CONST 123",
+                ".CONST MY_CONST 123",
                 "SETI %DR0 MY_CONST"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
@@ -614,7 +614,7 @@ public class SemanticAnalyzerTest {
 
     private static ParserStatementRegistry allHandlers() {
         ParserStatementRegistry reg = new ParserStatementRegistry();
-        reg.register(".DEFINE", new DefineDirectiveHandler());
+        reg.register(".CONST", new ConstDirectiveHandler());
         reg.register(".REG", new RegDirectiveHandler(new RuntimeInstructionSetAdapter()));
         reg.register(".PROC", new ProcDirectiveHandler(new RuntimeInstructionSetAdapter()));
         reg.register(".ORG", new OrgDirectiveHandler());

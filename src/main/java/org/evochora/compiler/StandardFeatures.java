@@ -1,7 +1,7 @@
 package org.evochora.compiler;
 
 import org.evochora.compiler.features.ctx.CtxFeature;
-import org.evochora.compiler.features.define.DefineFeature;
+import org.evochora.compiler.features.constdir.ConstFeature;
 import org.evochora.compiler.features.dir.DirFeature;
 import org.evochora.compiler.features.macro.MacroFeature;
 import org.evochora.compiler.features.org.OrgFeature;
@@ -43,7 +43,7 @@ public final class StandardFeatures {
             new CtxFeature(),
             new OrgFeature(),
             new DirFeature(),
-            new DefineFeature(),
+            new ConstFeature(),
             new RegFeature(),
             new LabelFeature(),
             new PlaceFeature(),

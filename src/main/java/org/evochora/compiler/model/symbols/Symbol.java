@@ -20,7 +20,7 @@ public record Symbol(String name, SourceInfo sourceInfo, Type type, AstNode node
     public enum Type {
         /** A label defined in the source code. */
         LABEL,
-        /** A constant defined with .DEFINE. */
+        /** A constant defined with .CONST. */
         CONSTANT,
         /** A procedure defined with .PROC. */
         PROCEDURE,

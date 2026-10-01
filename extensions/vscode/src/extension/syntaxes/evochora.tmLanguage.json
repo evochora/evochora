@@ -26,7 +26,7 @@
     },
     "directives": {
       "name": "keyword.control.directive.assembly",
-      "match": "(?i)\\.(DEFINE|DIR|ENDM|ENDP|ENDR|IMPORT|MACRO|ORG|PLACE|PROC|REG|REPEAT|REQUIRE|SOURCE)\\b"
+      "match": "(?i)\\.(CONST|DIR|ENDM|ENDP|ENDR|IMPORT|MACRO|ORG|PLACE|PROC|REG|REPEAT|REQUIRE|SOURCE)\\b"
     },
     "labels": {
       "name": "entity.name.function.label.assembly",

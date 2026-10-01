@@ -14,21 +14,21 @@
 # ----------------------------
 # Constants
 # ----------------------------
-.DEFINE PAUSE_THRESHOLD DATA:50000        # Below this the attempt rests until harvesting refilled it
-.DEFINE CHILD_INITIAL_ENERGY DATA:25000   # What the child is given at birth
+.CONST PAUSE_THRESHOLD DATA:50000        # Below this the attempt rests until harvesting refilled it
+.CONST CHILD_INITIAL_ENERGY DATA:25000   # What the child is given at birth
 
-.DEFINE PHASE_SHELL DATA:1                # The child's shell is being built
-.DEFINE PHASE_BODY  DATA:2                # The body is being copied into it
-.DEFINE PHASE_SPAWN DATA:3                # Everything stands, the fork is due
+.CONST PHASE_SHELL DATA:1                # The child's shell is being built
+.CONST PHASE_BODY  DATA:2                # The body is being copied into it
+.CONST PHASE_SPAWN DATA:3                # Everything stands, the fork is due
 
-.DEFINE RESULT_DONE    DATA:1             # The phase finished its work
-.DEFINE RESULT_PAUSED  DATA:2             # Out of energy, continue where it stopped
-.DEFINE RESULT_ABORTED DATA:3             # Something foreign in the way, give the attempt up
+.CONST RESULT_DONE    DATA:1             # The phase finished its work
+.CONST RESULT_PAUSED  DATA:2             # Out of energy, continue where it stopped
+.CONST RESULT_ABORTED DATA:3             # Something foreign in the way, give the attempt up
 
-.DEFINE DIR_EAST  DATA:1                  # Bitmask of +x, as B2V reads it
-.DEFINE DIR_WEST  DATA:2                  # Bitmask of -x
-.DEFINE DIR_SOUTH DATA:4                  # Bitmask of +y
-.DEFINE DIR_NORTH DATA:8                  # Bitmask of -y
+.CONST DIR_EAST  DATA:1                  # Bitmask of +x, as B2V reads it
+.CONST DIR_WEST  DATA:2                  # Bitmask of -x
+.CONST DIR_SOUTH DATA:4                  # Bitmask of +y
+.CONST DIR_NORTH DATA:8                  # Bitmask of -y
 
 # ===========================================================================
 # CONTINUE - the phase machine

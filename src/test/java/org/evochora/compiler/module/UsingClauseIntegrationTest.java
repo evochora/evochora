@@ -14,7 +14,7 @@ import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ParserStatementRegistry;
 import org.evochora.compiler.features.ctx.PopCtxDirectiveHandler;
 import org.evochora.compiler.features.ctx.PushCtxDirectiveHandler;
-import org.evochora.compiler.features.define.DefineDirectiveHandler;
+import org.evochora.compiler.features.constdir.ConstDirectiveHandler;
 import org.evochora.compiler.features.dir.DirDirectiveHandler;
 import org.evochora.compiler.features.importdir.ImportDirectiveHandler;
 import org.evochora.compiler.features.org.OrgDirectiveHandler;
@@ -208,7 +208,7 @@ class UsingClauseIntegrationTest {
     void usingWithSourcedConstantsInRequiredModule() throws Exception {
         // consts.evo: shared constants
         Files.writeString(tempDir.resolve("consts.evo"),
-                ".DEFINE AMOUNT DATA:5\n");
+                ".CONST AMOUNT DATA:5\n");
 
         // math.evo: standalone, exports ADD_CONST
         Files.writeString(tempDir.resolve("math.evo"),
@@ -294,7 +294,7 @@ class UsingClauseIntegrationTest {
 
     private static ParserStatementRegistry allHandlers() {
         ParserStatementRegistry reg = new ParserStatementRegistry();
-        reg.register(".DEFINE", new DefineDirectiveHandler());
+        reg.register(".CONST", new ConstDirectiveHandler());
         reg.register(".REG", new RegDirectiveHandler(new RuntimeInstructionSetAdapter()));
         reg.register(".PROC", new ProcDirectiveHandler(new RuntimeInstructionSetAdapter()));
         reg.register(".ORG", new OrgDirectiveHandler());
