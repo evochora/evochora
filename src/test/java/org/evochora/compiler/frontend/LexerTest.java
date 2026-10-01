@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 
 /**
  * Contains unit tests for the {@link Lexer}.
@@ -68,6 +69,32 @@ public class LexerTest {
         // Assert
         assertThat(diagnostics.hasErrors()).isTrue();
         assertThat(diagnostics.summary()).contains("Expected '+' or '-' after '@'.");
+    }
+
+    /**
+     * Verifies that hexadecimal and binary literals are read as one number token, with and
+     * without a leading minus.
+     * This is a unit test for the lexer.
+     */
+    @Test
+    @Tag("unit")
+    void testHexAndBinaryLiteralsWithAndWithoutSign() {
+        // Arrange
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Lexer lexer = new Lexer("-0x10 -0b11 0x10 0b11", diagnostics);
+
+        // Act
+        List<Token> tokens = lexer.scanTokens();
+
+        // Assert
+        assertThat(diagnostics.hasErrors()).isFalse();
+        assertThat(tokens).extracting(Token::type, Token::value).containsExactly(
+                tuple(TokenType.NUMBER, -16),
+                tuple(TokenType.NUMBER, -3),
+                tuple(TokenType.NUMBER, 16),
+                tuple(TokenType.NUMBER, 3),
+                tuple(TokenType.END_OF_FILE, null)
+        );
     }
 
     /**

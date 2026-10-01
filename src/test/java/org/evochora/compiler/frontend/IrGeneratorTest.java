@@ -209,6 +209,18 @@ public class IrGeneratorTest {
 
     @Test
     @Tag("unit")
+    void negativeHexTypedLiteralResolvesToItsValue() {
+        IrProgram ir = compileToIr("SETI %DR0 DATA:-0x10");
+
+        IrInstruction seti = (IrInstruction) ir.items().stream()
+                .filter(IrInstruction.class::isInstance)
+                .findFirst()
+                .orElseThrow();
+        assertThat(seti.operands().get(1)).isEqualTo(new IrTypedImm("DATA", -16));
+    }
+
+    @Test
+    @Tag("unit")
     void endToEnd_sourceMapContentIsCorrect() throws org.evochora.compiler.api.CompilationException {
         String source = "SETI %DR0 DATA:42";
         org.evochora.compiler.Compiler compiler = new org.evochora.compiler.Compiler();
