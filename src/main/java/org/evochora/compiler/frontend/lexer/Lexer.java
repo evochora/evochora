@@ -24,6 +24,8 @@ public class Lexer {
     private final String logicalFileName;
     private final IInstructionSet isa;
     private int start = 0;
+    private int startLine = 1;   // line of the first character of the token being scanned
+    private int startColumn = 1; // 1-based column of that character
     private int current = 0;
     private int line = 1;
     private int column = 1;
@@ -69,6 +71,8 @@ public class Lexer {
     public List<Token> scanTokens() {
         while (!isAtEnd()) {
             start = current;
+            startLine = line;
+            startColumn = column;
             scanToken();
         }
         tokens.add(new Token(TokenType.END_OF_FILE, "", null, line, column, logicalFileName));
@@ -270,11 +274,10 @@ public class Lexer {
 
     private void string() {
         while (peek() != '"' && !isAtEnd()) {
-            if (peek() == '\n') {
+            if (advance() == '\n') {
                 line++;
                 column = 1;
             }
-            advance();
         }
 
         if (isAtEnd()) {
@@ -300,7 +303,7 @@ public class Lexer {
     }
 
     private void addToken(TokenType type, Object literal, String text) {
-        tokens.add(new Token(type, text, literal, line, start + 1, logicalFileName));
+        tokens.add(new Token(type, text, literal, startLine, startColumn, logicalFileName));
     }
 
     private boolean isAtEnd() {

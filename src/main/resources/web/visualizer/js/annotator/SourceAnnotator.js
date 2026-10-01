@@ -76,34 +76,20 @@ export class SourceAnnotator {
 
         if (!lineData.columns) return [];
 
-        // 3. Calculate Line Start Offset to convert absolute token pos to relative
-        // We can rely on the backend normalizing line endings to \n (Unix-style).
-        // See IncludeDirectiveHandler.java and Compiler.java
-        const allLines = this.getAllLines(artifact, fileName);
-        if (!allLines) return []; // Should not happen if we have sourceLine
-
-        // Calculate offset for Unix endings (\n)
-        let offset = 0;
-        
-        for (let i = 0; i < lineNumber - 1; i++) {
-            const len = allLines[i].length;
-            offset += len + 1; // +1 for \n
-        }
-
         let annotations = [];
 
-        // 4. Process tokens
+        // 3. Process tokens
         lineData.columns.forEach(colData => {
-            const absColumn = colData.columnNumber; 
+            // columnNumber is the 1-based column of the token's first character within its line
+            const column = colData.columnNumber;
             const tokens = colData.tokens;
 
             if (Array.isArray(tokens)) {
                 tokens.forEach(tokenInfo => {
                     const tokenText = tokenInfo.tokenText;
                     
-                    // Determine relative column (0-based index in sourceLine)
-                    // Backend guarantees consistent \n normalization, so we use simple arithmetic.
-                    const relColumn = absColumn - 1 - offset;
+                    // 0-based index of the token's first character in sourceLine
+                    const relColumn = column - 1;
                     
                     // Validate position (sanity check)
                     if (this.checkTokenAt(sourceLine, tokenText, relColumn)) {
@@ -116,8 +102,8 @@ export class SourceAnnotator {
                                     tokenText: tokenText,
                                     annotationText: result.annotationText,
                                     kind: result.kind,
-                                    column: absColumn, // absolute for sorting
-                                    relativeColumn: relColumn // relative for slicing
+                                    column: column, // 1-based column in the line
+                                    relativeColumn: relColumn // 0-based index for slicing
                                 });
                                 }
                             } catch (error) {
@@ -125,32 +111,15 @@ export class SourceAnnotator {
                             }
                         }
                     } else {
-                        // If this fails, it means the backend normalization is still broken or frontend lines differ.
-                        // We log this but do NOT try to guess/fix it heuristically.
-                        console.debug(`SourceAnnotator: Token '${tokenText}' mismatch at relCol ${relColumn} (abs ${absColumn}, offset ${offset})`);
+                        // A mismatch means the artifact's token positions and the displayed line differ.
+                        // It is logged, and no heuristic tries to locate the token elsewhere.
+                        console.debug(`SourceAnnotator: Token '${tokenText}' mismatch at relCol ${relColumn} (column ${column})`);
                     }
                 });
             }
         });
 
         return this.convertToInlineSpans(annotations, lineNumber);
-    }
-    
-    /**
-     * Retrieves all source code lines for a given file from the artifact.
-     * Handles different possible structures for the source data.
-     *
-     * @param {object} artifact The program artifact.
-     * @param {string} fileName The name of the file to retrieve lines from.
-     * @returns {string[]|null} An array of source code lines or null if not found.
-     * @private
-     */
-    getAllLines(artifact, fileName) {
-        if (!artifact.sources || !artifact.sources[fileName]) return null;
-        const source = artifact.sources[fileName];
-        if (Array.isArray(source)) return source;
-        if (source.lines) return source.lines;
-        return null;
     }
     
     /**
