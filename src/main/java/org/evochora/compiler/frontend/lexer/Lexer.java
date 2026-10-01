@@ -234,7 +234,6 @@ public class Lexer {
         }
     }
 
-    // *** START OF CORRECTION: The logic of NumericParser is now here. ***
     private int parseInt(String token) throws NumberFormatException {
         if (token == null) throw new NumberFormatException("null");
         String s = token.trim();
@@ -263,14 +262,11 @@ public class Lexer {
         int value = Integer.parseInt(s, radix);
         return negative ? -value : value;
     }
-    // *** END OF CORRECTION ***
 
     private char advance() {
         column++;
         return source.charAt(current++);
     }
-
-    // ... Rest of the class remains unchanged ...
 
     private void string() {
         while (peek() != '"' && !isAtEnd()) {
