@@ -30,7 +30,7 @@ resolves it.
 
 | # | Document | Status | Summary |
 |---|---|---|---|
-| 1 | [CONDITIONAL_COMPILATION](compiler-enhancements/CONDITIONAL_COMPILATION.md) | TO BE REVIEWED | `.IFDEF` / `.ELSEDEF` / `.ENDDEF` preprocessor conditionals; renames `.DEFINE` → `.CONST` and `.ENDP`/`.ENDM`/`.ENDR` → `.ENDPROC`/`.ENDMACRO`/`.ENDREPEAT` |
+| 1 | [CONDITIONAL_COMPILATION](compiler-enhancements/CONDITIONAL_COMPILATION.md) | TO BE REVIEWED | `.DEFINE` flags with optional integer value, `.IFDEF` / `.ELSEIFDEF` / `.ELSEDEF` / `.ENDDEF` with comparisons, evaluated in the preprocessor and in the dependency scan so that imports may stand in conditional blocks; flags per organism from the configuration and `--define`; blocks as a preprocessor concept and a symbol registry for the lexer; renames `.DEFINE` → `.CONST` and `.ENDP`/`.ENDM`/`.ENDR` → `.ENDPROC`/`.ENDMACRO`/`.ENDREPEAT` |
 | 2 | [CONTROL_FLOW_DIRECTIVES](compiler-enhancements/CONTROL_FLOW_DIRECTIVES.WIP.md) | **WORK IN PROGRESS** | `.IF`/`.ELSEIF`/`.ELSE`/`.ENDIF` specified; `.WHILE`/`.FOR`/`.BREAK`/`.CONTINUE` still to be written |
 | 3 | [CONDITIONAL_BRANCH_ISA](compiler-enhancements/CONDITIONAL_BRANCH_ISA.md) | TO BE REVIEWED | Branch variants (BFI, BNR, BLE…) for all 20 conditional operations — condition test and jump in one instruction; PROBABILISTIC_CONDITIONALS adds four operations that would need branch variants too |
 
