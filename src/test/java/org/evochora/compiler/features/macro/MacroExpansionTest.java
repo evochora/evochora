@@ -1,5 +1,6 @@
 package org.evochora.compiler.features.macro;
 
+import org.evochora.compiler.TestLexers;
 import java.nio.file.Path;
 import java.util.List;
 
@@ -153,7 +154,7 @@ class MacroExpansionTest {
 
     private static Expansion expand(String... lines) {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(String.join("\n", lines) + "\n", diagnostics);
+        Lexer lexer = new Lexer(String.join("\n", lines) + "\n", diagnostics, TestLexers.symbols());
         List<Token> tokens = lexer.scanTokens();
         PreProcessorContext context = new PreProcessorContext();
         context.handlers().register(".MACRO", new MacroDirectiveHandler());

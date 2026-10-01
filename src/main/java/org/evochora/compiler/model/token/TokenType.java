@@ -9,17 +9,13 @@ public enum TokenType {
     PIPE,
     /** The ':' character, used for labels and typed literals. */
     COLON,
-    /** The '*' character, used as a wildcard. */
-    STAR,
-    /** The ',' character, used as a separator. */
-    COMMA,
-    // Two-character tokens
-    /** The '..' character, used for ranges. */
-    DOT_DOT,
-    /** The '@+' character pair, which marks what follows it. */
-    AT_PLUS,
-    /** The '@-' character pair, which marks what follows it, with the opposite sign. */
-    AT_MINUS,
+
+    // Registered symbols.
+    /**
+     * A character sequence a feature registered with the lexer, such as {@code ..} or {@code @+};
+     * the token's text is the sequence, and handlers tell symbols apart by it.
+     */
+    SYMBOL,
 
     // Literals.
     /** An identifier, such as a variable or label name. */

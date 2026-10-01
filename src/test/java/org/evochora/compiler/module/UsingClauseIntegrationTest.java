@@ -1,5 +1,6 @@
 package org.evochora.compiler.module;
 
+import org.evochora.compiler.TestLexers;
 import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 import org.evochora.compiler.FeatureRegistry;
 import org.evochora.compiler.StandardFeatures;
@@ -263,8 +264,8 @@ class UsingClauseIntegrationTest {
         if (diagnostics.hasErrors()) return new SemanticsResult(diagnostics, null);
 
         // Phase 1: Lex the included files under their paths, the main file as the stream
-        Map<String, List<Token>> fileTokens = Lexer.lexFiles(graph.includedContents(), diagnostics, new RuntimeInstructionSetAdapter());
-        List<Token> mainTokens = new ArrayList<>(new Lexer(mainSource, diagnostics, mainPath).scanTokens());
+        Map<String, List<Token>> fileTokens = Lexer.lexFiles(graph.includedContents(), diagnostics, new RuntimeInstructionSetAdapter(), TestLexers.symbols());
+        List<Token> mainTokens = new ArrayList<>(new Lexer(mainSource, diagnostics, mainPath, TestLexers.symbols()).scanTokens());
 
         // Phase 2: Preprocessing (with root alias chain)
         PreProcessorContext ppContext = new PreProcessorContext(rootAliasChain, fileTokens);

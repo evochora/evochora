@@ -6,7 +6,8 @@ import org.evochora.compiler.IFeatureRegistrationContext;
 /**
  * Compiler feature for the {@code .REPEAT} directive and its {@code ^} shorthand.
  *
- * <p>Registers two preprocessor handlers:</p>
+ * <p>Registers the lexer symbol {@code ^} and two preprocessor handlers, which the preprocessor
+ * selects by token text:</p>
  * <ul>
  *   <li>{@code .REPEAT} — block or inline repetition of token sequences</li>
  *   <li>{@code ^} — caret shorthand that rewrites into {@code .REPEAT} form</li>
@@ -21,6 +22,7 @@ public class RepeatFeature implements ICompilerFeature {
 
     @Override
     public void register(IFeatureRegistrationContext ctx) {
+        ctx.lexerSymbol("^");
         ctx.preprocessor(".REPEAT", new RepeatDirectiveHandler());
         ctx.preprocessor("^", new CaretDirectiveHandler());
     }

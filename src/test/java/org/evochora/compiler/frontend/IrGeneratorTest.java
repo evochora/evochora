@@ -6,6 +6,7 @@
 
 package org.evochora.compiler.frontend;
 
+import org.evochora.compiler.TestLexers;
 import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.irgen.DefaultAstNodeToIrConverter;
@@ -78,7 +79,7 @@ public class IrGeneratorTest {
     private IrProgram compileToIr(String source) {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
 
-        Lexer lexer = new Lexer(source, diagnostics);
+        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
         List<Token> tokens = lexer.scanTokens();
         if (diagnostics.hasErrors()) {
             fail("Lexer errors: " + diagnostics.summary());

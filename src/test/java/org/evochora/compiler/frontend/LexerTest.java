@@ -1,9 +1,12 @@
 package org.evochora.compiler.frontend;
 
+import org.evochora.compiler.FeatureRegistry;
+import org.evochora.compiler.TestLexers;
 import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
+import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 import org.evochora.runtime.isa.Instruction;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
@@ -28,8 +31,8 @@ public class LexerTest {
     }
 
     /**
-     * Verifies that the relative marker is one token carrying its sign, so that the number after
-     * it is read as an unsigned number.
+     * Verifies that the relative marker is one symbol token carrying its sign, so that the number
+     * after it is read as an unsigned number.
      * This is a unit test for the lexer.
      */
     @Test
@@ -37,38 +40,162 @@ public class LexerTest {
     void testRelativeMarkerIsOneTokenWithItsSign() {
         // Arrange
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(".ORG @+2|@-3", diagnostics);
+        Lexer lexer = new Lexer(".ORG @+2|@-3", diagnostics, TestLexers.symbols());
 
         // Act
         List<Token> tokens = lexer.scanTokens();
 
         // Assert
         assertThat(diagnostics.hasErrors()).isFalse();
-        assertThat(tokens.get(1)).extracting(Token::type, Token::text).containsExactly(TokenType.AT_PLUS, "@+");
+        assertThat(tokens.get(1)).extracting(Token::type, Token::text).containsExactly(TokenType.SYMBOL, "@+");
         assertThat(tokens.get(2)).extracting(Token::type, Token::value).containsExactly(TokenType.NUMBER, 2);
         assertThat(tokens.get(3)).extracting(Token::type).isEqualTo(TokenType.PIPE);
-        assertThat(tokens.get(4)).extracting(Token::type, Token::text).containsExactly(TokenType.AT_MINUS, "@-");
+        assertThat(tokens.get(4)).extracting(Token::type, Token::text).containsExactly(TokenType.SYMBOL, "@-");
         assertThat(tokens.get(5)).extracting(Token::type, Token::value).containsExactly(TokenType.NUMBER, 3);
     }
 
     /**
-     * Verifies that the marker character without a sign is rejected, which keeps it free for a
-     * later meaning.
+     * Verifies that the marker character without a sign is rejected and that the message names
+     * the registered symbols beginning with it.
      * This is a unit test for the lexer.
      */
     @Test
     @Tag("unit")
-    void testMarkerWithoutSignIsAnError() {
+    void testMarkerWithoutSignNamesTheSymbolsBeginningWithIt() {
         // Arrange
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(".ORG 0|@2", diagnostics);
+        Lexer lexer = new Lexer(".ORG 0|@2", diagnostics, TestLexers.symbols());
 
         // Act
         lexer.scanTokens();
 
         // Assert
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.summary()).contains("Expected '+' or '-' after '@'.");
+        assertThat(diagnostics.summary())
+                .contains("Unexpected character '@'; symbols beginning with it are '@+' and '@-'");
+    }
+
+    /**
+     * Verifies that a character no symbol begins with keeps the plain message.
+     * This is a unit test for the lexer.
+     */
+    @Test
+    @Tag("unit")
+    void testCharacterWithoutSymbolKeepsThePlainMessage() {
+        // Arrange
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Lexer lexer = new Lexer("NOP ?", diagnostics, TestLexers.symbols());
+
+        // Act
+        lexer.scanTokens();
+
+        // Assert
+        assertThat(diagnostics.summary()).contains("Unexpected character: ?");
+    }
+
+    /**
+     * Verifies that the symbols of the standard features are lexed as symbol tokens with their
+     * text.
+     * This is a unit test for the lexer.
+     */
+    @Test
+    @Tag("unit")
+    void testStandardSymbolsAreSymbolTokens() {
+        // Arrange
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Lexer lexer = new Lexer("* , @+ @- ^ ..", diagnostics, TestLexers.symbols());
+
+        // Act
+        List<Token> tokens = lexer.scanTokens();
+
+        // Assert
+        assertThat(diagnostics.hasErrors()).isFalse();
+        assertThat(tokens).extracting(Token::type, Token::text).containsExactly(
+                tuple(TokenType.SYMBOL, "*"),
+                tuple(TokenType.SYMBOL, ","),
+                tuple(TokenType.SYMBOL, "@+"),
+                tuple(TokenType.SYMBOL, "@-"),
+                tuple(TokenType.SYMBOL, "^"),
+                tuple(TokenType.SYMBOL, ".."),
+                tuple(TokenType.END_OF_FILE, "")
+        );
+    }
+
+    /**
+     * Verifies that the longest registered symbol wins, and that a symbol is not assembled across
+     * whitespace.
+     * This is a unit test for the lexer.
+     */
+    @Test
+    @Tag("unit")
+    void testLongestSymbolWins() {
+        // Arrange
+        FeatureRegistry registry = new FeatureRegistry(new RuntimeInstructionSetAdapter());
+        registry.lexerSymbol("<");
+        registry.lexerSymbol("<=");
+        registry.lexerSymbol("=");
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+
+        // Act
+        List<Token> joined = new Lexer("<=", diagnostics, registry.lexerSymbols()).scanTokens();
+        List<Token> apart = new Lexer("< =", diagnostics, registry.lexerSymbols()).scanTokens();
+
+        // Assert
+        assertThat(diagnostics.hasErrors()).isFalse();
+        assertThat(joined).extracting(Token::type, Token::text).containsExactly(
+                tuple(TokenType.SYMBOL, "<="),
+                tuple(TokenType.END_OF_FILE, ""));
+        assertThat(apart).extracting(Token::type, Token::text).containsExactly(
+                tuple(TokenType.SYMBOL, "<"),
+                tuple(TokenType.SYMBOL, "="),
+                tuple(TokenType.END_OF_FILE, ""));
+    }
+
+    /**
+     * Verifies that the message names a single symbol beginning with the unexpected character in
+     * the singular.
+     * This is a unit test for the lexer.
+     */
+    @Test
+    @Tag("unit")
+    void testMessageNamesTheOneSymbolBeginningWithTheCharacter() {
+        // Arrange
+        FeatureRegistry registry = new FeatureRegistry(new RuntimeInstructionSetAdapter());
+        registry.lexerSymbol("<=");
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+
+        // Act
+        new Lexer("< 1", diagnostics, registry.lexerSymbols()).scanTokens();
+
+        // Assert
+        assertThat(diagnostics.summary())
+                .contains("Unexpected character '<'; the symbol beginning with it is '<='");
+    }
+
+    /**
+     * Verifies that two dots between numbers are the range symbol while a dot before a word
+     * still opens a directive.
+     * This is a unit test for the lexer.
+     */
+    @Test
+    @Tag("unit")
+    void testRangeSymbolAgainstDirective() {
+        // Arrange
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Lexer lexer = new Lexer("1..10 .X", diagnostics, TestLexers.symbols());
+
+        // Act
+        List<Token> tokens = lexer.scanTokens();
+
+        // Assert
+        assertThat(diagnostics.hasErrors()).isFalse();
+        assertThat(tokens).extracting(Token::type, Token::text).containsExactly(
+                tuple(TokenType.NUMBER, "1"),
+                tuple(TokenType.SYMBOL, ".."),
+                tuple(TokenType.NUMBER, "10"),
+                tuple(TokenType.DIRECTIVE, ".X"),
+                tuple(TokenType.END_OF_FILE, "")
+        );
     }
 
     /**
@@ -81,7 +208,7 @@ public class LexerTest {
     void testHexAndBinaryLiteralsWithAndWithoutSign() {
         // Arrange
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer("-0x10 -0b11 0x10 0b11", diagnostics);
+        Lexer lexer = new Lexer("-0x10 -0b11 0x10 0b11", diagnostics, TestLexers.symbols());
 
         // Act
         List<Token> tokens = lexer.scanTokens();
@@ -112,7 +239,7 @@ public class LexerTest {
                 "L1: SETI %DR0 HELLO # Lade 42"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(source, diagnostics);
+        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
 
         // Act
         List<Token> tokens = lexer.scanTokens();
@@ -143,7 +270,7 @@ public class LexerTest {
         // Arrange
         String source = "SETI %DR0 DATA:42";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(source, diagnostics);
+        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
 
         // Act
         List<Token> tokens = lexer.scanTokens();
@@ -172,7 +299,7 @@ public class LexerTest {
         // Arrange
         String source = "NOP; SETI %DR0 1; NOP";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(source, diagnostics);
+        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
 
         // Act
         List<Token> tokens = lexer.scanTokens();
@@ -200,7 +327,7 @@ public class LexerTest {
         // Arrange
         String source = "NOP; NOP\nNOP";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(source, diagnostics);
+        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
 
         // Act
         List<Token> tokens = lexer.scanTokens();

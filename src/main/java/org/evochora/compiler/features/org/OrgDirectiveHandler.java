@@ -33,9 +33,9 @@ public class OrgDirectiveHandler implements IParserStatementHandler {
         do {
             boolean marked = true;
             int sign;
-            if (context.match(TokenType.AT_PLUS)) {
+            if (context.matchSymbol("@+")) {
                 sign = 1;
-            } else if (context.match(TokenType.AT_MINUS)) {
+            } else if (context.matchSymbol("@-")) {
                 sign = -1;
             } else {
                 marked = false;

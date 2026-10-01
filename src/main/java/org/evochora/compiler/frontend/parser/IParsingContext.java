@@ -26,6 +26,22 @@ public interface IParsingContext {
     boolean check(TokenType type);
 
     /**
+     * Checks if the current token is a {@link TokenType#SYMBOL} with the given text, without
+     * consuming it.
+     * @param text The symbol, as the feature registered it.
+     * @return true if the current token is that symbol, false otherwise.
+     */
+    boolean checkSymbol(String text);
+
+    /**
+     * Checks if the current token is a {@link TokenType#SYMBOL} with the given text. If so,
+     * consumes it.
+     * @param text The symbol, as the feature registered it.
+     * @return true if the current token was that symbol and has been consumed, false otherwise.
+     */
+    boolean matchSymbol(String text);
+
+    /**
      * Consumes the current token and returns it.
      * @return The consumed token.
      */

@@ -41,9 +41,7 @@ public class PlaceDirectiveHandler implements IParserStatementHandler {
         List<IPlacementArgumentNode> placements = new ArrayList<>();
         do {
             placements.add(parsePlacementArgument(context));
-            if (context.peek().type() == TokenType.COMMA) {
-                context.advance(); // consume comma
-            } else {
+            if (!context.matchSymbol(",")) {
                 break;
             }
         } while (context.peek().type() != TokenType.NEWLINE && context.peek().type() != TokenType.END_OF_FILE);
@@ -90,16 +88,14 @@ public class PlaceDirectiveHandler implements IParserStatementHandler {
     }
 
     private IPlacementComponent parseDimensionComponent(IParsingContext context) {
-        if (context.peek().type() == TokenType.STAR) {
-            context.advance(); // consume '*'
+        if (context.matchSymbol("*")) {
             return new WildcardValueComponent();
         }
 
         if (context.peek().type() == TokenType.NUMBER) {
             Token start = context.advance(); // consume start number
 
-            if (context.peek().type() == TokenType.DOT_DOT) {
-                context.advance(); // consume '..'
+            if (context.matchSymbol("..")) {
                 Token end = context.consume(TokenType.NUMBER, "Expected a number for the end of the range.");
                 return new RangeValueComponent((int) start.value(), (int) end.value());
             } else if (context.peek().type() == TokenType.COLON) {

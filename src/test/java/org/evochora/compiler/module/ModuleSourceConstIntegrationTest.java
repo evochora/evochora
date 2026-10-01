@@ -1,5 +1,6 @@
 package org.evochora.compiler.module;
 
+import org.evochora.compiler.TestLexers;
 import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 import org.evochora.compiler.FeatureRegistry;
 import org.evochora.compiler.frontend.semantics.ScopeTracker;
@@ -232,7 +233,7 @@ class ModuleSourceConstIntegrationTest {
         String mainPath = tempDir.resolve("main.evo").toString();
 
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(mainSource, diagnostics, mainPath);
+        Lexer lexer = new Lexer(mainSource, diagnostics, mainPath, TestLexers.symbols());
         List<Token> tokens = new ArrayList<>(lexer.scanTokens());
         SourceRootResolver circularResolver = new SourceRootResolver(
                 List.of(new SourceRoot(".", null)), tempDir);
@@ -242,7 +243,7 @@ class ModuleSourceConstIntegrationTest {
             String resolvedPath = circularResolver.resolve(fileName, mainPath);
             String content = Files.readString(Path.of(resolvedPath));
             if (!content.endsWith("\n")) content += "\n";
-            Lexer srcLexer = new Lexer(content, diagnostics, resolvedPath);
+            Lexer srcLexer = new Lexer(content, diagnostics, resolvedPath, TestLexers.symbols());
             List<Token> srcTokens = srcLexer.scanTokens();
             Lexer.stripEofToken(srcTokens);
             circularSourceTokens.put(resolvedPath, srcTokens);
@@ -311,8 +312,8 @@ class ModuleSourceConstIntegrationTest {
         if (diagnostics.hasErrors()) return new PostProcessResult(diagnostics, List.of());
 
         // Phase 1: Lex the included files under their paths, the main file as the stream
-        Map<String, List<Token>> fileTokens = Lexer.lexFiles(graph.includedContents(), diagnostics, new RuntimeInstructionSetAdapter());
-        List<Token> mainTokens = new ArrayList<>(new Lexer(mainSource, diagnostics, mainPath).scanTokens());
+        Map<String, List<Token>> fileTokens = Lexer.lexFiles(graph.includedContents(), diagnostics, new RuntimeInstructionSetAdapter(), TestLexers.symbols());
+        List<Token> mainTokens = new ArrayList<>(new Lexer(mainSource, diagnostics, mainPath, TestLexers.symbols()).scanTokens());
 
         // Phase 2: Preprocessing (with root alias chain for alias chain tracking)
         PreProcessorContext ppContext = new PreProcessorContext(rootAliasChain, fileTokens);

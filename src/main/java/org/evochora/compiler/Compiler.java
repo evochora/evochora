@@ -176,8 +176,8 @@ public class Compiler implements ICompiler {
         failOnErrors(diagnostics);
 
         // Phase 1: Lexical Analysis — every included file under its path, the main file as the stream
-        Map<String, List<Token>> fileTokens = Lexer.lexFiles(graph.includedContents(), diagnostics, isa);
-        List<Token> initialTokens = new ArrayList<>(new Lexer(fullSource, diagnostics, mainFilePath, isa).scanTokens());
+        Map<String, List<Token>> fileTokens = Lexer.lexFiles(graph.includedContents(), diagnostics, isa, featureRegistry.lexerSymbols());
+        List<Token> initialTokens = new ArrayList<>(new Lexer(fullSource, diagnostics, mainFilePath, isa, featureRegistry.lexerSymbols()).scanTokens());
 
         // Phase 2: Preprocessing (includes, macros)
         PreProcessorContext ppContext = new PreProcessorContext(rootAliasChain, fileTokens);

@@ -1,5 +1,6 @@
 package org.evochora.compiler.directives;
 
+import org.evochora.compiler.TestLexers;
 import org.evochora.compiler.api.SourceRoot;
 import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.util.SourceRootResolver;
@@ -47,7 +48,7 @@ public class MacroDirectiveTest {
                 "INCREMENT %DR0"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(source, diagnostics);
+        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
         List<Token> initialTokens = lexer.scanTokens();
         PreProcessorContext context = new PreProcessorContext();
         context.handlers().register(".MACRO", new MacroDirectiveHandler());

@@ -13,6 +13,8 @@ import org.evochora.compiler.model.ast.IdentifierNode;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -108,5 +110,23 @@ class FeatureRegistryTest {
 
         assertThat(registry.dependencySetupHandlers()).containsKey(ImportDependencyInfo.class);
         assertThat(registry.dependencySetupHandlers().get(ImportDependencyInfo.class)).isSameAs(handler);
+    }
+
+    @Test
+    void lexerSymbolRegisteredTwiceIsOneSymbol() {
+        registry.lexerSymbol("@+");
+        registry.lexerSymbol("@+");
+        registry.lexerSymbol("..");
+
+        assertThat(registry.lexerSymbols()).containsExactlyInAnyOrder("@+", "..");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"-", ".", "AS", ".E", "#-", ""})
+    void lexerSymbolOutsideTheAlphabetOrFixedIsRejected(String symbol) {
+        assertThatThrownBy(() -> registry.lexerSymbol(symbol))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("'" + symbol + "'");
+        assertThat(registry.lexerSymbols()).isEmpty();
     }
 }

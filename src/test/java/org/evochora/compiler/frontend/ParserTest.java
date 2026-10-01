@@ -1,5 +1,6 @@
 package org.evochora.compiler.frontend;
 
+import org.evochora.compiler.TestLexers;
 import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ParserStatementRegistry;
@@ -48,7 +49,7 @@ public class ParserTest {
         // Arrange
         String source = "SETI %DR0 42";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(source, diagnostics);
+        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
         List<Token> tokens = lexer.scanTokens();
         Parser parser = new Parser(tokens, diagnostics, registry()); // KORREKTUR
 
@@ -84,7 +85,7 @@ public class ParserTest {
         // Arrange
         String source = ".LABEL L1 NOP";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(source, diagnostics);
+        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
         List<Token> tokens = lexer.scanTokens();
         Parser parser = new Parser(tokens, diagnostics, registry());
 
@@ -116,7 +117,7 @@ public class ParserTest {
         // Arrange
         String source = "SETV %DR0 10|-20";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(source, diagnostics);
+        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
         List<Token> tokens = lexer.scanTokens();
         Parser parser = new Parser(tokens, diagnostics, registry()); // KORREKTUR
 
@@ -147,7 +148,7 @@ public class ParserTest {
         // Arrange
         String source = "EXPORT .LABEL L1 NOP";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(source, diagnostics);
+        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
         List<Token> tokens = lexer.scanTokens();
         Parser parser = new Parser(tokens, diagnostics, registry());
 
@@ -178,7 +179,7 @@ public class ParserTest {
         // Arrange
         String source = ".LABEL L1 NOP";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(source, diagnostics);
+        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
         List<Token> tokens = lexer.scanTokens();
         Parser parser = new Parser(tokens, diagnostics, registry());
 
@@ -202,7 +203,7 @@ public class ParserTest {
         // Arrange
         String source = "EXPORT .LABEL L1\nNOP";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(source, diagnostics);
+        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
         List<Token> tokens = lexer.scanTokens();
         Parser parser = new Parser(tokens, diagnostics, registry());
 
@@ -232,7 +233,7 @@ public class ParserTest {
         // Arrange
         String source = "EXPORT .CONST MAX_ENERGY 42";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(source, diagnostics);
+        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
         List<Token> tokens = lexer.scanTokens();
         Parser parser = new Parser(tokens, diagnostics, registry());
 
@@ -260,7 +261,7 @@ public class ParserTest {
         // Arrange
         String source = ".CONST MAX_ENERGY 42";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(source, diagnostics);
+        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
         List<Token> tokens = lexer.scanTokens();
         Parser parser = new Parser(tokens, diagnostics, registry());
 
@@ -286,7 +287,7 @@ public class ParserTest {
     @Tag("unit")
     void aDefectInAHandlerLeavesTheParserInsteadOfDroppingTheStatement() {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        List<Token> tokens = new Lexer(".BROKEN\nNOP\n", diagnostics).scanTokens();
+        List<Token> tokens = new Lexer(".BROKEN\nNOP\n", diagnostics, TestLexers.symbols()).scanTokens();
         ParserStatementRegistry reg = registry();
         reg.register(".BROKEN", context -> { throw new NullPointerException("defect in the handler"); });
         Parser parser = new Parser(tokens, diagnostics, reg);

@@ -200,6 +200,18 @@ public class Parser implements IParsingContext {
         return peek().type() == type;
     }
 
+    @Override
+    public boolean checkSymbol(String text) {
+        return check(TokenType.SYMBOL) && peek().text().equals(text);
+    }
+
+    @Override
+    public boolean matchSymbol(String text) {
+        if (!checkSymbol(text)) return false;
+        advance();
+        return true;
+    }
+
     /**
      * Checks the type of the next token without consuming it.
      * @param type The token type to check.

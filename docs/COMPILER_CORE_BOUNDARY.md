@@ -62,14 +62,23 @@ concept in AGENTS.md; they are listed here because they are where the coupling l
    call-site bindings, `EmissionContext` fields for procedure parameter names and register
    aliases, and `ProgramArtifact` carries all of them as named fields.
 
-Smaller instances: the lexer emits a directive token for `^` (repeat) and a colon token for
-`:` (label); `Symbol.Type` is a closed enum whose eight members are named after individual
-features, mapped exhaustively in `TokenKindMapper`.
+Smaller instances: the lexer emits a colon token for `:` (label); `Symbol.Type` is a closed
+enum whose eight members are named after individual features, mapped exhaustively in
+`TokenKindMapper`.
 
-The lexer also holds character tokens that a single feature reads: `*`, `..` and `,` for
-`place`, `@+` and `@-` for `org` and `dir`. These name the character, not what a directive makes
-of it, so the core learns no feature from them — but the lexer is the one phase without a
-registry, so a feature cannot add one without this file changing.
+Any other character sequence a feature reads is not a case of the lexer but a symbol the
+feature registers through `IFeatureRegistrationContext.lexerSymbol`; the lexer emits it as one
+`SYMBOL` token whose text the feature's handlers compare: `*`, `..` and `,` for `place`,
+`@+` and `@-` for `org` and `dir`, `^` for `repeat`. The lexer tries the registered symbols at
+the start of every token, longest first, before its fixed cases, so a symbol may consist only
+of the characters `! & * + , . / < = > ? @ ^ ~ -`, which cut into no identifier, number,
+register, string, comment or statement end. `|` and `:` stay fixed tokens, because the parser
+itself reads them in the vector and typed literals every operand may take; the single
+characters `.` and `-` are rejected as symbols, being the lexer's cases for directives and
+negative numbers, while longer sequences beginning with them are allowed. Brackets, `\` and
+`§` are kept out of the alphabet as a reserve for the core. The alphabet is one constant in
+`FeatureRegistry`; it grows by a character when a feature needs one and the core does not
+claim it.
 
 ## What the probe showed
 
@@ -91,13 +100,13 @@ registry, so a feature cannot add one without this file changing.
 ## What cannot be added without touching the core
 
 A feature can add a directive, a statement, an AST node, an IR directive, a rewrite rule, a
-linking rule and an emission contributor through `IFeatureRegistrationContext`; eleven of the
-twelve phases have a registry, the lexer has none. A feature cannot, without a core change:
+linking rule, an emission contributor and a lexer symbol through `IFeatureRegistrationContext`.
+A feature cannot, without a core change:
 
 - put data of its own into `ProgramArtifact`, whose fields are fixed (issue #153);
 - introduce a symbol kind, because `Symbol.Type` is closed;
-- introduce a token type, an operand form or an IR item kind. The last two are sealed by
-  decision (AGENTS.md, "Fixed Kinds"); the open alternative is recorded under
+- introduce an operand form or an IR item kind. Both are sealed by decision (AGENTS.md,
+  "Fixed Kinds"); the open alternative is recorded under
   `docs/proposals/ideas/OPEN_COMPILER_BACKEND.md`.
 
 ## Candidates for decoupling

@@ -1,5 +1,6 @@
 package org.evochora.compiler.backend;
 
+import org.evochora.compiler.TestLexers;
 import org.evochora.compiler.backend.rewrite.RewriteRegistry;
 import org.evochora.compiler.backend.rewrite.IRewriteRule;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
@@ -96,7 +97,7 @@ public class EmissionIntegrationTest {
         );
 
         DiagnosticsEngine diags = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(src, diags);
+        Lexer lexer = new Lexer(src, diags, TestLexers.symbols());
         List<Token> tokens = lexer.scanTokens();
         // KORREKTUR: basePath hinzufügen
         Parser parser = new Parser(tokens, diags, allHandlers());

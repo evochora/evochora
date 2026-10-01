@@ -28,7 +28,9 @@ import org.evochora.compiler.model.ast.AstNode;
  * <p>The concrete implementation ({@link FeatureRegistry}) collects all registrations
  * and provides getter methods for the compiler to read them back.</p>
  *
- * <p>Phase 1 (Lexing) has no extension points because the lexer uses generic token types.</p>
+ * <p>Phase 1 (Lexing) is extended through {@link #lexerSymbol(String)}: a feature registers the
+ * character sequences it reads, and the lexer emits each of them as one generic
+ * {@link org.evochora.compiler.model.token.TokenType#SYMBOL} token whose text is the sequence.</p>
  */
 public interface IFeatureRegistrationContext {
 
@@ -58,6 +60,22 @@ public interface IFeatureRegistrationContext {
 	 *                it ties the handler to the class object passed as {@code type}.
 	 */
 	<T extends IDependencyInfo> void dependencySetupHandler(Class<T> type, IDependencySetupHandler<T> handler);
+
+	// Phase 1: Lexing
+
+	/**
+	 * Registers a character sequence the lexer emits as one
+	 * {@link org.evochora.compiler.model.token.TokenType#SYMBOL} token with that text. The lexer
+	 * tries the registered symbols at the start of every token, longest first, before any of its
+	 * own cases, so a symbol may consist only of the characters {@code ! & * + , . / < = > ? @ ^ ~ -};
+	 * the single characters {@code .} and {@code -} are taken by the lexer and cannot be registered
+	 * alone. The same symbol registered by several features is one symbol.
+	 *
+	 * @param symbol The character sequence, for example {@code ".."} or {@code "@+"}.
+	 * @throws IllegalArgumentException if the symbol is empty, contains a character outside the
+	 *         alphabet, or is {@code "."} or {@code "-"}; the message names the symbol.
+	 */
+	void lexerSymbol(String symbol);
 
 	// Phase 2: Preprocessing
 

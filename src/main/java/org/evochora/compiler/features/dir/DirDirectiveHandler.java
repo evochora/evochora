@@ -26,8 +26,8 @@ public class DirDirectiveHandler implements IParserStatementHandler {
     public AstNode parse(IParsingContext context) {
         Token directive = context.advance(); // consume .DIR
 
-        boolean forward = context.check(TokenType.AT_PLUS);
-        if (forward || context.check(TokenType.AT_MINUS)) {
+        boolean forward = context.checkSymbol("@+");
+        if (forward || context.checkSymbol("@-")) {
             context.advance();
             Token axisA = context.consume(TokenType.NUMBER, "Expected the first axis of the rotation plane.");
             context.consume(TokenType.PIPE, "Expected '|' between the two axes of the rotation plane.");

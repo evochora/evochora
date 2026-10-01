@@ -21,8 +21,10 @@ import org.evochora.compiler.model.ast.AstNode;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Collects all handler registrations from {@link ICompilerFeature} implementations.
@@ -35,6 +37,15 @@ import java.util.Map;
  * features only see the write-only registration side. The compiler sees the full class with getters.</p>
  */
 public class FeatureRegistry implements IFeatureRegistrationContext {
+
+	/**
+	 * The characters a lexer symbol may consist of. The lexer tries symbols before identifiers,
+	 * numbers, strings, comments and registers, so letters, digits, {@code _}, {@code $}, {@code #},
+	 * {@code "}, {@code ;}, {@code %} and whitespace would cut into those; {@code |} and {@code :}
+	 * are read by the parser itself. Brackets, {@code \} and {@code §} are kept out as a reserve
+	 * for the core. A character joins when a feature needs it and the core does not claim it.
+	 */
+	private static final String LEXER_SYMBOL_ALPHABET = "!&*+,./<=>?@^~-";
 
 	private final IInstructionSet isa;
 
@@ -58,6 +69,9 @@ public class FeatureRegistry implements IFeatureRegistrationContext {
 	private final List<ILinkingRule> linkingRules = new ArrayList<>();
 	private final List<IEmissionContributor> emissionContributors = new ArrayList<>();
 
+	// A symbol registered by two features is one symbol, so repeated registration is no conflict.
+	private final Set<String> lexerSymbols = new LinkedHashSet<>();
+
 	/**
 	 * Creates an empty registry for a compilation that targets the given instruction set.
 	 *
@@ -72,6 +86,25 @@ public class FeatureRegistry implements IFeatureRegistrationContext {
 	@Override
 	public IInstructionSet isa() {
 		return isa;
+	}
+
+	@Override
+	public void lexerSymbol(String symbol) {
+		if (symbol.isEmpty()) {
+			throw new IllegalArgumentException("Lexer symbol '' is empty; a symbol needs at least one character.");
+		}
+		for (int i = 0; i < symbol.length(); i++) {
+			char c = symbol.charAt(i);
+			if (LEXER_SYMBOL_ALPHABET.indexOf(c) < 0) {
+				throw new IllegalArgumentException("Lexer symbol '" + symbol + "' contains '" + c
+						+ "', which is not one of " + LEXER_SYMBOL_ALPHABET + ".");
+			}
+		}
+		if (symbol.equals(".") || symbol.equals("-")) {
+			throw new IllegalArgumentException("Lexer symbol '" + symbol
+					+ "' is a fixed case of the lexer and cannot be registered alone.");
+		}
+		lexerSymbols.add(symbol);
 	}
 
 	@Override
@@ -168,6 +201,18 @@ public class FeatureRegistry implements IFeatureRegistrationContext {
 	}
 
 	// --- Getter methods (read side, used by Compiler) ---
+
+	/**
+	 * Returns the character sequences the Phase 1 lexer emits as {@link
+	 * org.evochora.compiler.model.token.TokenType#SYMBOL} tokens. Every symbol was checked
+	 * against the symbol alphabet when it was registered; a symbol registered by several features
+	 * appears once.
+	 *
+	 * @return An unmodifiable view of the live set.
+	 */
+	public Set<String> lexerSymbols() {
+		return Collections.unmodifiableSet(lexerSymbols);
+	}
 
 	/**
 	 * Returns the Phase 0 dependency scan handlers in registration order. The dependency scanner
