@@ -641,11 +641,11 @@ Directives are special commands that instruct the compiler on how to assemble th
 
 ### Macros
 
-* `.MACRO <Name> [PARAM1 ...] / .ENDM`: Defines a macro, a template for code that is expanded inline. Parameters are optional. To invoke a macro, simply use its name followed by the arguments.
+* `.MACRO <Name> [PARAM1 ...] / .ENDMACRO`: Defines a macro, a template for code that is expanded inline. Parameters are optional. To invoke a macro, simply use its name followed by the arguments.
     ```
     .MACRO INCREMENT REG_TARGET
       ADDI REG_TARGET DATA:1
-    .ENDM
+    .ENDMACRO
     
     INCREMENT %DR0  # This line expands to "ADDI %DR0 DATA:1"
     ```
@@ -663,15 +663,15 @@ The `.REPEAT` directive and its shorthand `^n` syntax allow repeating instructio
     .REPEAT 3 JMPI MAIN_LOOP   # Expands to: JMPI MAIN_LOOP; JMPI MAIN_LOOP; JMPI MAIN_LOOP
     ```
 
-* `.REPEAT <Count>; <Body> .ENDR`: Block mode for repeating multiple statements. When a newline or semicolon immediately follows the count, the directive enters block mode and repeats everything until `.ENDR`.
+* `.REPEAT <Count>; <Body> .ENDREPEAT`: Block mode for repeating multiple statements. When a newline or semicolon immediately follows the count, the directive enters block mode and repeats everything until `.ENDREPEAT`.
     ```
-    .REPEAT 2; JMPI LOOP; NOP; .ENDR
+    .REPEAT 2; JMPI LOOP; NOP; .ENDREPEAT
     # Expands to: JMPI LOOP; NOP; JMPI LOOP; NOP
 
     .REPEAT 3
       NOP
       JMPI START
-    .ENDR
+    .ENDREPEAT
     # Expands to: NOP; JMPI START; NOP; JMPI START; NOP; JMPI START
     ```
 
@@ -725,7 +725,7 @@ All paths in `.IMPORT`, `.REQUIRE`, and `.SOURCE` are resolved against configure
 
 #### `.PROC`
 
-* **Syntax**: `[EXPORT] .PROC <Name> [REF <param> ...] [VAL <param> ...] [LREF <param> ...] [LVAL <param> ...] / .ENDP`
+* **Syntax**: `[EXPORT] .PROC <Name> [REF <param> ...] [VAL <param> ...] [LREF <param> ...] [LVAL <param> ...] / .ENDPROC`
 * **Effect**: Defines a procedure with named parameters.
     - `EXPORT`: Prefix modifier that makes the procedure visible to other modules.
     - `REF`: **call-by-reference** parameters (mapped to `%FDRx`). Modifications inside the procedure affect the caller's register.
@@ -740,7 +740,7 @@ All paths in `.IMPORT`, `.REQUIRE`, and `.SOURCE` are resolved against configure
         SKLR loc_c                      # Moves DP to the passed location
         CRLR loc_c                      # Clears FLR0 — written back to caller on RET
         RET
-      .ENDP
+      .ENDPROC
       ```
 
 * `.REG` also works inside `.PROC` blocks with procedure-local registers: `.REG %TMP %PDR0` aliases `%PDR0` as `%TMP`, `.REG %POS %PLR0` aliases `%PLR0` as `%POS`. Proc-local registers (`%PDRx`, `%PLRx`) are only available inside `.PROC` blocks.
@@ -755,7 +755,7 @@ EXPORT .PROC LIB.DOUBLE REF X
   ADDS
   POP X        # X = X + X, modifies the caller's register
   RET
-.ENDP
+.ENDPROC
 ```
 
 ```
@@ -777,7 +777,7 @@ When a library module depends on another library, it declares the dependency wit
 EXPORT .PROC MATH.ADD
   ADDS            # Pops two values from the stack, pushes their sum
   RET
-.ENDP
+.ENDPROC
 ```
 
 **File 2: `utils.evo`**
@@ -792,7 +792,7 @@ EXPORT .PROC UTILS.ADD_ONE REF X
   CALL MATH.ADD   # Stack now has X+1
   POP X           # Store result back in the caller's register
   RET
-.ENDP
+.ENDPROC
 ```
 
 **File 3: `main.evo`**

@@ -44,7 +44,7 @@ MESSAGE_BUFFER:
 EXPORT .PROC ADD_ENERGY REF ENERGY VAL AMOUNT
   ADDR ENERGY AMOUNT
   RET
-.ENDP
+.ENDPROC
 
 # Procedure with REF output and VAL inputs (Manhattan distance, simplified)
 EXPORT .PROC CALCULATE_DISTANCE REF RESULT VAL X1 Y1 X2 Y2
@@ -54,20 +54,20 @@ EXPORT .PROC CALCULATE_DISTANCE REF RESULT VAL X1 Y1 X2 Y2
   SETR RESULT X2
   ADDR RESULT Y2
   RET
-.ENDP
+.ENDPROC
 
 # Procedure with mixed REF and VAL parameters
 EXPORT .PROC UPDATE_POSITION REF X Y VAL DELTA_X DELTA_Y
   ADDR X DELTA_X
   ADDR Y DELTA_Y
   RET
-.ENDP
+.ENDPROC
 
 # Procedure that returns a value
 EXPORT .PROC GET_ENERGY_LEVEL REF ENERGY RETURN_VAL
   SETR RETURN_VAL ENERGY
   RET
-.ENDP
+.ENDPROC
 
 # Procedure to consume energy for movement
 EXPORT .PROC CONSUME_ENERGY REF ENERGY
@@ -80,31 +80,31 @@ EXPORT .PROC CONSUME_ENERGY REF ENERGY
 ZERO_ENERGY:
   SETI ENERGY DATA:0
   RET
-.ENDP
+.ENDPROC
 
 # Procedure to move north
 EXPORT .PROC MOVE_NORTH REF X Y
   SUBI Y DATA:1
   RET
-.ENDP
+.ENDPROC
 
 # Procedure to move east
 EXPORT .PROC MOVE_EAST REF X Y
   ADDI X DATA:1
   RET
-.ENDP
+.ENDPROC
 
 # Procedure to move south
 EXPORT .PROC MOVE_SOUTH REF X Y
   ADDI Y DATA:1
   RET
-.ENDP
+.ENDPROC
 
 # Procedure to move west
 EXPORT .PROC MOVE_WEST REF X Y
   SUBI X DATA:1
   RET
-.ENDP
+.ENDPROC
 
 # Procedure to check if position is valid (simplified)
 EXPORT .PROC IS_VALID_POS REF X Y RESULT
@@ -123,7 +123,7 @@ EXPORT .PROC IS_VALID_POS REF X Y RESULT
 INVALID_POS:
   SETI RESULT DATA:0
   RET
-.ENDP
+.ENDPROC
 
 # Procedure with local variables and complex logic
 EXPORT .PROC FIND_NEAREST_ENERGY REF X Y ENERGY FOUND
@@ -152,7 +152,7 @@ FOUND_ENERGY_SOURCE:
 SEARCH_COMPLETE:
   SETI FOUND FALSE
   RET
-.ENDP
+.ENDPROC
 
 # Procedure that demonstrates stack operations
 EXPORT .PROC PUSH_VALUE REF STACK_PTR VAL VALUE
@@ -162,7 +162,7 @@ EXPORT .PROC PUSH_VALUE REF STACK_PTR VAL VALUE
   SETR STACK_PTR %TEMP
   # Store value at stack position (simplified)
   RET
-.ENDP
+.ENDPROC
 
 # Procedure that initializes system registers
 EXPORT .PROC SYSTEM_INIT REF SYSTEM_FLAGS MEMORY_PTR
@@ -176,7 +176,7 @@ EXPORT .PROC SYSTEM_INIT REF SYSTEM_FLAGS MEMORY_PTR
   SETI %TEMP DATA:3000
   
   RET
-.ENDP
+.ENDPROC
 
 # Procedure that uses registers for memory operations
 EXPORT .PROC MEMORY_READ REF MEMORY_PTR RESULT VAL ADDRESS
@@ -185,14 +185,14 @@ EXPORT .PROC MEMORY_READ REF MEMORY_PTR RESULT VAL ADDRESS
   # Simulate memory read (simplified)
   SETI RESULT DATA:42
   RET
-.ENDP
+.ENDPROC
 
 # Procedure that demonstrates system flags
 EXPORT .PROC SET_FLAG REF SYSTEM_FLAGS VAL FLAG_BIT
   # Set a specific flag bit
   SETR SYSTEM_FLAGS FLAG_BIT
   RET
-.ENDP
+.ENDPROC
 
 # Procedure that demonstrates reading state data
 EXPORT .PROC READ_STATE_DATA REF COUNTER ENERGY
@@ -201,7 +201,7 @@ EXPORT .PROC READ_STATE_DATA REF COUNTER ENERGY
   SETI COUNTER DATA:123  # Simulates reading from GLOBAL_COUNTER's .PLACE
   SETI ENERGY DATA:50    # Simulates reading from GLOBAL_ENERGY's .PLACE
   RET
-.ENDP
+.ENDPROC
 
 
 # Procedure that demonstrates conditional execution
@@ -216,7 +216,7 @@ EXPORT .PROC CONDITIONAL_MOVE REF X Y VAL CONDITION
 
 NO_MOVE:
   RET
-.ENDP
+.ENDPROC
 
 # =============================================================================
 # MAIN PROGRAM

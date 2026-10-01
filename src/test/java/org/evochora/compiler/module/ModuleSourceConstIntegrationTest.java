@@ -80,7 +80,7 @@ class ModuleSourceConstIntegrationTest {
                 "EXPORT .PROC WORK REF X\n" +
                 "  SETI X FOO\n" +
                 "  RET\n" +
-                ".ENDP\n");
+                ".ENDPROC\n");
 
         String mainSource = ".IMPORT \"lib.evo\" AS LIB\nSETI %DR0 DATA:1\n";
         String mainPath = tempDir.resolve("main.evo").toString();
@@ -103,14 +103,14 @@ class ModuleSourceConstIntegrationTest {
                 "EXPORT .PROC A_WORK REF X\n" +
                 "  SETI X LIMIT\n" +
                 "  RET\n" +
-                ".ENDP\n");
+                ".ENDPROC\n");
 
         Files.writeString(tempDir.resolve("mod_b.evo"),
                 ".SOURCE \"consts.evo\"\n" +
                 "EXPORT .PROC B_WORK REF X\n" +
                 "  SETI X LIMIT\n" +
                 "  RET\n" +
-                ".ENDP\n");
+                ".ENDPROC\n");
 
         String mainSource = ".IMPORT \"mod_a.evo\" AS A\n.IMPORT \"mod_b.evo\" AS B\nNOP\n";
         String mainPath = tempDir.resolve("main.evo").toString();
@@ -149,14 +149,14 @@ class ModuleSourceConstIntegrationTest {
                 "EXPORT .PROC FAST_MOVE REF X\n" +
                 "  ADDI X STEP\n" +
                 "  RET\n" +
-                ".ENDP\n");
+                ".ENDPROC\n");
 
         Files.writeString(tempDir.resolve("slow.evo"),
                 ".SOURCE \"slow_config.evo\"\n" +
                 "EXPORT .PROC SLOW_MOVE REF X\n" +
                 "  ADDI X STEP\n" +
                 "  RET\n" +
-                ".ENDP\n");
+                ".ENDPROC\n");
 
         String mainSource = ".IMPORT \"fast.evo\" AS FAST\n.IMPORT \"slow.evo\" AS SLOW\nNOP\n";
         String mainPath = tempDir.resolve("main.evo").toString();
@@ -193,7 +193,7 @@ class ModuleSourceConstIntegrationTest {
                 "EXPORT .PROC INIT REF X\n" +
                 "  SETI X MAX\n" +
                 "  RET\n" +
-                ".ENDP\n");
+                ".ENDPROC\n");
 
         String mainSource = ".IMPORT \"lib.evo\" AS LIB\nCALL LIB.INIT REF %DR0\n";
         String mainPath = tempDir.resolve("main.evo").toString();

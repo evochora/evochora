@@ -237,7 +237,7 @@ EXPORT .PROC CONTINUE REF ER LVAL CNW LVAL CNE LVAL CSE LVAL CSW
   CONTINUE_RET:
     # Multiple RET instructions for mutation resistance
     NOP^8; RET; NOP^20; RET; NOP^4; RET
-.ENDP
+.ENDPROC
 
 # ===========================================================================
 # BUILD_SHELL - follow our own wall once around and write it again, offset
@@ -454,7 +454,7 @@ EXPORT .PROC CONTINUE REF ER LVAL CNW LVAL CNE LVAL CSE LVAL CSW
 
   SHELL_RET:
     NOP^4; RET; NOP^12; RET; NOP^4; RET
-.ENDP
+.ENDPROC
 
 # ===========================================================================
 # COPY_BODY - fill the standing shell, row by row
@@ -615,7 +615,7 @@ EXPORT .PROC CONTINUE REF ER LVAL CNW LVAL CNE LVAL CSE LVAL CSW
 
   BODY_RET:
     NOP^4; RET; NOP^12; RET; NOP^4; RET
-.ENDP
+.ENDPROC
 
 # ===========================================================================
 # SPAWN - put the child into the shell that now stands filled
@@ -652,4 +652,4 @@ EXPORT .PROC CONTINUE REF ER LVAL CNW LVAL CNE LVAL CSE LVAL CSW
   .ORG 0|@+2
   SPAWN_RET:
     NOP^4; RET; NOP^12; RET; NOP^4; RET
-.ENDP
+.ENDPROC

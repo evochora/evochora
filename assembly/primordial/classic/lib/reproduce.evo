@@ -542,4 +542,4 @@ EXPORT .PROC CONTINUE REF ER
   CONTINUE_STORE_STATE2: NOP^4
     # Multiple RET instructions for mutation resistance
     NOP^8; RET; NOP^20; RET; NOP^4; RET
-.ENDP
+.ENDPROC

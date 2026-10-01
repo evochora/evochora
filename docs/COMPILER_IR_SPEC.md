@@ -120,7 +120,7 @@ Consider the following assembly code snippet:
 ```assembly
 EXPORT .PROC MY_FUNC WITH A
   RET
-.ENDP
+.ENDPROC
 
 start:
   CALL MY_FUNC WITH %DR0

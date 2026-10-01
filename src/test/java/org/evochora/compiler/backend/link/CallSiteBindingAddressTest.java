@@ -42,7 +42,7 @@ public class CallSiteBindingAddressTest {
                 "EXPORT .PROC INC REF A",
                 "  ADDI A DATA:1",
                 "  RET",
-                ".ENDP")));
+                ".ENDPROC")));
     }
 
     @Test
@@ -57,7 +57,7 @@ public class CallSiteBindingAddressTest {
                 "EXPORT .PROC INC REF A",
                 "  ADDI A DATA:1",
                 "  RET",
-                ".ENDP")));
+                ".ENDPROC")));
     }
 
     @Test
@@ -80,7 +80,7 @@ public class CallSiteBindingAddressTest {
                 "EXPORT .PROC INC REF A",
                 "  ADDI A DATA:1",
                 "  RET",
-                ".ENDP"));
+                ".ENDPROC"));
 
         int callOpcode = Instruction.getInstructionIdByName("CALL");
         assertThat(artifact.callSiteBindings()).as("both calls carry bindings").hasSize(2);

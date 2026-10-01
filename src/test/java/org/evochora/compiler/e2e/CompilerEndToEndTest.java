@@ -42,7 +42,7 @@ public class CompilerEndToEndTest {
 				"EXPORT .PROC ADD2 REF A B",
 				"  ADDR A B",
 				"  RET",
-				".ENDP",
+				".ENDPROC",
 				"SETI %DR0 DATA:1",
 				"SETI %DR1 DATA:2",
 				"CALL ADD2 REF %DR0 %DR1",
@@ -76,7 +76,7 @@ public class CompilerEndToEndTest {
 				"EXPORT .PROC BAR",
 				"  NOP",
 				"  RET",
-				".ENDP",
+				".ENDPROC",
 				"CALL BAR"
 		);
 
@@ -99,13 +99,13 @@ public class CompilerEndToEndTest {
 				"",
 				".MACRO INC R",
 				"  ADDI R DATA:1",
-				".ENDM",
+				".ENDMACRO",
 				"",
 				".ORG 0|0",
 				".PROC ADD_TWO REF A B",
 				"  ADDS",
 				"  RET",
-				".ENDP",
+				".ENDPROC",
 				"",
 				"START: SETI %DR0 MAX_VAL",
 				"  SETR %TEMP %DR0",

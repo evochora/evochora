@@ -14,7 +14,7 @@
 EXPORT .PROC ADD_TWO REF A B
   ADDR A B
   RET
-.ENDP
+.ENDPROC
 
 # Main program
 START:

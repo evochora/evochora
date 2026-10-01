@@ -89,11 +89,11 @@ public class SemanticAnalyzerTest {
                 ".PROC FIRST_PROC",
                 "  .LABEL MY_LABEL NOP",
                 "  RET",
-                ".ENDP",
+                ".ENDPROC",
                 ".PROC SECOND_PROC",
                 "  .LABEL MY_LABEL NOP",
                 "  RET",
-                ".ENDP"
+                ".ENDPROC"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         List<AstNode> ast = getAst(source, diagnostics);
@@ -122,7 +122,7 @@ public class SemanticAnalyzerTest {
                 "  .LABEL LOOP NOP",
                 "  .LABEL LOOP NOP",
                 "  RET",
-                ".ENDP"
+                ".ENDPROC"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         List<AstNode> ast = getAst(source, diagnostics);
@@ -289,7 +289,7 @@ public class SemanticAnalyzerTest {
                 ".PROC INNER_PROC",
                 "  .LABEL INNER_LABEL NOP",
                 "  RET",
-                ".ENDP",
+                ".ENDPROC",
                 "JMPI INNER_LABEL"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
@@ -319,7 +319,7 @@ public class SemanticAnalyzerTest {
                 ".PROC MY_PROC",
                 "  .LABEL INTERNAL_LABEL NOP",
                 "  RET",
-                ".ENDP",
+                ".ENDPROC",
                 "JMPI INTERNAL_LABEL  # Fehler: Dieses Label ist privat für MY_PROC"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
@@ -471,7 +471,7 @@ public class SemanticAnalyzerTest {
     }
 
     /**
-     * Verifies that a label defined after a `RET` instruction but before the end of the procedure (`.ENDP`)
+     * Verifies that a label defined after a `RET` instruction but before the end of the procedure (`.ENDPROC`)
      * is still correctly recognized and resolved within that procedure's scope.
      * This is a unit test for symbol resolution within procedure scopes.
      */
@@ -484,7 +484,7 @@ public class SemanticAnalyzerTest {
                 "  JMPI SUCCESS_LABEL  # Sprung zu einem Label, das nach RET definiert wird",
                 "  RET",
                 ".LABEL SUCCESS_LABEL NOP",
-                ".ENDP"
+                ".ENDPROC"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         List<AstNode> ast = getAst(source, diagnostics);
@@ -495,7 +495,7 @@ public class SemanticAnalyzerTest {
 
         // Assert
         assertThat(diagnostics.hasErrors())
-                .as("Ein Label, das nach einem RET, aber vor .ENDP definiert wird, sollte gefunden werden.")
+                .as("Ein Label, das nach einem RET, aber vor .ENDPROC definiert wird, sollte gefunden werden.")
                 .isFalse();
     }
 
@@ -506,7 +506,7 @@ public class SemanticAnalyzerTest {
         String source = String.join("\n",
                 ".PROC myProc REF rA VAL v1",
                 "  RET",
-                ".ENDP",
+                ".ENDPROC",
                 "CALL myProc REF %DR1 VAL 123"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
@@ -528,7 +528,7 @@ public class SemanticAnalyzerTest {
         String source = String.join("\n",
                 ".PROC myProc REF rA",
                 "  RET",
-                ".ENDP",
+                ".ENDPROC",
                 "CALL myProc REF 123"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
@@ -551,7 +551,7 @@ public class SemanticAnalyzerTest {
         String source = String.join("\n",
                 ".PROC myProc REF rA rB",
                 "  RET",
-                ".ENDP",
+                ".ENDPROC",
                 "CALL myProc REF %DR1"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
@@ -574,7 +574,7 @@ public class SemanticAnalyzerTest {
         String source = String.join("\n",
                 ".PROC myProc VAL v1",
                 "  RET",
-                ".ENDP",
+                ".ENDPROC",
                 "CALL myProc VAL 1 2"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
@@ -597,7 +597,7 @@ public class SemanticAnalyzerTest {
         String source = String.join("\n",
                 ".PROC myProc VAL v1",
                 "  RET",
-                ".ENDP",
+                ".ENDPROC",
                 "CALL myProc VAL %DR1"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();

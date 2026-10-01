@@ -91,7 +91,7 @@ public class EmissionIntegrationTest {
         String src = String.join("\n",
                 ".PROC INC REF A",
                 "  RET",
-                ".ENDP",
+                ".ENDPROC",
                 "CALL INC REF %DR1"
         );
 

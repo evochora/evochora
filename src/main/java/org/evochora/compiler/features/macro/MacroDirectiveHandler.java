@@ -11,7 +11,7 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * Handles the <code>.MACRO</code> and <code>.ENDM</code> directives.
+ * Handles the <code>.MACRO</code> and <code>.ENDMACRO</code> directives.
  * Parses a macro definition, creates a {@link MacroExpansionHandler} for it, and
  * dynamically registers that handler in the {@link PreProcessorContext} under the
  * macro's name. The entire definition block is then removed from the token stream.
@@ -20,7 +20,7 @@ public class MacroDirectiveHandler implements IPreProcessorHandler {
 
     /**
      * Parses a macro definition.
-     * The syntax is <code>.MACRO &lt;name&gt; [&lt;param1&gt; &lt;param2&gt; ...] ... .ENDM</code>.
+     * The syntax is <code>.MACRO &lt;name&gt; [&lt;param1&gt; &lt;param2&gt; ...] ... .ENDMACRO</code>.
      * @param preProcessor The preprocessor providing direct access to the token stream.
      * @param preProcessorContext The preprocessor context for registering the macro.
      */
@@ -38,10 +38,10 @@ public class MacroDirectiveHandler implements IPreProcessorHandler {
         preProcessor.consume(TokenType.NEWLINE, "Expected newline after macro definition.");
 
         List<Token> body = new ArrayList<>();
-        while (!preProcessor.isAtEnd() && !(preProcessor.peek().type() == TokenType.DIRECTIVE && preProcessor.peek().text().equalsIgnoreCase(".ENDM"))) {
+        while (!preProcessor.isAtEnd() && !(preProcessor.peek().type() == TokenType.DIRECTIVE && preProcessor.peek().text().equalsIgnoreCase(".ENDMACRO"))) {
             body.add(preProcessor.advance());
         }
-        preProcessor.consume(TokenType.DIRECTIVE, "Expected .ENDM to close macro definition.");
+        preProcessor.consume(TokenType.DIRECTIVE, "Expected .ENDMACRO to close macro definition.");
         preProcessor.match(TokenType.NEWLINE);
 
         MacroExpansionHandler expansion = new MacroExpansionHandler(new MacroDefinition(name, params, body));
@@ -62,7 +62,7 @@ public class MacroDirectiveHandler implements IPreProcessorHandler {
         }
 
         int endIndex = preProcessor.getCurrentIndex();
-        // Remove the entire .MACRO...ENDM block
+        // Remove the entire .MACRO...ENDMACRO block
         preProcessor.removeTokens(startIndex, endIndex - startIndex);
     }
 }

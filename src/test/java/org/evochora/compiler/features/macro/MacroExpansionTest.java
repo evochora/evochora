@@ -37,7 +37,7 @@ class MacroExpansionTest {
                 ".MACRO PAUSE",
                 "  NOP",
                 "  NOP",
-                ".ENDM",
+                ".ENDMACRO",
                 "PAUSE");
 
         assertThat(result.diagnostics.hasErrors()).isFalse();
@@ -49,7 +49,7 @@ class MacroExpansionTest {
         Expansion result = expand(
                 ".MACRO STEP DIR",
                 "  SEKI DIR",
-                ".ENDM",
+                ".ENDMACRO",
                 "STEP 1|0");
 
         assertThat(result.diagnostics.hasErrors()).isFalse();
@@ -61,7 +61,7 @@ class MacroExpansionTest {
         Expansion result = expand(
                 ".MACRO SET REG VALUE",
                 "  SETI REG VALUE",
-                ".ENDM",
+                ".ENDMACRO",
                 "SET %DR0 DATA:5");
 
         assertThat(result.diagnostics.hasErrors()).isFalse();
@@ -73,11 +73,11 @@ class MacroExpansionTest {
         Expansion result = expand(
                 ".MACRO INC REG",
                 "  ADDI REG DATA:1",
-                ".ENDM",
+                ".ENDMACRO",
                 ".MACRO INC2 REG",
                 "  INC REG",
                 "  INC REG",
-                ".ENDM",
+                ".ENDMACRO",
                 "INC2 %DR0");
 
         assertThat(result.diagnostics.hasErrors()).isFalse();
@@ -91,7 +91,7 @@ class MacroExpansionTest {
         Expansion result = expand(
                 ".MACRO INC REG",
                 "  ADDI REG DATA:1",
-                ".ENDM",
+                ".ENDMACRO",
                 "inc %DR0");
 
         assertThat(result.diagnostics.hasErrors()).isFalse();
@@ -104,7 +104,7 @@ class MacroExpansionTest {
                 "INC %DR0",
                 ".MACRO INC REG",
                 "  ADDI REG DATA:1",
-                ".ENDM");
+                ".ENDMACRO");
 
         // The preprocessor leaves the name as it found it; a later phase rejects the unknown
         // statement.
@@ -117,10 +117,10 @@ class MacroExpansionTest {
         Expansion result = expand(
                 ".MACRO INC REG",
                 "  ADDI REG DATA:1",
-                ".ENDM",
+                ".ENDMACRO",
                 ".MACRO INC REG",
                 "  ADDI REG DATA:1",
-                ".ENDM",
+                ".ENDMACRO",
                 "INC %DR0");
 
         assertThat(result.diagnostics.hasErrors()).isTrue();
@@ -133,7 +133,7 @@ class MacroExpansionTest {
         Expansion result = expand(
                 ".MACRO INC REG",
                 "  ADDI REG DATA:1",
-                ".ENDM",
+                ".ENDMACRO",
                 "INC %DR0 %DR1");
 
         assertThat(result.diagnostics.hasErrors()).isTrue();

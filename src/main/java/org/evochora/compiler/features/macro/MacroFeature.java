@@ -7,7 +7,7 @@ import org.evochora.compiler.IFeatureRegistrationContext;
  * Compiler feature for the {@code .MACRO} directive system.
  *
  * <p>Registers a single preprocessor handler that parses macro definitions
- * ({@code .MACRO ... .ENDM}) and dynamically registers expansion handlers
+ * ({@code .MACRO ... .ENDMACRO}) and dynamically registers expansion handlers
  * for each defined macro name.</p>
  */
 public class MacroFeature implements ICompilerFeature {

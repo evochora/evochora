@@ -102,13 +102,13 @@ public class RepeatDirectiveTest {
     }
 
     /**
-     * Tests block mode: .REPEAT n; ... .ENDR
+     * Tests block mode: .REPEAT n; ... .ENDREPEAT
      */
     @Test
     @Tag("unit")
     void testBlockRepeat() {
         // Arrange: semicolons become NEWLINEs in the lexer
-        String source = ".REPEAT 2; JMPI LOOP; NOP; .ENDR";
+        String source = ".REPEAT 2; JMPI LOOP; NOP; .ENDREPEAT";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> initialTokens = lexer.scanTokens();
@@ -136,7 +136,7 @@ public class RepeatDirectiveTest {
     }
 
     /**
-     * A statement after a block stays a statement of its own: the newline after .ENDR
+     * A statement after a block stays a statement of its own: the newline after .ENDREPEAT
      * separates it from the last repetition.
      */
     @Test
@@ -146,7 +146,7 @@ public class RepeatDirectiveTest {
         String source = String.join("\n",
                 ".REPEAT 2",
                 "  NOP",
-                ".ENDR",
+                ".ENDREPEAT",
                 "JMPI START",
                 ""
         );
@@ -166,7 +166,7 @@ public class RepeatDirectiveTest {
                 TokenType.OPCODE,      // NOP
                 TokenType.NEWLINE,     // between repetitions
                 TokenType.OPCODE,      // NOP
-                TokenType.NEWLINE,     // the newline after .ENDR
+                TokenType.NEWLINE,     // the newline after .ENDREPEAT
                 TokenType.OPCODE,      // JMPI
                 TokenType.IDENTIFIER,  // START
                 TokenType.NEWLINE,
@@ -185,7 +185,7 @@ public class RepeatDirectiveTest {
                 ".REPEAT 2",
                 "  NOP",
                 "  JMPI START",
-                ".ENDR"
+                ".ENDREPEAT"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);

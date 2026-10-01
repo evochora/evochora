@@ -32,7 +32,7 @@
       ".MACRO BUMP REG AMOUNT",
       "  ADDI REG AMOUNT",
       "  NOP",
-      ".ENDM",
+      ".ENDMACRO",
       "",
       "# Placement forms: a range, several single cells, a stepped range, a wildcard and a",
       "# two-dimensional range.",
@@ -51,7 +51,7 @@
       "  .REPEAT 2",
       "    ADDI %VALUE DATA:1",
       "    NOP",
-      "  .ENDR",
+      "  .ENDREPEAT",
       "  NOP^4",
       "  CALL UTIL.CLAMP REF %VALUE VAL DATA:0 MAX_VALUE",
       "  CALL NAV.PATROL REF %COUNT LREF %POS LVAL MARK",
@@ -76,7 +76,7 @@
       "    RET",
       "  ADDR X %TMP",
       "  RET",
-      ".ENDP",
+      ".ENDPROC",
       "",
       "# The relative forms: a row started from the write cursor, and a direction turned by 90 degrees",
       "# instead of written out.",
@@ -104,7 +104,7 @@
       "  SETR VALUE MIN",
       "DONE:",
       "  RET",
-      ".ENDP"
+      ".ENDPROC"
     ],
     "REFERENCE_ROOT/lib/step.evo": [
       "# Module that declares its dependency with .REQUIRE and leaves the choice to its importer.",
@@ -115,7 +115,7 @@
       "  ADDI X DATA:1",
       "  CALL CALC.CLAMP REF X VAL DATA:0 MAX_VALUE",
       "  RET",
-      ".ENDP"
+      ".ENDPROC"
     ],
     "REFERENCE_ROOT/lib/nav.evo": [
       "# Module that hands a required dependency down to its own import and passes that import",
@@ -126,7 +126,7 @@
       "EXPORT .PROC PATROL REF X LREF L LVAL M",
       "  CALL STEP.FORWARD REF X",
       "  RET",
-      ".ENDP"
+      ".ENDPROC"
     ]
   },
   "machineCodeLayout": {

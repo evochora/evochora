@@ -190,7 +190,7 @@ public class RegDirectiveTest {
         String source = String.join("\n",
                 ".PROC MY_PROC",
                 "  .REG %TMP %PDR0",
-                ".ENDP"
+                ".ENDPROC"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
@@ -214,7 +214,7 @@ public class RegDirectiveTest {
                 "  .REG %TMP %PDR0",
                 "  SETI %TMP DATA:42",
                 "  RET",
-                ".ENDP"
+                ".ENDPROC"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
@@ -261,7 +261,7 @@ public class RegDirectiveTest {
         String source = String.join("\n",
                 ".PROC MY_PROC",
                 "  .REG %TMP %PDR" + Config.NUM_PDR_REGISTERS,
-                ".ENDP"
+                ".ENDPROC"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
@@ -334,9 +334,9 @@ public class RegDirectiveTest {
         String source = String.join("\n",
                 ".PROC OUTER",
                 "  .PROC INNER",
-                "  .ENDP",
+                "  .ENDPROC",
                 "  .REG %TMP %PDR0",
-                ".ENDP"
+                ".ENDPROC"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);

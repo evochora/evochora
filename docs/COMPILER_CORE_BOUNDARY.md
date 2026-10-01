@@ -20,11 +20,11 @@ feature package under `src/main/java/org/evochora/compiler/features/`.
 |---|---|---|
 | `instruction` | Instruction statements, `OPCODE operand …`, the default statement form; operand type checking against the instruction set; instruction tokens in the token map | parser default, analysis, IR conversion, token map |
 | `label` | Labels `NAME:` (rewritten by the preprocessor to `.LABEL NAME`), `EXPORT` on a label, a label as jump target or operand, label references resolved to addresses at link time | preprocessor `:`, parser `.LABEL`, symbol collection, analysis, IR conversion, linking rule |
-| `proc` | `.PROC … .ENDP` with `REF`, `VAL`, `LREF`, `LVAL` parameters, `EXPORT` on a procedure, `CALL` with arguments, parameter marshalling around a call, call-site bindings and parameter names for the visualizer, procedure-scoped register banks | parser `.PROC` and `CALL`, symbol collection, analysis, token map, IR conversion, rewrite rules, linking rule, emission |
+| `proc` | `.PROC … .ENDPROC` with `REF`, `VAL`, `LREF`, `LVAL` parameters, `EXPORT` on a procedure, `CALL` with arguments, parameter marshalling around a call, call-site bindings and parameter names for the visualizer, procedure-scoped register banks | parser `.PROC` and `CALL`, symbol collection, analysis, token map, IR conversion, rewrite rules, linking rule, emission |
 | `reg` | Register aliases `.REG %ALIAS %REGISTER`, alias names in the artifact | parser, analysis, IR conversion, emission |
 | `constdir` | Constants `[EXPORT] .CONST NAME VALUE` | parser, analysis, IR conversion |
-| `macro` | `.MACRO NAME [PARAMS] … .ENDM`, macro invocation by name, file-local macro scope | preprocessor |
-| `repeat` | `.REPEAT n body`, `.REPEAT n … .ENDR`, the shorthand `body^n` | preprocessor `.REPEAT` and `^` |
+| `macro` | `.MACRO NAME [PARAMS] … .ENDMACRO`, macro invocation by name, file-local macro scope | preprocessor |
+| `repeat` | `.REPEAT n body`, `.REPEAT n … .ENDREPEAT`, the shorthand `body^n` | preprocessor `.REPEAT` and `^` |
 | `org` | `.ORG vector`, absolute in the main file, relative inside an imported module; a component marked `@+` or `@-` counts from the write cursor instead | parser, IR conversion, layout |
 | `dir` | `.DIR vector`, the direction in which code is laid out; `.DIR @+i\|j`, a 90-degree rotation of that direction in the plane of two axes | parser, IR conversion, layout |
 | `place` | `.PLACE literal placement…` with vectors, ranges, stepped ranges and wildcards; the initial world objects of the artifact | parser, IR conversion, layout |

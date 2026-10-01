@@ -43,7 +43,7 @@ public class MacroDirectiveTest {
         String source = String.join("\n",
                 ".MACRO INCREMENT REG",
                 "  ADDI REG DATA:1",
-                ".ENDM",
+                ".ENDMACRO",
                 "INCREMENT %DR0"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();

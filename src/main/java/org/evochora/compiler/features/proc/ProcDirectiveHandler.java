@@ -76,7 +76,7 @@ public class ProcDirectiveHandler implements IParserStatementHandler {
         context.state().addAvailableRegisterBanks(procScopedBanks);
 
         List<AstNode> body = new ArrayList<>();
-        while (!context.isAtEnd() && !(context.check(TokenType.DIRECTIVE) && context.peek().text().equalsIgnoreCase(".ENDP"))) {
+        while (!context.isAtEnd() && !(context.check(TokenType.DIRECTIVE) && context.peek().text().equalsIgnoreCase(".ENDPROC"))) {
             if (context.match(TokenType.NEWLINE)) continue;
             AstNode statement = context.declaration();
             if (statement != null) {
@@ -87,10 +87,10 @@ public class ProcDirectiveHandler implements IParserStatementHandler {
         context.state().removeAvailableRegisterBanks(procScopedBanks);
         context.state().popScope();
 
-        if (context.isAtEnd() || !(context.check(TokenType.DIRECTIVE) && context.peek().text().equalsIgnoreCase(".ENDP"))) {
-            context.getDiagnostics().reportError(".PROC '" + procName.text() + "' is not closed; expected .ENDP.", procName.fileName(), procName.line());
+        if (context.isAtEnd() || !(context.check(TokenType.DIRECTIVE) && context.peek().text().equalsIgnoreCase(".ENDPROC"))) {
+            context.getDiagnostics().reportError(".PROC '" + procName.text() + "' is not closed; expected .ENDPROC.", procName.fileName(), procName.line());
         } else {
-            context.advance(); // consume .ENDP
+            context.advance(); // consume .ENDPROC
         }
 
         return new ProcedureNode(procName.text(), exported, refParameters, valParameters, lrefParameters, lvalParameters, body, procName.toSourceInfo());

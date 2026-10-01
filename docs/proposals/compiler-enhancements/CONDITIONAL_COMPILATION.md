@@ -583,11 +583,10 @@ Pure rename: `.ENDP` → `.ENDPROC` (`ProcDirectiveHandler`), `.ENDM` → `.ENDM
 string comparisons and error messages in those handlers, every occurrence in `assembly/`, the
 tests, `docs/ASSEMBLY_SPEC.md`, `docs/COMPILER_CORE_BOUNDARY.md`, `docs/COMPILER_IR_SPEC.md`,
 `docs/proposals/ideas/LOCAL_STATE.md`, the directive list of the VS Code grammar `evochora.tmLanguage.json`, and the program embedded in
-`src/jmh/java/org/evochora/runtime/SimulationBenchmark.java`, which `gw check` does not
-compile.
+`src/jmh/java/org/evochora/runtime/SimulationBenchmark.java`. That program is a string that
+only the running benchmark compiles, so no test proves it; the rename there is checked by eye.
 
-**Tests:** all existing tests green; reference artifact regenerated; the benchmark source still
-compiles (`gw jmhClasses` or the task the build offers for it).
+**Tests:** all existing tests green; reference artifact regenerated.
 
 ### Step 3: Symbol registry in the lexer
 

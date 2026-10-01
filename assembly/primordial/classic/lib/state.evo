@@ -24,7 +24,7 @@
   SEKI 1|0; NOP^2        # Move DP east
   SCNI D1 1|0; NOP^2     # Scan slot 1 (x+2 relative to LOC)
   SKLS                   # Restore original DP from location stack
-.ENDM
+.ENDMACRO
 
 # ===========================================================================
 # STATIC2_STORE - Store 2 state values to row above location
@@ -45,7 +45,7 @@
   SEKI 1|0; NOP^2        # Move DP east
   PPKI S1 1|0; NOP^2     # Write slot 1 (atomic swap)
   SKLS; NOP^2            # Restore caller's DP from location stack
-.ENDM
+.ENDMACRO
 
 # ===========================================================================
 # STATIC3_LOAD - Load 3 state values from row above location
@@ -69,7 +69,7 @@
   SEKI 1|0; NOP^2        # Move DP east
   SCNI D2 1|0; NOP^2     # Scan slot 2 (x+3 relative to LOC)
   SKLS                   # Restore original DP from location stack
-.ENDM
+.ENDMACRO
 
 # ===========================================================================
 # STATIC3_STORE - Store 3 state values to row above location
@@ -93,4 +93,4 @@
   SEKI 1|0; NOP^2        # Move DP east
   PPKI S2 1|0; NOP^2     # Write slot 2 (atomic swap)
   SKLS                   # Restore caller's DP from location stack
-.ENDM
+.ENDMACRO

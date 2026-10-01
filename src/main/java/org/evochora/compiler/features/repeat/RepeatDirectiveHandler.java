@@ -16,15 +16,15 @@ import java.util.List;
  * <ul>
  *   <li><b>Inline mode:</b> {@code .REPEAT n INSTRUCTION} - repeats a single statement
  *       (until the next NEWLINE/semicolon)</li>
- *   <li><b>Block mode:</b> {@code .REPEAT n; ... .ENDR} - repeats everything between
- *       the directive and {@code .ENDR} (triggered when NEWLINE follows the count)</li>
+ *   <li><b>Block mode:</b> {@code .REPEAT n; ... .ENDREPEAT} - repeats everything between
+ *       the directive and {@code .ENDREPEAT} (triggered when NEWLINE follows the count)</li>
  * </ul>
  *
  * <p>Examples:</p>
  * <pre>
  * .REPEAT 3 NOP              ; expands to: NOP; NOP; NOP
  * .REPEAT 3 JMPI LABEL       ; expands to: JMPI LABEL; JMPI LABEL; JMPI LABEL
- * .REPEAT 3; NOP; JMPI LOOP; .ENDR  ; expands to: NOP; JMPI LOOP; NOP; JMPI LOOP; NOP; JMPI LOOP
+ * .REPEAT 3; NOP; JMPI LOOP; .ENDREPEAT  ; expands to: NOP; JMPI LOOP; NOP; JMPI LOOP; NOP; JMPI LOOP
  * </pre>
  */
 public class RepeatDirectiveHandler implements IPreProcessorHandler {
@@ -57,9 +57,9 @@ public class RepeatDirectiveHandler implements IPreProcessorHandler {
         boolean isBlockMode = preProcessor.check(TokenType.NEWLINE);
 
         if (isBlockMode) {
-            // Block mode: .REPEAT n; ... .ENDR
+            // Block mode: .REPEAT n; ... .ENDREPEAT
             preProcessor.advance(); // consume the NEWLINE after count
-            body = readUntilEndr(preProcessor, repeatToken);
+            body = readUntilEndRepeat(preProcessor, repeatToken);
         } else {
             // Inline mode: .REPEAT n INSTRUCTION(S)
             body = readUntilNewline(preProcessor);
@@ -105,34 +105,34 @@ public class RepeatDirectiveHandler implements IPreProcessorHandler {
     }
 
     /**
-     * Reads the body of a block-mode {@code .REPEAT} up to its {@code .ENDR} and consumes the
-     * {@code .ENDR}; the newline after it stays in the stream.
+     * Reads the body of a block-mode {@code .REPEAT} up to its {@code .ENDREPEAT} and consumes the
+     * {@code .ENDREPEAT}; the newline after it stays in the stream.
      *
      * @param preProcessor The token stream, positioned on the first body token.
      * @param repeatToken  The opening {@code .REPEAT}, where an unclosed block is reported.
-     * @return The body tokens, without the {@code .ENDR}.
+     * @return The body tokens, without the {@code .ENDREPEAT}.
      */
-    private List<Token> readUntilEndr(PreProcessor preProcessor, Token repeatToken) {
+    private List<Token> readUntilEndRepeat(PreProcessor preProcessor, Token repeatToken) {
         List<Token> body = new ArrayList<>();
         while (!preProcessor.isAtEnd()) {
             Token token = preProcessor.peek();
-            if (token.type() == TokenType.DIRECTIVE && token.text().equalsIgnoreCase(".ENDR")) {
+            if (token.type() == TokenType.DIRECTIVE && token.text().equalsIgnoreCase(".ENDREPEAT")) {
                 break;
             }
             body.add(preProcessor.advance());
         }
 
-        // Consume .ENDR
+        // Consume .ENDREPEAT
         if (!preProcessor.isAtEnd() && preProcessor.check(TokenType.DIRECTIVE)
-                && preProcessor.peek().text().equalsIgnoreCase(".ENDR")) {
+                && preProcessor.peek().text().equalsIgnoreCase(".ENDREPEAT")) {
             preProcessor.advance();
         } else {
             preProcessor.getDiagnostics().reportError(
-                    ".REPEAT is not closed; expected .ENDR.",
+                    ".REPEAT is not closed; expected .ENDREPEAT.",
                     repeatToken.fileName(), repeatToken.line());
         }
 
-        // The newline after .ENDR is left in the stream. The expansion ends with the last body
+        // The newline after .ENDREPEAT is left in the stream. The expansion ends with the last body
         // statement, and that newline separates it from the statement that follows.
 
         // Remove trailing NEWLINE from body if present (to avoid double newlines)

@@ -60,7 +60,7 @@ class CompilerDiagnosticsTest {
         write("main.evo",
                 ".MACRO INC REG",
                 "  ADDI REG DATA:1",
-                ".ENDM",
+                ".ENDMACRO",
                 "START:",
                 "  INC %DR0 %DR1");
 
@@ -75,12 +75,12 @@ class CompilerDiagnosticsTest {
         write("macros.evo",
                 ".MACRO INC REG",
                 "  ADDI REG DATA:1",
-                ".ENDM");
+                ".ENDMACRO");
         write("main.evo",
                 ".SOURCE \"macros.evo\"",
                 ".MACRO INC REG",
                 "  SUBI REG DATA:1",
-                ".ENDM",
+                ".ENDMACRO",
                 "START:",
                 "  INC %DR0");
 
@@ -155,7 +155,7 @@ class CompilerDiagnosticsTest {
         write("main.evo",
                 ".MACRO USE P",
                 "  .IMPORT P AS X",
-                ".ENDM",
+                ".ENDMACRO",
                 "USE \"lib.evo\"",
                 "START:",
                 "  NOP");
@@ -192,7 +192,7 @@ class CompilerDiagnosticsTest {
                 "  NOP",
                 ".REPEAT",
                 "  NOP",
-                ".ENDR");
+                ".ENDREPEAT");
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
@@ -317,7 +317,7 @@ class CompilerDiagnosticsTest {
         write("lib.evo",
                 ".MACRO INC REG",
                 "  ADDI REG DATA:1",
-                ".ENDM",
+                ".ENDMACRO",
                 "HELPER:",
                 "  NOP");
         write("main.evo",
@@ -339,7 +339,7 @@ class CompilerDiagnosticsTest {
         write("main.evo",
                 ".MACRO INC REG",
                 "  ADDI REG DATA:1",
-                ".ENDM",
+                ".ENDMACRO",
                 ".IMPORT \"lib.evo\" AS LIB",
                 "START:",
                 "  NOP");
@@ -355,13 +355,13 @@ class CompilerDiagnosticsTest {
         write("a.evo",
                 ".MACRO INC REG",
                 "  ADDI REG DATA:1",
-                ".ENDM",
+                ".ENDMACRO",
                 "A:",
                 "  INC %DR0");
         write("b.evo",
                 ".MACRO INC REG",
                 "  ADDI REG DATA:2",
-                ".ENDM",
+                ".ENDMACRO",
                 "B:",
                 "  INC %DR0");
         write("main.evo",
@@ -378,7 +378,7 @@ class CompilerDiagnosticsTest {
         write("macros.evo",
                 ".MACRO INC REG",
                 "  ADDI REG DATA:1",
-                ".ENDM");
+                ".ENDMACRO");
         write("a.evo",
                 ".SOURCE \"macros.evo\"",
                 "A:",
@@ -443,7 +443,7 @@ class CompilerDiagnosticsTest {
         write("main.evo",
                 ".PROC P REF X",
                 "  RET",
-                ".ENDP",
+                ".ENDPROC",
                 ".REG %POS %LR0",
                 "START:",
                 "  CALL P REF %POS");
@@ -463,7 +463,7 @@ class CompilerDiagnosticsTest {
                 ".IMPORT \"lib.evo\" AS LIB",
                 ".PROC P REF X",
                 "  RET",
-                ".ENDP",
+                ".ENDPROC",
                 "START:",
                 "  CALL P REF LIB");
 
@@ -591,10 +591,10 @@ class CompilerDiagnosticsTest {
         write("main.evo",
                 ".PROC STEP",
                 "  RET",
-                ".ENDP",
+                ".ENDPROC",
                 ".PROC STEP",
                 "  RET",
-                ".ENDP",
+                ".ENDPROC",
                 "START:",
                 "  NOP");
 
@@ -640,7 +640,7 @@ class CompilerDiagnosticsTest {
         write("main.evo",
                 ".PROC STEP REF X VAL X",
                 "  RET",
-                ".ENDP",
+                ".ENDPROC",
                 "START:",
                 "  NOP");
 
@@ -713,7 +713,7 @@ class CompilerDiagnosticsTest {
         write("arith.evo",
                 "EXPORT .PROC ADD_CLAMPED",
                 "  RET",
-                ".ENDP");
+                ".ENDPROC");
         write("nav.evo",
                 ".IMPORT \"arith.evo\" AS ARITH",
                 "NAV_START:",
@@ -734,7 +734,7 @@ class CompilerDiagnosticsTest {
         write("arith.evo",
                 "EXPORT .PROC ADD",
                 "  RET",
-                ".ENDP");
+                ".ENDPROC");
         write("nav.evo",
                 ".REQUIRE \"arith.evo\" AS ARITH",
                 "NAV_START:",
@@ -756,7 +756,7 @@ class CompilerDiagnosticsTest {
         write("nav.evo",
                 ".PROC STEP",
                 "  RET",
-                ".ENDP");
+                ".ENDPROC");
         write("main.evo",
                 ".IMPORT \"nav.evo\" AS NAV",
                 "START:",
@@ -773,7 +773,7 @@ class CompilerDiagnosticsTest {
         write("nav.evo",
                 ".PROC STEP",
                 "  RET",
-                ".ENDP");
+                ".ENDPROC");
         write("main.evo",
                 ".IMPORT \"nav.evo\" AS NAV",
                 "START:",
@@ -842,7 +842,7 @@ class CompilerDiagnosticsTest {
         write("main.evo",
                 ".PROC P REF X",
                 "  RET",
-                ".ENDP",
+                ".ENDPROC",
                 "START:",
                 "  CALL P REF DATA:1");
 
@@ -857,7 +857,7 @@ class CompilerDiagnosticsTest {
         write("main.evo",
                 ".PROC P LREF X",
                 "  RET",
-                ".ENDP",
+                ".ENDPROC",
                 "START:",
                 "  CALL P LREF %DR0");
 
@@ -872,7 +872,7 @@ class CompilerDiagnosticsTest {
         write("main.evo",
                 ".PROC P VAL X",
                 "  RET",
-                ".ENDP",
+                ".ENDPROC",
                 "START:",
                 "  CALL P VAL 1|0");
 
@@ -887,7 +887,7 @@ class CompilerDiagnosticsTest {
         write("main.evo",
                 ".PROC P LVAL X",
                 "  RET",
-                ".ENDP",
+                ".ENDPROC",
                 "START:",
                 "  CALL P LVAL DATA:1");
 
@@ -902,7 +902,7 @@ class CompilerDiagnosticsTest {
         write("main.evo",
                 ".PROC P FOO X",
                 "  RET",
-                ".ENDP",
+                ".ENDPROC",
                 "START:",
                 "  NOP");
 
@@ -922,7 +922,7 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining(".REPEAT is not closed; expected .ENDR.")
+                .hasMessageContaining(".REPEAT is not closed; expected .ENDREPEAT.")
                 .hasMessageContaining("main.evo:3");
     }
 
@@ -936,7 +936,7 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining(".PROC 'STEP' is not closed; expected .ENDP.")
+                .hasMessageContaining(".PROC 'STEP' is not closed; expected .ENDPROC.")
                 .hasMessageContaining("main.evo:3");
     }
 

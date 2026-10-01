@@ -124,7 +124,7 @@ public class IrGeneratorTest {
         String src = """
             .PROC myProc REF rA VAL v1
                 CALL myProc REF %DR1 VAL 42
-            .ENDP
+            .ENDPROC
             """;
         IrProgram ir = compileToIr(src);
         Optional<IrCallInstruction> callInstructionOpt = ir.items().stream()
@@ -154,7 +154,7 @@ public class IrGeneratorTest {
         String src = """
             .PROC oldProc REF p1
                 CALL oldProc REF p1
-            .ENDP
+            .ENDPROC
             """;
         IrProgram ir = compileToIr(src);
         Optional<IrCallInstruction> callInstructionOpt = ir.items().stream()
@@ -236,7 +236,7 @@ public class IrGeneratorTest {
             .PROC myProc REF rA VAL v1
                 ADDR rA v1
                 RET
-            .ENDP
+            .ENDPROC
             """;
         IrProgram ir = compileToIr(src);
         
@@ -267,7 +267,7 @@ public class IrGeneratorTest {
             .PROC myProc VAL v1 v2
                 ADDR v1 v2
                 RET
-            .ENDP
+            .ENDPROC
             """;
         IrProgram ir = compileToIr(src);
         
@@ -298,12 +298,12 @@ public class IrGeneratorTest {
             .PROC outerProc REF rA VAL v1
                 CALL innerProc REF rA VAL v1
                 RET
-            .ENDP
+            .ENDPROC
             
             .PROC innerProc REF rB VAL v2
                 NOP
                 RET
-            .ENDP
+            .ENDPROC
             """;
         IrProgram ir = compileToIr(src);
         

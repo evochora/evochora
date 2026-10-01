@@ -216,7 +216,7 @@ class UsingClauseIntegrationTest {
                 "EXPORT .PROC ADD_CONST REF X\n" +
                 "  ADDI X AMOUNT\n" +
                 "  RET\n" +
-                ".ENDP\n");
+                ".ENDPROC\n");
 
         // user.evo: requires MATH, calls MATH.ADD_CONST
         Files.writeString(tempDir.resolve("user.evo"),
@@ -224,7 +224,7 @@ class UsingClauseIntegrationTest {
                 "EXPORT .PROC DO_WORK REF V\n" +
                 "  CALL MATH.ADD_CONST REF V\n" +
                 "  RET\n" +
-                ".ENDP\n");
+                ".ENDPROC\n");
 
         String mainSource = ".IMPORT \"math.evo\" AS M\n" +
                 ".IMPORT \"user.evo\" AS U USING M AS MATH\n" +

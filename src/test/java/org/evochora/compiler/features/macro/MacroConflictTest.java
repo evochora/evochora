@@ -34,12 +34,12 @@ class MacroConflictTest {
         Files.writeString(tempDir.resolve("macros_v1.evo"),
                 ".MACRO FOO\n" +
                 "  NOP\n" +
-                ".ENDM\n");
+                ".ENDMACRO\n");
 
         Files.writeString(tempDir.resolve("macros_v2.evo"),
                 ".MACRO FOO\n" +
                 "  SETI %DR0 DATA:42\n" +
-                ".ENDM\n");
+                ".ENDMACRO\n");
 
         Files.writeString(tempDir.resolve("main.evo"),
                 ".SOURCE \"macros_v1.evo\"\n" +

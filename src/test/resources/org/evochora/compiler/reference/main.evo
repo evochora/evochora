@@ -24,7 +24,7 @@
 .MACRO BUMP REG AMOUNT
   ADDI REG AMOUNT
   NOP
-.ENDM
+.ENDMACRO
 
 # Placement forms: a range, several single cells, a stepped range, a wildcard and a
 # two-dimensional range.
@@ -43,7 +43,7 @@ START:
   .REPEAT 2
     ADDI %VALUE DATA:1
     NOP
-  .ENDR
+  .ENDREPEAT
   NOP^4
   CALL UTIL.CLAMP REF %VALUE VAL DATA:0 MAX_VALUE
   CALL NAV.PATROL REF %COUNT LREF %POS LVAL MARK
@@ -68,7 +68,7 @@ MARK:
     RET
   ADDR X %TMP
   RET
-.ENDP
+.ENDPROC
 
 # The relative forms: a row started from the write cursor, and a direction turned by 90 degrees
 # instead of written out.

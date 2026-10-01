@@ -183,7 +183,7 @@ public class SimulationBenchmark {
                       ADDI rA DATA:1
                       ADDI vB DATA:1
                       RET
-                    .ENDP
+                    .ENDPROC
 
                     MAIN:
                       SETI %DR0 DATA:0
