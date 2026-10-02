@@ -15,6 +15,7 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -179,6 +180,83 @@ class CompilerDiagnosticsTest {
                 .hasMessageContaining("main.evo:2")
                 .hasMessageNotContaining("must be a literal")
                 .hasMessageNotContaining("Unexpected token");
+    }
+
+    @Test
+    void anImportAfterALabelIsRejectedAsNotTheFirstWordOnItsLine() throws Exception {
+        write("lib.evo",
+                "  NOP");
+        write("main.evo",
+                "L: .IMPORT \"lib.evo\" AS LIB",
+                "START:",
+                "  NOP");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .satisfies(e -> assertThat(e.getMessage().lines().toList()).containsExactly(
+                        "[ERROR] " + sourceRoot.resolve("main.evo")
+                                + ":1: .IMPORT must be the first word on its line; found 'L' before it."));
+    }
+
+    @Test
+    void aSourceAfterAStatementIsRejectedAsNotTheFirstWordOnItsLine() throws Exception {
+        write("x.evo",
+                "  NOP");
+        write("main.evo",
+                "START:",
+                "NOP; .SOURCE \"x.evo\"");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .satisfies(e -> assertThat(e.getMessage().lines().toList()).containsExactly(
+                        "[ERROR] " + sourceRoot.resolve("main.evo")
+                                + ":2: .SOURCE must be the first word on its line; found 'NOP' before it."));
+    }
+
+    @Test
+    void aRequireAfterALabelIsRejectedAsNotTheFirstWordOnItsLine() throws Exception {
+        write("main.evo",
+                "L: .REQUIRE \"d.evo\" AS D",
+                "START:",
+                "  NOP");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .satisfies(e -> assertThat(e.getMessage().lines().toList()).containsExactly(
+                        "[ERROR] " + sourceRoot.resolve("main.evo")
+                                + ":1: .REQUIRE must be the first word on its line; found 'L' before it."));
+    }
+
+    @Test
+    void anExportedRequireGetsTheParsersMessageAlone() throws Exception {
+        write("d.evo",
+                "EXPORT .PROC WORK",
+                "  RET",
+                ".ENDPROC");
+        write("main.evo",
+                "EXPORT .REQUIRE \"d.evo\" AS D",
+                "START:",
+                "  NOP");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .satisfies(e -> assertThat(e.getMessage().lines().toList()).containsExactly(
+                        "[ERROR] " + sourceRoot.resolve("main.evo")
+                                + ":1: EXPORT is not supported before '.REQUIRE'."));
+    }
+
+    @Test
+    void anExportedImportIsStillAccepted() throws Exception {
+        write("lib.evo",
+                "EXPORT .PROC WORK",
+                "  RET",
+                ".ENDPROC");
+        write("main.evo",
+                "EXPORT .IMPORT \"lib.evo\" AS LIB",
+                "START:",
+                "  CALL LIB.WORK");
+
+        assertThatCode(() -> compile("main.evo")).doesNotThrowAnyException();
     }
 
     @Test

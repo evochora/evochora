@@ -10,6 +10,7 @@ import org.evochora.compiler.frontend.preprocessor.PreProcessorContext;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * Handles the {@code .SOURCE} directive in the preprocessor phase.
@@ -19,13 +20,20 @@ import java.util.List;
  * <p>{@code .SOURCE} is textual inclusion — no module identity, no alias,
  * no scope. The parent module context is preserved.</p>
  *
- * <p>The directive stands alone on its line: a token after the path is an error.</p>
+ * <p>The directive stands alone on its line: a token before it or after the path is an error.</p>
  */
 public class SourceDirectiveHandler implements IPreProcessorHandler {
 
     @Override
     public void process(PreProcessor preProcessor, PreProcessorContext preProcessorContext) {
         int startIndex = preProcessor.getCurrentIndex();
+        Token before = wordBefore(preProcessor, preProcessor.getCurrentIndex());
+        if (before != null) {
+            Token directive = preProcessor.peek();
+            String message = ".SOURCE must be the first word on its line; found '" + before.text() + "' before it.";
+            preProcessor.getDiagnostics().reportError(message, directive.fileName(), directive.line());
+            throw new ErrorRecoveryException(message);
+        }
 
         preProcessor.advance(); // consume .SOURCE
         Token pathToken = preProcessor.consume(TokenType.STRING, "Expected a file path in quotes after .SOURCE.");
@@ -57,12 +65,14 @@ public class SourceDirectiveHandler implements IPreProcessorHandler {
             return;
         }
 
-        // The dependency scan loads every source file whose path is written in the source, so a
-        // file without tokens here was named by a path the scan could not see: a macro parameter.
+        // The dependency scan loads every file whose path is written in a branch it takes, and the
+        // path of a dependency directive is a literal that stands where the scan reads it. A file
+        // without tokens here is a defect of the compiler, or a branch the scan decided on the
+        // flags of the first import of a module imported twice, since it reads a module once.
         List<Token> preLexed = preProcessorContext.fileTokens().get(resolvedPath);
         if (preLexed == null) {
             preProcessor.getDiagnostics().reportError(
-                    ".SOURCE path must be a literal, not a macro parameter",
+                    "Internal error: the dependency scan did not load " + resolvedPath + ".",
                     pathToken.fileName(), pathToken.line());
             preProcessor.removeTokens(startIndex, endIndex - startIndex);
             return;
@@ -80,5 +90,33 @@ public class SourceDirectiveHandler implements IPreProcessorHandler {
 
         preProcessor.removeTokens(startIndex, endIndex - startIndex);
         preProcessor.injectTokens(newTokens, 0);
+    }
+
+    /**
+     * Finds a token of the directive's file and line that stands before the directive, which must
+     * be the first word on its physical line. Tokens of another
+     * file or line, such as the marker an inclusion puts before a file's first line, end the walk.
+     *
+     * @return The nearest such token that is not a statement end, or the nearest statement end if
+     *         there is nothing else, or {@code null} if the directive is the first word.
+     */
+    private static Token wordBefore(PreProcessor preProcessor, int index) {
+        Token directive = preProcessor.getToken(index);
+        int i = index - 1;
+        Token found = null;
+        for (; i >= 0 && sameLine(preProcessor.getToken(i), directive); i--) {
+            Token token = preProcessor.getToken(i);
+            if (token.type() != TokenType.NEWLINE) {
+                return token;
+            }
+            if (found == null) {
+                found = token;
+            }
+        }
+        return found;
+    }
+
+    private static boolean sameLine(Token a, Token b) {
+        return a.line() == b.line() && Objects.equals(a.fileName(), b.fileName());
     }
 }

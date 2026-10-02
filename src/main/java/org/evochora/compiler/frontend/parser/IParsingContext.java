@@ -55,7 +55,7 @@ public interface IParsingContext {
 
     /**
      * Returns the previously consumed token.
-     * @return The previous token.
+     * @return The token before the current one, or {@code null} at the start of the stream.
      */
     Token previous();
 

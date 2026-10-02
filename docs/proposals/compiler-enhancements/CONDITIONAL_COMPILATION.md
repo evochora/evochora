@@ -83,7 +83,8 @@ and the MASM directives reference.
   hexadecimal or binary literal does not lex today, anywhere in the language: `Lexer.number()`
   looks for the prefix only when the character before it is the `0`, which after a minus it is
   not, so `-0x10` becomes `-0` and `x10`. Step 3 fixes this.)
-- `<op>` is one of `=`, `<>`, `<`, `<=`, `>`, `>=`.
+- `<op>` is one of `=`, `<>`, `<`, `<=`, `>`, `>=`; `==` and `!=` are synonyms of `=` and `<>`,
+  as they are in NASM, for the hand that comes from C.
 - `<operand>` is an integer literal or the name of another flag, whose value is used.
 - Each of these directives stands alone on a physical line: nothing before it on the line, not
   a label, and nothing after its operands but the end of the line. `;` does not separate it
@@ -291,7 +292,7 @@ handlers for its directives:
 - `.ENDDEF` pops the open block.
 
 The scan handlers match the directive by its word and read the rest of the line themselves; a
-head the handler cannot read counts as a condition that does not hold. Phase 0 reports no error
+head the handler cannot read makes the scan skip the whole block, as the preprocessor removes it. Phase 0 reports no error
 about conditionals: the preprocessor owns those diagnostics, and `Compiler.runPhases` stops
 after Phase 0 only for errors Phase 0 reports, so a malformed head reaches the preprocessor's
 message instead of being hidden behind a file Phase 0 would otherwise have loaded from the
@@ -302,21 +303,20 @@ with the strings of a regex match and from the Phase 2 handler with the tokens; 
 for reading an integer.
 
 With the line rule and the top-level rule, Phase 0 and the preprocessor see the same
-directives in the same order, with one exception, documented as a limit of the feature:
+directives in the same order. The dependency directives themselves obey the line rule as well:
+`.IMPORT`, `.REQUIRE` and `.SOURCE` are the first word of their line (`.IMPORT` after an
+`EXPORT`), and nothing follows their clauses, because that is the line Phase 0 recognises.
 
-- **A file scanned twice.** The scanner scans a module once (`scanModule` returns when the
-  module is already in the graph), while the preprocessor inlines it at every import. A module
-  imported a second time is not re-evaluated by Phase 0: the flags its `.DEFINE`s set are set
-  again in the preprocessor but not in the scan, and its conditional imports follow the flags
-  of the first scan. The case needs a module imported twice, an `.UNDEF` of one of its flags
-  between the two imports, and a later dependency that tests that flag. Removing the limit
-  would mean rescanning a module at every import, which gives up the once-per-module rule the
-  cycle check rests on.
-
-When Phase 0 and the preprocessor disagree, the preprocessor inlines an import or a source whose
-tokens the graph does not hold, and `ImportSourceHandler` and `SourceDirectiveHandler` report
-today's ".IMPORT path must be a literal, not a macro parameter". That message names the second
-possible cause, the limit above, so that the programmer is told where to look.
+One case remains in which the scan and the preprocessor would disagree: a module imported a
+second time, with other flags than at its first import, whose own dependency directives test
+those flags. Today the scanner scans a file once (`scanModule` returns when the file is already
+in the graph) and the module system binds a file to one alias chain, so a second import of the
+same file does not work at all, with or without flags. Step 7 makes the placement the module's
+identity and rescans the file at every import with the flags of that import; from then on the
+two phases agree in this case too. Until then the preprocessor, meeting an import or a source
+whose tokens the graph does not hold, reports an internal error, as `ImportAnalysisHandler`
+does for an alias the scan did not register: no program can reach the case through a mistake
+of its own.
 
 ### Sources of flags
 
@@ -544,6 +544,14 @@ without a new reason:
   the Phase 0 graph would move the largest listed coupling, the module system, for one
   remaining limit.
 - **Configuration per organism, not global.** See *Sources of flags*.
+- **A file may be imported more than once.** The module system identified a module by its
+  file, so a second `.IMPORT` of the same file failed with an error about a name in that file.
+  Nothing in the language forbade it, and with flags the second placement may be other code;
+  for an experiment, two independent copies of one routine in one organism are a legitimate
+  design. The identity of a module becomes its placement (Step 7). That two placements put the
+  same labels into one body twice is the ordinary behaviour of the machine, as after a
+  reproduction, and is not mentioned in the specification: the label matching weighs the
+  candidates, and a programmer who wants one copy's labels found sets the flags that place them.
 - **Constants from the configuration** are a separate proposal after this one; they raise
   their own questions (qualified names of module-local constants, lexing of configured values,
   unknown names, precedence) and reuse the options path of this proposal.
@@ -555,7 +563,7 @@ without a new reason:
 ### Dependencies
 
 ```text
-Step 1 (.CONST) → Step 2 (END directives) → Step 3 (lexer symbol registry) → Step 4 (blocks, slots, cursor, options) → Step 5 (feature) → Step 6 (configuration, CLI, documentation)
+Step 1 (.CONST) → Step 2 (END directives) → Step 3 (lexer symbol registry) → Step 4 (blocks, slots, cursor, options) → Step 5 (feature) → Step 6 (configuration, CLI, documentation) → Step 7 (module identity by placement)
 ```
 
 Steps 1 and 2 are renames without behavioural change. Steps 3 and 4 add generic core
@@ -673,8 +681,11 @@ following lines and `null` at the end, and a line taken by a handler is not disp
 - `ConditionalFeature` registers the handlers, the block pair with its dividers, the six
   symbols and the two top-level-only directives; `StandardFeatures` lists it;
   `docs/COMPILER_CORE_BOUNDARY.md` gets its row in the feature table.
-- `ImportSourceHandler` and `SourceDirectiveHandler`: the "must be a literal" message names the
-  limit described under *Dependencies inside conditional blocks* as the second cause.
+- `ImportSourceHandler` and `SourceDirectiveHandler`: a file whose tokens the graph does not
+  hold is an internal error (see *Dependencies inside conditional blocks*); the "must be a
+  literal" message goes, its case being unreachable now that these directives stand at top
+  level. The same three handlers, with `RequireDirectiveHandler`, check that their directive is
+  the first word of its line, `.IMPORT` after an `EXPORT`.
 
 **Tests**, each as a compilation of a small program unless noted:
 
@@ -705,7 +716,9 @@ following lines and `null` at the end, and a line taken by a handler is not disp
   `.DEFINE` in a `.SOURCE`d file seen by a later `.IFDEF` in the includer
 - Phase 0 unit tests on `DependencyScanner`: a graph with and without the skipped module; the
   block stack across `.ELSEDEF`; a head that cannot be read takes no branch
-- the documented limit, as a test that pins the message
+- a module imported a second time with other flags, until Step 7: the internal error
+- `==` and `!=` compare like `=` and `<>`; a dependency directive with a label or a statement
+  before it on the line is rejected
 
 ### Step 6: Configuration, CLI, program identity, documentation
 
@@ -729,3 +742,32 @@ artifacts, and one program twice with equal flags once, `{x=1}` and `{X=1}` coun
 `defines { a = 1, A = 2 }` rejected; CLI test for `--define A --define B=2`; a metadata round
 trip whose resolved configuration carries the flags; reference artifact regenerated for the new
 ID.
+
+### Step 7: A module's identity is its placement
+
+A file may be imported more than once; every `.IMPORT` is a placement with its own alias chain,
+and that chain, not the file, identifies the module from Phase 0 on.
+
+- `DependencyScanner`: a module file is scanned at every import, with the flags as they stand at
+  that import, and its dependencies are kept per placement; the scan descends from the main
+  module along the imports and gives every placement the alias chain the preprocessor will give
+  it (parent chain plus alias). The cycle check stays per file: a file that imports itself,
+  directly or through others, is reported as today. The contents of a file are loaded once.
+- `DependencyGraph` carries the placements with their chains and dependencies instead of one
+  descriptor per file, in an order in which a placement's dependencies precede it.
+- `SemanticAnalyzer.setupModuleRelationships` walks the placements: it registers each chain as a
+  module, and the setup handlers (`ImportModuleSetupHandler`, `RequireModuleSetupHandler`) read
+  the chain of the placement they are called for instead of `aliasChainOf(path)`;
+  `ModuleSetupContext.bindPath` / `aliasChainOf` go.
+- The preprocessor already inlines a module at every import under its own chain; nothing
+  changes there. The internal error of the step before becomes unreachable and stays as an
+  internal error.
+- `docs/ASSEMBLY_SPEC.md`, `.IMPORT`: one sentence that a file may be imported more than once and
+  that each import places the module again under its alias.
+
+**Tests:** the same file imported twice under two aliases, both procedures called, compiles and
+places the code twice; the two placements take different branches when a flag changes between
+the imports, including a conditional `.IMPORT` inside the module; a module imported twice with
+a `.REQUIRE` satisfied by different `USING` clauses at the two imports; a diamond (`main`
+imports `A` and `B`, both import `M`) places `M` twice under `A.M` and `B.M`; a file that imports
+itself through another is still reported as a cycle; the reference artifact unchanged.

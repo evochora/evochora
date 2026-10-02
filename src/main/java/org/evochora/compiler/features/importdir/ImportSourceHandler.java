@@ -10,13 +10,15 @@ import org.evochora.compiler.frontend.preprocessor.PreProcessorContext;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * Handles the {@code .IMPORT} directive in the preprocessor phase.
  * Inlines the imported module's pre-lexed tokens at the directive location, wrapped with
  * PUSH_CTX/POP_CTX for relative .ORG support. The directive tokens remain in the
  * stream for the parser to create an {@code ImportNode}. The directive stands alone on its line:
- * a token after the alias that begins no {@code USING} clause is an error.
+ * nothing but an {@code EXPORT} before it, and a token after the alias that begins no
+ * {@code USING} clause is an error.
  *
  * <p>The module's tokens are pre-lexed in Phase 1 (Lexical Analysis) and made available via
  * {@link PreProcessorContext#fileTokens()}. This handler does not call the Lexer,
@@ -26,6 +28,13 @@ public class ImportSourceHandler implements IPreProcessorHandler {
 
     @Override
     public void process(PreProcessor preProcessor, PreProcessorContext preProcessorContext) {
+        Token before = wordBefore(preProcessor, preProcessor.getCurrentIndex());
+        if (before != null) {
+            Token directive = preProcessor.peek();
+            String message = ".IMPORT must be the first word on its line; found '" + before.text() + "' before it.";
+            preProcessor.getDiagnostics().reportError(message, directive.fileName(), directive.line());
+            throw new ErrorRecoveryException(message);
+        }
         Token importToken = preProcessor.peek();
         preProcessor.advance(); // consume .IMPORT
 
@@ -51,12 +60,14 @@ public class ImportSourceHandler implements IPreProcessorHandler {
             return;
         }
 
-        // The dependency scan loads every module file whose path is written in the source, so a
-        // file without tokens here was named by a path the scan could not see: a macro parameter.
+        // The dependency scan loads every file whose path is written in a branch it takes, and the
+        // path of a dependency directive is a literal that stands where the scan reads it. A file
+        // without tokens here is a defect of the compiler, or a branch the scan decided on the
+        // flags of the first import of a module imported twice, since it reads a module once.
         List<Token> tokens = preProcessorContext.fileTokens().get(resolvedPath);
         if (tokens == null) {
             preProcessor.getDiagnostics().reportError(
-                    ".IMPORT path must be a literal, not a macro parameter",
+                    "Internal error: the dependency scan did not load " + resolvedPath + ".",
                     pathToken.fileName(), pathToken.line());
             return;
         }
@@ -160,4 +171,36 @@ public class ImportSourceHandler implements IPreProcessorHandler {
         return null;
     }
 
+    /**
+     * Finds a token of the directive's file and line that stands before the directive, which must
+     * be the first word on its physical line. An {@code EXPORT} directly before the directive belongs to it and is passed over. Tokens of another
+     * file or line, such as the marker an inclusion puts before a file's first line, end the walk.
+     *
+     * @return The nearest such token that is not a statement end, or the nearest statement end if
+     *         there is nothing else, or {@code null} if the directive is the first word.
+     */
+    private static Token wordBefore(PreProcessor preProcessor, int index) {
+        Token directive = preProcessor.getToken(index);
+        int i = index - 1;
+        if (i >= 0 && sameLine(preProcessor.getToken(i), directive)
+                && preProcessor.getToken(i).type() == TokenType.IDENTIFIER
+                && "EXPORT".equalsIgnoreCase(preProcessor.getToken(i).text())) {
+            i--;
+        }
+        Token found = null;
+        for (; i >= 0 && sameLine(preProcessor.getToken(i), directive); i--) {
+            Token token = preProcessor.getToken(i);
+            if (token.type() != TokenType.NEWLINE) {
+                return token;
+            }
+            if (found == null) {
+                found = token;
+            }
+        }
+        return found;
+    }
+
+    private static boolean sameLine(Token a, Token b) {
+        return a.line() == b.line() && Objects.equals(a.fileName(), b.fileName());
+    }
 }

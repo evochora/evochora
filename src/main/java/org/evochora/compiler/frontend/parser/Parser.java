@@ -240,6 +240,7 @@ public class Parser implements IParsingContext {
 
     @Override
     public Token previous() {
+        if (current == 0) return null;
         return tokens.get(current - 1);
     }
 

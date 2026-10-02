@@ -5,6 +5,9 @@ import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.frontend.parser.IParsingContext;
 import org.evochora.compiler.model.ast.AstNode;
+import org.evochora.compiler.diagnostics.ErrorRecoveryException;
+
+import java.util.Objects;
 
 /**
  * Parses the {@code .REQUIRE} directive.
@@ -15,13 +18,23 @@ import org.evochora.compiler.model.ast.AstNode;
  * provide the required module through a {@code USING} clause. This enables compile-time
  * dependency injection for reusable library modules.
  *
- * <p>The directive stands alone on its line: a token after the alias is an error, and the rest
- * of the line is passed over.
+ * <p>The directive stands alone on its line: a token of its file and line before it, or a token
+ * after the alias, is an error, and the rest of the line is passed over.
  */
 public class RequireDirectiveHandler implements IParserStatementHandler {
 
     @Override
     public AstNode parse(IParsingContext context) {
+        Token directive = context.peek();
+        // An EXPORT before the directive is the parser's to report; the line rule passes over it.
+        Token before = context.previous();
+        if (before != null && before.line() == directive.line()
+                && Objects.equals(before.fileName(), directive.fileName())
+                && !"EXPORT".equalsIgnoreCase(before.text())) {
+            String message = ".REQUIRE must be the first word on its line; found '" + before.text() + "' before it.";
+            context.getDiagnostics().reportError(message, directive.fileName(), directive.line());
+            throw new ErrorRecoveryException(message);
+        }
         context.advance(); // consume .REQUIRE
 
         Token pathToken = context.consume(TokenType.STRING, "Expected a file path in quotes after .REQUIRE.");
