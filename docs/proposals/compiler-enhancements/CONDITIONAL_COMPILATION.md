@@ -844,25 +844,45 @@ annotation.
   .ENDDEF
 ```
 
-- The preprocessor records two generic things in `PreProcessorResult`, both per placement and
-  file: a region a directive line left out (`leftOut(directiveLine, fromLine, toLine)`) and a
-  note at a source position (`note(line, column, text)`). The core knows an omitted region and a
-  note; which feature records them it does not know. `ConditionalBlockHandler` records, for
-  every branch it does not keep, the region owned by the branch's directive line, and for every
-  flag name in every head of the block a note with the flag's state; `Flags` gives the state.
-- The artifact: each `sources` entry gains `leftOut: [{directiveLine, from, to}]` and
-  `notes: [{line, column, text}]`; the protobuf contract and the two converters carry them.
-- The visualizer: `OrganismSourceView` renders a note as an annotation span at its position
-  when the listing is built (it does not change with the tick), and gives a directive line that
-  owns a region the arrow and the fold; the folded lines are hidden, unfolded they carry a
-  greyed style.
+- **A macro expansion is an instance.** A block in a macro body is evaluated at every
+  expansion, and two expansions of one macro decide differently as a rule — a parameter as the
+  flag name is made for that — while their tokens point at the same lines of the body. What the
+  view folds and annotates must be what the running code was compiled with, so the expansion
+  is recorded with it: `Token` and `SourceInfo` carry `expansion`, a number the preprocessor
+  gives every macro expansion (0 outside any expansion; a nested expansion gets its own number;
+  the copies of a repeat block share the expansion they stand in, because nothing between them
+  can change a flag). `MacroExpansionHandler` stamps the injected body tokens; the
+  `sourceMap` carries the number with every instruction.
+- The preprocessor records two generic things in `PreProcessorResult`, both per placement,
+  file and expansion: a region a directive line left out (`leftOut(directiveLine, fromLine,
+  toLine)`) and a note at a source position (`note(line, column, text)`). The core knows an
+  omitted region and a note; which feature records them it does not know. The two record
+  types are defined once, in `api`, as nested records of `SourceFile`, because the emitter
+  reads nothing from the frontend. `ConditionalBlockHandler` records, for every branch it does
+  not keep, the region owned by the branch's directive line, and for every flag name in every
+  head of the block a note with the flag's state; `Flags` gives the state. A note on a macro
+  parameter used as the flag name lands on the argument at the call site, whose token it is.
+- The artifact: each `sources` entry gains `leftOut: [{expansion, directiveLine, from, to}]` and
+  `notes: [{expansion, line, column, text}]`; `sourceMap` entries gain `expansion`; the
+  protobuf contract and the two converters carry them.
+- The visualizer: `OrganismSourceView` folds and annotates by the expansion of the active
+  position: the regions and notes with expansion 0 always, those of an expansion only while the
+  active position stands in it. A directive line that owns a region gets the arrow and the fold,
+  the folded lines are hidden, unfolded they carry a greyed style; a note is an annotation span
+  at its position. Leaving an expansion, or entering another, re-renders the folds and notes of
+  the body's lines.
 
 **Tests:** a block with a taken and a left-out branch yields one region owned by the right
 directive line and the notes `[=1]` / `[=3]` per placement; `.IFNDEF` of an unset flag notes
 `[not set]`; a flag without value notes `[set]`; a right-hand flag name is noted; `.ELSEDEF`
-gets no note; a nested block in a left-out branch records nothing of its own; the reference
-artifact is regenerated (the reference program has no conditional, so only the two empty lists
-appear); a metadata round trip keeps regions and notes. The frontend is checked in Chrome and
-Firefox against the two-placement program of Step 8: in `FIRST` the `.IFDEF` line is folded and
-notes `PAD[=1]`, in `SECOND` the `.ELSEDEF` line is folded and the `.IFDEF` line notes
-`PAD[=3]`; unfolding shows the greyed lines; no `mismatch` and no console error.
+gets no note; a nested block in a left-out branch records nothing of its own; a macro with a
+parameter as the flag name, called twice with flags that decide differently, yields two
+expansions whose regions fold the other branch each and whose instructions carry their
+expansion in the `sourceMap`; a block in a repeat body records one expansion; the reference
+artifact is regenerated (the reference program has no conditional, so the `expansion` fields
+and the two empty lists appear); a metadata round trip keeps regions, notes and expansions. The frontend is checked in Chrome and
+Firefox against the two-placement program of Step 8, extended by a macro with a parameter as
+the flag name called twice: in `FIRST` the `.IFDEF` line is folded and notes `PAD[=1]`, in
+`SECOND` the `.ELSEDEF` line is folded and the `.IFDEF` line notes `PAD[=3]`; while the
+position stands in one expansion of the macro, the body folds that expansion's branch; unfolding
+shows the greyed lines; no `mismatch` and no console error.
