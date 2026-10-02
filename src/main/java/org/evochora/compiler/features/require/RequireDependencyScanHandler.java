@@ -8,7 +8,7 @@ import java.util.regex.Pattern;
 
 /**
  * Phase 0 scan handler for {@code .REQUIRE} directives. Detects require declarations
- * and registers them as dependencies for topological module ordering.
+ * and records them as dependencies of the module placement being scanned.
  */
 public class RequireDependencyScanHandler implements IDependencyScanHandler {
 

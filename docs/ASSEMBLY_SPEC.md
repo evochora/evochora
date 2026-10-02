@@ -736,7 +736,7 @@ None of the three may stand inside a macro or a repeat block. Inside a condition
 #### `.IMPORT`
 
 * **Syntax**: `[EXPORT] .IMPORT "<path>" AS <Alias> [USING <source> AS <target>]*`
-* **Effect**: Declares a dependency on the module at `<path>`, assigns it the local alias `<Alias>`, and inlines the module's code at this location. Exported labels and procedures in the imported module become accessible as `<Alias>.<Name>`.
+* **Effect**: Declares a dependency on the module at `<path>`, assigns it the local alias `<Alias>`, and inlines the module's code at this location. Exported labels and procedures in the imported module become accessible as `<Alias>.<Name>`. The same file may be imported more than once, under different aliases: each import places the module again, and the two placements are as independent as two different modules.
 * **`EXPORT` prefix**: Passes the import on to modules that import this one, which then reach it as `<ThisAlias>.<Alias>.<Name>` without inlining the code a second time. Each level decides for its own import: a level without the prefix ends the chain there.
 * **USING clauses**: Provide compile-time dependency injection. Each `USING` clause wires a module from the current scope (identified by `<source>` alias) into the imported module to satisfy one of its `.REQUIRE` declarations (identified by `<target>` alias).
     - `<source>` names a module the current one has: either one it imported itself, or one it received through a `USING` clause on its own `.REQUIRE`. The second case lets a module hand a dependency further down without choosing it, so the decision stays with the outermost caller.

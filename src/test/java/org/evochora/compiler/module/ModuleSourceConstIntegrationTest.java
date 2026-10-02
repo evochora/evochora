@@ -309,7 +309,7 @@ class ModuleSourceConstIntegrationTest {
         FeatureRegistry featureRegistry = new FeatureRegistry(new RuntimeInstructionSetAdapter());
         StandardFeatures.all().forEach(f -> f.register(featureRegistry));
         DependencyScanner scanner = new DependencyScanner(diagnostics, resolver, featureRegistry.dependencyScanHandlers(), CompilerOptions.defaults());
-        DependencyGraph graph = scanner.scan(mainSource, mainPath);
+        DependencyGraph graph = scanner.scan(mainSource, mainPath, rootAliasChain);
         if (diagnostics.hasErrors()) return new PostProcessResult(diagnostics, List.of());
 
         // Phase 1: Lex the included files under their paths, the main file as the stream
@@ -337,7 +337,7 @@ class ModuleSourceConstIntegrationTest {
         SymbolTable symbolTable = new SymbolTable(diagnostics);
         ModuleSetupRegistry setupRegistry = new ModuleSetupRegistry();
         featureRegistry.dependencySetupHandlers().forEach((type, handler) -> registerSetupHandler(setupRegistry, type, handler));
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, graph, mainPath, rootAliasChain, TestRegistries.analysisRegistry(symbolTable, diagnostics), setupRegistry);
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, graph, rootAliasChain, TestRegistries.analysisRegistry(symbolTable, diagnostics), setupRegistry);
         analyzer.analyze(ast);
         if (diagnostics.hasErrors()) return new PostProcessResult(diagnostics, ast);
 

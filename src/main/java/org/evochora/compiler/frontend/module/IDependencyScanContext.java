@@ -23,7 +23,8 @@ public interface IDependencyScanContext {
     String resolve(String path) throws SourceRootResolver.UnknownPrefixException;
 
     /**
-     * Loads file content from the given resolved path (filesystem or HTTP).
+     * Loads file content from the given resolved path (filesystem or HTTP). A file is read once
+     * per scan; a later request for the same path returns the content read the first time.
      * @param resolvedPath The resolved absolute path.
      * @return The file content.
      * @throws IOException if the file cannot be loaded.
@@ -44,11 +45,24 @@ public interface IDependencyScanContext {
     void reportError(String message);
 
     /**
-     * Triggers recursive scanning of an imported module.
+     * Scans a module file as a placement of its own, nested in the placement being scanned, under
+     * the given alias chain; a file imported more than once is scanned at every import. The scan
+     * continues with the state of every feature as the nested scan leaves it. A file that is
+     * already being scanned on the way to this one is reported as a circular dependency.
+     *
      * @param resolvedPath The resolved absolute path.
-     * @param content The module content.
+     * @param content      The module content.
+     * @param aliasChain   The alias chain of the new placement.
      */
-    void scanNestedModule(String resolvedPath, String content);
+    void scanNestedModule(String resolvedPath, String content, String aliasChain);
+
+    /**
+     * Returns the alias chain of the module placement being scanned. A source file scanned
+     * through {@link #scanNestedSourceFile} belongs to the placement that includes it.
+     *
+     * @return The chain; empty for a main module compiled without a prefix.
+     */
+    String placementChain();
 
     /**
      * Triggers recursive scanning of a .SOURCE file (for nested .SOURCE detection and validation).

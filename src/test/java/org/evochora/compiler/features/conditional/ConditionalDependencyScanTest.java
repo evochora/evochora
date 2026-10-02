@@ -7,7 +7,7 @@ import org.evochora.compiler.api.SourceRoot;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.module.DependencyGraph;
 import org.evochora.compiler.frontend.module.DependencyScanner;
-import org.evochora.compiler.frontend.module.ModuleDescriptor;
+import org.evochora.compiler.frontend.module.ModulePlacement;
 import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 import org.evochora.compiler.util.SourceRootResolver;
 import org.junit.jupiter.api.Tag;
@@ -209,11 +209,37 @@ class ConditionalDependencyScanTest {
         assertThat(result.modules()).containsExactly("stray.evo", "main.evo");
     }
 
+    @Test
+    void aModuleImportedTwiceIsScannedAtEachImportWithTheFlagsOfThatImport() throws Exception {
+        Files.writeString(root.resolve("big.evo"), "NOP\n");
+        Files.writeString(root.resolve("small.evo"), "NOP\n");
+        Files.writeString(root.resolve("module.evo"), String.join("\n",
+                ".IFDEF BIG",
+                "  .IMPORT \"big.evo\" AS IMPL",
+                ".ELSEDEF",
+                "  .IMPORT \"small.evo\" AS IMPL",
+                ".ENDDEF",
+                "NOP"));
+        String main = String.join("\n",
+                ".DEFINE BIG",
+                ".IMPORT \"module.evo\" AS FIRST",
+                ".UNDEF BIG",
+                ".IMPORT \"module.evo\" AS SECOND",
+                "NOP");
+
+        Scan result = scan(main, Map.of());
+
+        assertThat(result.diagnostics.hasErrors()).as(result.diagnostics.summary()).isFalse();
+        assertThat(result.modules()).containsExactly("big.evo", "module.evo", "small.evo", "module.evo", "main.evo");
+        assertThat(result.graph.placements()).extracting(ModulePlacement::aliasChain)
+                .containsExactly("FIRST.IMPL", "FIRST", "SECOND.IMPL", "SECOND", "");
+    }
+
     private record Scan(DependencyGraph graph, DiagnosticsEngine diagnostics) {
-        /** The file names of the modules, in topological order. */
+        /** The file names of the placements, each after the placements it imports. */
         List<String> modules() {
-            return graph.topologicalOrder().stream()
-                    .map(ModuleDescriptor::sourcePath)
+            return graph.placements().stream()
+                    .map(ModulePlacement::sourcePath)
                     .map(path -> Path.of(path).getFileName().toString())
                     .toList();
         }
@@ -227,7 +253,7 @@ class ConditionalDependencyScanTest {
         DependencyScanner scanner = new DependencyScanner(diagnostics,
                 new SourceRootResolver(List.of(new SourceRoot(".", null)), root),
                 features.dependencyScanHandlers(), options);
-        DependencyGraph graph = scanner.scan(mainSource + "\n", root.resolve("main.evo").toString());
+        DependencyGraph graph = scanner.scan(mainSource + "\n", root.resolve("main.evo").toString(), "");
         return new Scan(graph, diagnostics);
     }
 }

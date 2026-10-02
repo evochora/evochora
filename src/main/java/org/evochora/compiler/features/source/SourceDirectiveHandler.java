@@ -65,10 +65,10 @@ public class SourceDirectiveHandler implements IPreProcessorHandler {
             return;
         }
 
-        // The dependency scan loads every file whose path is written in a branch it takes, and the
-        // path of a dependency directive is a literal that stands where the scan reads it. A file
-        // without tokens here is a defect of the compiler, or a branch the scan decided on the
-        // flags of the first import of a module imported twice, since it reads a module once.
+        // The dependency scan loads every file whose path is written in a branch it takes, with
+        // the flags this pass has at the same place, and the path of a dependency directive is a
+        // literal that stands where the scan reads it. A file without tokens here is a defect of
+        // the compiler.
         List<Token> preLexed = preProcessorContext.fileTokens().get(resolvedPath);
         if (preLexed == null) {
             preProcessor.getDiagnostics().reportError(

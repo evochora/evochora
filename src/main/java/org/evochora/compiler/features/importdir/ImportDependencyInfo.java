@@ -12,20 +12,20 @@ import java.util.List;
  * @param usings The USING clauses on this import.
  * @param resolvedPath The resolved absolute path of the imported module.
  * @param exported Whether the importing module passes this import on to its own importers.
+ * @param aliasChain The alias chain of the placement this import creates: the importing
+ *                   placement's chain followed by the alias.
  */
 public record ImportDependencyInfo(
         String path,
         String alias,
         List<UsingDecl> usings,
         String resolvedPath,
-        boolean exported
+        boolean exported,
+        String aliasChain
 ) implements IDependencyInfo {
 
     @Override public String directiveName() { return ".IMPORT"; }
     @Override public boolean allowedInSourceFile() { return false; }
-    @Override public org.evochora.compiler.frontend.module.ModuleId resolvedModuleId() {
-        return new org.evochora.compiler.frontend.module.ModuleId(resolvedPath);
-    }
 
     /**
      * A USING clause on an import declaration.

@@ -6,26 +6,16 @@ import org.evochora.compiler.model.symbols.ModuleScope;
 
 /**
  * Sets up module relationships for .IMPORT dependencies.
- * registerScope: Computes alias chains for imported modules.
- * registerRelationships: Registers import relationships in module scopes.
+ * registerRelationships: Registers the import of the placement the dependency created in the
+ * importing placement's scope.
  * resolveBindings: Resolves USING bindings between modules.
  */
 public class ImportModuleSetupHandler implements IDependencySetupHandler<ImportDependencyInfo> {
 
     @Override
-    public void registerScope(ImportDependencyInfo dep, ModuleSetupContext ctx) {
-        String moduleAliasChain = ctx.currentAliasChain();
-        String importAlias = dep.alias().toUpperCase();
-        String importedAliasChain = (moduleAliasChain == null || moduleAliasChain.isEmpty())
-                ? importAlias
-                : moduleAliasChain + "." + importAlias;
-        ctx.bindPath(dep.resolvedPath(), importedAliasChain);
-    }
-
-    @Override
     public void registerRelationships(ImportDependencyInfo dep, ModuleSetupContext ctx) {
         String importAlias = dep.alias().toUpperCase();
-        String importedAliasChain = ctx.aliasChainOf(dep.resolvedPath());
+        String importedAliasChain = dep.aliasChain();
         ModuleScope modScope = ctx.getModuleScope(ctx.currentAliasChain());
         if (modScope != null) {
             // Whether a name may reach through this import from outside. Resolution walks the
@@ -37,7 +27,7 @@ public class ImportModuleSetupHandler implements IDependencySetupHandler<ImportD
 
     @Override
     public void resolveBindings(ImportDependencyInfo dep, ModuleSetupContext ctx) {
-        String importedAliasChain = ctx.aliasChainOf(dep.resolvedPath());
+        String importedAliasChain = dep.aliasChain();
         ModuleScope importedModScope = ctx.getModuleScope(importedAliasChain);
         if (importedModScope == null) return;
 

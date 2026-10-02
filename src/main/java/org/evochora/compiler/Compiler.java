@@ -172,7 +172,7 @@ public class Compiler implements ICompiler {
 
         // Phase 0: Dependency Scanning (load imported modules)
         DependencyScanner depScanner = new DependencyScanner(diagnostics, resolver, featureRegistry.dependencyScanHandlers(), effectiveOptions);
-        DependencyGraph graph = depScanner.scan(fullSource, mainFilePath);
+        DependencyGraph graph = depScanner.scan(fullSource, mainFilePath, rootAliasChain);
         failOnErrors(diagnostics);
 
         // Phase 1: Lexical Analysis — every included file under its path, the main file as the stream
@@ -210,7 +210,7 @@ public class Compiler implements ICompiler {
         analysisRegistry.registerAllCollectors(featureRegistry.symbolCollectors());
         ModuleSetupRegistry setupRegistry = new ModuleSetupRegistry();
         featureRegistry.dependencySetupHandlers().forEach((type, handler) -> registerSetupHandler(setupRegistry, type, handler));
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, graph, mainFilePath, rootAliasChain, analysisRegistry, setupRegistry);
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, graph, rootAliasChain, analysisRegistry, setupRegistry);
         analyzer.analyze(ast);
         failOnErrors(diagnostics);
         symbolTable.freeze();

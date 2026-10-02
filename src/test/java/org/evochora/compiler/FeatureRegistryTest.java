@@ -104,7 +104,7 @@ class FeatureRegistryTest {
     void dependencySetupHandlers() {
         IDependencySetupHandler<ImportDependencyInfo> handler = new IDependencySetupHandler<>() {
             @Override
-            public void registerScope(ImportDependencyInfo dependency, ModuleSetupContext ctx) {}
+            public void registerRelationships(ImportDependencyInfo dependency, ModuleSetupContext ctx) {}
         };
         registry.dependencySetupHandler(ImportDependencyInfo.class, handler);
 

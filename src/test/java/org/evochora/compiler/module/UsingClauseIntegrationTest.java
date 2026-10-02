@@ -240,6 +240,32 @@ class UsingClauseIntegrationTest {
                 .isFalse();
     }
 
+    @Test
+    @Tag("integration")
+    void moduleImportedTwice_eachPlacementBindsItsRequirementToItsOwnUsing() throws Exception {
+        Files.writeString(tempDir.resolve("fast.evo"), "EXPORT HARVEST:\n  NOP\n");
+        Files.writeString(tempDir.resolve("slow.evo"), "EXPORT HARVEST:\n  NOP\n  NOP\n");
+        Files.writeString(tempDir.resolve("lib.evo"),
+                ".REQUIRE \"harvest.evo\" AS DEP\nEXPORT WORK:\n  JMPI DEP.HARVEST\n");
+
+        String mainSource = ".IMPORT \"fast.evo\" AS FAST\n" +
+                ".IMPORT \"slow.evo\" AS SLOW\n" +
+                ".IMPORT \"lib.evo\" AS FIRST USING FAST AS DEP\n" +
+                ".IMPORT \"lib.evo\" AS SECOND USING SLOW AS DEP\n" +
+                "JMPI FIRST.WORK\nJMPI SECOND.WORK\n";
+        String mainPath = tempDir.resolve("main.evo").toString();
+
+        SemanticsResult result = compileThroughSemanticsWithSymbols(mainSource, mainPath);
+
+        assertThat(result.diagnostics.hasErrors())
+                .as("Expected no errors but got: %s", result.diagnostics.getDiagnostics())
+                .isFalse();
+        assertThat(result.symbolTable.getModuleScope("FIRST").orElseThrow().usingBindings())
+                .containsExactly(Map.entry("DEP", "FAST"));
+        assertThat(result.symbolTable.getModuleScope("SECOND").orElseThrow().usingBindings())
+                .containsExactly(Map.entry("DEP", "SLOW"));
+    }
+
     private record SemanticsResult(DiagnosticsEngine diagnostics, SymbolTable symbolTable) {}
 
     private DiagnosticsEngine compileThroughSemantics(String mainSource, String mainPath) {
@@ -261,7 +287,7 @@ class UsingClauseIntegrationTest {
         FeatureRegistry featureRegistry = new FeatureRegistry(new RuntimeInstructionSetAdapter());
         StandardFeatures.all().forEach(f -> f.register(featureRegistry));
         DependencyScanner scanner = new DependencyScanner(diagnostics, resolver, featureRegistry.dependencyScanHandlers(), CompilerOptions.defaults());
-        DependencyGraph graph = scanner.scan(mainSource, mainPath);
+        DependencyGraph graph = scanner.scan(mainSource, mainPath, rootAliasChain);
         if (diagnostics.hasErrors()) return new SemanticsResult(diagnostics, null);
 
         // Phase 1: Lex the included files under their paths, the main file as the stream
@@ -289,7 +315,7 @@ class UsingClauseIntegrationTest {
         SymbolTable symbolTable = new SymbolTable(diagnostics);
         ModuleSetupRegistry setupRegistry = new ModuleSetupRegistry();
         featureRegistry.dependencySetupHandlers().forEach((type, handler) -> registerSetupHandler(setupRegistry, type, handler));
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, graph, mainPath, rootAliasChain, TestRegistries.analysisRegistry(symbolTable, diagnostics), setupRegistry);
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, graph, rootAliasChain, TestRegistries.analysisRegistry(symbolTable, diagnostics), setupRegistry);
         analyzer.analyze(ast);
 
         return new SemanticsResult(diagnostics, symbolTable);

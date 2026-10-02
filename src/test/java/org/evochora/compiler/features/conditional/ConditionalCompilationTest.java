@@ -174,13 +174,13 @@ class ConditionalCompilationTest {
     }
 
     /**
-     * The documented limit: the dependency scan reads a module once, while the preprocessor
-     * inlines it at every import. A flag the module sets, removed between two imports, is set
-     * again in the preprocessor but not in the scan, so a later block on it disagrees, and the
-     * file it includes was never loaded. The preprocessor reports that as an internal error.
+     * A module imported a second time is scanned again with the flags of that import, as the
+     * preprocessor inlines it again. A flag the module sets, removed between two imports, is set
+     * again by the second placement in both phases, so the block after it agrees and the file it
+     * includes is loaded.
      */
     @Test
-    void aModuleImportedTwiceUnderOtherFlagsIsAnInternalErrorUntilPlacementsAreModules() throws Exception {
+    void aModuleImportedTwiceUnderOtherFlagsIsPlacedTwiceAndBothPhasesAgree() throws Exception {
         write("module.evo",
                 ".DEFINE MODULE_LOADED",
                 "EXPORT .PROC WORK",
@@ -198,10 +198,10 @@ class ConditionalCompilationTest {
                 "START:",
                 "  NOP");
 
-        assertThatThrownBy(() -> compile("main.evo", Map.of()))
-                .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("main.evo:5: Internal error: the dependency scan did not load "
-                        + sourceRoot.resolve("extra.evo") + ".");
+        ProgramArtifact artifact = compile("main.evo", Map.of());
+
+        assertThat(artifact.procNameToParamNames()).containsOnlyKeys("FIRST.WORK", "SECOND.WORK");
+        assertThat(artifact.sources().keySet()).anySatisfy(path -> assertThat(path).endsWith("extra.evo"));
     }
 
     private void write(String fileName, String... lines) throws Exception {

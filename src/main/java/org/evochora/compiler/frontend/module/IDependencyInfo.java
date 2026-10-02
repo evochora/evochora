@@ -25,15 +25,4 @@ public interface IDependencyInfo {
     default boolean allowedInSourceFile() {
         return true;
     }
-
-    /**
-     * Returns the module ID for dependencies that create graph edges (imports).
-     * Returns null for dependencies that don't create graph relationships (require, source).
-     *
-     * @return The module this dependency points to, or null if it contributes no edge to
-     *         the dependency graph.
-     */
-    default ModuleId resolvedModuleId() {
-        return null;
-    }
 }

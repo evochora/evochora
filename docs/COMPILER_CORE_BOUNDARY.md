@@ -44,9 +44,11 @@ the IR rewriter, the linker and the compiler itself.
 The core does contain logic for three groups of concepts. None of them is declared a core
 concept in AGENTS.md; they are listed here because they are where the coupling lives.
 
-1. **The module system.** The dependency scanner detects cycles, orders the modules and
-   distinguishes a `.SOURCE` file from a module. The semantic analyzer wires the modules
-   together before any handler runs. The symbol table resolves qualified names through
+1. **The module system.** The dependency scanner detects cycles between files, records a
+   placement of a module at every import under its alias chain, each after the placements it
+   imports, and distinguishes a `.SOURCE` file from a module. The semantic analyzer wires the
+   placements together before any handler runs; the symbol table keeps the names of two
+   placements of one file apart. The symbol table resolves qualified names through
    imports, requirements, `USING` bindings and the `EXPORT` flag. `ModuleScope` holds six
    maps, all of which belong to `importdir` and `require`. The parser knows the `EXPORT`
    keyword and asks each statement handler whether it accepts it. The directives are
