@@ -552,6 +552,14 @@ without a new reason:
   same labels into one body twice is the ordinary behaviour of the machine, as after a
   reproduction, and is not mentioned in the specification: the label matching weighs the
   candidates, and a programmer who wants one copy's labels found sets the flags that place them.
+- **The source view shows a file once per placement.** Two placements of one file may hold
+  other code, and their label values and parameter annotations differ, so the visualizer cannot
+  key its source view by the file. The placement travels in `SourceInfo` (Step 8), the one type
+  made for a token's origin; a placement-decorated file name was rejected because the file name
+  serves path resolution and error locations. An entry of the view reads `CHAIN → path as
+  written`, with the resolved path in the tooltip: the arrow says that the alias stands for the
+  file, a colon would read as a source-root prefix, and the written path shows the root prefix
+  the program used.
 - **Constants from the configuration** are a separate proposal after this one; they raise
   their own questions (qualified names of module-local constants, lexing of configured values,
   unknown names, precedence) and reuse the options path of this proposal.
@@ -563,7 +571,7 @@ without a new reason:
 ### Dependencies
 
 ```text
-Step 1 (.CONST) → Step 2 (END directives) → Step 3 (lexer symbol registry) → Step 4 (blocks, slots, cursor, options) → Step 5 (feature) → Step 6 (configuration, CLI, documentation) → Step 7 (module identity by placement)
+Step 1 (.CONST) → Step 2 (END directives) → Step 3 (lexer symbol registry) → Step 4 (blocks, slots, cursor, options) → Step 5 (feature) → Step 6 (configuration, CLI, documentation) → Step 7 (module identity by placement) → Step 8 (the placement in the artifact and the visualizer)
 ```
 
 Steps 1 and 2 are renames without behavioural change. Steps 3 and 4 add generic core
@@ -771,3 +779,41 @@ the imports, including a conditional `.IMPORT` inside the module; a module impor
 a `.REQUIRE` satisfied by different `USING` clauses at the two imports; a diamond (`main`
 imports `A` and `B`, both import `M`) places `M` twice under `A.M` and `B.M`; a file that imports
 itself through another is still reported as a cycle; the reference artifact unchanged.
+
+
+### Step 8: The placement in the artifact and the visualizer
+
+Two placements of one file share its text but not its code, and not the annotations the debugger
+hangs on its tokens: label values and parameter names belong to a placement. The source view of
+the visualizer therefore shows a file once per placement, and the artifact carries the
+placement with every position.
+
+- `SourceInfo` gains `placement`, the alias chain of the placement a token belongs to, empty
+  for the main file; `Token` carries it too, and `Token.toSourceInfo` passes it on. The
+  preprocessor stamps it when it inlines a module: the copied tokens of the module get the
+  placement's chain, the tokens of a `.SOURCE`d file the chain of the placement that includes
+  it. Synthetic tokens (`.PUSH_CTX`, `.POP_CTX`, the repeat separator, the label rewrite) take
+  the placement of the token they are made from. Equality of `SourceInfo` includes the
+  placement, so the token map and the source map keep two placements apart.
+- The artifact: `sources` becomes a list of placements in the order of the graph (main file
+  first, then each placement after the one that imports it), each with `placement` (the chain),
+  `path` (as written in the import, with its source-root prefix; the main file as given to the
+  compiler), `resolvedPath` and `lines`; the file name of every `SourceInfo` in `sourceMap`,
+  `tokenMap` and `tokenLookup` is joined by its placement. The persisted format changes; a run
+  is read with the build that wrote it.
+- The visualizer: the dropdown of the source view lists one entry per placement, labelled
+  `CHAIN → path` (`ENERGY → lib/energy.evo`, `X → PREY:lib/x.evo`), the main file by its path
+  alone, in the order of the list, with the resolved path as the entry's tooltip; the view
+  switches to the placement the active position names, and `SourceAnnotator` looks tokens up by
+  placement and file. Where the datapipeline converts the artifact (`SimulationEngine`,
+  `SimulationRestorer`, the protobuf contract) the new shape is carried through.
+- Diagnostics keep reporting `file:line`; which placement a message belongs to is not shown.
+
+**Tests:** a program importing one module twice has two entries with that file, each with its
+own token map and the label values of its placement; the source map of an instruction in the
+second placement names the second placement; the reference artifact is regenerated, and its
+diff holds the new shape of `sources` and the placement fields only; a metadata round trip keeps
+the placements. The frontend change is checked in Chrome and Firefox against a run of a program
+that imports a module twice: the dropdown shows both entries, stepping through ticks switches
+between them, and the annotations of each placement sit on their tokens with no `mismatch`
+message.
