@@ -125,6 +125,12 @@ class PlacementArtifactIntegrationTest {
                 .filteredOn(info -> info.fileName().equals(inc))
                 .extracting(SourceInfo::placement)
                 .containsExactlyInAnyOrder("", "", "MOD");
+        // Every inclusion is an instance of its own, also the two in one placement
+        assertThat(artifact.sourceMap().values())
+                .filteredOn(info -> info.fileName().equals(inc))
+                .extracting(SourceInfo::expansion)
+                .doesNotHaveDuplicates()
+                .allSatisfy(expansion -> assertThat(expansion).isPositive());
     }
 
     @Test

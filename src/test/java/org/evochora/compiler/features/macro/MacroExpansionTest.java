@@ -246,6 +246,26 @@ class MacroExpansionTest {
         assertThat(result.texts()).containsExactly("NOP");
     }
 
+    /**
+     * A macro defined inside a body that is expanded twice is defined at the same place both
+     * times, each in another expansion; that is one definition, not a second one of the name.
+     */
+    @Test
+    void aMacroDefinedInABodyExpandedTwiceIsOneDefinition() {
+        Expansion result = expand(
+                ".MACRO OUTER",
+                "  .MACRO INNER",
+                "    NOP",
+                "  .ENDMACRO",
+                ".ENDMACRO",
+                "OUTER",
+                "OUTER",
+                "INNER");
+
+        assertThat(result.diagnostics.hasErrors()).isFalse();
+        assertThat(result.texts()).containsExactly("NOP");
+    }
+
     @Test
     void aMacroNotClosedInASourcedFileIsReportedThereAndTheIncluderSurvives() {
         Expansion result = expandWithLibrary(

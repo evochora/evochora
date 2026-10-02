@@ -235,7 +235,7 @@ public class Compiler implements ICompiler {
         irRegistry.registerAll(featureRegistry.irConverters());
         IrGenerator irGenerator = new IrGenerator(diagnostics, irRegistry);
         IrProgram irProgram = irGenerator.generate(resolvedAst, programName, rootAliasChain,
-                ppResult.sources(), tokenMap);
+                ppResult.sources(), tokenMap, effectiveOptions.defines());
         failOnErrors(diagnostics);
 
         // Phase 8: IR Rewriting (apply the rewrite rules of the features)

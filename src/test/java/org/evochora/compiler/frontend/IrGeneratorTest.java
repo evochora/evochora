@@ -113,7 +113,7 @@ public class IrGeneratorTest {
 
         IrConverterRegistry registry = allConverters();
         IrGenerator irGen = new IrGenerator(diagnostics, registry);
-        IrProgram ir = irGen.generate(ast, "TestProg", rootAliasChain, List.of(), Map.of());
+        IrProgram ir = irGen.generate(ast, "TestProg", rootAliasChain, List.of(), Map.of(), Map.of());
         if (diagnostics.hasErrors()) {
             fail("IR generation errors: " + diagnostics.summary());
         }

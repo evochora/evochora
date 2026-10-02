@@ -12,10 +12,11 @@ import { SourceAnnotator } from '../../annotator/SourceAnnotator.js';
  *
  * An entry also carries what the preprocessor recorded about the file: the regions of lines a
  * conditional left out (`leftOut`), each owned by its directive line, and notes at positions
- * (`notes`), such as the state of a flag a condition names. Both are recorded per macro
- * expansion: those of expansion 0 belong to the text outside any expansion and are always shown;
- * those of expansion n only while the active position stands in expansion n, because every
- * expansion of a macro shares the lines of its body but may have decided differently. A region is
+ * (`notes`), such as the state of a flag a condition names. Both are recorded per instance of
+ * injected tokens, a macro expansion or a `.SOURCE` inclusion, under the number a position carries
+ * as its expansion: those of expansion 0 belong to the text in no such instance and are always
+ * shown; those of expansion n only while the active position stands in expansion n, because every
+ * instance shares the lines of its text but may have decided differently. A region is
  * folded at its directive line, with the arrows of the machine code under a line; a note is shown
  * as an annotation after the word at its position.
  *
@@ -32,7 +33,7 @@ export class OrganismSourceView {
         this.selectedIndex = null; // Index of the displayed entry in artifact.sources
         this.annotator = new SourceAnnotator();
         this.lastAnnotatedLine = null; // Track annotated line to restore it
-        this.activeExpansion = 0; // Macro expansion whose regions and notes the listing shows
+        this.activeExpansion = 0; // Instance of injected tokens whose regions and notes the listing shows
         this.unfoldedRegions = new Set(); // Keys of the regions the user unfolded, see foldKey()
         this.lineNotes = new Map(); // Line number -> notes of the listing, see recordsFor()
 
@@ -85,9 +86,9 @@ export class OrganismSourceView {
         const activeLocation = this.calculateActiveLocation(organismState, staticInfo);
 
         // 1. Auto-switch entry if execution moved to a different file or placement, and re-render
-        // the listing if execution entered or left a macro expansion the entry has regions or
-        // notes of. This comes first because the re-render replaces the whole source view, the
-        // status bar with it: a warning written before it would be thrown away again, which is
+        // the listing if execution entered or left an instance of injected tokens the entry has
+        // regions or notes of. This comes first because the re-render replaces the whole source
+        // view, the status bar with it: a warning written before it would be thrown away again, which is
         // why one only ever appeared when execution happened to stay in the entry already on display.
         const activeIndex = this.findSourceIndex(activeLocation);
         const entryChanged = activeIndex !== null && this.selectedIndex !== activeIndex;
@@ -333,8 +334,8 @@ export class OrganismSourceView {
     }
 
     /**
-     * Reports whether the entry on display has a region or note of a macro expansion. Expansion 0
-     * is always shown, so it never counts.
+     * Reports whether the entry on display has a region or note of an instance of injected
+     * tokens. Expansion 0 is always shown, so it never counts.
      *
      * @param {number} expansion - The number of the expansion.
      * @returns {boolean} True if a region or note of that expansion exists in the entry.
@@ -688,8 +689,8 @@ export class OrganismSourceView {
      * @param {object} organismState - The organism's dynamic state, containing the `ip`.
      * @param {object} staticInfo - The organism's static info, containing the `initialPosition`.
      * @returns {{placement: string, fileName: string, lineNumber: number, expansion: number, linearAddress?: number}|{error: string}|null}
-     *          The location object, with the macro expansion the instruction was compiled in (0
-     *          outside any), an error object, or null.
+     *          The location object, with the instance of injected tokens the instruction was
+     *          compiled in (0 outside any), an error object, or null.
      * @private
      */
     calculateActiveLocation(organismState, staticInfo) {

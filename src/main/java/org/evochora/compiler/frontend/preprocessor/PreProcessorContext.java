@@ -18,8 +18,8 @@ import java.util.function.Supplier;
  * Contains the state that handlers read and modify while the token stream is expanded: the
  * handlers the preprocessor dispatches to, the pre-lexed token streams of the files that may
  * be included, the source files the preprocessor's records are attached to, the inclusions
- * currently open, the options of the compilation, and a slot in which features keep state of
- * their own types.
+ * currently open, the options of the compilation, the numbers of the instances of injected
+ * tokens, and a slot in which features keep state of their own types.
  */
 public class PreProcessorContext {
     private final PreProcessorHandlerRegistry handlers = new PreProcessorHandlerRegistry();
@@ -29,6 +29,7 @@ public class PreProcessorContext {
     private final List<SourceFile> sources;
     private final CompilerOptions options;
     private final Map<Class<?>, Object> featureState = new HashMap<>();
+    private int lastInstance;
 
     /**
      * Creates a context carrying the token streams that were pre-lexed for the files found
@@ -113,6 +114,19 @@ public class PreProcessorContext {
      */
     public CompilerOptions options() {
         return options;
+    }
+
+    /**
+     * Returns a new instance number for a set of tokens injected together. The number is unique
+     * within one preprocessor run, so that the positions of two injections of the same text stay
+     * apart: a handler that injects tokens stamps them with it as the expansion of their
+     * {@link org.evochora.compiler.api.SourceInfo}. The numbers count from 1; 0 stands for
+     * tokens that were not given one.
+     *
+     * @return A number not returned before by this context, one more than the last.
+     */
+    public int nextInstance() {
+        return ++lastInstance;
     }
 
     // --- Feature state ---

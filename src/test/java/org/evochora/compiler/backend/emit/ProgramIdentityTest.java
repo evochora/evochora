@@ -2,7 +2,9 @@ package org.evochora.compiler.backend.emit;
 
 import org.evochora.compiler.Compiler;
 import org.evochora.compiler.api.CompilationException;
+import org.evochora.compiler.api.CompilerOptions;
 import org.evochora.compiler.api.ProgramArtifact;
+import org.evochora.compiler.api.SourceRoot;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.junit.jupiter.api.BeforeAll;
@@ -10,12 +12,14 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Map;
+import java.util.OptionalInt;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Verifies the program ID the emitter assigns: a digest of the machine code and the initial
- * objects that depends on which value stands at which coordinate.
+ * Verifies the program ID the emitter assigns: a digest of the machine code, the initial objects
+ * and the flags of the compilation that depends on which value stands at which coordinate.
  */
 @Tag("unit")
 class ProgramIdentityTest {
@@ -24,7 +28,7 @@ class ProgramIdentityTest {
      * The ID of {@link #PINNED_PROGRAM}. It changes only when the digest procedure of
      * {@link ProgramIdentity} changes; such a change gives every program a new ID.
      */
-    private static final String PINNED_ID = "f7848bdb40cd8235";
+    private static final String PINNED_ID = "c15626bec2500bde";
 
     private static final List<String> PINNED_PROGRAM = List.of(
             "NOP",
@@ -78,6 +82,22 @@ class ProgramIdentityTest {
         assertThat(first.programId()).isNotEqualTo(reordered.programId());
     }
 
+    /**
+     * Flags that change no code still make another variant: its artifact folds other branches
+     * and notes other flag states, so it must not share the ID, and with it the artifact, of the
+     * variant compiled without them.
+     */
+    @Test
+    void compilationsWithOtherFlagsAndTheSameCodeHaveDifferentIds() throws CompilationException {
+        ProgramArtifact plain = compile(PINNED_PROGRAM, Map.of());
+        ProgramArtifact flagged = compile(PINNED_PROGRAM, Map.of("UNUSED", OptionalInt.empty()));
+        ProgramArtifact valued = compile(PINNED_PROGRAM, Map.of("UNUSED", OptionalInt.of(0)));
+
+        assertThat(flagged.machineCodeLayout().values()).containsExactlyElementsOf(plain.machineCodeLayout().values());
+        assertThat(valued.machineCodeLayout().values()).containsExactlyElementsOf(plain.machineCodeLayout().values());
+        assertThat(List.of(plain.programId(), flagged.programId(), valued.programId())).doesNotHaveDuplicates();
+    }
+
     @Test
     void theSameProgramCompiledTwiceHasTheSameId() throws CompilationException {
         assertThat(compile(PINNED_PROGRAM).programId()).isEqualTo(compile(PINNED_PROGRAM).programId());
@@ -85,5 +105,11 @@ class ProgramIdentityTest {
 
     private static ProgramArtifact compile(List<String> lines) throws CompilationException {
         return new Compiler().compile(lines, "identity.evo", ENV);
+    }
+
+    private static ProgramArtifact compile(List<String> lines, Map<String, OptionalInt> defines)
+            throws CompilationException {
+        return new Compiler().compile(lines, "identity.evo", ENV,
+                new CompilerOptions(List.of(new SourceRoot(".", null)), defines));
     }
 }

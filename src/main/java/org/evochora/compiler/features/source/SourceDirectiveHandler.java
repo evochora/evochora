@@ -21,6 +21,11 @@ import java.util.List;
  * <p>{@code .SOURCE} is textual inclusion — no module identity, no alias,
  * no scope. The parent module context is preserved.</p>
  *
+ * <p>Every inclusion is an instance of its own: the injected tokens carry an instance number
+ * from {@link PreProcessorContext#nextInstance()} as their expansion, so that a file sourced
+ * twice into one placement keeps the code, the left-out regions and the notes of each
+ * inclusion apart, although both stand on the same lines.</p>
+ *
  * <p>The directive stands alone on its line: a token before it or after the path is an error.</p>
  */
 public class SourceDirectiveHandler implements IPreProcessorHandler {
@@ -93,12 +98,14 @@ public class SourceDirectiveHandler implements IPreProcessorHandler {
         PlacementContext placementCtx = new PlacementContext(resolvedPath, null);
         preProcessorContext.enterInclusion(placementCtx);
 
-        // Copy tokens and wrap with context management directives
+        // Copy tokens into this placement and this inclusion, and wrap them with context
+        // management directives
+        int instance = preProcessorContext.nextInstance();
         List<Token> newTokens = new ArrayList<>(preLexed.size() + 2);
         for (Token token : preLexed) {
             SourceInfo at = token.source();
             newTokens.add(token.with(new SourceInfo(at.fileName(), at.lineNumber(), at.columnNumber(), placement,
-                    at.expansion())));
+                    instance)));
         }
         SourceInfo directive = pathToken.source();
         SourceInfo marker = new SourceInfo(directive.fileName(), directive.lineNumber(), 0, directive.placement(),

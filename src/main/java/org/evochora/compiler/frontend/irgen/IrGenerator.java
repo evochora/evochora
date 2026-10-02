@@ -10,6 +10,7 @@ import org.evochora.compiler.model.ir.IrProgram;
 
 import java.util.List;
 import java.util.Map;
+import java.util.OptionalInt;
 
 /**
  * Phase: Generates IR from a validated AST by delegating to converters
@@ -41,7 +42,7 @@ public final class IrGenerator {
 	 * @return The generated IR program.
 	 */
 	public IrProgram generate(List<AstNode> ast, String programName) {
-		return generate(ast, programName, "", List.of(), Map.of());
+		return generate(ast, programName, "", List.of(), Map.of(), Map.of());
 	}
 
 	/**
@@ -54,14 +55,17 @@ public final class IrGenerator {
 	 *                       recorded for it; carried in the program's {@link DebugInfo}.
 	 * @param tokenMap       The classification of every token by position; carried in the
 	 *                       program's {@link DebugInfo}.
+	 * @param flags          The preprocessor flags of the compilation, as its options normalise
+	 *                       them; carried in the program's {@link DebugInfo}.
 	 * @return The generated IR program.
 	 */
 	public IrProgram generate(List<AstNode> ast, String programName, String rootAliasChain,
-							  List<SourceFile> sources, Map<SourceInfo, TokenInfo> tokenMap) {
+							  List<SourceFile> sources, Map<SourceInfo, TokenInfo> tokenMap,
+							  Map<String, OptionalInt> flags) {
 		IrGenContext ctx = new IrGenContext(programName, diagnostics, registry, rootAliasChain);
 		for (AstNode node : ast) {
 			registry.resolve(node).convert(node, ctx);
 		}
-		return ctx.build(new DebugInfo(sources, tokenMap));
+		return ctx.build(new DebugInfo(sources, tokenMap, flags));
 	}
 }

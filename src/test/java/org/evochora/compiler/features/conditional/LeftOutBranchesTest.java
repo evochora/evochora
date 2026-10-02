@@ -26,7 +26,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * What a conditional block records for the source view: the region of every branch it left out,
  * owned by the branch's directive line, and the state of every flag its heads name, per
- * placement and per macro expansion. Programs are written to disk and compiled through the whole
+ * placement and per instance of injected tokens: a macro expansion or a {@code .SOURCE}
+ * inclusion. Programs are written to disk and compiled through the whole
  * pipeline, and the records are read from the artifact's sources.
  */
 @Tag("integration")
@@ -252,6 +253,41 @@ class LeftOutBranchesTest {
         SourceFile source = source(artifact, "", "main.evo");
         assertThat(source.leftOut()).containsExactly(new LeftOut(expansion, 3, 4, 4));
         assertThat(source.notes()).containsExactly(new Note(expansion, 3, 8, "[not set]"));
+    }
+
+    /**
+     * A file sourced twice into one placement behind an include guard is two inclusions, each
+     * with an instance of its own: the first keeps its block and notes the flag unset, the second
+     * leaves the block out and notes the flag set, and the instructions the first kept carry its
+     * instance.
+     */
+    @Test
+    void eachInclusionOfAGuardedFileRecordsUnderItsOwnInstance() throws Exception {
+        write("lib.evo",
+                ".IFNDEF LIB",
+                ".DEFINE LIB",
+                "  NOP",
+                ".ENDDEF");
+        write("util.evo",
+                ".SOURCE \"lib.evo\"");
+        write("main.evo",
+                "START:",
+                ".SOURCE \"lib.evo\"",
+                ".SOURCE \"util.evo\"");
+
+        ProgramArtifact artifact = compile(Map.of());
+
+        int first = expansionOfLine(artifact, resolved("lib.evo"), 3);
+        assertThat(first).isPositive();
+        assertThat(artifact.sources().stream().filter(source -> source.path().equals("lib.evo")).count())
+                .isEqualTo(1);
+        SourceFile lib = source(artifact, "", "lib.evo");
+        assertThat(lib.notes()).hasSize(2);
+        assertThat(lib.notes().getFirst()).isEqualTo(new Note(first, 1, 9, "[not set]"));
+        int second = lib.notes().get(1).expansion();
+        assertThat(second).isPositive().isNotEqualTo(first);
+        assertThat(lib.notes().get(1)).isEqualTo(new Note(second, 1, 9, "[set]"));
+        assertThat(lib.leftOut()).containsExactly(new LeftOut(second, 1, 2, 3));
     }
 
     /**

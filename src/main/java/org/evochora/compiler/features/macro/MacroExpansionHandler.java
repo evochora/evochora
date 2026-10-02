@@ -18,11 +18,11 @@ import java.util.Objects;
  * {@link MacroDefinition} and is dynamically registered by {@link MacroDirectiveHandler}
  * when a {@code .MACRO} definition is encountered during preprocessing.
  * <p>
- * Every expansion gets a number of its own from the {@link Expansions} of the preprocessor run,
- * which the injected body tokens carry, so that the code of one expansion can be told from another's,
- * although all of them stand on the lines of the body. An argument substituted for a parameter
- * keeps its own position and adds the parameter's position in this expansion to the positions
- * it replaces.
+ * Every expansion gets an instance number of its own from the preprocessor context
+ * ({@link PreProcessorContext#nextInstance()}), which the injected body tokens carry, so that
+ * the code of one expansion can be told from another's, although all of them stand on the lines
+ * of the body. An argument substituted for a parameter keeps its own position and adds the
+ * parameter's position in this expansion to the positions it replaces.
  */
 public class MacroExpansionHandler implements IPreProcessorHandler {
 
@@ -101,7 +101,7 @@ public class MacroExpansionHandler implements IPreProcessorHandler {
 
         // The body tokens stand in this expansion. An argument keeps its own position, where it
         // was written, and remembers the position of the parameter it replaces in this expansion.
-        int expansion = preProcessorContext.getOrCreate(Expansions.class, Expansions::new).next();
+        int expansion = preProcessorContext.nextInstance();
         List<Token> expandedBody = new ArrayList<>();
         for (Token bodyToken : macro.body()) {
             SourceInfo position = inExpansion(bodyToken.source(), expansion);
@@ -140,19 +140,20 @@ public class MacroExpansionHandler implements IPreProcessorHandler {
 
     /**
      * Two handlers are equal when they come from the same definition, the same {@code .MACRO}
-     * at the same place in the same file. A file that is included twice defines its macros
-     * twice, and those are one definition; a second {@code .MACRO} of the same name anywhere
-     * else is a different one, whatever its text.
+     * at the same place in the same file, in whichever instance of injected tokens it stands.
+     * A file that is included twice, or a body with a nested {@code .MACRO} that is expanded
+     * twice, defines its macros twice, and those are one definition; a second {@code .MACRO} of
+     * the same name anywhere else is a different one, whatever its text.
      */
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
         if (!(o instanceof MacroExpansionHandler other)) return false;
-        return Objects.equals(definedAt(), other.definedAt());
+        return Objects.equals(definedAt().withoutExpansion(), other.definedAt().withoutExpansion());
     }
 
     @Override
     public int hashCode() {
-        return Objects.hashCode(definedAt());
+        return Objects.hashCode(definedAt().withoutExpansion());
     }
 }

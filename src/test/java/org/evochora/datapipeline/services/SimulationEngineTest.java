@@ -516,6 +516,24 @@ class SimulationEngineTest {
         assertTrue(artifacts.get(0).machineCodeLayout().size() > artifacts.get(1).machineCodeLayout().size());
     }
 
+    /**
+     * A flag that changes no code still makes a variant of its own: the run keeps its artifacts
+     * by program ID, and the artifact of one variant folds branches and notes flags the other
+     * was not compiled with.
+     */
+    @Test
+    void compileOrganismPrograms_compilesFlagsThatDoNotChangeTheCodeIntoTwoArtifacts() throws IOException {
+        Path program = writeProgram("flagged.evo", FLAGGED_PROGRAM);
+
+        List<ProgramArtifact> artifacts = compileOrganismPrograms(
+                organismEntry(program, Map.of("UNUSED", true)),
+                organismEntry(program, Map.of()));
+
+        assertEquals(List.copyOf(artifacts.get(1).machineCodeLayout().values()),
+                List.copyOf(artifacts.get(0).machineCodeLayout().values()));
+        assertNotEquals(artifacts.get(0).programId(), artifacts.get(1).programId());
+    }
+
     @Test
     void compileOrganismPrograms_compilesOneProgramWithEqualFlagsOnce() throws IOException {
         Path program = writeProgram("flagged.evo", FLAGGED_PROGRAM);
