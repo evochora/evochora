@@ -1,5 +1,6 @@
 package org.evochora.compiler.module;
 
+import org.evochora.compiler.api.CompilerOptions;
 import org.evochora.compiler.TestLexers;
 import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 import org.evochora.compiler.FeatureRegistry;
@@ -259,7 +260,7 @@ class UsingClauseIntegrationTest {
                 List.of(new SourceRoot(".", null)), tempDir);
         FeatureRegistry featureRegistry = new FeatureRegistry(new RuntimeInstructionSetAdapter());
         StandardFeatures.all().forEach(f -> f.register(featureRegistry));
-        DependencyScanner scanner = new DependencyScanner(diagnostics, resolver, featureRegistry.dependencyScanHandlers());
+        DependencyScanner scanner = new DependencyScanner(diagnostics, resolver, featureRegistry.dependencyScanHandlers(), CompilerOptions.defaults());
         DependencyGraph graph = scanner.scan(mainSource, mainPath);
         if (diagnostics.hasErrors()) return new SemanticsResult(diagnostics, null);
 
@@ -268,7 +269,7 @@ class UsingClauseIntegrationTest {
         List<Token> mainTokens = new ArrayList<>(new Lexer(mainSource, diagnostics, mainPath, TestLexers.symbols()).scanTokens());
 
         // Phase 2: Preprocessing (with root alias chain)
-        PreProcessorContext ppContext = new PreProcessorContext(rootAliasChain, fileTokens);
+        PreProcessorContext ppContext = new PreProcessorContext(rootAliasChain, fileTokens, CompilerOptions.defaults());
         ppContext.handlers().register(".SOURCE", new SourceDirectiveHandler());
         ppContext.handlers().register(".MACRO", new MacroDirectiveHandler());
         TestRegistries.registerPreProcessorBlocks(ppContext.handlers());

@@ -1,8 +1,10 @@
 package org.evochora.compiler.frontend.module;
 
+import org.evochora.compiler.api.CompilerOptions;
 import org.evochora.compiler.util.SourceRootResolver;
 
 import java.io.IOException;
+import java.util.function.Supplier;
 
 /**
  * Context provided to {@link IDependencyScanHandler} implementations during Phase 0.
@@ -70,7 +72,36 @@ public interface IDependencyScanContext {
 
     /**
      * Returns the current line number (1-based).
-     * @return The number of the line the handler was invoked for, counted from one.
+     * @return The number of the line last handed out in the current file, counted from one: the
+     *         line the handler was invoked for, or the line last taken through {@link #nextLine()}.
      */
     int lineNumber();
+
+    /**
+     * Takes the next line of the file being scanned, read as the scanner reads every line: the
+     * text after a {@code #} removed, surrounding whitespace trimmed, and a line left empty
+     * skipped. A line taken here is not offered to the handlers again; the scan continues after
+     * it once the handler returns.
+     *
+     * @return The next non-empty line, or {@code null} at the end of the file.
+     */
+    String nextLine();
+
+    /**
+     * Returns the options of the compilation.
+     * @return The options the scanner was created with.
+     */
+    CompilerOptions options();
+
+    /**
+     * Returns the state object a feature keeps under the given key type, creating it with the
+     * factory on the first request. One instance exists per key for the whole scan, across every
+     * file it reads; the core knows nothing of the type and never reads the object.
+     *
+     * @param key     The class used as the key.
+     * @param factory Creates the state object; called only while no object exists for the key.
+     * @param <T>     The type of the state object.
+     * @return The existing or newly created state object.
+     */
+    <T> T getOrCreate(Class<T> key, Supplier<T> factory);
 }

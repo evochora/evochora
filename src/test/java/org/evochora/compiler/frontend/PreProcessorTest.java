@@ -1,5 +1,6 @@
 package org.evochora.compiler.frontend;
 
+import org.evochora.compiler.api.CompilerOptions;
 import org.evochora.compiler.TestLexers;
 import org.evochora.compiler.api.SourceRoot;
 import org.evochora.compiler.frontend.lexer.Lexer;
@@ -75,7 +76,7 @@ public class PreProcessorTest {
         Lexer.stripEofToken(sourceTokenList);
         Map<String, List<Token>> sourceTokens = Map.of(resolvedSourcePath, sourceTokenList);
 
-        PreProcessorContext context = new PreProcessorContext("", sourceTokens);
+        PreProcessorContext context = new PreProcessorContext("", sourceTokens, CompilerOptions.defaults());
         context.handlers().register(".SOURCE", new SourceDirectiveHandler());
         context.handlers().register(":", new org.evochora.compiler.features.label.ColonLabelHandler());
         PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, resolver, context);

@@ -66,6 +66,11 @@ Smaller instances: the lexer emits a colon token for `:` (label); `Symbol.Type` 
 enum whose eight members are named after individual features, mapped exhaustively in
 `TokenKindMapper`.
 
+`CompilerOptions.defines`, the preprocessor flags of a compilation, is the one option field
+that only a feature reads; `sourceRoots` is read by the core. The core upper-cases the flag
+names, rejects two keys that are one name, and hands the options to the contexts of Phases 0
+and 2 without looking at the flags.
+
 Any other character sequence a feature reads is not a case of the lexer but a symbol the
 feature registers through `IFeatureRegistrationContext.lexerSymbol`; the lexer emits it as one
 `SYMBOL` token whose text the feature's handlers compare: `*`, `..` and `,` for `place`,

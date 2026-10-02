@@ -1,5 +1,6 @@
 package org.evochora.compiler.frontend.module;
 
+import org.evochora.compiler.api.CompilerOptions;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.util.SourceLoader;
 import org.evochora.compiler.util.SourceRootResolver;
@@ -8,6 +9,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
+import java.util.function.Supplier;
 import java.util.regex.Matcher;
 
 /**
@@ -25,11 +27,13 @@ public final class DependencyScanner {
     private final DiagnosticsEngine diagnostics;
     private final SourceRootResolver resolver;
     private final List<IDependencyScanHandler> handlers;
+    private final CompilerOptions options;
 
     /**
      * Creates a scanner whose entire directive knowledge comes from the supplied handlers.
      * Each non-empty source line is offered to the handlers in list order and the first
-     * one whose pattern matches consumes it, so the order of the list decides precedence.
+     * one whose pattern matches consumes it, so the order of the list decides precedence;
+     * a line a handler takes through {@link IDependencyScanContext#nextLine()} is not offered.
      * The scanner keeps nothing between calls; everything a scan finds is in the graph it returns.
      *
      * @param diagnostics Collects errors for unresolvable paths, circular imports and
@@ -37,11 +41,15 @@ public final class DependencyScanner {
      * @param resolver    Resolves directive paths, including the {@code PREFIX:path} form,
      *                    relative to the file the directive appears in.
      * @param handlers    Scan handlers, kept by reference and tried in list order.
+     * @param options     The options of the compilation, offered to the handlers through
+     *                    {@link IDependencyScanContext#options()}; must not be null.
      */
-    public DependencyScanner(DiagnosticsEngine diagnostics, SourceRootResolver resolver, List<IDependencyScanHandler> handlers) {
+    public DependencyScanner(DiagnosticsEngine diagnostics, SourceRootResolver resolver,
+                             List<IDependencyScanHandler> handlers, CompilerOptions options) {
         this.diagnostics = diagnostics;
         this.resolver = resolver;
         this.handlers = handlers;
+        this.options = Objects.requireNonNull(options, "options");
     }
 
     /**
@@ -70,12 +78,14 @@ public final class DependencyScanner {
 
     /**
      * Everything one scan discovers: the modules by identity, the modules whose scan is still
-     * open (for cycle detection) and the text of the source files.
+     * open (for cycle detection) and the text of the source files; and the state features keep
+     * through {@link IDependencyScanContext#getOrCreate}, which spans every file of the scan.
      */
     private static final class ScanState {
         final Map<ModuleId, ModuleDescriptor> descriptors = new LinkedHashMap<>();
         final Set<ModuleId> visiting = new LinkedHashSet<>();
         final Map<String, String> sourceContents = new LinkedHashMap<>();
+        final Map<Class<?>, Object> featureState = new HashMap<>();
     }
 
     private void scanModule(ScanState state, ModuleId moduleId, String sourcePath, String content) {
@@ -103,25 +113,18 @@ public final class DependencyScanner {
     }
 
     /**
-     * Core line-by-line scanning with generic handler dispatch.
+     * Core line-by-line scanning with generic handler dispatch. The lines are read through the
+     * context's cursor, so that a line a handler takes with {@link IDependencyScanContext#nextLine()}
+     * is skipped here.
      * @param sourceFileMode If true, every dependency a handler adds is checked against
      *                        {@link IDependencyInfo#allowedInSourceFile()} and reported as an error
      *                        at its line when it is not allowed there.
      */
     private List<IDependencyInfo> scanLines(ScanState state, String sourcePath, String content, boolean sourceFileMode) {
-        ScanContext ctx = new ScanContext(state, sourcePath, sourceFileMode);
+        ScanContext ctx = new ScanContext(state, sourcePath, sourceFileMode, content.split("\\r?\\n"));
 
-        String[] lines = content.split("\\r?\\n");
-        for (int i = 0; i < lines.length; i++) {
-            String line = lines[i].trim();
-            int commentIdx = line.indexOf('#');
-            if (commentIdx >= 0) {
-                line = line.substring(0, commentIdx).trim();
-            }
-            if (line.isEmpty()) continue;
-
-            ctx.setLineNumber(i + 1);
-
+        String line;
+        while ((line = ctx.nextLine()) != null) {
             for (IDependencyScanHandler handler : handlers) {
                 Matcher matcher = handler.pattern().matcher(line);
                 if (matcher.matches()) {
@@ -201,17 +204,16 @@ public final class DependencyScanner {
         private final ScanState state;
         private final String sourcePath;
         private final boolean sourceFileMode;
+        private final String[] lines;
+        private int nextIndex;
         private int lineNumber;
         private final List<IDependencyInfo> collected = new ArrayList<>();
 
-        ScanContext(ScanState state, String sourcePath, boolean sourceFileMode) {
+        ScanContext(ScanState state, String sourcePath, boolean sourceFileMode, String[] lines) {
             this.state = state;
             this.sourcePath = sourcePath;
             this.sourceFileMode = sourceFileMode;
-        }
-
-        void setLineNumber(int lineNumber) {
-            this.lineNumber = lineNumber;
+            this.lines = lines;
         }
 
         List<IDependencyInfo> collectedDependencies() {
@@ -265,6 +267,32 @@ public final class DependencyScanner {
         @Override
         public int lineNumber() {
             return lineNumber;
+        }
+
+        @Override
+        public String nextLine() {
+            while (nextIndex < lines.length) {
+                String line = lines[nextIndex++].trim();
+                int commentIdx = line.indexOf('#');
+                if (commentIdx >= 0) {
+                    line = line.substring(0, commentIdx).trim();
+                }
+                if (!line.isEmpty()) {
+                    lineNumber = nextIndex;
+                    return line;
+                }
+            }
+            return null;
+        }
+
+        @Override
+        public CompilerOptions options() {
+            return options;
+        }
+
+        @Override
+        public <T> T getOrCreate(Class<T> key, Supplier<T> factory) {
+            return key.cast(state.featureState.computeIfAbsent(key, k -> factory.get()));
         }
     }
 }

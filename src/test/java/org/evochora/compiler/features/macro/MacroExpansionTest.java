@@ -1,5 +1,6 @@
 package org.evochora.compiler.features.macro;
 
+import org.evochora.compiler.api.CompilerOptions;
 import org.evochora.compiler.TestRegistries;
 import org.evochora.compiler.TestLexers;
 import java.nio.file.Path;
@@ -259,7 +260,7 @@ class MacroExpansionTest {
         Lexer.stripEofToken(libraryTokens);
         List<Token> tokens = new Lexer(String.join("\n", lines) + "\n", diagnostics, MAIN, TestLexers.symbols())
                 .scanTokens();
-        PreProcessorContext context = new PreProcessorContext("", Map.of(LIBRARY, libraryTokens));
+        PreProcessorContext context = new PreProcessorContext("", Map.of(LIBRARY, libraryTokens), CompilerOptions.defaults());
         TestRegistries.registerPreProcessorBlocks(context.handlers());
         context.handlers().register(".MACRO", new MacroDirectiveHandler());
         context.handlers().register(".REPEAT", new RepeatDirectiveHandler());

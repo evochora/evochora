@@ -1,46 +1,56 @@
 package org.evochora.compiler.frontend.preprocessor;
 
+import org.evochora.compiler.api.CompilerOptions;
 import org.evochora.compiler.frontend.module.PlacementContext;
 import org.evochora.compiler.model.token.Token;
 
 import java.util.ArrayDeque;
 import java.util.Deque;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.function.Supplier;
 
 /**
  * A shared context for the preprocessor phase.
  * Contains the state that handlers read and modify while the token stream is expanded: the
  * handlers the preprocessor dispatches to, the pre-lexed token streams of the files that may
- * be included, and the inclusions currently open.
+ * be included, the inclusions currently open, the options of the compilation, and a slot in
+ * which features keep state of their own types.
  */
 public class PreProcessorContext {
     private final PreProcessorHandlerRegistry handlers = new PreProcessorHandlerRegistry();
     private final String rootAliasChain;
     private final Deque<PlacementContext> inclusions = new ArrayDeque<>();
     private final Map<String, List<Token>> fileTokens;
+    private final CompilerOptions options;
+    private final Map<Class<?>, Object> featureState = new HashMap<>();
 
     /**
      * Creates a context carrying the token streams that were pre-lexed for the files found
-     * during dependency scanning. Null arguments are tolerated: a null alias chain becomes
-     * the empty chain, a null map becomes an empty map.
+     * during dependency scanning. A null alias chain becomes the empty chain, a null map an
+     * empty map.
      *
      * @param rootAliasChain The alias chain for the compilation root module.
      * @param fileTokens     Pre-lexed tokens of every file that may be included, keyed by
      *                       resolved absolute path. Whether an inclusion is a module or plain
      *                       text is decided by the directive that includes the file, not here.
+     * @param options        The options of the compilation, offered to handlers through
+     *                       {@link #options()}; must not be null.
      */
-    public PreProcessorContext(String rootAliasChain, Map<String, List<Token>> fileTokens) {
+    public PreProcessorContext(String rootAliasChain, Map<String, List<Token>> fileTokens, CompilerOptions options) {
         this.rootAliasChain = rootAliasChain != null ? rootAliasChain : "";
         this.fileTokens = fileTokens != null ? fileTokens : Map.of();
+        this.options = Objects.requireNonNull(options, "options");
     }
 
     /**
      * Creates a context for preprocessing a single file: empty root alias chain, no files
-     * that may be included.
+     * that may be included, {@link CompilerOptions#defaults() default options}.
      */
     public PreProcessorContext() {
-        this("", Map.of());
+        this("", Map.of(), CompilerOptions.defaults());
     }
 
     /**
@@ -63,6 +73,42 @@ public class PreProcessorContext {
      */
     public Map<String, List<Token>> fileTokens() {
         return fileTokens;
+    }
+
+    /**
+     * Returns the options of the compilation.
+     *
+     * @return The options passed to the constructor.
+     */
+    public CompilerOptions options() {
+        return options;
+    }
+
+    // --- Feature state ---
+
+    /**
+     * Returns the state object a feature keeps under the given key type.
+     *
+     * @param key The class used as the key.
+     * @param <T> The type of the state object.
+     * @return The state object, or {@code null} if none has been created for the key.
+     */
+    public <T> T get(Class<T> key) {
+        return key.cast(featureState.get(key));
+    }
+
+    /**
+     * Returns the state object a feature keeps under the given key type, creating it with the
+     * factory on the first request. One instance exists per key for the lifetime of this
+     * context; the core knows nothing of the type and never reads the object.
+     *
+     * @param key     The class used as the key.
+     * @param factory Creates the state object; called only while no object exists for the key.
+     * @param <T>     The type of the state object.
+     * @return The existing or newly created state object.
+     */
+    public <T> T getOrCreate(Class<T> key, Supplier<T> factory) {
+        return key.cast(featureState.computeIfAbsent(key, k -> factory.get()));
     }
 
     // --- Inclusions ---

@@ -171,7 +171,7 @@ public class Compiler implements ICompiler {
         features.forEach(f -> f.register(featureRegistry));
 
         // Phase 0: Dependency Scanning (load imported modules)
-        DependencyScanner depScanner = new DependencyScanner(diagnostics, resolver, featureRegistry.dependencyScanHandlers());
+        DependencyScanner depScanner = new DependencyScanner(diagnostics, resolver, featureRegistry.dependencyScanHandlers(), effectiveOptions);
         DependencyGraph graph = depScanner.scan(fullSource, mainFilePath);
         failOnErrors(diagnostics);
 
@@ -180,7 +180,7 @@ public class Compiler implements ICompiler {
         List<Token> initialTokens = new ArrayList<>(new Lexer(fullSource, diagnostics, mainFilePath, isa, featureRegistry.lexerSymbols()).scanTokens());
 
         // Phase 2: Preprocessing (includes, macros)
-        PreProcessorContext ppContext = new PreProcessorContext(rootAliasChain, fileTokens);
+        PreProcessorContext ppContext = new PreProcessorContext(rootAliasChain, fileTokens, effectiveOptions);
         featureRegistry.preprocessorHandlers().forEach(ppContext.handlers()::register);
         featureRegistry.preprocessorBlocks().forEach(ppContext.handlers()::registerBlock);
         featureRegistry.preprocessorTopLevelOnly().forEach(ppContext.handlers()::registerTopLevelOnly);
