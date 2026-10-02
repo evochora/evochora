@@ -52,7 +52,7 @@ public class MacroDirectiveHandler implements IPreProcessorHandler {
                     : "another definition";
             preProcessor.getDiagnostics().reportError(
                     "Cannot define macro '" + name.text() + "': the name is already used at " + firstDefinition + ".",
-                    name.fileName(), name.line());
+                    name.source().fileName(), name.source().lineNumber());
         } else {
             preProcessorContext.handlers().defineInModule(name.text(), expansion);
         }

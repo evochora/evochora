@@ -2,6 +2,7 @@ package org.evochora.compiler.frontend.preprocessor;
 
 import org.evochora.compiler.TestLexers;
 import org.evochora.compiler.TestRegistries;
+import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.api.SourceRoot;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.lexer.Lexer;
@@ -88,7 +89,7 @@ class BlockReaderTest {
         tokens.addAll(line("a.evo", 1, ".STORE"));
         tokens.addAll(line("a.evo", 2, "NOP"));
         tokens.addAll(line("b.evo", 7, ".ENDSTORE"));
-        tokens.add(new Token(TokenType.END_OF_FILE, "", null, 8, 1, "b.evo", ""));
+        tokens.add(new Token(TokenType.END_OF_FILE, "", null, new SourceInfo("b.evo", 8, 1, "", 0)));
 
         Run run = run(tokens);
 
@@ -102,7 +103,7 @@ class BlockReaderTest {
         tokens.addAll(line("a.evo", 1, ".STORE"));
         tokens.addAll(line("b.evo", 4, "NOP"));
         tokens.addAll(line("a.evo", 2, ".ENDSTORE"));
-        tokens.add(new Token(TokenType.END_OF_FILE, "", null, 3, 1, "a.evo", ""));
+        tokens.add(new Token(TokenType.END_OF_FILE, "", null, new SourceInfo("a.evo", 3, 1, "", 0)));
 
         Run run = run(tokens);
 
@@ -191,7 +192,7 @@ class BlockReaderTest {
             int start = preProcessor.getCurrentIndex();
             BlockReader.Block block = preProcessor.readBlock(start);
             bodies.add(block.body());
-            dividerLines.add(block.dividers().stream().map(i -> preProcessor.getToken(i).line()).toList());
+            dividerLines.add(block.dividers().stream().map(i -> preProcessor.getToken(i).source().lineNumber()).toList());
             preProcessor.removeTokens(start, block.end() - start);
         }
     }
@@ -221,8 +222,8 @@ class BlockReaderTest {
     private static List<Token> line(String file, int line, String word) {
         TokenType type = word.startsWith(".") ? TokenType.DIRECTIVE : TokenType.OPCODE;
         return List.of(
-                new Token(type, word, null, line, 1, file, ""),
-                new Token(TokenType.NEWLINE, "\n", null, line, word.length() + 1, file, ""));
+                new Token(type, word, null, new SourceInfo(file, line, 1, "", 0)),
+                new Token(TokenType.NEWLINE, "\n", null, new SourceInfo(file, line, word.length() + 1, "", 0)));
     }
 
     private static List<String> texts(List<Token> tokens) {

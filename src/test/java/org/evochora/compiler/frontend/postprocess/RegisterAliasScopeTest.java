@@ -33,7 +33,7 @@ class RegisterAliasScopeTest {
     private SymbolTable symbolTable;
     private DiagnosticsEngine diagnostics;
 
-    private static final SourceInfo SRC = new SourceInfo("test.s", 1, 0, "");
+    private static final SourceInfo SRC = new SourceInfo("test.s", 1, 0, "", 0);
 
     @BeforeEach
     void setUp() {

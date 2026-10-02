@@ -256,6 +256,44 @@ class SimulationEngineIntegrationTest {
     }
 
     @Test
+    void engine_shouldRecordTheBranchesLeftOutAndTheExpansionsInTheProgramMetadata() throws IOException, InterruptedException {
+        Files.writeString(tempDir.resolve("folded.evo"), ".MACRO STEP\n.IFDEF PAD\n  NOP\n.ELSEDEF\n  NOP\n.ENDDEF\n"
+                + ".ENDMACRO\nSTART:\n  STEP\n");
+        Config foldedConfig = baseConfig
+                .withValue("compiler.source-roots", ConfigValueFactory.fromAnyRef(List.of(Map.of("path", tempDir.toString()))))
+                .withValue("organisms", ConfigValueFactory.fromAnyRef(List.of(Map.of(
+                        "program", "folded.evo",
+                        "initialEnergy", 10000,
+                        "placement", Map.of("positions", List.of(5, 5)),
+                        "defines", Map.of("PAD", 1)))));
+        SimulationEngine engine = new SimulationEngine("test-engine", foldedConfig, resources);
+
+        engine.start();
+        await().atMost(5, TimeUnit.SECONDS)
+                .untilAsserted(() -> assertEquals(1L, metadataQueue.getMetrics().get("current_size").longValue()));
+        engine.stop();
+
+        SimulationMetadata metadata;
+        try (StreamingBatch<SimulationMetadata> metaBatch = metadataQueue.receiveBatch(1, 0, TimeUnit.MILLISECONDS)) {
+            metadata = metaBatch.iterator().next();
+        }
+        org.evochora.datapipeline.api.contracts.SourceFile source = metadata.getPrograms(0).getSources(0);
+        assertEquals(1, source.getLeftOutCount());
+        org.evochora.datapipeline.api.contracts.LeftOutRegion region = source.getLeftOut(0);
+        assertEquals(List.of(1, 4, 5, 5),
+                List.of(region.getExpansion(), region.getDirectiveLine(), region.getFrom(), region.getTo()));
+        assertEquals(1, source.getNotesCount());
+        org.evochora.datapipeline.api.contracts.SourceNote note = source.getNotes(0);
+        assertEquals(List.of(1, 2, 8), List.of(note.getExpansion(), note.getLine(), note.getColumn()));
+        assertEquals("[=1]", note.getText());
+        assertEquals(List.of(1), metadata.getPrograms(0).getSourceMapList().stream()
+                .map(entry -> entry.getSourceInfo())
+                .filter(info -> info.getLineNumber() == 3)
+                .map(info -> info.getExpansion())
+                .toList());
+    }
+
+    @Test
     void engine_shouldProduceTickData() {
         SimulationEngine engine = new SimulationEngine("test-engine", baseConfig, resources);
 

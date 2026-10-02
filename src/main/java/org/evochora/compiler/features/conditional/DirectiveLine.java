@@ -93,6 +93,7 @@ record DirectiveLine(int directive, int end) {
     }
 
     private static boolean sameLine(Token a, Token b) {
-        return a.line() == b.line() && Objects.equals(a.fileName(), b.fileName());
+        return a.source().lineNumber() == b.source().lineNumber()
+                && Objects.equals(a.source().fileName(), b.source().fileName());
     }
 }

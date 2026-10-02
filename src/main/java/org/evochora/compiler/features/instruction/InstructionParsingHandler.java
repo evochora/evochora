@@ -25,14 +25,14 @@ public class InstructionParsingHandler implements IParserStatementHandler {
             while (!context.isAtEnd() && !context.check(TokenType.NEWLINE)) {
                 arguments.add(context.expression());
             }
-            return new InstructionNode(opcode.text(), arguments, opcode.toSourceInfo());
+            return new InstructionNode(opcode.text(), arguments, opcode.source());
         }
 
         Token unexpected = context.advance();
         if (unexpected.type() != TokenType.END_OF_FILE && unexpected.type() != TokenType.NEWLINE) {
             context.getDiagnostics().reportError(
                     "Expected instruction or directive, but got '" + unexpected.text() + "'.",
-                    unexpected.fileName(), unexpected.line());
+                    unexpected.source().fileName(), unexpected.source().lineNumber());
         }
         return null;
     }

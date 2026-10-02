@@ -269,7 +269,7 @@ public class Compiler implements ICompiler {
         Emitter emitter = new Emitter();
         Map<String, Map<String, Map<Integer, Map<Integer, List<TokenInfo>>>>> tokenLookup = TokenMapGenerator.buildTokenLookup(tokenMap);
         ProgramArtifact artifact = emitter.emit(linkedIr, layout, linkContext, isa, emissionContributorRegistry,
-                graph.sourceFiles(), tokenMap, tokenLookup);
+                graph.sourceFiles(), ppResult.leftOut(), ppResult.notes(), tokenMap, tokenLookup);
 
         CompilerLogger.debug("Compiler: " + programName + " programId:" + artifact.programId());
         return artifact;

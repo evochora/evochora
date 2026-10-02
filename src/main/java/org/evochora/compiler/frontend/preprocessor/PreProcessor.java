@@ -1,5 +1,7 @@
 package org.evochora.compiler.frontend.preprocessor;
 
+import org.evochora.compiler.api.SourceFile;
+import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
@@ -20,6 +22,9 @@ public class PreProcessor {
     private int current = 0;
     private final PreProcessorContext ppContext;
     private final BlockReader blockReader;
+    private int expansions = 0;
+    private final Map<String, Map<String, List<SourceFile.LeftOut>>> leftOut = new LinkedHashMap<>();
+    private final Map<String, Map<String, List<SourceFile.Note>>> notes = new LinkedHashMap<>();
 
     /**
      * Constructs a new PreProcessor.
@@ -46,7 +51,8 @@ public class PreProcessor {
      * it is, unless it closes or divides a registered block: the handler of a block consumes its
      * closer and dividers, so one the walk reaches stands outside any block and is reported and
      * removed by the {@link BlockReader}.
-     * @return The preprocessing result containing the expanded tokens.
+     * @return The preprocessing result: the expanded tokens, and the regions and notes the
+     *         handlers recorded.
      */
     public PreProcessorResult expand() {
         while (current < tokens.size()) {
@@ -61,7 +67,7 @@ public class PreProcessor {
                 current++;
             }
         }
-        return new PreProcessorResult(tokens);
+        return new PreProcessorResult(tokens, leftOut, notes);
     }
 
     /**
@@ -72,6 +78,54 @@ public class PreProcessor {
         while (!isAtEnd()) {
             if (advance().type() == TokenType.NEWLINE) return;
         }
+    }
+
+    // --- Records for the source view ---
+
+    /**
+     * Opens a new macro expansion and returns its number. The numbers count from 1 within one
+     * run of the preprocessor; 0 stands for the text outside any expansion.
+     *
+     * @return The number of the new expansion.
+     */
+    public int newExpansion() {
+        return ++expansions;
+    }
+
+    /**
+     * Records a region of lines that was left out, owned by the line of a directive. The region
+     * belongs to the placement, file and expansion of the directive token.
+     *
+     * @param directive The directive token whose line owns the region.
+     * @param fromLine  The first line of the region.
+     * @param toLine    The last line of the region, inclusive.
+     */
+    public void leftOut(Token directive, int fromLine, int toLine) {
+        SourceInfo at = directive.source();
+        leftOut.computeIfAbsent(at.placement(), k -> new LinkedHashMap<>())
+                .computeIfAbsent(at.fileName(), k -> new ArrayList<>())
+                .add(new SourceFile.LeftOut(at.expansion(), at.lineNumber(), fromLine, toLine));
+    }
+
+    /**
+     * Records a note at the position of a token, in its placement, file and expansion, and at
+     * every position of a parameter the token was substituted for, so that the note stands both
+     * where the token was written and where it is used.
+     *
+     * @param at   The token the note stands at.
+     * @param text The text of the note.
+     */
+    public void note(Token at, String text) {
+        noteAt(at.source(), text);
+        for (SourceInfo replaced : at.replaces()) {
+            noteAt(replaced, text);
+        }
+    }
+
+    private void noteAt(SourceInfo position, String text) {
+        notes.computeIfAbsent(position.placement(), k -> new LinkedHashMap<>())
+                .computeIfAbsent(position.fileName(), k -> new ArrayList<>())
+                .add(new SourceFile.Note(position.expansion(), position.lineNumber(), position.columnNumber(), text));
     }
 
     // --- Token stream navigation ---
@@ -138,7 +192,7 @@ public class PreProcessor {
     public Token consume(TokenType type, String errorMessage) {
         if (check(type)) return advance();
         Token unexpected = peek();
-        getDiagnostics().reportError(errorMessage, unexpected.fileName(), unexpected.line());
+        getDiagnostics().reportError(errorMessage, unexpected.source().fileName(), unexpected.source().lineNumber());
         throw new ErrorRecoveryException(errorMessage);
     }
 

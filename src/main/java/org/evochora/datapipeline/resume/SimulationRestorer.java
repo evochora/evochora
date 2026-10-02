@@ -418,7 +418,11 @@ public class SimulationRestorer {
         List<SourceFile> sources = new ArrayList<>();
         for (var source : proto.getSourcesList()) {
             sources.add(new SourceFile(source.getPlacement(), source.getPath(), source.getResolvedPath(),
-                source.getLinesList()));
+                source.getLinesList(),
+                source.getLeftOutList().stream().map(region -> new SourceFile.LeftOut(
+                    region.getExpansion(), region.getDirectiveLine(), region.getFrom(), region.getTo())).toList(),
+                source.getNotesList().stream().map(note -> new SourceFile.Note(
+                    note.getExpansion(), note.getLine(), note.getColumn(), note.getText())).toList()));
         }
 
         // Convert machine code layout (repeated InstructionMapping → Map<int[], Integer>)
@@ -569,7 +573,7 @@ public class SimulationRestorer {
     private static SourceInfo convertProtoSourceInfo(
             org.evochora.datapipeline.api.contracts.SourceInfo proto) {
         return new SourceInfo(proto.getFileName(), proto.getLineNumber(), proto.getColumnNumber(),
-            proto.getPlacement());
+            proto.getPlacement(), proto.getExpansion());
     }
 
     /**

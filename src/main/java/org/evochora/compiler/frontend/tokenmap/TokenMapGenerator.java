@@ -66,7 +66,8 @@ public class TokenMapGenerator implements ITokenMapContext {
      * Generates the token map by walking the provided AST root node.
      *
      * @param root The root of the AST to traverse.
-     * @return A map where the key is the SourceInfo (location) of a token and the value is the detailed TokenInfo.
+     * @return A map where the key is the SourceInfo (location) of a token, with expansion 0, and
+     *         the value is the detailed TokenInfo.
      */
     public Map<SourceInfo, TokenInfo> generate(AstNode root) {
         walkAndVisit(root);
@@ -78,7 +79,8 @@ public class TokenMapGenerator implements ITokenMapContext {
      * This is useful when there are multiple top-level nodes (e.g., multiple procedures).
      *
      * @param nodes The list of AST nodes to traverse.
-     * @return A map where the key is the SourceInfo (location) of a token and the value is the detailed TokenInfo.
+     * @return A map where the key is the SourceInfo (location) of a token, with expansion 0, and
+     *         the value is the detailed TokenInfo.
      */
     public Map<SourceInfo, TokenInfo> generateAll(List<AstNode> nodes) {
         for (AstNode node : nodes) {
@@ -118,12 +120,21 @@ public class TokenMapGenerator implements ITokenMapContext {
 
     @Override
     public void addToken(SourceInfo sourceInfo, String text, TokenKind type, String scope) {
-        tokenMap.put(sourceInfo, new TokenInfo(text, type, scope));
+        put(sourceInfo, new TokenInfo(text, type, scope));
     }
 
     @Override
     public void addToken(SourceInfo sourceInfo, String text, TokenKind type, String scope, String qualifiedName) {
-        tokenMap.put(sourceInfo, new TokenInfo(text, type, scope, qualifiedName));
+        put(sourceInfo, new TokenInfo(text, type, scope, qualifiedName));
+    }
+
+    /**
+     * Enters a token under its position without the expansion. The map describes the text of a
+     * line, which is the same in every expansion of a macro body, and the debugger annotates
+     * a token by its position.
+     */
+    private void put(SourceInfo sourceInfo, TokenInfo tokenInfo) {
+        tokenMap.put(sourceInfo.withoutExpansion(), tokenInfo);
     }
 
     @Override
@@ -193,7 +204,7 @@ public class TokenMapGenerator implements ITokenMapContext {
                 Symbol sym = resolved.symbol();
                 SourceInfo si = identifierNode.sourceInfo();
                 String qualifiedName = resolved.qualifiedName();
-                tokenMap.put(si, new TokenInfo(identifierNode.text(), TokenKindMapper.map(sym.type()), this.currentScopeName, qualifiedName));
+                put(si, new TokenInfo(identifierNode.text(), TokenKindMapper.map(sym.type()), this.currentScopeName, qualifiedName));
             } else {
                 diagnostics.reportError(
                     "Internal error: symbol '" + identifierNode.text() +
@@ -206,7 +217,7 @@ public class TokenMapGenerator implements ITokenMapContext {
             if (registerNode.isAlias()) {
                 SourceInfo aliasSourceInfo = registerNode.sourceInfo();
                 String qualifiedAlias = qualifyName(registerNode.originalAlias());
-                tokenMap.put(aliasSourceInfo, new TokenInfo(
+                put(aliasSourceInfo, new TokenInfo(
                     registerNode.originalAlias(),
                     TokenKind.ALIAS,
                     this.currentScopeName,
@@ -214,7 +225,7 @@ public class TokenMapGenerator implements ITokenMapContext {
                 ));
             } else {
                 SourceInfo regSourceInfo = registerNode.sourceInfo();
-                tokenMap.put(regSourceInfo, new TokenInfo(
+                put(regSourceInfo, new TokenInfo(
                     registerNode.name(),
                     TokenKind.REGISTER,
                     this.currentScopeName

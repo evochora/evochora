@@ -33,6 +33,6 @@ public class ConstDirectiveHandler implements IParserStatementHandler {
             return null;
         }
 
-        return new ConstNode(name.text(), name.toSourceInfo(), valueNode, exported);
+        return new ConstNode(name.text(), name.source(), valueNode, exported);
     }
 }

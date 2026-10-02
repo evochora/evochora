@@ -27,7 +27,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @Tag("unit")
 class OperandEncoderTest {
 
-    private static final SourceInfo SRC = new SourceInfo("test.evo", 3, 1, "");
+    private static final SourceInfo SRC = new SourceInfo("test.evo", 3, 1, "", 0);
 
     private final OperandEncoder encoder = new OperandEncoder(new RuntimeInstructionSetAdapter());
 

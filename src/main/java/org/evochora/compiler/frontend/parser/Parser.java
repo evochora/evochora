@@ -90,7 +90,7 @@ public class Parser implements IParsingContext {
                 if (currentExported && !handler.get().supportsExport()) {
                     diagnostics.reportError(
                             "EXPORT is not supported before '" + keyword.text() + "'.",
-                            keyword.fileName(), keyword.line());
+                            keyword.source().fileName(), keyword.source().lineNumber());
                 }
                 return handler.get().parse(this);
             }
@@ -100,7 +100,7 @@ public class Parser implements IParsingContext {
                 Token directive = advance();
                 diagnostics.reportError(
                         "Unknown directive '" + directive.text() + "'.",
-                        directive.fileName(), directive.line());
+                        directive.source().fileName(), directive.source().lineNumber());
                 return null;
             }
 
@@ -110,7 +110,7 @@ public class Parser implements IParsingContext {
                 if (currentExported) {
                     diagnostics.reportError(
                             "EXPORT is not supported before '" + keyword.text() + "'.",
-                            keyword.fileName(), keyword.line());
+                            keyword.source().fileName(), keyword.source().lineNumber());
                 }
                 return defaultHandler.get().parse(this);
             }
@@ -118,7 +118,7 @@ public class Parser implements IParsingContext {
             Token unexpected = advance();
             if (unexpected.type() != TokenType.END_OF_FILE && unexpected.type() != TokenType.NEWLINE) {
                 diagnostics.reportError("Expected instruction or directive, but got '" + unexpected.text() + "'.",
-                        unexpected.fileName(), unexpected.line());
+                        unexpected.source().fileName(), unexpected.source().lineNumber());
             }
             return null;
         } catch (ErrorRecoveryException ex) {
@@ -143,7 +143,7 @@ public class Parser implements IParsingContext {
                 values.add((int) comp.value());
             }
             return new VectorLiteralNode(java.util.Collections.unmodifiableList(values),
-                    first.toSourceInfo());
+                    first.source());
         }
 
         if (check(TokenType.IDENTIFIER) && checkNext(TokenType.COLON)) {
@@ -151,26 +151,26 @@ public class Parser implements IParsingContext {
             advance();
             Token valueTok = consume(TokenType.NUMBER, "Expected a number after the literal type.");
             return new TypedLiteralNode(type.text(), (int) valueTok.value(),
-                    type.toSourceInfo());
+                    type.source());
         }
 
         if (match(TokenType.NUMBER)) {
             Token num = previous();
-            return new NumberLiteralNode((int) num.value(), num.toSourceInfo());
+            return new NumberLiteralNode((int) num.value(), num.source());
         }
 
         if (match(TokenType.REGISTER)) {
             Token reg = previous();
-            return new RegisterNode(reg.text(), reg.toSourceInfo());
+            return new RegisterNode(reg.text(), reg.source());
         }
 
         if (match(TokenType.IDENTIFIER)) {
             Token identifier = previous();
-            return new IdentifierNode(identifier.text(), identifier.toSourceInfo());
+            return new IdentifierNode(identifier.text(), identifier.source());
         }
 
         Token unexpected = advance();
-        diagnostics.reportError("Expected a register, a literal, a vector or a name, but got '" + unexpected.text() + "'.", unexpected.fileName(), unexpected.line());
+        diagnostics.reportError("Expected a register, a literal, a vector or a name, but got '" + unexpected.text() + "'.", unexpected.source().fileName(), unexpected.source().lineNumber());
         return null;
     }
 
@@ -248,7 +248,7 @@ public class Parser implements IParsingContext {
     public Token consume(TokenType type, String errorMessage) {
         if (check(type)) return advance();
         Token unexpected = peek();
-        diagnostics.reportError(errorMessage, unexpected.fileName(), unexpected.line());
+        diagnostics.reportError(errorMessage, unexpected.source().fileName(), unexpected.source().lineNumber());
         throw new ErrorRecoveryException(errorMessage);
     }
 

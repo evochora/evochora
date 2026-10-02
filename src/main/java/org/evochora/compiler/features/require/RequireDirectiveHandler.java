@@ -28,11 +28,11 @@ public class RequireDirectiveHandler implements IParserStatementHandler {
         Token directive = context.peek();
         // An EXPORT before the directive is the parser's to report; the line rule passes over it.
         Token before = context.previous();
-        if (before != null && before.line() == directive.line()
-                && Objects.equals(before.fileName(), directive.fileName())
+        if (before != null && before.source().lineNumber() == directive.source().lineNumber()
+                && Objects.equals(before.source().fileName(), directive.source().fileName())
                 && !"EXPORT".equalsIgnoreCase(before.text())) {
             String message = ".REQUIRE must be the first word on its line; found '" + before.text() + "' before it.";
-            context.getDiagnostics().reportError(message, directive.fileName(), directive.line());
+            context.getDiagnostics().reportError(message, directive.source().fileName(), directive.source().lineNumber());
             throw new ErrorRecoveryException(message);
         }
         context.advance(); // consume .REQUIRE
@@ -43,7 +43,7 @@ public class RequireDirectiveHandler implements IParserStatementHandler {
         if (!context.check(TokenType.IDENTIFIER) || !"AS".equalsIgnoreCase(context.peek().text())) {
             context.getDiagnostics().reportError(
                     "Expected AS after .REQUIRE path.",
-                    pathToken.fileName(), pathToken.line());
+                    pathToken.source().fileName(), pathToken.source().lineNumber());
             return null;
         }
         context.advance(); // consume AS
@@ -54,13 +54,13 @@ public class RequireDirectiveHandler implements IParserStatementHandler {
             Token extra = context.peek();
             context.getDiagnostics().reportError(
                     ".REQUIRE must stand alone on its line; found '" + extra.text() + "' after the alias.",
-                    extra.fileName(), extra.line());
+                    extra.source().fileName(), extra.source().lineNumber());
             while (!context.isAtEnd() && !context.check(TokenType.NEWLINE)) {
                 context.advance();
             }
             return null;
         }
 
-        return new RequireNode((String) pathToken.value(), aliasToken.text(), aliasToken.toSourceInfo());
+        return new RequireNode((String) pathToken.value(), aliasToken.text(), aliasToken.source());
     }
 }

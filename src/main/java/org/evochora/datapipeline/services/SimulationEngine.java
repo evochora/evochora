@@ -1252,7 +1252,21 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                         .setPlacement(source.placement())
                         .setPath(source.path())
                         .setResolvedPath(source.resolvedPath())
-                        .addAllLines(source.lines())));
+                        .addAllLines(source.lines())
+                        .addAllLeftOut(source.leftOut().stream().map(region ->
+                                org.evochora.datapipeline.api.contracts.LeftOutRegion.newBuilder()
+                                        .setExpansion(region.expansion())
+                                        .setDirectiveLine(region.directiveLine())
+                                        .setFrom(region.from())
+                                        .setTo(region.to())
+                                        .build()).toList())
+                        .addAllNotes(source.notes().stream().map(note ->
+                                org.evochora.datapipeline.api.contracts.SourceNote.newBuilder()
+                                        .setExpansion(note.expansion())
+                                        .setLine(note.line())
+                                        .setColumn(note.column())
+                                        .setText(note.text())
+                                        .build()).toList())));
 
         artifact.machineCodeLayout().forEach((pos, instruction) ->
                 builder.addMachineCodeLayout(InstructionMapping.newBuilder()
@@ -1348,6 +1362,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                 .setLineNumber(sourceInfo.lineNumber())
                 .setColumnNumber(sourceInfo.columnNumber())
                 .setPlacement(sourceInfo.placement())
+                .setExpansion(sourceInfo.expansion())
                 .build();
     }
 

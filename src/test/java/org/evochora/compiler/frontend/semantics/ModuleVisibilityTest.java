@@ -42,11 +42,11 @@ public class ModuleVisibilityTest {
 
         // Define an exported label in the lib module
         symbolTable.setCurrentModule(LIB_CHAIN);
-        Symbol exportedSymbol = new Symbol("HARVEST", new SourceInfo("/test/lib.evo", 1, 0, ""), Symbol.Type.LABEL, null, true);
+        Symbol exportedSymbol = new Symbol("HARVEST", new SourceInfo("/test/lib.evo", 1, 0, "", 0), Symbol.Type.LABEL, null, true);
         symbolTable.define(exportedSymbol);
 
         // Define a non-exported label in the lib module
-        Symbol privateSymbol = new Symbol("INTERNAL", new SourceInfo("/test/lib.evo", 2, 0, ""), Symbol.Type.LABEL, null, false);
+        Symbol privateSymbol = new Symbol("INTERNAL", new SourceInfo("/test/lib.evo", 2, 0, "", 0), Symbol.Type.LABEL, null, false);
         symbolTable.define(privateSymbol);
     }
 

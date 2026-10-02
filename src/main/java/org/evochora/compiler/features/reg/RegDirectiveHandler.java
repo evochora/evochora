@@ -59,7 +59,7 @@ public class RegDirectiveHandler implements IParserStatementHandler {
             register = context.consume(TokenType.REGISTER, "Expected a register after the alias name in .REG.");
         }
 
-        int line = register.line();
+        int line = register.source().lineNumber();
         RegisterBankInfo bank = isa.parseRegister(register.text())
                 .orElseThrow(() -> new IllegalStateException("REGISTER token the instruction set cannot read: " + register.text()))
                 .bank();
@@ -72,10 +72,10 @@ public class RegDirectiveHandler implements IParserStatementHandler {
         if (!bank.alwaysAvailable() && !context.state().isRegisterBankAvailable(bank.name())) {
             context.getDiagnostics().reportError(
                     "Register '" + register.text() + "' is only available inside a procedure.",
-                    register.fileName(), line);
+                    register.source().fileName(), line);
             return null;
         }
 
-        return new RegNode(name.text(), register.text(), name.toSourceInfo());
+        return new RegNode(name.text(), register.text(), name.source());
     }
 }

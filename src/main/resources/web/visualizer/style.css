@@ -1174,6 +1174,24 @@ main.container {
     color: #aaa;
 }
 
+/* Directive line that owns a region a conditional left out; a click folds or unfolds it */
+.source-line.fold-source-line {
+    cursor: pointer;
+}
+
+.source-line.fold-source-line:hover {
+    background-color: rgba(60, 80, 120, 0.3);
+}
+
+/* Lines of a region a conditional left out: greyed when unfolded, hidden when folded */
+.source-line.left-out-line {
+    color: #666;
+}
+
+.left-out-line.folded {
+    display: none;
+}
+
 #source-status-bar {
     /* Container for status messages */
     flex-shrink: 0;

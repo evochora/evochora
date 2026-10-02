@@ -37,7 +37,7 @@ class LabelRefLinkingRuleTest {
     void setUp() {
         rule = new LabelRefLinkingRule();
         context = new LinkingContext(new org.evochora.compiler.isa.RuntimeInstructionSetAdapter());
-        dummySource = new SourceInfo("test.s", 1, 0, "");
+        dummySource = new SourceInfo("test.s", 1, 0, "", 0);
     }
 
     @Test

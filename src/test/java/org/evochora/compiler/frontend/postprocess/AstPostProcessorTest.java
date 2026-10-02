@@ -146,13 +146,13 @@ class AstPostProcessorTest {
         st.registerModule("LIB", "lib.s");
         st.registerModule("MAIN", "main.s");
         st.setCurrentModule("LIB");
-        st.define(new Symbol("TARGET", new SourceInfo("lib.s", 1, 0, ""), Symbol.Type.LABEL, null, true));
+        st.define(new Symbol("TARGET", new SourceInfo("lib.s", 1, 0, "", 0), Symbol.Type.LABEL, null, true));
         st.setCurrentModule("MAIN");
         st.getModuleScope("MAIN").orElseThrow().addImport("LIB", "LIB", false);
         AstPostProcessor mainProcessor = new AstPostProcessor(st, new ModuleContextTracker(st), new ScopeTracker(st), TestRegistries.postProcessRegistry());
 
         // When: main.s refers to the label through the alias
-        IdentifierNode reference = new IdentifierNode("LIB.TARGET", new SourceInfo("main.s", 1, 0, ""));
+        IdentifierNode reference = new IdentifierNode("LIB.TARGET", new SourceInfo("main.s", 1, 0, "", 0));
         AstNode result = mainProcessor.process(reference);
 
         // Then: the reference carries the label's qualified name, which here equals what was written
@@ -168,13 +168,13 @@ class AstPostProcessorTest {
         st.registerModule("LIB", "lib.s");
         st.registerModule("MAIN", "main.s");
         st.setCurrentModule("LIB");
-        st.define(new Symbol("PRIVATE", new SourceInfo("lib.s", 1, 0, ""), Symbol.Type.LABEL));
+        st.define(new Symbol("PRIVATE", new SourceInfo("lib.s", 1, 0, "", 0), Symbol.Type.LABEL));
         st.setCurrentModule("MAIN");
         st.getModuleScope("MAIN").orElseThrow().addImport("LIB", "LIB", false);
         AstPostProcessor mainProcessor = new AstPostProcessor(st, new ModuleContextTracker(st), new ScopeTracker(st), TestRegistries.postProcessRegistry());
 
         // When: main.s refers to it through the alias
-        IdentifierNode reference = new IdentifierNode("LIB.PRIVATE", new SourceInfo("main.s", 1, 0, ""));
+        IdentifierNode reference = new IdentifierNode("LIB.PRIVATE", new SourceInfo("main.s", 1, 0, "", 0));
         AstNode result = mainProcessor.process(reference);
 
         // Then: the symbol table does not resolve it, so the identifier stays as written
@@ -339,8 +339,8 @@ class AstPostProcessorTest {
         st.registerModule(modBChain, "/mod_b.evo");
         st.setCurrentModule(mainChain);
 
-        SourceInfo siA = new SourceInfo("/mod_a.evo", 1, 1, "");
-        SourceInfo siB = new SourceInfo("/mod_b.evo", 1, 1, "");
+        SourceInfo siA = new SourceInfo("/mod_a.evo", 1, 1, "", 0);
+        SourceInfo siB = new SourceInfo("/mod_b.evo", 1, 1, "", 0);
         TypedLiteralNode valueA = new TypedLiteralNode("DATA", 10, siA);
         TypedLiteralNode valueB = new TypedLiteralNode("DATA", 1, siB);
         ConstNode constA = new ConstNode("STEP", siA, valueA);
@@ -357,15 +357,15 @@ class AstPostProcessorTest {
 
         st.setCurrentModule(mainChain);
 
-        IdentifierNode useA = new IdentifierNode("STEP", new SourceInfo("/mod_a.evo", 2, 1, ""));
-        IdentifierNode useB = new IdentifierNode("STEP", new SourceInfo("/mod_b.evo", 2, 1, ""));
+        IdentifierNode useA = new IdentifierNode("STEP", new SourceInfo("/mod_a.evo", 2, 1, "", 0));
+        IdentifierNode useB = new IdentifierNode("STEP", new SourceInfo("/mod_b.evo", 2, 1, "", 0));
 
         InstructionNode instrA = new InstructionNode(
                 "SETI", List.of(new RegisterNode("%DR0", createSourceInfo()), useA),
-                new SourceInfo("/mod_a.evo", 2, 1, ""));
+                new SourceInfo("/mod_a.evo", 2, 1, "", 0));
         InstructionNode instrB = new InstructionNode(
                 "SETI", List.of(new RegisterNode("%DR1", createSourceInfo()), useB),
-                new SourceInfo("/mod_b.evo", 2, 1, ""));
+                new SourceInfo("/mod_b.evo", 2, 1, "", 0));
 
         // Use ModuleContextTracker with alias chains via PushCtxNode
         ModuleContextTracker tracker = new ModuleContextTracker(st);
@@ -395,7 +395,7 @@ class AstPostProcessorTest {
     @Test
     void testProcess_SingleFileConstantResolutionStillWorks() {
         // Verify single-file mode (no module context) still resolves constants
-        TypedLiteralNode constValue = new TypedLiteralNode("DATA", 99, new SourceInfo("test.s", 1, 1, ""));
+        TypedLiteralNode constValue = new TypedLiteralNode("DATA", 99, new SourceInfo("test.s", 1, 1, "", 0));
         ConstNode constNode = new ConstNode("MY_CONST", createSourceInfo(), constValue);
         symbolTable.define(new Symbol("MY_CONST", createSourceInfo(), Symbol.Type.CONSTANT, constNode));
 
@@ -414,6 +414,6 @@ class AstPostProcessorTest {
     }
 
     private SourceInfo createSourceInfo() {
-        return new SourceInfo("test.s", 10, 5, "");
+        return new SourceInfo("test.s", 10, 5, "", 0);
     }
 }

@@ -31,7 +31,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 public class LayoutEngineTest {
 
     private static SourceInfo src(String file, int line) {
-        return new SourceInfo(file, line, 0, "");
+        return new SourceInfo(file, line, 0, "", 0);
     }
 
     @Test

@@ -74,6 +74,11 @@ that only a feature reads; `sourceRoots` is read by the core. The core upper-cas
 names, rejects two keys that are one name, and hands the options to the contexts of Phases 0
 and 2 without looking at the flags.
 
+A token the preprocessor substitutes for a macro parameter keeps the position it was written at
+and remembers the position of every parameter it replaced, one per level of nested macros, each
+with the expansion it stands in; a note the preprocessor records on such a token for the source
+view is recorded at its own position and at each of these.
+
 Any other character sequence a feature reads is not a case of the lexer but a symbol the
 feature registers through `IFeatureRegistrationContext.lexerSymbol`; the lexer emits it as one
 `SYMBOL` token whose text the feature's handlers compare: `*`, `..` and `,` for `place`,

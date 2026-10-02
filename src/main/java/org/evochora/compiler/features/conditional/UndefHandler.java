@@ -35,7 +35,7 @@ public class UndefHandler implements IPreProcessorHandler {
             flags.undefine(operands.get(0).text());
         }
         if (error != null) {
-            preProcessor.getDiagnostics().reportError(error, directive.fileName(), directive.line());
+            preProcessor.getDiagnostics().reportError(error, directive.source().fileName(), directive.source().lineNumber());
         }
         preProcessor.removeTokens(start, line.next(preProcessor) - start);
     }

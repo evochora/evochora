@@ -73,7 +73,7 @@ class PlacementArtifactIntegrationTest {
         assertThat(second.qualifiedName()).isEqualTo("SECOND.LOOP");
         assertThat(artifact.labelNameToValue().get("FIRST.LOOP"))
                 .isNotEqualTo(artifact.labelNameToValue().get("SECOND.LOOP"));
-        assertThat(artifact.tokenMap().get(new SourceInfo(lib, 4, 8, "SECOND"))).isEqualTo(second);
+        assertThat(artifact.tokenMap().get(new SourceInfo(lib, 4, 8, "SECOND", 0))).isEqualTo(second);
     }
 
     @Test

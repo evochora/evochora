@@ -53,7 +53,7 @@ public class RepeatDirectiveHandler implements IPreProcessorHandler {
         if (count < 0) {
             preProcessor.getDiagnostics().reportError(
                     "Repeat count must be non-negative, got: " + count,
-                    countToken.fileName(), countToken.line());
+                    countToken.source().fileName(), countToken.source().lineNumber());
             preProcessor.removeTokens(startIndex, tokensToRemove);
             return;
         }
@@ -92,7 +92,7 @@ public class RepeatDirectiveHandler implements IPreProcessorHandler {
         preProcessor.getDiagnostics().reportError(
                 ".REPEAT takes only its count on its line and opens a block closed by .ENDREPEAT;"
                         + " a single statement is repeated as " + statement + "^" + count,
-                repeatToken.fileName(), repeatToken.line());
+                repeatToken.source().fileName(), repeatToken.source().lineNumber());
         preProcessor.removeTokens(startIndex, preProcessor.getCurrentIndex() - startIndex);
     }
 
@@ -100,14 +100,6 @@ public class RepeatDirectiveHandler implements IPreProcessorHandler {
      * Creates a synthetic NEWLINE token based on a reference token's location.
      */
     private Token createNewlineToken(Token reference) {
-        return new Token(
-                TokenType.NEWLINE,
-                ";",
-                null,
-                reference.line(),
-                reference.column(),
-                reference.fileName(),
-                reference.placement()
-        );
+        return new Token(TokenType.NEWLINE, ";", null, reference.source());
     }
 }

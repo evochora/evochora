@@ -1,6 +1,7 @@
 package org.evochora.compiler.features.source;
 
 import org.evochora.compiler.diagnostics.ErrorRecoveryException;
+import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.frontend.module.PlacementContext;
@@ -31,7 +32,7 @@ public class SourceDirectiveHandler implements IPreProcessorHandler {
         if (before != null) {
             Token directive = preProcessor.peek();
             String message = ".SOURCE must be the first word on its line; found '" + before.text() + "' before it.";
-            preProcessor.getDiagnostics().reportError(message, directive.fileName(), directive.line());
+            preProcessor.getDiagnostics().reportError(message, directive.source().fileName(), directive.source().lineNumber());
             throw new ErrorRecoveryException(message);
         }
 
@@ -40,7 +41,7 @@ public class SourceDirectiveHandler implements IPreProcessorHandler {
         if (!preProcessor.isAtEnd() && !preProcessor.check(TokenType.NEWLINE)) {
             Token extra = preProcessor.peek();
             String message = ".SOURCE must stand alone on its line; found '" + extra.text() + "' after the path.";
-            preProcessor.getDiagnostics().reportError(message, extra.fileName(), extra.line());
+            preProcessor.getDiagnostics().reportError(message, extra.source().fileName(), extra.source().lineNumber());
             throw new ErrorRecoveryException(message);
         }
 
@@ -50,9 +51,9 @@ public class SourceDirectiveHandler implements IPreProcessorHandler {
         // Resolve path
         String resolvedPath;
         try {
-            resolvedPath = preProcessor.getResolver().resolve(pathValue, pathToken.fileName());
+            resolvedPath = preProcessor.getResolver().resolve(pathValue, pathToken.source().fileName());
         } catch (org.evochora.compiler.util.SourceRootResolver.UnknownPrefixException e) {
-            preProcessor.getDiagnostics().reportError(e.getMessage(), pathToken.fileName(), pathToken.line());
+            preProcessor.getDiagnostics().reportError(e.getMessage(), pathToken.source().fileName(), pathToken.source().lineNumber());
             preProcessor.removeTokens(startIndex, endIndex - startIndex);
             return;
         }
@@ -60,7 +61,7 @@ public class SourceDirectiveHandler implements IPreProcessorHandler {
         // Check for circular .SOURCE
         if (preProcessorContext.isIncluding(resolvedPath)) {
             preProcessor.getDiagnostics().reportError(
-                    "Circular .SOURCE detected: " + pathValue, pathToken.fileName(), pathToken.line());
+                    "Circular .SOURCE detected: " + pathValue, pathToken.source().fileName(), pathToken.source().lineNumber());
             preProcessor.removeTokens(startIndex, endIndex - startIndex);
             return;
         }
@@ -73,7 +74,7 @@ public class SourceDirectiveHandler implements IPreProcessorHandler {
         if (preLexed == null) {
             preProcessor.getDiagnostics().reportError(
                     "Internal error: the dependency scan did not load " + resolvedPath + ".",
-                    pathToken.fileName(), pathToken.line());
+                    pathToken.source().fileName(), pathToken.source().lineNumber());
             preProcessor.removeTokens(startIndex, endIndex - startIndex);
             return;
         }
@@ -89,12 +90,15 @@ public class SourceDirectiveHandler implements IPreProcessorHandler {
         // Copy tokens and wrap with context management directives
         List<Token> newTokens = new ArrayList<>(preLexed.size() + 2);
         for (Token token : preLexed) {
-            newTokens.add(token.withPlacement(placement));
+            SourceInfo at = token.source();
+            newTokens.add(token.with(new SourceInfo(at.fileName(), at.lineNumber(), at.columnNumber(), placement,
+                    at.expansion())));
         }
-        newTokens.add(0, new Token(TokenType.DIRECTIVE, ".PUSH_CTX", placementCtx, pathToken.line(), 0,
-                pathToken.fileName(), pathToken.placement()));
-        newTokens.add(new Token(TokenType.DIRECTIVE, ".POP_CTX", null, pathToken.line(), 0,
-                pathToken.fileName(), pathToken.placement()));
+        SourceInfo directive = pathToken.source();
+        SourceInfo marker = new SourceInfo(directive.fileName(), directive.lineNumber(), 0, directive.placement(),
+                directive.expansion());
+        newTokens.add(0, new Token(TokenType.DIRECTIVE, ".PUSH_CTX", placementCtx, marker));
+        newTokens.add(new Token(TokenType.DIRECTIVE, ".POP_CTX", null, marker));
 
         preProcessor.removeTokens(startIndex, endIndex - startIndex);
         preProcessor.injectTokens(newTokens, 0);
@@ -125,6 +129,7 @@ public class SourceDirectiveHandler implements IPreProcessorHandler {
     }
 
     private static boolean sameLine(Token a, Token b) {
-        return a.line() == b.line() && Objects.equals(a.fileName(), b.fileName());
+        return a.source().lineNumber() == b.source().lineNumber()
+                && Objects.equals(a.source().fileName(), b.source().fileName());
     }
 }

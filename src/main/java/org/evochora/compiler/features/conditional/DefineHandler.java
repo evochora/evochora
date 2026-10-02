@@ -44,10 +44,10 @@ public class DefineHandler implements IPreProcessorHandler {
                     ? OptionalInt.of((Integer) operands.get(1).value())
                     : OptionalInt.empty();
             error = flags.define(operands.get(0).text(), value,
-                    "at " + directive.fileName() + ":" + directive.line()).orElse(null);
+                    "at " + directive.source().fileName() + ":" + directive.source().lineNumber()).orElse(null);
         }
         if (error != null) {
-            preProcessor.getDiagnostics().reportError(error, directive.fileName(), directive.line());
+            preProcessor.getDiagnostics().reportError(error, directive.source().fileName(), directive.source().lineNumber());
         }
         preProcessor.removeTokens(start, line.next(preProcessor) - start);
     }

@@ -33,15 +33,15 @@ public class DirDirectiveHandler implements IParserStatementHandler {
             context.consume(TokenType.PIPE, "Expected '|' between the two axes of the rotation plane.");
             Token axisB = context.consume(TokenType.NUMBER, "Expected the second axis of the rotation plane.");
             return new DirNode(new DirNode.Mode.Rotation(forward, (int) axisA.value(), (int) axisB.value()),
-                    directive.toSourceInfo());
+                    directive.source());
         }
 
         AstNode vector = context.expression();
         if (!(vector instanceof VectorLiteralNode literal)) {
             context.getDiagnostics().reportError("Expected a vector literal or a rotation after .DIR.",
-                    context.peek().fileName(), context.peek().line());
+                    context.peek().source().fileName(), context.peek().source().lineNumber());
             return null;
         }
-        return new DirNode(new DirNode.Mode.Absolute(literal), directive.toSourceInfo());
+        return new DirNode(new DirNode.Mode.Absolute(literal), directive.source());
     }
 }

@@ -44,7 +44,11 @@ public class Emitter {
      * @param isa The instruction set architecture for opcode and register resolution.
      * @param contributorRegistry Registry of emission contributors for extracting metadata from IR.
      * @param sources The text of every file once per module placement it stands in, copied into
-     *                the artifact unchanged.
+     *                the artifact with the regions and notes recorded for it.
+     * @param leftOut The regions of lines the preprocessor left out, by placement, then by resolved
+     *                file path; each list is attached to the source file of that placement and path.
+     * @param notes The notes the preprocessor attached to positions, by placement, then by resolved
+     *              file path; each list is attached to the source file of that placement and path.
      * @param tokenMap Token classification per source position, copied into the artifact unchanged.
      * @param tokenLookup The same token classification indexed by placement, file name, line and column,
      *                    copied into the artifact unchanged.
@@ -57,6 +61,8 @@ public class Emitter {
                                 IInstructionSet isa,
                                 EmissionContributorRegistry contributorRegistry,
                                 List<SourceFile> sources,
+                                Map<String, Map<String, List<SourceFile.LeftOut>>> leftOut,
+                                Map<String, Map<String, List<SourceFile.Note>>> notes,
                                 Map<SourceInfo, TokenInfo> tokenMap,
                                 Map<String, Map<String, Map<Integer, Map<Integer, List<TokenInfo>>>>> tokenLookup) throws CompilationException {
         EmissionContext emissionContext = new EmissionContext();
@@ -119,9 +125,15 @@ public class Emitter {
             labelNameToValue.put(name, value);
         });
 
+        List<SourceFile> recordedSources = new ArrayList<>(sources.size());
+        for (SourceFile source : sources) {
+            recordedSources.add(source.withRecords(
+                    recordedFor(leftOut, source), recordedFor(notes, source)));
+        }
+
         return new ProgramArtifact(
                 programId,
-                sources,
+                recordedSources,
                 sortedMachineCodeLayout,
                 sortedInitialObjects,
                 layout.sourceMap(),
@@ -136,6 +148,17 @@ public class Emitter {
                 labelValueToName,
                 labelNameToValue
         );
+    }
+
+    /**
+     * Returns what was recorded for the placement and resolved path of a source file, or nothing.
+     */
+    private static <T> List<T> recordedFor(Map<String, Map<String, List<T>>> recorded, SourceFile source) {
+        Map<String, List<T>> byFile = recorded.get(source.placement());
+        if (byFile == null) {
+            return List.of();
+        }
+        return byFile.getOrDefault(source.resolvedPath(), List.of());
     }
 
     /**

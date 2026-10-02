@@ -1,6 +1,7 @@
 package org.evochora.compiler.features.importdir;
 
 import org.evochora.compiler.diagnostics.ErrorRecoveryException;
+import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.frontend.module.PlacementContext;
@@ -32,7 +33,7 @@ public class ImportSourceHandler implements IPreProcessorHandler {
         if (before != null) {
             Token directive = preProcessor.peek();
             String message = ".IMPORT must be the first word on its line; found '" + before.text() + "' before it.";
-            preProcessor.getDiagnostics().reportError(message, directive.fileName(), directive.line());
+            preProcessor.getDiagnostics().reportError(message, directive.source().fileName(), directive.source().lineNumber());
             throw new ErrorRecoveryException(message);
         }
         Token importToken = preProcessor.peek();
@@ -45,7 +46,7 @@ public class ImportSourceHandler implements IPreProcessorHandler {
         String alias = extractAlias(preProcessor);
         if (alias == null) {
             preProcessor.getDiagnostics().reportError(
-                    "Expected AS after .IMPORT path.", pathToken.fileName(), pathToken.line());
+                    "Expected AS after .IMPORT path.", pathToken.source().fileName(), pathToken.source().lineNumber());
             return;
         }
         checkRestOfLine(preProcessor);
@@ -54,9 +55,9 @@ public class ImportSourceHandler implements IPreProcessorHandler {
         String pathValue = (String) pathToken.value();
         String resolvedPath;
         try {
-            resolvedPath = preProcessor.getResolver().resolve(pathValue, pathToken.fileName());
+            resolvedPath = preProcessor.getResolver().resolve(pathValue, pathToken.source().fileName());
         } catch (org.evochora.compiler.util.SourceRootResolver.UnknownPrefixException e) {
-            preProcessor.getDiagnostics().reportError(e.getMessage(), pathToken.fileName(), pathToken.line());
+            preProcessor.getDiagnostics().reportError(e.getMessage(), pathToken.source().fileName(), pathToken.source().lineNumber());
             return;
         }
 
@@ -68,7 +69,7 @@ public class ImportSourceHandler implements IPreProcessorHandler {
         if (tokens == null) {
             preProcessor.getDiagnostics().reportError(
                     "Internal error: the dependency scan did not load " + resolvedPath + ".",
-                    pathToken.fileName(), pathToken.line());
+                    pathToken.source().fileName(), pathToken.source().lineNumber());
             return;
         }
 
@@ -80,7 +81,7 @@ public class ImportSourceHandler implements IPreProcessorHandler {
         // Guard against circular imports
         if (preProcessorContext.isIncluding(resolvedPath)) {
             preProcessor.getDiagnostics().reportError(
-                    "Circular .IMPORT detected: " + pathValue, pathToken.fileName(), pathToken.line());
+                    "Circular .IMPORT detected: " + pathValue, pathToken.source().fileName(), pathToken.source().lineNumber());
             return;
         }
 
@@ -95,15 +96,18 @@ public class ImportSourceHandler implements IPreProcessorHandler {
         // and every token names the placement it belongs to
         List<Token> newTokens = new ArrayList<>(tokens.size() + 2);
         for (Token token : tokens) {
-            newTokens.add(token.withPlacement(aliasChain));
+            SourceInfo at = token.source();
+            newTokens.add(token.with(new SourceInfo(at.fileName(), at.lineNumber(), at.columnNumber(), aliasChain,
+                    at.expansion())));
         }
 
         // Wrap with PUSH_CTX/POP_CTX — PUSH_CTX carries PlacementContext with alias chain
         PlacementContext placementCtx = new PlacementContext(resolvedPath, aliasChain);
-        newTokens.add(0, new Token(TokenType.DIRECTIVE, ".PUSH_CTX", placementCtx, importToken.line(), 0,
-                importToken.fileName(), importToken.placement()));
-        newTokens.add(new Token(TokenType.DIRECTIVE, ".POP_CTX", null, importToken.line(), 0,
-                importToken.fileName(), importToken.placement()));
+        SourceInfo directive = importToken.source();
+        SourceInfo marker = new SourceInfo(directive.fileName(), directive.lineNumber(), 0, directive.placement(),
+                directive.expansion());
+        newTokens.add(0, new Token(TokenType.DIRECTIVE, ".PUSH_CTX", placementCtx, marker));
+        newTokens.add(new Token(TokenType.DIRECTIVE, ".POP_CTX", null, marker));
 
         // The inclusion enters the module's alias chain and stays open until the injected
         // .POP_CTX token is processed by the preprocessor — not in this handler.
@@ -129,7 +133,7 @@ public class ImportSourceHandler implements IPreProcessorHandler {
             if (clausesWellFormed && !isWord(token, "USING")) {
                 String message = ".IMPORT must stand alone on its line; found '" + token.text()
                         + "' after the alias and its USING clauses.";
-                preProcessor.getDiagnostics().reportError(message, token.fileName(), token.line());
+                preProcessor.getDiagnostics().reportError(message, token.source().fileName(), token.source().lineNumber());
                 throw new ErrorRecoveryException(message);
             }
             if (clausesWellFormed) {
@@ -207,6 +211,7 @@ public class ImportSourceHandler implements IPreProcessorHandler {
     }
 
     private static boolean sameLine(Token a, Token b) {
-        return a.line() == b.line() && Objects.equals(a.fileName(), b.fileName());
+        return a.source().lineNumber() == b.source().lineNumber()
+                && Objects.equals(a.source().fileName(), b.source().fileName());
     }
 }

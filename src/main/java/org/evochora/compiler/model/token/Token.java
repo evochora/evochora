@@ -2,46 +2,58 @@ package org.evochora.compiler.model.token;
 
 import org.evochora.compiler.api.SourceInfo;
 
+import java.util.List;
+
 /**
  * Represents a single token extracted from the source code by the Lexer.
  *
- * @param type The type of the token (e.g., Opcode, Register, Number).
- * @param text The exact text of the token from the source code.
- * @param value The processed value of the token (e.g., the integer value of a number).
- * @param line The line number where the token was found.
- * @param column The column number where the token begins.
- * @param fileName The logical file name/source file path from which this token originates
- *                 (set correctly after preprocessor/include).
- * @param placement The alias chain of the module placement the token belongs to: the chain of
- *                  the main module for the main file and the files it sources, the chain of an
- *                  import for the module's tokens and the files that module sources. The
- *                  preprocessor sets it when it inlines a file.
+ * @param type     The type of the token (e.g., Opcode, Register, Number).
+ * @param text     The exact text of the token from the source code.
+ * @param value    The processed value of the token (e.g., the integer value of a number).
+ * @param source   Where the token stands: its file, line and column, the placement it belongs to
+ *                 and the macro expansion it stands in. The lexer gives every token the position
+ *                 it was read at, in placement and expansion 0 of the main module; the preprocessor
+ *                 sets the placement when it inlines a file and the expansion when it expands a
+ *                 macro.
+ * @param replaces The positions of the parameters this token was substituted for. A macro
+ *                 argument substituted for a parameter keeps its own position and remembers the
+ *                 parameter's, with the expansion the parameter stands in; an argument that passes
+ *                 through nested macros replaces one parameter per level, outermost first. Empty
+ *                 for a token that replaces nothing.
  */
 public record Token(
         TokenType type,
         String text,
         Object value,
-        int line,
-        int column,
-        String fileName,
-        String placement
+        SourceInfo source,
+        List<SourceInfo> replaces
 ) {
     /**
-     * Converts this token's location into a {@link SourceInfo}.
-     *
-     * @return A SourceInfo with this token's file name, line, column and placement.
+     * Makes the list of replaced positions immutable; null becomes an empty list.
      */
-    public SourceInfo toSourceInfo() {
-        return new SourceInfo(fileName(), line(), column(), placement());
+    public Token {
+        replaces = replaces != null ? List.copyOf(replaces) : List.of();
     }
 
     /**
-     * Returns this token as it stands in another placement.
+     * Creates a token that replaces nothing.
      *
-     * @param newPlacement The alias chain of the placement.
-     * @return A token equal to this one but for its placement.
+     * @param type   The type of the token.
+     * @param text   The exact text of the token.
+     * @param value  The processed value of the token.
+     * @param source Where the token stands.
      */
-    public Token withPlacement(String newPlacement) {
-        return new Token(type, text, value, line, column, fileName, newPlacement);
+    public Token(TokenType type, String text, Object value, SourceInfo source) {
+        this(type, text, value, source, List.of());
+    }
+
+    /**
+     * Returns this token standing at another position, replacing the same parameters.
+     *
+     * @param newSource The position the token stands at.
+     * @return A token equal to this one but for its position.
+     */
+    public Token with(SourceInfo newSource) {
+        return new Token(type, text, value, newSource, replaces);
     }
 }

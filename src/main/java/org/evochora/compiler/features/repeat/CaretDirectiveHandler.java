@@ -37,7 +37,7 @@ public class CaretDirectiveHandler implements IPreProcessorHandler {
         if (count < 0) {
             preProcessor.getDiagnostics().reportError(
                     "Repeat count must be non-negative, got: " + count,
-                    countToken.fileName(), countToken.line());
+                    countToken.source().fileName(), countToken.source().lineNumber());
             return;
         }
 
@@ -83,7 +83,6 @@ public class CaretDirectiveHandler implements IPreProcessorHandler {
     }
 
     private static Token synthetic(TokenType type, String text, Token position) {
-        return new Token(type, text, null, position.line(), position.column(), position.fileName(),
-                position.placement());
+        return new Token(type, text, null, position.source());
     }
 }

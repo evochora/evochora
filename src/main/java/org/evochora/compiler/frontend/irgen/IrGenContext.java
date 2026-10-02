@@ -91,7 +91,7 @@ public final class IrGenContext {
 		if (node instanceof ISourceLocatable locatable) {
 			return locatable.sourceInfo();
 		}
-		return new SourceInfo("unknown", -1, -1, "");
+		return new SourceInfo("unknown", -1, -1, "", 0);
 	}
 
 	/**

@@ -3,6 +3,7 @@ package org.evochora.compiler.frontend.lexer;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.isa.IInstructionSet;
 import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
+import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 
@@ -113,7 +114,8 @@ public class Lexer {
             startColumn = column;
             scanToken();
         }
-        tokens.add(new Token(TokenType.END_OF_FILE, "", null, line, column, logicalFileName, placement));
+        tokens.add(new Token(TokenType.END_OF_FILE, "", null,
+                new SourceInfo(logicalFileName, line, column, placement, 0)));
         return tokens;
     }
 
@@ -367,7 +369,8 @@ public class Lexer {
     }
 
     private void addToken(TokenType type, Object literal, String text) {
-        tokens.add(new Token(type, text, literal, startLine, startColumn, logicalFileName, placement));
+        tokens.add(new Token(type, text, literal,
+                new SourceInfo(logicalFileName, startLine, startColumn, placement, 0)));
     }
 
     private boolean isAtEnd() {

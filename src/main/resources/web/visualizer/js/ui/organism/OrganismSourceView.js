@@ -10,6 +10,15 @@ import { SourceAnnotator } from '../../annotator/SourceAnnotator.js';
  * file first. Two placements of one file share its text but not its code or its annotations,
  * so the view selects an entry of that list, never a file alone.
  *
+ * An entry also carries what the preprocessor recorded about the file: the regions of lines a
+ * conditional left out (`leftOut`), each owned by its directive line, and notes at positions
+ * (`notes`), such as the state of a flag a condition names. Both are recorded per macro
+ * expansion: those of expansion 0 belong to the text outside any expansion and are always shown;
+ * those of expansion n only while the active position stands in expansion n, because every
+ * expansion of a macro shares the lines of its body but may have decided differently. A region is
+ * folded at its directive line, with the arrows of the machine code under a line; a note is shown
+ * as an annotation after the word at its position.
+ *
  * @class OrganismSourceView
  */
 export class OrganismSourceView {
@@ -23,6 +32,9 @@ export class OrganismSourceView {
         this.selectedIndex = null; // Index of the displayed entry in artifact.sources
         this.annotator = new SourceAnnotator();
         this.lastAnnotatedLine = null; // Track annotated line to restore it
+        this.activeExpansion = 0; // Macro expansion whose regions and notes the listing shows
+        this.unfoldedRegions = new Set(); // Keys of the regions the user unfolded, see foldKey()
+        this.lineNotes = new Map(); // Line number -> notes of the listing, see recordsFor()
 
         // Cache references to active DOM elements
         this.dom = {
@@ -47,6 +59,8 @@ export class OrganismSourceView {
 
         this.artifact = artifact;
         this.lastAnnotatedLine = null;
+        this.activeExpansion = 0;
+        this.unfoldedRegions.clear();
         
         // UX Logic: Default to the main file, the first entry, so view is not empty initially
         const sources = this.sourceEntries();
@@ -70,15 +84,23 @@ export class OrganismSourceView {
 
         const activeLocation = this.calculateActiveLocation(organismState, staticInfo);
 
-        // 1. Auto-switch entry if execution moved to a different file or placement. This comes
-        // first because the re-render replaces the whole source view, the status bar with it: a
-        // warning written before it would be thrown away again, which is why one only ever
-        // appeared when execution happened to stay in the entry already on display.
+        // 1. Auto-switch entry if execution moved to a different file or placement, and re-render
+        // the listing if execution entered or left a macro expansion the entry has regions or
+        // notes of. This comes first because the re-render replaces the whole source view, the
+        // status bar with it: a warning written before it would be thrown away again, which is
+        // why one only ever appeared when execution happened to stay in the entry already on display.
         const activeIndex = this.findSourceIndex(activeLocation);
-        if (activeIndex !== null && this.selectedIndex !== activeIndex) {
+        const entryChanged = activeIndex !== null && this.selectedIndex !== activeIndex;
+        if (entryChanged) {
             this.selectedIndex = activeIndex;
-            this.lastAnnotatedLine = null; // Reset on file switch
-            this.renderSourceStructure(); // Re-render needed because file content changed
+        }
+        const activeExpansion = activeLocation && !activeLocation.error ? (activeLocation.expansion || 0) : 0;
+        const expansionChanged = activeExpansion !== this.activeExpansion
+            && (this.hasRecordsOf(this.activeExpansion) || this.hasRecordsOf(activeExpansion));
+        this.activeExpansion = activeExpansion;
+        if (entryChanged || expansionChanged) {
+            this.lastAnnotatedLine = null; // Reset on re-render
+            this.renderSourceStructure(); // Re-render needed because the content changed
         }
 
         // 2. Handle Status Bar (Errors/Warnings including mutation detection)
@@ -143,10 +165,18 @@ export class OrganismSourceView {
 
         // 2. Build Code Lines
         const codeLines = selectedSource && Array.isArray(selectedSource.lines) ? selectedSource.lines : [];
+        const records = this.recordsFor(selectedSource, codeLines);
+        this.lineNotes = records.notes;
 
         const codeHtml = codeLines.map((line, index) => {
             const lineNumber = index + 1;
             // Note: We do NOT set 'active' class here initially. It's handled by updateExecutionState.
+            const ownsFold = records.folds.has(lineNumber);
+            const foldedBy = records.foldedBy.get(lineNumber);
+            const foldedClass = foldedBy !== undefined
+                ? `left-out-line${this.unfoldedRegions.has(this.foldKey(foldedBy)) ? '' : ' folded'}`
+                : '';
+            const foldedByAttribute = foldedBy !== undefined ? ` data-folded-by="${foldedBy}"` : '';
             
             // Check if this line should show collapsible machine instructions.
             // Filter out NOPs - they are padding for mutation robustness and clutter the display.
@@ -167,16 +197,22 @@ export class OrganismSourceView {
                 }
             }
 
-            const collapsibleClass = showCollapsible ? 'collapsible-source-line' : '';
+            // A directive line that owns a region folds it; such a line produces no code
+            showCollapsible = showCollapsible && !ownsFold;
+            const lineClass = ownsFold ? 'fold-source-line' : (showCollapsible ? 'collapsible-source-line' : '');
             // Always include collapse indicator column - either with symbol or empty placeholder
-            const collapseIndicator = showCollapsible
-                ? `<span class="collapse-indicator" data-source-line="${lineNumber}">▶</span>`
-                : '<span class="collapse-indicator-placeholder"></span>';
+            let collapseIndicator = '<span class="collapse-indicator-placeholder"></span>';
+            if (ownsFold) {
+                const arrow = this.unfoldedRegions.has(this.foldKey(lineNumber)) ? '▼' : '▶';
+                collapseIndicator = `<span class="collapse-indicator" data-fold-line="${lineNumber}">${arrow}</span>`;
+            } else if (showCollapsible) {
+                collapseIndicator = `<span class="collapse-indicator" data-source-line="${lineNumber}">▶</span>`;
+            }
 
-            let html = `<div class="source-line ${collapsibleClass}" data-line="${lineNumber}">
+            let html = `<div class="source-line ${lineClass} ${foldedClass}" data-line="${lineNumber}"${foldedByAttribute}>
                         <span class="line-number">${String(lineNumber).padStart(3, ' ')}</span>
                         ${collapseIndicator}
-                        <pre class="assembly-line">${line.replace(/</g, '&lt;')}</pre>
+                        <pre class="assembly-line">${this.renderLineHtml(lineNumber, line)}</pre>
                     </div>`;
 
             // Add machine instructions container if collapsible (uses filtered instructions without NOPs)
@@ -189,7 +225,7 @@ export class OrganismSourceView {
                                 <span class="machine-instruction-operands">${this.escapeHtml(operandsDisplay)}</span>
                             </div>`;
                 }).join('');
-                html += `<div class="machine-instructions-container collapsed" data-source-line="${lineNumber}" data-indicator-line="${lineNumber}">${machineInstructionsHtml}</div>`;
+                html += `<div class="machine-instructions-container collapsed ${foldedClass}" data-source-line="${lineNumber}" data-indicator-line="${lineNumber}"${foldedByAttribute}>${machineInstructionsHtml}</div>`;
             }
             
             return html;
@@ -218,8 +254,150 @@ export class OrganismSourceView {
         this.dom.codeContainer = el.querySelector('.assembly-code-view');
         this.dom.status = el.querySelector('#source-status-bar');
         
-        // Bind click handlers for collapsible source lines
+        // Bind click handlers for collapsible source lines and for the lines that own a fold
         this.bindCollapseHandlers();
+        this.bindFoldHandlers();
+    }
+
+    /**
+     * Binds click handlers to the directive lines that own a region left out, to fold and unfold
+     * the region. Unfolded, its lines are shown greyed; the choice is kept across re-renders.
+     * @private
+     */
+    bindFoldHandlers() {
+        if (!this.dom.codeContainer) return;
+
+        this.dom.codeContainer.querySelectorAll('.fold-source-line').forEach(line => {
+            line.addEventListener('click', () => {
+                const lineNumber = parseInt(line.getAttribute('data-line'), 10);
+                const key = this.foldKey(lineNumber);
+                const unfolded = !this.unfoldedRegions.has(key);
+                if (unfolded) {
+                    this.unfoldedRegions.add(key);
+                } else {
+                    this.unfoldedRegions.delete(key);
+                }
+                this.dom.codeContainer.querySelectorAll(`[data-folded-by="${lineNumber}"]`)
+                    .forEach(el => el.classList.toggle('folded', !unfolded));
+                const indicator = this.dom.codeContainer.querySelector(`.collapse-indicator[data-fold-line="${lineNumber}"]`);
+                if (indicator) {
+                    indicator.textContent = unfolded ? '▼' : '▶';
+                }
+            });
+        });
+    }
+
+    /**
+     * Collects the regions and notes of an entry that the listing shows: those of expansion 0 and
+     * those of the active expansion. Regions owned by one directive line are joined, so that the
+     * copies a repetition made of one block fold as one.
+     *
+     * @param {object|null} source - The entry on display.
+     * @param {string[]} lines - The lines of the entry.
+     * @returns {{folds: Map<number, {from: number, to: number}>, foldedBy: Map<number, number>,
+     *            notes: Map<number, Array<{end: number, text: string}>>}} The regions by their
+     *          directive line, the directive line owning each folded line, and the notes by line,
+     *          each with the index in the line after which it is shown.
+     * @private
+     */
+    recordsFor(source, lines) {
+        const folds = new Map();
+        const foldedBy = new Map();
+        const notes = new Map();
+        if (!source) return { folds, foldedBy, notes };
+
+        const shown = record => {
+            const expansion = record.expansion || 0;
+            return expansion === 0 || expansion === this.activeExpansion;
+        };
+
+        (Array.isArray(source.leftOut) ? source.leftOut : []).filter(shown).forEach(region => {
+            const fold = folds.get(region.directiveLine);
+            folds.set(region.directiveLine, fold
+                ? { from: Math.min(fold.from, region.from), to: Math.max(fold.to, region.to) }
+                : { from: region.from, to: region.to });
+        });
+        folds.forEach((fold, directiveLine) => {
+            for (let line = fold.from; line <= fold.to; line++) {
+                if (!foldedBy.has(line)) foldedBy.set(line, directiveLine);
+            }
+        });
+
+        (Array.isArray(source.notes) ? source.notes : []).filter(shown).forEach(note => {
+            const text = lines[note.line - 1];
+            if (text === undefined) return;
+            // A note is shown after the word that starts at its column, as an annotation of a
+            // register is shown after the register
+            let end = Math.max(0, note.column - 1);
+            while (end < text.length && /[A-Za-z0-9_]/.test(text[end])) end++;
+            const lineNotes = notes.get(note.line) || [];
+            if (!lineNotes.some(n => n.end === end && n.text === note.text)) {
+                lineNotes.push({ end, text: note.text });
+                notes.set(note.line, lineNotes);
+            }
+        });
+        return { folds, foldedBy, notes };
+    }
+
+    /**
+     * Reports whether the entry on display has a region or note of a macro expansion. Expansion 0
+     * is always shown, so it never counts.
+     *
+     * @param {number} expansion - The number of the expansion.
+     * @returns {boolean} True if a region or note of that expansion exists in the entry.
+     * @private
+     */
+    hasRecordsOf(expansion) {
+        if (!expansion || this.selectedIndex === null) return false;
+        const source = this.sourceEntries()[this.selectedIndex];
+        if (!source) return false;
+        const of = record => (record.expansion || 0) === expansion;
+        return (Array.isArray(source.leftOut) && source.leftOut.some(of))
+            || (Array.isArray(source.notes) && source.notes.some(of));
+    }
+
+    /**
+     * Builds the key under which the unfolding of a region is kept: the entry on display and the
+     * directive line.
+     *
+     * @param {number} directiveLine - The line that owns the region.
+     * @returns {string} The key.
+     * @private
+     */
+    foldKey(directiveLine) {
+        return `${this.selectedIndex}:${directiveLine}`;
+    }
+
+    /**
+     * Builds the HTML of a line: its text with the notes of the listing and the given runtime
+     * annotations as annotation spans after the tokens they belong to.
+     *
+     * @param {number} lineNumber - The 1-based line number.
+     * @param {string} text - The original text of the line.
+     * @param {Array<{relativeColumn: number, tokenText: string, annotationText: string}>} [annotations]
+     *        The runtime annotations, by the 0-based column of their token.
+     * @returns {string} The HTML.
+     * @private
+     */
+    renderLineHtml(lineNumber, text, annotations = []) {
+        const inserts = (this.lineNotes.get(lineNumber) || []).map(note => ({ start: note.end, end: note.end, text: note.text }));
+        annotations.forEach(ann => {
+            const start = ann.relativeColumn;
+            inserts.push({ start, end: start + ann.tokenText.length, text: ann.annotationText });
+        });
+        inserts.sort((a, b) => a.end - b.end);
+
+        let html = '';
+        let lastIndex = 0;
+        inserts.forEach(insert => {
+            // Validate bounds to prevent crashes
+            if (insert.start >= lastIndex && insert.end <= text.length) {
+                html += this.escapeHtml(text.substring(lastIndex, insert.end));
+                html += `<span class="annotation">${this.escapeHtml(insert.text)}</span>`;
+                lastIndex = insert.end;
+            }
+        });
+        return html + this.escapeHtml(text.substring(lastIndex));
     }
 
     /**
@@ -313,12 +491,13 @@ export class OrganismSourceView {
             prevActive.classList.remove('active-source-line');
             prevActive.removeAttribute('id'); // Remove marker ID
             
-            // Restore original text if we modified it with annotations
+            // Restore the line as the listing built it if we modified it with annotations
             if (this.lastAnnotatedLine) {
                 const originalLine = this.getOriginalLine(this.lastAnnotatedLine);
                 const preElement = prevActive.querySelector('.assembly-line');
                 if (preElement && originalLine !== null) {
-                     preElement.textContent = originalLine; // Restore text (removes spans)
+                     // Removes the runtime annotations, keeps the notes
+                     preElement.innerHTML = this.renderLineHtml(this.lastAnnotatedLine, originalLine);
                 }
                 this.lastAnnotatedLine = null;
             }
@@ -340,7 +519,8 @@ export class OrganismSourceView {
     /**
      * Applies runtime annotations to the currently active source line.
      * It fetches annotations from the `SourceAnnotator` and dynamically rebuilds
-     * the HTML of the line to include the annotation spans.
+     * the HTML of the line from its original text, with the notes of the listing and the
+     * annotation spans.
      *
      * @param {string} placement - The alias chain of the placement the line belongs to.
      * @param {string} fileName - The name of the file containing the line.
@@ -367,40 +547,14 @@ export class OrganismSourceView {
             lineNumber, labelNamespaceMask);
         if (!annotations || annotations.length === 0) {
             // Ensure clean state just in case
-            lineElement.textContent = originalLine;
+            lineElement.innerHTML = this.renderLineHtml(lineNumber, originalLine);
             return;
         }
 
-        // Apply annotations by rebuilding HTML
-        let resultHtml = "";
-        let lastIndex = 0;
-        
-        // Filter and sort annotations that have valid column info
+        // Annotations with valid column info; relativeColumn is the 0-based index in the line
         const validAnnotations = annotations.filter(ann => ann.relativeColumn !== undefined && ann.relativeColumn >= 0);
-        
-        // Annotations are already sorted by relativeColumn in SourceAnnotator
-        
-        validAnnotations.forEach(ann => {
-            // relativeColumn is 0-based index in the line
-            const tokenStart = ann.relativeColumn; 
-            const tokenEnd = tokenStart + ann.tokenText.length;
-            
-            // Validate bounds to prevent crashes
-            if (tokenStart >= lastIndex && tokenEnd <= originalLine.length) {
-                // Append text before token
-                resultHtml += this.escapeHtml(originalLine.substring(lastIndex, tokenEnd));
-                
-                // Append annotation
-                resultHtml += `<span class="annotation">${this.escapeHtml(ann.annotationText)}</span>`;
-                
-                lastIndex = tokenEnd;
-            }
-        });
-        
-        // Append remaining text
-        resultHtml += this.escapeHtml(originalLine.substring(lastIndex));
-        
-        lineElement.innerHTML = resultHtml;
+
+        lineElement.innerHTML = this.renderLineHtml(lineNumber, originalLine, validAnnotations);
         this.lastAnnotatedLine = lineNumber;
     }
 
@@ -543,8 +697,9 @@ export class OrganismSourceView {
      *
      * @param {object} organismState - The organism's dynamic state, containing the `ip`.
      * @param {object} staticInfo - The organism's static info, containing the `initialPosition`.
-     * @returns {{placement: string, fileName: string, lineNumber: number, linearAddress?: number}|{error: string}|null}
-     *          The location object, an error object, or null.
+     * @returns {{placement: string, fileName: string, lineNumber: number, expansion: number, linearAddress?: number}|{error: string}|null}
+     *          The location object, with the macro expansion the instruction was compiled in (0
+     *          outside any), an error object, or null.
      * @private
      */
     calculateActiveLocation(organismState, staticInfo) {
@@ -601,6 +756,7 @@ export class OrganismSourceView {
             placement: sourceInfo.placement || '',
             fileName: sourceInfo.fileName,
             lineNumber: sourceInfo.lineNumber,
+            expansion: sourceInfo.expansion || 0,
             linearAddress: linearAddress
         };
     }
@@ -655,8 +811,10 @@ export class OrganismSourceView {
     /**
      * Returns the artifact's source entries, one per file and module placement.
      *
-     * @returns {Array<{placement: string, path: string, resolvedPath: string, lines: string[]}>} The entries, or an
-     *          empty array without an artifact.
+     * @returns {Array<{placement: string, path: string, resolvedPath: string, lines: string[],
+     *          leftOut: Array<{expansion: number, directiveLine: number, from: number, to: number}>,
+     *          notes: Array<{expansion: number, line: number, column: number, text: string}>}>} The
+     *          entries, or an empty array without an artifact.
      * @private
      */
     sourceEntries() {

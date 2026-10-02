@@ -2,6 +2,7 @@ package org.evochora.compiler.frontend.preprocessor;
 
 import org.evochora.compiler.features.macro.MacroDefinition;
 import org.evochora.compiler.features.macro.MacroExpansionHandler;
+import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 import org.junit.jupiter.api.Tag;
@@ -85,11 +86,11 @@ class PreProcessorHandlerRegistryTest {
     }
 
     private static Token identifierAt(String text, int line) {
-        return new Token(TokenType.IDENTIFIER, text, null, line, 1, "test", "");
+        return new Token(TokenType.IDENTIFIER, text, null, new SourceInfo("test", line, 1, "", 0));
     }
 
     private static Token opcode(String text) {
-        return new Token(TokenType.OPCODE, text, null, 1, 1, "test", "");
+        return new Token(TokenType.OPCODE, text, null, new SourceInfo("test", 1, 1, "", 0));
     }
 
     @Test

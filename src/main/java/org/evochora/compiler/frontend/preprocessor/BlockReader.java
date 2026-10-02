@@ -82,7 +82,7 @@ public class BlockReader {
         BlockKind kind = registry.blockKindOf(opener.text())
                 .filter(k -> k.isOpener(opener.text()))
                 .orElseThrow(() -> new IllegalArgumentException(opener.text() + " opens no registered block"));
-        String file = opener.fileName();
+        String file = opener.source().fileName();
 
         Deque<Open> open = new ArrayDeque<>();
         open.push(new Open(kind, opener));
@@ -102,7 +102,7 @@ public class BlockReader {
             BlockKind wordKind = registry.blockKindOf(token.text()).orElse(null);
             if (wordKind != null) {
                 Open top = open.peek();
-                if (!Objects.equals(token.fileName(), file)) {
+                if (!Objects.equals(token.source().fileName(), file)) {
                     return fail(openerIndex, top.opener(),
                             top.opener().text() + " opened at " + where(top.opener())
                                     + " is not closed before the end of " + file);
@@ -210,10 +210,10 @@ public class BlockReader {
     }
 
     private void report(Token at, String message) {
-        preProcessor.getDiagnostics().reportError(message, at.fileName(), at.line());
+        preProcessor.getDiagnostics().reportError(message, at.source().fileName(), at.source().lineNumber());
     }
 
     private static String where(Token token) {
-        return token.fileName() + ":" + token.line();
+        return token.source().fileName() + ":" + token.source().lineNumber();
     }
 }

@@ -17,6 +17,12 @@ import java.util.Objects;
  * Expands a single macro invocation in the token stream. Each instance holds one
  * {@link MacroDefinition} and is dynamically registered by {@link MacroDirectiveHandler}
  * when a {@code .MACRO} definition is encountered during preprocessing.
+ * <p>
+ * Every expansion gets a number of its own from {@link PreProcessor#newExpansion()}, which the
+ * injected body tokens carry, so that the code of one expansion can be told from another's,
+ * although all of them stand on the lines of the body. An argument substituted for a parameter
+ * keeps its own position and adds the parameter's position in this expansion to the positions
+ * it replaces.
  */
 public class MacroExpansionHandler implements IPreProcessorHandler {
 
@@ -65,7 +71,7 @@ public class MacroExpansionHandler implements IPreProcessorHandler {
             preProcessor.getDiagnostics().reportError(
                     "Macro '" + macro.name().text() + "' expects " + macro.parameters().size()
                             + " arguments, but got " + actualArgs.size(),
-                    invocation.fileName(), invocation.line());
+                    invocation.source().fileName(), invocation.source().lineNumber());
             preProcessor.removeTokens(callSiteIndex, preProcessor.getCurrentIndex() - callSiteIndex);
             preProcessor.injectTokens(List.of(), 0);
             return;
@@ -81,7 +87,7 @@ public class MacroExpansionHandler implements IPreProcessorHandler {
                             "Macro '" + macro.name().text() + "' cannot take '" + token.text()
                                     + "' as an argument: a block directive or a directive that stands only"
                                     + " at the top level is never an argument.",
-                            invocation.fileName(), invocation.line());
+                            invocation.source().fileName(), invocation.source().lineNumber());
                     preProcessor.removeTokens(callSiteIndex, preProcessor.getCurrentIndex() - callSiteIndex);
                     return;
                 }
@@ -93,17 +99,33 @@ public class MacroExpansionHandler implements IPreProcessorHandler {
             argMap.put(macro.parameters().get(i).text().toUpperCase(), actualArgs.get(i));
         }
 
+        // The body tokens stand in this expansion. An argument keeps its own position, where it
+        // was written, and remembers the position of the parameter it replaces in this expansion.
+        int expansion = preProcessor.newExpansion();
         List<Token> expandedBody = new ArrayList<>();
         for (Token bodyToken : macro.body()) {
+            SourceInfo position = inExpansion(bodyToken.source(), expansion);
             List<Token> replacement = argMap.get(bodyToken.text().toUpperCase());
-            if (replacement != null) expandedBody.addAll(replacement);
-            else expandedBody.add(bodyToken);
+            if (replacement == null) {
+                expandedBody.add(bodyToken.with(position));
+                continue;
+            }
+            for (Token argument : replacement) {
+                List<SourceInfo> replaces = new ArrayList<>(argument.replaces());
+                replaces.add(position);
+                expandedBody.add(new Token(argument.type(), argument.text(), argument.value(), argument.source(),
+                        replaces));
+            }
         }
 
         int removed = 1;
         for (List<Token> g : actualArgs) removed += g.size();
         preProcessor.removeTokens(callSiteIndex, removed);
         preProcessor.injectTokens(expandedBody, 0);
+    }
+
+    private static SourceInfo inExpansion(SourceInfo at, int expansion) {
+        return new SourceInfo(at.fileName(), at.lineNumber(), at.columnNumber(), at.placement(), expansion);
     }
 
     /**
@@ -113,7 +135,7 @@ public class MacroExpansionHandler implements IPreProcessorHandler {
      * @return the source location of the definition
      */
     public SourceInfo definedAt() {
-        return macro.name().toSourceInfo();
+        return macro.name().source();
     }
 
     /**
