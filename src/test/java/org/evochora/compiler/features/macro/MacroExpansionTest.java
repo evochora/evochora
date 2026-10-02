@@ -1,11 +1,17 @@
 package org.evochora.compiler.features.macro;
 
+import org.evochora.compiler.TestRegistries;
 import org.evochora.compiler.TestLexers;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import org.evochora.compiler.api.SourceRoot;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
+import org.evochora.compiler.features.ctx.PopCtxPreProcessorHandler;
+import org.evochora.compiler.features.repeat.RepeatDirectiveHandler;
+import org.evochora.compiler.features.source.SourceDirectiveHandler;
 import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
 import org.evochora.compiler.frontend.preprocessor.PreProcessorContext;
@@ -142,6 +148,93 @@ class MacroExpansionTest {
         assertThat(result.texts()).isEmpty();
     }
 
+    @Test
+    void aBlockWordAsArgumentIsRejectedAtTheInvocation() {
+        Expansion result = expand(
+                ".MACRO WRAP X",
+                "  NOP",
+                ".ENDMACRO",
+                "WRAP .ENDMACRO",
+                "JMPI END");
+
+        assertThat(result.diagnostics.summary())
+                .contains("<memory>:4: Macro 'WRAP' cannot take '.ENDMACRO' as an argument");
+        assertThat(result.texts()).containsExactly("JMPI", "END");
+    }
+
+    @Test
+    void aTopLevelOnlyDirectiveAsArgumentIsRejectedAtTheInvocation() {
+        Expansion result = expand(
+                ".MACRO WRAP X",
+                "  X \"lib.evo\"",
+                ".ENDMACRO",
+                "WRAP .SOURCE");
+
+        assertThat(result.diagnostics.summary())
+                .contains("<memory>:4: Macro 'WRAP' cannot take '.SOURCE' as an argument");
+    }
+
+    @Test
+    void aStrayEndmacroIsReportedAndRemoved() {
+        Expansion result = expand(
+                "NOP",
+                ".ENDMACRO",
+                "JMPI END");
+
+        assertThat(result.diagnostics.summary()).contains("<memory>:2: .ENDMACRO closes no open block");
+        assertThat(result.texts()).containsExactly("NOP", "JMPI", "END");
+    }
+
+    @Test
+    void aNestedMacroDefinitionIsClosedByItsOwnEnd() {
+        Expansion result = expand(
+                ".MACRO OUTER",
+                "  .MACRO INNER",
+                "    NOP",
+                "  .ENDMACRO",
+                "  INNER",
+                ".ENDMACRO",
+                "OUTER");
+
+        assertThat(result.diagnostics.hasErrors()).isFalse();
+        assertThat(result.texts()).containsExactly("NOP");
+    }
+
+    @Test
+    void aMacroNotClosedInASourcedFileIsReportedThereAndTheIncluderSurvives() {
+        Expansion result = expandWithLibrary(
+                List.of(
+                        "NOP",
+                        ".MACRO BROKEN",
+                        "  NOP"),
+                ".SOURCE \"lib.evo\"",
+                ".REPEAT 2",
+                "  JMPI END",
+                ".ENDREPEAT");
+
+        assertThat(result.diagnostics.summary())
+                .contains(LIBRARY + ":2: .MACRO opened at " + LIBRARY + ":2 is not closed before the end of " + LIBRARY);
+        assertThat(result.texts()).containsSubsequence(".POP_CTX", "JMPI", "END", "JMPI", "END");
+    }
+
+    @Test
+    void aMacroFromASourcedFileExpandsWithAnArgumentInsideABlock() {
+        Expansion result = expandWithLibrary(
+                List.of(
+                        ".MACRO TWICE REG",
+                        "  .REPEAT 2",
+                        "    ADDI REG DATA:1",
+                        "  .ENDREPEAT",
+                        ".ENDMACRO"),
+                ".SOURCE \"lib.evo\"",
+                "TWICE %DR0");
+
+        assertThat(result.diagnostics.hasErrors()).isFalse();
+        assertThat(result.texts()).containsSubsequence(
+                "ADDI", "%DR0", "DATA", ":", "1",
+                "ADDI", "%DR0", "DATA", ":", "1");
+    }
+
     private record Expansion(List<Token> tokens, DiagnosticsEngine diagnostics) {
         /** The texts of the expanded tokens, without newlines and the end marker. */
         List<String> texts() {
@@ -152,12 +245,39 @@ class MacroExpansionTest {
         }
     }
 
+    private static final String MAIN = "/proj/main.evo";
+    private static final String LIBRARY = "/proj/lib.evo";
+
+    /**
+     * Expands a main file that may include {@code lib.evo} with {@code .SOURCE}, with the handlers
+     * an inclusion needs.
+     */
+    private static Expansion expandWithLibrary(List<String> library, String... lines) {
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        List<Token> libraryTokens = new ArrayList<>(new Lexer(String.join("\n", library) + "\n",
+                diagnostics, LIBRARY, TestLexers.symbols()).scanTokens());
+        Lexer.stripEofToken(libraryTokens);
+        List<Token> tokens = new Lexer(String.join("\n", lines) + "\n", diagnostics, MAIN, TestLexers.symbols())
+                .scanTokens();
+        PreProcessorContext context = new PreProcessorContext("", Map.of(LIBRARY, libraryTokens));
+        TestRegistries.registerPreProcessorBlocks(context.handlers());
+        context.handlers().register(".MACRO", new MacroDirectiveHandler());
+        context.handlers().register(".REPEAT", new RepeatDirectiveHandler());
+        context.handlers().register(".SOURCE", new SourceDirectiveHandler());
+        context.handlers().register(".POP_CTX", new PopCtxPreProcessorHandler());
+        PreProcessor preProcessor = new PreProcessor(tokens, diagnostics,
+                new SourceRootResolver(List.of(new SourceRoot(".", null)), Path.of("/proj")),
+                context);
+        return new Expansion(preProcessor.expand().tokens(), diagnostics);
+    }
+
     private static Expansion expand(String... lines) {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(String.join("\n", lines) + "\n", diagnostics, TestLexers.symbols());
         List<Token> tokens = lexer.scanTokens();
         PreProcessorContext context = new PreProcessorContext();
         context.handlers().register(".MACRO", new MacroDirectiveHandler());
+        TestRegistries.registerPreProcessorBlocks(context.handlers());
         PreProcessor preProcessor = new PreProcessor(tokens, diagnostics,
                 new SourceRootResolver(List.of(new SourceRoot(".", null)), Path.of("")),
                 context);

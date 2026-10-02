@@ -3,8 +3,11 @@ package org.evochora.compiler.frontend.preprocessor;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * Registry of the preprocessing handlers, keyed by the token text that triggers them: a
@@ -17,11 +20,18 @@ import java.util.Optional;
  * handler belongs to the module being processed. The registry keeps one scope per open
  * module; a lookup sees the innermost module's definitions and the shared handlers, never
  * the definitions of an enclosing or an enclosed module. Names are compared case-insensitively.
+ * <p>
+ * Besides the handlers it holds two properties of words that features register and the
+ * {@link BlockReader} reads: the {@link BlockKind kinds of block} with their openers, closers and
+ * dividers, and the directives that may stand only at the top level, never in a stored body.
+ * Neither changes during the phase.
  */
 public class PreProcessorHandlerRegistry {
 
     private final Map<String, IPreProcessorHandler> shared = new HashMap<>();
     private final Deque<Map<String, IPreProcessorHandler>> moduleScopes = new ArrayDeque<>();
+    private final Map<String, BlockKind> blockWords = new HashMap<>();
+    private final Set<String> topLevelOnly = new HashSet<>();
 
     /**
      * Creates a registry with no handlers, positioned in the root module.
@@ -102,5 +112,64 @@ public class PreProcessorHandlerRegistry {
         String key = name.toUpperCase();
         IPreProcessorHandler local = moduleScopes.peek().get(key);
         return Optional.ofNullable(local != null ? local : shared.get(key));
+    }
+
+    /**
+     * Registers a kind of block. Registering an equal kind again is ignored.
+     *
+     * @param kind The openers, closer and dividers of the block, and whether its body is stored.
+     * @throws IllegalStateException if one of its words already belongs to a different kind.
+     */
+    public void registerBlock(BlockKind kind) {
+        for (String word : kind.words()) {
+            BlockKind existing = blockWords.get(word);
+            if (existing != null && !existing.equals(kind)) {
+                throw new IllegalStateException(
+                        "Block word '" + word + "' already belongs to the block closed by " + existing.closer());
+            }
+        }
+        for (String word : kind.words()) {
+            blockWords.put(word, kind);
+        }
+    }
+
+    /**
+     * Registers a directive that may stand only at the top level: never inside a stored body,
+     * nor as a macro argument.
+     *
+     * @param directive The directive name, e.g. {@code .SOURCE}.
+     */
+    public void registerTopLevelOnly(String directive) {
+        topLevelOnly.add(directive.toUpperCase(Locale.ROOT));
+    }
+
+    /**
+     * Returns the kind of block a word opens, closes or divides.
+     *
+     * @param text The token text.
+     * @return The kind, or empty if the text is no block word.
+     */
+    public Optional<BlockKind> blockKindOf(String text) {
+        return Optional.ofNullable(blockWords.get(text.toUpperCase(Locale.ROOT)));
+    }
+
+    /**
+     * Reports whether a text opens, closes or divides a registered kind of block.
+     *
+     * @param text The token text.
+     * @return {@code true} for a block word.
+     */
+    public boolean isBlockWord(String text) {
+        return blockWords.containsKey(text.toUpperCase(Locale.ROOT));
+    }
+
+    /**
+     * Reports whether a text is a directive registered as top level only.
+     *
+     * @param text The token text.
+     * @return {@code true} if the directive may not stand in a stored body.
+     */
+    public boolean isTopLevelOnly(String text) {
+        return topLevelOnly.contains(text.toUpperCase(Locale.ROOT));
     }
 }

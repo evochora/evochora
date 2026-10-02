@@ -47,7 +47,7 @@
       "START:",
       "  SETI %COUNT DATA:0",
       "  BUMP %COUNT LIMIT",
-      "  .REPEAT 3 NOP",
+      "  NOP^3",
       "  .REPEAT 2",
       "    ADDI %VALUE DATA:1",
       "    NOP",
@@ -1334,17 +1334,17 @@
     "78": {
       "fileName": "REFERENCE_ROOT/main.evo",
       "lineNumber": 42,
-      "columnNumber": 13
+      "columnNumber": 3
     },
     "79": {
       "fileName": "REFERENCE_ROOT/main.evo",
       "lineNumber": 42,
-      "columnNumber": 13
+      "columnNumber": 3
     },
     "80": {
       "fileName": "REFERENCE_ROOT/main.evo",
       "lineNumber": 42,
-      "columnNumber": 13
+      "columnNumber": 3
     },
     "81": {
       "fileName": "REFERENCE_ROOT/main.evo",
@@ -2850,11 +2850,6 @@
       "tokenType": "INSTRUCTION",
       "scope": "UTIL.CLAMP"
     },
-    "REFERENCE_ROOT/main.evo:42:13": {
-      "tokenText": "NOP",
-      "tokenType": "INSTRUCTION",
-      "scope": "global"
-    },
     "REFERENCE_ROOT/main.evo:67:3": {
       "tokenText": "IFI",
       "tokenType": "INSTRUCTION",
@@ -2893,6 +2888,11 @@
       "tokenText": "X",
       "tokenType": "PARAMETER",
       "scope": "NAV.STEP.FORWARD"
+    },
+    "REFERENCE_ROOT/main.evo:42:3": {
+      "tokenText": "NOP",
+      "tokenType": "INSTRUCTION",
+      "scope": "global"
     },
     "REFERENCE_ROOT/lib/util.evo:7:34": {
       "tokenText": "MIN",
@@ -3394,7 +3394,7 @@
         ]
       },
       "42": {
-        "13": [
+        "3": [
           {
             "tokenText": "NOP",
             "tokenType": "INSTRUCTION",

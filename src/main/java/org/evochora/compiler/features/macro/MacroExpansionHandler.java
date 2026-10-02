@@ -71,6 +71,23 @@ public class MacroExpansionHandler implements IPreProcessorHandler {
             return;
         }
 
+        // An argument is substituted into a body that was checked when it was read; a block word
+        // or a top-level-only directive arriving through it would escape that check.
+        for (List<Token> arg : actualArgs) {
+            for (Token token : arg) {
+                if (preProcessorContext.handlers().isBlockWord(token.text())
+                        || preProcessorContext.handlers().isTopLevelOnly(token.text())) {
+                    preProcessor.getDiagnostics().reportError(
+                            "Macro '" + macro.name().text() + "' cannot take '" + token.text()
+                                    + "' as an argument: a block directive or a directive that stands only"
+                                    + " at the top level is never an argument.",
+                            invocation.fileName(), invocation.line());
+                    preProcessor.removeTokens(callSiteIndex, preProcessor.getCurrentIndex() - callSiteIndex);
+                    return;
+                }
+            }
+        }
+
         Map<String, List<Token>> argMap = new HashMap<>();
         for (int i = 0; i < macro.parameters().size(); i++) {
             argMap.put(macro.parameters().get(i).text().toUpperCase(), actualArgs.get(i));

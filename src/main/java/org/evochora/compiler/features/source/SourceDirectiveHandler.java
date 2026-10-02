@@ -1,5 +1,6 @@
 package org.evochora.compiler.features.source;
 
+import org.evochora.compiler.diagnostics.ErrorRecoveryException;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.frontend.module.PlacementContext;
@@ -17,6 +18,8 @@ import java.util.List;
  *
  * <p>{@code .SOURCE} is textual inclusion — no module identity, no alias,
  * no scope. The parent module context is preserved.</p>
+ *
+ * <p>The directive stands alone on its line: a token after the path is an error.</p>
  */
 public class SourceDirectiveHandler implements IPreProcessorHandler {
 
@@ -26,6 +29,12 @@ public class SourceDirectiveHandler implements IPreProcessorHandler {
 
         preProcessor.advance(); // consume .SOURCE
         Token pathToken = preProcessor.consume(TokenType.STRING, "Expected a file path in quotes after .SOURCE.");
+        if (!preProcessor.isAtEnd() && !preProcessor.check(TokenType.NEWLINE)) {
+            Token extra = preProcessor.peek();
+            String message = ".SOURCE must stand alone on its line; found '" + extra.text() + "' after the path.";
+            preProcessor.getDiagnostics().reportError(message, extra.fileName(), extra.line());
+            throw new ErrorRecoveryException(message);
+        }
 
         int endIndex = preProcessor.getCurrentIndex();
         String pathValue = (String) pathToken.value();

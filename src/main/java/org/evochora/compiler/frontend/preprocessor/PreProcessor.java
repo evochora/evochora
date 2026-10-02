@@ -19,6 +19,7 @@ public class PreProcessor {
     private final SourceRootResolver resolver;
     private int current = 0;
     private final PreProcessorContext ppContext;
+    private final BlockReader blockReader;
 
     /**
      * Constructs a new PreProcessor.
@@ -35,13 +36,16 @@ public class PreProcessor {
         this.diagnostics = diagnostics;
         this.resolver = resolver;
         this.ppContext = ppContext;
+        this.blockReader = new BlockReader(this, ppContext.handlers());
     }
 
     /**
      * Runs the preprocessor on the token stream. Every token is looked up in the context's
      * handler registry; a token with a handler is handed to it, which rewrites the stream at
      * the current position, and the walk continues from there. A token without one is left as
-     * it is.
+     * it is, unless it closes or divides a registered block: the handler of a block consumes its
+     * closer and dividers, so one the walk reaches stands outside any block and is reported and
+     * removed by the {@link BlockReader}.
      * @return The preprocessing result containing the expanded tokens.
      */
     public PreProcessorResult expand() {
@@ -53,7 +57,7 @@ public class PreProcessor {
                 } catch (ErrorRecoveryException ex) {
                     synchronize();
                 }
-            } else {
+            } else if (!blockReader.rejectStray(current)) {
                 current++;
             }
         }
@@ -171,6 +175,29 @@ public class PreProcessor {
         }
         tokens.addAll(startIndex, newTokens);
         this.current = startIndex;
+    }
+
+    /**
+     * Reads the block whose opener stands at the given index, by the rules of
+     * {@link BlockReader#read(int)}: the body begins after the opener's line, blocks of every
+     * registered kind nest inside it, and nothing is removed from the stream on success.
+     *
+     * @param openerIndex The stream index of the token that opens the block.
+     * @return The body, the dividers at the block's own level and the index after its closer.
+     * @throws ErrorRecoveryException if the block breaks a block rule; the error has been reported.
+     */
+    public BlockReader.Block readBlock(int openerIndex) {
+        return blockReader.read(openerIndex);
+    }
+
+    /**
+     * Sets the position of the walk, for the {@link BlockReader} to put it back on the opener
+     * of a block it cannot read.
+     *
+     * @param index The stream index to continue at.
+     */
+    void seek(int index) {
+        this.current = index;
     }
 
     /**

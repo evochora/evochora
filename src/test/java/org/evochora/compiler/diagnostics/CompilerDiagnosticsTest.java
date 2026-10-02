@@ -149,7 +149,61 @@ class CompilerDiagnosticsTest {
     }
 
     @Test
-    void importPathFromAMacroParameterIsRejectedAtTheInvocation() throws Exception {
+    void aSourceWithATokenAfterItsPathIsRejectedByTheLineRule() throws Exception {
+        write("x.evo",
+                "  NOP");
+        write("main.evo",
+                "START:",
+                ".SOURCE \"x.evo\"^2",
+                "  NOP");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining(".SOURCE must stand alone on its line; found '^' after the path.")
+                .hasMessageContaining("main.evo:2")
+                .hasMessageNotContaining("must be a literal");
+    }
+
+    @Test
+    void anImportWithATokenAfterItsClausesIsRejectedByTheLineRule() throws Exception {
+        write("lib.evo",
+                "  NOP");
+        write("main.evo",
+                "START:",
+                ".IMPORT \"lib.evo\" AS LIB^2",
+                "  NOP");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining(".IMPORT must stand alone on its line; found '^' after the alias and its USING clauses.")
+                .hasMessageContaining("main.evo:2")
+                .hasMessageNotContaining("must be a literal")
+                .hasMessageNotContaining("Unexpected token");
+    }
+
+    @Test
+    void aRequireWithATokenAfterItsAliasIsRejectedByTheLineRule() throws Exception {
+        write("dep.evo",
+                "D:",
+                "  NOP");
+        write("lib.evo",
+                ".REQUIRE \"dep.evo\" AS DEP EXTRA",
+                "L:",
+                "  NOP");
+        write("main.evo",
+                ".IMPORT \"dep.evo\" AS DEP",
+                ".IMPORT \"lib.evo\" AS LIB USING DEP AS DEP",
+                "START:",
+                "  NOP");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining(".REQUIRE must stand alone on its line; found 'EXTRA' after the alias.")
+                .hasMessageContaining("lib.evo:1");
+    }
+
+    @Test
+    void importInsideAMacroBodyIsRejectedAtTheDefinition() throws Exception {
         write("lib.evo",
                 "  NOP");
         write("main.evo",
@@ -162,8 +216,8 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining(".IMPORT path must be a literal, not a macro parameter")
-                .hasMessageContaining("main.evo:4");
+                .hasMessageContaining(".IMPORT may not stand inside a .MACRO body; the body opened at ")
+                .hasMessageContaining("main.evo:2");
     }
 
     @Test
@@ -922,7 +976,8 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining(".REPEAT is not closed; expected .ENDREPEAT.")
+                .hasMessageContaining(".REPEAT opened at ")
+                .hasMessageContaining(" is not closed before the end of the input")
                 .hasMessageContaining("main.evo:3");
     }
 

@@ -10,6 +10,7 @@ import org.evochora.compiler.frontend.module.IDependencyInfo;
 import org.evochora.compiler.frontend.module.IDependencyScanHandler;
 import org.evochora.compiler.frontend.parser.IParserStatementHandler;
 import org.evochora.compiler.frontend.postprocess.IPostProcessHandler;
+import org.evochora.compiler.frontend.preprocessor.BlockKind;
 import org.evochora.compiler.frontend.preprocessor.IPreProcessorHandler;
 import org.evochora.compiler.frontend.semantics.IDependencySetupHandler;
 import org.evochora.compiler.frontend.semantics.IAnalysisHandler;
@@ -69,6 +70,11 @@ public class FeatureRegistry implements IFeatureRegistrationContext {
 	private final List<ILinkingRule> linkingRules = new ArrayList<>();
 	private final List<IEmissionContributor> emissionContributors = new ArrayList<>();
 
+	// A block kind is checked for conflicting words when the compiler fills the preprocessor's
+	// registry; a top-level-only directive registered twice is one directive.
+	private final List<BlockKind> preprocessorBlocks = new ArrayList<>();
+	private final Set<String> preprocessorTopLevelOnly = new LinkedHashSet<>();
+
 	// A symbol registered by two features is one symbol, so repeated registration is no conflict.
 	private final Set<String> lexerSymbols = new LinkedHashSet<>();
 
@@ -124,6 +130,16 @@ public class FeatureRegistry implements IFeatureRegistrationContext {
 		String key = name.toUpperCase();
 		guardDuplicate(preprocessorHandlers, key, "preprocessor handler");
 		preprocessorHandlers.put(key, handler);
+	}
+
+	@Override
+	public void preprocessorBlock(BlockKind kind) {
+		preprocessorBlocks.add(kind);
+	}
+
+	@Override
+	public void preprocessorTopLevelOnly(String directive) {
+		preprocessorTopLevelOnly.add(directive.toUpperCase());
 	}
 
 	@Override
@@ -252,6 +268,25 @@ public class FeatureRegistry implements IFeatureRegistrationContext {
 	 */
 	public Map<String, IPreProcessorHandler> preprocessorHandlers() {
 		return Collections.unmodifiableMap(preprocessorHandlers);
+	}
+
+	/**
+	 * Returns the Phase 2 block kinds in registration order. Whether two kinds claim the same word
+	 * is checked when they are registered into the preprocessor's registry.
+	 *
+	 * @return An unmodifiable view of the live list.
+	 */
+	public List<BlockKind> preprocessorBlocks() {
+		return Collections.unmodifiableList(preprocessorBlocks);
+	}
+
+	/**
+	 * Returns the Phase 2 directives that may stand only at the top level, upper-cased.
+	 *
+	 * @return An unmodifiable view of the live set.
+	 */
+	public Set<String> preprocessorTopLevelOnly() {
+		return Collections.unmodifiableSet(preprocessorTopLevelOnly);
 	}
 
 	/**

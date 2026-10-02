@@ -2,6 +2,7 @@ package org.evochora.compiler.features.macro;
 
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
+import org.evochora.compiler.frontend.preprocessor.BlockReader;
 import org.evochora.compiler.frontend.preprocessor.IPreProcessorHandler;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
 import org.evochora.compiler.frontend.preprocessor.PreProcessorContext;
@@ -12,7 +13,8 @@ import java.util.Optional;
 
 /**
  * Handles the <code>.MACRO</code> and <code>.ENDMACRO</code> directives.
- * Parses a macro definition, creates a {@link MacroExpansionHandler} for it, and
+ * Parses a macro definition, reads its body as a block through
+ * {@link PreProcessor#readBlock(int)}, creates a {@link MacroExpansionHandler} for it, and
  * dynamically registers that handler in the {@link PreProcessorContext} under the
  * macro's name. The entire definition block is then removed from the token stream.
  */
@@ -37,14 +39,8 @@ public class MacroDirectiveHandler implements IPreProcessorHandler {
         }
         preProcessor.consume(TokenType.NEWLINE, "Expected newline after macro definition.");
 
-        List<Token> body = new ArrayList<>();
-        while (!preProcessor.isAtEnd() && !(preProcessor.peek().type() == TokenType.DIRECTIVE && preProcessor.peek().text().equalsIgnoreCase(".ENDMACRO"))) {
-            body.add(preProcessor.advance());
-        }
-        preProcessor.consume(TokenType.DIRECTIVE, "Expected .ENDMACRO to close macro definition.");
-        preProcessor.match(TokenType.NEWLINE);
-
-        MacroExpansionHandler expansion = new MacroExpansionHandler(new MacroDefinition(name, params, body));
+        BlockReader.Block block = preProcessor.readBlock(startIndex);
+        MacroExpansionHandler expansion = new MacroExpansionHandler(new MacroDefinition(name, params, block.body()));
 
         // A macro name is defined once per module. The same definition may arrive again, when
         // the file holding it is included a second time; any other definition of the name in
@@ -61,8 +57,11 @@ public class MacroDirectiveHandler implements IPreProcessorHandler {
             preProcessorContext.handlers().defineInModule(name.text(), expansion);
         }
 
-        int endIndex = preProcessor.getCurrentIndex();
-        // Remove the entire .MACRO...ENDMACRO block
+        // The definition leaves nothing behind: the block goes, and the newline after .ENDMACRO with it.
+        int endIndex = block.end();
+        if (endIndex < preProcessor.streamSize() && preProcessor.getToken(endIndex).type() == TokenType.NEWLINE) {
+            endIndex++;
+        }
         preProcessor.removeTokens(startIndex, endIndex - startIndex);
     }
 }

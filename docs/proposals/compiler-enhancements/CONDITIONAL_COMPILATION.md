@@ -194,7 +194,9 @@ opening directive to its end and keeps a stack of every registered block kind on
 instead of scanning for their own end, so a missing `.ENDMACRO` is reported at the `.MACRO`
 like a missing `.ENDREPEAT` is reported at the `.REPEAT` today, and a `.MACRO` in a `.SOURCE`d
 file cannot run past the inclusion any more. `MacroExpansionHandler` rejects an argument that is
-a block word or a top-level-only directive, asked of the registry by text, so that no argument
+a block word or a top-level-only directive, asked of the registry by text through
+`isBlockWord` and `isTopLevelOnly`, queries of `PreProcessorHandlerRegistry` that handlers reach
+through `handlers()`, so that no argument
 can close a block from the call site or smuggle a `.DEFINE` into a body. The runtime blocks of
 proposal 2, `.IF` / `.ENDIF`, `.PROC` / `.ENDPROC`, are parser blocks and unknown to the
 preprocessor; a macro that opens one and a second macro that closes it, the C idiom for braces,
@@ -231,11 +233,12 @@ runs, and once a branch is taken the rest are not evaluated. Reading the block b
 means a malformed head, a `.IFDEF` without a name, removes its whole block and reports once,
 instead of letting the body through and reporting every divider as stray.
 
-The handler keeps no state between blocks. `PreProcessor.expand()` is not changed: there is no
-suppression mode in the core, only a handler that consumes what belongs to it.
+The handler keeps no state between blocks. There is no suppression mode in the core, only a
+handler that consumes what belongs to it; the one thing `PreProcessor.expand()` does for blocks
+is the generic report of a stray closer or divider.
 
-The dividers and `.ENDDEF` are registered as handlers too, so that one met outside a block
-reports the error at its line instead of reaching the parser as an unknown directive.
+A divider or `.ENDDEF` met outside a block is reported by the preprocessor itself, as every
+stray closer or divider of a registered block is.
 
 **Macros.** A macro body is stored as tokens and injected at expansion, and the walk continues
 at the injected tokens. An `.IFDEF` in a macro body is therefore evaluated at each expansion,
@@ -425,9 +428,9 @@ change is a capability any feature can use; the core learns no directive and no 
    `BlockReader` next to the phase, and the block registrations in `PreProcessorHandlerRegistry`.
    Registration goes through `IFeatureRegistrationContext`, `preprocessorBlock(opener, closer,
    dividers, stored)` and `preprocessorTopLevelOnly(name)`; `require` registers its directive as
-   top level only without having a preprocessor handler. `PreProcessorContext` answers
-   `isBlockWord(text)` and `isTopLevelOnly(text)` from the registry, which is what the macro
-   feature asks of an argument. AGENTS.md's list of registries names the block registrations as
+   top level only without having a preprocessor handler. `PreProcessorHandlerRegistry` answers
+   `isBlockWord(text)` and `isTopLevelOnly(text)`, which handlers reach through `handlers()` and
+   which is what the macro feature asks of an argument. AGENTS.md's list of registries names the block registrations as
    part of the preprocessor's.
 
 3. **A typed state slot on the Phase 0 and Phase 2 contexts.** `ParserState` offers
@@ -619,12 +622,17 @@ for rejected registrations of `-`, `.`, `AS`, `.E` and `#-`, for the message nam
 - `BlockReader` in `frontend/preprocessor`, handed out by `PreProcessor`; the block pairs,
   dividers, stored/in-place distinction and *top level only* names in
   `PreProcessorHandlerRegistry`; `IFeatureRegistrationContext.preprocessorBlock(...)` and
-  `preprocessorTopLevelOnly(...)`; `PreProcessorContext.isBlockWord` and `isTopLevelOnly`.
+  `preprocessorTopLevelOnly(...)`; `isBlockWord` and `isTopLevelOnly` on
+  `PreProcessorHandlerRegistry`, reached through `handlers()`; `PreProcessor.expand()` reports a
+  closer or divider the walk reaches as standing outside any block (`.ENDMACRO closes no open
+  block`) and removes it.
 - `MacroDirectiveHandler` and `RepeatDirectiveHandler` read their bodies through the
   `BlockReader`; `RepeatDirectiveHandler` loses the inline mode and `CaretDirectiveHandler`
   rewrites `X^n` to the block form; `MacroExpansionHandler` rejects block words and
   top-level-only directives as arguments; `importdir`, `require` and `source` register their
-  directives as top level only.
+  directives as top level only, and `.IMPORT`, `.REQUIRE` and `.SOURCE` stand alone on their
+  line (`.SOURCE must stand alone on its line`), checked by `SourceDirectiveHandler`,
+  `ImportSourceHandler` and `RequireDirectiveHandler`.
 - The reference program's `.REPEAT 3 NOP` becomes `NOP^3`; `RepeatDirectiveTest` and
   `docs/ASSEMBLY_SPEC.md` lose the inline form; the reference artifact is regenerated.
 - `PreProcessorContext.getOrCreate(Class<T>, Supplier<T>)` and `options()`.
@@ -659,8 +667,7 @@ following lines and `null` at the end, and a line taken by a handler is not disp
 - `Condition`: parsing and evaluation of `NAME [op operand]` from strings (Phase 0) and from
   tokens (Phase 2), one comparison function and one integer reader.
 - Phase 2: `DefineHandler` (`.DEFINE`), `UndefHandler` (`.UNDEF`), `ConditionalBlockHandler`
-  (`.IFDEF`, `.IFNDEF`), `StrayDirectiveHandler` (`.ELSEIFDEF`, `.ELSEIFNDEF`, `.ELSEDEF`,
-  `.ENDDEF` outside a block); the line rule checked on the token positions.
+  (`.IFDEF`, `.IFNDEF`); the line rule checked on the token positions.
 - Phase 0: `DefineScanHandler`, `UndefScanHandler`, `ConditionalScanHandler` with the block
   stack in the slot.
 - `ConditionalFeature` registers the handlers, the block pair with its dividers, the six

@@ -6,7 +6,8 @@ import org.evochora.compiler.IFeatureRegistrationContext;
 /**
  * Feature registration for the {@code .IMPORT} directive.
  *
- * <p>Registers handlers for preprocessing (module token inlining), parsing,
+ * <p>Registers {@code .IMPORT} as a directive that may stand only at the top level, and handlers
+ * for preprocessing (module token inlining), parsing,
  * symbol collection, semantic analysis (USING clause validation), and IR conversion.
  */
 public class ImportFeature implements ICompilerFeature {
@@ -19,6 +20,7 @@ public class ImportFeature implements ICompilerFeature {
     public void register(IFeatureRegistrationContext ctx) {
         ctx.dependencyScanHandler(new ImportDependencyScanHandler());
         ctx.dependencySetupHandler(ImportDependencyInfo.class, new ImportModuleSetupHandler());
+        ctx.preprocessorTopLevelOnly(".IMPORT");
         ctx.preprocessor(".IMPORT", new ImportSourceHandler());
         ctx.parserStatement(".IMPORT", new ImportDirectiveHandler());
         ctx.symbolCollector(ImportNode.class, new ImportSymbolCollector());

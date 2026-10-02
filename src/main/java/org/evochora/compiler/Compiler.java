@@ -182,6 +182,8 @@ public class Compiler implements ICompiler {
         // Phase 2: Preprocessing (includes, macros)
         PreProcessorContext ppContext = new PreProcessorContext(rootAliasChain, fileTokens);
         featureRegistry.preprocessorHandlers().forEach(ppContext.handlers()::register);
+        featureRegistry.preprocessorBlocks().forEach(ppContext.handlers()::registerBlock);
+        featureRegistry.preprocessorTopLevelOnly().forEach(ppContext.handlers()::registerTopLevelOnly);
         PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, resolver, ppContext);
         PreProcessorResult ppResult = preProcessor.expand();
 

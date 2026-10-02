@@ -1,5 +1,6 @@
 package org.evochora.compiler.directives;
 
+import org.evochora.compiler.TestRegistries;
 import org.evochora.compiler.TestLexers;
 import org.evochora.compiler.api.SourceRoot;
 import org.evochora.compiler.frontend.lexer.Lexer;
@@ -52,6 +53,7 @@ public class MacroDirectiveTest {
         List<Token> initialTokens = lexer.scanTokens();
         PreProcessorContext context = new PreProcessorContext();
         context.handlers().register(".MACRO", new MacroDirectiveHandler());
+        TestRegistries.registerPreProcessorBlocks(context.handlers());
         context.handlers().register(":", new org.evochora.compiler.features.label.ColonLabelHandler());
         PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics,
                 new SourceRootResolver(List.of(new SourceRoot(".", null)), Path.of("")),

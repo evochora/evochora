@@ -319,6 +319,7 @@ class ModuleSourceConstIntegrationTest {
         PreProcessorContext ppContext = new PreProcessorContext(rootAliasChain, fileTokens);
         ppContext.handlers().register(".SOURCE", new SourceDirectiveHandler());
         ppContext.handlers().register(".MACRO", new MacroDirectiveHandler());
+        TestRegistries.registerPreProcessorBlocks(ppContext.handlers());
         ppContext.handlers().register(".POP_CTX", new PopCtxPreProcessorHandler());
         ppContext.handlers().register(".IMPORT", new ImportSourceHandler());
         ppContext.handlers().register(":", new org.evochora.compiler.features.label.ColonLabelHandler());

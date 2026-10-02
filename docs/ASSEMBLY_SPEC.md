@@ -657,13 +657,7 @@ The `.REPEAT` directive and its shorthand `^n` syntax allow repeating instructio
 
 #### Directive Syntax
 
-* `.REPEAT <Count> <Body>`: Repeats the body (until the next newline or semicolon) the specified number of times.
-    ```
-    .REPEAT 5 NOP              # Expands to: NOP; NOP; NOP; NOP; NOP
-    .REPEAT 3 JMPI MAIN_LOOP   # Expands to: JMPI MAIN_LOOP; JMPI MAIN_LOOP; JMPI MAIN_LOOP
-    ```
-
-* `.REPEAT <Count>; <Body> .ENDREPEAT`: Block mode for repeating multiple statements. When a newline or semicolon immediately follows the count, the directive enters block mode and repeats everything until `.ENDREPEAT`.
+* `.REPEAT <Count>` … `.ENDREPEAT`: Repeats the statements between the two directives `<Count>` times.
     ```
     .REPEAT 2; JMPI LOOP; NOP; .ENDREPEAT
     # Expands to: JMPI LOOP; NOP; JMPI LOOP; NOP
@@ -684,7 +678,24 @@ The `.REPEAT` directive and its shorthand `^n` syntax allow repeating instructio
     JMPI START; NOP^10; JMPI END  # Mixed with other instructions
     ```
 
-Both syntaxes produce identical results—the shorthand is transformed into `.REPEAT` internally before expansion.
+Both syntaxes produce identical results—the shorthand is transformed into a `.REPEAT` block internally before expansion.
+
+### Blocks
+
+`.MACRO` … `.ENDMACRO` and `.REPEAT` … `.ENDREPEAT` are blocks. A block may contain other blocks, but two blocks never overlap: an end directive always closes the block that was opened last.
+
+```
+.MACRO PAD
+  .REPEAT 2
+    NOP
+  .ENDREPEAT        # closes the .REPEAT
+.ENDMACRO           # closes the .MACRO
+
+.MACRO WRONG
+  .REPEAT 2
+.ENDMACRO           # Error: the .REPEAT is still open
+  .ENDREPEAT
+```
 
 ### Modules and Procedures
 
@@ -693,6 +704,8 @@ The module system allows splitting programs across multiple files. Three directi
 * **`.IMPORT`** — imports a module: establishes a dependency and inlines the module's code; with the `EXPORT` prefix it also passes that import on to its own importers.
 * **`.REQUIRE`** — declares an unsatisfied dependency that must be provided by the importer via a `USING` clause.
 * **`.SOURCE`** — includes raw source text (macros, constants) without creating a module relationship.
+
+None of the three may stand inside a macro or a repeat block.
 
 #### `.IMPORT`
 

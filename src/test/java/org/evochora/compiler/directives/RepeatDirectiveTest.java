@@ -1,5 +1,6 @@
 package org.evochora.compiler.directives;
 
+import org.evochora.compiler.TestRegistries;
 import org.evochora.compiler.TestLexers;
 import org.evochora.compiler.api.SourceRoot;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
@@ -34,72 +35,12 @@ public class RepeatDirectiveTest {
     private PreProcessor createPreProcessor(List<Token> initialTokens, DiagnosticsEngine diagnostics) {
         PreProcessorContext context = new PreProcessorContext();
         context.handlers().register(".REPEAT", new RepeatDirectiveHandler());
+        TestRegistries.registerPreProcessorBlocks(context.handlers());
         context.handlers().register("^", new CaretDirectiveHandler());
         context.handlers().register(":", new org.evochora.compiler.features.label.ColonLabelHandler());
         return new PreProcessor(initialTokens, diagnostics,
                 new SourceRootResolver(List.of(new SourceRoot(".", null)), Path.of("")),
                 context);
-    }
-
-    /**
-     * Tests inline mode: .REPEAT n INSTRUCTION
-     * Should expand to n copies of the instruction separated by NEWLINEs.
-     */
-    @Test
-    @Tag("unit")
-    void testInlineRepeatSingleInstruction() {
-        // Arrange
-        String source = ".REPEAT 3 NOP";
-        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
-        List<Token> initialTokens = lexer.scanTokens();
-        PreProcessor preProcessor = createPreProcessor(initialTokens, diagnostics);
-
-        // Act
-        List<Token> expandedTokens = preProcessor.expand().tokens();
-
-        // Assert
-        assertThat(diagnostics.hasErrors()).isFalse();
-        List<TokenType> types = expandedTokens.stream().map(Token::type).toList();
-        // NOP NEWLINE NOP NEWLINE NOP EOF
-        assertThat(types).containsExactly(
-                TokenType.OPCODE,    // NOP
-                TokenType.NEWLINE,
-                TokenType.OPCODE,    // NOP
-                TokenType.NEWLINE,
-                TokenType.OPCODE,    // NOP
-                TokenType.END_OF_FILE
-        );
-    }
-
-    /**
-     * Tests inline mode with instruction that has arguments: .REPEAT n JMPI LABEL
-     */
-    @Test
-    @Tag("unit")
-    void testInlineRepeatWithArguments() {
-        // Arrange
-        String source = ".REPEAT 2 JMPI LOOP";
-        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
-        List<Token> initialTokens = lexer.scanTokens();
-        PreProcessor preProcessor = createPreProcessor(initialTokens, diagnostics);
-
-        // Act
-        List<Token> expandedTokens = preProcessor.expand().tokens();
-
-        // Assert
-        assertThat(diagnostics.hasErrors()).isFalse();
-        List<TokenType> types = expandedTokens.stream().map(Token::type).toList();
-        // JMPI LOOP NEWLINE JMPI LOOP EOF
-        assertThat(types).containsExactly(
-                TokenType.OPCODE,      // JMPI
-                TokenType.IDENTIFIER,  // LOOP
-                TokenType.NEWLINE,
-                TokenType.OPCODE,      // JMPI
-                TokenType.IDENTIFIER,  // LOOP
-                TokenType.END_OF_FILE
-        );
     }
 
     /**
@@ -215,61 +156,101 @@ public class RepeatDirectiveTest {
     }
 
     /**
-     * Tests that .REPEAT 0 produces no output.
+     * A block repeated zero times leaves nothing behind.
      */
     @Test
     @Tag("unit")
-    void testRepeatZero() {
+    void testBlockRepeatZero() {
         // Arrange
-        String source = ".REPEAT 0 NOP";
+        String source = String.join("\n",
+                ".REPEAT 0",
+                "  NOP",
+                ".ENDREPEAT"
+        );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
-        List<Token> initialTokens = lexer.scanTokens();
-        PreProcessor preProcessor = createPreProcessor(initialTokens, diagnostics);
+        PreProcessor preProcessor = createPreProcessor(lexer.scanTokens(), diagnostics);
 
         // Act
         List<Token> expandedTokens = preProcessor.expand().tokens();
 
         // Assert
         assertThat(diagnostics.hasErrors()).isFalse();
-        List<TokenType> types = expandedTokens.stream().map(Token::type).toList();
-        assertThat(types).containsExactly(TokenType.END_OF_FILE);
+        assertThat(expandedTokens.stream().map(Token::type).toList()).containsExactly(TokenType.END_OF_FILE);
     }
 
     /**
-     * Tests inline mode with context: instructions before and after.
+     * A statement on the line of .REPEAT is rejected, and the message names the shorthand that
+     * repeats a single statement.
      */
     @Test
     @Tag("unit")
-    void testInlineRepeatWithContext() {
+    void testStatementOnTheRepeatLineIsRejected() {
         // Arrange
         String source = "JMPI START; .REPEAT 3 NOP; JMPI END";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
-        List<Token> initialTokens = lexer.scanTokens();
-        PreProcessor preProcessor = createPreProcessor(initialTokens, diagnostics);
+        PreProcessor preProcessor = createPreProcessor(lexer.scanTokens(), diagnostics);
 
         // Act
         List<Token> expandedTokens = preProcessor.expand().tokens();
 
         // Assert
-        assertThat(diagnostics.hasErrors()).isFalse();
-        List<TokenType> types = expandedTokens.stream().map(Token::type).toList();
-        // JMPI START NEWLINE NOP NEWLINE NOP NEWLINE NOP NEWLINE JMPI END EOF
-        assertThat(types).containsExactly(
-                TokenType.OPCODE,      // JMPI
-                TokenType.IDENTIFIER,  // START
-                TokenType.NEWLINE,
-                TokenType.OPCODE,      // NOP
-                TokenType.NEWLINE,
-                TokenType.OPCODE,      // NOP
-                TokenType.NEWLINE,
-                TokenType.OPCODE,      // NOP
-                TokenType.NEWLINE,
-                TokenType.OPCODE,      // JMPI
-                TokenType.IDENTIFIER,  // END
-                TokenType.END_OF_FILE
+        assertThat(diagnostics.hasErrors()).isTrue();
+        assertThat(diagnostics.summary()).contains("NOP^3");
+        assertThat(expandedTokens.stream().map(Token::text).toList())
+                .doesNotContain(".REPEAT", "NOP");
+    }
+
+    /**
+     * An .ENDREPEAT outside any block is reported at its line and removed.
+     */
+    @Test
+    @Tag("unit")
+    void testStrayEndRepeatIsReported() {
+        // Arrange
+        String source = "NOP\n.ENDREPEAT\nJMPI END\n";
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
+        PreProcessor preProcessor = createPreProcessor(lexer.scanTokens(), diagnostics);
+
+        // Act
+        List<Token> expandedTokens = preProcessor.expand().tokens();
+
+        // Assert
+        assertThat(diagnostics.summary()).contains("<memory>:2: .ENDREPEAT closes no open block");
+        assertThat(expandedTokens.stream().map(Token::text).toList()).doesNotContain(".ENDREPEAT");
+    }
+
+    /**
+     * Blocks nest: a .REPEAT inside a .REPEAT is closed by its own .ENDREPEAT.
+     */
+    @Test
+    @Tag("unit")
+    void testNestedBlocks() {
+        // Arrange
+        String source = String.join("\n",
+                ".REPEAT 2",
+                "  .REPEAT 3",
+                "    NOP",
+                "  .ENDREPEAT",
+                "  JMPI START",
+                ".ENDREPEAT"
         );
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
+        PreProcessor preProcessor = createPreProcessor(lexer.scanTokens(), diagnostics);
+
+        // Act
+        List<String> texts = preProcessor.expand().tokens().stream()
+                .filter(t -> t.type() != TokenType.NEWLINE && t.type() != TokenType.END_OF_FILE)
+                .map(Token::text).toList();
+
+        // Assert
+        assertThat(diagnostics.hasErrors()).isFalse();
+        assertThat(texts).containsExactly(
+                "NOP", "NOP", "NOP", "JMPI", "START",
+                "NOP", "NOP", "NOP", "JMPI", "START");
     }
 
     // ========== Caret Syntax (^n) Tests ==========
@@ -387,6 +368,53 @@ public class RepeatDirectiveTest {
         assertThat(diagnostics.hasErrors()).isFalse();
         List<TokenType> types = expandedTokens.stream().map(Token::type).toList();
         assertThat(types).containsExactly(TokenType.END_OF_FILE);
+    }
+
+    /**
+     * The shorthand and the block it stands for expand to the same tokens.
+     */
+    @Test
+    @Tag("unit")
+    void testCaretAndBlockExpandAlike() {
+        DiagnosticsEngine caretDiagnostics = new DiagnosticsEngine();
+        List<Token> caret = createPreProcessor(
+                new Lexer("NOP^3\nJMPI END\n", caretDiagnostics, TestLexers.symbols()).scanTokens(),
+                caretDiagnostics).expand().tokens();
+        DiagnosticsEngine blockDiagnostics = new DiagnosticsEngine();
+        List<Token> block = createPreProcessor(
+                new Lexer(".REPEAT 3\nNOP\n.ENDREPEAT\nJMPI END\n", blockDiagnostics, TestLexers.symbols()).scanTokens(),
+                blockDiagnostics).expand().tokens();
+
+        assertThat(caretDiagnostics.hasErrors()).isFalse();
+        assertThat(blockDiagnostics.hasErrors()).isFalse();
+        assertThat(caret.stream().map(Token::text).toList())
+                .containsExactlyElementsOf(block.stream().map(Token::text).toList());
+        assertThat(caret.stream().map(Token::type).toList())
+                .containsExactlyElementsOf(block.stream().map(Token::type).toList());
+    }
+
+    /**
+     * The body of the shorthand is a stored body like that of a block: a directive that stands
+     * only at the top level is rejected in it.
+     */
+    @Test
+    @Tag("unit")
+    void testCaretBodyRejectsATopLevelOnlyDirective() {
+        // Arrange
+        String source = ".REQUIRE \"lib.evo\" AS LIB^2\nNOP\n";
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
+        PreProcessor preProcessor = createPreProcessor(lexer.scanTokens(), diagnostics);
+
+        // Act
+        List<Token> expandedTokens = preProcessor.expand().tokens();
+
+        // Assert
+        assertThat(diagnostics.hasErrors()).isTrue();
+        assertThat(diagnostics.summary()).contains(".REQUIRE may not stand inside a .REPEAT body");
+        assertThat(expandedTokens.stream().map(Token::text).toList())
+                .doesNotContain(".REQUIRE", ".REPEAT", ".ENDREPEAT")
+                .contains("NOP");
     }
 
     /**
