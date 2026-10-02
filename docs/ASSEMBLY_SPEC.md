@@ -678,7 +678,7 @@ The `.REPEAT` directive and its shorthand `^n` syntax allow repeating instructio
     JMPI START; NOP^10; JMPI END  # Mixed with other instructions
     ```
 
-Both syntaxes produce identical results—the shorthand is transformed into a `.REPEAT` block internally before expansion.
+Both syntaxes produce identical results—the shorthand is transformed into `.REPEAT` … `.ENDREPEAT` internally before expansion.
 
 ### Blocks
 
@@ -697,6 +697,32 @@ Both syntaxes produce identical results—the shorthand is transformed into a `.
   .ENDREPEAT
 ```
 
+### Conditional Compilation
+
+Code can be kept or left out depending on *flags*. A flag is a name that is set or not set; a set flag may carry an integer value. Flags belong to the whole compilation: a flag set in one file is set in every line the compiler reads after it, whatever file that line stands in.
+
+* `.DEFINE <NAME> [<Integer>]`: Sets the flag `<NAME>`, with the integer as its value if one is given. A set flag may be set again with the same definition; a different one is an error. To change a flag, remove it first.
+* `.UNDEF <NAME>`: Removes the flag. Removing a flag that is not set does nothing.
+* `.IFDEF <NAME> [<Op> <Operand>]` … `.ENDDEF`: A block that keeps the enclosed lines if the flag is set and, when a comparison is given, if its value compares as stated. `<Op>` is one of `=`, `<>`, `<`, `<=`, `>`, `>=`; `==` and `!=` mean the same as `=` and `<>`. `<Operand>` is an integer or the name of another flag, whose value is taken. Comparing a flag that has no value is an error.
+* `.IFNDEF <NAME>` … `.ENDDEF`: A block that keeps the enclosed lines if the flag is not set.
+* `.ELSEIFDEF <NAME> [<Op> <Operand>]`, `.ELSEIFNDEF <NAME>`, `.ELSEDEF`: Further branches of the same block. The first branch whose condition holds is kept and every other branch is left out; `.ELSEDEF` is the last branch.
+    ```
+    .IFNDEF REDUNDANCY
+      .DEFINE REDUNDANCY 1       # The default, unless the configuration set the flag
+    .ENDDEF
+
+    .IFDEF REDUNDANCY >= 2
+      JMPI MAIN_LOOP; NOP^4; JMPI MAIN_LOOP
+    .ELSEDEF
+      JMPI MAIN_LOOP
+    .ENDDEF
+    ```
+* **A branch that is left out** is not assembled: no constant, label or macro in it exists, and no file named in it is read.
+* **Lines of their own**: `.DEFINE`, `.UNDEF` and the directives of a conditional block each stand alone on their line, with no label before them and no statement after them.
+* **Macros**: A macro body may hold conditional blocks; they are decided each time the macro is expanded, and a parameter may stand where a flag name stands. `.DEFINE` and `.UNDEF` may not stand in a macro or repeat block.
+* **Flags from outside**: The configuration of a simulation sets flags for each organism (`defines { … }` in its entry), and `evochora compile --define NAME[=VALUE]` sets them for one compilation. Such a flag is set before the first line of the program is read; a program that wants a default for it uses the `.IFNDEF` form above.
+* **Flags and constants** are two different things: a `.CONST` is a value used in code and is not seen by `.IFDEF`; a flag is seen only by `.IFDEF` and cannot be used as an operand.
+
 ### Modules and Procedures
 
 The module system allows splitting programs across multiple files. Three directives work together to manage module dependencies:
@@ -705,7 +731,7 @@ The module system allows splitting programs across multiple files. Three directi
 * **`.REQUIRE`** — declares an unsatisfied dependency that must be provided by the importer via a `USING` clause.
 * **`.SOURCE`** — includes raw source text (macros, constants) without creating a module relationship.
 
-None of the three may stand inside a macro or a repeat block.
+None of the three may stand inside a macro or a repeat block. Inside a conditional block they may: the file is read only when the branch is kept.
 
 #### `.IMPORT`
 

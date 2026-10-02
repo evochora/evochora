@@ -2,7 +2,10 @@ package org.evochora.datapipeline.services;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
@@ -15,8 +18,12 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.OptionalInt;
 
+import org.evochora.compiler.api.CompilerOptions;
+import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.label.HammingLabelMatchingStrategy;
+import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.resources.IResource;
@@ -485,6 +492,119 @@ class SimulationEngineTest {
         Config config = placementConfig("TORUS", organism(program, 0, 0), organism(program, 0, 1));
 
         assertDoesNotThrow(() -> new SimulationEngine("test-engine", config, resources));
+    }
+
+    // ============ Preprocessor Flags Tests ============
+
+    private static final String FLAGGED_PROGRAM = """
+            NOP
+            .IFDEF EXTRA
+            SETI %DR0 DATA:1
+            .ENDDEF
+            """;
+
+    @Test
+    void compileOrganismPrograms_compilesOneProgramWithFlagsThatChangeTheCodeIntoTwoArtifacts() throws IOException {
+        Path program = writeProgram("flagged.evo", FLAGGED_PROGRAM);
+
+        List<ProgramArtifact> artifacts = compileOrganismPrograms(
+                organismEntry(program, Map.of("EXTRA", true)),
+                organismEntry(program, Map.of()));
+
+        assertNotSame(artifacts.get(0), artifacts.get(1));
+        assertNotEquals(artifacts.get(0).programId(), artifacts.get(1).programId());
+        assertTrue(artifacts.get(0).machineCodeLayout().size() > artifacts.get(1).machineCodeLayout().size());
+    }
+
+    @Test
+    void compileOrganismPrograms_compilesOneProgramWithEqualFlagsOnce() throws IOException {
+        Path program = writeProgram("flagged.evo", FLAGGED_PROGRAM);
+
+        List<ProgramArtifact> artifacts = compileOrganismPrograms(
+                organismEntry(program, Map.of("EXTRA", 1)),
+                organismEntry(program, Map.of("EXTRA", 1)));
+
+        assertSame(artifacts.get(0), artifacts.get(1));
+    }
+
+    @Test
+    void compileOrganismPrograms_takesFlagNamesThatDifferOnlyInCaseAsEqual() throws IOException {
+        Path program = writeProgram("flagged.evo", FLAGGED_PROGRAM);
+
+        List<ProgramArtifact> artifacts = compileOrganismPrograms(
+                organismEntry(program, Map.of("x", 1)),
+                organismEntry(program, Map.of("X", 1)));
+
+        assertSame(artifacts.get(0), artifacts.get(1));
+    }
+
+    @Test
+    void compileOrganismPrograms_takesAFalseFlagAsUnset() throws IOException {
+        Path program = writeProgram("flagged.evo", FLAGGED_PROGRAM);
+
+        List<ProgramArtifact> artifacts = compileOrganismPrograms(
+                organismEntry(program, Map.of("EXTRA", false)),
+                organismEntry(program, Map.of()));
+
+        assertSame(artifacts.get(0), artifacts.get(1));
+    }
+
+    @Test
+    void readDefines_readsTrueAsAFlagWithoutValueAndAnIntegerAsAFlagWithThatValue() {
+        Config entry = ConfigFactory.parseString("defines { AGGRESSIVE = true, REDUNDANCY = 2, OFF = false }");
+
+        assertEquals(Map.of("AGGRESSIVE", OptionalInt.empty(), "REDUNDANCY", OptionalInt.of(2)),
+                SimulationEngine.readDefines(entry, 0));
+    }
+
+    @Test
+    void constructor_shouldRejectTwoFlagsThatAreOneNameIgnoringCase() throws IOException {
+        Path program = writeProgram("flagged.evo", FLAGGED_PROGRAM);
+        Config config = placementConfig("TORUS", organismWithDefines(program, Map.of("a", 1, "A", 2)));
+
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
+                () -> new SimulationEngine("test-engine", config, resources));
+        assertTrue(exception.getMessage().contains("organisms[0].defines"), exception.getMessage());
+        assertTrue(exception.getMessage().contains("case-insensitive"), exception.getMessage());
+    }
+
+    @Test
+    void constructor_shouldRejectAFlagThatIsNeitherABooleanNorAnInteger() throws IOException {
+        Path program = writeProgram("flagged.evo", FLAGGED_PROGRAM);
+        Config text = placementConfig("TORUS", organismWithDefines(program, Map.of("EXTRA", "yes")));
+        Config fraction = placementConfig("TORUS", organismWithDefines(program, Map.of("EXTRA", 2.5)));
+
+        IllegalArgumentException textException = assertThrows(IllegalArgumentException.class,
+                () -> new SimulationEngine("test-engine", text, resources));
+        assertTrue(textException.getMessage().contains("organisms[0].defines.EXTRA"), textException.getMessage());
+        IllegalArgumentException fractionException = assertThrows(IllegalArgumentException.class,
+                () -> new SimulationEngine("test-engine", fraction, resources));
+        assertTrue(fractionException.getMessage().contains("organisms[0].defines.EXTRA"), fractionException.getMessage());
+    }
+
+    @Test
+    void constructor_shouldPlaceOrganismsOfOneProgramWithDifferentFlags() throws IOException {
+        Path program = writeProgram("flagged.evo", FLAGGED_PROGRAM);
+        Config config = placementConfig("TORUS",
+                organismWithDefines(program, Map.of("EXTRA", true)),
+                organism(program, 0, 5));
+
+        assertDoesNotThrow(() -> new SimulationEngine("test-engine", config, resources));
+    }
+
+    private static List<ProgramArtifact> compileOrganismPrograms(Config... entries) {
+        return SimulationEngine.compileOrganismPrograms(List.of(entries),
+                CompilerOptions.defaults().sourceRoots(),
+                new EnvironmentProperties(new int[]{32, 32}, true));
+    }
+
+    private static Config organismEntry(Path program, Map<String, Object> defines) {
+        return ConfigFactory.parseMap(Map.of("program", program.toString(), "defines", defines));
+    }
+
+    private static Map<String, Object> organismWithDefines(Path program, Map<String, Object> defines) {
+        return Map.of("program", program.toString(), "initialEnergy", 1000,
+                "placement", Map.of("positions", List.of(0, 0)), "defines", defines);
     }
 
     private Path writeProgram(String fileName, String source) throws IOException {

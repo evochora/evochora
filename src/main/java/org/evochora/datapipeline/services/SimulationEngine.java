@@ -9,7 +9,9 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.OptionalInt;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicLong;
@@ -68,7 +70,10 @@ import org.evochora.runtime.thermodynamics.ThermodynamicPolicyManager;
 
 import com.google.protobuf.ByteString;
 import com.typesafe.config.Config;
+import com.typesafe.config.ConfigObject;
 import com.typesafe.config.ConfigRenderOptions;
+import com.typesafe.config.ConfigValue;
+import com.typesafe.config.ConfigValueType;
 import com.typesafe.config.ConfigValueFactory;
 
 /**
@@ -308,9 +313,10 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
      * @throws IllegalArgumentException if the configuration is invalid, for example no configured
      *                                  organism, an unknown environment topology, a shape
      *                                  component below one, a placement whose coordinate count
-     *                                  does not match the world, a program that cannot be read or
-     *                                  compiled, a missing {@code resume.runId}, or a checkpoint
-     *                                  that cannot be loaded.
+     *                                  does not match the world, flags of an organism that are not
+     *                                  booleans or integers or name one flag twice, a program that
+     *                                  cannot be read or compiled, a missing {@code resume.runId},
+     *                                  or a checkpoint that cannot be loaded.
      */
     public SimulationEngine(String name, Config options, Map<String, List<IResource>> resources) {
         super(name, options, resources);
@@ -637,6 +643,100 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
             .withValue("estimatedDeltaRatio", ConfigValueFactory.fromAnyRef(fork.estimatedDeltaRatio()));
     }
 
+    /**
+     * A program as the configuration asks for it: its path and the preprocessor flags of the
+     * organism entry, normalised by {@link CompilerOptions}. Two entries with the same variant
+     * are compiled once.
+     */
+    private record ProgramVariant(String programPath, Map<String, OptionalInt> defines) {}
+
+    /**
+     * Compiles the programs of the configured organisms, once per distinct pair of program path
+     * and flags, and returns the artifact of every organism entry.
+     *
+     * @param organismConfigs The organism entries of the configuration, each with a
+     *                        {@code program} and optionally {@code defines}.
+     * @param sourceRoots     The source roots every program is compiled with.
+     * @param envProps        The world the programs are laid out for.
+     * @return One artifact per organism entry, in the order of the entries; entries of one
+     *         variant share the same artifact instance.
+     * @throws IllegalArgumentException if an entry's flags are invalid (see
+     *                                  {@link #readDefines(Config, int)}) or name one flag twice
+     *                                  in different case, or a program cannot be read or compiled.
+     */
+    static List<ProgramArtifact> compileOrganismPrograms(List<? extends Config> organismConfigs,
+                                                         List<SourceRoot> sourceRoots,
+                                                         EnvironmentProperties envProps) {
+        Compiler compiler = new Compiler();
+        Map<ProgramVariant, ProgramArtifact> artifactsByVariant = new HashMap<>();
+        List<ProgramArtifact> organismArtifacts = new ArrayList<>(organismConfigs.size());
+        for (int index = 0; index < organismConfigs.size(); index++) {
+            Config orgConfig = organismConfigs.get(index);
+            String programPath = orgConfig.getString("program");
+            Map<String, OptionalInt> defines = readDefines(orgConfig, index);
+            CompilerOptions compilerOptions;
+            try {
+                compilerOptions = new CompilerOptions(sourceRoots, defines);
+            } catch (IllegalArgumentException e) {
+                throw new IllegalArgumentException("organisms[" + index + "].defines: " + e.getMessage(), e);
+            }
+            ProgramVariant variant = new ProgramVariant(programPath, compilerOptions.defines());
+            ProgramArtifact artifact = artifactsByVariant.get(variant);
+            if (artifact == null) {
+                try {
+                    artifact = compiler.compile(programPath, envProps, compilerOptions);
+                } catch (CompilationException e) {
+                    throw new IllegalArgumentException("Failed to compile program: " + programPath, e);
+                } catch (IOException e) {
+                    throw new IllegalArgumentException("Failed to read program file: " + programPath, e);
+                }
+                artifactsByVariant.put(variant, artifact);
+            }
+            organismArtifacts.add(artifact);
+        }
+        return organismArtifacts;
+    }
+
+    /**
+     * Reads the preprocessor flags of one organism entry from its optional {@code defines}
+     * object. A key whose value is {@code true} is a flag set without a value, an integer a flag
+     * set with that value; {@code false} leaves the flag unset, as an absent key does. The names
+     * are returned as written; {@link CompilerOptions} normalises them.
+     *
+     * @param orgConfig The organism entry.
+     * @param index     The position of the entry in {@code organisms}, for the error message.
+     * @return The flags that are set, by name as written.
+     * @throws IllegalArgumentException if {@code defines} is not an object, or a value is neither
+     *                                  a boolean nor an integer in the range of an {@code int};
+     *                                  the message names the entry and the flag.
+     */
+    static Map<String, OptionalInt> readDefines(Config orgConfig, int index) {
+        if (!orgConfig.hasPath("defines")) {
+            return Map.of();
+        }
+        ConfigValue definesValue = orgConfig.getValue("defines");
+        if (definesValue.valueType() != ConfigValueType.OBJECT) {
+            throw new IllegalArgumentException("organisms[" + index + "].defines must be an object of flags, got "
+                    + definesValue.valueType().name().toLowerCase(Locale.ROOT));
+        }
+        Map<String, OptionalInt> defines = new HashMap<>();
+        for (Map.Entry<String, ConfigValue> entry : ((ConfigObject) definesValue).entrySet()) {
+            String name = entry.getKey();
+            Object value = entry.getValue().unwrapped();
+            if (value instanceof Boolean set) {
+                if (set) {
+                    defines.put(name, OptionalInt.empty());
+                }
+            } else if (value instanceof Integer number) {
+                defines.put(name, OptionalInt.of(number));
+            } else {
+                throw new IllegalArgumentException("organisms[" + index + "].defines." + name
+                        + " must be true, false or an integer, got " + entry.getValue().render(ConfigRenderOptions.concise()));
+            }
+        }
+        return defines;
+    }
+
     private static String newRunId() {
         return LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmssSS"))
             + "-" + UUID.randomUUID().toString();
@@ -656,24 +756,15 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
             throw new IllegalArgumentException("At least one organism must be configured.");
         }
 
-        // Compile programs
-        Map<String, ProgramArtifact> compiledPrograms = new HashMap<>();
-        // Local to initialisation: the configuration addresses programs by path, both for
-        // deduplicating the compile loop and for placing organisms. It dies with this method.
-        Map<String, ProgramArtifact> artifactsByPath = new HashMap<>();
-        Compiler compiler = new Compiler();
-
-        // Build compiler options from config
-        CompilerOptions compilerOptions;
+        List<SourceRoot> sourceRoots;
         if (options.hasPath("compiler.source-roots")) {
             List<? extends Config> rootConfigs = options.getConfigList("compiler.source-roots");
-            List<SourceRoot> sourceRoots = rootConfigs.stream()
+            sourceRoots = rootConfigs.stream()
                     .map(rc -> new SourceRoot(rc.getString("path"),
                             rc.hasPath("prefix") ? rc.getString("prefix") : null))
                     .toList();
-            compilerOptions = new CompilerOptions(sourceRoots);
         } else {
-            compilerOptions = CompilerOptions.defaults();
+            sourceRoots = CompilerOptions.defaults().sourceRoots();
         }
 
         String topology = options.getString("environment.topology");
@@ -698,20 +789,9 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
             throw new IllegalArgumentException("environment.shape: " + e.getMessage(), e);
         }
 
-        for (Config orgConfig : organismConfigs) {
-            String programPath = orgConfig.getString("program");
-            if (!artifactsByPath.containsKey(programPath)) {
-                try {
-                    ProgramArtifact artifact = compiler.compile(programPath, envProps, compilerOptions);
-                    artifactsByPath.put(programPath, artifact);
-                    compiledPrograms.put(artifact.programId(), artifact);
-                } catch (CompilationException e) {
-                    throw new IllegalArgumentException("Failed to compile program: " + programPath, e);
-                } catch (IOException e) {
-                    throw new IllegalArgumentException("Failed to read program file: " + programPath, e);
-                }
-            }
-        }
+        List<ProgramArtifact> organismArtifacts = compileOrganismPrograms(organismConfigs, sourceRoots, envProps);
+        Map<String, ProgramArtifact> compiledPrograms = new HashMap<>();
+        organismArtifacts.forEach(artifact -> compiledPrograms.putIfAbsent(artifact.programId(), artifact));
 
         // Create runtime components
         IRandomProvider randomProvider = new SeededRandomProvider(seed);
@@ -762,7 +842,8 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
 
         // Create and place organisms
         int worldDimensions = envProps.getWorldShape().length;
-        for (Config orgConfig : organismConfigs) {
+        for (int index = 0; index < organismConfigs.size(); index++) {
+            Config orgConfig = organismConfigs.get(index);
             List<Integer> positions = orgConfig.getIntList("placement.positions");
             if (positions.size() != worldDimensions) {
                 throw new IllegalArgumentException(
@@ -771,7 +852,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
             }
 
             String programPath = orgConfig.getString("program");
-            ProgramArtifact artifact = artifactsByPath.get(programPath);
+            ProgramArtifact artifact = organismArtifacts.get(index);
             int[] startPosition = positions.stream().mapToInt(i -> i).toArray();
             if (!envProps.isToroidal() && !insideWorld(startPosition, envProps.getWorldShape())) {
                 throw new IllegalArgumentException(

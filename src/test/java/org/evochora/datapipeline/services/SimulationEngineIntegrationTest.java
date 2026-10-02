@@ -28,6 +28,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.OptionalInt;
 import java.util.concurrent.TimeUnit;
 
 import static org.awaitility.Awaitility.await;
@@ -187,6 +188,32 @@ class SimulationEngineIntegrationTest {
         assertEquals(64, shape[0]);
         assertEquals(32, shape[1]);
         assertTrue(MetadataConfigHelper.isEnvironmentToroidal(metadata)); // TORUS topology
+    }
+
+    @Test
+    void engine_shouldRecordTheFlagsOfEveryOrganismInTheResolvedConfiguration() throws InterruptedException {
+        Config flaggedConfig = baseConfig.withValue("organisms", ConfigValueFactory.fromAnyRef(List.of(Map.of(
+                "program", programFile.toString(),
+                "initialEnergy", 10000,
+                "placement", Map.of("positions", List.of(5, 5)),
+                "defines", Map.of("AGGRESSIVE", true, "REDUNDANCY", 2)))));
+        SimulationEngine engine = new SimulationEngine("test-engine", flaggedConfig, resources);
+
+        engine.start();
+        await().atMost(5, TimeUnit.SECONDS)
+                .untilAsserted(() -> assertEquals(1L, metadataQueue.getMetrics().get("current_size").longValue()));
+        engine.stop();
+
+        SimulationMetadata metadata;
+        try (StreamingBatch<SimulationMetadata> metaBatch = metadataQueue.receiveBatch(1, 0, TimeUnit.MILLISECONDS)) {
+            metadata = metaBatch.iterator().next();
+        }
+        Config recorded = ConfigFactory.parseString(metadata.getResolvedConfigJson());
+        Config defines = recorded.getConfigList("organisms").get(0).getConfig("defines");
+        assertTrue(defines.getBoolean("AGGRESSIVE"));
+        assertEquals(2, defines.getInt("REDUNDANCY"));
+        assertEquals(Map.of("AGGRESSIVE", OptionalInt.empty(), "REDUNDANCY", OptionalInt.of(2)),
+                SimulationEngine.readDefines(recorded.getConfigList("organisms").get(0), 0));
     }
 
     @Test
