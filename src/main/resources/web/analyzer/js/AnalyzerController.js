@@ -212,7 +212,9 @@ export async function init() {
      * Asks the run being written how far it has come, and stops asking a run that is not.
      * <p>
      * Called whenever the run shown or the pipeline state changes, and whenever the page comes to
-     * the front or leaves it: a page nobody is looking at asks nothing.
+     * the front or leaves it: a page nobody is looking at asks nothing. Asking starts with a
+     * question at once, so that a page coming to the front, or a run that has just begun to be
+     * written, shows how far the run has come without waiting for the first round.
      */
 export function updateRunRangePoll() {
         const state = window.footer?.pipelineState?.();
@@ -223,6 +225,7 @@ export function updateRunRangePoll() {
         }
         if (wanted) {
             runRangePoll = setInterval(pollRunRange, RUN_RANGE_POLL_MS);
+            pollRunRange();
         } else {
             clearInterval(runRangePoll);
             runRangePoll = null;
