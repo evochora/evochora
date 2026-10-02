@@ -361,17 +361,17 @@ variant's source map for the other's organisms. The ID becomes an ordered digest
   the number of dimensions; the number of code entries; for each entry in coordinate order (the
   sorting by `Arrays.compare` that the emitter already does) the coordinate's components, then
   the cell value; the number of initial objects; for each object in coordinate order the
-  components, then `type`, `value` and `marker` of the `PlacedMolecule`. The dimension count
-  keeps `1|2` in a 2D world and `1|2|0` in a 3D world apart.
+  components, then `type`, `value` and `marker` of the `PlacedMolecule`; the number of flags;
+  for each flag in alphabetical order of its upper-cased name the name's UTF-8 bytes preceded
+  by their count, then 1 or 0 for whether it has a value, then the value (0 for none). The
+  dimension count keeps `1|2` in a 2D world and `1|2|0` in a 3D world apart.
 - The function is SHA-256 over that stream, rendered as hex and truncated to 16 characters
   (64 bits): unique within any run and any analysis, short enough to display. No Java
   `hashCode` goes in; a record's generated hash is unspecified by the language and `int[]`
   keys hash by identity.
-- The flags, the source text, the token map, label and procedure names stay out: the ID says
-  what stands in the world, not how it was chosen, and two organisms with the same genome are
-  one program in every analysis by ID. Two variants that compile to the same code and the same
-  objects share an ID and one artifact in the metadata; then only the token map's line
-  attribution may be off for one of them, while code, objects and source text are right.
+- The flags join the digest, because two variants with equal code must not share one artifact,
+  whose folded branches and notes belong to one of them. The source text, the token map, label
+  and procedure names stay out: the ID says what stands in the world, not how it was written.
 - Every existing ID changes. `program_id` is `TEXT` in the database and a string in the
   metadata contract, so the longer string fits. A test pins the ID of a small program as a
   constant, so that a later change of the procedure is visible; the step searches the test
@@ -567,6 +567,19 @@ without a new reason:
   is; only a branch a condition left out is folded, at its directive line, with the flags of the
   condition annotated as registers are. Hiding every line the preprocessor removed was rejected
   as confusing, and a resolved view as a second text with other line numbers.
+- **One source entry per inclusion, labelled by chain and inclusion point.** An entry of the
+  source view that stands for a file in a placement holds every `.SOURCE` inclusion of that
+  file there, and two inclusions of one file decide their conditions differently (the include
+  guard is the ordinary case), so no rule could say which inclusion's folds such an entry
+  shows. The entry is therefore the inclusion, as it already is the placement for `.IMPORT`:
+  every inclusion that can produce code is an entry, and the number an inclusion's tokens carry
+  is the key that ties an instruction to its entry. A macro body is a template and no entry; its
+  folds show while the active position stands in an expansion of it, and otherwise not, which
+  is the one display that depends on the position. The label names the chain and the line of
+  the directive that made the entry, because together they say where in the program the entry
+  belongs. A rule that showed the folds of the only inclusion of a file and nothing for a file
+  included twice was rejected: it would have made the view depend on a count the reader cannot
+  see.
 - **Constants from the configuration** are a separate proposal after this one; they raise
   their own questions (qualified names of module-local constants, lexing of configured values,
   unknown names, precedence) and reuse the options path of this proposal.
@@ -578,7 +591,7 @@ without a new reason:
 ### Dependencies
 
 ```text
-Step 1 (.CONST) → Step 2 (END directives) → Step 3 (lexer symbol registry) → Step 4 (blocks, slots, cursor, options) → Step 5 (feature) → Step 6 (configuration, CLI, documentation) → Step 7 (module identity by placement) → Step 8 (the placement in the artifact and the visualizer) → Step 9 (branches left out, in the source view)
+Step 1 (.CONST) → Step 2 (END directives) → Step 3 (lexer symbol registry) → Step 4 (blocks, slots, cursor, options) → Step 5 (feature) → Step 6 (configuration, CLI, documentation) → Step 7 (module identity by placement) → Step 8 (the placement in the artifact and the visualizer) → Step 9 (branches left out, in the source view) → Step 10 (one source entry per inclusion)
 ```
 
 Steps 1 and 2 are renames without behavioural change. Steps 3 and 4 add generic core
@@ -849,9 +862,9 @@ annotation.
   flag name is made for that — while their tokens point at the same lines of the body. What the
   view folds and annotates must be what the running code was compiled with, so the expansion
   is recorded with it: `Token` and `SourceInfo` carry `expansion`, a number the preprocessor
-  gives every macro expansion (0 outside any expansion; a nested expansion gets its own number;
-  the copies of a repeat block share the expansion they stand in, because nothing between them
-  can change a flag). `MacroExpansionHandler` stamps the injected body tokens; the
+  gives every macro expansion and every `.SOURCE` inclusion (0 outside any expansion; a nested
+  expansion gets its own number; the copies of a repeat block share the expansion they stand
+  in, because nothing between them can change a flag). `MacroExpansionHandler` stamps the injected body tokens; the
   `sourceMap` carries the number with every instruction.
 - The preprocessor records two generic things in `PreProcessorResult`, both per placement,
   file and expansion: a region a directive line left out (`leftOut(directiveLine, fromLine,
@@ -886,3 +899,43 @@ the flag name called twice: in `FIRST` the `.IFDEF` line is folded and notes `PA
 `SECOND` the `.ELSEDEF` line is folded and the `.IFDEF` line notes `PAD[=3]`; while the
 position stands in one expansion of the macro, the body folds that expansion's branch; unfolding
 shows the greyed lines; no `mismatch` and no console error.
+
+### Step 10: One source entry per inclusion
+
+Every inclusion that can produce code is an entry of `sources`: each `.IMPORT` placement, as
+Step 8 made it, and each `.SOURCE` inclusion, which Step 8 folded into the including
+placement's entry for the file. A file stands in the list as often as it is included.
+
+- `SourceFile` gains `instance` (the number the inclusion's tokens carry in
+  `SourceInfo.expansion`; 0 for the main file and for module placements, whose chain identifies
+  them) and `includedAt` (the `SourceInfo` of the directive that made the entry; empty for the
+  main file). The preprocessor builds the list: it knows every `.IMPORT` and `.SOURCE` it
+  processes, the chain, the number and the directive's position, and it attaches the regions and
+  notes of an inclusion to that inclusion's entry; the dependency graph no longer carries the
+  list, only the files' text, which the entries share.
+- A macro body is no entry. The macro feature records, for every expansion, the inclusion its
+  definition stands in (`DebugInfo.expansionHomes`, expansion → instance of the entry holding
+  the body's lines), so that the view opens the right entry when the active position is in a
+  body.
+- The source view: one dropdown option per entry, in list order, labelled
+  `[CHAIN → ]path as written (from file:line)` — the chain omitted when it is the main
+  program's, `(from …)` omitted for the main program only; the resolved path as the tooltip.
+  Examples: `main.evo`; `ENERGY → lib/energy.evo (from main.evo:70)`; `FIRST → lib/step.evo
+  (from main.evo:26)` and `SECOND → lib/step.evo (from main.evo:31)`; `NAV.STEP → lib/step.evo
+  (from lib/nav.evo:9)`; `lib/consts.evo (from main.evo:6)`; `lib/guard.evo (from
+  lib/consts.evo:7)`; `FIRST → lib/consts.evo (from lib/step.evo:2)`. An entry shows its own
+  regions and notes always; while the active position stands in a macro expansion, the entry
+  holding the body's lines shows that expansion's regions and notes as well. The active position
+  (placement, file, expansion) selects the entry directly, or through `expansionHomes` for a
+  body. After a manual choice in the dropdown the view applies the current execution state at
+  once (active line, its annotations), not only at the next tick.
+- Protobuf and the two converters carry `instance`, `includedAt` and `expansionHomes`.
+
+**Tests:** a file sourced twice yields two entries with their inclusion points and their own
+regions and notes; a file sourced inside a module carries the module's chain and the directive's
+position in that module; a macro defined in a sourced file maps each expansion to that entry;
+the main file and the module placements keep instance 0; the reference artifact is regenerated
+(`consts.evo` becomes three entries with their inclusion points). Browser check in Chrome and
+Firefox with the three-case program of the demonstration: the dropdown lists `lib/guard.evo`
+twice with its two inclusion points, each with its own fold; `lib/consts.evo` shows its fold
+and `PADDED[set]` whatever the tick; a manual switch away and back keeps the active line.
