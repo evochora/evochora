@@ -9,17 +9,33 @@
     const BASE_PATH = '/analyzer/api';
 
     /**
+     * The error a failed response stands for. A 404 means the server holds nothing for what was
+     * asked - no run, or no file of a metric yet - and carries the code 'NO_DATA', so that a
+     * caller can tell it from a failure.
+     *
+     * @param {Response} response - A response that is not OK
+     * @returns {Promise<Error>} The error, with the server's text
+     */
+    async function responseError(response) {
+        const text = await response.text();
+        const error = new Error(`API Error ${response.status}: ${text || response.statusText}`);
+        if (response.status === 404) {
+            error.code = 'NO_DATA';
+        }
+        return error;
+    }
+
+    /**
      * Fetches JSON from an API endpoint.
      *
      * @param {string} path - API path (without base)
      * @returns {Promise<Object>} Parsed JSON response
-     * @throws {Error} If response is not OK
+     * @throws {Error} If response is not OK; with code 'NO_DATA' if the server holds nothing
      */
     async function fetchJson(path) {
         const response = await fetch(`${BASE_PATH}${path}`);
         if (!response.ok) {
-            const text = await response.text();
-            throw new Error(`API Error ${response.status}: ${text || response.statusText}`);
+            throw await responseError(response);
         }
         return await response.json();
     }
@@ -113,13 +129,7 @@ export async function queryData(runId, metric, lod = null, signal = null, tickFr
         }
         const response = await fetch(`${BASE_PATH}${url}`, signal ? { signal } : undefined);
         if (!response.ok) {
-            if (response.status === 404) {
-                const error = new Error('No data available yet');
-                error.code = 'NO_DATA';
-                throw error;
-            }
-            const text = await response.text();
-            throw new Error(`API Error ${response.status}: ${text || response.statusText}`);
+            throw await responseError(response);
         }
         const data = await response.json();
         const resolvedLod = response.headers.get('X-LOD-Level') || null;
@@ -158,13 +168,7 @@ export async function fetchParquetBlob(metric, runId = null, lod = null, signal 
 
         const response = await fetch(url, signal ? { signal } : undefined);
         if (!response.ok) {
-            if (response.status === 404) {
-                const error = new Error('No data available yet');
-                error.code = 'NO_DATA';
-                throw error;
-            }
-            const text = await response.text();
-            throw new Error(`API Error ${response.status}: ${text || response.statusText}`);
+            throw await responseError(response);
         }
 
         // Extract metadata from response headers
