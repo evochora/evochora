@@ -560,6 +560,13 @@ without a new reason:
   written`, with the resolved path in the tooltip: the arrow says that the alias stands for the
   file, a colon would read as a source-root prefix, and the written path shows the root prefix
   the program used.
+- **The source view folds the branches that were left out, and nothing else.** The view shows
+  the file as written, as every debugger shows preprocessed code, so that the line numbers are
+  those of the file and of the messages. Lines that produce no code (`.ORG`, `.IMPORT`, labels,
+  `.DEFINE`, `.REPEAT`, a macro definition) stay visible, because they say why the code is as it
+  is; only a branch a condition left out is folded, at its directive line, with the flags of the
+  condition annotated as registers are. Hiding every line the preprocessor removed was rejected
+  as confusing, and a resolved view as a second text with other line numbers.
 - **Constants from the configuration** are a separate proposal after this one; they raise
   their own questions (qualified names of module-local constants, lexing of configured values,
   unknown names, precedence) and reuse the options path of this proposal.
@@ -571,7 +578,7 @@ without a new reason:
 ### Dependencies
 
 ```text
-Step 1 (.CONST) → Step 2 (END directives) → Step 3 (lexer symbol registry) → Step 4 (blocks, slots, cursor, options) → Step 5 (feature) → Step 6 (configuration, CLI, documentation) → Step 7 (module identity by placement) → Step 8 (the placement in the artifact and the visualizer)
+Step 1 (.CONST) → Step 2 (END directives) → Step 3 (lexer symbol registry) → Step 4 (blocks, slots, cursor, options) → Step 5 (feature) → Step 6 (configuration, CLI, documentation) → Step 7 (module identity by placement) → Step 8 (the placement in the artifact and the visualizer) → Step 9 (branches left out, in the source view)
 ```
 
 Steps 1 and 2 are renames without behavioural change. Steps 3 and 4 add generic core
@@ -817,3 +824,45 @@ the placements. The frontend change is checked in Chrome and Firefox against a r
 that imports a module twice: the dropdown shows both entries, stepping through ticks switches
 between them, and the annotations of each placement sit on their tokens with no `mismatch`
 message.
+
+### Step 9: Branches left out, in the source view
+
+The source view shows, per placement, which branches of a conditional block were left out and
+why. The directive line of a branch that was not taken folds the lines of that branch, with the
+arrows the view already uses for the machine code under a line (`▶` folded, `▼` unfolded); folded
+is the default, unfolded shows the lines greyed. The directive line of the taken branch has no
+arrow. Every flag name in the condition of `.IFDEF`, `.IFNDEF`, `.ELSEIFDEF` and `.ELSEIFNDEF`,
+on the right of an operator too, is annotated with its state at that point of that placement,
+in the style of the register annotations: `PAD[=3]` for a flag with a value, `PAD[set]` for a
+flag without one, `PAD[not set]` for a flag that is not set. `.ELSEDEF` has no flag and no
+annotation.
+
+```
+▶ .IFDEF PAD[=1] >= 3          # folded: the branch was left out
+  .ELSEDEF
+      NOP
+  .ENDDEF
+```
+
+- The preprocessor records two generic things in `PreProcessorResult`, both per placement and
+  file: a region a directive line left out (`leftOut(directiveLine, fromLine, toLine)`) and a
+  note at a source position (`note(line, column, text)`). The core knows an omitted region and a
+  note; which feature records them it does not know. `ConditionalBlockHandler` records, for
+  every branch it does not keep, the region owned by the branch's directive line, and for every
+  flag name in every head of the block a note with the flag's state; `Flags` gives the state.
+- The artifact: each `sources` entry gains `leftOut: [{directiveLine, from, to}]` and
+  `notes: [{line, column, text}]`; the protobuf contract and the two converters carry them.
+- The visualizer: `OrganismSourceView` renders a note as an annotation span at its position
+  when the listing is built (it does not change with the tick), and gives a directive line that
+  owns a region the arrow and the fold; the folded lines are hidden, unfolded they carry a
+  greyed style.
+
+**Tests:** a block with a taken and a left-out branch yields one region owned by the right
+directive line and the notes `[=1]` / `[=3]` per placement; `.IFNDEF` of an unset flag notes
+`[not set]`; a flag without value notes `[set]`; a right-hand flag name is noted; `.ELSEDEF`
+gets no note; a nested block in a left-out branch records nothing of its own; the reference
+artifact is regenerated (the reference program has no conditional, so only the two empty lists
+appear); a metadata round trip keeps regions and notes. The frontend is checked in Chrome and
+Firefox against the two-placement program of Step 8: in `FIRST` the `.IFDEF` line is folded and
+notes `PAD[=1]`, in `SECOND` the `.ELSEDEF` line is folded and the `.IFDEF` line notes
+`PAD[=3]`; unfolding shows the greyed lines; no `mismatch` and no console error.
