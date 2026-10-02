@@ -6,7 +6,7 @@ import java.util.List;
 /**
  * One placement of a module found by the dependency scan: the main module, or a module file at
  * one of its imports. A file imported more than once has one placement per import, each scanned
- * with the flags of its import and named by its own alias chain.
+ * with the state of every feature at that import and named by its own alias chain.
  *
  * @param aliasChain   The alias chain that identifies the placement, the same the preprocessor
  *                     gives the module's tokens at this import; the main module's chain for the root.

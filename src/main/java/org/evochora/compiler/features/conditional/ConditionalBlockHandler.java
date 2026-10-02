@@ -1,6 +1,8 @@
 package org.evochora.compiler.features.conditional;
 
 import org.evochora.compiler.frontend.preprocessor.BlockReader;
+import org.evochora.compiler.api.SourceInfo;
+import org.evochora.compiler.frontend.DirectiveLine;
 import org.evochora.compiler.frontend.preprocessor.IPreProcessorHandler;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
 import org.evochora.compiler.frontend.preprocessor.PreProcessorContext;
@@ -40,13 +42,13 @@ public class ConditionalBlockHandler implements IPreProcessorHandler {
         Flags flags = Flags.inPreprocessor(preProcessor, preProcessorContext);
 
         int closer = block.end() - 1;
-        DirectiveLine closerLine = DirectiveLine.at(preProcessor, closer);
-        int blockEnd = closerLine.next(preProcessor);
+        DirectiveLine closerLine = preProcessor.lineOf(closer);
+        int blockEnd = closerLine.next();
 
         List<DirectiveLine> heads = new ArrayList<>();
-        heads.add(DirectiveLine.at(preProcessor, start));
+        heads.add(preProcessor.lineOf(start));
         for (int divider : block.dividers()) {
-            heads.add(DirectiveLine.at(preProcessor, divider));
+            heads.add(preProcessor.lineOf(divider));
         }
 
         List<Condition> conditions = new ArrayList<>();
@@ -56,19 +58,19 @@ public class ConditionalBlockHandler implements IPreProcessorHandler {
             Token word = preProcessor.getToken(head.directive());
             String error = null;
             Condition condition = null;
-            if (!head.standsAlone(preProcessor)) {
+            if (!head.standsAlone()) {
                 error = alone(word);
             } else if (elseSeen != null) {
                 error = (isElse(word) ? "A second .ELSEDEF" : upper(word)) + " follows the .ELSEDEF at "
                         + where(elseSeen) + "; .ELSEDEF is the last branch of the block opened at " + where(opener);
             } else if (isElse(word)) {
                 elseSeen = word;
-                if (!head.operands(preProcessor).isEmpty()) {
+                if (!head.operands().isEmpty()) {
                     error = alone(word);
                 }
             } else {
                 try {
-                    condition = Condition.parse(word, head.operands(preProcessor));
+                    condition = Condition.parse(word, head.operands());
                 } catch (Condition.Invalid invalid) {
                     error = invalid.getMessage();
                 }
@@ -79,7 +81,7 @@ public class ConditionalBlockHandler implements IPreProcessorHandler {
             }
             conditions.add(condition);
         }
-        if (!closerLine.standsAlone(preProcessor) || !closerLine.operands(preProcessor).isEmpty()) {
+        if (!closerLine.standsAlone() || !closerLine.operands().isEmpty()) {
             report(preProcessor, preProcessor.getToken(closer), alone(preProcessor.getToken(closer)));
             wellFormed = false;
         }
@@ -106,7 +108,7 @@ public class ConditionalBlockHandler implements IPreProcessorHandler {
 
         List<Token> kept = new ArrayList<>();
         if (taken >= 0) {
-            int from = heads.get(taken).next(preProcessor);
+            int from = heads.get(taken).next();
             int to = taken + 1 < heads.size() ? heads.get(taken + 1).directive() : closer;
             for (int i = from; i < to; i++) {
                 kept.add(preProcessor.getToken(i));
@@ -132,14 +134,14 @@ public class ConditionalBlockHandler implements IPreProcessorHandler {
                 int from = word.source().lineNumber() + 1;
                 int to = next.source().lineNumber() - 1;
                 if (from <= to) {
-                    preProcessor.leftOut(word, from, to);
+                    preProcessor.leftOut(word.source(), from, to);
                 }
             }
             Condition condition = conditions.get(k);
             if (condition == null) {
                 continue;
             }
-            List<Token> operands = heads.get(k).operands(preProcessor);
+            List<Token> operands = heads.get(k).operands();
             note(preProcessor, flags, operands.get(0));
             if (condition.comparison().isPresent()
                     && condition.comparison().get().operand() instanceof Condition.FlagName) {
@@ -150,7 +152,9 @@ public class ConditionalBlockHandler implements IPreProcessorHandler {
 
     /**
      * Notes the state of the flag a token names: {@code [=value]}, {@code [set]} for a flag
-     * without a value, {@code [not set]}.
+     * without a value, {@code [not set]}. The note stands at the token's position and at every
+     * position the token replaced, so that it is shown both where the name was written and where
+     * it is used.
      */
     private static void note(PreProcessor preProcessor, Flags flags, Token name) {
         String state;
@@ -160,7 +164,10 @@ public class ConditionalBlockHandler implements IPreProcessorHandler {
             OptionalInt value = flags.valueOf(name.text());
             state = value.isPresent() ? "[=" + value.getAsInt() + "]" : "[set]";
         }
-        preProcessor.note(name, state);
+        preProcessor.note(name.source(), state);
+        for (SourceInfo replaced : name.replaces()) {
+            preProcessor.note(replaced, state);
+        }
     }
 
     private static boolean isElse(Token word) {

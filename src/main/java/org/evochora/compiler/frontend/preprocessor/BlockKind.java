@@ -51,10 +51,22 @@ public record BlockKind(Set<String> openers, String closer, Set<String> dividers
                 .collect(Collectors.toUnmodifiableSet());
     }
 
+    /**
+     * Reports whether a word opens a block of this kind, ignoring case.
+     *
+     * @param text The word.
+     * @return {@code true} if it is one of the openers.
+     */
     boolean isOpener(String text) {
         return openers.contains(text.toUpperCase(Locale.ROOT));
     }
 
+    /**
+     * Reports whether a word closes a block of this kind, ignoring case.
+     *
+     * @param text The word.
+     * @return {@code true} if it is the closer.
+     */
     boolean isCloser(String text) {
         return closer.equalsIgnoreCase(text);
     }

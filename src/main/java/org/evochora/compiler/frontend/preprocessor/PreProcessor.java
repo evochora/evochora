@@ -6,8 +6,10 @@ import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.diagnostics.ErrorRecoveryException;
+import org.evochora.compiler.frontend.DirectiveLine;
 import org.evochora.compiler.util.SourceRootResolver;
 import java.util.*;
+import java.util.function.Predicate;
 
 /**
  * The preprocessor for the assembly language. It runs after the lexer and before the parser.
@@ -22,12 +24,12 @@ public class PreProcessor {
     private int current = 0;
     private final PreProcessorContext ppContext;
     private final BlockReader blockReader;
-    private int expansions = 0;
-    private final Map<String, Map<String, List<SourceFile.LeftOut>>> leftOut = new LinkedHashMap<>();
-    private final Map<String, Map<String, List<SourceFile.Note>>> notes = new LinkedHashMap<>();
+    private final Map<String, Map<String, Set<SourceFile.LeftOut>>> leftOut = new HashMap<>();
+    private final Map<String, Map<String, Set<SourceFile.Note>>> notes = new HashMap<>();
 
     /**
-     * Constructs a new PreProcessor.
+     * Constructs a new PreProcessor. The initial tokens are given the placement of the
+     * compilation root, the context's alias chain while no inclusion is open.
      *
      * @param initialTokens  The initial list of tokens from the lexer.
      * @param diagnostics    The engine for reporting errors and warnings.
@@ -37,7 +39,13 @@ public class PreProcessor {
      */
     public PreProcessor(List<Token> initialTokens, DiagnosticsEngine diagnostics, SourceRootResolver resolver,
                         PreProcessorContext ppContext) {
-        this.tokens = new ArrayList<>(initialTokens);
+        this.tokens = new ArrayList<>(initialTokens.size());
+        String root = ppContext.currentAliasChain();
+        for (Token token : initialTokens) {
+            SourceInfo at = token.source();
+            this.tokens.add(root.equals(at.placement()) ? token
+                    : token.with(new SourceInfo(at.fileName(), at.lineNumber(), at.columnNumber(), root, at.expansion())));
+        }
         this.diagnostics = diagnostics;
         this.resolver = resolver;
         this.ppContext = ppContext;
@@ -51,8 +59,8 @@ public class PreProcessor {
      * it is, unless it closes or divides a registered block: the handler of a block consumes its
      * closer and dividers, so one the walk reaches stands outside any block and is reported and
      * removed by the {@link BlockReader}.
-     * @return The preprocessing result: the expanded tokens, and the regions and notes the
-     *         handlers recorded.
+     * @return The preprocessing result: the expanded tokens, and the context's source files with
+     *         the regions and notes the handlers recorded attached to each.
      */
     public PreProcessorResult expand() {
         while (current < tokens.size()) {
@@ -67,7 +75,23 @@ public class PreProcessor {
                 current++;
             }
         }
-        return new PreProcessorResult(tokens, leftOut, notes);
+        List<SourceFile> sources = new ArrayList<>(ppContext.sources().size());
+        for (SourceFile source : ppContext.sources()) {
+            sources.add(source.withRecords(recordedFor(leftOut, source), recordedFor(notes, source)));
+        }
+        return new PreProcessorResult(tokens, sources);
+    }
+
+    /**
+     * Returns what was recorded for the placement and resolved path of a source file, in the
+     * order it was first recorded, or nothing.
+     */
+    private static <T> List<T> recordedFor(Map<String, Map<String, Set<T>>> recorded, SourceFile source) {
+        Map<String, Set<T>> byFile = recorded.get(source.placement());
+        if (byFile == null) {
+            return List.of();
+        }
+        return List.copyOf(byFile.getOrDefault(source.resolvedPath(), Set.of()));
     }
 
     /**
@@ -83,48 +107,30 @@ public class PreProcessor {
     // --- Records for the source view ---
 
     /**
-     * Opens a new macro expansion and returns its number. The numbers count from 1 within one
-     * run of the preprocessor; 0 stands for the text outside any expansion.
-     *
-     * @return The number of the new expansion.
-     */
-    public int newExpansion() {
-        return ++expansions;
-    }
-
-    /**
      * Records a region of lines that was left out, owned by the line of a directive. The region
-     * belongs to the placement, file and expansion of the directive token.
+     * belongs to the placement, file and instance of injected tokens of the given position. A
+     * region equal to one already recorded is recorded once.
      *
-     * @param directive The directive token whose line owns the region.
+     * @param directive The position of the directive whose line owns the region.
      * @param fromLine  The first line of the region.
      * @param toLine    The last line of the region, inclusive.
      */
-    public void leftOut(Token directive, int fromLine, int toLine) {
-        SourceInfo at = directive.source();
-        leftOut.computeIfAbsent(at.placement(), k -> new LinkedHashMap<>())
-                .computeIfAbsent(at.fileName(), k -> new ArrayList<>())
-                .add(new SourceFile.LeftOut(at.expansion(), at.lineNumber(), fromLine, toLine));
+    public void leftOut(SourceInfo directive, int fromLine, int toLine) {
+        leftOut.computeIfAbsent(directive.placement(), k -> new HashMap<>())
+                .computeIfAbsent(directive.fileName(), k -> new LinkedHashSet<>())
+                .add(new SourceFile.LeftOut(directive.expansion(), directive.lineNumber(), fromLine, toLine));
     }
 
     /**
-     * Records a note at the position of a token, in its placement, file and expansion, and at
-     * every position of a parameter the token was substituted for, so that the note stands both
-     * where the token was written and where it is used.
+     * Records a note at a position, in its placement, file and instance of injected tokens. A
+     * note equal to one already recorded is recorded once.
      *
-     * @param at   The token the note stands at.
-     * @param text The text of the note.
+     * @param position The position the note stands at.
+     * @param text     The text of the note.
      */
-    public void note(Token at, String text) {
-        noteAt(at.source(), text);
-        for (SourceInfo replaced : at.replaces()) {
-            noteAt(replaced, text);
-        }
-    }
-
-    private void noteAt(SourceInfo position, String text) {
-        notes.computeIfAbsent(position.placement(), k -> new LinkedHashMap<>())
-                .computeIfAbsent(position.fileName(), k -> new ArrayList<>())
+    public void note(SourceInfo position, String text) {
+        notes.computeIfAbsent(position.placement(), k -> new HashMap<>())
+                .computeIfAbsent(position.fileName(), k -> new LinkedHashSet<>())
                 .add(new SourceFile.Note(position.expansion(), position.lineNumber(), position.columnNumber(), text));
     }
 
@@ -242,6 +248,30 @@ public class PreProcessor {
      */
     public BlockReader.Block readBlock(int openerIndex) {
         return blockReader.read(openerIndex);
+    }
+
+    /**
+     * Finds the physical line of the directive at an index, by the rules of
+     * {@link DirectiveLine}, with no token before it passed over.
+     *
+     * @param index The stream index of the directive token.
+     * @return The directive's operands, their end, and whether it stands alone on its line.
+     */
+    public DirectiveLine lineOf(int index) {
+        return DirectiveLine.of(tokens, index);
+    }
+
+    /**
+     * Finds the physical line of the directive at an index, by the rules of
+     * {@link DirectiveLine}.
+     *
+     * @param index      The stream index of the directive token.
+     * @param passedOver The tokens directly before the directive that belong to it, which the
+     *                   rule passes over.
+     * @return The directive's operands, their end, and whether it stands alone on its line.
+     */
+    public DirectiveLine lineOf(int index, Predicate<Token> passedOver) {
+        return DirectiveLine.of(tokens, index, passedOver);
     }
 
     /**

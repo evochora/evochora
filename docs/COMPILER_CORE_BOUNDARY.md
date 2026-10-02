@@ -25,7 +25,7 @@ feature package under `src/main/java/org/evochora/compiler/features/`.
 | `constdir` | Constants `[EXPORT] .CONST NAME VALUE` | parser, analysis, IR conversion |
 | `macro` | `.MACRO NAME [PARAMS] … .ENDMACRO`, macro invocation by name, file-local macro scope | preprocessor `.MACRO`, block `.MACRO`/`.ENDMACRO` (stored) |
 | `repeat` | `.REPEAT n … .ENDREPEAT`, the shorthand `body^n` | preprocessor `.REPEAT` and `^`, block `.REPEAT`/`.ENDREPEAT` (stored) |
-| `conditional` | Flags `.DEFINE NAME [integer]` and `.UNDEF NAME`, global to a compilation and seeded from `CompilerOptions.defines`; conditional blocks `.IFDEF`/`.IFNDEF NAME` … `.ELSEIFDEF`/`.ELSEIFNDEF` … `.ELSEDEF` … `.ENDDEF`, a condition comparing a flag's value with `=`, `<>`, `<`, `<=`, `>` or `>=`; dependencies inside conditional blocks, followed by the dependency scan | lexer symbols `=` `<>` `<` `<=` `>` `>=`, dependency scan, preprocessor `.DEFINE`, `.UNDEF`, `.IFDEF` and `.IFNDEF` (`.DEFINE` and `.UNDEF` top level only), block `.IFDEF`/`.IFNDEF`/`.ENDDEF` (in place) |
+| `conditional` | Flags `.DEFINE NAME [integer]` and `.UNDEF NAME`, global to a compilation and seeded from `CompilerOptions.defines`; conditional blocks `.IFDEF`/`.IFNDEF NAME` … `.ELSEIFDEF`/`.ELSEIFNDEF` … `.ELSEDEF` … `.ENDDEF`, a condition comparing a flag's value with `=`, `<>`, `<`, `<=`, `>` or `>=`; dependencies inside conditional blocks, followed by the dependency scan | lexer symbols `=` `<>` `<` `<=` `>` `>=`, dependency scan, preprocessor `.DEFINE`, `.UNDEF`, `.IFDEF` and `.IFNDEF` (`.DEFINE` and `.UNDEF` top level only), block `.IFDEF`/`.IFNDEF` … `.ENDDEF` divided by `.ELSEIFDEF`, `.ELSEIFNDEF` and `.ELSEDEF` (in place) |
 | `org` | `.ORG vector`, absolute in the main file, relative inside an imported module; a component marked `@+` or `@-` counts from the write cursor instead | parser, IR conversion, layout |
 | `dir` | `.DIR vector`, the direction in which code is laid out; `.DIR @+i\|j`, a 90-degree rotation of that direction in the plane of two axes | parser, IR conversion, layout |
 | `place` | `.PLACE literal placement…` with vectors, ranges, stepped ranges and wildcards; the initial world objects of the artifact | parser, IR conversion, layout |
@@ -46,13 +46,18 @@ concept in AGENTS.md; they are listed here because they are where the coupling l
 
 1. **The module system.** The dependency scanner detects cycles between files, records a
    placement of a module at every import under its alias chain, each after the placements it
-   imports, and distinguishes a `.SOURCE` file from a module. The semantic analyzer wires the
-   placements together before any handler runs; the symbol table keeps the names of two
-   placements of one file apart. The symbol table resolves qualified names through
-   imports, requirements, `USING` bindings and the `EXPORT` flag. `ModuleScope` holds six
-   maps, all of which belong to `importdir` and `require`. The parser knows the `EXPORT`
-   keyword and asks each statement handler whether it accepts it. The directives are
-   features; the system behind them is core.
+   imports, and distinguishes a `.SOURCE` file from a module. The placement of a position is
+   carried by the scanner, which records it, by the preprocessor, which gives the tokens of the
+   main file the placement of the compilation root, and by the symbol table, which files the
+   names of a module under its placement and looks a name up in the placement of the position it
+   is written at; the lexer gives every token an empty placement, and the handlers of
+   `importdir` and `source` set the placement of the tokens they inline. The semantic analyzer
+   wires the placements together before any handler runs; the symbol table keeps the names of
+   two placements of one file apart. The symbol table resolves qualified names through imports,
+   requirements, `USING` bindings and the `EXPORT` flag. `ModuleScope` holds six maps, all of
+   which belong to `importdir` and `require`. The parser knows the `EXPORT` keyword and asks
+   each statement handler whether it accepts it. The directives are features; the system behind
+   them is core.
 2. **Labels.** The layout engine records label addresses, claims a cell per label and assigns
    every label a machine value of its own. The emitter encodes label cells and builds the two
    label maps of the artifact. `SourceLineIndex` formats a label reference as a jump delta for
@@ -74,10 +79,19 @@ that only a feature reads; `sourceRoots` is read by the core. The core upper-cas
 names, rejects two keys that are one name, and hands the options to the contexts of Phases 0
 and 2 without looking at the flags.
 
-A token the preprocessor substitutes for a macro parameter keeps the position it was written at
-and remembers the position of every parameter it replaced, one per level of nested macros, each
-with the expansion it stands in; a note the preprocessor records on such a token for the source
-view is recorded at its own position and at each of these.
+A token carries two fields of provenance that the core passes on and never interprets: the
+instance of injected tokens its position stands in, `SourceInfo.expansion`, 0 for the text as
+written, and the positions it replaced, `Token.replaces`, one per level of substitution, each
+with the instance it stands in. A feature that injects tokens sets them; the `macro` feature
+numbers its expansions in a state object of its own in the preprocessor context and stamps the
+body tokens and the arguments it substitutes. For a source view the preprocessor offers
+`leftOut`, a region of lines owned by a directive line, and `note`, a text at a position; each
+records at exactly the position it is given, in its placement, file and instance, and equal
+records are kept once. A feature that records at a token decides which of its positions count:
+`conditional` notes the state of a flag at the token that names it and at every position that
+token replaced. The preprocessor returns the source files of the compilation with these records
+attached; from phase 7 on they travel, with the token map, in the IR's `DebugInfo`, which the
+emitter copies into the artifact.
 
 Any other character sequence a feature reads is not a case of the lexer but a symbol the
 feature registers through `IFeatureRegistrationContext.lexerSymbol`; the lexer emits it as one

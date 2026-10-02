@@ -53,7 +53,7 @@ public class CallAnalysisHandler implements IAnalysisHandler {
         // The target has to exist for every CALL; only a CALL that passes arguments needs it to
         // be a procedure, a plain CALL may target any label.
         ResolvedSymbol target;
-        switch (symbolTable.resolve(procIdentifier.text(), procIdentifier.sourceInfo().fileName())) {
+        switch (symbolTable.resolve(procIdentifier.text(), procIdentifier.sourceInfo())) {
             case Resolution.Missing missing -> {
                 diagnostics.reportError("Cannot call '" + procIdentifier.text() + "': " + missing.explanation(),
                         procIdentifier.sourceInfo().fileName(), procIdentifier.sourceInfo().lineNumber());
@@ -197,7 +197,7 @@ public class CallAnalysisHandler implements IAnalysisHandler {
     private void validateIdentifier(IdentifierNode idNode, String position, Set<Meaning> accepted,
                                     String expected, boolean mustExist, SymbolTable st, DiagnosticsEngine diag) {
         ResolvedSymbol resolved;
-        switch (st.resolve(idNode.text(), idNode.sourceInfo().fileName())) {
+        switch (st.resolve(idNode.text(), idNode.sourceInfo())) {
             case Resolution.Missing missing -> {
                 if (mustExist) {
                     diag.reportError("Cannot pass '" + idNode.text() + "' as " + position + " argument: " + missing.explanation(),

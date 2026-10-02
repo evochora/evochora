@@ -15,7 +15,6 @@ import org.evochora.compiler.model.ir.IrVec;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -32,7 +31,7 @@ final class SourceLineIndex {
 
     private final LayoutResult layout;
     private final IInstructionSet isa;
-    private final Map<String, List<MachineInstructionInfo>> instructionsByLine = new HashMap<>();
+    private final Map<String, Map<String, Map<Integer, List<MachineInstructionInfo>>>> instructionsByLine = new HashMap<>();
 
     /**
      * Creates an empty index over a layout.
@@ -61,31 +60,28 @@ final class SourceLineIndex {
         String operands = instruction.operands().stream()
                 .map(op -> format(op, opcodeCoord))
                 .collect(Collectors.joining(" "));
-        instructionsByLine.computeIfAbsent(lineKey(src), k -> new ArrayList<>())
+        String fileName = src.fileName() != null ? src.fileName() : "<unknown>";
+        instructionsByLine.computeIfAbsent(src.placement(), k -> new HashMap<>())
+                .computeIfAbsent(fileName, k -> new HashMap<>())
+                .computeIfAbsent(src.lineNumber(), k -> new ArrayList<>())
                 .add(new MachineInstructionInfo(opcodeAddress, instruction.opcode(), operands, instruction.synthetic()));
     }
 
     /**
-     * Returns the collected instructions, keyed by "placement@fileName:lineNumber" (by
-     * "fileName:lineNumber" for the empty placement) and ordered by address within a line.
+     * Returns the collected instructions by placement, file name and line, ordered by address
+     * within a line. Two placements of one file share its lines, so the placement comes first.
      *
      * @return A new map; the index is not modified.
      */
-    Map<String, List<MachineInstructionInfo>> byLine() {
-        Map<String, List<MachineInstructionInfo>> sorted = new LinkedHashMap<>();
-        for (Map.Entry<String, List<MachineInstructionInfo>> entry : instructionsByLine.entrySet()) {
-            sorted.put(entry.getKey(), entry.getValue().stream()
-                    .sorted((a, b) -> Integer.compare(a.linearAddress(), b.linearAddress()))
-                    .toList());
-        }
+    Map<String, Map<String, Map<Integer, List<MachineInstructionInfo>>>> byLine() {
+        Map<String, Map<String, Map<Integer, List<MachineInstructionInfo>>>> sorted = new HashMap<>();
+        instructionsByLine.forEach((placement, files) -> files.forEach((fileName, lines) -> lines.forEach(
+                (line, instructions) -> sorted.computeIfAbsent(placement, k -> new HashMap<>())
+                        .computeIfAbsent(fileName, k -> new HashMap<>())
+                        .put(line, instructions.stream()
+                                .sorted((a, b) -> Integer.compare(a.linearAddress(), b.linearAddress()))
+                                .toList()))));
         return sorted;
-    }
-
-    private static String lineKey(SourceInfo src) {
-        String fileName = src.fileName() != null ? src.fileName() : "<unknown>";
-        String placement = src.placement();
-        String placed = placement == null || placement.isEmpty() ? fileName : placement + "@" + fileName;
-        return placed + ":" + src.lineNumber();
     }
 
     private String format(IrOperand op, int[] opcodeCoord) {

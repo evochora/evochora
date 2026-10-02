@@ -18,8 +18,8 @@ import java.util.Objects;
  * {@link MacroDefinition} and is dynamically registered by {@link MacroDirectiveHandler}
  * when a {@code .MACRO} definition is encountered during preprocessing.
  * <p>
- * Every expansion gets a number of its own from {@link PreProcessor#newExpansion()}, which the
- * injected body tokens carry, so that the code of one expansion can be told from another's,
+ * Every expansion gets a number of its own from the {@link Expansions} of the preprocessor run,
+ * which the injected body tokens carry, so that the code of one expansion can be told from another's,
  * although all of them stand on the lines of the body. An argument substituted for a parameter
  * keeps its own position and adds the parameter's position in this expansion to the positions
  * it replaces.
@@ -101,7 +101,7 @@ public class MacroExpansionHandler implements IPreProcessorHandler {
 
         // The body tokens stand in this expansion. An argument keeps its own position, where it
         // was written, and remembers the position of the parameter it replaces in this expansion.
-        int expansion = preProcessor.newExpansion();
+        int expansion = preProcessorContext.getOrCreate(Expansions.class, Expansions::new).next();
         List<Token> expandedBody = new ArrayList<>();
         for (Token bodyToken : macro.body()) {
             SourceInfo position = inExpansion(bodyToken.source(), expansion);

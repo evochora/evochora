@@ -1,6 +1,7 @@
 package org.evochora.compiler.frontend.preprocessor;
 
 import org.evochora.compiler.api.CompilerOptions;
+import org.evochora.compiler.api.SourceFile;
 import org.evochora.compiler.frontend.module.PlacementContext;
 import org.evochora.compiler.model.token.Token;
 
@@ -16,14 +17,16 @@ import java.util.function.Supplier;
  * A shared context for the preprocessor phase.
  * Contains the state that handlers read and modify while the token stream is expanded: the
  * handlers the preprocessor dispatches to, the pre-lexed token streams of the files that may
- * be included, the inclusions currently open, the options of the compilation, and a slot in
- * which features keep state of their own types.
+ * be included, the source files the preprocessor's records are attached to, the inclusions
+ * currently open, the options of the compilation, and a slot in which features keep state of
+ * their own types.
  */
 public class PreProcessorContext {
     private final PreProcessorHandlerRegistry handlers = new PreProcessorHandlerRegistry();
     private final String rootAliasChain;
     private final Deque<PlacementContext> inclusions = new ArrayDeque<>();
     private final Map<String, List<Token>> fileTokens;
+    private final List<SourceFile> sources;
     private final CompilerOptions options;
     private final Map<Class<?>, Object> featureState = new HashMap<>();
 
@@ -36,13 +39,31 @@ public class PreProcessorContext {
      * @param fileTokens     Pre-lexed tokens of every file that may be included, keyed by
      *                       resolved absolute path. Whether an inclusion is a module or plain
      *                       text is decided by the directive that includes the file, not here.
+     * @param sources        The text of every file once per placement it stands in, as the
+     *                       dependency scan found it; the preprocessor returns these files with
+     *                       what it recorded for each. A null list becomes an empty one.
      * @param options        The options of the compilation, offered to handlers through
      *                       {@link #options()}; must not be null.
      */
-    public PreProcessorContext(String rootAliasChain, Map<String, List<Token>> fileTokens, CompilerOptions options) {
+    public PreProcessorContext(String rootAliasChain, Map<String, List<Token>> fileTokens, List<SourceFile> sources,
+                               CompilerOptions options) {
         this.rootAliasChain = rootAliasChain != null ? rootAliasChain : "";
         this.fileTokens = fileTokens != null ? fileTokens : Map.of();
+        this.sources = sources != null ? List.copyOf(sources) : List.of();
         this.options = Objects.requireNonNull(options, "options");
+    }
+
+    /**
+     * Creates a context carrying pre-lexed token streams but no source files, for preprocessing
+     * whose records are not read.
+     *
+     * @param rootAliasChain The alias chain for the compilation root module.
+     * @param fileTokens     Pre-lexed tokens of every file that may be included, keyed by
+     *                       resolved absolute path.
+     * @param options        The options of the compilation; must not be null.
+     */
+    public PreProcessorContext(String rootAliasChain, Map<String, List<Token>> fileTokens, CompilerOptions options) {
+        this(rootAliasChain, fileTokens, List.of(), options);
     }
 
     /**
@@ -50,7 +71,7 @@ public class PreProcessorContext {
      * that may be included, {@link CompilerOptions#defaults() default options}.
      */
     public PreProcessorContext() {
-        this("", Map.of(), CompilerOptions.defaults());
+        this("", Map.of(), List.of(), CompilerOptions.defaults());
     }
 
     /**
@@ -73,6 +94,16 @@ public class PreProcessorContext {
      */
     public Map<String, List<Token>> fileTokens() {
         return fileTokens;
+    }
+
+    /**
+     * Returns the text of every file once per placement it stands in, without records.
+     *
+     * @return The files passed to the constructor, in their order; empty for a context created
+     *         without them.
+     */
+    public List<SourceFile> sources() {
+        return sources;
     }
 
     /**

@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
+import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.api.SourceRoot;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.features.ctx.PopCtxPreProcessorHandler;
@@ -50,6 +51,50 @@ class MacroExpansionTest {
 
         assertThat(result.diagnostics.hasErrors()).isFalse();
         assertThat(result.texts()).containsExactly("NOP", "NOP");
+    }
+
+    /**
+     * The body tokens stand in the expansion; an argument keeps the position it was written at
+     * and remembers the position of the parameter it replaced, in that expansion.
+     */
+    @Test
+    void anArgumentKeepsItsPositionAndRemembersTheParameterItReplaces() {
+        Expansion result = expand(
+                ".MACRO SET VALUE",
+                "  SETI %DR0 VALUE",
+                ".ENDMACRO",
+                "SET 5");
+
+        assertThat(result.diagnostics.hasErrors()).isFalse();
+        Token seti = result.tokens.stream().filter(t -> t.text().equals("SETI")).findFirst().orElseThrow();
+        Token five = result.tokens.stream().filter(t -> t.text().equals("5")).findFirst().orElseThrow();
+        assertThat(seti.source()).isEqualTo(new SourceInfo("<memory>", 2, 3, "", 1));
+        assertThat(seti.replaces()).isEmpty();
+        assertThat(five.source()).isEqualTo(new SourceInfo("<memory>", 4, 5, "", 0));
+        assertThat(five.replaces()).containsExactly(new SourceInfo("<memory>", 2, 13, "", 1));
+    }
+
+    /**
+     * An argument passed on through a nested macro replaces one parameter per level, outermost
+     * first, each in the expansion it stands in.
+     */
+    @Test
+    void anArgumentPassedThroughNestedMacrosRemembersOneParameterPerLevel() {
+        Expansion result = expand(
+                ".MACRO INNER V",
+                "  SETI %DR0 V",
+                ".ENDMACRO",
+                ".MACRO OUTER W",
+                "  INNER W",
+                ".ENDMACRO",
+                "OUTER 5");
+
+        assertThat(result.diagnostics.hasErrors()).isFalse();
+        Token five = result.tokens.stream().filter(t -> t.text().equals("5")).findFirst().orElseThrow();
+        assertThat(five.source()).isEqualTo(new SourceInfo("<memory>", 7, 7, "", 0));
+        assertThat(five.replaces()).containsExactly(
+                new SourceInfo("<memory>", 5, 9, "", 1),
+                new SourceInfo("<memory>", 2, 13, "", 2));
     }
 
     @Test

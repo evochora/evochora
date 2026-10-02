@@ -10,9 +10,9 @@ import java.util.List;
  * <p>
  * Besides the text, the file carries what the preprocessor recorded about it for a source view:
  * the regions of lines it left out and the notes it attached to positions. Both are recorded per
- * macro expansion, with the expansion number a {@link SourceInfo} carries; 0 stands for the text
- * outside any expansion. Every expansion of a macro is recorded on its own, so a region or note in
- * a macro body appears once per expansion.
+ * instance of injected tokens, with the number a {@link SourceInfo} carries as its expansion; 0
+ * stands for the text as written. Every instance is recorded on its own, so a region or note in
+ * text injected more than once appears once per instance.
  *
  * @param placement    The alias chain of the placement; the main module's chain for the main
  *                     file and the files it includes, usually empty.
@@ -31,7 +31,8 @@ public record SourceFile(String placement, String path, String resolvedPath, Lis
     /**
      * A region of lines the preprocessor left out, owned by the directive line that decided it.
      *
-     * @param expansion     The macro expansion the region was decided in, 0 outside any.
+     * @param expansion     The instance of injected tokens the region was decided in, 0 for the
+     *                      text as written.
      * @param directiveLine The line of the directive that owns the region.
      * @param from          The first line of the region.
      * @param to            The last line of the region, inclusive.
@@ -42,7 +43,8 @@ public record SourceFile(String placement, String path, String resolvedPath, Lis
     /**
      * A text the preprocessor attached to a position, shown next to the token there.
      *
-     * @param expansion The macro expansion the note was made in, 0 outside any.
+     * @param expansion The instance of injected tokens the note was made in, 0 for the text as
+     *                  written.
      * @param line      The line of the position.
      * @param column    The column of the position.
      * @param text      The text of the note.

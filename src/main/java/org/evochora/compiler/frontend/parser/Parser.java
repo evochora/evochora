@@ -2,6 +2,7 @@ package org.evochora.compiler.frontend.parser;
 
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.diagnostics.ErrorRecoveryException;
+import org.evochora.compiler.frontend.DirectiveLine;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.model.ast.AstNode;
@@ -16,6 +17,7 @@ import org.evochora.compiler.model.ast.VectorLiteralNode;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Predicate;
 
 /**
  * The main parser for the assembly language. It consumes a list of tokens
@@ -255,4 +257,9 @@ public class Parser implements IParsingContext {
     @Override public DiagnosticsEngine getDiagnostics() { return diagnostics; }
     @Override public ParserState state() { return parserState; }
     @Override public boolean isExported() { return currentExported; }
+
+    @Override
+    public DirectiveLine currentLine(Predicate<Token> passedOver) {
+        return DirectiveLine.of(tokens, current, passedOver);
+    }
 }

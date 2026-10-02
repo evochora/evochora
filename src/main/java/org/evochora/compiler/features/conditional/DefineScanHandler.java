@@ -1,5 +1,6 @@
 package org.evochora.compiler.features.conditional;
 
+import org.evochora.compiler.api.IntegerLiteral;
 import org.evochora.compiler.frontend.module.IDependencyScanContext;
 import org.evochora.compiler.frontend.module.IDependencyScanHandler;
 
@@ -32,7 +33,7 @@ public class DefineScanHandler implements IDependencyScanHandler {
         }
         OptionalInt value = OptionalInt.empty();
         if (operands.group(2) != null) {
-            value = Condition.readInteger(operands.group(2));
+            value = IntegerLiteral.parse(operands.group(2));
             if (value.isEmpty()) {
                 return;
             }

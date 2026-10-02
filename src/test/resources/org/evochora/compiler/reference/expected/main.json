@@ -4355,598 +4355,614 @@
     }
   },
   "sourceLineToInstructions": {
-    "UTIL@REFERENCE_ROOT/lib/util.evo:11": [
-      {
-        "linearAddress": 17,
-        "opcode": "JMPI",
-        "operandsAsString": "LABELREF:B1DEE",
-        "synthetic": false
+    "": {
+      "REFERENCE_ROOT/main.evo": {
+        "64": [
+          {
+            "linearAddress": 145,
+            "opcode": "POP",
+            "operandsAsString": "%FDR0",
+            "synthetic": true
+          },
+          {
+            "linearAddress": 147,
+            "opcode": "POP",
+            "operandsAsString": "%FDR1",
+            "synthetic": true
+          }
+        ],
+        "66": [
+          {
+            "linearAddress": 149,
+            "opcode": "SETR",
+            "operandsAsString": "%PDR0 %FDR1",
+            "synthetic": false
+          }
+        ],
+        "67": [
+          {
+            "linearAddress": 152,
+            "opcode": "INI",
+            "operandsAsString": "%PDR0 DATA:0",
+            "synthetic": true
+          },
+          {
+            "linearAddress": 155,
+            "opcode": "JMPI",
+            "operandsAsString": "LABELREF:9FA7F",
+            "synthetic": true
+          }
+        ],
+        "68": [
+          {
+            "linearAddress": 157,
+            "opcode": "PUSH",
+            "operandsAsString": "%FDR0",
+            "synthetic": true
+          },
+          {
+            "linearAddress": 159,
+            "opcode": "RET",
+            "operandsAsString": "",
+            "synthetic": false
+          }
+        ],
+        "69": [
+          {
+            "linearAddress": 161,
+            "opcode": "ADDR",
+            "operandsAsString": "%FDR0 %PDR0",
+            "synthetic": false
+          }
+        ],
+        "70": [
+          {
+            "linearAddress": 164,
+            "opcode": "PUSH",
+            "operandsAsString": "%FDR0",
+            "synthetic": true
+          },
+          {
+            "linearAddress": 166,
+            "opcode": "RET",
+            "operandsAsString": "",
+            "synthetic": false
+          }
+        ],
+        "40": [
+          {
+            "linearAddress": 71,
+            "opcode": "SETI",
+            "operandsAsString": "%DR0 DATA:0",
+            "synthetic": false
+          }
+        ],
+        "42": [
+          {
+            "linearAddress": 78,
+            "opcode": "NOP",
+            "operandsAsString": "",
+            "synthetic": false
+          },
+          {
+            "linearAddress": 79,
+            "opcode": "NOP",
+            "operandsAsString": "",
+            "synthetic": false
+          },
+          {
+            "linearAddress": 80,
+            "opcode": "NOP",
+            "operandsAsString": "",
+            "synthetic": false
+          }
+        ],
+        "44": [
+          {
+            "linearAddress": 81,
+            "opcode": "ADDI",
+            "operandsAsString": "%DR1 DATA:1",
+            "synthetic": false
+          },
+          {
+            "linearAddress": 85,
+            "opcode": "ADDI",
+            "operandsAsString": "%DR1 DATA:1",
+            "synthetic": false
+          }
+        ],
+        "77": [
+          {
+            "linearAddress": 168,
+            "opcode": "NOP",
+            "operandsAsString": "",
+            "synthetic": false
+          },
+          {
+            "linearAddress": 169,
+            "opcode": "NOP",
+            "operandsAsString": "",
+            "synthetic": false
+          }
+        ],
+        "45": [
+          {
+            "linearAddress": 84,
+            "opcode": "NOP",
+            "operandsAsString": "",
+            "synthetic": false
+          },
+          {
+            "linearAddress": 88,
+            "opcode": "NOP",
+            "operandsAsString": "",
+            "synthetic": false
+          }
+        ],
+        "79": [
+          {
+            "linearAddress": 170,
+            "opcode": "NOP",
+            "operandsAsString": "",
+            "synthetic": false
+          },
+          {
+            "linearAddress": 171,
+            "opcode": "NOP",
+            "operandsAsString": "",
+            "synthetic": false
+          }
+        ],
+        "47": [
+          {
+            "linearAddress": 89,
+            "opcode": "NOP",
+            "operandsAsString": "",
+            "synthetic": false
+          },
+          {
+            "linearAddress": 90,
+            "opcode": "NOP",
+            "operandsAsString": "",
+            "synthetic": false
+          },
+          {
+            "linearAddress": 91,
+            "opcode": "NOP",
+            "operandsAsString": "",
+            "synthetic": false
+          },
+          {
+            "linearAddress": 92,
+            "opcode": "NOP",
+            "operandsAsString": "",
+            "synthetic": false
+          }
+        ],
+        "48": [
+          {
+            "linearAddress": 93,
+            "opcode": "PUSI",
+            "operandsAsString": "DATA:99",
+            "synthetic": true
+          },
+          {
+            "linearAddress": 95,
+            "opcode": "PUSI",
+            "operandsAsString": "DATA:0",
+            "synthetic": true
+          },
+          {
+            "linearAddress": 97,
+            "opcode": "PUSH",
+            "operandsAsString": "%DR1",
+            "synthetic": true
+          },
+          {
+            "linearAddress": 99,
+            "opcode": "CALL",
+            "operandsAsString": "LABELREF:8FBAF",
+            "synthetic": false
+          },
+          {
+            "linearAddress": 101,
+            "opcode": "POP",
+            "operandsAsString": "%DR1",
+            "synthetic": true
+          }
+        ],
+        "49": [
+          {
+            "linearAddress": 103,
+            "opcode": "PUSH",
+            "operandsAsString": "%DR0",
+            "synthetic": true
+          },
+          {
+            "linearAddress": 105,
+            "opcode": "PSLI",
+            "operandsAsString": "LABELREF:3FECD",
+            "synthetic": true
+          },
+          {
+            "linearAddress": 107,
+            "opcode": "PUSL",
+            "operandsAsString": "%LR0",
+            "synthetic": true
+          },
+          {
+            "linearAddress": 109,
+            "opcode": "CALL",
+            "operandsAsString": "LABELREF:37597",
+            "synthetic": false
+          },
+          {
+            "linearAddress": 111,
+            "opcode": "POPL",
+            "operandsAsString": "%LR0",
+            "synthetic": true
+          },
+          {
+            "linearAddress": 113,
+            "opcode": "POP",
+            "operandsAsString": "%DR0",
+            "synthetic": true
+          }
+        ],
+        "50": [
+          {
+            "linearAddress": 115,
+            "opcode": "PUSH",
+            "operandsAsString": "%DR0",
+            "synthetic": true
+          },
+          {
+            "linearAddress": 117,
+            "opcode": "CALL",
+            "operandsAsString": "LABELREF:B1C8E",
+            "synthetic": false
+          },
+          {
+            "linearAddress": 119,
+            "opcode": "POP",
+            "operandsAsString": "%DR0",
+            "synthetic": true
+          }
+        ],
+        "51": [
+          {
+            "linearAddress": 121,
+            "opcode": "GETI",
+            "operandsAsString": "%DR0 DATA:7",
+            "synthetic": true
+          },
+          {
+            "linearAddress": 124,
+            "opcode": "JMPI",
+            "operandsAsString": "LABELREF:0D9C2",
+            "synthetic": true
+          }
+        ],
+        "52": [
+          {
+            "linearAddress": 126,
+            "opcode": "PUSI",
+            "operandsAsString": "DATA:2",
+            "synthetic": true
+          },
+          {
+            "linearAddress": 128,
+            "opcode": "PUSH",
+            "operandsAsString": "%DR0",
+            "synthetic": true
+          },
+          {
+            "linearAddress": 130,
+            "opcode": "CALL",
+            "operandsAsString": "LABELREF:1A740",
+            "synthetic": false
+          },
+          {
+            "linearAddress": 132,
+            "opcode": "POP",
+            "operandsAsString": "%DR0",
+            "synthetic": true
+          }
+        ],
+        "53": [
+          {
+            "linearAddress": 135,
+            "opcode": "JMPI",
+            "operandsAsString": "LABELREF:92C97",
+            "synthetic": false
+          }
+        ],
+        "54": [
+          {
+            "linearAddress": 137,
+            "opcode": "JMPI",
+            "operandsAsString": "LABELREF:8CC42",
+            "synthetic": false
+          }
+        ],
+        "25": [
+          {
+            "linearAddress": 74,
+            "opcode": "ADDI",
+            "operandsAsString": "%DR0 DATA:7",
+            "synthetic": false
+          }
+        ],
+        "26": [
+          {
+            "linearAddress": 77,
+            "opcode": "NOP",
+            "operandsAsString": "",
+            "synthetic": false
+          }
+        ],
+        "61": [
+          {
+            "linearAddress": 140,
+            "opcode": "NOP",
+            "operandsAsString": "",
+            "synthetic": false
+          },
+          {
+            "linearAddress": 141,
+            "opcode": "NOP",
+            "operandsAsString": "",
+            "synthetic": false
+          }
+        ],
+        "62": [
+          {
+            "linearAddress": 142,
+            "opcode": "JMPI",
+            "operandsAsString": "LABELREF:8CC42",
+            "synthetic": false
+          }
+        ]
       }
-    ],
-    "UTIL@REFERENCE_ROOT/lib/util.evo:10": [
-      {
-        "linearAddress": 14,
-        "opcode": "LTR",
-        "operandsAsString": "%FDR2 %FDR0",
-        "synthetic": false
+    },
+    "NAV": {
+      "REFERENCE_ROOT/lib/nav.evo": {
+        "6": [
+          {
+            "linearAddress": 53,
+            "opcode": "POP",
+            "operandsAsString": "%FDR0",
+            "synthetic": true
+          },
+          {
+            "linearAddress": 55,
+            "opcode": "POPL",
+            "operandsAsString": "%FLR0",
+            "synthetic": true
+          },
+          {
+            "linearAddress": 57,
+            "opcode": "POPL",
+            "operandsAsString": "%FLR1",
+            "synthetic": true
+          }
+        ],
+        "7": [
+          {
+            "linearAddress": 59,
+            "opcode": "PUSH",
+            "operandsAsString": "%FDR0",
+            "synthetic": true
+          },
+          {
+            "linearAddress": 61,
+            "opcode": "CALL",
+            "operandsAsString": "LABELREF:B1C8E",
+            "synthetic": false
+          },
+          {
+            "linearAddress": 63,
+            "opcode": "POP",
+            "operandsAsString": "%FDR0",
+            "synthetic": true
+          }
+        ],
+        "8": [
+          {
+            "linearAddress": 65,
+            "opcode": "PUSL",
+            "operandsAsString": "%FLR0",
+            "synthetic": true
+          },
+          {
+            "linearAddress": 67,
+            "opcode": "PUSH",
+            "operandsAsString": "%FDR0",
+            "synthetic": true
+          },
+          {
+            "linearAddress": 69,
+            "opcode": "RET",
+            "operandsAsString": "",
+            "synthetic": false
+          }
+        ]
       }
-    ],
-    "UTIL@REFERENCE_ROOT/lib/util.evo:15": [
-      {
-        "linearAddress": 26,
-        "opcode": "SETR",
-        "operandsAsString": "%FDR0 %FDR1",
-        "synthetic": false
+    },
+    "UTIL": {
+      "REFERENCE_ROOT/lib/util.evo": {
+        "17": [
+          {
+            "linearAddress": 30,
+            "opcode": "PUSH",
+            "operandsAsString": "%FDR0",
+            "synthetic": true
+          },
+          {
+            "linearAddress": 32,
+            "opcode": "RET",
+            "operandsAsString": "",
+            "synthetic": false
+          }
+        ],
+        "5": [
+          {
+            "linearAddress": 1,
+            "opcode": "NOP",
+            "operandsAsString": "",
+            "synthetic": false
+          }
+        ],
+        "7": [
+          {
+            "linearAddress": 3,
+            "opcode": "POP",
+            "operandsAsString": "%FDR0",
+            "synthetic": true
+          },
+          {
+            "linearAddress": 5,
+            "opcode": "POP",
+            "operandsAsString": "%FDR1",
+            "synthetic": true
+          },
+          {
+            "linearAddress": 7,
+            "opcode": "POP",
+            "operandsAsString": "%FDR2",
+            "synthetic": true
+          }
+        ],
+        "8": [
+          {
+            "linearAddress": 9,
+            "opcode": "LTR",
+            "operandsAsString": "%FDR0 %FDR1",
+            "synthetic": false
+          }
+        ],
+        "9": [
+          {
+            "linearAddress": 12,
+            "opcode": "JMPI",
+            "operandsAsString": "LABELREF:0C5DA",
+            "synthetic": false
+          }
+        ],
+        "10": [
+          {
+            "linearAddress": 14,
+            "opcode": "LTR",
+            "operandsAsString": "%FDR2 %FDR0",
+            "synthetic": false
+          }
+        ],
+        "11": [
+          {
+            "linearAddress": 17,
+            "opcode": "JMPI",
+            "operandsAsString": "LABELREF:B1DEE",
+            "synthetic": false
+          }
+        ],
+        "12": [
+          {
+            "linearAddress": 19,
+            "opcode": "SETR",
+            "operandsAsString": "%FDR0 %FDR2",
+            "synthetic": false
+          }
+        ],
+        "13": [
+          {
+            "linearAddress": 22,
+            "opcode": "PUSH",
+            "operandsAsString": "%FDR0",
+            "synthetic": true
+          },
+          {
+            "linearAddress": 24,
+            "opcode": "RET",
+            "operandsAsString": "",
+            "synthetic": false
+          }
+        ],
+        "15": [
+          {
+            "linearAddress": 26,
+            "opcode": "SETR",
+            "operandsAsString": "%FDR0 %FDR1",
+            "synthetic": false
+          }
+        ]
       }
-    ],
-    "UTIL@REFERENCE_ROOT/lib/util.evo:13": [
-      {
-        "linearAddress": 22,
-        "opcode": "PUSH",
-        "operandsAsString": "%FDR0",
-        "synthetic": true
-      },
-      {
-        "linearAddress": 24,
-        "opcode": "RET",
-        "operandsAsString": "",
-        "synthetic": false
+    },
+    "NAV.STEP": {
+      "REFERENCE_ROOT/lib/step.evo": {
+        "5": [
+          {
+            "linearAddress": 34,
+            "opcode": "POP",
+            "operandsAsString": "%FDR0",
+            "synthetic": true
+          }
+        ],
+        "6": [
+          {
+            "linearAddress": 36,
+            "opcode": "ADDI",
+            "operandsAsString": "%FDR0 DATA:1",
+            "synthetic": false
+          }
+        ],
+        "7": [
+          {
+            "linearAddress": 39,
+            "opcode": "PUSI",
+            "operandsAsString": "DATA:99",
+            "synthetic": true
+          },
+          {
+            "linearAddress": 41,
+            "opcode": "PUSI",
+            "operandsAsString": "DATA:0",
+            "synthetic": true
+          },
+          {
+            "linearAddress": 43,
+            "opcode": "PUSH",
+            "operandsAsString": "%FDR0",
+            "synthetic": true
+          },
+          {
+            "linearAddress": 45,
+            "opcode": "CALL",
+            "operandsAsString": "LABELREF:8FBAF",
+            "synthetic": false
+          },
+          {
+            "linearAddress": 47,
+            "opcode": "POP",
+            "operandsAsString": "%FDR0",
+            "synthetic": true
+          }
+        ],
+        "8": [
+          {
+            "linearAddress": 49,
+            "opcode": "PUSH",
+            "operandsAsString": "%FDR0",
+            "synthetic": true
+          },
+          {
+            "linearAddress": 51,
+            "opcode": "RET",
+            "operandsAsString": "",
+            "synthetic": false
+          }
+        ]
       }
-    ],
-    "UTIL@REFERENCE_ROOT/lib/util.evo:12": [
-      {
-        "linearAddress": 19,
-        "opcode": "SETR",
-        "operandsAsString": "%FDR0 %FDR2",
-        "synthetic": false
-      }
-    ],
-    "REFERENCE_ROOT/main.evo:67": [
-      {
-        "linearAddress": 152,
-        "opcode": "INI",
-        "operandsAsString": "%PDR0 DATA:0",
-        "synthetic": true
-      },
-      {
-        "linearAddress": 155,
-        "opcode": "JMPI",
-        "operandsAsString": "LABELREF:9FA7F",
-        "synthetic": true
-      }
-    ],
-    "REFERENCE_ROOT/main.evo:45": [
-      {
-        "linearAddress": 84,
-        "opcode": "NOP",
-        "operandsAsString": "",
-        "synthetic": false
-      },
-      {
-        "linearAddress": 88,
-        "opcode": "NOP",
-        "operandsAsString": "",
-        "synthetic": false
-      }
-    ],
-    "REFERENCE_ROOT/main.evo:66": [
-      {
-        "linearAddress": 149,
-        "opcode": "SETR",
-        "operandsAsString": "%PDR0 %FDR1",
-        "synthetic": false
-      }
-    ],
-    "REFERENCE_ROOT/main.evo:44": [
-      {
-        "linearAddress": 81,
-        "opcode": "ADDI",
-        "operandsAsString": "%DR1 DATA:1",
-        "synthetic": false
-      },
-      {
-        "linearAddress": 85,
-        "opcode": "ADDI",
-        "operandsAsString": "%DR1 DATA:1",
-        "synthetic": false
-      }
-    ],
-    "NAV@REFERENCE_ROOT/lib/nav.evo:6": [
-      {
-        "linearAddress": 53,
-        "opcode": "POP",
-        "operandsAsString": "%FDR0",
-        "synthetic": true
-      },
-      {
-        "linearAddress": 55,
-        "opcode": "POPL",
-        "operandsAsString": "%FLR0",
-        "synthetic": true
-      },
-      {
-        "linearAddress": 57,
-        "opcode": "POPL",
-        "operandsAsString": "%FLR1",
-        "synthetic": true
-      }
-    ],
-    "REFERENCE_ROOT/main.evo:69": [
-      {
-        "linearAddress": 161,
-        "opcode": "ADDR",
-        "operandsAsString": "%FDR0 %PDR0",
-        "synthetic": false
-      }
-    ],
-    "REFERENCE_ROOT/main.evo:47": [
-      {
-        "linearAddress": 89,
-        "opcode": "NOP",
-        "operandsAsString": "",
-        "synthetic": false
-      },
-      {
-        "linearAddress": 90,
-        "opcode": "NOP",
-        "operandsAsString": "",
-        "synthetic": false
-      },
-      {
-        "linearAddress": 91,
-        "opcode": "NOP",
-        "operandsAsString": "",
-        "synthetic": false
-      },
-      {
-        "linearAddress": 92,
-        "opcode": "NOP",
-        "operandsAsString": "",
-        "synthetic": false
-      }
-    ],
-    "REFERENCE_ROOT/main.evo:25": [
-      {
-        "linearAddress": 74,
-        "opcode": "ADDI",
-        "operandsAsString": "%DR0 DATA:7",
-        "synthetic": false
-      }
-    ],
-    "NAV@REFERENCE_ROOT/lib/nav.evo:7": [
-      {
-        "linearAddress": 59,
-        "opcode": "PUSH",
-        "operandsAsString": "%FDR0",
-        "synthetic": true
-      },
-      {
-        "linearAddress": 61,
-        "opcode": "CALL",
-        "operandsAsString": "LABELREF:B1C8E",
-        "synthetic": false
-      },
-      {
-        "linearAddress": 63,
-        "opcode": "POP",
-        "operandsAsString": "%FDR0",
-        "synthetic": true
-      }
-    ],
-    "NAV.STEP@REFERENCE_ROOT/lib/step.evo:8": [
-      {
-        "linearAddress": 49,
-        "opcode": "PUSH",
-        "operandsAsString": "%FDR0",
-        "synthetic": true
-      },
-      {
-        "linearAddress": 51,
-        "opcode": "RET",
-        "operandsAsString": "",
-        "synthetic": false
-      }
-    ],
-    "REFERENCE_ROOT/main.evo:68": [
-      {
-        "linearAddress": 157,
-        "opcode": "PUSH",
-        "operandsAsString": "%FDR0",
-        "synthetic": true
-      },
-      {
-        "linearAddress": 159,
-        "opcode": "RET",
-        "operandsAsString": "",
-        "synthetic": false
-      }
-    ],
-    "NAV@REFERENCE_ROOT/lib/nav.evo:8": [
-      {
-        "linearAddress": 65,
-        "opcode": "PUSL",
-        "operandsAsString": "%FLR0",
-        "synthetic": true
-      },
-      {
-        "linearAddress": 67,
-        "opcode": "PUSH",
-        "operandsAsString": "%FDR0",
-        "synthetic": true
-      },
-      {
-        "linearAddress": 69,
-        "opcode": "RET",
-        "operandsAsString": "",
-        "synthetic": false
-      }
-    ],
-    "REFERENCE_ROOT/main.evo:49": [
-      {
-        "linearAddress": 103,
-        "opcode": "PUSH",
-        "operandsAsString": "%DR0",
-        "synthetic": true
-      },
-      {
-        "linearAddress": 105,
-        "opcode": "PSLI",
-        "operandsAsString": "LABELREF:3FECD",
-        "synthetic": true
-      },
-      {
-        "linearAddress": 107,
-        "opcode": "PUSL",
-        "operandsAsString": "%LR0",
-        "synthetic": true
-      },
-      {
-        "linearAddress": 109,
-        "opcode": "CALL",
-        "operandsAsString": "LABELREF:37597",
-        "synthetic": false
-      },
-      {
-        "linearAddress": 111,
-        "opcode": "POPL",
-        "operandsAsString": "%LR0",
-        "synthetic": true
-      },
-      {
-        "linearAddress": 113,
-        "opcode": "POP",
-        "operandsAsString": "%DR0",
-        "synthetic": true
-      }
-    ],
-    "NAV.STEP@REFERENCE_ROOT/lib/step.evo:6": [
-      {
-        "linearAddress": 36,
-        "opcode": "ADDI",
-        "operandsAsString": "%FDR0 DATA:1",
-        "synthetic": false
-      }
-    ],
-    "REFERENCE_ROOT/main.evo:48": [
-      {
-        "linearAddress": 93,
-        "opcode": "PUSI",
-        "operandsAsString": "DATA:99",
-        "synthetic": true
-      },
-      {
-        "linearAddress": 95,
-        "opcode": "PUSI",
-        "operandsAsString": "DATA:0",
-        "synthetic": true
-      },
-      {
-        "linearAddress": 97,
-        "opcode": "PUSH",
-        "operandsAsString": "%DR1",
-        "synthetic": true
-      },
-      {
-        "linearAddress": 99,
-        "opcode": "CALL",
-        "operandsAsString": "LABELREF:8FBAF",
-        "synthetic": false
-      },
-      {
-        "linearAddress": 101,
-        "opcode": "POP",
-        "operandsAsString": "%DR1",
-        "synthetic": true
-      }
-    ],
-    "REFERENCE_ROOT/main.evo:26": [
-      {
-        "linearAddress": 77,
-        "opcode": "NOP",
-        "operandsAsString": "",
-        "synthetic": false
-      }
-    ],
-    "NAV.STEP@REFERENCE_ROOT/lib/step.evo:7": [
-      {
-        "linearAddress": 39,
-        "opcode": "PUSI",
-        "operandsAsString": "DATA:99",
-        "synthetic": true
-      },
-      {
-        "linearAddress": 41,
-        "opcode": "PUSI",
-        "operandsAsString": "DATA:0",
-        "synthetic": true
-      },
-      {
-        "linearAddress": 43,
-        "opcode": "PUSH",
-        "operandsAsString": "%FDR0",
-        "synthetic": true
-      },
-      {
-        "linearAddress": 45,
-        "opcode": "CALL",
-        "operandsAsString": "LABELREF:8FBAF",
-        "synthetic": false
-      },
-      {
-        "linearAddress": 47,
-        "opcode": "POP",
-        "operandsAsString": "%FDR0",
-        "synthetic": true
-      }
-    ],
-    "NAV.STEP@REFERENCE_ROOT/lib/step.evo:5": [
-      {
-        "linearAddress": 34,
-        "opcode": "POP",
-        "operandsAsString": "%FDR0",
-        "synthetic": true
-      }
-    ],
-    "REFERENCE_ROOT/main.evo:70": [
-      {
-        "linearAddress": 164,
-        "opcode": "PUSH",
-        "operandsAsString": "%FDR0",
-        "synthetic": true
-      },
-      {
-        "linearAddress": 166,
-        "opcode": "RET",
-        "operandsAsString": "",
-        "synthetic": false
-      }
-    ],
-    "REFERENCE_ROOT/main.evo:50": [
-      {
-        "linearAddress": 115,
-        "opcode": "PUSH",
-        "operandsAsString": "%DR0",
-        "synthetic": true
-      },
-      {
-        "linearAddress": 117,
-        "opcode": "CALL",
-        "operandsAsString": "LABELREF:B1C8E",
-        "synthetic": false
-      },
-      {
-        "linearAddress": 119,
-        "opcode": "POP",
-        "operandsAsString": "%DR0",
-        "synthetic": true
-      }
-    ],
-    "REFERENCE_ROOT/main.evo:52": [
-      {
-        "linearAddress": 126,
-        "opcode": "PUSI",
-        "operandsAsString": "DATA:2",
-        "synthetic": true
-      },
-      {
-        "linearAddress": 128,
-        "opcode": "PUSH",
-        "operandsAsString": "%DR0",
-        "synthetic": true
-      },
-      {
-        "linearAddress": 130,
-        "opcode": "CALL",
-        "operandsAsString": "LABELREF:1A740",
-        "synthetic": false
-      },
-      {
-        "linearAddress": 132,
-        "opcode": "POP",
-        "operandsAsString": "%DR0",
-        "synthetic": true
-      }
-    ],
-    "REFERENCE_ROOT/main.evo:51": [
-      {
-        "linearAddress": 121,
-        "opcode": "GETI",
-        "operandsAsString": "%DR0 DATA:7",
-        "synthetic": true
-      },
-      {
-        "linearAddress": 124,
-        "opcode": "JMPI",
-        "operandsAsString": "LABELREF:0D9C2",
-        "synthetic": true
-      }
-    ],
-    "REFERENCE_ROOT/main.evo:54": [
-      {
-        "linearAddress": 137,
-        "opcode": "JMPI",
-        "operandsAsString": "LABELREF:8CC42",
-        "synthetic": false
-      }
-    ],
-    "REFERENCE_ROOT/main.evo:53": [
-      {
-        "linearAddress": 135,
-        "opcode": "JMPI",
-        "operandsAsString": "LABELREF:92C97",
-        "synthetic": false
-      }
-    ],
-    "UTIL@REFERENCE_ROOT/lib/util.evo:17": [
-      {
-        "linearAddress": 30,
-        "opcode": "PUSH",
-        "operandsAsString": "%FDR0",
-        "synthetic": true
-      },
-      {
-        "linearAddress": 32,
-        "opcode": "RET",
-        "operandsAsString": "",
-        "synthetic": false
-      }
-    ],
-    "UTIL@REFERENCE_ROOT/lib/util.evo:5": [
-      {
-        "linearAddress": 1,
-        "opcode": "NOP",
-        "operandsAsString": "",
-        "synthetic": false
-      }
-    ],
-    "UTIL@REFERENCE_ROOT/lib/util.evo:8": [
-      {
-        "linearAddress": 9,
-        "opcode": "LTR",
-        "operandsAsString": "%FDR0 %FDR1",
-        "synthetic": false
-      }
-    ],
-    "UTIL@REFERENCE_ROOT/lib/util.evo:7": [
-      {
-        "linearAddress": 3,
-        "opcode": "POP",
-        "operandsAsString": "%FDR0",
-        "synthetic": true
-      },
-      {
-        "linearAddress": 5,
-        "opcode": "POP",
-        "operandsAsString": "%FDR1",
-        "synthetic": true
-      },
-      {
-        "linearAddress": 7,
-        "opcode": "POP",
-        "operandsAsString": "%FDR2",
-        "synthetic": true
-      }
-    ],
-    "UTIL@REFERENCE_ROOT/lib/util.evo:9": [
-      {
-        "linearAddress": 12,
-        "opcode": "JMPI",
-        "operandsAsString": "LABELREF:0C5DA",
-        "synthetic": false
-      }
-    ],
-    "REFERENCE_ROOT/main.evo:77": [
-      {
-        "linearAddress": 168,
-        "opcode": "NOP",
-        "operandsAsString": "",
-        "synthetic": false
-      },
-      {
-        "linearAddress": 169,
-        "opcode": "NOP",
-        "operandsAsString": "",
-        "synthetic": false
-      }
-    ],
-    "REFERENCE_ROOT/main.evo:79": [
-      {
-        "linearAddress": 170,
-        "opcode": "NOP",
-        "operandsAsString": "",
-        "synthetic": false
-      },
-      {
-        "linearAddress": 171,
-        "opcode": "NOP",
-        "operandsAsString": "",
-        "synthetic": false
-      }
-    ],
-    "REFERENCE_ROOT/main.evo:61": [
-      {
-        "linearAddress": 140,
-        "opcode": "NOP",
-        "operandsAsString": "",
-        "synthetic": false
-      },
-      {
-        "linearAddress": 141,
-        "opcode": "NOP",
-        "operandsAsString": "",
-        "synthetic": false
-      }
-    ],
-    "REFERENCE_ROOT/main.evo:62": [
-      {
-        "linearAddress": 142,
-        "opcode": "JMPI",
-        "operandsAsString": "LABELREF:8CC42",
-        "synthetic": false
-      }
-    ],
-    "REFERENCE_ROOT/main.evo:40": [
-      {
-        "linearAddress": 71,
-        "opcode": "SETI",
-        "operandsAsString": "%DR0 DATA:0",
-        "synthetic": false
-      }
-    ],
-    "REFERENCE_ROOT/main.evo:64": [
-      {
-        "linearAddress": 145,
-        "opcode": "POP",
-        "operandsAsString": "%FDR0",
-        "synthetic": true
-      },
-      {
-        "linearAddress": 147,
-        "opcode": "POP",
-        "operandsAsString": "%FDR1",
-        "synthetic": true
-      }
-    ],
-    "REFERENCE_ROOT/main.evo:42": [
-      {
-        "linearAddress": 78,
-        "opcode": "NOP",
-        "operandsAsString": "",
-        "synthetic": false
-      },
-      {
-        "linearAddress": 79,
-        "opcode": "NOP",
-        "operandsAsString": "",
-        "synthetic": false
-      },
-      {
-        "linearAddress": 80,
-        "opcode": "NOP",
-        "operandsAsString": "",
-        "synthetic": false
-      }
-    ]
+    }
   },
   "labelValueToName": {
     "108352": "LOCAL_STEP",

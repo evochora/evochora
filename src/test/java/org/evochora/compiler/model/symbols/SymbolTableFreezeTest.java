@@ -84,7 +84,7 @@ class SymbolTableFreezeTest {
     @Test
     void resolve_allowedAfterFreeze() {
         symbolTable.setCurrentModule("MAIN");
-        assertThat(symbolTable.resolve("TEST", "test.evo").found()).isPresent();
+        assertThat(symbolTable.resolve("TEST", new SourceInfo("test.evo", 1, 0, "MAIN", 0)).found()).isPresent();
     }
 
     @Test

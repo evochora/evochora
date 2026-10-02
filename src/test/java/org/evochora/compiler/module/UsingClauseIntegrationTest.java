@@ -1,5 +1,6 @@
 package org.evochora.compiler.module;
 
+import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.api.CompilerOptions;
 import org.evochora.compiler.TestLexers;
 import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
@@ -199,7 +200,7 @@ class UsingClauseIntegrationTest {
         st.setCurrentModule("LIB");
 
         String depPath = tempDir.resolve("dep.evo").normalize().toString().replace('\\', '/');
-        var resolved = st.resolve("DEP.HARVEST", depPath).found();
+        var resolved = st.resolve("DEP.HARVEST", new SourceInfo(depPath, 1, 0, "LIB", 0)).found();
         assertThat(resolved).isPresent();
         assertThat(resolved.get().symbol().type()).isEqualTo(Symbol.Type.LABEL);
         assertThat(resolved.get().symbol().name()).isEqualToIgnoringCase("HARVEST");

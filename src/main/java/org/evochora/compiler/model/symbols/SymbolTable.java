@@ -301,7 +301,7 @@ public class SymbolTable {
         ModuleScope foreign = null;
         for (int depth = 0; depth < MAX_BINDING_DEPTH; depth++) {
             Lookup lookup = foreign == null
-                    ? lookUp(current.text(), current.sourceInfo().fileName())
+                    ? lookUp(current.text(), current.sourceInfo())
                     : lookUp(current.text(), foreign.aliasChain(), rootScope, foreign);
             Optional<ResolvedSymbol> resolved = lookup.resolution().found();
             if (resolved.isEmpty()) {
@@ -342,11 +342,14 @@ public class SymbolTable {
      * If the symbol is not found, it attempts to resolve it as a qualified name
      * (e.g., {@code ALIAS.SYMBOL}) using the current module's import aliases.
      * @param name The name of the symbol to resolve.
-     * @param requestingFile The file requesting the symbol resolution (for module scoping).
+     * @param at   The position the name is written at. A position in the placement of the
+     *             current module looks the name up among that module's symbols, whichever file
+     *             of the placement it stands in; any other position looks it up among the
+     *             symbols of its file.
      * @return The symbol with its qualified name, or the reason there is none.
      */
-    public Resolution resolve(String name, String requestingFile) {
-        return lookUp(name, requestingFile).resolution();
+    public Resolution resolve(String name, SourceInfo at) {
+        return lookUp(name, at).resolution();
     }
 
     /**
@@ -365,12 +368,13 @@ public class SymbolTable {
     /**
      * Looks a name up as {@link #resolve} does, from the current scope and module.
      */
-    private Lookup lookUp(String name, String requestingFile) {
-        // A token of the current module's own file looks up the symbols of the current placement.
+    private Lookup lookUp(String name, SourceInfo at) {
+        // A token of the current placement, in the module's own file or in a file it sources,
+        // looks up the symbols of the current placement.
         ModuleScope currentModScope = modules.get(currentAliasChain);
-        String filedUnder = currentModScope != null && currentModScope.sourcePath().equals(requestingFile)
+        String filedUnder = currentModScope != null && currentModScope.aliasChain().equals(at.placement())
                 ? currentModScope.aliasChain()
-                : requestingFile;
+                : at.fileName();
         return lookUp(name, filedUnder, currentScope, currentModScope);
     }
 

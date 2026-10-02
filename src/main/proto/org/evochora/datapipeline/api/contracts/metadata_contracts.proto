@@ -155,8 +155,11 @@ message ProgramArtifact {
   // Used to reference this program in InitialOrganismSetup and OrganismState
   string program_id = 1;
 
-  // Field 2 reserved (was: sources keyed by file name, replaced by one entry per placement)
-  reserved 2;
+  // Source code, one entry per file and module placement it stands in
+  // Source: ProgramArtifact.sources()
+  // Order: the main file first, then every file in the order the compiler meets it
+  // Used by debugger to display source code
+  repeated SourceFile sources = 2;
 
   // Compiled machine code laid out in relative coordinates
   // Source: ProgramArtifact.machineCodeLayout()
@@ -220,10 +223,9 @@ message ProgramArtifact {
 
   // Machine instructions per source line for visualization
   // Source: ProgramArtifact.sourceLineToInstructions()
-  // Key: "placement@fileName:lineNumber" (e.g., "ENERGY@lib/energy.evo:4"), or "fileName:lineNumber"
-  // for the empty placement (e.g., "main.evo:4"); Value: list of machine instructions
+  // One entry per placement and file: line number → machine instructions of that line
   // Used by frontend to display compiler-generated instructions (e.g., PUSH/POP for CALL)
-  map<string, MachineInstructionInfoList> source_line_to_instructions = 14;
+  repeated FileSourceLines source_line_to_instructions = 14;
 
   // Reverse lookup from label hash value to label name
   // Source: ProgramArtifact.labelValueToName()
@@ -236,12 +238,6 @@ message ProgramArtifact {
   // Key: label name, Value: 20-bit hash value
   // Used by frontend to resolve label references in source view
   map<string, int32> label_name_to_value = 16;
-
-  // Source code, one entry per file and module placement it stands in
-  // Source: ProgramArtifact.sources()
-  // Order: the main file first, then every file in the order the compiler meets it
-  // Used by debugger to display source code
-  repeated SourceFile sources = 17;
 }
 
 // The text of one file in one module placement.
@@ -260,17 +256,17 @@ message SourceFile {
   // Lines of source code (0-indexed)
   repeated string lines = 4;
 
-  // Regions of lines the preprocessor left out, per macro expansion, in recording order
+  // Regions of lines the preprocessor left out, per instance of injected tokens, in recording order
   repeated LeftOutRegion left_out = 5;
 
-  // Notes the preprocessor attached to positions, per macro expansion, in recording order
+  // Notes the preprocessor attached to positions, per instance of injected tokens, in recording order
   repeated SourceNote notes = 6;
 }
 
 // A region of lines the preprocessor left out, owned by the directive line that decided it.
 // Maps to org.evochora.compiler.api.SourceFile.LeftOut record.
 message LeftOutRegion {
-  // Macro expansion the region was decided in, 0 outside any
+  // Instance of injected tokens the region was decided in, 0 for the text as written
   int32 expansion = 1;
 
   // Line of the directive that owns the region (1-indexed)
@@ -286,7 +282,7 @@ message LeftOutRegion {
 // A text the preprocessor attached to a source position.
 // Maps to org.evochora.compiler.api.SourceFile.Note record.
 message SourceNote {
-  // Macro expansion the note was made in, 0 outside any
+  // Instance of injected tokens the note was made in, 0 for the text as written
   int32 expansion = 1;
 
   // Line of the position (1-indexed)
@@ -295,7 +291,7 @@ message SourceNote {
   // Column of the position (1-indexed)
   int32 column = 3;
 
-  // Text of the note (e.g., "[=3]", "[set]", "[not set]")
+  // Text of the note, shown next to the token at the position
   string text = 4;
 }
 
@@ -345,6 +341,20 @@ message SourceMapEntry {
 
 // Container for a list of machine instructions that belong to the same source line.
 // Used to display all machine instructions generated from a single source line.
+// The machine instructions of the lines of one file in one module placement.
+// Protobuf-compatible representation of one placement and file of
+// Map<String, Map<String, Map<Integer, List<MachineInstructionInfo>>>>.
+message FileSourceLines {
+  // Alias chain of the module placement the file stands in
+  string placement = 1;
+
+  // Source filename, the file_name of the SourceInfo of every instruction listed
+  string file_name = 2;
+
+  // Line number (1-indexed) → machine instructions generated from that line
+  map<int32, MachineInstructionInfoList> lines = 3;
+}
+
 message MachineInstructionInfoList {
   // List of machine instructions, sorted by linear address (execution order)
   repeated MachineInstructionInfo instructions = 1;
@@ -385,8 +395,8 @@ message SourceInfo {
   // share its locations
   string placement = 4;
 
-  // Macro expansion the location stands in, 0 outside any; the expansions of a macro share the
-  // locations of its body
+  // Instance of injected tokens the location stands in, 0 for the text as written; the
+  // instances of tokens injected more than once share their locations
   int32 expansion = 5;
 }
 

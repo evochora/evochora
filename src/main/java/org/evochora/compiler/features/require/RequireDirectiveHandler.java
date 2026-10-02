@@ -6,8 +6,7 @@ import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.frontend.parser.IParsingContext;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.diagnostics.ErrorRecoveryException;
-
-import java.util.Objects;
+import org.evochora.compiler.frontend.DirectiveLine;
 
 /**
  * Parses the {@code .REQUIRE} directive.
@@ -27,11 +26,10 @@ public class RequireDirectiveHandler implements IParserStatementHandler {
     public AstNode parse(IParsingContext context) {
         Token directive = context.peek();
         // An EXPORT before the directive is the parser's to report; the line rule passes over it.
-        Token before = context.previous();
-        if (before != null && before.source().lineNumber() == directive.source().lineNumber()
-                && Objects.equals(before.source().fileName(), directive.source().fileName())
-                && !"EXPORT".equalsIgnoreCase(before.text())) {
-            String message = ".REQUIRE must be the first word on its line; found '" + before.text() + "' before it.";
+        DirectiveLine line = context.currentLine(
+                token -> token.type() == TokenType.IDENTIFIER && "EXPORT".equalsIgnoreCase(token.text()));
+        if (line.before() != null) {
+            String message = ".REQUIRE must be the first word on its line; found '" + line.before().text() + "' before it.";
             context.getDiagnostics().reportError(message, directive.source().fileName(), directive.source().lineNumber());
             throw new ErrorRecoveryException(message);
         }
@@ -58,6 +56,12 @@ public class RequireDirectiveHandler implements IParserStatementHandler {
             while (!context.isAtEnd() && !context.check(TokenType.NEWLINE)) {
                 context.advance();
             }
+            return null;
+        }
+        if (line.separator() != null) {
+            context.getDiagnostics().reportError(
+                    ".REQUIRE must stand alone on its line; found ';' after the alias.",
+                    line.separator().source().fileName(), line.separator().source().lineNumber());
             return null;
         }
 

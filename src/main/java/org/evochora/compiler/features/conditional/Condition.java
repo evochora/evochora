@@ -1,5 +1,6 @@
 package org.evochora.compiler.features.conditional;
 
+import org.evochora.compiler.api.IntegerLiteral;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 
@@ -32,8 +33,6 @@ public record Condition(boolean negated, String name, Optional<Comparison> compa
     // The operators, the two-character ones first so that the first match is the longest.
     private static final Pattern HEAD = Pattern.compile(
             "([A-Za-z_][A-Za-z0-9_]*)(?:\\s*(<=|>=|<>|==|!=|=|<|>)\\s*(\\S+))?");
-    private static final Pattern DECIMAL = Pattern.compile("(-?)([0-9]+)");
-    private static final Pattern PREFIXED = Pattern.compile("(-?)0([xXbB])([0-9A-Za-z]+)");
 
     /**
      * Upper-cases the name.
@@ -89,6 +88,13 @@ public record Condition(boolean negated, String name, Optional<Comparison> compa
             return Optional.empty();
         }
 
+        /**
+         * Compares a flag's value with the value on the right of the operator.
+         *
+         * @param left  The flag's value.
+         * @param right The value it is compared with.
+         * @return {@code true} if the comparison holds.
+         */
         boolean holds(int left, int right) {
             return switch (this) {
                 case EQ -> left == right;
@@ -191,7 +197,7 @@ public record Condition(boolean negated, String name, Optional<Comparison> compa
         if (Flags.isName(operandText)) {
             operand = new FlagName(operandText);
         } else {
-            OptionalInt value = readInteger(operandText);
+            OptionalInt value = IntegerLiteral.parse(operandText);
             if (value.isEmpty()) {
                 return Optional.empty();
             }
@@ -288,38 +294,6 @@ public record Condition(boolean negated, String name, Optional<Comparison> compa
             }
         };
         return comparison.get().operator().holds(left.getAsInt(), right);
-    }
-
-    /**
-     * Reads an integer in the forms the lexer accepts: decimal, {@code 0x…} or {@code 0b…},
-     * each with an optional leading minus, within the range the lexer accepts.
-     *
-     * @param text The text, without surrounding whitespace.
-     * @return The integer, or empty if the text is none.
-     */
-    public static OptionalInt readInteger(String text) {
-        int radix;
-        String sign;
-        String digits;
-        Matcher prefixed = PREFIXED.matcher(text);
-        Matcher decimal = DECIMAL.matcher(text);
-        if (prefixed.matches()) {
-            sign = prefixed.group(1);
-            radix = Character.toLowerCase(prefixed.group(2).charAt(0)) == 'x' ? 16 : 2;
-            digits = prefixed.group(3);
-        } else if (decimal.matches()) {
-            sign = decimal.group(1);
-            radix = 10;
-            digits = decimal.group(2);
-        } else {
-            return OptionalInt.empty();
-        }
-        try {
-            int value = Integer.parseInt(digits, radix);
-            return OptionalInt.of(sign.isEmpty() ? value : -value);
-        } catch (NumberFormatException e) {
-            return OptionalInt.empty();
-        }
     }
 
     /**

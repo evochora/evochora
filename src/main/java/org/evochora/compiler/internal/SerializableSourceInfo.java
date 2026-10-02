@@ -11,7 +11,8 @@ import com.fasterxml.jackson.annotation.JsonValue;
  * @param lineNumber The line number.
  * @param columnNumber The column number.
  * @param placement The alias chain of the module placement the position belongs to.
- * @param expansion The number of the macro expansion the position stands in, 0 outside any.
+ * @param expansion The instance of injected tokens the position stands in, 0 for the text as
+ *                  written.
  */
 public record SerializableSourceInfo(String fileName, int lineNumber, int columnNumber, String placement,
                                      int expansion) {

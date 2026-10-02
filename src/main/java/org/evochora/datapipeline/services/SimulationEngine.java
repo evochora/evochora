@@ -1335,19 +1335,26 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                                         .build()
                         ).toList()))));
 
-        artifact.sourceLineToInstructions().forEach((sourceLineKey, instructions) -> {
-            org.evochora.datapipeline.api.contracts.MachineInstructionInfoList.Builder listBuilder =
-                    org.evochora.datapipeline.api.contracts.MachineInstructionInfoList.newBuilder();
-            for (org.evochora.compiler.api.MachineInstructionInfo info : instructions) {
-                listBuilder.addInstructions(org.evochora.datapipeline.api.contracts.MachineInstructionInfo.newBuilder()
-                        .setLinearAddress(info.linearAddress())
-                        .setOpcode(info.opcode())
-                        .setOperandsAsString(info.operandsAsString() != null ? info.operandsAsString() : "")
-                        .setSynthetic(info.synthetic())
-                        .build());
-            }
-            builder.putSourceLineToInstructions(sourceLineKey, listBuilder.build());
-        });
+        artifact.sourceLineToInstructions().forEach((placement, fileMap) -> fileMap.forEach((fileName, lineMap) -> {
+            org.evochora.datapipeline.api.contracts.FileSourceLines.Builder fileBuilder =
+                    org.evochora.datapipeline.api.contracts.FileSourceLines.newBuilder()
+                            .setPlacement(placement)
+                            .setFileName(fileName);
+            lineMap.forEach((line, instructions) -> {
+                org.evochora.datapipeline.api.contracts.MachineInstructionInfoList.Builder listBuilder =
+                        org.evochora.datapipeline.api.contracts.MachineInstructionInfoList.newBuilder();
+                for (org.evochora.compiler.api.MachineInstructionInfo info : instructions) {
+                    listBuilder.addInstructions(org.evochora.datapipeline.api.contracts.MachineInstructionInfo.newBuilder()
+                            .setLinearAddress(info.linearAddress())
+                            .setOpcode(info.opcode())
+                            .setOperandsAsString(info.operandsAsString() != null ? info.operandsAsString() : "")
+                            .setSynthetic(info.synthetic())
+                            .build());
+                }
+                fileBuilder.putLines(line, listBuilder.build());
+            });
+            builder.addSourceLineToInstructions(fileBuilder.build());
+        }));
 
         // Label hash value mappings for fuzzy jump display
         builder.putAllLabelValueToName(artifact.labelValueToName());

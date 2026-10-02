@@ -16,6 +16,7 @@ import org.evochora.compiler.model.ir.IrImm;
 import org.evochora.compiler.model.ir.IrItem;
 import org.evochora.compiler.model.ir.IrLabelRef;
 import org.evochora.compiler.model.ir.IrOperand;
+import org.evochora.compiler.model.ir.DebugInfo;
 import org.evochora.compiler.model.ir.IrProgram;
 import org.evochora.compiler.model.ir.IrReg;
 import org.evochora.compiler.model.ir.IrTypedImm;
@@ -96,10 +97,11 @@ public final class IrGenContext {
 
 	/**
 	 * Builds the final {@link IrProgram} from the emitted items.
+	 * @param debugInfo The text of the program's files and the classification of its tokens.
 	 * @return The constructed program.
 	 */
-	public IrProgram build() {
-		return new IrProgram(programName, List.copyOf(out));
+	public IrProgram build(DebugInfo debugInfo) {
+		return new IrProgram(programName, List.copyOf(out), debugInfo);
 	}
 
 	// --- Alias chain stack management ---

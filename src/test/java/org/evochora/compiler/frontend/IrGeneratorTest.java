@@ -63,6 +63,7 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -112,7 +113,7 @@ public class IrGeneratorTest {
 
         IrConverterRegistry registry = allConverters();
         IrGenerator irGen = new IrGenerator(diagnostics, registry);
-        IrProgram ir = irGen.generate(ast, "TestProg", rootAliasChain);
+        IrProgram ir = irGen.generate(ast, "TestProg", rootAliasChain, List.of(), Map.of());
         if (diagnostics.hasErrors()) {
             fail("IR generation errors: " + diagnostics.summary());
         }

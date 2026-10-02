@@ -3,6 +3,7 @@ package org.evochora.compiler.frontend.lexer;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.isa.IInstructionSet;
 import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
+import org.evochora.compiler.api.IntegerLiteral;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
@@ -14,6 +15,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.Set;
 
 /**
@@ -31,7 +33,6 @@ public class Lexer {
     private final DiagnosticsEngine diagnostics;
     private final List<Token> tokens = new ArrayList<>();
     private final String logicalFileName;
-    private final String placement;
     private final IInstructionSet isa;
     private final List<String> symbolsLongestFirst;
     private int start = 0;
@@ -64,7 +65,8 @@ public class Lexer {
 
     /**
      * Creates a new Lexer for the given instruction set, which decides what is an opcode and
-     * what is a register; its tokens belong to the placement with the empty chain.
+     * what is a register. Its tokens carry an empty placement; the preprocessor gives them the
+     * placement they stand in.
      * @param source The source code as a single string.
      * @param diagnostics The engine for reporting errors.
      * @param logicalFileName The name of the file being parsed, for error reporting.
@@ -74,25 +76,7 @@ public class Lexer {
      */
     public Lexer(String source, DiagnosticsEngine diagnostics, String logicalFileName, IInstructionSet isa,
                  Set<String> symbols) {
-        this(source, diagnostics, logicalFileName, isa, symbols, "");
-    }
-
-    /**
-     * Creates a new Lexer whose tokens belong to the given module placement.
-     * @param source The source code as a single string.
-     * @param diagnostics The engine for reporting errors.
-     * @param logicalFileName The name of the file being parsed, for error reporting.
-     * @param isa The instruction set the source is written for.
-     * @param symbols The registered symbols, emitted as {@link TokenType#SYMBOL} tokens. They are
-     *                taken as checked by {@link org.evochora.compiler.FeatureRegistry}.
-     * @param placement The alias chain every token gets as its placement. A file that is lexed
-     *                  before it is inlined takes the empty chain; the preprocessor gives its
-     *                  tokens the placement of each inclusion.
-     */
-    public Lexer(String source, DiagnosticsEngine diagnostics, String logicalFileName, IInstructionSet isa,
-                 Set<String> symbols, String placement) {
         this.source = source;
-        this.placement = placement;
         this.diagnostics = diagnostics;
         this.logicalFileName = logicalFileName;
         this.isa = isa;
@@ -115,7 +99,7 @@ public class Lexer {
             scanToken();
         }
         tokens.add(new Token(TokenType.END_OF_FILE, "", null,
-                new SourceInfo(logicalFileName, line, column, placement, 0)));
+                new SourceInfo(logicalFileName, line, column, "", 0)));
         return tokens;
     }
 
@@ -138,7 +122,7 @@ public class Lexer {
         for (Map.Entry<String, String> file : contents.entrySet()) {
             String text = file.getValue();
             if (!text.endsWith("\n")) text += "\n";
-            List<Token> tokens = new Lexer(text, diagnostics, file.getKey(), isa, symbols, "").scanTokens();
+            List<Token> tokens = new Lexer(text, diagnostics, file.getKey(), isa, symbols).scanTokens();
             stripEofToken(tokens);
             tokensByFile.put(file.getKey(), tokens);
         }
@@ -296,41 +280,12 @@ public class Lexer {
         }
 
         String numberString = source.substring(start, current);
-        try {
-            int value = parseInt(numberString);
-            addToken(TokenType.NUMBER, value);
-        } catch (NumberFormatException e) {
+        OptionalInt value = IntegerLiteral.parse(numberString);
+        if (value.isPresent()) {
+            addToken(TokenType.NUMBER, value.getAsInt());
+        } else {
             diagnostics.reportError("Invalid number format: " + numberString, logicalFileName, line);
         }
-    }
-
-    private int parseInt(String token) throws NumberFormatException {
-        if (token == null) throw new NumberFormatException("null");
-        String s = token.trim();
-        boolean negative = false;
-
-        if (s.startsWith("+")) {
-            s = s.substring(1);
-        } else if (s.startsWith("-")) {
-            negative = true;
-            s = s.substring(1);
-        }
-
-        int radix = 10;
-        if (s.startsWith("0b") || s.startsWith("0B")) {
-            radix = 2;
-            s = s.substring(2);
-        } else if (s.startsWith("0x") || s.startsWith("0X")) {
-            radix = 16;
-            s = s.substring(2);
-        } else if (s.startsWith("0o") || s.startsWith("0O")) {
-            radix = 8;
-            s = s.substring(2);
-        }
-
-        if (s.isEmpty()) throw new NumberFormatException("Empty numeric literal");
-        int value = Integer.parseInt(s, radix);
-        return negative ? -value : value;
     }
 
     private char advance() {
@@ -370,7 +325,7 @@ public class Lexer {
 
     private void addToken(TokenType type, Object literal, String text) {
         tokens.add(new Token(type, text, literal,
-                new SourceInfo(logicalFileName, startLine, startColumn, placement, 0)));
+                new SourceInfo(logicalFileName, startLine, startColumn, "", 0)));
     }
 
     private boolean isAtEnd() {

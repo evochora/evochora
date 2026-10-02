@@ -5,6 +5,7 @@ import com.google.gson.GsonBuilder;
 import org.evochora.compiler.Compiler;
 import org.evochora.compiler.api.CompilationException;
 import org.evochora.compiler.api.CompilerOptions;
+import org.evochora.compiler.api.IntegerLiteral;
 
 import java.io.IOException;
 import org.evochora.compiler.api.ProgramArtifact;
@@ -20,14 +21,11 @@ import java.io.PrintWriter;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.OptionalInt;
 import java.util.concurrent.Callable;
-import java.util.regex.Pattern;
 
 /**
  * The {@code compile} subcommand: translates one assembly source file and writes the resulting
@@ -64,9 +62,6 @@ import java.util.regex.Pattern;
     description = "Compiles an assembly source file to a ProgramArtifact JSON"
 )
 public class CompileCommand implements Callable<Integer> {
-
-    /** Digits of a number literal after its sign and radix prefix; the radix checks the rest. */
-    private static final Pattern DIGITS = Pattern.compile("[0-9a-fA-F]+");
 
     @Option(
         names = {"-f", "--file"},
@@ -112,7 +107,12 @@ public class CompileCommand implements Callable<Integer> {
         // Without source roots the main file's directory is the root, and the main file is named
         // by its absolute path so that it resolves against that root to itself
         String programPath = hasSourceRoots ? file : Path.of(file).toAbsolutePath().normalize().toString();
-        CompilerOptions compilerOptions = buildCompilerOptions(programPath, defines);
+        CompilerOptions compilerOptions;
+        try {
+            compilerOptions = buildCompilerOptions(programPath, defines);
+        } catch (IllegalArgumentException e) {
+            throw new CommandLine.ParameterException(spec.commandLine(), e.getMessage(), e);
+        }
         EnvironmentProperties envProps = parseEnvironmentProperties(env);
 
         Compiler compiler = new Compiler();
@@ -137,6 +137,8 @@ public class CompileCommand implements Callable<Integer> {
      *
      * @param programPath The main file; without {@code --source-root} its absolute path.
      * @param defines     The flags of {@code --define}.
+     * @throws IllegalArgumentException if the options reject the roots or the flags, among them
+     *                                  two flag names that differ only in case.
      */
     private CompilerOptions buildCompilerOptions(String programPath, Map<String, OptionalInt> defines) {
         if (sourceRootArgs == null || sourceRootArgs.isEmpty()) {
@@ -166,11 +168,11 @@ public class CompileCommand implements Callable<Integer> {
      * @param defineArgs The arguments, each {@code NAME} or {@code NAME=INTEGER}.
      * @return The flags by name as written, empty for a flag without a value.
      * @throws IllegalArgumentException if a name is empty, a value is not an integer, or a name
-     *                                  is given twice, in the same or in another case.
+     *                                  is given twice as written. Two names that differ only in
+     *                                  case are left to {@link CompilerOptions}, which rejects them.
      */
     static Map<String, OptionalInt> parseDefines(List<String> defineArgs) {
         Map<String, OptionalInt> defines = new LinkedHashMap<>();
-        Map<String, String> namesByNormalised = new HashMap<>();
         for (String arg : defineArgs) {
             int equalsIdx = arg.indexOf('=');
             String name = (equalsIdx < 0 ? arg : arg.substring(0, equalsIdx)).trim();
@@ -180,48 +182,16 @@ public class CompileCommand implements Callable<Integer> {
             OptionalInt value = OptionalInt.empty();
             if (equalsIdx >= 0) {
                 String text = arg.substring(equalsIdx + 1);
-                try {
-                    value = OptionalInt.of(parseInteger(text));
-                } catch (NumberFormatException e) {
-                    throw new IllegalArgumentException("--define " + name + ": '" + text + "' is not an integer", e);
+                value = IntegerLiteral.parse(text.trim());
+                if (value.isEmpty()) {
+                    throw new IllegalArgumentException("--define " + name + ": '" + text + "' is not an integer");
                 }
             }
-            String previous = namesByNormalised.putIfAbsent(name.toUpperCase(Locale.ROOT), name);
-            if (previous != null) {
-                throw new IllegalArgumentException("--define " + name + ": the flag is already defined as " + previous
-                        + "; flag names are case-insensitive");
+            if (defines.putIfAbsent(name, value) != null) {
+                throw new IllegalArgumentException("--define " + name + ": the flag is given twice");
             }
-            defines.put(name, value);
         }
         return defines;
-    }
-
-    /**
-     * Reads an integer in one of the forms a program can write a number in: decimal digits, or
-     * {@code 0x} or {@code 0b} (either case) followed by hexadecimal or binary digits, each with
-     * an optional leading minus.
-     *
-     * @throws NumberFormatException if the text is no such number or does not fit an {@code int}.
-     */
-    private static int parseInteger(String text) {
-        String s = text.trim();
-        boolean negative = s.startsWith("-");
-        if (negative) {
-            s = s.substring(1);
-        }
-        int radix = 10;
-        if (s.startsWith("0b") || s.startsWith("0B")) {
-            radix = 2;
-            s = s.substring(2);
-        } else if (s.startsWith("0x") || s.startsWith("0X")) {
-            radix = 16;
-            s = s.substring(2);
-        }
-        if (!DIGITS.matcher(s).matches()) {
-            throw new NumberFormatException("Not a number literal: " + text);
-        }
-        int value = Integer.parseInt(s, radix);
-        return negative ? -value : value;
     }
 
     private EnvironmentProperties parseEnvironmentProperties(String env) {

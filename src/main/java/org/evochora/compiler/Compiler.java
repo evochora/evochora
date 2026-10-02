@@ -177,10 +177,11 @@ public class Compiler implements ICompiler {
         // Phase 1: Lexical Analysis — every included file under its path, the main file as the stream
         Map<String, List<Token>> fileTokens = Lexer.lexFiles(graph.includedContents(), diagnostics, isa, featureRegistry.lexerSymbols());
         List<Token> initialTokens = new ArrayList<>(new Lexer(fullSource, diagnostics, mainFilePath, isa,
-                featureRegistry.lexerSymbols(), rootAliasChain).scanTokens());
+                featureRegistry.lexerSymbols()).scanTokens());
 
         // Phase 2: Preprocessing (includes, macros)
-        PreProcessorContext ppContext = new PreProcessorContext(rootAliasChain, fileTokens, effectiveOptions);
+        PreProcessorContext ppContext = new PreProcessorContext(rootAliasChain, fileTokens, graph.sourceFiles(),
+                effectiveOptions);
         featureRegistry.preprocessorHandlers().forEach(ppContext.handlers()::register);
         featureRegistry.preprocessorBlocks().forEach(ppContext.handlers()::registerBlock);
         featureRegistry.preprocessorTopLevelOnly().forEach(ppContext.handlers()::registerTopLevelOnly);
@@ -233,7 +234,8 @@ public class Compiler implements ICompiler {
         IrConverterRegistry irRegistry = IrConverterRegistry.initialize(new DefaultAstNodeToIrConverter());
         irRegistry.registerAll(featureRegistry.irConverters());
         IrGenerator irGenerator = new IrGenerator(diagnostics, irRegistry);
-        IrProgram irProgram = irGenerator.generate(resolvedAst, programName, rootAliasChain);
+        IrProgram irProgram = irGenerator.generate(resolvedAst, programName, rootAliasChain,
+                ppResult.sources(), tokenMap);
         failOnErrors(diagnostics);
 
         // Phase 8: IR Rewriting (apply the rewrite rules of the features)
@@ -260,16 +262,14 @@ public class Compiler implements ICompiler {
         linkingDirRegistry.registerAll(featureRegistry.linkingDirectiveHandlers());
         Linker linker = new Linker(linkingRegistry, linkingDirRegistry);
         LinkingContext linkContext = new LinkingContext(isa);
-        IrProgram linkedIr = linker.link(layout, linkContext, programName);
+        IrProgram linkedIr = linker.link(layout, linkContext, programName, rewrittenIr.debugInfo());
         linkContext.freeze();
 
         // Phase 11: Emission (generate final binary)
         EmissionContributorRegistry emissionContributorRegistry = new EmissionContributorRegistry();
         featureRegistry.emissionContributors().forEach(emissionContributorRegistry::register);
         Emitter emitter = new Emitter();
-        Map<String, Map<String, Map<Integer, Map<Integer, List<TokenInfo>>>>> tokenLookup = TokenMapGenerator.buildTokenLookup(tokenMap);
-        ProgramArtifact artifact = emitter.emit(linkedIr, layout, linkContext, isa, emissionContributorRegistry,
-                graph.sourceFiles(), ppResult.leftOut(), ppResult.notes(), tokenMap, tokenLookup);
+        ProgramArtifact artifact = emitter.emit(linkedIr, layout, linkContext, isa, emissionContributorRegistry);
 
         CompilerLogger.debug("Compiler: " + programName + " programId:" + artifact.programId());
         return artifact;

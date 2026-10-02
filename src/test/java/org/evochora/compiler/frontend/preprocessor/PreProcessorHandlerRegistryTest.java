@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -116,5 +117,45 @@ class PreProcessorHandlerRegistryTest {
         registry.enterModule();
 
         assertThat(registry.get(".SOURCE")).contains(source);
+    }
+
+    @Test
+    void aBlockKindAnswersForEveryOneOfItsWordsInAnyCase() {
+        registry.registerBlock(new BlockKind(Set.of(".IFX"), ".ENDX", Set.of(".ELSEX"), false));
+
+        assertThat(registry.isBlockWord(".ifx")).isTrue();
+        assertThat(registry.isBlockWord(".ELSEX")).isTrue();
+        assertThat(registry.isBlockWord(".EndX")).isTrue();
+        assertThat(registry.isBlockWord(".OTHER")).isFalse();
+        assertThat(registry.blockKindOf(".elsex")).map(BlockKind::closer).contains(".ENDX");
+    }
+
+    @Test
+    void registeringAnEqualBlockKindAgainIsIgnored() {
+        registry.registerBlock(new BlockKind(Set.of(".IFX"), ".ENDX", Set.of(), false));
+
+        registry.registerBlock(new BlockKind(Set.of(".ifx"), ".endx", Set.of(), false));
+
+        assertThat(registry.blockKindOf(".IFX")).contains(new BlockKind(Set.of(".IFX"), ".ENDX", Set.of(), false));
+    }
+
+    @Test
+    void aBlockKindThatClaimsAWordOfAnotherKindIsRejected() {
+        registry.registerBlock(new BlockKind(Set.of(".IFX"), ".ENDX", Set.of(".ELSEX"), false));
+
+        assertThatThrownBy(() -> registry.registerBlock(new BlockKind(Set.of(".LOOP"), ".ENDLOOP", Set.of(".ELSEX"), true)))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining(".ELSEX")
+                .hasMessageContaining(".ENDX");
+        assertThat(registry.isBlockWord(".LOOP")).isFalse();
+    }
+
+    @Test
+    void aTopLevelOnlyDirectiveIsRecognisedInAnyCase() {
+        registry.registerTopLevelOnly(".Source");
+
+        assertThat(registry.isTopLevelOnly(".SOURCE")).isTrue();
+        assertThat(registry.isTopLevelOnly(".source")).isTrue();
+        assertThat(registry.isTopLevelOnly(".IMPORT")).isFalse();
     }
 }

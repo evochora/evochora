@@ -205,6 +205,27 @@ class ConditionalCompilationTest {
         assertThat(resolvedPaths(artifact)).anySatisfy(path -> assertThat(path).endsWith("extra.evo"));
     }
 
+    /**
+     * A head with a label before it breaks the line rule: the preprocessor reports it and removes
+     * the block, and the dependency scan, which follows none of the block's branches, reports
+     * nothing about the file a branch imports.
+     */
+    @Test
+    void aHeadWithALabelBeforeItIsReportedByTheLineRuleAlone() throws Exception {
+        write("main.evo",
+                "L: .IFDEF X",
+                "  .IMPORT \"missing.evo\" AS M",
+                ".ENDDEF",
+                "START:",
+                "  NOP");
+
+        assertThatThrownBy(() -> compile("main.evo", Map.of("X", OptionalInt.empty())))
+                .isInstanceOf(CompilationException.class)
+                .satisfies(e -> assertThat(e.getMessage().lines().toList()).containsExactly(
+                        "[ERROR] " + sourceRoot.resolve("main.evo").toString().replace('\\', '/')
+                                + ":1: .IFDEF must stand alone on its line"));
+    }
+
     private static List<String> resolvedPaths(ProgramArtifact artifact) {
         return artifact.sources().stream().map(SourceFile::resolvedPath).toList();
     }

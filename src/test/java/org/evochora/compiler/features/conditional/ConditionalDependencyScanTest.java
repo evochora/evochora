@@ -209,6 +209,41 @@ class ConditionalDependencyScanTest {
         assertThat(result.modules()).containsExactly("stray.evo", "main.evo");
     }
 
+    /**
+     * A head with a word before it breaks the line rule, and the preprocessor removes the whole
+     * block; the scan therefore follows none of its branches, whatever the condition says.
+     */
+    @Test
+    void aHeadWithAWordBeforeItIsInvalidAndNoBranchOfItsBlockIsScanned() throws Exception {
+        for (Map<String, OptionalInt> defines : List.of(Map.<String, OptionalInt>of(), Map.of("X", OptionalInt.empty()))) {
+            Scan result = scan(String.join("\n",
+                    "L: .IFDEF X",
+                    "  .IMPORT \"missing.evo\" AS M",
+                    ".ELSEDEF",
+                    "  .IMPORT \"missing.evo\" AS M",
+                    ".ENDDEF",
+                    "NOP"), defines);
+
+            assertThat(result.diagnostics.hasErrors()).as(result.diagnostics.summary()).isFalse();
+            assertThat(result.modules()).containsExactly("main.evo");
+        }
+    }
+
+    /**
+     * A word that only ends in the text of a conditional directive, or one inside a string, is no
+     * head; the line is not the scan's business.
+     */
+    @Test
+    void aDirectiveWordInsideAnotherWordOrAStringIsNoHead() throws Exception {
+        Files.writeString(root.resolve("x .ifdef y.evo"), "NOP\n");
+        Scan result = scan(String.join("\n",
+                ".SOURCE \"x .ifdef y.evo\"",
+                "LIB.IFDEF X",
+                "NOP"), Map.of());
+
+        assertThat(result.diagnostics.hasErrors()).as(result.diagnostics.summary()).isFalse();
+    }
+
     @Test
     void aModuleImportedTwiceIsScannedAtEachImportWithTheFlagsOfThatImport() throws Exception {
         Files.writeString(root.resolve("big.evo"), "NOP\n");

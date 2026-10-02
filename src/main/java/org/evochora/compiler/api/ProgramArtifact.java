@@ -19,7 +19,7 @@ import java.util.Map;
  * @param machineCodeLayout A map from relative coordinates to the integer representation of a molecule.
  * @param initialWorldObjects A map from relative coordinates to molecules that should be placed in the world initially.
  * @param sourceMap A map from linear address to source information, for debugging; the position
- *                  names the macro expansion the instruction was compiled in.
+ *                  names the instance of injected tokens the instruction was compiled in.
  * @param callSiteBindings A map from the address recorded for a CALL instruction to that call's
  *                         parameter bindings: each formal register id (FDR/FLR bank) to the
  *                         caller register bound to it.
@@ -28,15 +28,13 @@ import java.util.Map;
  * @param registerAliasMap A map from register alias names (e.g., "%MY_REG") to their physical register index.
  * @param procNameToParamNames A map from procedure names to a list of their parameter information (name and type).
  * @param tokenMap A map from SourceInfo to TokenInfo for deterministic token classification. Its
- *                 keys carry expansion 0: a token is classified by its position alone, the same in
- *                 every expansion of a macro body, because the debugger annotates a line at runtime
- *                 by the positions of its tokens.
+ *                 keys carry instance 0: a token is classified by its position alone, the same in
+ *                 every instance of injected tokens, because the debugger annotates a line at
+ *                 runtime by the positions of its tokens.
  * @param tokenLookup A map from placement to fileName to lineNumber to columnNumber to {@code List<TokenInfo>} for efficient
  *                    placement-file-line-column-based lookup, by position alone as the token map.
- * @param sourceLineToInstructions A map from source line identifier to a list of machine instructions that were generated
- *                                 from that source line, sorted by linear address. The identifier is
- *                                 {@code placement@fileName:lineNumber}, or {@code fileName:lineNumber} for the
- *                                 empty placement.
+ * @param sourceLineToInstructions A map from placement to fileName to lineNumber to the machine instructions that
+ *                                 were generated from that source line, sorted by linear address.
  * @param labelValueToName A map from label hash value to label name (for reverse lookup in visualizer).
  * @param labelNameToValue A map from label name to label hash value (for forward lookup).
  */
@@ -53,7 +51,7 @@ public record ProgramArtifact(
         Map<String, List<ParamInfo>> procNameToParamNames,
         Map<SourceInfo, TokenInfo> tokenMap,
         Map<String, Map<String, Map<Integer, Map<Integer, List<TokenInfo>>>>> tokenLookup,
-        Map<String, List<MachineInstructionInfo>> sourceLineToInstructions,
+        Map<String, Map<String, Map<Integer, List<MachineInstructionInfo>>>> sourceLineToInstructions,
         Map<Integer, String> labelValueToName,
         Map<String, Integer> labelNameToValue
 ) {

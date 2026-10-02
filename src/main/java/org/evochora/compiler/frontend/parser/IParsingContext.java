@@ -5,6 +5,9 @@ import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.OperandNode;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
+import org.evochora.compiler.frontend.DirectiveLine;
+
+import java.util.function.Predicate;
 
 /**
  * Provides parser directive handlers with access to the token stream.
@@ -108,4 +111,14 @@ public interface IParsingContext {
      * @return true if the current statement is exported.
      */
     boolean isExported();
+
+    /**
+     * Finds the physical line of the current token, a directive, by the rules of
+     * {@link DirectiveLine}. The indices of the result count in the parser's token stream.
+     *
+     * @param passedOver The tokens directly before the directive that belong to it, which the
+     *                   rule passes over.
+     * @return The directive's operands, their end, and whether it stands alone on its line.
+     */
+    DirectiveLine currentLine(Predicate<Token> passedOver);
 }

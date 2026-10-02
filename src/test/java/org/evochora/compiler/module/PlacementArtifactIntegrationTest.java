@@ -88,11 +88,11 @@ class PlacementArtifactIntegrationTest {
                 .filteredOn(info -> info.fileName().equals(lib) && info.lineNumber() == 3)
                 .extracting(SourceInfo::placement)
                 .containsExactlyInAnyOrder("FIRST", "SECOND");
-        assertThat(artifact.sourceLineToInstructions())
-                .containsKeys("FIRST@" + lib + ":3", "SECOND@" + lib + ":3")
-                .doesNotContainKey(lib + ":3");
-        assertThat(artifact.sourceLineToInstructions().get("SECOND@" + lib + ":3")).hasSize(1);
-        assertThat(artifact.sourceLineToInstructions()).containsKey(resolved("main.evo") + ":5");
+        assertThat(artifact.sourceLineToInstructions()).containsKeys("", "FIRST", "SECOND");
+        assertThat(artifact.sourceLineToInstructions().get("FIRST").get(lib)).containsKey(3);
+        assertThat(artifact.sourceLineToInstructions().get("SECOND").get(lib).get(3)).hasSize(1);
+        assertThat(artifact.sourceLineToInstructions().get("")).doesNotContainKey(lib);
+        assertThat(artifact.sourceLineToInstructions().get("").get(resolved("main.evo"))).containsKey(5);
     }
 
     @Test

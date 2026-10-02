@@ -227,6 +227,10 @@ class LeftOutBranchesTest {
                 new Note(2, 2, 8, "[=2]"));
     }
 
+    /**
+     * The copies of a repeated block stand in one expansion and decide alike; they record one
+     * region and one note, not one per copy.
+     */
     @Test
     void theCopiesOfARepeatedBlockShareTheExpansionTheyStandIn() throws Exception {
         write("main.evo",
@@ -246,10 +250,8 @@ class LeftOutBranchesTest {
         int expansion = expansionOfLine(artifact, resolved("main.evo"), 6);
         assertThat(expansion).isPositive();
         SourceFile source = source(artifact, "", "main.evo");
-        assertThat(source.leftOut()).containsExactly(
-                new LeftOut(expansion, 3, 4, 4),
-                new LeftOut(expansion, 3, 4, 4));
-        assertThat(source.notes()).extracting(Note::expansion).containsOnly(expansion);
+        assertThat(source.leftOut()).containsExactly(new LeftOut(expansion, 3, 4, 4));
+        assertThat(source.notes()).containsExactly(new Note(expansion, 3, 8, "[not set]"));
     }
 
     /**

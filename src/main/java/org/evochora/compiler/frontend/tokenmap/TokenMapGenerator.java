@@ -13,7 +13,6 @@ import org.evochora.compiler.model.symbols.Symbol;
 import org.evochora.compiler.model.symbols.SymbolTable;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -66,7 +65,7 @@ public class TokenMapGenerator implements ITokenMapContext {
      * Generates the token map by walking the provided AST root node.
      *
      * @param root The root of the AST to traverse.
-     * @return A map where the key is the SourceInfo (location) of a token, with expansion 0, and
+     * @return A map where the key is the SourceInfo (location) of a token, with instance 0, and
      *         the value is the detailed TokenInfo.
      */
     public Map<SourceInfo, TokenInfo> generate(AstNode root) {
@@ -79,7 +78,7 @@ public class TokenMapGenerator implements ITokenMapContext {
      * This is useful when there are multiple top-level nodes (e.g., multiple procedures).
      *
      * @param nodes The list of AST nodes to traverse.
-     * @return A map where the key is the SourceInfo (location) of a token, with expansion 0, and
+     * @return A map where the key is the SourceInfo (location) of a token, with instance 0, and
      *         the value is the detailed TokenInfo.
      */
     public Map<SourceInfo, TokenInfo> generateAll(List<AstNode> nodes) {
@@ -89,31 +88,6 @@ public class TokenMapGenerator implements ITokenMapContext {
             }
         }
         return tokenMap;
-    }
-
-    /**
-     * Builds a 4-level token lookup structure for efficient placement/file/line/column-based
-     * queries. Two placements of one file share its positions, so the placement comes first.
-     *
-     * <p>Structure: placement -> fileName -> lineNumber -> columnNumber -> list of TokenInfo</p>
-     *
-     * @param tokenMap The flat token map keyed by {@link SourceInfo}
-     * @return A nested lookup map suitable for debuggers and indexers
-     */
-    public static Map<String, Map<String, Map<Integer, Map<Integer, List<TokenInfo>>>>> buildTokenLookup(
-            Map<SourceInfo, TokenInfo> tokenMap) {
-        Map<String, Map<String, Map<Integer, Map<Integer, List<TokenInfo>>>>> result = new HashMap<>();
-
-        for (Map.Entry<SourceInfo, TokenInfo> entry : tokenMap.entrySet()) {
-            SourceInfo sourceInfo = entry.getKey();
-            result.computeIfAbsent(sourceInfo.placement(), k -> new HashMap<>())
-                  .computeIfAbsent(sourceInfo.fileName(), k -> new HashMap<>())
-                  .computeIfAbsent(sourceInfo.lineNumber(), k -> new HashMap<>())
-                  .computeIfAbsent(sourceInfo.columnNumber(), k -> new ArrayList<>())
-                  .add(entry.getValue());
-        }
-
-        return result;
     }
 
     // === ITokenMapContext implementation ===
@@ -129,8 +103,8 @@ public class TokenMapGenerator implements ITokenMapContext {
     }
 
     /**
-     * Enters a token under its position without the expansion. The map describes the text of a
-     * line, which is the same in every expansion of a macro body, and the debugger annotates
+     * Enters a token under its position without its instance. The map describes the text of a
+     * line, which is the same in every instance of injected tokens, and the debugger annotates
      * a token by its position.
      */
     private void put(SourceInfo sourceInfo, TokenInfo tokenInfo) {
@@ -198,7 +172,7 @@ public class TokenMapGenerator implements ITokenMapContext {
         }
 
         if (node instanceof IdentifierNode identifierNode) {
-            Optional<ResolvedSymbol> symbolOpt = resolveInCurrentScope(identifierNode.text(), identifierNode.sourceInfo().fileName());
+            Optional<ResolvedSymbol> symbolOpt = resolveInCurrentScope(identifierNode.text(), identifierNode.sourceInfo());
             if (symbolOpt.isPresent()) {
                 ResolvedSymbol resolved = symbolOpt.get();
                 Symbol sym = resolved.symbol();
@@ -245,13 +219,13 @@ public class TokenMapGenerator implements ITokenMapContext {
     /**
      * Resolves a symbol using the currently tracked scope object.
      */
-    private Optional<ResolvedSymbol> resolveInCurrentScope(String name, String fileName) {
+    private Optional<ResolvedSymbol> resolveInCurrentScope(String name, SourceInfo at) {
         SymbolTable.Scope originalScope = symbolTable.getCurrentScope();
         if (this.currentScopeObj != null) {
             symbolTable.setCurrentScope(this.currentScopeObj);
         }
         try {
-            return symbolTable.resolve(name, fileName).found();
+            return symbolTable.resolve(name, at).found();
         } finally {
             symbolTable.setCurrentScope(originalScope);
         }

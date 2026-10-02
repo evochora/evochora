@@ -1,5 +1,6 @@
 package org.evochora.compiler.features.conditional;
 
+import org.evochora.compiler.frontend.DirectiveLine;
 import org.evochora.compiler.frontend.preprocessor.IPreProcessorHandler;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
 import org.evochora.compiler.frontend.preprocessor.PreProcessorContext;
@@ -26,12 +27,12 @@ public class DefineHandler implements IPreProcessorHandler {
     public void process(PreProcessor preProcessor, PreProcessorContext preProcessorContext) {
         int start = preProcessor.getCurrentIndex();
         Token directive = preProcessor.peek();
-        DirectiveLine line = DirectiveLine.at(preProcessor, start);
+        DirectiveLine line = preProcessor.lineOf(start);
         Flags flags = Flags.inPreprocessor(preProcessor, preProcessorContext);
 
         String error = null;
-        List<Token> operands = line.operands(preProcessor);
-        if (!line.standsAlone(preProcessor)) {
+        List<Token> operands = line.operands();
+        if (!line.standsAlone()) {
             error = ".DEFINE must stand alone on its line" + CONSTANT;
         } else if (operands.isEmpty()) {
             error = ".DEFINE needs a flag name";
@@ -49,7 +50,7 @@ public class DefineHandler implements IPreProcessorHandler {
         if (error != null) {
             preProcessor.getDiagnostics().reportError(error, directive.source().fileName(), directive.source().lineNumber());
         }
-        preProcessor.removeTokens(start, line.next(preProcessor) - start);
+        preProcessor.removeTokens(start, line.next() - start);
     }
 
     private static boolean isInteger(Token token) {

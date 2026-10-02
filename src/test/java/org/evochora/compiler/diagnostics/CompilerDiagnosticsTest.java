@@ -281,6 +281,51 @@ class CompilerDiagnosticsTest {
     }
 
     @Test
+    void aSourceFollowedByAStatementOnItsLineIsRejectedByTheLineRule() throws Exception {
+        write("x.evo",
+                "  NOP");
+        write("main.evo",
+                "START:",
+                ".SOURCE \"x.evo\"; NOP");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .satisfies(e -> assertThat(e.getMessage().lines().toList()).containsExactly(
+                        "[ERROR] " + sourceRoot.resolve("main.evo")
+                                + ":2: .SOURCE must stand alone on its line; found ';' after the path."));
+    }
+
+    @Test
+    void anImportFollowedByAStatementOnItsLineIsRejectedByTheLineRule() throws Exception {
+        write("lib.evo",
+                "  NOP");
+        write("main.evo",
+                ".IMPORT \"lib.evo\" AS LIB; NOP",
+                "START:",
+                "  NOP");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .satisfies(e -> assertThat(e.getMessage().lines().toList()).containsExactly(
+                        "[ERROR] " + sourceRoot.resolve("main.evo")
+                                + ":1: .IMPORT must stand alone on its line; found ';' after the alias and its USING clauses."));
+    }
+
+    @Test
+    void aRequireFollowedByAStatementOnItsLineIsRejectedByTheLineRule() throws Exception {
+        write("main.evo",
+                ".REQUIRE \"d.evo\" AS D; NOP",
+                "START:",
+                "  NOP");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .satisfies(e -> assertThat(e.getMessage().lines().toList()).containsExactly(
+                        "[ERROR] " + sourceRoot.resolve("main.evo")
+                                + ":1: .REQUIRE must stand alone on its line; found ';' after the alias."));
+    }
+
+    @Test
     void importInsideAMacroBodyIsRejectedAtTheDefinition() throws Exception {
         write("lib.evo",
                 "  NOP");

@@ -505,18 +505,20 @@ public class SimulationRestorer {
         }
 
         // Convert sourceLineToInstructions
-        Map<String, List<MachineInstructionInfo>> sourceLineToInstructions = new HashMap<>();
-        proto.getSourceLineToInstructionsMap().forEach((key, list) -> {
-            List<MachineInstructionInfo> instructions = list.getInstructionsList().stream()
+        Map<String, Map<String, Map<Integer, List<MachineInstructionInfo>>>> sourceLineToInstructions = new HashMap<>();
+        for (org.evochora.datapipeline.api.contracts.FileSourceLines fileEntry : proto.getSourceLineToInstructionsList()) {
+            Map<Integer, List<MachineInstructionInfo>> lineMap = new HashMap<>();
+            fileEntry.getLinesMap().forEach((line, list) -> lineMap.put(line, list.getInstructionsList().stream()
                 .map(i -> new MachineInstructionInfo(
                     i.getLinearAddress(),
                     i.getOpcode(),
                     i.getOperandsAsString(),
                     i.getSynthetic()
                 ))
-                .collect(Collectors.toList());
-            sourceLineToInstructions.put(key, instructions);
-        });
+                .collect(Collectors.toList())));
+            sourceLineToInstructions.computeIfAbsent(fileEntry.getPlacement(), k -> new HashMap<>())
+                .put(fileEntry.getFileName(), lineMap);
+        }
 
         // Direct copy of label maps
         Map<Integer, String> labelValueToName = new HashMap<>(proto.getLabelValueToNameMap());

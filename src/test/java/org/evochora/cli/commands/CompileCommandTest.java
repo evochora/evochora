@@ -195,10 +195,24 @@ public class CompileCommandTest {
     void testDefineRejectsAValueThatIsNoIntegerANameGivenTwiceAndAMissingName() {
         assertThatThrownBy(() -> CompileCommand.parseDefines(List.of("A=two")))
             .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("not an integer");
-        assertThatThrownBy(() -> CompileCommand.parseDefines(List.of("a", "A=2")))
-            .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("case-insensitive");
+        assertThatThrownBy(() -> CompileCommand.parseDefines(List.of("A", "A=2")))
+            .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("given twice");
         assertThatThrownBy(() -> CompileCommand.parseDefines(List.of("=2")))
             .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("no flag name");
+    }
+
+    @Test
+    void testTwoDefinesThatDifferOnlyInCaseAreAUsageError() throws Exception {
+        Path sourceFile = tempDir.resolve("test.evo");
+        Files.writeString(sourceFile, "NOP\n");
+        CommandLine cmdLine = CommandLineInterface.createCommandLine();
+        StringWriter err = new StringWriter();
+        cmdLine.setErr(new PrintWriter(err));
+
+        int exitCode = cmdLine.execute("compile", "-f", sourceFile.toString(), "--define", "a", "--define", "A=2");
+
+        assertThat(exitCode).isEqualTo(2);
+        assertThat(err.toString()).contains("case-insensitive");
     }
 
     @Test

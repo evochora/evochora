@@ -11,15 +11,15 @@ import java.util.List;
  * @param text     The exact text of the token from the source code.
  * @param value    The processed value of the token (e.g., the integer value of a number).
  * @param source   Where the token stands: its file, line and column, the placement it belongs to
- *                 and the macro expansion it stands in. The lexer gives every token the position
- *                 it was read at, in placement and expansion 0 of the main module; the preprocessor
- *                 sets the placement when it inlines a file and the expansion when it expands a
- *                 macro.
- * @param replaces The positions of the parameters this token was substituted for. A macro
- *                 argument substituted for a parameter keeps its own position and remembers the
- *                 parameter's, with the expansion the parameter stands in; an argument that passes
- *                 through nested macros replaces one parameter per level, outermost first. Empty
- *                 for a token that replaces nothing.
+ *                 and the instance of injected tokens it stands in. The lexer gives every token
+ *                 the position it was read at, with an empty placement and instance 0; the
+ *                 preprocessor gives the tokens of the main file the root placement, and its
+ *                 handlers set the placement and the instance of the tokens they inject.
+ * @param replaces The positions this token replaced. A handler that substitutes a token for a
+ *                 token at another position keeps the substituted token's own position and adds
+ *                 the replaced one, with the instance it stands in; a token substituted again at
+ *                 a further level adds one position per level, outermost first. Empty for a token
+ *                 that replaces nothing.
  */
 public record Token(
         TokenType type,

@@ -52,7 +52,7 @@ import java.util.Map;
  *   <li><strong>procNameToParamNames</strong>: {@code Map<String, List<ParamInfo>>} (unchanged)</li>
  *   <li><strong>tokenMap</strong>: {@code Map<SerializableSourceInfo, TokenInfo>} (unchanged)</li>
  *   <li><strong>tokenLookup</strong>: {@code Map<String, Map<String, Map<Integer, Map<Integer, List<TokenInfo>>>>>} (unchanged)</li>
- *   <li><strong>sourceLineToInstructions</strong>: {@code Map<String, List<MachineInstructionInfo>>} (unchanged)</li>
+ *   <li><strong>sourceLineToInstructions</strong>: {@code Map<String, Map<String, Map<Integer, List<MachineInstructionInfo>>>>} (unchanged)</li>
  * </ul>
  * 
  * @param programId Unique identifier for the compiled program.
@@ -68,7 +68,7 @@ import java.util.Map;
  * @param procNameToParamNames Map from procedure names to parameter info lists.
  * @param tokenMap Map from serializable source info to token info.
  * @param tokenLookup Map from placement/file/line/col to token info list.
- * @param sourceLineToInstructions Map from source line to machine instruction info list.
+ * @param sourceLineToInstructions Map from placement/file/line to machine instruction info list.
  * @param labelValueToName Map from label hash value to label name.
  * @param labelNameToValue Map from label name to label hash value.
  * @param envProps Environment properties used for linearization.
@@ -89,7 +89,7 @@ public record LinearizedProgramArtifact(
         Map<String, List<org.evochora.compiler.api.ParamInfo>> procNameToParamNames,
         Map<SerializableSourceInfo, TokenInfo> tokenMap,
         Map<String, Map<String, Map<Integer, Map<Integer, List<TokenInfo>>>>> tokenLookup,
-        Map<String, List<org.evochora.compiler.api.MachineInstructionInfo>> sourceLineToInstructions,
+        Map<String, Map<String, Map<Integer, List<org.evochora.compiler.api.MachineInstructionInfo>>>> sourceLineToInstructions,
         Map<Integer, String> labelValueToName,
         Map<String, Integer> labelNameToValue,
         EnvironmentProperties envProps

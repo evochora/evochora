@@ -1,6 +1,8 @@
 package org.evochora.compiler.module;
 
 import org.evochora.compiler.api.CompilerOptions;
+import org.evochora.compiler.api.ProgramArtifact;
+import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.compiler.TestLexers;
 import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 import org.evochora.compiler.FeatureRegistry;
@@ -92,6 +94,29 @@ class ModuleSourceConstIntegrationTest {
         assertThat(result.diagnostics.hasErrors())
                 .as("Expected no errors but got: %s", result.diagnostics.getDiagnostics())
                 .isFalse();
+    }
+
+    /**
+     * A constant defined by another constant in a file a module sources is resolved in the
+     * module's placement: the definition of B names A, which stands in the sourced file, not in
+     * the module's own file.
+     */
+    @Test
+    @Tag("integration")
+    void aSourcedConstantDefinedByAnotherSourcedConstant_resolvesInTheModule() throws Exception {
+        Files.writeString(tempDir.resolve("consts.evo"),
+                ".CONST A DATA:1\n" +
+                ".CONST B A\n");
+        Files.writeString(tempDir.resolve("m.evo"),
+                ".SOURCE \"consts.evo\"\n" +
+                "SETI %DR0 B\n");
+        Path main = tempDir.resolve("main.evo");
+        Files.writeString(main, ".IMPORT \"m.evo\" AS M\nNOP\n");
+
+        ProgramArtifact artifact = new org.evochora.compiler.Compiler().compile(
+                Files.readAllLines(main), main.toString(), new EnvironmentProperties(new int[]{100, 100}, true));
+
+        assertThat(artifact.machineCodeLayout()).isNotEmpty();
     }
 
     @Test

@@ -183,18 +183,16 @@ export class OrganismSourceView {
             // Show collapsible if (after NOP filtering): (a) multiple instructions, OR (b) any synthetic instruction.
             let showCollapsible = false;
             let filteredInstructions = [];
-            if (this.artifact && this.artifact.sourceLineToInstructions) {
-                const sourceLineKey = this.sourceLineKey(selectedSource.placement, selectedSource.resolvedPath, lineNumber);
-                const machineInstructions = this.artifact.sourceLineToInstructions[sourceLineKey];
-                if (machineInstructions && machineInstructions.instructions) {
-                    // Filter out NOP and WAIT instructions (padding for mutation robustness)
-                    filteredInstructions = machineInstructions.instructions.filter(
-                        i => i.opcode !== 'NOP' && i.opcode !== 'WAIT'
-                    );
-                    const hasMultiple = filteredInstructions.length > 1;
-                    const hasSynthetic = filteredInstructions.some(i => i.synthetic);
-                    showCollapsible = hasMultiple || hasSynthetic;
-                }
+            const machineInstructions = this.machineInstructionsOf(
+                selectedSource.placement, selectedSource.resolvedPath, lineNumber);
+            if (machineInstructions && machineInstructions.instructions) {
+                // Filter out NOP and WAIT instructions (padding for mutation robustness)
+                filteredInstructions = machineInstructions.instructions.filter(
+                    i => i.opcode !== 'NOP' && i.opcode !== 'WAIT'
+                );
+                const hasMultiple = filteredInstructions.length > 1;
+                const hasSynthetic = filteredInstructions.some(i => i.synthetic);
+                showCollapsible = hasMultiple || hasSynthetic;
             }
 
             // A directive line that owns a region folds it; such a line produces no code
@@ -289,8 +287,8 @@ export class OrganismSourceView {
 
     /**
      * Collects the regions and notes of an entry that the listing shows: those of expansion 0 and
-     * those of the active expansion. Regions owned by one directive line are joined, so that the
-     * copies a repetition made of one block fold as one.
+     * those of the active expansion. The compiler records equal regions and equal notes once, so
+     * every directive line owns at most one region of the listing.
      *
      * @param {object|null} source - The entry on display.
      * @param {string[]} lines - The lines of the entry.
@@ -312,10 +310,7 @@ export class OrganismSourceView {
         };
 
         (Array.isArray(source.leftOut) ? source.leftOut : []).filter(shown).forEach(region => {
-            const fold = folds.get(region.directiveLine);
-            folds.set(region.directiveLine, fold
-                ? { from: Math.min(fold.from, region.from), to: Math.max(fold.to, region.to) }
-                : { from: region.from, to: region.to });
+            folds.set(region.directiveLine, { from: region.from, to: region.to });
         });
         folds.forEach((fold, directiveLine) => {
             for (let line = fold.from; line <= fold.to; line++) {
@@ -331,10 +326,8 @@ export class OrganismSourceView {
             let end = Math.max(0, note.column - 1);
             while (end < text.length && /[A-Za-z0-9_]/.test(text[end])) end++;
             const lineNotes = notes.get(note.line) || [];
-            if (!lineNotes.some(n => n.end === end && n.text === note.text)) {
-                lineNotes.push({ end, text: note.text });
-                notes.set(note.line, lineNotes);
-            }
+            lineNotes.push({ end, text: note.text });
+            notes.set(note.line, lineNotes);
         });
         return { folds, foldedBy, notes };
     }
@@ -667,11 +660,8 @@ export class OrganismSourceView {
         const actualOpcode = organismState?.instructions?.next?.opcodeName;
         if (!actualOpcode) return null;
 
-        if (!this.artifact || !this.artifact.sourceLineToInstructions) return null;
-
-        const sourceLineKey = this.sourceLineKey(activeLocation.placement, activeLocation.fileName,
+        const machineInstructions = this.machineInstructionsOf(activeLocation.placement, activeLocation.fileName,
             activeLocation.lineNumber);
-        const machineInstructions = this.artifact.sourceLineToInstructions[sourceLineKey];
         if (!machineInstructions?.instructions) return null;
 
         const expectedInstruction = machineInstructions.instructions.find(
@@ -837,18 +827,23 @@ export class OrganismSourceView {
     }
 
     /**
-     * Builds the key of a source line in the artifact's `sourceLineToInstructions`, as the compiler
-     * writes it: `placement@fileName:lineNumber`, or `fileName:lineNumber` for the empty placement.
+     * Looks up the machine instructions of a source line in the artifact's
+     * `sourceLineToInstructions`, which holds one entry per placement and file with the
+     * instructions by line number. Two placements of one file share its lines but not its code.
      *
-     * @param {string} placement - The alias chain of the placement.
+     * @param {string} placement - The alias chain of the placement; empty or absent for the empty one.
      * @param {string} fileName - The resolved path of the file.
      * @param {number} lineNumber - The 1-based line number.
-     * @returns {string} The key.
+     * @returns {{instructions: Array<object>}|null} The instructions of the line, or null if
+     *          the artifact has none for it.
      * @private
      */
-    sourceLineKey(placement, fileName, lineNumber) {
-        const placedFile = placement ? `${placement}@${fileName}` : fileName;
-        return `${placedFile}:${lineNumber}`;
+    machineInstructionsOf(placement, fileName, lineNumber) {
+        const entries = this.artifact?.sourceLineToInstructions;
+        if (!Array.isArray(entries)) return null;
+        const wanted = placement || '';
+        const entry = entries.find(e => (e.placement || '') === wanted && e.fileName === fileName);
+        return entry?.lines?.[lineNumber] || null;
     }
 
     /**

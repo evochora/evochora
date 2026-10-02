@@ -252,7 +252,9 @@ class SimulationEngineIntegrationTest {
                 .toList());
         assertTrue(program.getTokenLookupList().stream()
                 .anyMatch(entry -> entry.getPlacement().equals("SECOND") && entry.getFileName().equals(lib)));
-        assertTrue(program.containsSourceLineToInstructions("SECOND@" + lib + ":3"));
+        assertTrue(program.getSourceLineToInstructionsList().stream()
+                .anyMatch(entry -> entry.getPlacement().equals("SECOND") && entry.getFileName().equals(lib)
+                        && entry.containsLines(3)));
     }
 
     @Test
