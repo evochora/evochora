@@ -155,11 +155,8 @@ message ProgramArtifact {
   // Used to reference this program in InitialOrganismSetup and OrganismState
   string program_id = 1;
 
-  // Source code organized by filename
-  // Source: ProgramArtifact.sources()
-  // Key: filename, Value: lines of source code
-  // Used by debugger to display source code
-  map<string, SourceLines> sources = 2;
+  // Field 2 reserved (was: sources keyed by file name, replaced by one entry per placement)
+  reserved 2;
 
   // Compiled machine code laid out in relative coordinates
   // Source: ProgramArtifact.machineCodeLayout()
@@ -217,13 +214,14 @@ message ProgramArtifact {
 
   // Efficient token lookup by file/line/column
   // Source: ProgramArtifact.tokenLookup()
-  // Nested structure for fast lookup: filename → line → column → tokens
+  // Nested structure for fast lookup: placement and filename → line → column → tokens
   // Used by web client for hover information
   repeated FileTokenLookup token_lookup = 13;
 
   // Machine instructions per source line for visualization
   // Source: ProgramArtifact.sourceLineToInstructions()
-  // Key: "fileName:lineNumber" (e.g., "main.evo:4"), Value: list of machine instructions
+  // Key: "placement@fileName:lineNumber" (e.g., "ENERGY@lib/energy.evo:4"), or "fileName:lineNumber"
+  // for the empty placement (e.g., "main.evo:4"); Value: list of machine instructions
   // Used by frontend to display compiler-generated instructions (e.g., PUSH/POP for CALL)
   map<string, MachineInstructionInfoList> source_line_to_instructions = 14;
 
@@ -238,12 +236,29 @@ message ProgramArtifact {
   // Key: label name, Value: 20-bit hash value
   // Used by frontend to resolve label references in source view
   map<string, int32> label_name_to_value = 16;
+
+  // Source code, one entry per file and module placement it stands in
+  // Source: ProgramArtifact.sources()
+  // Order: the main file first, then every file in the order the compiler meets it
+  // Used by debugger to display source code
+  repeated SourceFile sources = 17;
 }
 
-// Container for source code lines of a file.
-message SourceLines {
+// The text of one file in one module placement.
+// Maps to org.evochora.compiler.api.SourceFile record.
+message SourceFile {
+  // Alias chain of the placement (e.g., "ENERGY"); the main module's chain, usually empty,
+  // for the main file and the files it includes
+  string placement = 1;
+
+  // Path as the program wrote it, with its source-root prefix; the main file as given to the compiler
+  string path = 2;
+
+  // Path the file was read from; the file_name of every SourceInfo in it
+  string resolved_path = 3;
+
   // Lines of source code (0-indexed)
-  repeated string lines = 1;
+  repeated string lines = 4;
 }
 
 // Maps a coordinate to an encoded instruction value.
@@ -327,6 +342,10 @@ message SourceInfo {
 
   // Column number (1-indexed)
   int32 column_number = 3;
+
+  // Alias chain of the module placement the location belongs to; two placements of one file
+  // share its locations
+  string placement = 4;
 }
 
 // Maps a CALL instruction to its parameter register bindings.
@@ -400,14 +419,17 @@ message TokenInfo {
   optional string qualified_name = 4;
 }
 
-// Top-level token lookup structure for a file.
-// Protobuf-compatible representation of Map.Entry<String, Map<...>>.
+// Top-level token lookup structure for a file in one module placement.
+// Protobuf-compatible representation of one placement's Map.Entry<String, Map<...>>.
 message FileTokenLookup {
   // Source filename
   string file_name = 1;
 
   // Token lookup organized by line numbers
   repeated LineTokenLookup lines = 2;
+
+  // Alias chain of the module placement the file stands in
+  string placement = 3;
 }
 
 // Token lookup for a specific line in a file.

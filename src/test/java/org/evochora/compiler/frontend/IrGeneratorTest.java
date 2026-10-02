@@ -233,12 +233,12 @@ public class IrGeneratorTest {
 
         org.evochora.compiler.api.SourceInfo infoForOpcode = artifact.sourceMap().get(0);
         assertThat(infoForOpcode).isNotNull();
-        String lineContent = artifact.sources().get(infoForOpcode.fileName()).get(infoForOpcode.lineNumber() - 1);
+        String lineContent = lineAt(artifact, infoForOpcode);
         assertThat(lineContent.trim()).isEqualTo("SETI %DR0 DATA:42");
 
         org.evochora.compiler.api.SourceInfo infoForArg1 = artifact.sourceMap().get(1);
         assertThat(infoForArg1).isNotNull();
-        String lineContent2 = artifact.sources().get(infoForArg1.fileName()).get(infoForArg1.lineNumber() - 1);
+        String lineContent2 = lineAt(artifact, infoForArg1);
         assertThat(lineContent2.trim()).isEqualTo("SETI %DR0 DATA:42");
     }
 
@@ -379,5 +379,16 @@ public class IrGeneratorTest {
         reg.register(PushCtxNode.class, new PushCtxNodeConverter());
         reg.register(PopCtxNode.class, new PopCtxNodeConverter());
         return reg;
+    }
+
+    /** The source line a position names, looked up in the file of its placement. */
+    private static String lineAt(org.evochora.compiler.api.ProgramArtifact artifact,
+                                 org.evochora.compiler.api.SourceInfo position) {
+        return artifact.sources().stream()
+                .filter(file -> file.placement().equals(position.placement())
+                        && file.resolvedPath().equals(position.fileName()))
+                .findFirst()
+                .orElseThrow()
+                .lines().get(position.lineNumber() - 1);
     }
 }

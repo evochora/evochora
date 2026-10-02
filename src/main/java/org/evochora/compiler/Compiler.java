@@ -56,7 +56,6 @@ import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -172,12 +171,13 @@ public class Compiler implements ICompiler {
 
         // Phase 0: Dependency Scanning (load imported modules)
         DependencyScanner depScanner = new DependencyScanner(diagnostics, resolver, featureRegistry.dependencyScanHandlers(), effectiveOptions);
-        DependencyGraph graph = depScanner.scan(fullSource, mainFilePath, rootAliasChain);
+        DependencyGraph graph = depScanner.scan(fullSource, programName, mainFilePath, rootAliasChain);
         failOnErrors(diagnostics);
 
         // Phase 1: Lexical Analysis — every included file under its path, the main file as the stream
         Map<String, List<Token>> fileTokens = Lexer.lexFiles(graph.includedContents(), diagnostics, isa, featureRegistry.lexerSymbols());
-        List<Token> initialTokens = new ArrayList<>(new Lexer(fullSource, diagnostics, mainFilePath, isa, featureRegistry.lexerSymbols()).scanTokens());
+        List<Token> initialTokens = new ArrayList<>(new Lexer(fullSource, diagnostics, mainFilePath, isa,
+                featureRegistry.lexerSymbols(), rootAliasChain).scanTokens());
 
         // Phase 2: Preprocessing (includes, macros)
         PreProcessorContext ppContext = new PreProcessorContext(rootAliasChain, fileTokens, effectiveOptions);
@@ -186,9 +186,6 @@ public class Compiler implements ICompiler {
         featureRegistry.preprocessorTopLevelOnly().forEach(ppContext.handlers()::registerTopLevelOnly);
         PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, resolver, ppContext);
         PreProcessorResult ppResult = preProcessor.expand();
-
-        Map<String, String> sources = new HashMap<>(graph.includedContents());
-        sources.put(mainFilePath, fullSource);
 
         failOnErrors(diagnostics);
 
@@ -270,8 +267,9 @@ public class Compiler implements ICompiler {
         EmissionContributorRegistry emissionContributorRegistry = new EmissionContributorRegistry();
         featureRegistry.emissionContributors().forEach(emissionContributorRegistry::register);
         Emitter emitter = new Emitter();
-        Map<String, Map<Integer, Map<Integer, List<TokenInfo>>>> tokenLookup = TokenMapGenerator.buildTokenLookup(tokenMap);
-        ProgramArtifact artifact = emitter.emit(linkedIr, layout, linkContext, isa, emissionContributorRegistry, sources, tokenMap, tokenLookup);
+        Map<String, Map<String, Map<Integer, Map<Integer, List<TokenInfo>>>>> tokenLookup = TokenMapGenerator.buildTokenLookup(tokenMap);
+        ProgramArtifact artifact = emitter.emit(linkedIr, layout, linkContext, isa, emissionContributorRegistry,
+                graph.sourceFiles(), tokenMap, tokenLookup);
 
         CompilerLogger.debug("Compiler: " + programName + " programId:" + artifact.programId());
         return artifact;

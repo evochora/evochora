@@ -33,6 +33,7 @@ export class SourceAnnotator {
      *
      * @param {object} organismState The current dynamic state of the organism.
      * @param {object} artifact The static program artifact.
+     * @param {string} placement The alias chain of the module placement the line belongs to.
      * @param {string} fileName The name of the source file being annotated.
      * @param {string} sourceLine The raw text of the source code line.
      * @param {number} lineNumber The 1-based line number.
@@ -40,22 +41,25 @@ export class SourceAnnotator {
      *        label value into the value that stands in its body.
      * @returns {Array<object>} A list of annotation spans ready for rendering.
      */
-    annotate(organismState, artifact, fileName, sourceLine, lineNumber, labelNamespaceMask) {
+    annotate(organismState, artifact, placement, fileName, sourceLine, lineNumber, labelNamespaceMask) {
         if (!artifact || !organismState || !fileName) return [];
 
         const tokenLookup = artifact.tokenLookup;
         if (!tokenLookup) return [];
 
-        // 1. Find file entry (handle array or object structure)
+        // 1. Find the entry of the file in its placement (handle array or object structure); two
+        // placements of one file share its positions but not its tokens' meaning
+        const wantedPlacement = placement || '';
+        const matches = entry => (entry.placement || '') === wantedPlacement && entry.fileName === fileName;
         let fileEntry = null;
         if (Array.isArray(tokenLookup)) {
-            fileEntry = tokenLookup.find(entry => entry.fileName === fileName);
+            fileEntry = tokenLookup.find(matches);
         } else {
-            fileEntry = Object.values(tokenLookup).find(entry => entry.fileName === fileName);
+            fileEntry = Object.values(tokenLookup).find(matches);
         }
 
         if (!fileEntry || !fileEntry.lines) {
-            console.debug("SourceAnnotator: No entry or lines for file", fileName);
+            console.debug("SourceAnnotator: No entry or lines for file", wantedPlacement, fileName);
             return [];
         }
 

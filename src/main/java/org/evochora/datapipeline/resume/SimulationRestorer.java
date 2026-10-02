@@ -15,6 +15,7 @@ import org.evochora.compiler.api.ParamInfo;
 import org.evochora.compiler.api.ParamType;
 import org.evochora.compiler.api.PlacedMolecule;
 import org.evochora.compiler.api.ProgramArtifact;
+import org.evochora.compiler.api.SourceFile;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.api.TokenInfo;
 import org.evochora.compiler.api.TokenKind;
@@ -414,9 +415,11 @@ public class SimulationRestorer {
             org.evochora.datapipeline.api.contracts.ProgramArtifact proto) {
 
         // Convert sources
-        Map<String, List<String>> sources = new HashMap<>();
-        proto.getSourcesMap().forEach((fileName, sourceLines) ->
-            sources.put(fileName, new ArrayList<>(sourceLines.getLinesList())));
+        List<SourceFile> sources = new ArrayList<>();
+        for (var source : proto.getSourcesList()) {
+            sources.add(new SourceFile(source.getPlacement(), source.getPath(), source.getResolvedPath(),
+                source.getLinesList()));
+        }
 
         // Convert machine code layout (repeated InstructionMapping → Map<int[], Integer>)
         Map<int[], Integer> machineCodeLayout = new HashMap<>();
@@ -480,7 +483,7 @@ public class SimulationRestorer {
         }
 
         // Convert tokenLookup (complex nested structure)
-        Map<String, Map<Integer, Map<Integer, List<TokenInfo>>>> tokenLookup = new HashMap<>();
+        Map<String, Map<String, Map<Integer, Map<Integer, List<TokenInfo>>>>> tokenLookup = new HashMap<>();
         for (FileTokenLookup fileEntry : proto.getTokenLookupList()) {
             Map<Integer, Map<Integer, List<TokenInfo>>> lineMap = new HashMap<>();
             for (LineTokenLookup lineEntry : fileEntry.getLinesList()) {
@@ -493,7 +496,8 @@ public class SimulationRestorer {
                 }
                 lineMap.put(lineEntry.getLineNumber(), columnMap);
             }
-            tokenLookup.put(fileEntry.getFileName(), lineMap);
+            tokenLookup.computeIfAbsent(fileEntry.getPlacement(), k -> new HashMap<>())
+                .put(fileEntry.getFileName(), lineMap);
         }
 
         // Convert sourceLineToInstructions
@@ -564,7 +568,8 @@ public class SimulationRestorer {
      */
     private static SourceInfo convertProtoSourceInfo(
             org.evochora.datapipeline.api.contracts.SourceInfo proto) {
-        return new SourceInfo(proto.getFileName(), proto.getLineNumber(), proto.getColumnNumber());
+        return new SourceInfo(proto.getFileName(), proto.getLineNumber(), proto.getColumnNumber(),
+            proto.getPlacement());
     }
 
     /**

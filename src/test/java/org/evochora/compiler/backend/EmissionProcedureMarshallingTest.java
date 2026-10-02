@@ -30,7 +30,7 @@ public class EmissionProcedureMarshallingTest {
     }
 
     private static SourceInfo src(String file, int line) {
-        return new SourceInfo(file, line, 0);
+        return new SourceInfo(file, line, 0, "");
     }
 
     private List<IrItem> runFullEmission(List<IrItem> items) {

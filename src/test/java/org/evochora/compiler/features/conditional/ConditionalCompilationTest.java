@@ -4,6 +4,7 @@ import org.evochora.compiler.Compiler;
 import org.evochora.compiler.api.CompilationException;
 import org.evochora.compiler.api.CompilerOptions;
 import org.evochora.compiler.api.ProgramArtifact;
+import org.evochora.compiler.api.SourceFile;
 import org.evochora.compiler.api.SourceRoot;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.EnvironmentProperties;
@@ -57,7 +58,7 @@ class ConditionalCompilationTest {
 
         ProgramArtifact artifact = compile("main.evo", Map.of());
 
-        assertThat(artifact.sources().keySet()).anySatisfy(path -> assertThat(path).endsWith("extra.evo"));
+        assertThat(resolvedPaths(artifact)).anySatisfy(path -> assertThat(path).endsWith("extra.evo"));
         assertThat(artifact.machineCodeLayout()).hasSize(LABEL + 2);
     }
 
@@ -101,10 +102,10 @@ class ConditionalCompilationTest {
         ProgramArtifact big = compile("main.evo", Map.of("BIG", OptionalInt.empty()));
         ProgramArtifact small = compile("main.evo", Map.of());
 
-        assertThat(big.sources().keySet())
+        assertThat(resolvedPaths(big))
                 .anySatisfy(path -> assertThat(path).endsWith("big.evo"))
                 .noneSatisfy(path -> assertThat(path).endsWith("small.evo"));
-        assertThat(small.sources().keySet())
+        assertThat(resolvedPaths(small))
                 .anySatisfy(path -> assertThat(path).endsWith("small.evo"))
                 .noneSatisfy(path -> assertThat(path).endsWith("big.evo"));
         assertThat(big.machineCodeLayout().size()).isGreaterThan(small.machineCodeLayout().size());
@@ -201,7 +202,11 @@ class ConditionalCompilationTest {
         ProgramArtifact artifact = compile("main.evo", Map.of());
 
         assertThat(artifact.procNameToParamNames()).containsOnlyKeys("FIRST.WORK", "SECOND.WORK");
-        assertThat(artifact.sources().keySet()).anySatisfy(path -> assertThat(path).endsWith("extra.evo"));
+        assertThat(resolvedPaths(artifact)).anySatisfy(path -> assertThat(path).endsWith("extra.evo"));
+    }
+
+    private static List<String> resolvedPaths(ProgramArtifact artifact) {
+        return artifact.sources().stream().map(SourceFile::resolvedPath).toList();
     }
 
     private void write(String fileName, String... lines) throws Exception {

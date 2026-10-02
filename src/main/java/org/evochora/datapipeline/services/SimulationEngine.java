@@ -32,7 +32,6 @@ import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.PlacedMoleculeMapping;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.SourceInfo;
-import org.evochora.datapipeline.api.contracts.SourceLines;
 import org.evochora.datapipeline.api.contracts.SourceMapEntry;
 import org.evochora.datapipeline.api.contracts.PluginState;
 import org.evochora.datapipeline.api.contracts.TickData;
@@ -1248,8 +1247,12 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                 org.evochora.datapipeline.api.contracts.ProgramArtifact.newBuilder();
 
         builder.setProgramId(artifact.programId());
-        artifact.sources().forEach((fileName, lines) ->
-                builder.putSources(fileName, SourceLines.newBuilder().addAllLines(lines).build()));
+        artifact.sources().forEach(source ->
+                builder.addSources(org.evochora.datapipeline.api.contracts.SourceFile.newBuilder()
+                        .setPlacement(source.placement())
+                        .setPath(source.path())
+                        .setResolvedPath(source.resolvedPath())
+                        .addAllLines(source.lines())));
 
         artifact.machineCodeLayout().forEach((pos, instruction) ->
                 builder.addMachineCodeLayout(InstructionMapping.newBuilder()
@@ -1302,8 +1305,9 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                         .setSourceInfo(convertSourceInfo(sourceInfo))
                         .setTokenInfo(convertTokenInfo(tokenInfo))));
 
-        artifact.tokenLookup().forEach((fileName, lineMap) ->
+        artifact.tokenLookup().forEach((placement, fileMap) -> fileMap.forEach((fileName, lineMap) ->
                 builder.addTokenLookup(FileTokenLookup.newBuilder()
+                        .setPlacement(placement)
                         .setFileName(fileName)
                         .addAllLines(lineMap.entrySet().stream().map(lineEntry ->
                                 LineTokenLookup.newBuilder()
@@ -1315,7 +1319,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                                                         .build()
                                         ).toList())
                                         .build()
-                        ).toList())));
+                        ).toList()))));
 
         artifact.sourceLineToInstructions().forEach((sourceLineKey, instructions) -> {
             org.evochora.datapipeline.api.contracts.MachineInstructionInfoList.Builder listBuilder =
@@ -1343,6 +1347,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                 .setFileName(sourceInfo.fileName())
                 .setLineNumber(sourceInfo.lineNumber())
                 .setColumnNumber(sourceInfo.columnNumber())
+                .setPlacement(sourceInfo.placement())
                 .build();
     }
 

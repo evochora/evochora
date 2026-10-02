@@ -83,6 +83,7 @@ public class CaretDirectiveHandler implements IPreProcessorHandler {
     }
 
     private static Token synthetic(TokenType type, String text, Token position) {
-        return new Token(type, text, null, position.line(), position.column(), position.fileName());
+        return new Token(type, text, null, position.line(), position.column(), position.fileName(),
+                position.placement());
     }
 }

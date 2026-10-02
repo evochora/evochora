@@ -66,8 +66,8 @@ final class SourceLineIndex {
     }
 
     /**
-     * Returns the collected instructions, keyed by "fileName:lineNumber" and ordered by
-     * address within a line.
+     * Returns the collected instructions, keyed by "placement@fileName:lineNumber" (by
+     * "fileName:lineNumber" for the empty placement) and ordered by address within a line.
      *
      * @return A new map; the index is not modified.
      */
@@ -83,7 +83,9 @@ final class SourceLineIndex {
 
     private static String lineKey(SourceInfo src) {
         String fileName = src.fileName() != null ? src.fileName() : "<unknown>";
-        return fileName + ":" + src.lineNumber();
+        String placement = src.placement();
+        String placed = placement == null || placement.isEmpty() ? fileName : placement + "@" + fileName;
+        return placed + ":" + src.lineNumber();
     }
 
     private String format(IrOperand op, int[] opcodeCoord) {

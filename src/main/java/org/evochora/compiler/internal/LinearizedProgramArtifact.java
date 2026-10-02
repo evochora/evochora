@@ -43,6 +43,7 @@ import java.util.Map;
  * <h2>Unchanged Fields</h2>
  * All other fields remain unchanged:
  * <ul>
+ *   <li><strong>sources</strong>: {@code List<SourceFile>} (unchanged)</li>
  *   <li><strong>sourceMap</strong>: {@code Map<Integer, SerializableSourceInfo>} (unchanged)</li>
  *   <li><strong>callSiteBindings</strong>: {@code Map<Integer, Map<Integer, Integer>>} (unchanged)</li>
  *   <li><strong>relativeCoordToLinearAddress</strong>: {@code Map<String, Integer>} (unchanged)</li>
@@ -50,12 +51,12 @@ import java.util.Map;
  *   <li><strong>registerAliasMap</strong>: {@code Map<String, Integer>} (unchanged)</li>
  *   <li><strong>procNameToParamNames</strong>: {@code Map<String, List<ParamInfo>>} (unchanged)</li>
  *   <li><strong>tokenMap</strong>: {@code Map<SerializableSourceInfo, TokenInfo>} (unchanged)</li>
- *   <li><strong>tokenLookup</strong>: {@code Map<String, Map<Integer, Map<Integer, List<TokenInfo>>>>} (unchanged)</li>
+ *   <li><strong>tokenLookup</strong>: {@code Map<String, Map<String, Map<Integer, Map<Integer, List<TokenInfo>>>>>} (unchanged)</li>
  *   <li><strong>sourceLineToInstructions</strong>: {@code Map<String, List<MachineInstructionInfo>>} (unchanged)</li>
  * </ul>
  * 
  * @param programId Unique identifier for the compiled program.
- * @param sources Map of source file names to their lines of code.
+ * @param sources The text of every file once per module placement it stands in.
  * @param machineCodeLayout Map from linearized coordinates to molecule values.
  * @param initialWorldObjects Map from linearized coordinates to placed molecules.
  * @param sourceMap Map from linear address to serializable source info.
@@ -66,7 +67,7 @@ import java.util.Map;
  * @param registerAliasMap Map from register alias names to physical register indices.
  * @param procNameToParamNames Map from procedure names to parameter info lists.
  * @param tokenMap Map from serializable source info to token info.
- * @param tokenLookup Map from file/line/col to token info list.
+ * @param tokenLookup Map from placement/file/line/col to token info list.
  * @param sourceLineToInstructions Map from source line to machine instruction info list.
  * @param labelValueToName Map from label hash value to label name.
  * @param labelNameToValue Map from label name to label hash value.
@@ -77,7 +78,7 @@ import java.util.Map;
  */
 public record LinearizedProgramArtifact(
         String programId,
-        Map<String, List<String>> sources,
+        List<org.evochora.compiler.api.SourceFile> sources,
         Map<Integer, Integer> machineCodeLayout,
         Map<Integer, PlacedMolecule> initialWorldObjects,
         Map<Integer, SerializableSourceInfo> sourceMap,
@@ -87,7 +88,7 @@ public record LinearizedProgramArtifact(
         Map<String, Integer> registerAliasMap,
         Map<String, List<org.evochora.compiler.api.ParamInfo>> procNameToParamNames,
         Map<SerializableSourceInfo, TokenInfo> tokenMap,
-        Map<String, Map<Integer, Map<Integer, List<TokenInfo>>>> tokenLookup,
+        Map<String, Map<String, Map<Integer, Map<Integer, List<TokenInfo>>>>> tokenLookup,
         Map<String, List<org.evochora.compiler.api.MachineInstructionInfo>> sourceLineToInstructions,
         Map<Integer, String> labelValueToName,
         Map<String, Integer> labelNameToValue,
@@ -96,12 +97,12 @@ public record LinearizedProgramArtifact(
     
     /**
      * Canonical constructor that makes the artifact immutable and free of nulls: every map component
-     * is wrapped in an unmodifiable view, a null map becomes an empty map, and null environment
+     * and the list of sources is wrapped in an unmodifiable view, a null one becomes an empty one, and null environment
      * properties become a zero-dimensional, non-toroidal environment. Wrapping does not copy, so a
      * caller that keeps a reference to a map it passed in can still change what the artifact exposes.
      */
     public LinearizedProgramArtifact {
-        sources = sources != null ? Collections.unmodifiableMap(sources) : Collections.emptyMap();
+        sources = sources != null ? Collections.unmodifiableList(sources) : Collections.emptyList();
         machineCodeLayout = machineCodeLayout != null ? Collections.unmodifiableMap(machineCodeLayout) : Collections.emptyMap();
         initialWorldObjects = initialWorldObjects != null ? Collections.unmodifiableMap(initialWorldObjects) : Collections.emptyMap();
         sourceMap = sourceMap != null ? Collections.unmodifiableMap(sourceMap) : Collections.emptyMap();

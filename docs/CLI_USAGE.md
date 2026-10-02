@@ -169,7 +169,7 @@ Examples:
 Compilation produces a JSON object with (among others):
 
 - `programId`: unique identifier
-- `sources`: source file contents
+- `sources`: one entry per placement and source file, with the placement's alias chain, the path as written, the resolved path and the lines
 - `machineCodeLayout`: generated machine code (linear address → instruction)
 - `labelAddressToName`: label addresses and names
 - `registerAliasMap`: register aliases used by the compiler

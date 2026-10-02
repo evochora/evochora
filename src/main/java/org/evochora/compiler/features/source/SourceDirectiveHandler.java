@@ -78,15 +78,23 @@ public class SourceDirectiveHandler implements IPreProcessorHandler {
             return;
         }
 
+        // The included text belongs to the placement that includes it
+        String placement = preProcessorContext.currentAliasChain();
+
         // A .SOURCE inclusion keeps the enclosing module context, so it carries no alias chain.
         // The inclusion stays open until the injected .POP_CTX token is processed.
         PlacementContext placementCtx = new PlacementContext(resolvedPath, null);
         preProcessorContext.enterInclusion(placementCtx);
 
         // Copy tokens and wrap with context management directives
-        List<Token> newTokens = new ArrayList<>(preLexed);
-        newTokens.add(0, new Token(TokenType.DIRECTIVE, ".PUSH_CTX", placementCtx, pathToken.line(), 0, pathToken.fileName()));
-        newTokens.add(new Token(TokenType.DIRECTIVE, ".POP_CTX", null, pathToken.line(), 0, pathToken.fileName()));
+        List<Token> newTokens = new ArrayList<>(preLexed.size() + 2);
+        for (Token token : preLexed) {
+            newTokens.add(token.withPlacement(placement));
+        }
+        newTokens.add(0, new Token(TokenType.DIRECTIVE, ".PUSH_CTX", placementCtx, pathToken.line(), 0,
+                pathToken.fileName(), pathToken.placement()));
+        newTokens.add(new Token(TokenType.DIRECTIVE, ".POP_CTX", null, pathToken.line(), 0,
+                pathToken.fileName(), pathToken.placement()));
 
         preProcessor.removeTokens(startIndex, endIndex - startIndex);
         preProcessor.injectTokens(newTokens, 0);

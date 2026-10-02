@@ -13,7 +13,8 @@ import java.util.Map;
  * source mapping, and various metadata required by the runtime and debugger.
  *
  * @param programId A unique identifier for the compiled program.
- * @param sources A map of source file names to their content.
+ * @param sources The text of every file once per module placement it stands in, the main file
+ *                first and every other in the order the compiler meets it.
  * @param machineCodeLayout A map from relative coordinates to the integer representation of a molecule.
  * @param initialWorldObjects A map from relative coordinates to molecules that should be placed in the world initially.
  * @param sourceMap A map from linear address to source information, for debugging.
@@ -25,15 +26,18 @@ import java.util.Map;
  * @param registerAliasMap A map from register alias names (e.g., "%MY_REG") to their physical register index.
  * @param procNameToParamNames A map from procedure names to a list of their parameter information (name and type).
  * @param tokenMap A map from SourceInfo to TokenInfo for deterministic token classification.
- * @param tokenLookup A map from fileName to lineNumber to columnNumber to {@code List<TokenInfo>} for efficient file-line-column-based lookup.
- * @param sourceLineToInstructions A map from source line identifier (fileName:lineNumber) to a list of machine instructions
- *                                 that were generated from that source line, sorted by linear address.
+ * @param tokenLookup A map from placement to fileName to lineNumber to columnNumber to {@code List<TokenInfo>} for efficient
+ *                    placement-file-line-column-based lookup.
+ * @param sourceLineToInstructions A map from source line identifier to a list of machine instructions that were generated
+ *                                 from that source line, sorted by linear address. The identifier is
+ *                                 {@code placement@fileName:lineNumber}, or {@code fileName:lineNumber} for the
+ *                                 empty placement.
  * @param labelValueToName A map from label hash value to label name (for reverse lookup in visualizer).
  * @param labelNameToValue A map from label name to label hash value (for forward lookup).
  */
 public record ProgramArtifact(
         String programId,
-        Map<String, List<String>> sources,
+        List<SourceFile> sources,
         Map<int[], Integer> machineCodeLayout,
         Map<int[], PlacedMolecule> initialWorldObjects,
         Map<Integer, SourceInfo> sourceMap,
@@ -43,23 +47,23 @@ public record ProgramArtifact(
         Map<String, Integer> registerAliasMap,
         Map<String, List<ParamInfo>> procNameToParamNames,
         Map<SourceInfo, TokenInfo> tokenMap,
-        Map<String, Map<Integer, Map<Integer, List<TokenInfo>>>> tokenLookup,
+        Map<String, Map<String, Map<Integer, Map<Integer, List<TokenInfo>>>>> tokenLookup,
         Map<String, List<MachineInstructionInfo>> sourceLineToInstructions,
         Map<Integer, String> labelValueToName,
         Map<String, Integer> labelNameToValue
 ) {
     /**
-     * Canonical constructor that makes the artifact immutable by wrapping every map component in an
-     * unmodifiable view. {@code sources}, {@code procNameToParamNames}, {@code tokenMap},
-     * {@code tokenLookup}, {@code sourceLineToInstructions}, {@code labelValueToName} and
-     * {@code labelNameToValue} accept null and become empty maps; every other map component must be
-     * non-null. Wrapping does not copy, so a caller that keeps a reference to a map it passed in can
-     * still change what the artifact exposes.
+     * Canonical constructor that makes the artifact immutable by wrapping every map component and
+     * the list of sources in an unmodifiable view. {@code sources}, {@code procNameToParamNames},
+     * {@code tokenMap}, {@code tokenLookup}, {@code sourceLineToInstructions},
+     * {@code labelValueToName} and {@code labelNameToValue} accept null and become empty; every
+     * other component must be non-null. Wrapping does not copy, so a caller that keeps a reference
+     * to a collection it passed in can still change what the artifact exposes.
      *
      * @throws NullPointerException if one of the map components without null handling is null.
      */
     public ProgramArtifact {
-        sources = sources != null ? Collections.unmodifiableMap(sources) : Collections.emptyMap();
+        sources = sources != null ? Collections.unmodifiableList(sources) : Collections.emptyList();
         machineCodeLayout = Collections.unmodifiableMap(machineCodeLayout);
         initialWorldObjects = Collections.unmodifiableMap(initialWorldObjects);
         sourceMap = Collections.unmodifiableMap(sourceMap);

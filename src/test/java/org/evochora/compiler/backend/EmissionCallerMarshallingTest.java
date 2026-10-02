@@ -37,7 +37,7 @@ public class EmissionCallerMarshallingTest {
     }
 
     private static SourceInfo src(String f, int l) {
-        return new SourceInfo(f, l, 0);
+        return new SourceInfo(f, l, 0, "");
     }
 
     private List<IrItem> runEmission(List<IrItem> items) {

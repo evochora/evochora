@@ -90,28 +90,25 @@ public class TokenMapGenerator implements ITokenMapContext {
     }
 
     /**
-     * Builds a 3-level token lookup structure for efficient file/line/column-based queries.
+     * Builds a 4-level token lookup structure for efficient placement/file/line/column-based
+     * queries. Two placements of one file share its positions, so the placement comes first.
      *
-     * <p>Structure: fileName -> lineNumber -> columnNumber -> list of TokenInfo</p>
+     * <p>Structure: placement -> fileName -> lineNumber -> columnNumber -> list of TokenInfo</p>
      *
      * @param tokenMap The flat token map keyed by {@link SourceInfo}
      * @return A nested lookup map suitable for debuggers and indexers
      */
-    public static Map<String, Map<Integer, Map<Integer, List<TokenInfo>>>> buildTokenLookup(Map<SourceInfo, TokenInfo> tokenMap) {
-        Map<String, Map<Integer, Map<Integer, List<TokenInfo>>>> result = new HashMap<>();
+    public static Map<String, Map<String, Map<Integer, Map<Integer, List<TokenInfo>>>>> buildTokenLookup(
+            Map<SourceInfo, TokenInfo> tokenMap) {
+        Map<String, Map<String, Map<Integer, Map<Integer, List<TokenInfo>>>>> result = new HashMap<>();
 
         for (Map.Entry<SourceInfo, TokenInfo> entry : tokenMap.entrySet()) {
             SourceInfo sourceInfo = entry.getKey();
-            TokenInfo tokenInfo = entry.getValue();
-
-            String fileName = sourceInfo.fileName();
-            Integer lineNumber = sourceInfo.lineNumber();
-            Integer columnNumber = sourceInfo.columnNumber();
-
-            result.computeIfAbsent(fileName, k -> new HashMap<>())
-                  .computeIfAbsent(lineNumber, k -> new HashMap<>())
-                  .computeIfAbsent(columnNumber, k -> new ArrayList<>())
-                  .add(tokenInfo);
+            result.computeIfAbsent(sourceInfo.placement(), k -> new HashMap<>())
+                  .computeIfAbsent(sourceInfo.fileName(), k -> new HashMap<>())
+                  .computeIfAbsent(sourceInfo.lineNumber(), k -> new HashMap<>())
+                  .computeIfAbsent(sourceInfo.columnNumber(), k -> new ArrayList<>())
+                  .add(entry.getValue());
         }
 
         return result;

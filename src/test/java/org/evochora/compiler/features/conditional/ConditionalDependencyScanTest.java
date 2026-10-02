@@ -253,7 +253,8 @@ class ConditionalDependencyScanTest {
         DependencyScanner scanner = new DependencyScanner(diagnostics,
                 new SourceRootResolver(List.of(new SourceRoot(".", null)), root),
                 features.dependencyScanHandlers(), options);
-        DependencyGraph graph = scanner.scan(mainSource + "\n", root.resolve("main.evo").toString(), "");
+        String mainPath = root.resolve("main.evo").toString();
+        DependencyGraph graph = scanner.scan(mainSource + "\n", mainPath, mainPath, "");
         return new Scan(graph, diagnostics);
     }
 }

@@ -972,6 +972,66 @@ class SimulationRestorerTest {
         assertThat(restoredToken(state).qualifiedName()).isNull();
     }
 
+    /**
+     * Two placements of one file share its positions; every place of the artifact that names a
+     * position keeps the placement through the metadata, so the restored artifact keeps them apart.
+     */
+    @Test
+    void restore_Placements_Preserved() {
+        org.evochora.datapipeline.api.contracts.SourceInfo position =
+                org.evochora.datapipeline.api.contracts.SourceInfo.newBuilder()
+                    .setFileName("/root/lib.evo")
+                    .setLineNumber(2)
+                    .setColumnNumber(3)
+                    .setPlacement("SECOND")
+                    .build();
+        org.evochora.datapipeline.api.contracts.TokenInfo token =
+                org.evochora.datapipeline.api.contracts.TokenInfo.newBuilder()
+                    .setTokenText("LOOP")
+                    .setTokenType("LABEL")
+                    .setScope("global")
+                    .setQualifiedName("SECOND.LOOP")
+                    .build();
+        org.evochora.datapipeline.api.contracts.ProgramArtifact program =
+                org.evochora.datapipeline.api.contracts.ProgramArtifact.newBuilder()
+                    .setProgramId("test-program")
+                    .addSources(org.evochora.datapipeline.api.contracts.SourceFile.newBuilder()
+                        .setPlacement("SECOND")
+                        .setPath("lib.evo")
+                        .setResolvedPath("/root/lib.evo")
+                        .addLines("NOP"))
+                    .addSourceMap(org.evochora.datapipeline.api.contracts.SourceMapEntry.newBuilder()
+                        .setLinearAddress(0)
+                        .setSourceInfo(position))
+                    .addTokenMap(org.evochora.datapipeline.api.contracts.TokenMapEntry.newBuilder()
+                        .setSourceInfo(position)
+                        .setTokenInfo(token))
+                    .addTokenLookup(org.evochora.datapipeline.api.contracts.FileTokenLookup.newBuilder()
+                        .setPlacement("SECOND")
+                        .setFileName("/root/lib.evo")
+                        .addLines(org.evochora.datapipeline.api.contracts.LineTokenLookup.newBuilder()
+                            .setLineNumber(2)
+                            .addColumns(org.evochora.datapipeline.api.contracts.ColumnTokenLookup.newBuilder()
+                                .setColumnNumber(3)
+                                .addTokens(token))))
+                    .build();
+        SimulationMetadata metadata = createMinimalMetadata().toBuilder().addPrograms(program).build();
+
+        SimulationRestorer.RestoredState state = SimulationRestorer.restore(
+                new ResumeCheckpoint(metadata, snapshotWith(createOrganismState(1, 500))), randomProvider, 1);
+
+        var artifact = state.programArtifacts().get("test-program");
+        var restoredPosition = new org.evochora.compiler.api.SourceInfo("/root/lib.evo", 2, 3, "SECOND");
+        assertThat(artifact.sources()).containsExactly(
+                new org.evochora.compiler.api.SourceFile("SECOND", "lib.evo", "/root/lib.evo", List.of("NOP")));
+        assertThat(artifact.sourceMap()).containsEntry(0, restoredPosition);
+        assertThat(artifact.tokenMap()).containsOnlyKeys(restoredPosition);
+        assertThat(artifact.tokenLookup()).containsOnlyKeys("SECOND");
+        assertThat(artifact.tokenLookup().get("SECOND").get("/root/lib.evo").get(2).get(3))
+                .extracting(org.evochora.compiler.api.TokenInfo::qualifiedName)
+                .containsExactly("SECOND.LOOP");
+    }
+
     // ==================== Helper Methods ====================
 
     /** A well-formed organism state; each rejection test breaks exactly one part of it. */

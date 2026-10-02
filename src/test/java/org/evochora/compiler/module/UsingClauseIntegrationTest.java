@@ -287,7 +287,7 @@ class UsingClauseIntegrationTest {
         FeatureRegistry featureRegistry = new FeatureRegistry(new RuntimeInstructionSetAdapter());
         StandardFeatures.all().forEach(f -> f.register(featureRegistry));
         DependencyScanner scanner = new DependencyScanner(diagnostics, resolver, featureRegistry.dependencyScanHandlers(), CompilerOptions.defaults());
-        DependencyGraph graph = scanner.scan(mainSource, mainPath, rootAliasChain);
+        DependencyGraph graph = scanner.scan(mainSource, mainPath, mainPath, rootAliasChain);
         if (diagnostics.hasErrors()) return new SemanticsResult(diagnostics, null);
 
         // Phase 1: Lex the included files under their paths, the main file as the stream

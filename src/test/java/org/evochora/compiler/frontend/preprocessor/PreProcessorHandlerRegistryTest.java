@@ -85,11 +85,11 @@ class PreProcessorHandlerRegistryTest {
     }
 
     private static Token identifierAt(String text, int line) {
-        return new Token(TokenType.IDENTIFIER, text, null, line, 1, "test");
+        return new Token(TokenType.IDENTIFIER, text, null, line, 1, "test", "");
     }
 
     private static Token opcode(String text) {
-        return new Token(TokenType.OPCODE, text, null, 1, 1, "test");
+        return new Token(TokenType.OPCODE, text, null, 1, 1, "test", "");
     }
 
     @Test

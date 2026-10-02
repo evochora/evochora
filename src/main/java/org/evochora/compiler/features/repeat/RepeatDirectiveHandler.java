@@ -106,7 +106,8 @@ public class RepeatDirectiveHandler implements IPreProcessorHandler {
                 null,
                 reference.line(),
                 reference.column(),
-                reference.fileName()
+                reference.fileName(),
+                reference.placement()
         );
     }
 }

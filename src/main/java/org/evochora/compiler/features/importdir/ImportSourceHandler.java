@@ -91,13 +91,19 @@ public class ImportSourceHandler implements IPreProcessorHandler {
                 ? aliasUpper
                 : parentChain + "." + aliasUpper;
 
-        // Create a copy of the pre-lexed tokens (each import gets its own instance)
-        List<Token> newTokens = new ArrayList<>(tokens);
+        // Copy the pre-lexed tokens into this placement: each import gets its own instance,
+        // and every token names the placement it belongs to
+        List<Token> newTokens = new ArrayList<>(tokens.size() + 2);
+        for (Token token : tokens) {
+            newTokens.add(token.withPlacement(aliasChain));
+        }
 
         // Wrap with PUSH_CTX/POP_CTX — PUSH_CTX carries PlacementContext with alias chain
         PlacementContext placementCtx = new PlacementContext(resolvedPath, aliasChain);
-        newTokens.add(0, new Token(TokenType.DIRECTIVE, ".PUSH_CTX", placementCtx, importToken.line(), 0, importToken.fileName()));
-        newTokens.add(new Token(TokenType.DIRECTIVE, ".POP_CTX", null, importToken.line(), 0, importToken.fileName()));
+        newTokens.add(0, new Token(TokenType.DIRECTIVE, ".PUSH_CTX", placementCtx, importToken.line(), 0,
+                importToken.fileName(), importToken.placement()));
+        newTokens.add(new Token(TokenType.DIRECTIVE, ".POP_CTX", null, importToken.line(), 0,
+                importToken.fileName(), importToken.placement()));
 
         // The inclusion enters the module's alias chain and stays open until the injected
         // .POP_CTX token is processed by the preprocessor — not in this handler.

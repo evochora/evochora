@@ -3,6 +3,7 @@ package org.evochora.compiler.backend.emit;
 import org.evochora.compiler.api.CompilationException;
 import org.evochora.compiler.api.PlacedMolecule;
 import org.evochora.compiler.api.ProgramArtifact;
+import org.evochora.compiler.api.SourceFile;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.api.TokenInfo;
 import org.evochora.compiler.backend.layout.LayoutResult;
@@ -42,10 +43,10 @@ public class Emitter {
      * @param linkingContext The context from the linking phase, containing call site bindings.
      * @param isa The instruction set architecture for opcode and register resolution.
      * @param contributorRegistry Registry of emission contributors for extracting metadata from IR.
-     * @param sources The text of every source file, keyed by file name; the artifact carries
-     *                them line by line.
+     * @param sources The text of every file once per module placement it stands in, copied into
+     *                the artifact unchanged.
      * @param tokenMap Token classification per source position, copied into the artifact unchanged.
-     * @param tokenLookup The same token classification indexed by file name, line and column,
+     * @param tokenLookup The same token classification indexed by placement, file name, line and column,
      *                    copied into the artifact unchanged.
      * @return The final, compiled {@link ProgramArtifact}.
      * @throws CompilationException if an item cannot be encoded or has no cell in the layout.
@@ -55,9 +56,9 @@ public class Emitter {
                                 LinkingContext linkingContext,
                                 IInstructionSet isa,
                                 EmissionContributorRegistry contributorRegistry,
-                                Map<String, String> sources,
+                                List<SourceFile> sources,
                                 Map<SourceInfo, TokenInfo> tokenMap,
-                                Map<String, Map<Integer, Map<Integer, List<TokenInfo>>>> tokenLookup) throws CompilationException {
+                                Map<String, Map<String, Map<Integer, Map<Integer, List<TokenInfo>>>>> tokenLookup) throws CompilationException {
         EmissionContext emissionContext = new EmissionContext();
         List<IEmissionContributor> contributors = contributorRegistry.contributors();
         for (IrItem item : program.items()) {
@@ -118,12 +119,9 @@ public class Emitter {
             labelNameToValue.put(name, value);
         });
 
-        Map<String, List<String>> linesByFile = new HashMap<>();
-        sources.forEach((path, text) -> linesByFile.put(path, Arrays.asList(text.split("\\r?\\n"))));
-
         return new ProgramArtifact(
                 programId,
-                linesByFile,
+                sources,
                 sortedMachineCodeLayout,
                 sortedInitialObjects,
                 layout.sourceMap(),

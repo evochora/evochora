@@ -217,6 +217,45 @@ class SimulationEngineIntegrationTest {
     }
 
     @Test
+    void engine_shouldRecordThePlacementOfEveryPositionInTheProgramMetadata() throws IOException, InterruptedException {
+        Files.writeString(tempDir.resolve("lib.evo"), "EXPORT .PROC WORK\nLOOP:\n  NOP\n  JMPI LOOP\n  RET\n.ENDPROC\n");
+        Files.writeString(tempDir.resolve("twice.evo"), ".IMPORT \"lib.evo\" AS FIRST\n.IMPORT \"lib.evo\" AS SECOND\n"
+                + "START:\n  CALL FIRST.WORK\n  CALL SECOND.WORK\n");
+        Config twiceConfig = baseConfig
+                .withValue("compiler.source-roots", ConfigValueFactory.fromAnyRef(List.of(Map.of("path", tempDir.toString()))))
+                .withValue("organisms", ConfigValueFactory.fromAnyRef(List.of(Map.of(
+                        "program", "twice.evo",
+                        "initialEnergy", 10000,
+                        "placement", Map.of("positions", List.of(5, 5))))));
+        SimulationEngine engine = new SimulationEngine("test-engine", twiceConfig, resources);
+
+        engine.start();
+        await().atMost(5, TimeUnit.SECONDS)
+                .untilAsserted(() -> assertEquals(1L, metadataQueue.getMetrics().get("current_size").longValue()));
+        engine.stop();
+
+        SimulationMetadata metadata;
+        try (StreamingBatch<SimulationMetadata> metaBatch = metadataQueue.receiveBatch(1, 0, TimeUnit.MILLISECONDS)) {
+            metadata = metaBatch.iterator().next();
+        }
+        org.evochora.datapipeline.api.contracts.ProgramArtifact program = metadata.getPrograms(0);
+        assertEquals(List.of("", "FIRST", "SECOND"),
+                program.getSourcesList().stream().map(source -> source.getPlacement()).toList());
+        assertEquals(List.of("twice.evo", "lib.evo", "lib.evo"),
+                program.getSourcesList().stream().map(source -> source.getPath()).toList());
+        String lib = program.getSources(1).getResolvedPath();
+        assertEquals(List.of("FIRST", "SECOND"), program.getSourceMapList().stream()
+                .map(entry -> entry.getSourceInfo())
+                .filter(info -> info.getFileName().equals(lib) && info.getLineNumber() == 3)
+                .map(info -> info.getPlacement())
+                .sorted()
+                .toList());
+        assertTrue(program.getTokenLookupList().stream()
+                .anyMatch(entry -> entry.getPlacement().equals("SECOND") && entry.getFileName().equals(lib)));
+        assertTrue(program.containsSourceLineToInstructions("SECOND@" + lib + ":3"));
+    }
+
+    @Test
     void engine_shouldProduceTickData() {
         SimulationEngine engine = new SimulationEngine("test-engine", baseConfig, resources);
 

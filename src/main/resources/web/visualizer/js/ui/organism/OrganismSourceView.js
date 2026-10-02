@@ -6,6 +6,10 @@ import { SourceAnnotator } from '../../annotator/SourceAnnotator.js';
  * handling file switching for included files, highlighting the currently executing line,
  * and applying runtime annotations to the active line.
  *
+ * The artifact's `sources` hold every file once per module placement it stands in, the main
+ * file first. Two placements of one file share its text but not its code or its annotations,
+ * so the view selects an entry of that list, never a file alone.
+ *
  * @class OrganismSourceView
  */
 export class OrganismSourceView {
@@ -16,7 +20,7 @@ export class OrganismSourceView {
     constructor(rootElement) {
         this.root = rootElement;
         this.artifact = null;
-        this.selectedFile = null;
+        this.selectedIndex = null; // Index of the displayed entry in artifact.sources
         this.annotator = new SourceAnnotator();
         this.lastAnnotatedLine = null; // Track annotated line to restore it
 
@@ -44,17 +48,9 @@ export class OrganismSourceView {
         this.artifact = artifact;
         this.lastAnnotatedLine = null;
         
-        // UX Logic: Default to first file so view is not empty initially
-        if (this.artifact && this.artifact.sources) {
-            const files = Object.keys(this.artifact.sources);
-            if (files.length > 0) {
-                this.selectedFile = files[0];
-            } else {
-                this.selectedFile = null;
-            }
-        } else {
-            this.selectedFile = null;
-        }
+        // UX Logic: Default to the main file, the first entry, so view is not empty initially
+        const sources = this.sourceEntries();
+        this.selectedIndex = sources.length > 0 ? 0 : null;
 
         // Full re-render of the source structure
         this.renderSourceStructure();
@@ -74,17 +70,15 @@ export class OrganismSourceView {
 
         const activeLocation = this.calculateActiveLocation(organismState, staticInfo);
 
-        // 1. Auto-switch file if execution moved to a different file. This comes first because the
-        // re-render replaces the whole source view, the status bar with it: a warning written
-        // before it would be thrown away again, which is why one only ever appeared when execution
-        // happened to stay in the file already on display.
-        if (activeLocation && activeLocation.fileName) {
-            const fileExists = this.artifact.sources && this.artifact.sources[activeLocation.fileName];
-            if (fileExists && this.selectedFile !== activeLocation.fileName) {
-                this.selectedFile = activeLocation.fileName;
-                this.lastAnnotatedLine = null; // Reset on file switch
-                this.renderSourceStructure(); // Re-render needed because file content changed
-            }
+        // 1. Auto-switch entry if execution moved to a different file or placement. This comes
+        // first because the re-render replaces the whole source view, the status bar with it: a
+        // warning written before it would be thrown away again, which is why one only ever
+        // appeared when execution happened to stay in the entry already on display.
+        const activeIndex = this.findSourceIndex(activeLocation);
+        if (activeIndex !== null && this.selectedIndex !== activeIndex) {
+            this.selectedIndex = activeIndex;
+            this.lastAnnotatedLine = null; // Reset on file switch
+            this.renderSourceStructure(); // Re-render needed because file content changed
         }
 
         // 2. Handle Status Bar (Errors/Warnings including mutation detection)
@@ -104,9 +98,9 @@ export class OrganismSourceView {
         }
 
         // 5. Apply annotations to the active line
-        if (activeLineNumber && activeLocation.fileName === this.selectedFile) {
-            this.applyAnnotations(activeLocation.fileName, activeLineNumber, staticInfo, organismState,
-                labelNamespaceMask);
+        if (activeLineNumber && activeIndex !== null && activeIndex === this.selectedIndex) {
+            this.applyAnnotations(activeLocation.placement, activeLocation.fileName, activeLineNumber, staticInfo,
+                organismState, labelNamespaceMask);
         }
     }
 
@@ -128,32 +122,27 @@ export class OrganismSourceView {
             return;
         }
 
-        const sources = this.artifact.sources;
-        const files = Object.keys(sources);
-        const commonPrefix = this.findCommonPrefix(files);
+        const sources = this.sourceEntries();
+        const selectedSource = this.selectedIndex !== null ? sources[this.selectedIndex] : null;
 
-        // 1. Build File Dropdown
+        // 1. Build File Dropdown: one entry per placement, in the order of the list. An entry of
+        // the main file's placement shows its path alone, every other one the placement's alias
+        // chain and the path the program wrote; the resolved path is the tooltip.
         let dropdownHtml = '';
-        if (files.length > 1) {
-            const options = files.map(file => {
-                const displayPath = file.startsWith(commonPrefix) ? file.substring(commonPrefix.length) : file;
-                const selected = file === this.selectedFile ? 'selected' : '';
-                return `<option value="${file}" ${selected}>${displayPath}</option>`;
+        if (sources.length > 1) {
+            const mainPlacement = sources[0].placement || '';
+            const options = sources.map((source, index) => {
+                const placement = source.placement || '';
+                const label = placement === mainPlacement ? source.path : `${placement} → ${source.path}`;
+                const selected = index === this.selectedIndex ? 'selected' : '';
+                return `<option value="${index}" title="${this.escapeHtml(source.resolvedPath)}" ${selected}>`
+                    + `${this.escapeHtml(label)}</option>`;
             }).join('');
             dropdownHtml = `<select id="assembly-file-select" class="assembly-file-dropdown">${options}</select>`;
         }
 
         // 2. Build Code Lines
-        const codeLinesRaw = sources[this.selectedFile];
-        
-        let codeLines = [];
-        if (codeLinesRaw) {
-            if (Array.isArray(codeLinesRaw.lines)) {
-                codeLines = codeLinesRaw.lines;
-            } else if (Array.isArray(codeLinesRaw)) {
-                codeLines = codeLinesRaw;
-            }
-        }
+        const codeLines = selectedSource && Array.isArray(selectedSource.lines) ? selectedSource.lines : [];
 
         const codeHtml = codeLines.map((line, index) => {
             const lineNumber = index + 1;
@@ -165,7 +154,7 @@ export class OrganismSourceView {
             let showCollapsible = false;
             let filteredInstructions = [];
             if (this.artifact && this.artifact.sourceLineToInstructions) {
-                const sourceLineKey = `${this.selectedFile}:${lineNumber}`;
+                const sourceLineKey = this.sourceLineKey(selectedSource.placement, selectedSource.resolvedPath, lineNumber);
                 const machineInstructions = this.artifact.sourceLineToInstructions[sourceLineKey];
                 if (machineInstructions && machineInstructions.instructions) {
                     // Filter out NOP and WAIT instructions (padding for mutation robustness)
@@ -219,7 +208,7 @@ export class OrganismSourceView {
         const dropdown = el.querySelector('#assembly-file-select');
         if (dropdown) {
             dropdown.addEventListener('change', (e) => {
-                this.selectedFile = e.target.value;
+                this.selectedIndex = Number(e.target.value);
                 this.renderSourceStructure();
                 // Note: Highlighting will be restored on next tick update
             });
@@ -353,6 +342,7 @@ export class OrganismSourceView {
      * It fetches annotations from the `SourceAnnotator` and dynamically rebuilds
      * the HTML of the line to include the annotation spans.
      *
+     * @param {string} placement - The alias chain of the placement the line belongs to.
      * @param {string} fileName - The name of the file containing the line.
      * @param {number} lineNumber - The 1-based line number to annotate.
      * @param {object} staticInfo - Static info for the organism.
@@ -360,7 +350,7 @@ export class OrganismSourceView {
      * @param {number} labelNamespaceMask - The label namespace the organism's body stands in.
      * @private
      */
-    applyAnnotations(fileName, lineNumber, staticInfo, organismState, labelNamespaceMask) {
+    applyAnnotations(placement, fileName, lineNumber, staticInfo, organismState, labelNamespaceMask) {
         const lineElement = this.dom.codeContainer.querySelector(`.source-line[data-line="${lineNumber}"] .assembly-line`);
         if (!lineElement) return;
 
@@ -373,7 +363,7 @@ export class OrganismSourceView {
             initialPosition: staticInfo.initialPosition ? { components: staticInfo.initialPosition } : undefined
         };
 
-        const annotations = this.annotator.annotate(fullState, this.artifact, fileName, originalLine,
+        const annotations = this.annotator.annotate(fullState, this.artifact, placement, fileName, originalLine,
             lineNumber, labelNamespaceMask);
         if (!annotations || annotations.length === 0) {
             // Ensure clean state just in case
@@ -422,13 +412,10 @@ export class OrganismSourceView {
      * @private
      */
     getOriginalLine(lineNumber) {
-        if (!this.artifact || !this.artifact.sources || !this.selectedFile) return null;
-        const source = this.artifact.sources[this.selectedFile];
-        
-        let lines = [];
-        if (Array.isArray(source)) lines = source;
-        else if (source.lines) lines = source.lines;
-        
+        if (this.selectedIndex === null) return null;
+        const source = this.sourceEntries()[this.selectedIndex];
+        const lines = source && Array.isArray(source.lines) ? source.lines : [];
+
         const index = lineNumber - 1;
         if (index >= 0 && index < lines.length) {
             return lines[index];
@@ -528,7 +515,8 @@ export class OrganismSourceView {
 
         if (!this.artifact || !this.artifact.sourceLineToInstructions) return null;
 
-        const sourceLineKey = `${activeLocation.fileName}:${activeLocation.lineNumber}`;
+        const sourceLineKey = this.sourceLineKey(activeLocation.placement, activeLocation.fileName,
+            activeLocation.lineNumber);
         const machineInstructions = this.artifact.sourceLineToInstructions[sourceLineKey];
         if (!machineInstructions?.instructions) return null;
 
@@ -555,7 +543,8 @@ export class OrganismSourceView {
      *
      * @param {object} organismState - The organism's dynamic state, containing the `ip`.
      * @param {object} staticInfo - The organism's static info, containing the `initialPosition`.
-     * @returns {{fileName: string, lineNumber: number, linearAddress?: number}|{error: string}|null} The location object, an error object, or null.
+     * @returns {{placement: string, fileName: string, lineNumber: number, linearAddress?: number}|{error: string}|null}
+     *          The location object, an error object, or null.
      * @private
      */
     calculateActiveLocation(organismState, staticInfo) {
@@ -609,6 +598,7 @@ export class OrganismSourceView {
         }
         
         return {
+            placement: sourceInfo.placement || '',
             fileName: sourceInfo.fileName,
             lineNumber: sourceInfo.lineNumber,
             linearAddress: linearAddress
@@ -663,35 +653,44 @@ export class OrganismSourceView {
     }
 
     /**
-     * Finds the longest common prefix (up to the last slash) of an array of file paths.
-     * Used to shorten file paths displayed in the dropdown.
+     * Returns the artifact's source entries, one per file and module placement.
      *
-     * @param {string[]} paths - An array of file paths.
-     * @returns {string} The longest common prefix ending with a '/', or an empty string.
+     * @returns {Array<{placement: string, path: string, resolvedPath: string, lines: string[]}>} The entries, or an
+     *          empty array without an artifact.
      * @private
      */
-    findCommonPrefix(paths) {
-        if (!paths || paths.length === 0) return '';
-        if (paths.length === 1) {
-            const lastSlash = paths[0].lastIndexOf('/');
-            return lastSlash >= 0 ? paths[0].substring(0, lastSlash + 1) : '';
-        }
-        
-        let prefix = paths[0];
-        for (let i = 1; i < paths.length; i++) {
-            const path = paths[i];
-            let matchLength = 0;
-            const minLength = Math.min(prefix.length, path.length);
-            for (let j = 0; j < minLength; j++) {
-                if (prefix[j] === path[j]) matchLength++;
-                else break;
-            }
-            prefix = prefix.substring(0, matchLength);
-            if (!prefix) return '';
-        }
-        
-        const lastSlash = prefix.lastIndexOf('/');
-        return lastSlash >= 0 ? prefix.substring(0, lastSlash + 1) : '';
+    sourceEntries() {
+        return this.artifact && Array.isArray(this.artifact.sources) ? this.artifact.sources : [];
+    }
+
+    /**
+     * Finds the source entry an active location names by its placement and file.
+     *
+     * @param {object|null} location - The active location, or an error object or null.
+     * @returns {number|null} The index of the entry, or null if the location names none.
+     * @private
+     */
+    findSourceIndex(location) {
+        if (!location || !location.fileName) return null;
+        const placement = location.placement || '';
+        const index = this.sourceEntries().findIndex(
+            source => (source.placement || '') === placement && source.resolvedPath === location.fileName);
+        return index >= 0 ? index : null;
+    }
+
+    /**
+     * Builds the key of a source line in the artifact's `sourceLineToInstructions`, as the compiler
+     * writes it: `placement@fileName:lineNumber`, or `fileName:lineNumber` for the empty placement.
+     *
+     * @param {string} placement - The alias chain of the placement.
+     * @param {string} fileName - The resolved path of the file.
+     * @param {number} lineNumber - The 1-based line number.
+     * @returns {string} The key.
+     * @private
+     */
+    sourceLineKey(placement, fileName, lineNumber) {
+        const placedFile = placement ? `${placement}@${fileName}` : fileName;
+        return `${placedFile}:${lineNumber}`;
     }
 
     /**

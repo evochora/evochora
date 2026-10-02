@@ -1,5 +1,7 @@
 package org.evochora.compiler.frontend.module;
 
+import org.evochora.compiler.api.SourceFile;
+
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -13,12 +15,17 @@ import java.util.Map;
  * resolved to.
  *
  * @param placements     Module placements, each after the placements it imports; the main module is last.
+ * @param sourceFiles    The text of every file once per placement it stands in: the main file
+ *                       first, then every placement's file after the placement that imports it,
+ *                       and a text-included file at its directive under the placement that
+ *                       includes it.
  * @param moduleContents Text of every module file other than the main file, once per file, keyed by resolved path.
  * @param sourceContents Text of every source file found while scanning, keyed by resolved path.
  * @param mainPath       Path of the main module, the one file that is not included anywhere.
  */
-public record DependencyGraph(List<ModulePlacement> placements, Map<String, String> moduleContents,
-                              Map<String, String> sourceContents, String mainPath) {
+public record DependencyGraph(List<ModulePlacement> placements, List<SourceFile> sourceFiles,
+                              Map<String, String> moduleContents, Map<String, String> sourceContents,
+                              String mainPath) {
 
     /**
      * Returns the text of every file that may be included into the main file's stream: the

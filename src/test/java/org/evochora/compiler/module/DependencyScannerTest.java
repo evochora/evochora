@@ -1,6 +1,7 @@
 package org.evochora.compiler.module;
 
 import org.evochora.compiler.api.CompilerOptions;
+import org.evochora.compiler.api.SourceFile;
 import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 import org.evochora.compiler.FeatureRegistry;
 import org.evochora.compiler.StandardFeatures;
@@ -28,6 +29,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 
 /**
  * Tests the Phase 0 dependency scanner that builds the module graph
@@ -56,7 +58,7 @@ public class DependencyScannerTest {
         SourceRootResolver resolver = defaultResolver(Path.of("/test"));
         DependencyScanner scanner = new DependencyScanner(diagnostics, resolver, defaultHandlers(), CompilerOptions.defaults());
 
-        DependencyGraph graph = scanner.scan(source, "/test/main.evo", "");
+        DependencyGraph graph = scanner.scan(source, "/test/main.evo", "/test/main.evo", "");
 
         assertThat(diagnostics.hasErrors()).isFalse();
         assertThat(graph.placements()).hasSize(1);
@@ -75,7 +77,7 @@ public class DependencyScannerTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         SourceRootResolver resolver = defaultResolver(tempDir);
         DependencyScanner scanner = new DependencyScanner(diagnostics, resolver, defaultHandlers(), CompilerOptions.defaults());
-        DependencyGraph graph = scanner.scan(mainSource, mainPath, "");
+        DependencyGraph graph = scanner.scan(mainSource, mainPath, mainPath, "");
 
         assertThat(diagnostics.hasErrors()).isFalse();
         assertThat(graph.placements()).hasSize(2);
@@ -98,7 +100,7 @@ public class DependencyScannerTest {
 
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         DependencyScanner scanner = new DependencyScanner(diagnostics, defaultResolver(tempDir), defaultHandlers(), CompilerOptions.defaults());
-        DependencyGraph graph = scanner.scan(mainSource, mainPath, "MAIN");
+        DependencyGraph graph = scanner.scan(mainSource, mainPath, mainPath, "MAIN");
 
         assertThat(diagnostics.hasErrors()).isFalse();
         assertThat(graph.placements()).extracting(ModulePlacement::aliasChain)
@@ -117,7 +119,7 @@ public class DependencyScannerTest {
 
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         DependencyScanner scanner = new DependencyScanner(diagnostics, defaultResolver(tempDir), defaultHandlers(), CompilerOptions.defaults());
-        DependencyGraph graph = scanner.scan(mainSource, mainPath, "");
+        DependencyGraph graph = scanner.scan(mainSource, mainPath, mainPath, "");
 
         assertThat(diagnostics.hasErrors()).isFalse();
         assertThat(graph.placements()).extracting(ModulePlacement::aliasChain)
@@ -125,6 +127,50 @@ public class DependencyScannerTest {
         assertThat(graph.placements().getLast().dependencies())
                 .extracting(d -> ((org.evochora.compiler.features.importdir.ImportDependencyInfo) d).aliasChain())
                 .containsExactly("A", "B");
+    }
+
+    @Test
+    @Tag("integration")
+    void sourceFiles_listEveryFilePerPlacementInPreOrder_withThePathAsWritten() throws Exception {
+        Files.writeString(tempDir.resolve("m.evo"), ".SOURCE \"inc.evo\"\nNOP\n");
+        Files.writeString(tempDir.resolve("a.evo"), ".IMPORT \"m.evo\" AS M\n");
+        Files.writeString(tempDir.resolve("inc.evo"), "NOP\n");
+        String mainSource = ".IMPORT \"a.evo\" AS A\n.SOURCE \"inc.evo\"\n.IMPORT \"m.evo\" AS B\n";
+        String mainPath = tempDir.resolve("main.evo").toString();
+
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        DependencyScanner scanner = new DependencyScanner(diagnostics, defaultResolver(tempDir), defaultHandlers(), CompilerOptions.defaults());
+        DependencyGraph graph = scanner.scan(mainSource, "main.evo", mainPath, "");
+
+        assertThat(diagnostics.hasErrors()).isFalse();
+        String inc = tempDir.resolve("inc.evo").toString();
+        assertThat(graph.sourceFiles())
+                .extracting(SourceFile::placement, SourceFile::path, SourceFile::resolvedPath)
+                .containsExactly(
+                        tuple("", "main.evo", mainPath),
+                        tuple("A", "a.evo", tempDir.resolve("a.evo").toString()),
+                        tuple("A.M", "m.evo", tempDir.resolve("m.evo").toString()),
+                        tuple("A.M", "inc.evo", inc),
+                        tuple("", "inc.evo", inc),
+                        tuple("B", "m.evo", tempDir.resolve("m.evo").toString()),
+                        tuple("B", "inc.evo", inc));
+        assertThat(graph.sourceFiles().get(2).lines()).containsExactly(".SOURCE \"inc.evo\"", "NOP");
+    }
+
+    @Test
+    @Tag("integration")
+    void sourceFiles_holdAFileSourcedTwiceIntoOnePlacementOnce() throws Exception {
+        Files.writeString(tempDir.resolve("inc.evo"), "NOP\n");
+        String mainSource = ".SOURCE \"inc.evo\"\n.SOURCE \"inc.evo\"\n";
+        String mainPath = tempDir.resolve("main.evo").toString();
+
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        DependencyScanner scanner = new DependencyScanner(diagnostics, defaultResolver(tempDir), defaultHandlers(), CompilerOptions.defaults());
+        DependencyGraph graph = scanner.scan(mainSource, "main.evo", mainPath, "");
+
+        assertThat(diagnostics.hasErrors()).isFalse();
+        assertThat(graph.sourceFiles()).extracting(SourceFile::placement, SourceFile::path)
+                .containsExactly(tuple("", "main.evo"), tuple("", "inc.evo"));
     }
 
     @Test
@@ -139,7 +185,7 @@ public class DependencyScannerTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         SourceRootResolver resolver = defaultResolver(tempDir);
         DependencyScanner scanner = new DependencyScanner(diagnostics, resolver, defaultHandlers(), CompilerOptions.defaults());
-        scanner.scan(aSource, aFile.toString(), "");
+        scanner.scan(aSource, aFile.toString(), aFile.toString(), "");
 
         assertThat(diagnostics.hasErrors()).isTrue();
         assertThat(diagnostics.summary()).containsIgnoringCase("circular");
@@ -157,7 +203,7 @@ public class DependencyScannerTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         SourceRootResolver resolver = defaultResolver(tempDir);
         DependencyScanner scanner = new DependencyScanner(diagnostics, resolver, defaultHandlers(), CompilerOptions.defaults());
-        scanner.scan(mainSource, mainPath, "");
+        scanner.scan(mainSource, mainPath, mainPath, "");
 
         assertThat(diagnostics.hasErrors()).isTrue();
         assertThat(diagnostics.summary()).contains(".IMPORT");
@@ -178,7 +224,7 @@ public class DependencyScannerTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         SourceRootResolver resolver = defaultResolver(tempDir);
         DependencyScanner scanner = new DependencyScanner(diagnostics, resolver, defaultHandlers(), CompilerOptions.defaults());
-        DependencyGraph graph = scanner.scan(mainSource, mainPath, "");
+        DependencyGraph graph = scanner.scan(mainSource, mainPath, mainPath, "");
 
         assertThat(diagnostics.hasErrors()).isFalse();
 
@@ -207,7 +253,7 @@ public class DependencyScannerTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         SourceRootResolver resolver = defaultResolver(tempDir);
         DependencyScanner scanner = new DependencyScanner(diagnostics, resolver, defaultHandlers(), CompilerOptions.defaults());
-        DependencyGraph graph = scanner.scan(source, mainPath, "");
+        DependencyGraph graph = scanner.scan(source, mainPath, mainPath, "");
 
         assertThat(diagnostics.hasErrors()).isFalse();
         assertThat(graph.placements()).hasSize(1);
@@ -235,7 +281,7 @@ public class DependencyScannerTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         SourceRootResolver resolver = defaultResolver(tempDir);
         DependencyScanner scanner = new DependencyScanner(diagnostics, resolver, defaultHandlers(), CompilerOptions.defaults());
-        scanner.scan(mainSource, mainPath, "");
+        scanner.scan(mainSource, mainPath, mainPath, "");
 
         assertThat(diagnostics.hasErrors()).isTrue();
         assertThat(diagnostics.getDiagnostics().stream()
@@ -286,7 +332,7 @@ public class DependencyScannerTest {
 
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         DependencyScanner scanner = new DependencyScanner(diagnostics, defaultResolver(tempDir), handlers, CompilerOptions.defaults());
-        scanner.scan(mainSource, mainPath, "");
+        scanner.scan(mainSource, mainPath, mainPath, "");
 
         assertThat(diagnostics.hasErrors()).isFalse();
         assertThat(created).hasValue(1);
@@ -294,7 +340,7 @@ public class DependencyScannerTest {
         assertThat(instances.get(1)).isSameAs(instances.get(0));
         assertThat(instances.get(0).paths).containsExactly(mainPath, tempDir.resolve("inc.evo").toString());
 
-        scanner.scan(mainSource, mainPath, "");
+        scanner.scan(mainSource, mainPath, mainPath, "");
         assertThat(created).as("a second scan starts with an empty slot").hasValue(2);
     }
 
@@ -308,7 +354,7 @@ public class DependencyScannerTest {
         }));
 
         DependencyScanner scanner = new DependencyScanner(new DiagnosticsEngine(), defaultResolver(Path.of("/test")), handlers, CompilerOptions.defaults());
-        scanner.scan("MARK\nMARK\n", "/test/main.evo", "");
+        scanner.scan("MARK\nMARK\n", "/test/main.evo", "/test/main.evo", "");
 
         assertThat(results).hasSize(4);
         assertThat(results.get(0)).isInstanceOf(SeenFiles.class).isSameAs(results.get(2));
@@ -339,7 +385,7 @@ public class DependencyScannerTest {
                 "MARK C");
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         DependencyScanner scanner = new DependencyScanner(diagnostics, defaultResolver(Path.of("/test")), handlers, CompilerOptions.defaults());
-        scanner.scan(source, "/test/main.evo", "");
+        scanner.scan(source, "/test/main.evo", "/test/main.evo", "");
 
         assertThat(diagnostics.hasErrors()).isFalse();
         assertThat(taken).containsExactly("MARK A", "MARK B");
@@ -358,7 +404,7 @@ public class DependencyScannerTest {
         }));
 
         DependencyScanner scanner = new DependencyScanner(new DiagnosticsEngine(), defaultResolver(Path.of("/test")), handlers, CompilerOptions.defaults());
-        scanner.scan("TAKEALL\nX\n\nY\n", "/test/main.evo", "");
+        scanner.scan("TAKEALL\nX\n\nY\n", "/test/main.evo", "/test/main.evo", "");
 
         assertThat(taken).containsExactly("X", "Y", null, null);
     }
@@ -371,7 +417,7 @@ public class DependencyScannerTest {
         List<IDependencyScanHandler> handlers = List.of(handler("MARK", (m, ctx) -> seen.add(ctx.options())));
 
         DependencyScanner scanner = new DependencyScanner(new DiagnosticsEngine(), defaultResolver(Path.of("/test")), handlers, options);
-        scanner.scan("MARK\n", "/test/main.evo", "");
+        scanner.scan("MARK\n", "/test/main.evo", "/test/main.evo", "");
 
         assertThat(seen).containsExactly(options);
     }

@@ -25,7 +25,7 @@ class RegAnalysisHandlerTest {
     private SymbolTable symbolTable;
     private DiagnosticsEngine diagnostics;
 
-    private static final SourceInfo TEST_SOURCE = new SourceInfo("test.s", 1, 1);
+    private static final SourceInfo TEST_SOURCE = new SourceInfo("test.s", 1, 1, "");
 
     @BeforeEach
     void setUp() {

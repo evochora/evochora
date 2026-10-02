@@ -7,8 +7,12 @@ package org.evochora.compiler.api;
  * @param fileName The file where the code is located.
  * @param lineNumber The line number.
  * @param columnNumber The column number.
+ * @param placement The alias chain of the module placement the position belongs to. Two
+ *                  placements of one file share its positions but not its code, so a position
+ *                  is only complete with its placement. The chain of the main module for the
+ *                  main file and the files it sources; usually empty.
  */
-public record SourceInfo(String fileName, int lineNumber, int columnNumber) {
+public record SourceInfo(String fileName, int lineNumber, int columnNumber, String placement) {
 
     private static final String UNKNOWN_FILE = "<unknown>";
 

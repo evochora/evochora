@@ -32,7 +32,7 @@ class EmissionIfpMarshallingTest {
     }
 
     private static SourceInfo src(String file, int line) {
-        return new SourceInfo(file, line, 0);
+        return new SourceInfo(file, line, 0, "");
     }
 
     private List<IrItem> runEmission(List<IrItem> items) {

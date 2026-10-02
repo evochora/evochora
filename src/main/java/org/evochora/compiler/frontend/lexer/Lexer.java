@@ -30,6 +30,7 @@ public class Lexer {
     private final DiagnosticsEngine diagnostics;
     private final List<Token> tokens = new ArrayList<>();
     private final String logicalFileName;
+    private final String placement;
     private final IInstructionSet isa;
     private final List<String> symbolsLongestFirst;
     private int start = 0;
@@ -62,7 +63,7 @@ public class Lexer {
 
     /**
      * Creates a new Lexer for the given instruction set, which decides what is an opcode and
-     * what is a register.
+     * what is a register; its tokens belong to the placement with the empty chain.
      * @param source The source code as a single string.
      * @param diagnostics The engine for reporting errors.
      * @param logicalFileName The name of the file being parsed, for error reporting.
@@ -72,7 +73,25 @@ public class Lexer {
      */
     public Lexer(String source, DiagnosticsEngine diagnostics, String logicalFileName, IInstructionSet isa,
                  Set<String> symbols) {
+        this(source, diagnostics, logicalFileName, isa, symbols, "");
+    }
+
+    /**
+     * Creates a new Lexer whose tokens belong to the given module placement.
+     * @param source The source code as a single string.
+     * @param diagnostics The engine for reporting errors.
+     * @param logicalFileName The name of the file being parsed, for error reporting.
+     * @param isa The instruction set the source is written for.
+     * @param symbols The registered symbols, emitted as {@link TokenType#SYMBOL} tokens. They are
+     *                taken as checked by {@link org.evochora.compiler.FeatureRegistry}.
+     * @param placement The alias chain every token gets as its placement. A file that is lexed
+     *                  before it is inlined takes the empty chain; the preprocessor gives its
+     *                  tokens the placement of each inclusion.
+     */
+    public Lexer(String source, DiagnosticsEngine diagnostics, String logicalFileName, IInstructionSet isa,
+                 Set<String> symbols, String placement) {
         this.source = source;
+        this.placement = placement;
         this.diagnostics = diagnostics;
         this.logicalFileName = logicalFileName;
         this.isa = isa;
@@ -94,7 +113,7 @@ public class Lexer {
             startColumn = column;
             scanToken();
         }
-        tokens.add(new Token(TokenType.END_OF_FILE, "", null, line, column, logicalFileName));
+        tokens.add(new Token(TokenType.END_OF_FILE, "", null, line, column, logicalFileName, placement));
         return tokens;
     }
 
@@ -117,7 +136,7 @@ public class Lexer {
         for (Map.Entry<String, String> file : contents.entrySet()) {
             String text = file.getValue();
             if (!text.endsWith("\n")) text += "\n";
-            List<Token> tokens = new Lexer(text, diagnostics, file.getKey(), isa, symbols).scanTokens();
+            List<Token> tokens = new Lexer(text, diagnostics, file.getKey(), isa, symbols, "").scanTokens();
             stripEofToken(tokens);
             tokensByFile.put(file.getKey(), tokens);
         }
@@ -348,7 +367,7 @@ public class Lexer {
     }
 
     private void addToken(TokenType type, Object literal, String text) {
-        tokens.add(new Token(type, text, literal, startLine, startColumn, logicalFileName));
+        tokens.add(new Token(type, text, literal, startLine, startColumn, logicalFileName, placement));
     }
 
     private boolean isAtEnd() {
