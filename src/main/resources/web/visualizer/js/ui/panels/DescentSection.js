@@ -198,6 +198,12 @@ export class DescentSection {
         if (outside !== null) {
             closing.push(outside);
         }
+        if (descent.unreadLiving > 0) {
+            closing.push(`<span class="descent-closing-item" title="their rows are not in the server's `
+                + `ancestry yet; it reads them again, and the colours follow">`
+                + `${swatch(DESCENT_TONES.UNKNOWN)} ${ValueFormatter.formatGroupedHtml(descent.unreadLiving)} `
+                + `unread ${descent.unreadLiving === 1 ? 'organism' : 'organisms'}</span>`);
+        }
 
         if (cells.length === 0 && closing.length === 0) {
             return '';

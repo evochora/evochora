@@ -57,12 +57,25 @@ class AncestryIndexTest {
         assertThat(new int[]{view.parentOf(1), view.parentOf(2), view.parentOf(5), view.parentOf(6)})
             .containsExactly(0, 1, 4, 0);
         assertThat(view.parentOf(7)).isEqualTo(Ancestry.UNREAD);
-        assertThat(index.progressOf(view)).isEqualTo(1.0);
+        assertThat(index.progressOf(view, 0)).isEqualTo(1.0);
         // Three full pages of two and the empty one that ends the table
         verify(run.reader).readParents(0, PAGE);
         verify(run.reader).readParents(2, PAGE);
         verify(run.reader).readParents(4, PAGE);
         verify(run.reader).readParents(6, PAGE);
+    }
+
+    @Test
+    void theProgressOfATickTheRunGrewToIsBelowOneUntilItsRowsAreRead() throws Exception {
+        final FakeRun run = new FakeRun().with(1, 0, 2, 1, 3, 1, 4, 2);
+        final AncestryIndex index = indexOf(run);
+        index.requestCatchUp(4);
+        run.executor.runAll();
+        final AncestryIndex.Snapshot view = index.snapshot();
+
+        assertThat(index.progressOf(view, 4)).isEqualTo(1.0);
+        // The run has grown to five organisms since the catch-up read its newest total
+        assertThat(index.progressOf(view, 5)).isEqualTo(0.8);
     }
 
     @Test
@@ -107,7 +120,7 @@ class AncestryIndexTest {
         final AncestryIndex.Snapshot view = index.snapshot();
         assertThat(view.boundary()).isEqualTo(10);
         // Progress counts only the ids above the boundary: (13 - 10) / (20 - 10)
-        assertThat(index.progressOf(view)).isCloseTo(0.3, within(1e-9));
+        assertThat(index.progressOf(view, 0)).isCloseTo(0.3, within(1e-9));
         assertThat(view.parentOf(8)).isEqualTo(Ancestry.NO_PARENT);
         assertThat(view.parentOf(10)).isEqualTo(Ancestry.NO_PARENT);
         assertThat(view.parentOf(9)).isEqualTo(8);
@@ -133,7 +146,7 @@ class AncestryIndexTest {
 
         assertThat(index.snapshot().stateFor(8)).isEqualTo(AncestryIndex.State.LOADING);
         assertThat(index.snapshot().boundary()).isEqualTo(-1);
-        assertThat(index.progressOf(index.snapshot())).isZero();
+        assertThat(index.progressOf(index.snapshot(), 0)).isZero();
         verify(run.reader, never()).readParents(anyInt(), anyInt());
     }
 

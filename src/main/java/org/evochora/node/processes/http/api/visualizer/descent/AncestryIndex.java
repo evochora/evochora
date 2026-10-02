@@ -232,14 +232,17 @@ public final class AncestryIndex {
     /**
      * How far the index has come, relative to the boundary: {@code (cursor - B) / (T - B)}, where
      * T is the number of organisms created up to the run's newest tick as the last catch-up found
-     * it. For a run that began fresh B is 0 and this is the cursor over T; for a fork, the ids at
-     * or below B belong to the parent run and do not count as progress.
+     * it, or up to the requested tick when that is more: a request for a tick the run has grown
+     * to since then is not complete at 100 %. For a run that began fresh B is 0 and this is the
+     * cursor over T; for a fork, the ids at or below B belong to the parent run and do not count
+     * as progress.
      *
-     * @param view A view taken by {@link #snapshot()}
+     * @param view      A view taken by {@link #snapshot()}
+     * @param tickTotal Organisms created up to the requested tick
      * @return A share clamped to [0, 1]; 0 while B or T is not known
      */
-    double progressOf(final Snapshot view) {
-        final int total = newestTotal;
+    double progressOf(final Snapshot view, final int tickTotal) {
+        final int total = Math.max(newestTotal, tickTotal);
         final int b = view.boundary();
         if (b < 0 || total <= b) {
             return 0.0;

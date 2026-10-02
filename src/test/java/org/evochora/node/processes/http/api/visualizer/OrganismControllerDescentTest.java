@@ -187,7 +187,8 @@ class OrganismControllerDescentTest {
             .body("descent.lines[1]", not(hasKey("landing")))
             .body("descent.up.oneStep", equalTo(0))
             .body("descent.lineOf.'3'", equalTo(3))
-            .body("descent.lineOf.'5'", equalTo(2));
+            .body("descent.lineOf.'5'", equalTo(2))
+            .body("descent.unreadLiving", equalTo(0));
     }
 
     @Test
