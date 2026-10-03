@@ -252,15 +252,31 @@ public class Environment implements IEnvironmentReader {
     }
 
     /**
-     * Tells whether a coordinate names a cell of the world: it has one component per dimension,
-     * and every component lies within the world's size along it. This is the question the
-     * in-range accessors answer with a rejection; a caller that must not run into one asks first.
+     * Tells whether a coordinate lies within the world's extent: it has one component per
+     * dimension, and every component lies within the world's size along it. This is the range
+     * test the in-range accessors make before they reject a coordinate, and it knows nothing of
+     * the topology: in a toroidal world a coordinate that has not been wrapped fails it although
+     * it names a cell. Code outside the environment asks {@link #exists(int[])} instead.
      *
      * @param coord the coordinate to ask about
      * @return {@code true} if the in-range accessors accept the coordinate
      */
-    public boolean contains(int[] coord) {
+    boolean contains(int[] coord) {
         return layout.contains(coord);
+    }
+
+    /**
+     * Tells whether a computed position names a cell of the world. In a toroidal world every
+     * position does, because its coordinates wrap; in a bounded world a position beyond the edge
+     * names no cell. This is the question an instruction asks before it sets a pointer to a
+     * position it computed, since no pointer of an organism ever stands outside the world;
+     * {@link #exists(int[], int[])} asks it for a neighbour without building its coordinate.
+     *
+     * @param position the computed position, one component per dimension
+     * @return {@code true} if the position names a cell of the world
+     */
+    public boolean exists(int[] position) {
+        return properties.isToroidal() || contains(position);
     }
 
     /**
@@ -308,6 +324,46 @@ public class Environment implements IEnvironmentReader {
     public int getMoleculeIntAt(int[] position, int[] displacement) {
         int index = indexOfDisplaced(position, displacement);
         return index >= 0 ? grid[index] : 0;
+    }
+
+    /**
+     * Tells whether the cell one step away from a position exists: the same question as
+     * {@link #exists(int[])} for a neighbour, asked without building its coordinate.
+     *
+     * @param position     the coordinate to start from
+     * @param displacement the zero vector or a unit vector, one component per dimension
+     * @return {@code true} if the displaced cell lies within the world
+     */
+    public boolean exists(int[] position, int[] displacement) {
+        return exists(position, displacement, 1);
+    }
+
+    /**
+     * Tells whether the cell a number of steps away from a position, along a direction of travel,
+     * exists: the last argument cell of an instruction, for example, which lies as many steps
+     * behind the opcode as the instruction has argument cells. In a toroidal world every cell
+     * exists; in a bounded world the position has to lie within it, and the steps may lead beyond
+     * the edge.
+     *
+     * @param position  the coordinate to start from
+     * @param direction the zero vector or a unit vector, one component per dimension
+     * @param steps     how many steps to take, zero or more
+     * @return {@code true} if the cell that many steps away lies within the world
+     */
+    public boolean exists(int[] position, int[] direction, int steps) {
+        if (properties.isToroidal()) {
+            return true;
+        }
+        if (!contains(position)) {
+            return false;
+        }
+        for (int axis = 0; axis < direction.length; axis++) {
+            if (direction[axis] != 0) {
+                int reached = position[axis] + direction[axis] * steps;
+                return reached >= 0 && reached < shape[axis];
+            }
+        }
+        return true;
     }
 
     /**

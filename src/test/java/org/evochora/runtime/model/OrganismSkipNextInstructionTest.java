@@ -144,7 +144,9 @@ class OrganismSkipNextInstructionTest {
         organism.skipNextInstruction(environment);
 
         assertThat(organism.isInstructionFailed()).isTrue();
-        assertThat(organism.getFailureReason()).contains("Max skips exceeded");
+        // The step beyond the edge fails at once, without spending the skip budget on cells that
+        // do not exist
+        assertThat(organism.getFailureReason()).isEqualTo("Instruction pointer left the world");
         assertThat(organism.shouldSkipIpAdvance()).isTrue();
         // Without a call frame to return to, the stall sends the organism back to where it was born
         assertThat(organism.getIp()).containsExactly(93, 5);

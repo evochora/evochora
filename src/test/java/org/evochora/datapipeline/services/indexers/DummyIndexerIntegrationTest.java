@@ -224,7 +224,7 @@ class DummyIndexerIntegrationTest {
                    messagePattern = "Failed to discover run:.*"),
         @ExpectLog(level = ERROR,
                    loggerPattern = ".*DummyIndexer.*",
-                   messagePattern = ".*DummyIndexer.* stopped with ERROR due to RuntimeException")
+                   messagePattern = ".*DummyIndexer.* stopped with ERROR")
     })
     void testMetadataReading_Timeout() throws Exception {
         // Given: Create run ID with no data in storage (simulates wrong runId)

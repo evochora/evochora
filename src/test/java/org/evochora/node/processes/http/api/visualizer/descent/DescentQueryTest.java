@@ -289,7 +289,8 @@ class DescentQueryTest {
     }
 
     @Test
-    void autoIsNotResolvedWhileALivingOrganismHasAnUnknownAncestry() throws Exception {
+    void autoIsResolvedOverTheLivingWhoseAncestryIsKnownAndCountsTheOthers() throws Exception {
+        // 3 is not indexed when the index passes it; 8 descends from it, 5 from 4
         run.rows.remove(3);
         run.with(8, 3);
         query.view(8);
@@ -299,10 +300,32 @@ class DescentQueryTest {
         final DescentDto d = FakeRun.describe(query.view(8), RootRequest.parse("auto"), FakeRun.tick(new int[]{5, 8}), run.reader);
 
         assertThat(d.state()).isEqualTo("ready");
+        assertThat(d.root().id()).as("the common ancestor of the living that are known").isEqualTo(5);
+        assertThat(d.lineOf()).containsEntry(8, -1);
+        assertThat(d.unreadLiving()).isEqualTo(1);
+        assertThat(run.executor.queued()).as("the gaps are asked for").isEqualTo(1);
+    }
+
+    @Test
+    void autoStaysUnresolvedWhileEveryLivingOrganismIsUnread() throws Exception {
+        run.rows.remove(3);
+        run.with(8, 3);
+        query.view(8);
+        run.executor.runAll();
+
+        final DescentDto d = FakeRun.describe(query.view(8), RootRequest.parse("auto"), FakeRun.tick(new int[]{8}), run.reader);
+
+        assertThat(d.state()).isEqualTo("ready");
         assertThat(d.root()).isNull();
         assertThat(d.lines()).isEmpty();
-        assertThat(d.lineOf()).isEmpty();
-        assertThat(run.executor.queued()).as("the gaps are asked for").isEqualTo(1);
+        assertThat(d.unreadLiving()).isEqualTo(1);
+    }
+
+    @Test
+    void aCompleteAnswerHasNoUnreadLiving() throws Exception {
+        final DescentDto d = FakeRun.describe(query.view(6), RootRequest.parse("auto"), FakeRun.tick(new int[]{5, 6}), run.reader);
+
+        assertThat(d.unreadLiving()).isZero();
     }
 
     @Test
@@ -344,19 +367,20 @@ class DescentQueryTest {
 
     @Test
     void withoutAttributionArraysEveryNewVersionIsCountedFromScratch() throws Exception {
-        final DescentQuery none = new AncestryIndexes(run.provider, run.executor, 3, () -> run.nanos, 0)
-            .forRun(FakeRun.RUN_ID);
-        none.view(7);
-        run.executor.runAll();
-        none.sizesOf(none.index().snapshot(), 1);
+        try (AncestryIndexes indexes = new AncestryIndexes(run.provider, run.executor, 3, () -> run.nanos, 0)) {
+            final DescentQuery none = indexes.forRun(FakeRun.RUN_ID);
+            none.view(7);
+            run.executor.runAll();
+            none.sizesOf(none.index().snapshot(), 1);
 
-        run.with(8, 3);
-        none.view(8);
-        run.executor.runAll();
-        final DescentQuery.LineSizes sizes = none.sizesOf(none.index().snapshot(), 1);
+            run.with(8, 3);
+            none.view(8);
+            run.executor.runAll();
+            final DescentQuery.LineSizes sizes = none.sizesOf(none.index().snapshot(), 1);
 
-        assertThat(none.fullCounts()).isEqualTo(2);
-        assertThat(sizes.sizes()).containsExactly(4, 2);
+            assertThat(none.fullCounts()).isEqualTo(2);
+            assertThat(sizes.sizes()).containsExactly(4, 2);
+        }
     }
 
     @Test

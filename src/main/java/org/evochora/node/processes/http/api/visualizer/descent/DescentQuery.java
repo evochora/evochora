@@ -106,7 +106,7 @@ public final class DescentQuery {
     public View view(final int tickTotal) {
         final AncestryIndex.Snapshot snapshot = index.snapshot();
         index.requestCatchUp(tickTotal);
-        return new View(snapshot, snapshot.stateFor(tickTotal), index.progressOf(snapshot),
+        return new View(snapshot, snapshot.stateFor(tickTotal), index.progressOf(snapshot, tickTotal),
             index.newestTotal());
     }
 
@@ -215,8 +215,10 @@ public final class DescentQuery {
             if (tree.unknownLiving()) {
                 index.requestGapReread();
             }
-            if (root.kind() == RootRequest.Kind.AUTO && tree.unknownLiving()) {
-                return new DescentDto(state.wireName(), progress, organismsInRun, null, null, List.of(), null, Map.of());
+            if (root.kind() == RootRequest.Kind.AUTO && tree.unknownLiving() && tree.knownLiving() == 0) {
+                // No living organism to resolve the root over; every one of them is unread
+                return new DescentDto(state.wireName(), progress, organismsInRun, null, null, List.of(), null,
+                    Map.of(), living.size());
             }
             final int rootId = switch (root.kind()) {
                 case ALL -> 0;
@@ -231,11 +233,22 @@ public final class DescentQuery {
             final IntArrayList path = new IntArrayList();
             final Map<Integer, Integer> lineOf = new LinkedHashMap<>();
             final Int2IntOpenHashMap livingPerLine = new Int2IntOpenHashMap();
+            final Int2IntOpenHashMap memoOfAll = Ancestry.newMemo();
             boolean unknownMet = false;
+            int unreadLiving = 0;
             for (final OrganismTickSummary organism : organisms) {
-                final int line = ancestry.lineOf(rootId, organism.organismId, memo, path);
+                int line = ancestry.lineOf(rootId, organism.organismId, memo, path);
+                if (line == Ancestry.OUTSIDE && !organism.isDead
+                        && ancestry.lineOf(Ancestry.NO_PARENT, organism.organismId, memoOfAll, path) == Ancestry.UNKNOWN) {
+                    // Below the root by its id, but whether it descends from anything is not known:
+                    // its gap, not the root, keeps it out of the lines
+                    line = Ancestry.UNKNOWN;
+                }
                 lineOf.put(organism.organismId, line);
                 unknownMet |= line == Ancestry.UNKNOWN;
+                if (!organism.isDead && line == Ancestry.UNKNOWN) {
+                    unreadLiving++;
+                }
                 if (!organism.isDead && line > 0 && organism.organismId != rootId) {
                     livingPerLine.addTo(line, 1);
                 }
@@ -249,7 +262,7 @@ public final class DescentQuery {
                 ? new DescentDto.Root(0, null, null, null, sizes.total())
                 : rootDto(rootId, info, sizes.total());
             return new DescentDto(state.wireName(), progress, organismsInRun, null, rootDto,
-                lines(sizes, livingPerLine, tree), up(rootId, tree), lineOf);
+                lines(sizes, livingPerLine, tree), up(rootId, tree), lineOf, unreadLiving);
         }
 
         private DescentDto notReady(final RootRequest root, final OrganismStaticInfo rootInfo, final String error) {
@@ -258,7 +271,8 @@ public final class DescentQuery {
                 case ORGANISM -> rootDto(root.id(), rootInfo, null);
                 case AUTO -> null;
             };
-            return new DescentDto(state.wireName(), progress, organismsInRun, error, rootDto, List.of(), null, Map.of());
+            return new DescentDto(state.wireName(), progress, organismsInRun, error, rootDto, List.of(), null,
+                Map.of(), 0);
         }
 
         private List<DescentDto.Line> lines(final LineSizes sizes, final Int2IntOpenHashMap livingPerLine,

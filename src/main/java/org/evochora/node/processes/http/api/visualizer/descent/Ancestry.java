@@ -242,6 +242,16 @@ public final class Ancestry {
         }
 
         /**
+         * The living organisms the tree holds: those whose ancestry is known and that descend
+         * from the top.
+         *
+         * @return The count
+         */
+        public int knownLiving() {
+            return living.size();
+        }
+
+        /**
          * Whether a living organism does not descend from the top the tree was built below, and
          * is therefore missing from it. Never the case for the top {@link #NO_PARENT}.
          *

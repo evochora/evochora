@@ -74,21 +74,28 @@ jobs:
             reasoning does not cover. Such a finding names the decision it revisits and says
             what is new.
 
+            ## What is reviewed
+
+            The unit of the review is the whole diff of the pull request against its base:
+            every hunk of every file, however many commits the pull request has and however
+            large it is. Reading one commit in depth and skimming the rest is not a review; a
+            hunk that was not read is a hunk that was not reviewed, and the defect it holds is
+            missed. Read all of it before collecting suspicions.
+
             ## How to work
 
-            1. Read the testing section of AGENTS.md, then the diff (`gh pr diff`) and as much of
-               the surrounding code as a suspicion needs.
+            1. Read the testing section of AGENTS.md, then the whole diff (`gh pr diff`) and as
+               much of the surrounding code as a suspicion needs.
             2. Collect suspected defects. Drop any you cannot tie to a concrete input or state.
             3. Confirm suspicions with probes: a short JUnit 5 test under src/test/java, tagged
                like the tests around it, that fails if the defect exists. Run it with
                `./gradlew test --tests <fully.qualified.ProbeTest>`. Write a probe only with a
                clear expectation of its outcome.
-            4. Match the depth to the pull request. A small, contained change gets a careful
-               read and a probe only where a suspicion is real; it may need none. A large change,
-               or one in the simulation runtime, the persisted data or concurrent code, deserves
-               a deeper look and as many probes as its risks call for. The first Gradle call
-               compiles the project and takes a few minutes; every probe costs time and tokens,
-               so each one has to earn them.
+            4. Match the number of probes to the pull request, never the reading. A small,
+               contained change may need no probe. A large change, or one in the simulation
+               runtime, the persisted data or concurrent code, deserves as many probes as its
+               risks call for. The first Gradle call compiles the project and takes a few
+               minutes; every probe costs time and tokens, so each one has to earn them.
             5. Existing tests are run by the build workflow; do not run the suite or a module's
                tests to "see if anything breaks".
             6. A finding that could not be probed is still reported, marked as unconfirmed.
@@ -110,7 +117,8 @@ jobs:
 
             End the comment with its scope:
             - **Checked**: a short list of what this review examined, one line each,
-              the probes among them.
+              the probes among them, and every file of the diff that was read - so that a
+              file that is missing from the list shows as unreviewed.
             - **Not checkable here**: only what lies outside this job's means — behaviour that
               needs a simulation run, a browser, a benchmark or another operating system —
               each with the reason. Time, size or effort are never a reason: what this job can

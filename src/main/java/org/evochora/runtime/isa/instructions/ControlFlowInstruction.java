@@ -8,7 +8,6 @@ import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Organism;
 
 import java.util.List;
-import java.util.NoSuchElementException;
 
 import static org.evochora.runtime.isa.Instruction.OperandSource.*;
 
@@ -64,83 +63,89 @@ public class ControlFlowInstruction extends Instruction {
         String opName = getName();
         List<Operand> operands = resolveOperands(environment);
 
-        try {
-            switch (opName) {
-                case "CALL":
-                    if (operands.size() < 1) { organism.instructionFailed("CALL requires target label hash."); return; }
-                    Object callTargetObj = operands.get(0).value();
-                    if (!(callTargetObj instanceof Integer)) { organism.instructionFailed("CALL target must be a label hash."); return; }
-                    int callLabelHash = (Integer) callTargetObj;
-                    int[] callTargetIp = resolveLabelTarget(callLabelHash, organism.getIp(), organism, environment);
-                    if (callTargetIp == null) {
-                        organism.instructionFailed("CALL: No matching label found for hash "
-                                + labelHashText(callLabelHash));
-                        return;
-                    }
-                    ProcedureCallHandler.executeCall(context, callTargetIp, callLabelHash);
-                    break;
-                case "RET":
-                    ProcedureCallHandler.executeReturn(context);
-                    break;
-                case "JMPI":
-                    if (operands.size() < 1) { organism.instructionFailed("JMPI requires target label hash."); return; }
-                    Object jmpiTargetObj = operands.get(0).value();
-                    if (!(jmpiTargetObj instanceof Integer)) { organism.instructionFailed("JMPI target must be a label hash."); return; }
-                    int jmpiLabelHash = (Integer) jmpiTargetObj;
-                    int[] jmpiTargetIp = resolveLabelTarget(jmpiLabelHash, organism.getIp(), organism, environment);
-                    if (jmpiTargetIp == null) {
-                        organism.instructionFailed("JMPI: No matching label found for hash "
-                                + labelHashText(jmpiLabelHash));
-                        return;
-                    }
-                    // Skip past the LABEL molecule to the actual code
-                    int[] jmpiCodeIp = organism.getNextInstructionPosition(jmpiTargetIp, organism.getDv(), environment);
-                    organism.setIp(jmpiCodeIp);
-                    organism.setSkipIpAdvance(true);
-                    break;
-                case "JMPR":
-                    // Register-based jump: read label hash from register
-                    if (operands.size() < 1) { organism.instructionFailed("JMPR requires register operand."); return; }
-                    Object jmprRegObj = operands.get(0).value();
-                    int jmprLabelHash = extractLabelHash(jmprRegObj);
-                    if (jmprLabelHash < 0) { organism.instructionFailed("JMPR: Invalid register value for label hash."); return; }
-                    int[] jmprTargetIp = resolveLabelTarget(jmprLabelHash, organism.getIp(), organism, environment);
-                    if (jmprTargetIp == null) {
-                        organism.instructionFailed("JMPR: No matching label found for hash "
-                                + labelHashText(jmprLabelHash));
-                        return;
-                    }
-                    // Skip past the LABEL molecule to the actual code
-                    int[] jmprCodeIp = organism.getNextInstructionPosition(jmprTargetIp, organism.getDv(), environment);
-                    organism.setIp(jmprCodeIp);
-                    organism.setSkipIpAdvance(true);
-                    break;
-                case "JMPS":
-                    // Stack-based jump: pop label hash from stack
-                    if (operands.size() < 1) { organism.instructionFailed("JMPS requires stack operand."); return; }
-                    Object jmpsStackObj = operands.get(0).value();
-                    int jmpsLabelHash = extractLabelHash(jmpsStackObj);
-                    if (jmpsLabelHash < 0) { organism.instructionFailed("JMPS: Invalid stack value for label hash."); return; }
-                    int[] jmpsTargetIp = resolveLabelTarget(jmpsLabelHash, organism.getIp(), organism, environment);
-                    if (jmpsTargetIp == null) {
-                        organism.instructionFailed("JMPS: No matching label found for hash "
-                                + labelHashText(jmpsLabelHash));
-                        return;
-                    }
-                    // Skip past the LABEL molecule to the actual code
-                    int[] jmpsCodeIp = organism.getNextInstructionPosition(jmpsTargetIp, organism.getDv(), environment);
-                    organism.setIp(jmpsCodeIp);
-                    organism.setSkipIpAdvance(true);
-                    break;
-                default:
-                    organism.instructionFailed("Unknown control flow instruction: " + opName);
-                    break;
-            }
-        } catch (NoSuchElementException e) {
-            organism.instructionFailed("Stack underflow during control flow operation.");
-        } catch (ClassCastException e) {
-            organism.instructionFailed("Invalid operand type for control flow operation.");
+        switch (opName) {
+            case "CALL":
+                if (operands.size() < 1) { organism.instructionFailed("CALL requires target label hash."); return; }
+                Object callTargetObj = operands.get(0).value();
+                if (!(callTargetObj instanceof Integer)) { organism.instructionFailed("CALL target must be a label hash."); return; }
+                int callLabelHash = (Integer) callTargetObj;
+                int[] callTargetIp = resolveLabelTarget(callLabelHash, organism.getIp(), organism, environment);
+                if (callTargetIp == null) {
+                    organism.instructionFailed("CALL: No matching label found for hash "
+                            + labelHashText(callLabelHash));
+                    return;
+                }
+                ProcedureCallHandler.executeCall(context, callTargetIp, callLabelHash);
+                break;
+            case "RET":
+                ProcedureCallHandler.executeReturn(context);
+                break;
+            case "JMPI":
+                if (operands.size() < 1) { organism.instructionFailed("JMPI requires target label hash."); return; }
+                Object jmpiTargetObj = operands.get(0).value();
+                if (!(jmpiTargetObj instanceof Integer)) { organism.instructionFailed("JMPI target must be a label hash."); return; }
+                int jmpiLabelHash = (Integer) jmpiTargetObj;
+                int[] jmpiTargetIp = resolveLabelTarget(jmpiLabelHash, organism.getIp(), organism, environment);
+                if (jmpiTargetIp == null) {
+                    organism.instructionFailed("JMPI: No matching label found for hash "
+                            + labelHashText(jmpiLabelHash));
+                    return;
+                }
+                jumpTo("JMPI", jmpiTargetIp, organism, environment);
+                break;
+            case "JMPR":
+                // Register-based jump: read label hash from register
+                if (operands.size() < 1) { organism.instructionFailed("JMPR requires register operand."); return; }
+                Object jmprRegObj = operands.get(0).value();
+                int jmprLabelHash = extractLabelHash(jmprRegObj);
+                if (jmprLabelHash < 0) { organism.instructionFailed("JMPR: Invalid register value for label hash."); return; }
+                int[] jmprTargetIp = resolveLabelTarget(jmprLabelHash, organism.getIp(), organism, environment);
+                if (jmprTargetIp == null) {
+                    organism.instructionFailed("JMPR: No matching label found for hash "
+                            + labelHashText(jmprLabelHash));
+                    return;
+                }
+                jumpTo("JMPR", jmprTargetIp, organism, environment);
+                break;
+            case "JMPS":
+                // Stack-based jump: pop label hash from stack
+                if (operands.size() < 1) { organism.instructionFailed("JMPS requires stack operand."); return; }
+                Object jmpsStackObj = operands.get(0).value();
+                int jmpsLabelHash = extractLabelHash(jmpsStackObj);
+                if (jmpsLabelHash < 0) { organism.instructionFailed("JMPS: Invalid stack value for label hash."); return; }
+                int[] jmpsTargetIp = resolveLabelTarget(jmpsLabelHash, organism.getIp(), organism, environment);
+                if (jmpsTargetIp == null) {
+                    organism.instructionFailed("JMPS: No matching label found for hash "
+                            + labelHashText(jmpsLabelHash));
+                    return;
+                }
+                jumpTo("JMPS", jmpsTargetIp, organism, environment);
+                break;
+            default:
+                organism.instructionFailed("Unknown control flow instruction: " + opName);
+                break;
         }
+    }
+
+    /**
+     * Moves the instruction pointer to the code behind a label: the cell one step past the LABEL
+     * molecule along the direction of travel. In a bounded world that cell may lie beyond the
+     * edge, when the label stands on the last cell; the jump then fails like a jump that finds
+     * no label, and the pointer advances past the jump instruction as usual.
+     *
+     * @param opName      The jump instruction, for the failure reason.
+     * @param labelIp     The position of the label the jump resolved to.
+     * @param organism    The organism that jumps.
+     * @param environment The environment the code lies in.
+     */
+    private void jumpTo(String opName, int[] labelIp, Organism organism, Environment environment) {
+        int[] codeIp = organism.getNextInstructionPosition(labelIp, organism.getDv(), environment);
+        if (!environment.exists(codeIp)) {
+            organism.instructionFailed(opName + ": Code cell beyond the edge of the world");
+            return;
+        }
+        organism.setIp(codeIp);
+        organism.setSkipIpAdvance(true);
     }
 
     /**

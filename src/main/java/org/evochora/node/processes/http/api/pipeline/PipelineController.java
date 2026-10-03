@@ -563,7 +563,7 @@ public class PipelineController extends AbstractController {
         try {
             return InetAddress.getLocalHost().getHostName();
         } catch (final UnknownHostException e) {
-            LOGGER.warn("Could not determine hostname for node ID, falling back to 'unknown'.", e);
+            LOGGER.warn("Could not determine hostname for node ID, falling back to 'unknown': {}", e.getMessage());
             return "unknown";
         }
     }

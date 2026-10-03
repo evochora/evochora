@@ -37,6 +37,11 @@ import com.fasterxml.jackson.annotation.JsonInclude;
  * @param lineOf   Organism id of every organism of the tick to its line: the line's id, {@code 0}
  *                 for an organism not descended from the root, {@code -1} for an organism whose
  *                 ancestry is not known; the root itself maps to its own id
+ * @param unreadLiving Living organisms of the tick whose ancestry is not known yet: their rows
+ *                 are missing from the index, and the index is asked to read them again. They
+ *                 map to {@code -1} in {@code lineOf}, and an {@code auto} root is resolved
+ *                 over the others. The answer is complete once this is 0; a client that wants the
+ *                 complete answer asks again while it is not
  */
 public record DescentDto(
     String state,
@@ -46,7 +51,8 @@ public record DescentDto(
     Root root,
     List<Line> lines,
     Up up,
-    Map<Integer, Integer> lineOf
+    Map<Integer, Integer> lineOf,
+    int unreadLiving
 ) {
 
     /**

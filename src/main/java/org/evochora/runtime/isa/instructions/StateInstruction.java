@@ -116,112 +116,117 @@ public class StateInstruction extends Instruction {
         Organism organism = context.getOrganism();
         String opName = getName();
         List<Operand> operands = resolveOperands(context.getWorld());
+        // An operand the planning phase could not resolve - a register id that names no register -
+        // has failed the instruction already; its value is null and the handlers never see it.
+        if (organism.isInstructionFailed()) {
+            return;
+        }
 
-        try {
-            switch (opName) {
-                case "TURN":
-                    handleTurn(operands);
-                    break;
-                case "RBIR":
-                case "RBII":
-                case "RBIS":
-                    handleRbit(opName, operands);
-                    break;
-                case "TRNI":
-                    handleTrni(operands);
-                    break;
-                case "TRNS":
-                    handleTrns(operands);
-                    break;
-                case "SYNC":
-                    handleSync();
-                    break;
-                case "NRG":
-                case "NRGS":
-                    handleNrg(opName, operands);
-                    break;
-                case "NTR":
-                case "NTRS":
-                    handleNtr(opName, operands);
-                    break;
-                case "FORK":
-                    handleFork(operands, organism.getSimulation());
-                    break;
-                case "DIFF":
-                    handleDiff(operands);
-                    break;
-                case "DIFS":
-                    handleDifs();
-                    break;
-                case "POS":
-                    handlePos(operands);
-                    break;
-                case "POSS":
-                    handlePoss();
-                    break;
-                case "RAND":
-                    handleRand(operands);
-                    break;
-                case "RNDS":
-                    handleRnds(operands);
-                    break;
-                case "ADPR":
-                case "ADPI":
-                case "ADPS":
-                    handleActiveDp(opName, operands);
-                    break;
-                case "SEEK":
-                case "SEKI":
-                case "SEKS":
-                    handleSeek(operands, context.getWorld());
-                    break;
-                case "FRKI":
-                case "FRKS":
-                    handleForkExtended(opName, operands, context.getWorld(), organism.getSimulation());
-                    break;
-                case "SPNR":
-                case "SPNS":
-                    handleScanPassableNeighbors(opName, operands, context.getWorld());
-                    break;
-                case "SNTR":
-                case "SNTI":
-                case "SNTS":
-                    handleScanNeighborsByType(opName, operands, context.getWorld());
-                    break;
-                case "SCAN":
-                case "SCNI":
-                case "SCNS":
-                    handleScan(opName, operands, context.getWorld());
-                    break;
-                case "GDVR":
-                case "GDVS":
-                    handleGdv(opName, operands);
-                    break;
-                case "SMR":
-                case "SMRI":
-                case "SMRS":
-                    handleSmr(opName, operands);
-                    break;
-                case "GMR":
-                case "GMRS":
-                    handleGmr(opName, operands);
-                    break;
-                case "CMR":
-                case "CMRI":
-                case "CMRS":
-                    handleCmr(opName, operands, context.getWorld());
-                    break;
-                default:
-                    organism.instructionFailed("Unknown state instruction: " + opName);
-            }
-        } catch (ClassCastException | ArrayIndexOutOfBoundsException e) {
-            organism.instructionFailed("Invalid operand types for state instruction.");
+        switch (opName) {
+            case "TURN":
+                handleTurn(operands);
+                break;
+            case "RBIR":
+            case "RBII":
+            case "RBIS":
+                handleRbit(opName, operands);
+                break;
+            case "TRNI":
+                handleTrni(operands);
+                break;
+            case "TRNS":
+                handleTrns(operands);
+                break;
+            case "SYNC":
+                handleSync();
+                break;
+            case "NRG":
+            case "NRGS":
+                handleNrg(opName, operands);
+                break;
+            case "NTR":
+            case "NTRS":
+                handleNtr(opName, operands);
+                break;
+            case "FORK":
+                handleFork(operands, organism.getSimulation());
+                break;
+            case "DIFF":
+                handleDiff(operands);
+                break;
+            case "DIFS":
+                handleDifs();
+                break;
+            case "POS":
+                handlePos(operands);
+                break;
+            case "POSS":
+                handlePoss();
+                break;
+            case "RAND":
+                handleRand(operands);
+                break;
+            case "RNDS":
+                handleRnds(operands);
+                break;
+            case "ADPR":
+            case "ADPI":
+            case "ADPS":
+                handleActiveDp(opName, operands);
+                break;
+            case "SEEK":
+            case "SEKI":
+            case "SEKS":
+                handleSeek(operands, context.getWorld());
+                break;
+            case "FRKI":
+            case "FRKS":
+                handleForkExtended(opName, operands, context.getWorld(), organism.getSimulation());
+                break;
+            case "SPNR":
+            case "SPNS":
+                handleScanPassableNeighbors(opName, operands, context.getWorld());
+                break;
+            case "SNTR":
+            case "SNTI":
+            case "SNTS":
+                handleScanNeighborsByType(opName, operands, context.getWorld());
+                break;
+            case "SCAN":
+            case "SCNI":
+            case "SCNS":
+                handleScan(opName, operands, context.getWorld());
+                break;
+            case "GDVR":
+            case "GDVS":
+                handleGdv(opName, operands);
+                break;
+            case "SMR":
+            case "SMRI":
+            case "SMRS":
+                handleSmr(opName, operands);
+                break;
+            case "GMR":
+            case "GMRS":
+                handleGmr(opName, operands);
+                break;
+            case "CMR":
+            case "CMRI":
+            case "CMRS":
+                handleCmr(opName, operands, context.getWorld());
+                break;
+            default:
+                organism.instructionFailed("Unknown state instruction: " + opName);
         }
     }
 
     private void handleTurn(List<Operand> operands) {
         if (operands.size() != 1) { organism.instructionFailed("Invalid operands for TURN."); return; }
-        int[] newDv = organism.toUnitVector((int[]) operands.get(0).value());
+        if (!(operands.get(0).value() instanceof int[] direction)) {
+            organism.instructionFailed("TURN requires a vector operand.");
+            return;
+        }
+        int[] newDv = organism.toUnitVector(direction);
         if (newDv == null) { return; }
         organism.setDv(newDv);
     }
@@ -266,16 +271,26 @@ public class StateInstruction extends Instruction {
     private void handleFork(List<Operand> operands, Simulation simulation) {
         if (!requireNonZeroMarkerRegister("FORK")) { return; }
         if (operands.size() != 3) { organism.instructionFailed("Invalid operands for FORK."); return; }
-        int[] delta = organism.toDisplacement((int[]) operands.get(0).value());
+        if (!(operands.get(0).value() instanceof int[] deltaOperand)
+                || !(operands.get(1).value() instanceof Integer energyOperand)
+                || !(operands.get(2).value() instanceof int[] directionOperand)) {
+            organism.instructionFailed("FORK requires a vector, a scalar and a vector operand.");
+            return;
+        }
+        int[] delta = organism.toDisplacement(deltaOperand);
         if (delta == null) {
             return;
         }
-        int energy = org.evochora.runtime.model.Molecule.fromInt((Integer) operands.get(1).value()).toScalarValue();
-        int[] childDv = organism.toUnitVector((int[]) operands.get(2).value());
+        int energy = org.evochora.runtime.model.Molecule.fromInt(energyOperand).toScalarValue();
+        int[] childDv = organism.toUnitVector(directionOperand);
         if (childDv == null) { return; }
         // The VirtualMachine already deducted the base cost (10), now we need to deduct the energy given to child
         if (energy > 0 && organism.getEr() >= energy) {
             int[] childIp = organism.getTargetCoordinate(organism.getActiveDp(), delta, simulation.getEnvironment());
+            if (!simulation.getEnvironment().exists(childIp)) {
+                organism.instructionFailed("FORK: Child position beyond the edge of the world");
+                return;
+            }
             organism.takeEr(energy); // Deduct the energy given to the child
             Organism child = Organism.create(simulation, childIp, energy);
             child.setDv(childDv);
@@ -335,7 +350,11 @@ public class StateInstruction extends Instruction {
     private void handleRand(List<Operand> operands) {
         if (operands.size() != 1) { organism.instructionFailed("Invalid operands for RAND."); return; }
         Operand op = operands.get(0);
-        Molecule s = org.evochora.runtime.model.Molecule.fromInt((Integer)op.value());
+        if (!(op.value() instanceof Integer bound)) {
+            organism.instructionFailed("RAND requires a scalar operand.");
+            return;
+        }
+        Molecule s = org.evochora.runtime.model.Molecule.fromInt(bound);
         int upperBound = s.toScalarValue();
         if (upperBound <= 0) {
             organism.instructionFailed("RAND upper bound must be > 0.");
@@ -420,12 +439,22 @@ public class StateInstruction extends Instruction {
             organism.instructionFailed("Invalid operands for SEEK variant.");
             return;
         }
-        int[] vector = organism.toDisplacement((int[]) operands.get(0).value());
+        if (!(operands.get(0).value() instanceof int[] displacement)) {
+            organism.instructionFailed(getName() + " requires a vector operand.");
+            return;
+        }
+        int[] vector = organism.toDisplacement(displacement);
         if (vector == null) {
             return;
         }
         int[] dp = dataPointerInsideWorld(environment);
         if (dp == null) {
+            return;
+        }
+        // Checked before passability, which would be false for the same reason: the cell beyond
+        // the edge of a bounded world does not exist, and the reason says so.
+        if (!environment.exists(dp, vector)) {
+            organism.instructionFailed(getName() + ": Target cell beyond the edge of the world");
             return;
         }
         if (isPassable(environment, dp, vector)) {
@@ -462,6 +491,10 @@ public class StateInstruction extends Instruction {
             // The VirtualMachine already deducted the base cost (1), now we need to deduct the energy given to child
             if (energy > 0 && organism.getEr() >= energy) {
                 int[] childIp = organism.getTargetCoordinate(organism.getActiveDp(), delta, environment);
+                if (!environment.exists(childIp)) {
+                    organism.instructionFailed("FRKI: Child position beyond the edge of the world");
+                    return;
+                }
                 organism.takeEr(energy); // Deduct the energy given to the child
                 Organism child = Organism.create(simulation, childIp, energy);
                 child.setDv(childDv);
@@ -495,6 +528,10 @@ public class StateInstruction extends Instruction {
             // The VirtualMachine already deducted the base cost (1), now we need to deduct the energy given to child
             if (energy > 0 && organism.getEr() >= energy) {
                 int[] childIp = organism.getTargetCoordinate(organism.getActiveDp(), displacement, environment);
+                if (!environment.exists(childIp)) {
+                    organism.instructionFailed("FRKS: Child position beyond the edge of the world");
+                    return;
+                }
                 organism.takeEr(energy); // Deduct the energy given to the child
                 Organism child = Organism.create(simulation, childIp, energy);
                 child.setDv(snappedChildDv);
@@ -516,16 +553,21 @@ public class StateInstruction extends Instruction {
         boolean toStack = "SCNS".equals(opName);
         int targetReg;
         int[] vector;
+        Object vectorOperand;
         if (toStack) {
             if (operands.size() != 1) { organism.instructionFailed("Invalid operands for " + opName); return; }
-            vector = (int[]) operands.get(0).value();
+            vectorOperand = operands.get(0).value();
             targetReg = -1;
         } else {
             if (operands.size() != 2) { organism.instructionFailed("Invalid operands for " + opName); return; }
             targetReg = operands.get(0).rawSourceId();
-            vector = (int[]) operands.get(1).value();
+            vectorOperand = operands.get(1).value();
         }
-        vector = organism.toDisplacement(vector);
+        if (!(vectorOperand instanceof int[] displacement)) {
+            organism.instructionFailed(opName + " requires a vector operand.");
+            return;
+        }
+        vector = organism.toDisplacement(displacement);
         if (vector == null) {
             return;
         }

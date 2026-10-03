@@ -3,14 +3,17 @@
  *
  * The part of the run every card shows. A track stands for the whole run and carries the window:
  * dragging an edge sets that side, dragging the window moves it, dragging over the track outside
- * it draws a new one, and a double click, the button beside the last tick or the End key shows the
- * whole run again. The two ticks stand beside the track for typing, as "28M", "28.5M", "500k" or a plain
- * number, whose digits are grouped as they are typed. A field that holds no tick - a decimal part
+ * it draws a new one, a click moves the nearer edge to the tick clicked, and a double click, the
+ * button beside the last tick or the End key shows the whole run again. Over the track the window
+ * is drawn as a click would leave it, so the reader sees which edge moves before clicking. The two
+ * ticks stand beside the track for typing, as "28M", "28.5M", "500k" or a plain number, whose
+ * digits are grouped as they are typed. A field that holds no tick - a decimal part
  * without a suffix - is marked and keeps its text until it is completed, or Escape puts the tick
  * back.
  *
  * The window is reported when a drag ends or a typed tick is confirmed, never while dragging:
- * every report makes the cards load.
+ * every report makes the cards load. A click is reported only once no second click has followed
+ * it, so that the first click of a double click makes the cards load nothing.
  *
  * @module TickWindowView
  */
@@ -23,6 +26,9 @@ const EDGE_GRIP = 6;
 
 /** Smallest share of the run a window may cover. */
 const MIN_SHARE = 1 / 2000;
+
+/** Time a click waits for a second one before its window is reported. */
+const CLICK_REPORT_DELAY_MS = 250;
 
 let root = null;
 let canvas = null;
@@ -40,6 +46,10 @@ let view = null;
 let drag = null;
 /** Tick under the pointer, or null. */
 let hoverTick = null;
+/** Window a click at the pointer would leave, drawn in place of the window; or null. */
+let preview = null;
+/** Timer of a click whose window is shown but not yet reported, or null. */
+let pendingReport = null;
 
 /**
  * Builds the view into a container.
@@ -79,11 +89,15 @@ export function init(container, handler) {
     track.addEventListener('pointerleave', () => {
         if (!drag) {
             hoverTick = null;
+            preview = null;
             tooltip.classList.remove('visible');
             draw();
         }
     });
-    track.addEventListener('dblclick', () => commit(null));
+    track.addEventListener('dblclick', () => {
+        preview = null;
+        commit(null);
+    });
 
     [fromInput, toInput].forEach(input => {
         input.addEventListener('keydown', event => {
@@ -106,9 +120,9 @@ export function init(container, handler) {
 }
 
 /**
- * Sets the tick range of the run and the window shown on it. A drag under way keeps its window: a
- * running run grows between two loads, and the reader's hand must not be moved by that; the drag
- * ends against the new range.
+ * Sets the tick range of the run and the window shown on it. A drag under way, or a click not yet
+ * reported, keeps its window: a running run grows between two loads, and the reader's hand must not
+ * be moved by that; the drag ends, and the click is reported, against the new range.
  *
  * @param {?{min: number, max: number}} runExtent - Tick range of the run, or null to hide the view
  * @param {?{from: number, to: number}} tickWindow - Window shown, or null for the whole run
@@ -121,7 +135,7 @@ export function show(runExtent, tickWindow) {
         drag = null;
         return;
     }
-    if (!drag) {
+    if (!drag && !pendingReport) {
         view = clamp(tickWindow ? { ...tickWindow } : { from: extent.min, to: extent.max });
         showInputs();
     }
@@ -171,7 +185,31 @@ function commit(next) {
     view = next ? clamp(next) : { from: extent.min, to: extent.max };
     showInputs();
     draw();
+    report();
+}
+
+/** Reports the window shown, and with it any click still waiting to be reported. */
+function report() {
+    clearTimeout(pendingReport);
+    pendingReport = null;
     onChange(isWholeRun(view) ? null : { ...view });
+}
+
+/** Reports the window shown once no second click has followed. */
+function reportLater() {
+    clearTimeout(pendingReport);
+    pendingReport = setTimeout(report, CLICK_REPORT_DELAY_MS);
+}
+
+/**
+ * The window a click on a tick leaves: the nearer edge moves to the tick, as far as the smallest
+ * width allows.
+ */
+function windowAfterClick(tick) {
+    if (Math.abs(tick - view.from) <= Math.abs(tick - view.to)) {
+        return { from: Math.max(extent.min, Math.min(tick, view.to - minWidth())), to: view.to };
+    }
+    return { from: view.from, to: Math.min(extent.max, Math.max(tick, view.from + minWidth())) };
 }
 
 /**
@@ -226,12 +264,21 @@ function gripAt(clientX) {
     return 'new';
 }
 
-/** Starts a drag: of an edge, of the window, or of a new window over the track. */
+/**
+ * Starts a drag: of an edge, of the window, or of a new window over the track. A click still
+ * waiting to be reported waits on: what this press ends in reports it, or the double click it
+ * completes replaces it.
+ */
 function handlePointerDown(event) {
     if (!extent || event.button !== 0) return;
     event.currentTarget.setPointerCapture(event.pointerId);
+    const unreported = pendingReport !== null;
+    clearTimeout(pendingReport);
+    pendingReport = null;
+    preview = null;
     drag = {
-        grip: gripAt(event.clientX), startTick: tickAt(event.clientX), startView: { ...view }, moved: false
+        grip: gripAt(event.clientX), startTick: tickAt(event.clientX), startView: { ...view }, moved: false,
+        unreported
     };
 }
 
@@ -263,31 +310,45 @@ function handlePointerMove(event) {
     }
 
     const grip = drag ? drag.grip : gripAt(event.clientX);
+    preview = !drag && grip !== 'from' && grip !== 'to' ? windowAfterClick(tick) : null;
     event.currentTarget.style.cursor =
         grip === 'from' || grip === 'to' ? 'ew-resize' : grip === 'window' ? 'grab' : 'crosshair';
 
     const box = canvas.getBoundingClientRect();
-    tooltip.textContent = drag && drag.grip !== 'new'
-        ? `${formatTick(view.from)} – ${formatTick(view.to)}`
+    const shown = preview || view;
+    tooltip.textContent = preview || (drag && drag.grip !== 'new')
+        ? `${formatTick(shown.from)} – ${formatTick(shown.to)}`
         : formatTick(tick);
     tooltip.style.left = `${Math.min(box.width - 40, Math.max(40, event.clientX - box.left))}px`;
     tooltip.classList.add('visible');
     draw();
 }
 
-/** Ends a drag and reports the window, unless the pointer never moved or no window is left. */
+/**
+ * Ends a press. A drag reports its window, unless no window is left; a press that never moved is a
+ * click, which moves the nearer edge to the tick clicked - except on an edge, which a press there
+ * only takes hold of.
+ */
 function handlePointerUp(event) {
     if (!drag) return;
     event.currentTarget.releasePointerCapture?.(event.pointerId);
     const finished = drag;
     drag = null;
-    if (!finished.moved || view.to - view.from < minWidth()) {
-        view = finished.startView;
-        showInputs();
-        draw();
+    if (finished.moved && view.to - view.from >= minWidth()) {
+        commit(view);
         return;
     }
-    commit(view);
+    view = finished.startView;
+    const clicked = !finished.moved && event.type === 'pointerup'
+        && finished.grip !== 'from' && finished.grip !== 'to';
+    if (clicked) {
+        view = windowAfterClick(finished.startTick);
+    }
+    if (clicked || finished.unreported) {
+        reportLater();
+    }
+    showInputs();
+    draw();
 }
 
 /** Step between the marks of the track: the 1-2-5 step that puts them about 90 pixels apart. */
@@ -313,8 +374,9 @@ function draw() {
     ctx.fillStyle = '#0f0f18';
     ctx.fillRect(0, 0, w, h);
 
-    const left = xOf(view.from, w);
-    const right = xOf(view.to, w);
+    const shown = preview || view;
+    const left = xOf(shown.from, w);
+    const right = xOf(shown.to, w);
     ctx.fillStyle = 'rgba(74, 158, 255, 0.35)';
     ctx.fillRect(left, 0, Math.max(1, right - left), h);
 
@@ -339,7 +401,7 @@ function draw() {
     ctx.fillRect(Math.round(left), 0, 2, h);
     ctx.fillRect(Math.round(right) - 2, 0, 2, h);
 
-    if (hoverTick !== null && !drag) {
+    if (hoverTick !== null && !drag && !preview) {
         ctx.fillStyle = 'rgba(255, 255, 255, 0.35)';
         ctx.fillRect(Math.round(xOf(hoverTick, w)) - 1, 0, 2, h);
     }

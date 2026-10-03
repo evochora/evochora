@@ -2,7 +2,6 @@ package org.evochora.runtime.isa.instructions;
 
 import java.util.Arrays;
 import java.util.List;
-import java.util.NoSuchElementException;
 
 import org.evochora.runtime.Config;
 import org.evochora.runtime.internal.services.ExecutionContext;
@@ -66,23 +65,16 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
     @Override
     public void execute(ExecutionContext context) {
         Organism organism = context.getOrganism();
-        try {
-            String opName = getName();
+        String opName = getName();
 
-            if ("POKE".equals(opName) || "POKI".equals(opName) || "POKS".equals(opName)) {
-                handlePoke(context);
-            } else if ("PEEK".equals(opName) || "PEKI".equals(opName) || "PEKS".equals(opName)) {
-                handlePeek(context);
-            } else if ("PPKR".equals(opName) || "PPKI".equals(opName) || "PPKS".equals(opName)) {
-                handlePeekPoke(context);
-            } else {
-                organism.instructionFailed("Unknown world interaction instruction: " + opName);
-            }
-
-        } catch (NoSuchElementException e) {
-            organism.instructionFailed("Invalid operands for " + getName());
-        } catch (ClassCastException | ArrayIndexOutOfBoundsException e) {
-            organism.instructionFailed("Invalid operand types for world interaction.");
+        if ("POKE".equals(opName) || "POKI".equals(opName) || "POKS".equals(opName)) {
+            handlePoke(context);
+        } else if ("PEEK".equals(opName) || "PEKI".equals(opName) || "PEKS".equals(opName)) {
+            handlePeek(context);
+        } else if ("PPKR".equals(opName) || "PPKI".equals(opName) || "PPKS".equals(opName)) {
+            handlePeekPoke(context);
+        } else {
+            organism.instructionFailed("Unknown world interaction instruction: " + opName);
         }
     }
 
@@ -290,7 +282,7 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
             return null;
         }
         int[] target = organism.getTargetCoordinate(dp, displacement, environment);
-        if (!environment.contains(target)) {
+        if (!environment.exists(target)) {
             organism.instructionFailed(getName() + ": Target cell " + Arrays.toString(target)
                     + " lies outside the world.");
             return null;

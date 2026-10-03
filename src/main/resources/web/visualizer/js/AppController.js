@@ -855,17 +855,16 @@ export class AppController {
     }
 
     /**
-     * Starts periodic polling for maxTick updates (every 5 seconds). While the run's ancestry is
-     * still being read, or reading it failed, the same poll asks again for the organisms of the
-     * shown tick. Stops any existing polling first.
+     * Starts periodic polling for maxTick updates (every 5 seconds). While the descent of the
+     * shown tick is not complete, a second poll asks again for the organisms of the shown tick
+     * every second, so that the progress and the colours follow the server closely. Stops any
+     * existing polling first.
      * @private
      */
     _startMaxTickPolling() {
         this._stopMaxTickPolling();
-        this._maxTickPollTimer = setInterval(() => {
-            this.updateMaxTick();
-            this._refreshPendingDescent();
-        }, 5000);
+        this._maxTickPollTimer = setInterval(() => this.updateMaxTick(), 5000);
+        this._descentPollTimer = setInterval(() => this._refreshPendingDescent(), 1000);
     }
 
     /**
@@ -876,6 +875,10 @@ export class AppController {
         if (this._maxTickPollTimer) {
             clearInterval(this._maxTickPollTimer);
             this._maxTickPollTimer = null;
+        }
+        if (this._descentPollTimer) {
+            clearInterval(this._descentPollTimer);
+            this._descentPollTimer = null;
         }
     }
 
@@ -1204,27 +1207,33 @@ export class AppController {
     }
 
     /**
-     * Asks again for the organisms of the shown tick while the run's ancestry is still being read
-     * or reading it failed, so that the progress, and then the colours, arrive by themselves. The
-     * environment is not asked for. An answer is dropped when a load of a tick or a root has begun
-     * since the question was sent; a failed question is left to the next poll.
+     * Asks again for the organisms of the shown tick while the descent of the tick is not complete:
+     * the run's ancestry is still being read, reading it failed, or living organisms of the tick
+     * have an ancestry the index has not read yet. The progress, and then the colours, arrive by
+     * themselves. The environment is not asked for. An answer is dropped when a load of a tick or
+     * a root has begun since the question was sent; a failed question is left to the next poll,
+     * and a poll that finds the previous question still open adds none.
      *
      * @returns {Promise<void>} A promise that resolves when the answer is shown or dropped.
      * @private
      */
     async _refreshPendingDescent() {
-        const descentState = this.state.descent?.state;
-        if (descentState !== 'loading' && descentState !== 'failed') {
+        const descent = this.state.descent;
+        if (!descent || (descent.state !== 'loading' && descent.state !== 'failed' && !(descent.unreadLiving > 0))) {
             return;
         }
         if (!this.state.previousOrganisms || this.state.previousTick !== this.state.currentTick) {
             return; // The shown tick is still being loaded
+        }
+        if (this._descentRefreshOpen) {
+            return;
         }
 
         const generation = this._loadGeneration;
         const tick = this.state.currentTick;
         const runId = this.state.runId;
         const requestedRoot = this._rootToken();
+        this._descentRefreshOpen = true;
         try {
             // Silent: the descent section shows the progress, the loading indicator stays off
             const result = await this.organismApi.fetchOrganismsAtTick(tick, runId,
@@ -1239,6 +1248,8 @@ export class AppController {
             this.state.previousOrganisms = result.organisms;
         } catch (error) {
             console.debug('Failed to refresh the descent of the shown tick:', error);
+        } finally {
+            this._descentRefreshOpen = false;
         }
     }
 

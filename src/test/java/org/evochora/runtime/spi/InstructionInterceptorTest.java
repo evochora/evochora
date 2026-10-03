@@ -11,6 +11,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
+import org.evochora.runtime.SimulationFault;
 import org.evochora.runtime.internal.services.SeededRandomProvider;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.isa.instructions.NopInstruction;
@@ -18,8 +19,6 @@ import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
 import org.evochora.runtime.thermodynamics.ThermodynamicPolicyManager;
-import org.evochora.junit.extensions.logging.ExpectLog;
-import org.evochora.junit.extensions.logging.LogLevel;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -384,8 +383,7 @@ class InstructionInterceptorTest {
     // ==================== Error Handling Tests ====================
 
     @Test
-    @ExpectLog(level = LogLevel.WARN, loggerPattern = ".*Simulation.*", messagePattern = ".*Interceptor.*failed.*")
-    void interceptor_exceptionDoesNotCrashSimulation() {
+    void interceptor_exceptionEndsTheTickAsAFault() {
         AtomicInteger secondInterceptorCalled = new AtomicInteger(0);
 
         simulation.addInstructionInterceptor(new TestInterceptor() {
@@ -402,11 +400,14 @@ class InstructionInterceptorTest {
             }
         });
 
-        // Should not throw
-        simulation.tick();
-
-        // Second interceptor should still be called
-        assertThat(secondInterceptorCalled.get()).isEqualTo(1);
+        // A throwing interceptor is a defect, not something the tick tolerates: the tick ends
+        // with a fault that names the interceptor and the organism, and nothing after it runs.
+        assertThatThrownBy(simulation::tick)
+                .isInstanceOf(SimulationFault.class)
+                .hasMessageContaining("for organism " + organism.getId())
+                .cause()
+                .hasMessage("Test exception");
+        assertThat(secondInterceptorCalled.get()).isEqualTo(0);
     }
 
     // ==================== Operand Modification Tests ====================
