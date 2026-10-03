@@ -586,16 +586,22 @@ public class SimulationRestorer {
     }
 
     /**
-     * Converts a protobuf SourceInfo to runtime SourceInfo.
+     * Converts a protobuf region of lines left out to the artifact's record.
      */
     private static SourceFile.LeftOut convertProtoLeftOut(org.evochora.datapipeline.api.contracts.LeftOutRegion region) {
         return new SourceFile.LeftOut(region.getExpansion(), region.getDirectiveLine(), region.getFrom(), region.getTo());
     }
 
+    /**
+     * Converts a protobuf note at a position to the artifact's record.
+     */
     private static SourceFile.Note convertProtoNote(org.evochora.datapipeline.api.contracts.SourceNote note) {
         return new SourceFile.Note(note.getExpansion(), note.getLine(), note.getColumn(), note.getText());
     }
 
+    /**
+     * Converts a protobuf SourceInfo to runtime SourceInfo.
+     */
     private static SourceInfo convertProtoSourceInfo(
             org.evochora.datapipeline.api.contracts.SourceInfo proto) {
         return new SourceInfo(proto.getFileName(), proto.getLineNumber(), proto.getColumnNumber(),
