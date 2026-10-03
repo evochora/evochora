@@ -26,7 +26,7 @@ class ModuleSetupRegistryTest {
     void register_and_resolve() {
         IDependencySetupHandler<ImportDependencyInfo> handler = new IDependencySetupHandler<>() {
             @Override
-            public void registerScope(ImportDependencyInfo dependency, ModuleSetupContext ctx) {}
+            public void registerRelationships(ImportDependencyInfo dependency, ModuleSetupContext ctx) {}
         };
         registry.register(ImportDependencyInfo.class, handler);
 
@@ -38,7 +38,7 @@ class ModuleSetupRegistryTest {
     void resolve_unregisteredReturnsNull() {
         IDependencySetupHandler<ImportDependencyInfo> handler = new IDependencySetupHandler<>() {
             @Override
-            public void registerScope(ImportDependencyInfo dependency, ModuleSetupContext ctx) {}
+            public void registerRelationships(ImportDependencyInfo dependency, ModuleSetupContext ctx) {}
         };
         registry.register(ImportDependencyInfo.class, handler);
 
@@ -49,7 +49,7 @@ class ModuleSetupRegistryTest {
     void typeSafety() {
         IDependencySetupHandler<ImportDependencyInfo> handler = new IDependencySetupHandler<>() {
             @Override
-            public void registerScope(ImportDependencyInfo dependency, ModuleSetupContext ctx) {}
+            public void registerRelationships(ImportDependencyInfo dependency, ModuleSetupContext ctx) {}
         };
         registry.register(ImportDependencyInfo.class, handler);
 

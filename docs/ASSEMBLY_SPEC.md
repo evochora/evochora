@@ -229,12 +229,12 @@ START:
 
 #### Exported Constants
 
-Constants defined with `.DEFINE` can also be exported. This allows modules to expose configuration values as part of their API:
+Constants defined with `.CONST` can also be exported. This allows modules to expose configuration values as part of their API:
 
 ```
 # In lib.evo
-EXPORT .DEFINE MAX_ENERGY DATA:1000
-EXPORT .DEFINE STEP_SIZE 1|0
+EXPORT .CONST MAX_ENERGY DATA:1000
+EXPORT .CONST STEP_SIZE 1|0
 
 # In main.evo
 .IMPORT "lib.evo" AS LIB
@@ -627,7 +627,7 @@ Directives are special commands that instruct the compiler on how to assemble th
 
 ### Definitions and Aliases
 
-* `[EXPORT] .DEFINE <NAME> <VALUE>`: Creates a compile-time constant. The compiler will replace every occurrence of `<NAME>` with `<VALUE>`. The optional `EXPORT` prefix makes the constant visible to importing modules.
+* `[EXPORT] .CONST <NAME> <VALUE>`: Creates a compile-time constant. The compiler will replace every occurrence of `<NAME>` with `<VALUE>`. The optional `EXPORT` prefix makes the constant visible to importing modules.
 * `.REG <%ALIAS> <%REGISTER>`: Assigns a custom name (`<%ALIAS>`) to a register. Supports both data registers (e.g., `.REG %COUNTER %DR0`) and location registers (e.g., `.REG %POSITION %LR0`).
 
 ### Layout Control
@@ -643,15 +643,15 @@ Directives are special commands that instruct the compiler on how to assemble th
 
 ### Macros
 
-* `.MACRO <Name> [PARAM1 ...] / .ENDM`: Defines a macro, a template for code that is expanded inline. Parameters are optional. To invoke a macro, simply use its name followed by the arguments.
+* `.MACRO <Name> [PARAM1 ...] / .ENDMACRO`: Defines a macro, a template for code that is expanded inline. Parameters are optional. To invoke a macro, simply use its name followed by the arguments.
     ```
     .MACRO INCREMENT REG_TARGET
       ADDI REG_TARGET DATA:1
-    .ENDM
+    .ENDMACRO
     
     INCREMENT %DR0  # This line expands to "ADDI %DR0 DATA:1"
     ```
-* **Scope**: A macro is local to the file that defines it. A file included with `.SOURCE` counts as part of the including file, so its macros can be used there. A module included with `.IMPORT` neither sees nor exports macros. Defining the same macro name twice in one file is an error.
+* **Scope**: A macro is local to the file that defines it. A file included with `.SOURCE` counts as part of the including file, so its macros can be used there. A module included with `.IMPORT` neither sees nor exports macros. A macro may be defined again — as happens when the file that defines it is sourced more than once — only with the same parameters and the same body word for word; a different definition under the same name is an error.
 
 ### Repetition
 
@@ -659,21 +659,15 @@ The `.REPEAT` directive and its shorthand `^n` syntax allow repeating instructio
 
 #### Directive Syntax
 
-* `.REPEAT <Count> <Body>`: Repeats the body (until the next newline or semicolon) the specified number of times.
+* `.REPEAT <Count>` … `.ENDREPEAT`: Repeats the statements between the two directives `<Count>` times.
     ```
-    .REPEAT 5 NOP              # Expands to: NOP; NOP; NOP; NOP; NOP
-    .REPEAT 3 JMPI MAIN_LOOP   # Expands to: JMPI MAIN_LOOP; JMPI MAIN_LOOP; JMPI MAIN_LOOP
-    ```
-
-* `.REPEAT <Count>; <Body> .ENDR`: Block mode for repeating multiple statements. When a newline or semicolon immediately follows the count, the directive enters block mode and repeats everything until `.ENDR`.
-    ```
-    .REPEAT 2; JMPI LOOP; NOP; .ENDR
+    .REPEAT 2; JMPI LOOP; NOP; .ENDREPEAT
     # Expands to: JMPI LOOP; NOP; JMPI LOOP; NOP
 
     .REPEAT 3
       NOP
       JMPI START
-    .ENDR
+    .ENDREPEAT
     # Expands to: NOP; JMPI START; NOP; JMPI START; NOP; JMPI START
     ```
 
@@ -686,7 +680,50 @@ The `.REPEAT` directive and its shorthand `^n` syntax allow repeating instructio
     JMPI START; NOP^10; JMPI END  # Mixed with other instructions
     ```
 
-Both syntaxes produce identical results—the shorthand is transformed into `.REPEAT` internally before expansion.
+Both syntaxes produce identical results—the shorthand is transformed into `.REPEAT` … `.ENDREPEAT` internally before expansion.
+
+### Blocks
+
+`.MACRO` … `.ENDMACRO` and `.REPEAT` … `.ENDREPEAT` are blocks. A block may contain other blocks, but two blocks never overlap: an end directive always closes the block that was opened last.
+
+```
+.MACRO PAD
+  .REPEAT 2
+    NOP
+  .ENDREPEAT        # closes the .REPEAT
+.ENDMACRO           # closes the .MACRO
+
+.MACRO WRONG
+  .REPEAT 2
+.ENDMACRO           # Error: the .REPEAT is still open
+  .ENDREPEAT
+```
+
+### Conditional Compilation
+
+Code can be kept or left out depending on *flags*. A flag is a name that is set or not set; a set flag may carry an integer value. Flags belong to the whole compilation: a flag set in one file is set in every line the compiler reads after it, whatever file that line stands in.
+
+* `.DEFINE <NAME> [<Integer>]`: Sets the flag `<NAME>`, with the integer as its value if one is given. A set flag may be set again with the same definition; a different one is an error. To change a flag, remove it first.
+* `.UNDEF <NAME>`: Removes the flag. Removing a flag that is not set does nothing.
+* `.IFDEF <NAME> [<Op> <Operand>]` … `.ENDDEF`: A block that keeps the enclosed lines if the flag is set and, when a comparison is given, if its value compares as stated. `<Op>` is one of `=`, `<>`, `<`, `<=`, `>`, `>=`; `==` and `!=` mean the same as `=` and `<>`. `<Operand>` is an integer or the name of another flag, whose value is taken. Comparing a flag that has no value is an error.
+* `.IFNDEF <NAME>` … `.ENDDEF`: A block that keeps the enclosed lines if the flag is not set.
+* `.ELSEIFDEF <NAME> [<Op> <Operand>]`, `.ELSEIFNDEF <NAME>`, `.ELSEDEF`: Further branches of the same block. The first branch whose condition holds is kept and every other branch is left out; `.ELSEDEF` is the last branch.
+    ```
+    .IFNDEF REDUNDANCY
+      .DEFINE REDUNDANCY 1       # The default, unless the configuration set the flag
+    .ENDDEF
+
+    .IFDEF REDUNDANCY >= 2
+      JMPI MAIN_LOOP; NOP^4; JMPI MAIN_LOOP
+    .ELSEDEF
+      JMPI MAIN_LOOP
+    .ENDDEF
+    ```
+* **A branch that is left out** is not assembled: no constant, label or macro in it exists, and no file named in it is read.
+* **Lines of their own**: `.DEFINE`, `.UNDEF` and the directives of a conditional block each stand alone on their line, with no label before them and no statement after them.
+* **Macros**: A macro body may hold conditional blocks; they are decided each time the macro is expanded, and a parameter may stand where a flag name stands. `.DEFINE` and `.UNDEF` may not stand in a macro or repeat block.
+* **Flags from outside**: The configuration of a simulation sets flags for each organism (`defines { … }` in its entry), and `evochora compile --define NAME[=VALUE]` sets them for one compilation. Such a flag is set before the first line of the program is read; a program that wants a default for it uses the `.IFNDEF` form above.
+* **Flags and constants** are two different things: a `.CONST` is a value used in code and is not seen by `.IFDEF`; a flag is seen only by `.IFDEF` and cannot be used as an operand.
 
 ### Modules and Procedures
 
@@ -696,10 +733,12 @@ The module system allows splitting programs across multiple files. Three directi
 * **`.REQUIRE`** — declares an unsatisfied dependency that must be provided by the importer via a `USING` clause.
 * **`.SOURCE`** — includes raw source text (macros, constants) without creating a module relationship.
 
+None of the three may stand inside a macro or a repeat block. Inside a conditional block they may: the file is read only when the branch is kept.
+
 #### `.IMPORT`
 
 * **Syntax**: `[EXPORT] .IMPORT "<path>" AS <Alias> [USING <source> AS <target>]*`
-* **Effect**: Declares a dependency on the module at `<path>`, assigns it the local alias `<Alias>`, and inlines the module's code at this location. Exported labels and procedures in the imported module become accessible as `<Alias>.<Name>`.
+* **Effect**: Declares a dependency on the module at `<path>`, assigns it the local alias `<Alias>`, and inlines the module's code at this location. Exported labels and procedures in the imported module become accessible as `<Alias>.<Name>`. The same file may be imported more than once, under different aliases: each import places the module again, and the two placements are as independent as two different modules.
 * **`EXPORT` prefix**: Passes the import on to modules that import this one, which then reach it as `<ThisAlias>.<Alias>.<Name>` without inlining the code a second time. Each level decides for its own import: a level without the prefix ends the chain there.
 * **USING clauses**: Provide compile-time dependency injection. Each `USING` clause wires a module from the current scope (identified by `<source>` alias) into the imported module to satisfy one of its `.REQUIRE` declarations (identified by `<target>` alias).
     - `<source>` names a module the current one has: either one it imported itself, or one it received through a `USING` clause on its own `.REQUIRE`. The second case lets a module hand a dependency further down without choosing it, so the decision stays with the outermost caller.
@@ -727,7 +766,7 @@ All paths in `.IMPORT`, `.REQUIRE`, and `.SOURCE` are resolved against configure
 
 #### `.PROC`
 
-* **Syntax**: `[EXPORT] .PROC <Name> [REF <param> ...] [VAL <param> ...] [LREF <param> ...] [LVAL <param> ...] / .ENDP`
+* **Syntax**: `[EXPORT] .PROC <Name> [REF <param> ...] [VAL <param> ...] [LREF <param> ...] [LVAL <param> ...] / .ENDPROC`
 * **Effect**: Defines a procedure with named parameters.
     - `EXPORT`: Prefix modifier that makes the procedure visible to other modules.
     - `REF`: **call-by-reference** parameters (mapped to `%FDRx`). Modifications inside the procedure affect the caller's register.
@@ -742,7 +781,7 @@ All paths in `.IMPORT`, `.REQUIRE`, and `.SOURCE` are resolved against configure
         SKLR loc_c                      # Moves DP to the passed location
         CRLR loc_c                      # Clears FLR0 — written back to caller on RET
         RET
-      .ENDP
+      .ENDPROC
       ```
 
 * `.REG` also works inside `.PROC` blocks with procedure-local registers: `.REG %TMP %PDR0` aliases `%PDR0` as `%TMP`, `.REG %POS %PLR0` aliases `%PLR0` as `%POS`. Proc-local registers (`%PDRx`, `%PLRx`) are only available inside `.PROC` blocks.
@@ -757,7 +796,7 @@ EXPORT .PROC LIB.DOUBLE REF X
   ADDS
   POP X        # X = X + X, modifies the caller's register
   RET
-.ENDP
+.ENDPROC
 ```
 
 ```
@@ -779,7 +818,7 @@ When a library module depends on another library, it declares the dependency wit
 EXPORT .PROC MATH.ADD
   ADDS            # Pops two values from the stack, pushes their sum
   RET
-.ENDP
+.ENDPROC
 ```
 
 **File 2: `utils.evo`**
@@ -794,7 +833,7 @@ EXPORT .PROC UTILS.ADD_ONE REF X
   CALL MATH.ADD   # Stack now has X+1
   POP X           # Store result back in the caller's register
   RET
-.ENDP
+.ENDPROC
 ```
 
 **File 3: `main.evo`**
@@ -817,8 +856,8 @@ The `USING M AS MATH` clause tells the compiler: "the module that `utils.evo` kn
 
 ```
 # constants.evo — shared constants (no .IMPORT or .REQUIRE allowed)
-.DEFINE MAX_ENERGY DATA:1000
-.DEFINE STEP_SIZE 1|0
+.CONST MAX_ENERGY DATA:1000
+.CONST STEP_SIZE 1|0
 ```
 
 ```
@@ -838,7 +877,7 @@ Complete, compilable example programs are provided in [`assembly/examples/`](../
 
 | File | Description |
 |---|---|
-| [`simple.evo`](../assembly/examples/simple.evo) | Basic syntax: register aliases, `.DEFINE`, `.PROC`, labels, loops |
+| [`simple.evo`](../assembly/examples/simple.evo) | Basic syntax: register aliases, `.CONST`, `.PROC`, labels, loops |
 | [`complex.evo`](../assembly/examples/complex.evo) | Advanced features: `.PLACE`, `.MACRO`, `.REPEAT`, `.SOURCE`, multiple `.ORG` regions |
 | [`modules/main.evo`](../assembly/examples/modules/main.evo) | Module system: `.IMPORT`, `EXPORT .IMPORT`, `.REQUIRE`, `USING`, `.SOURCE` for shared constants, `EXPORT` |
 | [`duplicate-shell/main.evo`](../assembly/examples/duplicate-shell/main.evo) | A procedure that copies a labelled frame beside one of its edges: location parameters, marker handling, defensive writing, and a driver that calls it |

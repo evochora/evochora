@@ -13,8 +13,8 @@ import org.evochora.compiler.model.symbols.SymbolTable;
  * <p>Registers the import alias as a symbol in the current scope for conflict detection
  * (prevents labels, procedures, or constants from using the same name as an import alias).
  *
- * <p>The actual module relationship (alias → ModuleId) is registered by
- * {@code Compiler.setupModuleRelationships()} from the DependencyScanner's resolved data.
+ * <p>The module relationship itself (alias → alias chain of the imported placement) is registered
+ * by {@link ImportModuleSetupHandler} from the dependency scan's data.
  */
 public class ImportSymbolCollector implements ISymbolCollector {
 

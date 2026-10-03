@@ -17,7 +17,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class ModuleScopeTest {
 
     private static Symbol symbol(String name, int line) {
-        return new Symbol(name, new SourceInfo("m.evo", line, 1), Symbol.Type.LABEL);
+        return new Symbol(name, new SourceInfo("m.evo", line, 1, "", 0), Symbol.Type.LABEL);
     }
 
     @Test

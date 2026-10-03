@@ -8,7 +8,7 @@ import org.evochora.compiler.model.ast.ISourceLocatable;
 import java.util.List;
 
 /**
- * An AST node that represents a procedure definition (<code>.PROC</code> ... <code>.ENDP</code>).
+ * An AST node that represents a procedure definition (<code>.PROC</code> ... <code>.ENDPROC</code>).
  *
  * @param name The procedure name.
  * @param exported Whether the procedure is exported (visibility for other modules).

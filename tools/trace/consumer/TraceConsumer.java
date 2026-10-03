@@ -25,6 +25,7 @@ import org.evochora.datapipeline.api.contracts.ProcFrame;
 import org.evochora.datapipeline.api.contracts.ProgramArtifact;
 import org.evochora.datapipeline.api.contracts.RegisterValue;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
+import org.evochora.datapipeline.api.contracts.SourceFile;
 import org.evochora.datapipeline.api.contracts.SourceMapEntry;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
@@ -250,7 +251,11 @@ public final class TraceConsumer extends AbstractService {
         for (SourceMapEntry entry : artifact.getSourceMapList()) {
             p.addressToSource.put(entry.getLinearAddress(), entry);
         }
-        artifact.getSourcesMap().forEach((file, lines) -> p.sources.put(file, lines.getLinesList()));
+        // Every placement of a file carries the same lines; the file name of a source location is
+        // the path the file was read from.
+        for (SourceFile file : artifact.getSourcesList()) {
+            p.sources.putIfAbsent(file.getResolvedPath(), file.getLinesList());
+        }
         p.labelValueToName.putAll(artifact.getLabelValueToNameMap());
         for (InstructionMapping mapping : artifact.getMachineCodeLayoutList()) {
             p.relCoordToLayoutMolecule.put(vector(mapping.getPosition()), mapping.getInstruction());

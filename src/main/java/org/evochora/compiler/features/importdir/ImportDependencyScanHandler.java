@@ -24,6 +24,9 @@ public class ImportDependencyScanHandler implements IDependencyScanHandler {
             "(?i)^(EXPORT\\s+)?\\.IMPORT\\s+\"([^\"]+)\"(.*)$");
     private static final Pattern CLAUSES_PATTERN = Pattern.compile(
             "(?i)^\\s+AS\\s+(\\w+)((?:\\s+USING\\s+\\w+\\s+AS\\s+\\w+)*)\\s*$");
+    // The alias as the preprocessor reads it, which places the module even where the rest of the
+    // clauses is malformed.
+    private static final Pattern ALIAS_PATTERN = Pattern.compile("(?i)^\\s+AS\\s+(\\w+)");
     private static final Pattern USING_PATTERN = Pattern.compile(
             "(?i)USING\\s+(\\w+)\\s+AS\\s+(\\w+)");
 
@@ -45,24 +48,33 @@ public class ImportDependencyScanHandler implements IDependencyScanHandler {
             return;
         }
 
-        // A directive without a well-formed alias clause names no dependency; its tokens are still
-        // needed so the phase that reads the clause can report what is wrong with it.
+        // The placement's chain is formed as the preprocessor forms it: the importing placement's
+        // chain followed by the alias.
+        Matcher alias = ALIAS_PATTERN.matcher(matcher.group(3));
+        String aliasChain = alias.find() ? childChain(ctx.placementChain(), alias.group(1)) : ctx.placementChain();
+
+        // A directive without well-formed clauses names no dependency; its tokens are still
+        // needed so the phase that reads the clauses can report what is wrong with them.
         Matcher clauses = CLAUSES_PATTERN.matcher(matcher.group(3));
         if (clauses.matches()) {
-            String alias = clauses.group(1);
             List<ImportDependencyInfo.UsingDecl> usings = new ArrayList<>();
             Matcher usingMatcher = USING_PATTERN.matcher(clauses.group(2));
             while (usingMatcher.find()) {
                 usings.add(new ImportDependencyInfo.UsingDecl(usingMatcher.group(1), usingMatcher.group(2)));
             }
-            ctx.addDependency(new ImportDependencyInfo(path, alias, usings, resolvedPath, exported));
+            ctx.addDependency(new ImportDependencyInfo(path, clauses.group(1), usings, resolvedPath, exported, aliasChain));
         }
 
         try {
             String content = ctx.loadContent(resolvedPath);
-            ctx.scanNestedModule(resolvedPath, content);
+            ctx.scanNestedModule(resolvedPath, content, aliasChain);
         } catch (IOException e) {
             ctx.reportError("Module file not found: " + path);
         }
+    }
+
+    private static String childChain(String parentChain, String alias) {
+        String aliasUpper = alias.toUpperCase();
+        return (parentChain == null || parentChain.isEmpty()) ? aliasUpper : parentChain + "." + aliasUpper;
     }
 }

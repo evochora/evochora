@@ -7,7 +7,7 @@ package org.evochora.compiler.api;
 public enum TokenKind {
     /** A label defined in the source code. */
     LABEL,
-    /** A constant defined with .DEFINE. */
+    /** A constant defined with .CONST. */
     CONSTANT,
     /** A procedure defined with .PROC. */
     PROCEDURE,

@@ -1,5 +1,6 @@
 package org.evochora.compiler.directives;
 
+import org.evochora.compiler.TestLexers;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.model.token.Token;
@@ -32,7 +33,7 @@ public class RequireDirectiveTest {
     void parsesSimpleRequire() {
         String source = ".REQUIRE \"dependency.evo\" AS DEP";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(source, diagnostics);
+        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
         List<Token> tokens = lexer.scanTokens();
         Parser parser = new Parser(tokens, diagnostics, registry());
 
@@ -52,7 +53,7 @@ public class RequireDirectiveTest {
     void missingAsKeywordReportsError() {
         String source = ".REQUIRE \"dependency.evo\" DEP";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(source, diagnostics);
+        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
         List<Token> tokens = lexer.scanTokens();
         Parser parser = new Parser(tokens, diagnostics, registry());
         parser.parse();
@@ -65,7 +66,7 @@ public class RequireDirectiveTest {
     void missingPathReportsError() {
         String source = ".REQUIRE AS DEP";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(source, diagnostics);
+        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
         List<Token> tokens = lexer.scanTokens();
         Parser parser = new Parser(tokens, diagnostics, registry());
         parser.parse();
@@ -78,7 +79,7 @@ public class RequireDirectiveTest {
     void missingAliasReportsError() {
         String source = ".REQUIRE \"dependency.evo\" AS";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(source, diagnostics);
+        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
         List<Token> tokens = lexer.scanTokens();
         Parser parser = new Parser(tokens, diagnostics, registry());
         parser.parse();
@@ -91,7 +92,7 @@ public class RequireDirectiveTest {
     void requireNodeRetainsSourceFileName() {
         String source = ".REQUIRE \"math.evo\" AS MATH";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(source, diagnostics, "main.evo");
+        Lexer lexer = new Lexer(source, diagnostics, "main.evo", TestLexers.symbols());
         List<Token> tokens = lexer.scanTokens();
         Parser parser = new Parser(tokens, diagnostics, registry());
 
@@ -107,7 +108,7 @@ public class RequireDirectiveTest {
     void requireNodeChildrenAreEmpty() {
         String source = ".REQUIRE \"utils.evo\" AS UTILS";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(source, diagnostics);
+        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
         List<Token> tokens = lexer.scanTokens();
         Parser parser = new Parser(tokens, diagnostics, registry());
 

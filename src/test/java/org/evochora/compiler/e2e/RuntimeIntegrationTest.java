@@ -53,7 +53,7 @@ public class RuntimeIntegrationTest {
 				"EXPORT .PROC ADD2 REF A B",
 				"  ADDR A B",
 				"  RET",
-				".ENDP"
+				".ENDPROC"
 		);
 
 		Compiler compiler = new Compiler();
@@ -109,7 +109,7 @@ public class RuntimeIntegrationTest {
                 "EXPORT .PROC INC REF A",
                 "  ADDI A DATA:1",
                 "  RET",
-                ".ENDP"
+                ".ENDPROC"
 
         );
 
@@ -162,14 +162,14 @@ public class RuntimeIntegrationTest {
                 "  CALL PROC_B",         // PROC_B will overwrite PLR0
                 "  SKLR %PLR0",          // After return, PLR0 should be restored — move DP back
                 "  RET",
-                ".ENDP",
+                ".ENDPROC",
                 // PROC_B at another location
                 ".ORG 0|3",
                 "EXPORT .PROC PROC_B",
                 "  .REG %TMP %PLR0",     // Alias for readability
                 "  CRLR %TMP",           // Empty PLR0 — overwrites caller's value
                 "  RET",
-                ".ENDP"
+                ".ENDPROC"
         );
 
         Compiler compiler = new Compiler();
@@ -229,13 +229,13 @@ public class RuntimeIntegrationTest {
                 "  ADDI %SDR0 DATA:1",
                 "  SETR %DR0 %SDR0",
                 "  RET",
-                ".ENDP",
+                ".ENDPROC",
                 // COUNTER_B: copy SDR0 to DR1 (should be 0 — separate backing store)
                 ".ORG 0|3",
                 "EXPORT .PROC COUNTER_B",
                 "  SETR %DR1 %SDR0",
                 "  RET",
-                ".ENDP"
+                ".ENDPROC"
         );
 
         Compiler compiler = new Compiler();
@@ -292,7 +292,7 @@ public class RuntimeIntegrationTest {
                 "EXPORT .PROC CLEAR_POS LREF lPos",
                 "  CRLR lPos",                  // Empty FLR0
                 "  RET",
-                ".ENDP"
+                ".ENDPROC"
         );
 
         Compiler compiler = new Compiler();
@@ -348,7 +348,7 @@ public class RuntimeIntegrationTest {
                 "  ADDI a DATA:1",                    // FDR0 = 42
                 "  CRLR lPos",                        // FLR0 holds no position
                 "  RET",
-                ".ENDP"
+                ".ENDPROC"
         );
 
         Compiler compiler = new Compiler();
@@ -407,7 +407,7 @@ public class RuntimeIntegrationTest {
                 "EXPORT .PROC SAVE_POS LVAL lDest",
                 "  LRLR %LR0 lDest",        // Copy FLR0 (resolved label position) into LR0
                 "  RET",
-                ".ENDP"
+                ".ENDPROC"
         );
 
         Compiler compiler = new Compiler();
@@ -457,7 +457,7 @@ public class RuntimeIntegrationTest {
                 "EXPORT .PROC SAVE_POS LVAL lDest",
                 "  LRLR %LR0 lDest",        // Copy FLR0 into LR0
                 "  RET",
-                ".ENDP"
+                ".ENDPROC"
         );
 
         Compiler compiler = new Compiler();

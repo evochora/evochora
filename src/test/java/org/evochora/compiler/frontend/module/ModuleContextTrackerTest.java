@@ -103,7 +103,7 @@ class ModuleContextTrackerTest {
         // The phases that walk the AST rely on this: whatever module is in context before a
         // traversal is in context again after it, so no phase has to reset the table for the next.
         symbolTable.registerModule(MATH + "." + MOVE, "/modules/movement.evo");
-        SourceInfo src = new SourceInfo("/main.evo", 1, 1);
+        SourceInfo src = new SourceInfo("/main.evo", 1, 1, "", 0);
         List<AstNode> program = List.of(
                 new NumberLiteralNode(1, src),
                 new PushCtxNode("/modules/math.evo", MATH),           // .IMPORT math

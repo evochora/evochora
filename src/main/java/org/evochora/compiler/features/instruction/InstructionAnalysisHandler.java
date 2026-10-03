@@ -77,7 +77,7 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
 
                 // An identifier is checked by what it stands for
                 if (argumentNode instanceof IdentifierNode idNode) {
-                    switch (symbolTable.resolve(idNode.text(), idNode.sourceInfo().fileName())) {
+                    switch (symbolTable.resolve(idNode.text(), idNode.sourceInfo())) {
                         case ResolvedSymbol resolved -> {
                             // What the identifier stands for is asked of the node that defined it:
                             // a binding is checked as the argument it binds to, a jump target may

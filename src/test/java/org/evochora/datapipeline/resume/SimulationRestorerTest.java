@@ -32,6 +32,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Unit tests for {@link SimulationRestorer}.
@@ -970,6 +971,189 @@ class SimulationRestorerTest {
                 new ResumeCheckpoint(metadata, snapshotWith(createOrganismState(1, 500))), randomProvider, 1);
 
         assertThat(restoredToken(state).qualifiedName()).isNull();
+    }
+
+    /**
+     * Two placements of one file share its positions; every place of the artifact that names a
+     * position keeps the placement through the metadata, so the restored artifact keeps them apart.
+     */
+    @Test
+    void restore_Placements_Preserved() {
+        org.evochora.datapipeline.api.contracts.SourceInfo position =
+                org.evochora.datapipeline.api.contracts.SourceInfo.newBuilder()
+                    .setFileName("/root/lib.evo")
+                    .setLineNumber(2)
+                    .setColumnNumber(3)
+                    .setPlacement("SECOND")
+                    .build();
+        org.evochora.datapipeline.api.contracts.TokenInfo token =
+                org.evochora.datapipeline.api.contracts.TokenInfo.newBuilder()
+                    .setTokenText("LOOP")
+                    .setTokenType("LABEL")
+                    .setScope("global")
+                    .setQualifiedName("SECOND.LOOP")
+                    .build();
+        org.evochora.datapipeline.api.contracts.ProgramArtifact program =
+                org.evochora.datapipeline.api.contracts.ProgramArtifact.newBuilder()
+                    .setProgramId("test-program")
+                    .addSources(org.evochora.datapipeline.api.contracts.SourceFile.newBuilder()
+                        .setPlacement("SECOND")
+                        .setPath("lib.evo")
+                        .setResolvedPath("/root/lib.evo")
+                        .addLines("NOP"))
+                    .addSourceMap(org.evochora.datapipeline.api.contracts.SourceMapEntry.newBuilder()
+                        .setLinearAddress(0)
+                        .setSourceInfo(position))
+                    .addTokenMap(org.evochora.datapipeline.api.contracts.TokenMapEntry.newBuilder()
+                        .setSourceInfo(position)
+                        .setTokenInfo(token))
+                    .addTokenLookup(org.evochora.datapipeline.api.contracts.FileTokenLookup.newBuilder()
+                        .setPlacement("SECOND")
+                        .setFileName("/root/lib.evo")
+                        .addLines(org.evochora.datapipeline.api.contracts.LineTokenLookup.newBuilder()
+                            .setLineNumber(2)
+                            .addColumns(org.evochora.datapipeline.api.contracts.ColumnTokenLookup.newBuilder()
+                                .setColumnNumber(3)
+                                .addTokens(token))))
+                    .build();
+        SimulationMetadata metadata = createMinimalMetadata().toBuilder().addPrograms(program).build();
+
+        SimulationRestorer.RestoredState state = SimulationRestorer.restore(
+                new ResumeCheckpoint(metadata, snapshotWith(createOrganismState(1, 500))), randomProvider, 1);
+
+        var artifact = state.programArtifacts().get("test-program");
+        var restoredPosition = new org.evochora.compiler.api.SourceInfo("/root/lib.evo", 2, 3, "SECOND", 0);
+        assertThat(artifact.sources()).containsExactly(
+                new org.evochora.compiler.api.SourceFile("SECOND", "lib.evo", "/root/lib.evo", List.of("NOP")));
+        assertThat(artifact.sourceMap()).containsEntry(0, restoredPosition);
+        assertThat(artifact.tokenMap()).containsOnlyKeys(restoredPosition);
+        assertThat(artifact.tokenLookup()).containsOnlyKeys("SECOND");
+        assertThat(artifact.tokenLookup().get("SECOND").get("/root/lib.evo").get(2).get(3))
+                .extracting(org.evochora.compiler.api.TokenInfo::qualifiedName)
+                .containsExactly("SECOND.LOOP");
+    }
+
+    /**
+     * What the preprocessor recorded for a source view, the regions it left out and the notes,
+     * and the macro expansion of a position in the source map survive the metadata.
+     */
+    @Test
+    void restore_LeftOutRegionsNotesAndExpansions_Preserved() {
+        org.evochora.datapipeline.api.contracts.ProgramArtifact program =
+                org.evochora.datapipeline.api.contracts.ProgramArtifact.newBuilder()
+                    .setProgramId("test-program")
+                    .addSources(org.evochora.datapipeline.api.contracts.SourceFile.newBuilder()
+                        .setPlacement("")
+                        .setPath("main.evo")
+                        .setResolvedPath("/root/main.evo")
+                        .addLines(".IFDEF PAD")
+                        .addLines("NOP")
+                        .addLines(".ENDDEF")
+                        .addLeftOut(org.evochora.datapipeline.api.contracts.LeftOutRegion.newBuilder()
+                            .setExpansion(2)
+                            .setDirectiveLine(1)
+                            .setFrom(2)
+                            .setTo(2))
+                        .addNotes(org.evochora.datapipeline.api.contracts.SourceNote.newBuilder()
+                            .setExpansion(2)
+                            .setLine(1)
+                            .setColumn(8)
+                            .setText("[not set]")))
+                    .addSourceMap(org.evochora.datapipeline.api.contracts.SourceMapEntry.newBuilder()
+                        .setLinearAddress(0)
+                        .setSourceInfo(org.evochora.datapipeline.api.contracts.SourceInfo.newBuilder()
+                            .setFileName("/root/main.evo")
+                            .setLineNumber(2)
+                            .setColumnNumber(1)
+                            .setExpansion(3)))
+                    .build();
+        SimulationMetadata metadata = createMinimalMetadata().toBuilder().addPrograms(program).build();
+
+        SimulationRestorer.RestoredState state = SimulationRestorer.restore(
+                new ResumeCheckpoint(metadata, snapshotWith(createOrganismState(1, 500))), randomProvider, 1);
+
+        var artifact = state.programArtifacts().get("test-program");
+        assertThat(artifact.sources()).containsExactly(new org.evochora.compiler.api.SourceFile(
+                "", "main.evo", "/root/main.evo", 0, null, List.of(".IFDEF PAD", "NOP", ".ENDDEF"),
+                List.of(new org.evochora.compiler.api.SourceFile.LeftOut(2, 1, 2, 2)),
+                List.of(new org.evochora.compiler.api.SourceFile.Note(2, 1, 8, "[not set]"))));
+        assertThat(artifact.sourceMap()).containsEntry(0,
+                new org.evochora.compiler.api.SourceInfo("/root/main.evo", 2, 1, "", 3));
+    }
+
+    /**
+     * The inclusion an entry of the sources stands for, its instance and the position of the
+     * directive that made it, and every expansion with its call, its definition, its name, its
+     * bindings and its records survive the metadata, as do the values of the constants; the main
+     * file keeps no inclusion point; the instructions per line stay under their expansion.
+     */
+    @Test
+    void restore_InclusionsExpansionsAndInstructionsPerExpansion_Preserved() {
+        org.evochora.datapipeline.api.contracts.SourceInfo directive =
+                org.evochora.datapipeline.api.contracts.SourceInfo.newBuilder()
+                    .setFileName("/root/main.evo")
+                    .setLineNumber(2)
+                    .setColumnNumber(1)
+                    .build();
+        org.evochora.datapipeline.api.contracts.ProgramArtifact program =
+                org.evochora.datapipeline.api.contracts.ProgramArtifact.newBuilder()
+                    .setProgramId("test-program")
+                    .addSources(org.evochora.datapipeline.api.contracts.SourceFile.newBuilder()
+                        .setPath("main.evo")
+                        .setResolvedPath("/root/main.evo")
+                        .addLines("NOP"))
+                    .addSources(org.evochora.datapipeline.api.contracts.SourceFile.newBuilder()
+                        .setPath("lib.evo")
+                        .setResolvedPath("/root/lib.evo")
+                        .setInstance(2)
+                        .setIncludedAt(directive)
+                        .addLines("NOP"))
+                    .putExpansions(5, org.evochora.datapipeline.api.contracts.Expansion.newBuilder()
+                        .setCalledAt(directive)
+                        .setDefinedAt(org.evochora.datapipeline.api.contracts.SourceInfo.newBuilder()
+                            .setFileName("/root/lib.evo")
+                            .setLineNumber(1)
+                            .setColumnNumber(8)
+                            .setExpansion(2))
+                        .setName("STEP")
+                        .addBindings(org.evochora.datapipeline.api.contracts.ExpansionBinding.newBuilder()
+                            .setParameter("REG")
+                            .setArgument("%DR0"))
+                        .addNotes(org.evochora.datapipeline.api.contracts.SourceNote.newBuilder()
+                            .setExpansion(5)
+                            .setLine(1)
+                            .setColumn(1)
+                            .setText("[set]"))
+                        .build())
+                    .putConstantValues("LIB.MAX", "DATA:5")
+                    .addSourceLineToInstructions(org.evochora.datapipeline.api.contracts.FileSourceLines.newBuilder()
+                        .setFileName("/root/lib.evo")
+                        .setExpansion(5)
+                        .putLines(1, org.evochora.datapipeline.api.contracts.MachineInstructionInfoList.newBuilder()
+                            .addInstructions(org.evochora.datapipeline.api.contracts.MachineInstructionInfo.newBuilder()
+                                .setLinearAddress(7)
+                                .setOpcode("NOP"))
+                            .build()))
+                    .build();
+        SimulationMetadata metadata = createMinimalMetadata().toBuilder().addPrograms(program).build();
+
+        SimulationRestorer.RestoredState state = SimulationRestorer.restore(
+                new ResumeCheckpoint(metadata, snapshotWith(createOrganismState(1, 500))), randomProvider, 1);
+
+        var artifact = state.programArtifacts().get("test-program");
+        assertThat(artifact.sources()).containsExactly(
+                new org.evochora.compiler.api.SourceFile("", "main.evo", "/root/main.evo", List.of("NOP")),
+                new org.evochora.compiler.api.SourceFile("", "lib.evo", "/root/lib.evo", 2,
+                        new org.evochora.compiler.api.SourceInfo("/root/main.evo", 2, 1, "", 0), List.of("NOP")));
+        assertThat(artifact.expansions()).containsExactly(Map.entry(5, new org.evochora.compiler.api.Expansion(
+                new org.evochora.compiler.api.SourceInfo("/root/main.evo", 2, 1, "", 0),
+                new org.evochora.compiler.api.SourceInfo("/root/lib.evo", 1, 8, "", 2),
+                "STEP", List.of(new org.evochora.compiler.api.Expansion.Binding("REG", "%DR0")),
+                List.of(), List.of(new org.evochora.compiler.api.SourceFile.Note(5, 1, 1, "[set]")))));
+        assertThat(artifact.constantValues()).containsExactly(Map.entry("LIB.MAX", "DATA:5"));
+        assertThat(artifact.sourceLineToInstructions().get("").get("/root/lib.evo")).containsOnlyKeys(5);
+        assertThat(artifact.sourceLineToInstructions().get("").get("/root/lib.evo").get(5).get(1))
+                .containsExactly(new org.evochora.compiler.api.MachineInstructionInfo(7, "NOP", "", false));
     }
 
     // ==================== Helper Methods ====================

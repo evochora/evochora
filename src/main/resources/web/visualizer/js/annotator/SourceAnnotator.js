@@ -3,6 +3,7 @@ import { LabelReferenceTokenHandler } from './handlers/LabelReferenceTokenHandle
 import { ProcedureTokenHandler } from './handlers/ProcedureTokenHandler.js';
 import { ParameterTokenHandler } from './handlers/ParameterTokenHandler.js';
 import { RetInstructionHandler } from './handlers/RetInstructionHandler.js';
+import { AnnotationUtils } from './AnnotationUtils.js';
 
 /**
  * Engine for token-level annotation in the source code view.
@@ -33,6 +34,7 @@ export class SourceAnnotator {
      *
      * @param {object} organismState The current dynamic state of the organism.
      * @param {object} artifact The static program artifact.
+     * @param {string} placement The alias chain of the module placement the line belongs to.
      * @param {string} fileName The name of the source file being annotated.
      * @param {string} sourceLine The raw text of the source code line.
      * @param {number} lineNumber The 1-based line number.
@@ -40,22 +42,17 @@ export class SourceAnnotator {
      *        label value into the value that stands in its body.
      * @returns {Array<object>} A list of annotation spans ready for rendering.
      */
-    annotate(organismState, artifact, fileName, sourceLine, lineNumber, labelNamespaceMask) {
+    annotate(organismState, artifact, placement, fileName, sourceLine, lineNumber, labelNamespaceMask) {
         if (!artifact || !organismState || !fileName) return [];
 
         const tokenLookup = artifact.tokenLookup;
         if (!tokenLookup) return [];
 
-        // 1. Find file entry (handle array or object structure)
-        let fileEntry = null;
-        if (Array.isArray(tokenLookup)) {
-            fileEntry = tokenLookup.find(entry => entry.fileName === fileName);
-        } else {
-            fileEntry = Object.values(tokenLookup).find(entry => entry.fileName === fileName);
-        }
-
+        // 1. Find the entry of the file in its placement; two placements of one file share its
+        // positions but not its tokens' meaning
+        const fileEntry = this.fileEntryOf(tokenLookup, placement, fileName);
         if (!fileEntry || !fileEntry.lines) {
-            console.debug("SourceAnnotator: No entry or lines for file", fileName);
+            console.debug("SourceAnnotator: No entry or lines for file", placement || '', fileName);
             return [];
         }
 
@@ -76,34 +73,20 @@ export class SourceAnnotator {
 
         if (!lineData.columns) return [];
 
-        // 3. Calculate Line Start Offset to convert absolute token pos to relative
-        // We can rely on the backend normalizing line endings to \n (Unix-style).
-        // See IncludeDirectiveHandler.java and Compiler.java
-        const allLines = this.getAllLines(artifact, fileName);
-        if (!allLines) return []; // Should not happen if we have sourceLine
-
-        // Calculate offset for Unix endings (\n)
-        let offset = 0;
-        
-        for (let i = 0; i < lineNumber - 1; i++) {
-            const len = allLines[i].length;
-            offset += len + 1; // +1 for \n
-        }
-
         let annotations = [];
 
-        // 4. Process tokens
+        // 3. Process tokens
         lineData.columns.forEach(colData => {
-            const absColumn = colData.columnNumber; 
+            // columnNumber is the 1-based column of the token's first character within its line
+            const column = colData.columnNumber;
             const tokens = colData.tokens;
 
             if (Array.isArray(tokens)) {
                 tokens.forEach(tokenInfo => {
                     const tokenText = tokenInfo.tokenText;
                     
-                    // Determine relative column (0-based index in sourceLine)
-                    // Backend guarantees consistent \n normalization, so we use simple arithmetic.
-                    const relColumn = absColumn - 1 - offset;
+                    // 0-based index of the token's first character in sourceLine
+                    const relColumn = column - 1;
                     
                     // Validate position (sanity check)
                     if (this.checkTokenAt(sourceLine, tokenText, relColumn)) {
@@ -116,8 +99,8 @@ export class SourceAnnotator {
                                     tokenText: tokenText,
                                     annotationText: result.annotationText,
                                     kind: result.kind,
-                                    column: absColumn, // absolute for sorting
-                                    relativeColumn: relColumn // relative for slicing
+                                    column: column, // 1-based column in the line
+                                    relativeColumn: relColumn // 0-based index for slicing
                                 });
                                 }
                             } catch (error) {
@@ -125,9 +108,9 @@ export class SourceAnnotator {
                             }
                         }
                     } else {
-                        // If this fails, it means the backend normalization is still broken or frontend lines differ.
-                        // We log this but do NOT try to guess/fix it heuristically.
-                        console.debug(`SourceAnnotator: Token '${tokenText}' mismatch at relCol ${relColumn} (abs ${absColumn}, offset ${offset})`);
+                        // A mismatch means the artifact's token positions and the displayed line differ.
+                        // It is logged, and no heuristic tries to locate the token elsewhere.
+                        console.debug(`SourceAnnotator: Token '${tokenText}' mismatch at relCol ${relColumn} (column ${column})`);
                     }
                 });
             }
@@ -137,22 +120,62 @@ export class SourceAnnotator {
     }
     
     /**
-     * Retrieves all source code lines for a given file from the artifact.
-     * Handles different possible structures for the source data.
+     * Collects the compile-time notes on the constants of a file's lines: for every token the
+     * token map marks as a constant, a note `[=VALUE]` after the token, with the value the
+     * artifact's `constantValues` give for the key of its definition, its qualified name (or its
+     * text, without one) and the scope it is defined in. Unlike
+     * the annotations of {@link annotate}, they do not depend on the organism's state and are
+     * shown on every line.
      *
-     * @param {object} artifact The program artifact.
-     * @param {string} fileName The name of the file to retrieve lines from.
-     * @returns {string[]|null} An array of source code lines or null if not found.
+     * @param {object} artifact The static program artifact.
+     * @param {string} placement The alias chain of the module placement the lines belong to.
+     * @param {string} fileName The name of the source file.
+     * @param {string[]} lines The lines of the file.
+     * @returns {Map<number, Array<{end: number, text: string}>>} The notes by 1-based line number,
+     *          each with the index in the line after which it is shown.
+     */
+    constantNotes(artifact, placement, fileName, lines) {
+        const notes = new Map();
+        const values = artifact?.constantValues;
+        const fileEntry = values && artifact.tokenLookup
+            ? this.fileEntryOf(artifact.tokenLookup, placement, fileName) : null;
+        if (!fileEntry || !fileEntry.lines) return notes;
+        const lineEntries = Array.isArray(fileEntry.lines) ? fileEntry.lines : Object.values(fileEntry.lines);
+        lineEntries.forEach(lineData => {
+            const text = lines[lineData.lineNumber - 1];
+            if (text === undefined || !Array.isArray(lineData.columns)) return;
+            lineData.columns.forEach(colData => {
+                (Array.isArray(colData.tokens) ? colData.tokens : []).forEach(tokenInfo => {
+                    if (tokenInfo.tokenType !== 'CONSTANT') return;
+                    const value = values[AnnotationUtils.definitionKey(
+                        (tokenInfo.qualifiedName || tokenInfo.tokenText || '').toUpperCase(), tokenInfo.scope)];
+                    const start = colData.columnNumber - 1;
+                    if (value === undefined || !this.checkTokenAt(text, tokenInfo.tokenText, start)) return;
+                    const lineNotes = notes.get(lineData.lineNumber) || [];
+                    lineNotes.push({ end: start + tokenInfo.tokenText.length, text: `[=${value}]` });
+                    notes.set(lineData.lineNumber, lineNotes);
+                });
+            });
+        });
+        return notes;
+    }
+
+    /**
+     * Finds the token lookup entry of a file in its placement, in the array or the object form of
+     * the lookup.
+     *
+     * @param {Array<object>|object} tokenLookup The artifact's token lookup.
+     * @param {string} placement The alias chain of the placement; empty or absent for the empty one.
+     * @param {string} fileName The name of the source file.
+     * @returns {object|undefined} The entry, or undefined if the lookup has none.
      * @private
      */
-    getAllLines(artifact, fileName) {
-        if (!artifact.sources || !artifact.sources[fileName]) return null;
-        const source = artifact.sources[fileName];
-        if (Array.isArray(source)) return source;
-        if (source.lines) return source.lines;
-        return null;
+    fileEntryOf(tokenLookup, placement, fileName) {
+        const wantedPlacement = placement || '';
+        const matches = entry => (entry.placement || '') === wantedPlacement && entry.fileName === fileName;
+        return Array.isArray(tokenLookup) ? tokenLookup.find(matches) : Object.values(tokenLookup).find(matches);
     }
-    
+
     /**
      * Verifies that a token's text matches the source line at a given column.
      * This is a sanity check to ensure token data from the artifact aligns with the source.

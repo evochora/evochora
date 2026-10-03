@@ -1,7 +1,10 @@
 package org.evochora.compiler.frontend.preprocessor;
 
+import java.util.Map;
+import org.evochora.compiler.api.CompilerOptions;
 import org.evochora.compiler.features.macro.MacroDefinition;
 import org.evochora.compiler.features.macro.MacroExpansionHandler;
+import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 import org.junit.jupiter.api.Tag;
@@ -9,6 +12,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -20,7 +24,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @Tag("unit")
 class PreProcessorHandlerRegistryTest {
 
-    private final PreProcessorHandlerRegistry registry = new PreProcessorContext().handlers();
+    private final PreProcessorHandlerRegistry registry = new PreProcessorContext("", Map.of(), "<memory>", CompilerOptions.defaults()).handlers();
 
     @Test
     void registerAndRetrieve() {
@@ -46,18 +50,13 @@ class PreProcessorHandlerRegistryTest {
     }
 
     @Test
-    void registeringTheSameDefinitionAgainIsIgnored() {
-        Token nameToken = identifier("INC");
-        List<Token> params = List.of(identifier("R"));
-        List<Token> body = List.of(opcode("ADDI"));
+    void registeringTheSameHandlerAgainIsIgnored() {
+        IPreProcessorHandler handler = createHandler("INC", List.of("R"), List.of(opcode("ADDI")));
 
-        IPreProcessorHandler handler1 = new MacroExpansionHandler(new MacroDefinition(nameToken, params, body));
-        IPreProcessorHandler handler2 = new MacroExpansionHandler(new MacroDefinition(nameToken, params, body));
+        registry.register("INC", handler);
+        registry.register("INC", handler);
 
-        registry.register("INC", handler1);
-        registry.register("INC", handler2);
-
-        assertThat(registry.get("INC")).isPresent().containsSame(handler1);
+        assertThat(registry.get("INC")).isPresent().containsSame(handler);
     }
 
     @Test
@@ -85,11 +84,11 @@ class PreProcessorHandlerRegistryTest {
     }
 
     private static Token identifierAt(String text, int line) {
-        return new Token(TokenType.IDENTIFIER, text, null, line, 1, "test");
+        return new Token(TokenType.IDENTIFIER, text, null, new SourceInfo("test", line, 1, "", 0));
     }
 
     private static Token opcode(String text) {
-        return new Token(TokenType.OPCODE, text, null, 1, 1, "test");
+        return new Token(TokenType.OPCODE, text, null, new SourceInfo("test", 1, 1, "", 0));
     }
 
     @Test
@@ -115,5 +114,45 @@ class PreProcessorHandlerRegistryTest {
         registry.enterModule();
 
         assertThat(registry.get(".SOURCE")).contains(source);
+    }
+
+    @Test
+    void aBlockKindAnswersForEveryOneOfItsWordsInAnyCase() {
+        registry.registerBlock(new BlockKind(Set.of(".IFX"), ".ENDX", Set.of(".ELSEX"), false));
+
+        assertThat(registry.isBlockWord(".ifx")).isTrue();
+        assertThat(registry.isBlockWord(".ELSEX")).isTrue();
+        assertThat(registry.isBlockWord(".EndX")).isTrue();
+        assertThat(registry.isBlockWord(".OTHER")).isFalse();
+        assertThat(registry.blockKindOf(".elsex")).map(BlockKind::closer).contains(".ENDX");
+    }
+
+    @Test
+    void registeringAnEqualBlockKindAgainIsIgnored() {
+        registry.registerBlock(new BlockKind(Set.of(".IFX"), ".ENDX", Set.of(), false));
+
+        registry.registerBlock(new BlockKind(Set.of(".ifx"), ".endx", Set.of(), false));
+
+        assertThat(registry.blockKindOf(".IFX")).contains(new BlockKind(Set.of(".IFX"), ".ENDX", Set.of(), false));
+    }
+
+    @Test
+    void aBlockKindThatClaimsAWordOfAnotherKindIsRejected() {
+        registry.registerBlock(new BlockKind(Set.of(".IFX"), ".ENDX", Set.of(".ELSEX"), false));
+
+        assertThatThrownBy(() -> registry.registerBlock(new BlockKind(Set.of(".LOOP"), ".ENDLOOP", Set.of(".ELSEX"), true)))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining(".ELSEX")
+                .hasMessageContaining(".ENDX");
+        assertThat(registry.isBlockWord(".LOOP")).isFalse();
+    }
+
+    @Test
+    void aTopLevelOnlyDirectiveIsRecognisedInAnyCase() {
+        registry.registerTopLevelOnly(".Source");
+
+        assertThat(registry.isTopLevelOnly(".SOURCE")).isTrue();
+        assertThat(registry.isTopLevelOnly(".source")).isTrue();
+        assertThat(registry.isTopLevelOnly(".IMPORT")).isFalse();
     }
 }

@@ -33,9 +33,9 @@ public class OrgDirectiveHandler implements IParserStatementHandler {
         do {
             boolean marked = true;
             int sign;
-            if (context.match(TokenType.AT_PLUS)) {
+            if (context.matchSymbol("@+")) {
                 sign = 1;
-            } else if (context.match(TokenType.AT_MINUS)) {
+            } else if (context.matchSymbol("@-")) {
                 sign = -1;
             } else {
                 marked = false;
@@ -46,13 +46,13 @@ public class OrgDirectiveHandler implements IParserStatementHandler {
             if (marked && value < 0) {
                 context.getDiagnostics().reportError(
                         "A component marked with '@+' or '@-' carries no sign of its own.",
-                        number.fileName(), number.line());
+                        number.source().fileName(), number.source().lineNumber());
             }
             values.add(sign * value);
             relative.add(marked);
         } while (context.match(TokenType.PIPE));
 
-        return new OrgNode(new VectorLiteralNode(List.copyOf(values), start.toSourceInfo()),
-                List.copyOf(relative), directive.toSourceInfo());
+        return new OrgNode(new VectorLiteralNode(List.copyOf(values), start.source()),
+                List.copyOf(relative), directive.source());
     }
 }

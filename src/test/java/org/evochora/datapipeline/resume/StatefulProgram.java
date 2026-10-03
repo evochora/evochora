@@ -60,7 +60,7 @@ final class StatefulProgram {
             "  SETI V DATA:33",
             "  CRLR L",
             "  RET",
-            ".ENDP"
+            ".ENDPROC"
         );
     }
 

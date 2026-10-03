@@ -1,8 +1,10 @@
 package org.evochora.compiler.frontend.module;
 
+import org.evochora.compiler.api.CompilerOptions;
 import org.evochora.compiler.util.SourceRootResolver;
 
 import java.io.IOException;
+import java.util.function.Supplier;
 
 /**
  * Context provided to {@link IDependencyScanHandler} implementations during Phase 0.
@@ -21,7 +23,8 @@ public interface IDependencyScanContext {
     String resolve(String path) throws SourceRootResolver.UnknownPrefixException;
 
     /**
-     * Loads file content from the given resolved path (filesystem or HTTP).
+     * Loads file content from the given resolved path (filesystem or HTTP). A file is read once
+     * per scan; a later request for the same path returns the content read the first time.
      * @param resolvedPath The resolved absolute path.
      * @return The file content.
      * @throws IOException if the file cannot be loaded.
@@ -42,14 +45,28 @@ public interface IDependencyScanContext {
     void reportError(String message);
 
     /**
-     * Triggers recursive scanning of an imported module.
+     * Scans a module file as a placement of its own, nested in the placement being scanned, under
+     * the given alias chain; a file imported more than once is scanned at every import. The scan
+     * continues with the state of every feature as the nested scan leaves it. A file that is
+     * already being scanned on the way to this one is reported as a circular dependency.
+     *
      * @param resolvedPath The resolved absolute path.
-     * @param content The module content.
+     * @param content      The module content.
+     * @param aliasChain   The alias chain of the new placement.
      */
-    void scanNestedModule(String resolvedPath, String content);
+    void scanNestedModule(String resolvedPath, String content, String aliasChain);
 
     /**
-     * Triggers recursive scanning of a .SOURCE file (for nested .SOURCE detection and validation).
+     * Returns the alias chain of the module placement being scanned. A source file scanned
+     * through {@link #scanNestedSourceFile} belongs to the placement that includes it.
+     *
+     * @return The chain; empty for a main module compiled without a prefix.
+     */
+    String placementChain();
+
+    /**
+     * Triggers recursive scanning of a .SOURCE file (for nested .SOURCE detection and validation),
+     * in the placement being scanned.
      * @param resolvedPath The resolved absolute path.
      * @param content The source file content.
      */
@@ -70,7 +87,36 @@ public interface IDependencyScanContext {
 
     /**
      * Returns the current line number (1-based).
-     * @return The number of the line the handler was invoked for, counted from one.
+     * @return The number of the line last handed out in the current file, counted from one: the
+     *         line the handler was invoked for, or the line last taken through {@link #nextLine()}.
      */
     int lineNumber();
+
+    /**
+     * Takes the next line of the file being scanned, read as the scanner reads every line: the
+     * text after a {@code #} removed, surrounding whitespace trimmed, and a line left empty
+     * skipped. A line taken here is not offered to the handlers again; the scan continues after
+     * it once the handler returns.
+     *
+     * @return The next non-empty line, or {@code null} at the end of the file.
+     */
+    String nextLine();
+
+    /**
+     * Returns the options of the compilation.
+     * @return The options the scanner was created with.
+     */
+    CompilerOptions options();
+
+    /**
+     * Returns the state object a feature keeps under the given key type, creating it with the
+     * factory on the first request. One instance exists per key for the whole scan, across every
+     * file it reads; the core knows nothing of the type and never reads the object.
+     *
+     * @param key     The class used as the key.
+     * @param factory Creates the state object; called only while no object exists for the key.
+     * @param <T>     The type of the state object.
+     * @return The existing or newly created state object.
+     */
+    <T> T getOrCreate(Class<T> key, Supplier<T> factory);
 }

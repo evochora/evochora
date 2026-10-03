@@ -7,6 +7,7 @@ import org.evochora.compiler.model.ir.IrDirective;
 import org.evochora.compiler.model.ir.IrInstruction;
 import org.evochora.compiler.model.ir.IrItem;
 import org.evochora.compiler.model.ir.IrLabelDef;
+import org.evochora.compiler.model.ir.DebugInfo;
 import org.evochora.compiler.model.ir.IrProgram;
 
 import java.util.ArrayList;
@@ -41,10 +42,11 @@ public final class Linker {
      * @param layout The placed items with their addresses, and the coordinate mappings.
      * @param context The linking context, which will be populated with call site bindings.
      * @param programName The name carried over to the linked program.
+     * @param debugInfo The debug information carried over to the linked program unchanged.
      * @return The linked IR program.
      * @throws CompilationException if an error occurs during linking.
      */
-    public IrProgram link(LayoutResult layout, LinkingContext context, String programName) throws CompilationException {
+    public IrProgram link(LayoutResult layout, LinkingContext context, String programName, DebugInfo debugInfo) throws CompilationException {
         List<IrItem> out = new ArrayList<>();
 
         for (PlacedItem placed : layout.placedItems()) {
@@ -67,6 +69,6 @@ public final class Linker {
                 }
             }
         }
-        return new IrProgram(programName, out);
+        return new IrProgram(programName, out, debugInfo);
     }
 }

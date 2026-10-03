@@ -10,16 +10,17 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Handles the {@code ^} directive, which is shorthand for {@code .REPEAT}.
- * Transforms {@code BODY^n} into {@code .REPEAT n BODY} in the token stream,
- * allowing the {@link RepeatDirectiveHandler} to process it uniformly.
+ * Handles the {@code ^} directive, which is shorthand for a {@code .REPEAT} block.
+ * Transforms {@code BODY^n} into the block {@code .REPEAT n}, newline, {@code BODY}, newline,
+ * {@code .ENDREPEAT} in the token stream, so that {@link RepeatDirectiveHandler} reads its body
+ * like that of every other block and the body passes the same checks.
  *
  * <p>The handler scans backward from the {@code ^} token to find the statement
  * body on the current line, then replaces the entire sequence with the
- * equivalent {@code .REPEAT} form.</p>
+ * equivalent block. The tokens it adds carry the position of the {@code ^}.</p>
  *
  * <p>Labels are preserved and excluded from the repeat body, so
- * {@code L1: NOP^3} becomes {@code L1: .REPEAT 3 NOP}.</p>
+ * {@code L1: NOP^3} becomes {@code L1:} followed by the block repeating {@code NOP}.</p>
  */
 public class CaretDirectiveHandler implements IPreProcessorHandler {
 
@@ -36,7 +37,7 @@ public class CaretDirectiveHandler implements IPreProcessorHandler {
         if (count < 0) {
             preProcessor.getDiagnostics().reportError(
                     "Repeat count must be non-negative, got: " + count,
-                    countToken.fileName(), countToken.line());
+                    countToken.source().fileName(), countToken.source().lineNumber());
             return;
         }
 
@@ -63,12 +64,14 @@ public class CaretDirectiveHandler implements IPreProcessorHandler {
             bodyTokens.add(preProcessor.getToken(j));
         }
 
-        // Build replacement: .REPEAT n BODY
+        // Build replacement: .REPEAT n, NEWLINE, BODY, NEWLINE, .ENDREPEAT
         List<Token> replacement = new ArrayList<>();
-        replacement.add(new Token(TokenType.DIRECTIVE, ".REPEAT", null,
-                caretToken.line(), caretToken.column(), caretToken.fileName()));
+        replacement.add(synthetic(TokenType.DIRECTIVE, ".REPEAT", caretToken));
         replacement.add(countToken);
+        replacement.add(synthetic(TokenType.NEWLINE, ";", caretToken));
         replacement.addAll(bodyTokens);
+        replacement.add(synthetic(TokenType.NEWLINE, ";", caretToken));
+        replacement.add(synthetic(TokenType.DIRECTIVE, ".ENDREPEAT", caretToken));
 
         // Remove original tokens from bodyStart to current position (body + ^ + count)
         int endIndex = preProcessor.getCurrentIndex();
@@ -77,5 +80,9 @@ public class CaretDirectiveHandler implements IPreProcessorHandler {
 
         // Inject replacement at bodyStart
         preProcessor.injectTokens(replacement, 0);
+    }
+
+    private static Token synthetic(TokenType type, String text, Token position) {
+        return new Token(type, text, null, position.source());
     }
 }
