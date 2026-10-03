@@ -194,7 +194,7 @@ class CompilerDiagnosticsTest {
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
                 .satisfies(e -> assertThat(e.getMessage().lines().toList()).containsExactly(
-                        "[ERROR] " + sourceRoot.resolve("main.evo")
+                        "[ERROR] " + resolved("main.evo")
                                 + ":1: .IMPORT must be the first word on its line; found 'L' before it."));
     }
 
@@ -209,7 +209,7 @@ class CompilerDiagnosticsTest {
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
                 .satisfies(e -> assertThat(e.getMessage().lines().toList()).containsExactly(
-                        "[ERROR] " + sourceRoot.resolve("main.evo")
+                        "[ERROR] " + resolved("main.evo")
                                 + ":2: .SOURCE must be the first word on its line; found 'NOP' before it."));
     }
 
@@ -223,7 +223,7 @@ class CompilerDiagnosticsTest {
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
                 .satisfies(e -> assertThat(e.getMessage().lines().toList()).containsExactly(
-                        "[ERROR] " + sourceRoot.resolve("main.evo")
+                        "[ERROR] " + resolved("main.evo")
                                 + ":1: .REQUIRE must be the first word on its line; found 'L' before it."));
     }
 
@@ -241,7 +241,7 @@ class CompilerDiagnosticsTest {
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
                 .satisfies(e -> assertThat(e.getMessage().lines().toList()).containsExactly(
-                        "[ERROR] " + sourceRoot.resolve("main.evo")
+                        "[ERROR] " + resolved("main.evo")
                                 + ":1: EXPORT is not supported before '.REQUIRE'."));
     }
 
@@ -291,7 +291,7 @@ class CompilerDiagnosticsTest {
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
                 .satisfies(e -> assertThat(e.getMessage().lines().toList()).containsExactly(
-                        "[ERROR] " + sourceRoot.resolve("main.evo")
+                        "[ERROR] " + resolved("main.evo")
                                 + ":2: .SOURCE must stand alone on its line; found ';' after the path."));
     }
 
@@ -307,7 +307,7 @@ class CompilerDiagnosticsTest {
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
                 .satisfies(e -> assertThat(e.getMessage().lines().toList()).containsExactly(
-                        "[ERROR] " + sourceRoot.resolve("main.evo")
+                        "[ERROR] " + resolved("main.evo")
                                 + ":1: .IMPORT must stand alone on its line; found ';' after the alias and its USING clauses."));
     }
 
@@ -321,7 +321,7 @@ class CompilerDiagnosticsTest {
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
                 .satisfies(e -> assertThat(e.getMessage().lines().toList()).containsExactly(
-                        "[ERROR] " + sourceRoot.resolve("main.evo")
+                        "[ERROR] " + resolved("main.evo")
                                 + ":1: .REQUIRE must stand alone on its line; found ';' after the alias."));
     }
 
@@ -1167,5 +1167,13 @@ class CompilerDiagnosticsTest {
     private void compile(String fileName) throws Exception {
         CompilerOptions options = new CompilerOptions(List.of(new SourceRoot(sourceRoot.toString(), null)));
         new Compiler().compile(fileName, ENV, options);
+    }
+
+    /**
+     * Returns the path of a file in the source root as the compiler writes a resolved path, with
+     * forward slashes on every platform.
+     */
+    private String resolved(String fileName) {
+        return sourceRoot.resolve(fileName).toString().replace('\\', '/');
     }
 }

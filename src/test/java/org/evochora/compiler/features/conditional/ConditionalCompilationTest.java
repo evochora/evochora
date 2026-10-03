@@ -222,7 +222,7 @@ class ConditionalCompilationTest {
         assertThatThrownBy(() -> compile("main.evo", Map.of("X", OptionalInt.empty())))
                 .isInstanceOf(CompilationException.class)
                 .satisfies(e -> assertThat(e.getMessage().lines().toList()).containsExactly(
-                        "[ERROR] " + sourceRoot.resolve("main.evo").toString().replace('\\', '/')
+                        "[ERROR] " + resolved("main.evo")
                                 + ":1: .IFDEF must stand alone on its line"));
     }
 
@@ -237,5 +237,13 @@ class ConditionalCompilationTest {
     private ProgramArtifact compile(String fileName, Map<String, OptionalInt> defines) throws Exception {
         CompilerOptions options = new CompilerOptions(List.of(new SourceRoot(sourceRoot.toString(), null)), defines);
         return new Compiler().compile(fileName, ENV, options);
+    }
+
+    /**
+     * Returns the path of a file in the source root as the compiler writes a resolved path, with
+     * forward slashes on every platform.
+     */
+    private String resolved(String fileName) {
+        return sourceRoot.resolve(fileName).toString().replace('\\', '/');
     }
 }

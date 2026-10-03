@@ -196,7 +196,7 @@ class ModulePlacementIntegrationTest {
 
         assertThatThrownBy(() -> compile("main.evo", Map.of()))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Circular dependency detected: " + sourceRoot.resolve("a.evo"));
+                .hasMessageContaining("Circular dependency detected: " + resolved("a.evo"));
     }
 
     /** The number of machine addresses the given line of a file produced. */
@@ -213,5 +213,13 @@ class ModulePlacementIntegrationTest {
     private ProgramArtifact compile(String fileName, Map<String, OptionalInt> defines) throws Exception {
         CompilerOptions options = new CompilerOptions(List.of(new SourceRoot(sourceRoot.toString(), null)), defines);
         return new Compiler().compile(fileName, ENV, options);
+    }
+
+    /**
+     * Returns the path of a file in the source root as the compiler writes a resolved path, with
+     * forward slashes on every platform.
+     */
+    private String resolved(String fileName) {
+        return sourceRoot.resolve(fileName).toString().replace('\\', '/');
     }
 }

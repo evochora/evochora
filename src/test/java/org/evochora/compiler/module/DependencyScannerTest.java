@@ -103,7 +103,7 @@ public class DependencyScannerTest {
         assertThat(diagnostics.hasErrors()).isFalse();
         assertThat(graph.placements()).extracting(ModulePlacement::aliasChain)
                 .containsExactly("MAIN.FIRST", "MAIN.SECOND", "MAIN");
-        assertThat(graph.moduleContents()).containsOnlyKeys(tempDir.resolve("lib.evo").toString());
+        assertThat(graph.moduleContents()).containsOnlyKeys(resolved("lib.evo"));
     }
 
     @Test
@@ -140,8 +140,8 @@ public class DependencyScannerTest {
         DependencyGraph graph = scanner.scan(mainSource, mainPath, "");
 
         assertThat(diagnostics.hasErrors()).isFalse();
-        String module = tempDir.resolve("m.evo").toString();
-        String inc = tempDir.resolve("inc.evo").toString();
+        String module = resolved("m.evo");
+        String inc = resolved("inc.evo");
         assertThat(graph.lines()).containsOnlyKeys(mainPath, module, inc);
         assertThat(graph.lines().get(mainPath))
                 .containsExactly(".IMPORT \"m.evo\" AS A", ".SOURCE \"inc.evo\"", ".IMPORT \"m.evo\" AS B");
@@ -314,7 +314,7 @@ public class DependencyScannerTest {
         assertThat(created).hasValue(1);
         assertThat(instances).hasSize(2);
         assertThat(instances.get(1)).isSameAs(instances.get(0));
-        assertThat(instances.get(0).paths).containsExactly(mainPath, tempDir.resolve("inc.evo").toString());
+        assertThat(instances.get(0).paths).containsExactly(mainPath, resolved("inc.evo"));
 
         scanner.scan(mainSource, mainPath, "");
         assertThat(created).as("a second scan starts with an empty slot").hasValue(2);
@@ -396,5 +396,13 @@ public class DependencyScannerTest {
         scanner.scan("MARK\n", "/test/main.evo", "");
 
         assertThat(seen).containsExactly(options);
+    }
+
+    /**
+     * Returns the path of a file in the source root as the compiler writes a resolved path, with
+     * forward slashes on every platform.
+     */
+    private String resolved(String fileName) {
+        return tempDir.resolve(fileName).toString().replace('\\', '/');
     }
 }
