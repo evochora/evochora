@@ -2,6 +2,7 @@ package org.evochora.compiler.module;
 
 import org.evochora.compiler.Compiler;
 import org.evochora.compiler.api.CompilerOptions;
+import org.evochora.compiler.api.MachineInstructionInfo;
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.compiler.api.SourceFile;
 import org.evochora.compiler.api.SourceInfo;
@@ -25,9 +26,10 @@ import static org.assertj.core.api.Assertions.tuple;
 
 /**
  * The artifact names the placement of every position: two placements of one file share its text
- * but not its code or the meaning of its tokens, so the sources hold the file once per placement,
- * and the source map, the token map, the token lookup and the instructions per line keep the
- * placements apart. Programs are written to disk and compiled through the whole pipeline.
+ * but not its code or the meaning of its tokens, so the sources hold the file once per inclusion,
+ * each with the directive that made it, and the source map, the token map, the token lookup and
+ * the instructions per line keep the placements apart. Programs are written to disk and compiled
+ * through the whole pipeline.
  */
 @Tag("integration")
 class PlacementArtifactIntegrationTest {
@@ -49,13 +51,15 @@ class PlacementArtifactIntegrationTest {
         ProgramArtifact artifact = compile("main.evo", null);
 
         String lib = resolved("lib/work.evo");
+        String main = resolved("main.evo");
         assertThat(artifact.sources())
-                .extracting(SourceFile::placement, SourceFile::path, SourceFile::resolvedPath)
+                .extracting(SourceFile::placement, SourceFile::path, SourceFile::resolvedPath, SourceFile::instance,
+                        SourceFile::includedAt)
                 .containsExactly(
-                        tuple("", "main.evo", resolved("main.evo")),
-                        tuple("FIRST", "lib/work.evo", lib),
-                        tuple("SECOND", "lib/work.evo", lib));
-        assertThat(artifact.sources().get(1).lines()).isEqualTo(artifact.sources().get(2).lines());
+                        tuple("", "main.evo", main, 0, null),
+                        tuple("FIRST", "lib/work.evo", lib, 0, new SourceInfo(main, 1, 1, "", 0)),
+                        tuple("SECOND", "lib/work.evo", lib, 0, new SourceInfo(main, 2, 1, "", 0)));
+        assertThat(artifact.sources().get(1).lines()).isSameAs(artifact.sources().get(2).lines());
         assertThat(artifact.sources().get(1).lines()).first().isEqualTo("EXPORT .PROC WORK");
     }
 
@@ -89,14 +93,15 @@ class PlacementArtifactIntegrationTest {
                 .extracting(SourceInfo::placement)
                 .containsExactlyInAnyOrder("FIRST", "SECOND");
         assertThat(artifact.sourceLineToInstructions()).containsKeys("", "FIRST", "SECOND");
-        assertThat(artifact.sourceLineToInstructions().get("FIRST").get(lib)).containsKey(3);
-        assertThat(artifact.sourceLineToInstructions().get("SECOND").get(lib).get(3)).hasSize(1);
+        assertThat(artifact.sourceLineToInstructions().get("FIRST").get(lib)).containsOnlyKeys(0);
+        assertThat(artifact.sourceLineToInstructions().get("FIRST").get(lib).get(0)).containsKey(3);
+        assertThat(artifact.sourceLineToInstructions().get("SECOND").get(lib).get(0).get(3)).hasSize(1);
         assertThat(artifact.sourceLineToInstructions().get("")).doesNotContainKey(lib);
-        assertThat(artifact.sourceLineToInstructions().get("").get(resolved("main.evo"))).containsKey(5);
+        assertThat(artifact.sourceLineToInstructions().get("").get(resolved("main.evo")).get(0)).containsKey(5);
     }
 
     @Test
-    void aSourcedFileStandsUnderThePlacementThatIncludesIt_atItsDirective() throws Exception {
+    void everyInclusionOfASourcedFileIsAnEntry_underThePlacementThatIncludesIt_withItsDirective() throws Exception {
         write("lib/inc.evo",
                 "  NOP");
         write("lib/mod.evo",
@@ -114,23 +119,65 @@ class PlacementArtifactIntegrationTest {
         ProgramArtifact artifact = compile("main.evo", null);
 
         String inc = resolved("lib/inc.evo");
+        String main = resolved("main.evo");
+        String mod = resolved("lib/mod.evo");
         assertThat(artifact.sources())
-                .extracting(SourceFile::placement, SourceFile::path, SourceFile::resolvedPath)
+                .extracting(SourceFile::placement, SourceFile::path, SourceFile::resolvedPath, SourceFile::includedAt)
                 .containsExactly(
-                        tuple("", "main.evo", resolved("main.evo")),
-                        tuple("", "lib/inc.evo", inc),
-                        tuple("MOD", "lib/mod.evo", resolved("lib/mod.evo")),
-                        tuple("MOD", "lib/inc.evo", inc));
-        assertThat(artifact.sourceMap().values())
-                .filteredOn(info -> info.fileName().equals(inc))
-                .extracting(SourceInfo::placement)
-                .containsExactlyInAnyOrder("", "", "MOD");
-        // Every inclusion is an instance of its own, also the two in one placement
-        assertThat(artifact.sourceMap().values())
-                .filteredOn(info -> info.fileName().equals(inc))
-                .extracting(SourceInfo::expansion)
+                        tuple("", "main.evo", main, null),
+                        tuple("", "lib/inc.evo", inc, new SourceInfo(main, 1, 1, "", 0)),
+                        tuple("MOD", "lib/mod.evo", mod, new SourceInfo(main, 2, 1, "", 0)),
+                        tuple("MOD", "lib/inc.evo", inc, new SourceInfo(mod, 1, 1, "MOD", 0)),
+                        tuple("", "lib/inc.evo", inc, new SourceInfo(main, 3, 1, "", 0)));
+        // The main file and the module placement are instance 0, every text inclusion one of its own
+        assertThat(artifact.sources().get(0).instance()).isZero();
+        assertThat(artifact.sources().get(2).instance()).isZero();
+        assertThat(List.of(artifact.sources().get(1), artifact.sources().get(3), artifact.sources().get(4)))
+                .extracting(SourceFile::instance)
                 .doesNotHaveDuplicates()
-                .allSatisfy(expansion -> assertThat(expansion).isPositive());
+                .allSatisfy(instance -> assertThat(instance).isPositive());
+        // Every inclusion is an instance of its own, also the two in one placement, and the
+        // instruction of each names its entry by placement, file and instance
+        assertThat(artifact.sourceMap().values())
+                .filteredOn(info -> info.fileName().equals(inc))
+                .extracting(SourceInfo::placement, SourceInfo::expansion)
+                .containsExactlyInAnyOrder(
+                        tuple("", artifact.sources().get(1).instance()),
+                        tuple("MOD", artifact.sources().get(3).instance()),
+                        tuple("", artifact.sources().get(4).instance()));
+        // The instructions per line keep the two inclusions in one placement apart: the entry of
+        // each holds exactly the instruction its inclusion produced
+        int first = artifact.sources().get(1).instance();
+        int second = artifact.sources().get(4).instance();
+        assertThat(artifact.sourceLineToInstructions().get("").get(inc)).containsOnlyKeys(first, second);
+        assertThat(addressesOfLine(artifact, "", inc, first, 1)).containsExactly(addressOf(artifact, inc, "", first));
+        assertThat(addressesOfLine(artifact, "", inc, second, 1)).containsExactly(addressOf(artifact, inc, "", second));
+        assertThat(artifact.sourceLineToInstructions().get("MOD").get(inc))
+                .containsOnlyKeys(artifact.sources().get(3).instance());
+    }
+
+    /**
+     * Returns the linear addresses of the instructions listed under a line of an entry.
+     */
+    private static List<Integer> addressesOfLine(ProgramArtifact artifact, String placement, String file,
+                                                 int instance, int line) {
+        return artifact.sourceLineToInstructions().get(placement).get(file).get(instance).get(line).stream()
+                .map(MachineInstructionInfo::linearAddress)
+                .toList();
+    }
+
+    /**
+     * Returns the linear address of the one instruction the source map places in a file, a
+     * placement and an expansion.
+     */
+    private static int addressOf(ProgramArtifact artifact, String file, String placement, int expansion) {
+        List<Integer> addresses = artifact.sourceMap().entrySet().stream()
+                .filter(e -> e.getValue().fileName().equals(file) && e.getValue().placement().equals(placement)
+                        && e.getValue().expansion() == expansion)
+                .map(Map.Entry::getKey)
+                .toList();
+        assertThat(addresses).hasSize(1);
+        return addresses.getFirst();
     }
 
     @Test
@@ -159,6 +206,22 @@ class PlacementArtifactIntegrationTest {
                 .filteredOn(info -> info.fileName().equals(macros))
                 .extracting(SourceInfo::lineNumber, SourceInfo::placement)
                 .containsExactlyInAnyOrder(tuple(2, "FIRST"), tuple(2, "SECOND"));
+        // Each expansion stands on the lines of the inclusion of macros.evo in its own placement
+        artifact.sourceMap().values().stream().filter(info -> info.fileName().equals(macros)).forEach(position -> {
+            SourceFile home = artifact.sources().stream()
+                    .filter(source -> source.placement().equals(position.placement())
+                            && source.resolvedPath().equals(macros))
+                    .findFirst()
+                    .orElseThrow();
+            assertThat(home.instance()).isPositive();
+            assertThat(artifact.expansionHomes()).containsEntry(position.expansion(), home.instance());
+            // The expansion's instruction stands under the body line in that entry
+            assertThat(artifact.sourceLineToInstructions().get(position.placement()).get(macros))
+                    .containsOnlyKeys(home.instance());
+            assertThat(addressesOfLine(artifact, position.placement(), macros, home.instance(), 2))
+                    .containsExactly(addressOf(artifact, macros, position.placement(), position.expansion()));
+        });
+        assertThat(artifact.expansionHomes()).hasSize(2);
     }
 
     @Test

@@ -16,14 +16,17 @@ import java.util.OptionalInt;
  * phase of the backend reads or changes it; the emitter copies it into the artifact and puts the
  * flags into the program's identity.
  *
- * @param sources  The text of every file once per module placement it stands in, with the
- *                 regions and notes the preprocessor recorded for it.
+ * @param sources  One entry per inclusion of a file, with the regions and notes the
+ *                 preprocessor recorded for it.
+ * @param expansionHomes For every instance of injected tokens that is no inclusion of its own, the
+ *                 instance of the entry whose lines its tokens stand on.
  * @param tokenMap The classification of every token by its source position.
  * @param flags    The preprocessor flags of the compilation as its options normalise them: each
  *                 name upper-cased, each value the flag's integer value or empty for a flag set
  *                 without one. The regions and notes of the sources were recorded under them.
  */
-public record DebugInfo(List<SourceFile> sources, Map<SourceInfo, TokenInfo> tokenMap,
+public record DebugInfo(List<SourceFile> sources, Map<Integer, Integer> expansionHomes,
+                        Map<SourceInfo, TokenInfo> tokenMap,
                         Map<String, OptionalInt> flags) {
 
     /**
@@ -32,16 +35,17 @@ public record DebugInfo(List<SourceFile> sources, Map<SourceInfo, TokenInfo> tok
      */
     public DebugInfo {
         sources = List.copyOf(sources);
+        expansionHomes = Map.copyOf(expansionHomes);
         tokenMap = Collections.unmodifiableMap(new LinkedHashMap<>(tokenMap));
         flags = Map.copyOf(flags);
     }
 
     /**
-     * Returns the debug information of a program without files, tokens or flags.
+     * Returns the debug information of a program without files, instances, tokens or flags.
      *
      * @return An empty instance.
      */
     public static DebugInfo none() {
-        return new DebugInfo(List.of(), Map.of(), Map.of());
+        return new DebugInfo(List.of(), Map.of(), Map.of(), Map.of());
     }
 }

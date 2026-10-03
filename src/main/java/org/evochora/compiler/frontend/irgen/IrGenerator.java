@@ -42,7 +42,7 @@ public final class IrGenerator {
 	 * @return The generated IR program.
 	 */
 	public IrProgram generate(List<AstNode> ast, String programName) {
-		return generate(ast, programName, "", List.of(), Map.of(), Map.of());
+		return generate(ast, programName, "", List.of(), Map.of(), Map.of(), Map.of());
 	}
 
 	/**
@@ -51,8 +51,11 @@ public final class IrGenerator {
 	 * @param ast            The semantically validated AST nodes.
 	 * @param programName    The program name used for IR metadata and diagnostics.
 	 * @param rootAliasChain The alias chain for the root module (e.g., "MAIN").
-	 * @param sources        The text of every file once per placement, with what the preprocessor
-	 *                       recorded for it; carried in the program's {@link DebugInfo}.
+	 * @param sources        One entry per inclusion of a file, with what the preprocessor recorded
+	 *                       for it; carried in the program's {@link DebugInfo}.
+	 * @param expansionHomes For every instance of injected tokens that is no inclusion, the
+	 *                       instance of the entry its tokens stand on; carried in the program's
+	 *                       {@link DebugInfo}.
 	 * @param tokenMap       The classification of every token by position; carried in the
 	 *                       program's {@link DebugInfo}.
 	 * @param flags          The preprocessor flags of the compilation, as its options normalise
@@ -60,12 +63,13 @@ public final class IrGenerator {
 	 * @return The generated IR program.
 	 */
 	public IrProgram generate(List<AstNode> ast, String programName, String rootAliasChain,
-							  List<SourceFile> sources, Map<SourceInfo, TokenInfo> tokenMap,
+							  List<SourceFile> sources, Map<Integer, Integer> expansionHomes,
+							  Map<SourceInfo, TokenInfo> tokenMap,
 							  Map<String, OptionalInt> flags) {
 		IrGenContext ctx = new IrGenContext(programName, diagnostics, registry, rootAliasChain);
 		for (AstNode node : ast) {
 			registry.resolve(node).convert(node, ctx);
 		}
-		return ctx.build(new DebugInfo(sources, tokenMap, flags));
+		return ctx.build(new DebugInfo(sources, expansionHomes, tokenMap, flags));
 	}
 }

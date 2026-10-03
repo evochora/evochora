@@ -39,7 +39,7 @@ public class SourceDependencyScanHandler implements IDependencyScanHandler {
             String content = ctx.loadContent(resolvedPath);
             ctx.registerSourceContent(resolvedPath, content);
             ctx.addDependency(new SourceDependencyInfo(path, resolvedPath));
-            ctx.scanNestedSourceFile(resolvedPath, path, content);
+            ctx.scanNestedSourceFile(resolvedPath, content);
         } catch (IOException e) {
             ctx.reportError("Source file not found: " + path);
         }

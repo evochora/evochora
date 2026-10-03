@@ -256,13 +256,13 @@ class LeftOutBranchesTest {
     }
 
     /**
-     * A file sourced twice into one placement behind an include guard is two inclusions, each
-     * with an instance of its own: the first keeps its block and notes the flag unset, the second
-     * leaves the block out and notes the flag set, and the instructions the first kept carry its
-     * instance.
+     * A file sourced twice into one placement behind an include guard is two inclusions and two
+     * entries, each with an instance of its own and the position of its directive: the first
+     * keeps its block and notes the flag unset, the second leaves the block out and notes the
+     * flag set, and the instructions the first kept carry its instance.
      */
     @Test
-    void eachInclusionOfAGuardedFileRecordsUnderItsOwnInstance() throws Exception {
+    void eachInclusionOfAGuardedFileIsAnEntryWithItsOwnRecords() throws Exception {
         write("lib.evo",
                 ".IFNDEF LIB",
                 ".DEFINE LIB",
@@ -277,17 +277,54 @@ class LeftOutBranchesTest {
 
         ProgramArtifact artifact = compile(Map.of());
 
-        int first = expansionOfLine(artifact, resolved("lib.evo"), 3);
-        assertThat(first).isPositive();
-        assertThat(artifact.sources().stream().filter(source -> source.path().equals("lib.evo")).count())
-                .isEqualTo(1);
-        SourceFile lib = source(artifact, "", "lib.evo");
-        assertThat(lib.notes()).hasSize(2);
-        assertThat(lib.notes().getFirst()).isEqualTo(new Note(first, 1, 9, "[not set]"));
-        int second = lib.notes().get(1).expansion();
-        assertThat(second).isPositive().isNotEqualTo(first);
-        assertThat(lib.notes().get(1)).isEqualTo(new Note(second, 1, 9, "[set]"));
-        assertThat(lib.leftOut()).containsExactly(new LeftOut(second, 1, 2, 3));
+        String lib = resolved("lib.evo");
+        List<SourceFile> inclusions = artifact.sources().stream()
+                .filter(source -> source.resolvedPath().equals(lib))
+                .toList();
+        assertThat(inclusions).hasSize(2);
+        SourceFile first = inclusions.get(0);
+        SourceFile second = inclusions.get(1);
+        assertThat(first.includedAt()).isEqualTo(new SourceInfo(resolved("main.evo"), 2, 1, "", 0));
+        assertThat(second.includedAt().fileName()).isEqualTo(resolved("util.evo"));
+        assertThat(second.includedAt().lineNumber()).isEqualTo(1);
+        assertThat(first.instance()).isPositive().isEqualTo(expansionOfLine(artifact, lib, 3));
+        assertThat(second.instance()).isPositive().isNotEqualTo(first.instance());
+        assertThat(first.notes()).containsExactly(new Note(first.instance(), 1, 9, "[not set]"));
+        assertThat(first.leftOut()).isEmpty();
+        assertThat(second.notes()).containsExactly(new Note(second.instance(), 1, 9, "[set]"));
+        assertThat(second.leftOut()).containsExactly(new LeftOut(second.instance(), 1, 2, 3));
+    }
+
+    /**
+     * A macro expansion is no entry: the regions and notes of an expansion of a macro defined in
+     * a sourced file stand in the entry of that inclusion, under the expansion's number, and the
+     * artifact names that entry's instance for the expansion.
+     */
+    @Test
+    void theRecordsOfAMacroExpansionStandInTheEntryItsDefinitionWasReadIn() throws Exception {
+        write("macros.evo",
+                ".MACRO CHECK",
+                ".IFDEF PAD",
+                "  NOP",
+                ".ENDDEF",
+                ".ENDMACRO");
+        write("main.evo",
+                ".SOURCE \"macros.evo\"",
+                "START:",
+                "  CHECK",
+                "  NOP");
+
+        ProgramArtifact artifact = compile(Map.of());
+
+        SourceFile macros = source(artifact, "", "macros.evo");
+        assertThat(macros.instance()).isPositive();
+        assertThat(macros.leftOut()).hasSize(1);
+        int expansion = macros.leftOut().getFirst().expansion();
+        assertThat(expansion).isNotEqualTo(macros.instance());
+        assertThat(macros.leftOut()).containsExactly(new LeftOut(expansion, 2, 3, 3));
+        assertThat(macros.notes()).containsExactly(new Note(expansion, 2, 8, "[not set]"));
+        assertThat(artifact.expansionHomes()).containsEntry(expansion, macros.instance());
+        assertThat(source(artifact, "", "main.evo").leftOut()).isEmpty();
     }
 
     /**

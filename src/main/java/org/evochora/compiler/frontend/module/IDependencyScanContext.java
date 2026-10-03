@@ -51,12 +51,10 @@ public interface IDependencyScanContext {
      * already being scanned on the way to this one is reported as a circular dependency.
      *
      * @param resolvedPath The resolved absolute path.
-     * @param writtenPath  The path as the directive writes it, which names the placement's file
-     *                     where the program's text is shown.
      * @param content      The module content.
      * @param aliasChain   The alias chain of the new placement.
      */
-    void scanNestedModule(String resolvedPath, String writtenPath, String content, String aliasChain);
+    void scanNestedModule(String resolvedPath, String content, String aliasChain);
 
     /**
      * Returns the alias chain of the module placement being scanned. A source file scanned
@@ -67,13 +65,12 @@ public interface IDependencyScanContext {
     String placementChain();
 
     /**
-     * Triggers recursive scanning of a .SOURCE file (for nested .SOURCE detection and validation).
-     * The file's text is recorded under the placement being scanned.
+     * Triggers recursive scanning of a .SOURCE file (for nested .SOURCE detection and validation),
+     * in the placement being scanned.
      * @param resolvedPath The resolved absolute path.
-     * @param writtenPath The path as the directive writes it.
      * @param content The source file content.
      */
-    void scanNestedSourceFile(String resolvedPath, String writtenPath, String content);
+    void scanNestedSourceFile(String resolvedPath, String content);
 
     /**
      * Reports a discovered dependency.

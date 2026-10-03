@@ -11,7 +11,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 
 /**
  * Expands a single macro invocation in the token stream. Each instance holds one
@@ -23,6 +22,10 @@ import java.util.Objects;
  * the code of one expansion can be told from another's, although all of them stand on the lines
  * of the body. An argument substituted for a parameter keeps its own position and adds the
  * parameter's position in this expansion to the positions it replaces.
+ * <p>
+ * An expansion is no entry of the preprocessor's sources: its tokens stand on the lines of the
+ * entry the definition was read in, which the handler names to the preprocessor through the
+ * position of the definition before any expansion.
  */
 public class MacroExpansionHandler implements IPreProcessorHandler {
 
@@ -102,6 +105,7 @@ public class MacroExpansionHandler implements IPreProcessorHandler {
         // The body tokens stand in this expansion. An argument keeps its own position, where it
         // was written, and remembers the position of the parameter it replaces in this expansion.
         int expansion = preProcessorContext.nextInstance();
+        preProcessor.homeOf(expansion, definedAt());
         List<Token> expandedBody = new ArrayList<>();
         for (Token bodyToken : macro.body()) {
             SourceInfo position = inExpansion(bodyToken.source(), expansion);
@@ -139,21 +143,11 @@ public class MacroExpansionHandler implements IPreProcessorHandler {
     }
 
     /**
-     * Two handlers are equal when they come from the same definition, the same {@code .MACRO}
-     * at the same place in the same file, in whichever instance of injected tokens it stands.
-     * A file that is included twice, or a body with a nested {@code .MACRO} that is expanded
-     * twice, defines its macros twice, and those are one definition; a second {@code .MACRO} of
-     * the same name anywhere else is a different one, whatever its text.
+     * Returns the definition this handler expands.
+     *
+     * @return the definition the handler was created with
      */
-    @Override
-    public boolean equals(Object o) {
-        if (this == o) return true;
-        if (!(o instanceof MacroExpansionHandler other)) return false;
-        return Objects.equals(definedAt().withoutExpansion(), other.definedAt().withoutExpansion());
-    }
-
-    @Override
-    public int hashCode() {
-        return Objects.hashCode(definedAt().withoutExpansion());
+    public MacroDefinition definition() {
+        return macro;
     }
 }

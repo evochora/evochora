@@ -649,7 +649,7 @@ Directives are special commands that instruct the compiler on how to assemble th
     
     INCREMENT %DR0  # This line expands to "ADDI %DR0 DATA:1"
     ```
-* **Scope**: A macro is local to the file that defines it. A file included with `.SOURCE` counts as part of the including file, so its macros can be used there. A module included with `.IMPORT` neither sees nor exports macros. Defining the same macro name twice in one file is an error.
+* **Scope**: A macro is local to the file that defines it. A file included with `.SOURCE` counts as part of the including file, so its macros can be used there. A module included with `.IMPORT` neither sees nor exports macros. A macro may be defined again — as happens when the file that defines it is sourced more than once — only with the same parameters and the same body word for word; a different definition under the same name is an error.
 
 ### Repetition
 

@@ -10,6 +10,7 @@ import org.evochora.compiler.frontend.DirectiveLine;
 import org.evochora.compiler.util.SourceRootResolver;
 import java.util.*;
 import java.util.function.Predicate;
+import java.util.function.ToIntFunction;
 
 /**
  * The preprocessor for the assembly language. It runs after the lexer and before the parser.
@@ -26,16 +27,20 @@ public class PreProcessor {
     private final BlockReader blockReader;
     private final Map<String, Map<String, Set<SourceFile.LeftOut>>> leftOut = new HashMap<>();
     private final Map<String, Map<String, Set<SourceFile.Note>>> notes = new HashMap<>();
+    private final List<SourceFile> entries = new ArrayList<>();
+    private final Map<Integer, Integer> homes = new HashMap<>();
 
     /**
      * Constructs a new PreProcessor. The initial tokens are given the placement of the
-     * compilation root, the context's alias chain while no inclusion is open.
+     * compilation root, the context's alias chain while no inclusion is open, and the context's
+     * entry of the main file, if it has one, becomes the first entry.
      *
      * @param initialTokens  The initial list of tokens from the lexer.
      * @param diagnostics    The engine for reporting errors and warnings.
      * @param resolver       The source root resolver for path resolution.
      * @param ppContext      The shared preprocessor context: the handlers to dispatch to, the
-     *                       pre-lexed tokens of includable files, the open inclusions.
+     *                       pre-lexed tokens and lines of includable files, the entry of the main
+     *                       file, the open inclusions.
      */
     public PreProcessor(List<Token> initialTokens, DiagnosticsEngine diagnostics, SourceRootResolver resolver,
                         PreProcessorContext ppContext) {
@@ -50,6 +55,9 @@ public class PreProcessor {
         this.resolver = resolver;
         this.ppContext = ppContext;
         this.blockReader = new BlockReader(this, ppContext.handlers());
+        if (ppContext.mainFile() != null) {
+            entries.add(ppContext.mainFile());
+        }
     }
 
     /**
@@ -59,8 +67,9 @@ public class PreProcessor {
      * it is, unless it closes or divides a registered block: the handler of a block consumes its
      * closer and dividers, so one the walk reaches stands outside any block and is reported and
      * removed by the {@link BlockReader}.
-     * @return The preprocessing result: the expanded tokens, and the context's source files with
-     *         the regions and notes the handlers recorded attached to each.
+     * @return The preprocessing result: the expanded tokens, the entries of the inclusions with
+     *         the regions and notes the handlers recorded attached to each, and the entry instance
+     *         every recorded instance stands on.
      */
     public PreProcessorResult expand() {
         while (current < tokens.size()) {
@@ -75,23 +84,36 @@ public class PreProcessor {
                 current++;
             }
         }
-        List<SourceFile> sources = new ArrayList<>(ppContext.sources().size());
-        for (SourceFile source : ppContext.sources()) {
-            sources.add(source.withRecords(recordedFor(leftOut, source), recordedFor(notes, source)));
+        List<SourceFile> sources = new ArrayList<>(entries.size());
+        for (SourceFile entry : entries) {
+            sources.add(entry.withRecords(recordedFor(leftOut, entry, SourceFile.LeftOut::expansion),
+                    recordedFor(notes, entry, SourceFile.Note::expansion)));
         }
-        return new PreProcessorResult(tokens, sources);
+        return new PreProcessorResult(tokens, sources, homes);
     }
 
     /**
-     * Returns what was recorded for the placement and resolved path of a source file, in the
-     * order it was first recorded, or nothing.
+     * Returns what was recorded for an entry, in the order it was first recorded: the records of
+     * its placement and resolved path whose instance is the entry's own or stands on the entry's
+     * lines.
      */
-    private static <T> List<T> recordedFor(Map<String, Map<String, Set<T>>> recorded, SourceFile source) {
-        Map<String, Set<T>> byFile = recorded.get(source.placement());
+    private <T> List<T> recordedFor(Map<String, Map<String, Set<T>>> recorded, SourceFile entry,
+                                    ToIntFunction<T> instance) {
+        Map<String, Set<T>> byFile = recorded.get(entry.placement());
         if (byFile == null) {
             return List.of();
         }
-        return List.copyOf(byFile.getOrDefault(source.resolvedPath(), Set.of()));
+        return byFile.getOrDefault(entry.resolvedPath(), Set.of()).stream()
+                .filter(record -> entryInstanceOf(instance.applyAsInt(record)) == entry.instance())
+                .toList();
+    }
+
+    /**
+     * Returns the instance of the entry whose lines the tokens of an instance stand on: the one
+     * {@link #homeOf} recorded for it, or the instance itself.
+     */
+    private int entryInstanceOf(int instance) {
+        return homes.getOrDefault(instance, instance);
     }
 
     /**
@@ -105,6 +127,32 @@ public class PreProcessor {
     }
 
     // --- Records for the source view ---
+
+    /**
+     * Adds an entry for an inclusion, a file whose tokens are injected into the stream, after the
+     * entries added before it. The entry's tokens carry its placement, its resolved path as their
+     * file name and its instance as their expansion; the regions and notes recorded at such
+     * positions are attached to it when the run ends.
+     *
+     * @param entry The inclusion, without records.
+     */
+    public void includes(SourceFile entry) {
+        entries.add(entry);
+    }
+
+    /**
+     * Records that the tokens of an instance stand on the lines of another entry: an instance of
+     * injected tokens that is no inclusion of its own, whose positions are copies of positions of
+     * text that came in with an inclusion. The regions and notes recorded in the instance are
+     * attached to that inclusion's entry, and the result names the entry's instance for it.
+     *
+     * @param instance The number the injected tokens carry as their expansion.
+     * @param position A position of the text the tokens were copied from, as it stood before the
+     *                 copy; its placement and file name are those of the instance's tokens.
+     */
+    public void homeOf(int instance, SourceInfo position) {
+        homes.put(instance, entryInstanceOf(position.expansion()));
+    }
 
     /**
      * Records a region of lines that was left out, owned by the line of a directive. The region

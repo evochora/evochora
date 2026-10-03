@@ -1,6 +1,7 @@
 package org.evochora.compiler.features.source;
 
 import org.evochora.compiler.diagnostics.ErrorRecoveryException;
+import org.evochora.compiler.api.SourceFile;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
@@ -24,7 +25,9 @@ import java.util.List;
  * <p>Every inclusion is an instance of its own: the injected tokens carry an instance number
  * from {@link PreProcessorContext#nextInstance()} as their expansion, so that a file sourced
  * twice into one placement keeps the code, the left-out regions and the notes of each
- * inclusion apart, although both stand on the same lines.</p>
+ * inclusion apart, although both stand on the same lines. Every inclusion is an entry of the
+ * preprocessor's sources, under the including placement, that number and the position of the
+ * directive.</p>
  *
  * <p>The directive stands alone on its line: a token before it or after the path is an error.</p>
  */
@@ -41,7 +44,7 @@ public class SourceDirectiveHandler implements IPreProcessorHandler {
             throw new ErrorRecoveryException(message);
         }
 
-        preProcessor.advance(); // consume .SOURCE
+        Token directiveToken = preProcessor.advance();
         Token pathToken = preProcessor.consume(TokenType.STRING, "Expected a file path in quotes after .SOURCE.");
         if (!preProcessor.isAtEnd() && !preProcessor.check(TokenType.NEWLINE)) {
             Token extra = preProcessor.peek();
@@ -101,6 +104,8 @@ public class SourceDirectiveHandler implements IPreProcessorHandler {
         // Copy tokens into this placement and this inclusion, and wrap them with context
         // management directives
         int instance = preProcessorContext.nextInstance();
+        preProcessor.includes(new SourceFile(placement, pathValue, resolvedPath, instance, directiveToken.source(),
+                preProcessorContext.linesOf(resolvedPath)));
         List<Token> newTokens = new ArrayList<>(preLexed.size() + 2);
         for (Token token : preLexed) {
             SourceInfo at = token.source();

@@ -5,6 +5,7 @@ import org.evochora.compiler.api.InternalCompilerException;
 import org.evochora.compiler.api.CompilerOptions;
 import org.evochora.compiler.api.ICompiler;
 import org.evochora.compiler.api.ProgramArtifact;
+import org.evochora.compiler.api.SourceFile;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.api.TokenInfo;
 import org.evochora.runtime.model.EnvironmentProperties;
@@ -171,7 +172,7 @@ public class Compiler implements ICompiler {
 
         // Phase 0: Dependency Scanning (load imported modules)
         DependencyScanner depScanner = new DependencyScanner(diagnostics, resolver, featureRegistry.dependencyScanHandlers(), effectiveOptions);
-        DependencyGraph graph = depScanner.scan(fullSource, programName, mainFilePath, rootAliasChain);
+        DependencyGraph graph = depScanner.scan(fullSource, mainFilePath, rootAliasChain);
         failOnErrors(diagnostics);
 
         // Phase 1: Lexical Analysis — every included file under its path, the main file as the stream
@@ -180,7 +181,9 @@ public class Compiler implements ICompiler {
                 featureRegistry.lexerSymbols()).scanTokens());
 
         // Phase 2: Preprocessing (includes, macros)
-        PreProcessorContext ppContext = new PreProcessorContext(rootAliasChain, fileTokens, graph.sourceFiles(),
+        SourceFile mainEntry = new SourceFile(rootAliasChain, programName, mainFilePath,
+                graph.lines().getOrDefault(mainFilePath, List.of()));
+        PreProcessorContext ppContext = new PreProcessorContext(rootAliasChain, fileTokens, graph.lines(), mainEntry,
                 effectiveOptions);
         featureRegistry.preprocessorHandlers().forEach(ppContext.handlers()::register);
         featureRegistry.preprocessorBlocks().forEach(ppContext.handlers()::registerBlock);
@@ -235,7 +238,7 @@ public class Compiler implements ICompiler {
         irRegistry.registerAll(featureRegistry.irConverters());
         IrGenerator irGenerator = new IrGenerator(diagnostics, irRegistry);
         IrProgram irProgram = irGenerator.generate(resolvedAst, programName, rootAliasChain,
-                ppResult.sources(), tokenMap, effectiveOptions.defines());
+                ppResult.sources(), ppResult.expansionHomes(), tokenMap, effectiveOptions.defines());
         failOnErrors(diagnostics);
 
         // Phase 8: IR Rewriting (apply the rewrite rules of the features)

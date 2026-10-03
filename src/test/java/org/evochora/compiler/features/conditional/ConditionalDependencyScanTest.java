@@ -289,7 +289,7 @@ class ConditionalDependencyScanTest {
                 new SourceRootResolver(List.of(new SourceRoot(".", null)), root),
                 features.dependencyScanHandlers(), options);
         String mainPath = root.resolve("main.evo").toString();
-        DependencyGraph graph = scanner.scan(mainSource + "\n", mainPath, mainPath, "");
+        DependencyGraph graph = scanner.scan(mainSource + "\n", mainPath, "");
         return new Scan(graph, diagnostics);
     }
 }

@@ -1,7 +1,6 @@
 package org.evochora.compiler.frontend.module;
 
 import org.evochora.compiler.api.CompilerOptions;
-import org.evochora.compiler.api.SourceFile;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.util.SourceLoader;
 import org.evochora.compiler.util.SourceRootResolver;
@@ -61,23 +60,21 @@ public final class DependencyScanner {
      *
      * @param mainContent    The full source text of the main file; it is used as given and
      *                       never re-read from disk.
-     * @param mainWrittenPath The name the main file was given to the compiler under, which
-     *                       names it where the program's text is shown.
      * @param mainPath       Path identifying the main module, also used as the file location
      *                       of errors reported while scanning it.
      * @param rootAliasChain The alias chain of the main module, the one the preprocessor starts
      *                       with; empty for a main module compiled without a prefix.
      * @return A graph containing a placement of the main module and of every module at every
-     *         import reached, each after the placements it imports, the text of every file
-     *         found on the way, and that text once per placement it stands in. An empty graph is
-     *         returned if scanning reported any error.
+     *         import reached, each after the placements it imports, and the text and lines of
+     *         every file found on the way. An empty graph is returned if scanning reported any
+     *         error.
      */
-    public DependencyGraph scan(String mainContent, String mainWrittenPath, String mainPath, String rootAliasChain) {
+    public DependencyGraph scan(String mainContent, String mainPath, String rootAliasChain) {
         ScanState state = new ScanState();
-        scanModule(state, rootAliasChain, mainPath, mainWrittenPath, mainContent);
+        scanModule(state, rootAliasChain, mainPath, mainContent);
 
         if (diagnostics.hasErrors()) {
-            return new DependencyGraph(List.of(), List.of(), Map.of(), Map.of(), mainPath);
+            return new DependencyGraph(List.of(), Map.of(), Map.of(), Map.of(), mainPath);
         }
 
         Map<String, String> moduleContents = new LinkedHashMap<>();
@@ -86,7 +83,7 @@ public final class DependencyScanner {
                 moduleContents.putIfAbsent(placement.sourcePath(), state.loaded.get(placement.sourcePath()));
             }
         }
-        return new DependencyGraph(List.copyOf(state.placements), List.copyOf(state.sourceFiles.values()),
+        return new DependencyGraph(List.copyOf(state.placements), Collections.unmodifiableMap(state.linesByPath),
                 Collections.unmodifiableMap(moduleContents),
                 Collections.unmodifiableMap(state.sourceContents), mainPath);
     }
@@ -94,14 +91,13 @@ public final class DependencyScanner {
     /**
      * Everything one scan discovers: the placements in the order their scans end, the files on
      * the current import path (for cycle detection), the content of every file read, the text
-     * of the source files, and every file's text per placement in the order the scans begin,
-     * with its lines split once per file; and the state features keep through
+     * of the source files, and the lines of every file scanned, split once per file; and the
+     * state features keep through
      * {@link IDependencyScanContext#getOrCreate}, which spans every file of the scan.
      */
     private static final class ScanState {
         final List<ModulePlacement> placements = new ArrayList<>();
-        final Map<PlacedPath, SourceFile> sourceFiles = new LinkedHashMap<>();
-        final Map<String, List<String>> linesByPath = new HashMap<>();
+        final Map<String, List<String>> linesByPath = new LinkedHashMap<>();
         final Set<String> importPath = new HashSet<>();
         final Map<String, String> loaded = new HashMap<>();
         final Map<String, String> sourceContents = new LinkedHashMap<>();
@@ -112,13 +108,13 @@ public final class DependencyScanner {
      * Scans one placement of a module and records it once its own imports are scanned, so that
      * a placement comes after the placements it imports.
      */
-    private void scanModule(ScanState state, String aliasChain, String sourcePath, String writtenPath, String content) {
+    private void scanModule(ScanState state, String aliasChain, String sourcePath, String content) {
         if (!state.importPath.add(sourcePath)) {
             diagnostics.reportError("Circular dependency detected: " + sourcePath, sourcePath, 0);
             return;
         }
         state.loaded.putIfAbsent(sourcePath, content);
-        recordSourceFile(state, aliasChain, writtenPath, sourcePath, content);
+        recordLines(state, sourcePath, content);
 
         List<IDependencyInfo> dependencies = scanLines(state, aliasChain, sourcePath, content, false);
         state.placements.add(new ModulePlacement(aliasChain, sourcePath, dependencies));
@@ -130,23 +126,17 @@ public final class DependencyScanner {
      * appear in a source file, and one that says no is reported as an error. Today .IMPORT and
      * .REQUIRE say no while .SOURCE inherits the permissive default.
      */
-    private void scanSourceFile(ScanState state, String aliasChain, String sourcePath, String writtenPath, String content) {
-        recordSourceFile(state, aliasChain, writtenPath, sourcePath, content);
+    private void scanSourceFile(ScanState state, String aliasChain, String sourcePath, String content) {
+        recordLines(state, sourcePath, content);
         scanLines(state, aliasChain, sourcePath, content, true);
     }
 
-    /** A file in a placement, the key under which its text is recorded once. */
-    private record PlacedPath(String placement, String path) {
-    }
-
     /**
-     * Records a file's text under the placement it stands in, the first time the file is met in
-     * that placement; a file included twice into one placement keeps the path written first.
+     * Records a file's lines the first time the file is met, so that every inclusion of the file
+     * shares one list.
      */
-    private static void recordSourceFile(ScanState state, String placement, String writtenPath, String sourcePath,
-                                         String content) {
-        state.sourceFiles.computeIfAbsent(new PlacedPath(placement, sourcePath), key -> new SourceFile(placement, writtenPath,
-                sourcePath, state.linesByPath.computeIfAbsent(sourcePath, path -> List.of(content.split("\\r?\\n")))));
+    private static void recordLines(ScanState state, String sourcePath, String content) {
+        state.linesByPath.computeIfAbsent(sourcePath, path -> List.of(content.split("\\r?\\n")));
     }
 
     /**
@@ -237,13 +227,13 @@ public final class DependencyScanner {
         }
 
         @Override
-        public void scanNestedModule(String resolvedPath, String writtenPath, String content, String placementChain) {
-            DependencyScanner.this.scanModule(state, placementChain, resolvedPath, writtenPath, content);
+        public void scanNestedModule(String resolvedPath, String content, String placementChain) {
+            DependencyScanner.this.scanModule(state, placementChain, resolvedPath, content);
         }
 
         @Override
-        public void scanNestedSourceFile(String resolvedPath, String writtenPath, String content) {
-            DependencyScanner.this.scanSourceFile(state, aliasChain, resolvedPath, writtenPath, content);
+        public void scanNestedSourceFile(String resolvedPath, String content) {
+            DependencyScanner.this.scanSourceFile(state, aliasChain, resolvedPath, content);
         }
 
         @Override

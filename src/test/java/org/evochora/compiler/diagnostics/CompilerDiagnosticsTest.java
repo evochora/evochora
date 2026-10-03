@@ -87,9 +87,9 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Cannot define macro 'INC': the name is already used at")
-                .hasMessageContaining("macros.evo:1")
-                .hasMessageContaining("main.evo:2");
+                .hasMessageContaining("Cannot define macro 'INC' differently at")
+                .hasMessageContaining("main.evo:2: first defined at")
+                .hasMessageContaining("macros.evo:1 with another body");
     }
 
     @Test

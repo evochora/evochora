@@ -5,6 +5,7 @@ import org.evochora.compiler.TestRegistries;
 import org.evochora.compiler.TestLexers;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -166,19 +167,74 @@ class MacroExpansionTest {
     }
 
     @Test
-    void secondDefinitionOfANameIsRejectedAndTheFirstStaysInForce() {
+    void aSecondDefinitionWithAnotherBodyIsRejectedAtBothPlaces_andTheFirstStaysInForce() {
         Expansion result = expand(
                 ".MACRO INC REG",
                 "  ADDI REG DATA:1",
                 ".ENDMACRO",
                 ".MACRO INC REG",
-                "  ADDI REG DATA:1",
+                "  ADDI REG DATA:2",
                 ".ENDMACRO",
                 "INC %DR0");
 
         assertThat(result.diagnostics.hasErrors()).isTrue();
-        assertThat(result.diagnostics.summary()).contains("Cannot define macro 'INC': the name is already used at");
+        assertThat(result.diagnostics.summary()).contains(
+                "Cannot define macro 'INC' differently at <memory>:4: first defined at <memory>:1 with another body.");
         assertThat(result.texts()).containsExactly("ADDI", "%DR0", "DATA", ":", "1");
+    }
+
+    @Test
+    void aSecondDefinitionWithTheSameBodyButAnotherParameterNameIsRejected() {
+        Expansion result = expand(
+                ".MACRO INC REG",
+                "  ADDI %DR0 DATA:1",
+                ".ENDMACRO",
+                ".MACRO INC OTHER",
+                "  ADDI %DR0 DATA:1",
+                ".ENDMACRO");
+
+        assertThat(result.diagnostics.summary()).contains(
+                "Cannot define macro 'INC' differently at <memory>:4: first defined at <memory>:1 with other parameters.");
+    }
+
+    /**
+     * Two files that define a macro word for word alike, each sourced, define it once: the
+     * second definition is accepted and the first stays in force.
+     */
+    @Test
+    void anIdenticalDefinitionInAnotherSourcedFileIsAccepted() {
+        List<String> definition = List.of(
+                ".MACRO INC REG",
+                "    ADDI REG DATA:1   # spacing and comments are no part of the text",
+                ".ENDMACRO");
+        List<String> sameDefinition = List.of(
+                "",
+                ".MACRO INC REG",
+                "  ADDI REG DATA:1",
+                ".ENDMACRO");
+        Expansion result = expandWithLibraries(Map.of(LIBRARY, definition, OTHER_LIBRARY, sameDefinition),
+                ".SOURCE \"lib.evo\"",
+                ".SOURCE \"other.evo\"",
+                "INC %DR0");
+
+        assertThat(result.diagnostics.hasErrors()).isFalse();
+        assertThat(result.texts()).containsSubsequence("ADDI", "%DR0", "DATA", ":", "1");
+        assertThat(result.texts().stream().filter("ADDI"::equals).count()).isEqualTo(1);
+    }
+
+    @Test
+    void aFileSourcedTwiceDefinesItsMacroOnce() {
+        Expansion result = expandWithLibrary(
+                List.of(
+                        ".MACRO INC REG",
+                        "  ADDI REG DATA:1",
+                        ".ENDMACRO"),
+                ".SOURCE \"lib.evo\"",
+                ".SOURCE \"lib.evo\"",
+                "INC %DR0");
+
+        assertThat(result.diagnostics.hasErrors()).isFalse();
+        assertThat(result.texts().stream().filter("ADDI"::equals).count()).isEqualTo(1);
     }
 
     @Test
@@ -247,8 +303,8 @@ class MacroExpansionTest {
     }
 
     /**
-     * A macro defined inside a body that is expanded twice is defined at the same place both
-     * times, each in another expansion; that is one definition, not a second one of the name.
+     * A macro defined inside a body that is expanded twice is defined twice with the same text;
+     * that is one definition, not a second one of the name.
      */
     @Test
     void aMacroDefinedInABodyExpandedTwiceIsOneDefinition() {
@@ -313,19 +369,32 @@ class MacroExpansionTest {
 
     private static final String MAIN = "/proj/main.evo";
     private static final String LIBRARY = "/proj/lib.evo";
+    private static final String OTHER_LIBRARY = "/proj/other.evo";
 
     /**
      * Expands a main file that may include {@code lib.evo} with {@code .SOURCE}, with the handlers
      * an inclusion needs.
      */
     private static Expansion expandWithLibrary(List<String> library, String... lines) {
+        return expandWithLibraries(Map.of(LIBRARY, library), lines);
+    }
+
+    /**
+     * Expands a main file that may include the given files, by resolved path, with
+     * {@code .SOURCE}, with the handlers an inclusion needs.
+     */
+    private static Expansion expandWithLibraries(Map<String, List<String>> libraries, String... lines) {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        List<Token> libraryTokens = new ArrayList<>(new Lexer(String.join("\n", library) + "\n",
-                diagnostics, LIBRARY, TestLexers.symbols()).scanTokens());
-        Lexer.stripEofToken(libraryTokens);
+        Map<String, List<Token>> libraryTokens = new HashMap<>();
+        libraries.forEach((path, library) -> {
+            List<Token> fileTokens = new ArrayList<>(new Lexer(String.join("\n", library) + "\n",
+                    diagnostics, path, TestLexers.symbols()).scanTokens());
+            Lexer.stripEofToken(fileTokens);
+            libraryTokens.put(path, fileTokens);
+        });
         List<Token> tokens = new Lexer(String.join("\n", lines) + "\n", diagnostics, MAIN, TestLexers.symbols())
                 .scanTokens();
-        PreProcessorContext context = new PreProcessorContext("", Map.of(LIBRARY, libraryTokens), CompilerOptions.defaults());
+        PreProcessorContext context = new PreProcessorContext("", libraryTokens, CompilerOptions.defaults());
         TestRegistries.registerPreProcessorBlocks(context.handlers());
         context.handlers().register(".MACRO", new MacroDirectiveHandler());
         context.handlers().register(".REPEAT", new RepeatDirectiveHandler());

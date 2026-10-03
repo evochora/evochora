@@ -45,7 +45,8 @@ public class Emitter {
      * @param isa The instruction set architecture for opcode and register resolution.
      * @param contributorRegistry Registry of emission contributors for extracting metadata from IR.
      * @return The final, compiled {@link ProgramArtifact}.
-     * @throws CompilationException if an item cannot be encoded or has no cell in the layout.
+     * @throws CompilationException if an item cannot be encoded or has no cell in the layout, or
+     *         if the position of an instruction names no entry of the program's sources.
      */
     public ProgramArtifact emit(IrProgram program,
                                 LayoutResult layout,
@@ -61,7 +62,8 @@ public class Emitter {
         }
 
         OperandEncoder encoder = new OperandEncoder(isa);
-        SourceLineIndex sourceLines = new SourceLineIndex(layout, isa);
+        SourceLineIndex sourceLines = new SourceLineIndex(layout, isa, program.debugInfo().sources(),
+                program.debugInfo().expansionHomes());
         Map<Integer, int[]> linearToCoord = layout.linearAddressToCoord();
         Map<int[], Integer> machineCodeLayout = new HashMap<>();
 
@@ -118,6 +120,7 @@ public class Emitter {
         return new ProgramArtifact(
                 programId,
                 program.debugInfo().sources(),
+                program.debugInfo().expansionHomes(),
                 sortedMachineCodeLayout,
                 sortedInitialObjects,
                 layout.sourceMap(),

@@ -6,19 +6,28 @@ import { SourceAnnotator } from '../../annotator/SourceAnnotator.js';
  * handling file switching for included files, highlighting the currently executing line,
  * and applying runtime annotations to the active line.
  *
- * The artifact's `sources` hold every file once per module placement it stands in, the main
- * file first. Two placements of one file share its text but not its code or its annotations,
- * so the view selects an entry of that list, never a file alone.
+ * The artifact's `sources` hold one entry per inclusion of a file, the main file first: every
+ * module placement and every `.SOURCE` inclusion. Two inclusions of one file share its text but
+ * not its code, its annotations or the branches it left out, so the view selects an entry of that
+ * list, never a file alone. An entry is named by its placement, its resolved path and its
+ * `instance`, the number its positions carry as their expansion. The machine instructions under a
+ * line are those of the entry on display; those of a macro expansion stand under the lines of the
+ * entry its tokens stand on, together with those of every other expansion of the macro.
  *
  * An entry also carries what the preprocessor recorded about the file: the regions of lines a
  * conditional left out (`leftOut`), each owned by its directive line, and notes at positions
- * (`notes`), such as the state of a flag a condition names. Both are recorded per instance of
- * injected tokens, a macro expansion or a `.SOURCE` inclusion, under the number a position carries
- * as its expansion: those of expansion 0 belong to the text in no such instance and are always
- * shown; those of expansion n only while the active position stands in expansion n, because every
- * instance shares the lines of its text but may have decided differently. A region is
- * folded at its directive line, with the arrows of the machine code under a line; a note is shown
- * as an annotation after the word at its position.
+ * (`notes`), such as the state of a flag a condition names. Both carry the instance of injected
+ * tokens they were recorded in as their expansion. Those of the entry's own instance are always
+ * shown. A macro expansion is no entry: its tokens stand on the lines of the entry its definition
+ * was read in, which the artifact's `expansionHomes` names, and its records are kept in that
+ * entry under the expansion's number; they are shown only while the active position stands in
+ * that expansion, because every expansion shares the lines of the body but may have decided
+ * differently. A note is shown as an annotation after the word at its position.
+ *
+ * The listing folds two kinds of lines under a line, each in a container that draws the same
+ * guide line under the line's indicator: the machine instructions the compiler generated for a
+ * line (`▶` collapsed, `▼` expanded), and the region of lines a conditional left out, after the
+ * directive line that owns it (`[+]` folded, `[−]` unfolded, the lines greyed).
  *
  * @class OrganismSourceView
  */
@@ -36,6 +45,7 @@ export class OrganismSourceView {
         this.activeExpansion = 0; // Instance of injected tokens whose regions and notes the listing shows
         this.unfoldedRegions = new Set(); // Keys of the regions the user unfolded, see foldKey()
         this.lineNotes = new Map(); // Line number -> notes of the listing, see recordsFor()
+        this.lastExecutionState = null; // Arguments of the last updateExecutionState call
 
         // Cache references to active DOM elements
         this.dom = {
@@ -62,6 +72,7 @@ export class OrganismSourceView {
         this.lastAnnotatedLine = null;
         this.activeExpansion = 0;
         this.unfoldedRegions.clear();
+        this.lastExecutionState = null;
         
         // UX Logic: Default to the main file, the first entry, so view is not empty initially
         const sources = this.sourceEntries();
@@ -82,10 +93,11 @@ export class OrganismSourceView {
      */
     updateExecutionState(organismState, staticInfo, labelNamespaceMask) {
         if (!this.artifact || !this.dom.section) return;
+        this.lastExecutionState = { organismState, staticInfo, labelNamespaceMask };
 
         const activeLocation = this.calculateActiveLocation(organismState, staticInfo);
 
-        // 1. Auto-switch entry if execution moved to a different file or placement, and re-render
+        // 1. Auto-switch entry if execution moved to a different inclusion, and re-render
         // the listing if execution entered or left an instance of injected tokens the entry has
         // regions or notes of. This comes first because the re-render replaces the whole source
         // view, the status bar with it: a warning written before it would be thrown away again, which is
@@ -104,15 +116,32 @@ export class OrganismSourceView {
             this.renderSourceStructure(); // Re-render needed because the content changed
         }
 
+        this.showExecutionState(activeLocation, activeIndex, organismState, staticInfo, labelNamespaceMask);
+    }
+
+    /**
+     * Shows an execution state on the listing on display, without switching the entry: the
+     * status bar, the active line and its machine instruction, and the annotations of the active
+     * line. The active line is marked only while the entry on display is the one it belongs to.
+     *
+     * @param {object|null} activeLocation - The active location, or an error object or null.
+     * @param {number|null} activeIndex - The index of the entry the active location names, or null.
+     * @param {object} organismState - The current dynamic state of the organism.
+     * @param {object} staticInfo - Static info for the organism, including `initialPosition`.
+     * @param {number} labelNamespaceMask - The label namespace the organism's body stands in.
+     * @private
+     */
+    showExecutionState(activeLocation, activeIndex, organismState, staticInfo, labelNamespaceMask) {
         // 2. Handle Status Bar (Errors/Warnings including mutation detection)
         this.updateStatusBar(activeLocation, organismState);
 
         // 3. Update Line Highlighting (DOM manipulation only, no re-render)
-        const activeLineNumber = activeLocation ? activeLocation.lineNumber : null;
+        const onDisplay = activeIndex === null || activeIndex === this.selectedIndex;
+        const activeLineNumber = activeLocation && onDisplay ? activeLocation.lineNumber : null;
         this.updateHighlighting(activeLineNumber);
 
         // 4. Update Machine Instruction Highlighting and Collapse State
-        if (activeLocation && activeLocation.linearAddress !== undefined) {
+        if (activeLineNumber && activeLocation.linearAddress !== undefined) {
             this.updateMachineInstructionHighlighting(activeLocation.linearAddress, activeLocation.lineNumber);
             this.updateMachineInstructionCollapseState(activeLocation.lineNumber);
         } else {
@@ -148,15 +177,12 @@ export class OrganismSourceView {
         const sources = this.sourceEntries();
         const selectedSource = this.selectedIndex !== null ? sources[this.selectedIndex] : null;
 
-        // 1. Build File Dropdown: one entry per placement, in the order of the list. An entry of
-        // the main file's placement shows its path alone, every other one the placement's alias
-        // chain and the path the program wrote; the resolved path is the tooltip.
+        // 1. Build File Dropdown: one entry per inclusion, in the order of the list, labelled by
+        // entryLabel(); the resolved path is the tooltip.
         let dropdownHtml = '';
         if (sources.length > 1) {
-            const mainPlacement = sources[0].placement || '';
             const options = sources.map((source, index) => {
-                const placement = source.placement || '';
-                const label = placement === mainPlacement ? source.path : `${placement} → ${source.path}`;
+                const label = this.entryLabel(source, index);
                 const selected = index === this.selectedIndex ? 'selected' : '';
                 return `<option value="${index}" title="${this.escapeHtml(source.resolvedPath)}" ${selected}>`
                     + `${this.escapeHtml(label)}</option>`;
@@ -169,15 +195,16 @@ export class OrganismSourceView {
         const records = this.recordsFor(selectedSource, codeLines);
         this.lineNotes = records.notes;
 
+        // A line opens the container of the region it begins and closes the container of the region
+        // it ends; a region begins on the line after the directive line that owns it, and regions
+        // never overlap, because a directive in a branch that was left out decides nothing.
         const codeHtml = codeLines.map((line, index) => {
             const lineNumber = index + 1;
             // Note: We do NOT set 'active' class here initially. It's handled by updateExecutionState.
             const ownsFold = records.folds.has(lineNumber);
             const foldedBy = records.foldedBy.get(lineNumber);
-            const foldedClass = foldedBy !== undefined
-                ? `left-out-line${this.unfoldedRegions.has(this.foldKey(foldedBy)) ? '' : ' folded'}`
-                : '';
-            const foldedByAttribute = foldedBy !== undefined ? ` data-folded-by="${foldedBy}"` : '';
+            const region = foldedBy !== undefined ? records.folds.get(foldedBy) : undefined;
+            const leftOutClass = region ? 'left-out-line' : '';
             
             // Check if this line should show collapsible machine instructions.
             // Filter out NOPs - they are padding for mutation robustness and clutter the display.
@@ -185,7 +212,7 @@ export class OrganismSourceView {
             let showCollapsible = false;
             let filteredInstructions = [];
             const machineInstructions = this.machineInstructionsOf(
-                selectedSource.placement, selectedSource.resolvedPath, lineNumber);
+                selectedSource.placement, selectedSource.resolvedPath, selectedSource.instance || 0, lineNumber);
             if (machineInstructions && machineInstructions.instructions) {
                 // Filter out NOP and WAIT instructions (padding for mutation robustness)
                 filteredInstructions = machineInstructions.instructions.filter(
@@ -202,13 +229,18 @@ export class OrganismSourceView {
             // Always include collapse indicator column - either with symbol or empty placeholder
             let collapseIndicator = '<span class="collapse-indicator-placeholder"></span>';
             if (ownsFold) {
-                const arrow = this.unfoldedRegions.has(this.foldKey(lineNumber)) ? '▼' : '▶';
-                collapseIndicator = `<span class="collapse-indicator" data-fold-line="${lineNumber}">${arrow}</span>`;
+                const sign = this.unfoldedRegions.has(this.foldKey(lineNumber)) ? '[−]' : '[+]';
+                collapseIndicator = `<span class="collapse-indicator" data-fold-line="${lineNumber}">${sign}</span>`;
             } else if (showCollapsible) {
                 collapseIndicator = `<span class="collapse-indicator" data-source-line="${lineNumber}">▶</span>`;
             }
 
-            let html = `<div class="source-line ${lineClass} ${foldedClass}" data-line="${lineNumber}"${foldedByAttribute}>
+            let html = '';
+            if (region && region.from === lineNumber) {
+                const folded = this.unfoldedRegions.has(this.foldKey(foldedBy)) ? '' : ' folded';
+                html += `<div class="left-out-region${folded}" data-fold-line="${foldedBy}">`;
+            }
+            html += `<div class="source-line ${lineClass} ${leftOutClass}" data-line="${lineNumber}">
                         <span class="line-number">${String(lineNumber).padStart(3, ' ')}</span>
                         ${collapseIndicator}
                         <pre class="assembly-line">${this.renderLineHtml(lineNumber, line)}</pre>
@@ -224,9 +256,12 @@ export class OrganismSourceView {
                                 <span class="machine-instruction-operands">${this.escapeHtml(operandsDisplay)}</span>
                             </div>`;
                 }).join('');
-                html += `<div class="machine-instructions-container collapsed ${foldedClass}" data-source-line="${lineNumber}" data-indicator-line="${lineNumber}"${foldedByAttribute}>${machineInstructionsHtml}</div>`;
+                html += `<div class="machine-instructions-container collapsed" data-source-line="${lineNumber}" data-indicator-line="${lineNumber}">${machineInstructionsHtml}</div>`;
             }
-            
+            if (region && region.to === lineNumber) {
+                html += '</div>';
+            }
+
             return html;
         }).join('');
 
@@ -244,8 +279,9 @@ export class OrganismSourceView {
         if (dropdown) {
             dropdown.addEventListener('change', (e) => {
                 this.selectedIndex = Number(e.target.value);
+                this.lastAnnotatedLine = null;
                 this.renderSourceStructure();
-                // Note: Highlighting will be restored on next tick update
+                this.showLastExecutionState();
             });
         }
 
@@ -259,8 +295,49 @@ export class OrganismSourceView {
     }
 
     /**
+     * Shows the last execution state on the listing on display, as the last tick showed it, for a
+     * listing that was rendered anew without a tick: the active line and its annotations when the
+     * entry on display is the active one.
+     * @private
+     */
+    showLastExecutionState() {
+        if (!this.lastExecutionState) return;
+        const { organismState, staticInfo, labelNamespaceMask } = this.lastExecutionState;
+        const activeLocation = this.calculateActiveLocation(organismState, staticInfo);
+        const activeIndex = this.findSourceIndex(activeLocation);
+        this.showExecutionState(activeLocation, activeIndex, organismState, staticInfo, labelNamespaceMask);
+    }
+
+    /**
+     * Builds the label of an entry in the dropdown: `[CHAIN → ]path (from file:line)`. The
+     * placement's alias chain is left out when it is the main file's; `(from …)` names the line
+     * of the directive that made the entry and is left out for the main file. The file of that
+     * line is named by the path, as written, of the entry the directive stands in, which is found
+     * as the entry of the active position is; without such an entry, by its file name.
+     *
+     * @param {object} source - The entry.
+     * @param {number} index - The index of the entry in the list; 0 is the main file.
+     * @returns {string} The label, not escaped.
+     * @private
+     */
+    entryLabel(source, index) {
+        const sources = this.sourceEntries();
+        const mainPlacement = sources.length > 0 ? (sources[0].placement || '') : '';
+        const placement = source.placement || '';
+        let label = placement === mainPlacement ? source.path : `${placement} → ${source.path}`;
+        const at = source.includedAt;
+        if (index > 0 && at && at.fileName) {
+            const including = this.findSourceIndex(at);
+            const file = including !== null ? sources[including].path : at.fileName;
+            label += ` (from ${file}:${at.lineNumber})`;
+        }
+        return label;
+    }
+
+    /**
      * Binds click handlers to the directive lines that own a region left out, to fold and unfold
-     * the region. Unfolded, its lines are shown greyed; the choice is kept across re-renders.
+     * the region's container, marked `[+]` when folded and `[−]` when unfolded. Unfolded, its lines
+     * are shown greyed; the choice is kept across re-renders.
      * @private
      */
     bindFoldHandlers() {
@@ -276,19 +353,22 @@ export class OrganismSourceView {
                 } else {
                     this.unfoldedRegions.delete(key);
                 }
-                this.dom.codeContainer.querySelectorAll(`[data-folded-by="${lineNumber}"]`)
-                    .forEach(el => el.classList.toggle('folded', !unfolded));
+                const region = this.dom.codeContainer.querySelector(`.left-out-region[data-fold-line="${lineNumber}"]`);
+                if (region) {
+                    region.classList.toggle('folded', !unfolded);
+                }
                 const indicator = this.dom.codeContainer.querySelector(`.collapse-indicator[data-fold-line="${lineNumber}"]`);
                 if (indicator) {
-                    indicator.textContent = unfolded ? '▼' : '▶';
+                    indicator.textContent = unfolded ? '[−]' : '[+]';
                 }
             });
         });
     }
 
     /**
-     * Collects the regions and notes of an entry that the listing shows: those of expansion 0 and
-     * those of the active expansion. The compiler records equal regions and equal notes once, so
+     * Collects the regions and notes of an entry that the listing shows: those of the entry's own
+     * instance and those of the active expansion, which the entry holds only if it is the entry
+     * the expansion's tokens stand on. The compiler records equal regions and equal notes once, so
      * every directive line owns at most one region of the listing.
      *
      * @param {object|null} source - The entry on display.
@@ -305,9 +385,10 @@ export class OrganismSourceView {
         const notes = new Map();
         if (!source) return { folds, foldedBy, notes };
 
+        const own = source.instance || 0;
         const shown = record => {
             const expansion = record.expansion || 0;
-            return expansion === 0 || expansion === this.activeExpansion;
+            return expansion === own || expansion === this.activeExpansion;
         };
 
         (Array.isArray(source.leftOut) ? source.leftOut : []).filter(shown).forEach(region => {
@@ -335,16 +416,16 @@ export class OrganismSourceView {
 
     /**
      * Reports whether the entry on display has a region or note of an instance of injected
-     * tokens. Expansion 0 is always shown, so it never counts.
+     * tokens other than its own. Its own instance is always shown, so it never counts.
      *
      * @param {number} expansion - The number of the expansion.
      * @returns {boolean} True if a region or note of that expansion exists in the entry.
      * @private
      */
     hasRecordsOf(expansion) {
-        if (!expansion || this.selectedIndex === null) return false;
+        if (this.selectedIndex === null) return false;
         const source = this.sourceEntries()[this.selectedIndex];
-        if (!source) return false;
+        if (!source || expansion === (source.instance || 0)) return false;
         const of = record => (record.expansion || 0) === expansion;
         return (Array.isArray(source.leftOut) && source.leftOut.some(of))
             || (Array.isArray(source.notes) && source.notes.some(of));
@@ -364,7 +445,8 @@ export class OrganismSourceView {
 
     /**
      * Builds the HTML of a line: its text with the notes of the listing and the given runtime
-     * annotations as annotation spans after the tokens they belong to.
+     * annotations as annotation spans after the tokens they belong to. A note is a compile-time
+     * annotation and carries the class `compile-time` besides `annotation`.
      *
      * @param {number} lineNumber - The 1-based line number.
      * @param {string} text - The original text of the line.
@@ -374,10 +456,11 @@ export class OrganismSourceView {
      * @private
      */
     renderLineHtml(lineNumber, text, annotations = []) {
-        const inserts = (this.lineNotes.get(lineNumber) || []).map(note => ({ start: note.end, end: note.end, text: note.text }));
+        const inserts = (this.lineNotes.get(lineNumber) || []).map(
+            note => ({ start: note.end, end: note.end, text: note.text, className: 'annotation compile-time' }));
         annotations.forEach(ann => {
             const start = ann.relativeColumn;
-            inserts.push({ start, end: start + ann.tokenText.length, text: ann.annotationText });
+            inserts.push({ start, end: start + ann.tokenText.length, text: ann.annotationText, className: 'annotation' });
         });
         inserts.sort((a, b) => a.end - b.end);
 
@@ -387,7 +470,7 @@ export class OrganismSourceView {
             // Validate bounds to prevent crashes
             if (insert.start >= lastIndex && insert.end <= text.length) {
                 html += this.escapeHtml(text.substring(lastIndex, insert.end));
-                html += `<span class="annotation">${this.escapeHtml(insert.text)}</span>`;
+                html += `<span class="${insert.className}">${this.escapeHtml(insert.text)}</span>`;
                 lastIndex = insert.end;
             }
         });
@@ -661,8 +744,10 @@ export class OrganismSourceView {
         const actualOpcode = organismState?.instructions?.next?.opcodeName;
         if (!actualOpcode) return null;
 
+        // The instructions of the active line are those of the entry the active location stands in
+        const activeEntry = this.sourceEntries()[this.findSourceIndex(activeLocation)];
         const machineInstructions = this.machineInstructionsOf(activeLocation.placement, activeLocation.fileName,
-            activeLocation.lineNumber);
+            activeEntry?.instance, activeLocation.lineNumber);
         if (!machineInstructions?.instructions) return null;
 
         const expectedInstruction = machineInstructions.instructions.find(
@@ -800,9 +885,10 @@ export class OrganismSourceView {
     }
 
     /**
-     * Returns the artifact's source entries, one per file and module placement.
+     * Returns the artifact's source entries, one per inclusion of a file.
      *
-     * @returns {Array<{placement: string, path: string, resolvedPath: string, lines: string[],
+     * @returns {Array<{placement: string, path: string, resolvedPath: string, instance: number,
+     *          includedAt: ({fileName: string, lineNumber: number}|undefined), lines: string[],
      *          leftOut: Array<{expansion: number, directiveLine: number, from: number, to: number}>,
      *          notes: Array<{expansion: number, line: number, column: number, text: string}>}>} The
      *          entries, or an empty array without an artifact.
@@ -813,7 +899,9 @@ export class OrganismSourceView {
     }
 
     /**
-     * Finds the source entry an active location names by its placement and file.
+     * Finds the source entry an active location stands in: the entry with its placement, file
+     * and expansion, or, for an expansion that is no entry, the entry with its placement and file
+     * whose instance the artifact's `expansionHomes` names for the expansion.
      *
      * @param {object|null} location - The active location, or an error object or null.
      * @returns {number|null} The index of the entry, or null if the location names none.
@@ -821,29 +909,40 @@ export class OrganismSourceView {
      */
     findSourceIndex(location) {
         if (!location || !location.fileName) return null;
+        const sources = this.sourceEntries();
         const placement = location.placement || '';
-        const index = this.sourceEntries().findIndex(
-            source => (source.placement || '') === placement && source.resolvedPath === location.fileName);
+        const indexOf = instance => sources.findIndex(source => (source.placement || '') === placement
+            && source.resolvedPath === location.fileName && (source.instance || 0) === instance);
+        const expansion = location.expansion || 0;
+        let index = indexOf(expansion);
+        if (index < 0) {
+            const home = this.artifact?.expansionHomes?.[expansion];
+            if (home !== undefined) index = indexOf(Number(home));
+        }
         return index >= 0 ? index : null;
     }
 
     /**
      * Looks up the machine instructions of a source line in the artifact's
-     * `sourceLineToInstructions`, which holds one entry per placement and file with the
-     * instructions by line number. Two placements of one file share its lines but not its code.
+     * `sourceLineToInstructions`, which holds one item per source entry, by placement, file and
+     * instance, with the instructions by line number. Two inclusions of one file share its lines
+     * but not its code; the instructions of a macro expansion stand under the entry its tokens
+     * stand on, shared by every expansion of that macro.
      *
      * @param {string} placement - The alias chain of the placement; empty or absent for the empty one.
      * @param {string} fileName - The resolved path of the file.
+     * @param {number} instance - The instance of the entry; 0 for the main file and a module placement.
      * @param {number} lineNumber - The 1-based line number.
      * @returns {{instructions: Array<object>}|null} The instructions of the line, or null if
      *          the artifact has none for it.
      * @private
      */
-    machineInstructionsOf(placement, fileName, lineNumber) {
+    machineInstructionsOf(placement, fileName, instance, lineNumber) {
         const entries = this.artifact?.sourceLineToInstructions;
         if (!Array.isArray(entries)) return null;
         const wanted = placement || '';
-        const entry = entries.find(e => (e.placement || '') === wanted && e.fileName === fileName);
+        const entry = entries.find(e => (e.placement || '') === wanted && e.fileName === fileName
+            && (e.instance || 0) === instance);
         return entry?.lines?.[lineNumber] || null;
     }
 

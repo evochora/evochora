@@ -37,14 +37,15 @@ class LinearizedArtifactShapeTest {
     }
 
     @Test
-    void theJsonCarriesTheSourcesWithTheirRecordsAndTheInstructionsByPlacementFileAndLine() {
-        SourceFile lib = new SourceFile("LIB", "lib.evo", "/p/lib.evo", List.of("A", "B", "C"),
+    void theJsonCarriesTheSourcesWithTheirRecordsAndTheInstructionsByPlacementFileInstanceAndLine() {
+        SourceFile lib = new SourceFile("LIB", "lib.evo", "/p/lib.evo", 0, new SourceInfo("/p/main.evo", 4, 1, "", 0),
+                List.of("A", "B", "C"),
                 List.of(new SourceFile.LeftOut(1, 1, 2, 3)), List.of(new SourceFile.Note(0, 1, 4, "text")));
-        ProgramArtifact artifact = new ProgramArtifact("id", List.of(lib), Map.of(), Map.of(), Map.of(), Map.of(),
+        ProgramArtifact artifact = new ProgramArtifact("id", List.of(lib), Map.of(1, 0), Map.of(), Map.of(), Map.of(), Map.of(),
                 Map.of(), Map.of(), Map.of(), Map.of(),
                 Map.of(new SourceInfo("/p/lib.evo", 2, 5, "LIB", 0), new TokenInfo("A", TokenKind.CONSTANT, "global")),
                 Map.of(),
-                Map.of("LIB", Map.of("/p/lib.evo", Map.of(2, List.of(new MachineInstructionInfo(0, "NOP", "", false))))),
+                Map.of("LIB", Map.of("/p/lib.evo", Map.of(0, Map.of(2, List.of(new MachineInstructionInfo(0, "NOP", "", false)))))),
                 Map.of(), Map.of());
 
         JsonObject json = JsonParser.parseString(new Gson().toJson(artifact.toLinearized(ENV))).getAsJsonObject();
@@ -55,6 +56,10 @@ class LinearizedArtifactShapeTest {
         assertThat(source.get("placement").getAsString()).isEqualTo("LIB");
         assertThat(source.get("path").getAsString()).isEqualTo("lib.evo");
         assertThat(source.get("resolvedPath").getAsString()).isEqualTo("/p/lib.evo");
+        assertThat(source.get("instance").getAsInt()).isZero();
+        JsonObject includedAt = source.getAsJsonObject("includedAt");
+        assertThat(includedAt.get("fileName").getAsString()).isEqualTo("/p/main.evo");
+        assertThat(includedAt.get("lineNumber").getAsInt()).isEqualTo(4);
         assertThat(source.getAsJsonArray("lines")).hasSize(3);
         JsonObject region = source.getAsJsonArray("leftOut").get(0).getAsJsonObject();
         assertThat(region.get("expansion").getAsInt()).isEqualTo(1);
@@ -65,10 +70,12 @@ class LinearizedArtifactShapeTest {
         assertThat(note.get("column").getAsInt()).isEqualTo(4);
         assertThat(note.get("text").getAsString()).isEqualTo("text");
 
+        assertThat(json.getAsJsonObject("expansionHomes").get("1").getAsInt()).isZero();
+
         assertThat(json.getAsJsonObject("tokenMap").keySet()).containsExactly("LIB@/p/lib.evo:2:5");
 
         JsonArray line = json.getAsJsonObject("sourceLineToInstructions").getAsJsonObject("LIB")
-                .getAsJsonObject("/p/lib.evo").getAsJsonArray("2");
+                .getAsJsonObject("/p/lib.evo").getAsJsonObject("0").getAsJsonArray("2");
         assertThat(line).hasSize(1);
         assertThat(line.get(0).getAsJsonObject().get("opcode").getAsString()).isEqualTo("NOP");
     }

@@ -1,6 +1,7 @@
 package org.evochora.compiler.features.importdir;
 
 import org.evochora.compiler.diagnostics.ErrorRecoveryException;
+import org.evochora.compiler.api.SourceFile;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
@@ -20,6 +21,9 @@ import java.util.List;
  * stream for the parser to create an {@code ImportNode}. The directive stands alone on its line:
  * nothing but an {@code EXPORT} before it, and a token after the alias that begins no
  * {@code USING} clause is an error.
+ *
+ * <p>Every import is a placement and an entry of the preprocessor's sources, under the
+ * placement's alias chain, instance 0 and the position of the directive.</p>
  *
  * <p>The module's tokens are pre-lexed in Phase 1 (Lexical Analysis) and made available via
  * {@link PreProcessorContext#fileTokens()}. This handler does not call the Lexer,
@@ -98,6 +102,9 @@ public class ImportSourceHandler implements IPreProcessorHandler {
         String aliasChain = (parentChain == null || parentChain.isEmpty())
                 ? aliasUpper
                 : parentChain + "." + aliasUpper;
+
+        preProcessor.includes(new SourceFile(aliasChain, pathValue, resolvedPath, 0, importToken.source(),
+                preProcessorContext.linesOf(resolvedPath)));
 
         // Copy the pre-lexed tokens into this placement: each import gets its own instance,
         // and every token names the placement it belongs to

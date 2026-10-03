@@ -258,9 +258,11 @@ class SimulationEngineIntegrationTest {
     }
 
     @Test
-    void engine_shouldRecordTheBranchesLeftOutAndTheExpansionsInTheProgramMetadata() throws IOException, InterruptedException {
-        Files.writeString(tempDir.resolve("folded.evo"), ".MACRO STEP\n.IFDEF PAD\n  NOP\n.ELSEDEF\n  NOP\n.ENDDEF\n"
-                + ".ENDMACRO\nSTART:\n  STEP\n");
+    void engine_shouldRecordTheInclusionsTheBranchesLeftOutAndTheExpansionsInTheProgramMetadata()
+            throws IOException, InterruptedException {
+        Files.writeString(tempDir.resolve("steps.evo"), ".MACRO STEP\n.IFDEF PAD\n  NOP\n.ELSEDEF\n  NOP\n.ENDDEF\n"
+                + ".ENDMACRO\n");
+        Files.writeString(tempDir.resolve("folded.evo"), ".SOURCE \"steps.evo\"\nSTART:\n  STEP\n");
         Config foldedConfig = baseConfig
                 .withValue("compiler.source-roots", ConfigValueFactory.fromAnyRef(List.of(Map.of("path", tempDir.toString()))))
                 .withValue("organisms", ConfigValueFactory.fromAnyRef(List.of(Map.of(
@@ -279,18 +281,31 @@ class SimulationEngineIntegrationTest {
         try (StreamingBatch<SimulationMetadata> metaBatch = metadataQueue.receiveBatch(1, 0, TimeUnit.MILLISECONDS)) {
             metadata = metaBatch.iterator().next();
         }
-        org.evochora.datapipeline.api.contracts.SourceFile source = metadata.getPrograms(0).getSources(0);
+        org.evochora.datapipeline.api.contracts.ProgramArtifact program = metadata.getPrograms(0);
+        assertEquals(2, program.getSourcesCount());
+        org.evochora.datapipeline.api.contracts.SourceFile main = program.getSources(0);
+        assertEquals(0, main.getInstance());
+        assertFalse(main.hasIncludedAt());
+
+        // The sourced file is inclusion 1, made by line 1 of the main file; the expansion of its
+        // macro is instance 2 and stands on its lines
+        org.evochora.datapipeline.api.contracts.SourceFile source = program.getSources(1);
+        assertEquals("steps.evo", source.getPath());
+        assertEquals(1, source.getInstance());
+        assertTrue(source.getIncludedAt().getFileName().endsWith("folded.evo"));
+        assertEquals(1, source.getIncludedAt().getLineNumber());
+        assertEquals(Map.of(2, 1), program.getExpansionHomesMap());
         assertEquals(1, source.getLeftOutCount());
         org.evochora.datapipeline.api.contracts.LeftOutRegion region = source.getLeftOut(0);
-        assertEquals(List.of(1, 4, 5, 5),
+        assertEquals(List.of(2, 4, 5, 5),
                 List.of(region.getExpansion(), region.getDirectiveLine(), region.getFrom(), region.getTo()));
         assertEquals(1, source.getNotesCount());
         org.evochora.datapipeline.api.contracts.SourceNote note = source.getNotes(0);
-        assertEquals(List.of(1, 2, 8), List.of(note.getExpansion(), note.getLine(), note.getColumn()));
+        assertEquals(List.of(2, 2, 8), List.of(note.getExpansion(), note.getLine(), note.getColumn()));
         assertEquals("[=1]", note.getText());
-        assertEquals(List.of(1), metadata.getPrograms(0).getSourceMapList().stream()
+        assertEquals(List.of(2), program.getSourceMapList().stream()
                 .map(entry -> entry.getSourceInfo())
-                .filter(info -> info.getLineNumber() == 3)
+                .filter(info -> info.getFileName().endsWith("steps.evo") && info.getLineNumber() == 3)
                 .map(info -> info.getExpansion())
                 .toList());
     }

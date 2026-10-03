@@ -1247,11 +1247,13 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                 org.evochora.datapipeline.api.contracts.ProgramArtifact.newBuilder();
 
         builder.setProgramId(artifact.programId());
-        artifact.sources().forEach(source ->
-                builder.addSources(org.evochora.datapipeline.api.contracts.SourceFile.newBuilder()
+        artifact.sources().forEach(source -> {
+            org.evochora.datapipeline.api.contracts.SourceFile.Builder sourceBuilder =
+                    org.evochora.datapipeline.api.contracts.SourceFile.newBuilder()
                         .setPlacement(source.placement())
                         .setPath(source.path())
                         .setResolvedPath(source.resolvedPath())
+                        .setInstance(source.instance())
                         .addAllLines(source.lines())
                         .addAllLeftOut(source.leftOut().stream().map(region ->
                                 org.evochora.datapipeline.api.contracts.LeftOutRegion.newBuilder()
@@ -1266,7 +1268,13 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                                         .setLine(note.line())
                                         .setColumn(note.column())
                                         .setText(note.text())
-                                        .build()).toList())));
+                                        .build()).toList());
+            if (source.includedAt() != null) {
+                sourceBuilder.setIncludedAt(convertSourceInfo(source.includedAt()));
+            }
+            builder.addSources(sourceBuilder);
+        });
+        builder.putAllExpansionHomes(artifact.expansionHomes());
 
         artifact.machineCodeLayout().forEach((pos, instruction) ->
                 builder.addMachineCodeLayout(InstructionMapping.newBuilder()
@@ -1335,26 +1343,28 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                                         .build()
                         ).toList()))));
 
-        artifact.sourceLineToInstructions().forEach((placement, fileMap) -> fileMap.forEach((fileName, lineMap) -> {
-            org.evochora.datapipeline.api.contracts.FileSourceLines.Builder fileBuilder =
-                    org.evochora.datapipeline.api.contracts.FileSourceLines.newBuilder()
-                            .setPlacement(placement)
-                            .setFileName(fileName);
-            lineMap.forEach((line, instructions) -> {
-                org.evochora.datapipeline.api.contracts.MachineInstructionInfoList.Builder listBuilder =
-                        org.evochora.datapipeline.api.contracts.MachineInstructionInfoList.newBuilder();
-                for (org.evochora.compiler.api.MachineInstructionInfo info : instructions) {
-                    listBuilder.addInstructions(org.evochora.datapipeline.api.contracts.MachineInstructionInfo.newBuilder()
-                            .setLinearAddress(info.linearAddress())
-                            .setOpcode(info.opcode())
-                            .setOperandsAsString(info.operandsAsString() != null ? info.operandsAsString() : "")
-                            .setSynthetic(info.synthetic())
-                            .build());
-                }
-                fileBuilder.putLines(line, listBuilder.build());
-            });
-            builder.addSourceLineToInstructions(fileBuilder.build());
-        }));
+        artifact.sourceLineToInstructions().forEach((placement, fileMap) -> fileMap.forEach((fileName, instanceMap) ->
+                instanceMap.forEach((instance, lineMap) -> {
+                    org.evochora.datapipeline.api.contracts.FileSourceLines.Builder fileBuilder =
+                            org.evochora.datapipeline.api.contracts.FileSourceLines.newBuilder()
+                                    .setPlacement(placement)
+                                    .setFileName(fileName)
+                                    .setInstance(instance);
+                    lineMap.forEach((line, instructions) -> {
+                        org.evochora.datapipeline.api.contracts.MachineInstructionInfoList.Builder listBuilder =
+                                org.evochora.datapipeline.api.contracts.MachineInstructionInfoList.newBuilder();
+                        for (org.evochora.compiler.api.MachineInstructionInfo info : instructions) {
+                            listBuilder.addInstructions(org.evochora.datapipeline.api.contracts.MachineInstructionInfo.newBuilder()
+                                    .setLinearAddress(info.linearAddress())
+                                    .setOpcode(info.opcode())
+                                    .setOperandsAsString(info.operandsAsString() != null ? info.operandsAsString() : "")
+                                    .setSynthetic(info.synthetic())
+                                    .build());
+                        }
+                        fileBuilder.putLines(line, listBuilder.build());
+                    });
+                    builder.addSourceLineToInstructions(fileBuilder.build());
+                })));
 
         // Label hash value mappings for fuzzy jump display
         builder.putAllLabelValueToName(artifact.labelValueToName());

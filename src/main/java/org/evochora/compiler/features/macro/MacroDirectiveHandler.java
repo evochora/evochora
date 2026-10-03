@@ -1,5 +1,6 @@
 package org.evochora.compiler.features.macro;
 
+import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.frontend.preprocessor.BlockReader;
@@ -42,19 +43,25 @@ public class MacroDirectiveHandler implements IPreProcessorHandler {
         BlockReader.Block block = preProcessor.readBlock(startIndex);
         MacroExpansionHandler expansion = new MacroExpansionHandler(new MacroDefinition(name, params, block.body()));
 
-        // A macro name is defined once per module. The same definition may arrive again, when
-        // the file holding it is included a second time; any other definition of the name in
-        // this module is rejected, and the first one stays in force.
+        // A macro name may be defined again in its module, as happens when the file that defines
+        // it is sourced more than once, only with the same parameters and the same body word for
+        // word; the first definition stays in force. A different definition is rejected.
         Optional<IPreProcessorHandler> existing = preProcessorContext.handlers().get(name.text());
-        if (existing.isPresent() && !existing.get().equals(expansion)) {
-            String firstDefinition = existing.get() instanceof MacroExpansionHandler first
-                    ? first.definedAt().fileName() + ":" + first.definedAt().lineNumber()
-                    : "another definition";
-            preProcessor.getDiagnostics().reportError(
-                    "Cannot define macro '" + name.text() + "': the name is already used at " + firstDefinition + ".",
-                    name.source().fileName(), name.source().lineNumber());
-        } else {
+        if (existing.isEmpty()) {
             preProcessorContext.handlers().defineInModule(name.text(), expansion);
+        } else if (existing.get() instanceof MacroExpansionHandler first) {
+            if (!first.definition().sameTextAs(expansion.definition())) {
+                String differs = first.definition().sameParametersAs(expansion.definition())
+                        ? "another body" : "other parameters";
+                preProcessor.getDiagnostics().reportError(
+                        "Cannot define macro '" + name.text() + "' differently at " + SourceInfo.position(name.source())
+                                + ": first defined at " + SourceInfo.position(first.definedAt()) + " with " + differs + ".",
+                        name.source().fileName(), name.source().lineNumber());
+            }
+        } else {
+            preProcessor.getDiagnostics().reportError(
+                    "Cannot define macro '" + name.text() + "': the name is already used by another definition.",
+                    name.source().fileName(), name.source().lineNumber());
         }
 
         // The definition leaves nothing behind: the block goes, and the newline after .ENDMACRO with it.

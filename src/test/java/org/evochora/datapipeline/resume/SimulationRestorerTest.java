@@ -32,6 +32,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Unit tests for {@link SimulationRestorer}.
@@ -1073,11 +1074,64 @@ class SimulationRestorerTest {
 
         var artifact = state.programArtifacts().get("test-program");
         assertThat(artifact.sources()).containsExactly(new org.evochora.compiler.api.SourceFile(
-                "", "main.evo", "/root/main.evo", List.of(".IFDEF PAD", "NOP", ".ENDDEF"),
+                "", "main.evo", "/root/main.evo", 0, null, List.of(".IFDEF PAD", "NOP", ".ENDDEF"),
                 List.of(new org.evochora.compiler.api.SourceFile.LeftOut(2, 1, 2, 2)),
                 List.of(new org.evochora.compiler.api.SourceFile.Note(2, 1, 8, "[not set]"))));
         assertThat(artifact.sourceMap()).containsEntry(0,
                 new org.evochora.compiler.api.SourceInfo("/root/main.evo", 2, 1, "", 3));
+    }
+
+    /**
+     * The inclusion an entry of the sources stands for, its instance and the position of the
+     * directive that made it, and the entries the macro expansions stand on survive the metadata;
+     * the main file keeps no inclusion point; the instructions per line stay under their entry's
+     * instance.
+     */
+    @Test
+    void restore_InclusionsExpansionHomesAndInstructionsPerEntry_Preserved() {
+        org.evochora.datapipeline.api.contracts.SourceInfo directive =
+                org.evochora.datapipeline.api.contracts.SourceInfo.newBuilder()
+                    .setFileName("/root/main.evo")
+                    .setLineNumber(2)
+                    .setColumnNumber(1)
+                    .build();
+        org.evochora.datapipeline.api.contracts.ProgramArtifact program =
+                org.evochora.datapipeline.api.contracts.ProgramArtifact.newBuilder()
+                    .setProgramId("test-program")
+                    .addSources(org.evochora.datapipeline.api.contracts.SourceFile.newBuilder()
+                        .setPath("main.evo")
+                        .setResolvedPath("/root/main.evo")
+                        .addLines("NOP"))
+                    .addSources(org.evochora.datapipeline.api.contracts.SourceFile.newBuilder()
+                        .setPath("lib.evo")
+                        .setResolvedPath("/root/lib.evo")
+                        .setInstance(2)
+                        .setIncludedAt(directive)
+                        .addLines("NOP"))
+                    .putExpansionHomes(5, 2)
+                    .addSourceLineToInstructions(org.evochora.datapipeline.api.contracts.FileSourceLines.newBuilder()
+                        .setFileName("/root/lib.evo")
+                        .setInstance(2)
+                        .putLines(1, org.evochora.datapipeline.api.contracts.MachineInstructionInfoList.newBuilder()
+                            .addInstructions(org.evochora.datapipeline.api.contracts.MachineInstructionInfo.newBuilder()
+                                .setLinearAddress(7)
+                                .setOpcode("NOP"))
+                            .build()))
+                    .build();
+        SimulationMetadata metadata = createMinimalMetadata().toBuilder().addPrograms(program).build();
+
+        SimulationRestorer.RestoredState state = SimulationRestorer.restore(
+                new ResumeCheckpoint(metadata, snapshotWith(createOrganismState(1, 500))), randomProvider, 1);
+
+        var artifact = state.programArtifacts().get("test-program");
+        assertThat(artifact.sources()).containsExactly(
+                new org.evochora.compiler.api.SourceFile("", "main.evo", "/root/main.evo", List.of("NOP")),
+                new org.evochora.compiler.api.SourceFile("", "lib.evo", "/root/lib.evo", 2,
+                        new org.evochora.compiler.api.SourceInfo("/root/main.evo", 2, 1, "", 0), List.of("NOP")));
+        assertThat(artifact.expansionHomes()).containsExactly(Map.entry(5, 2));
+        assertThat(artifact.sourceLineToInstructions().get("").get("/root/lib.evo")).containsOnlyKeys(2);
+        assertThat(artifact.sourceLineToInstructions().get("").get("/root/lib.evo").get(2).get(1))
+                .containsExactly(new org.evochora.compiler.api.MachineInstructionInfo(7, "NOP", "", false));
     }
 
     // ==================== Helper Methods ====================

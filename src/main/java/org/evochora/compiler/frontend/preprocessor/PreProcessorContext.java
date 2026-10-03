@@ -16,9 +16,8 @@ import java.util.function.Supplier;
 /**
  * A shared context for the preprocessor phase.
  * Contains the state that handlers read and modify while the token stream is expanded: the
- * handlers the preprocessor dispatches to, the pre-lexed token streams of the files that may
- * be included, the source files the preprocessor's records are attached to, the inclusions
- * currently open, the options of the compilation, the numbers of the instances of injected
+ * handlers the preprocessor dispatches to, the pre-lexed token streams and the lines of the files
+ * that may be included, the entry of the main file, the inclusions currently open, the options of the compilation, the numbers of the instances of injected
  * tokens, and a slot in which features keep state of their own types.
  */
 public class PreProcessorContext {
@@ -26,37 +25,40 @@ public class PreProcessorContext {
     private final String rootAliasChain;
     private final Deque<PlacementContext> inclusions = new ArrayDeque<>();
     private final Map<String, List<Token>> fileTokens;
-    private final List<SourceFile> sources;
+    private final Map<String, List<String>> fileLines;
+    private final SourceFile mainFile;
     private final CompilerOptions options;
     private final Map<Class<?>, Object> featureState = new HashMap<>();
     private int lastInstance;
 
     /**
-     * Creates a context carrying the token streams that were pre-lexed for the files found
-     * during dependency scanning. A null alias chain becomes the empty chain, a null map an
-     * empty map.
+     * Creates a context carrying the token streams that were pre-lexed and the lines that were
+     * read for the files found during dependency scanning. A null alias chain becomes the empty
+     * chain, a null map an empty map.
      *
      * @param rootAliasChain The alias chain for the compilation root module.
      * @param fileTokens     Pre-lexed tokens of every file that may be included, keyed by
      *                       resolved absolute path. Whether an inclusion is a module or plain
      *                       text is decided by the directive that includes the file, not here.
-     * @param sources        The text of every file once per placement it stands in, as the
-     *                       dependency scan found it; the preprocessor returns these files with
-     *                       what it recorded for each. A null list becomes an empty one.
+     * @param fileLines      The lines of every file that may be included, keyed by resolved
+     *                       absolute path; the entries of one file share its list.
+     * @param mainFile       The entry of the main file, the first of the preprocessor's entries;
+     *                       null for preprocessing whose entries are not read.
      * @param options        The options of the compilation, offered to handlers through
      *                       {@link #options()}; must not be null.
      */
-    public PreProcessorContext(String rootAliasChain, Map<String, List<Token>> fileTokens, List<SourceFile> sources,
-                               CompilerOptions options) {
+    public PreProcessorContext(String rootAliasChain, Map<String, List<Token>> fileTokens,
+                               Map<String, List<String>> fileLines, SourceFile mainFile, CompilerOptions options) {
         this.rootAliasChain = rootAliasChain != null ? rootAliasChain : "";
         this.fileTokens = fileTokens != null ? fileTokens : Map.of();
-        this.sources = sources != null ? List.copyOf(sources) : List.of();
+        this.fileLines = fileLines != null ? fileLines : Map.of();
+        this.mainFile = mainFile;
         this.options = Objects.requireNonNull(options, "options");
     }
 
     /**
-     * Creates a context carrying pre-lexed token streams but no source files, for preprocessing
-     * whose records are not read.
+     * Creates a context carrying pre-lexed token streams but no lines and no main file, for
+     * preprocessing whose entries are not read.
      *
      * @param rootAliasChain The alias chain for the compilation root module.
      * @param fileTokens     Pre-lexed tokens of every file that may be included, keyed by
@@ -64,7 +66,7 @@ public class PreProcessorContext {
      * @param options        The options of the compilation; must not be null.
      */
     public PreProcessorContext(String rootAliasChain, Map<String, List<Token>> fileTokens, CompilerOptions options) {
-        this(rootAliasChain, fileTokens, List.of(), options);
+        this(rootAliasChain, fileTokens, Map.of(), null, options);
     }
 
     /**
@@ -72,7 +74,7 @@ public class PreProcessorContext {
      * that may be included, {@link CompilerOptions#defaults() default options}.
      */
     public PreProcessorContext() {
-        this("", Map.of(), List.of(), CompilerOptions.defaults());
+        this("", Map.of(), Map.of(), null, CompilerOptions.defaults());
     }
 
     /**
@@ -98,13 +100,23 @@ public class PreProcessorContext {
     }
 
     /**
-     * Returns the text of every file once per placement it stands in, without records.
+     * Returns the lines of a file that may be included, for the entry of an inclusion of it.
      *
-     * @return The files passed to the constructor, in their order; empty for a context created
-     *         without them.
+     * @param resolvedPath The resolved absolute path of the file.
+     * @return The file's lines, the same list for every call with the path; empty for a file the
+     *         context holds no lines of.
      */
-    public List<SourceFile> sources() {
-        return sources;
+    public List<String> linesOf(String resolvedPath) {
+        return fileLines.getOrDefault(resolvedPath, List.of());
+    }
+
+    /**
+     * Returns the entry of the main file, which the preprocessor lists first.
+     *
+     * @return The entry passed to the constructor, or null for a context created without one.
+     */
+    SourceFile mainFile() {
+        return mainFile;
     }
 
     /**

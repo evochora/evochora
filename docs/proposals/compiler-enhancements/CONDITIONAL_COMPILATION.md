@@ -580,6 +580,31 @@ without a new reason:
   belongs. A rule that showed the folds of the only inclusion of a file and nothing for a file
   included twice was rejected: it would have made the view depend on a count the reader cannot
   see.
+- **A macro expansion is shown as a frame, not inlined under its call and not attributed to
+  it.** Attributing the expansion's instructions to the call line, as the C preprocessor does
+  with its line numbers, would never show the body and would lose the folds a body decides per
+  call. Listing the body under the call, as an assembler listing does, read best with one level
+  and became dense with two, and mixed "what the compiler made of this line" with "where am I".
+  The frame bar is a debugger's call stack for an inlined function: the body is the text, the
+  call is the frame, both linked both ways.
+- **A macro may be defined again identically.** Two files that each source the macro file,
+  without knowing of each other, are the library case; a file that carries a word-for-word copy
+  is the same case. The C preprocessor and `.DEFINE` allow exactly that and reject anything
+  else. Comparing the position of the definition instead of its text was an implementation
+  shortcut and is replaced.
+- **Entries that cannot be told apart are one entry.** An entry per inclusion is right where
+  the inclusions differ; where they do not, two entries with one content would make the view
+  depend on a choice between equals (the body of a macro is expanded from the first definition,
+  the second entry would never be active). The merge is a rule of the view, because the
+  artifact records what happened and the view decides what is worth a line in the dropdown.
+- **Boxes for branches left out, arrows for machine code.** One pair of indicators for two
+  different motions — hiding source lines, opening a list under a line — was confusing; a third
+  symbol for expansions was not needed once an expansion is a frame. The boxes `[+]`/`[−]` are
+  the outlining of Visual Studio, in the width of the indicator column, with the same guide line
+  and spacing as the machine code container; a greyed line is readable (`#8a8a8a`).
+- **Compile-time notes in their own colour.** A flag's state and a constant's value are
+  decided by the compiler, a register's value by the running organism; both are annotations in
+  the same place, so the colour tells them apart.
 - **Constants from the configuration** are a separate proposal after this one; they raise
   their own questions (qualified names of module-local constants, lexing of configured values,
   unknown names, precedence) and reuse the options path of this proposal.
@@ -591,7 +616,7 @@ without a new reason:
 ### Dependencies
 
 ```text
-Step 1 (.CONST) → Step 2 (END directives) → Step 3 (lexer symbol registry) → Step 4 (blocks, slots, cursor, options) → Step 5 (feature) → Step 6 (configuration, CLI, documentation) → Step 7 (module identity by placement) → Step 8 (the placement in the artifact and the visualizer) → Step 9 (branches left out, in the source view) → Step 10 (one source entry per inclusion)
+Step 1 (.CONST) → Step 2 (END directives) → Step 3 (lexer symbol registry) → Step 4 (blocks, slots, cursor, options) → Step 5 (feature) → Step 6 (configuration, CLI, documentation) → Step 7 (module identity by placement) → Step 8 (the placement in the artifact and the visualizer) → Step 9 (branches left out, in the source view) → Step 10 (one source entry per inclusion) → Step 11 (a macro expansion as a frame)
 ```
 
 Steps 1 and 2 are renames without behavioural change. Steps 3 and 4 add generic core
@@ -841,20 +866,24 @@ message.
 ### Step 9: Branches left out, in the source view
 
 The source view shows, per placement, which branches of a conditional block were left out and
-why. The directive line of a branch that was not taken folds the lines of that branch, with the
-arrows the view already uses for the machine code under a line (`▶` folded, `▼` unfolded); folded
-is the default, unfolded shows the lines greyed. The directive line of the taken branch has no
-arrow. Every flag name in the condition of `.IFDEF`, `.IFNDEF`, `.ELSEIFDEF` and `.ELSEIFNDEF`,
-on the right of an operator too, is annotated with its state at that point of that placement,
-in the style of the register annotations: `PAD[=3]` for a flag with a value, `PAD[set]` for a
+why. The directive line of a branch that was not taken folds the lines of that branch, with
+the outlining boxes of Visual Studio (`[+]` folded, `[−]` unfolded); folded is the default,
+unfolded shows the lines greyed, in a container of their own with the guide line and the
+spacing of the machine code container under a line. The arrows `▶`/`▼` keep one meaning, what
+the compiler made of a line (its machine code); the boxes mean lines that were not assembled.
+The directive line of the taken branch has no indicator: its lines are ordinary code. Every
+flag name in the condition of `.IFDEF`, `.IFNDEF`, `.ELSEIFDEF` and `.ELSEIFNDEF`, on the right
+of an operator too, is annotated with its state at that point of that placement, in the style
+of the register annotations but in another colour, because it is a compile-time value and the
+register annotations are runtime values: `PAD[=3]` for a flag with a value, `PAD[set]` for a
 flag without one, `PAD[not set]` for a flag that is not set. `.ELSEDEF` has no flag and no
 annotation.
 
 ```
-▶ .IFDEF PAD[=1] >= 3          # folded: the branch was left out
-  .ELSEDEF
-      NOP
-  .ENDDEF
+[+] .IFDEF PAD[=1] >= 3        # folded: the branch was left out
+    .ELSEDEF
+        NOP
+    .ENDDEF
 ```
 
 - **A macro expansion is an instance.** A block in a macro body is evaluated at every
@@ -880,7 +909,7 @@ annotation.
   protobuf contract and the two converters carry them.
 - The visualizer: `OrganismSourceView` folds and annotates by the expansion of the active
   position: the regions and notes with expansion 0 always, those of an expansion only while the
-  active position stands in it. A directive line that owns a region gets the arrow and the fold,
+  active position stands in it. A directive line that owns a region gets the box and the fold,
   the folded lines are hidden, unfolded they carry a greyed style; a note is an annotation span
   at its position. Leaving an expansion, or entering another, re-renders the folds and notes of
   the body's lines.
@@ -930,6 +959,19 @@ placement's entry for the file. A file stands in the list as often as it is incl
   body. After a manual choice in the dropdown the view applies the current execution state at
   once (active line, its annotations), not only at the next tick.
 - Protobuf and the two converters carry `instance`, `includedAt` and `expansionHomes`.
+- The machine instructions of a line are listed per entry as well
+  (`sourceLineToInstructions`: placement → file → instance → line), so that two inclusions of
+  one file in one placement show each their own code under their shared lines. The emitter
+  checks, while it builds that index, that the position of every instruction belongs to an entry
+  and reports an internal error otherwise; the view relies on it and has no branch for a
+  position without entry.
+- A macro may be defined again only identically — the same parameters and the same body token
+  for token — as happens when the file that defines it is sourced more than once, or a
+  definition stands in a body that is expanded more than once; the first definition stays in
+  force. A different definition under the same name is an error that names both positions. The
+  rule is the C preprocessor's for `#define` and the one `.DEFINE` already follows; an equality
+  by the position of the definition, which the code had, would reject a word-for-word copy in
+  another file and is replaced.
 
 **Tests:** a file sourced twice yields two entries with their inclusion points and their own
 regions and notes; a file sourced inside a module carries the module's chain and the directive's
@@ -939,3 +981,57 @@ the main file and the module placements keep instance 0; the reference artifact 
 Firefox with the three-case program of the demonstration: the dropdown lists `lib/guard.evo`
 twice with its two inclusion points, each with its own fold; `lib/consts.evo` shows its fold
 and `PADDED[set]` whatever the tick; a manual switch away and back keeps the active line.
+
+### Step 11: A macro expansion as a frame
+
+A macro call has no instruction of its own: the first instruction of the expansion stands on a
+line of the body, so the view jumps from the line before the call into the macro's file without
+showing the call. Step 11 shows the expansion the way a debugger shows an inlined function: the
+body is the active text, and the call is the frame it stands in.
+
+- The macro feature reports, for every expansion, its call and its definition: the position of
+  the macro name at the call, the position of the name in the definition as it stood when
+  `.MACRO` was read (its placement, file and inclusion name the entry holding the body's lines),
+  the macro name and the arguments bound to the parameters. `DebugInfo.expansions` (expansion →
+  `Expansion(calledAt, definedAt, name, bindings)`) replaces `expansionHomes`. The core method
+  the feature calls stays generic — an instance of injected tokens, copied from a position,
+  injected at a position — and the name and the bindings are the feature's words, which travel
+  as text.
+- The regions, notes and machine instructions of an expansion are keyed by the expansion
+  itself, as they are recorded, no longer by the entry whose lines they stand on: records of an
+  entry are those with its instance, records of an expansion those with the expansion's number,
+  and the view decides what it shows. `sourceLineToInstructions` is keyed by the expansion of
+  the instruction's position (placement → file → expansion → line); under a body line the view
+  lists the instructions of the active expansion while the active position stands in one, and
+  those of every expansion otherwise, so that three expansions of one macro no longer stand
+  under one line as three instructions while one of them runs.
+- The source view: while the active position stands in an expansion, a bar above the listing
+  names the chain of frames, innermost first — `in LEVEL (N = BOOST), expanded at main.evo:30`,
+  nested `in INNER, expanded at lib/macros.evo:26 ← in TWICE, expanded at main.evo:31` — each
+  frame as a piece that wraps as a whole, so that a deep chain takes more lines and never
+  overflows. The bar stays while the position is in the expansion, whatever entry is chosen; the
+  macro name leads to the body and its active line, the call position to the calling entry and
+  its call line, and both scroll the line into view, so that the reader never has to know which
+  entry of the dropdown holds the call. Every call line of the chain that stands in the entry on
+  display is marked as a frame, in a lighter shade of the active line; the active line itself is
+  the body line. At the next tick the view follows the position as before. The entry of the
+  macro file stays in the dropdown: it is where the body is shown.
+- Entries that cannot be told apart are one: two inclusions of one file in one placement whose
+  regions, notes and instructions per line are equal are shown as one entry, labelled with every
+  inclusion point, `lib/macros.evo (from main.evo:19 / main.evo:40)`, and the active position
+  finds the entry through any of its instances. Two inclusions that differ in anything shown —
+  the include guard's second inclusion, a plain file whose code stands twice at two addresses —
+  stay two entries. The artifact keeps every inclusion; the view merges when it builds the list.
+- A constant is annotated with its value where it is used, `LIMIT[=DATA:9]`, as a compile-time
+  note in the colour of the flag notes, from the token map that already names the token a
+  constant.
+
+**Tests:** an expansion carries the position of its call and its bindings, nested through a
+body; the records and the instructions of an expansion are keyed by its number and those of an
+entry by its instance; the reference artifact is regenerated (`expansions` in place of
+`expansionHomes`, the instruction index one level deeper under `main.evo`). Browser check in
+Chrome and Firefox with the showcase program of the demonstration: the bar appears on entering
+`CHECK AGGRESSIVE` and names `main.evo:26`, the nested chain for `TWICE` → `INNER` wraps into two
+frames, the links switch the entry and mark the call line, a body line shows one instruction
+while its expansion runs and three outside, two identical inclusions of a macro file are one
+entry with two inclusion points, and `LIMIT` carries its value.

@@ -82,15 +82,21 @@ and 2 without looking at the flags.
 A token carries two fields of provenance that the core passes on and never interprets: the
 instance of injected tokens its position stands in, `SourceInfo.expansion`, 0 for the text as
 written, and the positions it replaced, `Token.replaces`, one per level of substitution, each
-with the instance it stands in. A feature that injects tokens sets them; the `macro` feature
-numbers its expansions in a state object of its own in the preprocessor context and stamps the
-body tokens and the arguments it substitutes. For a source view the preprocessor offers
-`leftOut`, a region of lines owned by a directive line, and `note`, a text at a position; each
-records at exactly the position it is given, in its placement, file and instance, and equal
-records are kept once. A feature that records at a token decides which of its positions count:
-`conditional` notes the state of a flag at the token that names it and at every position that
-token replaced. The preprocessor returns the source files of the compilation with these records
-attached; from phase 7 on they travel, with the token map, in the IR's `DebugInfo`, which the
+with the instance it stands in. A feature that injects tokens sets them, with a number the
+preprocessor context hands out (`nextInstance`): the `macro` feature stamps the body tokens and
+the arguments it substitutes, `source` the tokens of every inclusion. For a source view the
+preprocessor keeps the source files of the compilation as one entry per inclusion: the main
+file, and every inclusion a feature adds through `includes`, named by its placement, file and
+instance and by the position of the directive that made it; `importdir` and `source` add theirs.
+An instance that is no inclusion of its own is tied through `homeOf` to the entry whose lines its
+tokens stand on; `macro` does this for every expansion. The preprocessor offers `leftOut`, a
+region of lines owned by a directive line, and `note`, a text at a position; each records at
+exactly the position it is given, in its placement, file and instance, and equal records are
+kept once. A feature that records at a token decides which of its positions count: `conditional`
+notes the state of a flag at the token that names it and at every position that token replaced.
+The preprocessor returns the entries with these records attached — a record goes to the entry
+whose instance it carries, or to the entry its instance is tied to — together with the map of
+those ties; from phase 7 on they travel, with the token map, in the IR's `DebugInfo`, which the
 emitter copies into the artifact.
 
 Any other character sequence a feature reads is not a case of the lexer but a symbol the

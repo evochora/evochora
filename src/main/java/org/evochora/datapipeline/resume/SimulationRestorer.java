@@ -418,6 +418,8 @@ public class SimulationRestorer {
         List<SourceFile> sources = new ArrayList<>();
         for (var source : proto.getSourcesList()) {
             sources.add(new SourceFile(source.getPlacement(), source.getPath(), source.getResolvedPath(),
+                source.getInstance(),
+                source.hasIncludedAt() ? convertProtoSourceInfo(source.getIncludedAt()) : null,
                 source.getLinesList(),
                 source.getLeftOutList().stream().map(region -> new SourceFile.LeftOut(
                     region.getExpansion(), region.getDirectiveLine(), region.getFrom(), region.getTo())).toList(),
@@ -505,7 +507,8 @@ public class SimulationRestorer {
         }
 
         // Convert sourceLineToInstructions
-        Map<String, Map<String, Map<Integer, List<MachineInstructionInfo>>>> sourceLineToInstructions = new HashMap<>();
+        Map<String, Map<String, Map<Integer, Map<Integer, List<MachineInstructionInfo>>>>> sourceLineToInstructions =
+            new HashMap<>();
         for (org.evochora.datapipeline.api.contracts.FileSourceLines fileEntry : proto.getSourceLineToInstructionsList()) {
             Map<Integer, List<MachineInstructionInfo>> lineMap = new HashMap<>();
             fileEntry.getLinesMap().forEach((line, list) -> lineMap.put(line, list.getInstructionsList().stream()
@@ -517,7 +520,8 @@ public class SimulationRestorer {
                 ))
                 .collect(Collectors.toList())));
             sourceLineToInstructions.computeIfAbsent(fileEntry.getPlacement(), k -> new HashMap<>())
-                .put(fileEntry.getFileName(), lineMap);
+                .computeIfAbsent(fileEntry.getFileName(), k -> new HashMap<>())
+                .put(fileEntry.getInstance(), lineMap);
         }
 
         // Direct copy of label maps
@@ -527,6 +531,7 @@ public class SimulationRestorer {
         return new ProgramArtifact(
             proto.getProgramId(),
             sources,
+            new HashMap<>(proto.getExpansionHomesMap()),
             machineCodeLayout,
             initialWorldObjects,
             sourceMap,

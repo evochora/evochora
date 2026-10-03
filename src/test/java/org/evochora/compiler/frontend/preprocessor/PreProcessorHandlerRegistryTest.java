@@ -48,18 +48,13 @@ class PreProcessorHandlerRegistryTest {
     }
 
     @Test
-    void registeringTheSameDefinitionAgainIsIgnored() {
-        Token nameToken = identifier("INC");
-        List<Token> params = List.of(identifier("R"));
-        List<Token> body = List.of(opcode("ADDI"));
+    void registeringTheSameHandlerAgainIsIgnored() {
+        IPreProcessorHandler handler = createHandler("INC", List.of("R"), List.of(opcode("ADDI")));
 
-        IPreProcessorHandler handler1 = new MacroExpansionHandler(new MacroDefinition(nameToken, params, body));
-        IPreProcessorHandler handler2 = new MacroExpansionHandler(new MacroDefinition(nameToken, params, body));
+        registry.register("INC", handler);
+        registry.register("INC", handler);
 
-        registry.register("INC", handler1);
-        registry.register("INC", handler2);
-
-        assertThat(registry.get("INC")).isPresent().containsSame(handler1);
+        assertThat(registry.get("INC")).isPresent().containsSame(handler);
     }
 
     @Test
