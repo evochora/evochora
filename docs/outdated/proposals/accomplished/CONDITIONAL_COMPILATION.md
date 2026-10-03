@@ -1,6 +1,6 @@
 # Conditional Compilation
 
-**Status: TO BE REVIEWED**
+**Status: ACCOMPLISHED — implemented on branch `proposal/conditional-compilation` (2026-10-03), in the eleven steps below; see *Outcome* at the end.**
 
 ## Problem
 
@@ -28,7 +28,7 @@ is: a constant, not a macro.
 ### 3. Inconsistent END directives
 
 Block ends are abbreviated today: `.ENDP`, `.ENDM`, `.ENDR`. Conditional compilation adds
-`.ENDDEF`, and [CONTROL_FLOW_DIRECTIVES](CONTROL_FLOW_DIRECTIVES.WIP.md) adds `.ENDIF` and the
+`.ENDDEF`, and [CONTROL_FLOW_DIRECTIVES](../../../proposals/compiler-enhancements/CONTROL_FLOW_DIRECTIVES.WIP.md) adds `.ENDIF` and the
 loop ends, none of which abbreviate well. All ends repeat the word they close: `.ENDPROC`,
 `.ENDMACRO`, `.ENDREPEAT`, `.ENDDEF`, `.ENDIF`.
 
@@ -1046,3 +1046,32 @@ Chrome and Firefox with the showcase program of the demonstration: the bar appea
 frames, the links switch the entry and mark the call line, a body line shows the instruction of
 its expansion while it runs and none outside a frame, two identical inclusions of a macro file are one
 entry with two inclusion points, and `LIMIT` carries its value.
+
+## Outcome
+
+Implemented in the eleven steps above. Steps 7 to 11 were not in the text as first written; they
+came from what the implementation showed, and every decision they rest on stands under *Recorded
+decisions*. What the built code does beyond the solution text:
+
+- **A module's identity is its placement**, so one file may be imported more than once, and the
+  source view shows a file once per inclusion — module placement or `.SOURCE` inclusion — with
+  the regions and notes each inclusion recorded, labelled by chain and inclusion point;
+  inclusions that cannot be told apart are one entry.
+- **A macro expansion is a frame.** The artifact names, for every expansion, its call, its
+  definition and the bindings of its parameters; the source view shows a bar of frames with
+  links both ways, marks the call lines, and lists under a body line the instructions of the
+  frame on display and none outside a frame.
+- **A macro may be defined again identically**, the C preprocessor's rule; a different
+  definition under the same name is an error naming both positions.
+- **Constants are noted with their value** where they are used, through a `const_value`
+  directive and an emission contributor of the `constdir` feature; the keys of that map and of
+  the register aliases carry the definition's procedure scope, and the token map records the
+  scope a resolved token is defined in.
+- **The emitter reads only the IR.** The source files, the expansions, the token map and the
+  defines travel in the IR's `DebugInfo`; the emitter checks that every instruction's position
+  belongs to an entry, and the preprocessor that every record it took reaches an entry or an
+  expansion.
+- **Folding uses boxes.** A branch left out folds with `[+]`/`[−]` in a 24px indicator column,
+  its lines in a container with the guide line and spacing of the machine code container;
+  compile-time notes are yellow, runtime values green.
+- **The program identity** covers the defines, normalised once in `CompilerOptions`.
