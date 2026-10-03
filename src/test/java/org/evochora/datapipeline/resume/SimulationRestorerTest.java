@@ -141,7 +141,7 @@ class SimulationRestorerTest {
     }
 
     @Test
-    void restore_DeadOrganisms_Restored() {
+    void restore_DeadOrganisms_LeftOut() {
         SimulationMetadata metadata = createMinimalMetadata();
 
         // Create snapshot with one live and one dead organism
@@ -175,12 +175,11 @@ class SimulationRestorerTest {
         SimulationRestorer.RestoredState state = SimulationRestorer.restore(checkpoint, randomProvider, 1);
         Simulation simulation = state.simulation();
 
-        // Both organisms should be restored (dead organisms are pruned after serialization, not on restore)
-        assertThat(simulation.getOrganisms()).hasSize(2);
+        // The snapshot is the recording that wrote the dead organism, so the next one must not
+        // find it again
+        assertThat(simulation.getOrganisms()).hasSize(1);
         assertThat(simulation.getOrganisms().get(0).getId()).isEqualTo(1);
-        assertThat(simulation.getOrganisms().get(1).getId()).isEqualTo(2);
-        assertThat(simulation.getOrganisms().get(1).isDead()).isTrue();
-        assertThat(simulation.getOrganisms().get(1).getDeathTick()).isEqualTo(999);
+        assertThat(simulation.getOrganisms().get(0).isDead()).isFalse();
     }
 
     @Test

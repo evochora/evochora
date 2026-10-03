@@ -291,19 +291,19 @@ public class SimulationRestorer {
         Map<String, ProgramArtifact> programs = restoreProgramArtifacts(metadata);
         log.debug("Restored {} program artifacts", programs.size());
 
-        // 10. Restore Organisms (including dead organisms awaiting final serialization)
+        // 10. Restore the living organisms. A dead organism in the snapshot is in its final
+        // appearance: the snapshot is the recording that wrote it, and the engine drops it right
+        // after that recording. Restoring it would have the next recording write the death again.
         int deadCount = 0;
         for (OrganismState state : organismStates) {
-            Organism organism = restoreOrganism(state, simulation);
-            simulation.addOrganism(organism);
             if (state.getIsDead()) {
                 deadCount++;
+                continue;
             }
+            simulation.addOrganism(restoreOrganism(state, simulation));
         }
-        log.debug("Restored {} organisms ({} alive, {} dead awaiting serialization)",
-                simulation.getOrganisms().size(),
-                simulation.getOrganisms().size() - deadCount,
-                deadCount);
+        log.debug("Restored {} living organisms, left out {} already recorded as dead",
+                simulation.getOrganisms().size(), deadCount);
 
         // 11. Restore plugins from config (with their configs for SimulationEngine)
         RestoredPlugins restoredPlugins = restorePlugins(
