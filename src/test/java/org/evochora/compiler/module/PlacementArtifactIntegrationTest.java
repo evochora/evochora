@@ -2,6 +2,7 @@ package org.evochora.compiler.module;
 
 import org.evochora.compiler.Compiler;
 import org.evochora.compiler.api.CompilerOptions;
+import org.evochora.compiler.api.Expansion;
 import org.evochora.compiler.api.MachineInstructionInfo;
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.compiler.api.SourceFile;
@@ -206,22 +207,108 @@ class PlacementArtifactIntegrationTest {
                 .filteredOn(info -> info.fileName().equals(macros))
                 .extracting(SourceInfo::lineNumber, SourceInfo::placement)
                 .containsExactlyInAnyOrder(tuple(2, "FIRST"), tuple(2, "SECOND"));
-        // Each expansion stands on the lines of the inclusion of macros.evo in its own placement
+        // Each expansion is defined in the inclusion of macros.evo in its own placement, called in
+        // the module of that placement, and its instruction stands under the body line in its own
+        // number
         artifact.sourceMap().values().stream().filter(info -> info.fileName().equals(macros)).forEach(position -> {
             SourceFile home = artifact.sources().stream()
                     .filter(source -> source.placement().equals(position.placement())
                             && source.resolvedPath().equals(macros))
                     .findFirst()
                     .orElseThrow();
-            assertThat(home.instance()).isPositive();
-            assertThat(artifact.expansionHomes()).containsEntry(position.expansion(), home.instance());
-            // The expansion's instruction stands under the body line in that entry
+            Expansion expansion = artifact.expansions().get(position.expansion());
+            assertThat(expansion.name()).isEqualTo("PAD");
+            assertThat(expansion.definedAt()).isEqualTo(new SourceInfo(macros, 1, 8, position.placement(), home.instance()));
+            assertThat(expansion.calledAt()).isEqualTo(
+                    new SourceInfo(resolved("lib/mod.evo"), 3, 3, position.placement(), 0));
+            assertThat(expansion.bindings()).isEmpty();
             assertThat(artifact.sourceLineToInstructions().get(position.placement()).get(macros))
-                    .containsOnlyKeys(home.instance());
-            assertThat(addressesOfLine(artifact, position.placement(), macros, home.instance(), 2))
+                    .containsOnlyKeys(position.expansion());
+            assertThat(addressesOfLine(artifact, position.placement(), macros, position.expansion(), 2))
                     .containsExactly(addressOf(artifact, macros, position.placement(), position.expansion()));
         });
-        assertThat(artifact.expansionHomes()).hasSize(2);
+        assertThat(artifact.expansions()).hasSize(2);
+    }
+
+    /**
+     * An expansion names the arguments bound to its parameters in parameter order, and a macro
+     * defined inside a body is defined in the expansion of that body: the inner expansion's
+     * definition names the outer expansion, whose definition names the main file.
+     */
+    @Test
+    void anExpansionNamesItsBindings_andANestedDefinitionNamesTheEnclosingExpansion() throws Exception {
+        write("main.evo",
+                ".MACRO OUTER REG AMOUNT",
+                "  .MACRO INNER",
+                "    ADDI REG AMOUNT",
+                "  .ENDMACRO",
+                "  INNER",
+                ".ENDMACRO",
+                "START:",
+                "  OUTER %DR0 DATA:1");
+
+        ProgramArtifact artifact = compile("main.evo", null);
+
+        String main = resolved("main.evo");
+        assertThat(artifact.expansions()).containsOnlyKeys(1, 2);
+        Expansion outer = artifact.expansions().get(1);
+        Expansion inner = artifact.expansions().get(2);
+        assertThat(outer.name()).isEqualTo("OUTER");
+        assertThat(outer.bindings()).containsExactly(
+                new Expansion.Binding("REG", "%DR0"), new Expansion.Binding("AMOUNT", "DATA:1"));
+        assertThat(outer.calledAt()).isEqualTo(new SourceInfo(main, 8, 3, "", 0));
+        assertThat(outer.definedAt()).isEqualTo(new SourceInfo(main, 1, 8, "", 0));
+        assertThat(inner.name()).isEqualTo("INNER");
+        assertThat(inner.calledAt()).isEqualTo(new SourceInfo(main, 5, 3, "", 1));
+        assertThat(inner.definedAt()).isEqualTo(new SourceInfo(main, 2, 10, "", 1));
+        // The instruction of the inner body stands under its line in the inner expansion
+        assertThat(artifact.sourceLineToInstructions().get("").get(main)).containsOnlyKeys(2);
+        assertThat(artifact.sourceLineToInstructions().get("").get(main).get(2)).containsOnlyKeys(3);
+    }
+
+    /**
+     * A macro whose name is passed as an argument is called where the parameter stands in the
+     * body, in the expansion that substituted it, so that the two expansions form one chain.
+     */
+    @Test
+    void aMacroCalledThroughAnArgumentIsCalledInTheExpansionThatPassedIt() throws Exception {
+        write("main.evo",
+                ".MACRO PAD",
+                "  NOP",
+                ".ENDMACRO",
+                ".MACRO CALLIT M",
+                "  M",
+                ".ENDMACRO",
+                "START:",
+                "  CALLIT PAD");
+
+        ProgramArtifact artifact = compile("main.evo", null);
+
+        String main = resolved("main.evo");
+        assertThat(artifact.expansions()).containsOnlyKeys(1, 2);
+        assertThat(artifact.expansions().get(1).calledAt()).isEqualTo(new SourceInfo(main, 8, 3, "", 0));
+        assertThat(artifact.expansions().get(2).name()).isEqualTo("PAD");
+        assertThat(artifact.expansions().get(2).calledAt()).isEqualTo(new SourceInfo(main, 5, 3, "", 1));
+    }
+
+    /**
+     * An argument of several words is bound as it was written: with a space between two words
+     * where the program had one, and without one where they touched.
+     */
+    @Test
+    void anArgumentIsBoundAsItWasWritten() throws Exception {
+        write("main.evo",
+                ".MACRO MOVE V",
+                "  SETV %DR0 V",
+                ".ENDMACRO",
+                "START:",
+                "  MOVE 1 | 0",
+                "  MOVE 0|1");
+
+        ProgramArtifact artifact = compile("main.evo", null);
+
+        assertThat(artifact.expansions().get(1).bindings()).containsExactly(new Expansion.Binding("V", "1 | 0"));
+        assertThat(artifact.expansions().get(2).bindings()).containsExactly(new Expansion.Binding("V", "0|1"));
     }
 
     @Test

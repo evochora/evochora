@@ -76,7 +76,7 @@ public class PreProcessorTest {
         Lexer.stripEofToken(sourceTokenList);
         Map<String, List<Token>> sourceTokens = Map.of(resolvedSourcePath, sourceTokenList);
 
-        PreProcessorContext context = new PreProcessorContext("", sourceTokens, CompilerOptions.defaults());
+        PreProcessorContext context = new PreProcessorContext("", sourceTokens, mainFile.toString(), CompilerOptions.defaults());
         context.handlers().register(".SOURCE", new SourceDirectiveHandler());
         context.handlers().register(":", new org.evochora.compiler.features.label.ColonLabelHandler());
         PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, resolver, context);

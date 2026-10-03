@@ -178,7 +178,7 @@ public class TokenMapGenerator implements ITokenMapContext {
                 Symbol sym = resolved.symbol();
                 SourceInfo si = identifierNode.sourceInfo();
                 String qualifiedName = resolved.qualifiedName();
-                put(si, new TokenInfo(identifierNode.text(), TokenKindMapper.map(sym.type()), this.currentScopeName, qualifiedName));
+                put(si, new TokenInfo(identifierNode.text(), TokenKindMapper.map(sym.type()), resolved.scope(), qualifiedName));
             } else {
                 diagnostics.reportError(
                     "Internal error: symbol '" + identifierNode.text() +
@@ -191,10 +191,13 @@ public class TokenMapGenerator implements ITokenMapContext {
             if (registerNode.isAlias()) {
                 SourceInfo aliasSourceInfo = registerNode.sourceInfo();
                 String qualifiedAlias = qualifyName(registerNode.originalAlias());
+                String definedIn = resolveInCurrentScope(registerNode.originalAlias(), aliasSourceInfo)
+                        .map(ResolvedSymbol::scope)
+                        .orElse(this.currentScopeName);
                 put(aliasSourceInfo, new TokenInfo(
                     registerNode.originalAlias(),
                     TokenKind.ALIAS,
-                    this.currentScopeName,
+                    definedIn,
                     qualifiedAlias
                 ));
             } else {

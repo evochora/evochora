@@ -29,7 +29,7 @@ class PreProcessorRootPlacementTest {
         List<Token> tokens = new Lexer("NOP\nNOP\n", diagnostics, "/p/main.evo", TestLexers.symbols()).scanTokens();
         assertThat(tokens).allSatisfy(token -> assertThat(token.source().placement()).isEmpty());
 
-        PreProcessorContext context = new PreProcessorContext("PRED", Map.of(), CompilerOptions.defaults());
+        PreProcessorContext context = new PreProcessorContext("PRED", Map.of(), "/p/main.evo", CompilerOptions.defaults());
         List<Token> expanded = new PreProcessor(tokens, diagnostics,
                 new SourceRootResolver(List.of(new SourceRoot(".", null)), Path.of("/p")), context).expand().tokens();
 

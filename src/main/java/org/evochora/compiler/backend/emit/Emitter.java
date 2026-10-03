@@ -63,7 +63,7 @@ public class Emitter {
 
         OperandEncoder encoder = new OperandEncoder(isa);
         SourceLineIndex sourceLines = new SourceLineIndex(layout, isa, program.debugInfo().sources(),
-                program.debugInfo().expansionHomes());
+                program.debugInfo().expansions());
         Map<Integer, int[]> linearToCoord = layout.linearAddressToCoord();
         Map<int[], Integer> machineCodeLayout = new HashMap<>();
 
@@ -120,7 +120,7 @@ public class Emitter {
         return new ProgramArtifact(
                 programId,
                 program.debugInfo().sources(),
-                program.debugInfo().expansionHomes(),
+                program.debugInfo().expansions(),
                 sortedMachineCodeLayout,
                 sortedInitialObjects,
                 layout.sourceMap(),
@@ -128,6 +128,7 @@ public class Emitter {
                 layout.relativeCoordToLinearAddress(),
                 linearToCoord,
                 emissionContext.registerAliasMap(),
+                emissionContext.constantValues(),
                 emissionContext.procNameToParamNames(),
                 tokenMap,
                 TokenLookup.of(tokenMap),

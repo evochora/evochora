@@ -1162,6 +1162,42 @@ main.container {
     width: 100%; /* Ensure background covers full width */
 }
 
+/* Call line of an expansion the active line stands in: a frame, in a lighter shade of the active line */
+.active-call-line {
+    background-color: rgba(60, 80, 120, 0.45);
+}
+
+.active-call-line .line-number {
+    color: #bbb;
+}
+
+/* Frames of the expansions the active line stands in, innermost first; the bar wraps between frames, and a
+   frame wider than the bar wraps within itself */
+.source-frame-bar {
+    display: flex;
+    flex-wrap: wrap;
+    font-size: 11px;
+    color: #999;
+    padding: 4px 0;
+}
+
+.source-frame-bar:empty {
+    display: none;
+}
+
+.source-frame-separator {
+    white-space: pre;
+}
+
+.source-frame-link {
+    color: #9cf;
+    text-decoration: none;
+}
+
+.source-frame-link:hover {
+    text-decoration: underline;
+}
+
 /* Collapse indicator placeholder - always takes space to keep columns aligned */
 .collapse-indicator-placeholder {
     flex-shrink: 0;

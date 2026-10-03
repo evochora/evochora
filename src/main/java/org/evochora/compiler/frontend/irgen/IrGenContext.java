@@ -1,5 +1,6 @@
 package org.evochora.compiler.frontend.irgen;
 
+import org.evochora.compiler.api.DefinitionKey;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 
@@ -39,6 +40,7 @@ public final class IrGenContext {
 	private final IrConverterRegistry registry;
 	private final List<IrItem> out = new ArrayList<>();
 	private final Deque<String> aliasChainStack = new ArrayDeque<>();
+	private final Deque<String> scopeStack = new ArrayDeque<>();
 
 	/**
 	 * Constructs a new IR generation context.
@@ -53,6 +55,7 @@ public final class IrGenContext {
 		this.diagnostics = diagnostics;
 		this.registry = registry;
 		aliasChainStack.push(rootAliasChain != null ? rootAliasChain : "");
+		scopeStack.push(DefinitionKey.GLOBAL_SCOPE);
 	}
 
 	/**
@@ -131,6 +134,35 @@ public final class IrGenContext {
 	 */
 	public String currentAliasChain() {
 		return aliasChainStack.peek();
+	}
+
+	// --- Scopes ---
+
+	/**
+	 * Enters a named scope, for the nodes converted until {@link #leaveScope()}. The name is the
+	 * one the symbol table gives the scope, so that a definition converted inside it can name the
+	 * scope it stands in.
+	 * @param name The name of the scope, e.g. the qualified name of a procedure.
+	 */
+	public void enterScope(String name) {
+		scopeStack.push(name);
+	}
+
+	/**
+	 * Leaves the innermost scope entered; the module level is never left.
+	 */
+	public void leaveScope() {
+		if (scopeStack.size() > 1) {
+			scopeStack.pop();
+		}
+	}
+
+	/**
+	 * Returns the name of the innermost scope entered.
+	 * @return The scope's name; {@link DefinitionKey#GLOBAL_SCOPE} at module level.
+	 */
+	public String currentScope() {
+		return scopeStack.peek();
 	}
 
 	// --- Module-qualified naming ---

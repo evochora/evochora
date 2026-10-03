@@ -106,8 +106,8 @@ public class ImportSourceHandler implements IPreProcessorHandler {
         preProcessor.includes(new SourceFile(aliasChain, pathValue, resolvedPath, 0, importToken.source(),
                 preProcessorContext.linesOf(resolvedPath)));
 
-        // Copy the pre-lexed tokens into this placement: each import gets its own instance,
-        // and every token names the placement it belongs to
+        // Copy the pre-lexed tokens into this placement: every token names the placement it
+        // belongs to and keeps instance 0, because the placement's chain identifies the import
         List<Token> newTokens = new ArrayList<>(tokens.size() + 2);
         for (Token token : tokens) {
             SourceInfo at = token.source();

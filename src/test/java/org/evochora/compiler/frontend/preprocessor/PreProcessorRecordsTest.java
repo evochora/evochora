@@ -2,6 +2,7 @@ package org.evochora.compiler.frontend.preprocessor;
 
 import org.evochora.compiler.TestLexers;
 import org.evochora.compiler.api.CompilerOptions;
+import org.evochora.compiler.api.Expansion;
 import org.evochora.compiler.api.SourceFile;
 import org.evochora.compiler.api.SourceFile.LeftOut;
 import org.evochora.compiler.api.SourceFile.Note;
@@ -26,8 +27,8 @@ import static org.assertj.core.api.Assertions.tuple;
  * Unit tests for the entries the preprocessor lists and what it records for a source view: the
  * main file is the first entry and every inclusion follows in the order it is added; a region or
  * note is recorded at exactly the position it is given, attached to the entry of that position's
- * placement, file and instance, or to the entry an instance stands on; and it is recorded once
- * however often it is given.
+ * placement, file and instance, or to the instance that is no inclusion under its number; and it
+ * is recorded once however often it is given.
  */
 @Tag("unit")
 class PreProcessorRecordsTest {
@@ -35,7 +36,7 @@ class PreProcessorRecordsTest {
     private static final String MAIN = "/p/main.evo";
     private static final String LIB = "/p/lib.evo";
     private static final List<String> LIB_LINES = List.of("NOP");
-    private static final SourceFile MAIN_SOURCE = new SourceFile("", "main.evo", MAIN, List.of("REC", "NOP", "NOP"));
+    private static final List<String> MAIN_LINES = List.of("REC", "NOP", "NOP");
     private static final SourceFile LIB_PLACEMENT = new SourceFile("LIB", "lib.evo", LIB, 0,
             new SourceInfo(MAIN, 1, 1, "", 0), LIB_LINES);
     private static final SourceFile LIB_SOURCED = new SourceFile("", "lib.evo", LIB, 2,
@@ -50,7 +51,7 @@ class PreProcessorRecordsTest {
         assertThat(result.sources().get(0).includedAt()).isNull();
         assertThat(result.sources().get(2).includedAt()).isEqualTo(new SourceInfo(MAIN, 2, 1, "", 0));
         assertThat(result.sources().get(1).lines()).isSameAs(result.sources().get(2).lines());
-        assertThat(result.expansionHomes()).isEmpty();
+        assertThat(result.expansions()).isEmpty();
     }
 
     @Test
@@ -88,31 +89,42 @@ class PreProcessorRecordsTest {
     }
 
     @Test
-    void aRecordOfAnotherPlacementOrOfAnInstanceStandingNowhereStaysOutOfTheEntries() {
-        PreProcessorResult result = run(pp -> {
-            pp.note(new SourceInfo(MAIN, 1, 1, "OTHER", 0), "elsewhere");
-            pp.note(new SourceInfo(MAIN, 1, 1, "", 7), "nowhere");
+    void aRecordThatNamesNeitherAnEntryNorAnExpansionIsAnInternalError() {
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        PreProcessorResult result = run(diagnostics, pp -> {
+            pp.note(new SourceInfo(MAIN, 1, 1, "", 0), "kept");
+            pp.note(new SourceInfo(MAIN, 3, 1, "OTHER", 0), "elsewhere");
         });
 
-        assertThat(result.sources()).allSatisfy(source -> assertThat(source.notes()).isEmpty());
+        assertThat(result.sources().get(0).notes()).containsExactly(new Note(0, 1, 1, "kept"));
+        assertThat(diagnostics.summary())
+                .contains(MAIN + ":3: Internal error: 1 record(s) of the source view name neither a source entry"
+                        + " nor an expansion.");
     }
 
     @Test
-    void anInstanceStandingOnTheLinesOfAnEntry_keepsItsRecordsThereUnderItsOwnNumber() {
+    void anInstanceThatIsNoInclusionKeepsWhereItCameFrom_andTheRecordsMadeInIt() {
+        SourceInfo definedAt = new SourceInfo(LIB, 1, 1, "", 2);
+        SourceInfo calledAt = new SourceInfo(MAIN, 3, 1, "", 0);
+        List<Expansion.Binding> bindings = List.of(new Expansion.Binding("A", "%DR0"), new Expansion.Binding("B", "1 | 0"));
         PreProcessorResult result = run(pp -> {
-            pp.homeOf(5, new SourceInfo(LIB, 1, 1, "", 2));
-            pp.homeOf(6, new SourceInfo(LIB, 1, 1, "", 5));
-            pp.homeOf(8, new SourceInfo(MAIN, 3, 1, "", 0));
+            pp.expands(5, definedAt, calledAt, "STEP", bindings);
             pp.note(new SourceInfo(LIB, 1, 1, "", 5), "in five");
-            pp.leftOut(new SourceInfo(LIB, 1, 1, "", 6), 1, 1);
-            pp.note(new SourceInfo(MAIN, 3, 1, "", 8), "in eight");
+            pp.leftOut(new SourceInfo(LIB, 1, 1, "", 5), 1, 1);
+            pp.note(new SourceInfo(LIB, 1, 1, "", 2), "in the inclusion");
         });
 
-        assertThat(result.expansionHomes()).containsExactlyInAnyOrderEntriesOf(Map.of(5, 2, 6, 2, 8, 0));
+        assertThat(result.expansions()).containsOnlyKeys(5);
+        Expansion five = result.expansions().get(5);
+        assertThat(five.calledAt()).isEqualTo(calledAt);
+        assertThat(five.definedAt()).isEqualTo(definedAt);
+        assertThat(five.name()).isEqualTo("STEP");
+        assertThat(five.bindings()).isEqualTo(bindings);
+        assertThat(five.notes()).containsExactly(new Note(5, 1, 1, "in five"));
+        assertThat(five.leftOut()).containsExactly(new LeftOut(5, 1, 1, 1));
         SourceFile sourced = result.sources().get(2);
-        assertThat(sourced.notes()).containsExactly(new Note(5, 1, 1, "in five"));
-        assertThat(sourced.leftOut()).containsExactly(new LeftOut(6, 1, 1, 1));
-        assertThat(result.sources().get(0).notes()).containsExactly(new Note(8, 3, 1, "in eight"));
+        assertThat(sourced.notes()).containsExactly(new Note(2, 1, 1, "in the inclusion"));
+        assertThat(sourced.leftOut()).isEmpty();
     }
 
     /**
@@ -121,9 +133,18 @@ class PreProcessorRecordsTest {
      */
     private static PreProcessorResult run(Consumer<PreProcessor> records) {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        PreProcessorResult result = run(diagnostics, records);
+        assertThat(diagnostics.hasErrors()).isFalse();
+        return result;
+    }
+
+    /**
+     * Preprocesses as {@link #run(Consumer)} does, reporting to the given diagnostics.
+     */
+    private static PreProcessorResult run(DiagnosticsEngine diagnostics, Consumer<PreProcessor> records) {
         List<Token> tokens = new Lexer("REC\nNOP\nNOP\n", diagnostics, MAIN, TestLexers.symbols()).scanTokens();
-        PreProcessorContext context = new PreProcessorContext("", Map.of(), Map.of(LIB, LIB_LINES), MAIN_SOURCE,
-                CompilerOptions.defaults());
+        PreProcessorContext context = new PreProcessorContext("", Map.of(), Map.of(MAIN, MAIN_LINES, LIB, LIB_LINES),
+                "main.evo", MAIN, CompilerOptions.defaults());
         context.handlers().register("REC", (pp, ctx) -> {
             pp.includes(LIB_PLACEMENT);
             pp.includes(LIB_SOURCED);
@@ -132,8 +153,6 @@ class PreProcessorRecordsTest {
         });
         PreProcessor preProcessor = new PreProcessor(tokens, diagnostics,
                 new SourceRootResolver(List.of(new SourceRoot(".", null)), Path.of("/p")), context);
-        PreProcessorResult result = preProcessor.expand();
-        assertThat(diagnostics.hasErrors()).isFalse();
-        return result;
+        return preProcessor.expand();
     }
 }

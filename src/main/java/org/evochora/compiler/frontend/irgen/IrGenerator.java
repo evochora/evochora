@@ -1,16 +1,11 @@
 package org.evochora.compiler.frontend.irgen;
 
-import org.evochora.compiler.api.SourceFile;
-import org.evochora.compiler.api.SourceInfo;
-import org.evochora.compiler.api.TokenInfo;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ir.DebugInfo;
 import org.evochora.compiler.model.ir.IrProgram;
 
 import java.util.List;
-import java.util.Map;
-import java.util.OptionalInt;
 
 /**
  * Phase: Generates IR from a validated AST by delegating to converters
@@ -42,7 +37,7 @@ public final class IrGenerator {
 	 * @return The generated IR program.
 	 */
 	public IrProgram generate(List<AstNode> ast, String programName) {
-		return generate(ast, programName, "", List.of(), Map.of(), Map.of(), Map.of());
+		return generate(ast, programName, "", DebugInfo.none());
 	}
 
 	/**
@@ -51,25 +46,15 @@ public final class IrGenerator {
 	 * @param ast            The semantically validated AST nodes.
 	 * @param programName    The program name used for IR metadata and diagnostics.
 	 * @param rootAliasChain The alias chain for the root module (e.g., "MAIN").
-	 * @param sources        One entry per inclusion of a file, with what the preprocessor recorded
-	 *                       for it; carried in the program's {@link DebugInfo}.
-	 * @param expansionHomes For every instance of injected tokens that is no inclusion, the
-	 *                       instance of the entry its tokens stand on; carried in the program's
-	 *                       {@link DebugInfo}.
-	 * @param tokenMap       The classification of every token by position; carried in the
-	 *                       program's {@link DebugInfo}.
-	 * @param flags          The preprocessor flags of the compilation, as its options normalise
-	 *                       them; carried in the program's {@link DebugInfo}.
+	 * @param debugInfo      What the program carries for a debugger and a source view; the
+	 *                       generator passes it on unchanged.
 	 * @return The generated IR program.
 	 */
-	public IrProgram generate(List<AstNode> ast, String programName, String rootAliasChain,
-							  List<SourceFile> sources, Map<Integer, Integer> expansionHomes,
-							  Map<SourceInfo, TokenInfo> tokenMap,
-							  Map<String, OptionalInt> flags) {
+	public IrProgram generate(List<AstNode> ast, String programName, String rootAliasChain, DebugInfo debugInfo) {
 		IrGenContext ctx = new IrGenContext(programName, diagnostics, registry, rootAliasChain);
 		for (AstNode node : ast) {
 			registry.resolve(node).convert(node, ctx);
 		}
-		return ctx.build(new DebugInfo(sources, expansionHomes, tokenMap, flags));
+		return ctx.build(debugInfo);
 	}
 }

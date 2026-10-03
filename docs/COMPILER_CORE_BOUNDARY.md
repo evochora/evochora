@@ -74,12 +74,15 @@ Smaller instances: the lexer emits a colon token for `:` (label); `Symbol.Type` 
 enum whose eight members are named after individual features, mapped exhaustively in
 `TokenKindMapper`.
 
-`CompilerOptions.defines`, the preprocessor flags of a compilation, is the one option field
-that only a feature reads; `sourceRoots` is read by the core. The core upper-cases the flag
-names, rejects two keys that are one name, and hands the options to the contexts of Phases 0
-and 2 without looking at the flags.
+`CompilerOptions.defines`, the preprocessor flags of a compilation, is read by a feature and by
+the core at exactly one place: `ProgramIdentity` takes the defines into the program's identity as
+a key of the compilation's variant and attaches no meaning to their names or values.
+`sourceRoots` is read by the core. The core upper-cases the names, rejects two keys that are one
+name, and hands the options to the contexts of Phases 0 and 2 without looking at the defines.
 
-A token carries two fields of provenance that the core passes on and never interprets: the
+A token carries two fields of provenance that the core uses only as keys — in the token map, in
+the symbol table by placement, in the instruction index by expansion and in the emitter's
+consistency walk — and to whose particular values it attaches no meaning: the
 instance of injected tokens its position stands in, `SourceInfo.expansion`, 0 for the text as
 written, and the positions it replaced, `Token.replaces`, one per level of substitution, each
 with the instance it stands in. A feature that injects tokens sets them, with a number the
@@ -88,16 +91,18 @@ the arguments it substitutes, `source` the tokens of every inclusion. For a sour
 preprocessor keeps the source files of the compilation as one entry per inclusion: the main
 file, and every inclusion a feature adds through `includes`, named by its placement, file and
 instance and by the position of the directive that made it; `importdir` and `source` add theirs.
-An instance that is no inclusion of its own is tied through `homeOf` to the entry whose lines its
-tokens stand on; `macro` does this for every expansion. The preprocessor offers `leftOut`, a
-region of lines owned by a directive line, and `note`, a text at a position; each records at
-exactly the position it is given, in its placement, file and instance, and equal records are
-kept once. A feature that records at a token decides which of its positions count: `conditional`
-notes the state of a flag at the token that names it and at every position that token replaced.
-The preprocessor returns the entries with these records attached — a record goes to the entry
-whose instance it carries, or to the entry its instance is tied to — together with the map of
-those ties; from phase 7 on they travel, with the token map, in the IR's `DebugInfo`, which the
-emitter copies into the artifact.
+An instance that is no inclusion of its own — tokens copied from a template and injected at a
+position — is reported through `expands`, with the position of the template, the position of
+the injection, a name and the bindings of its parameters as text; `macro` does this for every
+expansion, and the name and bindings are its words, which the core passes on. The preprocessor
+offers `leftOut`, a region of lines owned by a directive line, and `note`, a text at a position;
+each records at exactly the position it is given, in its placement, file and instance, and
+equal records are kept once. A feature that records at a token decides which of its positions
+count: `conditional` notes the state of a flag at the token that names it and at every position
+that token replaced. The preprocessor returns the entries and the expansions with these records
+attached — a record goes to the entry or the expansion whose number it carries; from phase 7 on
+they travel, with the token map, in the IR's `DebugInfo`, which the emitter copies into the
+artifact.
 
 Any other character sequence a feature reads is not a case of the lexer but a symbol the
 feature registers through `IFeatureRegistrationContext.lexerSymbol`; the lexer emits it as one
@@ -151,7 +156,9 @@ In the order in which they would be worth taking on. None is scheduled.
    concept with a core handler, so that no feature emits a directive another feature owns.
 2. The feature-named fields on `LinkingContext`, `EmissionContext` and `ProgramArtifact`
    (issue #153): a feature-owned metadata container would let `proc`, `reg`, `place` and
-   `label` carry their data under a key of their own.
+   `label` carry their data under a key of their own. `Expansion.name` and
+   `Expansion.bindings`, which `PreProcessor.expands` takes, and `constantValues` on
+   `EmissionContext` and `ProgramArtifact` are the same kind of coupling.
 3. `Symbol.Type`: the kinds a symbol can have could be asked of the defining node, as the
    phases already do through `IIdentifierBinding` and `IJumpTarget`; the token map is the only
    reader left.

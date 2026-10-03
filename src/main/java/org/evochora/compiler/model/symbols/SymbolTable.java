@@ -1,5 +1,6 @@
 package org.evochora.compiler.model.symbols;
 
+import org.evochora.compiler.api.DefinitionKey;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.model.ast.AstNode;
@@ -86,7 +87,7 @@ public class SymbolTable {
      */
     public SymbolTable(DiagnosticsEngine diagnostics) {
         this.diagnostics = diagnostics;
-        this.rootScope = new Scope(null, "global");
+        this.rootScope = new Scope(null, DefinitionKey.GLOBAL_SCOPE);
         this.currentScope = this.rootScope;
     }
 
@@ -398,7 +399,7 @@ public class SymbolTable {
             if (perFile != null && perFile.containsKey(filedUnder)) {
                 String chain = module != null ? module.aliasChain() : null;
                 String qualified = chain != null && !chain.isEmpty() ? chain + "." + key : key;
-                return new Lookup(new ResolvedSymbol(perFile.get(filedUnder), qualified), module);
+                return new Lookup(new ResolvedSymbol(perFile.get(filedUnder), qualified, scope.name()), module);
             }
         }
 
@@ -453,7 +454,7 @@ public class SymbolTable {
                 return Lookup.missing("'" + remainder + "' of " + moduleName + " is not marked EXPORT.");
             }
             String qualified = currentChain.isEmpty() ? symbolKey : currentChain + "." + symbolKey;
-            return new Lookup(new ResolvedSymbol(sym, qualified), modScope);
+            return new Lookup(new ResolvedSymbol(sym, qualified, rootScope.name()), modScope);
         }
 
         String nextAlias = remainder.substring(0, dot);

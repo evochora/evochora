@@ -24,5 +24,8 @@ public class ConstFeature implements ICompilerFeature {
 
         // Phase 7: IR Generation
         ctx.irConverter(ConstNode.class, new ConstNodeConverter());
+
+        // Phase 11: Emission
+        ctx.emissionContributor(new ConstantValueEmissionContributor());
     }
 }

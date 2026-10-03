@@ -1255,26 +1255,26 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                         .setResolvedPath(source.resolvedPath())
                         .setInstance(source.instance())
                         .addAllLines(source.lines())
-                        .addAllLeftOut(source.leftOut().stream().map(region ->
-                                org.evochora.datapipeline.api.contracts.LeftOutRegion.newBuilder()
-                                        .setExpansion(region.expansion())
-                                        .setDirectiveLine(region.directiveLine())
-                                        .setFrom(region.from())
-                                        .setTo(region.to())
-                                        .build()).toList())
-                        .addAllNotes(source.notes().stream().map(note ->
-                                org.evochora.datapipeline.api.contracts.SourceNote.newBuilder()
-                                        .setExpansion(note.expansion())
-                                        .setLine(note.line())
-                                        .setColumn(note.column())
-                                        .setText(note.text())
-                                        .build()).toList());
+                        .addAllLeftOut(source.leftOut().stream().map(SimulationEngine::convertLeftOut).toList())
+                        .addAllNotes(source.notes().stream().map(SimulationEngine::convertNote).toList());
             if (source.includedAt() != null) {
                 sourceBuilder.setIncludedAt(convertSourceInfo(source.includedAt()));
             }
             builder.addSources(sourceBuilder);
         });
-        builder.putAllExpansionHomes(artifact.expansionHomes());
+        artifact.expansions().forEach((number, expansion) -> builder.putExpansions(number,
+                org.evochora.datapipeline.api.contracts.Expansion.newBuilder()
+                        .setCalledAt(convertSourceInfo(expansion.calledAt()))
+                        .setDefinedAt(convertSourceInfo(expansion.definedAt()))
+                        .setName(expansion.name())
+                        .addAllBindings(expansion.bindings().stream().map(binding ->
+                                org.evochora.datapipeline.api.contracts.ExpansionBinding.newBuilder()
+                                        .setParameter(binding.parameter())
+                                        .setArgument(binding.argument())
+                                        .build()).toList())
+                        .addAllLeftOut(expansion.leftOut().stream().map(SimulationEngine::convertLeftOut).toList())
+                        .addAllNotes(expansion.notes().stream().map(SimulationEngine::convertNote).toList())
+                        .build()));
 
         artifact.machineCodeLayout().forEach((pos, instruction) ->
                 builder.addMachineCodeLayout(InstructionMapping.newBuilder()
@@ -1306,6 +1306,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                         .setCoord(convertVector(coord))));
 
         builder.putAllRegisterAliasMap(artifact.registerAliasMap());
+        builder.putAllConstantValues(artifact.constantValues());
 
         artifact.procNameToParamNames().forEach((procName, params) -> {
             org.evochora.datapipeline.api.contracts.ParameterNames.Builder paramsBuilder = 
@@ -1343,13 +1344,13 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                                         .build()
                         ).toList()))));
 
-        artifact.sourceLineToInstructions().forEach((placement, fileMap) -> fileMap.forEach((fileName, instanceMap) ->
-                instanceMap.forEach((instance, lineMap) -> {
+        artifact.sourceLineToInstructions().forEach((placement, fileMap) -> fileMap.forEach((fileName, expansionMap) ->
+                expansionMap.forEach((expansion, lineMap) -> {
                     org.evochora.datapipeline.api.contracts.FileSourceLines.Builder fileBuilder =
                             org.evochora.datapipeline.api.contracts.FileSourceLines.newBuilder()
                                     .setPlacement(placement)
                                     .setFileName(fileName)
-                                    .setInstance(instance);
+                                    .setExpansion(expansion);
                     lineMap.forEach((line, instructions) -> {
                         org.evochora.datapipeline.api.contracts.MachineInstructionInfoList.Builder listBuilder =
                                 org.evochora.datapipeline.api.contracts.MachineInstructionInfoList.newBuilder();
@@ -1371,6 +1372,26 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         builder.putAllLabelNameToValue(artifact.labelNameToValue());
 
         return builder.build();
+    }
+
+    private static org.evochora.datapipeline.api.contracts.LeftOutRegion convertLeftOut(
+            org.evochora.compiler.api.SourceFile.LeftOut region) {
+        return org.evochora.datapipeline.api.contracts.LeftOutRegion.newBuilder()
+                .setExpansion(region.expansion())
+                .setDirectiveLine(region.directiveLine())
+                .setFrom(region.from())
+                .setTo(region.to())
+                .build();
+    }
+
+    private static org.evochora.datapipeline.api.contracts.SourceNote convertNote(
+            org.evochora.compiler.api.SourceFile.Note note) {
+        return org.evochora.datapipeline.api.contracts.SourceNote.newBuilder()
+                .setExpansion(note.expansion())
+                .setLine(note.line())
+                .setColumn(note.column())
+                .setText(note.text())
+                .build();
     }
 
     private static SourceInfo convertSourceInfo(org.evochora.compiler.api.SourceInfo sourceInfo) {

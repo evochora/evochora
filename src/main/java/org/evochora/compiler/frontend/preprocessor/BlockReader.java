@@ -18,7 +18,8 @@ import java.util.Objects;
  * and knows nothing of what a block means; the handler of the opener decides that.
  * <p>
  * Only block words, the openers, closers and dividers, are compared by file: the tokens between
- * them may come from other files, as macro arguments and inclusion markers do.
+ * them may come from other files, as tokens substituted into a stored body and the markers
+ * injected around an inclusion do.
  */
 public class BlockReader {
 

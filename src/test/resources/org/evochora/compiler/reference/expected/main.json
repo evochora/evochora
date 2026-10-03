@@ -235,8 +235,36 @@
       "notes": []
     }
   ],
-  "expansionHomes": {
-    "4": 0
+  "expansions": {
+    "4": {
+      "calledAt": {
+        "fileName": "REFERENCE_ROOT/main.evo",
+        "lineNumber": 41,
+        "columnNumber": 3,
+        "placement": "",
+        "expansion": 0
+      },
+      "definedAt": {
+        "fileName": "REFERENCE_ROOT/main.evo",
+        "lineNumber": 24,
+        "columnNumber": 8,
+        "placement": "",
+        "expansion": 0
+      },
+      "name": "BUMP",
+      "bindings": [
+        {
+          "parameter": "REG",
+          "argument": "%COUNT"
+        },
+        {
+          "parameter": "AMOUNT",
+          "argument": "LIMIT"
+        }
+      ],
+      "leftOut": [],
+      "notes": []
+    }
   },
   "machineCodeLayout": {
     "0": 4795543,
@@ -3141,10 +3169,16 @@
     ]
   },
   "registerAliasMap": {
-    "%TMP": 512,
     "%VALUE": 1,
     "%COUNT": 0,
+    "%TMP@LOCAL_STEP": 512,
     "%POS": 256
+  },
+  "constantValues": {
+    "UTIL.MAX_VALUE": "DATA:99",
+    "LIMIT": "DATA:7",
+    "MAX_VALUE": "DATA:99",
+    "NAV.STEP.MAX_VALUE": "DATA:99"
   },
   "procNameToParamNames": {
     "LOCAL_STEP": [
@@ -3419,7 +3453,7 @@
     "NAV@REFERENCE_ROOT/lib/nav.evo:7:8": {
       "tokenText": "STEP.FORWARD",
       "tokenType": "PROCEDURE",
-      "scope": "NAV.PATROL",
+      "scope": "global",
       "qualifiedName": "NAV.STEP.FORWARD"
     },
     "REFERENCE_ROOT/main.evo:40:3": {
@@ -3492,7 +3526,7 @@
     "NAV.STEP@REFERENCE_ROOT/lib/step.evo:7:8": {
       "tokenText": "CALC.CLAMP",
       "tokenType": "PROCEDURE",
-      "scope": "NAV.STEP.FORWARD",
+      "scope": "global",
       "qualifiedName": "UTIL.CLAMP"
     },
     "REFERENCE_ROOT/main.evo:47:3": {
@@ -3546,7 +3580,7 @@
     "NAV.STEP@REFERENCE_ROOT/lib/step.evo:7:36": {
       "tokenText": "MAX_VALUE",
       "tokenType": "CONSTANT",
-      "scope": "NAV.STEP.FORWARD",
+      "scope": "global",
       "qualifiedName": "NAV.STEP.MAX_VALUE"
     },
     "REFERENCE_ROOT/main.evo:49:8": {
@@ -4112,7 +4146,7 @@
             {
               "tokenText": "STEP.FORWARD",
               "tokenType": "PROCEDURE",
-              "scope": "NAV.PATROL",
+              "scope": "global",
               "qualifiedName": "NAV.STEP.FORWARD"
             }
           ],
@@ -4373,7 +4407,7 @@
             {
               "tokenText": "MAX_VALUE",
               "tokenType": "CONSTANT",
-              "scope": "NAV.STEP.FORWARD",
+              "scope": "global",
               "qualifiedName": "NAV.STEP.MAX_VALUE"
             }
           ],
@@ -4389,7 +4423,7 @@
             {
               "tokenText": "CALC.CLAMP",
               "tokenType": "PROCEDURE",
-              "scope": "NAV.STEP.FORWARD",
+              "scope": "global",
               "qualifiedName": "UTIL.CLAMP"
             }
           ]
@@ -4738,22 +4772,6 @@
               "synthetic": false
             }
           ],
-          "25": [
-            {
-              "linearAddress": 74,
-              "opcode": "ADDI",
-              "operandsAsString": "%DR0 DATA:7",
-              "synthetic": false
-            }
-          ],
-          "26": [
-            {
-              "linearAddress": 77,
-              "opcode": "NOP",
-              "operandsAsString": "",
-              "synthetic": false
-            }
-          ],
           "61": [
             {
               "linearAddress": 140,
@@ -4773,6 +4791,24 @@
               "linearAddress": 142,
               "opcode": "JMPI",
               "operandsAsString": "LABELREF:8CC42",
+              "synthetic": false
+            }
+          ]
+        },
+        "4": {
+          "25": [
+            {
+              "linearAddress": 74,
+              "opcode": "ADDI",
+              "operandsAsString": "%DR0 DATA:7",
+              "synthetic": false
+            }
+          ],
+          "26": [
+            {
+              "linearAddress": 77,
+              "opcode": "NOP",
+              "operandsAsString": "",
               "synthetic": false
             }
           ]

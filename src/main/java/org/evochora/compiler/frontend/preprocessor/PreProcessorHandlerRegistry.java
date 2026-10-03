@@ -135,7 +135,7 @@ public class PreProcessorHandlerRegistry {
 
     /**
      * Registers a directive that may stand only at the top level: never inside a stored body,
-     * nor as a macro argument.
+     * nor substituted into a stored body by a handler.
      *
      * @param directive The directive name, e.g. {@code .SOURCE}.
      */

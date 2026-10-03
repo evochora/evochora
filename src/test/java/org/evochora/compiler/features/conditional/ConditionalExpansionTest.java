@@ -869,7 +869,7 @@ class ConditionalExpansionTest {
         List<Token> tokens = new Lexer(String.join("\n", lines) + "\n", diagnostics, MAIN, TestLexers.symbols())
                 .scanTokens();
         CompilerOptions options = new CompilerOptions(List.of(new SourceRoot(".", null)), defines);
-        PreProcessorContext context = new PreProcessorContext("", Map.of(LIBRARY, libraryTokens), options);
+        PreProcessorContext context = new PreProcessorContext("", Map.of(LIBRARY, libraryTokens), MAIN, options);
         FeatureRegistry features = new FeatureRegistry(new RuntimeInstructionSetAdapter());
         StandardFeatures.all().forEach(f -> f.register(features));
         features.preprocessorHandlers().forEach(context.handlers()::register);

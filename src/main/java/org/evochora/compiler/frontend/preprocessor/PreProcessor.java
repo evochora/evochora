@@ -1,5 +1,6 @@
 package org.evochora.compiler.frontend.preprocessor;
 
+import org.evochora.compiler.api.Expansion;
 import org.evochora.compiler.api.SourceFile;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.model.token.Token;
@@ -25,15 +26,15 @@ public class PreProcessor {
     private int current = 0;
     private final PreProcessorContext ppContext;
     private final BlockReader blockReader;
-    private final Map<String, Map<String, Set<SourceFile.LeftOut>>> leftOut = new HashMap<>();
-    private final Map<String, Map<String, Set<SourceFile.Note>>> notes = new HashMap<>();
+    private final Map<String, Map<String, Set<SourceFile.LeftOut>>> leftOut = new LinkedHashMap<>();
+    private final Map<String, Map<String, Set<SourceFile.Note>>> notes = new LinkedHashMap<>();
     private final List<SourceFile> entries = new ArrayList<>();
-    private final Map<Integer, Integer> homes = new HashMap<>();
+    private final Map<Integer, Expansion> expansions = new HashMap<>();
 
     /**
      * Constructs a new PreProcessor. The initial tokens are given the placement of the
      * compilation root, the context's alias chain while no inclusion is open, and the context's
-     * entry of the main file, if it has one, becomes the first entry.
+     * entry of the main file becomes the first entry.
      *
      * @param initialTokens  The initial list of tokens from the lexer.
      * @param diagnostics    The engine for reporting errors and warnings.
@@ -55,9 +56,7 @@ public class PreProcessor {
         this.resolver = resolver;
         this.ppContext = ppContext;
         this.blockReader = new BlockReader(this, ppContext.handlers());
-        if (ppContext.mainFile() != null) {
-            entries.add(ppContext.mainFile());
-        }
+        entries.add(ppContext.mainFile());
     }
 
     /**
@@ -67,9 +66,12 @@ public class PreProcessor {
      * it is, unless it closes or divides a registered block: the handler of a block consumes its
      * closer and dividers, so one the walk reaches stands outside any block and is reported and
      * removed by the {@link BlockReader}.
-     * @return The preprocessing result: the expanded tokens, the entries of the inclusions with
-     *         the regions and notes the handlers recorded attached to each, and the entry instance
-     *         every recorded instance stands on.
+     * @return The preprocessing result: the expanded tokens, the entries of the inclusions and
+     *         the instances that are no inclusion, each with the regions and notes the handlers
+     *         recorded in it. A record at a position goes to the entry of the position's placement,
+     *         file and instance, or else to the instance that is no inclusion under the position's
+     *         number. A record that names neither is a defect of the compiler and is reported as
+     *         an internal error.
      */
     public PreProcessorResult expand() {
         while (current < tokens.size()) {
@@ -89,31 +91,97 @@ public class PreProcessor {
             sources.add(entry.withRecords(recordedFor(leftOut, entry, SourceFile.LeftOut::expansion),
                     recordedFor(notes, entry, SourceFile.Note::expansion)));
         }
-        return new PreProcessorResult(tokens, sources, homes);
+        Map<Integer, Expansion> withRecords = new HashMap<>();
+        expansions.forEach((instance, expansion) -> withRecords.put(instance, expansion.withRecords(
+                recordedIn(leftOut, instance, SourceFile.LeftOut::expansion),
+                recordedIn(notes, instance, SourceFile.Note::expansion))));
+        checkEveryRecordIsKept(sources, withRecords);
+        return new PreProcessorResult(tokens, sources, withRecords);
+    }
+
+    /**
+     * Compares the number of records distributed to entries and expansions with the number
+     * recorded, and reports a difference as an internal error at the first record that names
+     * neither an entry nor an expansion.
+     */
+    private void checkEveryRecordIsKept(List<SourceFile> sources, Map<Integer, Expansion> withRecords) {
+        int recorded = count(leftOut) + count(notes);
+        int distributed = 0;
+        for (SourceFile source : sources) {
+            distributed += source.leftOut().size() + source.notes().size();
+        }
+        for (Expansion expansion : withRecords.values()) {
+            distributed += expansion.leftOut().size() + expansion.notes().size();
+        }
+        if (distributed == recorded) {
+            return;
+        }
+        Set<String> entryKeys = new HashSet<>();
+        sources.forEach(source -> entryKeys.add(source.placement() + "\0" + source.resolvedPath() + "\0" + source.instance()));
+        String message = "Internal error: " + (recorded - distributed)
+                + " record(s) of the source view name neither a source entry nor an expansion.";
+        for (Map.Entry<String, Map<String, Set<SourceFile.Note>>> placement : notes.entrySet()) {
+            for (Map.Entry<String, Set<SourceFile.Note>> file : placement.getValue().entrySet()) {
+                for (SourceFile.Note note : file.getValue()) {
+                    if (!kept(entryKeys, placement.getKey(), file.getKey(), note.expansion())) {
+                        diagnostics.reportError(message, file.getKey(), note.line());
+                        return;
+                    }
+                }
+            }
+        }
+        for (Map.Entry<String, Map<String, Set<SourceFile.LeftOut>>> placement : leftOut.entrySet()) {
+            for (Map.Entry<String, Set<SourceFile.LeftOut>> file : placement.getValue().entrySet()) {
+                for (SourceFile.LeftOut region : file.getValue()) {
+                    if (!kept(entryKeys, placement.getKey(), file.getKey(), region.expansion())) {
+                        diagnostics.reportError(message, file.getKey(), region.directiveLine());
+                        return;
+                    }
+                }
+            }
+        }
+    }
+
+    private boolean kept(Set<String> entryKeys, String placement, String fileName, int expansion) {
+        return entryKeys.contains(placement + "\0" + fileName + "\0" + expansion) || expansions.containsKey(expansion);
+    }
+
+    private static int count(Map<String, ? extends Map<String, ? extends Set<?>>> recorded) {
+        int total = 0;
+        for (Map<String, ? extends Set<?>> byFile : recorded.values()) {
+            for (Set<?> records : byFile.values()) {
+                total += records.size();
+            }
+        }
+        return total;
     }
 
     /**
      * Returns what was recorded for an entry, in the order it was first recorded: the records of
-     * its placement and resolved path whose instance is the entry's own or stands on the entry's
-     * lines.
+     * its placement and resolved path with the entry's instance.
      */
-    private <T> List<T> recordedFor(Map<String, Map<String, Set<T>>> recorded, SourceFile entry,
-                                    ToIntFunction<T> instance) {
+    private static <T> List<T> recordedFor(Map<String, Map<String, Set<T>>> recorded, SourceFile entry,
+                                           ToIntFunction<T> instance) {
         Map<String, Set<T>> byFile = recorded.get(entry.placement());
         if (byFile == null) {
             return List.of();
         }
         return byFile.getOrDefault(entry.resolvedPath(), Set.of()).stream()
-                .filter(record -> entryInstanceOf(instance.applyAsInt(record)) == entry.instance())
+                .filter(record -> instance.applyAsInt(record) == entry.instance())
                 .toList();
     }
 
     /**
-     * Returns the instance of the entry whose lines the tokens of an instance stand on: the one
-     * {@link #homeOf} recorded for it, or the instance itself.
+     * Returns what was recorded in an instance that is no inclusion, in the order it was first
+     * recorded. Its numbers are never those of an entry, so every record under it is its own.
      */
-    private int entryInstanceOf(int instance) {
-        return homes.getOrDefault(instance, instance);
+    private static <T> List<T> recordedIn(Map<String, Map<String, Set<T>>> recorded, int expansion,
+                                          ToIntFunction<T> instance) {
+        List<T> found = new ArrayList<>();
+        recorded.values().forEach(byFile -> byFile.values().forEach(records -> records.stream()
+                .filter(record -> instance.applyAsInt(record) == expansion)
+                .forEach(found::add)));
+        return found;
     }
 
     /**
@@ -141,17 +209,21 @@ public class PreProcessor {
     }
 
     /**
-     * Records that the tokens of an instance stand on the lines of another entry: an instance of
-     * injected tokens that is no inclusion of its own, whose positions are copies of positions of
-     * text that came in with an inclusion. The regions and notes recorded in the instance are
-     * attached to that inclusion's entry, and the result names the entry's instance for it.
+     * Records an instance of injected tokens that is no inclusion of a file: tokens copied from a
+     * template and injected at a position. The copies keep the template's lines; the regions and
+     * notes recorded at positions with the instance's number are attached to it when the run
+     * ends.
      *
-     * @param instance The number the injected tokens carry as their expansion.
-     * @param position A position of the text the tokens were copied from, as it stood before the
-     *                 copy; its placement and file name are those of the instance's tokens.
+     * @param instance  The number the injected tokens carry as their expansion.
+     * @param definedAt The position of the template as it stood when it was read; its placement,
+     *                  file and expansion name where the template's lines are.
+     * @param calledAt  The position at which the tokens were injected.
+     * @param name      The name under which the template was injected, a word of the feature.
+     * @param bindings  The words the template's parameters were bound to, in parameter order.
      */
-    public void homeOf(int instance, SourceInfo position) {
-        homes.put(instance, entryInstanceOf(position.expansion()));
+    public void expands(int instance, SourceInfo definedAt, SourceInfo calledAt, String name,
+                        List<Expansion.Binding> bindings) {
+        expansions.put(instance, new Expansion(calledAt, definedAt, name, bindings, List.of(), List.of()));
     }
 
     /**
@@ -164,7 +236,7 @@ public class PreProcessor {
      * @param toLine    The last line of the region, inclusive.
      */
     public void leftOut(SourceInfo directive, int fromLine, int toLine) {
-        leftOut.computeIfAbsent(directive.placement(), k -> new HashMap<>())
+        leftOut.computeIfAbsent(directive.placement(), k -> new LinkedHashMap<>())
                 .computeIfAbsent(directive.fileName(), k -> new LinkedHashSet<>())
                 .add(new SourceFile.LeftOut(directive.expansion(), directive.lineNumber(), fromLine, toLine));
     }
@@ -177,7 +249,7 @@ public class PreProcessor {
      * @param text     The text of the note.
      */
     public void note(SourceInfo position, String text) {
-        notes.computeIfAbsent(position.placement(), k -> new HashMap<>())
+        notes.computeIfAbsent(position.placement(), k -> new LinkedHashMap<>())
                 .computeIfAbsent(position.fileName(), k -> new LinkedHashSet<>())
                 .add(new SourceFile.Note(position.expansion(), position.lineNumber(), position.columnNumber(), text));
     }

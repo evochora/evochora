@@ -1,5 +1,7 @@
 package org.evochora.compiler.directives;
 
+import java.util.Map;
+import org.evochora.compiler.api.CompilerOptions;
 import org.evochora.compiler.TestRegistries;
 import org.evochora.compiler.TestLexers;
 import org.evochora.compiler.api.SourceRoot;
@@ -33,7 +35,8 @@ public class RepeatDirectiveTest {
     }
 
     private PreProcessor createPreProcessor(List<Token> initialTokens, DiagnosticsEngine diagnostics) {
-        PreProcessorContext context = new PreProcessorContext();
+        PreProcessorContext context = new PreProcessorContext("", Map.of(), initialTokens.getFirst().source().fileName(),
+                CompilerOptions.defaults());
         context.handlers().register(".REPEAT", new RepeatDirectiveHandler());
         TestRegistries.registerPreProcessorBlocks(context.handlers());
         context.handlers().register("^", new CaretDirectiveHandler());

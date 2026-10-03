@@ -29,7 +29,7 @@ class PreProcessorContextTest {
 
     @Test
     void getOrCreate_returnsTheSameInstanceAndCreatesOnce() {
-        PreProcessorContext context = new PreProcessorContext();
+        PreProcessorContext context = context(CompilerOptions.defaults());
         AtomicInteger created = new AtomicInteger();
 
         FirstState first = context.getOrCreate(FirstState.class, () -> {
@@ -43,12 +43,11 @@ class PreProcessorContextTest {
 
         assertThat(again).isSameAs(first);
         assertThat(created).hasValue(1);
-        assertThat(context.get(FirstState.class)).isSameAs(first);
     }
 
     @Test
     void getOrCreate_keepsDifferentKeysApart() {
-        PreProcessorContext context = new PreProcessorContext();
+        PreProcessorContext context = context(CompilerOptions.defaults());
 
         FirstState first = context.getOrCreate(FirstState.class, FirstState::new);
         SecondState second = context.getOrCreate(SecondState.class, SecondState::new);
@@ -60,19 +59,18 @@ class PreProcessorContextTest {
     }
 
     @Test
-    void get_withoutState_returnsNull() {
-        assertThat(new PreProcessorContext().get(FirstState.class)).isNull();
-    }
-
-    @Test
     void noArgConstructor_hasDefaultOptions() {
-        assertThat(new PreProcessorContext().options()).isEqualTo(CompilerOptions.defaults());
+        assertThat(context(CompilerOptions.defaults()).options()).isEqualTo(CompilerOptions.defaults());
     }
 
     @Test
     void options_areThoseGiven() {
         CompilerOptions options = new CompilerOptions(
                 List.of(new SourceRoot(".", null)), Map.of("FLAG", OptionalInt.of(2)));
-        assertThat(new PreProcessorContext("", Map.of(), options).options()).isSameAs(options);
+        assertThat(context(options).options()).isSameAs(options);
+    }
+
+    private static PreProcessorContext context(CompilerOptions options) {
+        return new PreProcessorContext("", Map.of(), "<memory>", options);
     }
 }

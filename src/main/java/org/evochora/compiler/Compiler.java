@@ -5,7 +5,6 @@ import org.evochora.compiler.api.InternalCompilerException;
 import org.evochora.compiler.api.CompilerOptions;
 import org.evochora.compiler.api.ICompiler;
 import org.evochora.compiler.api.ProgramArtifact;
-import org.evochora.compiler.api.SourceFile;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.api.TokenInfo;
 import org.evochora.runtime.model.EnvironmentProperties;
@@ -40,6 +39,7 @@ import org.evochora.compiler.frontend.tokenmap.TokenMapGenerator;
 import java.util.ArrayList;
 import org.evochora.compiler.frontend.postprocess.AstPostProcessor;
 import org.evochora.compiler.frontend.postprocess.PostProcessHandlerRegistry;
+import org.evochora.compiler.model.ir.DebugInfo;
 import org.evochora.compiler.model.ir.IrProgram;
 import org.evochora.compiler.backend.layout.LayoutDirectiveRegistry;
 import org.evochora.compiler.backend.layout.LayoutEngine;
@@ -181,10 +181,8 @@ public class Compiler implements ICompiler {
                 featureRegistry.lexerSymbols()).scanTokens());
 
         // Phase 2: Preprocessing (includes, macros)
-        SourceFile mainEntry = new SourceFile(rootAliasChain, programName, mainFilePath,
-                graph.lines().getOrDefault(mainFilePath, List.of()));
-        PreProcessorContext ppContext = new PreProcessorContext(rootAliasChain, fileTokens, graph.lines(), mainEntry,
-                effectiveOptions);
+        PreProcessorContext ppContext = new PreProcessorContext(rootAliasChain, fileTokens, graph.lines(),
+                programName, mainFilePath, effectiveOptions);
         featureRegistry.preprocessorHandlers().forEach(ppContext.handlers()::register);
         featureRegistry.preprocessorBlocks().forEach(ppContext.handlers()::registerBlock);
         featureRegistry.preprocessorTopLevelOnly().forEach(ppContext.handlers()::registerTopLevelOnly);
@@ -237,8 +235,9 @@ public class Compiler implements ICompiler {
         IrConverterRegistry irRegistry = IrConverterRegistry.initialize(new DefaultAstNodeToIrConverter());
         irRegistry.registerAll(featureRegistry.irConverters());
         IrGenerator irGenerator = new IrGenerator(diagnostics, irRegistry);
-        IrProgram irProgram = irGenerator.generate(resolvedAst, programName, rootAliasChain,
-                ppResult.sources(), ppResult.expansionHomes(), tokenMap, effectiveOptions.defines());
+        DebugInfo debugInfo = new DebugInfo(ppResult.sources(), ppResult.expansions(), tokenMap,
+                effectiveOptions.defines());
+        IrProgram irProgram = irGenerator.generate(resolvedAst, programName, rootAliasChain, debugInfo);
         failOnErrors(diagnostics);
 
         // Phase 8: IR Rewriting (apply the rewrite rules of the features)

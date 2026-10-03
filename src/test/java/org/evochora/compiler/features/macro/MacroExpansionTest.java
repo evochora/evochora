@@ -98,6 +98,32 @@ class MacroExpansionTest {
                 new SourceInfo("<memory>", 2, 13, "", 2));
     }
 
+    /**
+     * An argument substituted into a body that defines a macro stands in that definition as it
+     * was written; expanding the inner macro keeps its position and adds its position in the body,
+     * in the inner expansion, to the positions it replaces.
+     */
+    @Test
+    void anArgumentInsideADefinitionInABodyKeepsItsPositionInTheInnerExpansion() {
+        Expansion result = expand(
+                ".MACRO OUTER VALUE",
+                "  .MACRO INNER",
+                "    SETI %DR0 VALUE",
+                "  .ENDMACRO",
+                "  INNER",
+                ".ENDMACRO",
+                "OUTER 5");
+
+        assertThat(result.diagnostics.hasErrors()).isFalse();
+        Token seti = result.tokens.stream().filter(t -> t.text().equals("SETI")).findFirst().orElseThrow();
+        Token five = result.tokens.stream().filter(t -> t.text().equals("5")).findFirst().orElseThrow();
+        assertThat(seti.source()).isEqualTo(new SourceInfo("<memory>", 3, 5, "", 2));
+        assertThat(five.source()).isEqualTo(new SourceInfo("<memory>", 7, 7, "", 0));
+        assertThat(five.replaces()).containsExactly(
+                new SourceInfo("<memory>", 3, 15, "", 1),
+                new SourceInfo("<memory>", 3, 15, "", 2));
+    }
+
     @Test
     void substitutesVectorArgumentAsAWhole() {
         Expansion result = expand(
@@ -394,7 +420,7 @@ class MacroExpansionTest {
         });
         List<Token> tokens = new Lexer(String.join("\n", lines) + "\n", diagnostics, MAIN, TestLexers.symbols())
                 .scanTokens();
-        PreProcessorContext context = new PreProcessorContext("", libraryTokens, CompilerOptions.defaults());
+        PreProcessorContext context = new PreProcessorContext("", libraryTokens, MAIN, CompilerOptions.defaults());
         TestRegistries.registerPreProcessorBlocks(context.handlers());
         context.handlers().register(".MACRO", new MacroDirectiveHandler());
         context.handlers().register(".REPEAT", new RepeatDirectiveHandler());
@@ -410,7 +436,7 @@ class MacroExpansionTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(String.join("\n", lines) + "\n", diagnostics, TestLexers.symbols());
         List<Token> tokens = lexer.scanTokens();
-        PreProcessorContext context = new PreProcessorContext();
+        PreProcessorContext context = new PreProcessorContext("", Map.of(), "<memory>", CompilerOptions.defaults());
         context.handlers().register(".MACRO", new MacroDirectiveHandler());
         TestRegistries.registerPreProcessorBlocks(context.handlers());
         PreProcessor preProcessor = new PreProcessor(tokens, diagnostics,

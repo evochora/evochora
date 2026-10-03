@@ -15,6 +15,7 @@ import org.evochora.compiler.api.ParamInfo;
 import org.evochora.compiler.api.ParamType;
 import org.evochora.compiler.api.PlacedMolecule;
 import org.evochora.compiler.api.ProgramArtifact;
+import org.evochora.compiler.api.Expansion;
 import org.evochora.compiler.api.SourceFile;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.api.TokenInfo;
@@ -421,11 +422,20 @@ public class SimulationRestorer {
                 source.getInstance(),
                 source.hasIncludedAt() ? convertProtoSourceInfo(source.getIncludedAt()) : null,
                 source.getLinesList(),
-                source.getLeftOutList().stream().map(region -> new SourceFile.LeftOut(
-                    region.getExpansion(), region.getDirectiveLine(), region.getFrom(), region.getTo())).toList(),
-                source.getNotesList().stream().map(note -> new SourceFile.Note(
-                    note.getExpansion(), note.getLine(), note.getColumn(), note.getText())).toList()));
+                source.getLeftOutList().stream().map(SimulationRestorer::convertProtoLeftOut).toList(),
+                source.getNotesList().stream().map(SimulationRestorer::convertProtoNote).toList()));
         }
+
+        // Convert expansions
+        Map<Integer, Expansion> expansions = new HashMap<>();
+        proto.getExpansionsMap().forEach((number, expansion) -> expansions.put(number, new Expansion(
+            convertProtoSourceInfo(expansion.getCalledAt()),
+            convertProtoSourceInfo(expansion.getDefinedAt()),
+            expansion.getName(),
+            expansion.getBindingsList().stream()
+                .map(binding -> new Expansion.Binding(binding.getParameter(), binding.getArgument())).toList(),
+            expansion.getLeftOutList().stream().map(SimulationRestorer::convertProtoLeftOut).toList(),
+            expansion.getNotesList().stream().map(SimulationRestorer::convertProtoNote).toList())));
 
         // Convert machine code layout (repeated InstructionMapping → Map<int[], Integer>)
         Map<int[], Integer> machineCodeLayout = new HashMap<>();
@@ -521,7 +531,7 @@ public class SimulationRestorer {
                 .collect(Collectors.toList())));
             sourceLineToInstructions.computeIfAbsent(fileEntry.getPlacement(), k -> new HashMap<>())
                 .computeIfAbsent(fileEntry.getFileName(), k -> new HashMap<>())
-                .put(fileEntry.getInstance(), lineMap);
+                .put(fileEntry.getExpansion(), lineMap);
         }
 
         // Direct copy of label maps
@@ -531,7 +541,7 @@ public class SimulationRestorer {
         return new ProgramArtifact(
             proto.getProgramId(),
             sources,
-            new HashMap<>(proto.getExpansionHomesMap()),
+            expansions,
             machineCodeLayout,
             initialWorldObjects,
             sourceMap,
@@ -539,6 +549,7 @@ public class SimulationRestorer {
             relativeCoordToLinearAddress,
             linearAddressToCoord,
             registerAliasMap,
+            new HashMap<>(proto.getConstantValuesMap()),
             procNameToParamNames,
             tokenMap,
             tokenLookup,
@@ -577,6 +588,14 @@ public class SimulationRestorer {
     /**
      * Converts a protobuf SourceInfo to runtime SourceInfo.
      */
+    private static SourceFile.LeftOut convertProtoLeftOut(org.evochora.datapipeline.api.contracts.LeftOutRegion region) {
+        return new SourceFile.LeftOut(region.getExpansion(), region.getDirectiveLine(), region.getFrom(), region.getTo());
+    }
+
+    private static SourceFile.Note convertProtoNote(org.evochora.datapipeline.api.contracts.SourceNote note) {
+        return new SourceFile.Note(note.getExpansion(), note.getLine(), note.getColumn(), note.getText());
+    }
+
     private static SourceInfo convertProtoSourceInfo(
             org.evochora.datapipeline.api.contracts.SourceInfo proto) {
         return new SourceInfo(proto.getFileName(), proto.getLineNumber(), proto.getColumnNumber(),

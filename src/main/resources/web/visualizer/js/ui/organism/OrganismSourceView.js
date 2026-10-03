@@ -7,22 +7,34 @@ import { SourceAnnotator } from '../../annotator/SourceAnnotator.js';
  * and applying runtime annotations to the active line.
  *
  * The artifact's `sources` hold one entry per inclusion of a file, the main file first: every
- * module placement and every `.SOURCE` inclusion. Two inclusions of one file share its text but
- * not its code, its annotations or the branches it left out, so the view selects an entry of that
- * list, never a file alone. An entry is named by its placement, its resolved path and its
- * `instance`, the number its positions carry as their expansion. The machine instructions under a
- * line are those of the entry on display; those of a macro expansion stand under the lines of the
- * entry its tokens stand on, together with those of every other expansion of the macro.
+ * module placement and every `.SOURCE` inclusion, each named by its placement, its resolved path
+ * and its `instance`, the number its positions carry as their expansion. The view lists them as
+ * items, built once per artifact: entries of one placement and file whose regions, notes and
+ * machine instructions are equal cannot be told apart and are one item,
+ * `{placement, path, resolvedPath, instances: [..], includedAt: [..], lines, leftOut, notes}`, in
+ * the position of the first; entries that differ in anything shown stay items of their own. A
+ * position finds its item by its placement, file and expansion.
  *
- * An entry also carries what the preprocessor recorded about the file: the regions of lines a
+ * A macro expansion is no entry: the artifact's `expansions` name, by the number its positions
+ * carry, where it was called (`calledAt`), where its body stands (`definedAt`, which finds the
+ * item holding the body's lines the way a position does), its name, the arguments bound to its
+ * parameters, and the regions and notes it decided. While the active position stands in an
+ * expansion, a frame bar above the listing names the chain of expansions it stands in, innermost
+ * first, with links to each body and each call; the call lines of the chain on display are marked
+ * as frames.
+ *
+ * An item carries what the preprocessor recorded about its text: the regions of lines a
  * conditional left out (`leftOut`), each owned by its directive line, and notes at positions
- * (`notes`), such as the state of a flag a condition names. Both carry the instance of injected
- * tokens they were recorded in as their expansion. Those of the entry's own instance are always
- * shown. A macro expansion is no entry: its tokens stand on the lines of the entry its definition
- * was read in, which the artifact's `expansionHomes` names, and its records are kept in that
- * entry under the expansion's number; they are shown only while the active position stands in
- * that expansion, because every expansion shares the lines of the body but may have decided
- * differently. A note is shown as an annotation after the word at its position.
+ * (`notes`), such as the state of a flag a condition names, shown as an annotation after the word
+ * at its position, as is the value a constant stands for (`LIMIT[=DATA:9]`), which the
+ * artifact's `constantValues` give for the key of the constant's definition. The item's own are
+ * always shown; those of an expansion only while the active position stands in it, directly or
+ * through an expansion called in its body, and the item holds its body, because every expansion
+ * shares the lines of the body but may have decided differently. The machine instructions under a
+ * line are keyed by the expansion of their positions: a line shows those of the item's own
+ * instances and, while expansions of the frame chain are shown, those of the shown expansions on
+ * their body lines. A body outside a frame shows none: the definition is a template and produces
+ * nothing by itself.
  *
  * The listing folds two kinds of lines under a line, each in a container that draws the same
  * guide line under the line's indicator: the machine instructions the compiler generated for a
@@ -39,10 +51,13 @@ export class OrganismSourceView {
     constructor(rootElement) {
         this.root = rootElement;
         this.artifact = null;
-        this.selectedIndex = null; // Index of the displayed entry in artifact.sources
+        this.items = []; // The entries of artifact.sources as the dropdown lists them, see buildItems()
+        this.selectedIndex = null; // Index of the displayed item
         this.annotator = new SourceAnnotator();
         this.lastAnnotatedLine = null; // Track annotated line to restore it
-        this.activeExpansion = 0; // Instance of injected tokens whose regions and notes the listing shows
+        this.chain = []; // Expansions the active position stands in, innermost first
+        this.shownExpansions = []; // Expansions whose records and instructions the listing shows
+        this.instructionIndex = new Map(); // placement|file|expansion -> instructions by line
         this.unfoldedRegions = new Set(); // Keys of the regions the user unfolded, see foldKey()
         this.lineNotes = new Map(); // Line number -> notes of the listing, see recordsFor()
         this.lastExecutionState = null; // Arguments of the last updateExecutionState call
@@ -70,13 +85,17 @@ export class OrganismSourceView {
 
         this.artifact = artifact;
         this.lastAnnotatedLine = null;
-        this.activeExpansion = 0;
+        this.chain = [];
+        this.shownExpansions = [];
+        this.instructionIndex = new Map();
+        (Array.isArray(artifact?.sourceLineToInstructions) ? artifact.sourceLineToInstructions : []).forEach(entry =>
+            this.instructionIndex.set(this.instructionKey(entry.placement, entry.fileName, entry.expansion), entry));
         this.unfoldedRegions.clear();
         this.lastExecutionState = null;
-        
-        // UX Logic: Default to the main file, the first entry, so view is not empty initially
-        const sources = this.sourceEntries();
-        this.selectedIndex = sources.length > 0 ? 0 : null;
+        this.items = this.buildItems();
+
+        // UX Logic: Default to the main file, the first item, so view is not empty initially
+        this.selectedIndex = this.items.length > 0 ? 0 : null;
 
         // Full re-render of the source structure
         this.renderSourceStructure();
@@ -97,21 +116,18 @@ export class OrganismSourceView {
 
         const activeLocation = this.calculateActiveLocation(organismState, staticInfo);
 
-        // 1. Auto-switch entry if execution moved to a different inclusion, and re-render
-        // the listing if execution entered or left an instance of injected tokens the entry has
-        // regions or notes of. This comes first because the re-render replaces the whole source
-        // view, the status bar with it: a warning written before it would be thrown away again, which is
-        // why one only ever appeared when execution happened to stay in the entry already on display.
+        // 1. Auto-switch item if execution moved to a different inclusion, and re-render the
+        // listing if the records or instructions it shows change with the expansions execution
+        // stands in. Both come before the status bar and the highlighting, because the re-render
+        // replaces the whole source view, the status bar with it, and everything written into it
+        // has to be written after.
         const activeIndex = this.findSourceIndex(activeLocation);
         const entryChanged = activeIndex !== null && this.selectedIndex !== activeIndex;
         if (entryChanged) {
             this.selectedIndex = activeIndex;
         }
-        const activeExpansion = activeLocation && !activeLocation.error ? (activeLocation.expansion || 0) : 0;
-        const expansionChanged = activeExpansion !== this.activeExpansion
-            && (this.hasRecordsOf(this.activeExpansion) || this.hasRecordsOf(activeExpansion));
-        this.activeExpansion = activeExpansion;
-        if (entryChanged || expansionChanged) {
+        this.chain = this.frameChain(activeLocation);
+        if (entryChanged || this.expansionsShown().join(',') !== this.shownExpansions.join(',')) {
             this.lastAnnotatedLine = null; // Reset on re-render
             this.renderSourceStructure(); // Re-render needed because the content changed
         }
@@ -132,13 +148,15 @@ export class OrganismSourceView {
      * @private
      */
     showExecutionState(activeLocation, activeIndex, organismState, staticInfo, labelNamespaceMask) {
-        // 2. Handle Status Bar (Errors/Warnings including mutation detection)
+        // 2. Handle Status Bar (Errors/Warnings including mutation detection) and the frames
         this.updateStatusBar(activeLocation, organismState);
+        this.renderFrameBar(activeLocation);
 
         // 3. Update Line Highlighting (DOM manipulation only, no re-render)
         const onDisplay = activeIndex === null || activeIndex === this.selectedIndex;
         const activeLineNumber = activeLocation && onDisplay ? activeLocation.lineNumber : null;
         this.updateHighlighting(activeLineNumber);
+        this.markCallLines(activeLineNumber);
 
         // 4. Update Machine Instruction Highlighting and Collapse State
         if (activeLineNumber && activeLocation.linearAddress !== undefined) {
@@ -174,25 +192,26 @@ export class OrganismSourceView {
             return;
         }
 
-        const sources = this.sourceEntries();
-        const selectedSource = this.selectedIndex !== null ? sources[this.selectedIndex] : null;
+        const items = this.items;
+        const selectedItem = this.selectedIndex !== null ? items[this.selectedIndex] : null;
+        this.shownExpansions = this.expansionsShown();
 
-        // 1. Build File Dropdown: one entry per inclusion, in the order of the list, labelled by
-        // entryLabel(); the resolved path is the tooltip.
+        // 1. Build File Dropdown: one item per inclusion that can be told apart, in the order of
+        // the list, labelled by itemLabel(); the resolved path is the tooltip.
         let dropdownHtml = '';
-        if (sources.length > 1) {
-            const options = sources.map((source, index) => {
-                const label = this.entryLabel(source, index);
+        if (items.length > 1) {
+            const options = items.map((item, index) => {
+                const label = this.itemLabel(item, true);
                 const selected = index === this.selectedIndex ? 'selected' : '';
-                return `<option value="${index}" title="${this.escapeHtml(source.resolvedPath)}" ${selected}>`
+                return `<option value="${index}" title="${this.escapeHtml(item.resolvedPath)}" ${selected}>`
                     + `${this.escapeHtml(label)}</option>`;
             }).join('');
             dropdownHtml = `<select id="assembly-file-select" class="assembly-file-dropdown">${options}</select>`;
         }
 
         // 2. Build Code Lines
-        const codeLines = selectedSource && Array.isArray(selectedSource.lines) ? selectedSource.lines : [];
-        const records = this.recordsFor(selectedSource, codeLines);
+        const codeLines = selectedItem && Array.isArray(selectedItem.lines) ? selectedItem.lines : [];
+        const records = this.recordsFor(selectedItem, codeLines);
         this.lineNotes = records.notes;
 
         // A line opens the container of the region it begins and closes the container of the region
@@ -211,11 +230,10 @@ export class OrganismSourceView {
             // Show collapsible if (after NOP filtering): (a) multiple instructions, OR (b) any synthetic instruction.
             let showCollapsible = false;
             let filteredInstructions = [];
-            const machineInstructions = this.machineInstructionsOf(
-                selectedSource.placement, selectedSource.resolvedPath, selectedSource.instance || 0, lineNumber);
-            if (machineInstructions && machineInstructions.instructions) {
+            const machineInstructions = this.instructionsFor(selectedItem, lineNumber);
+            if (machineInstructions.length > 0) {
                 // Filter out NOP and WAIT instructions (padding for mutation robustness)
-                filteredInstructions = machineInstructions.instructions.filter(
+                filteredInstructions = machineInstructions.filter(
                     i => i.opcode !== 'NOP' && i.opcode !== 'WAIT'
                 );
                 const hasMultiple = filteredInstructions.length > 1;
@@ -269,6 +287,7 @@ export class OrganismSourceView {
         el.innerHTML = `
             <div class="source-view-container">
                 ${dropdownHtml}
+                <div class="source-frame-bar"></div>
                 <div id="source-status-bar"></div>
                 <div class="assembly-code-view" id="assembly-code-scroll-container">${codeHtml}</div>
             </div>
@@ -288,7 +307,9 @@ export class OrganismSourceView {
         // Update cached references
         this.dom.codeContainer = el.querySelector('.assembly-code-view');
         this.dom.status = el.querySelector('#source-status-bar');
-        
+        this.dom.frameBar = el.querySelector('.source-frame-bar');
+        this.frameBarKey = null;
+
         // Bind click handlers for collapsible source lines and for the lines that own a fold
         this.bindCollapseHandlers();
         this.bindFoldHandlers();
@@ -309,35 +330,208 @@ export class OrganismSourceView {
     }
 
     /**
-     * Builds the label of an entry in the dropdown: `[CHAIN → ]path (from file:line)`. The
-     * placement's alias chain is left out when it is the main file's; `(from …)` names the line
-     * of the directive that made the entry and is left out for the main file. The file of that
-     * line is named by the path, as written, of the entry the directive stands in, which is found
-     * as the entry of the active position is; without such an entry, by its file name.
+     * Builds the label of an item: `[CHAIN → ]path (from a:1 / b:2)`. The placement's alias chain
+     * is left out when it is the main file's; `(from …)` names the line of every directive that
+     * made one of the item's entries, and is absent for the main file. The file of such a line is
+     * named by the path, as written, of the item the directive stands in, found as the item of a
+     * position is; without such an item, by its file name.
      *
-     * @param {object} source - The entry.
-     * @param {number} index - The index of the entry in the list; 0 is the main file.
+     * @param {object} item - The item.
+     * @param {boolean} withInclusions - Whether the label names the inclusion points.
      * @returns {string} The label, not escaped.
      * @private
      */
-    entryLabel(source, index) {
-        const sources = this.sourceEntries();
-        const mainPlacement = sources.length > 0 ? (sources[0].placement || '') : '';
-        const placement = source.placement || '';
-        let label = placement === mainPlacement ? source.path : `${placement} → ${source.path}`;
-        const at = source.includedAt;
-        if (index > 0 && at && at.fileName) {
-            const including = this.findSourceIndex(at);
-            const file = including !== null ? sources[including].path : at.fileName;
-            label += ` (from ${file}:${at.lineNumber})`;
+    itemLabel(item, withInclusions) {
+        const mainPlacement = this.items.length > 0 ? (this.items[0].placement || '') : '';
+        const placement = item.placement || '';
+        let label = placement === mainPlacement ? item.path : `${placement} → ${item.path}`;
+        if (withInclusions && item.includedAt.length > 0) {
+            const points = item.includedAt.map(at => {
+                const including = this.findSourceIndex(at);
+                const file = including !== null ? this.items[including].path : at.fileName;
+                return `${file}:${at.lineNumber}`;
+            });
+            label += ` (from ${points.join(' / ')})`;
         }
         return label;
     }
 
     /**
+     * Builds the items of the dropdown from the artifact's entries, once per artifact. An entry
+     * whose placement and file equal an earlier item's, and whose regions, notes and machine
+     * instructions per line are equal too, joins that item with its instance and inclusion point;
+     * any other entry is an item of its own. The regions and notes are compared without the
+     * instance they carry.
+     *
+     * @returns {Array<object>} The items, in the order of their first entries.
+     * @private
+     */
+    buildItems() {
+        const sources = this.artifact && Array.isArray(this.artifact.sources) ? this.artifact.sources : [];
+        const withoutExpansion = records => (Array.isArray(records) ? records : [])
+            .map(record => ({ ...record, expansion: undefined }));
+        const items = [];
+        const signatures = [];
+        sources.forEach(source => {
+            const instance = source.instance || 0;
+            const signature = JSON.stringify({
+                placement: source.placement || '',
+                resolvedPath: source.resolvedPath,
+                leftOut: withoutExpansion(source.leftOut),
+                notes: withoutExpansion(source.notes),
+                instructions: this.instructionEntry(source.placement, source.resolvedPath, instance)?.lines || {}
+            });
+            const same = source.includedAt ? signatures.indexOf(signature) : -1;
+            if (same >= 0 && items[same].includedAt.length > 0) {
+                items[same].instances.push(instance);
+                items[same].includedAt.push(source.includedAt);
+                return;
+            }
+            items.push({
+                placement: source.placement || '',
+                path: source.path,
+                resolvedPath: source.resolvedPath,
+                instances: [instance],
+                includedAt: source.includedAt ? [source.includedAt] : [],
+                lines: source.lines,
+                leftOut: Array.isArray(source.leftOut) ? source.leftOut : [],
+                notes: Array.isArray(source.notes) ? source.notes : []
+            });
+            signatures.push(signature);
+        });
+        return items;
+    }
+
+    /**
+     * Returns the chain of expansions a location stands in, innermost first: the expansion of the
+     * location, then the expansion its call stands in, as long as each is an expansion.
+     *
+     * @param {object|null} location - The active location, or an error object or null.
+     * @returns {number[]} The numbers of the expansions; empty outside any.
+     * @private
+     */
+    frameChain(location) {
+        const chain = [];
+        if (!location || location.error) return chain;
+        let expansion = location.expansion || 0;
+        while (this.expansionOf(expansion) && !chain.includes(expansion)) {
+            chain.push(expansion);
+            expansion = this.expansionOf(expansion).calledAt?.expansion || 0;
+        }
+        return chain;
+    }
+
+    /**
+     * Returns the expansions whose records and instructions the listing shows: every expansion of
+     * the chain the active position stands in whose body the item on display holds.
+     *
+     * @returns {number[]} The numbers of the expansions, innermost first; empty outside any.
+     * @private
+     */
+    expansionsShown() {
+        if (this.selectedIndex === null) return [];
+        return this.chain.filter(number =>
+            this.findSourceIndex(this.expansionOf(number).definedAt) === this.selectedIndex);
+    }
+
+    /**
+     * Shows the chain of frames in the bar above the listing, innermost first:
+     * `in NAME (P = ARG, …), expanded at FILE:LINE`, the name linking to the body, the call
+     * position to the call. The bar is empty and hidden outside any expansion, whatever item is
+     * on display; it is rebuilt only when the chain or the active line changes.
+     *
+     * @param {object|null} activeLocation - The active location.
+     * @private
+     */
+    renderFrameBar(activeLocation) {
+        const bar = this.dom.frameBar;
+        if (!bar) return;
+        const key = this.chain.length > 0 ? `${this.chain.join(',')}@${activeLocation?.lineNumber}` : '';
+        if (key === this.frameBarKey) return;
+        this.frameBarKey = key;
+        if (this.chain.length === 0) {
+            bar.innerHTML = '';
+            bar.style.display = 'none';
+            return;
+        }
+        bar.innerHTML = this.chain.map((number, depth) => {
+            const expansion = this.expansionOf(number);
+            const bindings = (expansion.bindings || [])
+                .map(binding => `${binding.parameter} = ${binding.argument}`).join(', ');
+            const name = this.escapeHtml(expansion.name) + (bindings ? ` (${this.escapeHtml(bindings)})` : '');
+            const calledAt = expansion.calledAt;
+            const caller = this.findSourceIndex(calledAt);
+            const file = caller !== null ? this.itemLabel(this.items[caller], false) : calledAt.fileName;
+            return `<span class="source-frame">in <a href="#" class="source-frame-link" data-frame="${depth}" `
+                + `data-target="body">${name}</a>, expanded at <a href="#" class="source-frame-link" `
+                + `data-frame="${depth}" data-target="call">${this.escapeHtml(file)}:${calledAt.lineNumber}</a></span>`;
+        }).join('<span class="source-frame-separator"> ← </span>');
+        bar.style.display = '';
+        bar.querySelectorAll('.source-frame-link').forEach(link => {
+            link.addEventListener('click', event => {
+                event.preventDefault();
+                const depth = Number(link.getAttribute('data-frame'));
+                const expansion = this.expansionOf(this.chain[depth]);
+                if (link.getAttribute('data-target') === 'call') {
+                    this.goTo(expansion.calledAt, expansion.calledAt.lineNumber);
+                } else {
+                    // In the body: the active line in the innermost frame, the call of the next
+                    // inner expansion in an outer one
+                    const line = depth === 0
+                        ? activeLocation.lineNumber
+                        : this.expansionOf(this.chain[depth - 1]).calledAt.lineNumber;
+                    this.goTo(expansion.definedAt, line);
+                }
+            });
+        });
+    }
+
+    /**
+     * Selects the item a position stands in, shows the execution state on it as a manual choice
+     * in the dropdown does, and scrolls a line of it into view.
+     *
+     * @param {object} position - The position whose item is selected.
+     * @param {number} lineNumber - The line to scroll to.
+     * @private
+     */
+    goTo(position, lineNumber) {
+        const index = this.findSourceIndex(position);
+        if (index === null) return;
+        this.selectedIndex = index;
+        this.lastAnnotatedLine = null;
+        this.renderSourceStructure();
+        this.showLastExecutionState();
+        const line = this.dom.codeContainer?.querySelector(`.source-line[data-line="${lineNumber}"]`);
+        if (line) {
+            line.scrollIntoView({ block: 'center' });
+        }
+    }
+
+    /**
+     * Marks every call line of the chain that stands in the item on display as a frame, unless it
+     * is the active line.
+     *
+     * @param {number|null} activeLineNumber - The active line on display, or null.
+     * @private
+     */
+    markCallLines(activeLineNumber) {
+        if (!this.dom.codeContainer) return;
+        this.dom.codeContainer.querySelectorAll('.active-call-line')
+            .forEach(line => line.classList.remove('active-call-line'));
+        this.chain.forEach(number => {
+            const calledAt = this.expansionOf(number).calledAt;
+            if (this.findSourceIndex(calledAt) !== this.selectedIndex || calledAt.lineNumber === activeLineNumber) return;
+            const line = this.dom.codeContainer.querySelector(`.source-line[data-line="${calledAt.lineNumber}"]`);
+            if (line) {
+                line.classList.add('active-call-line');
+            }
+        });
+    }
+
+    /**
      * Binds click handlers to the directive lines that own a region left out, to fold and unfold
-     * the region's container, marked `[+]` when folded and `[−]` when unfolded. Unfolded, its lines
-     * are shown greyed; the choice is kept across re-renders.
+     * the region's container, marked `[+]` when folded and `[−]` when unfolded. Unfolded, its
+     * lines are shown greyed; the choice is kept across re-renders.
      * @private
      */
     bindFoldHandlers() {
@@ -366,32 +560,30 @@ export class OrganismSourceView {
     }
 
     /**
-     * Collects the regions and notes of an entry that the listing shows: those of the entry's own
-     * instance and those of the active expansion, which the entry holds only if it is the entry
-     * the expansion's tokens stand on. The compiler records equal regions and equal notes once, so
+     * Collects the regions and notes the listing shows: the item's own, those of the expansions
+     * whose bodies the listing shows, see expansionsShown(), and the values of the constants used
+     * outside the regions left out. The compiler records equal regions and equal notes once, so
      * every directive line owns at most one region of the listing.
      *
-     * @param {object|null} source - The entry on display.
-     * @param {string[]} lines - The lines of the entry.
+     * @param {object|null} item - The item on display.
+     * @param {string[]} lines - The lines of the item.
      * @returns {{folds: Map<number, {from: number, to: number}>, foldedBy: Map<number, number>,
      *            notes: Map<number, Array<{end: number, text: string}>>}} The regions by their
      *          directive line, the directive line owning each folded line, and the notes by line,
      *          each with the index in the line after which it is shown.
      * @private
      */
-    recordsFor(source, lines) {
+    recordsFor(item, lines) {
         const folds = new Map();
         const foldedBy = new Map();
         const notes = new Map();
-        if (!source) return { folds, foldedBy, notes };
+        if (!item) return { folds, foldedBy, notes };
 
-        const own = source.instance || 0;
-        const shown = record => {
-            const expansion = record.expansion || 0;
-            return expansion === own || expansion === this.activeExpansion;
-        };
+        const expansions = this.shownExpansions.map(number => this.expansionOf(number));
+        const leftOut = item.leftOut.concat(...expansions.map(expansion => expansion.leftOut || []));
+        const shownNotes = item.notes.concat(...expansions.map(expansion => expansion.notes || []));
 
-        (Array.isArray(source.leftOut) ? source.leftOut : []).filter(shown).forEach(region => {
+        leftOut.forEach(region => {
             folds.set(region.directiveLine, { from: region.from, to: region.to });
         });
         folds.forEach((fold, directiveLine) => {
@@ -400,7 +592,14 @@ export class OrganismSourceView {
             }
         });
 
-        (Array.isArray(source.notes) ? source.notes : []).filter(shown).forEach(note => {
+        // The values of the constants used, then the notes of the preprocessor. The token map
+        // describes the text of a line in every instance alike, so a line this listing shows as
+        // left out gets no value: the instance on display did not compile it.
+        this.annotator.constantNotes(this.artifact, item.placement, item.resolvedPath, lines)
+            .forEach((lineNotes, line) => {
+                if (!foldedBy.has(line)) notes.set(line, lineNotes);
+            });
+        shownNotes.forEach(note => {
             const text = lines[note.line - 1];
             if (text === undefined) return;
             // A note is shown after the word that starts at its column, as an annotation of a
@@ -415,24 +614,7 @@ export class OrganismSourceView {
     }
 
     /**
-     * Reports whether the entry on display has a region or note of an instance of injected
-     * tokens other than its own. Its own instance is always shown, so it never counts.
-     *
-     * @param {number} expansion - The number of the expansion.
-     * @returns {boolean} True if a region or note of that expansion exists in the entry.
-     * @private
-     */
-    hasRecordsOf(expansion) {
-        if (this.selectedIndex === null) return false;
-        const source = this.sourceEntries()[this.selectedIndex];
-        if (!source || expansion === (source.instance || 0)) return false;
-        const of = record => (record.expansion || 0) === expansion;
-        return (Array.isArray(source.leftOut) && source.leftOut.some(of))
-            || (Array.isArray(source.notes) && source.notes.some(of));
-    }
-
-    /**
-     * Builds the key under which the unfolding of a region is kept: the entry on display and the
+     * Builds the key under which the unfolding of a region is kept: the item on display and the
      * directive line.
      *
      * @param {number} directiveLine - The line that owns the region.
@@ -644,8 +826,8 @@ export class OrganismSourceView {
      */
     getOriginalLine(lineNumber) {
         if (this.selectedIndex === null) return null;
-        const source = this.sourceEntries()[this.selectedIndex];
-        const lines = source && Array.isArray(source.lines) ? source.lines : [];
+        const item = this.items[this.selectedIndex];
+        const lines = item && Array.isArray(item.lines) ? item.lines : [];
 
         const index = lineNumber - 1;
         if (index >= 0 && index < lines.length) {
@@ -744,13 +926,12 @@ export class OrganismSourceView {
         const actualOpcode = organismState?.instructions?.next?.opcodeName;
         if (!actualOpcode) return null;
 
-        // The instructions of the active line are those of the entry the active location stands in
-        const activeEntry = this.sourceEntries()[this.findSourceIndex(activeLocation)];
-        const machineInstructions = this.machineInstructionsOf(activeLocation.placement, activeLocation.fileName,
-            activeEntry?.instance, activeLocation.lineNumber);
-        if (!machineInstructions?.instructions) return null;
+        // The instructions of the active line in the expansion the active location stands in
+        const machineInstructions = this.instructionEntry(activeLocation.placement, activeLocation.fileName,
+            activeLocation.expansion || 0)?.lines?.[activeLocation.lineNumber]?.instructions;
+        if (!machineInstructions) return null;
 
-        const expectedInstruction = machineInstructions.instructions.find(
+        const expectedInstruction = machineInstructions.find(
             i => i.linearAddress === activeLocation.linearAddress
         );
         if (!expectedInstruction) return null;
@@ -885,65 +1066,89 @@ export class OrganismSourceView {
     }
 
     /**
-     * Returns the artifact's source entries, one per inclusion of a file.
+     * Returns an expansion of the artifact by its number.
      *
-     * @returns {Array<{placement: string, path: string, resolvedPath: string, instance: number,
-     *          includedAt: ({fileName: string, lineNumber: number}|undefined), lines: string[],
-     *          leftOut: Array<{expansion: number, directiveLine: number, from: number, to: number}>,
-     *          notes: Array<{expansion: number, line: number, column: number, text: string}>}>} The
-     *          entries, or an empty array without an artifact.
+     * @param {number} number - The number the expansion's positions carry.
+     * @returns {object|undefined} The expansion, `{calledAt, definedAt, name, bindings, leftOut,
+     *          notes}`, or undefined if the number is no expansion.
      * @private
      */
-    sourceEntries() {
-        return this.artifact && Array.isArray(this.artifact.sources) ? this.artifact.sources : [];
+    expansionOf(number) {
+        return this.artifact?.expansions?.[number];
     }
 
     /**
-     * Finds the source entry an active location stands in: the entry with its placement, file
-     * and expansion, or, for an expansion that is no entry, the entry with its placement and file
-     * whose instance the artifact's `expansionHomes` names for the expansion.
+     * Finds the item a position stands in: the item with its placement, its file and an instance
+     * equal to its expansion; or, for a position in an expansion, the item its definition stands
+     * in, found the same way.
      *
-     * @param {object|null} location - The active location, or an error object or null.
-     * @returns {number|null} The index of the entry, or null if the location names none.
+     * @param {object|null} location - A position, or an error object or null.
+     * @returns {number|null} The index of the item, or null if the position names none.
      * @private
      */
     findSourceIndex(location) {
-        if (!location || !location.fileName) return null;
-        const sources = this.sourceEntries();
-        const placement = location.placement || '';
-        const indexOf = instance => sources.findIndex(source => (source.placement || '') === placement
-            && source.resolvedPath === location.fileName && (source.instance || 0) === instance);
-        const expansion = location.expansion || 0;
-        let index = indexOf(expansion);
-        if (index < 0) {
-            const home = this.artifact?.expansionHomes?.[expansion];
-            if (home !== undefined) index = indexOf(Number(home));
+        let position = location;
+        const seen = new Set();
+        while (position && position.fileName && !seen.has(position.expansion || 0)) {
+            const placement = position.placement || '';
+            const expansion = position.expansion || 0;
+            const index = this.items.findIndex(item => item.placement === placement
+                && item.resolvedPath === position.fileName && item.instances.includes(expansion));
+            if (index >= 0) return index;
+            seen.add(expansion);
+            position = this.expansionOf(expansion)?.definedAt;
         }
-        return index >= 0 ? index : null;
+        return null;
     }
 
     /**
-     * Looks up the machine instructions of a source line in the artifact's
-     * `sourceLineToInstructions`, which holds one item per source entry, by placement, file and
-     * instance, with the instructions by line number. Two inclusions of one file share its lines
-     * but not its code; the instructions of a macro expansion stand under the entry its tokens
-     * stand on, shared by every expansion of that macro.
+     * Returns the machine instructions shown under a line of an item, sorted by address: those of
+     * the item's own instances and those of the expansions whose bodies the listing shows, see
+     * expansionsShown(). The instructions of an expansion stand only on the lines of its body.
      *
-     * @param {string} placement - The alias chain of the placement; empty or absent for the empty one.
-     * @param {string} fileName - The resolved path of the file.
-     * @param {number} instance - The instance of the entry; 0 for the main file and a module placement.
+     * @param {object|null} item - The item on display.
      * @param {number} lineNumber - The 1-based line number.
-     * @returns {{instructions: Array<object>}|null} The instructions of the line, or null if
-     *          the artifact has none for it.
+     * @returns {Array<object>} The instructions of the line; empty if it has none.
      * @private
      */
-    machineInstructionsOf(placement, fileName, instance, lineNumber) {
-        const entries = this.artifact?.sourceLineToInstructions;
-        if (!Array.isArray(entries)) return null;
-        const wanted = placement || '';
-        const entry = entries.find(e => (e.placement || '') === wanted && e.fileName === fileName
-            && (e.instance || 0) === instance);
-        return entry?.lines?.[lineNumber] || null;
+    instructionsFor(item, lineNumber) {
+        if (!item) return [];
+        const of = expansion => this.instructionEntry(item.placement, item.resolvedPath, expansion)
+            ?.lines?.[lineNumber]?.instructions || [];
+        return item.instances.concat(this.shownExpansions).flatMap(of)
+            .sort((a, b) => a.linearAddress - b.linearAddress);
+    }
+
+    /**
+     * Looks up the machine instructions of one file in one placement and one expansion in the
+     * index of the artifact's `sourceLineToInstructions`, built once per artifact, which holds them
+     * by placement, file and the expansion of their positions: the instance of an entry or the
+     * number of an expansion.
+     *
+     * @param {string} placement - The alias chain of the placement; empty or absent for the
+     *        empty one.
+     * @param {string} fileName - The resolved path of the file.
+     * @param {number} expansion - The instance of an entry or the number of an expansion.
+     * @returns {{lines: Object<number, {instructions: Array<object>}>}|undefined} The instructions
+     *          by line, or undefined if there are none.
+     * @private
+     */
+    instructionEntry(placement, fileName, expansion) {
+        return this.instructionIndex.get(this.instructionKey(placement, fileName, expansion));
+    }
+
+    /**
+     * Builds the key of the instruction index.
+     *
+     * @param {string} placement - The alias chain of the placement; empty or absent for the
+     *        empty one.
+     * @param {string} fileName - The resolved path of the file.
+     * @param {number} expansion - The instance of an entry or the number of an expansion.
+     * @returns {string} The key.
+     * @private
+     */
+    instructionKey(placement, fileName, expansion) {
+        return `${placement || ''}|${fileName}|${expansion || 0}`;
     }
 
     /**

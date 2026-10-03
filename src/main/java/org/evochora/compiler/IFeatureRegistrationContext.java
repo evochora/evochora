@@ -104,8 +104,8 @@ public interface IFeatureRegistrationContext {
 
 	/**
 	 * Registers a directive that may stand only at the top level of the source for Phase 2: never
-	 * inside a stored block body and never as a macro argument. A directive may be registered
-	 * here without having a preprocessor handler.
+	 * inside a stored block body and never substituted into a stored body by a handler. A
+	 * directive may be registered here without having a preprocessor handler.
 	 *
 	 * @param directive The directive name, e.g. {@code .SOURCE}.
 	 */

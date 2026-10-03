@@ -199,9 +199,17 @@ message ProgramArtifact {
 
   // Register aliases defined in source code
   // Source: ProgramArtifact.registerAliasMap()
-  // Key: alias name (e.g., "%MY_REG"), Value: physical register index
+  // Key: the key of the alias's definition, its qualified name and, inside a procedure, "@" and the
+  // procedure's qualified name (e.g., "%MY_REG", "%TMP@WORK"), Value: physical register index
   // Used by debugger to display register names
   map<string, int32> register_alias_map = 10;
+
+  // Values of the constants defined in source code
+  // Source: ProgramArtifact.constantValues()
+  // Key: the key of the constant's definition, its qualified name and, inside a procedure, "@" and
+  // the procedure's qualified name (e.g., "NAV.STEP.MAX_VALUE", "N@WORK"), Value: the value as text (e.g., "DATA:99")
+  // Used by the source view to annotate a constant with its value
+  map<string, string> constant_values = 19;
 
   // Parameter names for each procedure
   // Source: ProgramArtifact.procNameToParamNames()
@@ -223,7 +231,7 @@ message ProgramArtifact {
 
   // Machine instructions per source line for visualization
   // Source: ProgramArtifact.sourceLineToInstructions()
-  // One entry per source entry (placement, file and instance): line number → machine instructions of that line
+  // One entry per placement, file and expansion: line number → machine instructions of that line
   // Used by frontend to display compiler-generated instructions (e.g., PUSH/POP for CALL)
   repeated FileSourceLines source_line_to_instructions = 14;
 
@@ -239,12 +247,11 @@ message ProgramArtifact {
   // Used by frontend to resolve label references in source view
   map<string, int32> label_name_to_value = 16;
 
-  // Where the instances of injected tokens that are no inclusion of their own stand
-  // Source: ProgramArtifact.expansionHomes()
-  // Key: instance (a macro expansion) as SourceInfo.expansion carries it, Value: instance of the
-  // source entry with the same placement and file whose lines its tokens stand on
-  // Used by the source view to open the entry that holds a macro body
-  map<int32, int32> expansion_homes = 17;
+  // Every instance of injected tokens that is no inclusion of its own, such as a macro expansion
+  // Source: ProgramArtifact.expansions()
+  // Key: the number its positions carry as SourceInfo.expansion
+  // Used by the source view to show an expansion as a frame and its regions and notes
+  map<int32, Expansion> expansions = 18;
 }
 
 // The text of one file as one inclusion brought it in: the main file, a module placement or a
@@ -264,10 +271,10 @@ message SourceFile {
   // Lines of source code (0-indexed)
   repeated string lines = 4;
 
-  // Regions of lines the preprocessor left out, per instance of injected tokens, in recording order
+  // Regions of lines the preprocessor left out in this inclusion, in recording order
   repeated LeftOutRegion left_out = 5;
 
-  // Notes the preprocessor attached to positions, per instance of injected tokens, in recording order
+  // Notes the preprocessor attached to positions in this inclusion, in recording order
   repeated SourceNote notes = 6;
 
   // Instance the positions of this inclusion carry as SourceInfo.expansion; 0 for the main file
@@ -276,6 +283,40 @@ message SourceFile {
 
   // Position of the directive that made this entry; absent for the main file
   SourceInfo included_at = 8;
+}
+
+// An instance of injected tokens that is no inclusion of a file: tokens copied from a template and
+// injected at a position.
+// Maps to org.evochora.compiler.api.Expansion record.
+message Expansion {
+  // Position at which the tokens were injected
+  SourceInfo called_at = 1;
+
+  // Position of the template as it stood when it was read; its placement, file and expansion name
+  // the entry or the enclosing instance holding the template's lines
+  SourceInfo defined_at = 2;
+
+  // Name under which the template was injected
+  string name = 3;
+
+  // Words the template's parameters were bound to, in parameter order
+  repeated ExpansionBinding bindings = 4;
+
+  // Regions of lines left out in this instance, in recording order
+  repeated LeftOutRegion left_out = 5;
+
+  // Notes attached to positions in this instance, in recording order
+  repeated SourceNote notes = 6;
+}
+
+// A parameter of a template and the text it was bound to.
+// Maps to org.evochora.compiler.api.Expansion.Binding record.
+message ExpansionBinding {
+  // Name of the parameter
+  string parameter = 1;
+
+  // Text of the argument as written, with a space between two words where the program had one
+  string argument = 2;
 }
 
 // A region of lines the preprocessor left out, owned by the directive line that decided it.
@@ -356,8 +397,8 @@ message SourceMapEntry {
 
 // Container for a list of machine instructions that belong to the same source line.
 // Used to display all machine instructions generated from a single source line.
-// The machine instructions of the lines of one source entry, one inclusion of a file.
-// Protobuf-compatible representation of one placement, file and instance of
+// The machine instructions of the lines of one file in one placement and one expansion.
+// Protobuf-compatible representation of one placement, file and expansion of
 // Map<String, Map<String, Map<Integer, Map<Integer, List<MachineInstructionInfo>>>>>.
 message FileSourceLines {
   // Alias chain of the module placement the file stands in
@@ -369,10 +410,9 @@ message FileSourceLines {
   // Line number (1-indexed) → machine instructions generated from that line
   map<int32, MachineInstructionInfoList> lines = 3;
 
-  // Instance of the source entry the lines belong to (SourceFile.instance); an instruction of an
-  // instance that is no inclusion, such as a macro expansion, stands under the instance
-  // ProgramArtifact.expansion_homes names for it
-  int32 instance = 4;
+  // Expansion of the instructions' positions: the instance of a source entry (SourceFile.instance)
+  // or the number of an instance in ProgramArtifact.expansions
+  int32 expansion = 4;
 }
 
 message MachineInstructionInfoList {

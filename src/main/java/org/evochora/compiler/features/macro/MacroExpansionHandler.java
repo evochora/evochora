@@ -1,5 +1,6 @@
 package org.evochora.compiler.features.macro;
 
+import org.evochora.compiler.api.Expansion;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
@@ -23,9 +24,10 @@ import java.util.Map;
  * of the body. An argument substituted for a parameter keeps its own position and adds the
  * parameter's position in this expansion to the positions it replaces.
  * <p>
- * An expansion is no entry of the preprocessor's sources: its tokens stand on the lines of the
- * entry the definition was read in, which the handler names to the preprocessor through the
- * position of the definition before any expansion.
+ * An expansion is no entry of the preprocessor's sources: the handler reports it to the
+ * preprocessor with the position of the definition as it stood when it was read, whose placement,
+ * file and expansion name the entry or the enclosing expansion holding the body's lines, the
+ * position of the call, the macro's name and the arguments bound to its parameters.
  */
 public class MacroExpansionHandler implements IPreProcessorHandler {
 
@@ -98,27 +100,32 @@ public class MacroExpansionHandler implements IPreProcessorHandler {
         }
 
         Map<String, List<Token>> argMap = new HashMap<>();
+        List<Expansion.Binding> bindings = new ArrayList<>(macro.parameters().size());
         for (int i = 0; i < macro.parameters().size(); i++) {
-            argMap.put(macro.parameters().get(i).text().toUpperCase(), actualArgs.get(i));
+            Token parameter = macro.parameters().get(i);
+            argMap.put(parameter.text().toUpperCase(), actualArgs.get(i));
+            bindings.add(new Expansion.Binding(parameter.text(), asWritten(actualArgs.get(i))));
         }
 
         // The body tokens stand in this expansion. An argument keeps its own position, where it
         // was written, and remembers the position of the parameter it replaces in this expansion.
+        // A body token that is itself an argument an enclosing expansion substituted, in a macro
+        // defined in that body, is treated the same way: it keeps its position and remembers its
+        // position in the body, now in this expansion. A call whose name was substituted so is
+        // called at its position in the body, so that the expansion stands in the enclosing one.
         int expansion = preProcessorContext.nextInstance();
-        preProcessor.homeOf(expansion, definedAt());
+        preProcessor.expands(expansion, definedAt(), inBody(invocation), macro.name().text(), bindings);
         List<Token> expandedBody = new ArrayList<>();
         for (Token bodyToken : macro.body()) {
-            SourceInfo position = inExpansion(bodyToken.source(), expansion);
+            SourceInfo position = inExpansion(inBody(bodyToken), expansion);
             List<Token> replacement = argMap.get(bodyToken.text().toUpperCase());
             if (replacement == null) {
-                expandedBody.add(bodyToken.with(position));
+                expandedBody.add(bodyToken.replaces().isEmpty() ? bodyToken.with(position)
+                        : replacing(bodyToken, position));
                 continue;
             }
             for (Token argument : replacement) {
-                List<SourceInfo> replaces = new ArrayList<>(argument.replaces());
-                replaces.add(position);
-                expandedBody.add(new Token(argument.type(), argument.text(), argument.value(), argument.source(),
-                        replaces));
+                expandedBody.add(replacing(argument, position));
             }
         }
 
@@ -126,6 +133,42 @@ public class MacroExpansionHandler implements IPreProcessorHandler {
         for (List<Token> g : actualArgs) removed += g.size();
         preProcessor.removeTokens(callSiteIndex, removed);
         preProcessor.injectTokens(expandedBody, 0);
+    }
+
+    /**
+     * Returns the text of an argument as it was written: its tokens, with a space between two that
+     * did not touch on their line.
+     */
+    private static String asWritten(List<Token> argument) {
+        StringBuilder text = new StringBuilder();
+        Token previous = null;
+        for (Token token : argument) {
+            boolean touches = previous != null && previous.source().lineNumber() == token.source().lineNumber()
+                    && previous.source().columnNumber() + previous.text().length() == token.source().columnNumber();
+            if (previous != null && !touches) {
+                text.append(' ');
+            }
+            text.append(token.text());
+            previous = token;
+        }
+        return text.toString();
+    }
+
+    /**
+     * Returns where a token stands in the text it was read from: the last position it replaced,
+     * for a token substituted into that text, otherwise its own position.
+     */
+    private static SourceInfo inBody(Token token) {
+        return token.replaces().isEmpty() ? token.source() : token.replaces().getLast();
+    }
+
+    /**
+     * Returns a token that keeps its own position and remembers one more position it replaces.
+     */
+    private static Token replacing(Token token, SourceInfo position) {
+        List<SourceInfo> replaces = new ArrayList<>(token.replaces());
+        replaces.add(position);
+        return new Token(token.type(), token.text(), token.value(), token.source(), replaces);
     }
 
     private static SourceInfo inExpansion(SourceInfo at, int expansion) {

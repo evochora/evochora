@@ -992,8 +992,9 @@ body is the active text, and the call is the frame it stands in.
 - The macro feature reports, for every expansion, its call and its definition: the position of
   the macro name at the call, the position of the name in the definition as it stood when
   `.MACRO` was read (its placement, file and inclusion name the entry holding the body's lines),
-  the macro name and the arguments bound to the parameters. `DebugInfo.expansions` (expansion →
-  `Expansion(calledAt, definedAt, name, bindings)`) replaces `expansionHomes`. The core method
+  the macro name and the arguments bound to the parameters, each as written. `DebugInfo.expansions`
+  (expansion → `Expansion(calledAt, definedAt, name, bindings, leftOut, notes)`) replaces
+  `expansionHomes`; an expansion carries the regions and notes recorded in it. The core method
   the feature calls stays generic — an instance of injected tokens, copied from a position,
   injected at a position — and the name and the bindings are the feature's words, which travel
   as text.
@@ -1001,15 +1002,18 @@ body is the active text, and the call is the frame it stands in.
   itself, as they are recorded, no longer by the entry whose lines they stand on: records of an
   entry are those with its instance, records of an expansion those with the expansion's number,
   and the view decides what it shows. `sourceLineToInstructions` is keyed by the expansion of
-  the instruction's position (placement → file → expansion → line); under a body line the view
-  lists the instructions of the active expansion while the active position stands in one, and
-  those of every expansion otherwise, so that three expansions of one macro no longer stand
-  under one line as three instructions while one of them runs.
+  the instruction's position (placement → file → expansion → line). While the active position
+  stands in an expansion, the entry holding its body shows that expansion's regions, notes and
+  instructions under the body's lines, and so does the entry holding the body of every
+  expansion the chain leads through. A body outside a frame lists no instructions: the
+  definition is a template and produces nothing by itself. Inside a frame a body line lists the
+  frame's own instructions, under the indicator rule of any other line, so that three
+  expansions of one macro never stand under one line as three instructions.
 - The source view: while the active position stands in an expansion, a bar above the listing
   names the chain of frames, innermost first — `in LEVEL (N = BOOST), expanded at main.evo:30`,
-  nested `in INNER, expanded at lib/macros.evo:26 ← in TWICE, expanded at main.evo:31` — each
-  frame as a piece that wraps as a whole, so that a deep chain takes more lines and never
-  overflows. The bar stays while the position is in the expansion, whatever entry is chosen; the
+  nested `in INNER, expanded at lib/macros.evo:26 ← in TWICE, expanded at main.evo:31` — the
+  bar wrapping between frames, and a frame wider than the bar within itself, so that a deep
+  chain takes more lines and never overflows. The bar stays while the position is in the expansion, whatever entry is chosen; the
   macro name leads to the body and its active line, the call position to the calling entry and
   its call line, and both scroll the line into view, so that the reader never has to know which
   entry of the dropdown holds the call. Every call line of the chain that stands in the entry on
@@ -1023,15 +1027,22 @@ body is the active text, and the call is the frame it stands in.
   the include guard's second inclusion, a plain file whose code stands twice at two addresses —
   stay two entries. The artifact keeps every inclusion; the view merges when it builds the list.
 - A constant is annotated with its value where it is used, `LIMIT[=DATA:9]`, as a compile-time
-  note in the colour of the flag notes, from the token map that already names the token a
-  constant.
+  note in the colour of the flag notes. The `constdir` feature emits a `const_value` directive
+  per definition, with the constant's qualified name, the scope it is defined in and its value as
+  written, a number in decimal (`.CONST ALSO LIMIT` notes `[=LIMIT]`); the
+  `ConstantValueEmissionContributor` files the value in the artifact's `constantValues` under the
+  key of the definition, its qualified name and, inside a procedure, `@` and the procedure's
+  name, the form the register aliases are filed under as well. The token map names, for a use,
+  the qualified name and the scope of its definition, from which the view builds the same key.
+  A constant on a line the entry on display left out carries no note.
 
 **Tests:** an expansion carries the position of its call and its bindings, nested through a
 body; the records and the instructions of an expansion are keyed by its number and those of an
-entry by its instance; the reference artifact is regenerated (`expansions` in place of
-`expansionHomes`, the instruction index one level deeper under `main.evo`). Browser check in
+entry by its instance; a constant and a register alias defined under one name in two procedures
+have one key each; the reference artifact is regenerated (`expansions` in place of
+`expansionHomes`, the instruction index one level deeper under `main.evo`, `constantValues`). Browser check in
 Chrome and Firefox with the showcase program of the demonstration: the bar appears on entering
 `CHECK AGGRESSIVE` and names `main.evo:26`, the nested chain for `TWICE` → `INNER` wraps into two
-frames, the links switch the entry and mark the call line, a body line shows one instruction
-while its expansion runs and three outside, two identical inclusions of a macro file are one
+frames, the links switch the entry and mark the call line, a body line shows the instruction of
+its expansion while it runs and none outside a frame, two identical inclusions of a macro file are one
 entry with two inclusion points, and `LIMIT` carries its value.

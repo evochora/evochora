@@ -1,5 +1,7 @@
 package org.evochora.compiler.frontend.preprocessor;
 
+import java.util.Map;
+import org.evochora.compiler.api.CompilerOptions;
 import org.evochora.compiler.TestLexers;
 import org.evochora.compiler.TestRegistries;
 import org.evochora.compiler.api.SourceInfo;
@@ -202,7 +204,8 @@ class BlockReaderTest {
 
     private static Run run(List<Token> tokens) {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        PreProcessorContext context = new PreProcessorContext();
+        PreProcessorContext context = new PreProcessorContext("", Map.of(), tokens.getFirst().source().fileName(),
+                CompilerOptions.defaults());
         TestRegistries.registerPreProcessorBlocks(context.handlers());
         context.handlers().registerBlock(STORE);
         context.handlers().registerBlock(WHEN);

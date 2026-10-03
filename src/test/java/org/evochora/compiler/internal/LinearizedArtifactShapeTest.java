@@ -4,6 +4,7 @@ import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import org.evochora.compiler.api.Expansion;
 import org.evochora.compiler.api.MachineInstructionInfo;
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.compiler.api.SourceFile;
@@ -37,12 +38,14 @@ class LinearizedArtifactShapeTest {
     }
 
     @Test
-    void theJsonCarriesTheSourcesWithTheirRecordsAndTheInstructionsByPlacementFileInstanceAndLine() {
+    void theJsonCarriesTheSourcesTheExpansionsAndTheInstructionsByPlacementFileExpansionAndLine() {
         SourceFile lib = new SourceFile("LIB", "lib.evo", "/p/lib.evo", 0, new SourceInfo("/p/main.evo", 4, 1, "", 0),
                 List.of("A", "B", "C"),
                 List.of(new SourceFile.LeftOut(1, 1, 2, 3)), List.of(new SourceFile.Note(0, 1, 4, "text")));
-        ProgramArtifact artifact = new ProgramArtifact("id", List.of(lib), Map.of(1, 0), Map.of(), Map.of(), Map.of(), Map.of(),
-                Map.of(), Map.of(), Map.of(), Map.of(),
+        Expansion expansion = new Expansion(new SourceInfo("/p/main.evo", 6, 3, "", 0), new SourceInfo("/p/lib.evo", 1, 8, "LIB", 0),
+                "STEP", List.of(new Expansion.Binding("REG", "%DR0")), List.of(new SourceFile.LeftOut(1, 2, 3, 3)), List.of());
+        ProgramArtifact artifact = new ProgramArtifact("id", List.of(lib), Map.of(1, expansion), Map.of(), Map.of(), Map.of(), Map.of(),
+                Map.of(), Map.of(), Map.of(), Map.of("LIB.MAX", "DATA:5"), Map.of(),
                 Map.of(new SourceInfo("/p/lib.evo", 2, 5, "LIB", 0), new TokenInfo("A", TokenKind.CONSTANT, "global")),
                 Map.of(),
                 Map.of("LIB", Map.of("/p/lib.evo", Map.of(0, Map.of(2, List.of(new MachineInstructionInfo(0, "NOP", "", false)))))),
@@ -70,7 +73,14 @@ class LinearizedArtifactShapeTest {
         assertThat(note.get("column").getAsInt()).isEqualTo(4);
         assertThat(note.get("text").getAsString()).isEqualTo("text");
 
-        assertThat(json.getAsJsonObject("expansionHomes").get("1").getAsInt()).isZero();
+        JsonObject one = json.getAsJsonObject("expansions").getAsJsonObject("1");
+        assertThat(one.get("name").getAsString()).isEqualTo("STEP");
+        assertThat(one.getAsJsonObject("calledAt").get("lineNumber").getAsInt()).isEqualTo(6);
+        assertThat(one.getAsJsonObject("definedAt").get("placement").getAsString()).isEqualTo("LIB");
+        assertThat(one.getAsJsonArray("bindings").get(0).getAsJsonObject().get("argument").getAsString()).isEqualTo("%DR0");
+        assertThat(one.getAsJsonArray("leftOut").get(0).getAsJsonObject().get("expansion").getAsInt()).isEqualTo(1);
+
+        assertThat(json.getAsJsonObject("constantValues").get("LIB.MAX").getAsString()).isEqualTo("DATA:5");
 
         assertThat(json.getAsJsonObject("tokenMap").keySet()).containsExactly("LIB@/p/lib.evo:2:5");
 

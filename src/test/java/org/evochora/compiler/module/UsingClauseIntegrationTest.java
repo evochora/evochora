@@ -296,7 +296,7 @@ class UsingClauseIntegrationTest {
         List<Token> mainTokens = new ArrayList<>(new Lexer(mainSource, diagnostics, mainPath, TestLexers.symbols()).scanTokens());
 
         // Phase 2: Preprocessing (with root alias chain)
-        PreProcessorContext ppContext = new PreProcessorContext(rootAliasChain, fileTokens, CompilerOptions.defaults());
+        PreProcessorContext ppContext = new PreProcessorContext(rootAliasChain, fileTokens, mainPath, CompilerOptions.defaults());
         ppContext.handlers().register(".SOURCE", new SourceDirectiveHandler());
         ppContext.handlers().register(".MACRO", new MacroDirectiveHandler());
         TestRegistries.registerPreProcessorBlocks(ppContext.handlers());

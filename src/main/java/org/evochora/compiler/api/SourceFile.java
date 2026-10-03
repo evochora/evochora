@@ -11,12 +11,9 @@ import java.util.List;
  * <p>
  * Besides the text, the entry carries what the preprocessor recorded about it for a source view:
  * the regions of lines it left out and the notes it attached to positions. Every record carries
- * the instance of injected tokens it was made in, as the expansion of its position. A record with
- * this entry's {@link #instance()} belongs to the entry itself. A record with any other number
- * belongs to an instance of injected tokens that stands on this entry's lines without being an
- * entry of its own, as {@code expansionHomes} of the artifact names it, and holds only while a
- * position of that instance is shown. Every instance is recorded on its own, so a region or note
- * in text injected more than once appears once per instance.
+ * the instance of injected tokens it was made in, as the expansion of its position; an entry holds
+ * the records with its own {@link #instance()}. The records of an instance of injected tokens that
+ * is no inclusion stand on that {@link Expansion}, although they name this entry's lines.
  *
  * @param placement    The alias chain of the placement; the main module's chain for the main
  *                     file and the files it includes, usually empty.

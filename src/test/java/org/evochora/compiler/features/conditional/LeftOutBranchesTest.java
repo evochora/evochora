@@ -2,6 +2,7 @@ package org.evochora.compiler.features.conditional;
 
 import org.evochora.compiler.Compiler;
 import org.evochora.compiler.api.CompilerOptions;
+import org.evochora.compiler.api.Expansion;
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.compiler.api.SourceFile;
 import org.evochora.compiler.api.SourceFile.LeftOut;
@@ -186,14 +187,14 @@ class LeftOutBranchesTest {
         assertThat(kept).isPositive();
         assertThat(other).isPositive().isNotEqualTo(kept);
         SourceFile source = source(artifact, "", "main.evo");
-        assertThat(source.leftOut()).containsExactlyInAnyOrder(
-                new LeftOut(kept, 4, 5, 5),
-                new LeftOut(other, 2, 3, 3));
-        assertThat(source.notes()).containsExactlyInAnyOrder(
+        assertThat(source.leftOut()).isEmpty();
+        assertThat(source.notes()).containsExactly(
                 new Note(0, 9, 9, "[set]"),
-                new Note(kept, 2, 8, "[set]"),
-                new Note(0, 10, 9, "[not set]"),
-                new Note(other, 2, 8, "[not set]"));
+                new Note(0, 10, 9, "[not set]"));
+        assertThat(artifact.expansions().get(kept).leftOut()).containsExactly(new LeftOut(kept, 4, 5, 5));
+        assertThat(artifact.expansions().get(kept).notes()).containsExactly(new Note(kept, 2, 8, "[set]"));
+        assertThat(artifact.expansions().get(other).leftOut()).containsExactly(new LeftOut(other, 2, 3, 3));
+        assertThat(artifact.expansions().get(other).notes()).containsExactly(new Note(other, 2, 8, "[not set]"));
     }
 
     /**
@@ -221,11 +222,11 @@ class LeftOutBranchesTest {
 
         SourceFile source = source(artifact, "", "main.evo");
         assertThat(expansionOfLine(artifact, resolved("main.evo"), 3)).isEqualTo(2);
-        assertThat(source.leftOut()).containsExactly(new LeftOut(2, 4, 5, 5));
-        assertThat(source.notes()).containsExactly(
-                new Note(0, 12, 9, "[=2]"),
-                new Note(1, 9, 9, "[=2]"),
-                new Note(2, 2, 8, "[=2]"));
+        assertThat(source.leftOut()).isEmpty();
+        assertThat(source.notes()).containsExactly(new Note(0, 12, 9, "[=2]"));
+        assertThat(artifact.expansions().get(1).notes()).containsExactly(new Note(1, 9, 9, "[=2]"));
+        assertThat(artifact.expansions().get(2).leftOut()).containsExactly(new LeftOut(2, 4, 5, 5));
+        assertThat(artifact.expansions().get(2).notes()).containsExactly(new Note(2, 2, 8, "[=2]"));
     }
 
     /**
@@ -250,9 +251,9 @@ class LeftOutBranchesTest {
 
         int expansion = expansionOfLine(artifact, resolved("main.evo"), 6);
         assertThat(expansion).isPositive();
-        SourceFile source = source(artifact, "", "main.evo");
-        assertThat(source.leftOut()).containsExactly(new LeftOut(expansion, 3, 4, 4));
-        assertThat(source.notes()).containsExactly(new Note(expansion, 3, 8, "[not set]"));
+        assertThat(source(artifact, "", "main.evo").leftOut()).isEmpty();
+        assertThat(artifact.expansions().get(expansion).leftOut()).containsExactly(new LeftOut(expansion, 3, 4, 4));
+        assertThat(artifact.expansions().get(expansion).notes()).containsExactly(new Note(expansion, 3, 8, "[not set]"));
     }
 
     /**
@@ -297,11 +298,11 @@ class LeftOutBranchesTest {
 
     /**
      * A macro expansion is no entry: the regions and notes of an expansion of a macro defined in
-     * a sourced file stand in the entry of that inclusion, under the expansion's number, and the
-     * artifact names that entry's instance for the expansion.
+     * a sourced file stand on the expansion, under its number, not on the entry of the inclusion;
+     * the expansion names its call, its definition in that inclusion and its name.
      */
     @Test
-    void theRecordsOfAMacroExpansionStandInTheEntryItsDefinitionWasReadIn() throws Exception {
+    void theRecordsOfAMacroExpansionStandOnTheExpansion() throws Exception {
         write("macros.evo",
                 ".MACRO CHECK",
                 ".IFDEF PAD",
@@ -317,14 +318,48 @@ class LeftOutBranchesTest {
         ProgramArtifact artifact = compile(Map.of());
 
         SourceFile macros = source(artifact, "", "macros.evo");
-        assertThat(macros.instance()).isPositive();
-        assertThat(macros.leftOut()).hasSize(1);
-        int expansion = macros.leftOut().getFirst().expansion();
-        assertThat(expansion).isNotEqualTo(macros.instance());
-        assertThat(macros.leftOut()).containsExactly(new LeftOut(expansion, 2, 3, 3));
-        assertThat(macros.notes()).containsExactly(new Note(expansion, 2, 8, "[not set]"));
-        assertThat(artifact.expansionHomes()).containsEntry(expansion, macros.instance());
+        assertThat(macros.leftOut()).isEmpty();
+        assertThat(macros.notes()).isEmpty();
+        assertThat(artifact.expansions()).hasSize(1);
+        int number = artifact.expansions().keySet().iterator().next();
+        Expansion expansion = artifact.expansions().get(number);
+        assertThat(expansion.name()).isEqualTo("CHECK");
+        assertThat(expansion.calledAt()).isEqualTo(new SourceInfo(resolved("main.evo"), 3, 3, "", 0));
+        assertThat(expansion.definedAt()).isEqualTo(new SourceInfo(resolved("macros.evo"), 1, 8, "", macros.instance()));
+        assertThat(expansion.leftOut()).containsExactly(new LeftOut(number, 2, 3, 3));
+        assertThat(expansion.notes()).containsExactly(new Note(number, 2, 8, "[not set]"));
         assertThat(source(artifact, "", "main.evo").leftOut()).isEmpty();
+    }
+
+    /**
+     * A flag name passed to a macro whose body defines another macro that tests it is noted at the
+     * argument where it was written and at the parameter in the body, once in the outer expansion,
+     * where the definition was read, and once in the inner one, where the block was decided; the
+     * instruction the inner expansion kept stands under its own number.
+     */
+    @Test
+    void aFlagPassedIntoADefinitionInABodyIsNotedInBothExpansions() throws Exception {
+        write("main.evo",
+                ".MACRO OUTER F",
+                "  .MACRO INNER",
+                "    .IFDEF F",
+                "      NOP",
+                "    .ENDDEF",
+                "  .ENDMACRO",
+                "  INNER",
+                ".ENDMACRO",
+                "START:",
+                "  OUTER ON");
+
+        ProgramArtifact artifact = compile(Map.of("ON", OptionalInt.empty()));
+
+        String main = resolved("main.evo");
+        assertThat(source(artifact, "", "main.evo").notes()).containsExactly(new Note(0, 10, 9, "[set]"));
+        assertThat(artifact.expansions()).containsOnlyKeys(1, 2);
+        assertThat(artifact.expansions().get(1).notes()).containsExactly(new Note(1, 3, 12, "[set]"));
+        assertThat(artifact.expansions().get(2).notes()).containsExactly(new Note(2, 3, 12, "[set]"));
+        assertThat(artifact.sourceLineToInstructions().get("").get(main)).containsOnlyKeys(2);
+        assertThat(artifact.sourceLineToInstructions().get("").get(main).get(2)).containsOnlyKeys(4);
     }
 
     /**

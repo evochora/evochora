@@ -1083,12 +1083,12 @@ class SimulationRestorerTest {
 
     /**
      * The inclusion an entry of the sources stands for, its instance and the position of the
-     * directive that made it, and the entries the macro expansions stand on survive the metadata;
-     * the main file keeps no inclusion point; the instructions per line stay under their entry's
-     * instance.
+     * directive that made it, and every expansion with its call, its definition, its name, its
+     * bindings and its records survive the metadata, as do the values of the constants; the main
+     * file keeps no inclusion point; the instructions per line stay under their expansion.
      */
     @Test
-    void restore_InclusionsExpansionHomesAndInstructionsPerEntry_Preserved() {
+    void restore_InclusionsExpansionsAndInstructionsPerExpansion_Preserved() {
         org.evochora.datapipeline.api.contracts.SourceInfo directive =
                 org.evochora.datapipeline.api.contracts.SourceInfo.newBuilder()
                     .setFileName("/root/main.evo")
@@ -1108,10 +1108,27 @@ class SimulationRestorerTest {
                         .setInstance(2)
                         .setIncludedAt(directive)
                         .addLines("NOP"))
-                    .putExpansionHomes(5, 2)
+                    .putExpansions(5, org.evochora.datapipeline.api.contracts.Expansion.newBuilder()
+                        .setCalledAt(directive)
+                        .setDefinedAt(org.evochora.datapipeline.api.contracts.SourceInfo.newBuilder()
+                            .setFileName("/root/lib.evo")
+                            .setLineNumber(1)
+                            .setColumnNumber(8)
+                            .setExpansion(2))
+                        .setName("STEP")
+                        .addBindings(org.evochora.datapipeline.api.contracts.ExpansionBinding.newBuilder()
+                            .setParameter("REG")
+                            .setArgument("%DR0"))
+                        .addNotes(org.evochora.datapipeline.api.contracts.SourceNote.newBuilder()
+                            .setExpansion(5)
+                            .setLine(1)
+                            .setColumn(1)
+                            .setText("[set]"))
+                        .build())
+                    .putConstantValues("LIB.MAX", "DATA:5")
                     .addSourceLineToInstructions(org.evochora.datapipeline.api.contracts.FileSourceLines.newBuilder()
                         .setFileName("/root/lib.evo")
-                        .setInstance(2)
+                        .setExpansion(5)
                         .putLines(1, org.evochora.datapipeline.api.contracts.MachineInstructionInfoList.newBuilder()
                             .addInstructions(org.evochora.datapipeline.api.contracts.MachineInstructionInfo.newBuilder()
                                 .setLinearAddress(7)
@@ -1128,9 +1145,14 @@ class SimulationRestorerTest {
                 new org.evochora.compiler.api.SourceFile("", "main.evo", "/root/main.evo", List.of("NOP")),
                 new org.evochora.compiler.api.SourceFile("", "lib.evo", "/root/lib.evo", 2,
                         new org.evochora.compiler.api.SourceInfo("/root/main.evo", 2, 1, "", 0), List.of("NOP")));
-        assertThat(artifact.expansionHomes()).containsExactly(Map.entry(5, 2));
-        assertThat(artifact.sourceLineToInstructions().get("").get("/root/lib.evo")).containsOnlyKeys(2);
-        assertThat(artifact.sourceLineToInstructions().get("").get("/root/lib.evo").get(2).get(1))
+        assertThat(artifact.expansions()).containsExactly(Map.entry(5, new org.evochora.compiler.api.Expansion(
+                new org.evochora.compiler.api.SourceInfo("/root/main.evo", 2, 1, "", 0),
+                new org.evochora.compiler.api.SourceInfo("/root/lib.evo", 1, 8, "", 2),
+                "STEP", List.of(new org.evochora.compiler.api.Expansion.Binding("REG", "%DR0")),
+                List.of(), List.of(new org.evochora.compiler.api.SourceFile.Note(5, 1, 1, "[set]")))));
+        assertThat(artifact.constantValues()).containsExactly(Map.entry("LIB.MAX", "DATA:5"));
+        assertThat(artifact.sourceLineToInstructions().get("").get("/root/lib.evo")).containsOnlyKeys(5);
+        assertThat(artifact.sourceLineToInstructions().get("").get("/root/lib.evo").get(5).get(1))
                 .containsExactly(new org.evochora.compiler.api.MachineInstructionInfo(7, "NOP", "", false));
     }
 

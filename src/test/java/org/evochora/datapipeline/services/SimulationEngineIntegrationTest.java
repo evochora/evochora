@@ -260,9 +260,10 @@ class SimulationEngineIntegrationTest {
     @Test
     void engine_shouldRecordTheInclusionsTheBranchesLeftOutAndTheExpansionsInTheProgramMetadata()
             throws IOException, InterruptedException {
-        Files.writeString(tempDir.resolve("steps.evo"), ".MACRO STEP\n.IFDEF PAD\n  NOP\n.ELSEDEF\n  NOP\n.ENDDEF\n"
+        Files.writeString(tempDir.resolve("steps.evo"), ".MACRO STEP R\n.IFDEF PAD\n  NOP\n.ELSEDEF\n  NOP\n.ENDDEF\n"
                 + ".ENDMACRO\n");
-        Files.writeString(tempDir.resolve("folded.evo"), ".SOURCE \"steps.evo\"\nSTART:\n  STEP\n");
+        Files.writeString(tempDir.resolve("folded.evo"), ".SOURCE \"steps.evo\"\n.CONST LIMIT DATA:9\nSTART:\n"
+                + "  STEP %DR0\n  SETI %DR1 LIMIT\n");
         Config foldedConfig = baseConfig
                 .withValue("compiler.source-roots", ConfigValueFactory.fromAnyRef(List.of(Map.of("path", tempDir.toString()))))
                 .withValue("organisms", ConfigValueFactory.fromAnyRef(List.of(Map.of(
@@ -288,19 +289,36 @@ class SimulationEngineIntegrationTest {
         assertFalse(main.hasIncludedAt());
 
         // The sourced file is inclusion 1, made by line 1 of the main file; the expansion of its
-        // macro is instance 2 and stands on its lines
+        // macro is number 2, defined in that inclusion and called on line 4 of the main file with
+        // its argument, and holds the region and the note it decided
         org.evochora.datapipeline.api.contracts.SourceFile source = program.getSources(1);
         assertEquals("steps.evo", source.getPath());
         assertEquals(1, source.getInstance());
         assertTrue(source.getIncludedAt().getFileName().endsWith("folded.evo"));
         assertEquals(1, source.getIncludedAt().getLineNumber());
-        assertEquals(Map.of(2, 1), program.getExpansionHomesMap());
-        assertEquals(1, source.getLeftOutCount());
-        org.evochora.datapipeline.api.contracts.LeftOutRegion region = source.getLeftOut(0);
+        assertEquals(0, source.getLeftOutCount());
+        assertEquals(0, source.getNotesCount());
+        assertEquals(java.util.Set.of(2), program.getExpansionsMap().keySet());
+        org.evochora.datapipeline.api.contracts.Expansion expansion = program.getExpansionsMap().get(2);
+        assertEquals("STEP", expansion.getName());
+        assertEquals(List.of(4, 3, 0), List.of(expansion.getCalledAt().getLineNumber(),
+                expansion.getCalledAt().getColumnNumber(), expansion.getCalledAt().getExpansion()));
+        assertEquals(List.of(1, 8, 1), List.of(expansion.getDefinedAt().getLineNumber(),
+                expansion.getDefinedAt().getColumnNumber(), expansion.getDefinedAt().getExpansion()));
+        assertEquals(1, expansion.getBindingsCount());
+        assertEquals(List.of("R", "%DR0"),
+                List.of(expansion.getBindings(0).getParameter(), expansion.getBindings(0).getArgument()));
+        assertEquals(Map.of("LIMIT", "DATA:9"), program.getConstantValuesMap());
+        assertEquals(List.of(2), program.getSourceLineToInstructionsList().stream()
+                .filter(lines -> lines.getFileName().endsWith("steps.evo"))
+                .map(lines -> lines.getExpansion())
+                .toList());
+        assertEquals(1, expansion.getLeftOutCount());
+        org.evochora.datapipeline.api.contracts.LeftOutRegion region = expansion.getLeftOut(0);
         assertEquals(List.of(2, 4, 5, 5),
                 List.of(region.getExpansion(), region.getDirectiveLine(), region.getFrom(), region.getTo()));
-        assertEquals(1, source.getNotesCount());
-        org.evochora.datapipeline.api.contracts.SourceNote note = source.getNotes(0);
+        assertEquals(1, expansion.getNotesCount());
+        org.evochora.datapipeline.api.contracts.SourceNote note = expansion.getNotes(0);
         assertEquals(List.of(2, 2, 8), List.of(note.getExpansion(), note.getLine(), note.getColumn()));
         assertEquals("[=1]", note.getText());
         assertEquals(List.of(2), program.getSourceMapList().stream()

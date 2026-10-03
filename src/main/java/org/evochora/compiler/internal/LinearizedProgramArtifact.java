@@ -44,12 +44,13 @@ import java.util.Map;
  * All other fields remain unchanged:
  * <ul>
  *   <li><strong>sources</strong>: {@code List<SourceFile>} (unchanged)</li>
- *   <li><strong>expansionHomes</strong>: {@code Map<Integer, Integer>} (unchanged)</li>
+ *   <li><strong>expansions</strong>: {@code Map<Integer, Expansion>} (unchanged)</li>
  *   <li><strong>sourceMap</strong>: {@code Map<Integer, SerializableSourceInfo>} (unchanged)</li>
  *   <li><strong>callSiteBindings</strong>: {@code Map<Integer, Map<Integer, Integer>>} (unchanged)</li>
  *   <li><strong>relativeCoordToLinearAddress</strong>: {@code Map<String, Integer>} (unchanged)</li>
  *   <li><strong>linearAddressToCoord</strong>: {@code Map<Integer, int[]>} (unchanged)</li>
  *   <li><strong>registerAliasMap</strong>: {@code Map<String, Integer>} (unchanged)</li>
+ *   <li><strong>constantValues</strong>: {@code Map<String, String>} (unchanged)</li>
  *   <li><strong>procNameToParamNames</strong>: {@code Map<String, List<ParamInfo>>} (unchanged)</li>
  *   <li><strong>tokenMap</strong>: {@code Map<SerializableSourceInfo, TokenInfo>} (unchanged)</li>
  *   <li><strong>tokenLookup</strong>: {@code Map<String, Map<String, Map<Integer, Map<Integer, List<TokenInfo>>>>>} (unchanged)</li>
@@ -58,8 +59,8 @@ import java.util.Map;
  * 
  * @param programId Unique identifier for the compiled program.
  * @param sources One entry per inclusion of a file.
- * @param expansionHomes Map from an instance of injected tokens that is no inclusion to the
- *                       instance of the entry its tokens stand on.
+ * @param expansions Map from the number of an instance of injected tokens that is no inclusion to
+ *                   where it came from and the regions and notes recorded in it.
  * @param machineCodeLayout Map from linearized coordinates to molecule values.
  * @param initialWorldObjects Map from linearized coordinates to placed molecules.
  * @param sourceMap Map from linear address to serializable source info.
@@ -67,11 +68,13 @@ import java.util.Map;
  *                         parameter bindings: formal register id to caller register.
  * @param relativeCoordToLinearAddress Map from relative coordinate string to linear address.
  * @param linearAddressToCoord Map from linear address to relative coordinate array.
- * @param registerAliasMap Map from register alias names to physical register indices.
+ * @param registerAliasMap Map from the definition key of a register alias to its physical register index.
+ * @param constantValues Map from the definition key of a constant to its value as text.
  * @param procNameToParamNames Map from procedure names to parameter info lists.
  * @param tokenMap Map from serializable source info to token info.
  * @param tokenLookup Map from placement/file/line/col to token info list.
- * @param sourceLineToInstructions Map from placement/file/entry instance/line to machine instruction info list.
+ * @param sourceLineToInstructions Map from placement/file/expansion/line to machine instruction info list; the
+ *                                 expansion is the instance of an entry or the number of an expansion.
  * @param labelValueToName Map from label hash value to label name.
  * @param labelNameToValue Map from label name to label hash value.
  * @param envProps Environment properties used for linearization.
@@ -82,7 +85,7 @@ import java.util.Map;
 public record LinearizedProgramArtifact(
         String programId,
         List<org.evochora.compiler.api.SourceFile> sources,
-        Map<Integer, Integer> expansionHomes,
+        Map<Integer, org.evochora.compiler.api.Expansion> expansions,
         Map<Integer, Integer> machineCodeLayout,
         Map<Integer, PlacedMolecule> initialWorldObjects,
         Map<Integer, SerializableSourceInfo> sourceMap,
@@ -90,6 +93,7 @@ public record LinearizedProgramArtifact(
         Map<String, Integer> relativeCoordToLinearAddress,
         Map<Integer, int[]> linearAddressToCoord,
         Map<String, Integer> registerAliasMap,
+        Map<String, String> constantValues,
         Map<String, List<org.evochora.compiler.api.ParamInfo>> procNameToParamNames,
         Map<SerializableSourceInfo, TokenInfo> tokenMap,
         Map<String, Map<String, Map<Integer, Map<Integer, List<TokenInfo>>>>> tokenLookup,
@@ -107,7 +111,7 @@ public record LinearizedProgramArtifact(
      */
     public LinearizedProgramArtifact {
         sources = sources != null ? Collections.unmodifiableList(sources) : Collections.emptyList();
-        expansionHomes = expansionHomes != null ? Collections.unmodifiableMap(expansionHomes) : Collections.emptyMap();
+        expansions = expansions != null ? Collections.unmodifiableMap(expansions) : Collections.emptyMap();
         machineCodeLayout = machineCodeLayout != null ? Collections.unmodifiableMap(machineCodeLayout) : Collections.emptyMap();
         initialWorldObjects = initialWorldObjects != null ? Collections.unmodifiableMap(initialWorldObjects) : Collections.emptyMap();
         sourceMap = sourceMap != null ? Collections.unmodifiableMap(sourceMap) : Collections.emptyMap();
@@ -115,6 +119,7 @@ public record LinearizedProgramArtifact(
         relativeCoordToLinearAddress = relativeCoordToLinearAddress != null ? Collections.unmodifiableMap(relativeCoordToLinearAddress) : Collections.emptyMap();
         linearAddressToCoord = linearAddressToCoord != null ? Collections.unmodifiableMap(linearAddressToCoord) : Collections.emptyMap();
         registerAliasMap = registerAliasMap != null ? Collections.unmodifiableMap(registerAliasMap) : Collections.emptyMap();
+        constantValues = constantValues != null ? Collections.unmodifiableMap(constantValues) : Collections.emptyMap();
         procNameToParamNames = procNameToParamNames != null ? Collections.unmodifiableMap(procNameToParamNames) : Collections.emptyMap();
         tokenMap = tokenMap != null ? Collections.unmodifiableMap(tokenMap) : Collections.emptyMap();
         tokenLookup = tokenLookup != null ? Collections.unmodifiableMap(tokenLookup) : Collections.emptyMap();
@@ -136,7 +141,7 @@ public record LinearizedProgramArtifact(
         return new LinearizedProgramArtifact(
                 artifact.programId(),
                 artifact.sources(),
-                artifact.expansionHomes(),
+                artifact.expansions(),
                 converter.linearizeMap(artifact.machineCodeLayout()),
                 converter.linearizeMap(artifact.initialWorldObjects()),
                 convertSourceMap(artifact.sourceMap()),
@@ -144,6 +149,7 @@ public record LinearizedProgramArtifact(
                 artifact.relativeCoordToLinearAddress(),
                 artifact.linearAddressToCoord(),
                 artifact.registerAliasMap(),
+                artifact.constantValues(),
                 artifact.procNameToParamNames(),
                 convertTokenMap(artifact.tokenMap()),
                 artifact.tokenLookup(),
