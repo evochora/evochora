@@ -36,7 +36,7 @@ public class ImportDirectiveHandler implements IParserStatementHandler {
         if (!context.check(TokenType.IDENTIFIER) || !"AS".equalsIgnoreCase(context.peek().text())) {
             context.getDiagnostics().reportError(
                     "Expected AS after .IMPORT path.",
-                    pathToken.fileName(), pathToken.line());
+                    pathToken.source().fileName(), pathToken.source().lineNumber());
             return null;
         }
         context.advance(); // consume AS
@@ -54,7 +54,7 @@ public class ImportDirectiveHandler implements IParserStatementHandler {
                 if (!context.check(TokenType.IDENTIFIER) || !"AS".equalsIgnoreCase(context.peek().text())) {
                     context.getDiagnostics().reportError(
                             "Expected AS after USING source alias.",
-                            sourceAlias.fileName(), sourceAlias.line());
+                            sourceAlias.source().fileName(), sourceAlias.source().lineNumber());
                     break;
                 }
                 context.advance(); // consume AS
@@ -65,22 +65,22 @@ public class ImportDirectiveHandler implements IParserStatementHandler {
                 if (bound) {
                     context.getDiagnostics().reportError(
                             "Cannot bind '" + targetAlias.text() + "' twice in the USING clauses of one import.",
-                            targetAlias.fileName(), targetAlias.line());
+                            targetAlias.source().fileName(), targetAlias.source().lineNumber());
                     continue;
                 }
                 usings.add(new ImportNode.UsingClause(
                         sourceAlias.text(), targetAlias.text(),
-                        sourceAlias.toSourceInfo(), targetAlias.toSourceInfo()));
+                        sourceAlias.source(), targetAlias.source()));
             } else {
                 context.getDiagnostics().reportError(
                         "Unexpected token '" + context.peek().text() + "' in .IMPORT directive.",
-                        context.peek().fileName(), context.peek().line());
+                        context.peek().source().fileName(), context.peek().source().lineNumber());
                 break;
             }
         }
 
         return new ImportNode(
                 (String) pathToken.value(), aliasToken.text(), usings, exported,
-                aliasToken.toSourceInfo());
+                aliasToken.source());
     }
 }

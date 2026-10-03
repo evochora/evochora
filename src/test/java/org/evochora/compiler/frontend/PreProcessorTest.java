@@ -1,5 +1,7 @@
 package org.evochora.compiler.frontend;
 
+import org.evochora.compiler.api.CompilerOptions;
+import org.evochora.compiler.TestLexers;
 import org.evochora.compiler.api.SourceRoot;
 import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.util.SourceRootResolver;
@@ -60,7 +62,7 @@ public class PreProcessorTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
 
         Path mainFile = tempDir.resolve("main.s");
-        Lexer lexer = new Lexer(mainSource, diagnostics, mainFile.toString());
+        Lexer lexer = new Lexer(mainSource, diagnostics, mainFile.toString(), TestLexers.symbols());
         List<Token> initialTokens = lexer.scanTokens();
 
         SourceRootResolver resolver = new SourceRootResolver(
@@ -69,12 +71,12 @@ public class PreProcessorTest {
         String sourceContent = Files.readString(libFile);
         if (!sourceContent.endsWith("\n")) sourceContent += "\n";
         String resolvedSourcePath = resolver.resolve("test.s", mainFile.toString());
-        Lexer sourceLexer = new Lexer(sourceContent, diagnostics, resolvedSourcePath);
+        Lexer sourceLexer = new Lexer(sourceContent, diagnostics, resolvedSourcePath, TestLexers.symbols());
         List<Token> sourceTokenList = sourceLexer.scanTokens();
         Lexer.stripEofToken(sourceTokenList);
         Map<String, List<Token>> sourceTokens = Map.of(resolvedSourcePath, sourceTokenList);
 
-        PreProcessorContext context = new PreProcessorContext("", sourceTokens);
+        PreProcessorContext context = new PreProcessorContext("", sourceTokens, mainFile.toString(), CompilerOptions.defaults());
         context.handlers().register(".SOURCE", new SourceDirectiveHandler());
         context.handlers().register(":", new org.evochora.compiler.features.label.ColonLabelHandler());
         PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, resolver, context);

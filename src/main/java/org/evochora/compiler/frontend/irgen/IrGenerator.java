@@ -2,6 +2,7 @@ package org.evochora.compiler.frontend.irgen;
 
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.model.ast.AstNode;
+import org.evochora.compiler.model.ir.DebugInfo;
 import org.evochora.compiler.model.ir.IrProgram;
 
 import java.util.List;
@@ -28,14 +29,15 @@ public final class IrGenerator {
 
 	/**
 	 * Generates a linear IR program by dispatching each AST node to a converter.
-	 * Uses an empty root alias chain (for single-file compilation).
+	 * Uses an empty root alias chain (for single-file compilation) and carries no source files
+	 * and no token map.
 	 *
 	 * @param ast         The semantically validated AST nodes.
 	 * @param programName The program name used for IR metadata and diagnostics.
 	 * @return The generated IR program.
 	 */
 	public IrProgram generate(List<AstNode> ast, String programName) {
-		return generate(ast, programName, "");
+		return generate(ast, programName, "", DebugInfo.none());
 	}
 
 	/**
@@ -44,13 +46,15 @@ public final class IrGenerator {
 	 * @param ast            The semantically validated AST nodes.
 	 * @param programName    The program name used for IR metadata and diagnostics.
 	 * @param rootAliasChain The alias chain for the root module (e.g., "MAIN").
+	 * @param debugInfo      What the program carries for a debugger and a source view; the
+	 *                       generator passes it on unchanged.
 	 * @return The generated IR program.
 	 */
-	public IrProgram generate(List<AstNode> ast, String programName, String rootAliasChain) {
+	public IrProgram generate(List<AstNode> ast, String programName, String rootAliasChain, DebugInfo debugInfo) {
 		IrGenContext ctx = new IrGenContext(programName, diagnostics, registry, rootAliasChain);
 		for (AstNode node : ast) {
 			registry.resolve(node).convert(node, ctx);
 		}
-		return ctx.build();
+		return ctx.build(debugInfo);
 	}
 }

@@ -167,4 +167,4 @@ EXPORT .PROC HARVEST
 
   # Safety jumps at end of procedure (in case mutation causes fall-through)
   NOP; JMPI HARVEST_LOOP; NOP^3; JMPI HARVEST_LOOP
-.ENDP
+.ENDPROC

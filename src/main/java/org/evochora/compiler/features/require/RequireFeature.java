@@ -6,7 +6,7 @@ import org.evochora.compiler.IFeatureRegistrationContext;
 /**
  * Compiler feature for the {@code .REQUIRE} directive, which declares unsatisfied
  * module dependencies that must be provided via {@code USING} clauses on the importer's
- * {@code .IMPORT} directive.
+ * {@code .IMPORT} directive. The directive may stand only at the top level.
  */
 public class RequireFeature implements ICompilerFeature {
 
@@ -19,6 +19,7 @@ public class RequireFeature implements ICompilerFeature {
     public void register(IFeatureRegistrationContext ctx) {
         ctx.dependencyScanHandler(new RequireDependencyScanHandler());
         ctx.dependencySetupHandler(RequireDependencyInfo.class, new RequireModuleSetupHandler());
+        ctx.preprocessorTopLevelOnly(".REQUIRE");
         ctx.parserStatement(".REQUIRE", new RequireDirectiveHandler());
         ctx.symbolCollector(RequireNode.class, new RequireSymbolCollector());
         ctx.analysisHandler(RequireNode.class, new RequireAnalysisHandler());

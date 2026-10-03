@@ -10,8 +10,8 @@ import java.util.Map;
 /**
  * Emits a {@code reg_alias} IR directive from a {@code .REG} AST node.
  *
- * <p>The directive carries the module-qualified alias name and the target register
- * name so that Phase 11 ({@link RegisterAliasEmissionContributor})
+ * <p>The directive carries the module-qualified alias name, the scope the alias is defined in
+ * and the target register name so that Phase 11 ({@link RegisterAliasEmissionContributor})
  * can include the alias mapping in the final {@link org.evochora.compiler.api.ProgramArtifact}.</p>
  */
 public final class RegNodeConverter implements IAstNodeToIrConverter<RegNode> {
@@ -23,6 +23,7 @@ public final class RegNodeConverter implements IAstNodeToIrConverter<RegNode> {
 
         ctx.emit(new IrDirective("reg", "reg_alias", Map.of(
                 "name", new IrValue.Str(qualifiedName),
+                "scope", new IrValue.Str(ctx.currentScope()),
                 "register", new IrValue.Str(registerName)
         ), ctx.sourceOf(node)));
     }

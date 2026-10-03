@@ -28,7 +28,7 @@ class RefParameterTokenMapTest extends CompilerTestBase {
         String source = String.join("\n",
                 ".PROC MY_PROC REF PARAM1",
                 "NOP",
-                ".ENDP"
+                ".ENDPROC"
         );
         EnvironmentProperties envProps = new EnvironmentProperties(new int[]{100, 100}, true);
         Compiler compiler = new Compiler();

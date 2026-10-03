@@ -11,6 +11,7 @@ import org.evochora.compiler.frontend.module.IDependencyScanHandler;
 import org.evochora.compiler.frontend.semantics.IDependencySetupHandler;
 import org.evochora.compiler.frontend.parser.IParserStatementHandler;
 import org.evochora.compiler.frontend.postprocess.IPostProcessHandler;
+import org.evochora.compiler.frontend.preprocessor.BlockKind;
 import org.evochora.compiler.frontend.preprocessor.IPreProcessorHandler;
 import org.evochora.compiler.frontend.semantics.IAnalysisHandler;
 import org.evochora.compiler.frontend.semantics.ISymbolCollector;
@@ -28,7 +29,9 @@ import org.evochora.compiler.model.ast.AstNode;
  * <p>The concrete implementation ({@link FeatureRegistry}) collects all registrations
  * and provides getter methods for the compiler to read them back.</p>
  *
- * <p>Phase 1 (Lexing) has no extension points because the lexer uses generic token types.</p>
+ * <p>Phase 1 (Lexing) is extended through {@link #lexerSymbol(String)}: a feature registers the
+ * character sequences it reads, and the lexer emits each of them as one generic
+ * {@link org.evochora.compiler.model.token.TokenType#SYMBOL} token whose text is the sequence.</p>
  */
 public interface IFeatureRegistrationContext {
 
@@ -59,6 +62,22 @@ public interface IFeatureRegistrationContext {
 	 */
 	<T extends IDependencyInfo> void dependencySetupHandler(Class<T> type, IDependencySetupHandler<T> handler);
 
+	// Phase 1: Lexing
+
+	/**
+	 * Registers a character sequence the lexer emits as one
+	 * {@link org.evochora.compiler.model.token.TokenType#SYMBOL} token with that text. The lexer
+	 * tries the registered symbols at the start of every token, longest first, before any of its
+	 * own cases, so a symbol may consist only of the characters {@code ! & * + , . / < = > ? @ ^ ~ -};
+	 * the single characters {@code .} and {@code -} are taken by the lexer and cannot be registered
+	 * alone. The same symbol registered by several features is one symbol.
+	 *
+	 * @param symbol The character sequence, for example {@code ".."} or {@code "@+"}.
+	 * @throws IllegalArgumentException if the symbol is empty, contains a character outside the
+	 *         alphabet, or is {@code "."} or {@code "-"}; the message names the symbol.
+	 */
+	void lexerSymbol(String symbol);
+
 	// Phase 2: Preprocessing
 
 	/**
@@ -71,6 +90,26 @@ public interface IFeatureRegistrationContext {
 	 * @param handler The handler that processes matching tokens.
 	 */
 	void preprocessor(String name, IPreProcessorHandler handler);
+
+	/**
+	 * Registers a kind of block for Phase 2: the directives that open, close and divide it, and
+	 * whether its body is stored for later or processed in place. The preprocessor matches the
+	 * blocks of every registered kind against each other when a handler reads a block, so that
+	 * blocks nest and never overlap, whichever feature they belong to. A word may belong to one
+	 * kind only.
+	 *
+	 * @param kind The block kind.
+	 */
+	void preprocessorBlock(BlockKind kind);
+
+	/**
+	 * Registers a directive that may stand only at the top level of the source for Phase 2: never
+	 * inside a stored block body and never substituted into a stored body by a handler. A
+	 * directive may be registered here without having a preprocessor handler.
+	 *
+	 * @param directive The directive name, e.g. {@code .SOURCE}.
+	 */
+	void preprocessorTopLevelOnly(String directive);
 
 	// Phase 3: Parsing
 

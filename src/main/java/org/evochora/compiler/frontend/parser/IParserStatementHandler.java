@@ -14,7 +14,7 @@ public interface IParserStatementHandler {
      *
      * @param context The parsing context providing access to the token stream.
      * @return The parsed AST node, or {@code null} if the statement does not produce
-     *         a node (e.g., .DEFINE, .REG) or if a parse error was reported via the
+     *         a node (e.g., .CONST, .REG) or if a parse error was reported via the
      *         parsing context diagnostics. Handlers must never return {@code null}
      *         without first reporting an error or being a legitimately void statement.
      */

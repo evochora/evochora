@@ -1,11 +1,17 @@
 package org.evochora.compiler.frontend.preprocessor;
 
+import org.evochora.compiler.api.Expansion;
+import org.evochora.compiler.api.SourceFile;
+import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.diagnostics.ErrorRecoveryException;
+import org.evochora.compiler.frontend.DirectiveLine;
 import org.evochora.compiler.util.SourceRootResolver;
 import java.util.*;
+import java.util.function.Predicate;
+import java.util.function.ToIntFunction;
 
 /**
  * The preprocessor for the assembly language. It runs after the lexer and before the parser.
@@ -19,30 +25,53 @@ public class PreProcessor {
     private final SourceRootResolver resolver;
     private int current = 0;
     private final PreProcessorContext ppContext;
+    private final BlockReader blockReader;
+    private final Map<String, Map<String, Set<SourceFile.LeftOut>>> leftOut = new LinkedHashMap<>();
+    private final Map<String, Map<String, Set<SourceFile.Note>>> notes = new LinkedHashMap<>();
+    private final List<SourceFile> entries = new ArrayList<>();
+    private final Map<Integer, Expansion> expansions = new HashMap<>();
 
     /**
-     * Constructs a new PreProcessor.
+     * Constructs a new PreProcessor. The initial tokens are given the placement of the
+     * compilation root, the context's alias chain while no inclusion is open, and the context's
+     * entry of the main file becomes the first entry.
      *
      * @param initialTokens  The initial list of tokens from the lexer.
      * @param diagnostics    The engine for reporting errors and warnings.
      * @param resolver       The source root resolver for path resolution.
      * @param ppContext      The shared preprocessor context: the handlers to dispatch to, the
-     *                       pre-lexed tokens of includable files, the open inclusions.
+     *                       pre-lexed tokens and lines of includable files, the entry of the main
+     *                       file, the open inclusions.
      */
     public PreProcessor(List<Token> initialTokens, DiagnosticsEngine diagnostics, SourceRootResolver resolver,
                         PreProcessorContext ppContext) {
-        this.tokens = new ArrayList<>(initialTokens);
+        this.tokens = new ArrayList<>(initialTokens.size());
+        String root = ppContext.currentAliasChain();
+        for (Token token : initialTokens) {
+            SourceInfo at = token.source();
+            this.tokens.add(root.equals(at.placement()) ? token
+                    : token.with(new SourceInfo(at.fileName(), at.lineNumber(), at.columnNumber(), root, at.expansion())));
+        }
         this.diagnostics = diagnostics;
         this.resolver = resolver;
         this.ppContext = ppContext;
+        this.blockReader = new BlockReader(this, ppContext.handlers());
+        entries.add(ppContext.mainFile());
     }
 
     /**
      * Runs the preprocessor on the token stream. Every token is looked up in the context's
      * handler registry; a token with a handler is handed to it, which rewrites the stream at
      * the current position, and the walk continues from there. A token without one is left as
-     * it is.
-     * @return The preprocessing result containing the expanded tokens.
+     * it is, unless it closes or divides a registered block: the handler of a block consumes its
+     * closer and dividers, so one the walk reaches stands outside any block and is reported and
+     * removed by the {@link BlockReader}.
+     * @return The preprocessing result: the expanded tokens, the entries of the inclusions and
+     *         the instances that are no inclusion, each with the regions and notes the handlers
+     *         recorded in it. A record at a position goes to the entry of the position's placement,
+     *         file and instance, or else to the instance that is no inclusion under the position's
+     *         number. A record that names neither is a defect of the compiler and is reported as
+     *         an internal error.
      */
     public PreProcessorResult expand() {
         while (current < tokens.size()) {
@@ -53,11 +82,106 @@ public class PreProcessor {
                 } catch (ErrorRecoveryException ex) {
                     synchronize();
                 }
-            } else {
+            } else if (!blockReader.rejectStray(current)) {
                 current++;
             }
         }
-        return new PreProcessorResult(tokens);
+        List<SourceFile> sources = new ArrayList<>(entries.size());
+        for (SourceFile entry : entries) {
+            sources.add(entry.withRecords(recordedFor(leftOut, entry, SourceFile.LeftOut::expansion),
+                    recordedFor(notes, entry, SourceFile.Note::expansion)));
+        }
+        Map<Integer, Expansion> withRecords = new HashMap<>();
+        expansions.forEach((instance, expansion) -> withRecords.put(instance, expansion.withRecords(
+                recordedIn(leftOut, instance, SourceFile.LeftOut::expansion),
+                recordedIn(notes, instance, SourceFile.Note::expansion))));
+        checkEveryRecordIsKept(sources, withRecords);
+        return new PreProcessorResult(tokens, sources, withRecords);
+    }
+
+    /**
+     * Compares the number of records distributed to entries and expansions with the number
+     * recorded, and reports a difference as an internal error at the first record that names
+     * neither an entry nor an expansion.
+     */
+    private void checkEveryRecordIsKept(List<SourceFile> sources, Map<Integer, Expansion> withRecords) {
+        int recorded = count(leftOut) + count(notes);
+        int distributed = 0;
+        for (SourceFile source : sources) {
+            distributed += source.leftOut().size() + source.notes().size();
+        }
+        for (Expansion expansion : withRecords.values()) {
+            distributed += expansion.leftOut().size() + expansion.notes().size();
+        }
+        if (distributed == recorded) {
+            return;
+        }
+        Set<String> entryKeys = new HashSet<>();
+        sources.forEach(source -> entryKeys.add(source.placement() + "\0" + source.resolvedPath() + "\0" + source.instance()));
+        String message = "Internal error: " + (recorded - distributed)
+                + " record(s) of the source view name neither a source entry nor an expansion.";
+        for (Map.Entry<String, Map<String, Set<SourceFile.Note>>> placement : notes.entrySet()) {
+            for (Map.Entry<String, Set<SourceFile.Note>> file : placement.getValue().entrySet()) {
+                for (SourceFile.Note note : file.getValue()) {
+                    if (!kept(entryKeys, placement.getKey(), file.getKey(), note.expansion())) {
+                        diagnostics.reportError(message, file.getKey(), note.line());
+                        return;
+                    }
+                }
+            }
+        }
+        for (Map.Entry<String, Map<String, Set<SourceFile.LeftOut>>> placement : leftOut.entrySet()) {
+            for (Map.Entry<String, Set<SourceFile.LeftOut>> file : placement.getValue().entrySet()) {
+                for (SourceFile.LeftOut region : file.getValue()) {
+                    if (!kept(entryKeys, placement.getKey(), file.getKey(), region.expansion())) {
+                        diagnostics.reportError(message, file.getKey(), region.directiveLine());
+                        return;
+                    }
+                }
+            }
+        }
+    }
+
+    private boolean kept(Set<String> entryKeys, String placement, String fileName, int expansion) {
+        return entryKeys.contains(placement + "\0" + fileName + "\0" + expansion) || expansions.containsKey(expansion);
+    }
+
+    private static int count(Map<String, ? extends Map<String, ? extends Set<?>>> recorded) {
+        int total = 0;
+        for (Map<String, ? extends Set<?>> byFile : recorded.values()) {
+            for (Set<?> records : byFile.values()) {
+                total += records.size();
+            }
+        }
+        return total;
+    }
+
+    /**
+     * Returns what was recorded for an entry, in the order it was first recorded: the records of
+     * its placement and resolved path with the entry's instance.
+     */
+    private static <T> List<T> recordedFor(Map<String, Map<String, Set<T>>> recorded, SourceFile entry,
+                                           ToIntFunction<T> instance) {
+        Map<String, Set<T>> byFile = recorded.get(entry.placement());
+        if (byFile == null) {
+            return List.of();
+        }
+        return byFile.getOrDefault(entry.resolvedPath(), Set.of()).stream()
+                .filter(record -> instance.applyAsInt(record) == entry.instance())
+                .toList();
+    }
+
+    /**
+     * Returns what was recorded in an instance that is no inclusion, in the order it was first
+     * recorded. Its numbers are never those of an entry, so every record under it is its own.
+     */
+    private static <T> List<T> recordedIn(Map<String, Map<String, Set<T>>> recorded, int expansion,
+                                          ToIntFunction<T> instance) {
+        List<T> found = new ArrayList<>();
+        recorded.values().forEach(byFile -> byFile.values().forEach(records -> records.stream()
+                .filter(record -> instance.applyAsInt(record) == expansion)
+                .forEach(found::add)));
+        return found;
     }
 
     /**
@@ -68,6 +192,66 @@ public class PreProcessor {
         while (!isAtEnd()) {
             if (advance().type() == TokenType.NEWLINE) return;
         }
+    }
+
+    // --- Records for the source view ---
+
+    /**
+     * Adds an entry for an inclusion, a file whose tokens are injected into the stream, after the
+     * entries added before it. The entry's tokens carry its placement, its resolved path as their
+     * file name and its instance as their expansion; the regions and notes recorded at such
+     * positions are attached to it when the run ends.
+     *
+     * @param entry The inclusion, without records.
+     */
+    public void includes(SourceFile entry) {
+        entries.add(entry);
+    }
+
+    /**
+     * Records an instance of injected tokens that is no inclusion of a file: tokens copied from a
+     * template and injected at a position. The copies keep the template's lines; the regions and
+     * notes recorded at positions with the instance's number are attached to it when the run
+     * ends.
+     *
+     * @param instance  The number the injected tokens carry as their expansion.
+     * @param definedAt The position of the template as it stood when it was read; its placement,
+     *                  file and expansion name where the template's lines are.
+     * @param calledAt  The position at which the tokens were injected.
+     * @param name      The name under which the template was injected, a word of the feature.
+     * @param bindings  The words the template's parameters were bound to, in parameter order.
+     */
+    public void expands(int instance, SourceInfo definedAt, SourceInfo calledAt, String name,
+                        List<Expansion.Binding> bindings) {
+        expansions.put(instance, new Expansion(calledAt, definedAt, name, bindings, List.of(), List.of()));
+    }
+
+    /**
+     * Records a region of lines that was left out, owned by the line of a directive. The region
+     * belongs to the placement, file and instance of injected tokens of the given position. A
+     * region equal to one already recorded is recorded once.
+     *
+     * @param directive The position of the directive whose line owns the region.
+     * @param fromLine  The first line of the region.
+     * @param toLine    The last line of the region, inclusive.
+     */
+    public void leftOut(SourceInfo directive, int fromLine, int toLine) {
+        leftOut.computeIfAbsent(directive.placement(), k -> new LinkedHashMap<>())
+                .computeIfAbsent(directive.fileName(), k -> new LinkedHashSet<>())
+                .add(new SourceFile.LeftOut(directive.expansion(), directive.lineNumber(), fromLine, toLine));
+    }
+
+    /**
+     * Records a note at a position, in its placement, file and instance of injected tokens. A
+     * note equal to one already recorded is recorded once.
+     *
+     * @param position The position the note stands at.
+     * @param text     The text of the note.
+     */
+    public void note(SourceInfo position, String text) {
+        notes.computeIfAbsent(position.placement(), k -> new LinkedHashMap<>())
+                .computeIfAbsent(position.fileName(), k -> new LinkedHashSet<>())
+                .add(new SourceFile.Note(position.expansion(), position.lineNumber(), position.columnNumber(), text));
     }
 
     // --- Token stream navigation ---
@@ -134,7 +318,7 @@ public class PreProcessor {
     public Token consume(TokenType type, String errorMessage) {
         if (check(type)) return advance();
         Token unexpected = peek();
-        getDiagnostics().reportError(errorMessage, unexpected.fileName(), unexpected.line());
+        getDiagnostics().reportError(errorMessage, unexpected.source().fileName(), unexpected.source().lineNumber());
         throw new ErrorRecoveryException(errorMessage);
     }
 
@@ -171,6 +355,53 @@ public class PreProcessor {
         }
         tokens.addAll(startIndex, newTokens);
         this.current = startIndex;
+    }
+
+    /**
+     * Reads the block whose opener stands at the given index, by the rules of
+     * {@link BlockReader#read(int)}: the body begins after the opener's line, blocks of every
+     * registered kind nest inside it, and nothing is removed from the stream on success.
+     *
+     * @param openerIndex The stream index of the token that opens the block.
+     * @return The body, the dividers at the block's own level and the index after its closer.
+     * @throws ErrorRecoveryException if the block breaks a block rule; the error has been reported.
+     */
+    public BlockReader.Block readBlock(int openerIndex) {
+        return blockReader.read(openerIndex);
+    }
+
+    /**
+     * Finds the physical line of the directive at an index, by the rules of
+     * {@link DirectiveLine}, with no token before it passed over.
+     *
+     * @param index The stream index of the directive token.
+     * @return The directive's operands, their end, and whether it stands alone on its line.
+     */
+    public DirectiveLine lineOf(int index) {
+        return DirectiveLine.of(tokens, index);
+    }
+
+    /**
+     * Finds the physical line of the directive at an index, by the rules of
+     * {@link DirectiveLine}.
+     *
+     * @param index      The stream index of the directive token.
+     * @param passedOver The tokens directly before the directive that belong to it, which the
+     *                   rule passes over.
+     * @return The directive's operands, their end, and whether it stands alone on its line.
+     */
+    public DirectiveLine lineOf(int index, Predicate<Token> passedOver) {
+        return DirectiveLine.of(tokens, index, passedOver);
+    }
+
+    /**
+     * Sets the position of the walk, for the {@link BlockReader} to put it back on the opener
+     * of a block it cannot read.
+     *
+     * @param index The stream index to continue at.
+     */
+    void seek(int index) {
+        this.current = index;
     }
 
     /**

@@ -28,7 +28,9 @@ public final class ProcedureNodeConverter implements IAstNodeToIrConverter<Proce
 		Map<String, IrValue> enterArgs = buildProcArgs(node, qualifiedName, lrefArity, lvalArity);
 		ctx.emit(new IrDirective("core", "proc_enter", enterArgs, ctx.sourceOf(node)));
 
+		ctx.enterScope(qualifiedName);
 		node.body().forEach(ctx::convert);
+		ctx.leaveScope();
 
 		Map<String, IrValue> exitArgs = buildProcArgs(node, qualifiedName, lrefArity, lvalArity);
 		ctx.emit(new IrDirective("core", "proc_exit", exitArgs, ctx.sourceOf(node)));

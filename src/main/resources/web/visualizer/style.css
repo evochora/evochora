@@ -778,6 +778,11 @@ body {
     font-style: italic;
 }
 
+/* Compile-time notes (e.g., [set] or [=3] on a flag) in yellow and italic; runtime values stay green */
+.annotation.compile-time {
+    color: #e0c878;
+}
+
 /* Instruction line layout with fixed-width columns */
 .instruction-line {
     display: flex;
@@ -1119,7 +1124,12 @@ main.container {
     padding-top: 15px;
 }
 
+/* The indicator column of a line is --indicator-width wide; a fold container draws its guide line
+   at --fold-guide-left, under the centre of that column: the line number (36px wide, 6px padding)
+   and half the indicator */
 .assembly-code-view {
+    --indicator-width: 24px;
+    --fold-guide-left: calc(36px + 6px + var(--indicator-width) / 2);
     background-color: #000;
     border: 1px solid #333;
     padding: 8px;
@@ -1152,19 +1162,56 @@ main.container {
     width: 100%; /* Ensure background covers full width */
 }
 
+/* Call line of an expansion the active line stands in: a frame, in a lighter shade of the active line */
+.active-call-line {
+    background-color: rgba(60, 80, 120, 0.45);
+}
+
+.active-call-line .line-number {
+    color: #bbb;
+}
+
+/* Frames of the expansions the active line stands in, innermost first; the bar wraps between frames, and a
+   frame wider than the bar wraps within itself */
+.source-frame-bar {
+    display: flex;
+    flex-wrap: wrap;
+    font-size: 11px;
+    color: #999;
+    padding: 4px 0;
+}
+
+.source-frame-bar:empty {
+    display: none;
+}
+
+.source-frame-separator {
+    white-space: pre;
+}
+
+.source-frame-link {
+    color: #9cf;
+    text-decoration: none;
+}
+
+.source-frame-link:hover {
+    text-decoration: underline;
+}
+
 /* Collapse indicator placeholder - always takes space to keep columns aligned */
 .collapse-indicator-placeholder {
     flex-shrink: 0;
-    width: 16px;
+    width: var(--indicator-width);
     margin-right: 2px;
 }
 
+/* Indicator of a fold: ▶/▼ for machine instructions, [+]/[−] for a region left out */
 .collapse-indicator {
     flex-shrink: 0;
-    width: 16px;
+    width: var(--indicator-width);
     text-align: center;
     color: #888;
-    font-size: 0.8em;
+    font-size: 1em;
     user-select: none;
     cursor: pointer;
     margin-right: 2px;
@@ -1172,6 +1219,21 @@ main.container {
 
 .collapse-indicator:hover {
     color: #aaa;
+}
+
+/* Directive line that owns a region a conditional left out; a click folds or unfolds it */
+.source-line.fold-source-line {
+    cursor: pointer;
+}
+
+.source-line.fold-source-line:hover {
+    background-color: rgba(60, 80, 120, 0.3);
+}
+
+/* Lines of a region a conditional left out, greyed; they stand in a .left-out-region container */
+.source-line.left-out-line {
+    color: #8a8a8a;
+    margin-left: calc(-1 * var(--fold-guide-left) - 1px); /* Back to the line-number column, past the guide line */
 }
 
 #source-status-bar {
@@ -1188,14 +1250,23 @@ main.container {
     user-select: none;
 }
 
-/* Machine instructions container - visually groups instructions belonging to a source line */
-.machine-instructions-container {
-    margin-left: 49px; /* Align border-left with collapse-indicator position: line-number (36px + 6px padding) = 42px */
-    margin-top: 2px;
-    margin-bottom: 4px;
-    padding: 4px 8px 0px 0; /* No left padding, so border-left aligns with collapse-indicator */
-    border-left: 1px solid #444; /* Thin vertical line to show grouping, positioned directly under collapse-indicator */
+/* Fold containers under a line: the machine instructions of the line, and the region of lines a
+   conditional left out. Both draw a thin guide line under the centre of the line's indicator. */
+.machine-instructions-container,
+.left-out-region {
+    margin: 1px 0 2px var(--fold-guide-left);
+    padding: 2px 8px 2px 0; /* No left padding, so the content starts at the guide line */
+    border-left: 1px solid #444;
     background-color: rgba(255, 255, 255, 0.02); /* Slight highlighting */
+}
+
+/* A folded region left out is hidden */
+.left-out-region.folded {
+    display: none;
+}
+
+/* The machine instructions collapse and expand with a transition */
+.machine-instructions-container {
     overflow: hidden;
     transition: max-height 0.2s ease-out, opacity 0.2s ease-out;
     max-height: 500px; /* Sufficiently large for expanded state */
@@ -1216,10 +1287,10 @@ main.container {
     display: flex;
     align-items: center;
     font-family: 'Roboto Mono', 'Courier New', monospace;
-    font-size: 12px;
+    font-size: inherit;
     color: #aaa;
     margin-left: 10px;
-    padding: 2px 0;
+    padding: 1px 0;
     line-height: 1.4;
 }
 

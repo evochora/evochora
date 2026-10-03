@@ -31,7 +31,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 public class LayoutEngineTest {
 
     private static SourceInfo src(String file, int line) {
-        return new SourceInfo(file, line, 0);
+        return new SourceInfo(file, line, 0, "", 0);
     }
 
     @Test
@@ -54,7 +54,7 @@ public class LayoutEngineTest {
         placeArgs.put("placements", new IrValue.PlacementListVal(List.of(placement)));
         IrDirective place = new IrDirective("core", "place", placeArgs, src("lib.inc", 10));
 
-        IrProgram ir = new IrProgram("Test", List.of(org, dir, label, seti, push, place));
+        IrProgram ir = new IrProgram("Test", List.of(org, dir, label, seti, push, place), DebugInfo.none());
 
         LayoutEngine engine = new LayoutEngine();
         EnvironmentProperties envProps = new EnvironmentProperties(new int[]{10, 10}, true);
@@ -106,7 +106,7 @@ public class LayoutEngineTest {
      */
     private static LayoutResult layout(List<IrItem> items, int[] worldShape) throws Exception {
         Instruction.init();
-        return new LayoutEngine().layout(new IrProgram("Test", items), new RuntimeInstructionSetAdapter(),
+        return new LayoutEngine().layout(new IrProgram("Test", items, DebugInfo.none()), new RuntimeInstructionSetAdapter(),
                 new EnvironmentProperties(worldShape, true), allLayoutHandlers());
     }
 
@@ -358,7 +358,7 @@ public class LayoutEngineTest {
         IrProgram ir = new IrProgram("Collision", List.of(
                 new IrLabelDef(first, src("main.evo", 1)),
                 new IrInstruction("NOP", List.of(), src("main.evo", 2)),
-                new IrLabelDef(second, src("main.evo", 3))));
+                new IrLabelDef(second, src("main.evo", 3))), DebugInfo.none());
         LayoutResult once = new LayoutEngine().layout(ir, isa, new EnvironmentProperties(new int[]{10, 10}, true), allLayoutHandlers());
         LayoutResult again = new LayoutEngine().layout(ir, isa, new EnvironmentProperties(new int[]{10, 10}, true), allLayoutHandlers());
 

@@ -1,5 +1,6 @@
 package org.evochora.compiler.model.symbols;
 
+import org.evochora.compiler.api.DefinitionKey;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.model.ast.AstNode;
@@ -38,7 +39,7 @@ public class SymbolTable {
     public static class Scope {
         private final Scope parent;
         private final String name;
-        private final Map<String, Map<String, Symbol>> symbols = new HashMap<>(); // name -> (fileName -> symbol)
+        private final Map<String, Map<String, Symbol>> symbols = new HashMap<>(); // name -> (module placement, or file outside a module -> symbol)
 
         Scope(Scope parent, String name) {
             this.parent = parent;
@@ -86,7 +87,7 @@ public class SymbolTable {
      */
     public SymbolTable(DiagnosticsEngine diagnostics) {
         this.diagnostics = diagnostics;
-        this.rootScope = new Scope(null, "global");
+        this.rootScope = new Scope(null, DefinitionKey.GLOBAL_SCOPE);
         this.currentScope = this.rootScope;
     }
 
@@ -245,7 +246,8 @@ public class SymbolTable {
 
     /**
      * Defines a new symbol in the current scope and registers it in the current module scope.
-     * A name that the same file has defined in this scope already keeps its first definition;
+     * A name that the same module placement, or outside a module the same file, has defined in
+     * this scope already keeps its first definition;
      * the caller, which knows what kind of thing it tried to define, reports that.
      * @param symbol The symbol to define.
      * @return The definition the name already had in this scope, which stays; empty if the
@@ -256,11 +258,12 @@ public class SymbolTable {
         String name = symbol.name().toUpperCase();
         String file = symbol.sourceInfo().fileName();
 
-        // In module context, use the module's source path as file key.
-        // This makes .SOURCE-included symbols resolvable from the module's own tokens.
+        // In module context, the symbol is filed under the module placement rather than the file
+        // it stands in: .SOURCE-included symbols are resolvable from the module's own tokens, and
+        // two placements of one file keep apart.
         ModuleScope modScope = modules.get(currentAliasChain);
         if (modScope != null) {
-            file = modScope.sourcePath();
+            file = modScope.aliasChain();
         }
 
         // Register in the scope hierarchy (for procedure-local visibility)
@@ -294,8 +297,14 @@ public class SymbolTable {
         Set<Symbol> visited = Collections.newSetFromMap(new IdentityHashMap<>());
         List<String> chain = new ArrayList<>();
         SourceInfo firstDefinition = null;
+        // The placement the identifier stands in when a definition has led out of the current one;
+        // null while it stands in the current placement.
+        ModuleScope foreign = null;
         for (int depth = 0; depth < MAX_BINDING_DEPTH; depth++) {
-            Optional<ResolvedSymbol> resolved = resolve(current.text(), current.sourceInfo().fileName()).found();
+            Lookup lookup = foreign == null
+                    ? lookUp(current.text(), current.sourceInfo())
+                    : lookUp(current.text(), foreign.aliasChain(), rootScope, foreign);
+            Optional<ResolvedSymbol> resolved = lookup.resolution().found();
             if (resolved.isEmpty()) {
                 return Optional.empty();
             }
@@ -316,6 +325,10 @@ public class SymbolTable {
             if (firstDefinition == null) {
                 firstDefinition = resolved.get().symbol().sourceInfo();
             }
+            // The definition is written in the placement that holds it, so the identifier it binds to
+            // is looked up there: among that placement's module-level symbols when it is another
+            // placement, from the current scope when it is the current one.
+            foreign = lookup.placement() == modules.get(currentAliasChain) ? null : lookup.placement();
             AstNode bound = binding.bind(current);
             if (!(bound instanceof IdentifierNode next)) {
                 return Optional.of(bound);
@@ -330,43 +343,84 @@ public class SymbolTable {
      * If the symbol is not found, it attempts to resolve it as a qualified name
      * (e.g., {@code ALIAS.SYMBOL}) using the current module's import aliases.
      * @param name The name of the symbol to resolve.
-     * @param requestingFile The file requesting the symbol resolution (for module scoping).
+     * @param at   The position the name is written at. A position in the placement of the
+     *             current module looks the name up among that module's symbols, whichever file
+     *             of the placement it stands in; any other position looks it up among the
+     *             symbols of its file.
      * @return The symbol with its qualified name, or the reason there is none.
      */
-    public Resolution resolve(String name, String requestingFile) {
+    public Resolution resolve(String name, SourceInfo at) {
+        return lookUp(name, at).resolution();
+    }
+
+    /**
+     * What a lookup found, together with the module placement the symbol belongs to.
+     *
+     * @param resolution The symbol with its qualified name, or the reason there is none.
+     * @param placement  The placement whose namespace holds the symbol; {@code null} if nothing
+     *                   was found or no module is current.
+     */
+    private record Lookup(Resolution resolution, ModuleScope placement) {
+        static Lookup missing(String explanation) {
+            return new Lookup(new Resolution.Missing(explanation), null);
+        }
+    }
+
+    /**
+     * Looks a name up as {@link #resolve} does, from the current scope and module.
+     */
+    private Lookup lookUp(String name, SourceInfo at) {
+        // A token of the current placement, in the module's own file or in a file it sources,
+        // looks up the symbols of the current placement.
+        ModuleScope currentModScope = modules.get(currentAliasChain);
+        String filedUnder = currentModScope != null && currentModScope.aliasChain().equals(at.placement())
+                ? currentModScope.aliasChain()
+                : at.fileName();
+        return lookUp(name, filedUnder, currentScope, currentModScope);
+    }
+
+    /**
+     * Looks a name up in the scopes from the given one to the root, under the key the symbols of
+     * the namespace are filed by, and then as a qualified name through the imports and the
+     * requirements of the given module.
+     *
+     * @param name       The name as written.
+     * @param filedUnder The key the namespace's symbols are filed under: a placement's alias
+     *                   chain, or a file outside a module.
+     * @param from       The innermost scope to search.
+     * @param module     The placement the name is written in; {@code null} outside a module.
+     */
+    private Lookup lookUp(String name, String filedUnder, Scope from, ModuleScope module) {
         String key = name.toUpperCase();
 
-        // Search scope hierarchy (current scope → root)
-        for (Scope scope = currentScope; scope != null; scope = scope.parent) {
+        // Search scope hierarchy (given scope → root)
+        for (Scope scope = from; scope != null; scope = scope.parent) {
             Map<String, Symbol> perFile = scope.symbols.get(key);
-            if (perFile != null) {
-                if (perFile.containsKey(requestingFile)) {
-                    Symbol sym = perFile.get(requestingFile);
-                    String qualified = qualifyName(key);
-                    return new ResolvedSymbol(sym, qualified);
-                }
+            if (perFile != null && perFile.containsKey(filedUnder)) {
+                String chain = module != null ? module.aliasChain() : null;
+                String qualified = chain != null && !chain.isEmpty() ? chain + "." + key : key;
+                return new Lookup(new ResolvedSymbol(perFile.get(filedUnder), qualified, scope.name()), module);
             }
         }
 
         // Attempt qualified name resolution (ALIAS.SYMBOL or multi-level ALIAS.B.SYMBOL)
         int dot = key.indexOf('.');
         if (dot <= 0) {
-            return new Resolution.Missing("the name is not defined.");
+            return Lookup.missing("the name is not defined.");
         }
         // Explanations quote the segments as the program wrote them; lookups use the key
         String alias = name.substring(0, dot);
         String remainder = name.substring(dot + 1);
 
-        ModuleScope resolveModScope = modules.get(currentAliasChain);
-        if (resolveModScope == null) {
-            return new Resolution.Missing("the name is not defined.");
+        if (module == null) {
+            return Lookup.missing("the name is not defined.");
         }
-        String targetAliasChain = resolveModScope.imports().get(alias.toUpperCase());
+        String targetAliasChain = module.imports().get(alias.toUpperCase());
         if (targetAliasChain == null) {
-            targetAliasChain = resolveModScope.usingBindings().get(alias.toUpperCase());
+            targetAliasChain = module.usingBindings().get(alias.toUpperCase());
         }
         if (targetAliasChain == null) {
-            return new Resolution.Missing("'" + alias + "' is neither an import nor a requirement of this module.");
+            return Lookup.missing("'" + alias + "' is neither an import nor a requirement of this module.");
         }
         return resolveMultiLevel(targetAliasChain, alias, remainder);
     }
@@ -381,25 +435,26 @@ public class SymbolTable {
      * @param currentChain The alias chain of the module the remainder is looked up in.
      * @param moduleName   How the program names that module, for the explanation of a failure.
      * @param remainder    The rest of the qualified name, as the program wrote it.
-     * @return The symbol with its qualified name, or the reason there is none.
+     * @return The symbol with its qualified name and the placement that defines it, or the
+     *         reason there is none.
      */
-    private Resolution resolveMultiLevel(String currentChain, String moduleName, String remainder) {
+    private Lookup resolveMultiLevel(String currentChain, String moduleName, String remainder) {
         ModuleScope modScope = modules.get(currentChain);
         if (modScope == null) {
-            return new Resolution.Missing(moduleName + " is not a module of this compilation.");
+            return Lookup.missing(moduleName + " is not a module of this compilation.");
         }
         int dot = remainder.indexOf('.');
         if (dot <= 0) {
             String symbolKey = remainder.toUpperCase();
             Symbol sym = modScope.symbols().get(symbolKey);
             if (sym == null) {
-                return new Resolution.Missing(moduleName + " has no symbol '" + remainder + "'.");
+                return Lookup.missing(moduleName + " has no symbol '" + remainder + "'.");
             }
             if (!isExported(sym)) {
-                return new Resolution.Missing("'" + remainder + "' of " + moduleName + " is not marked EXPORT.");
+                return Lookup.missing("'" + remainder + "' of " + moduleName + " is not marked EXPORT.");
             }
             String qualified = currentChain.isEmpty() ? symbolKey : currentChain + "." + symbolKey;
-            return new ResolvedSymbol(sym, qualified);
+            return new Lookup(new ResolvedSymbol(sym, qualified, rootScope.name()), modScope);
         }
 
         String nextAlias = remainder.substring(0, dot);
@@ -408,25 +463,15 @@ public class SymbolTable {
         String nextChain = modScope.imports().get(nextAlias.toUpperCase());
         if (nextChain == null) {
             if (modScope.requires().containsKey(nextAlias.toUpperCase())) {
-                return new Resolution.Missing("'" + nextAlias + "' is a requirement of " + moduleName
+                return Lookup.missing("'" + nextAlias + "' is a requirement of " + moduleName
                         + "; use the module you supplied for it.");
             }
-            return new Resolution.Missing("'" + nextAlias + "' is not an import of " + moduleName + ".");
+            return Lookup.missing("'" + nextAlias + "' is not an import of " + moduleName + ".");
         }
         if (!Boolean.TRUE.equals(modScope.importExported().get(nextAlias.toUpperCase()))) {
-            return new Resolution.Missing("import '" + nextAlias + "' of " + moduleName + " is not marked EXPORT.");
+            return Lookup.missing("import '" + nextAlias + "' of " + moduleName + " is not marked EXPORT.");
         }
         return resolveMultiLevel(nextChain, moduleName + "." + nextAlias, nextRemainder);
-    }
-
-    /**
-     * Qualifies a name with the current alias chain.
-     */
-    private String qualifyName(String nameUpper) {
-        if (currentAliasChain != null && !currentAliasChain.isEmpty()) {
-            return currentAliasChain + "." + nameUpper;
-        }
-        return nameUpper;
     }
 
     /**

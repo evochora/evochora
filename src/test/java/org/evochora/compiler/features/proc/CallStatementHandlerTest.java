@@ -1,5 +1,6 @@
 package org.evochora.compiler.features.proc;
 
+import org.evochora.compiler.TestLexers;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.features.instruction.InstructionParsingHandler;
 import org.evochora.compiler.frontend.lexer.Lexer;
@@ -30,7 +31,7 @@ class CallStatementHandlerTest {
 
     private CallNode parseCall(String source) {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(source, diagnostics, "test.s");
+        Lexer lexer = new Lexer(source, diagnostics, "test.s", TestLexers.symbols());
         List<Token> tokens = lexer.scanTokens();
         ParserStatementRegistry reg = new ParserStatementRegistry();
         reg.register("CALL", new CallStatementHandler());

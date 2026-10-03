@@ -15,6 +15,7 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -60,7 +61,7 @@ class CompilerDiagnosticsTest {
         write("main.evo",
                 ".MACRO INC REG",
                 "  ADDI REG DATA:1",
-                ".ENDM",
+                ".ENDMACRO",
                 "START:",
                 "  INC %DR0 %DR1");
 
@@ -75,20 +76,20 @@ class CompilerDiagnosticsTest {
         write("macros.evo",
                 ".MACRO INC REG",
                 "  ADDI REG DATA:1",
-                ".ENDM");
+                ".ENDMACRO");
         write("main.evo",
                 ".SOURCE \"macros.evo\"",
                 ".MACRO INC REG",
                 "  SUBI REG DATA:1",
-                ".ENDM",
+                ".ENDMACRO",
                 "START:",
                 "  INC %DR0");
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Cannot define macro 'INC': the name is already used at")
-                .hasMessageContaining("macros.evo:1")
-                .hasMessageContaining("main.evo:2");
+                .hasMessageContaining("Cannot define macro 'INC' differently at")
+                .hasMessageContaining("main.evo:2: first defined at")
+                .hasMessageContaining("macros.evo:1 with another body");
     }
 
     @Test
@@ -149,21 +150,197 @@ class CompilerDiagnosticsTest {
     }
 
     @Test
-    void importPathFromAMacroParameterIsRejectedAtTheInvocation() throws Exception {
+    void aSourceWithATokenAfterItsPathIsRejectedByTheLineRule() throws Exception {
+        write("x.evo",
+                "  NOP");
+        write("main.evo",
+                "START:",
+                ".SOURCE \"x.evo\"^2",
+                "  NOP");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining(".SOURCE must stand alone on its line; found '^' after the path.")
+                .hasMessageContaining("main.evo:2")
+                .hasMessageNotContaining("must be a literal");
+    }
+
+    @Test
+    void anImportWithATokenAfterItsClausesIsRejectedByTheLineRule() throws Exception {
+        write("lib.evo",
+                "  NOP");
+        write("main.evo",
+                "START:",
+                ".IMPORT \"lib.evo\" AS LIB^2",
+                "  NOP");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining(".IMPORT must stand alone on its line; found '^' after the alias and its USING clauses.")
+                .hasMessageContaining("main.evo:2")
+                .hasMessageNotContaining("must be a literal")
+                .hasMessageNotContaining("Unexpected token");
+    }
+
+    @Test
+    void anImportAfterALabelIsRejectedAsNotTheFirstWordOnItsLine() throws Exception {
+        write("lib.evo",
+                "  NOP");
+        write("main.evo",
+                "L: .IMPORT \"lib.evo\" AS LIB",
+                "START:",
+                "  NOP");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .satisfies(e -> assertThat(e.getMessage().lines().toList()).containsExactly(
+                        "[ERROR] " + sourceRoot.resolve("main.evo")
+                                + ":1: .IMPORT must be the first word on its line; found 'L' before it."));
+    }
+
+    @Test
+    void aSourceAfterAStatementIsRejectedAsNotTheFirstWordOnItsLine() throws Exception {
+        write("x.evo",
+                "  NOP");
+        write("main.evo",
+                "START:",
+                "NOP; .SOURCE \"x.evo\"");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .satisfies(e -> assertThat(e.getMessage().lines().toList()).containsExactly(
+                        "[ERROR] " + sourceRoot.resolve("main.evo")
+                                + ":2: .SOURCE must be the first word on its line; found 'NOP' before it."));
+    }
+
+    @Test
+    void aRequireAfterALabelIsRejectedAsNotTheFirstWordOnItsLine() throws Exception {
+        write("main.evo",
+                "L: .REQUIRE \"d.evo\" AS D",
+                "START:",
+                "  NOP");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .satisfies(e -> assertThat(e.getMessage().lines().toList()).containsExactly(
+                        "[ERROR] " + sourceRoot.resolve("main.evo")
+                                + ":1: .REQUIRE must be the first word on its line; found 'L' before it."));
+    }
+
+    @Test
+    void anExportedRequireGetsTheParsersMessageAlone() throws Exception {
+        write("d.evo",
+                "EXPORT .PROC WORK",
+                "  RET",
+                ".ENDPROC");
+        write("main.evo",
+                "EXPORT .REQUIRE \"d.evo\" AS D",
+                "START:",
+                "  NOP");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .satisfies(e -> assertThat(e.getMessage().lines().toList()).containsExactly(
+                        "[ERROR] " + sourceRoot.resolve("main.evo")
+                                + ":1: EXPORT is not supported before '.REQUIRE'."));
+    }
+
+    @Test
+    void anExportedImportIsStillAccepted() throws Exception {
+        write("lib.evo",
+                "EXPORT .PROC WORK",
+                "  RET",
+                ".ENDPROC");
+        write("main.evo",
+                "EXPORT .IMPORT \"lib.evo\" AS LIB",
+                "START:",
+                "  CALL LIB.WORK");
+
+        assertThatCode(() -> compile("main.evo")).doesNotThrowAnyException();
+    }
+
+    @Test
+    void aRequireWithATokenAfterItsAliasIsRejectedByTheLineRule() throws Exception {
+        write("dep.evo",
+                "D:",
+                "  NOP");
+        write("lib.evo",
+                ".REQUIRE \"dep.evo\" AS DEP EXTRA",
+                "L:",
+                "  NOP");
+        write("main.evo",
+                ".IMPORT \"dep.evo\" AS DEP",
+                ".IMPORT \"lib.evo\" AS LIB USING DEP AS DEP",
+                "START:",
+                "  NOP");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining(".REQUIRE must stand alone on its line; found 'EXTRA' after the alias.")
+                .hasMessageContaining("lib.evo:1");
+    }
+
+    @Test
+    void aSourceFollowedByAStatementOnItsLineIsRejectedByTheLineRule() throws Exception {
+        write("x.evo",
+                "  NOP");
+        write("main.evo",
+                "START:",
+                ".SOURCE \"x.evo\"; NOP");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .satisfies(e -> assertThat(e.getMessage().lines().toList()).containsExactly(
+                        "[ERROR] " + sourceRoot.resolve("main.evo")
+                                + ":2: .SOURCE must stand alone on its line; found ';' after the path."));
+    }
+
+    @Test
+    void anImportFollowedByAStatementOnItsLineIsRejectedByTheLineRule() throws Exception {
+        write("lib.evo",
+                "  NOP");
+        write("main.evo",
+                ".IMPORT \"lib.evo\" AS LIB; NOP",
+                "START:",
+                "  NOP");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .satisfies(e -> assertThat(e.getMessage().lines().toList()).containsExactly(
+                        "[ERROR] " + sourceRoot.resolve("main.evo")
+                                + ":1: .IMPORT must stand alone on its line; found ';' after the alias and its USING clauses."));
+    }
+
+    @Test
+    void aRequireFollowedByAStatementOnItsLineIsRejectedByTheLineRule() throws Exception {
+        write("main.evo",
+                ".REQUIRE \"d.evo\" AS D; NOP",
+                "START:",
+                "  NOP");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .satisfies(e -> assertThat(e.getMessage().lines().toList()).containsExactly(
+                        "[ERROR] " + sourceRoot.resolve("main.evo")
+                                + ":1: .REQUIRE must stand alone on its line; found ';' after the alias."));
+    }
+
+    @Test
+    void importInsideAMacroBodyIsRejectedAtTheDefinition() throws Exception {
         write("lib.evo",
                 "  NOP");
         write("main.evo",
                 ".MACRO USE P",
                 "  .IMPORT P AS X",
-                ".ENDM",
+                ".ENDMACRO",
                 "USE \"lib.evo\"",
                 "START:",
                 "  NOP");
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining(".IMPORT path must be a literal, not a macro parameter")
-                .hasMessageContaining("main.evo:4");
+                .hasMessageContaining(".IMPORT may not stand inside a .MACRO body; the body opened at ")
+                .hasMessageContaining("main.evo:2");
     }
 
     @Test
@@ -192,7 +369,7 @@ class CompilerDiagnosticsTest {
                 "  NOP",
                 ".REPEAT",
                 "  NOP",
-                ".ENDR");
+                ".ENDREPEAT");
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
@@ -317,7 +494,7 @@ class CompilerDiagnosticsTest {
         write("lib.evo",
                 ".MACRO INC REG",
                 "  ADDI REG DATA:1",
-                ".ENDM",
+                ".ENDMACRO",
                 "HELPER:",
                 "  NOP");
         write("main.evo",
@@ -339,7 +516,7 @@ class CompilerDiagnosticsTest {
         write("main.evo",
                 ".MACRO INC REG",
                 "  ADDI REG DATA:1",
-                ".ENDM",
+                ".ENDMACRO",
                 ".IMPORT \"lib.evo\" AS LIB",
                 "START:",
                 "  NOP");
@@ -355,13 +532,13 @@ class CompilerDiagnosticsTest {
         write("a.evo",
                 ".MACRO INC REG",
                 "  ADDI REG DATA:1",
-                ".ENDM",
+                ".ENDMACRO",
                 "A:",
                 "  INC %DR0");
         write("b.evo",
                 ".MACRO INC REG",
                 "  ADDI REG DATA:2",
-                ".ENDM",
+                ".ENDMACRO",
                 "B:",
                 "  INC %DR0");
         write("main.evo",
@@ -378,7 +555,7 @@ class CompilerDiagnosticsTest {
         write("macros.evo",
                 ".MACRO INC REG",
                 "  ADDI REG DATA:1",
-                ".ENDM");
+                ".ENDMACRO");
         write("a.evo",
                 ".SOURCE \"macros.evo\"",
                 "A:",
@@ -399,7 +576,7 @@ class CompilerDiagnosticsTest {
     @Test
     void aConstantWhereARegisterIsExpectedNamesTheKindItHas() throws Exception {
         write("main.evo",
-                ".DEFINE LIMIT DATA:5",
+                ".CONST LIMIT DATA:5",
                 "START:",
                 "  SETI LIMIT DATA:1");
 
@@ -443,7 +620,7 @@ class CompilerDiagnosticsTest {
         write("main.evo",
                 ".PROC P REF X",
                 "  RET",
-                ".ENDP",
+                ".ENDPROC",
                 ".REG %POS %LR0",
                 "START:",
                 "  CALL P REF %POS");
@@ -463,7 +640,7 @@ class CompilerDiagnosticsTest {
                 ".IMPORT \"lib.evo\" AS LIB",
                 ".PROC P REF X",
                 "  RET",
-                ".ENDP",
+                ".ENDPROC",
                 "START:",
                 "  CALL P REF LIB");
 
@@ -476,8 +653,8 @@ class CompilerDiagnosticsTest {
     @Test
     void aCircularDefinitionNamesTheCircle() throws Exception {
         write("main.evo",
-                ".DEFINE A B",
-                ".DEFINE B A",
+                ".CONST A B",
+                ".CONST B A",
                 "START:",
                 "  SETI %DR0 A");
 
@@ -558,13 +735,13 @@ class CompilerDiagnosticsTest {
     @Test
     void constantsOfTheSameNameInTwoModulesAreNoCircle() throws Exception {
         write("lib.evo",
-                ".DEFINE A DATA:5",
-                "EXPORT .DEFINE B A",
+                ".CONST A DATA:5",
+                "EXPORT .CONST B A",
                 "HELPER:",
                 "  NOP");
         write("main.evo",
                 ".IMPORT \"lib.evo\" AS LIB",
-                ".DEFINE A LIB.B",
+                ".CONST A LIB.B",
                 "START:",
                 "  SETI %DR0 A");
 
@@ -591,10 +768,10 @@ class CompilerDiagnosticsTest {
         write("main.evo",
                 ".PROC STEP",
                 "  RET",
-                ".ENDP",
+                ".ENDPROC",
                 ".PROC STEP",
                 "  RET",
-                ".ENDP",
+                ".ENDPROC",
                 "START:",
                 "  NOP");
 
@@ -608,8 +785,8 @@ class CompilerDiagnosticsTest {
     @Test
     void aSecondConstantOfTheSameNameNamesTheFirst() throws Exception {
         write("main.evo",
-                ".DEFINE MAX DATA:1",
-                ".DEFINE MAX DATA:2",
+                ".CONST MAX DATA:1",
+                ".CONST MAX DATA:2",
                 "START:",
                 "  NOP");
 
@@ -640,7 +817,7 @@ class CompilerDiagnosticsTest {
         write("main.evo",
                 ".PROC STEP REF X VAL X",
                 "  RET",
-                ".ENDP",
+                ".ENDPROC",
                 "START:",
                 "  NOP");
 
@@ -713,7 +890,7 @@ class CompilerDiagnosticsTest {
         write("arith.evo",
                 "EXPORT .PROC ADD_CLAMPED",
                 "  RET",
-                ".ENDP");
+                ".ENDPROC");
         write("nav.evo",
                 ".IMPORT \"arith.evo\" AS ARITH",
                 "NAV_START:",
@@ -734,7 +911,7 @@ class CompilerDiagnosticsTest {
         write("arith.evo",
                 "EXPORT .PROC ADD",
                 "  RET",
-                ".ENDP");
+                ".ENDPROC");
         write("nav.evo",
                 ".REQUIRE \"arith.evo\" AS ARITH",
                 "NAV_START:",
@@ -756,7 +933,7 @@ class CompilerDiagnosticsTest {
         write("nav.evo",
                 ".PROC STEP",
                 "  RET",
-                ".ENDP");
+                ".ENDPROC");
         write("main.evo",
                 ".IMPORT \"nav.evo\" AS NAV",
                 "START:",
@@ -773,7 +950,7 @@ class CompilerDiagnosticsTest {
         write("nav.evo",
                 ".PROC STEP",
                 "  RET",
-                ".ENDP");
+                ".ENDPROC");
         write("main.evo",
                 ".IMPORT \"nav.evo\" AS NAV",
                 "START:",
@@ -842,7 +1019,7 @@ class CompilerDiagnosticsTest {
         write("main.evo",
                 ".PROC P REF X",
                 "  RET",
-                ".ENDP",
+                ".ENDPROC",
                 "START:",
                 "  CALL P REF DATA:1");
 
@@ -857,7 +1034,7 @@ class CompilerDiagnosticsTest {
         write("main.evo",
                 ".PROC P LREF X",
                 "  RET",
-                ".ENDP",
+                ".ENDPROC",
                 "START:",
                 "  CALL P LREF %DR0");
 
@@ -872,7 +1049,7 @@ class CompilerDiagnosticsTest {
         write("main.evo",
                 ".PROC P VAL X",
                 "  RET",
-                ".ENDP",
+                ".ENDPROC",
                 "START:",
                 "  CALL P VAL 1|0");
 
@@ -887,7 +1064,7 @@ class CompilerDiagnosticsTest {
         write("main.evo",
                 ".PROC P LVAL X",
                 "  RET",
-                ".ENDP",
+                ".ENDPROC",
                 "START:",
                 "  CALL P LVAL DATA:1");
 
@@ -902,7 +1079,7 @@ class CompilerDiagnosticsTest {
         write("main.evo",
                 ".PROC P FOO X",
                 "  RET",
-                ".ENDP",
+                ".ENDPROC",
                 "START:",
                 "  NOP");
 
@@ -922,7 +1099,8 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining(".REPEAT is not closed; expected .ENDR.")
+                .hasMessageContaining(".REPEAT opened at ")
+                .hasMessageContaining(" is not closed before the end of the input")
                 .hasMessageContaining("main.evo:3");
     }
 
@@ -936,7 +1114,7 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining(".PROC 'STEP' is not closed; expected .ENDP.")
+                .hasMessageContaining(".PROC 'STEP' is not closed; expected .ENDPROC.")
                 .hasMessageContaining("main.evo:3");
     }
 

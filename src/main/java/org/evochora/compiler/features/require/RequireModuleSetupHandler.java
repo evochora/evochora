@@ -11,11 +11,6 @@ import org.evochora.compiler.model.symbols.ModuleScope;
 public class RequireModuleSetupHandler implements IDependencySetupHandler<RequireDependencyInfo> {
 
     @Override
-    public void registerScope(RequireDependencyInfo dep, ModuleSetupContext ctx) {
-        // No alias chain computation needed for .REQUIRE
-    }
-
-    @Override
     public void registerRelationships(RequireDependencyInfo dep, ModuleSetupContext ctx) {
         ModuleScope modScope = ctx.getModuleScope(ctx.currentAliasChain());
         if (modScope != null) {

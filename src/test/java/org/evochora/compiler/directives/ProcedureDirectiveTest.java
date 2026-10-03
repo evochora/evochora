@@ -1,5 +1,6 @@
 package org.evochora.compiler.directives;
 
+import org.evochora.compiler.TestLexers;
 import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.frontend.parser.Parser;
@@ -23,7 +24,7 @@ import java.util.Objects;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Tests the parsing of procedure-related directives, primarily `.PROC` and `.ENDP`.
+ * Tests the parsing of procedure-related directives, primarily `.PROC` and `.ENDPROC`.
  * These tests ensure that the parser correctly constructs a {@link ProcedureNode}
  * with its name, parameters, export status, and body.
  * These are unit tests for the parser and do not require external resources.
@@ -51,10 +52,10 @@ public class ProcedureDirectiveTest {
         String source = String.join("\n",
                 ".PROC MY_PROC",
                 "  NOP",
-                ".ENDP"
+                ".ENDPROC"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(source, diagnostics);
+        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
         List<Token> tokens = lexer.scanTokens();
         Parser parser = new Parser(tokens, diagnostics, registry()); // KORREKTUR
 
@@ -91,10 +92,10 @@ public class ProcedureDirectiveTest {
         String source = String.join("\n",
                 ".PROC ADD REF A B",
                 "  ADDS",
-                ".ENDP"
+                ".ENDPROC"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Parser parser = new Parser(new Lexer(source, diagnostics).scanTokens(), diagnostics, registry()); // KORREKTUR
+        Parser parser = new Parser(new Lexer(source, diagnostics, TestLexers.symbols()).scanTokens(), diagnostics, registry()); // KORREKTUR
 
         // Act
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
@@ -126,10 +127,10 @@ public class ProcedureDirectiveTest {
                 "EXPORT .PROC FULL_PROC REF A",
                 "  .REG %TMP %PDR0",
                 "  NOP",
-                ".ENDP"
+                ".ENDPROC"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Parser parser = new Parser(new Lexer(source, diagnostics).scanTokens(), diagnostics, registry());
+        Parser parser = new Parser(new Lexer(source, diagnostics, TestLexers.symbols()).scanTokens(), diagnostics, registry());
 
         // Act
         List<AstNode> ast = parser.parse();
@@ -155,9 +156,9 @@ public class ProcedureDirectiveTest {
     @Tag("unit")
     void testParserProcedureWithRefOnly() {
         // Arrange
-        String source = ".PROC myProc REF rA rB\n.ENDP";
+        String source = ".PROC myProc REF rA rB\n.ENDPROC";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Parser parser = new Parser(new Lexer(source, diagnostics).scanTokens(), diagnostics, registry());
+        Parser parser = new Parser(new Lexer(source, diagnostics, TestLexers.symbols()).scanTokens(), diagnostics, registry());
 
         // Act
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
@@ -176,9 +177,9 @@ public class ProcedureDirectiveTest {
     @Tag("unit")
     void testParserProcedureWithValOnly() {
         // Arrange
-        String source = ".PROC myProc VAL v1 v2\n.ENDP";
+        String source = ".PROC myProc VAL v1 v2\n.ENDPROC";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Parser parser = new Parser(new Lexer(source, diagnostics).scanTokens(), diagnostics, registry());
+        Parser parser = new Parser(new Lexer(source, diagnostics, TestLexers.symbols()).scanTokens(), diagnostics, registry());
 
         // Act
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
@@ -197,9 +198,9 @@ public class ProcedureDirectiveTest {
     @Tag("unit")
     void testParserProcedureWithRefAndVal() {
         // Arrange
-        String source = ".PROC myProc REF rA VAL v1\n.ENDP";
+        String source = ".PROC myProc REF rA VAL v1\n.ENDPROC";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Parser parser = new Parser(new Lexer(source, diagnostics).scanTokens(), diagnostics, registry());
+        Parser parser = new Parser(new Lexer(source, diagnostics, TestLexers.symbols()).scanTokens(), diagnostics, registry());
 
         // Act
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
@@ -218,9 +219,9 @@ public class ProcedureDirectiveTest {
     @Tag("unit")
     void testParserProcedureWithValAndRef() {
         // Arrange
-        String source = ".PROC myProc VAL v1 REF rA\n.ENDP";
+        String source = ".PROC myProc VAL v1 REF rA\n.ENDPROC";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Parser parser = new Parser(new Lexer(source, diagnostics).scanTokens(), diagnostics, registry());
+        Parser parser = new Parser(new Lexer(source, diagnostics, TestLexers.symbols()).scanTokens(), diagnostics, registry());
 
         // Act
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
@@ -239,9 +240,9 @@ public class ProcedureDirectiveTest {
     @Tag("unit")
     void testParserProcedureWithNoParameters() {
         // Arrange
-        String source = ".PROC myProc\n.ENDP";
+        String source = ".PROC myProc\n.ENDPROC";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Parser parser = new Parser(new Lexer(source, diagnostics).scanTokens(), diagnostics, registry());
+        Parser parser = new Parser(new Lexer(source, diagnostics, TestLexers.symbols()).scanTokens(), diagnostics, registry());
 
         // Act
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();

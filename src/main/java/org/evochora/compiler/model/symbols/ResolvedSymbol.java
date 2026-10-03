@@ -7,6 +7,8 @@ package org.evochora.compiler.model.symbols;
  *
  * @param symbol        The resolved symbol.
  * @param qualifiedName The fully qualified name (aliasChain + "." + name, or just name if root module).
+ * @param scope         The name of the scope the symbol is defined in: the module level's, or the
+ *                      qualified name of a procedure.
  */
-public record ResolvedSymbol(Symbol symbol, String qualifiedName) implements Resolution {
+public record ResolvedSymbol(Symbol symbol, String qualifiedName, String scope) implements Resolution {
 }

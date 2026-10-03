@@ -1,5 +1,6 @@
 package org.evochora.compiler.frontend;
 
+import org.evochora.compiler.TestLexers;
 import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 import org.evochora.runtime.Config;
 import org.evochora.compiler.diagnostics.Diagnostic;
@@ -10,7 +11,7 @@ import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ParserStatementRegistry;
 import org.evochora.compiler.features.ctx.PopCtxDirectiveHandler;
 import org.evochora.compiler.features.ctx.PushCtxDirectiveHandler;
-import org.evochora.compiler.features.define.DefineDirectiveHandler;
+import org.evochora.compiler.features.constdir.ConstDirectiveHandler;
 import org.evochora.compiler.features.dir.DirDirectiveHandler;
 import org.evochora.compiler.features.importdir.ImportDirectiveHandler;
 import org.evochora.compiler.features.org.OrgDirectiveHandler;
@@ -41,7 +42,7 @@ public class SemanticAnalyzerTest {
         // Initialize instruction set for the parser
         org.evochora.runtime.isa.Instruction.init();
         
-        Lexer lexer = new Lexer(source, diagnostics);
+        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
         List<Token> tokens = lexer.scanTokens();
         Parser parser = new Parser(tokens, diagnostics, allHandlers());
         return parser.parse();
@@ -66,7 +67,7 @@ public class SemanticAnalyzerTest {
 
         // Act
         SymbolTable symbolTable = new SymbolTable(diagnostics);
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
         analyzer.analyze(ast);
 
         // Assert
@@ -89,18 +90,18 @@ public class SemanticAnalyzerTest {
                 ".PROC FIRST_PROC",
                 "  .LABEL MY_LABEL NOP",
                 "  RET",
-                ".ENDP",
+                ".ENDPROC",
                 ".PROC SECOND_PROC",
                 "  .LABEL MY_LABEL NOP",
                 "  RET",
-                ".ENDP"
+                ".ENDPROC"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         List<AstNode> ast = getAst(source, diagnostics);
 
         // Act
         SymbolTable symbolTable = new SymbolTable(diagnostics);
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
         analyzer.analyze(ast);
 
         // Assert
@@ -122,14 +123,14 @@ public class SemanticAnalyzerTest {
                 "  .LABEL LOOP NOP",
                 "  .LABEL LOOP NOP",
                 "  RET",
-                ".ENDP"
+                ".ENDPROC"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         List<AstNode> ast = getAst(source, diagnostics);
 
         // Act
         SymbolTable symbolTable = new SymbolTable(diagnostics);
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
         analyzer.analyze(ast);
 
         // Assert
@@ -154,7 +155,7 @@ public class SemanticAnalyzerTest {
 
         // Act
         SymbolTable symbolTable = new SymbolTable(diagnostics);
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
         analyzer.analyze(ast);
 
         // Assert
@@ -177,7 +178,7 @@ public class SemanticAnalyzerTest {
 
         // Act
         SymbolTable symbolTable = new SymbolTable(diagnostics);
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
         analyzer.analyze(ast);
 
         // Assert
@@ -200,7 +201,7 @@ public class SemanticAnalyzerTest {
 
         // Act
         SymbolTable symbolTable = new SymbolTable(diagnostics);
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
         analyzer.analyze(ast);
 
         // Assert
@@ -221,7 +222,7 @@ public class SemanticAnalyzerTest {
 
         // Act
         SymbolTable symbolTable = new SymbolTable(diagnostics);
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
         analyzer.analyze(ast);
 
         // Assert
@@ -244,7 +245,7 @@ public class SemanticAnalyzerTest {
 
         // Act
         SymbolTable symbolTable = new SymbolTable(diagnostics);
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
         analyzer.analyze(ast);
 
         // Assert
@@ -269,7 +270,7 @@ public class SemanticAnalyzerTest {
 
         // Act
         SymbolTable symbolTable = new SymbolTable(diagnostics);
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
         analyzer.analyze(ast);
 
         // Assert
@@ -289,7 +290,7 @@ public class SemanticAnalyzerTest {
                 ".PROC INNER_PROC",
                 "  .LABEL INNER_LABEL NOP",
                 "  RET",
-                ".ENDP",
+                ".ENDPROC",
                 "JMPI INNER_LABEL"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
@@ -297,7 +298,7 @@ public class SemanticAnalyzerTest {
 
         // Act
         SymbolTable symbolTable = new SymbolTable(diagnostics);
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
         analyzer.analyze(ast);
 
         // Assert
@@ -319,7 +320,7 @@ public class SemanticAnalyzerTest {
                 ".PROC MY_PROC",
                 "  .LABEL INTERNAL_LABEL NOP",
                 "  RET",
-                ".ENDP",
+                ".ENDPROC",
                 "JMPI INTERNAL_LABEL  # Fehler: Dieses Label ist privat für MY_PROC"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
@@ -327,7 +328,7 @@ public class SemanticAnalyzerTest {
 
         // Act
         SymbolTable symbolTable = new SymbolTable(diagnostics);
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
         analyzer.analyze(ast);
 
         // Assert
@@ -346,7 +347,7 @@ public class SemanticAnalyzerTest {
     void testJumpingToAConstantReportsError() {
         // Arrange
         String source = String.join("\n",
-                ".DEFINE MY_CONST 42",
+                ".CONST MY_CONST 42",
                 "JMPI MY_CONST  # Fehler: MY_CONST ist eine Konstante, kein Label"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
@@ -354,7 +355,7 @@ public class SemanticAnalyzerTest {
 
         // Act
         SymbolTable symbolTable = new SymbolTable(diagnostics);
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
         analyzer.analyze(ast);
 
         // Assert
@@ -377,7 +378,7 @@ public class SemanticAnalyzerTest {
 
         // Act
         SymbolTable symbolTable = new SymbolTable(diagnostics);
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
         analyzer.analyze(ast);
 
         // Assert
@@ -395,7 +396,7 @@ public class SemanticAnalyzerTest {
     void testUsingDefinedConstantAsLiteralIsAllowed() {
         // Arrange
         String source = String.join("\n",
-                ".DEFINE MY_CONST 123",
+                ".CONST MY_CONST 123",
                 "SETI %DR0 MY_CONST"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
@@ -403,7 +404,7 @@ public class SemanticAnalyzerTest {
 
         // Act
         SymbolTable symbolTable = new SymbolTable(diagnostics);
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
         analyzer.analyze(ast);
 
         // Assert
@@ -422,7 +423,7 @@ public class SemanticAnalyzerTest {
         List<AstNode> ast = getAst(source, diagnostics);
 
         SymbolTable symbolTable = new SymbolTable(diagnostics);
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
         analyzer.analyze(ast);
 
         assertThat(diagnostics.hasErrors()).isTrue();
@@ -441,7 +442,7 @@ public class SemanticAnalyzerTest {
         List<AstNode> ast = getAst(source, diagnostics);
 
         SymbolTable symbolTable = new SymbolTable(diagnostics);
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
         analyzer.analyze(ast);
 
         assertThat(diagnostics.hasErrors()).isTrue();
@@ -462,7 +463,7 @@ public class SemanticAnalyzerTest {
         List<AstNode> ast = getAst(source, diagnostics);
 
         SymbolTable symbolTable = new SymbolTable(diagnostics);
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
         analyzer.analyze(ast);
 
         assertThat(diagnostics.hasErrors()).isTrue();
@@ -471,7 +472,7 @@ public class SemanticAnalyzerTest {
     }
 
     /**
-     * Verifies that a label defined after a `RET` instruction but before the end of the procedure (`.ENDP`)
+     * Verifies that a label defined after a `RET` instruction but before the end of the procedure (`.ENDPROC`)
      * is still correctly recognized and resolved within that procedure's scope.
      * This is a unit test for symbol resolution within procedure scopes.
      */
@@ -484,18 +485,18 @@ public class SemanticAnalyzerTest {
                 "  JMPI SUCCESS_LABEL  # Sprung zu einem Label, das nach RET definiert wird",
                 "  RET",
                 ".LABEL SUCCESS_LABEL NOP",
-                ".ENDP"
+                ".ENDPROC"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         List<AstNode> ast = getAst(source, diagnostics);
 
         SymbolTable symbolTable = new SymbolTable(diagnostics);
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
         analyzer.analyze(ast);
 
         // Assert
         assertThat(diagnostics.hasErrors())
-                .as("Ein Label, das nach einem RET, aber vor .ENDP definiert wird, sollte gefunden werden.")
+                .as("Ein Label, das nach einem RET, aber vor .ENDPROC definiert wird, sollte gefunden werden.")
                 .isFalse();
     }
 
@@ -506,7 +507,7 @@ public class SemanticAnalyzerTest {
         String source = String.join("\n",
                 ".PROC myProc REF rA VAL v1",
                 "  RET",
-                ".ENDP",
+                ".ENDPROC",
                 "CALL myProc REF %DR1 VAL 123"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
@@ -514,7 +515,7 @@ public class SemanticAnalyzerTest {
 
         // Act
         SymbolTable symbolTable = new SymbolTable(diagnostics);
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
         analyzer.analyze(ast);
 
         // Assert
@@ -528,7 +529,7 @@ public class SemanticAnalyzerTest {
         String source = String.join("\n",
                 ".PROC myProc REF rA",
                 "  RET",
-                ".ENDP",
+                ".ENDPROC",
                 "CALL myProc REF 123"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
@@ -536,7 +537,7 @@ public class SemanticAnalyzerTest {
 
         // Act
         SymbolTable symbolTable = new SymbolTable(diagnostics);
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
         analyzer.analyze(ast);
 
         // Assert
@@ -551,7 +552,7 @@ public class SemanticAnalyzerTest {
         String source = String.join("\n",
                 ".PROC myProc REF rA rB",
                 "  RET",
-                ".ENDP",
+                ".ENDPROC",
                 "CALL myProc REF %DR1"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
@@ -559,7 +560,7 @@ public class SemanticAnalyzerTest {
 
         // Act
         SymbolTable symbolTable = new SymbolTable(diagnostics);
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
         analyzer.analyze(ast);
 
         // Assert
@@ -574,7 +575,7 @@ public class SemanticAnalyzerTest {
         String source = String.join("\n",
                 ".PROC myProc VAL v1",
                 "  RET",
-                ".ENDP",
+                ".ENDPROC",
                 "CALL myProc VAL 1 2"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
@@ -582,7 +583,7 @@ public class SemanticAnalyzerTest {
 
         // Act
         SymbolTable symbolTable = new SymbolTable(diagnostics);
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
         analyzer.analyze(ast);
 
         // Assert
@@ -597,7 +598,7 @@ public class SemanticAnalyzerTest {
         String source = String.join("\n",
                 ".PROC myProc VAL v1",
                 "  RET",
-                ".ENDP",
+                ".ENDPROC",
                 "CALL myProc VAL %DR1"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
@@ -605,7 +606,7 @@ public class SemanticAnalyzerTest {
 
         // Act
         SymbolTable symbolTable = new SymbolTable(diagnostics);
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
         analyzer.analyze(ast);
 
         // Assert
@@ -614,7 +615,7 @@ public class SemanticAnalyzerTest {
 
     private static ParserStatementRegistry allHandlers() {
         ParserStatementRegistry reg = new ParserStatementRegistry();
-        reg.register(".DEFINE", new DefineDirectiveHandler());
+        reg.register(".CONST", new ConstDirectiveHandler());
         reg.register(".REG", new RegDirectiveHandler(new RuntimeInstructionSetAdapter()));
         reg.register(".PROC", new ProcDirectiveHandler(new RuntimeInstructionSetAdapter()));
         reg.register(".ORG", new OrgDirectiveHandler());

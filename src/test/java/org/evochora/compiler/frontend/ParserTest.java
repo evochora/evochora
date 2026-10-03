@@ -1,9 +1,10 @@
 package org.evochora.compiler.frontend;
 
+import org.evochora.compiler.TestLexers;
 import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ParserStatementRegistry;
-import org.evochora.compiler.features.define.DefineDirectiveHandler;
+import org.evochora.compiler.features.constdir.ConstDirectiveHandler;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.InstructionNode;
@@ -11,7 +12,7 @@ import org.evochora.compiler.model.ast.NumberLiteralNode;
 import org.evochora.compiler.model.ast.RegisterNode;
 import org.evochora.compiler.model.ast.VectorLiteralNode;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
-import org.evochora.compiler.features.define.DefineNode;
+import org.evochora.compiler.features.constdir.ConstNode;
 import org.evochora.compiler.features.label.LabelNode;
 import org.evochora.runtime.isa.Instruction;
 import org.junit.jupiter.api.BeforeAll;
@@ -48,7 +49,7 @@ public class ParserTest {
         // Arrange
         String source = "SETI %DR0 42";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(source, diagnostics);
+        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
         List<Token> tokens = lexer.scanTokens();
         Parser parser = new Parser(tokens, diagnostics, registry()); // KORREKTUR
 
@@ -84,7 +85,7 @@ public class ParserTest {
         // Arrange
         String source = ".LABEL L1 NOP";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(source, diagnostics);
+        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
         List<Token> tokens = lexer.scanTokens();
         Parser parser = new Parser(tokens, diagnostics, registry());
 
@@ -116,7 +117,7 @@ public class ParserTest {
         // Arrange
         String source = "SETV %DR0 10|-20";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(source, diagnostics);
+        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
         List<Token> tokens = lexer.scanTokens();
         Parser parser = new Parser(tokens, diagnostics, registry()); // KORREKTUR
 
@@ -147,7 +148,7 @@ public class ParserTest {
         // Arrange
         String source = "EXPORT .LABEL L1 NOP";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(source, diagnostics);
+        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
         List<Token> tokens = lexer.scanTokens();
         Parser parser = new Parser(tokens, diagnostics, registry());
 
@@ -178,7 +179,7 @@ public class ParserTest {
         // Arrange
         String source = ".LABEL L1 NOP";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(source, diagnostics);
+        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
         List<Token> tokens = lexer.scanTokens();
         Parser parser = new Parser(tokens, diagnostics, registry());
 
@@ -202,7 +203,7 @@ public class ParserTest {
         // Arrange
         String source = "EXPORT .LABEL L1\nNOP";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(source, diagnostics);
+        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
         List<Token> tokens = lexer.scanTokens();
         Parser parser = new Parser(tokens, diagnostics, registry());
 
@@ -223,16 +224,16 @@ public class ParserTest {
     }
 
     /**
-     * Verifies that the parser correctly handles an exported define (e.g., "EXPORT .DEFINE X 42").
+     * Verifies that the parser correctly handles an exported constant (e.g., "EXPORT .CONST X 42").
      * The exported flag should be true.
      */
     @Test
     @Tag("unit")
-    void testParserExportedDefine() {
+    void testParserExportedConst() {
         // Arrange
-        String source = "EXPORT .DEFINE MAX_ENERGY 42";
+        String source = "EXPORT .CONST MAX_ENERGY 42";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(source, diagnostics);
+        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
         List<Token> tokens = lexer.scanTokens();
         Parser parser = new Parser(tokens, diagnostics, registry());
 
@@ -242,25 +243,25 @@ public class ParserTest {
         // Assert
         assertThat(diagnostics.hasErrors()).isFalse();
         assertThat(ast).hasSize(1);
-        assertThat(ast.get(0)).isInstanceOf(DefineNode.class);
+        assertThat(ast.get(0)).isInstanceOf(ConstNode.class);
 
-        DefineNode defineNode = (DefineNode) ast.get(0);
-        assertThat(defineNode.name()).isEqualTo("MAX_ENERGY");
-        assertThat(defineNode.exported()).isTrue();
-        assertThat(defineNode.value()).isInstanceOf(NumberLiteralNode.class);
-        assertThat(((NumberLiteralNode) defineNode.value()).value()).isEqualTo(42);
+        ConstNode constNode = (ConstNode) ast.get(0);
+        assertThat(constNode.name()).isEqualTo("MAX_ENERGY");
+        assertThat(constNode.exported()).isTrue();
+        assertThat(constNode.value()).isInstanceOf(NumberLiteralNode.class);
+        assertThat(((NumberLiteralNode) constNode.value()).value()).isEqualTo(42);
     }
 
     /**
-     * Verifies that a non-exported define has the exported flag set to false.
+     * Verifies that a non-exported constant has the exported flag set to false.
      */
     @Test
     @Tag("unit")
-    void testParserNonExportedDefine() {
+    void testParserNonExportedConst() {
         // Arrange
-        String source = ".DEFINE MAX_ENERGY 42";
+        String source = ".CONST MAX_ENERGY 42";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(source, diagnostics);
+        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
         List<Token> tokens = lexer.scanTokens();
         Parser parser = new Parser(tokens, diagnostics, registry());
 
@@ -270,11 +271,11 @@ public class ParserTest {
         // Assert
         assertThat(diagnostics.hasErrors()).isFalse();
         assertThat(ast).hasSize(1);
-        assertThat(ast.get(0)).isInstanceOf(DefineNode.class);
+        assertThat(ast.get(0)).isInstanceOf(ConstNode.class);
 
-        DefineNode defineNode = (DefineNode) ast.get(0);
-        assertThat(defineNode.name()).isEqualTo("MAX_ENERGY");
-        assertThat(defineNode.exported()).isFalse();
+        ConstNode constNode = (ConstNode) ast.get(0);
+        assertThat(constNode.name()).isEqualTo("MAX_ENERGY");
+        assertThat(constNode.exported()).isFalse();
     }
 
     /**
@@ -286,7 +287,7 @@ public class ParserTest {
     @Tag("unit")
     void aDefectInAHandlerLeavesTheParserInsteadOfDroppingTheStatement() {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        List<Token> tokens = new Lexer(".BROKEN\nNOP\n", diagnostics).scanTokens();
+        List<Token> tokens = new Lexer(".BROKEN\nNOP\n", diagnostics, TestLexers.symbols()).scanTokens();
         ParserStatementRegistry reg = registry();
         reg.register(".BROKEN", context -> { throw new NullPointerException("defect in the handler"); });
         Parser parser = new Parser(tokens, diagnostics, reg);
@@ -298,7 +299,7 @@ public class ParserTest {
 
     private static ParserStatementRegistry registry() {
         ParserStatementRegistry reg = new ParserStatementRegistry();
-        reg.register(".DEFINE", new DefineDirectiveHandler());
+        reg.register(".CONST", new ConstDirectiveHandler());
         reg.register(".LABEL", new org.evochora.compiler.features.label.LabelDirectiveHandler());
         reg.registerDefault(new org.evochora.compiler.features.instruction.InstructionParsingHandler());
         return reg;

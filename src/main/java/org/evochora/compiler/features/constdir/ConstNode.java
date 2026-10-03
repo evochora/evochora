@@ -1,4 +1,4 @@
-package org.evochora.compiler.features.define;
+package org.evochora.compiler.features.constdir;
 
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.model.ast.AstNode;
@@ -9,14 +9,14 @@ import org.evochora.compiler.model.ast.IdentifierNode;
 import java.util.List;
 
 /**
- * An AST node that represents a <code>.define</code> directive (e.g., ".DEFINE X 42" or "EXPORT .DEFINE X 42").
+ * An AST node that represents a <code>.CONST</code> directive (e.g., ".CONST X 42" or "EXPORT .CONST X 42").
  *
  * @param name       The constant name.
  * @param sourceInfo The source location of the constant name.
  * @param value      The AST node that represents the value of the constant.
  * @param exported   Whether this constant is exported for cross-module visibility.
  */
-public record DefineNode(
+public record ConstNode(
         String name,
         SourceInfo sourceInfo,
         AstNode value,
@@ -24,13 +24,13 @@ public record DefineNode(
 ) implements AstNode, ISourceLocatable, IIdentifierBinding {
 
     /**
-     * Constructs a non-exported define node.
+     * Constructs a non-exported const node.
      *
      * @param name       The constant name.
      * @param sourceInfo The source location of the constant name.
      * @param value      The AST node that represents the value of the constant.
      */
-    public DefineNode(String name, SourceInfo sourceInfo, AstNode value) {
+    public ConstNode(String name, SourceInfo sourceInfo, AstNode value) {
         this(name, sourceInfo, value, false);
     }
 

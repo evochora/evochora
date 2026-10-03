@@ -3,18 +3,29 @@ package org.evochora.compiler.frontend.lexer;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.isa.IInstructionSet;
 import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
+import org.evochora.compiler.api.IntegerLiteral;
+import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.OptionalInt;
+import java.util.Set;
 
 /**
  * The Lexer (also known as Tokenizer or Scanner) is responsible for converting
  * a sequence of characters (source code) into a sequence of tokens.
+ *
+ * <p>Besides its fixed cases the lexer knows the symbols the features registered through
+ * {@link org.evochora.compiler.IFeatureRegistrationContext#lexerSymbol(String)}. At the start of
+ * every token it tries them first, longest first, and emits a match as one
+ * {@link TokenType#SYMBOL} token whose text is the symbol.</p>
  */
 public class Lexer {
 
@@ -23,18 +34,22 @@ public class Lexer {
     private final List<Token> tokens = new ArrayList<>();
     private final String logicalFileName;
     private final IInstructionSet isa;
+    private final List<String> symbolsLongestFirst;
     private int start = 0;
+    private int startLine = 1;   // line of the first character of the token being scanned
+    private int startColumn = 1; // 1-based column of that character
     private int current = 0;
     private int line = 1;
     private int column = 1;
 
     /**
-     * Creates a new Lexer.
+     * Creates a new Lexer for the runtime's instruction set.
      * @param source The source code as a single string.
      * @param diagnostics The engine for reporting errors.
+     * @param symbols The registered symbols, emitted as {@link TokenType#SYMBOL} tokens.
      */
-    public Lexer(String source, DiagnosticsEngine diagnostics) {
-        this(source, diagnostics, "<memory>");
+    public Lexer(String source, DiagnosticsEngine diagnostics, Set<String> symbols) {
+        this(source, diagnostics, "<memory>", symbols);
     }
 
     /**
@@ -42,24 +57,34 @@ public class Lexer {
      * @param source The source code as a single string.
      * @param diagnostics The engine for reporting errors.
      * @param logicalFileName The name of the file being parsed, for error reporting.
+     * @param symbols The registered symbols, emitted as {@link TokenType#SYMBOL} tokens.
      */
-    public Lexer(String source, DiagnosticsEngine diagnostics, String logicalFileName) {
-        this(source, diagnostics, logicalFileName, new RuntimeInstructionSetAdapter());
+    public Lexer(String source, DiagnosticsEngine diagnostics, String logicalFileName, Set<String> symbols) {
+        this(source, diagnostics, logicalFileName, new RuntimeInstructionSetAdapter(), symbols);
     }
 
     /**
      * Creates a new Lexer for the given instruction set, which decides what is an opcode and
-     * what is a register.
+     * what is a register. Its tokens carry an empty placement; the preprocessor gives them the
+     * placement they stand in.
      * @param source The source code as a single string.
      * @param diagnostics The engine for reporting errors.
      * @param logicalFileName The name of the file being parsed, for error reporting.
      * @param isa The instruction set the source is written for.
+     * @param symbols The registered symbols, emitted as {@link TokenType#SYMBOL} tokens. They are
+     *                taken as checked by {@link org.evochora.compiler.FeatureRegistry}.
      */
-    public Lexer(String source, DiagnosticsEngine diagnostics, String logicalFileName, IInstructionSet isa) {
+    public Lexer(String source, DiagnosticsEngine diagnostics, String logicalFileName, IInstructionSet isa,
+                 Set<String> symbols) {
         this.source = source;
         this.diagnostics = diagnostics;
         this.logicalFileName = logicalFileName;
         this.isa = isa;
+        // Longest first, so that a symbol is never cut short by one of its prefixes; equal
+        // lengths in a fixed order, so that the order of the set does not matter.
+        this.symbolsLongestFirst = symbols.stream()
+                .sorted(Comparator.comparingInt(String::length).reversed().thenComparing(Comparator.naturalOrder()))
+                .toList();
     }
 
     /**
@@ -69,9 +94,12 @@ public class Lexer {
     public List<Token> scanTokens() {
         while (!isAtEnd()) {
             start = current;
+            startLine = line;
+            startColumn = column;
             scanToken();
         }
-        tokens.add(new Token(TokenType.END_OF_FILE, "", null, line, column, logicalFileName));
+        tokens.add(new Token(TokenType.END_OF_FILE, "", null,
+                new SourceInfo(logicalFileName, line, column, "", 0)));
         return tokens;
     }
 
@@ -85,15 +113,16 @@ public class Lexer {
      * @param contents    The text of every file, keyed by the path the tokens are to be filed under.
      * @param diagnostics The engine for reporting errors.
      * @param isa         The instruction set the files are written for.
+     * @param symbols     The registered symbols, emitted as {@link TokenType#SYMBOL} tokens.
      * @return The tokens of every file under the same key, in the iteration order of the input.
      */
     public static Map<String, List<Token>> lexFiles(Map<String, String> contents, DiagnosticsEngine diagnostics,
-                                                    IInstructionSet isa) {
+                                                    IInstructionSet isa, Set<String> symbols) {
         Map<String, List<Token>> tokensByFile = new LinkedHashMap<>();
         for (Map.Entry<String, String> file : contents.entrySet()) {
             String text = file.getValue();
             if (!text.endsWith("\n")) text += "\n";
-            List<Token> tokens = new Lexer(text, diagnostics, file.getKey(), isa).scanTokens();
+            List<Token> tokens = new Lexer(text, diagnostics, file.getKey(), isa, symbols).scanTokens();
             stripEofToken(tokens);
             tokensByFile.put(file.getKey(), tokens);
         }
@@ -114,35 +143,17 @@ public class Lexer {
     }
 
     private void scanToken() {
+        if (registeredSymbol()) return;
         char c = advance();
         switch (c) {
             case '"': string(); break;
-            case ',': addToken(TokenType.COMMA); break;
             case '|': addToken(TokenType.PIPE); break;
             case ':': addToken(TokenType.COLON); break;
-            case '*': addToken(TokenType.STAR); break;
-            case '^': addToken(TokenType.DIRECTIVE); break;
             case ';':
                 // Semicolon acts as a statement terminator, allowing multiple instructions per line.
                 addToken(TokenType.NEWLINE);
                 break;
-            case '.':
-                if (peek() == '.') {
-                    advance(); // Consume the second dot
-                    addToken(TokenType.DOT_DOT);
-                } else {
-                    identifier();
-                }
-                break;
-            case '@':
-                // The relative marker carries its sign, so that a lone '+' stays invalid
-                // everywhere and a lone '@' remains free for a later meaning.
-                if (peek() == '+' || peek() == '-') {
-                    addToken(advance() == '+' ? TokenType.AT_PLUS : TokenType.AT_MINUS);
-                } else {
-                    diagnostics.reportError("Expected '+' or '-' after '@'.", logicalFileName, line);
-                }
-                break;
+            case '.': identifier(); break;
             case '#':
                 // A comment goes until the end of the line.
                 while (peek() != '\n' && !isAtEnd()) advance();
@@ -152,8 +163,7 @@ public class Lexer {
                 if (isDigit(peek())) {
                     number();
                 } else {
-                    // Otherwise, it's an error (maybe an operator later).
-                    diagnostics.reportError("Unexpected character: " + c, logicalFileName, line);
+                    reportUnexpected(c);
                 }
                 break;
             // Ignore whitespace
@@ -170,10 +180,51 @@ public class Lexer {
                 } else if (isAlpha(c)) {
                     identifier();
                 } else {
-                    diagnostics.reportError("Unexpected character: " + c, logicalFileName, line);
+                    reportUnexpected(c);
                 }
                 break;
         }
+    }
+
+    /**
+     * Emits the longest registered symbol that begins at the start of the token, if any.
+     * @return true if a symbol was emitted.
+     */
+    private boolean registeredSymbol() {
+        for (String symbol : symbolsLongestFirst) {
+            if (source.startsWith(symbol, start)) {
+                // A symbol holds no line break, so the column moves with the position.
+                current += symbol.length();
+                column += symbol.length();
+                addToken(TokenType.SYMBOL);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Reports a character no case and no symbol accepts, naming the registered symbols that
+     * begin with it, as the writer most likely meant one of them.
+     * @param c The character.
+     */
+    private void reportUnexpected(char c) {
+        List<String> candidates = new ArrayList<>();
+        for (String symbol : symbolsLongestFirst) {
+            if (symbol.charAt(0) == c) candidates.add("'" + symbol + "'");
+        }
+        Collections.sort(candidates);
+        String message;
+        if (candidates.isEmpty()) {
+            message = "Unexpected character: " + c;
+        } else if (candidates.size() == 1) {
+            message = "Unexpected character '" + c + "'; the symbol beginning with it is " + candidates.getFirst();
+        } else {
+            message = "Unexpected character '" + c + "'; symbols beginning with it are "
+                    + String.join(", ", candidates.subList(0, candidates.size() - 1))
+                    + " and " + candidates.getLast();
+        }
+        diagnostics.reportError(message, logicalFileName, line);
     }
 
     private void identifier() {
@@ -212,7 +263,10 @@ public class Lexer {
     
 
     private void number() {
-        // Recognize hex/binary prefixes right at the start of a number
+        // After a leading minus the first digit is not yet consumed; consuming it here makes
+        // previous() the first digit for signed and unsigned numbers alike.
+        if (previous() == '-') advance();
+        // Recognize hex/binary prefixes right at the first digit
         if (previous() == '0' && (peek() == 'x' || peek() == 'X' || peek() == 'b' || peek() == 'B')) {
             advance(); // consume 'x' or 'b'
             while (isAlphaNumeric(peek())) advance(); // Hex digits (A-F) are also alphanumeric
@@ -226,59 +280,25 @@ public class Lexer {
         }
 
         String numberString = source.substring(start, current);
-        try {
-            int value = parseInt(numberString);
-            addToken(TokenType.NUMBER, value);
-        } catch (NumberFormatException e) {
+        OptionalInt value = IntegerLiteral.parse(numberString);
+        if (value.isPresent()) {
+            addToken(TokenType.NUMBER, value.getAsInt());
+        } else {
             diagnostics.reportError("Invalid number format: " + numberString, logicalFileName, line);
         }
     }
-
-    // *** START OF CORRECTION: The logic of NumericParser is now here. ***
-    private int parseInt(String token) throws NumberFormatException {
-        if (token == null) throw new NumberFormatException("null");
-        String s = token.trim();
-        boolean negative = false;
-
-        if (s.startsWith("+")) {
-            s = s.substring(1);
-        } else if (s.startsWith("-")) {
-            negative = true;
-            s = s.substring(1);
-        }
-
-        int radix = 10;
-        if (s.startsWith("0b") || s.startsWith("0B")) {
-            radix = 2;
-            s = s.substring(2);
-        } else if (s.startsWith("0x") || s.startsWith("0X")) {
-            radix = 16;
-            s = s.substring(2);
-        } else if (s.startsWith("0o") || s.startsWith("0O")) {
-            radix = 8;
-            s = s.substring(2);
-        }
-
-        if (s.isEmpty()) throw new NumberFormatException("Empty numeric literal");
-        int value = Integer.parseInt(s, radix);
-        return negative ? -value : value;
-    }
-    // *** END OF CORRECTION ***
 
     private char advance() {
         column++;
         return source.charAt(current++);
     }
 
-    // ... Rest of the class remains unchanged ...
-
     private void string() {
         while (peek() != '"' && !isAtEnd()) {
-            if (peek() == '\n') {
+            if (advance() == '\n') {
                 line++;
                 column = 1;
             }
-            advance();
         }
 
         if (isAtEnd()) {
@@ -304,7 +324,8 @@ public class Lexer {
     }
 
     private void addToken(TokenType type, Object literal, String text) {
-        tokens.add(new Token(type, text, literal, line, start + 1, logicalFileName));
+        tokens.add(new Token(type, text, literal,
+                new SourceInfo(logicalFileName, startLine, startColumn, "", 0)));
     }
 
     private boolean isAtEnd() {

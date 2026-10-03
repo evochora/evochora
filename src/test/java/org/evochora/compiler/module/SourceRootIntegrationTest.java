@@ -83,7 +83,7 @@ public class SourceRootIntegrationTest {
         // Set up: lib/state.evo in subdirectory
         Path libDir = tempDir.resolve("lib");
         Files.createDirectories(libDir);
-        Files.writeString(libDir.resolve("state.evo"), ".DEFINE MY_CONST DATA:42\n");
+        Files.writeString(libDir.resolve("state.evo"), ".CONST MY_CONST DATA:42\n");
 
         // lib/energy.evo sources lib/state.evo (root-relative path)
         Files.writeString(libDir.resolve("energy.evo"),

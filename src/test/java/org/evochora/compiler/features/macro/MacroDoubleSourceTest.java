@@ -36,21 +36,21 @@ class MacroDoubleSourceTest {
         Files.writeString(tempDir.resolve("macros.evo"),
                 ".MACRO INC R\n" +
                 "  ADDI R DATA:1\n" +
-                ".ENDM\n");
+                ".ENDMACRO\n");
 
         Files.writeString(tempDir.resolve("module_a.evo"),
                 ".SOURCE \"macros.evo\"\n" +
                 "EXPORT .PROC A_WORK REF X\n" +
                 "  INC X\n" +
                 "  RET\n" +
-                ".ENDP\n");
+                ".ENDPROC\n");
 
         Files.writeString(tempDir.resolve("module_b.evo"),
                 ".SOURCE \"macros.evo\"\n" +
                 "EXPORT .PROC B_WORK REF X\n" +
                 "  INC X\n" +
                 "  RET\n" +
-                ".ENDP\n");
+                ".ENDPROC\n");
 
         Files.writeString(tempDir.resolve("main.evo"),
                 ".IMPORT \"module_a.evo\" AS A\n" +

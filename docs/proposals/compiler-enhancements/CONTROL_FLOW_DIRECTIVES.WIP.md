@@ -28,7 +28,7 @@ Higher-level control flow directives (`.IF`, `.WHILE`, `.FOR`) can generate thes
 
 ## Prerequisites
 
-This proposal requires the END-directive rename from the Conditional Compilation proposal (`.ENDP` → `.ENDPROC`, `.ENDM` → `.ENDMACRO`, etc.) to establish the `.END*` naming convention. `.ENDIF` follows this convention.
+The block directives end with `.END*` names (`.ENDPROC`, `.ENDMACRO`, `.ENDREPEAT`, `.ENDDEF`), as the accomplished Conditional Compilation proposal established; `.ENDIF` follows this convention.
 
 This proposal does **not** require the Conditional Branch ISA extension. It works with skip-next instructions (generating Skip + JMPI sequences). If the Branch ISA extension is implemented, the generated code can optionally use branch instructions for better code density (1 instruction instead of 2 per branch point). Both paths are documented below.
 

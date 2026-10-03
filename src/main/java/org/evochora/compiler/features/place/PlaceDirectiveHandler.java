@@ -28,22 +28,20 @@ public class PlaceDirectiveHandler implements IParserStatementHandler {
      */
     @Override
     public AstNode parse(IParsingContext context) {
-        SourceInfo placeSourceInfo = context.peek().toSourceInfo();
+        SourceInfo placeSourceInfo = context.peek().source();
         context.advance(); // consume .PLACE
 
         // 1. Parse the literal
         AstNode literal = context.expression();
         if (!(literal instanceof TypedLiteralNode)) {
-            context.getDiagnostics().reportError("Expected a typed literal (e.g. DATA:5) for .PLACE.", context.peek().fileName(), context.peek().line());
+            context.getDiagnostics().reportError("Expected a typed literal (e.g. DATA:5) for .PLACE.", context.peek().source().fileName(), context.peek().source().lineNumber());
         }
 
         // 2. Parse one or more placement arguments
         List<IPlacementArgumentNode> placements = new ArrayList<>();
         do {
             placements.add(parsePlacementArgument(context));
-            if (context.peek().type() == TokenType.COMMA) {
-                context.advance(); // consume comma
-            } else {
+            if (!context.matchSymbol(",")) {
                 break;
             }
         } while (context.peek().type() != TokenType.NEWLINE && context.peek().type() != TokenType.END_OF_FILE);
@@ -52,7 +50,7 @@ public class PlaceDirectiveHandler implements IParserStatementHandler {
     }
 
     private IPlacementArgumentNode parsePlacementArgument(IParsingContext context) {
-        SourceInfo sourceInfo = context.peek().toSourceInfo();
+        SourceInfo sourceInfo = context.peek().source();
 
         List<IPlacementComponent> components = new ArrayList<>();
         boolean isRangeExpression = false;
@@ -90,16 +88,14 @@ public class PlaceDirectiveHandler implements IParserStatementHandler {
     }
 
     private IPlacementComponent parseDimensionComponent(IParsingContext context) {
-        if (context.peek().type() == TokenType.STAR) {
-            context.advance(); // consume '*'
+        if (context.matchSymbol("*")) {
             return new WildcardValueComponent();
         }
 
         if (context.peek().type() == TokenType.NUMBER) {
             Token start = context.advance(); // consume start number
 
-            if (context.peek().type() == TokenType.DOT_DOT) {
-                context.advance(); // consume '..'
+            if (context.matchSymbol("..")) {
                 Token end = context.consume(TokenType.NUMBER, "Expected a number for the end of the range.");
                 return new RangeValueComponent((int) start.value(), (int) end.value());
             } else if (context.peek().type() == TokenType.COLON) {
@@ -113,7 +109,7 @@ public class PlaceDirectiveHandler implements IParserStatementHandler {
             }
         }
 
-        context.getDiagnostics().reportError("Expected a placement component (number, '*', range, etc.)", context.peek().fileName(), context.peek().line());
+        context.getDiagnostics().reportError("Expected a placement component (number, '*', range, etc.)", context.peek().source().fileName(), context.peek().source().lineNumber());
         return new SingleValueComponent(0);
     }
 }

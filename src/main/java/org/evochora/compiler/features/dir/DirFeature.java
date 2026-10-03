@@ -16,6 +16,10 @@ public class DirFeature implements ICompilerFeature {
 
     @Override
     public void register(IFeatureRegistrationContext ctx) {
+        // Phase 1: Lexing
+        ctx.lexerSymbol("@+");
+        ctx.lexerSymbol("@-");
+
         // Phase 3: Parsing
         ctx.parserStatement(".DIR", new DirDirectiveHandler());
 

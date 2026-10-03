@@ -46,7 +46,7 @@ HARVEST_STATE: EXPORT
   # ... logic ...
   STATIC3_STORE HARVEST_STATE %PDR0 %PDR1 %PDR2
   RET
-.ENDP
+.ENDPROC
 ```
 
 Problems with this approach:
@@ -143,7 +143,7 @@ The exact generated code depends on the grid layout and the state block's positi
 .PROC INIT EXPORT REF FWD KIDX KLEFT
   .STORE HARVEST_STATE FWD KIDX KLEFT
   RET
-.ENDP
+.ENDPROC
 
 .PROC HARVEST EXPORT
   .LOAD HARVEST_STATE %PDR0 %PDR1 %PDR2
@@ -152,7 +152,7 @@ The exact generated code depends on the grid layout and the state block's positi
 
   .STORE HARVEST_STATE %PDR0 %PDR1 %PDR2
   RET
-.ENDP
+.ENDPROC
 ```
 
 ```assembly

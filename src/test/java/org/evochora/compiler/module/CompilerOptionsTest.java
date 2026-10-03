@@ -5,7 +5,11 @@ import org.evochora.compiler.api.SourceRoot;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.OptionalInt;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -22,6 +26,56 @@ public class CompilerOptionsTest {
         assertThat(opts.sourceRoots()).hasSize(1);
         assertThat(opts.sourceRoots().get(0).path()).isEqualTo(".");
         assertThat(opts.sourceRoots().get(0).isDefault()).isTrue();
+        assertThat(opts.defines()).isEmpty();
+    }
+
+    @Test
+    @Tag("unit")
+    void defines_namesAreUpperCased() {
+        CompilerOptions opts = new CompilerOptions(List.of(), Map.of("aggressive", OptionalInt.empty(), "Redundancy", OptionalInt.of(2)));
+        assertThat(opts.defines()).containsOnly(
+                Map.entry("AGGRESSIVE", OptionalInt.empty()),
+                Map.entry("REDUNDANCY", OptionalInt.of(2)));
+    }
+
+    @Test
+    @Tag("unit")
+    void defines_areCopiedAndUnmodifiable() {
+        Map<String, OptionalInt> source = new HashMap<>();
+        source.put("X", OptionalInt.of(1));
+        CompilerOptions opts = new CompilerOptions(List.of(), source);
+        source.put("Y", OptionalInt.of(2));
+
+        assertThat(opts.defines()).containsOnlyKeys("X");
+        assertThatThrownBy(() -> opts.defines().put("Z", OptionalInt.empty()))
+                .isInstanceOf(UnsupportedOperationException.class);
+    }
+
+    @Test
+    @Tag("unit")
+    void defines_twoKeysOfOneName_failNamingBoth() {
+        Map<String, OptionalInt> source = new LinkedHashMap<>();
+        source.put("a", OptionalInt.of(1));
+        source.put("A", OptionalInt.of(2));
+        assertThatThrownBy(() -> new CompilerOptions(List.of(), source))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("'a'")
+                .hasMessageContaining("'A'");
+    }
+
+    @Test
+    @Tag("unit")
+    void defines_differingOnlyInCase_areEqual() {
+        CompilerOptions lower = new CompilerOptions(List.of(), Map.of("x", OptionalInt.of(1)));
+        CompilerOptions upper = new CompilerOptions(List.of(), Map.of("X", OptionalInt.of(1)));
+        assertThat(lower).isEqualTo(upper);
+        assertThat(lower.hashCode()).isEqualTo(upper.hashCode());
+    }
+
+    @Test
+    @Tag("unit")
+    void sourceRootsOnly_hasNoDefines() {
+        assertThat(new CompilerOptions(List.of(new SourceRoot(".", null))).defines()).isEmpty();
     }
 
     @Test

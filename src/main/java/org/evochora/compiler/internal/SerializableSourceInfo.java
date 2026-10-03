@@ -10,34 +10,44 @@ import com.fasterxml.jackson.annotation.JsonValue;
  * @param fileName The file where the code is located.
  * @param lineNumber The line number.
  * @param columnNumber The column number.
+ * @param placement The alias chain of the module placement the position belongs to.
+ * @param expansion The instance of injected tokens the position stands in, 0 for the text as
+ *                  written.
  */
-public record SerializableSourceInfo(String fileName, int lineNumber, int columnNumber) {
+public record SerializableSourceInfo(String fileName, int lineNumber, int columnNumber, String placement,
+                                     int expansion) {
     
     /**
      * Creates a SerializableSourceInfo from a regular SourceInfo.
      *
      * @param sourceInfo The compiler-side source location to copy; must not be null.
-     * @return A record holding the same file name, line number and column number.
+     * @return A record holding the same file name, line number, column number, placement and
+     *         expansion.
      */
     public static SerializableSourceInfo from(org.evochora.compiler.api.SourceInfo sourceInfo) {
         return new SerializableSourceInfo(
             sourceInfo.fileName(),
             sourceInfo.lineNumber(),
-            sourceInfo.columnNumber()
+            sourceInfo.columnNumber(),
+            sourceInfo.placement(),
+            sourceInfo.expansion()
         );
     }
     
     /**
      * Serializes to a string format for use as a map key.
-     * Format: "fileName:lineNumber:columnNumber"
+     * Format: "placement@fileName:lineNumber:columnNumber", or "fileName:lineNumber:columnNumber"
+     * for the empty placement. An alias chain holds no {@code @}, so the first one ends it.
+     * The expansion is not part of the key: the token map, which this key serves, describes a
+     * position's text, and the debugger's annotations at runtime look a token up by its position
+     * alone.
      */
     @JsonValue
     @Override
     public String toString() {
-        return String.format("%s:%d:%d", 
-            fileName != null ? fileName : "<unknown>", 
-            lineNumber, 
-            columnNumber);
+        String file = fileName != null ? fileName : "<unknown>";
+        String placed = placement == null || placement.isEmpty() ? file : placement + "@" + file;
+        return String.format("%s:%d:%d", placed, lineNumber, columnNumber);
     }
 
 }

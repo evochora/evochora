@@ -39,6 +39,7 @@ import org.evochora.compiler.frontend.tokenmap.TokenMapGenerator;
 import java.util.ArrayList;
 import org.evochora.compiler.frontend.postprocess.AstPostProcessor;
 import org.evochora.compiler.frontend.postprocess.PostProcessHandlerRegistry;
+import org.evochora.compiler.model.ir.DebugInfo;
 import org.evochora.compiler.model.ir.IrProgram;
 import org.evochora.compiler.backend.layout.LayoutDirectiveRegistry;
 import org.evochora.compiler.backend.layout.LayoutEngine;
@@ -56,7 +57,6 @@ import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -171,22 +171,23 @@ public class Compiler implements ICompiler {
         features.forEach(f -> f.register(featureRegistry));
 
         // Phase 0: Dependency Scanning (load imported modules)
-        DependencyScanner depScanner = new DependencyScanner(diagnostics, resolver, featureRegistry.dependencyScanHandlers());
-        DependencyGraph graph = depScanner.scan(fullSource, mainFilePath);
+        DependencyScanner depScanner = new DependencyScanner(diagnostics, resolver, featureRegistry.dependencyScanHandlers(), effectiveOptions);
+        DependencyGraph graph = depScanner.scan(fullSource, mainFilePath, rootAliasChain);
         failOnErrors(diagnostics);
 
         // Phase 1: Lexical Analysis — every included file under its path, the main file as the stream
-        Map<String, List<Token>> fileTokens = Lexer.lexFiles(graph.includedContents(), diagnostics, isa);
-        List<Token> initialTokens = new ArrayList<>(new Lexer(fullSource, diagnostics, mainFilePath, isa).scanTokens());
+        Map<String, List<Token>> fileTokens = Lexer.lexFiles(graph.includedContents(), diagnostics, isa, featureRegistry.lexerSymbols());
+        List<Token> initialTokens = new ArrayList<>(new Lexer(fullSource, diagnostics, mainFilePath, isa,
+                featureRegistry.lexerSymbols()).scanTokens());
 
         // Phase 2: Preprocessing (includes, macros)
-        PreProcessorContext ppContext = new PreProcessorContext(rootAliasChain, fileTokens);
+        PreProcessorContext ppContext = new PreProcessorContext(rootAliasChain, fileTokens, graph.lines(),
+                programName, mainFilePath, effectiveOptions);
         featureRegistry.preprocessorHandlers().forEach(ppContext.handlers()::register);
+        featureRegistry.preprocessorBlocks().forEach(ppContext.handlers()::registerBlock);
+        featureRegistry.preprocessorTopLevelOnly().forEach(ppContext.handlers()::registerTopLevelOnly);
         PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, resolver, ppContext);
         PreProcessorResult ppResult = preProcessor.expand();
-
-        Map<String, String> sources = new HashMap<>(graph.includedContents());
-        sources.put(mainFilePath, fullSource);
 
         failOnErrors(diagnostics);
 
@@ -208,7 +209,7 @@ public class Compiler implements ICompiler {
         analysisRegistry.registerAllCollectors(featureRegistry.symbolCollectors());
         ModuleSetupRegistry setupRegistry = new ModuleSetupRegistry();
         featureRegistry.dependencySetupHandlers().forEach((type, handler) -> registerSetupHandler(setupRegistry, type, handler));
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, graph, mainFilePath, rootAliasChain, analysisRegistry, setupRegistry);
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, graph, rootAliasChain, analysisRegistry, setupRegistry);
         analyzer.analyze(ast);
         failOnErrors(diagnostics);
         symbolTable.freeze();
@@ -234,7 +235,9 @@ public class Compiler implements ICompiler {
         IrConverterRegistry irRegistry = IrConverterRegistry.initialize(new DefaultAstNodeToIrConverter());
         irRegistry.registerAll(featureRegistry.irConverters());
         IrGenerator irGenerator = new IrGenerator(diagnostics, irRegistry);
-        IrProgram irProgram = irGenerator.generate(resolvedAst, programName, rootAliasChain);
+        DebugInfo debugInfo = new DebugInfo(ppResult.sources(), ppResult.expansions(), tokenMap,
+                effectiveOptions.defines());
+        IrProgram irProgram = irGenerator.generate(resolvedAst, programName, rootAliasChain, debugInfo);
         failOnErrors(diagnostics);
 
         // Phase 8: IR Rewriting (apply the rewrite rules of the features)
@@ -261,15 +264,14 @@ public class Compiler implements ICompiler {
         linkingDirRegistry.registerAll(featureRegistry.linkingDirectiveHandlers());
         Linker linker = new Linker(linkingRegistry, linkingDirRegistry);
         LinkingContext linkContext = new LinkingContext(isa);
-        IrProgram linkedIr = linker.link(layout, linkContext, programName);
+        IrProgram linkedIr = linker.link(layout, linkContext, programName, rewrittenIr.debugInfo());
         linkContext.freeze();
 
         // Phase 11: Emission (generate final binary)
         EmissionContributorRegistry emissionContributorRegistry = new EmissionContributorRegistry();
         featureRegistry.emissionContributors().forEach(emissionContributorRegistry::register);
         Emitter emitter = new Emitter();
-        Map<String, Map<Integer, Map<Integer, List<TokenInfo>>>> tokenLookup = TokenMapGenerator.buildTokenLookup(tokenMap);
-        ProgramArtifact artifact = emitter.emit(linkedIr, layout, linkContext, isa, emissionContributorRegistry, sources, tokenMap, tokenLookup);
+        ProgramArtifact artifact = emitter.emit(linkedIr, layout, linkContext, isa, emissionContributorRegistry);
 
         CompilerLogger.debug("Compiler: " + programName + " programId:" + artifact.programId());
         return artifact;

@@ -3,6 +3,7 @@ package org.evochora.compiler;
 import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.postprocess.PostProcessHandlerRegistry;
+import org.evochora.compiler.frontend.preprocessor.PreProcessorHandlerRegistry;
 import org.evochora.compiler.frontend.semantics.AnalysisHandlerRegistry;
 import org.evochora.compiler.model.symbols.SymbolTable;
 
@@ -39,5 +40,17 @@ public final class TestRegistries {
         registry.registerAll(featureRegistry.postProcessHandlers());
 
         return registry;
+    }
+
+    /**
+     * Registers the block kinds and the top-level-only directives of the standard features into a
+     * preprocessor registry, as {@link Compiler} does before Phase 2. The handlers are left to the
+     * test, which registers the ones it exercises.
+     */
+    public static void registerPreProcessorBlocks(PreProcessorHandlerRegistry registry) {
+        FeatureRegistry featureRegistry = new FeatureRegistry(new RuntimeInstructionSetAdapter());
+        StandardFeatures.all().forEach(f -> f.register(featureRegistry));
+        featureRegistry.preprocessorBlocks().forEach(registry::registerBlock);
+        featureRegistry.preprocessorTopLevelOnly().forEach(registry::registerTopLevelOnly);
     }
 }
