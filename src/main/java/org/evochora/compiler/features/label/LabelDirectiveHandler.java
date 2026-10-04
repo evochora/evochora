@@ -22,6 +22,6 @@ public class LabelDirectiveHandler implements IParserStatementHandler {
         Token nameToken = context.consume(TokenType.IDENTIFIER, "Expected label name after .LABEL.");
         boolean exported = context.isExported();
         AstNode statement = context.declaration();
-        return new LabelNode(nameToken.text(), nameToken.toSourceInfo(), statement, exported);
+        return new LabelNode(nameToken.text(), nameToken.source(), statement, exported);
     }
 }

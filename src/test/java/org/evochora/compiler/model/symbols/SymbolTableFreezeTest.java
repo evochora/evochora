@@ -21,14 +21,14 @@ class SymbolTableFreezeTest {
         symbolTable = new SymbolTable(new DiagnosticsEngine());
         symbolTable.registerModule("MAIN", "test.evo");
         symbolTable.setCurrentModule("MAIN");
-        symbolTable.define(new Symbol("TEST", new SourceInfo("test.evo", 1, 0), Symbol.Type.LABEL, null, true));
+        symbolTable.define(new Symbol("TEST", new SourceInfo("test.evo", 1, 0, "", 0), Symbol.Type.LABEL, null, true));
         symbolTable.freeze();
     }
 
     @Test
     void define_throwsAfterFreeze() {
         assertThatThrownBy(() -> symbolTable.define(
-                new Symbol("NEW", new SourceInfo("test.evo", 2, 0), Symbol.Type.LABEL)))
+                new Symbol("NEW", new SourceInfo("test.evo", 2, 0, "", 0), Symbol.Type.LABEL)))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("frozen");
     }
@@ -48,7 +48,7 @@ class SymbolTableFreezeTest {
     @Test
     void registerNodeScope_throwsAfterFreeze() {
         assertThatThrownBy(() -> symbolTable.registerNodeScope(
-                new InstructionNode("NOP", List.of(), new SourceInfo("test.evo", 1, 0)),
+                new InstructionNode("NOP", List.of(), new SourceInfo("test.evo", 1, 0, "", 0)),
                 symbolTable.getCurrentScope()))
                 .isInstanceOf(IllegalStateException.class);
     }
@@ -84,14 +84,14 @@ class SymbolTableFreezeTest {
     @Test
     void resolve_allowedAfterFreeze() {
         symbolTable.setCurrentModule("MAIN");
-        assertThat(symbolTable.resolve("TEST", "test.evo").found()).isPresent();
+        assertThat(symbolTable.resolve("TEST", new SourceInfo("test.evo", 1, 0, "MAIN", 0)).found()).isPresent();
     }
 
     @Test
     void moduleScopeRefusesEveryWriteAfterFreeze() {
         ModuleScope scope = symbolTable.getModuleScope("MAIN").orElseThrow();
 
-        assertThatThrownBy(() -> scope.defineSymbol("X", new Symbol("X", new SourceInfo("t", 1, 0), Symbol.Type.LABEL)))
+        assertThatThrownBy(() -> scope.defineSymbol("X", new Symbol("X", new SourceInfo("t", 1, 0, "", 0), Symbol.Type.LABEL)))
                 .isInstanceOf(IllegalStateException.class).hasMessageContaining("MAIN");
         assertThatThrownBy(() -> scope.addImport("X", "Y", false)).isInstanceOf(IllegalStateException.class);
         assertThatThrownBy(() -> scope.addRequirement("X", "Y")).isInstanceOf(IllegalStateException.class);

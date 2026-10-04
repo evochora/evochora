@@ -7,7 +7,8 @@ import org.evochora.compiler.IFeatureRegistrationContext;
  * Compiler feature for the {@code .SOURCE} directive.
  *
  * <p>Registers a single preprocessor handler that reads another source file
- * and injects its tokens into the current token stream.</p>
+ * and injects its tokens into the current token stream, and the directive as one that may
+ * stand only at the top level.</p>
  */
 public class SourceFeature implements ICompilerFeature {
 
@@ -19,6 +20,7 @@ public class SourceFeature implements ICompilerFeature {
     @Override
     public void register(IFeatureRegistrationContext ctx) {
         ctx.dependencyScanHandler(new SourceDependencyScanHandler());
+        ctx.preprocessorTopLevelOnly(".SOURCE");
         ctx.preprocessor(".SOURCE", new SourceDirectiveHandler());
     }
 }

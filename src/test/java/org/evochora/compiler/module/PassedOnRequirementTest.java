@@ -50,7 +50,7 @@ class PassedOnRequirementTest {
                 "EXPORT .PROC DOUBLE REF X",
                 "  ADDI X DATA:0",
                 "  RET",
-                ".ENDP",
+                ".ENDPROC",
                 ""));
 
         Files.writeString(tempDir.resolve("bottom.evo"), String.join("\n",
@@ -58,7 +58,7 @@ class PassedOnRequirementTest {
                 "EXPORT .PROC WORK REF X",
                 "  CALL MATH.DOUBLE REF X",
                 "  RET",
-                ".ENDP",
+                ".ENDPROC",
                 ""));
 
         // The middle module leaves the choice open as well: it requires math and hands on what it
@@ -69,7 +69,7 @@ class PassedOnRequirementTest {
                 "EXPORT .PROC RUN REF X",
                 "  CALL BOTTOM.WORK REF X",
                 "  RET",
-                ".ENDP",
+                ".ENDPROC",
                 ""));
 
         // Only the outermost module decides which math module reaches the bottom.

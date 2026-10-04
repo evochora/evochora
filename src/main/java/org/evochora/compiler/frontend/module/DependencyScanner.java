@@ -1,5 +1,6 @@
 package org.evochora.compiler.frontend.module;
 
+import org.evochora.compiler.api.CompilerOptions;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.util.SourceLoader;
 import org.evochora.compiler.util.SourceRootResolver;
@@ -8,6 +9,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
+import java.util.function.Supplier;
 import java.util.regex.Matcher;
 
 /**
@@ -25,11 +27,13 @@ public final class DependencyScanner {
     private final DiagnosticsEngine diagnostics;
     private final SourceRootResolver resolver;
     private final List<IDependencyScanHandler> handlers;
+    private final CompilerOptions options;
 
     /**
      * Creates a scanner whose entire directive knowledge comes from the supplied handlers.
      * Each non-empty source line is offered to the handlers in list order and the first
-     * one whose pattern matches consumes it, so the order of the list decides precedence.
+     * one whose pattern matches consumes it, so the order of the list decides precedence;
+     * a line a handler takes through {@link IDependencyScanContext#nextLine()} is not offered.
      * The scanner keeps nothing between calls; everything a scan finds is in the graph it returns.
      *
      * @param diagnostics Collects errors for unresolvable paths, circular imports and
@@ -37,60 +41,84 @@ public final class DependencyScanner {
      * @param resolver    Resolves directive paths, including the {@code PREFIX:path} form,
      *                    relative to the file the directive appears in.
      * @param handlers    Scan handlers, kept by reference and tried in list order.
+     * @param options     The options of the compilation, offered to the handlers through
+     *                    {@link IDependencyScanContext#options()}; must not be null.
      */
-    public DependencyScanner(DiagnosticsEngine diagnostics, SourceRootResolver resolver, List<IDependencyScanHandler> handlers) {
+    public DependencyScanner(DiagnosticsEngine diagnostics, SourceRootResolver resolver,
+                             List<IDependencyScanHandler> handlers, CompilerOptions options) {
         this.diagnostics = diagnostics;
         this.resolver = resolver;
         this.handlers = handlers;
+        this.options = Objects.requireNonNull(options, "options");
     }
 
     /**
-     * Scans the main file and all its transitive dependencies, building a dependency graph.
+     * Scans the main file and all its transitive dependencies, building a dependency graph. The
+     * scan descends from the main module along the imports in the order they stand, as the
+     * preprocessor inlines them: a module file is scanned at every import, under the alias chain
+     * of that import, with the state of every feature as the scan reaches the import.
      *
-     * @param mainContent The full source text of the main file; it is used as given and
-     *                    never re-read from disk.
-     * @param mainPath    Path identifying the main module, also used as the file location
-     *                    of errors reported while scanning it.
-     * @return A graph containing the main module, every transitively reachable module ordered
-     *         so that dependencies precede their dependents, and the text of every source
-     *         file found on the way. An empty graph is returned if scanning reported any error.
+     * @param mainContent    The full source text of the main file; it is used as given and
+     *                       never re-read from disk.
+     * @param mainPath       Path identifying the main module, also used as the file location
+     *                       of errors reported while scanning it.
+     * @param rootAliasChain The alias chain of the main module, the one the preprocessor starts
+     *                       with; empty for a main module compiled without a prefix.
+     * @return A graph containing a placement of the main module and of every module at every
+     *         import reached, each after the placements it imports, and the text and lines of
+     *         every file found on the way. An empty graph is returned if scanning reported any
+     *         error.
      */
-    public DependencyGraph scan(String mainContent, String mainPath) {
+    public DependencyGraph scan(String mainContent, String mainPath, String rootAliasChain) {
         ScanState state = new ScanState();
-        ModuleId mainId = new ModuleId(mainPath);
-        scanModule(state, mainId, mainPath, mainContent);
+        scanModule(state, rootAliasChain, mainPath, mainContent);
 
         if (diagnostics.hasErrors()) {
-            return new DependencyGraph(List.of(), Map.of(), mainPath);
+            return new DependencyGraph(List.of(), Map.of(), Map.of(), Map.of(), mainPath);
         }
 
-        List<ModuleDescriptor> sorted = topologicalSort(state);
-        return new DependencyGraph(sorted, Collections.unmodifiableMap(state.sourceContents), mainPath);
+        Map<String, String> moduleContents = new LinkedHashMap<>();
+        for (ModulePlacement placement : state.placements) {
+            if (!placement.sourcePath().equals(mainPath)) {
+                moduleContents.putIfAbsent(placement.sourcePath(), state.loaded.get(placement.sourcePath()));
+            }
+        }
+        return new DependencyGraph(List.copyOf(state.placements), Collections.unmodifiableMap(state.linesByPath),
+                Collections.unmodifiableMap(moduleContents),
+                Collections.unmodifiableMap(state.sourceContents), mainPath);
     }
 
     /**
-     * Everything one scan discovers: the modules by identity, the modules whose scan is still
-     * open (for cycle detection) and the text of the source files.
+     * Everything one scan discovers: the placements in the order their scans end, the files on
+     * the current import path (for cycle detection), the content of every file read, the text
+     * of the source files, and the lines of every file scanned, split once per file; and the
+     * state features keep through
+     * {@link IDependencyScanContext#getOrCreate}, which spans every file of the scan.
      */
     private static final class ScanState {
-        final Map<ModuleId, ModuleDescriptor> descriptors = new LinkedHashMap<>();
-        final Set<ModuleId> visiting = new LinkedHashSet<>();
+        final List<ModulePlacement> placements = new ArrayList<>();
+        final Map<String, List<String>> linesByPath = new LinkedHashMap<>();
+        final Set<String> importPath = new HashSet<>();
+        final Map<String, String> loaded = new HashMap<>();
         final Map<String, String> sourceContents = new LinkedHashMap<>();
+        final Map<Class<?>, Object> featureState = new HashMap<>();
     }
 
-    private void scanModule(ScanState state, ModuleId moduleId, String sourcePath, String content) {
-        if (state.descriptors.containsKey(moduleId)) return;
-
-        if (state.visiting.contains(moduleId)) {
-            diagnostics.reportError("Circular dependency detected: " + moduleId.path(), sourcePath, 0);
+    /**
+     * Scans one placement of a module and records it once its own imports are scanned, so that
+     * a placement comes after the placements it imports.
+     */
+    private void scanModule(ScanState state, String aliasChain, String sourcePath, String content) {
+        if (!state.importPath.add(sourcePath)) {
+            diagnostics.reportError("Circular dependency detected: " + sourcePath, sourcePath, 0);
             return;
         }
-        state.visiting.add(moduleId);
+        state.loaded.putIfAbsent(sourcePath, content);
+        recordLines(state, sourcePath, content);
 
-        List<IDependencyInfo> dependencies = scanLines(state, sourcePath, content, false);
-        ModuleDescriptor descriptor = new ModuleDescriptor(moduleId, sourcePath, content, dependencies);
-        state.descriptors.put(moduleId, descriptor);
-        state.visiting.remove(moduleId);
+        List<IDependencyInfo> dependencies = scanLines(state, aliasChain, sourcePath, content, false);
+        state.placements.add(new ModulePlacement(aliasChain, sourcePath, dependencies));
+        state.importPath.remove(sourcePath);
     }
 
     /**
@@ -98,30 +126,33 @@ public final class DependencyScanner {
      * appear in a source file, and one that says no is reported as an error. Today .IMPORT and
      * .REQUIRE say no while .SOURCE inherits the permissive default.
      */
-    private void scanSourceFile(ScanState state, String sourcePath, String content) {
-        scanLines(state, sourcePath, content, true);
+    private void scanSourceFile(ScanState state, String aliasChain, String sourcePath, String content) {
+        recordLines(state, sourcePath, content);
+        scanLines(state, aliasChain, sourcePath, content, true);
     }
 
     /**
-     * Core line-by-line scanning with generic handler dispatch.
+     * Records a file's lines the first time the file is met, so that every inclusion of the file
+     * shares one list.
+     */
+    private static void recordLines(ScanState state, String sourcePath, String content) {
+        state.linesByPath.computeIfAbsent(sourcePath, path -> List.of(content.split("\\r?\\n")));
+    }
+
+    /**
+     * Core line-by-line scanning with generic handler dispatch. The lines are read through the
+     * context's cursor, so that a line a handler takes with {@link IDependencyScanContext#nextLine()}
+     * is skipped here.
      * @param sourceFileMode If true, every dependency a handler adds is checked against
      *                        {@link IDependencyInfo#allowedInSourceFile()} and reported as an error
      *                        at its line when it is not allowed there.
      */
-    private List<IDependencyInfo> scanLines(ScanState state, String sourcePath, String content, boolean sourceFileMode) {
-        ScanContext ctx = new ScanContext(state, sourcePath, sourceFileMode);
+    private List<IDependencyInfo> scanLines(ScanState state, String aliasChain, String sourcePath, String content,
+                                            boolean sourceFileMode) {
+        ScanContext ctx = new ScanContext(state, aliasChain, sourcePath, sourceFileMode, content.split("\\r?\\n"));
 
-        String[] lines = content.split("\\r?\\n");
-        for (int i = 0; i < lines.length; i++) {
-            String line = lines[i].trim();
-            int commentIdx = line.indexOf('#');
-            if (commentIdx >= 0) {
-                line = line.substring(0, commentIdx).trim();
-            }
-            if (line.isEmpty()) continue;
-
-            ctx.setLineNumber(i + 1);
-
+        String line;
+        while ((line = ctx.nextLine()) != null) {
             for (IDependencyScanHandler handler : handlers) {
                 Matcher matcher = handler.pattern().matcher(line);
                 if (matcher.matches()) {
@@ -146,72 +177,24 @@ public final class DependencyScanner {
     }
 
     /**
-     * Topological sort using Kahn's algorithm.
-     */
-    private List<ModuleDescriptor> topologicalSort(ScanState state) {
-        Map<ModuleId, ModuleDescriptor> descriptors = state.descriptors;
-        Map<ModuleId, Set<ModuleId>> dependencies = new LinkedHashMap<>();
-        Map<ModuleId, Set<ModuleId>> dependents = new LinkedHashMap<>();
-
-        for (ModuleDescriptor desc : descriptors.values()) {
-            dependencies.put(desc.id(), new LinkedHashSet<>());
-            dependents.computeIfAbsent(desc.id(), k -> new LinkedHashSet<>());
-        }
-
-        for (ModuleDescriptor desc : descriptors.values()) {
-            for (IDependencyInfo dep : desc.dependencies()) {
-                ModuleId depId = dep.resolvedModuleId();
-                if (depId != null && descriptors.containsKey(depId)) {
-                    dependencies.get(desc.id()).add(depId);
-                    dependents.computeIfAbsent(depId, k -> new LinkedHashSet<>()).add(desc.id());
-                }
-            }
-        }
-
-        Queue<ModuleId> ready = new ArrayDeque<>();
-        for (Map.Entry<ModuleId, Set<ModuleId>> entry : dependencies.entrySet()) {
-            if (entry.getValue().isEmpty()) {
-                ready.add(entry.getKey());
-            }
-        }
-
-        List<ModuleDescriptor> sorted = new ArrayList<>();
-        while (!ready.isEmpty()) {
-            ModuleId current = ready.poll();
-            sorted.add(descriptors.get(current));
-            for (ModuleId dependent : dependents.getOrDefault(current, Set.of())) {
-                dependencies.get(dependent).remove(current);
-                if (dependencies.get(dependent).isEmpty()) {
-                    ready.add(dependent);
-                }
-            }
-        }
-
-        if (sorted.size() != descriptors.size()) {
-            diagnostics.reportError("Circular dependency detected among modules.", "", 0);
-        }
-
-        return sorted;
-    }
-
-    /**
      * Inner context implementation passed to handlers during scanning.
      */
     private class ScanContext implements IDependencyScanContext {
         private final ScanState state;
+        private final String aliasChain;
         private final String sourcePath;
         private final boolean sourceFileMode;
+        private final String[] lines;
+        private int nextIndex;
         private int lineNumber;
         private final List<IDependencyInfo> collected = new ArrayList<>();
 
-        ScanContext(ScanState state, String sourcePath, boolean sourceFileMode) {
+        ScanContext(ScanState state, String aliasChain, String sourcePath, boolean sourceFileMode, String[] lines) {
             this.state = state;
+            this.aliasChain = aliasChain;
             this.sourcePath = sourcePath;
             this.sourceFileMode = sourceFileMode;
-        }
-
-        void setLineNumber(int lineNumber) {
-            this.lineNumber = lineNumber;
+            this.lines = lines;
         }
 
         List<IDependencyInfo> collectedDependencies() {
@@ -225,7 +208,12 @@ public final class DependencyScanner {
 
         @Override
         public String loadContent(String resolvedPath) throws IOException {
-            return DependencyScanner.this.loadContent(resolvedPath);
+            String content = state.loaded.get(resolvedPath);
+            if (content == null) {
+                content = DependencyScanner.this.loadContent(resolvedPath);
+                state.loaded.put(resolvedPath, content);
+            }
+            return content;
         }
 
         @Override
@@ -239,13 +227,18 @@ public final class DependencyScanner {
         }
 
         @Override
-        public void scanNestedModule(String resolvedPath, String content) {
-            DependencyScanner.this.scanModule(state, new ModuleId(resolvedPath), resolvedPath, content);
+        public void scanNestedModule(String resolvedPath, String content, String placementChain) {
+            DependencyScanner.this.scanModule(state, placementChain, resolvedPath, content);
         }
 
         @Override
         public void scanNestedSourceFile(String resolvedPath, String content) {
-            DependencyScanner.this.scanSourceFile(state, resolvedPath, content);
+            DependencyScanner.this.scanSourceFile(state, aliasChain, resolvedPath, content);
+        }
+
+        @Override
+        public String placementChain() {
+            return aliasChain;
         }
 
         @Override
@@ -265,6 +258,32 @@ public final class DependencyScanner {
         @Override
         public int lineNumber() {
             return lineNumber;
+        }
+
+        @Override
+        public String nextLine() {
+            while (nextIndex < lines.length) {
+                String line = lines[nextIndex++].trim();
+                int commentIdx = line.indexOf('#');
+                if (commentIdx >= 0) {
+                    line = line.substring(0, commentIdx).trim();
+                }
+                if (!line.isEmpty()) {
+                    lineNumber = nextIndex;
+                    return line;
+                }
+            }
+            return null;
+        }
+
+        @Override
+        public CompilerOptions options() {
+            return options;
+        }
+
+        @Override
+        public <T> T getOrCreate(Class<T> key, Supplier<T> factory) {
+            return key.cast(state.featureState.computeIfAbsent(key, k -> factory.get()));
         }
     }
 }

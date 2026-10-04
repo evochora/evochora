@@ -1,5 +1,9 @@
 package org.evochora.compiler.module;
 
+import org.evochora.compiler.api.CompilerOptions;
+import org.evochora.compiler.api.ProgramArtifact;
+import org.evochora.runtime.model.EnvironmentProperties;
+import org.evochora.compiler.TestLexers;
 import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 import org.evochora.compiler.FeatureRegistry;
 import org.evochora.compiler.frontend.semantics.ScopeTracker;
@@ -14,7 +18,7 @@ import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ParserStatementRegistry;
 import org.evochora.compiler.features.ctx.PopCtxDirectiveHandler;
 import org.evochora.compiler.features.ctx.PushCtxDirectiveHandler;
-import org.evochora.compiler.features.define.DefineDirectiveHandler;
+import org.evochora.compiler.features.constdir.ConstDirectiveHandler;
 import org.evochora.compiler.features.dir.DirDirectiveHandler;
 import org.evochora.compiler.features.importdir.ImportDirectiveHandler;
 import org.evochora.compiler.features.org.OrgDirectiveHandler;
@@ -56,10 +60,10 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Integration tests for {@code .SOURCE} + {@code .DEFINE} in multi-module compilation.
+ * Integration tests for {@code .SOURCE} + {@code .CONST} in multi-module compilation.
  * Exercises the full pipeline from Phase 0 (dependency scanning) through Phase 6 (AST post-processing).
  */
-class ModuleSourceDefineIntegrationTest {
+class ModuleSourceConstIntegrationTest {
 
     @TempDir
     Path tempDir;
@@ -73,14 +77,14 @@ class ModuleSourceDefineIntegrationTest {
     @Tag("integration")
     void singleModuleWithSourcedConstants_resolvesCorrectly() throws Exception {
         Files.writeString(tempDir.resolve("consts.evo"),
-                ".DEFINE FOO DATA:42\n");
+                ".CONST FOO DATA:42\n");
 
         Files.writeString(tempDir.resolve("lib.evo"),
                 ".SOURCE \"consts.evo\"\n" +
                 "EXPORT .PROC WORK REF X\n" +
                 "  SETI X FOO\n" +
                 "  RET\n" +
-                ".ENDP\n");
+                ".ENDPROC\n");
 
         String mainSource = ".IMPORT \"lib.evo\" AS LIB\nSETI %DR0 DATA:1\n";
         String mainPath = tempDir.resolve("main.evo").toString();
@@ -92,25 +96,48 @@ class ModuleSourceDefineIntegrationTest {
                 .isFalse();
     }
 
+    /**
+     * A constant defined by another constant in a file a module sources is resolved in the
+     * module's placement: the definition of B names A, which stands in the sourced file, not in
+     * the module's own file.
+     */
     @Test
     @Tag("integration")
-    void twoModulesSourceSameDefineFile_noCollision() throws Exception {
+    void aSourcedConstantDefinedByAnotherSourcedConstant_resolvesInTheModule() throws Exception {
         Files.writeString(tempDir.resolve("consts.evo"),
-                ".DEFINE LIMIT DATA:99\n");
+                ".CONST A DATA:1\n" +
+                ".CONST B A\n");
+        Files.writeString(tempDir.resolve("m.evo"),
+                ".SOURCE \"consts.evo\"\n" +
+                "SETI %DR0 B\n");
+        Path main = tempDir.resolve("main.evo");
+        Files.writeString(main, ".IMPORT \"m.evo\" AS M\nNOP\n");
+
+        ProgramArtifact artifact = new org.evochora.compiler.Compiler().compile(
+                Files.readAllLines(main), main.toString(), new EnvironmentProperties(new int[]{100, 100}, true));
+
+        assertThat(artifact.machineCodeLayout()).isNotEmpty();
+    }
+
+    @Test
+    @Tag("integration")
+    void twoModulesSourceSameConstFile_noCollision() throws Exception {
+        Files.writeString(tempDir.resolve("consts.evo"),
+                ".CONST LIMIT DATA:99\n");
 
         Files.writeString(tempDir.resolve("mod_a.evo"),
                 ".SOURCE \"consts.evo\"\n" +
                 "EXPORT .PROC A_WORK REF X\n" +
                 "  SETI X LIMIT\n" +
                 "  RET\n" +
-                ".ENDP\n");
+                ".ENDPROC\n");
 
         Files.writeString(tempDir.resolve("mod_b.evo"),
                 ".SOURCE \"consts.evo\"\n" +
                 "EXPORT .PROC B_WORK REF X\n" +
                 "  SETI X LIMIT\n" +
                 "  RET\n" +
-                ".ENDP\n");
+                ".ENDPROC\n");
 
         String mainSource = ".IMPORT \"mod_a.evo\" AS A\n.IMPORT \"mod_b.evo\" AS B\nNOP\n";
         String mainPath = tempDir.resolve("main.evo").toString();
@@ -139,24 +166,24 @@ class ModuleSourceDefineIntegrationTest {
     void twoModulesWithDifferentValuesForSameConstant_resolvesPerModule() throws Exception {
         // Each module has its own constants file with a different value for STEP
         Files.writeString(tempDir.resolve("fast_config.evo"),
-                ".DEFINE STEP DATA:10\n");
+                ".CONST STEP DATA:10\n");
 
         Files.writeString(tempDir.resolve("slow_config.evo"),
-                ".DEFINE STEP DATA:1\n");
+                ".CONST STEP DATA:1\n");
 
         Files.writeString(tempDir.resolve("fast.evo"),
                 ".SOURCE \"fast_config.evo\"\n" +
                 "EXPORT .PROC FAST_MOVE REF X\n" +
                 "  ADDI X STEP\n" +
                 "  RET\n" +
-                ".ENDP\n");
+                ".ENDPROC\n");
 
         Files.writeString(tempDir.resolve("slow.evo"),
                 ".SOURCE \"slow_config.evo\"\n" +
                 "EXPORT .PROC SLOW_MOVE REF X\n" +
                 "  ADDI X STEP\n" +
                 "  RET\n" +
-                ".ENDP\n");
+                ".ENDPROC\n");
 
         String mainSource = ".IMPORT \"fast.evo\" AS FAST\n.IMPORT \"slow.evo\" AS SLOW\nNOP\n";
         String mainPath = tempDir.resolve("main.evo").toString();
@@ -186,14 +213,14 @@ class ModuleSourceDefineIntegrationTest {
     @Tag("integration")
     void sourcedConstantResolvedInInstruction() throws Exception {
         Files.writeString(tempDir.resolve("consts.evo"),
-                ".DEFINE MAX DATA:255\n");
+                ".CONST MAX DATA:255\n");
 
         Files.writeString(tempDir.resolve("lib.evo"),
                 ".SOURCE \"consts.evo\"\n" +
                 "EXPORT .PROC INIT REF X\n" +
                 "  SETI X MAX\n" +
                 "  RET\n" +
-                ".ENDP\n");
+                ".ENDPROC\n");
 
         String mainSource = ".IMPORT \"lib.evo\" AS LIB\nCALL LIB.INIT REF %DR0\n";
         String mainPath = tempDir.resolve("main.evo").toString();
@@ -224,15 +251,15 @@ class ModuleSourceDefineIntegrationTest {
         // a.evo sources b.evo, b.evo sources a.evo
         // Test at preprocessor level directly (DependencyScanner doesn't handle .SOURCE cycles)
         Files.writeString(tempDir.resolve("a.evo"),
-                ".SOURCE \"b.evo\"\n.DEFINE A_VAL DATA:1\n");
+                ".SOURCE \"b.evo\"\n.CONST A_VAL DATA:1\n");
         Files.writeString(tempDir.resolve("b.evo"),
-                ".SOURCE \"a.evo\"\n.DEFINE B_VAL DATA:2\n");
+                ".SOURCE \"a.evo\"\n.CONST B_VAL DATA:2\n");
 
         String mainSource = ".SOURCE \"a.evo\"\nNOP\n";
         String mainPath = tempDir.resolve("main.evo").toString();
 
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(mainSource, diagnostics, mainPath);
+        Lexer lexer = new Lexer(mainSource, diagnostics, mainPath, TestLexers.symbols());
         List<Token> tokens = new ArrayList<>(lexer.scanTokens());
         SourceRootResolver circularResolver = new SourceRootResolver(
                 List.of(new SourceRoot(".", null)), tempDir);
@@ -242,13 +269,13 @@ class ModuleSourceDefineIntegrationTest {
             String resolvedPath = circularResolver.resolve(fileName, mainPath);
             String content = Files.readString(Path.of(resolvedPath));
             if (!content.endsWith("\n")) content += "\n";
-            Lexer srcLexer = new Lexer(content, diagnostics, resolvedPath);
+            Lexer srcLexer = new Lexer(content, diagnostics, resolvedPath, TestLexers.symbols());
             List<Token> srcTokens = srcLexer.scanTokens();
             Lexer.stripEofToken(srcTokens);
             circularSourceTokens.put(resolvedPath, srcTokens);
         }
 
-        PreProcessorContext circularContext = new PreProcessorContext("", circularSourceTokens);
+        PreProcessorContext circularContext = new PreProcessorContext("", circularSourceTokens, mainPath, CompilerOptions.defaults());
         circularContext.handlers().register(".SOURCE", new SourceDirectiveHandler());
         circularContext.handlers().register(":", new org.evochora.compiler.features.label.ColonLabelHandler());
         PreProcessor preProcessor = new PreProcessor(tokens, diagnostics, circularResolver, circularContext);
@@ -265,7 +292,7 @@ class ModuleSourceDefineIntegrationTest {
     @Tag("integration")
     void mainFileSourcesConstantsDirectly() throws Exception {
         Files.writeString(tempDir.resolve("consts.evo"),
-                ".DEFINE INIT_VAL DATA:7\n");
+                ".CONST INIT_VAL DATA:7\n");
 
         String mainSource = ".SOURCE \"consts.evo\"\nSETI %DR0 INIT_VAL\n";
         String mainPath = tempDir.resolve("main.evo").toString();
@@ -306,18 +333,19 @@ class ModuleSourceDefineIntegrationTest {
                 List.of(new SourceRoot(".", null)), tempDir);
         FeatureRegistry featureRegistry = new FeatureRegistry(new RuntimeInstructionSetAdapter());
         StandardFeatures.all().forEach(f -> f.register(featureRegistry));
-        DependencyScanner scanner = new DependencyScanner(diagnostics, resolver, featureRegistry.dependencyScanHandlers());
-        DependencyGraph graph = scanner.scan(mainSource, mainPath);
+        DependencyScanner scanner = new DependencyScanner(diagnostics, resolver, featureRegistry.dependencyScanHandlers(), CompilerOptions.defaults());
+        DependencyGraph graph = scanner.scan(mainSource, mainPath, rootAliasChain);
         if (diagnostics.hasErrors()) return new PostProcessResult(diagnostics, List.of());
 
         // Phase 1: Lex the included files under their paths, the main file as the stream
-        Map<String, List<Token>> fileTokens = Lexer.lexFiles(graph.includedContents(), diagnostics, new RuntimeInstructionSetAdapter());
-        List<Token> mainTokens = new ArrayList<>(new Lexer(mainSource, diagnostics, mainPath).scanTokens());
+        Map<String, List<Token>> fileTokens = Lexer.lexFiles(graph.includedContents(), diagnostics, new RuntimeInstructionSetAdapter(), TestLexers.symbols());
+        List<Token> mainTokens = new ArrayList<>(new Lexer(mainSource, diagnostics, mainPath, TestLexers.symbols()).scanTokens());
 
         // Phase 2: Preprocessing (with root alias chain for alias chain tracking)
-        PreProcessorContext ppContext = new PreProcessorContext(rootAliasChain, fileTokens);
+        PreProcessorContext ppContext = new PreProcessorContext(rootAliasChain, fileTokens, mainPath, CompilerOptions.defaults());
         ppContext.handlers().register(".SOURCE", new SourceDirectiveHandler());
         ppContext.handlers().register(".MACRO", new MacroDirectiveHandler());
+        TestRegistries.registerPreProcessorBlocks(ppContext.handlers());
         ppContext.handlers().register(".POP_CTX", new PopCtxPreProcessorHandler());
         ppContext.handlers().register(".IMPORT", new ImportSourceHandler());
         ppContext.handlers().register(":", new org.evochora.compiler.features.label.ColonLabelHandler());
@@ -334,7 +362,7 @@ class ModuleSourceDefineIntegrationTest {
         SymbolTable symbolTable = new SymbolTable(diagnostics);
         ModuleSetupRegistry setupRegistry = new ModuleSetupRegistry();
         featureRegistry.dependencySetupHandlers().forEach((type, handler) -> registerSetupHandler(setupRegistry, type, handler));
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, graph, mainPath, rootAliasChain, TestRegistries.analysisRegistry(symbolTable, diagnostics), setupRegistry);
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, graph, rootAliasChain, TestRegistries.analysisRegistry(symbolTable, diagnostics), setupRegistry);
         analyzer.analyze(ast);
         if (diagnostics.hasErrors()) return new PostProcessResult(diagnostics, ast);
 
@@ -361,7 +389,7 @@ class ModuleSourceDefineIntegrationTest {
 
     private static ParserStatementRegistry allHandlers() {
         ParserStatementRegistry reg = new ParserStatementRegistry();
-        reg.register(".DEFINE", new DefineDirectiveHandler());
+        reg.register(".CONST", new ConstDirectiveHandler());
         reg.register(".REG", new RegDirectiveHandler(new RuntimeInstructionSetAdapter()));
         reg.register(".PROC", new ProcDirectiveHandler(new RuntimeInstructionSetAdapter()));
         reg.register(".ORG", new OrgDirectiveHandler());

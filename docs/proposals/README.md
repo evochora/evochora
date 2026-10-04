@@ -26,17 +26,18 @@ legitimately cover, and delegates the formats this codebase owns to PERSISTED_FO
 
 ## Compiler enhancements
 
-Two related compiler proposals, listed in the order that resolves their dependency.
+One compiler proposal remains open. CONDITIONAL_COMPILATION (`.DEFINE` flags, `.IFDEF`
+blocks, the `.END*` naming of the block directives) is accomplished and lives under
+[`docs/outdated/proposals/accomplished/`](../outdated/proposals/accomplished/CONDITIONAL_COMPILATION.md).
 
 | # | Document | Status | Summary |
 |---|---|---|---|
-| 1 | [CONDITIONAL_COMPILATION](compiler-enhancements/CONDITIONAL_COMPILATION.md) | TO BE REVIEWED | `.IFDEF` / `.ELSEDEF` / `.ENDDEF` preprocessor conditionals; renames `.DEFINE` → `.CONST` and `.ENDP`/`.ENDM`/`.ENDR` → `.ENDPROC`/`.ENDMACRO`/`.ENDREPEAT` |
-| 2 | [CONTROL_FLOW_DIRECTIVES](compiler-enhancements/CONTROL_FLOW_DIRECTIVES.WIP.md) | **WORK IN PROGRESS** | `.IF`/`.ELSEIF`/`.ELSE`/`.ENDIF` specified; `.WHILE`/`.FOR`/`.BREAK`/`.CONTINUE` still to be written |
+| 1 | [CONTROL_FLOW_DIRECTIVES](compiler-enhancements/CONTROL_FLOW_DIRECTIVES.WIP.md) | **WORK IN PROGRESS** | `.IF`/`.ELSEIF`/`.ELSE`/`.ENDIF` specified; `.WHILE`/`.FOR`/`.BREAK`/`.CONTINUE` still to be written |
 
 Dependencies:
 
-- **2 requires 1** for the `.END*` naming convention (`.ENDIF`).
-- **CONDITIONAL_JUMPS is optional for 2**: control flow directives work with conditional skips;
+- **1 builds on the `.END*` naming convention** that CONDITIONAL_COMPILATION established (`.ENDIF`).
+- **CONDITIONAL_JUMPS is optional for 1**: control flow directives work with conditional skips;
   with conditional jumps, `.IF` over a jump compiles to the negated jump.
 
 ## Ideas

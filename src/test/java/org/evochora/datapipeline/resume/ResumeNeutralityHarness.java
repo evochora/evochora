@@ -273,7 +273,7 @@ final class ResumeNeutralityHarness {
         Optional<TickDataChunk> chunk = encoder.captureTick(
                 snapshotTick, live.getEnvironment(), states,
                 live.getTotalOrganismsCreatedCount(), live.getTotalUniqueGenomesCount(),
-                live.getAllGenomesEverSeen(),
+                live.getGenomesInDiscoveryOrder(),
                 ByteString.copyFrom(liveProvider.saveState()), pluginStates(plugins));
         TickData snapshot = chunk.or(encoder::flushPartialChunk).orElseThrow().getSnapshot();
 
@@ -300,6 +300,10 @@ final class ResumeNeutralityHarness {
 
     /**
      * Advances the simulation and records the complete state after every tick.
+     * <p>
+     * Every tick is a recording here, so the dead organisms are dropped after each one, as the
+     * engine drops them after a recording has written them. A run that kept them would hold the
+     * dead against a resumed run, which never restores an organism its snapshot already wrote dead.
      *
      * @param sim the simulation to advance
      * @param n number of ticks
@@ -329,6 +333,7 @@ final class ResumeNeutralityHarness {
             state.add(describe(sim.getEnvironment()));
             state.add(describe(plugins));
             trajectory.add(state);
+            sim.pruneDeadOrganisms();
         }
         return trajectory;
     }

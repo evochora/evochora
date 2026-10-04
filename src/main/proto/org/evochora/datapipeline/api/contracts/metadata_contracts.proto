@@ -155,11 +155,11 @@ message ProgramArtifact {
   // Used to reference this program in InitialOrganismSetup and OrganismState
   string program_id = 1;
 
-  // Source code organized by filename
+  // Source code, one entry per inclusion of a file: the main file, a module placement, a text inclusion
   // Source: ProgramArtifact.sources()
-  // Key: filename, Value: lines of source code
+  // Order: the main file first, then every inclusion in the order the compiler meets it
   // Used by debugger to display source code
-  map<string, SourceLines> sources = 2;
+  repeated SourceFile sources = 2;
 
   // Compiled machine code laid out in relative coordinates
   // Source: ProgramArtifact.machineCodeLayout()
@@ -199,9 +199,17 @@ message ProgramArtifact {
 
   // Register aliases defined in source code
   // Source: ProgramArtifact.registerAliasMap()
-  // Key: alias name (e.g., "%MY_REG"), Value: physical register index
+  // Key: the key of the alias's definition, its qualified name and, inside a procedure, "@" and the
+  // procedure's qualified name (e.g., "%MY_REG", "%TMP@WORK"), Value: physical register index
   // Used by debugger to display register names
   map<string, int32> register_alias_map = 10;
+
+  // Values of the constants defined in source code
+  // Source: ProgramArtifact.constantValues()
+  // Key: the key of the constant's definition, its qualified name and, inside a procedure, "@" and
+  // the procedure's qualified name (e.g., "NAV.STEP.MAX_VALUE", "N@WORK"), Value: the value as text (e.g., "DATA:99")
+  // Used by the source view to annotate a constant with its value
+  map<string, string> constant_values = 19;
 
   // Parameter names for each procedure
   // Source: ProgramArtifact.procNameToParamNames()
@@ -217,15 +225,15 @@ message ProgramArtifact {
 
   // Efficient token lookup by file/line/column
   // Source: ProgramArtifact.tokenLookup()
-  // Nested structure for fast lookup: filename → line → column → tokens
+  // Nested structure for fast lookup: placement and filename → line → column → tokens
   // Used by web client for hover information
   repeated FileTokenLookup token_lookup = 13;
 
   // Machine instructions per source line for visualization
   // Source: ProgramArtifact.sourceLineToInstructions()
-  // Key: "fileName:lineNumber" (e.g., "main.evo:4"), Value: list of machine instructions
+  // One entry per placement, file and expansion: line number → machine instructions of that line
   // Used by frontend to display compiler-generated instructions (e.g., PUSH/POP for CALL)
-  map<string, MachineInstructionInfoList> source_line_to_instructions = 14;
+  repeated FileSourceLines source_line_to_instructions = 14;
 
   // Reverse lookup from label hash value to label name
   // Source: ProgramArtifact.labelValueToName()
@@ -238,12 +246,109 @@ message ProgramArtifact {
   // Key: label name, Value: 20-bit hash value
   // Used by frontend to resolve label references in source view
   map<string, int32> label_name_to_value = 16;
+
+  // Every instance of injected tokens that is no inclusion of its own, such as a macro expansion
+  // Source: ProgramArtifact.expansions()
+  // Key: the number its positions carry as SourceInfo.expansion
+  // Used by the source view to show an expansion as a frame and its regions and notes
+  map<int32, Expansion> expansions = 18;
 }
 
-// Container for source code lines of a file.
-message SourceLines {
+// The text of one file as one inclusion brought it in: the main file, a module placement or a
+// text inclusion.
+// Maps to org.evochora.compiler.api.SourceFile record.
+message SourceFile {
+  // Alias chain of the placement (e.g., "ENERGY"); the main module's chain, usually empty,
+  // for the main file and the files it includes
+  string placement = 1;
+
+  // Path as the program wrote it, with its source-root prefix; the main file as given to the compiler
+  string path = 2;
+
+  // Path the file was read from; the file_name of every SourceInfo in it
+  string resolved_path = 3;
+
   // Lines of source code (0-indexed)
-  repeated string lines = 1;
+  repeated string lines = 4;
+
+  // Regions of lines the preprocessor left out in this inclusion, in recording order
+  repeated LeftOutRegion left_out = 5;
+
+  // Notes the preprocessor attached to positions in this inclusion, in recording order
+  repeated SourceNote notes = 6;
+
+  // Instance the positions of this inclusion carry as SourceInfo.expansion; 0 for the main file
+  // and for a module placement, which the placement identifies
+  int32 instance = 7;
+
+  // Position of the directive that made this entry; absent for the main file
+  SourceInfo included_at = 8;
+}
+
+// An instance of injected tokens that is no inclusion of a file: tokens copied from a template and
+// injected at a position.
+// Maps to org.evochora.compiler.api.Expansion record.
+message Expansion {
+  // Position at which the tokens were injected
+  SourceInfo called_at = 1;
+
+  // Position of the template as it stood when it was read; its placement, file and expansion name
+  // the entry or the enclosing instance holding the template's lines
+  SourceInfo defined_at = 2;
+
+  // Name under which the template was injected
+  string name = 3;
+
+  // Words the template's parameters were bound to, in parameter order
+  repeated ExpansionBinding bindings = 4;
+
+  // Regions of lines left out in this instance, in recording order
+  repeated LeftOutRegion left_out = 5;
+
+  // Notes attached to positions in this instance, in recording order
+  repeated SourceNote notes = 6;
+}
+
+// A parameter of a template and the text it was bound to.
+// Maps to org.evochora.compiler.api.Expansion.Binding record.
+message ExpansionBinding {
+  // Name of the parameter
+  string parameter = 1;
+
+  // Text of the argument as written, with a space between two words where the program had one
+  string argument = 2;
+}
+
+// A region of lines the preprocessor left out, owned by the directive line that decided it.
+// Maps to org.evochora.compiler.api.SourceFile.LeftOut record.
+message LeftOutRegion {
+  // Instance of injected tokens the region was decided in, 0 for the text as written
+  int32 expansion = 1;
+
+  // Line of the directive that owns the region (1-indexed)
+  int32 directive_line = 2;
+
+  // First line of the region (1-indexed)
+  int32 from = 3;
+
+  // Last line of the region, inclusive (1-indexed)
+  int32 to = 4;
+}
+
+// A text the preprocessor attached to a source position.
+// Maps to org.evochora.compiler.api.SourceFile.Note record.
+message SourceNote {
+  // Instance of injected tokens the note was made in, 0 for the text as written
+  int32 expansion = 1;
+
+  // Line of the position (1-indexed)
+  int32 line = 2;
+
+  // Column of the position (1-indexed)
+  int32 column = 3;
+
+  // Text of the note, shown next to the token at the position
+  string text = 4;
 }
 
 // Maps a coordinate to an encoded instruction value.
@@ -292,6 +397,24 @@ message SourceMapEntry {
 
 // Container for a list of machine instructions that belong to the same source line.
 // Used to display all machine instructions generated from a single source line.
+// The machine instructions of the lines of one file in one placement and one expansion.
+// Protobuf-compatible representation of one placement, file and expansion of
+// Map<String, Map<String, Map<Integer, Map<Integer, List<MachineInstructionInfo>>>>>.
+message FileSourceLines {
+  // Alias chain of the module placement the file stands in
+  string placement = 1;
+
+  // Source filename, the file_name of the SourceInfo of every instruction listed
+  string file_name = 2;
+
+  // Line number (1-indexed) → machine instructions generated from that line
+  map<int32, MachineInstructionInfoList> lines = 3;
+
+  // Expansion of the instructions' positions: the instance of a source entry (SourceFile.instance)
+  // or the number of an instance in ProgramArtifact.expansions
+  int32 expansion = 4;
+}
+
 message MachineInstructionInfoList {
   // List of machine instructions, sorted by linear address (execution order)
   repeated MachineInstructionInfo instructions = 1;
@@ -327,6 +450,14 @@ message SourceInfo {
 
   // Column number (1-indexed)
   int32 column_number = 3;
+
+  // Alias chain of the module placement the location belongs to; two placements of one file
+  // share its locations
+  string placement = 4;
+
+  // Instance of injected tokens the location stands in, 0 for the text as written; the
+  // instances of tokens injected more than once share their locations
+  int32 expansion = 5;
 }
 
 // Maps a CALL instruction to its parameter register bindings.
@@ -400,14 +531,17 @@ message TokenInfo {
   optional string qualified_name = 4;
 }
 
-// Top-level token lookup structure for a file.
-// Protobuf-compatible representation of Map.Entry<String, Map<...>>.
+// Top-level token lookup structure for a file in one module placement.
+// Protobuf-compatible representation of one placement's Map.Entry<String, Map<...>>.
 message FileTokenLookup {
   // Source filename
   string file_name = 1;
 
   // Token lookup organized by line numbers
   repeated LineTokenLookup lines = 2;
+
+  // Alias chain of the module placement the file stands in
+  string placement = 3;
 }
 
 // Token lookup for a specific line in a file.

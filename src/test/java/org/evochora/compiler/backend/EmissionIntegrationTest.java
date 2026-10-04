@@ -1,12 +1,13 @@
 package org.evochora.compiler.backend;
 
+import org.evochora.compiler.TestLexers;
 import org.evochora.compiler.backend.rewrite.RewriteRegistry;
 import org.evochora.compiler.backend.rewrite.IRewriteRule;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.irgen.DefaultAstNodeToIrConverter;
 import org.evochora.compiler.frontend.irgen.IrConverterRegistry;
 import org.evochora.compiler.frontend.irgen.IrGenerator;
-import org.evochora.compiler.features.define.DefineNodeConverter;
+import org.evochora.compiler.features.constdir.ConstNodeConverter;
 import org.evochora.compiler.features.dir.DirNodeConverter;
 import org.evochora.compiler.features.importdir.ImportNodeConverter;
 import org.evochora.compiler.features.instruction.InstructionNodeConverter;
@@ -21,7 +22,7 @@ import org.evochora.compiler.features.ctx.PopCtxNodeConverter;
 import org.evochora.compiler.features.ctx.PushCtxNode;
 import org.evochora.compiler.features.ctx.PushCtxNodeConverter;
 import org.evochora.compiler.model.ast.InstructionNode;
-import org.evochora.compiler.features.define.DefineNode;
+import org.evochora.compiler.features.constdir.ConstNode;
 import org.evochora.compiler.features.dir.DirNode;
 import org.evochora.compiler.features.importdir.ImportNode;
 import org.evochora.compiler.features.label.LabelNode;
@@ -36,7 +37,7 @@ import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ParserStatementRegistry;
 import org.evochora.compiler.features.ctx.PopCtxDirectiveHandler;
 import org.evochora.compiler.features.ctx.PushCtxDirectiveHandler;
-import org.evochora.compiler.features.define.DefineDirectiveHandler;
+import org.evochora.compiler.features.constdir.ConstDirectiveHandler;
 import org.evochora.compiler.features.dir.DirDirectiveHandler;
 import org.evochora.compiler.features.importdir.ImportDirectiveHandler;
 import org.evochora.compiler.features.org.OrgDirectiveHandler;
@@ -91,19 +92,19 @@ public class EmissionIntegrationTest {
         String src = String.join("\n",
                 ".PROC INC REF A",
                 "  RET",
-                ".ENDP",
+                ".ENDPROC",
                 "CALL INC REF %DR1"
         );
 
         DiagnosticsEngine diags = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(src, diags);
+        Lexer lexer = new Lexer(src, diags, TestLexers.symbols());
         List<Token> tokens = lexer.scanTokens();
         // KORREKTUR: basePath hinzufügen
         Parser parser = new Parser(tokens, diags, allHandlers());
         List<AstNode> ast = parser.parse();
 
         SymbolTable symbolTable = new SymbolTable(diags);
-        new SemanticAnalyzer(diags, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diags), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry()).analyze(ast);
+        new SemanticAnalyzer(diags, symbolTable, null, null, TestRegistries.analysisRegistry(symbolTable, diags), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry()).analyze(ast);
 
         assertThat(diags.hasErrors()).as(diags.summary()).isFalse();
 
@@ -143,7 +144,7 @@ public class EmissionIntegrationTest {
 
     private static ParserStatementRegistry allHandlers() {
         ParserStatementRegistry reg = new ParserStatementRegistry();
-        reg.register(".DEFINE", new DefineDirectiveHandler());
+        reg.register(".CONST", new ConstDirectiveHandler());
         reg.register(".REG", new RegDirectiveHandler(new RuntimeInstructionSetAdapter()));
         reg.register(".PROC", new ProcDirectiveHandler(new RuntimeInstructionSetAdapter()));
         reg.register(".ORG", new OrgDirectiveHandler());
@@ -167,7 +168,7 @@ public class EmissionIntegrationTest {
         reg.register(DirNode.class, new DirNodeConverter());
         reg.register(PlaceNode.class, new PlaceNodeConverter());
         reg.register(ProcedureNode.class, new ProcedureNodeConverter());
-        reg.register(DefineNode.class, new DefineNodeConverter());
+        reg.register(ConstNode.class, new ConstNodeConverter());
         reg.register(ImportNode.class, new ImportNodeConverter());
         reg.register(RequireNode.class, new RequireNodeConverter());
         reg.register(RegNode.class, new RegNodeConverter());

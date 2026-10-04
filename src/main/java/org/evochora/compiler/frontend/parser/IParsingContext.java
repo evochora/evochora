@@ -5,6 +5,9 @@ import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.OperandNode;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
+import org.evochora.compiler.frontend.DirectiveLine;
+
+import java.util.function.Predicate;
 
 /**
  * Provides parser directive handlers with access to the token stream.
@@ -26,6 +29,22 @@ public interface IParsingContext {
     boolean check(TokenType type);
 
     /**
+     * Checks if the current token is a {@link TokenType#SYMBOL} with the given text, without
+     * consuming it.
+     * @param text The symbol, as the feature registered it.
+     * @return true if the current token is that symbol, false otherwise.
+     */
+    boolean checkSymbol(String text);
+
+    /**
+     * Checks if the current token is a {@link TokenType#SYMBOL} with the given text. If so,
+     * consumes it.
+     * @param text The symbol, as the feature registered it.
+     * @return true if the current token was that symbol and has been consumed, false otherwise.
+     */
+    boolean matchSymbol(String text);
+
+    /**
      * Consumes the current token and returns it.
      * @return The consumed token.
      */
@@ -39,7 +58,7 @@ public interface IParsingContext {
 
     /**
      * Returns the previously consumed token.
-     * @return The previous token.
+     * @return The token before the current one, or {@code null} at the start of the stream.
      */
     Token previous();
 
@@ -92,4 +111,14 @@ public interface IParsingContext {
      * @return true if the current statement is exported.
      */
     boolean isExported();
+
+    /**
+     * Finds the physical line of the current token, a directive, by the rules of
+     * {@link DirectiveLine}. The indices of the result count in the parser's token stream.
+     *
+     * @param passedOver The tokens directly before the directive that belong to it, which the
+     *                   rule passes over.
+     * @return The directive's operands, their end, and whether it stands alone on its line.
+     */
+    DirectiveLine currentLine(Predicate<Token> passedOver);
 }

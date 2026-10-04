@@ -1,16 +1,17 @@
 package org.evochora.compiler.directives;
 
+import org.evochora.compiler.TestLexers;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.semantics.ScopeTracker;
 import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ParserStatementRegistry;
-import org.evochora.compiler.features.define.DefineDirectiveHandler;
+import org.evochora.compiler.features.constdir.ConstDirectiveHandler;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.TypedLiteralNode;
 import org.evochora.compiler.model.ast.InstructionNode;
-import org.evochora.compiler.features.define.DefineNode;
+import org.evochora.compiler.features.constdir.ConstNode;
 import org.evochora.compiler.TestRegistries;
 import org.evochora.compiler.frontend.module.ModuleContextTracker;
 import org.evochora.compiler.frontend.semantics.SemanticAnalyzer;
@@ -26,11 +27,11 @@ import java.util.Objects;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Tests the parsing of the `.DEFINE` directive.
+ * Tests the parsing of the `.CONST` directive.
  * These tests ensure that the parser correctly creates an AST node for the directive.
  * These are unit tests and do not require external resources.
  */
-public class DefineDirectiveTest {
+public class ConstDirectiveTest {
     
     @BeforeAll
     static void setUp() {
@@ -38,17 +39,17 @@ public class DefineDirectiveTest {
     }
     
     /**
-     * Verifies that the parser correctly parses a `.DEFINE` directive into a {@link DefineNode}.
+     * Verifies that the parser correctly parses a `.CONST` directive into a {@link ConstNode}.
      * The test checks that the constant's name and its value are correctly represented in the AST.
      * This is a unit test that involves the lexer and parser components.
      */
     @Test
     @Tag("unit")
-    void testDefineDirectiveCreatesCorrectAstNode() {
+    void testConstDirectiveCreatesCorrectAstNode() {
         // Arrange
-        String source = ".DEFINE MY_CONST DATA:123";
+        String source = ".CONST MY_CONST DATA:123";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(source, diagnostics);
+        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
         List<Token> tokens = lexer.scanTokens();
         Parser parser = new Parser(tokens, diagnostics, registry()); // KORREKTUR
 
@@ -60,27 +61,27 @@ public class DefineDirectiveTest {
         // Assert
         assertThat(diagnostics.hasErrors()).isFalse();
         assertThat(ast).hasSize(1);
-        assertThat(ast.get(0)).isInstanceOf(DefineNode.class);
+        assertThat(ast.get(0)).isInstanceOf(ConstNode.class);
 
-        DefineNode defineNode = (DefineNode) ast.get(0);
-        assertThat(defineNode.name()).isEqualTo("MY_CONST");
-        assertThat(defineNode.value()).isInstanceOf(TypedLiteralNode.class);
+        ConstNode constNode = (ConstNode) ast.get(0);
+        assertThat(constNode.name()).isEqualTo("MY_CONST");
+        assertThat(constNode.value()).isInstanceOf(TypedLiteralNode.class);
     }
     
     /**
-     * Verifies that constants defined by `.DEFINE` directives are correctly resolved
+     * Verifies that constants defined by `.CONST` directives are correctly resolved
      * when used in instructions. This tests the full compiler pipeline up to AST post-processing.
      */
     @Test
     @Tag("unit")
-    void testDefineDirectiveAndConstantUsage() {
+    void testConstDirectiveAndConstantUsage() {
         // Arrange
         String source = String.join("\n",
-                ".DEFINE MAX_VALUE DATA:42",
+                ".CONST MAX_VALUE DATA:42",
                 "SETI %DR0 MAX_VALUE"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(source, diagnostics);
+        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
         List<Token> tokens = lexer.scanTokens();
         Parser parser = new Parser(tokens, diagnostics, registry());
 
@@ -89,7 +90,7 @@ public class DefineDirectiveTest {
         
         // Semantic Analysis - Populates symbol table with constants
         SymbolTable symbolTable = new SymbolTable(diagnostics);
-        SemanticAnalyzer semanticAnalyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
+        SemanticAnalyzer semanticAnalyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
         semanticAnalyzer.analyze(ast);
 
         // AST Post-Processing - Resolves constants
@@ -100,9 +101,9 @@ public class DefineDirectiveTest {
 
         // Assert
         assertThat(diagnostics.hasErrors()).isFalse();
-        assertThat(processedAst).hasSize(2); // DefineNode + InstructionNode
-        // First node should be the DefineNode
-        assertThat(processedAst.get(0)).isInstanceOf(DefineNode.class);
+        assertThat(processedAst).hasSize(2); // ConstNode + InstructionNode
+        // First node should be the ConstNode
+        assertThat(processedAst.get(0)).isInstanceOf(ConstNode.class);
         
         // Second node should be the InstructionNode with resolved constant
         assertThat(processedAst.get(1)).isInstanceOf(InstructionNode.class);
@@ -116,7 +117,7 @@ public class DefineDirectiveTest {
 
     private static ParserStatementRegistry registry() {
         ParserStatementRegistry reg = new ParserStatementRegistry();
-        reg.register(".DEFINE", new DefineDirectiveHandler());
+        reg.register(".CONST", new ConstDirectiveHandler());
         reg.registerDefault(new org.evochora.compiler.features.instruction.InstructionParsingHandler());
         return reg;
     }

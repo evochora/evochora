@@ -37,27 +37,22 @@ public class Emitter {
      * for each IR item. Contributors populate the {@link EmissionContext} with feature-specific
      * metadata (e.g., procedure parameter info), which the artifact carries.</p>
      *
-     * @param program The linked IR program.
+     * @param program The linked IR program; its {@link org.evochora.compiler.model.ir.DebugInfo}
+     *                supplies the source files and the token map, which the artifact carries
+     *                unchanged, and from which the token lookup by position is built.
      * @param layout The layout result, containing coordinate and source mapping.
      * @param linkingContext The context from the linking phase, containing call site bindings.
      * @param isa The instruction set architecture for opcode and register resolution.
      * @param contributorRegistry Registry of emission contributors for extracting metadata from IR.
-     * @param sources The text of every source file, keyed by file name; the artifact carries
-     *                them line by line.
-     * @param tokenMap Token classification per source position, copied into the artifact unchanged.
-     * @param tokenLookup The same token classification indexed by file name, line and column,
-     *                    copied into the artifact unchanged.
      * @return The final, compiled {@link ProgramArtifact}.
-     * @throws CompilationException if an item cannot be encoded or has no cell in the layout.
+     * @throws CompilationException if an item cannot be encoded or has no cell in the layout, or
+     *         if the position of an instruction names no entry of the program's sources.
      */
     public ProgramArtifact emit(IrProgram program,
                                 LayoutResult layout,
                                 LinkingContext linkingContext,
                                 IInstructionSet isa,
-                                EmissionContributorRegistry contributorRegistry,
-                                Map<String, String> sources,
-                                Map<SourceInfo, TokenInfo> tokenMap,
-                                Map<String, Map<Integer, Map<Integer, List<TokenInfo>>>> tokenLookup) throws CompilationException {
+                                EmissionContributorRegistry contributorRegistry) throws CompilationException {
         EmissionContext emissionContext = new EmissionContext();
         List<IEmissionContributor> contributors = contributorRegistry.contributors();
         for (IrItem item : program.items()) {
@@ -67,7 +62,8 @@ public class Emitter {
         }
 
         OperandEncoder encoder = new OperandEncoder(isa);
-        SourceLineIndex sourceLines = new SourceLineIndex(layout, isa);
+        SourceLineIndex sourceLines = new SourceLineIndex(layout, isa, program.debugInfo().sources(),
+                program.debugInfo().expansions());
         Map<Integer, int[]> linearToCoord = layout.linearAddressToCoord();
         Map<int[], Integer> machineCodeLayout = new HashMap<>();
 
@@ -108,10 +104,8 @@ public class Emitter {
         Map<int[], Integer> sortedMachineCodeLayout = sortMapByCoordinate(machineCodeLayout);
         Map<int[], PlacedMolecule> sortedInitialObjects = sortMapByCoordinate(layout.initialWorldObjects());
 
-        int contentHash = sortedMachineCodeLayout.entrySet().stream()
-                .mapToInt(e -> Arrays.hashCode(e.getKey()) * 31 + e.getValue().hashCode())
-                .sum();
-        String programId = Integer.toHexString(contentHash);
+        String programId = ProgramIdentity.of(sortedMachineCodeLayout, sortedInitialObjects,
+                program.debugInfo().flags());
 
         // Label values for the visualizer's view of fuzzy jumps
         Map<Integer, String> labelValueToName = new HashMap<>();
@@ -121,12 +115,12 @@ public class Emitter {
             labelNameToValue.put(name, value);
         });
 
-        Map<String, List<String>> linesByFile = new HashMap<>();
-        sources.forEach((path, text) -> linesByFile.put(path, Arrays.asList(text.split("\\r?\\n"))));
+        Map<SourceInfo, TokenInfo> tokenMap = program.debugInfo().tokenMap();
 
         return new ProgramArtifact(
                 programId,
-                linesByFile,
+                program.debugInfo().sources(),
+                program.debugInfo().expansions(),
                 sortedMachineCodeLayout,
                 sortedInitialObjects,
                 layout.sourceMap(),
@@ -134,9 +128,10 @@ public class Emitter {
                 layout.relativeCoordToLinearAddress(),
                 linearToCoord,
                 emissionContext.registerAliasMap(),
+                emissionContext.constantValues(),
                 emissionContext.procNameToParamNames(),
                 tokenMap,
-                tokenLookup,
+                TokenLookup.of(tokenMap),
                 sourceLines.byLine(),
                 labelValueToName,
                 labelNameToValue

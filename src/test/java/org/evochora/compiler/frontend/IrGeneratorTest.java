@@ -6,12 +6,13 @@
 
 package org.evochora.compiler.frontend;
 
+import org.evochora.compiler.TestLexers;
 import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.irgen.DefaultAstNodeToIrConverter;
 import org.evochora.compiler.frontend.irgen.IrConverterRegistry;
 import org.evochora.compiler.frontend.irgen.IrGenerator;
-import org.evochora.compiler.features.define.DefineNodeConverter;
+import org.evochora.compiler.features.constdir.ConstNodeConverter;
 import org.evochora.compiler.features.dir.DirNodeConverter;
 import org.evochora.compiler.features.importdir.ImportNodeConverter;
 import org.evochora.compiler.features.instruction.InstructionNodeConverter;
@@ -25,7 +26,7 @@ import org.evochora.compiler.features.ctx.PopCtxNode;
 import org.evochora.compiler.features.ctx.PopCtxNodeConverter;
 import org.evochora.compiler.features.ctx.PushCtxNode;
 import org.evochora.compiler.features.ctx.PushCtxNodeConverter;
-import org.evochora.compiler.features.define.DefineNode;
+import org.evochora.compiler.features.constdir.ConstNode;
 import org.evochora.compiler.features.dir.DirNode;
 import org.evochora.compiler.features.importdir.ImportNode;
 import org.evochora.compiler.features.label.LabelNode;
@@ -40,7 +41,7 @@ import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ParserStatementRegistry;
 import org.evochora.compiler.features.ctx.PopCtxDirectiveHandler;
 import org.evochora.compiler.features.ctx.PushCtxDirectiveHandler;
-import org.evochora.compiler.features.define.DefineDirectiveHandler;
+import org.evochora.compiler.features.constdir.ConstDirectiveHandler;
 import org.evochora.compiler.features.dir.DirDirectiveHandler;
 import org.evochora.compiler.features.importdir.ImportDirectiveHandler;
 import org.evochora.compiler.features.org.OrgDirectiveHandler;
@@ -78,7 +79,7 @@ public class IrGeneratorTest {
     private IrProgram compileToIr(String source) {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
 
-        Lexer lexer = new Lexer(source, diagnostics);
+        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
         List<Token> tokens = lexer.scanTokens();
         if (diagnostics.hasErrors()) {
             fail("Lexer errors: " + diagnostics.summary());
@@ -94,7 +95,7 @@ public class IrGeneratorTest {
         SymbolTable symbolTable = new SymbolTable(diagnostics);
         symbolTable.registerModule(rootAliasChain, "<memory>");
         symbolTable.setCurrentModule(rootAliasChain);
-        new SemanticAnalyzer(diagnostics, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry()).analyze(ast);
+        new SemanticAnalyzer(diagnostics, symbolTable, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry()).analyze(ast);
         if (diagnostics.hasErrors()) {
             fail("Semantic analysis errors: " + diagnostics.summary());
         }
@@ -111,7 +112,7 @@ public class IrGeneratorTest {
 
         IrConverterRegistry registry = allConverters();
         IrGenerator irGen = new IrGenerator(diagnostics, registry);
-        IrProgram ir = irGen.generate(ast, "TestProg", rootAliasChain);
+        IrProgram ir = irGen.generate(ast, "TestProg", rootAliasChain, DebugInfo.none());
         if (diagnostics.hasErrors()) {
             fail("IR generation errors: " + diagnostics.summary());
         }
@@ -124,7 +125,7 @@ public class IrGeneratorTest {
         String src = """
             .PROC myProc REF rA VAL v1
                 CALL myProc REF %DR1 VAL 42
-            .ENDP
+            .ENDPROC
             """;
         IrProgram ir = compileToIr(src);
         Optional<IrCallInstruction> callInstructionOpt = ir.items().stream()
@@ -154,7 +155,7 @@ public class IrGeneratorTest {
         String src = """
             .PROC oldProc REF p1
                 CALL oldProc REF p1
-            .ENDP
+            .ENDPROC
             """;
         IrProgram ir = compileToIr(src);
         Optional<IrCallInstruction> callInstructionOpt = ir.items().stream()
@@ -209,6 +210,18 @@ public class IrGeneratorTest {
 
     @Test
     @Tag("unit")
+    void negativeHexTypedLiteralResolvesToItsValue() {
+        IrProgram ir = compileToIr("SETI %DR0 DATA:-0x10");
+
+        IrInstruction seti = (IrInstruction) ir.items().stream()
+                .filter(IrInstruction.class::isInstance)
+                .findFirst()
+                .orElseThrow();
+        assertThat(seti.operands().get(1)).isEqualTo(new IrTypedImm("DATA", -16));
+    }
+
+    @Test
+    @Tag("unit")
     void endToEnd_sourceMapContentIsCorrect() throws org.evochora.compiler.api.CompilationException {
         String source = "SETI %DR0 DATA:42";
         org.evochora.compiler.Compiler compiler = new org.evochora.compiler.Compiler();
@@ -220,12 +233,12 @@ public class IrGeneratorTest {
 
         org.evochora.compiler.api.SourceInfo infoForOpcode = artifact.sourceMap().get(0);
         assertThat(infoForOpcode).isNotNull();
-        String lineContent = artifact.sources().get(infoForOpcode.fileName()).get(infoForOpcode.lineNumber() - 1);
+        String lineContent = lineAt(artifact, infoForOpcode);
         assertThat(lineContent.trim()).isEqualTo("SETI %DR0 DATA:42");
 
         org.evochora.compiler.api.SourceInfo infoForArg1 = artifact.sourceMap().get(1);
         assertThat(infoForArg1).isNotNull();
-        String lineContent2 = artifact.sources().get(infoForArg1.fileName()).get(infoForArg1.lineNumber() - 1);
+        String lineContent2 = lineAt(artifact, infoForArg1);
         assertThat(lineContent2.trim()).isEqualTo("SETI %DR0 DATA:42");
     }
 
@@ -236,7 +249,7 @@ public class IrGeneratorTest {
             .PROC myProc REF rA VAL v1
                 ADDR rA v1
                 RET
-            .ENDP
+            .ENDPROC
             """;
         IrProgram ir = compileToIr(src);
         
@@ -267,7 +280,7 @@ public class IrGeneratorTest {
             .PROC myProc VAL v1 v2
                 ADDR v1 v2
                 RET
-            .ENDP
+            .ENDPROC
             """;
         IrProgram ir = compileToIr(src);
         
@@ -298,12 +311,12 @@ public class IrGeneratorTest {
             .PROC outerProc REF rA VAL v1
                 CALL innerProc REF rA VAL v1
                 RET
-            .ENDP
+            .ENDPROC
             
             .PROC innerProc REF rB VAL v2
                 NOP
                 RET
-            .ENDP
+            .ENDPROC
             """;
         IrProgram ir = compileToIr(src);
         
@@ -334,7 +347,7 @@ public class IrGeneratorTest {
 
     private static ParserStatementRegistry allHandlers() {
         ParserStatementRegistry reg = new ParserStatementRegistry();
-        reg.register(".DEFINE", new DefineDirectiveHandler());
+        reg.register(".CONST", new ConstDirectiveHandler());
         reg.register(".REG", new RegDirectiveHandler(new RuntimeInstructionSetAdapter()));
         reg.register(".PROC", new ProcDirectiveHandler(new RuntimeInstructionSetAdapter()));
         reg.register(".ORG", new OrgDirectiveHandler());
@@ -358,7 +371,7 @@ public class IrGeneratorTest {
         reg.register(DirNode.class, new DirNodeConverter());
         reg.register(PlaceNode.class, new PlaceNodeConverter());
         reg.register(ProcedureNode.class, new ProcedureNodeConverter());
-        reg.register(DefineNode.class, new DefineNodeConverter());
+        reg.register(ConstNode.class, new ConstNodeConverter());
         reg.register(ImportNode.class, new ImportNodeConverter());
         reg.register(RequireNode.class, new RequireNodeConverter());
         reg.register(RegNode.class, new RegNodeConverter());
@@ -366,5 +379,16 @@ public class IrGeneratorTest {
         reg.register(PushCtxNode.class, new PushCtxNodeConverter());
         reg.register(PopCtxNode.class, new PopCtxNodeConverter());
         return reg;
+    }
+
+    /** The source line a position names, looked up in the file of its placement. */
+    private static String lineAt(org.evochora.compiler.api.ProgramArtifact artifact,
+                                 org.evochora.compiler.api.SourceInfo position) {
+        return artifact.sources().stream()
+                .filter(file -> file.placement().equals(position.placement())
+                        && file.resolvedPath().equals(position.fileName()))
+                .findFirst()
+                .orElseThrow()
+                .lines().get(position.lineNumber() - 1);
     }
 }

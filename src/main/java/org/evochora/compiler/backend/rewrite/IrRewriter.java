@@ -29,13 +29,14 @@ public final class IrRewriter {
 	 *
 	 * @param program The generated IR program.
 	 * @param isa     The instruction set the rules may consult.
-	 * @return A program with the rewritten items, under the same name.
+	 * @return A program with the rewritten items, under the same name and with the same debug
+	 *         information.
 	 */
 	public IrProgram rewrite(IrProgram program, IInstructionSet isa) {
 		List<IrItem> items = program.items();
 		for (IRewriteRule rule : registry.rules()) {
 			items = rule.apply(items, isa);
 		}
-		return new IrProgram(program.programName(), items);
+		return new IrProgram(program.programName(), items, program.debugInfo());
 	}
 }

@@ -570,11 +570,18 @@ public class RowPerChunkStrategy extends AbstractH2EnvStorageStrategy {
      * @throws SQLException if file I/O fails
      */
     private static byte[] readChunkFile(Path chunkFile) throws SQLException {
+        byte[] bytes;
         try {
-            return Files.readAllBytes(chunkFile);
+            bytes = Files.readAllBytes(chunkFile);
         } catch (IOException e) {
             throw new SQLException("Failed to read chunk file: " + chunkFile, e);
         }
+        // A chunk file always holds one chunk; an empty one was cut off before its data reached
+        // the disk and would otherwise parse as a chunk without cells
+        if (bytes.length == 0) {
+            throw new SQLException("Chunk file is empty: " + chunkFile);
+        }
+        return bytes;
     }
 
     /**

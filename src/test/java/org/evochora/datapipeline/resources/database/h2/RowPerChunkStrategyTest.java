@@ -470,6 +470,32 @@ class RowPerChunkStrategyTest {
             .hasMessageContaining("Chunk file not found");
     }
 
+    /**
+     * A chunk file always holds one chunk, so an empty one was cut off before its data reached the
+     * disk. Reading it has to fail rather than yield a chunk without cells, which the visualizer
+     * would draw as an empty world.
+     */
+    @Test
+    void testReadChunkContaining_EmptyFile() throws SQLException, IOException {
+        strategy = new RowPerChunkStrategy(configWithChunkDirAndZstd());
+
+        Path schemaDir = tempDir.resolve(TEST_SCHEMA);
+        Files.createDirectories(schemaDir.resolve("0000"));
+        var props = new java.util.Properties();
+        props.setProperty("ticksPerSubdirectory", "10000");
+        try (var out = Files.newOutputStream(schemaDir.resolve(".chunk_meta"))) {
+            props.store(out, null);
+        }
+        Files.createFile(schemaDir.resolve("0000").resolve("chunk_1000.pb.zst"));
+
+        when(mockResultSet.next()).thenReturn(true);
+        when(mockResultSet.getLong("first_tick")).thenReturn(1000L);
+
+        assertThatThrownBy(() -> strategy.prepareChunkRead(mockConnection, 1000L).read())
+            .isInstanceOf(SQLException.class)
+            .hasMessageContaining("chunk_1000.pb.zst");
+    }
+
     // ========================================================================
     // writeRawChunk / commitRawChunks round-trip
     // ========================================================================

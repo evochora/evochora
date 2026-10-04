@@ -3,17 +3,12 @@ package org.evochora.compiler.frontend.semantics;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.module.DependencyGraph;
 import org.evochora.compiler.frontend.module.IDependencyInfo;
-import org.evochora.compiler.frontend.module.ModuleDescriptor;
-import org.evochora.compiler.frontend.module.ModuleId;
+import org.evochora.compiler.frontend.module.ModulePlacement;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.frontend.module.ModuleContextTracker;
 import org.evochora.compiler.model.symbols.SymbolTable;
 
-import java.util.HashMap;
-import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -31,7 +26,6 @@ public class SemanticAnalyzer {
     private final DiagnosticsEngine diagnostics;
     private final SymbolTable symbolTable;
     private final DependencyGraph graph;
-    private final String mainFilePath;
     private final String rootAliasChain;
     private final AnalysisHandlerRegistry registry;
     private final ModuleSetupRegistry setupRegistry;
@@ -44,20 +38,17 @@ public class SemanticAnalyzer {
      * @param diagnostics    The diagnostics engine for reporting errors.
      * @param symbolTable    The symbol table to use for analysis.
      * @param graph          The dependency graph from Phase 0. Null for single-file compilation.
-     * @param mainFilePath   The absolute path of the main source file. Null when graph is null.
      * @param rootAliasChain The alias chain for the root module (e.g., "MAIN"). Null when graph is null.
      * @param registry       The pre-built analysis handler registry.
      * @param setupRegistry  The registry of handlers that turn the graph's dependency data
      *                       into module relationships in the symbol table.
      */
     public SemanticAnalyzer(DiagnosticsEngine diagnostics, SymbolTable symbolTable,
-                            DependencyGraph graph, String mainFilePath,
-                            String rootAliasChain, AnalysisHandlerRegistry registry,
+                            DependencyGraph graph, String rootAliasChain, AnalysisHandlerRegistry registry,
                             ModuleSetupRegistry setupRegistry) {
         this.diagnostics = diagnostics;
         this.symbolTable = symbolTable;
         this.graph = graph;
-        this.mainFilePath = mainFilePath;
         this.rootAliasChain = rootAliasChain;
         this.contextTracker = new ModuleContextTracker(symbolTable);
         this.registry = registry;
@@ -75,7 +66,7 @@ public class SemanticAnalyzer {
      */
     public void analyze(List<AstNode> statements) {
         if (graph != null && rootAliasChain != null) {
-            setupModuleRelationships(graph, mainFilePath, rootAliasChain);
+            setupModuleRelationships(graph, rootAliasChain);
         }
         collectSymbols(statements);
         analyzeStatements(statements);
@@ -127,49 +118,22 @@ public class SemanticAnalyzer {
     }
 
     /**
-     * Sets up module relationships in the symbol table from the dependency graph.
-     * Each module is registered under its alias chain, which is computed from the
-     * import hierarchy. The root module uses rootAliasChain, imported modules use
-     * their import alias appended to the parent's chain.
+     * Sets up module relationships in the symbol table from the dependency graph. Every module
+     * placement is registered under the alias chain the dependency scan gave it, the same chain
+     * the preprocessor gave its tokens; a file imported more than once is a module once per
+     * import.
      */
-    private void setupModuleRelationships(DependencyGraph graph, String mainFilePath, String rootAliasChain) {
-        List<ModuleDescriptor> topoOrder = graph.topologicalOrder();
+    private void setupModuleRelationships(DependencyGraph graph, String rootAliasChain) {
+        List<ModulePlacement> placements = graph.placements();
 
-        // Dependencies come first in the topological order; two of the steps below need the
-        // opposite, each for its own reason, and both mean the same sequence.
-        List<ModuleDescriptor> fromRoot = new ArrayList<>(topoOrder);
-        Collections.reverse(fromRoot);
-
-        // Step 1: Compute alias chains (root first, then dependencies).
-        Map<String, String> pathToAliasChain = new HashMap<>();
-        pathToAliasChain.put(mainFilePath, rootAliasChain);
-
-        for (ModuleDescriptor module : fromRoot) {
-            String modulePath = module.sourcePath();
-            String moduleAliasChain = pathToAliasChain.get(modulePath);
-            if (moduleAliasChain == null) {
-                moduleAliasChain = ModuleId.deriveModuleName(modulePath);
-                pathToAliasChain.put(modulePath, moduleAliasChain);
-            }
-            ModuleSetupContext ctx = new ModuleSetupContext(symbolTable, diagnostics, pathToAliasChain, modulePath);
-            for (IDependencyInfo dep : module.dependencies()) {
-                IDependencySetupHandler<IDependencyInfo> handler = setupRegistry.resolve(dep.getClass());
-                if (handler != null) {
-                    handler.registerScope(dep, ctx);
-                }
-            }
+        for (ModulePlacement placement : placements) {
+            symbolTable.registerModule(placement.aliasChain(), placement.sourcePath());
         }
 
-        // Step 2: Register all modules, then dispatch relationship registration.
-        for (ModuleDescriptor module : topoOrder) {
-            String modulePath = module.sourcePath();
-            String moduleAliasChain = pathToAliasChain.getOrDefault(modulePath,
-                    ModuleId.deriveModuleName(modulePath));
-            symbolTable.registerModule(moduleAliasChain, modulePath);
-        }
-        for (ModuleDescriptor module : topoOrder) {
-            ModuleSetupContext ctx = new ModuleSetupContext(symbolTable, diagnostics, pathToAliasChain, module.sourcePath());
-            for (IDependencyInfo dep : module.dependencies()) {
+        // Step 1: Register relationships, imported placements first.
+        for (ModulePlacement placement : placements) {
+            ModuleSetupContext ctx = new ModuleSetupContext(symbolTable, diagnostics, placement.aliasChain());
+            for (IDependencyInfo dep : placement.dependencies()) {
                 IDependencySetupHandler<IDependencyInfo> handler = setupRegistry.resolve(dep.getClass());
                 if (handler != null) {
                     handler.registerRelationships(dep, ctx);
@@ -177,15 +141,15 @@ public class SemanticAnalyzer {
             }
         }
 
-        // Step 3: Resolve cross-module bindings (USING etc.).
+        // Step 2: Resolve cross-module bindings (USING etc.).
         //
-        // Walked from the outermost module inwards: a module may hand on a dependency it was given
-        // itself, and it can only do that once it has been given it. The walk is finite because the
-        // module graph is acyclic - a cycle among modules is reported during scanning and never
-        // reaches this point.
-        for (ModuleDescriptor module : fromRoot) {
-            ModuleSetupContext ctx = new ModuleSetupContext(symbolTable, diagnostics, pathToAliasChain, module.sourcePath());
-            for (IDependencyInfo dep : module.dependencies()) {
+        // Walked from the outermost placement inwards: a module may hand on a dependency it was
+        // given itself, and it can only do that once it has been given it. The placements form a
+        // tree under the main module, listed with every placement after the placements it imports,
+        // so the reversed list puts every placement before them.
+        for (ModulePlacement placement : placements.reversed()) {
+            ModuleSetupContext ctx = new ModuleSetupContext(symbolTable, diagnostics, placement.aliasChain());
+            for (IDependencyInfo dep : placement.dependencies()) {
                 IDependencySetupHandler<IDependencyInfo> handler = setupRegistry.resolve(dep.getClass());
                 if (handler != null) {
                     handler.resolveBindings(dep, ctx);

@@ -797,9 +797,12 @@ export class AppController {
         // sent meanwhile: a run change or a faster later poll makes it stale
         const runId = this.state.runId;
         const request = ++this._tickRangeRequest;
+        // A poll the user did not start: it does not show on the loading indicator
         const [envTicks, orgTickRange] = await Promise.all([
-            this.environmentApi.fetchTickRange(runId).catch(e => this._tickRangeMiss('environment', e)),
-            this.organismApi.fetchTickRange(runId).catch(e => this._tickRangeMiss('organism', e))
+            this.environmentApi.fetchTickRange(runId, { showLoading: false })
+                .catch(e => this._tickRangeMiss('environment', e)),
+            this.organismApi.fetchTickRange(runId, { showLoading: false })
+                .catch(e => this._tickRangeMiss('organism', e))
         ]);
         if (runId !== this.state.runId || request !== this._tickRangeRequest) {
             return false;
@@ -1040,6 +1043,10 @@ export class AppController {
             this.state.totalOrganismCount = organismResult.totalOrganismCount;
             this._showOrganisms(organisms, organismResult.descent, requestedRoot, isForwardStep);
             organismsShown = true;
+            // The organisms of the tick are shown from here on, whatever becomes of the
+            // environment load: the descent poll refers to them
+            this.state.previousOrganisms = organisms;
+            this.state.previousTick = this.state.currentTick;
 
             // Reload organism details if one is selected
             if (this.state.selectedOrganismId) {
@@ -1071,10 +1078,6 @@ export class AppController {
             }
             this.updateMinimapViewport();
             this.renderer.renderOrganisms(organisms);
-
-            // Save current organisms for next comparison
-            this.state.previousOrganisms = organisms;
-            this.state.previousTick = this.state.currentTick;
 
             if (!managedExternally) {
                 loadingManager.hide();
@@ -1390,6 +1393,28 @@ export class AppController {
         this.descentColouring = new DescentColouring(descent, this._palettePair);
         const root = descent?.root;
         this.tickPanelManager?.setRootBirthTick(root && root.id !== 0 ? (root.birthTick ?? null) : null);
+        loadingManager.setBackground(AppController._descentStatus(descent));
+    }
+
+    /**
+     * The text the timeline's loading overlay shows while the descent of the shown tick is not
+     * complete: the progress of the run's ancestry while it is read, or the number of living
+     * organisms whose ancestry the server has not read yet.
+     * @param {object|null} descent - The descent of the shown tick.
+     * @returns {string|null} The status text, or null when the descent is complete or failed.
+     * @private
+     */
+    static _descentStatus(descent) {
+        if (!descent || descent.state === 'failed') {
+            return null;
+        }
+        if (descent.state === 'loading') {
+            return `loading ancestry ${Math.floor((descent.progress || 0) * 100)} %`;
+        }
+        if (descent.unreadLiving > 0) {
+            return `ancestry: ${descent.unreadLiving} ${descent.unreadLiving === 1 ? 'organism' : 'organisms'} unread`;
+        }
+        return null;
     }
 
     /**
@@ -1399,6 +1424,7 @@ export class AppController {
     _resetDescent() {
         this.state.root = 'auto';
         this.state.descent = null;
+        loadingManager.setBackground(null);
         this._rootNotice = null;
         this.descentColouring = new DescentColouring(null);
         this._palettePair = 0;

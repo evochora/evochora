@@ -144,15 +144,18 @@ export class OrganismApi {
      * If no run ID is provided, the server will default to the latest available run.
      * 
      * @param {string|null} [runId=null] - The specific run ID to fetch the tick range for.
+     * @param {object} [options={}] - Optional settings.
+     * @param {boolean} [options.showLoading=true] - Whether the request counts towards the
+     *        loading indicator; false for a poll the user did not start and need not see.
      * @returns {Promise<{minTick: number, maxTick: number}>} A promise that resolves to an object containing the min and max tick.
      * @throws {Error} If the network request fails or the server returns an error.
      */
-    async fetchTickRange(runId = null) {
+    async fetchTickRange(runId = null, { showLoading = true } = {}) {
         const url = runId
             ? `/visualizer/api/organisms/ticks?runId=${encodeURIComponent(runId)}`
             : `/visualizer/api/organisms/ticks`;
         
-        return apiClient.fetch(url);
+        return apiClient.fetch(url, {}, { showLoading });
     }
 }
 

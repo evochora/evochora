@@ -317,12 +317,15 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
             CodedInputStream cis = CodedInputStream.newInstance(decompressedStream);
             cis.setSizeLimit(Integer.MAX_VALUE);
 
+            int chunkCount = 0;
             while (!cis.isAtEnd()) {
                 int messageSize = cis.readRawVarint32();
                 byte[] rawBytes = cis.readRawBytes(messageSize);
                 RawChunk rawChunk = partialParseRawChunk(rawBytes);
                 consumer.accept(rawChunk);
+                chunkCount++;
             }
+            requireAChunk(chunkCount, path);
 
             bytesRead = countingStream.getBytesRead();
         }
@@ -331,6 +334,20 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
         lastReadBatchSizeMB.set(batchSizeMB);
         maxReadBatchSizeMB.updateAndGet(current -> Math.max(current, batchSizeMB));
         recordRead(bytesRead, System.nanoTime() - startNanos);
+    }
+
+    /**
+     * Fails for a batch file that held no chunk. The writer never stores an empty batch, so such a
+     * file was cut off before its data reached the storage.
+     *
+     * @param chunkCount the chunks read from the file
+     * @param path the file that was read
+     * @throws IOException if no chunk was read
+     */
+    private static void requireAChunk(int chunkCount, StoragePath path) throws IOException {
+        if (chunkCount == 0) {
+            throw new IOException("Batch file holds no chunk: " + path.asString());
+        }
     }
 
     /**
@@ -430,12 +447,14 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
              CountingInputStream countingStream = new CountingInputStream(rawStream);
              InputStream decompressedStream = detectedCodec.wrapInputStream(countingStream)) {
 
+            int chunkCount = 0;
             if (filter == ChunkFieldFilter.ALL && relevance == ITickRelevance.EVERYTHING) {
                 while (true) {
                     TickDataChunk chunk = TickDataChunk.parseDelimitedFrom(decompressedStream);
                     if (chunk == null) break;
                     verifyChunkIsComplete(chunk, path);
                     consumer.accept(chunk);
+                    chunkCount++;
                 }
             } else {
                 CodedInputStream cis = CodedInputStream.newInstance(decompressedStream);
@@ -451,8 +470,10 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
                     consumer.accept(chunk);
                     cis.skipRawBytes(cis.getBytesUntilLimit());
                     cis.popLimit(limit);
+                    chunkCount++;
                 }
             }
+            requireAChunk(chunkCount, path);
 
             bytesRead = countingStream.getBytesRead();
         }

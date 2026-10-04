@@ -59,14 +59,14 @@ public class CallStatementHandler implements IParserStatementHandler {
                     Token unexpected = context.advance();
                     context.getDiagnostics().reportError(
                             "Unexpected token '" + unexpected.text() + "' in CALL statement. Expected REF, VAL, LREF, LVAL, or newline.",
-                            unexpected.fileName(), unexpected.line());
+                            unexpected.source().fileName(), unexpected.source().lineNumber());
                     break;
                 }
             }
-            return new CallNode(procName, refArguments, valArguments, lrefArguments, lvalArguments, opcode.toSourceInfo());
+            return new CallNode(procName, refArguments, valArguments, lrefArguments, lvalArguments, opcode.source());
         } else {
             // No parameter keywords — plain CALL with no arguments
-            return new CallNode(procName, List.of(), List.of(), List.of(), List.of(), opcode.toSourceInfo());
+            return new CallNode(procName, List.of(), List.of(), List.of(), List.of(), opcode.source());
         }
     }
 

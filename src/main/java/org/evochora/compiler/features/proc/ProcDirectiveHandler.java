@@ -54,13 +54,13 @@ public class ProcDirectiveHandler implements IParserStatementHandler {
             String keyword = context.peek().text().toUpperCase();
             List<ProcedureNode.ParamDecl> target = parametersByKeyword.get(keyword);
             if (target == null) {
-                context.getDiagnostics().reportError("Unexpected '" + context.peek().text() + "' in .PROC: expected REF, VAL, LREF or LVAL.", procName.fileName(), procName.line());
+                context.getDiagnostics().reportError("Unexpected '" + context.peek().text() + "' in .PROC: expected REF, VAL, LREF or LVAL.", procName.source().fileName(), procName.source().lineNumber());
                 break;
             }
             context.advance();
             while (!context.isAtEnd() && context.check(TokenType.IDENTIFIER) && !isParamKeyword(context.peek().text())) {
                 Token p = context.consume(TokenType.IDENTIFIER, "Expected a formal parameter name after " + keyword + ".");
-                target.add(new ProcedureNode.ParamDecl(p.text(), p.toSourceInfo()));
+                target.add(new ProcedureNode.ParamDecl(p.text(), p.source()));
             }
         }
 
@@ -76,7 +76,7 @@ public class ProcDirectiveHandler implements IParserStatementHandler {
         context.state().addAvailableRegisterBanks(procScopedBanks);
 
         List<AstNode> body = new ArrayList<>();
-        while (!context.isAtEnd() && !(context.check(TokenType.DIRECTIVE) && context.peek().text().equalsIgnoreCase(".ENDP"))) {
+        while (!context.isAtEnd() && !(context.check(TokenType.DIRECTIVE) && context.peek().text().equalsIgnoreCase(".ENDPROC"))) {
             if (context.match(TokenType.NEWLINE)) continue;
             AstNode statement = context.declaration();
             if (statement != null) {
@@ -87,13 +87,13 @@ public class ProcDirectiveHandler implements IParserStatementHandler {
         context.state().removeAvailableRegisterBanks(procScopedBanks);
         context.state().popScope();
 
-        if (context.isAtEnd() || !(context.check(TokenType.DIRECTIVE) && context.peek().text().equalsIgnoreCase(".ENDP"))) {
-            context.getDiagnostics().reportError(".PROC '" + procName.text() + "' is not closed; expected .ENDP.", procName.fileName(), procName.line());
+        if (context.isAtEnd() || !(context.check(TokenType.DIRECTIVE) && context.peek().text().equalsIgnoreCase(".ENDPROC"))) {
+            context.getDiagnostics().reportError(".PROC '" + procName.text() + "' is not closed; expected .ENDPROC.", procName.source().fileName(), procName.source().lineNumber());
         } else {
-            context.advance(); // consume .ENDP
+            context.advance(); // consume .ENDPROC
         }
 
-        return new ProcedureNode(procName.text(), exported, refParameters, valParameters, lrefParameters, lvalParameters, body, procName.toSourceInfo());
+        return new ProcedureNode(procName.text(), exported, refParameters, valParameters, lrefParameters, lvalParameters, body, procName.source());
     }
 
     private static boolean isParamKeyword(String text) {

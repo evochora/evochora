@@ -1,5 +1,6 @@
 package org.evochora.compiler.module;
 
+import org.evochora.compiler.api.CompilerOptions;
 import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 import org.evochora.compiler.FeatureRegistry;
 import org.evochora.compiler.StandardFeatures;
@@ -7,8 +8,9 @@ import org.evochora.compiler.api.SourceRoot;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.module.DependencyGraph;
 import org.evochora.compiler.frontend.module.DependencyScanner;
+import org.evochora.compiler.frontend.module.IDependencyScanContext;
 import org.evochora.compiler.frontend.module.IDependencyScanHandler;
-import org.evochora.compiler.frontend.module.ModuleDescriptor;
+import org.evochora.compiler.frontend.module.ModulePlacement;
 import org.evochora.compiler.util.SourceRootResolver;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -16,7 +18,14 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.OptionalInt;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BiConsumer;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -45,18 +54,18 @@ public class DependencyScannerTest {
         String source = "NOP\nSETI %DR0 42\n";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         SourceRootResolver resolver = defaultResolver(Path.of("/test"));
-        DependencyScanner scanner = new DependencyScanner(diagnostics, resolver, defaultHandlers());
+        DependencyScanner scanner = new DependencyScanner(diagnostics, resolver, defaultHandlers(), CompilerOptions.defaults());
 
-        DependencyGraph graph = scanner.scan(source, "/test/main.evo");
+        DependencyGraph graph = scanner.scan(source, "/test/main.evo", "");
 
         assertThat(diagnostics.hasErrors()).isFalse();
-        assertThat(graph.topologicalOrder()).hasSize(1);
-        assertThat(graph.topologicalOrder().get(0).sourcePath()).isEqualTo("/test/main.evo");
+        assertThat(graph.placements()).hasSize(1);
+        assertThat(graph.placements().get(0).sourcePath()).isEqualTo("/test/main.evo");
     }
 
     @Test
     @Tag("integration")
-    void importProducesTwoModulesInTopologicalOrder() throws Exception {
+    void importProducesTwoPlacements_theImportedOneFirst() throws Exception {
         Path libFile = tempDir.resolve("lib.evo");
         Files.writeString(libFile, "NOP\n");
 
@@ -65,17 +74,79 @@ public class DependencyScannerTest {
 
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         SourceRootResolver resolver = defaultResolver(tempDir);
-        DependencyScanner scanner = new DependencyScanner(diagnostics, resolver, defaultHandlers());
-        DependencyGraph graph = scanner.scan(mainSource, mainPath);
+        DependencyScanner scanner = new DependencyScanner(diagnostics, resolver, defaultHandlers(), CompilerOptions.defaults());
+        DependencyGraph graph = scanner.scan(mainSource, mainPath, "");
 
         assertThat(diagnostics.hasErrors()).isFalse();
-        assertThat(graph.topologicalOrder()).hasSize(2);
+        assertThat(graph.placements()).hasSize(2);
 
-        // Dependencies come before dependents in topological order
-        ModuleDescriptor first = graph.topologicalOrder().get(0);
-        ModuleDescriptor second = graph.topologicalOrder().get(1);
+        // A placement comes after the placements it imports
+        ModulePlacement first = graph.placements().get(0);
+        ModulePlacement second = graph.placements().get(1);
         assertThat(first.sourcePath()).contains("lib.evo");
+        assertThat(first.aliasChain()).isEqualTo("LIB");
         assertThat(second.sourcePath()).contains("main.evo");
+        assertThat(second.aliasChain()).isEmpty();
+    }
+
+    @Test
+    @Tag("integration")
+    void fileImportedTwice_isPlacedAtEveryImport_andItsContentKeptOnce() throws Exception {
+        Files.writeString(tempDir.resolve("lib.evo"), "NOP\n");
+        String mainSource = ".IMPORT \"lib.evo\" AS FIRST\n.IMPORT \"lib.evo\" AS SECOND\n";
+        String mainPath = tempDir.resolve("main.evo").toString();
+
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        DependencyScanner scanner = new DependencyScanner(diagnostics, defaultResolver(tempDir), defaultHandlers(), CompilerOptions.defaults());
+        DependencyGraph graph = scanner.scan(mainSource, mainPath, "MAIN");
+
+        assertThat(diagnostics.hasErrors()).isFalse();
+        assertThat(graph.placements()).extracting(ModulePlacement::aliasChain)
+                .containsExactly("MAIN.FIRST", "MAIN.SECOND", "MAIN");
+        assertThat(graph.moduleContents()).containsOnlyKeys(resolved("lib.evo"));
+    }
+
+    @Test
+    @Tag("integration")
+    void diamond_placesTheSharedModuleUnderEachImporter_eachBeforeItsImporter() throws Exception {
+        Files.writeString(tempDir.resolve("m.evo"), "NOP\n");
+        Files.writeString(tempDir.resolve("a.evo"), ".IMPORT \"m.evo\" AS M\n");
+        Files.writeString(tempDir.resolve("b.evo"), ".IMPORT \"m.evo\" AS M\n");
+        String mainSource = ".IMPORT \"a.evo\" AS A\n.IMPORT \"b.evo\" AS B\n";
+        String mainPath = tempDir.resolve("main.evo").toString();
+
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        DependencyScanner scanner = new DependencyScanner(diagnostics, defaultResolver(tempDir), defaultHandlers(), CompilerOptions.defaults());
+        DependencyGraph graph = scanner.scan(mainSource, mainPath, "");
+
+        assertThat(diagnostics.hasErrors()).isFalse();
+        assertThat(graph.placements()).extracting(ModulePlacement::aliasChain)
+                .containsExactly("A.M", "A", "B.M", "B", "");
+        assertThat(graph.placements().getLast().dependencies())
+                .extracting(d -> ((org.evochora.compiler.features.importdir.ImportDependencyInfo) d).aliasChain())
+                .containsExactly("A", "B");
+    }
+
+    @Test
+    @Tag("integration")
+    void lines_holdEveryFileReadOnce_theMainFileIncluded() throws Exception {
+        Files.writeString(tempDir.resolve("m.evo"), ".SOURCE \"inc.evo\"\nNOP\n");
+        Files.writeString(tempDir.resolve("inc.evo"), "NOP\n");
+        String mainSource = ".IMPORT \"m.evo\" AS A\n.SOURCE \"inc.evo\"\n.IMPORT \"m.evo\" AS B\n";
+        String mainPath = tempDir.resolve("main.evo").toString();
+
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        DependencyScanner scanner = new DependencyScanner(diagnostics, defaultResolver(tempDir), defaultHandlers(), CompilerOptions.defaults());
+        DependencyGraph graph = scanner.scan(mainSource, mainPath, "");
+
+        assertThat(diagnostics.hasErrors()).isFalse();
+        String module = resolved("m.evo");
+        String inc = resolved("inc.evo");
+        assertThat(graph.lines()).containsOnlyKeys(mainPath, module, inc);
+        assertThat(graph.lines().get(mainPath))
+                .containsExactly(".IMPORT \"m.evo\" AS A", ".SOURCE \"inc.evo\"", ".IMPORT \"m.evo\" AS B");
+        assertThat(graph.lines().get(module)).containsExactly(".SOURCE \"inc.evo\"", "NOP");
+        assertThat(graph.lines().get(inc)).containsExactly("NOP");
     }
 
     @Test
@@ -89,8 +160,8 @@ public class DependencyScannerTest {
         String aSource = Files.readString(aFile);
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         SourceRootResolver resolver = defaultResolver(tempDir);
-        DependencyScanner scanner = new DependencyScanner(diagnostics, resolver, defaultHandlers());
-        scanner.scan(aSource, aFile.toString());
+        DependencyScanner scanner = new DependencyScanner(diagnostics, resolver, defaultHandlers(), CompilerOptions.defaults());
+        scanner.scan(aSource, aFile.toString(), "");
 
         assertThat(diagnostics.hasErrors()).isTrue();
         assertThat(diagnostics.summary()).containsIgnoringCase("circular");
@@ -107,8 +178,8 @@ public class DependencyScannerTest {
 
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         SourceRootResolver resolver = defaultResolver(tempDir);
-        DependencyScanner scanner = new DependencyScanner(diagnostics, resolver, defaultHandlers());
-        scanner.scan(mainSource, mainPath);
+        DependencyScanner scanner = new DependencyScanner(diagnostics, resolver, defaultHandlers(), CompilerOptions.defaults());
+        scanner.scan(mainSource, mainPath, "");
 
         assertThat(diagnostics.hasErrors()).isTrue();
         assertThat(diagnostics.summary()).contains(".IMPORT");
@@ -128,13 +199,13 @@ public class DependencyScannerTest {
 
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         SourceRootResolver resolver = defaultResolver(tempDir);
-        DependencyScanner scanner = new DependencyScanner(diagnostics, resolver, defaultHandlers());
-        DependencyGraph graph = scanner.scan(mainSource, mainPath);
+        DependencyScanner scanner = new DependencyScanner(diagnostics, resolver, defaultHandlers(), CompilerOptions.defaults());
+        DependencyGraph graph = scanner.scan(mainSource, mainPath, "");
 
         assertThat(diagnostics.hasErrors()).isFalse();
 
-        // Find the main module (last in topological order)
-        ModuleDescriptor mainModule = graph.topologicalOrder().getLast();
+        // The main module's placement is the last
+        ModulePlacement mainModule = graph.placements().getLast();
         List<org.evochora.compiler.features.importdir.ImportDependencyInfo> imports = mainModule.dependencies().stream()
                 .filter(d -> d instanceof org.evochora.compiler.features.importdir.ImportDependencyInfo)
                 .map(d -> (org.evochora.compiler.features.importdir.ImportDependencyInfo) d)
@@ -157,13 +228,13 @@ public class DependencyScannerTest {
 
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         SourceRootResolver resolver = defaultResolver(tempDir);
-        DependencyScanner scanner = new DependencyScanner(diagnostics, resolver, defaultHandlers());
-        DependencyGraph graph = scanner.scan(source, mainPath);
+        DependencyScanner scanner = new DependencyScanner(diagnostics, resolver, defaultHandlers(), CompilerOptions.defaults());
+        DependencyGraph graph = scanner.scan(source, mainPath, "");
 
         assertThat(diagnostics.hasErrors()).isFalse();
-        assertThat(graph.topologicalOrder()).hasSize(1);
+        assertThat(graph.placements()).hasSize(1);
 
-        ModuleDescriptor module = graph.topologicalOrder().get(0);
+        ModulePlacement module = graph.placements().get(0);
         List<org.evochora.compiler.features.require.RequireDependencyInfo> requires = module.dependencies().stream()
                 .filter(d -> d instanceof org.evochora.compiler.features.require.RequireDependencyInfo)
                 .map(d -> (org.evochora.compiler.features.require.RequireDependencyInfo) d)
@@ -185,13 +256,153 @@ public class DependencyScannerTest {
 
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         SourceRootResolver resolver = defaultResolver(tempDir);
-        DependencyScanner scanner = new DependencyScanner(diagnostics, resolver, defaultHandlers());
-        scanner.scan(mainSource, mainPath);
+        DependencyScanner scanner = new DependencyScanner(diagnostics, resolver, defaultHandlers(), CompilerOptions.defaults());
+        scanner.scan(mainSource, mainPath, "");
 
         assertThat(diagnostics.hasErrors()).isTrue();
         assertThat(diagnostics.getDiagnostics().stream()
                 .anyMatch(d -> d.message().toLowerCase().contains("circular")))
                 .as("Expected circular dependency error")
                 .isTrue();
+    }
+
+    /** A scan handler built from a pattern and an action, for tests of the scan context. */
+    private static IDependencyScanHandler handler(String regex, BiConsumer<Matcher, IDependencyScanContext> action) {
+        Pattern pattern = Pattern.compile(regex);
+        return new IDependencyScanHandler() {
+            @Override
+            public Pattern pattern() {
+                return pattern;
+            }
+
+            @Override
+            public void handleMatch(Matcher matcher, IDependencyScanContext ctx) {
+                action.accept(matcher, ctx);
+            }
+        };
+    }
+
+    /** Feature state kept in the scan slot by the tests below. */
+    private static final class SeenFiles {
+        final List<String> paths = new ArrayList<>();
+    }
+
+    @Test
+    @Tag("integration")
+    void stateSlot_spansTheFilesOfOneScan_andIsCreatedOnce() throws Exception {
+        Files.writeString(tempDir.resolve("inc.evo"), "MARK\n");
+        String mainSource = "MARK\n.SOURCE \"inc.evo\"\n";
+        String mainPath = tempDir.resolve("main.evo").toString();
+
+        AtomicInteger created = new AtomicInteger();
+        List<SeenFiles> instances = new ArrayList<>();
+        List<IDependencyScanHandler> handlers = new ArrayList<>(defaultHandlers());
+        handlers.add(handler("MARK", (m, ctx) -> {
+            SeenFiles seen = ctx.getOrCreate(SeenFiles.class, () -> {
+                created.incrementAndGet();
+                return new SeenFiles();
+            });
+            seen.paths.add(ctx.sourcePath());
+            instances.add(seen);
+        }));
+
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        DependencyScanner scanner = new DependencyScanner(diagnostics, defaultResolver(tempDir), handlers, CompilerOptions.defaults());
+        scanner.scan(mainSource, mainPath, "");
+
+        assertThat(diagnostics.hasErrors()).isFalse();
+        assertThat(created).hasValue(1);
+        assertThat(instances).hasSize(2);
+        assertThat(instances.get(1)).isSameAs(instances.get(0));
+        assertThat(instances.get(0).paths).containsExactly(mainPath, resolved("inc.evo"));
+
+        scanner.scan(mainSource, mainPath, "");
+        assertThat(created).as("a second scan starts with an empty slot").hasValue(2);
+    }
+
+    @Test
+    @Tag("unit")
+    void stateSlot_keepsDifferentKeysApart() {
+        List<Object> results = new ArrayList<>();
+        List<IDependencyScanHandler> handlers = List.of(handler("MARK", (m, ctx) -> {
+            results.add(ctx.getOrCreate(SeenFiles.class, SeenFiles::new));
+            results.add(ctx.getOrCreate(AtomicInteger.class, AtomicInteger::new));
+        }));
+
+        DependencyScanner scanner = new DependencyScanner(new DiagnosticsEngine(), defaultResolver(Path.of("/test")), handlers, CompilerOptions.defaults());
+        scanner.scan("MARK\nMARK\n", "/test/main.evo", "");
+
+        assertThat(results).hasSize(4);
+        assertThat(results.get(0)).isInstanceOf(SeenFiles.class).isSameAs(results.get(2));
+        assertThat(results.get(1)).isInstanceOf(AtomicInteger.class).isSameAs(results.get(3));
+    }
+
+    @Test
+    @Tag("unit")
+    void nextLine_returnsFollowingLinesStrippedAndTrimmed_andIsNotDispatchedAgain() {
+        List<String> taken = new ArrayList<>();
+        List<Integer> lineNumbers = new ArrayList<>();
+        List<String> marked = new ArrayList<>();
+        List<IDependencyScanHandler> handlers = List.of(
+                handler("TAKE2", (m, ctx) -> {
+                    lineNumbers.add(ctx.lineNumber());
+                    taken.add(ctx.nextLine());
+                    taken.add(ctx.nextLine());
+                    lineNumbers.add(ctx.lineNumber());
+                }),
+                handler("MARK (\\w+)", (m, ctx) -> marked.add(m.group(1) + "@" + ctx.lineNumber())));
+
+        String source = String.join("\n",
+                "TAKE2",
+                "   MARK A   # a comment",
+                "# a line with nothing but a comment",
+                "",
+                "MARK B",
+                "MARK C");
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        DependencyScanner scanner = new DependencyScanner(diagnostics, defaultResolver(Path.of("/test")), handlers, CompilerOptions.defaults());
+        scanner.scan(source, "/test/main.evo", "");
+
+        assertThat(diagnostics.hasErrors()).isFalse();
+        assertThat(taken).containsExactly("MARK A", "MARK B");
+        assertThat(lineNumbers).containsExactly(1, 5);
+        assertThat(marked).containsExactly("C@6");
+    }
+
+    @Test
+    @Tag("unit")
+    void nextLine_returnsNullAtTheEndOfTheFile() {
+        List<String> taken = new ArrayList<>();
+        List<IDependencyScanHandler> handlers = List.of(handler("TAKEALL", (m, ctx) -> {
+            for (int i = 0; i < 4; i++) {
+                taken.add(ctx.nextLine());
+            }
+        }));
+
+        DependencyScanner scanner = new DependencyScanner(new DiagnosticsEngine(), defaultResolver(Path.of("/test")), handlers, CompilerOptions.defaults());
+        scanner.scan("TAKEALL\nX\n\nY\n", "/test/main.evo", "");
+
+        assertThat(taken).containsExactly("X", "Y", null, null);
+    }
+
+    @Test
+    @Tag("unit")
+    void options_areThoseTheScannerWasCreatedWith() {
+        CompilerOptions options = new CompilerOptions(List.of(new SourceRoot(".", null)), Map.of("FLAG", OptionalInt.empty()));
+        List<CompilerOptions> seen = new ArrayList<>();
+        List<IDependencyScanHandler> handlers = List.of(handler("MARK", (m, ctx) -> seen.add(ctx.options())));
+
+        DependencyScanner scanner = new DependencyScanner(new DiagnosticsEngine(), defaultResolver(Path.of("/test")), handlers, options);
+        scanner.scan("MARK\n", "/test/main.evo", "");
+
+        assertThat(seen).containsExactly(options);
+    }
+
+    /**
+     * Returns the path of a file in the source root as the compiler writes a resolved path, with
+     * forward slashes on every platform.
+     */
+    private String resolved(String fileName) {
+        return tempDir.resolve(fileName).toString().replace('\\', '/');
     }
 }

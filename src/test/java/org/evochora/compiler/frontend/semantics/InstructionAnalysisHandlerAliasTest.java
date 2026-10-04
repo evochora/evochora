@@ -32,7 +32,7 @@ class InstructionAnalysisHandlerAliasTest {
     private SymbolTable symbolTable;
     private DiagnosticsEngine diagnostics;
 
-    private static final SourceInfo SRC = new SourceInfo("test.s", 1, 0);
+    private static final SourceInfo SRC = new SourceInfo("test.s", 1, 0, "TEST", 0);
 
     @BeforeAll
     static void initInstructionSet() {

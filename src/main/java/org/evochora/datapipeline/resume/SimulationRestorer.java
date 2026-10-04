@@ -15,6 +15,8 @@ import org.evochora.compiler.api.ParamInfo;
 import org.evochora.compiler.api.ParamType;
 import org.evochora.compiler.api.PlacedMolecule;
 import org.evochora.compiler.api.ProgramArtifact;
+import org.evochora.compiler.api.Expansion;
+import org.evochora.compiler.api.SourceFile;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.api.TokenInfo;
 import org.evochora.compiler.api.TokenKind;
@@ -56,7 +58,7 @@ import com.google.protobuf.ByteString;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 
-import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
+import it.unimi.dsi.fastutil.longs.LongArrayList;
 
 /**
  * Converts a ResumeCheckpoint into a running Simulation.
@@ -248,21 +250,19 @@ public class SimulationRestorer {
         List<OrganismState> organismStates = snapshot.getOrganismsList();
         List<PluginState> pluginStates = snapshot.getPluginStatesList();
 
-        // 7. Restore genome hash set from snapshot
-        LongOpenHashSet allGenomesEverSeen = new LongOpenHashSet();
-        for (long hash : snapshot.getAllGenomeHashesEverSeenList()) {
-            allGenomesEverSeen.add(hash);
-        }
+        // 7. Restore the genome hashes in the order the snapshot wrote them, which is the order of
+        // their discovery
+        LongArrayList genomesInDiscoveryOrder = new LongArrayList(snapshot.getAllGenomeHashesEverSeenList());
 
         log.debug("Resume state: currentTick={}, totalOrganismsCreated={}, totalUniqueGenomes={}, organisms={}",
-            currentTick, totalOrganismsCreated, allGenomesEverSeen.size(), organismStates.size());
+            currentTick, totalOrganismsCreated, genomesInDiscoveryOrder.size(), organismStates.size());
 
         // 8. Create Simulation using forResume()
         Simulation simulation = Simulation.forResume(
             environment,
             currentTick,
             totalOrganismsCreated,
-            allGenomesEverSeen,
+            genomesInDiscoveryOrder,
             policyManager,
             organismConfig,
             parallelism
@@ -289,19 +289,19 @@ public class SimulationRestorer {
         Map<String, ProgramArtifact> programs = restoreProgramArtifacts(metadata);
         log.debug("Restored {} program artifacts", programs.size());
 
-        // 10. Restore Organisms (including dead organisms awaiting final serialization)
+        // 10. Restore the living organisms. A dead organism in the snapshot is in its final
+        // appearance: the snapshot is the recording that wrote it, and the engine drops it right
+        // after that recording. Restoring it would have the next recording write the death again.
         int deadCount = 0;
         for (OrganismState state : organismStates) {
-            Organism organism = restoreOrganism(state, simulation);
-            simulation.addOrganism(organism);
             if (state.getIsDead()) {
                 deadCount++;
+                continue;
             }
+            simulation.addOrganism(restoreOrganism(state, simulation));
         }
-        log.debug("Restored {} organisms ({} alive, {} dead awaiting serialization)",
-                simulation.getOrganisms().size(),
-                simulation.getOrganisms().size() - deadCount,
-                deadCount);
+        log.debug("Restored {} living organisms, left out {} already recorded as dead",
+                simulation.getOrganisms().size(), deadCount);
 
         // 11. Restore plugins from config (with their configs for SimulationEngine)
         RestoredPlugins restoredPlugins = restorePlugins(
@@ -414,9 +414,26 @@ public class SimulationRestorer {
             org.evochora.datapipeline.api.contracts.ProgramArtifact proto) {
 
         // Convert sources
-        Map<String, List<String>> sources = new HashMap<>();
-        proto.getSourcesMap().forEach((fileName, sourceLines) ->
-            sources.put(fileName, new ArrayList<>(sourceLines.getLinesList())));
+        List<SourceFile> sources = new ArrayList<>();
+        for (var source : proto.getSourcesList()) {
+            sources.add(new SourceFile(source.getPlacement(), source.getPath(), source.getResolvedPath(),
+                source.getInstance(),
+                source.hasIncludedAt() ? convertProtoSourceInfo(source.getIncludedAt()) : null,
+                source.getLinesList(),
+                source.getLeftOutList().stream().map(SimulationRestorer::convertProtoLeftOut).toList(),
+                source.getNotesList().stream().map(SimulationRestorer::convertProtoNote).toList()));
+        }
+
+        // Convert expansions
+        Map<Integer, Expansion> expansions = new HashMap<>();
+        proto.getExpansionsMap().forEach((number, expansion) -> expansions.put(number, new Expansion(
+            convertProtoSourceInfo(expansion.getCalledAt()),
+            convertProtoSourceInfo(expansion.getDefinedAt()),
+            expansion.getName(),
+            expansion.getBindingsList().stream()
+                .map(binding -> new Expansion.Binding(binding.getParameter(), binding.getArgument())).toList(),
+            expansion.getLeftOutList().stream().map(SimulationRestorer::convertProtoLeftOut).toList(),
+            expansion.getNotesList().stream().map(SimulationRestorer::convertProtoNote).toList())));
 
         // Convert machine code layout (repeated InstructionMapping → Map<int[], Integer>)
         Map<int[], Integer> machineCodeLayout = new HashMap<>();
@@ -480,7 +497,7 @@ public class SimulationRestorer {
         }
 
         // Convert tokenLookup (complex nested structure)
-        Map<String, Map<Integer, Map<Integer, List<TokenInfo>>>> tokenLookup = new HashMap<>();
+        Map<String, Map<String, Map<Integer, Map<Integer, List<TokenInfo>>>>> tokenLookup = new HashMap<>();
         for (FileTokenLookup fileEntry : proto.getTokenLookupList()) {
             Map<Integer, Map<Integer, List<TokenInfo>>> lineMap = new HashMap<>();
             for (LineTokenLookup lineEntry : fileEntry.getLinesList()) {
@@ -493,22 +510,27 @@ public class SimulationRestorer {
                 }
                 lineMap.put(lineEntry.getLineNumber(), columnMap);
             }
-            tokenLookup.put(fileEntry.getFileName(), lineMap);
+            tokenLookup.computeIfAbsent(fileEntry.getPlacement(), k -> new HashMap<>())
+                .put(fileEntry.getFileName(), lineMap);
         }
 
         // Convert sourceLineToInstructions
-        Map<String, List<MachineInstructionInfo>> sourceLineToInstructions = new HashMap<>();
-        proto.getSourceLineToInstructionsMap().forEach((key, list) -> {
-            List<MachineInstructionInfo> instructions = list.getInstructionsList().stream()
+        Map<String, Map<String, Map<Integer, Map<Integer, List<MachineInstructionInfo>>>>> sourceLineToInstructions =
+            new HashMap<>();
+        for (org.evochora.datapipeline.api.contracts.FileSourceLines fileEntry : proto.getSourceLineToInstructionsList()) {
+            Map<Integer, List<MachineInstructionInfo>> lineMap = new HashMap<>();
+            fileEntry.getLinesMap().forEach((line, list) -> lineMap.put(line, list.getInstructionsList().stream()
                 .map(i -> new MachineInstructionInfo(
                     i.getLinearAddress(),
                     i.getOpcode(),
                     i.getOperandsAsString(),
                     i.getSynthetic()
                 ))
-                .collect(Collectors.toList());
-            sourceLineToInstructions.put(key, instructions);
-        });
+                .collect(Collectors.toList())));
+            sourceLineToInstructions.computeIfAbsent(fileEntry.getPlacement(), k -> new HashMap<>())
+                .computeIfAbsent(fileEntry.getFileName(), k -> new HashMap<>())
+                .put(fileEntry.getExpansion(), lineMap);
+        }
 
         // Direct copy of label maps
         Map<Integer, String> labelValueToName = new HashMap<>(proto.getLabelValueToNameMap());
@@ -517,6 +539,7 @@ public class SimulationRestorer {
         return new ProgramArtifact(
             proto.getProgramId(),
             sources,
+            expansions,
             machineCodeLayout,
             initialWorldObjects,
             sourceMap,
@@ -524,6 +547,7 @@ public class SimulationRestorer {
             relativeCoordToLinearAddress,
             linearAddressToCoord,
             registerAliasMap,
+            new HashMap<>(proto.getConstantValuesMap()),
             procNameToParamNames,
             tokenMap,
             tokenLookup,
@@ -560,11 +584,26 @@ public class SimulationRestorer {
     }
 
     /**
+     * Converts a protobuf region of lines left out to the artifact's record.
+     */
+    private static SourceFile.LeftOut convertProtoLeftOut(org.evochora.datapipeline.api.contracts.LeftOutRegion region) {
+        return new SourceFile.LeftOut(region.getExpansion(), region.getDirectiveLine(), region.getFrom(), region.getTo());
+    }
+
+    /**
+     * Converts a protobuf note at a position to the artifact's record.
+     */
+    private static SourceFile.Note convertProtoNote(org.evochora.datapipeline.api.contracts.SourceNote note) {
+        return new SourceFile.Note(note.getExpansion(), note.getLine(), note.getColumn(), note.getText());
+    }
+
+    /**
      * Converts a protobuf SourceInfo to runtime SourceInfo.
      */
     private static SourceInfo convertProtoSourceInfo(
             org.evochora.datapipeline.api.contracts.SourceInfo proto) {
-        return new SourceInfo(proto.getFileName(), proto.getLineNumber(), proto.getColumnNumber());
+        return new SourceInfo(proto.getFileName(), proto.getLineNumber(), proto.getColumnNumber(),
+            proto.getPlacement(), proto.getExpansion());
     }
 
     /**

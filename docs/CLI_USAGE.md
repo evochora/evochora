@@ -125,6 +125,9 @@ bin/evochora compile --source-root ./predator:PRED --source-root ./prey:PREY --f
 
 # HTTP source root
 bin/evochora compile --source-root https://example.com/organisms:PRED --file=PRED:main.evo
+
+# With flags for conditional compilation
+bin/evochora compile --source-root assembly/examples --file=simple.evo --define AGGRESSIVE --define REDUNDANCY=2
 ```
 
 ### Source Roots (`--source-root`)
@@ -136,7 +139,16 @@ Syntax:
 - `--source-root <path>` — unprefixed (default) source root
 - `--source-root <path>:<PREFIX>` — named source root with prefix (PREFIX must match `[A-Z][A-Z0-9_]+`, so at least two characters; a single letter would collide with a Windows drive letter like `C:\`)
 
-When using prefixed source roots, directive paths use `PREFIX:path` syntax (e.g., `.IMPORT "PRED:lib/move.evo" AS MOVE`). If no `--source-root` is specified, the current directory is used as the default root.
+When using prefixed source roots, directive paths use `PREFIX:path` syntax (e.g., `.IMPORT "PRED:lib/move.evo" AS MOVE`). If no `--source-root` is specified, the directory of the main file is the default root.
+
+### Flags (`--define`)
+
+Sets a flag for the conditional compilation directives (`.IFDEF` and its relatives, see `ASSEMBLY_SPEC.md`), as `.DEFINE` in the program would, before its first line:
+
+- `--define NAME` — sets the flag without a value
+- `--define NAME=INTEGER` — sets it with that value; decimal, `0x…` and `0b…`, with an optional minus
+
+The option may be repeated. Flag names are case-insensitive. In a simulation the same flags are set per organism in the configuration (`defines { … }` in the organism entry).
 
 ### Environment Parameters (`--env`)
 
@@ -157,7 +169,7 @@ Examples:
 Compilation produces a JSON object with (among others):
 
 - `programId`: unique identifier
-- `sources`: source file contents
+- `sources`: one entry per placement and source file, with the placement's alias chain, the path as written, the resolved path and the lines
 - `machineCodeLayout`: generated machine code (linear address → instruction)
 - `labelAddressToName`: label addresses and names
 - `registerAliasMap`: register aliases used by the compiler

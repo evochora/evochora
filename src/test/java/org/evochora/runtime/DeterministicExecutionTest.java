@@ -602,7 +602,7 @@ class DeterministicExecutionTest {
                 targetEnv,
                 source.getCurrentTick(),
                 source.getTotalOrganismsCreatedCount(),
-                source.getAllGenomesEverSeen(),
+                source.getGenomesInDiscoveryOrder(),
                 source.getPolicyManager(),
                 source.getOrganismConfig(),
                 1);

@@ -30,7 +30,7 @@ public class EmissionProcedureMarshallingTest {
     }
 
     private static SourceInfo src(String file, int line) {
-        return new SourceInfo(file, line, 0);
+        return new SourceInfo(file, line, 0, "", 0);
     }
 
     private List<IrItem> runFullEmission(List<IrItem> items) {
@@ -97,7 +97,7 @@ public class EmissionProcedureMarshallingTest {
         // .PROC myProc REF %rA VAL %rB
         //     IFR %rB
         //     RET
-        // .ENDP
+        // .ENDPROC
         Map<String, IrValue> enterArgs = new HashMap<>();
         enterArgs.put("name", new IrValue.Str("myProc"));
         enterArgs.put("refParams", new IrValue.ListVal(List.of(new IrValue.Str("%rA"))));

@@ -1,5 +1,8 @@
 package org.evochora.compiler.features.label;
 
+import java.util.Map;
+import org.evochora.compiler.api.CompilerOptions;
+import org.evochora.compiler.TestLexers;
 import org.evochora.compiler.api.SourceRoot;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.lexer.Lexer;
@@ -31,9 +34,9 @@ class ColonLabelHandlerTest {
 
     private List<Token> preprocess(String source) {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Lexer lexer = new Lexer(source, diagnostics, "test.s");
+        Lexer lexer = new Lexer(source, diagnostics, "test.s", TestLexers.symbols());
         List<Token> tokens = lexer.scanTokens();
-        PreProcessorContext context = new PreProcessorContext();
+        PreProcessorContext context = new PreProcessorContext("", Map.of(), "test.s", CompilerOptions.defaults());
         context.handlers().register(":", new ColonLabelHandler());
         PreProcessor pp = new PreProcessor(tokens, diagnostics,
                 new SourceRootResolver(List.of(new SourceRoot(".", null)), Path.of("")),

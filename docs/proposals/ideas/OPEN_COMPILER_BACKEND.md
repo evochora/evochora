@@ -1,6 +1,7 @@
 # Open Compiler Backend
 
-**Status: IDEA — not decided.** Due when the first feature needs an IR item kind of its own.
+**Status: IDEA — not decided.** The backend part is due when the first feature needs an IR item
+kind of its own; the last section records the form the whole compiler is heading for.
 
 ## Where the backend stands
 
@@ -41,3 +42,33 @@ kind of behaviour is a feature. Applied to the backend, this means:
 
 Until then, the sealed model is the better state: it says what the backend can do, and the
 compiler refuses a kind it would silently mishandle.
+
+## The whole compiler in the open form
+
+The backend is one end of a longer line. The form the compiler is heading for, phase by phase,
+is this:
+
+- **The phases hand each other finished data formats and nothing else**: the dependency graph,
+  the token stream, the AST, the IR, the artifact. A phase takes the format before it, walks it,
+  dispatches every item to the handler a feature registered for it, and returns the format after
+  it. The core of a phase is the walk, the dispatch and the phase context; it interprets nothing
+  a feature produced.
+- **Every format has a slot in which a feature keeps data of its own**, keyed by a type the
+  feature owns, as the phase contexts already have (`getOrCreate`), the IR has through the
+  namespace of `IrDirective`, and the AST has through the feature's node types. The artifact and
+  the token map do not have it yet (issue #153 and the kinds of `TokenInfo`); the symbol table's
+  `Symbol.Type` and the module system are the core concepts that would have to open last.
+- **A feature reads only its own slot.** A handler of a feature in one phase finds what the
+  feature's handler in an earlier phase left, and never what another feature left; what two
+  features share goes through the core data of the format — a token's text and position, a
+  symbol's definition, an instruction's operands. Where the slot is keyed by a feature-owned
+  class, the rule is enforced by the test that forbids a feature to reference another; where it
+  is keyed by a string, by a test over the registrations.
+- **The core carries no feature's name**: not in a field, not in an enum member, not in a
+  method on a phase context, not in a string.
+
+Where this stands today is recorded in `docs/COMPILER_CORE_BOUNDARY.md`; the candidates listed
+there are the distance left. The order in which the distance closes follows the need: the
+artifact and the token map first (#153), because every feature with debug data touches them, the
+backend when a feature needs an item kind, the symbol kinds and the module system when a feature
+needs to define names of its own.

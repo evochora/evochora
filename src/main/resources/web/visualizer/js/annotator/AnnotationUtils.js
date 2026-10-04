@@ -24,17 +24,32 @@ export const BANK_BY_NAME = Object.fromEntries(REGISTER_BANKS.map(b => [b.name, 
  */
 export class AnnotationUtils {
     /**
+     * Builds the key under which the artifact files what it knows of a definition, as the
+     * compiler's `DefinitionKey` does: the qualified name for a definition at module level,
+     * and the qualified name, `@` and the scope's name for one inside a procedure.
+     *
+     * @param {string} qualifiedName - The qualified name of the definition.
+     * @param {string} [scope] - The scope the definition stands in; absent or "global" at module level.
+     * @returns {string} The key.
+     */
+    static definitionKey(qualifiedName, scope) {
+        return !scope || scope === 'global' ? qualifiedName : `${qualifiedName}@${scope}`;
+    }
+
+    /**
      * Resolves a register alias or name (e.g., "%COUNTER", "%PDR0") to its canonical form
-     * (e.g., "%PDR0"). When a qualifiedName is provided, it takes precedence for the lookup
-     * since backend keys are module-qualified (e.g., "ENERGY.COUNTER").
+     * (e.g., "%PDR0"). The alias map is keyed by the definition of an alias, its qualified name
+     * and the scope it is defined in (e.g., "ENERGY.%COUNTER" or "%TMP@WORK"); without a
+     * qualified name the token itself stands for it.
      *
      * @param {string} token - The token to resolve.
      * @param {object} artifact - The program artifact containing the register alias map.
      * @param {string} [qualifiedName] - The canonical module-qualified alias name for lookup.
+     * @param {string} [scope] - The scope the alias is defined in, as the token map names it.
      * @returns {string|null} The canonical register name (e.g., "%PDR0") or null if not a valid alias.
      */
-    static resolveToCanonicalRegister(token, artifact, qualifiedName) {
-        const lookupKey = (qualifiedName || token || '').toUpperCase();
+    static resolveToCanonicalRegister(token, artifact, qualifiedName, scope) {
+        const lookupKey = AnnotationUtils.definitionKey((qualifiedName || token || '').toUpperCase(), scope);
         if (artifact.registerAliasMap && artifact.registerAliasMap[lookupKey] !== undefined) {
             const regId = artifact.registerAliasMap[lookupKey];
             return AnnotationUtils.formatRegisterName(regId);

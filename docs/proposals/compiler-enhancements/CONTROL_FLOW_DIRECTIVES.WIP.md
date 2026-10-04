@@ -28,7 +28,7 @@ Higher-level control flow directives (`.IF`, `.WHILE`, `.FOR`) can generate thes
 
 ## Prerequisites
 
-This proposal requires the END-directive rename from the Conditional Compilation proposal (`.ENDP` → `.ENDPROC`, `.ENDM` → `.ENDMACRO`, etc.) to establish the `.END*` naming convention. `.ENDIF` follows this convention.
+The block directives end with `.END*` names (`.ENDPROC`, `.ENDMACRO`, `.ENDREPEAT`, `.ENDDEF`), as the accomplished Conditional Compilation proposal established; `.ENDIF` follows this convention.
 
 This proposal does **not** require [CONDITIONAL_JUMPS](../CONDITIONAL_JUMPS.md). With a conditional skip it generates the negated skip and a `JMPI`; with a conditional jump, once those exist, the negated jump. The compiler never changes the encoding the source names: a skip is never replaced by a jump. Both paths are documented below.
 

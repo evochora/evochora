@@ -1,5 +1,8 @@
 package org.evochora.compiler.module;
 
+import org.evochora.compiler.api.SourceInfo;
+import org.evochora.compiler.api.CompilerOptions;
+import org.evochora.compiler.TestLexers;
 import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 import org.evochora.compiler.FeatureRegistry;
 import org.evochora.compiler.StandardFeatures;
@@ -14,7 +17,7 @@ import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ParserStatementRegistry;
 import org.evochora.compiler.features.ctx.PopCtxDirectiveHandler;
 import org.evochora.compiler.features.ctx.PushCtxDirectiveHandler;
-import org.evochora.compiler.features.define.DefineDirectiveHandler;
+import org.evochora.compiler.features.constdir.ConstDirectiveHandler;
 import org.evochora.compiler.features.dir.DirDirectiveHandler;
 import org.evochora.compiler.features.importdir.ImportDirectiveHandler;
 import org.evochora.compiler.features.org.OrgDirectiveHandler;
@@ -197,7 +200,7 @@ class UsingClauseIntegrationTest {
         st.setCurrentModule("LIB");
 
         String depPath = tempDir.resolve("dep.evo").normalize().toString().replace('\\', '/');
-        var resolved = st.resolve("DEP.HARVEST", depPath).found();
+        var resolved = st.resolve("DEP.HARVEST", new SourceInfo(depPath, 1, 0, "LIB", 0)).found();
         assertThat(resolved).isPresent();
         assertThat(resolved.get().symbol().type()).isEqualTo(Symbol.Type.LABEL);
         assertThat(resolved.get().symbol().name()).isEqualToIgnoringCase("HARVEST");
@@ -208,7 +211,7 @@ class UsingClauseIntegrationTest {
     void usingWithSourcedConstantsInRequiredModule() throws Exception {
         // consts.evo: shared constants
         Files.writeString(tempDir.resolve("consts.evo"),
-                ".DEFINE AMOUNT DATA:5\n");
+                ".CONST AMOUNT DATA:5\n");
 
         // math.evo: standalone, exports ADD_CONST
         Files.writeString(tempDir.resolve("math.evo"),
@@ -216,7 +219,7 @@ class UsingClauseIntegrationTest {
                 "EXPORT .PROC ADD_CONST REF X\n" +
                 "  ADDI X AMOUNT\n" +
                 "  RET\n" +
-                ".ENDP\n");
+                ".ENDPROC\n");
 
         // user.evo: requires MATH, calls MATH.ADD_CONST
         Files.writeString(tempDir.resolve("user.evo"),
@@ -224,7 +227,7 @@ class UsingClauseIntegrationTest {
                 "EXPORT .PROC DO_WORK REF V\n" +
                 "  CALL MATH.ADD_CONST REF V\n" +
                 "  RET\n" +
-                ".ENDP\n");
+                ".ENDPROC\n");
 
         String mainSource = ".IMPORT \"math.evo\" AS M\n" +
                 ".IMPORT \"user.evo\" AS U USING M AS MATH\n" +
@@ -236,6 +239,32 @@ class UsingClauseIntegrationTest {
         assertThat(result.diagnostics.hasErrors())
                 .as("Expected no errors but got: %s", result.diagnostics.getDiagnostics())
                 .isFalse();
+    }
+
+    @Test
+    @Tag("integration")
+    void moduleImportedTwice_eachPlacementBindsItsRequirementToItsOwnUsing() throws Exception {
+        Files.writeString(tempDir.resolve("fast.evo"), "EXPORT HARVEST:\n  NOP\n");
+        Files.writeString(tempDir.resolve("slow.evo"), "EXPORT HARVEST:\n  NOP\n  NOP\n");
+        Files.writeString(tempDir.resolve("lib.evo"),
+                ".REQUIRE \"harvest.evo\" AS DEP\nEXPORT WORK:\n  JMPI DEP.HARVEST\n");
+
+        String mainSource = ".IMPORT \"fast.evo\" AS FAST\n" +
+                ".IMPORT \"slow.evo\" AS SLOW\n" +
+                ".IMPORT \"lib.evo\" AS FIRST USING FAST AS DEP\n" +
+                ".IMPORT \"lib.evo\" AS SECOND USING SLOW AS DEP\n" +
+                "JMPI FIRST.WORK\nJMPI SECOND.WORK\n";
+        String mainPath = tempDir.resolve("main.evo").toString();
+
+        SemanticsResult result = compileThroughSemanticsWithSymbols(mainSource, mainPath);
+
+        assertThat(result.diagnostics.hasErrors())
+                .as("Expected no errors but got: %s", result.diagnostics.getDiagnostics())
+                .isFalse();
+        assertThat(result.symbolTable.getModuleScope("FIRST").orElseThrow().usingBindings())
+                .containsExactly(Map.entry("DEP", "FAST"));
+        assertThat(result.symbolTable.getModuleScope("SECOND").orElseThrow().usingBindings())
+                .containsExactly(Map.entry("DEP", "SLOW"));
     }
 
     private record SemanticsResult(DiagnosticsEngine diagnostics, SymbolTable symbolTable) {}
@@ -258,18 +287,19 @@ class UsingClauseIntegrationTest {
                 List.of(new SourceRoot(".", null)), tempDir);
         FeatureRegistry featureRegistry = new FeatureRegistry(new RuntimeInstructionSetAdapter());
         StandardFeatures.all().forEach(f -> f.register(featureRegistry));
-        DependencyScanner scanner = new DependencyScanner(diagnostics, resolver, featureRegistry.dependencyScanHandlers());
-        DependencyGraph graph = scanner.scan(mainSource, mainPath);
+        DependencyScanner scanner = new DependencyScanner(diagnostics, resolver, featureRegistry.dependencyScanHandlers(), CompilerOptions.defaults());
+        DependencyGraph graph = scanner.scan(mainSource, mainPath, rootAliasChain);
         if (diagnostics.hasErrors()) return new SemanticsResult(diagnostics, null);
 
         // Phase 1: Lex the included files under their paths, the main file as the stream
-        Map<String, List<Token>> fileTokens = Lexer.lexFiles(graph.includedContents(), diagnostics, new RuntimeInstructionSetAdapter());
-        List<Token> mainTokens = new ArrayList<>(new Lexer(mainSource, diagnostics, mainPath).scanTokens());
+        Map<String, List<Token>> fileTokens = Lexer.lexFiles(graph.includedContents(), diagnostics, new RuntimeInstructionSetAdapter(), TestLexers.symbols());
+        List<Token> mainTokens = new ArrayList<>(new Lexer(mainSource, diagnostics, mainPath, TestLexers.symbols()).scanTokens());
 
         // Phase 2: Preprocessing (with root alias chain)
-        PreProcessorContext ppContext = new PreProcessorContext(rootAliasChain, fileTokens);
+        PreProcessorContext ppContext = new PreProcessorContext(rootAliasChain, fileTokens, mainPath, CompilerOptions.defaults());
         ppContext.handlers().register(".SOURCE", new SourceDirectiveHandler());
         ppContext.handlers().register(".MACRO", new MacroDirectiveHandler());
+        TestRegistries.registerPreProcessorBlocks(ppContext.handlers());
         ppContext.handlers().register(".POP_CTX", new PopCtxPreProcessorHandler());
         ppContext.handlers().register(".IMPORT", new ImportSourceHandler());
         ppContext.handlers().register(":", new org.evochora.compiler.features.label.ColonLabelHandler());
@@ -286,7 +316,7 @@ class UsingClauseIntegrationTest {
         SymbolTable symbolTable = new SymbolTable(diagnostics);
         ModuleSetupRegistry setupRegistry = new ModuleSetupRegistry();
         featureRegistry.dependencySetupHandlers().forEach((type, handler) -> registerSetupHandler(setupRegistry, type, handler));
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, graph, mainPath, rootAliasChain, TestRegistries.analysisRegistry(symbolTable, diagnostics), setupRegistry);
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, graph, rootAliasChain, TestRegistries.analysisRegistry(symbolTable, diagnostics), setupRegistry);
         analyzer.analyze(ast);
 
         return new SemanticsResult(diagnostics, symbolTable);
@@ -294,7 +324,7 @@ class UsingClauseIntegrationTest {
 
     private static ParserStatementRegistry allHandlers() {
         ParserStatementRegistry reg = new ParserStatementRegistry();
-        reg.register(".DEFINE", new DefineDirectiveHandler());
+        reg.register(".CONST", new ConstDirectiveHandler());
         reg.register(".REG", new RegDirectiveHandler(new RuntimeInstructionSetAdapter()));
         reg.register(".PROC", new ProcDirectiveHandler(new RuntimeInstructionSetAdapter()));
         reg.register(".ORG", new OrgDirectiveHandler());

@@ -50,8 +50,7 @@ public class ColonLabelHandler implements IPreProcessorHandler {
 
         // Rewrite: replace IDENTIFIER COLON with .LABEL IDENTIFIER
         Token identToken = preceding;
-        Token syntheticLabel = new Token(TokenType.DIRECTIVE, ".LABEL", null,
-                identToken.line(), identToken.column(), identToken.fileName());
+        Token syntheticLabel = new Token(TokenType.DIRECTIVE, ".LABEL", null, identToken.source());
 
         preProcessor.removeTokens(colonIndex - 1, 2); // remove IDENTIFIER + COLON
         preProcessor.injectTokens(List.of(syntheticLabel, identToken), 0);

@@ -28,6 +28,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.OptionalInt;
 import java.util.concurrent.TimeUnit;
 
 import static org.awaitility.Awaitility.await;
@@ -187,6 +188,144 @@ class SimulationEngineIntegrationTest {
         assertEquals(64, shape[0]);
         assertEquals(32, shape[1]);
         assertTrue(MetadataConfigHelper.isEnvironmentToroidal(metadata)); // TORUS topology
+    }
+
+    @Test
+    void engine_shouldRecordTheFlagsOfEveryOrganismInTheResolvedConfiguration() throws InterruptedException {
+        Config flaggedConfig = baseConfig.withValue("organisms", ConfigValueFactory.fromAnyRef(List.of(Map.of(
+                "program", programFile.toString(),
+                "initialEnergy", 10000,
+                "placement", Map.of("positions", List.of(5, 5)),
+                "defines", Map.of("AGGRESSIVE", true, "REDUNDANCY", 2)))));
+        SimulationEngine engine = new SimulationEngine("test-engine", flaggedConfig, resources);
+
+        engine.start();
+        await().atMost(5, TimeUnit.SECONDS)
+                .untilAsserted(() -> assertEquals(1L, metadataQueue.getMetrics().get("current_size").longValue()));
+        engine.stop();
+
+        SimulationMetadata metadata;
+        try (StreamingBatch<SimulationMetadata> metaBatch = metadataQueue.receiveBatch(1, 0, TimeUnit.MILLISECONDS)) {
+            metadata = metaBatch.iterator().next();
+        }
+        Config recorded = ConfigFactory.parseString(metadata.getResolvedConfigJson());
+        Config defines = recorded.getConfigList("organisms").get(0).getConfig("defines");
+        assertTrue(defines.getBoolean("AGGRESSIVE"));
+        assertEquals(2, defines.getInt("REDUNDANCY"));
+        assertEquals(Map.of("AGGRESSIVE", OptionalInt.empty(), "REDUNDANCY", OptionalInt.of(2)),
+                SimulationEngine.readDefines(recorded.getConfigList("organisms").get(0), 0));
+    }
+
+    @Test
+    void engine_shouldRecordThePlacementOfEveryPositionInTheProgramMetadata() throws IOException, InterruptedException {
+        Files.writeString(tempDir.resolve("lib.evo"), "EXPORT .PROC WORK\nLOOP:\n  NOP\n  JMPI LOOP\n  RET\n.ENDPROC\n");
+        Files.writeString(tempDir.resolve("twice.evo"), ".IMPORT \"lib.evo\" AS FIRST\n.IMPORT \"lib.evo\" AS SECOND\n"
+                + "START:\n  CALL FIRST.WORK\n  CALL SECOND.WORK\n");
+        Config twiceConfig = baseConfig
+                .withValue("compiler.source-roots", ConfigValueFactory.fromAnyRef(List.of(Map.of("path", tempDir.toString()))))
+                .withValue("organisms", ConfigValueFactory.fromAnyRef(List.of(Map.of(
+                        "program", "twice.evo",
+                        "initialEnergy", 10000,
+                        "placement", Map.of("positions", List.of(5, 5))))));
+        SimulationEngine engine = new SimulationEngine("test-engine", twiceConfig, resources);
+
+        engine.start();
+        await().atMost(5, TimeUnit.SECONDS)
+                .untilAsserted(() -> assertEquals(1L, metadataQueue.getMetrics().get("current_size").longValue()));
+        engine.stop();
+
+        SimulationMetadata metadata;
+        try (StreamingBatch<SimulationMetadata> metaBatch = metadataQueue.receiveBatch(1, 0, TimeUnit.MILLISECONDS)) {
+            metadata = metaBatch.iterator().next();
+        }
+        org.evochora.datapipeline.api.contracts.ProgramArtifact program = metadata.getPrograms(0);
+        assertEquals(List.of("", "FIRST", "SECOND"),
+                program.getSourcesList().stream().map(source -> source.getPlacement()).toList());
+        assertEquals(List.of("twice.evo", "lib.evo", "lib.evo"),
+                program.getSourcesList().stream().map(source -> source.getPath()).toList());
+        String lib = program.getSources(1).getResolvedPath();
+        assertEquals(List.of("FIRST", "SECOND"), program.getSourceMapList().stream()
+                .map(entry -> entry.getSourceInfo())
+                .filter(info -> info.getFileName().equals(lib) && info.getLineNumber() == 3)
+                .map(info -> info.getPlacement())
+                .sorted()
+                .toList());
+        assertTrue(program.getTokenLookupList().stream()
+                .anyMatch(entry -> entry.getPlacement().equals("SECOND") && entry.getFileName().equals(lib)));
+        assertTrue(program.getSourceLineToInstructionsList().stream()
+                .anyMatch(entry -> entry.getPlacement().equals("SECOND") && entry.getFileName().equals(lib)
+                        && entry.containsLines(3)));
+    }
+
+    @Test
+    void engine_shouldRecordTheInclusionsTheBranchesLeftOutAndTheExpansionsInTheProgramMetadata()
+            throws IOException, InterruptedException {
+        Files.writeString(tempDir.resolve("steps.evo"), ".MACRO STEP R\n.IFDEF PAD\n  NOP\n.ELSEDEF\n  NOP\n.ENDDEF\n"
+                + ".ENDMACRO\n");
+        Files.writeString(tempDir.resolve("folded.evo"), ".SOURCE \"steps.evo\"\n.CONST LIMIT DATA:9\nSTART:\n"
+                + "  STEP %DR0\n  SETI %DR1 LIMIT\n");
+        Config foldedConfig = baseConfig
+                .withValue("compiler.source-roots", ConfigValueFactory.fromAnyRef(List.of(Map.of("path", tempDir.toString()))))
+                .withValue("organisms", ConfigValueFactory.fromAnyRef(List.of(Map.of(
+                        "program", "folded.evo",
+                        "initialEnergy", 10000,
+                        "placement", Map.of("positions", List.of(5, 5)),
+                        "defines", Map.of("PAD", 1)))));
+        SimulationEngine engine = new SimulationEngine("test-engine", foldedConfig, resources);
+
+        engine.start();
+        await().atMost(5, TimeUnit.SECONDS)
+                .untilAsserted(() -> assertEquals(1L, metadataQueue.getMetrics().get("current_size").longValue()));
+        engine.stop();
+
+        SimulationMetadata metadata;
+        try (StreamingBatch<SimulationMetadata> metaBatch = metadataQueue.receiveBatch(1, 0, TimeUnit.MILLISECONDS)) {
+            metadata = metaBatch.iterator().next();
+        }
+        org.evochora.datapipeline.api.contracts.ProgramArtifact program = metadata.getPrograms(0);
+        assertEquals(2, program.getSourcesCount());
+        org.evochora.datapipeline.api.contracts.SourceFile main = program.getSources(0);
+        assertEquals(0, main.getInstance());
+        assertFalse(main.hasIncludedAt());
+
+        // The sourced file is inclusion 1, made by line 1 of the main file; the expansion of its
+        // macro is number 2, defined in that inclusion and called on line 4 of the main file with
+        // its argument, and holds the region and the note it decided
+        org.evochora.datapipeline.api.contracts.SourceFile source = program.getSources(1);
+        assertEquals("steps.evo", source.getPath());
+        assertEquals(1, source.getInstance());
+        assertTrue(source.getIncludedAt().getFileName().endsWith("folded.evo"));
+        assertEquals(1, source.getIncludedAt().getLineNumber());
+        assertEquals(0, source.getLeftOutCount());
+        assertEquals(0, source.getNotesCount());
+        assertEquals(java.util.Set.of(2), program.getExpansionsMap().keySet());
+        org.evochora.datapipeline.api.contracts.Expansion expansion = program.getExpansionsMap().get(2);
+        assertEquals("STEP", expansion.getName());
+        assertEquals(List.of(4, 3, 0), List.of(expansion.getCalledAt().getLineNumber(),
+                expansion.getCalledAt().getColumnNumber(), expansion.getCalledAt().getExpansion()));
+        assertEquals(List.of(1, 8, 1), List.of(expansion.getDefinedAt().getLineNumber(),
+                expansion.getDefinedAt().getColumnNumber(), expansion.getDefinedAt().getExpansion()));
+        assertEquals(1, expansion.getBindingsCount());
+        assertEquals(List.of("R", "%DR0"),
+                List.of(expansion.getBindings(0).getParameter(), expansion.getBindings(0).getArgument()));
+        assertEquals(Map.of("LIMIT", "DATA:9"), program.getConstantValuesMap());
+        assertEquals(List.of(2), program.getSourceLineToInstructionsList().stream()
+                .filter(lines -> lines.getFileName().endsWith("steps.evo"))
+                .map(lines -> lines.getExpansion())
+                .toList());
+        assertEquals(1, expansion.getLeftOutCount());
+        org.evochora.datapipeline.api.contracts.LeftOutRegion region = expansion.getLeftOut(0);
+        assertEquals(List.of(2, 4, 5, 5),
+                List.of(region.getExpansion(), region.getDirectiveLine(), region.getFrom(), region.getTo()));
+        assertEquals(1, expansion.getNotesCount());
+        org.evochora.datapipeline.api.contracts.SourceNote note = expansion.getNotes(0);
+        assertEquals(List.of(2, 2, 8), List.of(note.getExpansion(), note.getLine(), note.getColumn()));
+        assertEquals("[=1]", note.getText());
+        assertEquals(List.of(2), program.getSourceMapList().stream()
+                .map(entry -> entry.getSourceInfo())
+                .filter(info -> info.getFileName().endsWith("steps.evo") && info.getLineNumber() == 3)
+                .map(info -> info.getExpansion())
+                .toList());
     }
 
     @Test

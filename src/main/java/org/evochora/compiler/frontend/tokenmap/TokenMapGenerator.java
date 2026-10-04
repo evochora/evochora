@@ -13,7 +13,6 @@ import org.evochora.compiler.model.symbols.Symbol;
 import org.evochora.compiler.model.symbols.SymbolTable;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -66,7 +65,8 @@ public class TokenMapGenerator implements ITokenMapContext {
      * Generates the token map by walking the provided AST root node.
      *
      * @param root The root of the AST to traverse.
-     * @return A map where the key is the SourceInfo (location) of a token and the value is the detailed TokenInfo.
+     * @return A map where the key is the SourceInfo (location) of a token, with instance 0, and
+     *         the value is the detailed TokenInfo.
      */
     public Map<SourceInfo, TokenInfo> generate(AstNode root) {
         walkAndVisit(root);
@@ -78,7 +78,8 @@ public class TokenMapGenerator implements ITokenMapContext {
      * This is useful when there are multiple top-level nodes (e.g., multiple procedures).
      *
      * @param nodes The list of AST nodes to traverse.
-     * @return A map where the key is the SourceInfo (location) of a token and the value is the detailed TokenInfo.
+     * @return A map where the key is the SourceInfo (location) of a token, with instance 0, and
+     *         the value is the detailed TokenInfo.
      */
     public Map<SourceInfo, TokenInfo> generateAll(List<AstNode> nodes) {
         for (AstNode node : nodes) {
@@ -89,44 +90,25 @@ public class TokenMapGenerator implements ITokenMapContext {
         return tokenMap;
     }
 
-    /**
-     * Builds a 3-level token lookup structure for efficient file/line/column-based queries.
-     *
-     * <p>Structure: fileName -> lineNumber -> columnNumber -> list of TokenInfo</p>
-     *
-     * @param tokenMap The flat token map keyed by {@link SourceInfo}
-     * @return A nested lookup map suitable for debuggers and indexers
-     */
-    public static Map<String, Map<Integer, Map<Integer, List<TokenInfo>>>> buildTokenLookup(Map<SourceInfo, TokenInfo> tokenMap) {
-        Map<String, Map<Integer, Map<Integer, List<TokenInfo>>>> result = new HashMap<>();
-
-        for (Map.Entry<SourceInfo, TokenInfo> entry : tokenMap.entrySet()) {
-            SourceInfo sourceInfo = entry.getKey();
-            TokenInfo tokenInfo = entry.getValue();
-
-            String fileName = sourceInfo.fileName();
-            Integer lineNumber = sourceInfo.lineNumber();
-            Integer columnNumber = sourceInfo.columnNumber();
-
-            result.computeIfAbsent(fileName, k -> new HashMap<>())
-                  .computeIfAbsent(lineNumber, k -> new HashMap<>())
-                  .computeIfAbsent(columnNumber, k -> new ArrayList<>())
-                  .add(tokenInfo);
-        }
-
-        return result;
-    }
-
     // === ITokenMapContext implementation ===
 
     @Override
     public void addToken(SourceInfo sourceInfo, String text, TokenKind type, String scope) {
-        tokenMap.put(sourceInfo, new TokenInfo(text, type, scope));
+        put(sourceInfo, new TokenInfo(text, type, scope));
     }
 
     @Override
     public void addToken(SourceInfo sourceInfo, String text, TokenKind type, String scope, String qualifiedName) {
-        tokenMap.put(sourceInfo, new TokenInfo(text, type, scope, qualifiedName));
+        put(sourceInfo, new TokenInfo(text, type, scope, qualifiedName));
+    }
+
+    /**
+     * Enters a token under its position without its instance. The map describes the text of a
+     * line, which is the same in every instance of injected tokens, and the debugger annotates
+     * a token by its position.
+     */
+    private void put(SourceInfo sourceInfo, TokenInfo tokenInfo) {
+        tokenMap.put(sourceInfo.withoutExpansion(), tokenInfo);
     }
 
     @Override
@@ -190,13 +172,13 @@ public class TokenMapGenerator implements ITokenMapContext {
         }
 
         if (node instanceof IdentifierNode identifierNode) {
-            Optional<ResolvedSymbol> symbolOpt = resolveInCurrentScope(identifierNode.text(), identifierNode.sourceInfo().fileName());
+            Optional<ResolvedSymbol> symbolOpt = resolveInCurrentScope(identifierNode.text(), identifierNode.sourceInfo());
             if (symbolOpt.isPresent()) {
                 ResolvedSymbol resolved = symbolOpt.get();
                 Symbol sym = resolved.symbol();
                 SourceInfo si = identifierNode.sourceInfo();
                 String qualifiedName = resolved.qualifiedName();
-                tokenMap.put(si, new TokenInfo(identifierNode.text(), TokenKindMapper.map(sym.type()), this.currentScopeName, qualifiedName));
+                put(si, new TokenInfo(identifierNode.text(), TokenKindMapper.map(sym.type()), resolved.scope(), qualifiedName));
             } else {
                 diagnostics.reportError(
                     "Internal error: symbol '" + identifierNode.text() +
@@ -209,15 +191,18 @@ public class TokenMapGenerator implements ITokenMapContext {
             if (registerNode.isAlias()) {
                 SourceInfo aliasSourceInfo = registerNode.sourceInfo();
                 String qualifiedAlias = qualifyName(registerNode.originalAlias());
-                tokenMap.put(aliasSourceInfo, new TokenInfo(
+                String definedIn = resolveInCurrentScope(registerNode.originalAlias(), aliasSourceInfo)
+                        .map(ResolvedSymbol::scope)
+                        .orElse(this.currentScopeName);
+                put(aliasSourceInfo, new TokenInfo(
                     registerNode.originalAlias(),
                     TokenKind.ALIAS,
-                    this.currentScopeName,
+                    definedIn,
                     qualifiedAlias
                 ));
             } else {
                 SourceInfo regSourceInfo = registerNode.sourceInfo();
-                tokenMap.put(regSourceInfo, new TokenInfo(
+                put(regSourceInfo, new TokenInfo(
                     registerNode.name(),
                     TokenKind.REGISTER,
                     this.currentScopeName
@@ -237,13 +222,13 @@ public class TokenMapGenerator implements ITokenMapContext {
     /**
      * Resolves a symbol using the currently tracked scope object.
      */
-    private Optional<ResolvedSymbol> resolveInCurrentScope(String name, String fileName) {
+    private Optional<ResolvedSymbol> resolveInCurrentScope(String name, SourceInfo at) {
         SymbolTable.Scope originalScope = symbolTable.getCurrentScope();
         if (this.currentScopeObj != null) {
             symbolTable.setCurrentScope(this.currentScopeObj);
         }
         try {
-            return symbolTable.resolve(name, fileName).found();
+            return symbolTable.resolve(name, at).found();
         } finally {
             symbolTable.setCurrentScope(originalScope);
         }

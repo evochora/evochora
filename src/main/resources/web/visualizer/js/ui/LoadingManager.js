@@ -4,6 +4,10 @@
  * for orchestrated loading sequences and automatic counter-based tracking
  * (incrementRequests/decrementRequests) for standalone API calls.
  *
+ * A background status ({@link setBackground}) names work the server does while the view is
+ * usable, such as reading the run's ancestry: the overlay shows it whenever nothing else is
+ * loading, and returns to it when a load ends, until the status is taken back.
+ *
  * The TickPanelManager reference is set late via {@link setTickPanelManager}
  * because it is constructed after the singleton is imported. All methods
  * silently no-op until the reference is available.
@@ -15,6 +19,7 @@ export class LoadingManager {
         /** @private */ this.activeRequestCount = 0;
         /** @private */ this.activeTaskCount = 0;
         /** @private */ this._explicitStatus = false;
+        /** @private */ this._background = null;
         /** @private */ this._tpm = null;
     }
 
@@ -57,12 +62,23 @@ export class LoadingManager {
     }
 
     /**
-     * Hides the loading overlay and clears the explicit status.
-     * If request counters are still active, the next counter event will re-show.
+     * Hides the loading overlay and clears the explicit status. A background status, if set,
+     * takes the overlay over. If request counters are still active, the next counter event will
+     * re-show.
      */
     hide() {
         this._explicitStatus = false;
-        this._tpm?.hideLoading();
+        this._updateFromCounters();
+    }
+
+    /**
+     * Sets or takes back the background status: text the overlay shows while nothing else
+     * loads, such as the progress of the run's ancestry.
+     * @param {string|null} status - The status text, or null when the work is done.
+     */
+    setBackground(status) {
+        this._background = status || null;
+        this._updateFromCounters();
     }
 
     /**
@@ -109,6 +125,8 @@ export class LoadingManager {
 
         if (this.activeRequestCount > 0 || this.activeTaskCount > 0) {
             this._tpm?.showLoading('Loading');
+        } else if (this._background) {
+            this._tpm?.showLoading(this._background);
         } else {
             this._tpm?.hideLoading();
         }

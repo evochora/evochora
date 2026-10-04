@@ -356,10 +356,15 @@ public interface IBatchStorageRead extends IResource {
      * <p>
      * The raw bytes include all protobuf fields (including organisms). Consumers that need
      * parsed objects should use {@link #forEachChunk} instead.
+     * <p>
+     * A batch file holds at least one chunk, since an empty batch is never written. A file that
+     * reads without any chunk was cut off before its data reached the storage, and reading it
+     * fails rather than end as a batch without chunks, which a consumer would take as done.
      *
      * @param path     The physical storage path (includes compression extension)
      * @param consumer Callback invoked once per chunk with the raw bytes and metadata
-     * @throws Exception              If reading (IOException) or the consumer callback fails (e.g. SQLException)
+     * @throws Exception              If reading (IOException, also for a file without a chunk) or the
+     *                                consumer callback fails (e.g. SQLException)
      * @throws IllegalArgumentException If any parameter is null
      */
     void forEachRawChunk(StoragePath path,
@@ -374,12 +379,14 @@ public interface IBatchStorageRead extends IResource {
      * wire-level protobuf filtering.
      * <p>
      * Implementations that support wire-level field filtering (e.g.,
-     * {@link ChunkFieldFilter#SKIP_ORGANISMS}) must override this method.
+     * {@link ChunkFieldFilter#SKIP_ORGANISMS}) must override this method. A file without any
+     * chunk fails as described at {@link #forEachRawChunk}.
      *
      * @param path     The physical storage path (includes compression extension)
      * @param filter   Controls which fields to skip during parsing
      * @param consumer Callback invoked once per chunk with the filtered chunk
-     * @throws Exception              If reading (IOException), parsing, or the consumer callback fails (e.g. SQLException)
+     * @throws Exception              If reading (IOException, also for a file without a chunk),
+     *                                parsing, or the consumer callback fails (e.g. SQLException)
      * @throws UnsupportedOperationException If filter is not {@code ALL} and this method is not overridden
      * @throws IllegalArgumentException If any parameter is null
      */

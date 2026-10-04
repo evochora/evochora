@@ -1,7 +1,8 @@
 package org.evochora.compiler;
 
+import org.evochora.compiler.features.conditional.ConditionalFeature;
 import org.evochora.compiler.features.ctx.CtxFeature;
-import org.evochora.compiler.features.define.DefineFeature;
+import org.evochora.compiler.features.constdir.ConstFeature;
 import org.evochora.compiler.features.dir.DirFeature;
 import org.evochora.compiler.features.macro.MacroFeature;
 import org.evochora.compiler.features.org.OrgFeature;
@@ -37,13 +38,14 @@ public final class StandardFeatures {
         // within a feature, the registration order determines execution order.
         // InstructionFeature must be last — it registers the defaultParserStatement handler.
         return List.of(
+            new ConditionalFeature(),
             new RepeatFeature(),
             new SourceFeature(),
             new MacroFeature(),
             new CtxFeature(),
             new OrgFeature(),
             new DirFeature(),
-            new DefineFeature(),
+            new ConstFeature(),
             new RegFeature(),
             new LabelFeature(),
             new PlaceFeature(),
