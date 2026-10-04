@@ -52,7 +52,7 @@ class InstructionRegistryTest {
             Map.entry(ArithmeticInstruction.class, Family.ARITHMETIC),
             Map.entry(BitwiseInstruction.class, Family.BITWISE),
             Map.entry(DataInstruction.class, Family.DATA),
-            Map.entry(StackInstruction.class, Family.DATA),
+            Map.entry(StackInstruction.class, Family.STACK),
             Map.entry(ConditionalInstruction.class, Family.CONDITIONAL),
             Map.entry(ControlFlowInstruction.class, Family.CONTROL),
             Map.entry(EnvironmentInteractionInstruction.class, Family.ENVIRONMENT),
@@ -132,7 +132,7 @@ class InstructionRegistryTest {
             "ADDS, 1, 0",
             "SUBI, 1, 1",
             "ANDR, 2, 0",
-            "DUP, 3, 3",
+            "DUP, 10, 0",
             "GTI, 4, 3",
             "PGTI, 4, 20",
             "JMPI, 5, 0",
@@ -215,6 +215,35 @@ class InstructionRegistryTest {
 
         assertThat(Instruction.getInstructionIdByName("TESTOP")).as("nothing was registered").isNull();
         assertThat(Instruction.getInstructionNameById(addr)).isEqualTo("ADDR");
+    }
+
+    /**
+     * A family is one class: a class may not register under a family another class holds, and the
+     * refusal names the holder and leaves the registry as it stands.
+     */
+    @Test
+    void aFamilyHeldByAnotherClassIsRejected() {
+        assertThatThrownBy(() -> Instruction.registerOp(
+                StackInstruction.class, StackInstruction::new,
+                Family.ARITHMETIC, 63, MAX_INDEX, "TESTOP", true))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("ArithmeticInstruction");
+
+        assertThat(Instruction.getInstructionIdByName("TESTOP")).as("nothing was registered").isNull();
+    }
+
+    /**
+     * A class holds one family: a registration of the class under a second family is refused.
+     */
+    @Test
+    void aSecondFamilyForAClassIsRejected() {
+        assertThatThrownBy(() -> Instruction.registerOp(
+                ArithmeticInstruction.class, ArithmeticInstruction::new,
+                MAX_FAMILY, 0, 0, "TESTOP", true))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("ArithmeticInstruction");
+
+        assertThat(Instruction.getInstructionIdByName("TESTOP")).as("nothing was registered").isNull();
     }
 
     /**

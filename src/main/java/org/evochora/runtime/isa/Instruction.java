@@ -175,6 +175,14 @@ public abstract class Instruction {
      * {@link #FAMILY_BY_ID}.
      */
     private static final IntOpenHashSet NEVER_FALLS_THROUGH = new IntOpenHashSet();
+    /**
+     * The class that holds each family, keyed by family ID. A family is the class that registers its
+     * instructions, so each family belongs to exactly one class and each class to exactly one
+     * family; {@link #registerOp} keeps both directions of that pairing.
+     */
+    private static final Map<Integer, Class<? extends Instruction>> CLASS_BY_FAMILY = new HashMap<>();
+    /** The family each registering class holds; the reverse of {@link #CLASS_BY_FAMILY}. */
+    private static final Map<Class<? extends Instruction>, Integer> FAMILY_BY_CLASS = new HashMap<>();
 
     /**
      * Creates a registry keyed by opcode ID that answers {@code -1} for an opcode it does not hold.
@@ -643,7 +651,7 @@ public abstract class Instruction {
             ArithmeticInstruction.register(ARITHMETIC);
             BitwiseInstruction.register(BITWISE);
             DataInstruction.register(DATA);
-            StackInstruction.register(DATA);  // Stack operations are part of DATA family
+            StackInstruction.register(STACK);
             ConditionalInstruction.register(CONDITIONAL);
             ControlFlowInstruction.register(CONTROL);
             EnvironmentInteractionInstruction.register(ENVIRONMENT);
@@ -679,6 +687,8 @@ public abstract class Instruction {
         OPERAND_SOURCES.clear();
         PARALLEL_EXECUTE_SAFE_MAP.clear();
         NEVER_FALLS_THROUGH.clear();
+        CLASS_BY_FAMILY.clear();
+        FAMILY_BY_CLASS.clear();
     }
 
     /**
@@ -762,6 +772,9 @@ public abstract class Instruction {
      * another instruction: the IDs are meant to stay stable when the instruction set grows, so that
      * a stable program format can be built on them.
      * <p>
+     * <b>A family is one class.</b> The first registration of a class claims its family; a family
+     * already held by another class, and a second family for a class that holds one, are refused.
+     * <p>
      * <b>Thread safety:</b> Must only be called during single-threaded initialization ({@link #init()}).
      *
      * @param familyClass the instruction class (e.g., ArithmeticInstruction.class)
@@ -774,7 +787,9 @@ public abstract class Instruction {
      * @param parallelExecuteSafe whether this instruction can safely execute in parallel (no shared environment writes)
      * @param sources the operand sources for this instruction
      * @throws IllegalArgumentException if family or index lies outside the opcode layout
-     * @throws IllegalStateException if the opcode ID or the name is already registered
+     * @throws IllegalStateException if the opcode ID or the name is already registered, if the
+     *                               family is held by another class, or if the class holds another
+     *                               family
      */
     protected static void registerOp(Class<? extends Instruction> familyClass, InstructionFactory factory,
                                      int family, int operation, int index, String name,
@@ -789,6 +804,16 @@ public abstract class Instruction {
         if (NAME_TO_ID.containsKey(upperCaseName)) {
             throw new IllegalStateException("Instruction name " + upperCaseName + " is already registered");
         }
+        Class<? extends Instruction> holderOfFamily = CLASS_BY_FAMILY.get(family);
+        if (holderOfFamily != null && holderOfFamily != familyClass) {
+            throw new IllegalStateException("Family " + family + " is held by " + holderOfFamily.getSimpleName()
+                    + ", " + familyClass.getSimpleName() + " cannot register " + name + " under it");
+        }
+        Integer familyOfClass = FAMILY_BY_CLASS.get(familyClass);
+        if (familyOfClass != null && familyOfClass != family) {
+            throw new IllegalStateException(familyClass.getSimpleName() + " holds family " + familyOfClass
+                    + ", it cannot register " + name + " under family " + family);
+        }
 
         List<OperandSource> sourceList = List.of(sources);
         REGISTERED_INSTRUCTIONS_BY_ID.put(fullId, familyClass);
@@ -800,6 +825,8 @@ public abstract class Instruction {
         OPERATION_BY_ID.put(fullId, operation);
         OPERAND_SOURCES.put(fullId, sourceList);
         PARALLEL_EXECUTE_SAFE_MAP.put(fullId, parallelExecuteSafe);
+        CLASS_BY_FAMILY.put(family, familyClass);
+        FAMILY_BY_CLASS.put(familyClass, family);
     }
 
     /**
