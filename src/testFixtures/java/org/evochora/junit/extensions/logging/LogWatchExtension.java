@@ -185,7 +185,8 @@ public class LogWatchExtension implements BeforeAllCallback, BeforeEachCallback,
     }
 
     private String format(CapturedEvent e) {
-        return String.format("[%s] %s - %s", e.level, e.loggerName, e.message);
+        String line = String.format("[%s] %s - %s", e.level, e.loggerName, e.message);
+        return e.throwable.isEmpty() ? line : line + "\n    " + e.throwable;
     }
 
     private static Level toLogback(LogLevel lvl) {
@@ -211,7 +212,10 @@ public class LogWatchExtension implements BeforeAllCallback, BeforeEachCallback,
         @Override
         public FilterReply decide(Marker marker, ch.qos.logback.classic.Logger logger, Level level, String format, Object[] params, Throwable t) {
             if (level.isGreaterOrEqual(toLogback(rules.minLevel))) {
-                CapturedEvent ev = new CapturedEvent(logger.getName(), level, formatMessage(format, params));
+                Throwable thrown = t != null ? t
+                        : (format == null ? null : MessageFormatter.arrayFormat(format, params).getThrowable());
+                CapturedEvent ev = new CapturedEvent(logger.getName(), level, formatMessage(format, params),
+                        describe(thrown));
                 events.add(ev);
                 if (isAllowedLocal(ev, rules.allows) || isExpectedLocal(ev, rules.expects)) {
                     return FilterReply.DENY;
@@ -226,6 +230,27 @@ public class LogWatchExtension implements BeforeAllCallback, BeforeEachCallback,
 
         void clearEvents() {
             events.clear();
+        }
+
+        /**
+         * Describes a logged throwable by the class and message of it and of each of its causes, so
+         * that a test failing on an unexpected log shows what was thrown.
+         *
+         * @param thrown the throwable logged with the event, or {@code null}
+         * @return the description, empty if nothing was thrown
+         */
+        private static String describe(Throwable thrown) {
+            StringBuilder sb = new StringBuilder();
+            for (Throwable c = thrown; c != null && sb.length() < 2000; c = c.getCause() == c ? null : c.getCause()) {
+                if (sb.length() > 0) {
+                    sb.append(" <- caused by ");
+                }
+                sb.append(c.getClass().getName());
+                if (c.getMessage() != null) {
+                    sb.append(": ").append(c.getMessage());
+                }
+            }
+            return sb.toString();
         }
 
         private String formatMessage(String format, Object[] params) {
@@ -259,11 +284,14 @@ public class LogWatchExtension implements BeforeAllCallback, BeforeEachCallback,
         final String loggerName;
         final Level level;
         final String message;
+        /** What was thrown with the event, by class and message along its causes; empty if nothing. */
+        final String throwable;
 
-        CapturedEvent(String loggerName, Level level, String message) {
+        CapturedEvent(String loggerName, Level level, String message, String throwable) {
             this.loggerName = loggerName;
             this.level = level;
             this.message = message != null ? message : "";
+            this.throwable = throwable;
         }
     }
 
