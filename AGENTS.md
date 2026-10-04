@@ -321,6 +321,10 @@ See `.agents/architecture-guidelines.md` for full review criteria.
 - No fixed ports, directories or database names: bind port 0 or ask the OS for a free port, use `@TempDir` or `Files.createTempDirectory`, give in-memory databases a UUID name
 - No wall-clock assertions ("finished within 10 ms"): assert behaviour and let Awaitility bound the wait
 
+**Production code serves the program, not the tests:**
+- Tests adapt to the production code, never the other way round: no constructor, factory, parameter or widened visibility that exists only so that a test can call it more conveniently
+- A test that needs an object builds it the way the program does, from its configuration or its public API; a helper for that lives in the test sources
+
 **Assertions & Timing:**
 - Use Awaitility for async conditions: `await().atMost(...).until(...)`
 - **NEVER use `Thread.sleep()` in tests**
