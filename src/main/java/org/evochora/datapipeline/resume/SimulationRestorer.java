@@ -58,7 +58,7 @@ import com.google.protobuf.ByteString;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 
-import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
+import it.unimi.dsi.fastutil.longs.LongArrayList;
 
 /**
  * Converts a ResumeCheckpoint into a running Simulation.
@@ -250,21 +250,19 @@ public class SimulationRestorer {
         List<OrganismState> organismStates = snapshot.getOrganismsList();
         List<PluginState> pluginStates = snapshot.getPluginStatesList();
 
-        // 7. Restore genome hash set from snapshot
-        LongOpenHashSet allGenomesEverSeen = new LongOpenHashSet();
-        for (long hash : snapshot.getAllGenomeHashesEverSeenList()) {
-            allGenomesEverSeen.add(hash);
-        }
+        // 7. Restore the genome hashes in the order the snapshot wrote them, which is the order of
+        // their discovery
+        LongArrayList genomesInDiscoveryOrder = new LongArrayList(snapshot.getAllGenomeHashesEverSeenList());
 
         log.debug("Resume state: currentTick={}, totalOrganismsCreated={}, totalUniqueGenomes={}, organisms={}",
-            currentTick, totalOrganismsCreated, allGenomesEverSeen.size(), organismStates.size());
+            currentTick, totalOrganismsCreated, genomesInDiscoveryOrder.size(), organismStates.size());
 
         // 8. Create Simulation using forResume()
         Simulation simulation = Simulation.forResume(
             environment,
             currentTick,
             totalOrganismsCreated,
-            allGenomesEverSeen,
+            genomesInDiscoveryOrder,
             policyManager,
             organismConfig,
             parallelism

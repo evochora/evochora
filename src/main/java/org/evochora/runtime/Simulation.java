@@ -26,6 +26,9 @@ import org.evochora.runtime.thermodynamics.ThermodynamicPolicyManager;
 import com.typesafe.config.Config;
 
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.longs.LongArrayList;
+import it.unimi.dsi.fastutil.longs.LongCollection;
+import it.unimi.dsi.fastutil.longs.LongList;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 
 /**
@@ -92,6 +95,12 @@ public class Simulation {
      */
     private boolean captureExecutionDetails = true;
     private final LongOpenHashSet allGenomesEverSeen = new LongOpenHashSet();
+    /**
+     * The hashes of {@link #allGenomesEverSeen} in the order they were first seen. A snapshot writes
+     * them in this order, which unlike the iteration order of the set does not depend on how the set
+     * was filled, so a run resumed from the snapshot writes the same order again.
+     */
+    private final LongArrayList genomesInDiscoveryOrder = new LongArrayList();
     private IRandomProvider randomProvider;
 
     /** The run's seed, taken from the random provider when it is installed. */
@@ -159,8 +168,9 @@ public class Simulation {
      * @param currentTick The tick number to resume from
      * @param totalOrganismsCreated Total number of organisms created in the original run
      *                              (used to calculate next organism ID)
-     * @param allGenomesEverSeen Set of all genome hashes ever observed (for cumulative tracking).
-     *                           May be {@code null} or empty for new simulations or old checkpoints.
+     * @param genomesInDiscoveryOrder All genome hashes ever observed, in the order they were first
+     *                                observed (for cumulative tracking). May be {@code null} or empty
+     *                                for new simulations.
      * @param policyManager Thermodynamic policy manager (from Metadata config)
      * @param organismConfig Organism configuration (from Metadata config)
      * @param parallelism Thread parallelism for the Plan phase (see constructor for semantics)
@@ -170,7 +180,7 @@ public class Simulation {
             Environment environment,
             long currentTick,
             long totalOrganismsCreated,
-            LongOpenHashSet allGenomesEverSeen,
+            LongCollection genomesInDiscoveryOrder,
             ThermodynamicPolicyManager policyManager,
             Config organismConfig,
             int parallelism) {
@@ -178,8 +188,8 @@ public class Simulation {
         Simulation sim = new Simulation(environment, policyManager, organismConfig, parallelism);
         sim.currentTick = currentTick;
         sim.nextOrganismId = (int) totalOrganismsCreated + 1;
-        if (allGenomesEverSeen != null && !allGenomesEverSeen.isEmpty()) {
-            sim.allGenomesEverSeen.addAll(allGenomesEverSeen);
+        if (genomesInDiscoveryOrder != null) {
+            genomesInDiscoveryOrder.forEach(sim::registerGenomeHash);
         }
         return sim;
     }
@@ -396,8 +406,8 @@ public class Simulation {
      * @param hash The genome hash to register. Zero hashes are ignored.
      */
     public void registerGenomeHash(long hash) {
-        if (hash != 0L) {
-            allGenomesEverSeen.add(hash);
+        if (hash != 0L && allGenomesEverSeen.add(hash)) {
+            genomesInDiscoveryOrder.add(hash);
         }
     }
 
@@ -420,6 +430,19 @@ public class Simulation {
      */
     public LongOpenHashSet getAllGenomesEverSeen() {
         return allGenomesEverSeen;
+    }
+
+    /**
+     * Returns the hashes of all genomes ever observed, in the order they were first observed.
+     * Snapshot serialization writes them in this order and a resume restores it, so that a chunk
+     * recorded again after a resume equals the one the run recorded.
+     * <p>
+     * Returns the internal list directly (no copy) since Simulation is single-threaded.
+     *
+     * @return The genome hashes in the order of their discovery.
+     */
+    public LongList getGenomesInDiscoveryOrder() {
+        return genomesInDiscoveryOrder;
     }
 
     /**

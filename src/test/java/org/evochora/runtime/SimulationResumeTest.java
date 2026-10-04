@@ -3,9 +3,12 @@ package org.evochora.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.Map;
+import java.util.SplittableRandom;
 
 import org.evochora.runtime.isa.Instruction;
 
+import it.unimi.dsi.fastutil.longs.LongArrayList;
+import it.unimi.dsi.fastutil.longs.LongCollection;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Organism;
@@ -18,7 +21,7 @@ import org.junit.jupiter.api.Test;
 import com.typesafe.config.ConfigFactory;
 
 /**
- * Unit tests for {@link Simulation#forResume(Environment, long, long, LongOpenHashSet, ThermodynamicPolicyManager, com.typesafe.config.Config, int)}.
+ * Unit tests for {@link Simulation#forResume(Environment, long, long, LongCollection, ThermodynamicPolicyManager, com.typesafe.config.Config, int)}.
  * <p>
  * Tests the factory method used for resuming simulations from checkpoints.
  */
@@ -323,5 +326,43 @@ class SimulationResumeTest {
         );
 
         assertThat(sim.getTotalUniqueGenomesCount()).isEqualTo(0);
+    }
+
+    /**
+     * A snapshot writes the genome hashes in the order the simulation hands them out, and a resume
+     * rebuilds the simulation from that order. The resumed simulation has to hand them out in the
+     * same order as the uninterrupted one — right after the resume and after both have discovered
+     * further genomes — or a chunk recorded again after a resume differs from the one the run
+     * recorded, although it holds the same genomes.
+     */
+    @Test
+    @Tag("unit")
+    void testForResume_KeepsTheOrderOfTheGenomeHashes() {
+        SplittableRandom random = new SplittableRandom(42);
+        Simulation original = new Simulation(environment, policyManager, organismConfig, 1);
+        for (int i = 0; i < 2_000; i++) {
+            original.registerGenomeHash(random.nextLong());
+        }
+
+        long[] written = snapshotOrder(original);
+        Simulation resumed = Simulation.forResume(environment, 1000L, 50L, LongArrayList.wrap(written), policyManager, organismConfig, 1);
+        assertThat(snapshotOrder(resumed))
+                .as("the resumed simulation must hand out the genome hashes in the order it read them")
+                .containsExactly(written);
+
+        for (int i = 0; i < 500; i++) {
+            long hash = random.nextLong();
+            original.registerGenomeHash(hash);
+            resumed.registerGenomeHash(hash);
+        }
+        assertThat(snapshotOrder(resumed))
+                .as("after further discoveries the resumed simulation must still hand out the genome"
+                        + " hashes in the uninterrupted simulation's order")
+                .containsExactly(snapshotOrder(original));
+    }
+
+    /** The genome hashes in the order a snapshot of the simulation writes them. */
+    private static long[] snapshotOrder(Simulation simulation) {
+        return simulation.getGenomesInDiscoveryOrder().toLongArray();
     }
 }

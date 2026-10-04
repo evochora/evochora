@@ -272,7 +272,7 @@ final class ResumeNeutralityHarness {
         Optional<TickDataChunk> chunk = encoder.captureTick(
                 snapshotTick, live.getEnvironment(), states,
                 live.getTotalOrganismsCreatedCount(), live.getTotalUniqueGenomesCount(),
-                live.getAllGenomesEverSeen(),
+                live.getGenomesInDiscoveryOrder(),
                 ByteString.copyFrom(liveProvider.saveState()), pluginStates(plugins));
         TickData snapshot = chunk.or(encoder::flushPartialChunk).orElseThrow().getSnapshot();
 

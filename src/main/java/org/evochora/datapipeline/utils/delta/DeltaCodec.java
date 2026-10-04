@@ -13,7 +13,7 @@ import org.evochora.datapipeline.api.delta.ICellStateSource;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.EnvironmentProperties;
 
-import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
+import it.unimi.dsi.fastutil.longs.LongCollection;
 
 import java.util.ArrayList;
 import java.util.BitSet;
@@ -185,7 +185,8 @@ public final class DeltaCodec {
          * @param organisms current organism states
          * @param totalOrganismsCreated total organisms created since simulation start
          * @param totalUniqueGenomes total unique genomes ever observed
-         * @param allGenomesEverSeen set of all genome hashes ever seen (stored in snapshots only)
+         * @param allGenomesEverSeen all genome hashes ever seen, written in the collection's iteration
+         *                           order (stored in snapshots only)
          * @param rngState RNG state bytes
          * @param pluginStates energy strategy states
          * @return Optional containing a complete chunk, or empty if chunk not yet complete
@@ -196,7 +197,7 @@ public final class DeltaCodec {
                 List<OrganismState> organisms,
                 long totalOrganismsCreated,
                 long totalUniqueGenomes,
-                LongOpenHashSet allGenomesEverSeen,
+                LongCollection allGenomesEverSeen,
                 ByteString rngState,
                 List<PluginState> pluginStates) {
 

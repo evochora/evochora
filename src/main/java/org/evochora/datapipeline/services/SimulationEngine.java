@@ -1079,7 +1079,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                 organismStates,
                 simulation.getTotalOrganismsCreatedCount(),
                 simulation.getTotalUniqueGenomesCount(),
-                simulation.getAllGenomesEverSeen(),
+                simulation.getGenomesInDiscoveryOrder(),
                 rngState,
                 pluginStates);
 
