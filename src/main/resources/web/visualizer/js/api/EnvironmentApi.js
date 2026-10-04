@@ -200,15 +200,18 @@ export class EnvironmentApi {
      * This remains on the main thread as it's a small JSON payload.
      *
      * @param {string|null} [runId=null] - The specific run ID to fetch the tick range for.
+     * @param {object} [options={}] - Optional settings.
+     * @param {boolean} [options.showLoading=true] - Whether the request counts towards the
+     *        loading indicator; false for a poll the user did not start and need not see.
      * @returns {Promise<{minTick: number, maxTick: number, ranges: Array<{first: number, last: number, step: number}>}>} A promise that resolves to the bounds and the ranges.
      * @throws {Error} If the network request fails or the server returns an error.
      */
-    async fetchTickRange(runId = null) {
+    async fetchTickRange(runId = null, { showLoading = true } = {}) {
         const url = runId
             ? `/visualizer/api/environment/ticks?runId=${encodeURIComponent(runId)}`
             : `/visualizer/api/environment/ticks`;
 
-        if (loadingManager) {
+        if (showLoading && loadingManager) {
             loadingManager.incrementRequests();
         }
 
@@ -222,7 +225,7 @@ export class EnvironmentApi {
             }
             return await response.json();
         } finally {
-            if (loadingManager) {
+            if (showLoading && loadingManager) {
                 loadingManager.decrementRequests();
             }
         }

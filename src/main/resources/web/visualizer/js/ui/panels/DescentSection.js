@@ -17,8 +17,9 @@ const COLUMN_GAP_PX = 20;
  * life span and its birth place, and ends with the switch between a root that follows the common
  * ancestor of the living (auto) and a held one. The second holds a cell per coloured line, laid
  * out in columns, and below them one closing line with the other lines and the organisms of the
- * run outside the root's descent. While the ancestry of the run is still being read, the first row
- * shows the progress; when reading it failed, the error.
+ * run outside the root's descent. While the ancestry of the run is still being read, the section
+ * stays empty and the timeline's loading overlay shows the progress; when reading it failed, the
+ * section shows the error.
  * <p>
  * The section only shows and reports: every change of the root goes to the callbacks, and the
  * section is drawn again from the answer that follows.
@@ -78,9 +79,8 @@ export class DescentSection {
             return;
         }
         if (descent.state === 'loading' || !descent.root) {
-            const percent = Math.floor((descent.progress || 0) * 100);
-            this.container.innerHTML = this._rows(
-                `<span class="descent-status">loading ancestry ${percent} %</span>`, '');
+            // The timeline's loading overlay says that the ancestry is being read
+            this.clear();
             return;
         }
 
