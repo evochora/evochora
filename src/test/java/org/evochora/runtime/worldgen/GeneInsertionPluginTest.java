@@ -464,6 +464,36 @@ class GeneInsertionPluginTest {
         assertThat(environment.getMolecule(9, Y).value()).as("the closing jump's target").isEqualTo(renamed);
     }
 
+    /**
+     * A label entry may insert a conditional jump. Its label operand refers to the renamed block, as
+     * the closing jump does, so execution reaches the block whether the condition holds or not: the
+     * jump is neutral when it is inserted and changes the program only once its reference drifts.
+     */
+    @Test
+    void aConditionalJumpInsertedByALabelEntryRefersToTheRenamedBlock() {
+        placeLabel(2, Y, LABEL_HASH_A);
+        placeJump(3, Y, LABEL_HASH_A);
+        placeCode(15, Y);
+        Integer jfer = Instruction.getInstructionIdByName("JFER");
+        assertThat(jfer).isNotNull();
+        LabelEntry entry = new LabelEntry(
+                List.of(jfer),
+                List.of(Instruction.getOperandSourcesById(jfer)),
+                1.0,
+                new ArgumentConfig(null, null, null, "existing", null));
+        GeneInsertionPlugin plugin = new GeneInsertionPlugin(new SeededRandomProvider(42L), 1.0, List.of(entry));
+
+        plugin.mutate(child, environment);
+
+        // The chain LABEL A, JFER, LABELREF, JMPI, LABELREF starts at x=5; both references carry A'
+        List<MutationRecord> records = child.getBirthMutations();
+        assertThat(records).hasSize(1);
+        int renamed = (int) records.get(0).params()[1];
+        assertThat(environment.getMolecule(6, Y).value()).isEqualTo(jfer.intValue());
+        assertThat(environment.getMolecule(7, Y).value()).as("the inserted jump's target").isEqualTo(renamed);
+        assertThat(environment.getMolecule(9, Y).value()).as("the closing jump's target").isEqualTo(renamed);
+    }
+
     @Test
     void aLabelALocationInstructionAddressesIsNotCopied() {
         // A is where SKJI sends the data pointer, so moving its value would move that place

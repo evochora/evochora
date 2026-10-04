@@ -132,27 +132,6 @@ public class ControlFlowInstruction extends Instruction {
     }
 
     /**
-     * Moves the instruction pointer to the code behind a label: the cell one step past the LABEL
-     * molecule along the direction of travel. In a bounded world that cell may lie beyond the
-     * edge, when the label stands on the last cell; the jump then fails like a jump that finds
-     * no label, and the pointer advances past the jump instruction as usual.
-     *
-     * @param opName      The jump instruction, for the failure reason.
-     * @param labelIp     The position of the label the jump resolved to.
-     * @param organism    The organism that jumps.
-     * @param environment The environment the code lies in.
-     */
-    private void jumpTo(String opName, int[] labelIp, Organism organism, Environment environment) {
-        int[] codeIp = organism.getNextInstructionPosition(labelIp, organism.getDv(), environment);
-        if (!environment.exists(codeIp)) {
-            organism.instructionFailed(opName + ": Code cell beyond the edge of the world");
-            return;
-        }
-        organism.setIp(codeIp);
-        organism.setSkipIpAdvance(true);
-    }
-
-    /**
      * Extracts a label hash from a register or stack value.
      * <p>
      * A label hash is a scalar, and its value bits are the hash. A vector names no label, so it

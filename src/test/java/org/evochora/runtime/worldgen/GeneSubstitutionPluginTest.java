@@ -329,8 +329,9 @@ class GeneSubstitutionPluginTest {
 
     /**
      * The cell behind {@code JMPI} holds a label hash, so the only opcodes a family flip may reach
-     * are those that read their one operand as a label too. There are exactly two outside the
-     * control family: the fuzzy jump of the data pointer and the push of a resolved label.
+     * are those that read their one operand as a label too: the fuzzy jump of the data pointer, the
+     * push of a resolved label, and the conditional jumps on the previous instruction's failure,
+     * through which an unconditional jump can become a conditional one in a single step.
      */
     @Test
     void familyFlipOfAJumpToALabelReachesOnlyTheOtherLabelOpcodes() {
@@ -340,7 +341,9 @@ class GeneSubstitutionPluginTest {
                 .as("opcodes a family flip of JMPI reaches")
                 .containsExactlyInAnyOrder(
                         Instruction.getInstructionIdByName("SKJI"),
-                        Instruction.getInstructionIdByName("PSLI"));
+                        Instruction.getInstructionIdByName("PSLI"),
+                        Instruction.getInstructionIdByName("JFER"),
+                        Instruction.getInstructionIdByName("JNER"));
     }
 
     /**

@@ -47,6 +47,9 @@ public final class Family {
     /** Stack operations: DUP, SWAP, DROP, ROT. */
     public static final int STACK = 10;
 
+    /** Conditional jumps: the twins of the conditional skips, jumping to their label. */
+    public static final int CONDITIONAL_JUMP = 11;
+
     private Family() {
         // Utility class - prevent instantiation
     }

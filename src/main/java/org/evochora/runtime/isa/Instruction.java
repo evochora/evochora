@@ -16,6 +16,7 @@ import org.evochora.runtime.Config;
 import org.evochora.runtime.internal.services.ExecutionContext;
 import org.evochora.runtime.isa.instructions.ArithmeticInstruction;
 import org.evochora.runtime.isa.instructions.BitwiseInstruction;
+import org.evochora.runtime.isa.instructions.ConditionalJumpInstruction;
 import org.evochora.runtime.isa.instructions.ConditionalSkipInstruction;
 import org.evochora.runtime.isa.instructions.ControlFlowInstruction;
 import org.evochora.runtime.isa.instructions.DataInstruction;
@@ -534,6 +535,27 @@ public abstract class Instruction {
     }
 
     /**
+     * Moves the instruction pointer to the code behind a label: the cell one step past the LABEL
+     * molecule along the direction of travel. In a bounded world that cell may lie beyond the
+     * edge, when the label stands on the last cell; the jump then fails like a jump that finds
+     * no label, and the pointer advances past the jump instruction as usual.
+     *
+     * @param opName      The jump instruction, for the failure reason.
+     * @param labelIp     The position of the label the jump resolved to.
+     * @param organism    The organism that jumps.
+     * @param environment The environment the code lies in.
+     */
+    protected void jumpTo(String opName, int[] labelIp, Organism organism, Environment environment) {
+        int[] codeIp = organism.getNextInstructionPosition(labelIp, organism.getDv(), environment);
+        if (!environment.exists(codeIp)) {
+            organism.instructionFailed(opName + ": Code cell beyond the edge of the world");
+            return;
+        }
+        organism.setIp(codeIp);
+        organism.setSkipIpAdvance(true);
+    }
+
+    /**
      * The active data pointer of the organism, for an instruction that addresses the cell it
      * stands on or one next to it.
      * <p>
@@ -659,6 +681,7 @@ public abstract class Instruction {
             BitwiseInstruction.register(BITWISE);
             DataInstruction.register(DATA);
             StackInstruction.register(STACK);
+            ConditionalJumpInstruction.register(CONDITIONAL_JUMP);
             ConditionalSkipInstruction.register(CONDITIONAL_SKIP);
             ControlFlowInstruction.register(CONTROL);
             EnvironmentInteractionInstruction.register(ENVIRONMENT);

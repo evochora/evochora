@@ -79,6 +79,14 @@ class GenomeFlowTest {
         place(x + 2, new Molecule(Config.TYPE_DATA, 0));
     }
 
+    /** Places {@code JFI %DR0 DATA:0} with a label operand, four cells, a conditional jump. */
+    private void conditionalJump(int x, int value) {
+        opcode(x, "JFI");
+        place(x + 1, new Molecule(Config.TYPE_REGISTER, 0));
+        place(x + 2, new Molecule(Config.TYPE_DATA, 0));
+        labelRef(x + 3, value);
+    }
+
     /** Places an instruction with one label operand, two cells. */
     private void withLabelOperand(int x, String name, int value) {
         opcode(x, name);
@@ -155,6 +163,22 @@ class GenomeFlowTest {
         build(2, FORWARD);
 
         assertThat(reached(12, 2)).isTrue();
+    }
+
+    /**
+     * A conditional jump does not skip what follows it: when its condition does not hold it runs
+     * on into the next instruction, so an unconditional jump behind it still keeps execution out
+     * of the cells behind.
+     */
+    @Test
+    void jumpBehindAConditionalJumpKeepsExecutionOut() {
+        label(2, LABEL_VALUE);
+        conditionalJump(3, LABEL_VALUE);
+        withLabelOperand(7, "JMPI", LABEL_VALUE);
+        place(30, new Molecule(Config.TYPE_DATA, 0));
+        build(2, FORWARD);
+
+        assertThat(reached(12, 2)).isFalse();
     }
 
     /**
@@ -265,6 +289,20 @@ class GenomeFlowTest {
         label(2, LABEL_VALUE);
         withLabelOperand(3, "JMPI", LABEL_VALUE);
         withLabelOperand(6, "CALL", LABEL_VALUE);
+        build(2, FORWARD);
+        flow.collectReferences(env, frame, ORGANISM_ID, DV_DIM, 1);
+
+        assertThat(flow.isJumpTarget(LABEL_VALUE, MATCHING)).isTrue();
+    }
+
+    /**
+     * A label that only conditional jumps address is a jump target as well: their label operand
+     * names where execution goes when the condition holds.
+     */
+    @Test
+    void labelAddressedOnlyByAConditionalJumpIsAJumpTarget() {
+        label(2, LABEL_VALUE);
+        conditionalJump(3, LABEL_VALUE);
         build(2, FORWARD);
         flow.collectReferences(env, frame, ORGANISM_ID, DV_DIM, 1);
 
