@@ -217,22 +217,7 @@ public class GeneInsertionPlugin implements IBirthHandler {
             WeightedOpcodes opcodes,
             double weight,
             ArgumentConfig argConfig
-    ) implements MutationEntry {
-
-        /**
-         * Creates an entry that draws each of the given opcodes alike.
-         *
-         * @param opcodeIds The opcodes.
-         * @param operandSourcesByOpcode The operand sources per opcode; read from the registry when
-         *                               the instruction is built, so only kept for the call's shape.
-         * @param weight Selection weight.
-         * @param argConfig Argument generation configuration.
-         */
-        InstructionEntry(List<Integer> opcodeIds, List<List<OperandSource>> operandSourcesByOpcode,
-                         double weight, ArgumentConfig argConfig) {
-            this(alike(opcodeIds), weight, argConfig);
-        }
-    }
+    ) implements MutationEntry {}
 
     /**
      * Label entry: inserts one instruction in front of a block, as a copied label, the instruction
@@ -248,35 +233,7 @@ public class GeneInsertionPlugin implements IBirthHandler {
             WeightedOpcodes opcodes,
             double weight,
             ArgumentConfig argConfig
-    ) implements MutationEntry {
-
-        /**
-         * Creates an entry that draws each of the given opcodes alike.
-         *
-         * @param opcodeIds The opcodes.
-         * @param operandSourcesByOpcode The operand sources per opcode; read from the registry when
-         *                               the instruction is built, so only kept for the call's shape.
-         * @param weight Selection weight.
-         * @param argConfig Argument generation configuration.
-         */
-        LabelEntry(List<Integer> opcodeIds, List<List<OperandSource>> operandSourcesByOpcode,
-                   double weight, ArgumentConfig argConfig) {
-            this(alike(opcodeIds), weight, argConfig);
-        }
-    }
-
-    /**
-     * Weights a list of opcodes alike.
-     *
-     * @param opcodeIds The opcodes.
-     * @return The opcodes, each of weight one.
-     */
-    private static WeightedOpcodes alike(List<Integer> opcodeIds) {
-        int[] ids = opcodeIds.stream().mapToInt(Integer::intValue).toArray();
-        double[] weights = new double[ids.length];
-        Arrays.fill(weights, 1.0);
-        return WeightedOpcodes.of(ids, weights);
-    }
+    ) implements MutationEntry {}
 
     /**
      * Configuration for generating type-correct arguments.

@@ -160,6 +160,14 @@ class GeneInsertionPluginTest {
               ]
             }""";
 
+    /** Weights the given opcodes alike, as the set an entry draws from. */
+    private static WeightedOpcodes alike(List<Integer> opcodeIds) {
+        int[] ids = opcodeIds.stream().mapToInt(Integer::intValue).toArray();
+        double[] weights = new double[ids.length];
+        java.util.Arrays.fill(weights, 1.0);
+        return WeightedOpcodes.of(ids, weights);
+    }
+
     /** The opcode of the instruction the label entry tests insert. */
     private static int setiId() {
         Integer id = Instruction.getInstructionIdByName("SETI");
@@ -184,8 +192,7 @@ class GeneInsertionPluginTest {
         DataConfig dataConfig = new DataConfig(0, 255);
         ArgumentConfig argConfig = new ArgumentConfig(regConfig, null, dataConfig, null, null);
         return new LabelEntry(
-                List.of(seti),
-                List.of(Instruction.getOperandSourcesById(seti)),
+                alike(List.of(seti)),
                 1.0,
                 argConfig);
     }
@@ -260,15 +267,13 @@ class GeneInsertionPluginTest {
     private InstructionEntry createSetiEntry() {
         Integer setiId = Instruction.getInstructionIdByName("SETI");
         assertThat(setiId).isNotNull();
-        List<OperandSource> sources = Instruction.getOperandSourcesById(setiId);
 
         RegisterConfig regConfig = new RegisterConfig(List.of(new int[]{0, 0, 7}));
         DataConfig dataConfig = new DataConfig(0, 255);
         ArgumentConfig argConfig = new ArgumentConfig(regConfig, null, dataConfig, null, null);
 
         return new InstructionEntry(
-                List.of(setiId),
-                List.of(sources),
+                alike(List.of(setiId)),
                 1.0,
                 argConfig
         );
@@ -280,14 +285,12 @@ class GeneInsertionPluginTest {
     private InstructionEntry createAddrEntry() {
         Integer addrId = Instruction.getInstructionIdByName("ADDR");
         assertThat(addrId).isNotNull();
-        List<OperandSource> sources = Instruction.getOperandSourcesById(addrId);
 
         RegisterConfig regConfig = new RegisterConfig(List.of(new int[]{0, 0, 7}));
         ArgumentConfig argConfig = new ArgumentConfig(regConfig, null, null, null, null);
 
         return new InstructionEntry(
-                List.of(addrId),
-                List.of(sources),
+                alike(List.of(addrId)),
                 1.0,
                 argConfig
         );
@@ -370,8 +373,7 @@ class GeneInsertionPluginTest {
 
         Integer setiId = Instruction.getInstructionIdByName("SETI");
         InstructionEntry entry = new InstructionEntry(
-                List.of(setiId),
-                List.of(Instruction.getOperandSourcesById(setiId)),
+                alike(List.of(setiId)),
                 1.0,
                 argConfig
         );
@@ -400,12 +402,10 @@ class GeneInsertionPluginTest {
 
         Integer jmpiId = Instruction.getInstructionIdByName("JMPI");
         assertThat(jmpiId).isNotNull();
-        List<OperandSource> sources = Instruction.getOperandSourcesById(jmpiId);
 
         ArgumentConfig argConfig = new ArgumentConfig(null, null, null, "existing", null);
         InstructionEntry entry = new InstructionEntry(
-                List.of(jmpiId),
-                List.of(sources),
+                alike(List.of(jmpiId)),
                 1.0,
                 argConfig
         );
@@ -455,8 +455,7 @@ class GeneInsertionPluginTest {
         Integer call = Instruction.getInstructionIdByName("CALL");
         assertThat(call).isNotNull();
         LabelEntry entry = new LabelEntry(
-                List.of(call),
-                List.of(Instruction.getOperandSourcesById(call)),
+                alike(List.of(call)),
                 1.0,
                 new ArgumentConfig(null, null, null, "existing", null));
         GeneInsertionPlugin plugin = new GeneInsertionPlugin(new SeededRandomProvider(42L), 1.0, List.of(entry));
@@ -486,8 +485,7 @@ class GeneInsertionPluginTest {
         Integer jfer = Instruction.getInstructionIdByName("JFER");
         assertThat(jfer).isNotNull();
         LabelEntry entry = new LabelEntry(
-                List.of(jfer),
-                List.of(Instruction.getOperandSourcesById(jfer)),
+                alike(List.of(jfer)),
                 1.0,
                 new ArgumentConfig(null, null, null, "existing", null));
         GeneInsertionPlugin plugin = new GeneInsertionPlugin(new SeededRandomProvider(42L), 1.0, List.of(entry));
@@ -840,8 +838,7 @@ class GeneInsertionPluginTest {
 
         ArgumentConfig argConfig = new ArgumentConfig(null, null, null, null, "unit");
         InstructionEntry entry = new InstructionEntry(
-                List.of(sekiId),
-                List.of(sources),
+                alike(List.of(sekiId)),
                 1.0,
                 argConfig
         );
@@ -883,13 +880,11 @@ class GeneInsertionPluginTest {
         // DPLR uses LOCATION_REGISTER operand
         Integer dplrId = Instruction.getInstructionIdByName("DPLR");
         assertThat(dplrId).isNotNull();
-        List<OperandSource> sources = Instruction.getOperandSourcesById(dplrId);
 
         RegisterConfig lrConfig = new RegisterConfig(List.of(new int[]{RegisterBank.LR.base, 0, 3}));
         ArgumentConfig argConfig = new ArgumentConfig(null, lrConfig, null, null, null);
         InstructionEntry entry = new InstructionEntry(
-                List.of(dplrId),
-                List.of(sources),
+                alike(List.of(dplrId)),
                 1.0,
                 argConfig
         );
@@ -951,12 +946,10 @@ class GeneInsertionPluginTest {
 
         Integer jmpiId = Instruction.getInstructionIdByName("JMPI");
         assertThat(jmpiId).isNotNull();
-        List<OperandSource> sources = Instruction.getOperandSourcesById(jmpiId);
 
         ArgumentConfig argConfig = new ArgumentConfig(null, null, null, "existing", null);
         InstructionEntry entry = new InstructionEntry(
-                List.of(jmpiId),
-                List.of(sources),
+                alike(List.of(jmpiId)),
                 1.0,
                 argConfig
         );
@@ -986,12 +979,10 @@ class GeneInsertionPluginTest {
 
         Integer jmpiId = Instruction.getInstructionIdByName("JMPI");
         assertThat(jmpiId).isNotNull();
-        List<OperandSource> sources = Instruction.getOperandSourcesById(jmpiId);
 
         ArgumentConfig argConfig = new ArgumentConfig(null, null, null, "existing", null);
         InstructionEntry entry = new InstructionEntry(
-                List.of(jmpiId),
-                List.of(sources),
+                alike(List.of(jmpiId)),
                 1.0,
                 argConfig
         );
