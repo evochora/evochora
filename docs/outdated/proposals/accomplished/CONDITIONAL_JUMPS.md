@@ -402,6 +402,8 @@ Implemented in the six steps above. What the built code does beyond the solution
 - **Two declarations, not three.** `declareJumpsConditionally` lost its last reader in the
   runtime when label entries were allowed to insert jumps; it is removed, and the trace tool tells
   a skip from a jump by the instruction's class.
+- **`cond_met` stays empty where it cannot know.** A jump with a label between it and the next
+  instruction reaches that instruction either way; its `cond_met` is left empty instead of 0.
 - **No constructor serves only the tests.** The insertion and the substitution had a
   package-private constructor that only tests called; both are removed, with
   `InstructionWeights.uniform()`, and the tests build the plugins from configuration.

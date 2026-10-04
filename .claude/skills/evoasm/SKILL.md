@@ -159,7 +159,8 @@ or the documentation would have helped in this session, concrete and from this s
   `STRUCTURE:5` passes as greater than zero. `INTI %TMP ENERGY:0` asks the type.
 - Four calls that copy a frame beside each edge resolved the same corner label to a copy's
   corner once copies existed; the driver resolves the corners into location registers first.
-- `cond_met` is empty for a conditional that failed; read `fail_reason` instead. A conditional
-  jump whose label stands directly behind it reports 0 even where its condition held.
+- `cond_met` is empty for a conditional that failed, where `fail_reason` tells why, and for a
+  conditional jump with a label between it and the next instruction, whose decision the next step
+  cannot show.
 - Trace outputs belong in the session's scratchpad; the recorder's own README says what it
   writes and what it removes.
