@@ -617,6 +617,11 @@ public final class TraceConsumer extends AbstractService {
           .append('\t').append(changes(previous, o))
           .append('\n');
         Integer behind = address == null ? null : firstExecutedAddress(program, address + length);
+        // A jump whose label stands between it and the next instruction reaches that instruction
+        // whether it jumps or not; its decision cannot be told from where execution went next.
+        if (kind == ConditionalKind.JUMP && behind != null && labelBetween(program, address + length, behind)) {
+            kind = ConditionalKind.NONE;
+        }
         pendingSteps.put(o.getOrganismId(), new PendingStep(before.toString(), after.toString(), kind, behind));
     }
 
@@ -624,7 +629,8 @@ public final class TraceConsumer extends AbstractService {
      * Writes the organism's held-back step, its {@code cond_met} column decided by the address
      * the next step executed at: 1 when the condition held — the instruction behind a skip ran
      * next, or a jump went elsewhere — and 0 when it did not. Empty for anything that is not a
-     * conditional, for a step that failed, and for one that cannot be placed in the program.
+     * conditional, for a step that failed, for one that cannot be placed in the program, and for
+     * a jump whose label stands between it and the next instruction.
      */
     private void finishPendingStep(int organismId, Integer nextAddress) throws IOException {
         PendingStep pending = pendingSteps.remove(organismId);
@@ -657,6 +663,24 @@ public final class TraceConsumer extends AbstractService {
             molecule = program.addressToLayoutMolecule.get(current);
         }
         return current;
+    }
+
+    /**
+     * Tells whether the program's layout holds a label between two addresses.
+     *
+     * @param program the program whose layout is read
+     * @param from    the first address looked at
+     * @param to      the address the search ends before
+     * @return {@code true} if a label stands at an address from {@code from} up to {@code to}
+     */
+    private static boolean labelBetween(Program program, int from, int to) {
+        for (int a = from; a < to; a++) {
+            Integer molecule = program.addressToLayoutMolecule.get(a);
+            if (molecule != null && Molecule.fromInt(molecule).type() == Config.TYPE_LABEL) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** Tells whether the machine passes a cell without a step: an empty cell or a label. */

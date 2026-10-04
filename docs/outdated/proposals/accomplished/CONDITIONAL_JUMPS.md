@@ -399,6 +399,9 @@ Implemented in the six steps above. What the built code does beyond the solution
   their running sums; the insertion and the substitution draw through it.
 - **The shipped configuration is built in a test.** `ShippedConfigurationTest` builds both
   mutation plugins from `config/evochora.conf` over `reference.conf`, with the weights they refer to.
+- **Two declarations, not three.** `declareJumpsConditionally` lost its last reader in the
+  runtime when label entries were allowed to insert jumps; it is removed, and the trace tool tells
+  a skip from a jump by the instruction's class.
 - **No constructor serves only the tests.** The insertion and the substitution had a
   package-private constructor that only tests called; both are removed, with
   `InstructionWeights.uniform()`, and the tests build the plugins from configuration.
