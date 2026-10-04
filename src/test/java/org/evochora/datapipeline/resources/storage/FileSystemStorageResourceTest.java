@@ -27,6 +27,7 @@ import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.contracts.TickDelta;
 import org.evochora.datapipeline.api.resources.storage.BatchFileListResult;
+import org.evochora.datapipeline.api.resources.storage.ChunkFieldFilter;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageRead;
 import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.junit.extensions.logging.ExpectLog;
@@ -907,5 +908,29 @@ class FileSystemStorageResourceTest {
             () -> storage.findLastBatchFile("wide-run/raw/"),
             "A level of 1001 folders should be rejected");
         assertTrue(thrown.getMessage().contains("wide-run/raw/"), "Message should name the folder");
+    }
+
+    /**
+     * A batch file always holds at least one chunk — the writer refuses an empty batch — so a file
+     * that reads as empty was cut off before its data reached the disk. Every read path has to
+     * report it rather than read it as a batch without chunks, which a consumer would take as done.
+     */
+    @Test
+    void testReadingAnEmptyBatchFile_FailsOnEveryReadPath() throws Exception {
+        Path folder = Files.createDirectories(tempDir.resolve("test-sim/raw/000/000"));
+        Files.createFile(folder.resolve("batch_0000000000000000000_0000000000000000009.pb.zst"));
+        StoragePath path = StoragePath.of("test-sim/raw/000/000/batch_0000000000000000000_0000000000000000009.pb.zst");
+
+        IOException whole = assertThrows(IOException.class, () -> storage.forEachChunk(path, chunk -> {}),
+            "Reading whole chunks should reject an empty batch file");
+        IOException filtered = assertThrows(IOException.class,
+            () -> storage.forEachChunk(path, ChunkFieldFilter.SNAPSHOT_ONLY, chunk -> {}),
+            "Reading filtered chunks should reject an empty batch file");
+        IOException raw = assertThrows(IOException.class, () -> storage.forEachRawChunk(path, chunk -> {}),
+            "Reading raw chunks should reject an empty batch file");
+
+        for (IOException thrown : List.of(whole, filtered, raw)) {
+            assertTrue(thrown.getMessage().contains(path.asString()), "Message should name the file: " + thrown.getMessage());
+        }
     }
 }
