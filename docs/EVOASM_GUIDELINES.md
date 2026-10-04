@@ -35,7 +35,7 @@ Padding does not slow a program down, because the instruction pointer passes ove
 without spending a tick; what it costs is space, and the work of copying it when the organism
 replicates its own body.
 
-Pad between statements, never between a conditional and the instruction it guards. Put the
+Pad between statements, never between a conditional skip and the instruction it guards. Put the
 longer runs behind unconditional jumps, where new code breaks no path, and shorter ones into the
 flow, where new code runs at once.
 

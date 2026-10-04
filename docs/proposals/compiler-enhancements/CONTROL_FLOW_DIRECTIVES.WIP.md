@@ -3,7 +3,7 @@
 **Status: WORK IN PROGRESS — specification incomplete.**
 
 Specified and ready for review: `.IF` / `.ELSEIF` / `.ELSE` / `.ENDIF`, including code generation
-for both the skip-next and the branch instruction path, validation rules, and four implementation steps.
+for conditional skips and conditional jumps, validation rules, and four implementation steps.
 
 Still to be written: `.WHILE`, `.FOR`, `.BREAK`, `.CONTINUE`. Loop directives need decisions on
 loop-label scoping, nesting of `.BREAK`/`.CONTINUE` across loop levels, and whether `.FOR` iterates
@@ -30,7 +30,7 @@ Higher-level control flow directives (`.IF`, `.WHILE`, `.FOR`) can generate thes
 
 This proposal requires the END-directive rename from the Conditional Compilation proposal (`.ENDP` → `.ENDPROC`, `.ENDM` → `.ENDMACRO`, etc.) to establish the `.END*` naming convention. `.ENDIF` follows this convention.
 
-This proposal does **not** require the Conditional Branch ISA extension. It works with skip-next instructions (generating Skip + JMPI sequences). If the Branch ISA extension is implemented, the generated code can optionally use branch instructions for better code density (1 instruction instead of 2 per branch point). Both paths are documented below.
+This proposal does **not** require [CONDITIONAL_JUMPS](../CONDITIONAL_JUMPS.md). With a conditional skip it generates the negated skip and a `JMPI`; with a conditional jump, once those exist, the negated jump. The compiler never changes the encoding the source names: a skip is never replaced by a jump. Both paths are documented below.
 
 ## Solution: .IF / .ELSEIF / .ELSE / .ENDIF
 
@@ -50,7 +50,7 @@ This proposal does **not** require the Conditional Branch ISA extension. It work
 - `.ELSE` is optional and can appear at most once.
 - `.ELSEIF` after `.ELSE` → compile error.
 - Nesting is allowed to arbitrary depth.
-- `<conditional-instruction>` is any registered conditional instruction (skip-next or branch).
+- `<conditional-instruction>` is any registered conditional instruction (conditional skip or conditional jump).
 
 ### Semantics
 
@@ -58,11 +58,11 @@ The condition in `.IF` and `.ELSEIF` describes when the body is **executed** —
 
 ### Code Generation
 
-The compiler determines whether the instruction after `.IF`/`.ELSEIF` is a skip-next or branch conditional by querying the ISA registry (`Instruction.getInstructionClassById() == ConditionalInstruction.class`). It then checks the operand sources to determine the variant.
+The compiler determines whether the instruction after `.IF`/`.ELSEIF` is a conditional skip or a conditional jump by asking the instruction set, which records it for every opcode (`Instruction.skipsNext`, `Instruction.jumpsConditionally`).
 
-#### Without Branch ISA Extension (skip-next only)
+#### Conditional skips
 
-Every conditional instruction is skip-next. The compiler generates the negated skip + JMPI to skip over the body when the condition is not met.
+The compiler generates the negated skip + JMPI to skip over the body when the condition is not met.
 
 **Simple .IF:**
 
@@ -80,7 +80,7 @@ JMPI __endif_1               ; jump past body when NOT equal
 __endif_1:
 ```
 
-The compiler uses the negated conditional (`ConditionalUtils.getNegatedOpcode()` or, if the Branch ISA metadata is implemented, `ConditionalInstruction.getNegated()`) to produce the skip-over.
+The compiler uses the negated conditional skip (`IInstructionSet.negatedConditionalSkip()`) to produce the skip-over.
 
 **IF / ELSE:**
 
@@ -131,48 +131,31 @@ __else_1:
 __endif_1:
 ```
 
-#### With Branch ISA Extension
+#### Conditional jumps
 
-If a branch variant exists for the conditional instruction, the compiler can generate a single branch instruction instead of the negated skip + JMPI pair. The branch variant is negated to skip over the body (same logic, fewer instructions).
+A conditional jump in `.IF` or `.ELSEIF` is negated, and the negated jump goes over the body when the condition does not hold: one instruction instead of two. A conditional skip is never turned into a jump; it keeps the path above.
 
-**Simple .IF with skip-next input:**
-
-```
-.IF IFI %DR0 DATA:10
-  ; body
-.ENDIF
-```
-
-Generated (with branch optimization):
-```
-BNI %DR0 DATA:10 __endif_1   ; branch when NOT equal → skip body (1 instruction)
-; body
-__endif_1:
-```
-
-The compiler uses `ConditionalInstruction.getBranchVariant("IFI")` → `"BFI"`, then `ConditionalInstruction.getNegated("BFI")` → `"BNI"`. BNI branches when NOT equal, skipping the body.
-
-**Simple .IF with branch input:**
+**Simple .IF:**
 
 ```
-.IF BFI %DR0 DATA:10
+.IF JFI %DR0 DATA:10
   ; body
 .ENDIF
 ```
 
 Generated:
 ```
-BNI %DR0 DATA:10 __endif_1   ; getNegated("BFI") → "BNI"
+JNI %DR0 DATA:10 __endif_1   ; jump when NOT equal → over the body
 ; body
 __endif_1:
 ```
 
-The user writes BFI (branch if equal), the compiler emits BNI (branch if NOT equal) to skip the body. The condition name in the source describes when the body **executes**, the generated code negates it.
+The source names when the body **executes** (`JFI`, jump if equal); the generated code negates it (`JNI`), which the instruction set answers from the pair the two are registered as.
 
-**IF / ELSE with branch optimization:**
+**IF / ELSE:**
 
 ```
-.IF IFI %DR0 DATA:10
+.IF JFI %DR0 DATA:10
   ; then-body
 .ELSE
   ; else-body
@@ -181,20 +164,20 @@ The user writes BFI (branch if equal), the compiler emits BNI (branch if NOT equ
 
 Generated:
 ```
-BNI %DR0 DATA:10 __else_1    ; branch when NOT equal → skip to else
+JNI %DR0 DATA:10 __else_1    ; jump when NOT equal → to the else-body
 ; then-body
-JMPI __endif_1                ; skip else-body
+JMPI __endif_1                ; over the else-body
 __else_1:
 ; else-body
 __endif_1:
 ```
 
-**IF / ELSEIF / ELSE with branch optimization:**
+**IF / ELSEIF / ELSE:**
 
 ```
-.IF IFI %DR0 DATA:10
+.IF JFI %DR0 DATA:10
   ; body-10
-.ELSEIF IFI %DR0 DATA:20
+.ELSEIF JFI %DR0 DATA:20
   ; body-20
 .ELSE
   ; default-body
@@ -203,11 +186,11 @@ __endif_1:
 
 Generated:
 ```
-BNI %DR0 DATA:10 __elseif_1  ; branch when NOT equal to 10
+JNI %DR0 DATA:10 __elseif_1  ; jump when NOT equal to 10
 ; body-10
 JMPI __endif_1
 __elseif_1:
-BNI %DR0 DATA:20 __else_1    ; branch when NOT equal to 20
+JNI %DR0 DATA:20 __else_1    ; jump when NOT equal to 20
 ; body-20
 JMPI __endif_1
 __else_1:
@@ -215,20 +198,13 @@ __else_1:
 __endif_1:
 ```
 
-#### Fallback logic
+#### Choice of encoding
 
 When the compiler encounters `.IF <conditional>`:
 
-1. If the Branch ISA metadata is available (`ConditionalInstruction.getBranchVariant()` exists):
-   - Get the branch variant of the conditional (or use it directly if already a branch).
-   - Get the negated form of the branch variant.
-   - Emit the negated branch with the generated label. (1 instruction)
-   - If no branch variant exists: fall back to step 2.
-   - If no negated branch variant exists: fall back to step 2.
-2. Fall back to skip-next:
-   - Get the negated form of the skip conditional.
-   - Emit negated skip + JMPI with the generated label. (2 instructions)
-   - If no negated form exists: compile error: "Conditional instruction '%s' cannot be negated for .IF block generation."
+1. A conditional jump: emit its negation with the generated label. (1 instruction)
+2. A conditional skip: emit its negation and a `JMPI` with the generated label. (2 instructions)
+3. No negation exists: compile error: "Conditional instruction '%s' cannot be negated for .IF block generation."
 
 ### Validation
 
@@ -236,7 +212,7 @@ When the compiler encounters `.IF <conditional>`:
 - `.ENDIF` without preceding `.IF` → compile error
 - `.ELSEIF` after `.ELSE` → compile error
 - End of file inside `.IF` block → compile error
-- Instruction after `.IF`/`.ELSEIF` is not a conditional → compile error: "Instruction '%s' after .IF is not a conditional instruction. Expected a conditional like IFI, INR, LTI, BFMI, etc."
+- Instruction after `.IF`/`.ELSEIF` is not a conditional → compile error: "Instruction '%s' after .IF is not a conditional instruction. Expected a conditional like IFI, INR, LTI, JFMI, etc."
 - `.IF` without any instruction after it → compile error
 
 ### Label Generation
@@ -305,13 +281,12 @@ Minimal vertical slice: simple conditional block.
 - `.ELSEIF` after `.ELSE` → compile error
 - All 5 CLI smoke tests green
 
-### Step 4: Branch ISA optimization (optional, requires Branch ISA Extension)
+### Step 4: Conditional jumps (requires CONDITIONAL_JUMPS)
 
 **Changes:**
-- `IfNodeConverter` — check `ConditionalInstruction.getBranchVariant()`, use negated branch variant if available, fall back to skip + JMPI
+- `IfNodeConverter` — for a conditional jump, emit its negation with the label instead of negated skip + JMPI
 
 **Tests:**
-- With branch ISA: `.IF IFI` → emits BNI with label (1 instruction)
-- With branch ISA: `.IF BFI` → emits BNI with label
-- Without branch ISA: `.IF IFI` → emits INI + JMPI (2 instructions, unchanged)
+- `.IF JFI` → emits `JNI` with label (1 instruction)
+- `.IF IFI` → emits `INI` + `JMPI` (2 instructions, unchanged)
 - All 5 CLI smoke tests green

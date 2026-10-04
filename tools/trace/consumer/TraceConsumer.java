@@ -100,15 +100,21 @@ public final class TraceConsumer extends AbstractService {
     private final Map<Integer, OrganismState> previousStates = new HashMap<>();
     /**
      * The last step row of every organism, held back until its next step says whether a
-     * conditional was met: the instruction that follows a met condition is the one right behind
-     * it, the one that follows an unmet condition is the one behind that.
+     * conditional was met: after a conditional skip whose condition held, the instruction behind
+     * it runs next; after a conditional jump whose condition held, an instruction elsewhere.
      */
     private final Map<Integer, PendingStep> pendingSteps = new HashMap<>();
     /** Names of the register slots, in the order the state rows and the engine use. */
     private String[] slotNames;
 
-    /** A step row split around its {@code cond_met} column, with what decides that column. */
-    private record PendingStep(String before, String after, boolean conditional, Integer address, int length) {}
+    /**
+     * A step row split around its {@code cond_met} column, with what decides that column: the kind
+     * of conditional the step executed, and the address of the instruction behind it.
+     */
+    private record PendingStep(String before, String after, ConditionalKind kind, Integer behind) {}
+
+    /** What a step tells about a condition: nothing, or the outcome of a skip or of a jump. */
+    private enum ConditionalKind { NONE, SKIP, JUMP }
 
     private BufferedWriter steps;
     private BufferedWriter state;
@@ -127,6 +133,8 @@ public final class TraceConsumer extends AbstractService {
         final Map<Integer, String> labelValueToName = new HashMap<>();
         /** The molecule the compiler placed at every relative coordinate of the code layout. */
         final Map<String, Integer> relCoordToLayoutMolecule = new HashMap<>();
+        /** The molecule the compiler placed at every linear address of the code layout. */
+        final Map<Integer, Integer> addressToLayoutMolecule = new HashMap<>();
         final Map<String, String> enclosingLabelCache = new HashMap<>();
         /** The declared parameters of every procedure, by its qualified name. */
         final Map<String, List<ParamInfo>> procParams = new HashMap<>();
@@ -252,7 +260,12 @@ public final class TraceConsumer extends AbstractService {
         artifact.getSourcesMap().forEach((file, lines) -> p.sources.put(file, lines.getLinesList()));
         p.labelValueToName.putAll(artifact.getLabelValueToNameMap());
         for (InstructionMapping mapping : artifact.getMachineCodeLayoutList()) {
-            p.relCoordToLayoutMolecule.put(vector(mapping.getPosition()), mapping.getInstruction());
+            String position = vector(mapping.getPosition());
+            p.relCoordToLayoutMolecule.put(position, mapping.getInstruction());
+            Integer address = p.relCoordToAddress.get(position);
+            if (address != null) {
+                p.addressToLayoutMolecule.put(address, mapping.getInstruction());
+            }
         }
         artifact.getProcNameToParamNamesMap().forEach((name, params) -> p.procParams.put(name, params.getParamsList()));
         p.sourcePrefix = commonDirectory(p.sources.keySet());
@@ -512,14 +525,21 @@ public final class TraceConsumer extends AbstractService {
         String execOp = "";
         String argsRaw = "";
         String args = "";
-        boolean conditional = false;
+        ConditionalKind kind = ConditionalKind.NONE;
         int length = 1 + o.getInstructionRawArgumentsCount();
         if (o.hasInstructionOpcodeId()) {
             int opcodeId = o.getInstructionOpcodeId();
             execOp = Instruction.getInstructionNameById(opcodeId);
             argsRaw = rawArguments(o);
             args = resolvedArguments(o, opcodeId, program, dims, previous);
-            conditional = Instruction.skipsNext(opcodeId);
+            // A failed step says nothing about its condition; its failure stands in its own columns.
+            if (!o.getInstructionFailed()) {
+                if (Instruction.skipsNext(opcodeId)) {
+                    kind = ConditionalKind.SKIP;
+                } else if (Instruction.jumpsConditionally(opcodeId)) {
+                    kind = ConditionalKind.JUMP;
+                }
+            }
         }
         // The data pointer the instruction acted with: the active one as the tick began.
         String dp = "";
@@ -588,13 +608,15 @@ public final class TraceConsumer extends AbstractService {
           .append('\t').append(differs ? 1 : 0)
           .append('\t').append(changes(previous, o))
           .append('\n');
-        pendingSteps.put(o.getOrganismId(), new PendingStep(before.toString(), after.toString(), conditional, address, length));
+        Integer behind = address == null ? null : firstExecutedAddress(program, address + length);
+        pendingSteps.put(o.getOrganismId(), new PendingStep(before.toString(), after.toString(), kind, behind));
     }
 
     /**
      * Writes the organism's held-back step, its {@code cond_met} column decided by the address
-     * the next step executed at: 1 when it is the instruction right behind the conditional, 0
-     * when that one was skipped, empty for anything that is not a conditional or cannot be placed.
+     * the next step executed at: 1 when the condition held — the instruction behind a skip ran
+     * next, or a jump went elsewhere — and 0 when it did not. Empty for anything that is not a
+     * conditional, for a step that failed, and for one that cannot be placed in the program.
      */
     private void finishPendingStep(int organismId, Integer nextAddress) throws IOException {
         PendingStep pending = pendingSteps.remove(organismId);
@@ -602,10 +624,37 @@ public final class TraceConsumer extends AbstractService {
             return;
         }
         String condMet = "";
-        if (pending.conditional() && pending.address() != null && nextAddress != null) {
-            condMet = nextAddress == pending.address() + pending.length() ? "1" : "0";
+        if (pending.kind() != ConditionalKind.NONE && pending.behind() != null && nextAddress != null) {
+            boolean ranBehind = nextAddress.equals(pending.behind());
+            condMet = (pending.kind() == ConditionalKind.SKIP) == ranBehind ? "1" : "0";
         }
         steps.write(pending.before() + '\t' + condMet + pending.after());
+    }
+
+    /**
+     * Finds the address of the instruction execution reaches by running on from an address: the
+     * machine passes empty cells and labels without a step, so the first cell of the program's
+     * layout that is neither.
+     *
+     * @param program the program whose layout is read
+     * @param address the address execution runs on from
+     * @return the address of the first instruction from there, or the address itself where the
+     *         layout holds nothing
+     */
+    private static int firstExecutedAddress(Program program, int address) {
+        int current = address;
+        Integer molecule = program.addressToLayoutMolecule.get(current);
+        while (molecule != null && passedWithoutAStep(molecule)) {
+            current++;
+            molecule = program.addressToLayoutMolecule.get(current);
+        }
+        return current;
+    }
+
+    /** Tells whether the machine passes a cell without a step: an empty cell or a label. */
+    private static boolean passedWithoutAStep(int moleculeInt) {
+        Molecule molecule = Molecule.fromInt(moleculeInt);
+        return molecule.isEmpty() || molecule.type() == Config.TYPE_LABEL;
     }
 
     private void flushPendingStep(int organismId) throws IOException {
