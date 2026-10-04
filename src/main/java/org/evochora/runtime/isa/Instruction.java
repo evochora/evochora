@@ -176,6 +176,21 @@ public abstract class Instruction {
      */
     private static final IntOpenHashSet NEVER_FALLS_THROUGH = new IntOpenHashSet();
     /**
+     * The opcodes that can keep the instruction behind them from running: the conditional skips.
+     * Declared and read like {@link #NEVER_FALLS_THROUGH}.
+     */
+    private static final IntOpenHashSet SKIPS_NEXT = new IntOpenHashSet();
+    /**
+     * The opcodes that either run on with the cell behind them or jump to their label, depending on
+     * a condition: the conditional jumps. Declared and read like {@link #NEVER_FALLS_THROUGH}.
+     */
+    private static final IntOpenHashSet JUMPS_CONDITIONALLY = new IntOpenHashSet();
+    /**
+     * The opcodes whose label operand names a place execution goes to, as opposed to a place for a
+     * data pointer. Declared and read like {@link #NEVER_FALLS_THROUGH}.
+     */
+    private static final IntOpenHashSet LABEL_IS_JUMP_TARGET = new IntOpenHashSet();
+    /**
      * The class that holds each family, keyed by family ID. A family is the class that registers its
      * instructions, so each family belongs to exactly one class and each class to exactly one
      * family; {@link #registerOp} keeps both directions of that pairing.
@@ -687,6 +702,9 @@ public abstract class Instruction {
         OPERAND_SOURCES.clear();
         PARALLEL_EXECUTE_SAFE_MAP.clear();
         NEVER_FALLS_THROUGH.clear();
+        SKIPS_NEXT.clear();
+        JUMPS_CONDITIONALLY.clear();
+        LABEL_IS_JUMP_TARGET.clear();
         CLASS_BY_FAMILY.clear();
         FAMILY_BY_CLASS.clear();
     }
@@ -1042,11 +1060,61 @@ public abstract class Instruction {
      * @throws IllegalStateException if no instruction is registered under that name
      */
     protected static void declareNeverFallsThrough(String name) {
+        NEVER_FALLS_THROUGH.add(registeredId(name));
+    }
+
+    /**
+     * Declares that a registered instruction can keep the instruction behind it from running, as a
+     * conditional skip does when its condition does not hold.
+     * <p>
+     * <b>Thread safety:</b> Must only be called during single-threaded initialization ({@link #init()}).
+     *
+     * @param name the mnemonic of an instruction that is already registered
+     * @throws IllegalStateException if no instruction is registered under that name
+     */
+    protected static void declareSkipsNext(String name) {
+        SKIPS_NEXT.add(registeredId(name));
+    }
+
+    /**
+     * Declares that a registered instruction either runs on with the cell behind it or jumps to its
+     * label, depending on a condition.
+     * <p>
+     * <b>Thread safety:</b> Must only be called during single-threaded initialization ({@link #init()}).
+     *
+     * @param name the mnemonic of an instruction that is already registered
+     * @throws IllegalStateException if no instruction is registered under that name
+     */
+    protected static void declareJumpsConditionally(String name) {
+        JUMPS_CONDITIONALLY.add(registeredId(name));
+    }
+
+    /**
+     * Declares that the label operand of a registered instruction names a place execution goes to,
+     * as the target of a jump or a call does, and not a place for a data pointer.
+     * <p>
+     * <b>Thread safety:</b> Must only be called during single-threaded initialization ({@link #init()}).
+     *
+     * @param name the mnemonic of an instruction that is already registered
+     * @throws IllegalStateException if no instruction is registered under that name
+     */
+    protected static void declareLabelIsJumpTarget(String name) {
+        LABEL_IS_JUMP_TARGET.add(registeredId(name));
+    }
+
+    /**
+     * Looks up the opcode ID of an instruction a declaration names.
+     *
+     * @param name the mnemonic of an instruction that is already registered, in any letter case
+     * @return the full opcode ID
+     * @throws IllegalStateException if no instruction is registered under that name
+     */
+    private static int registeredId(String name) {
         Integer opcodeId = NAME_TO_ID.get(name.toUpperCase());
         if (opcodeId == null) {
             throw new IllegalStateException("Instruction " + name + " is not registered");
         }
-        NEVER_FALLS_THROUGH.add(opcodeId.intValue());
+        return opcodeId;
     }
 
     /**
@@ -1062,6 +1130,45 @@ public abstract class Instruction {
      */
     public static boolean neverFallsThrough(int opcodeId) {
         return NEVER_FALLS_THROUGH.contains(opcodeId);
+    }
+
+    /**
+     * Tells whether an instruction can keep the instruction behind it from running: a conditional
+     * skip whose condition does not hold passes over the next instruction. Code that reasons about
+     * which cells execution can reach asks this, because the cells behind an instruction that
+     * {@linkplain #neverFallsThrough(int) never falls through} are reached when a skip in front of
+     * it passes over it.
+     *
+     * @param opcodeId The instruction opcode ID (including TYPE_CODE bits).
+     * @return {@code true} if the instruction declared it; {@code false} for every other opcode,
+     *         an unregistered one included.
+     */
+    public static boolean skipsNext(int opcodeId) {
+        return SKIPS_NEXT.contains(opcodeId);
+    }
+
+    /**
+     * Tells whether an instruction either runs on with the cell behind it or jumps to its label,
+     * depending on a condition: a conditional jump.
+     *
+     * @param opcodeId The instruction opcode ID (including TYPE_CODE bits).
+     * @return {@code true} if the instruction declared it; {@code false} for every other opcode,
+     *         an unregistered one included.
+     */
+    public static boolean jumpsConditionally(int opcodeId) {
+        return JUMPS_CONDITIONALLY.contains(opcodeId);
+    }
+
+    /**
+     * Tells whether the label operand of an instruction names a place execution goes to — the
+     * target of a jump or a call — rather than a place for a data pointer.
+     *
+     * @param opcodeId The instruction opcode ID (including TYPE_CODE bits).
+     * @return {@code true} if the instruction declared it; {@code false} for every other opcode,
+     *         an unregistered one included.
+     */
+    public static boolean labelIsJumpTarget(int opcodeId) {
+        return LABEL_IS_JUMP_TARGET.contains(opcodeId);
     }
 
     /**

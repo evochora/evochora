@@ -36,7 +36,6 @@ import org.evochora.datapipeline.api.resources.queues.StreamingBatch;
 import org.evochora.datapipeline.services.AbstractService;
 import org.evochora.datapipeline.utils.delta.MutableCellState;
 import org.evochora.runtime.Config;
-import org.evochora.runtime.isa.Family;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.isa.RegisterBank;
 import org.evochora.runtime.model.EnvironmentProperties;
@@ -520,7 +519,7 @@ public final class TraceConsumer extends AbstractService {
             execOp = Instruction.getInstructionNameById(opcodeId);
             argsRaw = rawArguments(o);
             args = resolvedArguments(o, opcodeId, program, dims, previous);
-            conditional = Instruction.getFamilyById(opcodeId) == Family.CONDITIONAL;
+            conditional = Instruction.skipsNext(opcodeId);
         }
         // The data pointer the instruction acted with: the active one as the tick began.
         String dp = "";

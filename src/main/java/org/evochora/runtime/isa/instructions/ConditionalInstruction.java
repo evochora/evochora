@@ -124,6 +124,8 @@ public class ConditionalInstruction extends Instruction {
                                 String name, String negatedName, OperandSource... sources) {
         reg(op, index, name, sources);
         reg(negatedOp, negatedIndex, negatedName, sources);
+        declareSkipsNext(name);
+        declareSkipsNext(negatedName);
         NEGATION_BY_NAME.put(name.toUpperCase(), negatedName.toUpperCase());
         NEGATION_BY_NAME.put(negatedName.toUpperCase(), name.toUpperCase());
     }

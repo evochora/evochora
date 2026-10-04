@@ -706,9 +706,9 @@ class GeneInsertionPluginTest {
 
             assertThat(child.getBirthMutations()).as("seed %d", seed).hasSize(1);
             int insertedOpcode = environment.getMolecule(6, Y).value();
-            assertThat(Instruction.getFamilyById(insertedOpcode))
+            assertThat(Instruction.skipsNext(insertedOpcode))
                     .as("seed %d inserted %s", seed, Instruction.getInstructionNameById(insertedOpcode))
-                    .isNotEqualTo(org.evochora.runtime.isa.Family.CONDITIONAL);
+                    .isFalse();
             assertThat(Instruction.neverFallsThrough(insertedOpcode))
                     .as("seed %d inserted %s", seed, Instruction.getInstructionNameById(insertedOpcode))
                     .isFalse();

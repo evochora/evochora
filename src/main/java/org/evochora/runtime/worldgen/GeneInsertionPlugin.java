@@ -3,7 +3,6 @@ package org.evochora.runtime.worldgen;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import org.evochora.runtime.Config;
-import org.evochora.runtime.isa.Family;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.isa.Instruction.OperandSource;
 import org.evochora.runtime.isa.RegisterBank;
@@ -474,8 +473,7 @@ public class GeneInsertionPlugin implements IBirthHandler {
      * @return {@code true} if a label entry may insert the instruction.
      */
     private static boolean goesOnBehind(int opcodeId) {
-        return Instruction.getFamilyById(opcodeId) != Family.CONDITIONAL
-                && !Instruction.neverFallsThrough(opcodeId);
+        return !Instruction.skipsNext(opcodeId) && !Instruction.neverFallsThrough(opcodeId);
     }
 
     /**

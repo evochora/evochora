@@ -40,6 +40,10 @@ public class ControlFlowInstruction extends Instruction {
         declareNeverFallsThrough("JMPS");
         declareNeverFallsThrough("JMPI");
         declareNeverFallsThrough("RET");
+
+        // The label of a jump or a call is where execution goes.
+        declareLabelIsJumpTarget("JMPI");
+        declareLabelIsJumpTarget("CALL");
     }
 
     private static void reg(int op, int index, String name, OperandSource... sources) {
