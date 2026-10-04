@@ -271,6 +271,23 @@ class GeneSubstitutionPluginTest {
     }
 
     /**
+     * The weights of the opcodes a flip may produce are required: a configuration without them is
+     * rejected with a message that names the block.
+     */
+    @Test
+    void aConfigurationWithoutInstructionWeightsIsRejected() {
+        com.typesafe.config.Config config = ConfigFactory.parseString("""
+                substitutionRate = 1.0
+                CODE { weight = 1.0, operationFlipWeight = 1.0, familyFlipWeight = 0.0, variantFlipWeight = 0.0 }
+                operands { scalar = 1.0, vector = 1.0 }
+                """);
+
+        assertThatThrownBy(() -> new GeneSubstitutionPlugin(new SeededRandomProvider(1), config))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("instructionWeights");
+    }
+
+    /**
      * A flip whose alternatives all weigh zero changes nothing and records nothing.
      */
     @Test
