@@ -26,67 +26,21 @@ public class SolarRadiationCreator implements ITickPlugin {
     private final int executionsPerTick;
 
     /**
-     * Creates a solar radiation distributor.
+     * Creates a solar radiation distributor from its configuration.
      *
      * @param randomProvider Source of randomness.
-     * @param probability Probability per execution to spawn energy in a random free cell.
-     * @param amount Energy amount placed when an execution succeeds.
-     * @param safetyRadius Radius around placement that must be unowned.
-     * @param executionsPerTick How many independent executions to run per tick (each with its own probability check).
-     */
-    public SolarRadiationCreator(IRandomProvider randomProvider, double probability, int amount, int safetyRadius, int executionsPerTick) {
-        this.random = randomProvider.asJavaRandom();
-        this.spawnProbability = probability;
-        this.spawnAmount = amount;
-        this.safetyRadius = safetyRadius;
-        this.executionsPerTick = Math.max(1, executionsPerTick);
-    }
-
-    /**
-     * Backward-compatible constructor (defaults executionsPerTick to 1).
-     * @param randomProvider Source of randomness.
-     * @param probability Probability per execution to spawn energy in a random free cell.
-     * @param amount Energy amount placed when an execution succeeds.
-     * @param safetyRadius Radius around placement that must be unowned.
-     */
-    public SolarRadiationCreator(IRandomProvider randomProvider, double probability, int amount, int safetyRadius) {
-        this(randomProvider, probability, amount, safetyRadius, 1);
-    }
-
-    /**
-     * Backward-compatible constructor for tests and legacy code.
-     * @param probability Probability per execution to spawn energy in a random free cell.
-     * @param amount Energy amount placed when an execution succeeds.
-     * @param safetyRadius Radius around placement that must be unowned.
-     */
-    public SolarRadiationCreator(double probability, int amount, int safetyRadius) {
-        this(new org.evochora.runtime.internal.services.SeededRandomProvider(0L), probability, amount, safetyRadius, 1);
-    }
-
-    /**
-     * Config-based constructor for the new data pipeline.
-     * @param randomProvider Source of randomness.
-     * @param config Configuration object containing solar radiation parameters.
+     * @param config Configuration with {@code probability} (per execution, to spawn energy in a
+     *               random free cell), {@code amount} (energy placed when an execution succeeds),
+     *               {@code safetyRadius} (radius around the placement that must be unowned) and
+     *               {@code executionsPerTick} (independent executions per tick, each with its own
+     *               probability check; at least one runs).
      */
     public SolarRadiationCreator(IRandomProvider randomProvider, com.typesafe.config.Config config) {
-        this(
-            randomProvider,
-            config.getDouble("probability"),
-            config.getInt("amount"),
-            config.getInt("safetyRadius"),
-            config.getInt("executionsPerTick")
-        );
-    }
-
-    /**
-     * Convenience constructor for tests allowing executionsPerTick configuration.
-     * @param probability Probability per execution to spawn energy in a random free cell.
-     * @param amount Energy amount placed when an execution succeeds.
-     * @param safetyRadius Radius around placement that must be unowned.
-     * @param executionsPerTick How many independent executions to run per tick (each with its own probability check).
-     */
-    public SolarRadiationCreator(double probability, int amount, int safetyRadius, int executionsPerTick) {
-        this(new org.evochora.runtime.internal.services.SeededRandomProvider(0L), probability, amount, safetyRadius, executionsPerTick);
+        this.random = randomProvider.asJavaRandom();
+        this.spawnProbability = config.getDouble("probability");
+        this.spawnAmount = config.getInt("amount");
+        this.safetyRadius = config.getInt("safetyRadius");
+        this.executionsPerTick = Math.max(1, config.getInt("executionsPerTick"));
     }
 
     @Override

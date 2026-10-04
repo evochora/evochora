@@ -1,5 +1,8 @@
 package org.evochora.runtime.worldgen;
 
+import org.evochora.runtime.internal.services.SeededRandomProvider;
+import java.util.Map;
+import com.typesafe.config.ConfigFactory;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.runtime.label.HammingLabelMatchingStrategy;
 import org.evochora.runtime.Config;
@@ -25,13 +28,19 @@ public class SolarRadiationStrategyTest {
      * in an available, unowned cell in a dimension-agnostic way.
      * This is a unit test for the world generation logic.
      */
+    /** Builds a solar radiation creator from its configuration, with one execution per tick. */
+    private static SolarRadiationCreator solar(double probability, int amount, int safetyRadius) {
+        return new SolarRadiationCreator(new SeededRandomProvider(0L), ConfigFactory.parseMap(Map.of(
+                "probability", probability, "amount", amount, "safetyRadius", safetyRadius, "executionsPerTick", 1)));
+    }
+
     @Test
     @Tag("unit")
     void placesEnergyInNDEnvironment_whenAreaIsUnowned() {
         // 3D world with a single cell ensures deterministic coordinate selection
         // A world this small cannot be tiled; the row-major layout (tile side 1) keeps the test's cell count.
         Environment env = new Environment(new EnvironmentProperties(new int[]{1, 1, 1}, true), new HammingLabelMatchingStrategy(), 1);
-        SolarRadiationCreator strat = new SolarRadiationCreator(1.0, 42, 0);
+        SolarRadiationCreator strat = solar(1.0, 42, 0);
 
         // Create mock Simulation
         Simulation sim = mock(Simulation.class);
@@ -57,7 +66,7 @@ public class SolarRadiationStrategyTest {
         // A world this small cannot be tiled; the row-major layout (tile side 1) keeps the test's cell count.
         Environment env = new Environment(new EnvironmentProperties(new int[]{1, 1, 1}, true), new HammingLabelMatchingStrategy(), 1);
         env.setOwnerId(7, 0, 0, 0);
-        SolarRadiationCreator strat = new SolarRadiationCreator(1.0, 99, 1);
+        SolarRadiationCreator strat = solar(1.0, 99, 1);
 
         // Create mock Simulation
         Simulation sim = mock(Simulation.class);
