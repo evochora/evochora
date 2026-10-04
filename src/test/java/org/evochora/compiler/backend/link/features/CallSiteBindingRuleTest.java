@@ -275,7 +275,7 @@ class CallSiteBindingRuleTest {
         }
 
         @Override
-        public Optional<String> negatedConditional(String opcode) {
+        public Optional<String> negatedConditionalSkip(String opcode) {
             return Optional.empty();
         }
     }

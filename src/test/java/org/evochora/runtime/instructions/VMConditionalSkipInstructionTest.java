@@ -7,7 +7,7 @@ import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.isa.RegisterBank;
-import org.evochora.runtime.isa.instructions.ConditionalInstruction;
+import org.evochora.runtime.isa.instructions.ConditionalSkipInstruction;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.LocationValue;
 import org.evochora.runtime.model.Molecule;
@@ -27,7 +27,7 @@ import java.util.Map;
  * instruction based on the condition being tested.
  * These tests operate on an in-memory simulation and do not require external resources.
  */
-public class VMConditionalInstructionTest {
+public class VMConditionalSkipInstructionTest {
 
     private Environment environment;
     private Organism org;
@@ -1843,7 +1843,7 @@ public class VMConditionalInstructionTest {
         String[] conditionals = {"IFR", "INR", "LTR", "GETR", "GTR", "LETR", "PGTR", "PLER", "PLTR", "PGER"};
 
         for (String name : conditionals) {
-            String negation = ConditionalInstruction.negationOf(name).orElseThrow();
+            String negation = ConditionalSkipInstruction.negationOf(name).orElseThrow();
             for (Object[] operands : operandPairs) {
                 Map<Integer, Object> registers = Map.of(1, operands[0], 3, operands[1]);
                 assertThat(holds(negation, registers, 1, 3))

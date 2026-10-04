@@ -26,8 +26,8 @@ public final class Family {
     /** Data operations: SET, PUSH, POP, XCHG. */
     public static final int DATA = 3;
 
-    /** Conditional operations: IF, comparisons. */
-    public static final int CONDITIONAL = 4;
+    /** Conditional skips: IF, comparisons that skip the next instruction. */
+    public static final int CONDITIONAL_SKIP = 4;
 
     /** Control flow operations: JMP, CALL, RET. */
     public static final int CONTROL = 5;

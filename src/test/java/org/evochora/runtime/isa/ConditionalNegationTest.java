@@ -4,7 +4,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-import org.evochora.runtime.isa.instructions.ConditionalInstruction;
+import org.evochora.runtime.isa.instructions.ConditionalSkipInstruction;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -26,7 +26,7 @@ class ConditionalNegationTest {
 
     private static List<Map.Entry<Integer, String>> conditionals() {
         return Instruction.getAllInstructions().entrySet().stream()
-                .filter(e -> Instruction.getInstructionClassById(e.getKey()) == ConditionalInstruction.class)
+                .filter(e -> Instruction.getInstructionClassById(e.getKey()) == ConditionalSkipInstruction.class)
                 .toList();
     }
 
@@ -37,14 +37,14 @@ class ConditionalNegationTest {
 
         for (Map.Entry<Integer, String> conditional : conditionals) {
             String name = conditional.getValue();
-            Optional<String> negation = ConditionalInstruction.negationOf(name);
+            Optional<String> negation = ConditionalSkipInstruction.negationOf(name);
             assertThat(negation).as("negation of %s", name).isPresent();
 
             Integer negationId = Instruction.getInstructionIdByName(negation.get());
             assertThat(negationId).as("negation %s of %s is registered", negation.get(), name).isNotNull();
             assertThat(Instruction.getInstructionClassById(negationId))
                     .as("negation %s of %s is a conditional", negation.get(), name)
-                    .isEqualTo(ConditionalInstruction.class);
+                    .isEqualTo(ConditionalSkipInstruction.class);
             assertThat(Instruction.getSignatureById(negationId))
                     .as("signature of %s equals that of %s", negation.get(), name)
                     .isEqualTo(Instruction.getSignatureById(conditional.getKey()));
@@ -55,8 +55,8 @@ class ConditionalNegationTest {
     void negationIsSymmetric() {
         for (Map.Entry<Integer, String> conditional : conditionals()) {
             String name = conditional.getValue();
-            String negation = ConditionalInstruction.negationOf(name).orElseThrow();
-            assertThat(ConditionalInstruction.negationOf(negation))
+            String negation = ConditionalSkipInstruction.negationOf(name).orElseThrow();
+            assertThat(ConditionalSkipInstruction.negationOf(negation))
                     .as("negation of the negation of %s", name)
                     .contains(name.toUpperCase());
             assertThat(negation).as("%s is not its own negation", name).isNotEqualTo(name.toUpperCase());
@@ -79,15 +79,15 @@ class ConditionalNegationTest {
                 "PLTS", "PGES");
 
         expected.forEach((name, negation) -> {
-            assertThat(ConditionalInstruction.negationOf(name)).as("negation of %s", name).contains(negation);
-            assertThat(ConditionalInstruction.negationOf(negation)).as("negation of %s", negation).contains(name);
+            assertThat(ConditionalSkipInstruction.negationOf(name)).as("negation of %s", name).contains(negation);
+            assertThat(ConditionalSkipInstruction.negationOf(negation)).as("negation of %s", negation).contains(name);
         });
     }
 
     @Test
     void anInstructionThatIsNoConditionalHasNoNegation() {
-        assertThat(ConditionalInstruction.negationOf("NOP")).isEmpty();
-        assertThat(ConditionalInstruction.negationOf("JMPI")).isEmpty();
-        assertThat(ConditionalInstruction.negationOf("NO_SUCH_OPCODE")).isEmpty();
+        assertThat(ConditionalSkipInstruction.negationOf("NOP")).isEmpty();
+        assertThat(ConditionalSkipInstruction.negationOf("JMPI")).isEmpty();
+        assertThat(ConditionalSkipInstruction.negationOf("NO_SUCH_OPCODE")).isEmpty();
     }
 }

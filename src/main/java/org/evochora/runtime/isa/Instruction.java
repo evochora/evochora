@@ -16,7 +16,7 @@ import org.evochora.runtime.Config;
 import org.evochora.runtime.internal.services.ExecutionContext;
 import org.evochora.runtime.isa.instructions.ArithmeticInstruction;
 import org.evochora.runtime.isa.instructions.BitwiseInstruction;
-import org.evochora.runtime.isa.instructions.ConditionalInstruction;
+import org.evochora.runtime.isa.instructions.ConditionalSkipInstruction;
 import org.evochora.runtime.isa.instructions.ControlFlowInstruction;
 import org.evochora.runtime.isa.instructions.DataInstruction;
 import org.evochora.runtime.isa.instructions.EnvironmentInteractionInstruction;
@@ -43,7 +43,7 @@ public abstract class Instruction {
      *
      * @param opcodeId The full opcode ID of the instruction.
      * @param name The name of the instruction.
-     * @param family The instruction family class.
+     * @param family The instruction family: the class that registered the instruction.
      */
     public record InstructionInfo(int opcodeId, String name, Class<? extends Instruction> family) {}
 
@@ -284,15 +284,7 @@ public abstract class Instruction {
         for (Integer opcodeId : REGISTERED_INSTRUCTIONS_BY_ID.keySet()) {
             Class<? extends Instruction> implClass = REGISTERED_INSTRUCTIONS_BY_ID.get(opcodeId);
             String name = ID_TO_NAME.get(opcodeId);
-            
-            // Find the base "family" class (e.g., ArithmeticInstruction) by traversing up the class hierarchy.
-            Class<? extends Instruction> family = implClass;
-            while (family.getSuperclass() != Instruction.class && family.getSuperclass() != null && Instruction.class.isAssignableFrom(family.getSuperclass())) {
-                @SuppressWarnings("unchecked")
-                Class<? extends Instruction> superClass = (Class<? extends Instruction>) family.getSuperclass();
-                family = superClass;
-            }
-            info.add(new InstructionInfo(opcodeId, name, family));
+            info.add(new InstructionInfo(opcodeId, name, implClass));
         }
         return Collections.unmodifiableList(info);
     }
@@ -667,7 +659,7 @@ public abstract class Instruction {
             BitwiseInstruction.register(BITWISE);
             DataInstruction.register(DATA);
             StackInstruction.register(STACK);
-            ConditionalInstruction.register(CONDITIONAL);
+            ConditionalSkipInstruction.register(CONDITIONAL_SKIP);
             ControlFlowInstruction.register(CONTROL);
             EnvironmentInteractionInstruction.register(ENVIRONMENT);
             StateInstruction.register(STATE);

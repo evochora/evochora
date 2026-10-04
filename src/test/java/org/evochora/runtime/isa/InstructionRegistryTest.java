@@ -8,7 +8,7 @@ import java.util.Set;
 
 import org.evochora.runtime.isa.instructions.ArithmeticInstruction;
 import org.evochora.runtime.isa.instructions.BitwiseInstruction;
-import org.evochora.runtime.isa.instructions.ConditionalInstruction;
+import org.evochora.runtime.isa.instructions.ConditionalSkipInstruction;
 import org.evochora.runtime.isa.instructions.ControlFlowInstruction;
 import org.evochora.runtime.isa.instructions.DataInstruction;
 import org.evochora.runtime.isa.instructions.EnvironmentInteractionInstruction;
@@ -53,7 +53,7 @@ class InstructionRegistryTest {
             Map.entry(BitwiseInstruction.class, Family.BITWISE),
             Map.entry(DataInstruction.class, Family.DATA),
             Map.entry(StackInstruction.class, Family.STACK),
-            Map.entry(ConditionalInstruction.class, Family.CONDITIONAL),
+            Map.entry(ConditionalSkipInstruction.class, Family.CONDITIONAL_SKIP),
             Map.entry(ControlFlowInstruction.class, Family.CONTROL),
             Map.entry(EnvironmentInteractionInstruction.class, Family.ENVIRONMENT),
             Map.entry(StateInstruction.class, Family.STATE),
