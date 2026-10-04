@@ -42,20 +42,6 @@ public final class InstructionWeights {
     }
 
     /**
-     * Weights every registered opcode alike, as a block with a top-level {@code default} of one and
-     * no family would.
-     *
-     * @return weights of one for every opcode
-     */
-    static InstructionWeights uniform() {
-        Int2DoubleOpenHashMap weights = new Int2DoubleOpenHashMap();
-        for (int opcodeId : Instruction.getAllInstructions().keySet()) {
-            weights.put(opcodeId, 1.0);
-        }
-        return new InstructionWeights(weights);
-    }
-
-    /**
      * Reads an {@code instructionWeights} block.
      *
      * @param block the block

@@ -166,7 +166,7 @@ class GeneSubstitutionPluginTest {
 
     /** Creates a plugin that only mutates CODE molecules. */
     private GeneSubstitutionPlugin codeOnlyPlugin(IRandomProvider rng) {
-        return new GeneSubstitutionPlugin(rng, 1.0,
+        return substitution(rng, 1.0,
                 1.0, 0.0, 0.0, 0.0, 0.0,
                 0.7, 0.2, 0.1,
                 0.5, 1, 1);
@@ -174,7 +174,7 @@ class GeneSubstitutionPluginTest {
 
     /** Creates a plugin that only mutates REGISTER molecules. */
     private GeneSubstitutionPlugin registerOnlyPlugin(IRandomProvider rng) {
-        return new GeneSubstitutionPlugin(rng, 1.0,
+        return substitution(rng, 1.0,
                 0.0, 1.0, 0.0, 0.0, 0.0,
                 0.7, 0.2, 0.1,
                 0.5, 1, 1);
@@ -182,7 +182,7 @@ class GeneSubstitutionPluginTest {
 
     /** Creates a plugin that only mutates DATA molecules. */
     private GeneSubstitutionPlugin dataOnlyPlugin(IRandomProvider rng) {
-        return new GeneSubstitutionPlugin(rng, 1.0,
+        return substitution(rng, 1.0,
                 0.0, 0.0, 1.0, 0.0, 0.0,
                 0.7, 0.2, 0.1,
                 0.5, 1, 1);
@@ -190,7 +190,7 @@ class GeneSubstitutionPluginTest {
 
     /** Creates a plugin that only mutates LABEL molecules. */
     private GeneSubstitutionPlugin labelOnlyPlugin(IRandomProvider rng) {
-        return new GeneSubstitutionPlugin(rng, 1.0,
+        return substitution(rng, 1.0,
                 0.0, 0.0, 0.0, 1.0, 0.0,
                 0.7, 0.2, 0.1,
                 0.5, 1, 1);
@@ -198,7 +198,7 @@ class GeneSubstitutionPluginTest {
 
     /** Creates a plugin that only mutates LABELREF molecules. */
     private GeneSubstitutionPlugin labelrefOnlyPlugin(IRandomProvider rng) {
-        return new GeneSubstitutionPlugin(rng, 1.0,
+        return substitution(rng, 1.0,
                 0.0, 0.0, 0.0, 0.0, 1.0,
                 0.7, 0.2, 0.1,
                 0.5, 1, 1);
@@ -206,7 +206,7 @@ class GeneSubstitutionPluginTest {
 
     /** Creates a plugin that mutates all types equally. */
     private GeneSubstitutionPlugin allTypesPlugin(IRandomProvider rng) {
-        return new GeneSubstitutionPlugin(rng, 1.0,
+        return substitution(rng, 1.0,
                 1.0, 1.0, 1.0, 1.0, 1.0,
                 0.7, 0.2, 0.1,
                 0.5, 1, 1);
@@ -319,7 +319,7 @@ class GeneSubstitutionPluginTest {
             setUp();
             placeCode(5, 5, ADDR_OPCODE);
             // Only operation flip
-            GeneSubstitutionPlugin plugin = new GeneSubstitutionPlugin(
+            GeneSubstitutionPlugin plugin = substitution(
                     new SeededRandomProvider(seed), 1.0,
                     1.0, 0.0, 0.0, 0.0, 0.0,
                     1.0, 0.0, 0.0,  // only operation flip
@@ -475,7 +475,7 @@ class GeneSubstitutionPluginTest {
 
     /** Creates a plugin whose CODE mutation performs nothing but family flips. */
     private GeneSubstitutionPlugin familyFlipOnlyPlugin(IRandomProvider rng) {
-        return new GeneSubstitutionPlugin(rng, 1.0,
+        return substitution(rng, 1.0,
                 1.0, 0.0, 0.0, 0.0, 0.0,
                 0.0, 1.0, 0.0,
                 0.5, 1, 1);
@@ -504,7 +504,7 @@ class GeneSubstitutionPluginTest {
             setUp();
             placeCode(5, 5, ADDR_OPCODE);
             // Only variant flip
-            GeneSubstitutionPlugin plugin = new GeneSubstitutionPlugin(
+            GeneSubstitutionPlugin plugin = substitution(
                     new SeededRandomProvider(seed), 1.0,
                     1.0, 0.0, 0.0, 0.0, 0.0,
                     0.0, 0.0, 1.0,  // only variant flip
@@ -537,7 +537,7 @@ class GeneSubstitutionPluginTest {
         for (int seed = 0; seed < 200; seed++) {
             setUp();
             placeCode(5, 5, gti);
-            GeneSubstitutionPlugin plugin = new GeneSubstitutionPlugin(
+            GeneSubstitutionPlugin plugin = substitution(
                     new SeededRandomProvider(seed), 1.0,
                     1.0, 0.0, 0.0, 0.0, 0.0,
                     1.0, 0.0, 0.0,  // only operation flip
@@ -982,14 +982,14 @@ class GeneSubstitutionPluginTest {
 
     @Test
     void theThreeOpcodeFlipsAreRecordedAsTheirOwnActions() {
-        assertThat(actionCodeOf(seed -> new GeneSubstitutionPlugin(new SeededRandomProvider(seed),
+        assertThat(actionCodeOf(seed -> substitution(new SeededRandomProvider(seed),
                         1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.5, 1, 1),
                 () -> placeCode(5, 5, ADDR_OPCODE)))
                 .as("operation flip").isEqualTo(1L);
         assertThat(actionCodeOf(seed -> familyFlipOnlyPlugin(new SeededRandomProvider(seed)),
                 () -> placeCode(5, 5, ADDR_OPCODE)))
                 .as("family flip").isEqualTo(2L);
-        assertThat(actionCodeOf(seed -> new GeneSubstitutionPlugin(new SeededRandomProvider(seed),
+        assertThat(actionCodeOf(seed -> substitution(new SeededRandomProvider(seed),
                         1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.5, 1, 1),
                 () -> placeCode(5, 5, ADDR_OPCODE)))
                 .as("variant flip").isEqualTo(3L);
@@ -1229,7 +1229,7 @@ class GeneSubstitutionPluginTest {
             placeCode(5, 5, ADDR_OPCODE);
             placeRegister(10, 5, 3);
 
-            GeneSubstitutionPlugin plugin = new GeneSubstitutionPlugin(
+            GeneSubstitutionPlugin plugin = substitution(
                     new SeededRandomProvider(seed), 1.0,
                     0.0, 1.0, 0.0, 0.0, 0.0,  // only REGISTER enabled
                     0.7, 0.2, 0.1,
@@ -1251,7 +1251,7 @@ class GeneSubstitutionPluginTest {
             placeCode(5, 5, ADDR_OPCODE);
             placeRegister(10, 5, 3);
 
-            GeneSubstitutionPlugin plugin = new GeneSubstitutionPlugin(
+            GeneSubstitutionPlugin plugin = substitution(
                     new SeededRandomProvider(seed), 1.0,
                     10.0, 1.0, 0.0, 0.0, 0.0,  // CODE weight 10x REGISTER
                     0.7, 0.2, 0.1,
@@ -1278,7 +1278,7 @@ class GeneSubstitutionPluginTest {
         placeCode(5, 5, ADDR_OPCODE);
         placeData(10, 5, 100);
 
-        GeneSubstitutionPlugin plugin = new GeneSubstitutionPlugin(
+        GeneSubstitutionPlugin plugin = substitution(
                 new SeededRandomProvider(42), 0.0,  // rate = 0
                 1.0, 1.0, 1.0, 1.0, 1.0,
                 0.7, 0.2, 0.1,
@@ -1412,11 +1412,40 @@ class GeneSubstitutionPluginTest {
         assertThat(child.getBirthMutations()).isNull();
     }
 
+    /**
+     * Builds the substitution plugin from a configuration that weights the five types the tests
+     * mutate, gives every value type the same exponent, weights both operand slots one and every
+     * opcode alike.
+     */
+    private static GeneSubstitutionPlugin substitution(IRandomProvider rng, double substitutionRate,
+            double codeWeight, double registerWeight, double dataWeight, double labelWeight, double labelrefWeight,
+            double operationFlipWeight, double familyFlipWeight, double variantFlipWeight,
+            double valueExponent, int labelBitflips, int labelrefBitflips) {
+        Map<String, Object> config = new java.util.HashMap<>();
+        config.put("substitutionRate", substitutionRate);
+        config.put("CODE.weight", codeWeight);
+        config.put("CODE.operationFlipWeight", operationFlipWeight);
+        config.put("CODE.familyFlipWeight", familyFlipWeight);
+        config.put("CODE.variantFlipWeight", variantFlipWeight);
+        config.put("REGISTER.weight", registerWeight);
+        config.put("DATA.weight", dataWeight);
+        config.put("DATA.exponent", valueExponent);
+        config.put("LABEL.weight", labelWeight);
+        config.put("LABEL.bitflips", labelBitflips);
+        config.put("LABELREF.weight", labelrefWeight);
+        config.put("LABELREF.bitflips", labelrefBitflips);
+        config.put("operands.scalar", 1.0);
+        config.put("operands.vector", 1.0);
+        config.put("instructionWeights.default", 1);
+        config.put("instructionWeights.families", List.of());
+        return new GeneSubstitutionPlugin(rng, ConfigFactory.parseMap(config));
+    }
+
     // ---- Configuration validation tests ----
 
     /** Creates a plugin with the given rate and DATA exponent, all other settings irrelevant. */
     private GeneSubstitutionPlugin pluginWith(double substitutionRate, double dataExponent) {
-        return new GeneSubstitutionPlugin(new SeededRandomProvider(0), substitutionRate,
+        return substitution(new SeededRandomProvider(0), substitutionRate,
                 1.0, 1.0, 1.0, 1.0, 1.0,
                 0.7, 0.2, 0.1,
                 dataExponent, 1, 1);

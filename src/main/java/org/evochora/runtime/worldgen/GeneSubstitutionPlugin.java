@@ -294,65 +294,6 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
         buildCodeAlternatives(instructionWeights);
     }
 
-    /**
-     * Convenience constructor for tests.
-     * <p>
-     * Covers the five types with a non-zero default weight. Every other registered type gets
-     * weight 0, every type that uses the general value strategy gets the given exponent, and both
-     * operand multipliers are one, so that a cell weighs its type weight wherever it stands.
-     *
-     * @param randomProvider Source of randomness.
-     * @param substitutionRate Probability of substitution per newborn (0.0 to 1.0).
-     * @param codeWeight Selection weight for CODE molecules.
-     * @param registerWeight Selection weight for REGISTER molecules.
-     * @param dataWeight Selection weight for DATA molecules.
-     * @param labelWeight Selection weight for LABEL molecules.
-     * @param labelrefWeight Selection weight for LABELREF molecules.
-     * @param operationFlipWeight Weight for operation flip mode within CODE.
-     * @param familyFlipWeight Weight for family flip mode within CODE.
-     * @param variantFlipWeight Weight for variant flip mode within CODE.
-     * @param valueExponent Exponent for the scale-proportional value perturbation.
-     * @param labelBitflips Number of bits to flip for LABEL mutation.
-     * @param labelrefBitflips Number of bits to flip for LABELREF mutation.
-     */
-    GeneSubstitutionPlugin(IRandomProvider randomProvider, double substitutionRate,
-                           double codeWeight, double registerWeight, double dataWeight,
-                           double labelWeight, double labelrefWeight,
-                           double operationFlipWeight, double familyFlipWeight, double variantFlipWeight,
-                           double valueExponent, int labelBitflips, int labelrefBitflips) {
-        this.random = randomProvider.asJavaRandom();
-        this.substitutionRate = substitutionRate;
-        this.operationFlipWeight = operationFlipWeight;
-        this.familyFlipWeight = familyFlipWeight;
-        this.variantFlipWeight = variantFlipWeight;
-        this.totalFlipWeight = operationFlipWeight + familyFlipWeight + variantFlipWeight;
-        requireFlipWeights(codeWeight, this.totalFlipWeight);
-        this.labelBitflips = labelBitflips;
-        this.labelrefBitflips = labelrefBitflips;
-        this.operandsScalar = 1.0;
-        this.operandsVector = 1.0;
-
-        this.typeWeights = new double[TYPE_TABLE_SIZE];
-        this.typeWeights[rawIndex(Config.TYPE_CODE)] = codeWeight;
-        this.typeWeights[rawIndex(Config.TYPE_DATA)] = dataWeight;
-        this.typeWeights[rawIndex(Config.TYPE_REGISTER)] = registerWeight;
-        this.typeWeights[rawIndex(Config.TYPE_LABEL)] = labelWeight;
-        this.typeWeights[rawIndex(Config.TYPE_LABELREF)] = labelrefWeight;
-
-        this.typeExponents = new double[TYPE_TABLE_SIZE];
-        for (int type : MoleculeTypeRegistry.orderedTypes()) {
-            if (usesValueStrategy(type)) {
-                this.typeExponents[rawIndex(type)] = valueExponent;
-            }
-        }
-        validateRanges(this.substitutionRate, this.typeExponents);
-
-        this.operationFlipAlternatives = new Int2ObjectOpenHashMap<>();
-        this.familyFlipAlternatives = new Int2ObjectOpenHashMap<>();
-        this.variantFlipAlternatives = new Int2ObjectOpenHashMap<>();
-        buildCodeAlternatives(InstructionWeights.uniform());
-    }
-
     /** {@inheritDoc} */
     @Override
     public void onBirth(Organism child, Environment environment) {

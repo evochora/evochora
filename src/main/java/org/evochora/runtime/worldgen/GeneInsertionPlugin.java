@@ -344,25 +344,6 @@ public class GeneInsertionPlugin implements IBirthHandler {
     }
 
     /**
-     * Convenience constructor for tests.
-     *
-     * @param randomProvider Source of randomness.
-     * @param mutationRate Probability of mutation per newborn (0.0 to 1.0).
-     * @param entries Pre-built list of mutation entries.
-     */
-    GeneInsertionPlugin(IRandomProvider randomProvider, double mutationRate, List<MutationEntry> entries) {
-        this.random = randomProvider.asJavaRandom();
-        this.jumpOpcodeId = resolveJumpOpcode();
-        this.mutationRate = mutationRate;
-        this.entries = new ArrayList<>(entries);
-        double w = 0.0;
-        for (MutationEntry e : entries) {
-            w += e.weight();
-        }
-        this.totalWeight = w;
-    }
-
-    /**
      * Resolves the opcode of the jump a label entry's chain ends with.
      *
      * @return The opcode ID of {@value #JUMP_INSTRUCTION}.
