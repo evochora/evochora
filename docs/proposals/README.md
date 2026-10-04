@@ -19,26 +19,25 @@ table carries the whole order.
 |---|---|---|
 | [PERSISTED_FORMAT_VERSIONING](PERSISTED_FORMAT_VERSIONING.md) | TO BE REVIEWED | Storage batches, run database and run metadata carry no format version, so data written by an incompatible build is read silently or fails without naming the cause; one version constant plus fail-fast reads |
 | [DEPENDENCY_UPDATE](DEPENDENCY_UPDATE.md) | TO BE REVIEWED | 24 of 32 dependencies behind, six by a major version; removal of the unused JLine pair, three build hygiene fixes, and a staged update procedure derived from what the test suite can and cannot verify |
+| [CONDITIONAL_JUMPS](CONDITIONAL_JUMPS.md) | TO BE REVIEWED | Conditional jumps (`JFI`, `JLTR`, `QGTI` …) as twins of all 28 conditional skips — condition and jump in one instruction; instruction weights for insertion and substitution so the doubled conditional opcodes are not overdrawn; a family is the instruction class |
 
 The two dependency documents are related: DEPENDENCY_UPDATE establishes which formats a compatibility fixture may
 legitimately cover, and delegates the formats this codebase owns to PERSISTED_FORMAT_VERSIONING.
 
 ## Compiler enhancements
 
-Three related compiler proposals. They share a dependency chain, listed here in the order that
-resolves it.
+Two related compiler proposals, listed in the order that resolves their dependency.
 
 | # | Document | Status | Summary |
 |---|---|---|---|
 | 1 | [CONDITIONAL_COMPILATION](compiler-enhancements/CONDITIONAL_COMPILATION.md) | TO BE REVIEWED | `.IFDEF` / `.ELSEDEF` / `.ENDDEF` preprocessor conditionals; renames `.DEFINE` → `.CONST` and `.ENDP`/`.ENDM`/`.ENDR` → `.ENDPROC`/`.ENDMACRO`/`.ENDREPEAT` |
 | 2 | [CONTROL_FLOW_DIRECTIVES](compiler-enhancements/CONTROL_FLOW_DIRECTIVES.WIP.md) | **WORK IN PROGRESS** | `.IF`/`.ELSEIF`/`.ELSE`/`.ENDIF` specified; `.WHILE`/`.FOR`/`.BREAK`/`.CONTINUE` still to be written |
-| 3 | [CONDITIONAL_BRANCH_ISA](compiler-enhancements/CONDITIONAL_BRANCH_ISA.md) | TO BE REVIEWED | Branch variants (BFI, BNR, BLE…) for all 20 conditional operations — condition test and jump in one instruction; PROBABILISTIC_CONDITIONALS adds four operations that would need branch variants too |
 
 Dependencies:
 
 - **2 requires 1** for the `.END*` naming convention (`.ENDIF`).
-- **3 is optional for 2**: control flow directives work with skip-next instructions; branch instructions
-  only improve code density of the generated sequences.
+- **CONDITIONAL_JUMPS is optional for 2**: control flow directives work with conditional skips;
+  with conditional jumps, `.IF` over a jump compiles to the negated jump.
 
 ## Ideas
 
