@@ -151,6 +151,15 @@ class GeneInsertionPluginTest {
         environment.setMolecule(new Molecule(type, value), child.getId(), new int[]{x, y});
     }
 
+    /** Weights that let an entry insert SETI and nothing else. */
+    private static final String ONLY_SETI = """
+            {
+              default = 0
+              families = [
+                { class = "org.evochora.runtime.isa.instructions.DataInstruction", weight = 1, default = 0, opcodes { SETI = 1 } }
+              ]
+            }""";
+
     /** The opcode of the instruction the label entry tests insert. */
     private static int setiId() {
         Integer id = Instruction.getInstructionIdByName("SETI");
@@ -672,46 +681,74 @@ class GeneInsertionPluginTest {
         String text = """
                 mutationRate = 1.0
                 entries = [
-                  { type = "label", weight = 1, bitflips = 2, instructions = ["SETI"],
+                  { type = "label", weight = 1, bitflips = 2, instructionWeights = %s,
                     args { REGISTER { range = [0, 7] }, DATA { min = 0, max = 255 } } }
                 ]
-                """;
+                """.formatted(ONLY_SETI);
         assertThatThrownBy(() -> new GeneInsertionPlugin(
                 new SeededRandomProvider(42L), ConfigFactory.parseString(text)))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("bitflips");
     }
 
+    /**
+     * A label entry leaves out what execution does not go on behind, a conditional skip here,
+     * whatever weight it is given, and draws only from the rest.
+     */
     @Test
-    void aLabelEntryThatNamesAConditionalIsRejected() {
+    void aLabelEntryLeavesOutAConditionalSkipWhateverItsWeight() {
         String text = """
                 mutationRate = 1.0
                 entries = [
-                  { type = "label", weight = 1, instructions = ["SETI", "IFI"],
+                  { type = "label", weight = 1,
+                    instructionWeights {
+                      default = 0
+                      families = [
+                        { class = "org.evochora.runtime.isa.instructions.DataInstruction", weight = 1, default = 0, opcodes { SETI = 1 } }
+                        { class = "org.evochora.runtime.isa.instructions.ConditionalSkipInstruction", weight = 100, default = 1 }
+                      ]
+                    }
+                    args { REGISTER { range = [0, 7] }, DATA { min = 0, max = 255 } } }
+                ]
+                """;
+        for (long seed = 0; seed < 20; seed++) {
+            setUp();
+            placeLabel(2, Y, LABEL_HASH_A);
+            placeJump(3, Y, LABEL_HASH_A);
+            placeCode(16, Y);
+            GeneInsertionPlugin plugin = new GeneInsertionPlugin(
+                    new SeededRandomProvider(seed), ConfigFactory.parseString(text));
+
+            plugin.mutate(child, environment);
+
+            assertThat(environment.getMolecule(6, Y).value()).as("seed %d", seed).isEqualTo(setiId());
+        }
+    }
+
+    /**
+     * An entry that its weights leave without an opcode it may insert is rejected, and the message
+     * names the two ways out.
+     */
+    @Test
+    void aLabelEntryLeftWithoutAnOpcodeIsRejected() {
+        String text = """
+                mutationRate = 1.0
+                entries = [
+                  { type = "label", weight = 1,
+                    instructionWeights {
+                      default = 0
+                      families = [
+                        { class = "org.evochora.runtime.isa.instructions.ConditionalSkipInstruction", weight = 1, default = 1 }
+                      ]
+                    }
                     args { REGISTER { range = [0, 7] }, DATA { min = 0, max = 255 } } }
                 ]
                 """;
         assertThatThrownBy(() -> new GeneInsertionPlugin(
                 new SeededRandomProvider(42L), ConfigFactory.parseString(text)))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("IFI");
-    }
-
-    @Test
-    void aLabelEntryThatNamesAJumpOrAReturnIsRejected() {
-        for (String name : List.of("JMPI", "JMPR", "JMPS", "RET")) {
-            String text = """
-                    mutationRate = 1.0
-                    entries = [
-                      { type = "label", weight = 1, instructions = ["SETI", "%s"],
-                        args { REGISTER { range = [0, 7] }, DATA { min = 0, max = 255 }, LABELREF = "existing" } }
-                    ]
-                    """.formatted(name);
-            assertThatThrownBy(() -> new GeneInsertionPlugin(
-                    new SeededRandomProvider(42L), ConfigFactory.parseString(text)))
-                    .isInstanceOf(IllegalArgumentException.class)
-                    .hasMessageContaining(name);
-        }
+                .hasMessageContaining("remove the entry")
+                .hasMessageContaining("instructionWeights that leave an opcode");
     }
 
     @Test
@@ -719,7 +756,7 @@ class GeneInsertionPluginTest {
         String text = """
                 mutationRate = 1.0
                 entries = [
-                  { type = "label", weight = 1, instructions = "*",
+                  { type = "label", weight = 1, instructionWeights { default = 1, families = [] },
                     args { REGISTER { range = [0, 7] }, LOCATION_REGISTER { range = [0, 3] },
                            DATA { min = 0, max = 255 }, LABELREF = "existing", VECTOR = "unit" } }
                 ]
@@ -756,7 +793,7 @@ class GeneInsertionPluginTest {
         assertThatThrownBy(() -> new GeneInsertionPlugin(
                 new SeededRandomProvider(42L), ConfigFactory.parseString(text)))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("instructions");
+                .hasMessageContaining("instructionWeights");
     }
 
     @Test

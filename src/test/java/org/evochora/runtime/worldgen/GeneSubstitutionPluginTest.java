@@ -235,6 +235,66 @@ class GeneSubstitutionPluginTest {
         assertThat(mutated).as("At least some mutations should occur across 100 seeds").isGreaterThan(0);
     }
 
+    /**
+     * The instruction weights steer what a flip produces: an operation flip of GTR, which may reach
+     * every other register comparison, only ever produces LTR when that is the only one of weight
+     * above zero.
+     */
+    @Test
+    void aFlipProducesOnlyOpcodesOfWeightAboveZero() {
+        int gtr = Instruction.getInstructionIdByName("GTR");
+        int ltr = Instruction.getInstructionIdByName("LTR");
+        com.typesafe.config.Config config = ConfigFactory.parseString("""
+                substitutionRate = 1.0
+                CODE { weight = 1.0, operationFlipWeight = 1.0, familyFlipWeight = 0.0, variantFlipWeight = 0.0 }
+                operands { scalar = 1.0, vector = 1.0 }
+                instructionWeights {
+                  default = 1
+                  families = [
+                    { class = "org.evochora.runtime.isa.instructions.ConditionalSkipInstruction", weight = 1, default = 0, opcodes { LTR = 1 } }
+                  ]
+                }
+                """);
+        int flipped = 0;
+        for (int seed = 0; seed < 50; seed++) {
+            setUp();
+            placeCode(5, 5, gtr);
+            new GeneSubstitutionPlugin(new SeededRandomProvider(seed), config).substitute(child, environment);
+
+            int newValue = environment.getMolecule(5, 5).value();
+            assertThat(newValue).as("seed %d", seed).isIn(gtr, ltr);
+            if (newValue == ltr) {
+                flipped++;
+            }
+        }
+        assertThat(flipped).as("GTR flipped to LTR").isEqualTo(50);
+    }
+
+    /**
+     * A flip whose alternatives all weigh zero changes nothing and records nothing.
+     */
+    @Test
+    void aFlipWithoutAnAlternativeOfWeightAboveZeroChangesNothing() {
+        int gtr = Instruction.getInstructionIdByName("GTR");
+        com.typesafe.config.Config config = ConfigFactory.parseString("""
+                substitutionRate = 1.0
+                CODE { weight = 1.0, operationFlipWeight = 1.0, familyFlipWeight = 0.0, variantFlipWeight = 0.0 }
+                operands { scalar = 1.0, vector = 1.0 }
+                instructionWeights {
+                  default = 1
+                  families = [
+                    { class = "org.evochora.runtime.isa.instructions.ConditionalSkipInstruction", weight = 1, default = 0, opcodes { GTR = 1 } }
+                  ]
+                }
+                """);
+        placeCode(5, 5, gtr);
+
+        new GeneSubstitutionPlugin(new SeededRandomProvider(3), config).substitute(child, environment);
+
+        assertThat(environment.getMolecule(5, 5).value()).isEqualTo(gtr);
+        assertThat(child.getBirthMutations()).isNullOrEmpty();
+    }
+
     @Test
     void operationFlipKeepsFamilyAndSignature() {
         int verified = 0;
@@ -1405,6 +1465,7 @@ class GeneSubstitutionPluginTest {
             text.append(" }\n");
         }
         text.append("operands { scalar = 1.0, vector = 1.0 }\n");
+        text.append("instructionWeights { default = 1, families = [] }\n");
         return text.toString();
     }
 
@@ -1476,6 +1537,7 @@ class GeneSubstitutionPluginTest {
                 substitutionRate = 1.0
                 CODE { weight = 1.0, operationFlipWeight = 0.7, familyFlipWeight = 0.2, variantFlipWeight = 0.1 }
                 operands { scalar = 1.0, vector = 1.0 }
+                instructionWeights { default = 1, families = [] }
                 """);
 
         for (int seed = 0; seed < 50; seed++) {
@@ -1502,6 +1564,7 @@ class GeneSubstitutionPluginTest {
                 substitutionRate = 1.0
                 DATTA { weight = 1.0 }
                 operands { scalar = 1.0, vector = 1.0 }
+                instructionWeights { default = 1, families = [] }
                 """);
 
         assertThatThrownBy(() -> new GeneSubstitutionPlugin(new SeededRandomProvider(1), config))
@@ -1548,6 +1611,7 @@ class GeneSubstitutionPluginTest {
                 substitutionRate = 1.0
                 STATE { weight = 1.0 }
                 operands { scalar = 1.0, vector = 1.0 }
+                instructionWeights { default = 1, families = [] }
                 """);
 
         boolean steppedBeyondOne = false;
@@ -1584,6 +1648,7 @@ class GeneSubstitutionPluginTest {
                 substitutionRate = 1.0
                 DATA { weight = 1.0, exponent = 0.9 }
                 operands { scalar = %s, vector = %s }
+                instructionWeights { default = 1, families = [] }
                 """.formatted(scalar, vector));
     }
 
@@ -1706,6 +1771,7 @@ class GeneSubstitutionPluginTest {
                 substitutionRate = 1.0
                 DATA { weight = 1.0 }
                 operands { scalar = 2.0 }
+                instructionWeights { default = 1, families = [] }
                 """);
 
         assertThatThrownBy(() -> new GeneSubstitutionPlugin(new SeededRandomProvider(1), config))
@@ -1720,6 +1786,7 @@ class GeneSubstitutionPluginTest {
                 substitutionRate = 1.0
                 DATA { weight = 1.0 }
                 operands { scalar = 2.0, vector = 1.0, foo = 1 }
+                instructionWeights { default = 1, families = [] }
                 """);
 
         assertThatThrownBy(() -> new GeneSubstitutionPlugin(new SeededRandomProvider(1), config))
@@ -1738,6 +1805,7 @@ class GeneSubstitutionPluginTest {
                 substitutionRate = 1.0
                 CODE { weight = 1.0, operationFlipWeight = 0.0, familyFlipWeight = 0.0, variantFlipWeight = 0.0 }
                 operands { scalar = 1.0, vector = 1.0 }
+                instructionWeights { default = 1, families = [] }
                 """);
 
         assertThatThrownBy(() -> new GeneSubstitutionPlugin(new SeededRandomProvider(1), config))
@@ -1749,6 +1817,7 @@ class GeneSubstitutionPluginTest {
                 CODE { weight = 0.0, operationFlipWeight = 0.0, familyFlipWeight = 0.0, variantFlipWeight = 0.0 }
                 DATA { weight = 1.0 }
                 operands { scalar = 1.0, vector = 1.0 }
+                instructionWeights { default = 1, families = [] }
                 """);
         new GeneSubstitutionPlugin(new SeededRandomProvider(1), unselected);
     }
@@ -1763,6 +1832,7 @@ class GeneSubstitutionPluginTest {
                 substitutionRate = 1.0
                 DATA { weight = 1.0, wieght = 2.0 }
                 operands { scalar = 1.0, vector = 1.0 }
+                instructionWeights { default = 1, families = [] }
                 """);
 
         assertThatThrownBy(() -> new GeneSubstitutionPlugin(new SeededRandomProvider(1), config))
@@ -1782,6 +1852,7 @@ class GeneSubstitutionPluginTest {
                 substitutionRate = 1.0
                 REGISTER { weight = 1.0, exponent = 0.5 }
                 operands { scalar = 1.0, vector = 1.0 }
+                instructionWeights { default = 1, families = [] }
                 """);
 
         assertThatThrownBy(() -> new GeneSubstitutionPlugin(new SeededRandomProvider(1), config))
@@ -1796,6 +1867,7 @@ class GeneSubstitutionPluginTest {
                 substitutionRate = 1.0
                 DATA { weight = 1.0 }
                 operands { scalar = -1.0, vector = 1.0 }
+                instructionWeights { default = 1, families = [] }
                 """);
 
         assertThatThrownBy(() -> new GeneSubstitutionPlugin(new SeededRandomProvider(1), config))
