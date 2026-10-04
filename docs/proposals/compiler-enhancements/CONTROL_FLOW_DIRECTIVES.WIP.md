@@ -30,7 +30,7 @@ Higher-level control flow directives (`.IF`, `.WHILE`, `.FOR`) can generate thes
 
 The block directives end with `.END*` names (`.ENDPROC`, `.ENDMACRO`, `.ENDREPEAT`, `.ENDDEF`), as the accomplished Conditional Compilation proposal established; `.ENDIF` follows this convention.
 
-This proposal does **not** require [CONDITIONAL_JUMPS](../CONDITIONAL_JUMPS.md). With a conditional skip it generates the negated skip and a `JMPI`; with a conditional jump, once those exist, the negated jump. The compiler never changes the encoding the source names: a skip is never replaced by a jump. Both paths are documented below.
+This proposal does **not** require [CONDITIONAL_JUMPS](../../outdated/proposals/accomplished/CONDITIONAL_JUMPS.md), which is accomplished. With a conditional skip it generates the negated skip and a `JMPI`; with a conditional jump the negated jump. The compiler never changes the encoding the source names: a skip is never replaced by a jump. Both paths are documented below.
 
 ## Solution: .IF / .ELSEIF / .ELSE / .ENDIF
 
@@ -281,7 +281,7 @@ Minimal vertical slice: simple conditional block.
 - `.ELSEIF` after `.ELSE` → compile error
 - All 5 CLI smoke tests green
 
-### Step 4: Conditional jumps (requires CONDITIONAL_JUMPS)
+### Step 4: Conditional jumps
 
 **Changes:**
 - `IfNodeConverter` — for a conditional jump, emit its negation with the label instead of negated skip + JMPI

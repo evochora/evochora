@@ -19,7 +19,6 @@ table carries the whole order.
 |---|---|---|
 | [PERSISTED_FORMAT_VERSIONING](PERSISTED_FORMAT_VERSIONING.md) | TO BE REVIEWED | Storage batches, run database and run metadata carry no format version, so data written by an incompatible build is read silently or fails without naming the cause; one version constant plus fail-fast reads |
 | [DEPENDENCY_UPDATE](DEPENDENCY_UPDATE.md) | TO BE REVIEWED | 24 of 32 dependencies behind, six by a major version; removal of the unused JLine pair, three build hygiene fixes, and a staged update procedure derived from what the test suite can and cannot verify |
-| [CONDITIONAL_JUMPS](CONDITIONAL_JUMPS.md) | TO BE REVIEWED | Conditional jumps (`JFI`, `JLTR`, `QGTI` …) as twins of all 28 conditional skips — condition and jump in one instruction; instruction weights for insertion and substitution so the doubled conditional opcodes are not overdrawn; a family is the instruction class |
 
 The two dependency documents are related: DEPENDENCY_UPDATE establishes which formats a compatibility fixture may
 legitimately cover, and delegates the formats this codebase owns to PERSISTED_FORMAT_VERSIONING.
@@ -37,7 +36,7 @@ blocks, the `.END*` naming of the block directives) is accomplished and lives un
 Dependencies:
 
 - **1 builds on the `.END*` naming convention** that CONDITIONAL_COMPILATION established (`.ENDIF`).
-- **CONDITIONAL_JUMPS is optional for 1**: control flow directives work with conditional skips;
+- **[CONDITIONAL_JUMPS](../outdated/proposals/accomplished/CONDITIONAL_JUMPS.md) is optional for 1**, and accomplished: control flow directives work with conditional skips;
   with conditional jumps, `.IF` over a jump compiles to the negated jump.
 
 ## Ideas

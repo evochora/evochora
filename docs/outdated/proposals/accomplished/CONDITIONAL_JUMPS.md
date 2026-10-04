@@ -1,6 +1,6 @@
 # Conditional Jumps
 
-**Status: TO BE REVIEWED**
+**Status: ACCOMPLISHED — implemented on branch `feature/conditional-jumps` (2026-10-04), in the six steps below; see *Outcome* at the end.**
 
 Conditional jumps are a second kind of conditional instruction next to the existing ones: the same
 conditions, but instead of skipping the next instruction when the condition does not hold, the
@@ -384,3 +384,30 @@ Strictly in this order; every step leaves the build green.
 24. One negation table by name in `AbstractConditionInstruction`, filled by the shared `regPair`
     for both classes.
 25. `cond_met` stays empty for a step that failed.
+
+## Outcome
+
+Implemented in the six steps above. What the built code does beyond the solution text:
+
+- **The family constants arrive with their classes.** `CONDITIONAL_SKIP` came with
+  `ConditionalSkipInstruction` in step 3 and `CONDITIONAL_JUMP` with `ConditionalJumpInstruction` in
+  step 4, so that step 1 touched no file whose family checks step 2 replaced.
+- **The editor knows the jumps.** The opcode list of the VS Code grammar
+  (`extensions/vscode/src/extension/syntaxes/evochora.tmLanguage.json`), which
+  `SyntaxHighlightingRulesTest` holds to the registry, carries the 76 names.
+- **The weighted draw is one class.** `WeightedOpcodes` holds the opcodes of weight above zero with
+  their running sums; the insertion and the substitution draw through it.
+- **The shipped configuration is built in a test.** `ShippedConfigurationTest` builds both
+  mutation plugins from `config/evochora.conf` over `reference.conf`, with the weights they refer to.
+- **One text for a wrong operand count.** Step 3 kept the old failure texts word for word, so that a
+  run could show the rebuilt evaluation to behave identically; afterwards every conditional fails
+  with "Invalid operand count for <name>".
+- **Measured.** Step 3 against step 2 on the benchmark host: JMH `SKIP` and `REALISTIC` at 100, 500
+  and 2000 organisms from +0.5 % to +6.7 %, two of six outside the error; a real run of 5 million
+  ticks in two rounds gave the same `TICKHASH` on both sides and 215 to 220 seconds each.
+- **The trace shows a padded decision.** In a 2000-tick trace of the primordial, `cond_met` of the
+  `PGTI` in `main.evo`, with `NOP^4` behind it, matched the step that followed.
+
+Not done: a primordial written with conditional jumps. Considered for this change and left out
+(decision 17 stands); conditional compilation can give one source both encodings, through macros
+with a fixed number of parameters each, since a macro takes exactly as many arguments as it names.
