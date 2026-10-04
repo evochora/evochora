@@ -1043,6 +1043,10 @@ export class AppController {
             this.state.totalOrganismCount = organismResult.totalOrganismCount;
             this._showOrganisms(organisms, organismResult.descent, requestedRoot, isForwardStep);
             organismsShown = true;
+            // The organisms of the tick are shown from here on, whatever becomes of the
+            // environment load: the descent poll refers to them
+            this.state.previousOrganisms = organisms;
+            this.state.previousTick = this.state.currentTick;
 
             // Reload organism details if one is selected
             if (this.state.selectedOrganismId) {
@@ -1074,10 +1078,6 @@ export class AppController {
             }
             this.updateMinimapViewport();
             this.renderer.renderOrganisms(organisms);
-
-            // Save current organisms for next comparison
-            this.state.previousOrganisms = organisms;
-            this.state.previousTick = this.state.currentTick;
 
             if (!managedExternally) {
                 loadingManager.hide();
