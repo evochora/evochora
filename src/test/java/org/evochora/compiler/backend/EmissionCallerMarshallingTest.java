@@ -183,6 +183,26 @@ public class EmissionCallerMarshallingTest {
 
         @Test
         @Tag("unit")
+        @DisplayName("Should leave a conditional jump before a CALL unchanged and marshall the CALL alone")
+        void shouldLeaveConditionalJumpBeforeCallUnchanged() {
+            // IR for: JFR %rA, after; CALL myProc REF %rA
+            IrReg rA = new IrReg("%rA");
+            IrInstruction jfr = new IrInstruction("JFR", List.of(rA, new IrLabelRef("after")), src("main.s", 1));
+            IrLabelRef target = new IrLabelRef("myProc");
+            IrInstruction call = new IrCallInstruction("CALL", List.of(target), List.of(rA), Collections.emptyList(), List.of(), List.of(), src("main.s", 2));
+
+            List<IrItem> out = runEmission(List.of(jfr, call));
+
+            // Expect: JFR %rA after, PUSH %rA, CALL myProc, POP %rA — the jump acts on its own label
+            assertThat(out).hasSize(4);
+            assertThat(out.get(0)).isEqualTo(jfr);
+            assertThat(out.get(1)).isEqualTo(IrInstruction.synthetic("PUSH", List.of(rA), call.source()));
+            assertThat(out.get(2)).isEqualTo(call);
+            assertThat(out.get(3)).isEqualTo(IrInstruction.synthetic("POP", List.of(rA), call.source()));
+        }
+
+        @Test
+        @Tag("unit")
         @DisplayName("Should transform conditional CALL with zero-operand IFER")
         void shouldTransformConditionalCallWithIfer() {
             // IR for: IFER, CALL myProc REF %rA

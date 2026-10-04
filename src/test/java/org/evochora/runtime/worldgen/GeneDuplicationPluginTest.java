@@ -133,6 +133,12 @@ class GeneDuplicationPluginTest {
         }
     }
 
+    /** Builds the duplication plugin from its configuration. */
+    private static GeneDuplicationPlugin duplication(IRandomProvider rng, double duplicationRate, int minNopSize) {
+        return new GeneDuplicationPlugin(rng, ConfigFactory.parseMap(Map.of(
+                "duplicationRate", duplicationRate, "minNopSize", minNopSize)));
+    }
+
     @Test
     void duplicatesCodeBlockIntoNopArea() {
         // Code row at y=2: NOP area from x=0..6, code from x=7..14 with a label at x=12, so that
@@ -144,7 +150,7 @@ class GeneDuplicationPluginTest {
         placeEmptyOwnedRow(4, 0, 14);
 
         IRandomProvider rng = new SeededRandomProvider(42L);
-        GeneDuplicationPlugin plugin = new GeneDuplicationPlugin(rng, 1.0, 3);
+        GeneDuplicationPlugin plugin = duplication(rng, 1.0, 3);
         plugin.onBirth(child, environment);
 
         // Verify that some non-empty molecules were copied to an NOP area
@@ -173,7 +179,7 @@ class GeneDuplicationPluginTest {
         placeEmptyOwnedRow(4, 0, 14);
 
         IRandomProvider rng = new SeededRandomProvider(42L);
-        GeneDuplicationPlugin plugin = new GeneDuplicationPlugin(rng, 1.0, 3);
+        GeneDuplicationPlugin plugin = duplication(rng, 1.0, 3);
         plugin.onBirth(child, environment);
 
         // Empty row should remain empty
@@ -197,7 +203,7 @@ class GeneDuplicationPluginTest {
         }
 
         IRandomProvider rng = new SeededRandomProvider(42L);
-        GeneDuplicationPlugin plugin = new GeneDuplicationPlugin(rng, 1.0, 5); // minNopSize=5
+        GeneDuplicationPlugin plugin = duplication(rng, 1.0, 5); // minNopSize=5
         plugin.onBirth(child, environment);
 
         // The two empty cells should still be empty
@@ -211,7 +217,7 @@ class GeneDuplicationPluginTest {
         placeEmptyOwnedRow(4, 0, 14);
 
         IRandomProvider rng = new SeededRandomProvider(42L);
-        GeneDuplicationPlugin plugin = new GeneDuplicationPlugin(rng, 0.0, 3); // rate=0
+        GeneDuplicationPlugin plugin = duplication(rng, 0.0, 3); // rate=0
         plugin.onBirth(child, environment);
 
         // Empty row should remain empty
@@ -228,7 +234,7 @@ class GeneDuplicationPluginTest {
         placeEmptyOwnedRow(4, 0, 14);
 
         IRandomProvider rng = new SeededRandomProvider(123L);
-        GeneDuplicationPlugin plugin = new GeneDuplicationPlugin(rng, 1.0, 3);
+        GeneDuplicationPlugin plugin = duplication(rng, 1.0, 3);
         plugin.onBirth(child, environment);
 
         // All non-empty cells should have child as owner
@@ -258,7 +264,7 @@ class GeneDuplicationPluginTest {
         placeEmptyOwnedRow(4, 0, 19);
 
         IRandomProvider rng = new SeededRandomProvider(42L);
-        GeneDuplicationPlugin plugin = new GeneDuplicationPlugin(rng, 1.0, 2);
+        GeneDuplicationPlugin plugin = duplication(rng, 1.0, 2);
         plugin.onBirth(child, environment);
 
         // Count non-empty cells copied to y=4
@@ -288,7 +294,7 @@ class GeneDuplicationPluginTest {
         }
 
         IRandomProvider rng = new SeededRandomProvider(42L);
-        GeneDuplicationPlugin plugin = new GeneDuplicationPlugin(rng, 1.0, 3);
+        GeneDuplicationPlugin plugin = duplication(rng, 1.0, 3);
         plugin.onBirth(child, environment);
 
         for (int x = 6; x <= 26; x++) {
@@ -322,7 +328,7 @@ class GeneDuplicationPluginTest {
         }
 
         IRandomProvider rng = new SeededRandomProvider(42L);
-        GeneDuplicationPlugin plugin = new GeneDuplicationPlugin(rng, 1.0, 3);
+        GeneDuplicationPlugin plugin = duplication(rng, 1.0, 3);
         plugin.onBirth(child, environment);
 
         // External space on y=4 must remain empty
@@ -368,7 +374,7 @@ class GeneDuplicationPluginTest {
         }
 
         IRandomProvider rng = new SeededRandomProvider(42L);
-        GeneDuplicationPlugin plugin = new GeneDuplicationPlugin(rng, 1.0, 3);
+        GeneDuplicationPlugin plugin = duplication(rng, 1.0, 3);
         plugin.onBirth(negChild, environment);
 
         // External space on y=4 must remain empty
@@ -409,7 +415,7 @@ class GeneDuplicationPluginTest {
         placeEmptyOwnedRow(4, 0, 19);
 
         IRandomProvider rng = new SeededRandomProvider(42L);
-        GeneDuplicationPlugin plugin = new GeneDuplicationPlugin(rng, 1.0, 3);
+        GeneDuplicationPlugin plugin = duplication(rng, 1.0, 3);
         plugin.onBirth(child, environment);
 
         assertThat(environment.getMolecule(0, 4).type()).as("the label opens the copy").isEqualTo(Config.TYPE_LABEL);
@@ -433,7 +439,7 @@ class GeneDuplicationPluginTest {
         placeEmptyOwnedRow(4, 0, 19);
 
         IRandomProvider rng = new SeededRandomProvider(42L);
-        GeneDuplicationPlugin plugin = new GeneDuplicationPlugin(rng, 1.0, 3);
+        GeneDuplicationPlugin plugin = duplication(rng, 1.0, 3);
         plugin.onBirth(child, environment);
 
         assertThat(environment.getMolecule(1, 4).toInt())
@@ -456,7 +462,7 @@ class GeneDuplicationPluginTest {
         placeEmptyOwnedRow(4, 0, 19);
 
         IRandomProvider rng = new SeededRandomProvider(42L);
-        GeneDuplicationPlugin plugin = new GeneDuplicationPlugin(rng, 1.0, 3);
+        GeneDuplicationPlugin plugin = duplication(rng, 1.0, 3);
         plugin.onBirth(child, environment);
 
         List<MutationRecord> records = child.getBirthMutations();
@@ -489,7 +495,7 @@ class GeneDuplicationPluginTest {
         placeEmptyOwnedRow(4, 0, 14);
 
         IRandomProvider rng = new SeededRandomProvider(42L);
-        GeneDuplicationPlugin plugin = new GeneDuplicationPlugin(rng, 1.0, 3);
+        GeneDuplicationPlugin plugin = duplication(rng, 1.0, 3);
         plugin.onBirth(child, environment);
 
         assertThat(child.getBirthMutations()).isNull();
@@ -506,7 +512,7 @@ class GeneDuplicationPluginTest {
         }
 
         IRandomProvider rng = new SeededRandomProvider(42L);
-        GeneDuplicationPlugin plugin = new GeneDuplicationPlugin(rng, 1.0, 5);
+        GeneDuplicationPlugin plugin = duplication(rng, 1.0, 5);
         plugin.onBirth(child, environment);
 
         assertThat(child.getBirthMutations()).isNull();
@@ -615,7 +621,7 @@ class GeneDuplicationPluginTest {
         placeTargetRow(child.getId(), 4, 4);
 
         IRandomProvider rng = new SeededRandomProvider(42L);
-        GeneDuplicationPlugin plugin = new GeneDuplicationPlugin(rng, 1.0, 4);
+        GeneDuplicationPlugin plugin = duplication(rng, 1.0, 4);
         plugin.onBirth(child, environment);
 
         assertBlockAt(0, 4);
@@ -635,7 +641,7 @@ class GeneDuplicationPluginTest {
         placeTargetRow(child.getId(), 4, 4);
 
         IRandomProvider rng = new SeededRandomProvider(42L);
-        GeneDuplicationPlugin plugin = new GeneDuplicationPlugin(rng, 1.0, 4);
+        GeneDuplicationPlugin plugin = duplication(rng, 1.0, 4);
         plugin.onBirth(child, environment);
 
         assertBlockAt(0, 4);
@@ -653,7 +659,7 @@ class GeneDuplicationPluginTest {
         placeTargetRow(child.getId(), 4, 6);
 
         IRandomProvider rng = new SeededRandomProvider(42L);
-        GeneDuplicationPlugin plugin = new GeneDuplicationPlugin(rng, 1.0, 4);
+        GeneDuplicationPlugin plugin = duplication(rng, 1.0, 4);
         plugin.onBirth(child, environment);
 
         assertBlockAt(0, 4);
@@ -677,7 +683,7 @@ class GeneDuplicationPluginTest {
         placeTargetRow(child.getId(), 4, 3);
 
         IRandomProvider rng = new SeededRandomProvider(42L);
-        GeneDuplicationPlugin plugin = new GeneDuplicationPlugin(rng, 1.0, 3);
+        GeneDuplicationPlugin plugin = duplication(rng, 1.0, 3);
         plugin.onBirth(child, environment);
 
         for (int x = 0; x < 3; x++) {
@@ -696,7 +702,7 @@ class GeneDuplicationPluginTest {
         placeTargetRow(child.getId(), 4, 10);
 
         IRandomProvider rng = new SeededRandomProvider(43L);
-        GeneDuplicationPlugin plugin = new GeneDuplicationPlugin(rng, 1.0, 4);
+        GeneDuplicationPlugin plugin = duplication(rng, 1.0, 4);
         plugin.onBirth(child, environment);
 
         assertBlockAt(0, 4);
@@ -734,7 +740,7 @@ class GeneDuplicationPluginTest {
         placeTargetRow(negId, 4, 10);
 
         IRandomProvider rng = new SeededRandomProvider(42L);
-        GeneDuplicationPlugin plugin = new GeneDuplicationPlugin(rng, 1.0, 4);
+        GeneDuplicationPlugin plugin = duplication(rng, 1.0, 4);
         plugin.onBirth(negChild, environment);
 
         assertThat(environment.getMolecule(7, 4).toInt()).isEqualTo(label().toInt());
@@ -773,7 +779,7 @@ class GeneDuplicationPluginTest {
         placeTargetRow(id, 4, 8);
 
         IRandomProvider rng = new SeededRandomProvider(1L);
-        GeneDuplicationPlugin plugin = new GeneDuplicationPlugin(rng, 1.0, 4);
+        GeneDuplicationPlugin plugin = duplication(rng, 1.0, 4);
         plugin.onBirth(child, environment);
 
         assertBlockAt(0, 4);
@@ -797,7 +803,7 @@ class GeneDuplicationPluginTest {
         placeTargetRow(child.getId(), 4, 8);
 
         IRandomProvider rng = new SeededRandomProvider(42L);
-        GeneDuplicationPlugin plugin = new GeneDuplicationPlugin(rng, 1.0, 4);
+        GeneDuplicationPlugin plugin = duplication(rng, 1.0, 4);
         plugin.onBirth(child, environment);
 
         assertBlockAt(0, 4);
@@ -816,7 +822,7 @@ class GeneDuplicationPluginTest {
     @Test
     void isStateless() {
         IRandomProvider rng = new SeededRandomProvider(42L);
-        GeneDuplicationPlugin plugin = new GeneDuplicationPlugin(rng, 0.1, 5);
+        GeneDuplicationPlugin plugin = duplication(rng, 0.1, 5);
 
         byte[] state = plugin.saveState();
         assertThat(state).isEmpty();
@@ -847,7 +853,7 @@ class GeneDuplicationPluginTest {
             placeRisingBlock(id, 2, 2);
             placeTargetRow(id, 4, 6);
 
-            new GeneDuplicationPlugin(new SeededRandomProvider(seed), 1.0, 4).onBirth(child, environment);
+            duplication(new SeededRandomProvider(seed), 1.0, 4).onBirth(child, environment);
 
             List<MutationRecord> records = child.getBirthMutations();
             assertThat(records).as("seed=%d", seed).hasSize(1);
@@ -868,7 +874,7 @@ class GeneDuplicationPluginTest {
         placeOpenRisingBlock(child.getId(), 14, 2);
         placeTargetRow(child.getId(), 4, 6);
 
-        new GeneDuplicationPlugin(new SeededRandomProvider(42L), 1.0, 4).onBirth(child, environment);
+        duplication(new SeededRandomProvider(42L), 1.0, 4).onBirth(child, environment);
 
         assertOpenBlockAt(0, 4);
         assertClosingJumpAt(4, 4);
@@ -896,7 +902,7 @@ class GeneDuplicationPluginTest {
             placeRisingBlock(id, 16, 2);
             placeTargetRow(id, 4, 8);
 
-            new GeneDuplicationPlugin(new SeededRandomProvider(seed), 1.0, 4).onBirth(child, environment);
+            duplication(new SeededRandomProvider(seed), 1.0, 4).onBirth(child, environment);
 
             List<MutationRecord> records = child.getBirthMutations();
             assertThat(records).as("seed=%d", seed).hasSize(1);
@@ -924,7 +930,7 @@ class GeneDuplicationPluginTest {
             placeOpenRisingBlock(id, 18, 2);
             placeTargetRow(id, 4, 9);
 
-            new GeneDuplicationPlugin(new SeededRandomProvider(seed), 1.0, 4).onBirth(child, environment);
+            duplication(new SeededRandomProvider(seed), 1.0, 4).onBirth(child, environment);
 
             List<MutationRecord> records = child.getBirthMutations();
             if (records == null || records.get(0).params()[0] != flatIndex(10, 2)) {
@@ -948,7 +954,7 @@ class GeneDuplicationPluginTest {
         placeOpenRisingBlock(child.getId(), 14, 2);
         placeTargetRow(child.getId(), 4, 4);
 
-        new GeneDuplicationPlugin(new SeededRandomProvider(42L), 1.0, 4).onBirth(child, environment);
+        duplication(new SeededRandomProvider(42L), 1.0, 4).onBirth(child, environment);
 
         for (int x = 0; x < 4; x++) {
             assertThat(environment.getMolecule(x, 4).isEmpty())
@@ -963,7 +969,7 @@ class GeneDuplicationPluginTest {
         placeOpenRisingBlock(child.getId(), 10, 2);
         placeTargetRow(child.getId(), 4, 8);
 
-        new GeneDuplicationPlugin(new SeededRandomProvider(42L), 1.0, 4).onBirth(child, environment);
+        duplication(new SeededRandomProvider(42L), 1.0, 4).onBirth(child, environment);
 
         assertOpenBlockAt(0, 4);
         for (int x = 4; x < 8; x++) {
@@ -989,7 +995,7 @@ class GeneDuplicationPluginTest {
             place(id, x, 4, new Molecule(Config.TYPE_STRUCTURE, 1));
         }
 
-        new GeneDuplicationPlugin(new SeededRandomProvider(42L), 1.0, 4).onBirth(child, environment);
+        duplication(new SeededRandomProvider(42L), 1.0, 4).onBirth(child, environment);
 
         assertOpenBlockAt(27, 4);
         assertThat(environment.getMolecule(31, 4).toInt()).isEqualTo(opcode(JMPI_OPCODE).toInt());
@@ -1023,7 +1029,7 @@ class GeneDuplicationPluginTest {
             place(id, 12, 4, new Molecule(Config.TYPE_STRUCTURE, 1));
             placeTargetRow(id, 6, 8);
 
-            new GeneDuplicationPlugin(new SeededRandomProvider(seed), 1.0, 4).onBirth(child, environment);
+            duplication(new SeededRandomProvider(seed), 1.0, 4).onBirth(child, environment);
 
             for (int x = 4; x < 12; x++) {
                 assertThat(environment.getMolecule(x, 4).isEmpty())

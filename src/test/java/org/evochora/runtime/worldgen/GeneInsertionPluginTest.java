@@ -12,11 +12,6 @@ import org.evochora.runtime.model.MutationRecord;
 import org.evochora.runtime.model.Organism;
 import org.evochora.runtime.spi.IRandomProvider;
 import org.evochora.runtime.thermodynamics.ThermodynamicPolicyManager;
-import org.evochora.runtime.worldgen.GeneInsertionPlugin.ArgumentConfig;
-import org.evochora.runtime.worldgen.GeneInsertionPlugin.DataConfig;
-import org.evochora.runtime.worldgen.GeneInsertionPlugin.InstructionEntry;
-import org.evochora.runtime.worldgen.GeneInsertionPlugin.LabelEntry;
-import org.evochora.runtime.worldgen.GeneInsertionPlugin.RegisterConfig;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -151,6 +146,46 @@ class GeneInsertionPluginTest {
         environment.setMolecule(new Molecule(type, value), child.getId(), new int[]{x, y});
     }
 
+    /** Weights that let an entry insert SETI and nothing else. */
+    private static final String ONLY_SETI = """
+            {
+              default = 0
+              families = [
+                { class = "org.evochora.runtime.isa.instructions.DataInstruction", weight = 1, default = 0, opcodes { SETI = 1 } }
+              ]
+            }""";
+
+    /**
+     * The instruction weights that let an entry draw the named opcodes, each alike, and nothing
+     * else, as configuration text.
+     */
+    private static String only(String... names) {
+        java.util.Map<String, java.util.List<String>> byClass = new java.util.LinkedHashMap<>();
+        for (String name : names) {
+            Integer id = Instruction.getInstructionIdByName(name);
+            assertThat(id).as("opcode %s", name).isNotNull();
+            byClass.computeIfAbsent(Instruction.getInstructionClassById(id).getName(), k -> new java.util.ArrayList<>()).add(name);
+        }
+        StringBuilder families = new StringBuilder();
+        byClass.forEach((cls, ops) -> families.append("{ class = \"").append(cls)
+                .append("\", weight = 1, default = 0, opcodes { ")
+                .append(String.join(", ", ops.stream().map(op -> op + " = 1").toList()))
+                .append(" } } "));
+        return "{ default = 0, families = [ " + families + "] }";
+    }
+
+    /** An insertion entry of weight 1 as configuration text; {@code type} is null or "label". */
+    private static String entry(String type, String args, String... names) {
+        return "{ " + (type == null ? "" : "type = \"" + type + "\", ") + "weight = 1, instructionWeights = "
+                + only(names) + ", args { " + args + " } }";
+    }
+
+    /** Builds the insertion plugin from its configuration with the given entries. */
+    private static GeneInsertionPlugin insertion(IRandomProvider rng, double rate, String... entries) {
+        return new GeneInsertionPlugin(rng, ConfigFactory.parseString(
+                "mutationRate = " + rate + "\nentries = [ " + String.join(", ", entries) + " ]"));
+    }
+
     /** The opcode of the instruction the label entry tests insert. */
     private static int setiId() {
         Integer id = Instruction.getInstructionIdByName("SETI");
@@ -169,16 +204,8 @@ class GeneInsertionPluginTest {
      * Creates a label entry that inserts a SETI, so that its chain is six cells long:
      * LABEL, CODE, REGISTER, DATA, CODE, LABELREF.
      */
-    private LabelEntry createLabelEntry() {
-        int seti = setiId();
-        RegisterConfig regConfig = new RegisterConfig(List.of(new int[]{0, 0, 7}));
-        DataConfig dataConfig = new DataConfig(0, 255);
-        ArgumentConfig argConfig = new ArgumentConfig(regConfig, null, dataConfig, null, null);
-        return new LabelEntry(
-                List.of(seti),
-                List.of(Instruction.getOperandSourcesById(seti)),
-                1.0,
-                argConfig);
+    private static String createLabelEntry() {
+        return entry("label", "REGISTER { range = [0, 7] }, DATA { min = 0, max = 255 }", "SETI");
     }
 
     /** Length of the chain {@link #createLabelEntry} produces. */
@@ -195,7 +222,7 @@ class GeneInsertionPluginTest {
      */
     private MutationRecord insertBeforeLabel(long seed) {
         IRandomProvider rng = new SeededRandomProvider(seed);
-        GeneInsertionPlugin plugin = new GeneInsertionPlugin(rng, 1.0, List.of(createLabelEntry()));
+        GeneInsertionPlugin plugin = insertion(rng, 1.0, createLabelEntry());
         plugin.mutate(child, environment);
         List<MutationRecord> records = child.getBirthMutations();
         return records == null ? null : records.get(0);
@@ -248,40 +275,15 @@ class GeneInsertionPluginTest {
     /**
      * Creates an instruction entry for SETI (REGISTER, IMMEDIATE) with DR bank and data range.
      */
-    private InstructionEntry createSetiEntry() {
-        Integer setiId = Instruction.getInstructionIdByName("SETI");
-        assertThat(setiId).isNotNull();
-        List<OperandSource> sources = Instruction.getOperandSourcesById(setiId);
-
-        RegisterConfig regConfig = new RegisterConfig(List.of(new int[]{0, 0, 7}));
-        DataConfig dataConfig = new DataConfig(0, 255);
-        ArgumentConfig argConfig = new ArgumentConfig(regConfig, null, dataConfig, null, null);
-
-        return new InstructionEntry(
-                List.of(setiId),
-                List.of(sources),
-                1.0,
-                argConfig
-        );
+    private static String createSetiEntry() {
+        return entry(null, "REGISTER { range = [0, 7] }, DATA { min = 0, max = 255 }", "SETI");
     }
 
     /**
      * Creates an instruction entry for ADDR (REGISTER, REGISTER) with DR bank.
      */
-    private InstructionEntry createAddrEntry() {
-        Integer addrId = Instruction.getInstructionIdByName("ADDR");
-        assertThat(addrId).isNotNull();
-        List<OperandSource> sources = Instruction.getOperandSourcesById(addrId);
-
-        RegisterConfig regConfig = new RegisterConfig(List.of(new int[]{0, 0, 7}));
-        ArgumentConfig argConfig = new ArgumentConfig(regConfig, null, null, null, null);
-
-        return new InstructionEntry(
-                List.of(addrId),
-                List.of(sources),
-                1.0,
-                argConfig
-        );
+    private static String createAddrEntry() {
+        return entry(null, "REGISTER { range = [0, 7] }", "ADDR");
     }
 
     @Test
@@ -289,7 +291,7 @@ class GeneInsertionPluginTest {
         createScanLine(LEFT, RIGHT, Y);
 
         IRandomProvider rng = new SeededRandomProvider(42L);
-        GeneInsertionPlugin plugin = new GeneInsertionPlugin(rng, 1.0, List.of(createSetiEntry()));
+        GeneInsertionPlugin plugin = insertion(rng, 1.0, createSetiEntry());
         plugin.mutate(child, environment);
 
         // At least one cell in the NOP gap should now be non-empty
@@ -309,7 +311,7 @@ class GeneInsertionPluginTest {
         createScanLine(LEFT, RIGHT, Y);
 
         IRandomProvider rng = new SeededRandomProvider(42L);
-        GeneInsertionPlugin plugin = new GeneInsertionPlugin(rng, 1.0, List.of(createSetiEntry()));
+        GeneInsertionPlugin plugin = insertion(rng, 1.0, createSetiEntry());
         plugin.mutate(child, environment);
 
         // Find the inserted chain: a CODE molecule followed by REGISTER and DATA
@@ -338,7 +340,7 @@ class GeneInsertionPluginTest {
             clearNopGap(LEFT, RIGHT, Y);
 
             IRandomProvider rng = new SeededRandomProvider(seed);
-            GeneInsertionPlugin plugin = new GeneInsertionPlugin(rng, 1.0, List.of(createAddrEntry()));
+            GeneInsertionPlugin plugin = insertion(rng, 1.0, createAddrEntry());
             plugin.mutate(child, environment);
 
             // Find REGISTER molecules
@@ -355,23 +357,13 @@ class GeneInsertionPluginTest {
     void respectsDataRange() {
         createScanLine(LEFT, RIGHT, Y);
 
-        DataConfig dataConfig = new DataConfig(10, 50);
-        RegisterConfig regConfig = new RegisterConfig(List.of(new int[]{0, 0, 7}));
-        ArgumentConfig argConfig = new ArgumentConfig(regConfig, null, dataConfig, null, null);
-
-        Integer setiId = Instruction.getInstructionIdByName("SETI");
-        InstructionEntry entry = new InstructionEntry(
-                List.of(setiId),
-                List.of(Instruction.getOperandSourcesById(setiId)),
-                1.0,
-                argConfig
-        );
+        String entry = entry(null, "REGISTER { range = [0, 7] }, DATA { min = 10, max = 50 }", "SETI");
 
         for (int seed = 0; seed < 50; seed++) {
             clearNopGap(LEFT, RIGHT, Y);
 
             IRandomProvider rng = new SeededRandomProvider(seed);
-            GeneInsertionPlugin plugin = new GeneInsertionPlugin(rng, 1.0, List.of(entry));
+            GeneInsertionPlugin plugin = insertion(rng, 1.0, entry);
             plugin.mutate(child, environment);
 
             for (int x = LEFT + 1; x < RIGHT; x++) {
@@ -391,18 +383,11 @@ class GeneInsertionPluginTest {
 
         Integer jmpiId = Instruction.getInstructionIdByName("JMPI");
         assertThat(jmpiId).isNotNull();
-        List<OperandSource> sources = Instruction.getOperandSourcesById(jmpiId);
 
-        ArgumentConfig argConfig = new ArgumentConfig(null, null, null, "existing", null);
-        InstructionEntry entry = new InstructionEntry(
-                List.of(jmpiId),
-                List.of(sources),
-                1.0,
-                argConfig
-        );
+        String entry = entry(null, "LABELREF = \"existing\"", "JMPI");
 
         IRandomProvider rng = new SeededRandomProvider(42L);
-        GeneInsertionPlugin plugin = new GeneInsertionPlugin(rng, 1.0, List.of(entry));
+        GeneInsertionPlugin plugin = insertion(rng, 1.0, entry);
         plugin.mutate(child, environment);
 
         // Find the LABELREF molecule
@@ -445,12 +430,8 @@ class GeneInsertionPluginTest {
         placeCode(15, Y);
         Integer call = Instruction.getInstructionIdByName("CALL");
         assertThat(call).isNotNull();
-        LabelEntry entry = new LabelEntry(
-                List.of(call),
-                List.of(Instruction.getOperandSourcesById(call)),
-                1.0,
-                new ArgumentConfig(null, null, null, "existing", null));
-        GeneInsertionPlugin plugin = new GeneInsertionPlugin(new SeededRandomProvider(42L), 1.0, List.of(entry));
+        String entry = entry("label", "LABELREF = \"existing\"", "CALL");
+        GeneInsertionPlugin plugin = insertion(new SeededRandomProvider(42L), 1.0, entry);
 
         plugin.mutate(child, environment);
 
@@ -461,6 +442,32 @@ class GeneInsertionPluginTest {
         assertThat(environment.getMolecule(5, Y).value()).isEqualTo(LABEL_HASH_A);
         assertThat(environment.getMolecule(7, Y).type()).isEqualTo(Config.TYPE_LABELREF);
         assertThat(environment.getMolecule(7, Y).value()).as("the inserted call's target").isEqualTo(renamed);
+        assertThat(environment.getMolecule(9, Y).value()).as("the closing jump's target").isEqualTo(renamed);
+    }
+
+    /**
+     * A label entry may insert a conditional jump. Its label operand refers to the renamed block, as
+     * the closing jump does, so execution reaches the block whether the condition holds or not: the
+     * jump is neutral when it is inserted and changes the program only once its reference drifts.
+     */
+    @Test
+    void aConditionalJumpInsertedByALabelEntryRefersToTheRenamedBlock() {
+        placeLabel(2, Y, LABEL_HASH_A);
+        placeJump(3, Y, LABEL_HASH_A);
+        placeCode(15, Y);
+        Integer jfer = Instruction.getInstructionIdByName("JFER");
+        assertThat(jfer).isNotNull();
+        String entry = entry("label", "LABELREF = \"existing\"", "JFER");
+        GeneInsertionPlugin plugin = insertion(new SeededRandomProvider(42L), 1.0, entry);
+
+        plugin.mutate(child, environment);
+
+        // The chain LABEL A, JFER, LABELREF, JMPI, LABELREF starts at x=5; both references carry A'
+        List<MutationRecord> records = child.getBirthMutations();
+        assertThat(records).hasSize(1);
+        int renamed = (int) records.get(0).params()[1];
+        assertThat(environment.getMolecule(6, Y).value()).isEqualTo(jfer.intValue());
+        assertThat(environment.getMolecule(7, Y).value()).as("the inserted jump's target").isEqualTo(renamed);
         assertThat(environment.getMolecule(9, Y).value()).as("the closing jump's target").isEqualTo(renamed);
     }
 
@@ -618,8 +625,7 @@ class GeneInsertionPluginTest {
         environment.setMolecule(new Molecule(Config.TYPE_LABELREF, LABEL_HASH_A), negId, new int[]{18, Y});
         environment.setMolecule(new Molecule(Config.TYPE_CODE, 42), negId, new int[]{5, Y});
 
-        GeneInsertionPlugin plugin = new GeneInsertionPlugin(new SeededRandomProvider(42L), 1.0,
-                List.of(createLabelEntry()));
+        GeneInsertionPlugin plugin = insertion(new SeededRandomProvider(42L), 1.0, createLabelEntry());
         plugin.mutate(negChild, environment);
 
         List<MutationRecord> records = negChild.getBirthMutations();
@@ -642,46 +648,74 @@ class GeneInsertionPluginTest {
         String text = """
                 mutationRate = 1.0
                 entries = [
-                  { type = "label", weight = 1, bitflips = 2, instructions = ["SETI"],
+                  { type = "label", weight = 1, bitflips = 2, instructionWeights = %s,
                     args { REGISTER { range = [0, 7] }, DATA { min = 0, max = 255 } } }
                 ]
-                """;
+                """.formatted(ONLY_SETI);
         assertThatThrownBy(() -> new GeneInsertionPlugin(
                 new SeededRandomProvider(42L), ConfigFactory.parseString(text)))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("bitflips");
     }
 
+    /**
+     * A label entry leaves out what execution does not go on behind, a conditional skip here,
+     * whatever weight it is given, and draws only from the rest.
+     */
     @Test
-    void aLabelEntryThatNamesAConditionalIsRejected() {
+    void aLabelEntryLeavesOutAConditionalSkipWhateverItsWeight() {
         String text = """
                 mutationRate = 1.0
                 entries = [
-                  { type = "label", weight = 1, instructions = ["SETI", "IFI"],
+                  { type = "label", weight = 1,
+                    instructionWeights {
+                      default = 0
+                      families = [
+                        { class = "org.evochora.runtime.isa.instructions.DataInstruction", weight = 1, default = 0, opcodes { SETI = 1 } }
+                        { class = "org.evochora.runtime.isa.instructions.ConditionalSkipInstruction", weight = 100, default = 1 }
+                      ]
+                    }
+                    args { REGISTER { range = [0, 7] }, DATA { min = 0, max = 255 } } }
+                ]
+                """;
+        for (long seed = 0; seed < 20; seed++) {
+            setUp();
+            placeLabel(2, Y, LABEL_HASH_A);
+            placeJump(3, Y, LABEL_HASH_A);
+            placeCode(16, Y);
+            GeneInsertionPlugin plugin = new GeneInsertionPlugin(
+                    new SeededRandomProvider(seed), ConfigFactory.parseString(text));
+
+            plugin.mutate(child, environment);
+
+            assertThat(environment.getMolecule(6, Y).value()).as("seed %d", seed).isEqualTo(setiId());
+        }
+    }
+
+    /**
+     * An entry that its weights leave without an opcode it may insert is rejected, and the message
+     * names the two ways out.
+     */
+    @Test
+    void aLabelEntryLeftWithoutAnOpcodeIsRejected() {
+        String text = """
+                mutationRate = 1.0
+                entries = [
+                  { type = "label", weight = 1,
+                    instructionWeights {
+                      default = 0
+                      families = [
+                        { class = "org.evochora.runtime.isa.instructions.ConditionalSkipInstruction", weight = 1, default = 1 }
+                      ]
+                    }
                     args { REGISTER { range = [0, 7] }, DATA { min = 0, max = 255 } } }
                 ]
                 """;
         assertThatThrownBy(() -> new GeneInsertionPlugin(
                 new SeededRandomProvider(42L), ConfigFactory.parseString(text)))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("IFI");
-    }
-
-    @Test
-    void aLabelEntryThatNamesAJumpOrAReturnIsRejected() {
-        for (String name : List.of("JMPI", "JMPR", "JMPS", "RET")) {
-            String text = """
-                    mutationRate = 1.0
-                    entries = [
-                      { type = "label", weight = 1, instructions = ["SETI", "%s"],
-                        args { REGISTER { range = [0, 7] }, DATA { min = 0, max = 255 }, LABELREF = "existing" } }
-                    ]
-                    """.formatted(name);
-            assertThatThrownBy(() -> new GeneInsertionPlugin(
-                    new SeededRandomProvider(42L), ConfigFactory.parseString(text)))
-                    .isInstanceOf(IllegalArgumentException.class)
-                    .hasMessageContaining(name);
-        }
+                .hasMessageContaining("remove the entry")
+                .hasMessageContaining("instructionWeights that leave an opcode");
     }
 
     @Test
@@ -689,7 +723,7 @@ class GeneInsertionPluginTest {
         String text = """
                 mutationRate = 1.0
                 entries = [
-                  { type = "label", weight = 1, instructions = "*",
+                  { type = "label", weight = 1, instructionWeights { default = 1, families = [] },
                     args { REGISTER { range = [0, 7] }, LOCATION_REGISTER { range = [0, 3] },
                            DATA { min = 0, max = 255 }, LABELREF = "existing", VECTOR = "unit" } }
                 ]
@@ -706,9 +740,9 @@ class GeneInsertionPluginTest {
 
             assertThat(child.getBirthMutations()).as("seed %d", seed).hasSize(1);
             int insertedOpcode = environment.getMolecule(6, Y).value();
-            assertThat(Instruction.getFamilyById(insertedOpcode))
+            assertThat(Instruction.skipsNext(insertedOpcode))
                     .as("seed %d inserted %s", seed, Instruction.getInstructionNameById(insertedOpcode))
-                    .isNotEqualTo(org.evochora.runtime.isa.Family.CONDITIONAL);
+                    .isFalse();
             assertThat(Instruction.neverFallsThrough(insertedOpcode))
                     .as("seed %d inserted %s", seed, Instruction.getInstructionNameById(insertedOpcode))
                     .isFalse();
@@ -726,7 +760,7 @@ class GeneInsertionPluginTest {
         assertThatThrownBy(() -> new GeneInsertionPlugin(
                 new SeededRandomProvider(42L), ConfigFactory.parseString(text)))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("instructions");
+                .hasMessageContaining("instructionWeights");
     }
 
     @Test
@@ -737,7 +771,7 @@ class GeneInsertionPluginTest {
         }
 
         IRandomProvider rng = new SeededRandomProvider(42L);
-        GeneInsertionPlugin plugin = new GeneInsertionPlugin(rng, 1.0, List.of(createSetiEntry()));
+        GeneInsertionPlugin plugin = insertion(rng, 1.0, createSetiEntry());
         // Should not throw
         plugin.mutate(child, environment);
 
@@ -752,7 +786,7 @@ class GeneInsertionPluginTest {
         createScanLine(LEFT, RIGHT, Y);
 
         IRandomProvider rng = new SeededRandomProvider(42L);
-        GeneInsertionPlugin plugin = new GeneInsertionPlugin(rng, 0.0, List.of(createSetiEntry()));
+        GeneInsertionPlugin plugin = insertion(rng, 0.0, createSetiEntry());
         plugin.onBirth(child, environment);
 
         // NOP gap should remain empty
@@ -771,16 +805,10 @@ class GeneInsertionPluginTest {
         List<OperandSource> sources = Instruction.getOperandSourcesById(sekiId);
         assertThat(sources).contains(OperandSource.VECTOR);
 
-        ArgumentConfig argConfig = new ArgumentConfig(null, null, null, null, "unit");
-        InstructionEntry entry = new InstructionEntry(
-                List.of(sekiId),
-                List.of(sources),
-                1.0,
-                argConfig
-        );
+        String entry = entry(null, "VECTOR = \"unit\"", "SEKI");
 
         IRandomProvider rng = new SeededRandomProvider(42L);
-        GeneInsertionPlugin plugin = new GeneInsertionPlugin(rng, 1.0, List.of(entry));
+        GeneInsertionPlugin plugin = insertion(rng, 1.0, entry);
         plugin.mutate(child, environment);
 
         // Find the CODE molecule (opcode), then read the 2 DATA molecules after it (2D environment)
@@ -816,22 +844,14 @@ class GeneInsertionPluginTest {
         // DPLR uses LOCATION_REGISTER operand
         Integer dplrId = Instruction.getInstructionIdByName("DPLR");
         assertThat(dplrId).isNotNull();
-        List<OperandSource> sources = Instruction.getOperandSourcesById(dplrId);
 
-        RegisterConfig lrConfig = new RegisterConfig(List.of(new int[]{RegisterBank.LR.base, 0, 3}));
-        ArgumentConfig argConfig = new ArgumentConfig(null, lrConfig, null, null, null);
-        InstructionEntry entry = new InstructionEntry(
-                List.of(dplrId),
-                List.of(sources),
-                1.0,
-                argConfig
-        );
+        String entry = entry(null, "LOCATION_REGISTER { range = [0, 3] }", "DPLR");
 
         for (int seed = 0; seed < 50; seed++) {
             clearNopGap(LEFT, RIGHT, Y);
 
             IRandomProvider rng = new SeededRandomProvider(seed);
-            GeneInsertionPlugin plugin = new GeneInsertionPlugin(rng, 1.0, List.of(entry));
+            GeneInsertionPlugin plugin = insertion(rng, 1.0, entry);
             plugin.mutate(child, environment);
 
             for (int x = LEFT + 1; x < RIGHT; x++) {
@@ -851,7 +871,7 @@ class GeneInsertionPluginTest {
         createScanLine(LEFT, RIGHT, Y);
 
         IRandomProvider rng = new SeededRandomProvider(42L);
-        GeneInsertionPlugin plugin = new GeneInsertionPlugin(rng, 1.0, List.of(createAddrEntry()));
+        GeneInsertionPlugin plugin = insertion(rng, 1.0, createAddrEntry());
         plugin.mutate(child, environment);
 
         // Count non-empty cells in the NOP gap
@@ -868,7 +888,7 @@ class GeneInsertionPluginTest {
     @Test
     void isStateless() {
         IRandomProvider rng = new SeededRandomProvider(42L);
-        GeneInsertionPlugin plugin = new GeneInsertionPlugin(rng, 0.03, List.of(createSetiEntry()));
+        GeneInsertionPlugin plugin = insertion(rng, 0.03, createSetiEntry());
 
         byte[] state = plugin.saveState();
         assertThat(state).isEmpty();
@@ -884,18 +904,11 @@ class GeneInsertionPluginTest {
 
         Integer jmpiId = Instruction.getInstructionIdByName("JMPI");
         assertThat(jmpiId).isNotNull();
-        List<OperandSource> sources = Instruction.getOperandSourcesById(jmpiId);
 
-        ArgumentConfig argConfig = new ArgumentConfig(null, null, null, "existing", null);
-        InstructionEntry entry = new InstructionEntry(
-                List.of(jmpiId),
-                List.of(sources),
-                1.0,
-                argConfig
-        );
+        String entry = entry(null, "LABELREF = \"existing\"", "JMPI");
 
         IRandomProvider rng = new SeededRandomProvider(42L);
-        GeneInsertionPlugin plugin = new GeneInsertionPlugin(rng, 1.0, List.of(entry));
+        GeneInsertionPlugin plugin = insertion(rng, 1.0, entry);
         plugin.mutate(child, environment);
 
         // A LABELREF should be placed with a random hash
@@ -919,22 +932,15 @@ class GeneInsertionPluginTest {
 
         Integer jmpiId = Instruction.getInstructionIdByName("JMPI");
         assertThat(jmpiId).isNotNull();
-        List<OperandSource> sources = Instruction.getOperandSourcesById(jmpiId);
 
-        ArgumentConfig argConfig = new ArgumentConfig(null, null, null, "existing", null);
-        InstructionEntry entry = new InstructionEntry(
-                List.of(jmpiId),
-                List.of(sources),
-                1.0,
-                argConfig
-        );
+        String entry = entry(null, "LABELREF = \"existing\"", "JMPI");
 
         boolean foundTopBitSet = false;
         for (int seed = 0; seed < 50; seed++) {
             clearNopGap(LEFT, RIGHT, Y);
 
             IRandomProvider rng = new SeededRandomProvider(seed);
-            GeneInsertionPlugin plugin = new GeneInsertionPlugin(rng, 1.0, List.of(entry));
+            GeneInsertionPlugin plugin = insertion(rng, 1.0, entry);
             plugin.mutate(child, environment);
 
             for (int x = LEFT + 1; x < RIGHT; x++) {
@@ -964,7 +970,7 @@ class GeneInsertionPluginTest {
         placeCode(31, Y);
 
         IRandomProvider rng = new SeededRandomProvider(42L);
-        GeneInsertionPlugin plugin = new GeneInsertionPlugin(rng, 1.0, List.of(createSetiEntry()));
+        GeneInsertionPlugin plugin = insertion(rng, 1.0, createSetiEntry());
         plugin.mutate(child, environment);
 
         // External space must remain empty
@@ -998,7 +1004,7 @@ class GeneInsertionPluginTest {
         placeCode(3, Y);
 
         IRandomProvider rng = new SeededRandomProvider(42L);
-        GeneInsertionPlugin plugin = new GeneInsertionPlugin(rng, 1.0, List.of(createSetiEntry()));
+        GeneInsertionPlugin plugin = insertion(rng, 1.0, createSetiEntry());
         plugin.mutate(child, environment);
 
         for (int x = 4; x <= 26; x++) {
@@ -1034,7 +1040,7 @@ class GeneInsertionPluginTest {
         environment.setMolecule(new Molecule(Config.TYPE_CODE, 42), negId, new int[]{14, Y});
 
         IRandomProvider rng = new SeededRandomProvider(42L);
-        GeneInsertionPlugin plugin = new GeneInsertionPlugin(rng, 1.0, List.of(createSetiEntry()));
+        GeneInsertionPlugin plugin = insertion(rng, 1.0, createSetiEntry());
         plugin.mutate(negChild, environment);
 
         // Boundaries must be preserved
@@ -1078,7 +1084,7 @@ class GeneInsertionPluginTest {
         createScanLine(LEFT, RIGHT, Y);
 
         IRandomProvider rng = new SeededRandomProvider(42L);
-        GeneInsertionPlugin plugin = new GeneInsertionPlugin(rng, 1.0, List.of(createSetiEntry()));
+        GeneInsertionPlugin plugin = insertion(rng, 1.0, createSetiEntry());
         plugin.mutate(child, environment);
 
         List<MutationRecord> records = child.getBirthMutations();
@@ -1104,7 +1110,7 @@ class GeneInsertionPluginTest {
         }
 
         IRandomProvider rng = new SeededRandomProvider(42L);
-        GeneInsertionPlugin plugin = new GeneInsertionPlugin(rng, 1.0, List.of(createSetiEntry()));
+        GeneInsertionPlugin plugin = insertion(rng, 1.0, createSetiEntry());
         plugin.mutate(child, environment);
 
         assertThat(child.getBirthMutations()).isNull();

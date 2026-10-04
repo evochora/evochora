@@ -312,7 +312,9 @@ Clade membership is a proxy; the mutation is molecules in the world. Via the nod
   padding sensitive: a failed test skips the next REAL instruction, walking over NOPs, so an
   insertion in the padding makes the following jump unconditional, an inserted conditional inverts
   the dial, and a substitution that breaks the comparison - or points it at a register nothing
-  writes - closes the route. Independent lineages hitting the same guard by different molecular
+  writes - closes the route. A guard written as a conditional jump has no such pair: there is
+  no padding between test and jump, and its mutations change the condition, the compared value or
+  the label the jump drifts to. Independent lineages hitting the same guard by different molecular
   routes is convergence; measure it against clones in the same window before calling it selection.
 - **Execution heatmap (statistical):** every sampled tick carries each organism's IP. Aggregating
   IP positions relative to the body anchor across many organisms of a clade yields a coverage

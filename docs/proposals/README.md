@@ -25,20 +25,19 @@ legitimately cover, and delegates the formats this codebase owns to PERSISTED_FO
 
 ## Compiler enhancements
 
-Two related compiler proposals. A third, CONDITIONAL_COMPILATION (`.DEFINE` flags, `.IFDEF`
-blocks, the `.END*` naming of the block directives), is accomplished and lives under
+One compiler proposal remains open. CONDITIONAL_COMPILATION (`.DEFINE` flags, `.IFDEF`
+blocks, the `.END*` naming of the block directives) is accomplished and lives under
 [`docs/outdated/proposals/accomplished/`](../outdated/proposals/accomplished/CONDITIONAL_COMPILATION.md).
 
 | # | Document | Status | Summary |
 |---|---|---|---|
 | 1 | [CONTROL_FLOW_DIRECTIVES](compiler-enhancements/CONTROL_FLOW_DIRECTIVES.WIP.md) | **WORK IN PROGRESS** | `.IF`/`.ELSEIF`/`.ELSE`/`.ENDIF` specified; `.WHILE`/`.FOR`/`.BREAK`/`.CONTINUE` still to be written |
-| 2 | [CONDITIONAL_BRANCH_ISA](compiler-enhancements/CONDITIONAL_BRANCH_ISA.md) | TO BE REVIEWED | Branch variants (BFI, BNR, BLE…) for all 20 conditional operations — condition test and jump in one instruction; PROBABILISTIC_CONDITIONALS adds four operations that would need branch variants too |
 
 Dependencies:
 
 - **1 builds on the `.END*` naming convention** that CONDITIONAL_COMPILATION established (`.ENDIF`).
-- **2 is optional for 1**: control flow directives work with skip-next instructions; branch instructions
-  only improve code density of the generated sequences.
+- **[CONDITIONAL_JUMPS](../outdated/proposals/accomplished/CONDITIONAL_JUMPS.md) is optional for 1**, and accomplished: control flow directives work with conditional skips;
+  with conditional jumps, `.IF` over a jump compiles to the negated jump.
 
 ## Ideas
 

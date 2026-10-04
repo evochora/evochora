@@ -1,7 +1,6 @@
 package org.evochora.runtime.model;
 
 import org.evochora.runtime.Config;
-import org.evochora.runtime.isa.Family;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.GenomeFrame.Slot;
 import org.evochora.runtime.spi.ILabelMatchingStrategy;
@@ -25,8 +24,9 @@ import it.unimi.dsi.fastutil.ints.IntArrayList;
  *   <li><b>whether a stretch of code can be left at its end</b> ({@link #endsOpen}) — a copy of
  *       such a stretch lacks the code the original runs on into.</li>
  * </ul>
- * All three rest on what the instruction set declares — the family of an instruction and
- * {@link Instruction#neverFallsThrough(int)} — and on nothing a particular program does.
+ * All three rest on what the instructions declare when they register —
+ * {@link Instruction#neverFallsThrough(int)}, {@link Instruction#skipsNext(int)} and
+ * {@link Instruction#labelIsJumpTarget(int)} — and on nothing a particular program does.
  * <p>
  * <strong>What counts as transparent.</strong> The machine reads a cell that opens no instruction —
  * an empty cell, a molecule that is not CODE, an opcode value registered nowhere — as a
@@ -50,7 +50,7 @@ public final class GenomeFlow {
     /** The values of the label references {@link #collectReferences} found. */
     private final IntArrayList referenceValues = new IntArrayList();
 
-    /** Per reference, whether it stands in the label slot of a control flow instruction. */
+    /** Per reference, whether it stands in the label slot of an instruction whose label is a jump target. */
     private final BooleanArrayList referenceIsControlFlow = new BooleanArrayList();
 
     /** Coordinates of the cell a walk is looking at. */
@@ -106,7 +106,7 @@ public final class GenomeFlow {
             if (slot == Slot.INSTRUCTION) {
                 int opcodeId = Molecule.extractSignedValue(moleculeInt);
                 if (behindFlowEnd) {
-                    return Instruction.getFamilyById(opcodeId) == Family.CONDITIONAL;
+                    return Instruction.skipsNext(opcodeId);
                 }
                 if (!Instruction.neverFallsThrough(opcodeId)) {
                     return true;
@@ -124,8 +124,8 @@ public final class GenomeFlow {
     }
 
     /**
-     * Reads every label reference the organism owns and notes whether it is the operand of a
-     * control flow instruction. Replaces what a previous call collected.
+     * Reads every label reference the organism owns and notes whether it is the operand of an
+     * instruction whose label is a jump target. Replaces what a previous call collected.
      * <p>
      * The visit runs in flat-index order; the answers of {@link #isJumpTarget} do not depend on it.
      *
@@ -158,7 +158,8 @@ public final class GenomeFlow {
      * <p>
      * A reference addresses the label if the run's label matching strategy says the two values
      * match. The label is a jump target if at least one reference addresses it and every reference that does
-     * stands in the label slot of a control flow instruction. One reference in a location
+     * stands in the label slot of an instruction whose label is a jump target
+     * ({@link Instruction#labelIsJumpTarget(int)}). One reference in a location
      * instruction, or one that stands in no label slot at all, makes the label a place for data.
      *
      * @param labelValue The label's value.
@@ -244,11 +245,11 @@ public final class GenomeFlow {
             return true;
         }
         return opcodeIdBeforeLast != -1
-                && Instruction.getFamilyById(opcodeIdBeforeLast) == Family.CONDITIONAL;
+                && Instruction.skipsNext(opcodeIdBeforeLast);
     }
 
     /**
-     * Tells whether a label reference is the operand of a control flow instruction.
+     * Tells whether a label reference is the operand of an instruction whose label is a jump target.
      * <p>
      * The reference has to stand in a label slot; its opcode is the nearest instruction cell against
      * the direction vector, reached over the operand cells in between.
@@ -276,7 +277,7 @@ public final class GenomeFlow {
             Slot slot = frame.slot(props.toFlatIndex(coord));
             if (slot == Slot.INSTRUCTION) {
                 int opcodeId = Molecule.extractSignedValue(env.getMoleculeIntAt(coord));
-                return Instruction.getFamilyById(opcodeId) == Family.CONTROL;
+                return Instruction.labelIsJumpTarget(opcodeId);
             }
             if (slot == Slot.NONE || slot == Slot.AMBIGUOUS) {
                 return false;

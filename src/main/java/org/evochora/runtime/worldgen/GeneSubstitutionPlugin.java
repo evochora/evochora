@@ -61,8 +61,12 @@ import org.slf4j.LoggerFactory;
  * opcode are read as. An operation flip keeps family and operand sources and changes what is done
  * with the operands; a family flip keeps the operand sources and leaves the family, so the cells
  * behind the opcode keep their meaning; a variant flip keeps family and operation and takes an
- * opcode with the same number of operands, changing how they are supplied. Every mutation result
- * is guaranteed to be a registered opcode.
+ * opcode with the same number of operands, changing how they are supplied. Within its mode a flip
+ * draws its target in proportion to the weights of {@code instructionWeights}
+ * ({@link InstructionWeights}); an alternative of weight zero is never drawn, and a flip without an
+ * alternative of weight above zero changes nothing and records nothing. The weights steer only
+ * what a flip produces, not which cell is mutated. Every mutation result is guaranteed to be a
+ * registered opcode.
  * <p>
  * <strong>REGISTER Mutation:</strong> A selected REGISTER cell looks at the two cells beside it
  * along the newborn's direction vector and asks the reading frame what they are. Where the cell
@@ -148,6 +152,9 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
     /** Name of the configuration block carrying the operand slot multipliers. */
     private static final String OPERANDS_BLOCK = "operands";
 
+    /** The block that weights the opcodes a flip may produce. */
+    private static final String INSTRUCTION_WEIGHTS_BLOCK = "instructionWeights";
+
     /** The keys the operand block carries, both mandatory. */
     private static final String[] OPERAND_KEYS = {"scalar", "vector"};
 
@@ -183,9 +190,9 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
     private final double[] typeExponents;
 
     // --- Pre-computed opcode alternative tables (computed once at init) ---
-    private final Int2ObjectOpenHashMap<int[]> operationFlipAlternatives;
-    private final Int2ObjectOpenHashMap<int[]> familyFlipAlternatives;
-    private final Int2ObjectOpenHashMap<int[]> variantFlipAlternatives;
+    private final Int2ObjectOpenHashMap<WeightedOpcodes> operationFlipAlternatives;
+    private final Int2ObjectOpenHashMap<WeightedOpcodes> familyFlipAlternatives;
+    private final Int2ObjectOpenHashMap<WeightedOpcodes> variantFlipAlternatives;
 
     // --- Reservoir state, reused across births (only the visitor lambda and the written molecule are allocated per call) ---
     /** Whether the reservoir holds a candidate cell. */
@@ -217,7 +224,9 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
      * Creates a gene substitution plugin from configuration.
      * <p>
      * The configuration carries {@code substitutionRate}, the mandatory {@code operands} block
-     * with the multipliers {@code scalar} and {@code vector}, and one block per molecule type,
+     * with the multipliers {@code scalar} and {@code vector}, the mandatory
+     * {@code instructionWeights} block ({@link InstructionWeights}) that weights the opcodes a flip
+     * may produce, and one block per molecule type,
      * named after the type. A type with a block contributes its {@code weight}, and, if it uses
      * the general value strategy, its {@code exponent} or {@value #DEFAULT_EXPONENT} when the
      * block names none. A type without a block gets weight 0. Any other key, at the top level or
@@ -272,69 +281,17 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
         com.typesafe.config.Config labelrefConfig = blockOrNull(config, "LABELREF");
         this.labelrefBitflips = labelrefConfig == null ? 0 : labelrefConfig.getInt("bitflips");
 
-        this.operationFlipAlternatives = new Int2ObjectOpenHashMap<>();
-        this.familyFlipAlternatives = new Int2ObjectOpenHashMap<>();
-        this.variantFlipAlternatives = new Int2ObjectOpenHashMap<>();
-        buildCodeAlternatives();
-    }
-
-    /**
-     * Convenience constructor for tests.
-     * <p>
-     * Covers the five types with a non-zero default weight. Every other registered type gets
-     * weight 0, every type that uses the general value strategy gets the given exponent, and both
-     * operand multipliers are one, so that a cell weighs its type weight wherever it stands.
-     *
-     * @param randomProvider Source of randomness.
-     * @param substitutionRate Probability of substitution per newborn (0.0 to 1.0).
-     * @param codeWeight Selection weight for CODE molecules.
-     * @param registerWeight Selection weight for REGISTER molecules.
-     * @param dataWeight Selection weight for DATA molecules.
-     * @param labelWeight Selection weight for LABEL molecules.
-     * @param labelrefWeight Selection weight for LABELREF molecules.
-     * @param operationFlipWeight Weight for operation flip mode within CODE.
-     * @param familyFlipWeight Weight for family flip mode within CODE.
-     * @param variantFlipWeight Weight for variant flip mode within CODE.
-     * @param valueExponent Exponent for the scale-proportional value perturbation.
-     * @param labelBitflips Number of bits to flip for LABEL mutation.
-     * @param labelrefBitflips Number of bits to flip for LABELREF mutation.
-     */
-    GeneSubstitutionPlugin(IRandomProvider randomProvider, double substitutionRate,
-                           double codeWeight, double registerWeight, double dataWeight,
-                           double labelWeight, double labelrefWeight,
-                           double operationFlipWeight, double familyFlipWeight, double variantFlipWeight,
-                           double valueExponent, int labelBitflips, int labelrefBitflips) {
-        this.random = randomProvider.asJavaRandom();
-        this.substitutionRate = substitutionRate;
-        this.operationFlipWeight = operationFlipWeight;
-        this.familyFlipWeight = familyFlipWeight;
-        this.variantFlipWeight = variantFlipWeight;
-        this.totalFlipWeight = operationFlipWeight + familyFlipWeight + variantFlipWeight;
-        requireFlipWeights(codeWeight, this.totalFlipWeight);
-        this.labelBitflips = labelBitflips;
-        this.labelrefBitflips = labelrefBitflips;
-        this.operandsScalar = 1.0;
-        this.operandsVector = 1.0;
-
-        this.typeWeights = new double[TYPE_TABLE_SIZE];
-        this.typeWeights[rawIndex(Config.TYPE_CODE)] = codeWeight;
-        this.typeWeights[rawIndex(Config.TYPE_DATA)] = dataWeight;
-        this.typeWeights[rawIndex(Config.TYPE_REGISTER)] = registerWeight;
-        this.typeWeights[rawIndex(Config.TYPE_LABEL)] = labelWeight;
-        this.typeWeights[rawIndex(Config.TYPE_LABELREF)] = labelrefWeight;
-
-        this.typeExponents = new double[TYPE_TABLE_SIZE];
-        for (int type : MoleculeTypeRegistry.orderedTypes()) {
-            if (usesValueStrategy(type)) {
-                this.typeExponents[rawIndex(type)] = valueExponent;
-            }
+        if (!config.hasPath(INSTRUCTION_WEIGHTS_BLOCK)) {
+            throw new IllegalArgumentException("GeneSubstitutionPlugin needs '" + INSTRUCTION_WEIGHTS_BLOCK
+                    + "', the weights of the opcodes a flip may produce.");
         }
-        validateRanges(this.substitutionRate, this.typeExponents);
+        InstructionWeights instructionWeights = InstructionWeights.fromConfig(
+                config.getConfig(INSTRUCTION_WEIGHTS_BLOCK), "GeneSubstitutionPlugin");
 
         this.operationFlipAlternatives = new Int2ObjectOpenHashMap<>();
         this.familyFlipAlternatives = new Int2ObjectOpenHashMap<>();
         this.variantFlipAlternatives = new Int2ObjectOpenHashMap<>();
-        buildCodeAlternatives();
+        buildCodeAlternatives(instructionWeights);
     }
 
     /** {@inheritDoc} */
@@ -605,11 +562,11 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
     /**
      * Mutates a CODE molecule's opcode value by flipping to a random valid alternative.
      * <p>
-     * Selects a flip mode based on configured weights, then picks a random alternative from the
-     * pre-computed lookup table of that mode: an operation flip keeps family and operand sources,
+     * Selects a flip mode based on configured weights, then draws an alternative from the
+     * pre-computed lookup table of that mode, in proportion to the weights of the alternatives: an operation flip keeps family and operand sources,
      * a family flip keeps the operand sources and leaves the family, and a variant flip keeps
-     * family and operation and takes an opcode with the same number of operands. If no
-     * alternatives exist for the selected mode, returns the original value unchanged.
+     * family and operation and takes an opcode with the same number of operands. If the selected
+     * mode has no alternative of weight above zero, returns the original value unchanged.
      * <p>
      * The mode that was drawn is left in {@link #codeFlipAction}, which is the action code the
      * record of the write carries.
@@ -619,7 +576,7 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
      */
     private int mutateCode(int opcodeValue) {
         double r = random.nextDouble() * totalFlipWeight;
-        int[] alternatives;
+        WeightedOpcodes alternatives;
         if (r < operationFlipWeight) {
             codeFlipAction = ACTION_OPCODE_OPERATION_FLIP;
             alternatives = operationFlipAlternatives.get(opcodeValue);
@@ -631,11 +588,11 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
             alternatives = variantFlipAlternatives.get(opcodeValue);
         }
 
-        if (alternatives == null || alternatives.length == 0) {
+        if (alternatives == null) {
             return opcodeValue;
         }
 
-        return alternatives[random.nextInt(alternatives.length)];
+        return alternatives.opcodeAt(alternatives.drawIndex(random));
     }
 
     /**
@@ -741,7 +698,7 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
      * This is called once at construction time; the resulting tables provide O(1) lookup during
      * mutation.
      */
-    private void buildCodeAlternatives() {
+    private void buildCodeAlternatives(InstructionWeights instructionWeights) {
         Map<Integer, String> allOpcodes = Instruction.getAllInstructions();
 
         // Intermediate grouping maps, keyed by what the respective flip keeps unchanged.
@@ -765,13 +722,13 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
             int family = Instruction.getFamilyById(opcodeId);
             int operation = Instruction.getOperationById(opcodeId);
 
-            operationFlipAlternatives.put(opcodeId,
-                    filterSelf(opGroups.get(new FamilySignature(family, sources)), opcodeId));
-            familyFlipAlternatives.put(opcodeId,
-                    filterFamily(famGroups.get(sources), family));
-            variantFlipAlternatives.put(opcodeId,
+            operationFlipAlternatives.put(opcodeId, weighted(instructionWeights,
+                    filterSelf(opGroups.get(new FamilySignature(family, sources)), opcodeId)));
+            familyFlipAlternatives.put(opcodeId, weighted(instructionWeights,
+                    filterFamily(famGroups.get(sources), family)));
+            variantFlipAlternatives.put(opcodeId, weighted(instructionWeights,
                     filterSelf(varGroups.get(new FamilyOperationArity(family, operation, sources.size())),
-                            opcodeId));
+                            opcodeId)));
         }
     }
 
@@ -794,6 +751,21 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
      * @param operandCount the number of operand sources, stack operands included
      */
     private record FamilyOperationArity(int family, int operation, int operandCount) {}
+
+    /**
+     * Weights the alternatives of one flip and leaves out those of weight zero.
+     *
+     * @param instructionWeights The weights of the opcodes.
+     * @param alternatives The alternatives, or {@code null} if there are none.
+     * @return The alternatives a flip may draw, or {@code null} if none weighs more than zero.
+     */
+    private static WeightedOpcodes weighted(InstructionWeights instructionWeights, int[] alternatives) {
+        if (alternatives == null) {
+            return null;
+        }
+        WeightedOpcodes selected = instructionWeights.select(alternatives);
+        return selected.isEmpty() ? null : selected;
+    }
 
     /**
      * Filters a group list to exclude the given opcode, returning an array of alternatives.
@@ -953,6 +925,7 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
         List<String> accepted = new ArrayList<>();
         accepted.add("substitutionRate");
         accepted.add(OPERANDS_BLOCK);
+        accepted.add(INSTRUCTION_WEIGHTS_BLOCK);
         for (int type : MoleculeTypeRegistry.orderedTypes()) {
             accepted.add(MoleculeTypeRegistry.typeToName(type));
         }

@@ -28,7 +28,7 @@ public final class CallerMarshallingRule implements IRewriteRule {
             // Look for a conditional instruction followed by a CALL.
             if (i + 1 < items.size() && currentItem instanceof IrInstruction conditional
                     && items.get(i + 1) instanceof IrCallInstruction call) {
-                Optional<String> negatedOpcode = isa.negatedConditional(conditional.opcode());
+                Optional<String> negatedOpcode = isa.negatedConditionalSkip(conditional.opcode());
                 if (negatedOpcode.isPresent()) {
                     handleConditionalCall(out, conditional, negatedOpcode.get(), call, safeCallCounter);
                     i += 2; // Consumed both the conditional and the CALL.

@@ -1,11 +1,16 @@
 package org.evochora.cli.config;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 
 import java.io.File;
+import java.util.List;
 
+import org.evochora.runtime.internal.services.SeededRandomProvider;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.thermodynamics.ThermodynamicPolicyManager;
+import org.evochora.runtime.worldgen.GeneInsertionPlugin;
+import org.evochora.runtime.worldgen.GeneSubstitutionPlugin;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -47,6 +52,32 @@ class ShippedConfigurationTest {
                         ? runtimeConfig.getConfig("thermodynamics")
                         : ConfigFactory.empty()))
                 .doesNotThrowAnyException();
+    }
+
+    /**
+     * Builds the mutation plugins the shipped configuration names, with the instruction weights
+     * they refer to. A plugin rejects a key it cannot place and weights it cannot read, so a stale
+     * or misspelled setting fails here rather than when somebody starts a node.
+     */
+    @Test
+    void theShippedConfigurationBuildsItsMutationPlugins() {
+        List<? extends Config> plugins = shippedConfig()
+                .getConfigList("pipeline.services.simulation-engine.options.plugins");
+        int built = 0;
+        for (Config plugin : plugins) {
+            String className = plugin.getString("className");
+            Config options = plugin.getConfig("options");
+            if (className.equals(GeneInsertionPlugin.class.getName())) {
+                assertThatCode(() -> new GeneInsertionPlugin(new SeededRandomProvider(1), options))
+                        .doesNotThrowAnyException();
+                built++;
+            } else if (className.equals(GeneSubstitutionPlugin.class.getName())) {
+                assertThatCode(() -> new GeneSubstitutionPlugin(new SeededRandomProvider(1), options))
+                        .doesNotThrowAnyException();
+                built++;
+            }
+        }
+        assertThat(built).as("insertion and substitution are configured").isEqualTo(2);
     }
 
     /** The shipped configuration, resolved through the loader a node uses. */

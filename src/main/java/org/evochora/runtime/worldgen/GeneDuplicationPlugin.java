@@ -248,21 +248,6 @@ public class GeneDuplicationPlugin implements IBirthHandler {
     }
 
     /**
-     * Convenience constructor for tests.
-     *
-     * @param randomProvider Source of randomness.
-     * @param duplicationRate Probability of duplication per newborn (0.0 to 1.0).
-     * @param minNopSize Minimum contiguous empty cells required as duplication target; a run that
-     *                   does not hold the first whole block is left unwritten however long it is.
-     */
-    GeneDuplicationPlugin(IRandomProvider randomProvider, double duplicationRate, int minNopSize) {
-        this.random = randomProvider.asJavaRandom();
-        this.duplicationRate = duplicationRate;
-        this.minNopSize = minNopSize;
-        this.jumpOpcodeId = resolveJumpOpcode();
-    }
-
-    /**
      * Resolves the opcode of the jump a cut-back copy is closed with.
      *
      * @return The opcode ID of {@value #JUMP_INSTRUCTION}.

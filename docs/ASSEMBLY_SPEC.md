@@ -31,7 +31,7 @@ Every cell in the grid contains a **Molecule**, which is the fundamental unit of
 * **`STATE`**: a numeric value an organism wrote for itself: `DATA` written with marker 0 is stored as `STATE`. In value operations it counts as `DATA` (see below).
 * **`ENERGY`**: a resource organisms consume to replenish their energy reserves (ER).
 * **`STRUCTURE`**: physical matter, such as the shell of an organism's body.
-* **`LABEL`**: a jump target; the anchor that fuzzy label matching resolves (see Labels).
+* **`LABEL`**: a jump target; the anchor that fuzzy label matching resolves (see *Fuzzy label matching*).
 * **`LABELREF`**: an instruction operand naming a label by its hash.
 * **`REGISTER`**: an instruction operand naming a register.
 
@@ -39,7 +39,7 @@ Every cell in the grid contains a **Molecule**, which is the fundamental unit of
 
 #### Types in value operations
 
-Two scalar values are *value-compatible* if their types are equal, or if one is `DATA` and the other `STATE`. Arithmetic and bitwise instructions fail on incompatible operands. The equality tests (`IF*`, `IN*`) compare the molecule: two values are equal if they are value-compatible and hold the same number, and *not equal* in every other case, a type mismatch included. The order comparisons (`GT*`, `LT*`, `GET*`, `LET*` and the probabilistic ones) compare the numbers alone, whatever the types. No comparison fails on its operands. Where an instruction requires a plain number, such as the shift amount of `SHL*`/`SHR*` or the operand of `SMR*`/`CMR*`, `DATA` or `STATE` is accepted. A computation keeps the type of its first operand, so an operation on a `STATE` value yields a `STATE` result. Type comparisons (`IFT*`, `INT*`) and type scans (`SNT*`) match types exactly.
+Two scalar values are *value-compatible* if their types are equal, or if one is `DATA` and the other `STATE`. Arithmetic and bitwise instructions fail on incompatible operands. The equality tests (`IF*`, `IN*` and their jumps) compare the molecule: two values are equal if they are value-compatible and hold the same number, and *not equal* in every other case, a type mismatch included. The order comparisons (`GT*`, `LT*`, `GET*`, `LET*`, the probabilistic ones and their jumps) compare the numbers alone, whatever the types. No comparison fails on its operands. Where an instruction requires a plain number, such as the shift amount of `SHL*`/`SHR*` or the operand of `SMR*`/`CMR*`, `DATA` or `STATE` is accepted. A computation keeps the type of its first operand, so an operation on a `STATE` value yields a `STATE` result. Type comparisons (`IFT*`, `INT*` and their jumps) and type scans (`SNT*`) match types exactly.
 
 ### Ownership
 
@@ -202,6 +202,14 @@ START_LOOP:
   ADDI %DR0 DATA:1
   JMPI START_LOOP
 ```
+
+#### Fuzzy label matching
+
+A label is not an address. The compiler gives every label a value derived from its name; the `LABEL` molecule it places carries that value, and an instruction that names the label carries the same value as its operand. The label is looked up by its value when the instruction runs, so a jump goes to wherever a matching `LABEL` molecule stands at that moment.
+
+A `LABEL` molecule matches when its value differs from the one looked up in at most a few bits; how many is set by the label-matching strategy of the simulation configuration. The organism's own labels come first, and among them those that differ in the fewest bits; where several of its own differ equally, one of them is chosen, by default the nearer ones more likely. Only when none of its own matches can a label of another organism or an unowned one be taken, and only within a reach that shrinks with every differing bit. A label in cells the organism is building for a child, written with a non-zero marker (see *Molecule Marker*), is never found.
+
+A jump continues with the instruction behind the label it found. When no label matches, the instruction fails (see *Error Penalty*) and execution runs on with the next instruction.
 
 #### Exported Labels
 
@@ -399,9 +407,9 @@ Scans axis-aligned neighbors around the active DP and returns a bitmask indicati
 
 ### Control Flow
 
-* `JMPI <Label>`: Jumps to `<Label>`.
-* `JMPR %REG`: Jumps to the label whose hash is in `<%REG>`.
-* `JMPS`: Jumps to the label whose hash is popped from the stack.
+* `JMPI <Label>`: Jumps to `<Label>`, found by fuzzy label matching; fails when no label matches.
+* `JMPR %REG`: Jumps to the label whose value is in `<%REG>`.
+* `JMPS`: Jumps to the label whose value is popped from the stack.
   `CALL <Label> [REF %reg ...] [VAL %reg|Literal ...] [LREF %lreg ...] [LVAL %lreg|Label ...]`: Calls the procedure at `<Label>`, optionally passing parameters.
     - `REF`: Passes registers by reference. Modifications inside the procedure affect the caller's register.
     - `VAL`: Passes registers or literal values by value. Modifications are local.
@@ -415,55 +423,60 @@ Scans axis-aligned neighbors around the active DP and returns a bitmask indicati
 
 ### Conditional Instructions
 
-These instructions skip the next instruction if the condition is false.
+A conditional instruction tests a condition and acts on the result. Every condition exists in two kinds of instruction:
+
+* A **conditional skip** runs on with the next instruction if the condition holds, and skips the next instruction if it does not. The skipped instruction costs no tick.
+* A **conditional jump** jumps to its label if the condition holds, and runs on with the next instruction if it does not. It takes the operands of its skip followed by a label, found by fuzzy label matching only when the condition holds; without a matching label it fails as `JMPI` does. `JFI %DR0 DATA:10 L` does what `IFI %DR0 DATA:10` followed by `JMPI L` does.
+
+The lists below name each condition by its skips; the jumps are given beside them.
 
 #### Value comparisons
 
 Operands are values — register contents, the top of the stack, or literals — and a value may be a scalar or a vector. Equality compares the molecule, order compares the number, and every negated form holds exactly when its counterpart does not; see *Types in value operations*.
 
-* `IFR %REG1 %REG2`, `IFI %REG1 <Literal>`, `IFS`: If values are equal.
-* `LTR %REG1 %REG2`, `LTI %REG1 <Literal>`, `LTS`: If value of first argument is less than second.
-* `GTR %REG1 %REG2`, `GTI %REG1 <Literal>`, `GTS`: If value of first argument is greater than second.
-* `PGTR %REG1 %REG2`, `PGTI %REG1 <Literal>`, `PGTS`: If value of first argument is greater than a random value drawn below the second. See "Probabilistic conditionals".
-* `PLTR %REG1 %REG2`, `PLTI %REG1 <Literal>`, `PLTS`: If value of first argument is less than a random value drawn below the second. See "Probabilistic conditionals".
-* `IFTR %REG1 %REG2`, `IFTI %REG1 <Literal>`, `IFTS`: If molecule types are equal.
-* `IFER`: If the previous instruction failed. Takes no operands. The "previous instruction" refers to the instruction executed in the immediately preceding tick, not the preceding instruction in spatial layout.
-* `IFSL %LOC_REG`: If the location register holds a position.
+* `IFR %REG1 %REG2`, `IFI %REG1 <Literal>`, `IFS` (jumps `JFR`, `JFI`, `JFS`): If values are equal.
+* `LTR %REG1 %REG2`, `LTI %REG1 <Literal>`, `LTS` (jumps `JLTR`, `JLTI`, `JLTS`): If value of first argument is less than second.
+* `GTR %REG1 %REG2`, `GTI %REG1 <Literal>`, `GTS` (jumps `JGTR`, `JGTI`, `JGTS`): If value of first argument is greater than second.
+* `PGTR %REG1 %REG2`, `PGTI %REG1 <Literal>`, `PGTS` (jumps `QGTR`, `QGTI`, `QGTS`): If value of first argument is greater than a random value drawn below the second. See "Probabilistic conditionals".
+* `PLTR %REG1 %REG2`, `PLTI %REG1 <Literal>`, `PLTS` (jumps `QLTR`, `QLTI`, `QLTS`): If value of first argument is less than a random value drawn below the second. See "Probabilistic conditionals".
+* `IFTR %REG1 %REG2`, `IFTI %REG1 <Literal>`, `IFTS` (jumps `JFTR`, `JFTI`, `JFTS`): If molecule types are equal.
+* `IFER` (jump `JFER`): If the previous instruction failed. Takes no operands. The "previous instruction" refers to the instruction executed in the immediately preceding tick, not the preceding instruction in spatial layout.
+* `IFSL %LOC_REG` (jump `JFSL`): If the location register holds a position.
 
 #### Cell tests
 
 The vector is a displacement from the active `DP`, as in a world interaction: it addresses the cell the `DP` stands on, or one adjacent to it. A vector that would reach further is mapped to the nearest adjacent cell. The body test is the exception: its vector names a line through the `DP`, not a cell.
 
-* `IFMR %VEC_REG`, `IFMI <Vector>`, `IFMS`: If cell at `DP` + vector is owned by self.
-* `IFPR %VEC_REG`, `IFPI <Vector>`, `IFPS`: If cell at `DP` + vector is passable (empty or owned by self).
-* `IFFR %VEC_REG`, `IFFI <Vector>`, `IFFS`: If cell at `DP` + vector is owned by a foreign organism (ownerId != 0 && ownerId != self.id).
-* `IFVR %VEC_REG`, `IFVI <Vector>`, `IFVS`: If cell at `DP` + vector is vacant (has no owner, ownerId == 0). Note: "Vacant" refers to ownership status, not whether the cell contains a molecule. A cell can have a molecule and still be vacant.
-* `IFXR %VEC_REG`, `IFXI <Vector>`, `IFXS`: If the cell at `DP` + vector exists. In a toroidal environment every cell exists; in a bounded one a cell beyond the edge does not. A cell that does not exist reads as empty and vacant but is not passable, so this is how a program tells the edge from a molecule it could clear.
-* `IFBR %VEC_REG`, `IFBI <Vector>`, `IFBS`: If `DP` lies within the own body on the line along the vector's axis: between the outermost cells of that body there, gaps included. A cell belongs to the body when the organism owns it and it carries no marker, so cells set aside for a child count as outside. On a torus the widest gap between body cells is the outside, the world edge included. A vector with no non-zero component asks every axis, and holds only if `DP` lies within the body on all of them.
+* `IFMR %VEC_REG`, `IFMI <Vector>`, `IFMS` (jumps `JFMR`, `JFMI`, `JFMS`): If cell at `DP` + vector is owned by self.
+* `IFPR %VEC_REG`, `IFPI <Vector>`, `IFPS` (jumps `JFPR`, `JFPI`, `JFPS`): If cell at `DP` + vector is passable (empty or owned by self).
+* `IFFR %VEC_REG`, `IFFI <Vector>`, `IFFS` (jumps `JFFR`, `JFFI`, `JFFS`): If cell at `DP` + vector is owned by a foreign organism (ownerId != 0 && ownerId != self.id).
+* `IFVR %VEC_REG`, `IFVI <Vector>`, `IFVS` (jumps `JFVR`, `JFVI`, `JFVS`): If cell at `DP` + vector is vacant (has no owner, ownerId == 0). Note: "Vacant" refers to ownership status, not whether the cell contains a molecule. A cell can have a molecule and still be vacant.
+* `IFXR %VEC_REG`, `IFXI <Vector>`, `IFXS` (jumps `JFXR`, `JFXI`, `JFXS`): If the cell at `DP` + vector exists. In a toroidal environment every cell exists; in a bounded one a cell beyond the edge does not. A cell that does not exist reads as empty and vacant but is not passable, so this is how a program tells the edge from a molecule it could clear.
+* `IFBR %VEC_REG`, `IFBI <Vector>`, `IFBS` (jumps `JFBR`, `JFBI`, `JFBS`): If `DP` lies within the own body on the line along the vector's axis: between the outermost cells of that body there, gaps included. A cell belongs to the body when the organism owns it and it carries no marker, so cells set aside for a child count as outside. On a torus the widest gap between body cells is the outside, the world edge included. A vector with no non-zero component asks every axis, and holds only if `DP` lies within the body on all of them.
 
-#### Negated Conditional Instructions
+#### Negated conditions
 
-These instructions are the logical opposites of the standard conditional instructions. They skip the next instruction if the original condition is met. Their operands follow the same two kinds.
+Every condition above has a negation that holds exactly when it does not. Its operands follow the same two kinds.
 
 Value comparisons:
 
-* `INR %REG1 %REG2`, `INI %REG1 <Literal>`, `INS`: If values are **not** equal.
-* `GETR %REG1 %REG2`, `GETI %REG1 <Literal>`, `GETS`: If value of first argument is **greater than or equal to** second.
-* `LETR %REG1 %REG2`, `LETI %REG1 <Literal>`, `LETS`: If value of first argument is **less than or equal to** second.
-* `PLER %REG1 %REG2`, `PLEI %REG1 <Literal>`, `PLES`: If value of first argument is **less than or equal to** a random value drawn below the second. The negated form of `PGT*`.
-* `PGER %REG1 %REG2`, `PGEI %REG1 <Literal>`, `PGES`: If value of first argument is **greater than or equal to** a random value drawn below the second. The negated form of `PLT*`.
-* `INTR %REG1 %REG2`, `INTI %REG1 <Literal>`, `INTS`: If molecule types are **not** equal.
-* `INER`: If the previous instruction did **not** fail. Takes no operands. The negated form of `IFER`.
-* `INSL %LOC_REG`: If the location register is empty. The negated form of `IFSL`.
+* `INR %REG1 %REG2`, `INI %REG1 <Literal>`, `INS` (jumps `JNR`, `JNI`, `JNS`): If values are **not** equal.
+* `GETR %REG1 %REG2`, `GETI %REG1 <Literal>`, `GETS` (jumps `JGER`, `JGEI`, `JGES`): If value of first argument is **greater than or equal to** second.
+* `LETR %REG1 %REG2`, `LETI %REG1 <Literal>`, `LETS` (jumps `JLER`, `JLEI`, `JLES`): If value of first argument is **less than or equal to** second.
+* `PLER %REG1 %REG2`, `PLEI %REG1 <Literal>`, `PLES` (jumps `QLER`, `QLEI`, `QLES`): If value of first argument is **less than or equal to** a random value drawn below the second. The negated form of `PGT*`.
+* `PGER %REG1 %REG2`, `PGEI %REG1 <Literal>`, `PGES` (jumps `QGER`, `QGEI`, `QGES`): If value of first argument is **greater than or equal to** a random value drawn below the second. The negated form of `PLT*`.
+* `INTR %REG1 %REG2`, `INTI %REG1 <Literal>`, `INTS` (jumps `JNTR`, `JNTI`, `JNTS`): If molecule types are **not** equal.
+* `INER` (jump `JNER`): If the previous instruction did **not** fail. Takes no operands. The negated form of `IFER`.
+* `INSL %LOC_REG` (jump `JNSL`): If the location register is empty. The negated form of `IFSL`.
 
 Cell tests:
 
-* `INMR %VEC_REG`, `INMI <Vector>`, `INMS`: If cell at `DP` + vector is **not** owned by self.
-* `INPR %VEC_REG`, `INPI <Vector>`, `INPS`: If cell at `DP` + vector is **not** passable (not empty and not owned by self).
-* `INFR %VEC_REG`, `INFI <Vector>`, `INFS`: If cell at `DP` + vector is **not** owned by a foreign organism (ownerId == 0 || ownerId == self.id).
-* `INVR %VEC_REG`, `INVI <Vector>`, `INVS`: If cell at `DP` + vector is **not** vacant (has an owner, ownerId != 0).
-* `INXR %VEC_REG`, `INXI <Vector>`, `INXS`: If the cell at `DP` + vector does **not** exist: it lies beyond the edge of a bounded environment.
-* `INBR %VEC_REG`, `INBI <Vector>`, `INBS`: If `DP` does **not** lie within the own body on that line; with a vector of no non-zero component, if it lies outside on at least one axis.
+* `INMR %VEC_REG`, `INMI <Vector>`, `INMS` (jumps `JNMR`, `JNMI`, `JNMS`): If cell at `DP` + vector is **not** owned by self.
+* `INPR %VEC_REG`, `INPI <Vector>`, `INPS` (jumps `JNPR`, `JNPI`, `JNPS`): If cell at `DP` + vector is **not** passable (not empty and not owned by self).
+* `INFR %VEC_REG`, `INFI <Vector>`, `INFS` (jumps `JNFR`, `JNFI`, `JNFS`): If cell at `DP` + vector is **not** owned by a foreign organism (ownerId == 0 || ownerId == self.id).
+* `INVR %VEC_REG`, `INVI <Vector>`, `INVS` (jumps `JNVR`, `JNVI`, `JNVS`): If cell at `DP` + vector is **not** vacant (has an owner, ownerId != 0).
+* `INXR %VEC_REG`, `INXI <Vector>`, `INXS` (jumps `JNXR`, `JNXI`, `JNXS`): If the cell at `DP` + vector does **not** exist: it lies beyond the edge of a bounded environment.
+* `INBR %VEC_REG`, `INBI <Vector>`, `INBS` (jumps `JNBR`, `JNBI`, `JNBS`): If `DP` does **not** lie within the own body on that line; with a vector of no non-zero component, if it lies outside on at least one axis.
 
 #### Vector operands in value comparisons
 

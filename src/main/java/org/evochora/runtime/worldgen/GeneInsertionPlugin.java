@@ -3,7 +3,6 @@ package org.evochora.runtime.worldgen;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import org.evochora.runtime.Config;
-import org.evochora.runtime.isa.Family;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.isa.Instruction.OperandSource;
 import org.evochora.runtime.isa.RegisterBank;
@@ -23,7 +22,6 @@ import org.slf4j.LoggerFactory;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Map;
 import java.util.Random;
 
 /**
@@ -38,7 +36,8 @@ import java.util.Random;
  * type-correct argument molecules (REGISTER, DATA, LABELREF, etc.) as defined by the
  * instruction's {@link OperandSource} list. This ensures inserted code is syntactically
  * valid, making most mutations neutral or functional rather than immediately lethal. Such a chain
- * takes effect only where execution passes the empty region it lands in.
+ * takes effect only where execution passes the empty region it lands in. Which instruction an entry
+ * inserts is drawn by the weights of its {@code instructionWeights} ({@link InstructionWeights}).
  * <p>
  * <strong>What a label entry builds.</strong> A label entry inserts one instruction in front of a
  * block of code that has no room in front of it. It picks one of the newborn's labels A, gives
@@ -58,11 +57,12 @@ import java.util.Random;
  *       no label of the newborn carries and which let no reference address A' that did not
  *       address A ({@link GenomeFlow#drawsNoForeignReference}); a reference that could address A
  *       already may divide its jumps between the labels differently.</li>
- *   <li><b>Execution goes on behind the inserted instruction.</b> A conditional is none, because
- *       a failed test would skip the closing jump, and neither is an instruction that
+ *   <li><b>Execution goes on behind the inserted instruction.</b> A conditional skip is none,
+ *       because a failed test would skip the closing jump, and neither is an instruction that
  *       {@linkplain Instruction#neverFallsThrough(int) never falls through}, behind which
- *       the closing jump is never reached. A wildcard leaves both out; an entry that names one is
- *       rejected.</li>
+ *       the closing jump is never reached. Both are left out whatever their weight. A conditional
+ *       jump is one: its own label operand receives A' as well, so it reaches the block whether it
+ *       jumps or not.</li>
  *   <li><b>The chain goes where execution does not run on into</b>
  *       ({@link GenomeFlow#reachedByFallThrough}): in an empty region other code passes through,
  *       the closing jump would carry that code's execution off into the block.</li>
@@ -119,10 +119,10 @@ public class GeneInsertionPlugin implements IBirthHandler {
     private static final String JUMP_INSTRUCTION = "JMPI";
 
     /** The settings an instruction entry is read for. */
-    private static final List<String> INSTRUCTION_ENTRY_KEYS = List.of("instructions", "weight", "args");
+    private static final List<String> INSTRUCTION_ENTRY_KEYS = List.of("instructionWeights", "weight", "args");
 
     /** The settings a label entry is read for. */
-    private static final List<String> LABEL_ENTRY_KEYS = List.of("type", "instructions", "weight", "args");
+    private static final List<String> LABEL_ENTRY_KEYS = List.of("type", "instructionWeights", "weight", "args");
 
     // --- Immutable config ---
     private final Random random;
@@ -207,16 +207,14 @@ public class GeneInsertionPlugin implements IBirthHandler {
     }
 
     /**
-     * Instruction entry: inserts a random instruction from the list with type-correct arguments.
+     * Instruction entry: inserts an instruction drawn by its weight, with type-correct arguments.
      *
-     * @param opcodeIds Resolved opcode IDs.
-     * @param operandSourcesByOpcode Cached operand sources per opcode, parallel to opcodeIds.
+     * @param opcodes The opcodes the entry draws from, with their weights.
      * @param weight Selection weight.
      * @param argConfig Argument generation configuration.
      */
     record InstructionEntry(
-            List<Integer> opcodeIds,
-            List<List<OperandSource>> operandSourcesByOpcode,
+            WeightedOpcodes opcodes,
             double weight,
             ArgumentConfig argConfig
     ) implements MutationEntry {}
@@ -227,14 +225,12 @@ public class GeneInsertionPlugin implements IBirthHandler {
      * description an instruction entry carries, so that it is code of the same shape as a plain
      * insertion; an instruction behind which execution may not go on is no such instruction.
      *
-     * @param opcodeIds Resolved opcode IDs of the inserted instruction.
-     * @param operandSourcesByOpcode Cached operand sources per opcode, parallel to opcodeIds.
+     * @param opcodes The opcodes of the inserted instruction, with their weights.
      * @param weight Selection weight.
      * @param argConfig Argument generation configuration.
      */
     record LabelEntry(
-            List<Integer> opcodeIds,
-            List<List<OperandSource>> operandSourcesByOpcode,
+            WeightedOpcodes opcodes,
             double weight,
             ArgumentConfig argConfig
     ) implements MutationEntry {}
@@ -348,25 +344,6 @@ public class GeneInsertionPlugin implements IBirthHandler {
     }
 
     /**
-     * Convenience constructor for tests.
-     *
-     * @param randomProvider Source of randomness.
-     * @param mutationRate Probability of mutation per newborn (0.0 to 1.0).
-     * @param entries Pre-built list of mutation entries.
-     */
-    GeneInsertionPlugin(IRandomProvider randomProvider, double mutationRate, List<MutationEntry> entries) {
-        this.random = randomProvider.asJavaRandom();
-        this.jumpOpcodeId = resolveJumpOpcode();
-        this.mutationRate = mutationRate;
-        this.entries = new ArrayList<>(entries);
-        double w = 0.0;
-        for (MutationEntry e : entries) {
-            w += e.weight();
-        }
-        this.totalWeight = w;
-    }
-
-    /**
      * Resolves the opcode of the jump a label entry's chain ends with.
      *
      * @return The opcode ID of {@value #JUMP_INSTRUCTION}.
@@ -386,18 +363,18 @@ public class GeneInsertionPlugin implements IBirthHandler {
      * Parses a single entry from HOCON config.
      * <p>
      * Both entry types describe the instruction they generate the same way, through
-     * {@code instructions} and {@code args}; a label entry is marked by {@code type = "label"} and
-     * puts that instruction in front of a block. It inserts only an instruction behind which
-     * execution goes on ({@link #goesOnBehind}), because the jump that closes its chain has to be
-     * reached: a wildcard leaves the others out, and a list that names one is rejected. A setting
-     * the entry type does not know is rejected, so that a stale name fails loudly instead of being
-     * ignored.
+     * {@code instructionWeights} ({@link InstructionWeights}) and {@code args}; a label entry is
+     * marked by {@code type = "label"} and puts that instruction in front of a block. It inserts
+     * only an instruction behind which execution goes on ({@link #goesOnBehind}), because the jump
+     * that closes its chain has to be reached: the others are left out whatever their weight. An
+     * entry left without an opcode of weight above 0 is rejected. A setting the entry type does not
+     * know is rejected, so that a stale name fails loudly instead of being ignored.
      *
      * @param entryConfig The entry configuration.
      * @return The parsed mutation entry.
      * @throws IllegalArgumentException if the entry names an unknown type, carries an unaccepted
-     *                                  key, lacks a setting its type requires, or is a label entry
-     *                                  that names an instruction execution may not go on behind.
+     *                                  key, lacks a setting its type requires, or is left without an
+     *                                  opcode it may insert.
      */
     private MutationEntry parseEntry(com.typesafe.config.Config entryConfig) {
         boolean isLabelEntry = false;
@@ -415,52 +392,26 @@ public class GeneInsertionPlugin implements IBirthHandler {
         if (weight <= 0.0) {
             throw new IllegalArgumentException("Entry weight must be positive, got: " + weight);
         }
-        if (!entryConfig.hasPath("instructions") || !entryConfig.hasPath("args")) {
-            throw new IllegalArgumentException("Insertion entry needs 'instructions' and "
+        if (!entryConfig.hasPath("instructionWeights") || !entryConfig.hasPath("args")) {
+            throw new IllegalArgumentException("Insertion entry needs 'instructionWeights' and "
                     + "'args' to generate its instruction from.");
         }
 
-        List<Integer> opcodeIds;
-        List<List<OperandSource>> operandSourcesByOpcode;
-
-        Object instrValue = entryConfig.getValue("instructions").unwrapped();
-        if ("*".equals(instrValue)) {
-            // Wildcard: use all opcode IDs directly (no name roundtrip)
-            Map<Integer, String> allInstructions = Instruction.getAllInstructions();
-            opcodeIds = new ArrayList<>(allInstructions.keySet());
-            operandSourcesByOpcode = new ArrayList<>(opcodeIds.size());
-            if (isLabelEntry) {
-                opcodeIds.removeIf(id -> !goesOnBehind(id));
-            }
-            for (int id : opcodeIds) {
-                operandSourcesByOpcode.add(Instruction.getOperandSourcesById(id));
-            }
-        } else {
-            List<String> instructionNames = entryConfig.getStringList("instructions");
-            opcodeIds = new ArrayList<>(instructionNames.size());
-            operandSourcesByOpcode = new ArrayList<>(instructionNames.size());
-            for (String name : instructionNames) {
-                Integer id = Instruction.getInstructionIdByName(name);
-                if (id == null) {
-                    throw new IllegalArgumentException("Unknown instruction: " + name);
-                }
-                if (isLabelEntry && !goesOnBehind(id)) {
-                    throw new IllegalArgumentException("A label entry cannot insert " + name
-                            + ": execution may not go on behind it, to the jump that closes the chain.");
-                }
-                opcodeIds.add(id);
-                operandSourcesByOpcode.add(Instruction.getOperandSourcesById(id));
-            }
-        }
-
-        if (opcodeIds.isEmpty()) {
-            throw new IllegalArgumentException("instructions list resolved to 0 opcodes");
+        InstructionWeights weights = InstructionWeights.fromConfig(
+                entryConfig.getConfig("instructionWeights"), "Insertion entry");
+        boolean labelEntry = isLabelEntry;
+        WeightedOpcodes opcodes = weights.selectRegistered(id -> !labelEntry || goesOnBehind(id));
+        if (opcodes.isEmpty()) {
+            throw new IllegalArgumentException("Insertion entry" + (isLabelEntry ? " of type 'label'" : "")
+                    + " is left without an opcode of weight above 0"
+                    + (isLabelEntry ? " that execution goes on behind" : "")
+                    + ": remove the entry, or give it instructionWeights that leave an opcode.");
         }
 
         ArgumentConfig argConfig = parseArgumentConfig(entryConfig.getConfig("args"));
         return isLabelEntry
-                ? new LabelEntry(opcodeIds, operandSourcesByOpcode, weight, argConfig)
-                : new InstructionEntry(opcodeIds, operandSourcesByOpcode, weight, argConfig);
+                ? new LabelEntry(opcodes, weight, argConfig)
+                : new InstructionEntry(opcodes, weight, argConfig);
     }
 
     /**
@@ -474,8 +425,7 @@ public class GeneInsertionPlugin implements IBirthHandler {
      * @return {@code true} if a label entry may insert the instruction.
      */
     private static boolean goesOnBehind(int opcodeId) {
-        return Instruction.getFamilyById(opcodeId) != Family.CONDITIONAL
-                && !Instruction.neverFallsThrough(opcodeId);
+        return !Instruction.skipsNext(opcodeId) && !Instruction.neverFallsThrough(opcodeId);
     }
 
     /**
@@ -618,7 +568,7 @@ public class GeneInsertionPlugin implements IBirthHandler {
         chainBuffer.clear();
 
         if (entry instanceof InstructionEntry ie) {
-            if (!appendInstruction(ie.opcodeIds(), ie.operandSourcesByOpcode(), ie.argConfig(), dims, -1)) {
+            if (!appendInstruction(ie.opcodes(), ie.argConfig(), dims, -1)) {
                 LOG.debug("tick={} Organism {} gene insertion: chain build failed (missing arg config)", child.getBirthTick(), childId);
                 chainBuffer.clear();
                 return;
@@ -685,11 +635,10 @@ public class GeneInsertionPlugin implements IBirthHandler {
     /**
      * Appends a syntactically correct instruction to {@link #chainBuffer}.
      * <p>
-     * Picks a random opcode from the list and generates type-correct argument molecules
-     * according to the argument configuration and the instruction's operand sources.
+     * Draws an opcode by its weight and generates type-correct argument molecules according to the
+     * argument configuration and the instruction's operand sources.
      *
-     * @param opcodeIds The opcodes one is drawn from.
-     * @param operandSourcesByOpcode The operand sources per opcode, parallel to {@code opcodeIds}.
+     * @param opcodes The opcodes one is drawn from, with their weights.
      * @param argConfig How the arguments are generated.
      * @param dims Number of environment dimensions (for VECTOR operands).
      * @param labelOperand The value a LABEL operand receives, or {@code -1} to take the label the
@@ -699,14 +648,12 @@ public class GeneInsertionPlugin implements IBirthHandler {
      * @return {@code true} if the instruction was appended, {@code false} if the argument config
      *         does not cover a required operand type.
      */
-    private boolean appendInstruction(List<Integer> opcodeIds,
-                                      List<List<OperandSource>> operandSourcesByOpcode,
+    private boolean appendInstruction(WeightedOpcodes opcodes,
                                       ArgumentConfig argConfig,
                                       int dims,
                                       int labelOperand) {
-        int opcodeIndex = random.nextInt(opcodeIds.size());
-        int opcodeId = opcodeIds.get(opcodeIndex);
-        List<OperandSource> sources = operandSourcesByOpcode.get(opcodeIndex);
+        int opcodeId = opcodes.opcodeAt(opcodes.drawIndex(random));
+        List<OperandSource> sources = Instruction.getOperandSourcesById(opcodeId);
 
         chainBuffer.add(new Molecule(Config.TYPE_CODE, opcodeId & Config.VALUE_MASK));
 
@@ -797,7 +744,7 @@ public class GeneInsertionPlugin implements IBirthHandler {
         }
 
         chainBuffer.add(new Molecule(Config.TYPE_LABEL, copiedLabelValue));
-        if (!appendInstruction(entry.opcodeIds(), entry.operandSourcesByOpcode(), entry.argConfig(), dims,
+        if (!appendInstruction(entry.opcodes(), entry.argConfig(), dims,
                 renamedLabelValue)) {
             LOG.debug("tick={} Organism {} insertion: label entry build failed (missing arg config)",
                     child.getBirthTick(), childId);

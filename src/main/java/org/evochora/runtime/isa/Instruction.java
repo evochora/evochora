@@ -16,7 +16,8 @@ import org.evochora.runtime.Config;
 import org.evochora.runtime.internal.services.ExecutionContext;
 import org.evochora.runtime.isa.instructions.ArithmeticInstruction;
 import org.evochora.runtime.isa.instructions.BitwiseInstruction;
-import org.evochora.runtime.isa.instructions.ConditionalInstruction;
+import org.evochora.runtime.isa.instructions.ConditionalJumpInstruction;
+import org.evochora.runtime.isa.instructions.ConditionalSkipInstruction;
 import org.evochora.runtime.isa.instructions.ControlFlowInstruction;
 import org.evochora.runtime.isa.instructions.DataInstruction;
 import org.evochora.runtime.isa.instructions.EnvironmentInteractionInstruction;
@@ -43,7 +44,7 @@ public abstract class Instruction {
      *
      * @param opcodeId The full opcode ID of the instruction.
      * @param name The name of the instruction.
-     * @param family The instruction family class.
+     * @param family The instruction family: the class that registered the instruction.
      */
     public record InstructionInfo(int opcodeId, String name, Class<? extends Instruction> family) {}
 
@@ -175,6 +176,24 @@ public abstract class Instruction {
      * {@link #FAMILY_BY_ID}.
      */
     private static final IntOpenHashSet NEVER_FALLS_THROUGH = new IntOpenHashSet();
+    /**
+     * The opcodes that can keep the instruction behind them from running: the conditional skips.
+     * Declared and read like {@link #NEVER_FALLS_THROUGH}.
+     */
+    private static final IntOpenHashSet SKIPS_NEXT = new IntOpenHashSet();
+    /**
+     * The opcodes whose label operand names a place execution goes to, as opposed to a place for a
+     * data pointer. Declared and read like {@link #NEVER_FALLS_THROUGH}.
+     */
+    private static final IntOpenHashSet LABEL_IS_JUMP_TARGET = new IntOpenHashSet();
+    /**
+     * The class that holds each family, keyed by family ID. A family is the class that registers its
+     * instructions, so each family belongs to exactly one class and each class to exactly one
+     * family; {@link #registerOp} keeps both directions of that pairing.
+     */
+    private static final Map<Integer, Class<? extends Instruction>> CLASS_BY_FAMILY = new HashMap<>();
+    /** The family each registering class holds; the reverse of {@link #CLASS_BY_FAMILY}. */
+    private static final Map<Class<? extends Instruction>, Integer> FAMILY_BY_CLASS = new HashMap<>();
 
     /**
      * Creates a registry keyed by opcode ID that answers {@code -1} for an opcode it does not hold.
@@ -261,15 +280,7 @@ public abstract class Instruction {
         for (Integer opcodeId : REGISTERED_INSTRUCTIONS_BY_ID.keySet()) {
             Class<? extends Instruction> implClass = REGISTERED_INSTRUCTIONS_BY_ID.get(opcodeId);
             String name = ID_TO_NAME.get(opcodeId);
-            
-            // Find the base "family" class (e.g., ArithmeticInstruction) by traversing up the class hierarchy.
-            Class<? extends Instruction> family = implClass;
-            while (family.getSuperclass() != Instruction.class && family.getSuperclass() != null && Instruction.class.isAssignableFrom(family.getSuperclass())) {
-                @SuppressWarnings("unchecked")
-                Class<? extends Instruction> superClass = (Class<? extends Instruction>) family.getSuperclass();
-                family = superClass;
-            }
-            info.add(new InstructionInfo(opcodeId, name, family));
+            info.add(new InstructionInfo(opcodeId, name, implClass));
         }
         return Collections.unmodifiableList(info);
     }
@@ -519,6 +530,27 @@ public abstract class Instruction {
     }
 
     /**
+     * Moves the instruction pointer to the code behind a label: the cell one step past the LABEL
+     * molecule along the direction of travel. In a bounded world that cell may lie beyond the
+     * edge, when the label stands on the last cell; the jump then fails like a jump that finds
+     * no label, and the pointer advances past the jump instruction as usual.
+     *
+     * @param opName      The jump instruction, for the failure reason.
+     * @param labelIp     The position of the label the jump resolved to.
+     * @param organism    The organism that jumps.
+     * @param environment The environment the code lies in.
+     */
+    protected void jumpTo(String opName, int[] labelIp, Organism organism, Environment environment) {
+        int[] codeIp = organism.getNextInstructionPosition(labelIp, organism.getDv(), environment);
+        if (!environment.exists(codeIp)) {
+            organism.instructionFailed(opName + ": Code cell beyond the edge of the world");
+            return;
+        }
+        organism.setIp(codeIp);
+        organism.setSkipIpAdvance(true);
+    }
+
+    /**
      * The active data pointer of the organism, for an instruction that addresses the cell it
      * stands on or one next to it.
      * <p>
@@ -643,8 +675,9 @@ public abstract class Instruction {
             ArithmeticInstruction.register(ARITHMETIC);
             BitwiseInstruction.register(BITWISE);
             DataInstruction.register(DATA);
-            StackInstruction.register(DATA);  // Stack operations are part of DATA family
-            ConditionalInstruction.register(CONDITIONAL);
+            StackInstruction.register(STACK);
+            ConditionalJumpInstruction.register(CONDITIONAL_JUMP);
+            ConditionalSkipInstruction.register(CONDITIONAL_SKIP);
             ControlFlowInstruction.register(CONTROL);
             EnvironmentInteractionInstruction.register(ENVIRONMENT);
             StateInstruction.register(STATE);
@@ -679,6 +712,10 @@ public abstract class Instruction {
         OPERAND_SOURCES.clear();
         PARALLEL_EXECUTE_SAFE_MAP.clear();
         NEVER_FALLS_THROUGH.clear();
+        SKIPS_NEXT.clear();
+        LABEL_IS_JUMP_TARGET.clear();
+        CLASS_BY_FAMILY.clear();
+        FAMILY_BY_CLASS.clear();
     }
 
     /**
@@ -762,6 +799,9 @@ public abstract class Instruction {
      * another instruction: the IDs are meant to stay stable when the instruction set grows, so that
      * a stable program format can be built on them.
      * <p>
+     * <b>A family is one class.</b> The first registration of a class claims its family; a family
+     * already held by another class, and a second family for a class that holds one, are refused.
+     * <p>
      * <b>Thread safety:</b> Must only be called during single-threaded initialization ({@link #init()}).
      *
      * @param familyClass the instruction class (e.g., ArithmeticInstruction.class)
@@ -774,7 +814,9 @@ public abstract class Instruction {
      * @param parallelExecuteSafe whether this instruction can safely execute in parallel (no shared environment writes)
      * @param sources the operand sources for this instruction
      * @throws IllegalArgumentException if family or index lies outside the opcode layout
-     * @throws IllegalStateException if the opcode ID or the name is already registered
+     * @throws IllegalStateException if the opcode ID or the name is already registered, if the
+     *                               family is held by another class, or if the class holds another
+     *                               family
      */
     protected static void registerOp(Class<? extends Instruction> familyClass, InstructionFactory factory,
                                      int family, int operation, int index, String name,
@@ -789,6 +831,16 @@ public abstract class Instruction {
         if (NAME_TO_ID.containsKey(upperCaseName)) {
             throw new IllegalStateException("Instruction name " + upperCaseName + " is already registered");
         }
+        Class<? extends Instruction> holderOfFamily = CLASS_BY_FAMILY.get(family);
+        if (holderOfFamily != null && holderOfFamily != familyClass) {
+            throw new IllegalStateException("Family " + family + " is held by " + holderOfFamily.getSimpleName()
+                    + ", " + familyClass.getSimpleName() + " cannot register " + name + " under it");
+        }
+        Integer familyOfClass = FAMILY_BY_CLASS.get(familyClass);
+        if (familyOfClass != null && familyOfClass != family) {
+            throw new IllegalStateException(familyClass.getSimpleName() + " holds family " + familyOfClass
+                    + ", it cannot register " + name + " under family " + family);
+        }
 
         List<OperandSource> sourceList = List.of(sources);
         REGISTERED_INSTRUCTIONS_BY_ID.put(fullId, familyClass);
@@ -800,6 +852,8 @@ public abstract class Instruction {
         OPERATION_BY_ID.put(fullId, operation);
         OPERAND_SOURCES.put(fullId, sourceList);
         PARALLEL_EXECUTE_SAFE_MAP.put(fullId, parallelExecuteSafe);
+        CLASS_BY_FAMILY.put(family, familyClass);
+        FAMILY_BY_CLASS.put(familyClass, family);
     }
 
     /**
@@ -1015,11 +1069,48 @@ public abstract class Instruction {
      * @throws IllegalStateException if no instruction is registered under that name
      */
     protected static void declareNeverFallsThrough(String name) {
+        NEVER_FALLS_THROUGH.add(registeredId(name));
+    }
+
+    /**
+     * Declares that a registered instruction can keep the instruction behind it from running, as a
+     * conditional skip does when its condition does not hold.
+     * <p>
+     * <b>Thread safety:</b> Must only be called during single-threaded initialization ({@link #init()}).
+     *
+     * @param name the mnemonic of an instruction that is already registered
+     * @throws IllegalStateException if no instruction is registered under that name
+     */
+    protected static void declareSkipsNext(String name) {
+        SKIPS_NEXT.add(registeredId(name));
+    }
+
+    /**
+     * Declares that the label operand of a registered instruction names a place execution goes to,
+     * as the target of a jump or a call does, and not a place for a data pointer.
+     * <p>
+     * <b>Thread safety:</b> Must only be called during single-threaded initialization ({@link #init()}).
+     *
+     * @param name the mnemonic of an instruction that is already registered
+     * @throws IllegalStateException if no instruction is registered under that name
+     */
+    protected static void declareLabelIsJumpTarget(String name) {
+        LABEL_IS_JUMP_TARGET.add(registeredId(name));
+    }
+
+    /**
+     * Looks up the opcode ID of an instruction a declaration names.
+     *
+     * @param name the mnemonic of an instruction that is already registered, in any letter case
+     * @return the full opcode ID
+     * @throws IllegalStateException if no instruction is registered under that name
+     */
+    private static int registeredId(String name) {
         Integer opcodeId = NAME_TO_ID.get(name.toUpperCase());
         if (opcodeId == null) {
             throw new IllegalStateException("Instruction " + name + " is not registered");
         }
-        NEVER_FALLS_THROUGH.add(opcodeId.intValue());
+        return opcodeId;
     }
 
     /**
@@ -1035,6 +1126,33 @@ public abstract class Instruction {
      */
     public static boolean neverFallsThrough(int opcodeId) {
         return NEVER_FALLS_THROUGH.contains(opcodeId);
+    }
+
+    /**
+     * Tells whether an instruction can keep the instruction behind it from running: a conditional
+     * skip whose condition does not hold passes over the next instruction. Code that reasons about
+     * which cells execution can reach asks this, because the cells behind an instruction that
+     * {@linkplain #neverFallsThrough(int) never falls through} are reached when a skip in front of
+     * it passes over it.
+     *
+     * @param opcodeId The instruction opcode ID (including TYPE_CODE bits).
+     * @return {@code true} if the instruction declared it; {@code false} for every other opcode,
+     *         an unregistered one included.
+     */
+    public static boolean skipsNext(int opcodeId) {
+        return SKIPS_NEXT.contains(opcodeId);
+    }
+
+    /**
+     * Tells whether the label operand of an instruction names a place execution goes to — the
+     * target of a jump or a call — rather than a place for a data pointer.
+     *
+     * @param opcodeId The instruction opcode ID (including TYPE_CODE bits).
+     * @return {@code true} if the instruction declared it; {@code false} for every other opcode,
+     *         an unregistered one included.
+     */
+    public static boolean labelIsJumpTarget(int opcodeId) {
+        return LABEL_IS_JUMP_TARGET.contains(opcodeId);
     }
 
     /**

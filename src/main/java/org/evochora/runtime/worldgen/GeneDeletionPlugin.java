@@ -97,22 +97,6 @@ public class GeneDeletionPlugin implements IBirthHandler {
         }
     }
 
-    /**
-     * Convenience constructor for tests.
-     *
-     * @param randomProvider Source of randomness.
-     * @param deletionRate Probability of deletion per newborn (0.0 to 1.0).
-     * @param countExponent Exponent for duplicate label weighting.
-     * @param minLabelCount How often a label's value must occur in the body for its blocks to be
-     *                      candidates; 1 makes every label a candidate.
-     */
-    GeneDeletionPlugin(IRandomProvider randomProvider, double deletionRate, double countExponent, int minLabelCount) {
-        this.random = randomProvider.asJavaRandom();
-        this.deletionRate = deletionRate;
-        this.countExponent = countExponent;
-        this.minLabelCount = minLabelCount;
-    }
-
     /** {@inheritDoc} */
     @Override
     public void onBirth(Organism child, Environment environment) {

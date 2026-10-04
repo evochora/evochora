@@ -148,7 +148,7 @@ public record Molecule(int type, int value, int marker) {
      * <p>
      * The operations that ask this question are the scalar arithmetic and MIN/MAX paths of
      * {@code ArithmeticInstruction}, the two-operand and shift paths of {@code BitwiseInstruction},
-     * the value comparisons of {@code ConditionalInstruction}, and the marker operand of the
+     * the value comparisons of {@code AbstractConditionInstruction}, and the marker operand of the
      * {@code SMR*} and {@code CMR*} instructions in {@code StateInstruction}.
      * <p>
      * Compatibility does not make the two types equal: the result of an operation keeps the type of

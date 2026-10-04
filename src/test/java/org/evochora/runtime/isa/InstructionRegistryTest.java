@@ -8,7 +8,8 @@ import java.util.Set;
 
 import org.evochora.runtime.isa.instructions.ArithmeticInstruction;
 import org.evochora.runtime.isa.instructions.BitwiseInstruction;
-import org.evochora.runtime.isa.instructions.ConditionalInstruction;
+import org.evochora.runtime.isa.instructions.ConditionalJumpInstruction;
+import org.evochora.runtime.isa.instructions.ConditionalSkipInstruction;
 import org.evochora.runtime.isa.instructions.ControlFlowInstruction;
 import org.evochora.runtime.isa.instructions.DataInstruction;
 import org.evochora.runtime.isa.instructions.EnvironmentInteractionInstruction;
@@ -52,8 +53,9 @@ class InstructionRegistryTest {
             Map.entry(ArithmeticInstruction.class, Family.ARITHMETIC),
             Map.entry(BitwiseInstruction.class, Family.BITWISE),
             Map.entry(DataInstruction.class, Family.DATA),
-            Map.entry(StackInstruction.class, Family.DATA),
-            Map.entry(ConditionalInstruction.class, Family.CONDITIONAL),
+            Map.entry(StackInstruction.class, Family.STACK),
+            Map.entry(ConditionalSkipInstruction.class, Family.CONDITIONAL_SKIP),
+            Map.entry(ConditionalJumpInstruction.class, Family.CONDITIONAL_JUMP),
             Map.entry(ControlFlowInstruction.class, Family.CONTROL),
             Map.entry(EnvironmentInteractionInstruction.class, Family.ENVIRONMENT),
             Map.entry(StateInstruction.class, Family.STATE),
@@ -132,7 +134,7 @@ class InstructionRegistryTest {
             "ADDS, 1, 0",
             "SUBI, 1, 1",
             "ANDR, 2, 0",
-            "DUP, 3, 3",
+            "DUP, 10, 0",
             "GTI, 4, 3",
             "PGTI, 4, 20",
             "JMPI, 5, 0",
@@ -176,6 +178,59 @@ class InstructionRegistryTest {
         assertThat(Instruction.getOperationById(secondId)).isEqualTo(Instruction.getOperationById(firstId));
     }
 
+    // ---- Conditional jumps ----
+
+    /** The name of the conditional jump twin of a conditional skip, by the naming rule. */
+    private static String jumpTwinOf(String skip) {
+        if (skip.startsWith("I")) {
+            return "J" + skip.substring(1);
+        }
+        if (skip.startsWith("P")) {
+            return "Q" + skip.substring(1);
+        }
+        for (String[] rule : new String[][]{{"LET", "JLE"}, {"GET", "JGE"}, {"LT", "JLT"}, {"GT", "JGT"}}) {
+            if (skip.startsWith(rule[0])) {
+                return rule[1] + skip.substring(rule[0].length());
+            }
+        }
+        throw new AssertionError("no naming rule for " + skip);
+    }
+
+    /**
+     * Every conditional skip has its conditional jump twin: named by the rule, at most four
+     * characters, with the operation and the index of the skip in the jump family and the skip's
+     * operands followed by a label. And there is no jump without a skip.
+     */
+    @Test
+    void everyConditionalSkipHasItsJumpTwin() {
+        int skips = 0;
+        int jumps = 0;
+        for (Instruction.InstructionInfo info : Instruction.getInstructionSetInfo()) {
+            if (info.family() == ConditionalJumpInstruction.class) {
+                jumps++;
+            }
+            if (info.family() != ConditionalSkipInstruction.class) {
+                continue;
+            }
+            skips++;
+            int skip = info.opcodeId();
+            String twinName = jumpTwinOf(info.name());
+            Integer twin = Instruction.getInstructionIdByName(twinName);
+            assertThat(twin).as("jump twin %s of %s", twinName, info.name()).isNotNull();
+            assertThat(twinName.length()).as("length of %s", twinName).isLessThanOrEqualTo(4);
+            assertThat(Instruction.getFamilyById(twin)).isEqualTo(Family.CONDITIONAL_JUMP);
+            assertThat(Instruction.getOperationById(twin)).isEqualTo(Instruction.getOperationById(skip));
+            assertThat(twin >> FAMILY_BITS).as("index of %s", twinName).isEqualTo(skip >> FAMILY_BITS);
+            List<Instruction.OperandSource> expected = new java.util.ArrayList<>(Instruction.getOperandSourcesById(skip));
+            expected.add(Instruction.OperandSource.LABEL);
+            assertThat(Instruction.getOperandSourcesById(twin)).as("operands of %s", twinName).isEqualTo(expected);
+            assertThat(Instruction.labelIsJumpTarget(twin)).isTrue();
+            assertThat(Instruction.skipsNext(twin)).isFalse();
+        }
+        assertThat(skips).isEqualTo(76);
+        assertThat(jumps).isEqualTo(skips);
+    }
+
     // ---- Registration validation ----
 
     @Test
@@ -215,6 +270,35 @@ class InstructionRegistryTest {
 
         assertThat(Instruction.getInstructionIdByName("TESTOP")).as("nothing was registered").isNull();
         assertThat(Instruction.getInstructionNameById(addr)).isEqualTo("ADDR");
+    }
+
+    /**
+     * A family is one class: a class may not register under a family another class holds, and the
+     * refusal names the holder and leaves the registry as it stands.
+     */
+    @Test
+    void aFamilyHeldByAnotherClassIsRejected() {
+        assertThatThrownBy(() -> Instruction.registerOp(
+                StackInstruction.class, StackInstruction::new,
+                Family.ARITHMETIC, 63, MAX_INDEX, "TESTOP", true))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("ArithmeticInstruction");
+
+        assertThat(Instruction.getInstructionIdByName("TESTOP")).as("nothing was registered").isNull();
+    }
+
+    /**
+     * A class holds one family: a registration of the class under a second family is refused.
+     */
+    @Test
+    void aSecondFamilyForAClassIsRejected() {
+        assertThatThrownBy(() -> Instruction.registerOp(
+                ArithmeticInstruction.class, ArithmeticInstruction::new,
+                MAX_FAMILY, 0, 0, "TESTOP", true))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("ArithmeticInstruction");
+
+        assertThat(Instruction.getInstructionIdByName("TESTOP")).as("nothing was registered").isNull();
     }
 
     /**

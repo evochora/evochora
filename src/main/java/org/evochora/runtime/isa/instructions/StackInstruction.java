@@ -9,8 +9,6 @@ import java.util.Deque;
 
 /**
  * Handles stack manipulation instructions like DUP, SWAP, DROP, and ROT.
- * <p>
- * Note: These are part of the DATA family but handled by a separate class for cleaner implementation.
  */
 public class StackInstruction extends Instruction {
 
@@ -18,22 +16,19 @@ public class StackInstruction extends Instruction {
 
     /**
      * Registers all stack manipulation instructions with the instruction registry.
-     * <p>
-     * Note: Stack operations share the DATA family ID, continuing both the operation numbers and
-     * the indices within the family from DataInstruction.
      *
-     * @param f the family ID for this instruction family (should be DATA family)
+     * @param f the family ID for this instruction family
      */
     public static void register(int f) {
         family = f;
-        // Operation 3: DUP (duplicate top of stack)
-        reg(3, 8, "DUP");
-        // Operation 4: SWAP (swap top two stack values)
-        reg(4, 9, "SWAP");
-        // Operation 5: DROP (discard top of stack)
-        reg(5, 10, "DROP");
-        // Operation 6: ROT (stack rotate)
-        reg(6, 11, "ROT");
+        // Operation 0: DUP (duplicate top of stack)
+        reg(0, 0, "DUP");
+        // Operation 1: SWAP (swap top two stack values)
+        reg(1, 1, "SWAP");
+        // Operation 2: DROP (discard top of stack)
+        reg(2, 2, "DROP");
+        // Operation 3: ROT (stack rotate)
+        reg(3, 3, "ROT");
     }
 
     private static void reg(int op, int index, String name, OperandSource... sources) {

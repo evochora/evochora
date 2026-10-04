@@ -87,13 +87,13 @@ final class ResumeNeutralityHarness {
               { "className": "org.evochora.runtime.worldgen.GeneInsertionPlugin",
                 "options": { "mutationRate": %1$s,
                              "entries": [
-                               { "instructions": "*", "weight": 3,
+                               { "instructionWeights": { "default": 1, "families": [] }, "weight": 3,
                                  "args": { "REGISTER": { "range": [0, 7] },
                                            "LOCATION_REGISTER": { "range": [0, 3] },
                                            "DATA": { "min": 0, "max": 255 },
                                            "LABELREF": "existing",
                                            "VECTOR": "unit" } },
-                               { "type": "label", "weight": 1, "instructions": "*",
+                               { "type": "label", "weight": 1, "instructionWeights": { "default": 1, "families": [] },
                                  "args": { "REGISTER": { "range": [0, 7] },
                                            "LOCATION_REGISTER": { "range": [0, 3] },
                                            "DATA": { "min": 0, "max": 255 },
@@ -108,7 +108,8 @@ final class ResumeNeutralityHarness {
                              "DATA": { "weight": 1.0, "exponent": 0.7 },
                              "LABEL": { "weight": 1.0, "bitflips": 1 },
                              "LABELREF": { "weight": 1.0, "bitflips": 1 },
-                             "operands": { "scalar": 1.0, "vector": 1.0 } } }
+                             "operands": { "scalar": 1.0, "vector": 1.0 },
+                             "instructionWeights": { "default": 1, "families": [] } } }
             ]
             """.formatted(mutationRate);
     }

@@ -111,6 +111,13 @@ class GeneDeletionPluginTest {
         environment.setMolecule(new Molecule(Config.TYPE_STRUCTURE, 100), child.getId(), new int[]{x, y});
     }
 
+    /** Builds the deletion plugin from its configuration. */
+    private static GeneDeletionPlugin deletion(IRandomProvider rng, double deletionRate, double countExponent,
+                                               int minLabelCount) {
+        return new GeneDeletionPlugin(rng, ConfigFactory.parseMap(Map.of(
+                "deletionRate", deletionRate, "countExponent", countExponent, "minLabelCount", minLabelCount)));
+    }
+
     @Test
     void deletesFromLabelToNextLabel() {
         // Layout: [LABEL_A @ x=2] [CODE @ x=3] [CODE @ x=4] [DATA @ x=5] [LABEL_B @ x=8]
@@ -122,7 +129,7 @@ class GeneDeletionPluginTest {
         placeLabel(8, 5, LABEL_HASH_B);
 
         IRandomProvider rng = new SeededRandomProvider(42L);
-        GeneDeletionPlugin plugin = new GeneDeletionPlugin(rng, 1.0, 0.0, EVERY_LABEL); // exponent=0 → uniform
+        GeneDeletionPlugin plugin = deletion(rng, 1.0, 0.0, EVERY_LABEL); // exponent=0 → uniform
         plugin.delete(child, environment);
 
         // One of the labels was selected and its block deleted
@@ -157,7 +164,7 @@ class GeneDeletionPluginTest {
         placeStructure(10, 5);
 
         IRandomProvider rng = new SeededRandomProvider(42L);
-        GeneDeletionPlugin plugin = new GeneDeletionPlugin(rng, 1.0, 2.0, EVERY_LABEL);
+        GeneDeletionPlugin plugin = deletion(rng, 1.0, 2.0, EVERY_LABEL);
         plugin.delete(child, environment);
 
         // Label and all code should be deleted
@@ -178,7 +185,7 @@ class GeneDeletionPluginTest {
         environment.setMolecule(new Molecule(Config.TYPE_CODE, 42), 99, new int[]{5, 5});
 
         IRandomProvider rng = new SeededRandomProvider(42L);
-        GeneDeletionPlugin plugin = new GeneDeletionPlugin(rng, 1.0, 2.0, EVERY_LABEL);
+        GeneDeletionPlugin plugin = deletion(rng, 1.0, 2.0, EVERY_LABEL);
         plugin.delete(child, environment);
 
         // Label and code should be deleted
@@ -196,7 +203,7 @@ class GeneDeletionPluginTest {
         placeCode(4, 5);
 
         IRandomProvider rng = new SeededRandomProvider(42L);
-        GeneDeletionPlugin plugin = new GeneDeletionPlugin(rng, 1.0, 2.0, EVERY_LABEL);
+        GeneDeletionPlugin plugin = deletion(rng, 1.0, 2.0, EVERY_LABEL);
         plugin.delete(child, environment);
 
         // Code should remain untouched
@@ -212,7 +219,7 @@ class GeneDeletionPluginTest {
         placeCode(4, 5);
 
         IRandomProvider rng = new SeededRandomProvider(42L);
-        GeneDeletionPlugin plugin = new GeneDeletionPlugin(rng, 0.0, 2.0, EVERY_LABEL);
+        GeneDeletionPlugin plugin = deletion(rng, 0.0, 2.0, EVERY_LABEL);
         plugin.onBirth(child, environment);
 
         // Everything should remain
@@ -239,7 +246,7 @@ class GeneDeletionPluginTest {
             environment.setMolecule(new Molecule(Config.TYPE_LABEL, LABEL_HASH_B), child.getId(), new int[]{0, 8});
 
             IRandomProvider rng = new SeededRandomProvider(seed);
-            GeneDeletionPlugin plugin = new GeneDeletionPlugin(rng, 1.0, 2.0, EVERY_LABEL);
+            GeneDeletionPlugin plugin = deletion(rng, 1.0, 2.0, EVERY_LABEL);
             plugin.delete(child, environment);
 
             // Check which label was deleted
@@ -266,7 +273,7 @@ class GeneDeletionPluginTest {
         placeStructure(5, 5); // structure in the path
 
         IRandomProvider rng = new SeededRandomProvider(42L);
-        GeneDeletionPlugin plugin = new GeneDeletionPlugin(rng, 1.0, 2.0, EVERY_LABEL);
+        GeneDeletionPlugin plugin = deletion(rng, 1.0, 2.0, EVERY_LABEL);
         plugin.delete(child, environment);
 
         // Structure should be preserved (deletion stops before it)
@@ -282,7 +289,7 @@ class GeneDeletionPluginTest {
         placeStructure(8, 5);
 
         IRandomProvider rng = new SeededRandomProvider(42L);
-        GeneDeletionPlugin plugin = new GeneDeletionPlugin(rng, 1.0, 2.0, EVERY_LABEL);
+        GeneDeletionPlugin plugin = deletion(rng, 1.0, 2.0, EVERY_LABEL);
         plugin.delete(child, environment);
 
         // All deleted cells should have owner=0
@@ -303,7 +310,7 @@ class GeneDeletionPluginTest {
         placeStructure(12, 5);
 
         IRandomProvider rng = new SeededRandomProvider(42L);
-        GeneDeletionPlugin plugin = new GeneDeletionPlugin(rng, 1.0, 2.0, EVERY_LABEL);
+        GeneDeletionPlugin plugin = deletion(rng, 1.0, 2.0, EVERY_LABEL);
         plugin.delete(child, environment);
 
         // All owned molecules between label and structure should be deleted
@@ -323,7 +330,7 @@ class GeneDeletionPluginTest {
         placeStructure(8, 5);
 
         IRandomProvider rng = new SeededRandomProvider(42L);
-        GeneDeletionPlugin plugin = new GeneDeletionPlugin(rng, 1.0, 2.0, EVERY_LABEL);
+        GeneDeletionPlugin plugin = deletion(rng, 1.0, 2.0, EVERY_LABEL);
         plugin.delete(child, environment);
 
         // Energy molecule should be deleted too
@@ -351,7 +358,7 @@ class GeneDeletionPluginTest {
         int dataInt = environment.getMolecule(5, 5).toInt();
 
         IRandomProvider rng = new SeededRandomProvider(42L);
-        GeneDeletionPlugin plugin = new GeneDeletionPlugin(rng, 1.0, 2.0, EVERY_LABEL);
+        GeneDeletionPlugin plugin = deletion(rng, 1.0, 2.0, EVERY_LABEL);
         plugin.delete(child, environment);
 
         List<MutationRecord> records = child.getBirthMutations();
@@ -381,7 +388,7 @@ class GeneDeletionPluginTest {
         placeLabel(0, 6, LABEL_HASH_A);
 
         IRandomProvider rng = new SeededRandomProvider(42L);
-        GeneDeletionPlugin plugin = new GeneDeletionPlugin(rng, 1.0, 2.0, EVERY_LABEL);
+        GeneDeletionPlugin plugin = deletion(rng, 1.0, 2.0, EVERY_LABEL);
         plugin.delete(child, environment);
 
         List<MutationRecord> records = child.getBirthMutations();
@@ -396,7 +403,7 @@ class GeneDeletionPluginTest {
         placeCode(3, 5);
 
         IRandomProvider rng = new SeededRandomProvider(42L);
-        GeneDeletionPlugin plugin = new GeneDeletionPlugin(rng, 1.0, 2.0, EVERY_LABEL);
+        GeneDeletionPlugin plugin = deletion(rng, 1.0, 2.0, EVERY_LABEL);
         plugin.delete(child, environment);
 
         assertThat(child.getBirthMutations()).isNull();
@@ -405,7 +412,7 @@ class GeneDeletionPluginTest {
     @Test
     void isStateless() {
         IRandomProvider rng = new SeededRandomProvider(42L);
-        GeneDeletionPlugin plugin = new GeneDeletionPlugin(rng, 0.02, 2.0, EVERY_LABEL);
+        GeneDeletionPlugin plugin = deletion(rng, 0.02, 2.0, EVERY_LABEL);
 
         byte[] state = plugin.saveState();
         assertThat(state).isEmpty();
@@ -447,7 +454,7 @@ class GeneDeletionPluginTest {
             placeThreeUniqueLabelsAndOnePair();
 
             IRandomProvider rng = new SeededRandomProvider(seed);
-            GeneDeletionPlugin plugin = new GeneDeletionPlugin(rng, 1.0, 2.0, 2);
+            GeneDeletionPlugin plugin = deletion(rng, 1.0, 2.0, 2);
             plugin.delete(child, environment);
 
             assertThat(aUniqueLabelIsGone())
@@ -470,7 +477,7 @@ class GeneDeletionPluginTest {
             placeThreeUniqueLabelsAndOnePair();
 
             IRandomProvider rng = new SeededRandomProvider(seed);
-            GeneDeletionPlugin plugin = new GeneDeletionPlugin(rng, 1.0, 2.0, EVERY_LABEL);
+            GeneDeletionPlugin plugin = deletion(rng, 1.0, 2.0, EVERY_LABEL);
             plugin.delete(child, environment);
 
             uniqueBlockTaken |= aUniqueLabelIsGone();
@@ -490,7 +497,7 @@ class GeneDeletionPluginTest {
         placeCode(1, 6);
 
         IRandomProvider rng = new SeededRandomProvider(42L);
-        GeneDeletionPlugin plugin = new GeneDeletionPlugin(rng, 1.0, 2.0, 2);
+        GeneDeletionPlugin plugin = deletion(rng, 1.0, 2.0, 2);
         plugin.delete(child, environment);
 
         for (int y = 2; y <= 6; y += 2) {
@@ -508,7 +515,7 @@ class GeneDeletionPluginTest {
         placeCode(1, 10);
 
         IRandomProvider rng = new SeededRandomProvider(42L);
-        GeneDeletionPlugin plugin = new GeneDeletionPlugin(rng, 1.0, 2.0, 3);
+        GeneDeletionPlugin plugin = deletion(rng, 1.0, 2.0, 3);
         plugin.delete(child, environment);
 
         for (int y = 8; y <= 10; y += 2) {

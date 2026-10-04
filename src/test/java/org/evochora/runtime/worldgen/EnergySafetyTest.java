@@ -1,5 +1,7 @@
 package org.evochora.runtime.worldgen;
 
+import java.util.Map;
+import com.typesafe.config.ConfigFactory;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.runtime.label.HammingLabelMatchingStrategy;
 import org.evochora.runtime.Config;
@@ -26,6 +28,12 @@ public class EnergySafetyTest {
      * configured safety radius of an already owned cell.
      * This is a unit test for world generation logic.
      */
+    /** Builds a solar radiation creator from its configuration, with one execution per tick. */
+    private static SolarRadiationCreator solar(double probability, int amount, int safetyRadius) {
+        return new SolarRadiationCreator(new SeededRandomProvider(0L), ConfigFactory.parseMap(Map.of(
+                "probability", probability, "amount", amount, "safetyRadius", safetyRadius, "executionsPerTick", 1)));
+    }
+
     @Test
     @Tag("unit")
     void solar_does_not_place_within_safety_radius_of_owned_cells() {
@@ -35,7 +43,7 @@ public class EnergySafetyTest {
         env.setOwnerId(99, 2, 2);
 
         // High probability, radius 2
-        SolarRadiationCreator solar = new SolarRadiationCreator(1.0, 11, 2);
+        SolarRadiationCreator solar = solar(1.0, 11, 2);
 
         // Create mock Simulation
         Simulation sim = mock(Simulation.class);

@@ -6,7 +6,7 @@ import org.evochora.runtime.Config;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.isa.InstructionSignature;
 import org.evochora.runtime.isa.RegisterBank;
-import org.evochora.runtime.isa.instructions.ConditionalInstruction;
+import org.evochora.runtime.isa.instructions.ConditionalSkipInstruction;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.MoleculeTypeRegistry;
 
@@ -54,8 +54,8 @@ public final class RuntimeInstructionSetAdapter implements IInstructionSet {
      * {@inheritDoc}
      */
     @Override
-    public Optional<String> negatedConditional(String opcode) {
-        return ConditionalInstruction.negationOf(opcode);
+    public Optional<String> negatedConditionalSkip(String opcode) {
+        return ConditionalSkipInstruction.negationOf(opcode);
     }
 
     /**

@@ -74,7 +74,7 @@ public class ProcedureMarshallingRule implements IRewriteRule {
             // Check for conditional RET
             if (i + 1 < body.size() && currentItem instanceof IrInstruction conditional
                     && body.get(i + 1) instanceof IrInstruction ret && "RET".equals(ret.opcode())) {
-                Optional<String> negatedOpcode = isa.negatedConditional(conditional.opcode());
+                Optional<String> negatedOpcode = isa.negatedConditionalSkip(conditional.opcode());
                 if (negatedOpcode.isPresent()) {
                     handleConditionalRet(out, conditional, negatedOpcode.get(), ret, refParams, lrefParams, safeRetCounter);
                     i += 2;

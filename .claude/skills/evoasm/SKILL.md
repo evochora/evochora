@@ -36,9 +36,11 @@ the simulation's constraints.
 These are properties of the machine, verified in the runtime; every one of them has cost a
 session an iteration.
 
-- A conditional instruction skips the one instruction behind it when its condition is not met,
-  and the skipped instruction costs no tick. Put a `JMPI` behind a conditional when more than one
-  instruction depends on it.
+- A conditional skip (`IF*`, `IN*`, `LT*`, ...) skips the one instruction behind it when its
+  condition is not met, and the skipped instruction costs no tick. A conditional jump (`JF*`,
+  `JN*`, `JLT*`, ..., `Q*` for the probabilistic ones) jumps to its label when its condition is
+  met and runs on otherwise; it fails like `JMPI` when it finds no label. Where more than one
+  instruction depends on a condition, use a conditional jump, or a `JMPI` behind a skip.
 - Equality (`IF*`, `IN*`) compares the molecule, type and value: `CODE:0` is unequal to
   `STRUCTURE:0`. Order (`GT*`, `LT*`, `GET*`, `LET*`, `PGT*`, ...) compares the numbers alone,
   whatever the types: `ENERGY:5` is greater than `DATA:3`. A test that must be sure of the type
@@ -157,9 +159,8 @@ or the documentation would have helped in this session, concrete and from this s
   `STRUCTURE:5` passes as greater than zero. `INTI %TMP ENERGY:0` asks the type.
 - Four calls that copy a frame beside each edge resolved the same corner label to a copy's
   corner once copies existed; the driver resolves the corners into location registers first.
-- `cond_met` compares addresses, not conditions: it is 1 only when the next step began at the
-  cell right behind the conditional. `NOP` padding sits there in every program written to evolve,
-  so a padded conditional reports 0 even where its condition held. Read the decision off the next
-  step row instead, whose `addr` and `src_label` say where execution went.
+- `cond_met` is empty for a conditional that failed, where `fail_reason` tells why, and for a
+  conditional jump with a label between it and the next instruction, whose decision the next step
+  cannot show.
 - Trace outputs belong in the session's scratchpad; the recorder's own README says what it
   writes and what it removes.
