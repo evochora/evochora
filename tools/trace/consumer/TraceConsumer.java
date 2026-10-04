@@ -38,6 +38,8 @@ import org.evochora.datapipeline.services.AbstractService;
 import org.evochora.datapipeline.utils.delta.MutableCellState;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.isa.instructions.ConditionalJumpInstruction;
+import org.evochora.runtime.isa.instructions.ConditionalSkipInstruction;
 import org.evochora.runtime.isa.RegisterBank;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.runtime.model.Molecule;
@@ -539,9 +541,10 @@ public final class TraceConsumer extends AbstractService {
             args = resolvedArguments(o, opcodeId, program, dims, previous);
             // A failed step says nothing about its condition; its failure stands in its own columns.
             if (!o.getInstructionFailed()) {
-                if (Instruction.skipsNext(opcodeId)) {
+                Class<? extends Instruction> kindOfInstruction = Instruction.getInstructionClassById(opcodeId);
+                if (kindOfInstruction == ConditionalSkipInstruction.class) {
                     kind = ConditionalKind.SKIP;
-                } else if (Instruction.jumpsConditionally(opcodeId)) {
+                } else if (kindOfInstruction == ConditionalJumpInstruction.class) {
                     kind = ConditionalKind.JUMP;
                 }
             }

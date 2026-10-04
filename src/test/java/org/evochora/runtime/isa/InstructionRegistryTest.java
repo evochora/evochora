@@ -224,7 +224,6 @@ class InstructionRegistryTest {
             List<Instruction.OperandSource> expected = new java.util.ArrayList<>(Instruction.getOperandSourcesById(skip));
             expected.add(Instruction.OperandSource.LABEL);
             assertThat(Instruction.getOperandSourcesById(twin)).as("operands of %s", twinName).isEqualTo(expected);
-            assertThat(Instruction.jumpsConditionally(twin)).isTrue();
             assertThat(Instruction.labelIsJumpTarget(twin)).isTrue();
             assertThat(Instruction.skipsNext(twin)).isFalse();
         }

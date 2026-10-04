@@ -93,10 +93,8 @@ public class ConditionalJumpInstruction extends AbstractConditionInstruction {
                                 String name, String negatedName, OperandSource... sources) {
         regPair(ConditionalJumpInstruction.class, ConditionalJumpInstruction::new, family, condition,
                 op, negatedOp, index, negatedIndex, name, negatedName, sources);
-        for (String opcode : new String[] {name, negatedName}) {
-            declareJumpsConditionally(opcode);
-            declareLabelIsJumpTarget(opcode);
-        }
+        declareLabelIsJumpTarget(name);
+        declareLabelIsJumpTarget(negatedName);
     }
 
     /**

@@ -182,11 +182,6 @@ public abstract class Instruction {
      */
     private static final IntOpenHashSet SKIPS_NEXT = new IntOpenHashSet();
     /**
-     * The opcodes that either run on with the cell behind them or jump to their label, depending on
-     * a condition: the conditional jumps. Declared and read like {@link #NEVER_FALLS_THROUGH}.
-     */
-    private static final IntOpenHashSet JUMPS_CONDITIONALLY = new IntOpenHashSet();
-    /**
      * The opcodes whose label operand names a place execution goes to, as opposed to a place for a
      * data pointer. Declared and read like {@link #NEVER_FALLS_THROUGH}.
      */
@@ -718,7 +713,6 @@ public abstract class Instruction {
         PARALLEL_EXECUTE_SAFE_MAP.clear();
         NEVER_FALLS_THROUGH.clear();
         SKIPS_NEXT.clear();
-        JUMPS_CONDITIONALLY.clear();
         LABEL_IS_JUMP_TARGET.clear();
         CLASS_BY_FAMILY.clear();
         FAMILY_BY_CLASS.clear();
@@ -1092,19 +1086,6 @@ public abstract class Instruction {
     }
 
     /**
-     * Declares that a registered instruction either runs on with the cell behind it or jumps to its
-     * label, depending on a condition.
-     * <p>
-     * <b>Thread safety:</b> Must only be called during single-threaded initialization ({@link #init()}).
-     *
-     * @param name the mnemonic of an instruction that is already registered
-     * @throws IllegalStateException if no instruction is registered under that name
-     */
-    protected static void declareJumpsConditionally(String name) {
-        JUMPS_CONDITIONALLY.add(registeredId(name));
-    }
-
-    /**
      * Declares that the label operand of a registered instruction names a place execution goes to,
      * as the target of a jump or a call does, and not a place for a data pointer.
      * <p>
@@ -1160,18 +1141,6 @@ public abstract class Instruction {
      */
     public static boolean skipsNext(int opcodeId) {
         return SKIPS_NEXT.contains(opcodeId);
-    }
-
-    /**
-     * Tells whether an instruction either runs on with the cell behind it or jumps to its label,
-     * depending on a condition: a conditional jump.
-     *
-     * @param opcodeId The instruction opcode ID (including TYPE_CODE bits).
-     * @return {@code true} if the instruction declared it; {@code false} for every other opcode,
-     *         an unregistered one included.
-     */
-    public static boolean jumpsConditionally(int opcodeId) {
-        return JUMPS_CONDITIONALLY.contains(opcodeId);
     }
 
     /**
