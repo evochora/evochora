@@ -138,9 +138,7 @@ public abstract class AbstractConditionInstruction extends Instruction {
             return;
         }
         if (operands.size() != condition.operandCount() + operandsAfterCondition()) {
-            organism.instructionFailed(condition.operandCount() == 2
-                    ? "Invalid operand count for conditional operation."
-                    : "Invalid operand count for " + getName());
+            organism.instructionFailed("Invalid operand count for " + getName());
             return;
         }
         boolean holds = holds(condition, operands, organism, environment);
