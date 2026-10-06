@@ -54,7 +54,7 @@ concept in AGENTS.md; they are listed here because they are where the coupling l
    `importdir` and `source` set the placement of the tokens they inline. The semantic analyzer
    wires the placements together before any handler runs; the symbol table keeps the names of
    two placements of one file apart. The symbol table resolves qualified names through imports,
-   requirements, `USING` bindings and the `EXPORT` flag. `ModuleScope` holds six maps, all of
+   requirements, `USING` bindings and the `EXPORT` flag. `ModuleScope` holds four maps, all of
    which belong to `importdir` and `require`. The parser knows the `EXPORT` keyword and asks
    each statement handler whether it accepts it. The directives are features; the system behind
    them is core.
@@ -66,7 +66,7 @@ concept in AGENTS.md; they are listed here because they are where the coupling l
    rule.
 3. **Registers and procedure parameters.** The lexer recognises and validates register tokens
    and knows that one bank is reserved for procedure parameters. The token-map generator has
-   its own branches for identifiers and register aliases. `LinkingContext` has a field for
+   its own branch for identifiers. `LinkingContext` has a field for
    call-site bindings, `EmissionContext` fields for procedure parameter names and register
    aliases, and `ProgramArtifact` carries all of them as named fields.
 
