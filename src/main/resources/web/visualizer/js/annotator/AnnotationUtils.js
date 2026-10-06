@@ -18,6 +18,12 @@ export const REGISTER_BANKS = [
 export const BANK_BY_NAME = Object.fromEntries(REGISTER_BANKS.map(b => [b.name, b]));
 
 /**
+ * The scope the compiler records for a token of the module level, outside every procedure
+ * (TokenInfo.GLOBAL_SCOPE on the Java side). Any other scope is the path of a procedure.
+ */
+export const GLOBAL_SCOPE = 'global';
+
+/**
  * A utility class providing static helper functions specifically for the annotation subsystem.
  * It encapsulates logic for resolving artifact data (e.g., registers, labels) that is
  * required by multiple annotation handlers.
