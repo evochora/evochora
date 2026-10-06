@@ -31,32 +31,28 @@ class ImportPatternTest {
 
     @Test
     @Tag("unit")
-    void aPlainImportCarriesNoExportMarker() {
+    void aPlainImportIsRecognised() {
         Matcher matcher = match(".IMPORT \"modules/math.evo\" AS MATHLIB");
 
-        assertThat(matcher.group(1)).isNull();
-        assertThat(matcher.group(2)).isEqualTo("modules/math.evo");
+        assertThat(matcher.group(1)).isEqualTo("modules/math.evo");
     }
 
     @Test
     @Tag("unit")
-    void theExportPrefixIsCaptured() {
+    void anExportedImportIsRecognised() {
         Matcher matcher = match("EXPORT .IMPORT \"modules/math.evo\" AS MATHLIB");
 
-        assertThat(matcher.group(1)).isNotNull();
-        assertThat(matcher.group(2)).isEqualTo("modules/math.evo");
+        assertThat(matcher.group(1)).isEqualTo("modules/math.evo");
     }
 
     @Test
     @Tag("unit")
-    void usingClausesDoNotHideTheMarkerOrThePath() {
+    void usingClausesDoNotHideThePath() {
         Matcher plain = match(".IMPORT \"m.evo\" AS NAV USING MATHLIB AS ARITH");
-        assertThat(plain.group(1)).isNull();
-        assertThat(plain.group(2)).isEqualTo("m.evo");
+        assertThat(plain.group(1)).isEqualTo("m.evo");
 
         Matcher exported = match("EXPORT .IMPORT \"m.evo\" AS NAV USING MATHLIB AS ARITH USING B AS C");
-        assertThat(exported.group(1)).isNotNull();
-        assertThat(exported.group(2)).isEqualTo("m.evo");
+        assertThat(exported.group(1)).isEqualTo("m.evo");
     }
 
     @Test
@@ -64,8 +60,7 @@ class ImportPatternTest {
     void theDirectiveIsRecognisedInLowerCase() {
         Matcher matcher = match("export .import \"m.evo\" as nav");
 
-        assertThat(matcher.group(1)).isNotNull();
-        assertThat(matcher.group(2)).isEqualTo("m.evo");
+        assertThat(matcher.group(1)).isEqualTo("m.evo");
     }
 
     @Test
@@ -73,7 +68,7 @@ class ImportPatternTest {
     void aDirectiveWithoutTheAliasClauseIsStillRecognised() {
         Matcher matcher = match(".IMPORT \"m.evo\"");
 
-        assertThat(matcher.group(2)).isEqualTo("m.evo");
+        assertThat(matcher.group(1)).isEqualTo("m.evo");
     }
 
     @Test
@@ -81,7 +76,7 @@ class ImportPatternTest {
     void aDirectiveWithAMalformedUsingClauseIsStillRecognised() {
         Matcher matcher = match(".IMPORT \"m.evo\" AS NAV USING X");
 
-        assertThat(matcher.group(2)).isEqualTo("m.evo");
+        assertThat(matcher.group(1)).isEqualTo("m.evo");
     }
 
     @Test

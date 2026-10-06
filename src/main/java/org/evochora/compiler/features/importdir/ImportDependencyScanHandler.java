@@ -23,7 +23,7 @@ public class ImportDependencyScanHandler implements IDependencyScanHandler {
     // The same syntax is described a second time by the parser handler for this directive;
     // whatever changes in the clause pattern has to change there as well.
     private static final Pattern IMPORT_PATTERN = Pattern.compile(
-            "(?i)^(EXPORT\\s+)?\\.IMPORT\\s+\"([^\"]+)\"(.*)$");
+            "(?i)^(?:EXPORT\\s+)?\\.IMPORT\\s+\"([^\"]+)\"(.*)$");
     private static final Pattern CLAUSES_PATTERN = Pattern.compile(
             "(?i)^\\s+AS\\s+(\\w+)((?:\\s+USING\\s+\\w+\\s+AS\\s+\\w+)*)\\s*$");
     // The alias as the preprocessor reads it, which places the module even where the rest of the
@@ -39,7 +39,7 @@ public class ImportDependencyScanHandler implements IDependencyScanHandler {
 
     @Override
     public void handleMatch(Matcher matcher, IDependencyScanContext ctx) {
-        String path = matcher.group(2);
+        String path = matcher.group(1);
 
         String resolvedPath;
         try {
@@ -51,12 +51,12 @@ public class ImportDependencyScanHandler implements IDependencyScanHandler {
 
         // The placement's chain is formed as the preprocessor forms it: the importing placement's
         // chain followed by the alias.
-        Matcher alias = ALIAS_PATTERN.matcher(matcher.group(3));
+        Matcher alias = ALIAS_PATTERN.matcher(matcher.group(2));
         String aliasChain = alias.find() ? childChain(ctx.placementChain(), alias.group(1)) : ctx.placementChain();
 
         // A directive without well-formed clauses names no dependency; its tokens are still
         // needed so the phase that reads the clauses can report what is wrong with them.
-        Matcher clauses = CLAUSES_PATTERN.matcher(matcher.group(3));
+        Matcher clauses = CLAUSES_PATTERN.matcher(matcher.group(2));
         if (clauses.matches()) {
             List<ImportDependencyInfo.UsingDecl> usings = new ArrayList<>();
             Matcher usingMatcher = USING_PATTERN.matcher(clauses.group(2));
