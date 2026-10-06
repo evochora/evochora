@@ -6,6 +6,7 @@ import java.nio.file.Path;
 import org.evochora.compiler.Compiler;
 import org.evochora.compiler.api.CompilationException;
 import org.evochora.compiler.api.ProgramArtifact;
+import org.evochora.compiler.api.TokenInfo;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.junit.jupiter.api.BeforeAll;
@@ -13,6 +14,7 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 
 /**
@@ -133,6 +135,55 @@ class QualifiedPathResolutionTest {
                 ".IMPORT \"nav.evo\" AS NAV",
                 "  CALL NAV.STEP.FORWARD",
                 ""));
+    }
+
+    /**
+     * The symbol table forms the path of a name for the token map, the IR generator forms it
+     * again for the artifact's keys; both have to meet. Checked where the two have the most to
+     * agree on: a constant inside a procedure of a module imported through another module, and
+     * a constant a module takes in through {@code .SOURCE}.
+     */
+    @Test
+    void theTokenMapAndTheArtifactNameAConstantByTheSamePath() throws Exception {
+        Files.writeString(tempDir.resolve("step.evo"), String.join("\n",
+                "EXPORT .PROC FORWARD",
+                "  .CONST K DATA:3",
+                "  SETI %PDR0 K",
+                "  RET",
+                ".ENDPROC",
+                ""));
+        Files.writeString(tempDir.resolve("shared.evo"), ".CONST S DATA:4\n");
+        Files.writeString(tempDir.resolve("nav.evo"), String.join("\n",
+                "EXPORT .IMPORT \"step.evo\" AS STEP",
+                ".SOURCE \"shared.evo\"",
+                ".PROC WALK",
+                "  SETI %PDR0 S",
+                "  RET",
+                ".ENDPROC",
+                ""));
+        Files.writeString(tempDir.resolve("main.evo"), String.join("\n",
+                ".IMPORT \"nav.evo\" AS NAV",
+                "  CALL NAV.STEP.FORWARD",
+                ""));
+
+        ProgramArtifact artifact = compile("main.evo");
+
+        TokenInfo k = useOf(artifact, "step.evo", 3, "K");
+        TokenInfo s = useOf(artifact, "nav.evo", 4, "S");
+        assertThat(k.qualifiedName()).isEqualTo("NAV.STEP.FORWARD.K");
+        assertThat(s.qualifiedName()).isEqualTo("NAV.S");
+        assertThat(artifact.constantValues())
+                .containsEntry(k.qualifiedName(), "DATA:3")
+                .containsEntry(s.qualifiedName(), "DATA:4");
+    }
+
+    private static TokenInfo useOf(ProgramArtifact artifact, String file, int line, String text) {
+        return artifact.tokenMap().entrySet().stream()
+                .filter(e -> e.getKey().fileName().endsWith(file) && e.getKey().lineNumber() == line
+                        && e.getValue().tokenText().equals(text))
+                .map(java.util.Map.Entry::getValue)
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("no token '" + text + "' at " + file + ":" + line));
     }
 
     private ProgramArtifact compile(String file) throws Exception {

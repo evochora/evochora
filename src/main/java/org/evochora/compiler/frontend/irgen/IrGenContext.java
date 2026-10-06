@@ -1,5 +1,6 @@
 package org.evochora.compiler.frontend.irgen;
 
+import org.evochora.compiler.api.QualifiedNames;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 
@@ -140,9 +141,9 @@ public final class IrGenContext {
 
 	/**
 	 * Enters a scope inside the current one, for the nodes converted until {@link #leaveScope()}.
-	 * The scope's path is formed as the symbol table forms it: the segment qualified as
-	 * {@link #qualifyName(String)} qualifies a name in the current scope, so that a definition
-	 * converted inside it is named by the same path a use of it resolves to.
+	 * The scope's path is the segment qualified as {@link #qualifyName(String)} qualifies a name
+	 * in the current scope, so that a definition converted inside it is named by the same path a
+	 * use of it resolves to.
 	 * @param segment The name the scope is opened under, e.g. the name of a procedure ("INIT").
 	 */
 	public void enterScope(String segment) {
@@ -162,17 +163,15 @@ public final class IrGenContext {
 
 	/**
 	 * Qualifies a name defined in the current scope with its path: the path of the innermost
-	 * scope entered, or, on the module level, the current alias chain.
+	 * scope entered, or, on the module level, the current alias chain. IR generation has no
+	 * symbol table by design; the path is formed by the rule the table forms it with,
+	 * {@link QualifiedNames#join}, so that both name a definition alike.
 	 * @param localName The unqualified name (e.g., "HARVEST").
 	 * @return The path of the name, upper-cased (e.g., "ENERGY.HARVEST" on the module level of
 	 *         module ENERGY, "ENERGY.SCAN.HARVEST" inside its procedure SCAN).
 	 */
 	public String qualifyName(String localName) {
-		String prefix = scopeStack.isEmpty() ? currentAliasChain() : scopeStack.peek();
-		if (prefix != null && !prefix.isEmpty()) {
-			return prefix + "." + localName.toUpperCase();
-		}
-		return localName.toUpperCase();
+		return QualifiedNames.join(scopeStack.isEmpty() ? currentAliasChain() : scopeStack.peek(), localName);
 	}
 
 	// --- Operand conversion ---

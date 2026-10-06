@@ -2,6 +2,7 @@ package org.evochora.compiler.model.symbols;
 
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.api.SourceInfo;
+import org.evochora.compiler.api.QualifiedNames;
 import org.evochora.compiler.api.TokenInfo;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.IIdentifierBinding;
@@ -256,23 +257,13 @@ public class SymbolTable {
     public Scope enterScope(String segment) {
         guardFrozen();
         String key = segment.toUpperCase();
-        String path = currentScope == rootScope ? qualify(currentAliasChain, key) : currentScope.name + "." + key;
+        String path = QualifiedNames.join(currentScope == rootScope ? currentAliasChain : currentScope.name, key);
         Scope newScope = new Scope(currentScope, path);
         scopes.add(newScope);
         currentScope = newScope;
         return newScope;
     }
 
-    /**
-     * Qualifies a name defined on the module level with the alias chain of its placement.
-     *
-     * @param aliasChain The alias chain; {@code null} or empty for none.
-     * @param key        The upper-cased name.
-     * @return The chain and the name joined by a dot, or the name alone without a chain.
-     */
-    private static String qualify(String aliasChain, String key) {
-        return aliasChain != null && !aliasChain.isEmpty() ? aliasChain + "." + key : key;
-    }
 
     /**
      * Leaves the current scope and moves to the parent scope.
@@ -581,9 +572,8 @@ public class SymbolTable {
      * @param module     The placement the scope belongs to; {@code null} outside a module.
      */
     private Lookup found(Scope scope, String key, String filedUnder, ModuleScope module) {
-        String qualified = scope == rootScope
-                ? qualify(module != null ? module.aliasChain() : null, key)
-                : scope.name() + "." + key;
+        String qualified = QualifiedNames.join(
+                scope == rootScope ? (module != null ? module.aliasChain() : null) : scope.name(), key);
         return new Lookup(new ResolvedSymbol(scope.symbols.get(key).get(filedUnder), qualified, scope.name()), module, scope);
     }
 
@@ -675,7 +665,7 @@ public class SymbolTable {
             return Lookup.missing(kind + segment + "' of " + moduleName + " is not marked EXPORT.");
         }
         if (last) {
-            return new Lookup(new ResolvedSymbol(symbol, qualify(currentChain, key), rootScope.name()), modScope, rootScope);
+            return new Lookup(new ResolvedSymbol(symbol, QualifiedNames.join(currentChain, key), rootScope.name()), modScope, rootScope);
         }
         String nextRemainder = remainder.substring(segment.length() + 1);
         String level = moduleName + "." + segment;
