@@ -42,7 +42,7 @@ public class TokenMapGenerator implements ITokenMapContext {
     private final TokenMapContributorRegistry contributorRegistry;
     private final ModuleContextTracker contextTracker;
     private SymbolTable.Scope currentScopeObj;
-    private String currentScopeName = TokenInfo.GLOBAL_SCOPE;
+    private String currentScopeName = TokenInfo.MODULE_LEVEL;
 
     /**
      * Constructs a TokenMapGenerator.

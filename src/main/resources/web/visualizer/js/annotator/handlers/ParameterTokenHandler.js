@@ -1,4 +1,4 @@
-import { AnnotationUtils, GLOBAL_SCOPE } from '../AnnotationUtils.js';
+import { AnnotationUtils } from '../AnnotationUtils.js';
 import { ValueFormatter } from '../../utils/ValueFormatter.js';
 
 /**
@@ -12,8 +12,8 @@ import { ValueFormatter } from '../../utils/ValueFormatter.js';
 export class ParameterTokenHandler {
     /**
      * Determines if this handler can process the given token.
-     * It handles tokens identified as 'PARAMETER' type that are in a procedure scope, that is in any
-     * scope but the module level.
+     * It handles tokens identified as 'PARAMETER' type that are in a procedure scope: the compiler
+     * records the path of the procedure as the scope, and an empty scope for the module level.
      *
      * @param {string} tokenText The text of the token.
      * @param {object} tokenInfo Metadata about the token from the compiler.
@@ -25,7 +25,7 @@ export class ParameterTokenHandler {
         }
         
         const isParameterType = tokenInfo.tokenType === 'PARAMETER';
-        const isInProcedureScope = tokenInfo.scope && tokenInfo.scope !== GLOBAL_SCOPE;
+        const isInProcedureScope = Boolean(tokenInfo.scope);
         
         return isParameterType && isInProcedureScope;
     }
@@ -54,7 +54,7 @@ export class ParameterTokenHandler {
 
         // Get procedure name from token scope
         const procName = tokenInfo.scope;
-        if (!procName || procName === GLOBAL_SCOPE) {
+        if (!procName) {
             throw new Error(`Cannot annotate parameter "${tokenText}": token scope is not a procedure name (scope: "${procName}").`);
         }
 

@@ -55,7 +55,7 @@ public class SymbolTable {
 
     /**
      * Represents a single scope in the symbol table (procedure-local or module-global).
-     * The root scope, the module level of every placement, is named {@link TokenInfo#GLOBAL_SCOPE};
+     * The root scope, the module level of every placement, has the empty name {@link TokenInfo#MODULE_LEVEL};
      * every other scope is named by its path: the alias chain of the module it was opened in and
      * the segments of the scopes from the module level inward, joined by dots (e.g., "MAIN.INIT").
      * Scope identity is determined by object reference, not by name.
@@ -76,7 +76,7 @@ public class SymbolTable {
          * the root, as the path that qualifies the names defined in it.
          * Names carry no identity — scopes are compared by reference.
          *
-         * @return the scope name, {@link TokenInfo#GLOBAL_SCOPE} for the root scope or the path of
+         * @return the scope name, {@link TokenInfo#MODULE_LEVEL} for the root scope or the path of
          *         a procedure, e.g. "MAIN.INIT"
          */
         public String name() {
@@ -118,7 +118,7 @@ public class SymbolTable {
      */
     public SymbolTable(DiagnosticsEngine diagnostics) {
         this.diagnostics = diagnostics;
-        this.rootScope = new Scope(null, TokenInfo.GLOBAL_SCOPE);
+        this.rootScope = new Scope(null, TokenInfo.MODULE_LEVEL);
         this.currentScope = this.rootScope;
     }
 

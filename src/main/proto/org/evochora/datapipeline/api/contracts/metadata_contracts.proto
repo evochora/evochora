@@ -522,7 +522,7 @@ message TokenInfo {
   // Token type (e.g., "keyword", "identifier", "literal")
   string token_type = 2;
 
-  // Scope information (e.g., "global", "procedure", "local")
+  // The scope of the token: empty on the module level, otherwise the path of a procedure (e.g., "ENERGY.SCAN").
   string scope = 3;
 
   // Module-qualified name for artifact lookups (e.g., "ENERGY.HARVEST").

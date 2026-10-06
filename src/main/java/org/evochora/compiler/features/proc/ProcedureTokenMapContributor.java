@@ -24,7 +24,7 @@ public class ProcedureTokenMapContributor implements ITokenMapContributor {
 		String qualifiedName = context.currentScope();
 		context.addToken(
 			procNode.sourceInfo(),
-			procNode.name(), TokenKind.PROCEDURE, TokenInfo.GLOBAL_SCOPE, qualifiedName);
+			procNode.name(), TokenKind.PROCEDURE, TokenInfo.MODULE_LEVEL, qualifiedName);
 
 		String procScope = context.currentScope();
 		addParameters(procNode.refParameters(), procScope, context);

@@ -266,8 +266,10 @@ Implemented in the five steps above. What the built code does beyond the solutio
 - **One record of a passed-on import.** The alias symbol carries the `EXPORT .IMPORT` flag of
   its node; `ModuleScope.importExported`, the dependency scan's own reading of the prefix and
   the check that compared the two are removed.
-- **The visualizer names the module level once.** `GLOBAL_SCOPE` in `AnnotationUtils.js`
-  mirrors `TokenInfo.GLOBAL_SCOPE`; the parameter handler compares against it.
+- **The module level has no scope name.** The token map records an empty scope for a token
+  of the module level (`TokenInfo.MODULE_LEVEL`), as the module level has no path, instead of
+  the word `global`, which only its case kept apart from a procedure of that name; the
+  visualizer asks whether a scope is set and carries no copy of a value.
 - **Checked by hand.** In a run of the reference program with its procedure made reachable, the
   visualizer annotated the procedure-local alias, the parameter and a procedure-local constant,
   and the call stack showed the parameter names under the procedure's path.
