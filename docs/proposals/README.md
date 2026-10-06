@@ -25,14 +25,14 @@ legitimately cover, and delegates the formats this codebase owns to PERSISTED_FO
 
 ## Compiler enhancements
 
-Two compiler proposals remain open; 2 builds on 1. CONDITIONAL_COMPILATION (`.DEFINE` flags, `.IFDEF`
-blocks, the `.END*` naming of the block directives) is accomplished and lives under
-[`docs/outdated/proposals/accomplished/`](../outdated/proposals/accomplished/CONDITIONAL_COMPILATION.md).
+One compiler proposal remains open. CONDITIONAL_COMPILATION (`.DEFINE` flags, `.IFDEF` blocks, the
+`.END*` naming of the block directives) and QUALIFIED_NAMES (modules and procedures as levels, a name
+reached by its path, one visibility rule, the path as the identity of a name) are accomplished and
+live under [`docs/outdated/proposals/accomplished/`](../outdated/proposals/accomplished/).
 
 | # | Document | Status | Summary |
 |---|---|---|---|
-| 1 | [QUALIFIED_NAMES](compiler-enhancements/QUALIFIED_NAMES.md) | TO BE REVIEWED | Modules, procedures and control blocks are levels; a name is reached by its path (`UTIL.CLAMP.DONE`), every level shows other levels only what it marks `EXPORT`, no name shadows one of an enclosing level, the path is the identity of a name throughout the compiler; fixes one label name in two procedures compiling to one address; #201 builds on it |
-| 2 | [CONTROL_FLOW_DIRECTIVES](compiler-enhancements/CONTROL_FLOW_DIRECTIVES.WIP.md) | **WORK IN PROGRESS** | Control blocks; rewritten on top of 1 |
+| 1 | [CONTROL_FLOW_DIRECTIVES](compiler-enhancements/CONTROL_FLOW_DIRECTIVES.WIP.md) | **WORK IN PROGRESS** | Control blocks; rewritten on top of [QUALIFIED_NAMES](../outdated/proposals/accomplished/QUALIFIED_NAMES.md) |
 
 Dependencies:
 

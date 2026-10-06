@@ -1,6 +1,6 @@
 # Qualified Names
 
-**Status: TO BE REVIEWED** — specification complete after one architecture review, implementation on branch `feature/qualified-names`.
+**Status: ACCOMPLISHED — implemented on branch `feature/qualified-names` (2026-10-06), in the five steps below; see *Outcome* at the end.**
 
 A module and a procedure are **levels** that hold names. A name is reached from inside its level
 by itself and from outside by its path, `LEVEL.NAME`, the way `package.class.member` reaches a
@@ -245,3 +245,34 @@ that fails before its fix (AGENTS.md, "Defect tests").
     regenerated and the pull request says so.
 11. Nothing is decided for control blocks; CONTROL_FLOW_DIRECTIVES builds on this document and
     is rewritten after it.
+
+## Outcome
+
+Implemented in the five steps above. What the built code does beyond the solution text:
+
+- **No consequence errors.** The second pass of the semantic analysis, which resolves names,
+  runs only when the first pass, which collects them, reported nothing: a rejected definition no
+  longer produces a chain of "not defined" messages, one of them an "Internal error" that was
+  none. One gate in `SemanticAnalyzer`, no check per feature.
+- **The shadowing check is a step of the analysis.** `SemanticAnalyzer.analyze` calls
+  `SymbolTable.reportShadowing` once after both passes; `freeze` is a pure state change again,
+  and the order of freezing and failing in `Compiler` is the one from before.
+- **The module-level rule follows the symbol table.** `.IMPORT` and `.REQUIRE` inside a
+  procedure are reported by their symbol collectors, which ask the table for the current level;
+  the parser keeps no count of open scopes.
+- **One message for a missing segment.** `'X' has no member 'Y'.` on the module level as
+  inside a procedure; a path through a requirement no import supplied says which `USING`
+  clause is missing, next to the import's own message.
+- **One record of a passed-on import.** The alias symbol carries the `EXPORT .IMPORT` flag of
+  its node; `ModuleScope.importExported`, the dependency scan's own reading of the prefix and
+  the check that compared the two are removed.
+- **The visualizer names the module level once.** `GLOBAL_SCOPE` in `AnnotationUtils.js`
+  mirrors `TokenInfo.GLOBAL_SCOPE`; the parameter handler compares against it.
+- **Checked by hand.** In a run of the reference program with its procedure made reachable, the
+  visualizer annotated the procedure-local alias, the parameter and a procedure-local constant,
+  and the call stack showed the parameter names under the procedure's path.
+
+Not done: the jump rule. A jump into a procedure is what `EXPORT` on a label inside it declares
+and is not checked; the jump out of a procedure without `RET` is designed in issue #201 on top of
+this document and built after it.
+
