@@ -65,7 +65,6 @@ public class RequireDirectiveHandler implements IParserStatementHandler {
             return null;
         }
 
-
         return new RequireNode((String) pathToken.value(), aliasToken.text(), aliasToken.source());
     }
 }

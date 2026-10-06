@@ -79,7 +79,6 @@ public class ImportDirectiveHandler implements IParserStatementHandler {
             }
         }
 
-
         return new ImportNode(
                 (String) pathToken.value(), aliasToken.text(), usings, exported,
                 aliasToken.source());
