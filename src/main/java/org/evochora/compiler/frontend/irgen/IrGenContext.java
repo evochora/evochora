@@ -1,6 +1,5 @@
 package org.evochora.compiler.frontend.irgen;
 
-import org.evochora.compiler.api.DefinitionKey;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 
@@ -31,7 +30,8 @@ import java.util.List;
 /**
  * Mutable context passed to converters during IR generation.
  * Provides emission utilities, diagnostics access, SourceInfo construction,
- * and alias-chain-based module qualification.
+ * and the qualification of names by their path: the module's alias chain and the scopes a name
+ * stands in.
  */
 public final class IrGenContext {
 
@@ -40,6 +40,7 @@ public final class IrGenContext {
 	private final IrConverterRegistry registry;
 	private final List<IrItem> out = new ArrayList<>();
 	private final Deque<String> aliasChainStack = new ArrayDeque<>();
+	/** The paths of the scopes entered, innermost first; empty on the module level. */
 	private final Deque<String> scopeStack = new ArrayDeque<>();
 
 	/**
@@ -55,7 +56,6 @@ public final class IrGenContext {
 		this.diagnostics = diagnostics;
 		this.registry = registry;
 		aliasChainStack.push(rootAliasChain != null ? rootAliasChain : "");
-		scopeStack.push(DefinitionKey.GLOBAL_SCOPE);
 	}
 
 	/**
@@ -139,43 +139,38 @@ public final class IrGenContext {
 	// --- Scopes ---
 
 	/**
-	 * Enters a named scope, for the nodes converted until {@link #leaveScope()}. The name is the
-	 * one the symbol table gives the scope, so that a definition converted inside it can name the
-	 * scope it stands in.
-	 * @param name The name of the scope, e.g. the qualified name of a procedure.
+	 * Enters a scope inside the current one, for the nodes converted until {@link #leaveScope()}.
+	 * The scope's path is formed as the symbol table forms it: the segment qualified as
+	 * {@link #qualifyName(String)} qualifies a name in the current scope, so that a definition
+	 * converted inside it is named by the same path a use of it resolves to.
+	 * @param segment The name the scope is opened under, e.g. the name of a procedure ("INIT").
 	 */
-	public void enterScope(String name) {
-		scopeStack.push(name);
+	public void enterScope(String segment) {
+		scopeStack.push(qualifyName(segment));
 	}
 
 	/**
 	 * Leaves the innermost scope entered; the module level is never left.
 	 */
 	public void leaveScope() {
-		if (scopeStack.size() > 1) {
+		if (!scopeStack.isEmpty()) {
 			scopeStack.pop();
 		}
 	}
 
-	/**
-	 * Returns the name of the innermost scope entered.
-	 * @return The scope's name; {@link DefinitionKey#GLOBAL_SCOPE} at module level.
-	 */
-	public String currentScope() {
-		return scopeStack.peek();
-	}
-
-	// --- Module-qualified naming ---
+	// --- Path-qualified naming ---
 
 	/**
-	 * Qualifies a local name with its module prefix derived from the current alias chain.
+	 * Qualifies a name defined in the current scope with its path: the path of the innermost
+	 * scope entered, or, on the module level, the current alias chain.
 	 * @param localName The unqualified name (e.g., "HARVEST").
-	 * @return The module-qualified name (e.g., "ENERGY.HARVEST").
+	 * @return The path of the name, upper-cased (e.g., "ENERGY.HARVEST" on the module level of
+	 *         module ENERGY, "ENERGY.SCAN.HARVEST" inside its procedure SCAN).
 	 */
 	public String qualifyName(String localName) {
-		String chain = currentAliasChain();
-		if (chain != null && !chain.isEmpty()) {
-			return chain + "." + localName.toUpperCase();
+		String prefix = scopeStack.isEmpty() ? currentAliasChain() : scopeStack.peek();
+		if (prefix != null && !prefix.isEmpty()) {
+			return prefix + "." + localName.toUpperCase();
 		}
 		return localName.toUpperCase();
 	}

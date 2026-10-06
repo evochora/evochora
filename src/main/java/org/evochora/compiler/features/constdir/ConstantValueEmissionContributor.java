@@ -1,6 +1,5 @@
 package org.evochora.compiler.features.constdir;
 
-import org.evochora.compiler.api.DefinitionKey;
 import org.evochora.compiler.backend.emit.EmissionContext;
 import org.evochora.compiler.backend.emit.IEmissionContributor;
 import org.evochora.compiler.model.ir.IrDirective;
@@ -13,8 +12,8 @@ import org.evochora.compiler.model.ir.IrValue;
  * show a constant's value where it is used.
  *
  * <p>The {@code const_value} directive is emitted by {@link ConstNodeConverter} in Phase 7, one
- * per constant definition, with the module-qualified name, the scope it is defined in and the
- * value as text; the value is filed under the {@link DefinitionKey} of the constant.</p>
+ * per constant definition, with the path of the constant and the value as text; the value is
+ * filed under the path.</p>
  */
 public final class ConstantValueEmissionContributor implements IEmissionContributor {
 
@@ -24,8 +23,7 @@ public final class ConstantValueEmissionContributor implements IEmissionContribu
             return;
         }
         if (dir.args().get("name") instanceof IrValue.Str name && dir.args().get("value") instanceof IrValue.Str value) {
-            String scope = dir.args().get("scope") instanceof IrValue.Str scopeStr ? scopeStr.value() : null;
-            context.constantValue(DefinitionKey.of(name.value(), scope), value.value());
+            context.constantValue(name.value(), value.value());
         }
     }
 }

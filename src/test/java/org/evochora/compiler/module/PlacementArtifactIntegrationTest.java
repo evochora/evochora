@@ -74,10 +74,10 @@ class PlacementArtifactIntegrationTest {
         // "  JMPI LOOP" on line 4: the label reference begins in column 8
         TokenInfo first = artifact.tokenLookup().get("FIRST").get(lib).get(4).get(8).getFirst();
         TokenInfo second = artifact.tokenLookup().get("SECOND").get(lib).get(4).get(8).getFirst();
-        assertThat(first.qualifiedName()).isEqualTo("FIRST.LOOP");
-        assertThat(second.qualifiedName()).isEqualTo("SECOND.LOOP");
-        assertThat(artifact.labelNameToValue().get("FIRST.LOOP"))
-                .isNotEqualTo(artifact.labelNameToValue().get("SECOND.LOOP"));
+        assertThat(first.qualifiedName()).isEqualTo("FIRST.WORK.LOOP");
+        assertThat(second.qualifiedName()).isEqualTo("SECOND.WORK.LOOP");
+        assertThat(artifact.labelNameToValue().get("FIRST.WORK.LOOP"))
+                .isNotEqualTo(artifact.labelNameToValue().get("SECOND.WORK.LOOP"));
         assertThat(artifact.tokenMap().get(new SourceInfo(lib, 4, 8, "SECOND", 0))).isEqualTo(second);
     }
 

@@ -1,8 +1,8 @@
 package org.evochora.compiler.model.symbols;
 
-import org.evochora.compiler.api.DefinitionKey;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.api.SourceInfo;
+import org.evochora.compiler.api.TokenInfo;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.IIdentifierBinding;
 import org.evochora.compiler.model.ast.IdentifierNode;
@@ -33,8 +33,10 @@ public class SymbolTable {
 
     /**
      * Represents a single scope in the symbol table (procedure-local or module-global).
-     * Each scope has a human-readable name used for display and annotations (e.g., "global",
-     * "MAIN.INIT"). Scope identity is determined by object reference, not by name.
+     * The root scope, the module level of every placement, is named {@link TokenInfo#GLOBAL_SCOPE};
+     * every other scope is named by its path: the alias chain of the module it was opened in and
+     * the segments of the scopes from the module level inward, joined by dots (e.g., "MAIN.INIT").
+     * Scope identity is determined by object reference, not by name.
      */
     public static class Scope {
         private final Scope parent;
@@ -47,10 +49,12 @@ public class SymbolTable {
         }
 
         /**
-         * Returns this scope's display name, used for annotations and debug output.
-         * Names are not unique and carry no identity — scopes are compared by reference.
+         * Returns this scope's name, used for annotations and debug output, and, for any scope but
+         * the root, as the path that qualifies the names defined in it.
+         * Names carry no identity — scopes are compared by reference.
          *
-         * @return the scope name, e.g. "global" or the qualified procedure name "MAIN.INIT"
+         * @return the scope name, {@link TokenInfo#GLOBAL_SCOPE} for the root scope or the path of
+         *         a procedure, e.g. "MAIN.INIT"
          */
         public String name() {
             return name;
@@ -87,7 +91,7 @@ public class SymbolTable {
      */
     public SymbolTable(DiagnosticsEngine diagnostics) {
         this.diagnostics = diagnostics;
-        this.rootScope = new Scope(null, DefinitionKey.GLOBAL_SCOPE);
+        this.rootScope = new Scope(null, TokenInfo.GLOBAL_SCOPE);
         this.currentScope = this.rootScope;
     }
 
@@ -173,15 +177,31 @@ public class SymbolTable {
     }
 
     /**
-     * Enters a new named scope.
-     * @param name A human-readable scope name for display and annotations (e.g., "MAIN.INIT").
+     * Enters a new scope inside the current one. The scope is named by its path: the path of the
+     * current scope followed by the segment, or, on the module level, the current module's alias
+     * chain followed by the segment.
+     * @param segment The name the scope is opened under, e.g. the name of a procedure ("INIT");
+     *                it is upper-cased.
      * @return The new scope.
      */
-    public Scope enterScope(String name) {
+    public Scope enterScope(String segment) {
         guardFrozen();
-        Scope newScope = new Scope(currentScope, name);
+        String key = segment.toUpperCase();
+        String path = currentScope == rootScope ? qualify(currentAliasChain, key) : currentScope.name + "." + key;
+        Scope newScope = new Scope(currentScope, path);
         currentScope = newScope;
         return newScope;
+    }
+
+    /**
+     * Qualifies a name defined on the module level with the alias chain of its placement.
+     *
+     * @param aliasChain The alias chain; {@code null} or empty for none.
+     * @param key        The upper-cased name.
+     * @return The chain and the name joined by a dot, or the name alone without a chain.
+     */
+    private static String qualify(String aliasChain, String key) {
+        return aliasChain != null && !aliasChain.isEmpty() ? aliasChain + "." + key : key;
     }
 
     /**
@@ -297,13 +317,16 @@ public class SymbolTable {
         Set<Symbol> visited = Collections.newSetFromMap(new IdentityHashMap<>());
         List<String> chain = new ArrayList<>();
         SourceInfo firstDefinition = null;
+        // The scope the identifier is looked up from: the current scope for the reference, the
+        // scope of the definition for every identifier a definition binds to.
+        Scope from = currentScope;
         // The placement the identifier stands in when a definition has led out of the current one;
         // null while it stands in the current placement.
         ModuleScope foreign = null;
         for (int depth = 0; depth < MAX_BINDING_DEPTH; depth++) {
             Lookup lookup = foreign == null
-                    ? lookUp(current.text(), current.sourceInfo())
-                    : lookUp(current.text(), foreign.aliasChain(), rootScope, foreign);
+                    ? lookUp(current.text(), current.sourceInfo(), from)
+                    : lookUp(current.text(), foreign.aliasChain(), from, foreign);
             Optional<ResolvedSymbol> resolved = lookup.resolution().found();
             if (resolved.isEmpty()) {
                 return Optional.empty();
@@ -325,10 +348,10 @@ public class SymbolTable {
             if (firstDefinition == null) {
                 firstDefinition = resolved.get().symbol().sourceInfo();
             }
-            // The definition is written in the placement that holds it, so the identifier it binds to
-            // is looked up there: among that placement's module-level symbols when it is another
-            // placement, from the current scope when it is the current one.
+            // The definition is written in the scope and the placement that hold it, so the
+            // identifier it binds to is looked up there.
             foreign = lookup.placement() == modules.get(currentAliasChain) ? null : lookup.placement();
+            from = lookup.scope();
             AstNode bound = binding.bind(current);
             if (!(bound instanceof IdentifierNode next)) {
                 return Optional.of(bound);
@@ -354,15 +377,16 @@ public class SymbolTable {
     }
 
     /**
-     * What a lookup found, together with the module placement the symbol belongs to.
+     * What a lookup found, together with the module placement and the scope the symbol belongs to.
      *
      * @param resolution The symbol with its qualified name, or the reason there is none.
      * @param placement  The placement whose namespace holds the symbol; {@code null} if nothing
      *                   was found or no module is current.
+     * @param scope      The scope the symbol is defined in; {@code null} if nothing was found.
      */
-    private record Lookup(Resolution resolution, ModuleScope placement) {
+    private record Lookup(Resolution resolution, ModuleScope placement, Scope scope) {
         static Lookup missing(String explanation) {
-            return new Lookup(new Resolution.Missing(explanation), null);
+            return new Lookup(new Resolution.Missing(explanation), null, null);
         }
     }
 
@@ -370,19 +394,27 @@ public class SymbolTable {
      * Looks a name up as {@link #resolve} does, from the current scope and module.
      */
     private Lookup lookUp(String name, SourceInfo at) {
+        return lookUp(name, at, currentScope);
+    }
+
+    /**
+     * Looks a name up as {@link #resolve} does, in the current module, from the given scope.
+     */
+    private Lookup lookUp(String name, SourceInfo at, Scope from) {
         // A token of the current placement, in the module's own file or in a file it sources,
         // looks up the symbols of the current placement.
         ModuleScope currentModScope = modules.get(currentAliasChain);
         String filedUnder = currentModScope != null && currentModScope.aliasChain().equals(at.placement())
                 ? currentModScope.aliasChain()
                 : at.fileName();
-        return lookUp(name, filedUnder, currentScope, currentModScope);
+        return lookUp(name, filedUnder, from, currentModScope);
     }
 
     /**
      * Looks a name up in the scopes from the given one to the root, under the key the symbols of
      * the namespace are filed by, and then as a qualified name through the imports and the
-     * requirements of the given module.
+     * requirements of the given module. A symbol found in a scope is qualified by that scope's
+     * path, one found on the module level by the module's alias chain.
      *
      * @param name       The name as written.
      * @param filedUnder The key the namespace's symbols are filed under: a placement's alias
@@ -397,9 +429,10 @@ public class SymbolTable {
         for (Scope scope = from; scope != null; scope = scope.parent) {
             Map<String, Symbol> perFile = scope.symbols.get(key);
             if (perFile != null && perFile.containsKey(filedUnder)) {
-                String chain = module != null ? module.aliasChain() : null;
-                String qualified = chain != null && !chain.isEmpty() ? chain + "." + key : key;
-                return new Lookup(new ResolvedSymbol(perFile.get(filedUnder), qualified, scope.name()), module);
+                String qualified = scope == rootScope
+                        ? qualify(module != null ? module.aliasChain() : null, key)
+                        : scope.name() + "." + key;
+                return new Lookup(new ResolvedSymbol(perFile.get(filedUnder), qualified, scope.name()), module, scope);
             }
         }
 
@@ -453,8 +486,7 @@ public class SymbolTable {
             if (!isExported(sym)) {
                 return Lookup.missing("'" + remainder + "' of " + moduleName + " is not marked EXPORT.");
             }
-            String qualified = currentChain.isEmpty() ? symbolKey : currentChain + "." + symbolKey;
-            return new Lookup(new ResolvedSymbol(sym, qualified, rootScope.name()), modScope);
+            return new Lookup(new ResolvedSymbol(sym, qualify(currentChain, symbolKey), rootScope.name()), modScope, rootScope);
         }
 
         String nextAlias = remainder.substring(0, dot);

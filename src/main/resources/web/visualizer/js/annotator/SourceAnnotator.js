@@ -3,7 +3,6 @@ import { LabelReferenceTokenHandler } from './handlers/LabelReferenceTokenHandle
 import { ProcedureTokenHandler } from './handlers/ProcedureTokenHandler.js';
 import { ParameterTokenHandler } from './handlers/ParameterTokenHandler.js';
 import { RetInstructionHandler } from './handlers/RetInstructionHandler.js';
-import { AnnotationUtils } from './AnnotationUtils.js';
 
 /**
  * Engine for token-level annotation in the source code view.
@@ -122,8 +121,8 @@ export class SourceAnnotator {
     /**
      * Collects the compile-time notes on the constants of a file's lines: for every token the
      * token map marks as a constant, a note `[=VALUE]` after the token, with the value the
-     * artifact's `constantValues` give for the key of its definition, its qualified name (or its
-     * text, without one) and the scope it is defined in. Unlike
+     * artifact's `constantValues` give for its qualified name, the path of its definition (or its
+     * text, without one). Unlike
      * the annotations of {@link annotate}, they do not depend on the organism's state and are
      * shown on every line.
      *
@@ -147,8 +146,7 @@ export class SourceAnnotator {
             lineData.columns.forEach(colData => {
                 (Array.isArray(colData.tokens) ? colData.tokens : []).forEach(tokenInfo => {
                     if (tokenInfo.tokenType !== 'CONSTANT') return;
-                    const value = values[AnnotationUtils.definitionKey(
-                        (tokenInfo.qualifiedName || tokenInfo.tokenText || '').toUpperCase(), tokenInfo.scope)];
+                    const value = values[(tokenInfo.qualifiedName || tokenInfo.tokenText || '').toUpperCase()];
                     const start = colData.columnNumber - 1;
                     if (value === undefined || !this.checkTokenAt(text, tokenInfo.tokenText, start)) return;
                     const lineNotes = notes.get(lineData.lineNumber) || [];

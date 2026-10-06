@@ -199,15 +199,15 @@ message ProgramArtifact {
 
   // Register aliases defined in source code
   // Source: ProgramArtifact.registerAliasMap()
-  // Key: the key of the alias's definition, its qualified name and, inside a procedure, "@" and the
-  // procedure's qualified name (e.g., "%MY_REG", "%TMP@WORK"), Value: physical register index
+  // Key: the path of the alias, the qualified name the token map gives a use of it (e.g., "%MY_REG",
+  // or "WORK.%TMP" for one defined in procedure WORK), Value: physical register index
   // Used by debugger to display register names
   map<string, int32> register_alias_map = 10;
 
   // Values of the constants defined in source code
   // Source: ProgramArtifact.constantValues()
-  // Key: the key of the constant's definition, its qualified name and, inside a procedure, "@" and
-  // the procedure's qualified name (e.g., "NAV.STEP.MAX_VALUE", "N@WORK"), Value: the value as text (e.g., "DATA:99")
+  // Key: the path of the constant, the qualified name the token map gives a use of it (e.g.,
+  // "NAV.STEP.MAX_VALUE", or "WORK.N" for one defined in procedure WORK), Value: the value as text (e.g., "DATA:99")
   // Used by the source view to annotate a constant with its value
   map<string, string> constant_values = 19;
 

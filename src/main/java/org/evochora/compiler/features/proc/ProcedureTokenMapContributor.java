@@ -1,5 +1,6 @@
 package org.evochora.compiler.features.proc;
 
+import org.evochora.compiler.api.TokenInfo;
 import org.evochora.compiler.api.TokenKind;
 import org.evochora.compiler.frontend.tokenmap.ITokenMapContext;
 import org.evochora.compiler.frontend.tokenmap.ITokenMapContributor;
@@ -23,7 +24,7 @@ public class ProcedureTokenMapContributor implements ITokenMapContributor {
 		String qualifiedName = context.currentScope();
 		context.addToken(
 			procNode.sourceInfo(),
-			procNode.name(), TokenKind.PROCEDURE, "global", qualifiedName);
+			procNode.name(), TokenKind.PROCEDURE, TokenInfo.GLOBAL_SCOPE, qualifiedName);
 
 		String procScope = context.currentScope();
 		addParameters(procNode.refParameters(), procScope, context);

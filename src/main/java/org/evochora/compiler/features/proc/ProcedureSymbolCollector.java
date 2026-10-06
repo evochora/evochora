@@ -22,11 +22,7 @@ public class ProcedureSymbolCollector implements ISymbolCollector {
                         "Cannot define procedure '" + proc.name() + "': the name is already used at " + SourceInfo.position(existing.sourceInfo()) + ".",
                         proc.sourceInfo().fileName(), proc.sourceInfo().lineNumber()));
 
-        String currentChain = symbolTable.getCurrentAliasChain();
-        String scopeName = (currentChain != null && !currentChain.isEmpty())
-            ? currentChain + "." + proc.name().toUpperCase()
-            : proc.name().toUpperCase();
-        SymbolTable.Scope newScope = symbolTable.enterScope(scopeName);
+        SymbolTable.Scope newScope = symbolTable.enterScope(proc.name());
         symbolTable.registerNodeScope(node, newScope);
 
         int dataIndex = 0;

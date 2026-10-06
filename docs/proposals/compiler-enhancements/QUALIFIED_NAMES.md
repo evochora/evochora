@@ -150,7 +150,7 @@ build a name of their own today; no feature learns another feature.
 | `ImportDirectiveHandler`, `RequireDirectiveHandler` | accept the directive anywhere the parser reads a statement | ask the parser state whether the line stands at the module level (a query on the scope depth the parser keeps, naming no feature) and report otherwise |
 | `IrGenContext.qualifyName` | `chain.NAME` | the current scope's path plus the name; the scope stack holds paths |
 | `DefinitionKey` | `qualified@scope` for aliases and constants | removed. `ConstantValueEmissionContributor` and `RegisterAliasEmissionContributor` file under the name the IR directive carries, which is the path; the `scope` argument of the `const_value` and `reg_alias` directives is removed with its only readers, and `IrGenContext.currentScope()` with it unless a reader remains. `TokenInfo.GLOBAL_SCOPE` takes over the constant `"global"`, which `TokenMapGenerator` and `ProcedureTokenMapContributor` use instead of the literal. |
-| `TokenMapGenerator` | the identifier branch takes the qualified name from the resolved symbol; the register-alias branch builds `chain.alias` itself | both branches take the qualified name from the resolved symbol |
+| `TokenMapGenerator` | the identifier branch takes the qualified name from the resolved symbol; a register-alias branch builds `chain.alias` itself, but is never reached, because aliases are still identifiers in Phase 5 and become registers only in Phase 6 | the register-alias branch is removed; a register is a register, an identifier is classified by its symbol |
 | `IInstructionSet`, `RuntimeInstructionSetAdapter` | no question about jumps | `labelIsJumpTarget(opcode)`, answered from the declaration the runtime already keeps |
 | A capability in `model/ast` | — | `ICallBoundary`: the node of a level that only `CALL` enters and `RET` leaves; `ProcedureNode` implements it. The symbol table can name the innermost such scope of any scope (the scope keeps the node that opened it). |
 | `InstructionAnalysisHandler` | checks the kind of every operand | for an opcode whose label operand is a jump target, also compares the innermost call boundary of the instruction's scope with that of the label's scope, and reports a difference as a jump into or out of a procedure |
@@ -183,17 +183,19 @@ one item out of what #153 has to carry.
 - Every existing program compiles unchanged: no program under `assembly/` or in the test
   resources defines a dotted name, writes `EXPORT` inside a procedure, has a name on two levels
   of one file, imports inside a procedure, or jumps across a procedure boundary (checked by
-  search, with `.SOURCE` resolved). One test, `RegisterAliasScopeTest.shadowingModuleLevelAlias`,
-  asserts that an alias may shadow one of the module level; it turns into the opposite
-  assertion.
+  search, with `.SOURCE` resolved). Two tests change: `RegisterAliasScopeTest.shadowingModuleLevelAlias`
+  asserts that an alias may shadow one of the module level and turns into the opposite
+  assertion; `PlacementArtifactIntegrationTest` expects the label of a procedure under the
+  module's name and expects its path instead.
 - The label values of labels inside procedures change, because the value is the hash of the
   identity and the identity now carries the procedure. The reference artifact of
   `CompilerOutputEquivalenceTest` is regenerated once, deliberately, after a diff has shown that
   what differs is: label and label-reference cells inside procedures, the two label maps, the
   qualified names of procedure-local symbols in the token map (`UTIL.MIN` becomes
-  `UTIL.CLAMP.MIN`), the keys of the alias and constant maps, and any label value that the
-  collision rule (`#attempt`) moves along. The pull request says so. A run is read with the build
-  that wrote it.
+  `UTIL.CLAMP.MIN`), the keys of the alias and constant maps, any label value that the
+  collision rule (`#attempt`) moves along, the operand texts of the jumps to those labels in the
+  source-line index, and the program identity, which is a digest of the machine code. The pull
+  request says so. A run is read with the build that wrote it.
 - The artifact's alias and constant maps are keyed by paths instead of `@` keys. The data
   pipeline passes the maps through and is not affected; the visualizer's lookups change with
   the keys.
