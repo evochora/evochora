@@ -18,6 +18,8 @@ import org.junit.jupiter.api.io.TempDir;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.as;
+import static org.assertj.core.api.InstanceOfAssertFactories.STRING;
 
 /**
  * What the compiler tells a programmer when a program is wrong.
@@ -926,6 +928,23 @@ class CompilerDiagnosticsTest {
                 .isInstanceOf(CompilationException.class)
                 .hasMessageContaining("Cannot call 'NAV.ARITH.ADD': 'ARITH' is a requirement of NAV; use the module you supplied for it.")
                 .hasMessageContaining("main.evo:4");
+    }
+
+    @Test
+    void aDottedImportAliasIsReportedOnceWithoutConsequences() throws Exception {
+        write("lib.evo",
+                "EXPORT READY:",
+                "  NOP");
+        write("main.evo",
+                ".IMPORT \"lib.evo\" AS X.Y",
+                "START:",
+                "  JMPI X.Y.READY");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("main.evo:1: Cannot define 'X.Y': a name is one segment and may not contain a dot.")
+                .extracting(Throwable::getMessage, as(STRING))
+                .containsOnlyOnce("[ERROR]");
     }
 
     @Test
