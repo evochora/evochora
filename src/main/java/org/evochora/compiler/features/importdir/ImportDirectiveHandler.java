@@ -16,9 +16,6 @@ import java.util.List;
  *
  * <p>This handler produces an {@link ImportNode} AST node. The actual module loading
  * is handled by Phase 0 (DependencyScanner) and preprocessing (ImportSourceHandler).
- *
- * <p>A module's imports are names of its module level: the directive inside a scope, such as a
- * procedure body, is reported and produces no node.
  */
 public class ImportDirectiveHandler implements IParserStatementHandler {
 
@@ -31,7 +28,7 @@ public class ImportDirectiveHandler implements IParserStatementHandler {
         // expression, and decides from it which modules are loaded at all. A form accepted here
         // but not there reaches the parser with its module missing.
         boolean exported = context.isExported();
-        Token directive = context.advance(); // consume .IMPORT
+        context.advance(); // consume .IMPORT
 
         Token pathToken = context.consume(TokenType.STRING, "Expected a file path in quotes after .IMPORT.");
 
@@ -82,12 +79,6 @@ public class ImportDirectiveHandler implements IParserStatementHandler {
             }
         }
 
-        if (!context.state().isAtModuleLevel()) {
-            context.getDiagnostics().reportError(
-                    ".IMPORT may stand only at the module level.",
-                    directive.source().fileName(), directive.source().lineNumber());
-            return null;
-        }
 
         return new ImportNode(
                 (String) pathToken.value(), aliasToken.text(), usings, exported,

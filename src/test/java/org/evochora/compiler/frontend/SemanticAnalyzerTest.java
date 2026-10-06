@@ -845,6 +845,41 @@ public class SemanticAnalyzerTest {
         assertThat(errors).isEmpty();
     }
 
+    /**
+     * A module's imports and requirements are names of its module level: the directive inside a
+     * procedure is reported where the names are collected, which follows every level the symbol
+     * table opens.
+     */
+    @Test
+    @Tag("unit")
+    void anImportInsideAProcedureIsReported() {
+        List<Diagnostic> errors = analyzeAndFreeze(
+                ".PROC P",
+                "  .IMPORT \"lib.evo\" AS LIB",
+                "  RET",
+                ".ENDPROC");
+
+        assertThat(errors).singleElement().satisfies(d -> {
+            assertThat(d.lineNumber()).isEqualTo(2);
+            assertThat(d.message()).isEqualTo(".IMPORT may stand only at the module level.");
+        });
+    }
+
+    @Test
+    @Tag("unit")
+    void aRequireInsideAProcedureIsReported() {
+        List<Diagnostic> errors = analyzeAndFreeze(
+                ".PROC P",
+                "  .REQUIRE \"lib.evo\" AS LIB",
+                "  RET",
+                ".ENDPROC");
+
+        assertThat(errors).singleElement().satisfies(d -> {
+            assertThat(d.lineNumber()).isEqualTo(2);
+            assertThat(d.message()).isEqualTo(".REQUIRE may stand only at the module level.");
+        });
+    }
+
     private static ParserStatementRegistry allHandlers() {
         ParserStatementRegistry reg = new ParserStatementRegistry();
         reg.register(".CONST", new ConstDirectiveHandler());
