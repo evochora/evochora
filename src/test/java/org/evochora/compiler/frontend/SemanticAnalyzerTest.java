@@ -613,6 +613,160 @@ public class SemanticAnalyzerTest {
         assertThat(diagnostics.hasErrors()).isFalse();
     }
 
+    /**
+     * Analyzes the source as the compiler does, through both passes and the freezing of the
+     * symbol table that follows them, and returns the errors reported.
+     */
+    private List<Diagnostic> analyzeAndFreeze(String... lines) {
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        List<AstNode> ast = getAst(String.join("\n", lines), diagnostics);
+        SymbolTable symbolTable = new SymbolTable(diagnostics);
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
+        analyzer.analyze(ast);
+        symbolTable.freeze();
+        return diagnostics.getDiagnostics().stream()
+                .filter(d -> d.type() == Diagnostic.Type.ERROR)
+                .toList();
+    }
+
+    /**
+     * Asserts that exactly one error was reported, at the line of the definition on the inner
+     * level, naming the line of the definition on the enclosing level.
+     */
+    private static void assertShadowing(List<Diagnostic> errors, String name, int innerLine, int outerLine) {
+        assertThat(errors).hasSize(1);
+        assertThat(errors.get(0).lineNumber()).isEqualTo(innerLine);
+        assertThat(errors.get(0).message())
+                .contains("'" + name + "'")
+                .contains("already defined at <memory>:" + outerLine + ", on an enclosing level");
+    }
+
+    @Test
+    @Tag("unit")
+    void aParameterNamedLikeAnEarlierModuleConstantIsReported() {
+        List<Diagnostic> errors = analyzeAndFreeze(
+                ".CONST N DATA:5",
+                ".PROC P REF N",
+                "  RET",
+                ".ENDPROC");
+
+        assertShadowing(errors, "N", 2, 1);
+    }
+
+    @Test
+    @Tag("unit")
+    void aModuleConstantNamedLikeAnEarlierParameterIsReported() {
+        List<Diagnostic> errors = analyzeAndFreeze(
+                ".PROC P REF N",
+                "  RET",
+                ".ENDPROC",
+                ".CONST N DATA:5");
+
+        assertShadowing(errors, "N", 1, 4);
+    }
+
+    @Test
+    @Tag("unit")
+    void aProcedureLabelNamedLikeALaterModuleLabelIsReported() {
+        List<Diagnostic> errors = analyzeAndFreeze(
+                ".PROC Q",
+                "  .LABEL LATER NOP",
+                "  RET",
+                ".ENDPROC",
+                ".LABEL LATER NOP");
+
+        assertShadowing(errors, "LATER", 2, 5);
+    }
+
+    @Test
+    @Tag("unit")
+    void aProcedureLabelNamedLikeAnEarlierModuleLabelIsReported() {
+        List<Diagnostic> errors = analyzeAndFreeze(
+                ".LABEL EARLIER NOP",
+                ".PROC Q",
+                "  .LABEL EARLIER NOP",
+                "  RET",
+                ".ENDPROC");
+
+        assertShadowing(errors, "EARLIER", 3, 1);
+    }
+
+    @Test
+    @Tag("unit")
+    void aProcedureAliasNamedLikeAnEarlierModuleAliasIsReported() {
+        List<Diagnostic> errors = analyzeAndFreeze(
+                ".REG %TMP %DR0",
+                ".PROC P",
+                "  .REG %TMP %PDR0",
+                "  RET",
+                ".ENDPROC");
+
+        assertShadowing(errors, "%TMP", 3, 1);
+    }
+
+    @Test
+    @Tag("unit")
+    void aModuleAliasNamedLikeAnEarlierProcedureAliasIsReported() {
+        List<Diagnostic> errors = analyzeAndFreeze(
+                ".PROC P",
+                "  .REG %TMP %PDR0",
+                "  RET",
+                ".ENDPROC",
+                ".REG %TMP %DR0");
+
+        assertShadowing(errors, "%TMP", 2, 5);
+    }
+
+    @Test
+    @Tag("unit")
+    void aLabelWithADotInItsNameIsReported() {
+        List<Diagnostic> errors = analyzeAndFreeze(".LABEL X.Y NOP");
+
+        assertThat(errors).hasSize(1);
+        assertThat(errors.get(0).message()).contains("'X.Y'").contains("a name is one segment");
+    }
+
+    @Test
+    @Tag("unit")
+    void aProcedureWithADotInItsNameIsReported() {
+        List<Diagnostic> errors = analyzeAndFreeze(
+                ".PROC X.Y",
+                "  RET",
+                ".ENDPROC");
+
+        assertThat(errors).hasSize(1);
+        assertThat(errors.get(0).message()).contains("'X.Y'").contains("a name is one segment");
+    }
+
+    /**
+     * The alias of an import is a name like any other. A single file has no module set up for
+     * the import, which the analysis of the import reports as well; only the report of the
+     * name is looked at here.
+     */
+    @Test
+    @Tag("unit")
+    void anImportAliasWithADotIsReported() {
+        List<Diagnostic> errors = analyzeAndFreeze(".IMPORT \"lib.evo\" AS X.Y");
+
+        assertThat(errors).filteredOn(d -> d.message().contains("one segment"))
+                .singleElement()
+                .satisfies(d -> assertThat(d.message()).contains("'X.Y'").contains("a name is one segment"));
+    }
+
+    /**
+     * The alias of a requirement is a name like any other; only the report of the name is looked
+     * at, as for an import.
+     */
+    @Test
+    @Tag("unit")
+    void aRequireAliasWithADotIsReported() {
+        List<Diagnostic> errors = analyzeAndFreeze(".REQUIRE \"lib.evo\" AS X.Y");
+
+        assertThat(errors).filteredOn(d -> d.message().contains("one segment"))
+                .singleElement()
+                .satisfies(d -> assertThat(d.message()).contains("'X.Y'").contains("a name is one segment"));
+    }
+
     private static ParserStatementRegistry allHandlers() {
         ParserStatementRegistry reg = new ParserStatementRegistry();
         reg.register(".CONST", new ConstDirectiveHandler());

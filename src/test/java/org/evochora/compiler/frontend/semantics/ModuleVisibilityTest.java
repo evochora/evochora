@@ -104,4 +104,28 @@ public class ModuleVisibilityTest {
         assertThat(result).isPresent();
         assertThat(result.get().symbol().name()).isEqualToIgnoringCase("HARVEST");
     }
+
+    /**
+     * The alias of an import is a name of the module level: a label of the same name in a
+     * procedure of the importing module is reported when the table freezes, while the labels of
+     * the imported module, filed under its own placement, are not compared with it.
+     */
+    @Test
+    @Tag("unit")
+    void aLabelInAProcedureNamedLikeAnImportAliasIsReported() {
+        symbolTable.setCurrentModule(MAIN_CHAIN);
+        symbolTable.define(new Symbol("LIB", new SourceInfo("/test/main.evo", 1, 0, MAIN_CHAIN, 0), Symbol.Type.MODULE_ALIAS, null));
+        symbolTable.define(new Symbol("P", new SourceInfo("/test/main.evo", 2, 0, MAIN_CHAIN, 0), Symbol.Type.PROCEDURE, null));
+        symbolTable.enterScope("P");
+        symbolTable.define(new Symbol("LIB", new SourceInfo("/test/main.evo", 3, 0, MAIN_CHAIN, 0), Symbol.Type.LABEL, null));
+        symbolTable.define(new Symbol("HARVEST", new SourceInfo("/test/main.evo", 4, 0, MAIN_CHAIN, 0), Symbol.Type.LABEL, null));
+        symbolTable.leaveScope();
+
+        symbolTable.freeze();
+
+        assertThat(diagnostics.getDiagnostics()).singleElement().satisfies(d -> {
+            assertThat(d.lineNumber()).isEqualTo(3);
+            assertThat(d.message()).contains("'LIB'").contains("already defined at /test/main.evo:1, on an enclosing level");
+        });
+    }
 }

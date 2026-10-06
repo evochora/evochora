@@ -19,6 +19,9 @@ import org.evochora.compiler.frontend.DirectiveLine;
  *
  * <p>The directive stands alone on its line: a token of its file and line before it, or a token
  * after the alias, is an error, and the rest of the line is passed over.
+ *
+ * <p>A module's requirements are names of its module level: the directive inside a scope, such
+ * as a procedure body, is reported and produces no node.
  */
 public class RequireDirectiveHandler implements IParserStatementHandler {
 
@@ -62,6 +65,13 @@ public class RequireDirectiveHandler implements IParserStatementHandler {
             context.getDiagnostics().reportError(
                     ".REQUIRE must stand alone on its line; found ';' after the alias.",
                     line.separator().source().fileName(), line.separator().source().lineNumber());
+            return null;
+        }
+
+        if (!context.state().isAtModuleLevel()) {
+            context.getDiagnostics().reportError(
+                    ".REQUIRE may stand only at the module level.",
+                    directive.source().fileName(), directive.source().lineNumber());
             return null;
         }
 

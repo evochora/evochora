@@ -116,9 +116,32 @@ public class ImportDirectiveTest {
         assertThat(diagnostics.hasErrors()).isTrue();
     }
 
+    /**
+     * Verifies that .IMPORT inside a procedure is reported: a module's dependencies are declared
+     * on its module level.
+     */
+    @Test
+    @Tag("unit")
+    void importInsideAProcedureIsReported() {
+        String source = String.join("\n",
+                ".PROC P",
+                "  .IMPORT \"lib.evo\" AS LIB",
+                "  RET",
+                ".ENDPROC");
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        new Parser(new Lexer(source, diagnostics, TestLexers.symbols()).scanTokens(), diagnostics, registry()).parse();
+
+        assertThat(diagnostics.getDiagnostics()).singleElement()
+                .satisfies(d -> {
+                    assertThat(d.lineNumber()).isEqualTo(2);
+                    assertThat(d.message()).contains(".IMPORT").contains("may stand only at the module level");
+                });
+    }
+
     private static ParserStatementRegistry registry() {
         ParserStatementRegistry reg = new ParserStatementRegistry();
         reg.register(".IMPORT", new ImportDirectiveHandler());
+        reg.register(".PROC", new org.evochora.compiler.features.proc.ProcDirectiveHandler(new org.evochora.compiler.isa.RuntimeInstructionSetAdapter()));
         reg.registerDefault(new org.evochora.compiler.features.instruction.InstructionParsingHandler());
         return reg;
     }

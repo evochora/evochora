@@ -13,6 +13,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.IdentityHashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -28,6 +29,11 @@ import java.util.Optional;
  *
  * <p>For single-file compilations, the table operates with a single default module, so a
  * caller that never imports anything need not name a module at all.</p>
+ *
+ * <p>The table enforces two rules on names itself, whatever they name: a name is one segment, so
+ * a definition whose name contains a dot is reported when it is defined; and a name that a scope
+ * enclosing the definition already holds is reported when the table freezes, once all
+ * definitions of both passes are in.</p>
  */
 public class SymbolTable {
 
@@ -41,7 +47,8 @@ public class SymbolTable {
     public static class Scope {
         private final Scope parent;
         private final String name;
-        private final Map<String, Map<String, Symbol>> symbols = new HashMap<>(); // name -> (module placement, or file outside a module -> symbol)
+        // name -> (module placement, or file outside a module -> symbol), in the order of definition
+        private final Map<String, Map<String, Symbol>> symbols = new LinkedHashMap<>();
 
         Scope(Scope parent, String name) {
             this.parent = parent;
@@ -68,6 +75,10 @@ public class SymbolTable {
     // --- Procedure-local scope hierarchy (within the current module) ---
     private final Scope rootScope;
     private Scope currentScope;
+
+    // Every scope entered below the root, in the order it was entered; the shadowing check of
+    // freeze walks them.
+    private final List<Scope> scopes = new ArrayList<>();
 
     // --- Node-to-scope mapping (populated by ProcedureSymbolCollector, consumed by TokenMapGenerator) ---
     // Keyed by node identity: AST nodes are records, so two structurally equal nodes would
@@ -102,13 +113,64 @@ public class SymbolTable {
      * enterScope, registerNodeScope). Cursor operations (setCurrentScope, leaveScope,
      * resetScope) and all reads remain allowed.
      * <p>
+     * Before the table closes, every scope entered below the root is compared with the scopes
+     * enclosing it: a name that an enclosing scope holds for the same module placement, or
+     * outside a module for the same file, is reported at the inner definition, naming the
+     * position of the enclosing one. A name never means two things depending on the level it is
+     * written on. The check runs here because definitions arrive in two passes and in text
+     * order, so only the complete table shows every pair; it runs once, on the first call.
+     * <p>
      * {@link #setCurrentModule(String)} remains allowed only for modules that are already
      * registered. Switching to an unknown alias chain has to create a scope for it and
      * therefore fails on a frozen table.
      */
     public void freeze() {
+        if (!frozen) {
+            reportShadowing();
+        }
         this.frozen = true;
         modules.values().forEach(ModuleScope::freeze);
+    }
+
+    /**
+     * Reports every name of a scope below the root that a scope enclosing it holds under the
+     * same key, the module placement or, outside a module, the file. The nearest enclosing
+     * definition is named; scopes are visited in the order they were entered and names in the
+     * order they were defined.
+     */
+    private void reportShadowing() {
+        for (Scope scope : scopes) {
+            for (Map.Entry<String, Map<String, Symbol>> byName : scope.symbols.entrySet()) {
+                for (Map.Entry<String, Symbol> byKey : byName.getValue().entrySet()) {
+                    Symbol enclosing = enclosingDefinition(scope.parent, byName.getKey(), byKey.getKey());
+                    if (enclosing != null) {
+                        Symbol inner = byKey.getValue();
+                        diagnostics.reportError(
+                                "'" + inner.name() + "' is already defined at " + SourceInfo.position(enclosing.sourceInfo())
+                                        + ", on an enclosing level.",
+                                inner.sourceInfo().fileName(), inner.sourceInfo().lineNumber());
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Finds the definition of a name in the given scope or the nearest one enclosing it.
+     *
+     * @param from The innermost scope to search.
+     * @param name The upper-cased name.
+     * @param key  The module placement, or the file outside a module, the name is filed under.
+     * @return The definition, or {@code null} if no scope from {@code from} outward holds one.
+     */
+    private static Symbol enclosingDefinition(Scope from, String name, String key) {
+        for (Scope scope = from; scope != null; scope = scope.parent) {
+            Map<String, Symbol> perFile = scope.symbols.get(name);
+            if (perFile != null && perFile.containsKey(key)) {
+                return perFile.get(key);
+            }
+        }
+        return null;
     }
 
     private void guardFrozen() {
@@ -189,6 +251,7 @@ public class SymbolTable {
         String key = segment.toUpperCase();
         String path = currentScope == rootScope ? qualify(currentAliasChain, key) : currentScope.name + "." + key;
         Scope newScope = new Scope(currentScope, path);
+        scopes.add(newScope);
         currentScope = newScope;
         return newScope;
     }
@@ -269,12 +332,23 @@ public class SymbolTable {
      * A name that the same module placement, or outside a module the same file, has defined in
      * this scope already keeps its first definition;
      * the caller, which knows what kind of thing it tried to define, reports that.
+     * <p>
+     * A name is one segment: a name that contains a dot could only be confused with the path of
+     * a name on another level. Such a definition is reported here, at the symbol's position,
+     * whatever kind of thing it names, and is not filed.
      * @param symbol The symbol to define.
      * @return The definition the name already had in this scope, which stays; empty if the
-     *         symbol was defined.
+     *         symbol was defined, or if its name contains a dot and it was reported instead.
+     * @throws IllegalStateException if the table is frozen.
      */
     public Optional<Symbol> define(Symbol symbol) {
         guardFrozen();
+        if (symbol.name().indexOf('.') >= 0) {
+            diagnostics.reportError(
+                    "Cannot define '" + symbol.name() + "': a name is one segment and may not contain a dot.",
+                    symbol.sourceInfo().fileName(), symbol.sourceInfo().lineNumber());
+            return Optional.empty();
+        }
         String name = symbol.name().toUpperCase();
         String file = symbol.sourceInfo().fileName();
 
@@ -287,7 +361,7 @@ public class SymbolTable {
         }
 
         // Register in the scope hierarchy (for procedure-local visibility)
-        Map<String, Symbol> perFile = currentScope.symbols.computeIfAbsent(name, k -> new HashMap<>());
+        Map<String, Symbol> perFile = currentScope.symbols.computeIfAbsent(name, k -> new LinkedHashMap<>());
         Symbol existing = perFile.putIfAbsent(file, symbol);
         if (existing != null) {
             return Optional.of(existing);

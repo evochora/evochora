@@ -11,12 +11,17 @@ import java.util.function.Supplier;
  * A generic type-safe container for parser state that features can use
  * to store and retrieve their own state objects during parsing.
  * Each feature defines its own state class and uses it as the key.
+ * <p>
+ * The container also counts the scopes a statement handler has opened with {@link #pushScope()}
+ * and not yet closed, so that a handler can ask whether the statement it parses stands at the
+ * module level ({@link #isAtModuleLevel()}).
  */
 public class ParserState {
 
     private final Map<Class<?>, Object> state = new HashMap<>();
     private final List<IScopedParserState> scopedStates = new ArrayList<>();
     private final Map<String, Integer> availableRegisterBanks = new HashMap<>();
+    private int scopeDepth = 0;
 
     /**
      * Retrieves the state object associated with the given key type.
@@ -94,18 +99,36 @@ public class ParserState {
     }
 
     /**
-     * Pushes a new scope on all registered {@link IScopedParserState} objects.
+     * Says whether the statement being parsed stands at the module level, outside every scope
+     * that a statement handler has opened with {@link #pushScope()} and not yet closed with
+     * {@link #popScope()}.
+     *
+     * @return {@code true} if no scope is open
+     */
+    public boolean isAtModuleLevel() {
+        return scopeDepth == 0;
+    }
+
+    /**
+     * Opens a scope: pushes a new scope on all registered {@link IScopedParserState} objects, and
+     * statements parsed until the matching {@link #popScope()} no longer stand at the module level.
      */
     public void pushScope() {
+        scopeDepth++;
         for (IScopedParserState s : scopedStates) {
             s.pushScope();
         }
     }
 
     /**
-     * Pops the current scope from all registered {@link IScopedParserState} objects.
+     * Closes the scope opened last: pops the current scope from all registered
+     * {@link IScopedParserState} objects. Without an open scope, the count of open scopes stays
+     * at zero.
      */
     public void popScope() {
+        if (scopeDepth > 0) {
+            scopeDepth--;
+        }
         for (IScopedParserState s : scopedStates) {
             s.popScope();
         }

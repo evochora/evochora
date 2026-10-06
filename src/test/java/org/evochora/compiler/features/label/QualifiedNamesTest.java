@@ -1,6 +1,7 @@
 package org.evochora.compiler.features.label;
 
 import org.evochora.compiler.Compiler;
+import org.evochora.compiler.api.CompilationException;
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.isa.Instruction;
@@ -15,11 +16,13 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * A label is identified by its path, the levels it stands in followed by its name: one label
- * name on two levels is two labels, each with a cell of its own and a value of its own, and every
- * jump to it carries the value of the label on its own level.
+ * name in two procedures is two labels, each with a cell of its own and a value of its own, and
+ * every jump to it carries the value of the label on its own level. A label name that an
+ * enclosing level already has is reported instead.
  */
 @Tag("unit")
 class QualifiedNamesTest {
@@ -52,8 +55,8 @@ class QualifiedNamesTest {
     }
 
     @Test
-    void aLabelInAProcedureAndOneOfTheSameNameOnTheModuleLevelAreTwoLabels() throws Exception {
-        ProgramArtifact artifact = new Compiler().compile(List.of(
+    void aLabelInAProcedureNamedLikeALaterModuleLevelLabelIsReported() {
+        assertThatThrownBy(() -> new Compiler().compile(List.of(
                 "START:",
                 "  CALL P",
                 "  JMPI DONE",
@@ -63,9 +66,10 @@ class QualifiedNamesTest {
                 "  RET",
                 ".ENDPROC",
                 "DONE:",
-                "  NOP"), "main.evo", ENV);
-
-        assertTwoLabels(artifact, "P.DONE", "DONE");
+                "  NOP"), "main.evo", ENV))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("'DONE' is already defined at ")
+                .hasMessageContaining("main.evo:9, on an enclosing level");
     }
 
     /**

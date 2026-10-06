@@ -119,9 +119,32 @@ public class RequireDirectiveTest {
         assertThat(node.getChildren()).isEmpty();
     }
 
+    /**
+     * Verifies that .REQUIRE inside a procedure is reported: a module's dependencies are declared
+     * on its module level.
+     */
+    @Test
+    @Tag("unit")
+    void requireInsideAProcedureIsReported() {
+        String source = String.join("\n",
+                ".PROC P",
+                "  .REQUIRE \"lib.evo\" AS LIB",
+                "  RET",
+                ".ENDPROC");
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        new Parser(new Lexer(source, diagnostics, TestLexers.symbols()).scanTokens(), diagnostics, registry()).parse();
+
+        assertThat(diagnostics.getDiagnostics()).singleElement()
+                .satisfies(d -> {
+                    assertThat(d.lineNumber()).isEqualTo(2);
+                    assertThat(d.message()).contains(".REQUIRE").contains("may stand only at the module level");
+                });
+    }
+
     private static ParserStatementRegistry registry() {
         ParserStatementRegistry reg = new ParserStatementRegistry();
         reg.register(".REQUIRE", new RequireDirectiveHandler());
+        reg.register(".PROC", new org.evochora.compiler.features.proc.ProcDirectiveHandler(new org.evochora.compiler.isa.RuntimeInstructionSetAdapter()));
         reg.registerDefault(new org.evochora.compiler.features.instruction.InstructionParsingHandler());
         return reg;
     }
