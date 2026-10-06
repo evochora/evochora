@@ -211,8 +211,8 @@ public class Compiler implements ICompiler {
         featureRegistry.dependencySetupHandlers().forEach((type, handler) -> registerSetupHandler(setupRegistry, type, handler));
         SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, graph, rootAliasChain, analysisRegistry, setupRegistry);
         analyzer.analyze(ast);
-        symbolTable.freeze();
         failOnErrors(diagnostics);
+        symbolTable.freeze();
 
         // Phase 5: Token Map Generation (for debugger)
         TokenMapContributorRegistry tokenMapRegistry = new TokenMapContributorRegistry();

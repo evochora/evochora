@@ -128,32 +128,24 @@ public class SymbolTable {
      * enterScope, registerNodeScope). Cursor operations (setCurrentScope, leaveScope,
      * resetScope) and all reads remain allowed.
      * <p>
-     * Before the table closes, every scope entered below the root is compared with the scopes
-     * enclosing it: a name that an enclosing scope holds for the same module placement, or
-     * outside a module for the same file, is reported at the inner definition, naming the
-     * position of the enclosing one. A name never means two things depending on the level it is
-     * written on. The check runs here because definitions arrive in two passes and in text
-     * order, so only the complete table shows every pair; it runs once, on the first call.
-     * <p>
      * {@link #setCurrentModule(String)} remains allowed only for modules that are already
      * registered. Switching to an unknown alias chain has to create a scope for it and
      * therefore fails on a frozen table.
      */
     public void freeze() {
-        if (!frozen) {
-            reportShadowing();
-        }
         this.frozen = true;
         modules.values().forEach(ModuleScope::freeze);
     }
 
     /**
      * Reports every name of a scope below the root that a scope enclosing it holds under the
-     * same key, the module placement or, outside a module, the file. The nearest enclosing
-     * definition is named; scopes are visited in the order they were entered and names in the
-     * order they were defined.
+     * same key, the module placement or, outside a module, the file: a name never means two
+     * things depending on the level it is written on. The nearest enclosing definition is named;
+     * scopes are visited in the order they were entered and names in the order they were
+     * defined. Definitions arrive in two passes and in text order, so only the complete table
+     * shows every pair: the semantic analysis calls this once, after both of its passes.
      */
-    private void reportShadowing() {
+    public void reportShadowing() {
         for (Scope scope : scopes) {
             for (Map.Entry<String, Map<String, Symbol>> byName : scope.symbols.entrySet()) {
                 for (Map.Entry<String, Symbol> byKey : byName.getValue().entrySet()) {

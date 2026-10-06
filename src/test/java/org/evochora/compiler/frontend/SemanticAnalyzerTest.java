@@ -614,16 +614,15 @@ public class SemanticAnalyzerTest {
     }
 
     /**
-     * Analyzes the source as the compiler does, through both passes and the freezing of the
-     * symbol table that follows them, and returns the errors reported.
+     * Analyzes the source as the compiler does, through both passes and the shadowing check that
+     * follows them, and returns the errors reported.
      */
-    private List<Diagnostic> analyzeAndFreeze(String... lines) {
+    private List<Diagnostic> analyze(String... lines) {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         List<AstNode> ast = getAst(String.join("\n", lines), diagnostics);
         SymbolTable symbolTable = new SymbolTable(diagnostics);
         SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
         analyzer.analyze(ast);
-        symbolTable.freeze();
         return diagnostics.getDiagnostics().stream()
                 .filter(d -> d.type() == Diagnostic.Type.ERROR)
                 .toList();
@@ -644,7 +643,7 @@ public class SemanticAnalyzerTest {
     @Test
     @Tag("unit")
     void aParameterNamedLikeAnEarlierModuleConstantIsReported() {
-        List<Diagnostic> errors = analyzeAndFreeze(
+        List<Diagnostic> errors = analyze(
                 ".CONST N DATA:5",
                 ".PROC P REF N",
                 "  RET",
@@ -656,7 +655,7 @@ public class SemanticAnalyzerTest {
     @Test
     @Tag("unit")
     void aModuleConstantNamedLikeAnEarlierParameterIsReported() {
-        List<Diagnostic> errors = analyzeAndFreeze(
+        List<Diagnostic> errors = analyze(
                 ".PROC P REF N",
                 "  RET",
                 ".ENDPROC",
@@ -668,7 +667,7 @@ public class SemanticAnalyzerTest {
     @Test
     @Tag("unit")
     void aProcedureLabelNamedLikeALaterModuleLabelIsReported() {
-        List<Diagnostic> errors = analyzeAndFreeze(
+        List<Diagnostic> errors = analyze(
                 ".PROC Q",
                 "  .LABEL LATER NOP",
                 "  RET",
@@ -681,7 +680,7 @@ public class SemanticAnalyzerTest {
     @Test
     @Tag("unit")
     void aProcedureLabelNamedLikeAnEarlierModuleLabelIsReported() {
-        List<Diagnostic> errors = analyzeAndFreeze(
+        List<Diagnostic> errors = analyze(
                 ".LABEL EARLIER NOP",
                 ".PROC Q",
                 "  .LABEL EARLIER NOP",
@@ -694,7 +693,7 @@ public class SemanticAnalyzerTest {
     @Test
     @Tag("unit")
     void aProcedureAliasNamedLikeAnEarlierModuleAliasIsReported() {
-        List<Diagnostic> errors = analyzeAndFreeze(
+        List<Diagnostic> errors = analyze(
                 ".REG %TMP %DR0",
                 ".PROC P",
                 "  .REG %TMP %PDR0",
@@ -707,7 +706,7 @@ public class SemanticAnalyzerTest {
     @Test
     @Tag("unit")
     void aModuleAliasNamedLikeAnEarlierProcedureAliasIsReported() {
-        List<Diagnostic> errors = analyzeAndFreeze(
+        List<Diagnostic> errors = analyze(
                 ".PROC P",
                 "  .REG %TMP %PDR0",
                 "  RET",
@@ -720,7 +719,7 @@ public class SemanticAnalyzerTest {
     @Test
     @Tag("unit")
     void aLabelWithADotInItsNameIsReported() {
-        List<Diagnostic> errors = analyzeAndFreeze(".LABEL X.Y NOP");
+        List<Diagnostic> errors = analyze(".LABEL X.Y NOP");
 
         assertThat(errors).hasSize(1);
         assertThat(errors.get(0).message()).contains("'X.Y'").contains("a name is one segment");
@@ -729,7 +728,7 @@ public class SemanticAnalyzerTest {
     @Test
     @Tag("unit")
     void aProcedureWithADotInItsNameIsReported() {
-        List<Diagnostic> errors = analyzeAndFreeze(
+        List<Diagnostic> errors = analyze(
                 ".PROC X.Y",
                 "  RET",
                 ".ENDPROC");
@@ -746,7 +745,7 @@ public class SemanticAnalyzerTest {
     @Test
     @Tag("unit")
     void anImportAliasWithADotIsReported() {
-        List<Diagnostic> errors = analyzeAndFreeze(".IMPORT \"lib.evo\" AS X.Y");
+        List<Diagnostic> errors = analyze(".IMPORT \"lib.evo\" AS X.Y");
 
         assertThat(errors).filteredOn(d -> d.message().contains("one segment"))
                 .singleElement()
@@ -760,7 +759,7 @@ public class SemanticAnalyzerTest {
     @Test
     @Tag("unit")
     void aRequireAliasWithADotIsReported() {
-        List<Diagnostic> errors = analyzeAndFreeze(".REQUIRE \"lib.evo\" AS X.Y");
+        List<Diagnostic> errors = analyze(".REQUIRE \"lib.evo\" AS X.Y");
 
         assertThat(errors).filteredOn(d -> d.message().contains("one segment"))
                 .singleElement()
@@ -774,7 +773,7 @@ public class SemanticAnalyzerTest {
     @Test
     @Tag("unit")
     void anExportedProcedureLabelIsReachedFromTheModuleByItsPath() {
-        List<Diagnostic> errors = analyzeAndFreeze(
+        List<Diagnostic> errors = analyze(
                 ".PROC CLAMP",
                 "  EXPORT .LABEL TO_MIN NOP",
                 "  RET",
@@ -787,7 +786,7 @@ public class SemanticAnalyzerTest {
     @Test
     @Tag("unit")
     void aProcedureLabelWithoutExportIsNotReachedFromTheModule() {
-        List<Diagnostic> errors = analyzeAndFreeze(
+        List<Diagnostic> errors = analyze(
                 ".PROC CLAMP",
                 "  .LABEL TO_MIN NOP",
                 "  RET",
@@ -804,7 +803,7 @@ public class SemanticAnalyzerTest {
     @Test
     @Tag("unit")
     void aPathToANameTheProcedureDoesNotHaveIsReported() {
-        List<Diagnostic> errors = analyzeAndFreeze(
+        List<Diagnostic> errors = analyze(
                 ".PROC CLAMP",
                 "  RET",
                 ".ENDPROC",
@@ -820,7 +819,7 @@ public class SemanticAnalyzerTest {
     @Test
     @Tag("unit")
     void aPathThroughANameThatOpensNoLevelIsReported() {
-        List<Diagnostic> errors = analyzeAndFreeze(
+        List<Diagnostic> errors = analyze(
                 ".CONST X DATA:5",
                 "PSLI X.Y");
 
@@ -835,7 +834,7 @@ public class SemanticAnalyzerTest {
     @Test
     @Tag("unit")
     void aProcedureReachesItsOwnNamesByPathWithoutExport() {
-        List<Diagnostic> errors = analyzeAndFreeze(
+        List<Diagnostic> errors = analyze(
                 ".PROC CLAMP",
                 "  PSLI CLAMP.TO_MIN",
                 "  .LABEL TO_MIN NOP",
@@ -853,7 +852,7 @@ public class SemanticAnalyzerTest {
     @Test
     @Tag("unit")
     void anImportInsideAProcedureIsReported() {
-        List<Diagnostic> errors = analyzeAndFreeze(
+        List<Diagnostic> errors = analyze(
                 ".PROC P",
                 "  .IMPORT \"lib.evo\" AS LIB",
                 "  RET",
@@ -868,7 +867,7 @@ public class SemanticAnalyzerTest {
     @Test
     @Tag("unit")
     void aRequireInsideAProcedureIsReported() {
-        List<Diagnostic> errors = analyzeAndFreeze(
+        List<Diagnostic> errors = analyze(
                 ".PROC P",
                 "  .REQUIRE \"lib.evo\" AS LIB",
                 "  RET",

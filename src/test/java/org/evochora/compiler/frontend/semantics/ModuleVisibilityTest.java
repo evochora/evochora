@@ -107,7 +107,7 @@ public class ModuleVisibilityTest {
 
     /**
      * The alias of an import is a name of the module level: a label of the same name in a
-     * procedure of the importing module is reported when the table freezes, while the labels of
+     * procedure of the importing module is reported by the shadowing check, while the labels of
      * the imported module, filed under its own placement, are not compared with it.
      */
     @Test
@@ -121,7 +121,7 @@ public class ModuleVisibilityTest {
         symbolTable.define(new Symbol("HARVEST", new SourceInfo("/test/main.evo", 4, 0, MAIN_CHAIN, 0), Symbol.Type.LABEL, null));
         symbolTable.leaveScope();
 
-        symbolTable.freeze();
+        symbolTable.reportShadowing();
 
         assertThat(diagnostics.getDiagnostics()).singleElement().satisfies(d -> {
             assertThat(d.lineNumber()).isEqualTo(3);

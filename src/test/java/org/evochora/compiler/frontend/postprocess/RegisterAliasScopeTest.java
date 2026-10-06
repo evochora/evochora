@@ -114,7 +114,7 @@ class RegisterAliasScopeTest {
         symbolTable.define(new Symbol("X", procLine, Symbol.Type.REGISTER_ALIAS_DATA, procReg));
         symbolTable.leaveScope();
 
-        symbolTable.freeze();
+        symbolTable.reportShadowing();
 
         assertThat(diagnostics.getDiagnostics()).singleElement().satisfies(d -> {
             assertThat(d.lineNumber()).isEqualTo(3);

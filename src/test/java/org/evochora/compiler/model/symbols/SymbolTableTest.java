@@ -141,7 +141,7 @@ class SymbolTableTest {
 
     /**
      * Two placements keep their names apart on every level: a name inside a procedure of one
-     * placement is not compared with the module level of another when the table freezes.
+     * placement is not compared with the module level of another by the shadowing check.
      */
     @Test
     void aNameInAProcedureOfOnePlacementDoesNotShadowTheModuleLevelOfAnother() {
@@ -158,7 +158,7 @@ class SymbolTableTest {
         placements.define(new Symbol("DONE", new SourceInfo(LIB, 2, 1, "LIB", 0), Symbol.Type.LABEL));
         placements.leaveScope();
 
-        placements.freeze();
+        placements.reportShadowing();
 
         assertThat(diagnostics.hasErrors()).isFalse();
     }
