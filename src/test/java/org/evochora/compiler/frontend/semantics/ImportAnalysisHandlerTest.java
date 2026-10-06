@@ -45,8 +45,8 @@ class ImportAnalysisHandlerTest {
 
         // main imports dep as "D" and lib as "LIB"
         ModuleScope mainScope = symbolTable.getModuleScope(MAIN_CHAIN).orElseThrow();
-        mainScope.addImport("D", DEP_CHAIN, false);
-        mainScope.addImport("LIB", LIB_CHAIN, false);
+        mainScope.addImport("D", DEP_CHAIN);
+        mainScope.addImport("LIB", LIB_CHAIN);
 
         // lib requires "DEP"
         ModuleScope libScope = symbolTable.getModuleScope(LIB_CHAIN).orElseThrow();
@@ -128,7 +128,7 @@ class ImportAnalysisHandlerTest {
         String extraChain = "E";
         symbolTable.registerModule(extraChain, "/test/extra.evo");
         ModuleScope mainScope = symbolTable.getModuleScope(MAIN_CHAIN).orElseThrow();
-        mainScope.addImport("E", extraChain, false);
+        mainScope.addImport("E", extraChain);
 
         // .IMPORT "lib.evo" AS LIB USING D AS DEP USING E AS EXTRA
         ImportNode node = importNode("lib.evo", "LIB", List.of(
@@ -157,61 +157,11 @@ class ImportAnalysisHandlerTest {
         assertErrorContaining("EXTRA", "add USING <module> AS");
     }
 
-    @Test
-    @Tag("unit")
-    void anExportMarkerTheScanAndTheParserReadDifferentlyIsReported() {
-        // The scan recorded an exported import, the parser saw none on the same line.
-        ModuleScope mainScope = symbolTable.getModuleScope(MAIN_CHAIN).orElseThrow();
-        mainScope.addImport("D", DEP_CHAIN, true);
-
-        ImportNode node = importNode("dep.evo", "D", List.of(), false);
-
-        handler.analyze(node, symbolTable, diagnostics);
-
-        assertErrorContaining("D", "disagree on whether import");
-    }
-
-    @Test
-    @Tag("unit")
-    void anExportMarkerBothReadTheSameWayPassesValidation() {
-        ModuleScope mainScope = symbolTable.getModuleScope(MAIN_CHAIN).orElseThrow();
-        mainScope.addImport("D", DEP_CHAIN, true);
-
-        ImportNode node = importNode("dep.evo", "D", List.of(), true);
-
-        handler.analyze(node, symbolTable, diagnostics);
-
-        assertNoErrors();
-    }
-
-    @Test
-    @Tag("unit")
-    void aContradictingImportIsNotValidatedAnyFurther() {
-        // The USING clause below is invalid as well, but analysis stops at the contradiction
-        // rather than adding a second, unrelated complaint about a state known to be broken.
-        ModuleScope mainScope = symbolTable.getModuleScope(MAIN_CHAIN).orElseThrow();
-        mainScope.addImport("LIB", LIB_CHAIN, true);
-
-        ImportNode node = importNode("lib.evo", "LIB", List.of(
-                usingClause("UNKNOWN", "DEP")
-        ), false);
-
-        handler.analyze(node, symbolTable, diagnostics);
-
-        assertThat(diagnostics.getDiagnostics()).hasSize(1);
-        assertErrorContaining("LIB", "disagree on whether import");
-    }
-
     // --- Helper methods ---
 
     private ImportNode importNode(String path, String alias, List<ImportNode.UsingClause> usings) {
-        return importNode(path, alias, usings, false);
-    }
-
-    private ImportNode importNode(String path, String alias, List<ImportNode.UsingClause> usings,
-                                  boolean exported) {
         SourceInfo sourceInfo = new SourceInfo(MAIN_FILE, 1, 20, "", 0);
-        return new ImportNode(path, alias, usings, exported, sourceInfo);
+        return new ImportNode(path, alias, usings, false, sourceInfo);
     }
 
     private ImportNode.UsingClause usingClause(String sourceAlias, String targetAlias) {

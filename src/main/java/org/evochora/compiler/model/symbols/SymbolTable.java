@@ -20,8 +20,23 @@ import java.util.Optional;
 
 /**
  * A module-aware symbol table for managing scopes and symbols during semantic analysis.
- * Supports nested procedure scopes within each module, qualified cross-module name resolution
- * via import aliases, and export-based visibility control.
+ *
+ * <p>Names are held by levels: the module level of every placement and, inside it, one scope
+ * per procedure. A lookup resolves a name in one of two ways:</p>
+ * <ul>
+ *   <li>A plain name is searched from the scope it is written in outward to the module level;
+ *       the innermost scope that holds it wins. A level sees its own names and those of every
+ *       level it stands in.</li>
+ *   <li>A dotted name is a path and is resolved segment by segment. Its first segment is searched
+ *       like a plain name; the walk then descends from what it found: into a module through an
+ *       import or requirement alias, and into a scope through a symbol whose node opened one
+ *       ({@link #getNodeScope}). Each further segment is looked up in that level alone.</li>
+ * </ul>
+ * <p>{@code EXPORT} means the same on every level: the name is visible one level further out.
+ * Every segment that leads into a level the writer does not stand in has to be exported; the
+ * writer stands in a scope if it is the scope the path is written in or one enclosing it, and
+ * never in a module reached through an alias. An import passed on with {@code EXPORT .IMPORT} is
+ * an exported segment; a requirement is never a step through the module that declares it.</p>
  *
  * <p>Modules are identified by their import alias chain (e.g., "PRED.MATH") rather than
  * by file path, allowing the same physical file to appear as distinct placements with
@@ -436,9 +451,10 @@ public class SymbolTable {
     }
 
     /**
-     * Resolves a symbol by name, searching from the current scope upwards to the root.
-     * If the symbol is not found, it attempts to resolve it as a qualified name
-     * (e.g., {@code ALIAS.SYMBOL}) using the current module's import aliases.
+     * Resolves a name from the current scope: a plain name by searching from the current scope
+     * outward to the module level, a dotted name as a path, segment by segment, through modules
+     * and the scopes of symbols, every segment that leads into a level the writer does not stand
+     * in being exported (e.g., {@code UTIL.CLAMP.TO_MIN}).
      * @param name The name of the symbol to resolve.
      * @param at   The position the name is written at. A position in the placement of the
      *             current module looks the name up among that module's symbols, whichever file
@@ -485,105 +501,224 @@ public class SymbolTable {
     }
 
     /**
-     * Looks a name up in the scopes from the given one to the root, under the key the symbols of
-     * the namespace are filed by, and then as a qualified name through the imports and the
-     * requirements of the given module. A symbol found in a scope is qualified by that scope's
-     * path, one found on the module level by the module's alias chain.
+     * Looks a name up from the given scope. A plain name is searched in the scopes from the given
+     * one to the root, under the key the symbols of the namespace are filed by. A dotted name is a
+     * path: a first segment that is an import or a requirement alias of the given module leads
+     * into the module it names; any other first segment is searched like a plain name and leads
+     * into the scope its symbol opened. The walk then descends segment by segment, as
+     * {@link #descendModule} and {@link #descendScope} describe. A symbol found in a scope is
+     * qualified by that scope's path, one found on the module level by the module's alias chain.
      *
      * @param name       The name as written.
      * @param filedUnder The key the namespace's symbols are filed under: a placement's alias
      *                   chain, or a file outside a module.
-     * @param from       The innermost scope to search.
+     * @param from       The innermost scope to search, the level the name is written on.
      * @param module     The placement the name is written in; {@code null} outside a module.
      */
     private Lookup lookUp(String name, String filedUnder, Scope from, ModuleScope module) {
-        String key = name.toUpperCase();
-
-        // Search scope hierarchy (given scope → root)
-        for (Scope scope = from; scope != null; scope = scope.parent) {
-            Map<String, Symbol> perFile = scope.symbols.get(key);
-            if (perFile != null && perFile.containsKey(filedUnder)) {
-                String qualified = scope == rootScope
-                        ? qualify(module != null ? module.aliasChain() : null, key)
-                        : scope.name() + "." + key;
-                return new Lookup(new ResolvedSymbol(perFile.get(filedUnder), qualified, scope.name()), module, scope);
+        int dot = name.indexOf('.');
+        if (dot < 0) {
+            Scope scope = enclosingScopeOf(from, name.toUpperCase(), filedUnder);
+            if (scope == null) {
+                return Lookup.missing("the name is not defined.");
             }
+            return found(scope, name.toUpperCase(), filedUnder, module);
         }
-
-        // Attempt qualified name resolution (ALIAS.SYMBOL or multi-level ALIAS.B.SYMBOL)
-        int dot = key.indexOf('.');
-        if (dot <= 0) {
+        if (dot == 0) {
             return Lookup.missing("the name is not defined.");
         }
         // Explanations quote the segments as the program wrote them; lookups use the key
-        String alias = name.substring(0, dot);
+        String first = name.substring(0, dot);
         String remainder = name.substring(dot + 1);
+        String firstKey = first.toUpperCase();
 
+        // An alias of the module level leads into the module it names; any other name the
+        // scopes hold leads into the scope its symbol opened.
+        String targetAliasChain = null;
+        if (module != null) {
+            targetAliasChain = module.imports().get(firstKey);
+            if (targetAliasChain == null) {
+                targetAliasChain = module.usingBindings().get(firstKey);
+            }
+        }
+        Scope holder = enclosingScopeOf(from, firstKey, filedUnder);
+        if (targetAliasChain != null && (holder == null || holder == rootScope)) {
+            return descendModule(targetAliasChain, first, remainder, from);
+        }
+        // A requirement the importer did not supply names no module. The import that has to
+        // supply it is reported on its own line; this explanation points the reader there.
+        if (module != null && module.requires().containsKey(firstKey)
+                && (holder == null || holder == rootScope)) {
+            return Lookup.missing("'" + first + "' is a requirement that no import supplied; add USING <module> AS "
+                    + first + " to the import of this module.");
+        }
+        if (holder != null) {
+            return descendInto(holder.symbols.get(firstKey).get(filedUnder), first, remainder, filedUnder, from, module);
+        }
         if (module == null) {
             return Lookup.missing("the name is not defined.");
         }
-        String targetAliasChain = module.imports().get(alias.toUpperCase());
-        if (targetAliasChain == null) {
-            targetAliasChain = module.usingBindings().get(alias.toUpperCase());
-        }
-        if (targetAliasChain == null) {
-            return Lookup.missing("'" + alias + "' is neither an import nor a requirement of this module.");
-        }
-        return resolveMultiLevel(targetAliasChain, alias, remainder);
+        return Lookup.missing("'" + first + "' is neither an import nor a requirement of this module.");
     }
 
     /**
-     * Resolves the rest of a qualified name inside a module, one segment at a time. Every step
-     * but the last leads through an import the module marked with EXPORT. A module's
-     * requirements are deliberately not steps: a requirement is satisfied by the importer, who
-     * therefore already has a name for that module and does not reach it through the module it
-     * handed it to.
+     * Finds the scope that holds a name for the given namespace, from the given scope outward.
+     *
+     * @param from       The innermost scope to search.
+     * @param key        The upper-cased name.
+     * @param filedUnder The key the namespace's symbols are filed under.
+     * @return The innermost scope holding the name, or {@code null} if none does.
+     */
+    private static Scope enclosingScopeOf(Scope from, String key, String filedUnder) {
+        for (Scope scope = from; scope != null; scope = scope.parent) {
+            Map<String, Symbol> perFile = scope.symbols.get(key);
+            if (perFile != null && perFile.containsKey(filedUnder)) {
+                return scope;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Builds the result for a symbol found in a scope: qualified by the scope's path, or on the
+     * module level by the placement's alias chain.
+     *
+     * @param scope      The scope that holds the symbol.
+     * @param key        The upper-cased name.
+     * @param filedUnder The key the symbol is filed under in the scope.
+     * @param module     The placement the scope belongs to; {@code null} outside a module.
+     */
+    private Lookup found(Scope scope, String key, String filedUnder, ModuleScope module) {
+        String qualified = scope == rootScope
+                ? qualify(module != null ? module.aliasChain() : null, key)
+                : scope.name() + "." + key;
+        return new Lookup(new ResolvedSymbol(scope.symbols.get(key).get(filedUnder), qualified, scope.name()), module, scope);
+    }
+
+    /**
+     * Continues a path after a segment that names something other than a module: a symbol whose
+     * node opens a scope is a level the walk descends into; any other symbol has no members.
+     *
+     * @param symbol     The symbol the segment names.
+     * @param level      The path up to and including the segment, as the program wrote it.
+     * @param remainder  The rest of the path, as the program wrote it.
+     * @param filedUnder The key the namespace's symbols are filed under.
+     * @param from       The scope the path is written in.
+     * @param module     The placement the symbol belongs to; {@code null} outside a module.
+     */
+    private Lookup descendInto(Symbol symbol, String level, String remainder, String filedUnder, Scope from, ModuleScope module) {
+        Scope inner = getNodeScope(symbol.node());
+        if (inner == null) {
+            return Lookup.missing("'" + level + "' has no member '" + firstSegment(remainder) + "'.");
+        }
+        return descendScope(inner, level, remainder, filedUnder, from, module);
+    }
+
+    /**
+     * Resolves the rest of a path inside a scope a symbol opened, one segment at a time. The
+     * segment is looked up in that scope alone. If the writer does not stand inside the scope,
+     * that is, if it is neither the scope the path is written in nor one enclosing it, the
+     * segment's symbol has to be exported.
+     *
+     * @param level      The scope to look the next segment up in.
+     * @param levelName  The path that led to the scope, as the program wrote it.
+     * @param remainder  The rest of the path, as the program wrote it.
+     * @param filedUnder The key the namespace's symbols are filed under.
+     * @param from       The scope the path is written in.
+     * @param module     The placement the scope belongs to; {@code null} outside a module.
+     * @return The symbol with its qualified name, the placement and the scope that hold it, or
+     *         the reason there is none.
+     */
+    private Lookup descendScope(Scope level, String levelName, String remainder, String filedUnder, Scope from, ModuleScope module) {
+        String segment = firstSegment(remainder);
+        String key = segment.toUpperCase();
+        Map<String, Symbol> perFile = level.symbols.get(key);
+        Symbol symbol = perFile != null ? perFile.get(filedUnder) : null;
+        if (symbol == null) {
+            return Lookup.missing("'" + levelName + "' has no member '" + segment + "'.");
+        }
+        if (!symbol.exported() && !encloses(level, from)) {
+            return Lookup.missing("'" + segment + "' of " + levelName + " is not marked EXPORT.");
+        }
+        if (segment.length() == remainder.length()) {
+            return found(level, key, filedUnder, module);
+        }
+        return descendInto(symbol, levelName + "." + segment, remainder.substring(segment.length() + 1), filedUnder, from, module);
+    }
+
+    /**
+     * Resolves the rest of a path inside a module, one segment at a time. The writer never stands
+     * inside a module it reaches through an alias, so every segment found there has to be
+     * exported. A segment that names an import of the module leads into the imported module; a
+     * segment that names a symbol opening a scope leads into that scope. A module's requirements
+     * are deliberately not steps: a requirement is satisfied by the importer, who therefore
+     * already has a name for that module and does not reach it through the module it handed it
+     * to.
      *
      * @param currentChain The alias chain of the module the remainder is looked up in.
      * @param moduleName   How the program names that module, for the explanation of a failure.
-     * @param remainder    The rest of the qualified name, as the program wrote it.
-     * @return The symbol with its qualified name and the placement that defines it, or the
-     *         reason there is none.
+     * @param remainder    The rest of the path, as the program wrote it.
+     * @param from         The scope the path is written in.
+     * @return The symbol with its qualified name, the placement and the scope that hold it, or
+     *         the reason there is none.
      */
-    private Lookup resolveMultiLevel(String currentChain, String moduleName, String remainder) {
+    private Lookup descendModule(String currentChain, String moduleName, String remainder, Scope from) {
         ModuleScope modScope = modules.get(currentChain);
         if (modScope == null) {
             return Lookup.missing(moduleName + " is not a module of this compilation.");
         }
-        int dot = remainder.indexOf('.');
-        if (dot <= 0) {
-            String symbolKey = remainder.toUpperCase();
-            Symbol sym = modScope.symbols().get(symbolKey);
-            if (sym == null) {
-                return Lookup.missing(moduleName + " has no symbol '" + remainder + "'.");
-            }
-            if (!isExported(sym)) {
-                return Lookup.missing("'" + remainder + "' of " + moduleName + " is not marked EXPORT.");
-            }
-            return new Lookup(new ResolvedSymbol(sym, qualify(currentChain, symbolKey), rootScope.name()), modScope, rootScope);
+        String segment = firstSegment(remainder);
+        String key = segment.toUpperCase();
+        boolean last = segment.length() == remainder.length();
+        if (!last && modScope.requires().containsKey(key)) {
+            return Lookup.missing("'" + segment + "' is a requirement of " + moduleName
+                    + "; use the module you supplied for it.");
         }
-
-        String nextAlias = remainder.substring(0, dot);
-        String nextRemainder = remainder.substring(dot + 1);
-
-        String nextChain = modScope.imports().get(nextAlias.toUpperCase());
-        if (nextChain == null) {
-            if (modScope.requires().containsKey(nextAlias.toUpperCase())) {
-                return Lookup.missing("'" + nextAlias + "' is a requirement of " + moduleName
-                        + "; use the module you supplied for it.");
-            }
-            return Lookup.missing("'" + nextAlias + "' is not an import of " + moduleName + ".");
+        Symbol symbol = modScope.symbols().get(key);
+        if (symbol == null) {
+            return Lookup.missing("'" + moduleName + "' has no member '" + segment + "'.");
         }
-        if (!Boolean.TRUE.equals(modScope.importExported().get(nextAlias.toUpperCase()))) {
-            return Lookup.missing("import '" + nextAlias + "' of " + moduleName + " is not marked EXPORT.");
+        if (!symbol.exported()) {
+            String kind = modScope.imports().containsKey(key) ? "import '" : "'";
+            return Lookup.missing(kind + segment + "' of " + moduleName + " is not marked EXPORT.");
         }
-        return resolveMultiLevel(nextChain, moduleName + "." + nextAlias, nextRemainder);
+        if (last) {
+            return new Lookup(new ResolvedSymbol(symbol, qualify(currentChain, key), rootScope.name()), modScope, rootScope);
+        }
+        String nextRemainder = remainder.substring(segment.length() + 1);
+        String level = moduleName + "." + segment;
+        String nextChain = modScope.imports().get(key);
+        if (nextChain != null) {
+            return descendModule(nextChain, level, nextRemainder, from);
+        }
+        return descendInto(symbol, level, nextRemainder, modScope.aliasChain(), from, modScope);
     }
 
     /**
-     * Checks if a symbol is exported (visible to other modules).
+     * Returns the first segment of a path.
+     *
+     * @param path The path, as the program wrote it.
+     * @return The text before the first dot, or the whole path if it has none.
      */
-    private boolean isExported(Symbol sym) {
-        return sym.exported();
+    private static String firstSegment(String path) {
+        int dot = path.indexOf('.');
+        return dot < 0 ? path : path.substring(0, dot);
+    }
+
+    /**
+     * Tells whether the writer stands inside a scope: whether it is the given scope or one
+     * enclosing it. Scopes are compared by reference.
+     *
+     * @param scope The scope a path leads into.
+     * @param from  The scope the path is written in.
+     * @return {@code true} if {@code scope} is {@code from} or one of its ancestors.
+     */
+    private static boolean encloses(Scope scope, Scope from) {
+        for (Scope s = from; s != null; s = s.parent) {
+            if (s == scope) {
+                return true;
+            }
+        }
+        return false;
     }
 }

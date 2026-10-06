@@ -38,7 +38,7 @@ public class ModuleVisibilityTest {
 
         // Set up import relationship: main imports lib as "LIB"
         ModuleScope mainScope = symbolTable.getModuleScope(MAIN_CHAIN).orElseThrow();
-        mainScope.addImport("LIB", LIB_CHAIN, false);
+        mainScope.addImport("LIB", LIB_CHAIN);
 
         // Define an exported label in the lib module
         symbolTable.setCurrentModule(LIB_CHAIN);

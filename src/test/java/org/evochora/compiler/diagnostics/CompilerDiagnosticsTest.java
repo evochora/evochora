@@ -929,6 +929,29 @@ class CompilerDiagnosticsTest {
     }
 
     @Test
+    void callingThroughARequirementNoImportSuppliedNamesTheImportToFix() throws Exception {
+        write("arith.evo",
+                "EXPORT .PROC ADD",
+                "  RET",
+                ".ENDPROC");
+        write("nav.evo",
+                ".REQUIRE \"arith.evo\" AS ARITH",
+                "EXPORT .PROC STEP",
+                "  CALL ARITH.ADD",
+                "  RET",
+                ".ENDPROC");
+        write("main.evo",
+                ".IMPORT \"nav.evo\" AS NAV",
+                "START:",
+                "  CALL NAV.STEP");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("main.evo:1: Cannot import NAV: it requires 'ARITH'; add USING <module> AS ARITH to the import.")
+                .hasMessageContaining("nav.evo:3: Cannot call 'ARITH.ADD': 'ARITH' is a requirement that no import supplied; add USING <module> AS ARITH to the import of this module.");
+    }
+
+    @Test
     void callingAProcedureAModuleDoesNotExportNamesTheMissingExport() throws Exception {
         write("nav.evo",
                 ".PROC STEP",
@@ -974,7 +997,7 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Cannot call 'NAV.STEP': NAV has no symbol 'STEP'.")
+                .hasMessageContaining("Cannot call 'NAV.STEP': 'NAV' has no member 'STEP'.")
                 .hasMessageContaining("main.evo:3");
     }
 

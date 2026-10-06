@@ -11,7 +11,9 @@ import org.evochora.compiler.model.symbols.SymbolTable;
  * Pass-1 symbol collector for {@code .REQUIRE} directives.
  *
  * <p>Registers the require alias as a symbol for conflict detection
- * (prevents labels, procedures, or constants from using the same name).
+ * (prevents labels, procedures, or constants from using the same name). The symbol is never
+ * exported: a requirement is satisfied by the importer, so a path from outside never continues
+ * through it.
  *
  * <p>The actual require relationship (alias → path) is registered by
  * {@code Compiler.setupModuleRelationships()} from the DependencyScanner's data.

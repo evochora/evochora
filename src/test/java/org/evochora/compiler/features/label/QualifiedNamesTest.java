@@ -73,6 +73,30 @@ class QualifiedNamesTest {
     }
 
     /**
+     * A constant of a procedure reached from the module by its path is followed in the procedure
+     * that defines it: the constant it is defined as is a name of that procedure, visible there
+     * without being exported. The token of the path is filed under the procedure's scope.
+     */
+    @Test
+    void aProcedureConstantReachedByItsPathIsFollowedInTheProcedure() throws Exception {
+        ProgramArtifact artifact = new Compiler().compile(List.of(
+                "EXPORT .PROC CLAMP",
+                "  .CONST LIMIT DATA:7",
+                "  EXPORT .CONST N LIMIT",
+                "  RET",
+                ".ENDPROC",
+                "  SETI %DR0 CLAMP.N"), "main.evo", ENV);
+
+        assertThat(artifact.tokenMap().values())
+                .filteredOn(token -> token.tokenText().equals("CLAMP.N"))
+                .singleElement()
+                .satisfies(token -> {
+                    assertThat(token.scope()).isEqualTo("CLAMP");
+                    assertThat(token.qualifiedName()).isEqualTo("CLAMP.N");
+                });
+    }
+
+    /**
      * Each of the two paths has a value of its own, one label cell carries it at a coordinate of
      * its own, and the jumps to the two labels carry the two values.
      */

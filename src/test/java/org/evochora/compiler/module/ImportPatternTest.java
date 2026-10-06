@@ -13,8 +13,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Tests the pattern by which the dependency scan recognises an {@code .IMPORT} line.
  * <p>
  * A line this pattern misses is never scanned, so the module behind it is never loaded and the
- * parser never sees it; a marker it captures wrongly decides what a module re-exports. Both are
- * silent failures at the very front of the pipeline, which is why the syntax is pinned here in
+ * parser never sees it, a silent failure at the very front of the pipeline. An {@code EXPORT}
+ * prefix belongs to the line, so an exported import is loaded as well. The syntax is pinned here in
  * isolation rather than only through programs that happen to use it. The pattern recognises a
  * line by the directive and the quoted path alone, so a directive whose clauses are malformed
  * is still loaded and its malformation is reported by the phases that read the clauses.

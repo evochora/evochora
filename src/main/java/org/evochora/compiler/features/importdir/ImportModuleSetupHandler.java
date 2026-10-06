@@ -18,10 +18,9 @@ public class ImportModuleSetupHandler implements IDependencySetupHandler<ImportD
         String importedAliasChain = dep.aliasChain();
         ModuleScope modScope = ctx.getModuleScope(ctx.currentAliasChain());
         if (modScope != null) {
-            // Whether a name may reach through this import from outside. Resolution walks the
-            // chain segment by segment and asks at every step, so a module that keeps its import
-            // to itself ends the chain there.
-            modScope.addImport(importAlias, importedAliasChain, dep.exported());
+            // Only the placement the alias leads to is recorded here. Whether a path from outside
+            // may continue through the alias is carried by the alias symbol, which the lookup asks.
+            modScope.addImport(importAlias, importedAliasChain);
         }
     }
 

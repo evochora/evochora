@@ -41,7 +41,7 @@ class SymbolTableTest {
         table = new SymbolTable(new DiagnosticsEngine());
         table.registerModule("", MAIN);
         table.registerModule("LIB", LIB);
-        table.getModuleScope("").orElseThrow().addImport("LIB", "LIB", false);
+        table.getModuleScope("").orElseThrow().addImport("LIB", "LIB");
     }
 
     @Test
@@ -91,6 +91,35 @@ class SymbolTableTest {
 
         assertThat(bound).containsInstanceOf(NumberLiteralNode.class);
         assertThat(((NumberLiteralNode) bound.orElseThrow()).value()).isEqualTo(7);
+    }
+
+    /**
+     * A path descends from a symbol into the scope its node opens. Of a scope the writer does
+     * not stand in, only an exported name is found; the find is qualified by the scope's path and
+     * reports that scope.
+     */
+    @Test
+    void aPathDescendsIntoTheScopeASymbolOpens() {
+        table.setCurrentModule("LIB");
+        SourceInfo procedure = new SourceInfo(LIB, 1, 7, "LIB", 0);
+        AstNode procedureNode = new IdentifierNode("P", procedure);
+        table.define(new Symbol("P", procedure, Symbol.Type.PROCEDURE, procedureNode, true));
+        table.registerNodeScope(procedureNode, table.enterScope("P"));
+        table.define(new Symbol("SHOWN", new SourceInfo(LIB, 2, 1, "LIB", 0), Symbol.Type.LABEL, null, true));
+        table.define(new Symbol("KEPT", new SourceInfo(LIB, 3, 1, "LIB", 0), Symbol.Type.LABEL, null, false));
+        table.leaveScope();
+
+        SourceInfo at = new SourceInfo(LIB, 5, 6, "LIB", 0);
+        assertThat(table.resolve("P.SHOWN", at).found()).hasValueSatisfying(found -> {
+            assertThat(found.qualifiedName()).isEqualTo("LIB.P.SHOWN");
+            assertThat(found.scope()).isEqualTo("LIB.P");
+        });
+        assertThat(table.resolve("P.KEPT", at)).isInstanceOfSatisfying(Resolution.Missing.class,
+                missing -> assertThat(missing.explanation()).isEqualTo("'KEPT' of P is not marked EXPORT."));
+
+        table.setCurrentModule("");
+        assertThat(table.resolve("LIB.P.SHOWN", new SourceInfo(MAIN, 1, 6, "", 0)).found())
+                .map(ResolvedSymbol::qualifiedName).contains("LIB.P.SHOWN");
     }
 
     @Test

@@ -93,7 +93,7 @@ class SymbolTableFreezeTest {
 
         assertThatThrownBy(() -> scope.defineSymbol("X", new Symbol("X", new SourceInfo("t", 1, 0, "", 0), Symbol.Type.LABEL)))
                 .isInstanceOf(IllegalStateException.class).hasMessageContaining("MAIN");
-        assertThatThrownBy(() -> scope.addImport("X", "Y", false)).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> scope.addImport("X", "Y")).isInstanceOf(IllegalStateException.class);
         assertThatThrownBy(() -> scope.addRequirement("X", "Y")).isInstanceOf(IllegalStateException.class);
         assertThatThrownBy(() -> scope.bindUsing("X", "Y")).isInstanceOf(IllegalStateException.class);
 
@@ -108,9 +108,8 @@ class SymbolTableFreezeTest {
         unfrozen.registerModule("MOD", "mod.evo");
         ModuleScope scope = unfrozen.getModuleScope("MOD").orElseThrow();
 
-        scope.addImport("LIB", "LIB_CHAIN", true);
+        scope.addImport("LIB", "LIB_CHAIN");
         assertThat(scope.imports().get("LIB")).isEqualTo("LIB_CHAIN");
-        assertThat(scope.importExported().get("LIB")).isTrue();
 
         scope.addRequirement("DEP", "dep.evo");
         assertThat(scope.requires().get("DEP")).isEqualTo("dep.evo");

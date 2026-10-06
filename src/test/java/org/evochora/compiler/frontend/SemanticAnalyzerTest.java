@@ -767,6 +767,84 @@ public class SemanticAnalyzerTest {
                 .satisfies(d -> assertThat(d.message()).contains("'X.Y'").contains("a name is one segment"));
     }
 
+    /**
+     * A label marked EXPORT inside a procedure is visible one level further out, to the module,
+     * through its path.
+     */
+    @Test
+    @Tag("unit")
+    void anExportedProcedureLabelIsReachedFromTheModuleByItsPath() {
+        List<Diagnostic> errors = analyzeAndFreeze(
+                ".PROC CLAMP",
+                "  EXPORT .LABEL TO_MIN NOP",
+                "  RET",
+                ".ENDPROC",
+                "PSLI CLAMP.TO_MIN");
+
+        assertThat(errors).isEmpty();
+    }
+
+    @Test
+    @Tag("unit")
+    void aProcedureLabelWithoutExportIsNotReachedFromTheModule() {
+        List<Diagnostic> errors = analyzeAndFreeze(
+                ".PROC CLAMP",
+                "  .LABEL TO_MIN NOP",
+                "  RET",
+                ".ENDPROC",
+                "PSLI CLAMP.TO_MIN");
+
+        assertThat(errors).singleElement().satisfies(d -> {
+            assertThat(d.lineNumber()).isEqualTo(5);
+            assertThat(d.message()).isEqualTo(
+                    "Cannot use 'CLAMP.TO_MIN' as an argument: 'TO_MIN' of CLAMP is not marked EXPORT.");
+        });
+    }
+
+    @Test
+    @Tag("unit")
+    void aPathToANameTheProcedureDoesNotHaveIsReported() {
+        List<Diagnostic> errors = analyzeAndFreeze(
+                ".PROC CLAMP",
+                "  RET",
+                ".ENDPROC",
+                "PSLI CLAMP.NOPE");
+
+        assertThat(errors).singleElement().satisfies(d -> assertThat(d.message())
+                .isEqualTo("Cannot use 'CLAMP.NOPE' as an argument: 'CLAMP' has no member 'NOPE'."));
+    }
+
+    /**
+     * A constant opens no level, so a path cannot continue after it.
+     */
+    @Test
+    @Tag("unit")
+    void aPathThroughANameThatOpensNoLevelIsReported() {
+        List<Diagnostic> errors = analyzeAndFreeze(
+                ".CONST X DATA:5",
+                "PSLI X.Y");
+
+        assertThat(errors).singleElement().satisfies(d -> assertThat(d.message())
+                .isEqualTo("Cannot use 'X.Y' as an argument: 'X' has no member 'Y'."));
+    }
+
+    /**
+     * Inside the procedure the writer stands in its level, so its own names are reached by path
+     * without being exported.
+     */
+    @Test
+    @Tag("unit")
+    void aProcedureReachesItsOwnNamesByPathWithoutExport() {
+        List<Diagnostic> errors = analyzeAndFreeze(
+                ".PROC CLAMP",
+                "  PSLI CLAMP.TO_MIN",
+                "  .LABEL TO_MIN NOP",
+                "  RET",
+                ".ENDPROC");
+
+        assertThat(errors).isEmpty();
+    }
+
     private static ParserStatementRegistry allHandlers() {
         ParserStatementRegistry reg = new ParserStatementRegistry();
         reg.register(".CONST", new ConstDirectiveHandler());

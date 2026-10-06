@@ -34,16 +34,15 @@ class ModuleScopeTest {
     void anAliasBindsOnceAndTheSameBindingAgainIsNoConflict() {
         ModuleScope scope = new ModuleScope("M", "m.evo");
 
-        assertThat(scope.addImport("LIB", "M.LIB", true)).isTrue();
-        assertThat(scope.addImport("LIB", "M.LIB", true)).isTrue();
+        assertThat(scope.addImport("LIB", "M.LIB")).isTrue();
+        assertThat(scope.addImport("LIB", "M.LIB")).isTrue();
         assertThat(scope.addRequirement("DEP", "dep.evo")).isTrue();
         assertThat(scope.bindUsing("DEP", "M.A")).isTrue();
 
-        assertThat(scope.addImport("LIB", "M.OTHER", false)).isFalse();
+        assertThat(scope.addImport("LIB", "M.OTHER")).isFalse();
         assertThat(scope.addRequirement("DEP", "other.evo")).isFalse();
         assertThat(scope.bindUsing("DEP", "M.B")).isFalse();
         assertThat(scope.imports()).containsEntry("LIB", "M.LIB");
-        assertThat(scope.importExported()).containsEntry("LIB", true);
         assertThat(scope.requires()).containsEntry("DEP", "dep.evo");
         assertThat(scope.usingBindings()).containsEntry("DEP", "M.A");
     }
@@ -54,7 +53,7 @@ class ModuleScopeTest {
         scope.freeze();
 
         assertThatThrownBy(() -> scope.defineSymbol("X", symbol("X", 1))).isInstanceOf(IllegalStateException.class);
-        assertThatThrownBy(() -> scope.addImport("LIB", "M.LIB", false)).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> scope.addImport("LIB", "M.LIB")).isInstanceOf(IllegalStateException.class);
         assertThatThrownBy(() -> scope.addRequirement("DEP", "dep.evo")).isInstanceOf(IllegalStateException.class);
         assertThatThrownBy(() -> scope.bindUsing("DEP", "M.A")).isInstanceOf(IllegalStateException.class);
     }
@@ -67,7 +66,6 @@ class ModuleScopeTest {
         assertThatThrownBy(() -> scope.imports().put("X", "Y")).isInstanceOf(UnsupportedOperationException.class);
         assertThatThrownBy(() -> scope.requires().put("X", "Y")).isInstanceOf(UnsupportedOperationException.class);
         assertThatThrownBy(() -> scope.usingBindings().put("X", "Y")).isInstanceOf(UnsupportedOperationException.class);
-        assertThatThrownBy(() -> scope.importExported().put("X", true)).isInstanceOf(UnsupportedOperationException.class);
         assertThat(Optional.ofNullable(scope.symbols().get("X"))).isEmpty();
     }
 }
