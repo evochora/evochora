@@ -31,7 +31,7 @@ blocks, the `.END*` naming of the block directives) is accomplished and lives un
 
 | # | Document | Status | Summary |
 |---|---|---|---|
-| 1 | [QUALIFIED_NAMES](compiler-enhancements/QUALIFIED_NAMES.md) | TO BE REVIEWED | Modules, procedures and control blocks are levels; a name is reached by its path (`UTIL.CLAMP.DONE`), every level shows other levels only what it marks `EXPORT`, no name shadows one of an enclosing level, the path is the identity of a name throughout the compiler, and a jump neither enters nor leaves a procedure (#201); fixes one label name in two procedures compiling to one address |
+| 1 | [QUALIFIED_NAMES](compiler-enhancements/QUALIFIED_NAMES.md) | TO BE REVIEWED | Modules, procedures and control blocks are levels; a name is reached by its path (`UTIL.CLAMP.DONE`), every level shows other levels only what it marks `EXPORT`, no name shadows one of an enclosing level, the path is the identity of a name throughout the compiler; fixes one label name in two procedures compiling to one address; #201 builds on it |
 | 2 | [CONTROL_FLOW_DIRECTIVES](compiler-enhancements/CONTROL_FLOW_DIRECTIVES.WIP.md) | **WORK IN PROGRESS** | Control blocks; rewritten on top of 1 |
 
 Dependencies:

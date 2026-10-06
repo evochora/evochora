@@ -7,8 +7,9 @@ by itself and from outside by its path, `LEVEL.NAME`, the way `package.class.mem
 member in Java. Every level is a visibility boundary: it shows its own names to the levels inside
 it, and to everyone else only what it marks `EXPORT`. The path is also the identity of a name
 throughout the compiler, in the IR, in the artifact and in the visualizer, so that one name in
-two procedures is two names. A procedure is also a boundary for jumps: a jump neither enters nor
-leaves one, which closes issue #201.
+two procedures is two names. A jump into a procedure is what `EXPORT` on a label inside it
+declares; whether a jump out of a procedure without `RET` is reported is issue #201, which
+builds on this document.
 
 ## Problem
 
@@ -33,10 +34,10 @@ Four things are wrong with what the compiler does around the levels:
    procedure compiles and does nothing.
 3. **A name may contain a dot.** The lexer accepts `X.Y:` as a label, and the symbol table files
    it under `X.Y`, where it can only be confused with the qualified name `Y` of a module `X`.
-4. **A jump may cross a procedure boundary.** A procedure's labels are private, but a jump from
-   a procedure to a module-level label compiles, and so does `JMPI CLAMP` onto a procedure's
-   entry. Both leave the call stack as it is: the procedure's prologue and epilogue, which the
-   marshalling inserts, run without the frame they expect. Issue #201 asks for the report.
+4. **A jump out of a procedure is silent.** A jump from a procedure body to a module-level
+   label compiles and leaves the procedure without `RET`: the entry stays on the call stack, and
+   the marshalling at the call site never runs. Issue #201 asks for the report. It is not part of
+   this document (see Decisions), but it builds on the scope this document gives every lookup.
 
 Found while designing CONTROL_FLOW_DIRECTIVES: a control block would be a level too, and every
 defect above would multiply with it.
@@ -48,10 +49,10 @@ defect above would multiply with it.
 | Do nothing; forbid one label name in two procedures | Takes away the locality that MASM and HLA give a procedure, and leaves `EXPORT` in a procedure meaningless. |
 | Give labels the `DefinitionKey` form, `UTIL.DONE@UTIL.CLAMP`, as constants have | Fixes the identity and nothing else: two key forms stay (`@` for the artifact, `.` for the language), and the module stands in the key twice. |
 | Make the identity `UTIL.CLAMP.DONE` but keep lookups as they are | The identity would be a form no program can write; a procedure's name would be reachable from nowhere. |
-| A lookup-only scope for a block's short names (CONTROL_FLOW_DIRECTIVES as first drafted) | A second kind of scope in the core for one feature; and it leaves defects 1 to 4 in place. |
+| A lookup-only scope for a block's short names (CONTROL_FLOW_DIRECTIVES as first drafted) | A second kind of scope in the core for one feature; and it leaves defects 1 to 3 in place. |
 | Allow a name on an inner level to shadow one of an enclosing level, the innermost winning | A word with two meanings depending on where it is written, at the first segment of a path where it hurts most; Java allows it for fields and regrets it (obscuring), C# reports it. No program does it today. |
-| Report only the jump out of a procedure (#201 as filed), accept the jump in through an exported label | The jump in corrupts the stack exactly as the jump out does; the precedent cited for it, MASM's `L::`, has no marshalling. One rule, both directions. |
-| **Levels with paths, one rule for visibility, one rule against shadowing, the path as the identity, the procedure as a jump boundary** | Chosen. |
+| Report a jump into a procedure as well as out of it (this document as first reviewed) | The jump in is what `EXPORT` on a label inside a procedure declares; the rule would take that declaration back for some instructions while `CALL` and the location instructions still carry an address into the procedure. The jump out has no declaration in the source and is a rule of its own: issue #201. |
+| **Levels with paths, one rule for visibility, one rule against shadowing, the path as the identity** | Chosen. |
 
 ## Solution
 
@@ -96,13 +97,13 @@ it.
 
 ### Jumps and procedures
 
-A procedure is entered by `CALL` and left by `RET`, and nothing else: an instruction whose label
-operand is a jump target (`JMPI`, the conditional jumps) may name only a label of the procedure
-it stands in, or, outside every procedure, a label outside every procedure. A jump into a
-procedure (`JMPI CLAMP.TO_MIN`, `JMPI CLAMP`) and a jump out of one are reported: "a jump may not
-enter a procedure" / "may not leave a procedure". `CALL` is not a jump; the location instructions
-(`SKJI`, `PSLI`, `LRLI`) and `LVAL` arguments move the data pointer and may name any visible
-label. This is what an exported label inside a procedure is for.
+A jump into a procedure is in the programmer's hands. A label inside a procedure is reachable
+from outside only when it is marked `EXPORT`, and whoever marks it declares that the place may
+be entered from outside, by a jump, a `CALL` or a location instruction alike; the compiler
+checks form and visibility and does not take that declaration back for some of the
+instructions. A jump out of a procedure without `RET` has no such declaration in the source.
+Whether the compiler reports it, and how, is issue #201: it builds on the scope this document
+gives every lookup result and is not part of this proposal.
 
 ### Identity
 
@@ -126,7 +127,7 @@ EXPORT TO_MIN:                     # visible to the module as CLAMP.TO_MIN
 .ENDPROC
 
   PSLI CLAMP.TO_MIN                # from the module: the path, for the data pointer
-  JMPI CLAMP.TO_MIN                # reported: a jump may not enter a procedure
+  JMPI CLAMP.TO_MIN                # from the module: the path; EXPORT declared the entry
 ```
 
 From another module, after `.IMPORT "lib/util.evo" AS UTIL` and `EXPORT .PROC CLAMP`:
@@ -152,9 +153,6 @@ build a name of their own today; no feature learns another feature.
 | `IrGenContext.qualifyName` | `chain.NAME` | the current scope's path plus the name; the scope stack holds paths |
 | `DefinitionKey` | `qualified@scope` for aliases and constants | removed. `ConstantValueEmissionContributor` and `RegisterAliasEmissionContributor` file under the name the IR directive carries, which is the path; the `scope` argument of the `const_value` and `reg_alias` directives is removed with its only readers, and `IrGenContext.currentScope()` with it unless a reader remains. `TokenInfo.GLOBAL_SCOPE` takes over the constant `"global"`, which `TokenMapGenerator` and `ProcedureTokenMapContributor` use instead of the literal. |
 | `TokenMapGenerator` | the identifier branch takes the qualified name from the resolved symbol; a register-alias branch builds `chain.alias` itself, but is never reached, because aliases are still identifiers in Phase 5 and become registers only in Phase 6 | the register-alias branch is removed; a register is a register, an identifier is classified by its symbol |
-| `IInstructionSet`, `RuntimeInstructionSetAdapter` | no question about jumps | `labelIsJumpTarget(opcode)`, answered from the declaration the runtime already keeps |
-| A capability in `model/ast` | — | `ICallBoundary`: the node of a level that only `CALL` enters and `RET` leaves; `ProcedureNode` implements it. The symbol table can name the innermost such scope of any scope (the scope keeps the node that opened it). |
-| `InstructionAnalysisHandler` | checks the kind of every operand | for an opcode whose label operand is a jump target, also compares the innermost call boundary of the instruction's scope with that of the label's scope, and reports a difference as a jump into or out of a procedure |
 | `AnnotationUtils.definitionKey` (visualizer) | rebuilds the `@` key | removed; `resolveToCanonicalRegister`, `RegisterTokenHandler` and the constant lookup in `SourceAnnotator` look up the qualified name; `ParameterTokenHandler` compares the scope with `TokenInfo.GLOBAL_SCOPE` exactly, so that a procedure named `GLOBAL` keeps its annotations |
 | Layout, linker, emitter, artifact maps, `AstPostProcessor`, the data pipeline | key by the name they are given, or pass the maps through | unchanged |
 | Marshalling bridge labels `_safe_call_N`, `_safe_ret_N` | unqualified, lower case | unchanged: no program can write them |
@@ -169,22 +167,22 @@ one item out of what #153 has to carry.
 - `docs/ASSEMBLY_SPEC.md`, section 4: a subsection "Qualified names" after "Labels", in the form
   of its neighbours, saying what a level is, what a path is, the one visibility rule and the
   rule against shadowing; "Exported Labels" and "Exported Constants" refer to it; section 6
-  "Control Flow": a jump neither enters nor leaves a procedure; section 7, `.IMPORT`, `.REQUIRE`
-  and `.PROC`: `EXPORT` as the rule says, `.IMPORT`/`.REQUIRE` at module level only.
+  "Control Flow": an exported label inside a procedure may be entered from outside, and a jump
+  that leaves a procedure without `RET` is not reported; section 7, `.IMPORT`, `.REQUIRE` and
+  `.PROC`: `EXPORT` as the rule says, `.IMPORT`/`.REQUIRE` at module level only.
 - `docs/COMPILER_CORE_BOUNDARY.md`: the sentence above.
-- `.claude/skills/evoasm/SKILL.md`: paths, `EXPORT` inside procedures, the jump rule.
+- `.claude/skills/evoasm/SKILL.md`: paths, `EXPORT` inside procedures.
 - `src/main/proto/.../metadata_contracts.proto`, `internal/LinearizedProgramArtifact.java`,
   `ui/organism/OrganismSourceView.js`: the comments that describe the `@` key.
 - Issue #153: a comment that `DefinitionKey` is gone and the artifact's keys are paths. Issue
-  #201: closed by this proposal.
+  #201: a comment with the design that builds on this document.
 - `docs/proposals/README.md`: this document's row; CONTROL_FLOW_DIRECTIVES builds on it.
 
 ## Consequences for programs and experiments
 
 - Every existing program compiles unchanged: no program under `assembly/` or in the test
   resources defines a dotted name, writes `EXPORT` inside a procedure, has a name on two levels
-  of one file, imports inside a procedure, or jumps across a procedure boundary (checked by
-  search, with `.SOURCE` resolved). Two tests change: `RegisterAliasScopeTest.shadowingModuleLevelAlias`
+  of one file, or imports inside a procedure (checked by search, with `.SOURCE` resolved). Two tests change: `RegisterAliasScopeTest.shadowingModuleLevelAlias`
   asserts that an alias may shadow one of the module level and turns into the opposite
   assertion; `PlacementArtifactIntegrationTest` expects the label of a procedure under the
   module's name and expects its path instead.
@@ -208,7 +206,6 @@ one item out of what #153 has to carry.
   for local variables has the same property.
 - **Two placements of one module** keep separate names, as today: the path begins with the
   placement's alias chain, and the shadowing check is filed by placement.
-- **Jumps a mutation produces** are nobody's business at compile time; the rule reads source.
 - **No JavaScript tests exist.** The visualizer change is verified by hand: `%TMP` in
   `LOCAL_STEP` of the reference program and a procedure-local constant must be annotated.
 - **Hot path**: none; the compiler only.
@@ -223,9 +220,8 @@ that fails before its fix (AGENTS.md, "Defect tests").
 | 1 | The path as the identity | test first: new `QualifiedNamesTest` in `compiler/features/label` (inline assembly, `Compiler.compile`, `@Tag("unit")`), compiling two procedures with a label `DONE` each, and a procedure label followed by a module-level label of the same name, asserting two label cells at two addresses and distinct reference values (fails today); then `SymbolTable.enterScope` (segment, path formed in the core), `lookUp` (qualified name from the scope's path), `Lookup`/`ResolvedSymbol.scope`/`bindingOf` (the scope of the find), `IrGenContext.enterScope`/`qualifyName`, `ProcedureSymbolCollector`, `ProcedureNodeConverter`, `TokenMapGenerator` (alias branch, `GLOBAL_SCOPE`), `ProcedureTokenMapContributor`, `DefinitionKey` removed, `TokenInfo.GLOBAL_SCOPE`, `ConstNodeConverter`/`RegNodeConverter` (no `scope` argument), the two emission contributors, `EmissionContext`, `ProgramArtifact` and `LinearizedProgramArtifact` Javadoc, `AnnotationUtils.js`, `SourceAnnotator.js`, `RegisterTokenHandler.js`, `ParameterTokenHandler.js`, `ConstantValuesTest` (keys are paths), regenerated `expected/main.json` | `gw test --tests '*QualifiedNames*' --tests '*ConstantValues*' --tests '*TokenMap*' --tests '*CompilerOutputEquivalence*'`; the artifact diff limited to what the Consequences list; the visualizer check by hand | the defect test passes; every alias, constant and label key is a path; `%TMP` and a procedure-local constant are annotated |
 | 2 | One name per level, no shadowing, one segment, imports at module level | `SymbolTable.define` (dot reported), `SymbolTable.freeze` (shadowing check over every registered scope), `ImportDirectiveHandler`, `RequireDirectiveHandler`, the parser-state query; tests first: `SymbolTableTest`, `SemanticAnalyzerTest` (a parameter named like a later module constant; a procedure label named like a later module label; an alias named like a module alias; an import alias; two procedures with the same label stay allowed), `RegisterAliasScopeTest` (assertion turned), `LabelDirectiveTest` or the parser test of labels, `ProcedureDirectiveTest`, `ConstDirectiveTest`, `RegDirectiveTest`, `ImportDirectiveTest` (a dotted definition of each kind; `.IMPORT` and `.REQUIRE` in a procedure) | `gw test --tests '*SymbolTable*' --tests '*SemanticAnalyzer*' --tests '*RegisterAliasScope*' --tests '*Directive*'` | every rule has a red-then-green test for both definition orders; sibling levels keep their locality |
 | 3 | Paths and visibility | `SymbolTable.lookUp` (first segment as a plain name), `resolveMultiLevel` (descent into scopes, the visibility rule, messages), `ImportSymbolCollector` (exported flag), `ModuleScope` (`importExported` removed), `ImportDependencyInfo`/`ImportDependencyScanHandler` (the scan no longer records the prefix), `ImportAnalysisHandler` (drift check removed); `SymbolTableTest`, `SemanticAnalyzerTest` (`CLAMP.TO_MIN` from the module with and without `EXPORT`; a plain `TO_MIN` from the module still reported; a constant defined through another constant inside an exported procedure resolved by path, with the procedure as the token's scope), a two-file test under `@TempDir`, `@Tag("integration")`, modelled on `ReExportedImportResolutionTest` (`UTIL.CLAMP.TO_MIN` with both exports, one missing, none; the reference program's `NAV.STEP.FORWARD` through a passed-on import) | `gw test --tests '*SymbolTable*' --tests '*SemanticAnalyzer*' --tests '*Import*' --tests '*Resolution*' --tests '*CompilerOutputEquivalence*'` | every case of the visibility rule has a test; `EXPORT` inside a procedure is meaningful; the reference artifact is unchanged by this step |
-| 4 | Jumps and procedures | `IInstructionSet`/`RuntimeInstructionSetAdapter` (`labelIsJumpTarget`), `ICallBoundary`, `ProcedureNode`, `SymbolTable` (the scope keeps its opening node; innermost call boundary of a scope), `InstructionAnalysisHandler`; tests first in `SemanticAnalyzerTest` or `QualifiedNamesTest`: `JMPI` and a conditional jump into a procedure (by path, and onto the procedure's name), out of a procedure, between two procedures, reported; `PSLI`/`SKJI`/`LRLI`/`LVAL` by path accepted; a jump within a procedure and at module level accepted; `CALL` unaffected; `RuntimeInstructionSetAdapterTest`, `CallSiteBindingRuleTest` (the interface stub) | `gw test --tests '*SemanticAnalyzer*' --tests '*QualifiedNames*' --tests '*RuntimeInstructionSetAdapter*' --tests '*CallSiteBinding*'` | #201 holds in both directions; no existing program is reported |
-| 5 | Documentation | the documents listed under Documentation; this document's status; the comment on #153; #201 closed | review of the diff against the neighbouring sections | every document uses the terms level, path, segment, and no more words than its neighbours |
-| 6 | Gate | — | `gw check` | PMD and the full suite green |
+| 4 | Documentation | the documents listed under Documentation; this document's status; the comments on #153 and #201 | review of the diff against the neighbouring sections | every document uses the terms level, path, segment, and no more words than its neighbours |
+| 5 | Gate | — | `gw check` | PMD and the full suite green |
 
 ## Decisions
 
@@ -241,8 +237,9 @@ that fails before its fix (AGENTS.md, "Defect tests").
    an exported segment.
 7. The path is the identity of a name from the lookup on; `DefinitionKey` and the IR's `scope`
    argument are removed.
-8. A jump neither enters nor leaves a procedure; `CALL`, the location instructions and `LVAL`
-   are not jumps. Issue #201 is closed by this.
+8. A jump into a procedure is what `EXPORT` on a label inside it declares; the compiler checks
+   form and visibility and no more. The jump out of a procedure without `RET` is issue #201,
+   decided and built after this document.
 9. The marshalling's bridge labels stay unqualified.
 10. The label values of labels inside procedures change once; the reference artifact is
     regenerated and the pull request says so.
