@@ -25,13 +25,14 @@ legitimately cover, and delegates the formats this codebase owns to PERSISTED_FO
 
 ## Compiler enhancements
 
-One compiler proposal remains open. CONDITIONAL_COMPILATION (`.DEFINE` flags, `.IFDEF`
+Two compiler proposals remain open; 2 builds on 1. CONDITIONAL_COMPILATION (`.DEFINE` flags, `.IFDEF`
 blocks, the `.END*` naming of the block directives) is accomplished and lives under
 [`docs/outdated/proposals/accomplished/`](../outdated/proposals/accomplished/CONDITIONAL_COMPILATION.md).
 
 | # | Document | Status | Summary |
 |---|---|---|---|
-| 1 | [CONTROL_FLOW_DIRECTIVES](compiler-enhancements/CONTROL_FLOW_DIRECTIVES.WIP.md) | **WORK IN PROGRESS** | `.IF`/`.ELSEIF`/`.ELSE`/`.ENDIF` specified; `.WHILE`/`.FOR`/`.BREAK`/`.CONTINUE` still to be written |
+| 1 | [QUALIFIED_NAMES](compiler-enhancements/QUALIFIED_NAMES.md) | TO BE REVIEWED | Modules, procedures and control blocks are levels; a name is reached by its path (`UTIL.CLAMP.DONE`), every level shows other levels only what it marks `EXPORT`, no name shadows one of an enclosing level, the path is the identity of a name throughout the compiler, and a jump neither enters nor leaves a procedure (#201); fixes one label name in two procedures compiling to one address |
+| 2 | [CONTROL_FLOW_DIRECTIVES](compiler-enhancements/CONTROL_FLOW_DIRECTIVES.WIP.md) | **WORK IN PROGRESS** | Control blocks; rewritten on top of 1 |
 
 Dependencies:
 
