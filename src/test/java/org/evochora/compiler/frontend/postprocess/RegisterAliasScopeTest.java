@@ -26,7 +26,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Tests scope-aware register alias resolution in the {@link AstPostProcessor}.
  * Verifies that proc-scoped aliases and scope inheritance work correctly when aliases are
  * resolved via the {@link SymbolTable} with {@link ScopeTracker}, and that an alias in a
- * procedure named like one of the module level is reported rather than shadowing it.
+ * procedure named like one of the module level is the one meant inside the procedure.
  */
 @Tag("unit")
 class RegisterAliasScopeTest {
@@ -95,31 +95,42 @@ class RegisterAliasScopeTest {
     }
 
     @Test
-    void shadowingModuleLevelAliasIsReported() {
-        // Module-level: .REG %X %DR0 (line 1)
-        // Proc: .REG %X %PDR0 (line 3), a name the enclosing module level already has
-        SourceInfo moduleLine = new SourceInfo("test.s", 1, 0, "", 0);
-        SourceInfo procLine = new SourceInfo("test.s", 3, 0, "", 0);
-        RegNode moduleReg = new RegNode("X", "%DR0", moduleLine);
-        RegNode procReg = new RegNode("X", "%PDR0", procLine);
+    void shadowingModuleLevelAlias() {
+        // Module-level: .REG %X %DR0
+        // Proc: .REG %X %PDR0
+        // Inside proc: X → %PDR0
+        // Outside proc: X → %DR0
+        RegNode moduleReg = new RegNode("X", "%DR0", SRC);
+        RegNode procReg = new RegNode("X", "%PDR0", SRC);
 
-        symbolTable.define(new Symbol("X", moduleLine, Symbol.Type.REGISTER_ALIAS_DATA, moduleReg));
+        symbolTable.define(new Symbol("X", SRC, Symbol.Type.REGISTER_ALIAS_DATA, moduleReg));
+
+        IdentifierNode useOutside = new IdentifierNode("X", SRC);
+        IdentifierNode useInside = new IdentifierNode("X", SRC);
+        InstructionNode instrInside = new InstructionNode("SETI", List.of(useInside), SRC);
 
         ProcedureNode proc = new ProcedureNode("MY_PROC", false, List.of(), List.of(), List.of(), List.of(),
-                List.of(procReg), SRC);
+                List.of(procReg, instrInside), SRC);
 
         symbolTable.define(new Symbol("MY_PROC", SRC, Symbol.Type.PROCEDURE, proc));
         SymbolTable.Scope procScope = symbolTable.enterScope("MY_PROC");
         symbolTable.registerNodeScope(proc, procScope);
-        symbolTable.define(new Symbol("X", procLine, Symbol.Type.REGISTER_ALIAS_DATA, procReg));
+        symbolTable.define(new Symbol("X", SRC, Symbol.Type.REGISTER_ALIAS_DATA, procReg));
         symbolTable.leaveScope();
 
-        symbolTable.reportShadowing();
+        AstPostProcessor processor = createProcessor();
 
-        assertThat(diagnostics.getDiagnostics()).singleElement().satisfies(d -> {
-            assertThat(d.lineNumber()).isEqualTo(3);
-            assertThat(d.message()).contains("'X'").contains("already defined at test.s:1, on an enclosing level");
-        });
+        // Outside proc: X → %DR0
+        AstNode outsideResult = processor.process(useOutside);
+        assertThat(outsideResult).isInstanceOf(RegisterNode.class);
+        assertThat(((RegisterNode) outsideResult).name()).isEqualTo("%DR0");
+
+        // Inside proc: X → %PDR0 (shadowed)
+        AstNode procResult = processor.process(proc);
+        ProcedureNode resultProc = (ProcedureNode) procResult;
+        InstructionNode resultInstr = (InstructionNode) resultProc.body().get(1);
+        assertThat(resultInstr.arguments().get(0)).isInstanceOf(RegisterNode.class);
+        assertThat(((RegisterNode) resultInstr.arguments().get(0)).name()).isEqualTo("%PDR0");
     }
 
     @Test

@@ -63,9 +63,7 @@ public class SemanticAnalyzer {
      * and a second to analyze the statements in detail. The second pass resolves names against
      * the table the first one built; when the first pass reported an error, the table lacks what
      * it rejected, and every resolution that misses it would only repeat the error as a
-     * consequence. So the second pass runs only when the first one was clean. After both passes
-     * the table is complete, and the names of every level are checked against the levels
-     * enclosing it.
+     * consequence. So the second pass runs only when the first one was clean.
      *
      * @param statements The list of top-level AST nodes to analyze.
      */
@@ -78,7 +76,6 @@ public class SemanticAnalyzer {
             return;
         }
         analyzeStatements(statements);
-        symbolTable.reportShadowing();
     }
 
     /**

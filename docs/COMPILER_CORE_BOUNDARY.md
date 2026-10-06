@@ -57,9 +57,8 @@ concept in AGENTS.md; they are listed here because they are where the coupling l
    module through its imports, requirements and `USING` bindings, and into the scope a symbol
    opened, which it treats generically, as any symbol whose node registered a scope; every
    segment reached through a foreign level has to carry the `EXPORT` flag. The table also holds
-   every kind of symbol to the one-segment rule when it is defined and to the no-shadowing rule
-   once all are collected. `ModuleScope` holds four maps, all of which belong to `importdir` and
-   `require`. The parser knows the `EXPORT` keyword and asks
+   every kind of symbol to the one-segment rule when it is defined. `ModuleScope` holds four
+   maps, all of which belong to `importdir` and `require`. The parser knows the `EXPORT` keyword and asks
    each statement handler whether it accepts it. The directives are features; the system behind
    them is core.
 2. **Labels.** The layout engine records label addresses, claims a cell per label and assigns

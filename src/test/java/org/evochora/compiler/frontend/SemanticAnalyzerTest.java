@@ -629,91 +629,40 @@ public class SemanticAnalyzerTest {
     }
 
     /**
-     * Asserts that exactly one error was reported, at the line of the definition on the inner
-     * level, naming the line of the definition on the enclosing level.
+     * A name inside a procedure may repeat a name of the module around it, in either order of
+     * definition: inside the procedure the inner one is meant. Visibility flows inward without
+     * restriction, so a level's own names are its only defence against a name added outside it.
      */
-    private static void assertShadowing(List<Diagnostic> errors, String name, int innerLine, int outerLine) {
-        assertThat(errors).hasSize(1);
-        assertThat(errors.get(0).lineNumber()).isEqualTo(innerLine);
-        assertThat(errors.get(0).message())
-                .contains("'" + name + "'")
-                .contains("already defined at <memory>:" + outerLine + ", on an enclosing level");
-    }
-
     @Test
     @Tag("unit")
-    void aParameterNamedLikeAnEarlierModuleConstantIsReported() {
+    void aNameInAProcedureMayRepeatANameOfTheModuleAroundIt() {
         List<Diagnostic> errors = analyze(
                 ".CONST N DATA:5",
-                ".PROC P REF N",
-                "  RET",
-                ".ENDPROC");
-
-        assertShadowing(errors, "N", 2, 1);
-    }
-
-    @Test
-    @Tag("unit")
-    void aModuleConstantNamedLikeAnEarlierParameterIsReported() {
-        List<Diagnostic> errors = analyze(
-                ".PROC P REF N",
-                "  RET",
-                ".ENDPROC",
-                ".CONST N DATA:5");
-
-        assertShadowing(errors, "N", 1, 4);
-    }
-
-    @Test
-    @Tag("unit")
-    void aProcedureLabelNamedLikeALaterModuleLabelIsReported() {
-        List<Diagnostic> errors = analyze(
-                ".PROC Q",
-                "  .LABEL LATER NOP",
-                "  RET",
-                ".ENDPROC",
-                ".LABEL LATER NOP");
-
-        assertShadowing(errors, "LATER", 2, 5);
-    }
-
-    @Test
-    @Tag("unit")
-    void aProcedureLabelNamedLikeAnEarlierModuleLabelIsReported() {
-        List<Diagnostic> errors = analyze(
                 ".LABEL EARLIER NOP",
-                ".PROC Q",
-                "  .LABEL EARLIER NOP",
-                "  RET",
-                ".ENDPROC");
-
-        assertShadowing(errors, "EARLIER", 3, 1);
-    }
-
-    @Test
-    @Tag("unit")
-    void aProcedureAliasNamedLikeAnEarlierModuleAliasIsReported() {
-        List<Diagnostic> errors = analyze(
                 ".REG %TMP %DR0",
-                ".PROC P",
+                ".PROC P REF N",
+                "  .LABEL EARLIER NOP",
                 "  .REG %TMP %PDR0",
                 "  RET",
                 ".ENDPROC");
 
-        assertShadowing(errors, "%TMP", 3, 1);
+        assertThat(errors).isEmpty();
     }
 
     @Test
     @Tag("unit")
-    void aModuleAliasNamedLikeAnEarlierProcedureAliasIsReported() {
+    void aModuleNameMayRepeatANameOfAProcedureDefinedBefore() {
         List<Diagnostic> errors = analyze(
-                ".PROC P",
+                ".PROC P REF N",
+                "  .LABEL LATER NOP",
                 "  .REG %TMP %PDR0",
                 "  RET",
                 ".ENDPROC",
+                ".CONST N DATA:5",
+                ".LABEL LATER NOP",
                 ".REG %TMP %DR0");
 
-        assertShadowing(errors, "%TMP", 2, 5);
+        assertThat(errors).isEmpty();
     }
 
     @Test

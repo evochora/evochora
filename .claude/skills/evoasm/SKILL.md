@@ -48,9 +48,10 @@ session an iteration.
   counterpart.
 - The alias in `.IMPORT ... AS X` must not be an instruction mnemonic; `DUP` is the stack
   instruction, not a name. A register alias, `%DUP`, is fine.
-- A name inside a `.PROC` (label, constant, register alias, parameter) must not repeat a name of
-  the module around it; the compiler reports the pair. A label inside a procedure is reached
-  from outside only with `EXPORT` on it, as `PROC.LABEL` or `LIB.PROC.LABEL`.
+- A name inside a `.PROC` (label, constant, register alias, parameter) may repeat a name of the
+  module around it; inside the procedure the inner one is meant, by its plain name and by its
+  path. A label inside a procedure is reached from outside only with `EXPORT` on it, as
+  `PROC.LABEL` or `LIB.PROC.LABEL`.
 - Inside an imported file `.ORG` is relative to the import position. Code runs along the
   direction vector until a jump, so long procedures are laid out in rows, each `.ORG` on its own
   line and each row ending in a jump, as the primordial does. The world's width is the hard bound.

@@ -139,27 +139,4 @@ class SymbolTableTest {
         assertThat(dotted.resolve("X.Y", new SourceInfo(MAIN, 5, 1, "", 0)).found()).isEmpty();
     }
 
-    /**
-     * Two placements keep their names apart on every level: a name inside a procedure of one
-     * placement is not compared with the module level of another by the shadowing check.
-     */
-    @Test
-    void aNameInAProcedureOfOnePlacementDoesNotShadowTheModuleLevelOfAnother() {
-        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        SymbolTable placements = new SymbolTable(diagnostics);
-        placements.registerModule("", MAIN);
-        placements.registerModule("LIB", LIB);
-
-        placements.setCurrentModule("");
-        placements.define(new Symbol("DONE", new SourceInfo(MAIN, 1, 1, "", 0), Symbol.Type.LABEL));
-        placements.setCurrentModule("LIB");
-        placements.define(new Symbol("P", new SourceInfo(LIB, 1, 7, "LIB", 0), Symbol.Type.PROCEDURE));
-        placements.enterScope("P");
-        placements.define(new Symbol("DONE", new SourceInfo(LIB, 2, 1, "LIB", 0), Symbol.Type.LABEL));
-        placements.leaveScope();
-
-        placements.reportShadowing();
-
-        assertThat(diagnostics.hasErrors()).isFalse();
-    }
 }

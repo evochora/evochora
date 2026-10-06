@@ -274,6 +274,15 @@ Implemented in the five steps above. What the built code does beyond the solutio
   visualizer annotated the procedure-local alias, the parameter and a procedure-local constant,
   and the call stack showed the parameter names under the procedure's path.
 
+Reversed after the merge: the rule against shadowing (decisions 1 and 3). Visibility flows
+inward without restriction, so a level's own names are its only defence against a name added
+outside it: a label the module level gains later must not break a procedure that uses the name
+for itself, and a control block has to define its own `END` inside a block that defines one
+too. Most languages and the local labels of assemblers allow it; Java's rule for local
+variables, the precedent cited, was the exception. Inside a level the inner name is meant; a
+name is defined once per level, which `define` keeps reporting. The check and its tests went
+out in one commit on `main`.
+
 Not done: the jump rule. A jump into a procedure is what `EXPORT` on a label inside it declares
 and is not checked; the jump out of a procedure without `RET` is designed in issue #201 on top of
 this document and built after it.

@@ -92,10 +92,6 @@ public class SymbolTable {
     private final Scope rootScope;
     private Scope currentScope;
 
-    // Every scope entered below the root, in the order it was entered; the shadowing check of
-    // freeze walks them.
-    private final List<Scope> scopes = new ArrayList<>();
-
     // --- Node-to-scope mapping (populated by ProcedureSymbolCollector, consumed by TokenMapGenerator) ---
     // Keyed by node identity: AST nodes are records, so two structurally equal nodes would
     // otherwise share one entry and therefore one scope.
@@ -136,49 +132,6 @@ public class SymbolTable {
     public void freeze() {
         this.frozen = true;
         modules.values().forEach(ModuleScope::freeze);
-    }
-
-    /**
-     * Reports every name of a scope below the root that a scope enclosing it holds under the
-     * same key, the module placement or, outside a module, the file: a name never means two
-     * things depending on the level it is written on. The nearest enclosing definition is named;
-     * scopes are visited in the order they were entered and names in the order they were
-     * defined. Definitions arrive in two passes and in text order, so only the complete table
-     * shows every pair: the semantic analysis calls this once, after both of its passes.
-     */
-    public void reportShadowing() {
-        for (Scope scope : scopes) {
-            for (Map.Entry<String, Map<String, Symbol>> byName : scope.symbols.entrySet()) {
-                for (Map.Entry<String, Symbol> byKey : byName.getValue().entrySet()) {
-                    Symbol enclosing = enclosingDefinition(scope.parent, byName.getKey(), byKey.getKey());
-                    if (enclosing != null) {
-                        Symbol inner = byKey.getValue();
-                        diagnostics.reportError(
-                                "'" + inner.name() + "' is already defined at " + SourceInfo.position(enclosing.sourceInfo())
-                                        + ", on an enclosing level.",
-                                inner.sourceInfo().fileName(), inner.sourceInfo().lineNumber());
-                    }
-                }
-            }
-        }
-    }
-
-    /**
-     * Finds the definition of a name in the given scope or the nearest one enclosing it.
-     *
-     * @param from The innermost scope to search.
-     * @param name The upper-cased name.
-     * @param key  The module placement, or the file outside a module, the name is filed under.
-     * @return The definition, or {@code null} if no scope from {@code from} outward holds one.
-     */
-    private static Symbol enclosingDefinition(Scope from, String name, String key) {
-        for (Scope scope = from; scope != null; scope = scope.parent) {
-            Map<String, Symbol> perFile = scope.symbols.get(name);
-            if (perFile != null && perFile.containsKey(key)) {
-                return perFile.get(key);
-            }
-        }
-        return null;
     }
 
     private void guardFrozen() {
@@ -259,7 +212,6 @@ public class SymbolTable {
         String key = segment.toUpperCase();
         String path = QualifiedNames.join(currentScope == rootScope ? currentAliasChain : currentScope.name, key);
         Scope newScope = new Scope(currentScope, path);
-        scopes.add(newScope);
         currentScope = newScope;
         return newScope;
     }
