@@ -11,7 +11,10 @@ import org.evochora.compiler.model.ast.AstNode;
  * @param sourceInfo The source location where this symbol was defined.
  * @param type       The type of the symbol.
  * @param node       The AST node associated with this symbol (e.g., ProcedureNode).
- * @param exported   Whether this symbol is visible to other modules.
+ * @param exported   Whether this symbol is visible one level further out: to the module's
+ *                   importers for a name on the module level, to the module for a name inside a
+ *                   procedure. For an import alias it means that the import is passed on, so a
+ *                   path from outside may continue through the alias.
  */
 public record Symbol(String name, SourceInfo sourceInfo, Type type, AstNode node, boolean exported) {
     /**

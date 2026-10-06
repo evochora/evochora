@@ -27,7 +27,7 @@ import { SourceAnnotator } from '../../annotator/SourceAnnotator.js';
  * conditional left out (`leftOut`), each owned by its directive line, and notes at positions
  * (`notes`), such as the state of a flag a condition names, shown as an annotation after the word
  * at its position, as is the value a constant stands for (`LIMIT[=DATA:9]`), which the
- * artifact's `constantValues` give for the key of the constant's definition. The item's own are
+ * artifact's `constantValues` give under the constant's qualified name. The item's own are
  * always shown; those of an expansion only while the active position stands in it, directly or
  * through an expansion called in its body, and the item holds its body, because every expansion
  * shares the lines of the body but may have decided differently. The machine instructions under a

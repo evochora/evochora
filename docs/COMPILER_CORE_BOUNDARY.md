@@ -53,9 +53,13 @@ concept in AGENTS.md; they are listed here because they are where the coupling l
    is written at; the lexer gives every token an empty placement, and the handlers of
    `importdir` and `source` set the placement of the tokens they inline. The semantic analyzer
    wires the placements together before any handler runs; the symbol table keeps the names of
-   two placements of one file apart. The symbol table resolves qualified names through imports,
-   requirements, `USING` bindings and the `EXPORT` flag. `ModuleScope` holds six maps, all of
-   which belong to `importdir` and `require`. The parser knows the `EXPORT` keyword and asks
+   two placements of one file apart. The symbol table resolves a path segment by segment: into a
+   module through its imports, requirements and `USING` bindings, and into the scope a symbol
+   opened, which it treats generically, as any symbol whose node registered a scope; every
+   segment reached through a foreign level has to carry the `EXPORT` flag. The table also holds
+   every kind of symbol to the one-segment rule when it is defined and to the no-shadowing rule
+   once all are collected. `ModuleScope` holds four maps, all of which belong to `importdir` and
+   `require`. The parser knows the `EXPORT` keyword and asks
    each statement handler whether it accepts it. The directives are features; the system behind
    them is core.
 2. **Labels.** The layout engine records label addresses, claims a cell per label and assigns
@@ -66,7 +70,7 @@ concept in AGENTS.md; they are listed here because they are where the coupling l
    rule.
 3. **Registers and procedure parameters.** The lexer recognises and validates register tokens
    and knows that one bank is reserved for procedure parameters. The token-map generator has
-   its own branches for identifiers and register aliases. `LinkingContext` has a field for
+   its own branch for identifiers. `LinkingContext` has a field for
    call-site bindings, `EmissionContext` fields for procedure parameter names and register
    aliases, and `ProgramArtifact` carries all of them as named fields.
 

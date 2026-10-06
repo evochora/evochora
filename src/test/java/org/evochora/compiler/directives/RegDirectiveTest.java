@@ -405,6 +405,28 @@ public class RegDirectiveTest {
         assertThat(diagnostics.summary()).contains("Expected a register after the alias name in .REG");
     }
 
+    /**
+     * Verifies that a register alias whose name contains a dot is reported: a name is one
+     * segment, whatever it names.
+     */
+    @Test
+    @Tag("unit")
+    void testRegAliasWithADotInItsNameIsReported() {
+        String source = ".REG %X.Y %DR0";
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        List<AstNode> ast = new Parser(new Lexer(source, diagnostics, TestLexers.symbols()).scanTokens(), diagnostics, registry())
+                .parse().stream().filter(Objects::nonNull).toList();
+
+        SymbolTable symbolTable = new SymbolTable(diagnostics);
+        symbolTable.registerModule("", "<memory>");
+        symbolTable.setCurrentModule("");
+        new SemanticAnalyzer(diagnostics, symbolTable, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry())
+                .analyze(ast);
+
+        assertThat(diagnostics.getDiagnostics()).singleElement()
+                .satisfies(d -> assertThat(d.message()).contains("'%X.Y'").contains("a name is one segment"));
+    }
+
     private static ParserStatementRegistry registry() {
         ParserStatementRegistry reg = new ParserStatementRegistry();
         reg.register(".REG", new RegDirectiveHandler(new RuntimeInstructionSetAdapter()));

@@ -195,7 +195,7 @@ SETI %DR0 DATA:100  # This is an inline comment.
 
 ### Labels
 
-A label is a name followed by a colon (`:`). It marks a specific location in the code, which can then be used as a target for jump and call instructions (`JMPI`, `CALL`). A label can be on the same line as an instruction or on its own line, in which case it points to the next instruction or directive.
+A label is a name followed by a colon (`:`). It marks a specific location in the code, which can then be used as a target for jump and call instructions (`JMPI`, `CALL`). A label can be on the same line as an instruction or on its own line, in which case it points to the next instruction or directive. A name contains no dot; the dot joins the names of a path such as `LIB.LABEL_NAME`.
 
 ```
 START_LOOP:
@@ -220,7 +220,7 @@ EXPORT MY_ENTRY_POINT:
   ...
 ```
 
-Exported labels can be referenced from other files using qualified names (similar to procedures). If a module is imported with `.IMPORT "lib.evo" AS LIB`, its exported labels can be accessed as `LIB.LABEL_NAME`.
+Exported labels can be referenced from other files using qualified names (similar to procedures). If a module is imported with `.IMPORT "lib.evo" AS LIB`, its exported labels can be accessed as `LIB.LABEL_NAME`. A label inside a `.PROC` is visible only in that procedure; with `EXPORT` it is reached from outside as `PROC_NAME.LABEL_NAME`, and from another module as `LIB.PROC_NAME.LABEL_NAME` when the procedure is exported as well.
 
 ```
 # In lib.evo
@@ -746,7 +746,7 @@ The module system allows splitting programs across multiple files. Three directi
 * **`.REQUIRE`** — declares an unsatisfied dependency that must be provided by the importer via a `USING` clause.
 * **`.SOURCE`** — includes raw source text (macros, constants) without creating a module relationship.
 
-None of the three may stand inside a macro or a repeat block. Inside a conditional block they may: the file is read only when the branch is kept.
+None of the three may stand inside a macro or a repeat block, and `.IMPORT` and `.REQUIRE` stand only at the module level, outside every `.PROC`. Inside a conditional block they may: the file is read only when the branch is kept.
 
 #### `.IMPORT`
 
@@ -798,6 +798,7 @@ All paths in `.IMPORT`, `.REQUIRE`, and `.SOURCE` are resolved against configure
       ```
 
 * `.REG` also works inside `.PROC` blocks with procedure-local registers: `.REG %TMP %PDR0` aliases `%PDR0` as `%TMP`, `.REG %POS %PLR0` aliases `%PLR0` as `%POS`. Proc-local registers (`%PDRx`, `%PLRx`) are only available inside `.PROC` blocks.
+* A name defined inside a procedure (a label, a constant, a register alias, a parameter) may not repeat a name of the module around it; two procedures may use the same name each.
 
 #### Example: Simple Module Import
 

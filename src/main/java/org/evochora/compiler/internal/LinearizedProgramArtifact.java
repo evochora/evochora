@@ -68,8 +68,8 @@ import java.util.Map;
  *                         parameter bindings: formal register id to caller register.
  * @param relativeCoordToLinearAddress Map from relative coordinate string to linear address.
  * @param linearAddressToCoord Map from linear address to relative coordinate array.
- * @param registerAliasMap Map from the definition key of a register alias to its physical register index.
- * @param constantValues Map from the definition key of a constant to its value as text.
+ * @param registerAliasMap Map from the path of a register alias to its physical register index.
+ * @param constantValues Map from the path of a constant to its value as text.
  * @param procNameToParamNames Map from procedure names to parameter info lists.
  * @param tokenMap Map from serializable source info to token info.
  * @param tokenLookup Map from placement/file/line/col to token info list.

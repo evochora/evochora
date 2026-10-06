@@ -46,7 +46,7 @@ class LinearizedArtifactShapeTest {
                 "STEP", List.of(new Expansion.Binding("REG", "%DR0")), List.of(new SourceFile.LeftOut(1, 2, 3, 3)), List.of());
         ProgramArtifact artifact = new ProgramArtifact("id", List.of(lib), Map.of(1, expansion), Map.of(), Map.of(), Map.of(), Map.of(),
                 Map.of(), Map.of(), Map.of(), Map.of("LIB.MAX", "DATA:5"), Map.of(),
-                Map.of(new SourceInfo("/p/lib.evo", 2, 5, "LIB", 0), new TokenInfo("A", TokenKind.CONSTANT, "global")),
+                Map.of(new SourceInfo("/p/lib.evo", 2, 5, "LIB", 0), new TokenInfo("A", TokenKind.CONSTANT, TokenInfo.MODULE_LEVEL)),
                 Map.of(),
                 Map.of("LIB", Map.of("/p/lib.evo", Map.of(0, Map.of(2, List.of(new MachineInstructionInfo(0, "NOP", "", false)))))),
                 Map.of(), Map.of());

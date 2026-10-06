@@ -917,7 +917,7 @@ class SimulationRestorerTest {
                 org.evochora.datapipeline.api.contracts.TokenInfo.newBuilder()
                     .setTokenText("HARVEST")
                     .setTokenType("NOT_A_TOKEN_KIND")
-                    .setScope("global")
+                    .setScope("")
                     .build());
 
         assertThatThrownBy(() -> SimulationRestorer.restore(
@@ -943,7 +943,7 @@ class SimulationRestorerTest {
                 org.evochora.datapipeline.api.contracts.TokenInfo.newBuilder()
                     .setTokenText("HARVEST")
                     .setTokenType("LABEL")
-                    .setScope("global")
+                    .setScope("")
                     .setQualifiedName("ENERGY.HARVEST")
                     .build());
 
@@ -963,7 +963,7 @@ class SimulationRestorerTest {
                 org.evochora.datapipeline.api.contracts.TokenInfo.newBuilder()
                     .setTokenText("%DR0")
                     .setTokenType("REGISTER")
-                    .setScope("global")
+                    .setScope("")
                     .build());
 
         SimulationRestorer.RestoredState state = SimulationRestorer.restore(
@@ -989,7 +989,7 @@ class SimulationRestorerTest {
                 org.evochora.datapipeline.api.contracts.TokenInfo.newBuilder()
                     .setTokenText("LOOP")
                     .setTokenType("LABEL")
-                    .setScope("global")
+                    .setScope("")
                     .setQualifiedName("SECOND.LOOP")
                     .build();
         org.evochora.datapipeline.api.contracts.ProgramArtifact program =

@@ -14,7 +14,8 @@ import java.util.List;
  * @param path       The imported file path (unquoted string value from the token).
  * @param alias      The local alias name for the imported module.
  * @param usings     The USING clauses providing dependencies to the imported module.
- * @param exported   Whether this import is re-exported to parent modules via the EXPORT prefix.
+ * @param exported   Whether the import is passed on to the module's importers (the EXPORT
+ *                   prefix), so that a path from outside may continue through the alias.
  * @param sourceInfo The source location of the alias token.
  */
 public record ImportNode(

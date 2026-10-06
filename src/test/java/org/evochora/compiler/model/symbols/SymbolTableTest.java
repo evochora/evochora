@@ -41,7 +41,7 @@ class SymbolTableTest {
         table = new SymbolTable(new DiagnosticsEngine());
         table.registerModule("", MAIN);
         table.registerModule("LIB", LIB);
-        table.getModuleScope("").orElseThrow().addImport("LIB", "LIB", false);
+        table.getModuleScope("").orElseThrow().addImport("LIB", "LIB");
     }
 
     @Test
@@ -91,5 +91,75 @@ class SymbolTableTest {
 
         assertThat(bound).containsInstanceOf(NumberLiteralNode.class);
         assertThat(((NumberLiteralNode) bound.orElseThrow()).value()).isEqualTo(7);
+    }
+
+    /**
+     * A path descends from a symbol into the scope its node opens. Of a scope the writer does
+     * not stand in, only an exported name is found; the find is qualified by the scope's path and
+     * reports that scope.
+     */
+    @Test
+    void aPathDescendsIntoTheScopeASymbolOpens() {
+        table.setCurrentModule("LIB");
+        SourceInfo procedure = new SourceInfo(LIB, 1, 7, "LIB", 0);
+        AstNode procedureNode = new IdentifierNode("P", procedure);
+        table.define(new Symbol("P", procedure, Symbol.Type.PROCEDURE, procedureNode, true));
+        table.registerNodeScope(procedureNode, table.enterScope("P"));
+        table.define(new Symbol("SHOWN", new SourceInfo(LIB, 2, 1, "LIB", 0), Symbol.Type.LABEL, null, true));
+        table.define(new Symbol("KEPT", new SourceInfo(LIB, 3, 1, "LIB", 0), Symbol.Type.LABEL, null, false));
+        table.leaveScope();
+
+        SourceInfo at = new SourceInfo(LIB, 5, 6, "LIB", 0);
+        assertThat(table.resolve("P.SHOWN", at).found()).hasValueSatisfying(found -> {
+            assertThat(found.qualifiedName()).isEqualTo("LIB.P.SHOWN");
+            assertThat(found.scope()).isEqualTo("LIB.P");
+        });
+        assertThat(table.resolve("P.KEPT", at)).isInstanceOfSatisfying(Resolution.Missing.class,
+                missing -> assertThat(missing.explanation()).isEqualTo("'KEPT' of P is not marked EXPORT."));
+
+        table.setCurrentModule("");
+        assertThat(table.resolve("LIB.P.SHOWN", new SourceInfo(MAIN, 1, 6, "", 0)).found())
+                .map(ResolvedSymbol::qualifiedName).contains("LIB.P.SHOWN");
+    }
+
+    @Test
+    void aNameWithADotIsReportedAndNotFiled() {
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        SymbolTable dotted = new SymbolTable(diagnostics);
+        dotted.registerModule("", MAIN);
+        dotted.setCurrentModule("");
+
+        Optional<Symbol> existing = dotted.define(new Symbol("X.Y", new SourceInfo(MAIN, 4, 1, "", 0), Symbol.Type.LABEL));
+
+        assertThat(existing).isEmpty();
+        assertThat(diagnostics.getDiagnostics()).singleElement().satisfies(d -> {
+            assertThat(d.lineNumber()).isEqualTo(4);
+            assertThat(d.message()).contains("'X.Y'").contains("a name is one segment");
+        });
+        assertThat(dotted.resolve("X.Y", new SourceInfo(MAIN, 5, 1, "", 0)).found()).isEmpty();
+    }
+
+    /**
+     * Two placements keep their names apart on every level: a name inside a procedure of one
+     * placement is not compared with the module level of another by the shadowing check.
+     */
+    @Test
+    void aNameInAProcedureOfOnePlacementDoesNotShadowTheModuleLevelOfAnother() {
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        SymbolTable placements = new SymbolTable(diagnostics);
+        placements.registerModule("", MAIN);
+        placements.registerModule("LIB", LIB);
+
+        placements.setCurrentModule("");
+        placements.define(new Symbol("DONE", new SourceInfo(MAIN, 1, 1, "", 0), Symbol.Type.LABEL));
+        placements.setCurrentModule("LIB");
+        placements.define(new Symbol("P", new SourceInfo(LIB, 1, 7, "LIB", 0), Symbol.Type.PROCEDURE));
+        placements.enterScope("P");
+        placements.define(new Symbol("DONE", new SourceInfo(LIB, 2, 1, "LIB", 0), Symbol.Type.LABEL));
+        placements.leaveScope();
+
+        placements.reportShadowing();
+
+        assertThat(diagnostics.hasErrors()).isFalse();
     }
 }

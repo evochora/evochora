@@ -1,6 +1,5 @@
 package org.evochora.compiler.features.reg;
 
-import org.evochora.compiler.api.DefinitionKey;
 import org.evochora.compiler.backend.emit.EmissionContext;
 import org.evochora.compiler.backend.emit.IEmissionContributor;
 
@@ -14,11 +13,11 @@ import org.evochora.compiler.isa.IInstructionSet;
  * and registers it in the {@link EmissionContext}.
  *
  * <p>The {@code reg_alias} directive is emitted by {@code RegNodeConverter}
- * in Phase 7. Each directive carries a
- * module-qualified alias name, the scope it is defined in and a target register name (e.g.,
+ * in Phase 7. Each directive carries the
+ * path of the alias and a target register name (e.g.,
  * {@code %DR7}, {@code %PDR0}). This contributor converts register names to their numeric IDs
- * so the {@link org.evochora.compiler.api.ProgramArtifact} can include them, under the
- * {@link DefinitionKey} of the alias, for debugger and frontend visualization.</p>
+ * so the {@link org.evochora.compiler.api.ProgramArtifact} can include them, under the path of
+ * the alias, for debugger and frontend visualization.</p>
  */
 public final class RegisterAliasEmissionContributor implements IEmissionContributor {
 
@@ -44,12 +43,11 @@ public final class RegisterAliasEmissionContributor implements IEmissionContribu
         IrValue registerValue = dir.args().get("register");
         if (!(registerValue instanceof IrValue.Str registerStr)) return;
 
-        String scope = dir.args().get("scope") instanceof IrValue.Str scopeStr ? scopeStr.value() : null;
         String registerName = registerStr.value();
         Integer registerId = resolveRegisterId(registerName);
 
         if (registerId != null) {
-            context.registerAlias(DefinitionKey.of(nameStr.value(), scope), registerId);
+            context.registerAlias(nameStr.value(), registerId);
         }
     }
 

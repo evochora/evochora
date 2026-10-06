@@ -20,9 +20,9 @@ class TokenLookupTest {
 
     @Test
     void nestsByPlacementThenFileThenLineThenColumn() {
-        TokenInfo first = new TokenInfo("A", TokenKind.CONSTANT, "global");
-        TokenInfo second = new TokenInfo("B", TokenKind.CONSTANT, "global");
-        TokenInfo other = new TokenInfo("A", TokenKind.CONSTANT, "global");
+        TokenInfo first = new TokenInfo("A", TokenKind.CONSTANT, TokenInfo.MODULE_LEVEL);
+        TokenInfo second = new TokenInfo("B", TokenKind.CONSTANT, TokenInfo.MODULE_LEVEL);
+        TokenInfo other = new TokenInfo("A", TokenKind.CONSTANT, TokenInfo.MODULE_LEVEL);
         Map<SourceInfo, TokenInfo> tokenMap = new LinkedHashMap<>();
         tokenMap.put(new SourceInfo("lib.evo", 2, 5, "FIRST", 0), first);
         tokenMap.put(new SourceInfo("lib.evo", 2, 9, "FIRST", 0), second);

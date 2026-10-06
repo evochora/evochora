@@ -43,7 +43,8 @@ public final class EmissionContext {
     /**
      * Registers a register alias mapping.
      *
-     * @param qualifiedName The {@link org.evochora.compiler.api.DefinitionKey} of the alias.
+     * @param qualifiedName The path of the alias (e.g., "%TMP", or "WORK.%TMP" for one defined in
+     *                      procedure WORK).
      * @param registerId    The physical register ID.
      */
     public void registerAlias(String qualifiedName, int registerId) {
@@ -63,7 +64,8 @@ public final class EmissionContext {
     /**
      * Registers the value a constant stands for.
      *
-     * @param qualifiedName The {@link org.evochora.compiler.api.DefinitionKey} of the constant.
+     * @param qualifiedName The path of the constant (e.g., "NAV.MAX_VALUE", or "NAV.STEP.N" for one
+     *                      defined in procedure STEP of module NAV).
      * @param value         The value as text.
      */
     public void constantValue(String qualifiedName, String value) {

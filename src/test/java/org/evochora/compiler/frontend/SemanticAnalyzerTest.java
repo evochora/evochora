@@ -613,6 +613,272 @@ public class SemanticAnalyzerTest {
         assertThat(diagnostics.hasErrors()).isFalse();
     }
 
+    /**
+     * Analyzes the source as the compiler does, through both passes and the shadowing check that
+     * follows them, and returns the errors reported.
+     */
+    private List<Diagnostic> analyze(String... lines) {
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        List<AstNode> ast = getAst(String.join("\n", lines), diagnostics);
+        SymbolTable symbolTable = new SymbolTable(diagnostics);
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
+        analyzer.analyze(ast);
+        return diagnostics.getDiagnostics().stream()
+                .filter(d -> d.type() == Diagnostic.Type.ERROR)
+                .toList();
+    }
+
+    /**
+     * Asserts that exactly one error was reported, at the line of the definition on the inner
+     * level, naming the line of the definition on the enclosing level.
+     */
+    private static void assertShadowing(List<Diagnostic> errors, String name, int innerLine, int outerLine) {
+        assertThat(errors).hasSize(1);
+        assertThat(errors.get(0).lineNumber()).isEqualTo(innerLine);
+        assertThat(errors.get(0).message())
+                .contains("'" + name + "'")
+                .contains("already defined at <memory>:" + outerLine + ", on an enclosing level");
+    }
+
+    @Test
+    @Tag("unit")
+    void aParameterNamedLikeAnEarlierModuleConstantIsReported() {
+        List<Diagnostic> errors = analyze(
+                ".CONST N DATA:5",
+                ".PROC P REF N",
+                "  RET",
+                ".ENDPROC");
+
+        assertShadowing(errors, "N", 2, 1);
+    }
+
+    @Test
+    @Tag("unit")
+    void aModuleConstantNamedLikeAnEarlierParameterIsReported() {
+        List<Diagnostic> errors = analyze(
+                ".PROC P REF N",
+                "  RET",
+                ".ENDPROC",
+                ".CONST N DATA:5");
+
+        assertShadowing(errors, "N", 1, 4);
+    }
+
+    @Test
+    @Tag("unit")
+    void aProcedureLabelNamedLikeALaterModuleLabelIsReported() {
+        List<Diagnostic> errors = analyze(
+                ".PROC Q",
+                "  .LABEL LATER NOP",
+                "  RET",
+                ".ENDPROC",
+                ".LABEL LATER NOP");
+
+        assertShadowing(errors, "LATER", 2, 5);
+    }
+
+    @Test
+    @Tag("unit")
+    void aProcedureLabelNamedLikeAnEarlierModuleLabelIsReported() {
+        List<Diagnostic> errors = analyze(
+                ".LABEL EARLIER NOP",
+                ".PROC Q",
+                "  .LABEL EARLIER NOP",
+                "  RET",
+                ".ENDPROC");
+
+        assertShadowing(errors, "EARLIER", 3, 1);
+    }
+
+    @Test
+    @Tag("unit")
+    void aProcedureAliasNamedLikeAnEarlierModuleAliasIsReported() {
+        List<Diagnostic> errors = analyze(
+                ".REG %TMP %DR0",
+                ".PROC P",
+                "  .REG %TMP %PDR0",
+                "  RET",
+                ".ENDPROC");
+
+        assertShadowing(errors, "%TMP", 3, 1);
+    }
+
+    @Test
+    @Tag("unit")
+    void aModuleAliasNamedLikeAnEarlierProcedureAliasIsReported() {
+        List<Diagnostic> errors = analyze(
+                ".PROC P",
+                "  .REG %TMP %PDR0",
+                "  RET",
+                ".ENDPROC",
+                ".REG %TMP %DR0");
+
+        assertShadowing(errors, "%TMP", 2, 5);
+    }
+
+    @Test
+    @Tag("unit")
+    void aLabelWithADotInItsNameIsReported() {
+        List<Diagnostic> errors = analyze(".LABEL X.Y NOP");
+
+        assertThat(errors).hasSize(1);
+        assertThat(errors.get(0).message()).contains("'X.Y'").contains("a name is one segment");
+    }
+
+    @Test
+    @Tag("unit")
+    void aProcedureWithADotInItsNameIsReported() {
+        List<Diagnostic> errors = analyze(
+                ".PROC X.Y",
+                "  RET",
+                ".ENDPROC");
+
+        assertThat(errors).hasSize(1);
+        assertThat(errors.get(0).message()).contains("'X.Y'").contains("a name is one segment");
+    }
+
+    /**
+     * The alias of an import is a name like any other. A single file has no module set up for
+     * the import, which the analysis of the import reports as well; only the report of the
+     * name is looked at here.
+     */
+    @Test
+    @Tag("unit")
+    void anImportAliasWithADotIsReported() {
+        List<Diagnostic> errors = analyze(".IMPORT \"lib.evo\" AS X.Y");
+
+        assertThat(errors).filteredOn(d -> d.message().contains("one segment"))
+                .singleElement()
+                .satisfies(d -> assertThat(d.message()).contains("'X.Y'").contains("a name is one segment"));
+    }
+
+    /**
+     * The alias of a requirement is a name like any other; only the report of the name is looked
+     * at, as for an import.
+     */
+    @Test
+    @Tag("unit")
+    void aRequireAliasWithADotIsReported() {
+        List<Diagnostic> errors = analyze(".REQUIRE \"lib.evo\" AS X.Y");
+
+        assertThat(errors).filteredOn(d -> d.message().contains("one segment"))
+                .singleElement()
+                .satisfies(d -> assertThat(d.message()).contains("'X.Y'").contains("a name is one segment"));
+    }
+
+    /**
+     * A label marked EXPORT inside a procedure is visible one level further out, to the module,
+     * through its path.
+     */
+    @Test
+    @Tag("unit")
+    void anExportedProcedureLabelIsReachedFromTheModuleByItsPath() {
+        List<Diagnostic> errors = analyze(
+                ".PROC CLAMP",
+                "  EXPORT .LABEL TO_MIN NOP",
+                "  RET",
+                ".ENDPROC",
+                "PSLI CLAMP.TO_MIN");
+
+        assertThat(errors).isEmpty();
+    }
+
+    @Test
+    @Tag("unit")
+    void aProcedureLabelWithoutExportIsNotReachedFromTheModule() {
+        List<Diagnostic> errors = analyze(
+                ".PROC CLAMP",
+                "  .LABEL TO_MIN NOP",
+                "  RET",
+                ".ENDPROC",
+                "PSLI CLAMP.TO_MIN");
+
+        assertThat(errors).singleElement().satisfies(d -> {
+            assertThat(d.lineNumber()).isEqualTo(5);
+            assertThat(d.message()).isEqualTo(
+                    "Cannot use 'CLAMP.TO_MIN' as an argument: 'TO_MIN' of CLAMP is not marked EXPORT.");
+        });
+    }
+
+    @Test
+    @Tag("unit")
+    void aPathToANameTheProcedureDoesNotHaveIsReported() {
+        List<Diagnostic> errors = analyze(
+                ".PROC CLAMP",
+                "  RET",
+                ".ENDPROC",
+                "PSLI CLAMP.NOPE");
+
+        assertThat(errors).singleElement().satisfies(d -> assertThat(d.message())
+                .isEqualTo("Cannot use 'CLAMP.NOPE' as an argument: 'CLAMP' has no member 'NOPE'."));
+    }
+
+    /**
+     * A constant opens no level, so a path cannot continue after it.
+     */
+    @Test
+    @Tag("unit")
+    void aPathThroughANameThatOpensNoLevelIsReported() {
+        List<Diagnostic> errors = analyze(
+                ".CONST X DATA:5",
+                "PSLI X.Y");
+
+        assertThat(errors).singleElement().satisfies(d -> assertThat(d.message())
+                .isEqualTo("Cannot use 'X.Y' as an argument: 'X' has no member 'Y'."));
+    }
+
+    /**
+     * Inside the procedure the writer stands in its level, so its own names are reached by path
+     * without being exported.
+     */
+    @Test
+    @Tag("unit")
+    void aProcedureReachesItsOwnNamesByPathWithoutExport() {
+        List<Diagnostic> errors = analyze(
+                ".PROC CLAMP",
+                "  PSLI CLAMP.TO_MIN",
+                "  .LABEL TO_MIN NOP",
+                "  RET",
+                ".ENDPROC");
+
+        assertThat(errors).isEmpty();
+    }
+
+    /**
+     * A module's imports and requirements are names of its module level: the directive inside a
+     * procedure is reported where the names are collected, which follows every level the symbol
+     * table opens.
+     */
+    @Test
+    @Tag("unit")
+    void anImportInsideAProcedureIsReported() {
+        List<Diagnostic> errors = analyze(
+                ".PROC P",
+                "  .IMPORT \"lib.evo\" AS LIB",
+                "  RET",
+                ".ENDPROC");
+
+        assertThat(errors).singleElement().satisfies(d -> {
+            assertThat(d.lineNumber()).isEqualTo(2);
+            assertThat(d.message()).isEqualTo(".IMPORT may stand only at the module level.");
+        });
+    }
+
+    @Test
+    @Tag("unit")
+    void aRequireInsideAProcedureIsReported() {
+        List<Diagnostic> errors = analyze(
+                ".PROC P",
+                "  .REQUIRE \"lib.evo\" AS LIB",
+                "  RET",
+                ".ENDPROC");
+
+        assertThat(errors).singleElement().satisfies(d -> {
+            assertThat(d.lineNumber()).isEqualTo(2);
+            assertThat(d.message()).isEqualTo(".REQUIRE may stand only at the module level.");
+        });
+    }
+
     private static ParserStatementRegistry allHandlers() {
         ParserStatementRegistry reg = new ParserStatementRegistry();
         reg.register(".CONST", new ConstDirectiveHandler());

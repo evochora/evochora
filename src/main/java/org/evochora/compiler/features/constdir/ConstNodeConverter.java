@@ -17,13 +17,13 @@ import java.util.stream.Collectors;
 /**
  * Emits a {@code const_value} IR directive from a {@code .CONST} AST node. A constant places no
  * code: every reference to it was replaced by its value in the post-processing phase. The
- * directive carries the module-qualified name of the constant, the scope it is defined in and
- * its value as text, so that
+ * directive carries the path of the constant and its value as text, so that
  * Phase 11 ({@link ConstantValueEmissionContributor}) can include the value in the final
  * {@link org.evochora.compiler.api.ProgramArtifact} for the source view.
  *
- * <p>The name is qualified as a use of the constant is in the token map: the placement's alias
- * chain and the upper-cased name. The value is the value of the definition as its parser read
+ * <p>The name is qualified as a use of the constant is in the token map: the path of the scope
+ * the constant is defined in, or the placement's alias chain on the module level, and the
+ * upper-cased name. The value is the value of the definition as its parser read
  * it: a typed literal as {@code TYPE:value}, a vector as its components joined by {@code |},
  * another constant or a label by its name, numbers in decimal.</p>
  */
@@ -36,7 +36,6 @@ public final class ConstNodeConverter implements IAstNodeToIrConverter<ConstNode
         }
         ctx.emit(new IrDirective("constdir", "const_value", Map.of(
                 "name", new IrValue.Str(ctx.qualifyName(node.name())),
-                "scope", new IrValue.Str(ctx.currentScope()),
                 "value", new IrValue.Str(text(value))
         ), ctx.sourceOf(node)));
     }

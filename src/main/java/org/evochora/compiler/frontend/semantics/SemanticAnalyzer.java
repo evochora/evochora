@@ -60,7 +60,12 @@ public class SemanticAnalyzer {
      * This is the main entry point for the semantic analysis phase.
      * It first sets up the module relationships from the dependency graph, if there is one,
      * then performs two passes: one to collect top-level symbols (labels, procedures),
-     * and a second to analyze the statements in detail.
+     * and a second to analyze the statements in detail. The second pass resolves names against
+     * the table the first one built; when the first pass reported an error, the table lacks what
+     * it rejected, and every resolution that misses it would only repeat the error as a
+     * consequence. So the second pass runs only when the first one was clean. After both passes
+     * the table is complete, and the names of every level are checked against the levels
+     * enclosing it.
      *
      * @param statements The list of top-level AST nodes to analyze.
      */
@@ -69,7 +74,11 @@ public class SemanticAnalyzer {
             setupModuleRelationships(graph, rootAliasChain);
         }
         collectSymbols(statements);
+        if (diagnostics.hasErrors()) {
+            return;
+        }
         analyzeStatements(statements);
+        symbolTable.reportShadowing();
     }
 
     /**

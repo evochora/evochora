@@ -29,11 +29,13 @@ import java.util.Map;
  *                         caller register bound to it.
  * @param relativeCoordToLinearAddress A map from relative coordinate string to linear address.
  * @param linearAddressToCoord A map from linear address to relative coordinates.
- * @param registerAliasMap A map from the {@link DefinitionKey} of a register alias (e.g., "%MY_REG", or
- *                         "%TMP@WORK" for one defined in procedure WORK) to its physical register index.
- * @param constantValues A map from the {@link DefinitionKey} of a constant (e.g., "NAV.STEP.MAX_VALUE", or
- *                       "N@NAV.STEP.FORWARD" for one defined in a procedure) to the value it stands for, as
- *                       text (e.g., "DATA:99"), for the source view.
+ * @param registerAliasMap A map from the path of a register alias, the qualified name the token map gives
+ *                         a use of it (e.g., "%MY_REG", or "WORK.%TMP" for one defined in procedure WORK), to
+ *                         its physical register index.
+ * @param constantValues A map from the path of a constant, the qualified name the token map gives a use of
+ *                       it (e.g., "NAV.STEP.MAX_VALUE", or "NAV.STEP.FORWARD.N" for one defined in procedure
+ *                       FORWARD of module NAV.STEP), to the value it stands for, as text (e.g., "DATA:99"),
+ *                       for the source view.
  * @param procNameToParamNames A map from procedure names to a list of their parameter information (name and type).
  * @param tokenMap A map from SourceInfo to TokenInfo for deterministic token classification. Its
  *                 keys carry instance 0: a token is classified by its position alone, the same in

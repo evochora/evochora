@@ -11,7 +11,6 @@ import java.util.List;
  * @param alias The local alias for the imported module.
  * @param usings The USING clauses on this import.
  * @param resolvedPath The resolved absolute path of the imported module.
- * @param exported Whether the importing module passes this import on to its own importers.
  * @param aliasChain The alias chain of the placement this import creates: the importing
  *                   placement's chain followed by the alias.
  */
@@ -20,7 +19,6 @@ public record ImportDependencyInfo(
         String alias,
         List<UsingDecl> usings,
         String resolvedPath,
-        boolean exported,
         String aliasChain
 ) implements IDependencyInfo {
 

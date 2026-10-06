@@ -2,7 +2,6 @@ package org.evochora.compiler.features.constdir;
 
 import org.evochora.compiler.Compiler;
 import org.evochora.compiler.api.CompilerOptions;
-import org.evochora.compiler.api.DefinitionKey;
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.api.SourceRoot;
@@ -119,8 +118,8 @@ class ConstantValuesTest {
 
     /**
      * A constant and a register alias defined under one name in two procedures are two
-     * definitions: each is filed under its own key, and the token map names, for each use, the
-     * scope that leads to its own definition's key.
+     * definitions: each is filed under its own path, and the token map names, for each use, the
+     * path of its own definition and the procedure as its scope.
      */
     @Test
     @Tag("integration")
@@ -144,9 +143,9 @@ class ConstantValuesTest {
 
         ProgramArtifact artifact = compile();
 
-        assertThat(artifact.constantValues()).containsOnly(Map.entry("N@FIRST", "DATA:1"), Map.entry("N@SECOND", "DATA:2"));
-        assertThat(artifact.registerAliasMap()).containsOnlyKeys("%TMP@FIRST", "%TMP@SECOND");
-        assertThat(artifact.registerAliasMap().get("%TMP@FIRST")).isNotEqualTo(artifact.registerAliasMap().get("%TMP@SECOND"));
+        assertThat(artifact.constantValues()).containsOnly(Map.entry("FIRST.N", "DATA:1"), Map.entry("SECOND.N", "DATA:2"));
+        assertThat(artifact.registerAliasMap()).containsOnlyKeys("FIRST.%TMP", "SECOND.%TMP");
+        assertThat(artifact.registerAliasMap().get("FIRST.%TMP")).isNotEqualTo(artifact.registerAliasMap().get("SECOND.%TMP"));
         String main = resolved("main.evo");
         for (int line : new int[]{7, 13}) {
             TokenInfo constant = artifact.tokenMap().get(new SourceInfo(main, line, 13, "", 0));
@@ -154,9 +153,9 @@ class ConstantValuesTest {
             String procedure = line == 7 ? "FIRST" : "SECOND";
             assertThat(constant.scope()).isEqualTo(procedure);
             assertThat(alias.scope()).isEqualTo(procedure);
-            assertThat(artifact.constantValues().get(DefinitionKey.of(constant.qualifiedName(), constant.scope())))
+            assertThat(artifact.constantValues().get(constant.qualifiedName()))
                     .isEqualTo(line == 7 ? "DATA:1" : "DATA:2");
-            assertThat(artifact.registerAliasMap()).containsKey(DefinitionKey.of(alias.qualifiedName(), alias.scope()));
+            assertThat(artifact.registerAliasMap()).containsKey(alias.qualifiedName());
         }
     }
 

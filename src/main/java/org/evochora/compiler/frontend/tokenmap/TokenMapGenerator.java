@@ -31,7 +31,8 @@ import java.util.Optional;
  * <p>
  * Feature-specific AST node handling is delegated to {@link ITokenMapContributor}
  * implementations via the {@link TokenMapContributorRegistry}. Core node types
- * (IdentifierNode, RegisterNode) are handled as default logic.
+ * (IdentifierNode, RegisterNode) are handled as default logic: an identifier is classified by
+ * the symbol it names, a register as a register.
  */
 public class TokenMapGenerator implements ITokenMapContext {
 
@@ -41,7 +42,7 @@ public class TokenMapGenerator implements ITokenMapContext {
     private final TokenMapContributorRegistry contributorRegistry;
     private final ModuleContextTracker contextTracker;
     private SymbolTable.Scope currentScopeObj;
-    private String currentScopeName = "global";
+    private String currentScopeName = TokenInfo.MODULE_LEVEL;
 
     /**
      * Constructs a TokenMapGenerator.
@@ -49,7 +50,8 @@ public class TokenMapGenerator implements ITokenMapContext {
      * @param symbolTable         The fully resolved symbol table from the semantic analysis phase.
      * @param diagnostics         The diagnostics engine for reporting compilation errors.
      * @param contributorRegistry The registry of feature-specific token map contributors.
-     * @param contextTracker      The module context tracker for alias chain qualification.
+     * @param contextTracker      The module context tracker, which keeps the symbol table's current
+     *                            module in step with the placement of the nodes walked.
      */
     public TokenMapGenerator(SymbolTable symbolTable,
                              DiagnosticsEngine diagnostics, TokenMapContributorRegistry contributorRegistry,
@@ -188,35 +190,14 @@ public class TokenMapGenerator implements ITokenMapContext {
                 );
             }
         } else if (node instanceof RegisterNode registerNode) {
-            if (registerNode.isAlias()) {
-                SourceInfo aliasSourceInfo = registerNode.sourceInfo();
-                String qualifiedAlias = qualifyName(registerNode.originalAlias());
-                String definedIn = resolveInCurrentScope(registerNode.originalAlias(), aliasSourceInfo)
-                        .map(ResolvedSymbol::scope)
-                        .orElse(this.currentScopeName);
-                put(aliasSourceInfo, new TokenInfo(
-                    registerNode.originalAlias(),
-                    TokenKind.ALIAS,
-                    definedIn,
-                    qualifiedAlias
-                ));
-            } else {
-                SourceInfo regSourceInfo = registerNode.sourceInfo();
-                put(regSourceInfo, new TokenInfo(
-                    registerNode.name(),
-                    TokenKind.REGISTER,
-                    this.currentScopeName
-                ));
-            }
+            // A register is written as a register here: aliases and parameters are still
+            // identifiers in Phase 5 and are replaced by registers only in Phase 6.
+            put(registerNode.sourceInfo(), new TokenInfo(
+                registerNode.name(),
+                TokenKind.REGISTER,
+                this.currentScopeName
+            ));
         }
-    }
-
-    private String qualifyName(String localName) {
-        String chain = contextTracker.currentAliasChain();
-        if (chain != null && !chain.isEmpty()) {
-            return chain + "." + localName.toUpperCase();
-        }
-        return localName.toUpperCase();
     }
 
     /**

@@ -115,6 +115,26 @@ public class ConstDirectiveTest {
         assertThat(constant.value()).isEqualTo(42);
     }
 
+    /**
+     * Verifies that a constant whose name contains a dot is reported: a name is one segment, and
+     * a dotted name could only be confused with the path of a name on another level.
+     */
+    @Test
+    @Tag("unit")
+    void testConstWithADotInItsNameIsReported() {
+        String source = ".CONST X.Y DATA:1";
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        List<AstNode> ast = new Parser(new Lexer(source, diagnostics, TestLexers.symbols()).scanTokens(), diagnostics, registry())
+                .parse().stream().filter(Objects::nonNull).toList();
+
+        SymbolTable symbolTable = new SymbolTable(diagnostics);
+        new SemanticAnalyzer(diagnostics, symbolTable, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry())
+                .analyze(ast);
+
+        assertThat(diagnostics.getDiagnostics()).singleElement()
+                .satisfies(d -> assertThat(d.message()).contains("'X.Y'").contains("a name is one segment"));
+    }
+
     private static ParserStatementRegistry registry() {
         ParserStatementRegistry reg = new ParserStatementRegistry();
         reg.register(".CONST", new ConstDirectiveHandler());

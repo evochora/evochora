@@ -7,9 +7,9 @@ import java.util.Optional;
 
 /**
  * The namespace of one module placement: the symbols it defines, the modules it imports and under
- * which alias, which of those imports it passes on, the bindings it received through USING, and
- * the paths it requires. Each is written through a method that keeps the namespace's rule (the
- * first symbol of a name stays; an alias binds once) and read through an unmodifiable view.
+ * which alias, the bindings it received through USING, and the paths it requires. Each is written
+ * through a method that keeps the namespace's rule (the first symbol of a name stays; an alias
+ * binds once) and read through an unmodifiable view.
  * <p>
  * Semantic analysis fills a scope and then freezes it; after that every write is a defect.
  */
@@ -20,7 +20,6 @@ public final class ModuleScope {
     private final Map<String, String> imports = new HashMap<>();       // alias → alias chain of imported module
     private final Map<String, String> requires = new HashMap<>();      // alias → required path/URL
     private final Map<String, String> usingBindings = new HashMap<>(); // alias → alias chain of resolved module
-    private final Map<String, Boolean> importExported = new HashMap<>(); // alias → exported flag
     private boolean frozen;
 
     /**
@@ -80,24 +79,18 @@ public final class ModuleScope {
     }
 
     /**
-     * Records that this module imports another under an alias, and whether it passes the import
-     * on to its own importers. An alias binds once: the first module stays, and a later call
-     * for the same alias is only taken if it names the same module.
+     * Records that this module imports another under an alias. An alias binds once: the first
+     * module stays, and a later call for the same alias is only taken if it names the same module.
      *
      * @param alias      The alias the imported module is known by here.
      * @param aliasChain The alias chain of the imported module's placement.
-     * @param exported   Whether names may reach through this import from outside.
      * @return {@code true} if the alias now names that module; {@code false} if it names
      *         another one already, which the phase that knows the source line reports.
      * @throws IllegalStateException if the scope is frozen.
      */
-    public boolean addImport(String alias, String aliasChain, boolean exported) {
+    public boolean addImport(String alias, String aliasChain) {
         guardFrozen();
-        if (!bindOnce(imports, alias, aliasChain)) {
-            return false;
-        }
-        importExported.put(alias, exported);
-        return true;
+        return bindOnce(imports, alias, aliasChain);
     }
 
     /**
@@ -167,14 +160,5 @@ public final class ModuleScope {
      */
     public Map<String, String> usingBindings() {
         return Collections.unmodifiableMap(usingBindings);
-    }
-
-    /**
-     * Returns which imports this module passes on to its own importers.
-     *
-     * @return The export flag by import alias; unmodifiable.
-     */
-    public Map<String, Boolean> importExported() {
-        return Collections.unmodifiableMap(importExported);
     }
 }

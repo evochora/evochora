@@ -18,6 +18,8 @@ import org.junit.jupiter.api.io.TempDir;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.as;
+import static org.assertj.core.api.InstanceOfAssertFactories.STRING;
 
 /**
  * What the compiler tells a programmer when a program is wrong.
@@ -929,6 +931,46 @@ class CompilerDiagnosticsTest {
     }
 
     @Test
+    void aDottedImportAliasIsReportedOnceWithoutConsequences() throws Exception {
+        write("lib.evo",
+                "EXPORT READY:",
+                "  NOP");
+        write("main.evo",
+                ".IMPORT \"lib.evo\" AS X.Y",
+                "START:",
+                "  JMPI X.Y.READY");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("main.evo:1: Cannot define 'X.Y': a name is one segment and may not contain a dot.")
+                .extracting(Throwable::getMessage, as(STRING))
+                .containsOnlyOnce("[ERROR]");
+    }
+
+    @Test
+    void callingThroughARequirementNoImportSuppliedNamesTheImportToFix() throws Exception {
+        write("arith.evo",
+                "EXPORT .PROC ADD",
+                "  RET",
+                ".ENDPROC");
+        write("nav.evo",
+                ".REQUIRE \"arith.evo\" AS ARITH",
+                "EXPORT .PROC STEP",
+                "  CALL ARITH.ADD",
+                "  RET",
+                ".ENDPROC");
+        write("main.evo",
+                ".IMPORT \"nav.evo\" AS NAV",
+                "START:",
+                "  CALL NAV.STEP");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("main.evo:1: Cannot import NAV: it requires 'ARITH'; add USING <module> AS ARITH to the import.")
+                .hasMessageContaining("nav.evo:3: Cannot call 'ARITH.ADD': 'ARITH' is a requirement that no import supplied; add USING <module> AS ARITH to the import of this module.");
+    }
+
+    @Test
     void callingAProcedureAModuleDoesNotExportNamesTheMissingExport() throws Exception {
         write("nav.evo",
                 ".PROC STEP",
@@ -974,7 +1016,7 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Cannot call 'NAV.STEP': NAV has no symbol 'STEP'.")
+                .hasMessageContaining("Cannot call 'NAV.STEP': 'NAV' has no member 'STEP'.")
                 .hasMessageContaining("main.evo:3");
     }
 

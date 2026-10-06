@@ -119,9 +119,11 @@ public class RequireDirectiveTest {
         assertThat(node.getChildren()).isEmpty();
     }
 
+
     private static ParserStatementRegistry registry() {
         ParserStatementRegistry reg = new ParserStatementRegistry();
         reg.register(".REQUIRE", new RequireDirectiveHandler());
+        reg.register(".PROC", new org.evochora.compiler.features.proc.ProcDirectiveHandler(new org.evochora.compiler.isa.RuntimeInstructionSetAdapter()));
         reg.registerDefault(new org.evochora.compiler.features.instruction.InstructionParsingHandler());
         return reg;
     }
