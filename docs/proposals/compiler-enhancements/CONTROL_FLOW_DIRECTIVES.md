@@ -99,10 +99,16 @@ is the code from one `.CASE` to the next.
   holds for `.CONTROL` and `.ENDCONTROL`.
 - `EXPORT` before `.CONTROL` exports the block's name one level out, `EXPORT` before `.CASE`
   the case, `EXPORT` before `.ENDCONTROL` the end; the rule is the one of every name.
-- A block in a macro body or a `.REPEAT` body is defined once per expansion, like a label in such
-  a body; a macro that opens a block takes the block's name as a parameter. A macro may open a
-  block that another macro closes.
-- `.CASE` or `.ENDCONTROL` outside a control block is reported where it stands.
+- The block has no rule of its own on names: its name, its cases and `END` are labels, defined
+  once per level as every label is, and what #153 changes for labels changes for them. A block
+  in a macro body or a `.REPEAT` body is therefore defined once per expansion, like a label in
+  such a body; a macro that opens a block takes the block's name as a parameter. A macro may
+  open a block that another macro closes.
+- `.CONTROL`, `.CASE` and `.ENDCONTROL` are block words of the parser, as `.PROC` and
+  `.ENDPROC` are: blocks nest and never overlap, an end closes the block opened last, and an end
+  or a `.CASE` that belongs to another open block, or to none, is reported with both places, as
+  the preprocessor reports its blocks. A `.PROC` stands only at the module level; inside a
+  control block it is reported, as `.IMPORT` is.
 
 ### How the usual control structures are written
 
@@ -242,8 +248,9 @@ What the machine has to do for it, settled against the code:
 
 1. **A conditional declares that it decides after a failure.** Every instruction declares its
    control-flow behaviour when it registers (`declareNeverFallsThrough`, `declareSkipsNext`,
-   `declareLabelIsJumpTarget`); both conditional classes add a fourth declaration,
-   `declareDecidesOnFailure`, for all their opcodes. `VirtualMachine.execute` runs an instruction
+   `declareLabelIsJumpTarget`); `AbstractConditionInstruction.regPair`, through which every
+   conditional and its negation register, adds a fourth, `declareDecidesOnFailure`, for both
+   opcodes of the pair; the two conditional classes stay as they are. `VirtualMachine.execute` runs an instruction
    that failed while it was planned only when it declared this; every other instruction stays
    unexecuted, as today. The machine learns a declaration, not an instruction kind.
 2. **The conditional decides "does not hold".** `AbstractConditionInstruction.execute` continues
@@ -252,58 +259,115 @@ What the machine has to do for it, settled against the code:
    The test itself is not evaluated on failure.
 3. **The operand list always has one entry per operand, at its place.** `Instruction.resolveOperands`
    returns an empty list today when the stack lacks a value or an argument cell lies beyond the
-   edge. It books the failure where it arises instead (the stack case is booked here, no longer
+   edge. Instead it books the failure where it arises (the stack case is booked here, no longer
    found by the instruction through the list's length) and fills every slot it could not read
-   with `Operand.MISSING`, recognised by `isMissing()`; when an argument cell lies beyond the edge,
-   every slot is `MISSING`, because the cells follow one another. A conditional jump that has to
-   jump reads its label at its place and books "no label" when it is `MISSING`. Readers of the
-   list of a failed instruction: the conditional itself (the label slot only), and the
-   interceptors, which see per slot what could be read and learn the failure from the organism as
-   today. No other reader remains, see 4.
+   with `Operand.MISSING`: one slot for one unreadable value, whatever its place, a stack slot
+   without a value as well as an argument cell beyond the edge. The slots that could be read are
+   resolved as always; the check per cell runs only when today's one check, on the last cell,
+   fails, so the common path stays as it is. `MISSING` is one object, `isMissing()` compares by
+   identity, and no cell can produce it. The list is mutable, because `InterceptionContext.setOperand`
+   writes into it. A conditional jump that has to jump reads the slot its signature names as the
+   label and does not jump when that slot is `MISSING`; it books nothing, because a `MISSING` slot
+   exists only where a failure was booked and the organism keeps the first reason of a tick.
+   Nothing assumes where the label stands among the operands.
+
+   Who can see a list with a `MISSING` slot is bounded by two properties: `MISSING` arises only
+   together with a booked failure, and a booked failure is executed only by a conditional (point
+   1). The readers are therefore the conditional itself and the interceptors, which see per slot
+   what could be read and learn the failure from the organism as today. Every other instruction
+   body stands behind the gate in `VirtualMachine.execute`, the conflict resolution passes failed
+   instructions over (point 4), the thermodynamics read no operands, and the trace and the
+   execution record read the raw argument cells. Both properties are tests of step 5.
 4. **A failed instruction claims no cell in conflict resolution.** `Simulation.resolveConflicts`
    asks every environment-modifying instruction of the second wave for its target cell, failed
    ones included; a failed instruction with operands that read like a vector can make another
    organism lose the conflict although it never writes. That is a defect of its own: the method
-   passes over an instruction whose organism has booked a failure; the instruction still goes
-   through the execution phase for its penalty. Test first.
+   passes over an instruction whose organism has booked a failure, after it has marked the
+   instruction as processed in the tick and before it asks for the target cell, so that the
+   instruction still goes through the execution phase for its penalty. Test first.
 5. **A skip whose test failed still skips.** `Organism.skipNextInstruction` detects today that
    `skipNopCells` failed (pointer left the world, skip budget exhausted) by reading the organism's
    failure flag, which is also set when the conditional's own test failed before. `skipNopCells`
    returns whether it stopped on a cell, and `skipNextInstruction` asks that return value; its own
    failure ends the skip as today, a failure booked before does not.
 
+One cause has no visible effect: when an argument cell lies beyond the edge of a bounded world,
+what the decision would run next lies beyond it too. The skip finds no cell, the jump has no
+label, the plain advance leaves the world; all four forms end in the stall recovery in the same
+tick, with the one penalty, where the instruction ends today. Step 5 tests the recovery and the
+penalty for this cause, not a skip or a jump.
+
 Not changed: the penalty, the `failed` and `fail_reason` columns of the trace, the length checks
 inside the instructions (they stay as guards and become unreachable for an organism), the stack
-consumption of a failed stack instruction (the values that were peeked are popped, as today).
-Interceptors see failed instructions as today; what a plugin does with one is the plugin's.
+consumption of a failed stack instruction (the values that were peeked are popped, as today),
+and the `cond_met` column of the trace, which stays empty for a failed step: under the rule a
+failed test does not hold, so `failed` tells the decision. Interceptors see failed instructions
+as today; what a plugin does with one is the plugin's.
 
 ### Architecture
 
 One feature package, `features/control`, in the slicing every feature follows, and a mirror of
-`features/proc` wherever the block does what a procedure does. No change in the core.
+`features/proc` wherever the block does what a procedure does. The core changes in one place,
+the parser, and only generically: it gets the block discipline the preprocessor already has
+(`BlockKind`, `BlockReader`), so that `.PROC` and `.CONTROL` nest and never overlap and a wrong
+closer is reported with both places. The core learns block words, not features.
 
 | Component | Phase | Does |
 |---|---|---|
-| `ControlDirectiveHandler` | 3, parser | Parses `.CONTROL <Block>`, reads statements through `context.declaration()` until the end marker, starts a new part at every case marker; accepts `EXPORT`. Rejects a missing name and an unclosed block (reported at the `.CONTROL`). Keeps no state of its own. |
-| `CaseDirectiveHandler`, `EndControlDirectiveHandler` | 3 | Return marker nodes (`CaseMarkerNode(name, exported)`, `EndControlNode(exported)`) that the block handler consumes; both accept `EXPORT`, which the parser handles before it calls them. |
-| `ControlNode`, `ControlPartNode` | AST | Records. `ControlNode(name, exported, parts, endExported, sourceInfo)` implements `IJumpTarget`, because its name marks the block's start; `ControlPartNode(caseName or null for the head, exported, statements, sourceInfo)` implements `IJumpTarget` when it has a name. The children of a block are its parts, the children of a part its statements. |
-| `ControlSymbolCollector` | 4, pass 1 | As `ProcedureSymbolCollector`: defines `<Block>` on the current level (`Symbol.Type.LABEL`, node: the block, exported as written), reporting a second definition like a duplicate label; enters the block's scope with `enterScope(name)` and `registerNodeScope`; defines inside it `END` (node: a `ControlEnd` record implementing `IJumpTarget`, exported as `.ENDCONTROL` said) and every case (node: the part). Leaves the scope after the children. |
-| stray markers | 4, pass 1 | A symbol collector registered for `CaseMarkerNode` and `EndControlNode` reports "`.CASE` outside a control block" and "`.ENDCONTROL` without `.CONTROL`"; inside a block the markers never reach the AST, because the block handler consumed them. |
+| block kind | 3, parser | `ControlFeature` registers the block kind with the opener `.CONTROL`, the closer `.ENDCONTROL` and the divider `.CASE`. The closer and the divider are no statements and have no handler: the parser's block reading stops at them, and the parser reports one that belongs to another open block or to none. |
+| `ControlDirectiveHandler` | 3, parser | Parses `.CONTROL <Block>` and reads the block's statements through the parser's block reading; at `.CASE <Case>` it starts a case, at `.ENDCONTROL` it ends the block and takes the end's position and `EXPORT`. Accepts `EXPORT` on all three words, which the parser handles before the handler sees them. Rejects a missing name. Keeps no state of its own. |
+| `ControlNode`, `ControlCase`, `ControlEnd` | AST | Records. `ControlNode(name, exported, statements, cases, endExported, sourceInfo, endSourceInfo)` implements `IJumpTarget`: the block is its own head, its name is the label before its first statement, and it needs no node for the head. `ControlCase(name, exported, statements, sourceInfo)` implements `IJumpTarget`. `ControlEnd(sourceInfo)` implements `IJumpTarget`, carries the position of `.ENDCONTROL` and is the node of the `END` symbol; it never stands in the tree. The children of a block are its statements followed by its cases; `reconstructWithChildren` tells them apart by type. |
+| `ControlSymbolCollector` | 4, pass 1 | As `ProcedureSymbolCollector`: defines `<Block>` on the current level (`Symbol.Type.LABEL`, node: the block, exported as written), reporting a second definition like a duplicate label; enters the block's scope with `enterScope(name)` and `registerNodeScope`; defines inside it `END` (node: `ControlEnd` with the end's position, exported as `.ENDCONTROL` said). Leaves the scope after the children. |
+| `ControlCaseSymbolCollector` | 4, pass 1 | As `LabelSymbolCollector`: defines `<Case>` in the current scope when the walk reaches the case (`Symbol.Type.LABEL`, node: the case), so that a clash with a name written earlier in the block is reported at the later of the two, as for two labels. |
 | `ControlAnalysisHandler` | 4, pass 2 | As `ProcedureAnalysisHandler`: enters the block's prebuilt scope and leaves it after the children. The instruction analysis validates the operands; `IJumpTarget` makes a block name, a case and the end valid label arguments. |
 | Phases 5 and 6 | — | Nothing to register: the token map classifies a reference through its symbol, the post-processor replaces it by its path, as for every label. |
-| `ControlNodeConverter` | 7, IR | As `ProcedureNodeConverter`: emits `IrLabelDef(qualifyName(<Block>))`, calls `enterScope(<Block>)`, converts the head, and for every case `IrLabelDef(qualifyName(<Case>))` followed by its statements, then `IrLabelDef(qualifyName("END"))`, then `leaveScope()`. The source of every label is the directive's line. |
-| `ControlFeature` | — | Registers the three parser handlers, the two symbol collectors, the analysis handler and the converter; takes its place in `StandardFeatures` before `InstructionFeature`. |
+| `ControlNodeConverter`, `ControlCaseConverter` | 7, IR | As `ProcedureNodeConverter`: the block converter emits `IrLabelDef(qualifyName(<Block>))` with the block's position, calls `enterScope(<Block>)`, converts the statements, then the cases, then emits `IrLabelDef(qualifyName("END"))` with the end's position and calls `leaveScope()`. The case converter emits `IrLabelDef(qualifyName(<Case>))` with the case's position and converts the case's statements. |
+| `ControlFeature` | — | Registers the block kind, the parser handler, the two symbol collectors, the analysis handler and the two converters; takes its place in `StandardFeatures` before `InstructionFeature`. |
 
 What the core already provides and the block only uses: the level (`enterScope` with a segment,
 `registerNodeScope`), the path as identity (`qualifyName`), the descent of a path into a scope a
 symbol opened, the visibility rule with `EXPORT` on every segment, the one-segment rule on names,
 the reporting of `.IMPORT`/`.REQUIRE` inside a level.
 
-Runtime changes: the five points of the instruction-set section (`Instruction`, both conditional
-classes, `VirtualMachine`, `AbstractConditionInstruction`, `ConditionalJumpInstruction`,
-`Simulation.resolveConflicts`, `Organism.skipNopCells`/`skipNextInstruction`). The trace consumer
-drops the special case that leaves `cond_met` empty for a failed conditional, because the step
-then decides.
+What changes in the parser core and in the neighbouring features, all in step 1 unless said:
+
+- **Block discipline in the parser.** A feature registers a block kind (openers, closer,
+  dividers) with the statement registry, as it registers one with the preprocessor. The parser
+  keeps the stack of open blocks and offers the handler of an opener a method that reads
+  statements up to the block's own divider or closer. A closer of another open block ends the
+  inner block there, reported in the preprocessor's words ("`.ENDPROC` closes the `.PROC` opened
+  at …, but the `.CONTROL` opened at … is still open"), and stays for the outer handler; a
+  closer or divider with no open block of its kind is reported where it stands; a block still
+  open at the end of the input is reported at its opener. `ProcFeature` registers `.PROC` /
+  `.ENDPROC`, `ProcDirectiveHandler` reads its body through the same method and loses its
+  look-ahead for `.ENDPROC`. Today a forgotten `.ENDCONTROL` in a procedure would give three
+  messages, the first of them "Unknown directive '.ENDPROC'"; with the discipline it gives one,
+  at the right line.
+- **A label takes no statement.** `LabelNode` loses its `statement` field, `LabelDirectiveHandler`
+  returns the node alone, and the enclosing loop reads the rest of the line as the next
+  statement. Today a label alone on its line takes the statement of the next line, a leftover of
+  the first parser that nothing but the label's converter ever read; it swallows a closer, so
+  that `L:` before `.ENDPROC` yields "Unknown directive '.ENDPROC'" today. The IR is unchanged,
+  because label definition and statement are emitted in the same order.
+- **`.PROC` stands only at the module level.** `ProcedureSymbolCollector` reports a procedure
+  defined inside any level, as `RequireSymbolCollector` reports `.REQUIRE`. No program in the
+  repository nests a procedure, and nesting would give nothing: procedure-local registers belong
+  to the call frame, so an inner procedure never sees the outer's, and the inner body would lie
+  in the outer's cells. Access to a caller's registers is what `REF` parameters give.
+- **Core comments, in step 2.** The class comment of `SymbolTable` ("one scope per procedure",
+  and the sentence that a name an enclosing scope holds is reported when the table freezes,
+  which QUALIFIED_NAMES withdrew), the comment of `Scope` ("procedure-local or module-global"),
+  the two mentions of `ProcedureSymbolCollector` at the node-scope map, and the class comment of
+  `ScopeTracker` speak of levels a node opens. The withdrawn sentence is a leftover and goes in a
+  commit of its own.
+
+Runtime changes: the five points of the instruction-set section (`Instruction`,
+`AbstractConditionInstruction`, `ConditionalJumpInstruction`, `VirtualMachine`,
+`Simulation.resolveConflicts`, `Organism.skipNopCells`/`skipNextInstruction`), and what described
+the empty list: the `isEmpty` branch of `EnvironmentInteractionInstruction.targetCoordinate`
+becomes unreachable and goes with its comment, the comments of `OperandSource.STACK` and
+`InterceptionContext.getOperands` describe the list with `MISSING`. The trace consumer is
+unchanged.
 
 Nothing changes in the layout, the linker, the emitter, the artifact or the visualizer: block
 labels are labels with paths.
@@ -311,12 +375,14 @@ labels are labels with paths.
 ### Documentation
 
 - `docs/ASSEMBLY_SPEC.md`: a subsection "Control blocks" in section 7, in the form and length
-  of `.PROC`'s, with one example, referring to "Qualified names" for visibility; under
-  "Conditional Instructions" the sentence on a failed test; under "Blocks" that `.CONTROL` is
-  not one of the blocks that section describes: a macro may open it and another macro close it.
+  of `.PROC`'s, with one example, referring to "Qualified names" for visibility; under `.PROC`
+  that a procedure stands only at the module level; under "Conditional Instructions" the
+  sentence on a failed test; under "Blocks" that `.CONTROL` is not one of the blocks that
+  section describes: a macro may open it and another macro close it.
 - `docs/EVOASM_GUIDELINES.md`: a section "Control blocks" with the patterns above, each with
   padding and redundancy, and the row rule (`.ORG` before the directive).
-- `tools/trace/README.md`: `cond_met` for a failed conditional.
+- `tools/trace/README.md`: under `cond_met`, that a failed test does not hold, so `failed`
+  tells the decision.
 - `.claude/skills/evoasm/SKILL.md`: the block next to the instructions.
 - `docs/COMPILER_CORE_BOUNDARY.md`: the feature row (`control`: the directives, the level, the
   labels; parser, symbol collection, analysis, IR conversion).
@@ -368,11 +434,11 @@ of it and its mechanics are still open.
 
 | # | Step | Files | Verification | Finished state |
 |---|---|---|---|---|
-| 1 | Parser and AST | `features/control/`: `ControlNode`, `ControlPartNode`, `CaseMarkerNode`, `EndControlNode`, `ControlDirectiveHandler`, `CaseDirectiveHandler`, `EndControlDirectiveHandler`, `ControlFeature` (parser registrations only), `StandardFeatures`; new `ControlDirectiveTest` in `compiler/directives` | `gw test --tests '*ControlDirective*' --tests '*StandardFeatures*' --tests '*CompilerArchitectureRules*'` | a block with head, three cases and nesting parses into the node tree; `EXPORT` flags land on block, case and end; a missing name and an unclosed block are reported at the `.CONTROL`; the architecture test accepts the feature |
-| 2 | The block as a level | `ControlSymbolCollector`, `ControlEnd`, the stray-marker collector, `ControlAnalysisHandler`, `ControlFeature` (registrations); new `ControlLevelTest` in `compiler/features/control` | `gw test --tests '*ControlLevel*' --tests '*SemanticAnalyzer*' --tests '*QualifiedNames*'` | `JMPI END` and `JMPI TURN` inside `WALK` resolve to `WALK.END` and `WALK.TURN`; `JMPI WALK` from before and after the block resolves; `JMPI WALK.TURN` from after the block is reported as not marked EXPORT and resolves with `EXPORT .CASE`; `END` in a nested block is the inner end, `WALK.END` the outer; `JFI %DR0 DATA:1 TURN` passes the operand check; a case or label named `END`, a second block `WALK` on one level, `.CASE` outside a block and `.ENDCONTROL` without a block are reported; a label and a constant defined in the block are visible inside it and reached from outside as `WALK.L` only with `EXPORT`; `.IMPORT` inside a block is reported |
-| 3 | IR and the equivalence to hand-written code | `ControlNodeConverter`, `ControlFeature` (registration); new `ControlBlockCompileTest` in `compiler/features/control` | `gw test --tests '*ControlBlockCompile*' --tests '*CompilerOutputEquivalence*'` | for each pattern of the solution, the block program and its hand-written twin with ordinary labels compile to the same cells at the same coordinates, label and label-reference cells compared by position and type, not value; the artifact's label maps carry the paths `WALK`, `WALK.TURN`, `WALK.END`; the reference artifact is unchanged |
+| 1 | Parser, block discipline, AST | test first for the two defects (a label alone before `.ENDPROC`; `.ENDPROC` inside an open block), then: parser core (`ParserStatementRegistry` block kinds, `Parser`/`IParsingContext` stack of open blocks and block reading); `features/label`: `LabelNode`, `LabelDirectiveHandler`, `LabelNodeConverter`; `features/proc`: `ProcFeature` (block kind), `ProcDirectiveHandler` (reads through the core), `ProcedureSymbolCollector` (module level only); `features/control/`: `ControlNode`, `ControlCase`, `ControlDirectiveHandler`, `ControlFeature` (block kind and parser registration), `StandardFeatures`; tests: new `ParserBlockTest` in `compiler/frontend/parser`, `ProcedureDirectiveTest`, `CallAnalysisHandlerTypeSafetyTest` (builds a `LabelNode`), new `ControlDirectiveTest` in `compiler/directives` | `gw test --tests '*ParserBlock*' --tests '*ProcedureDirective*' --tests '*Label*' --tests '*ControlDirective*' --tests '*StandardFeatures*' --tests '*CompilerArchitectureRules*' --tests '*CompilerOutputEquivalence*'` | `L:` alone on its line before `.ENDPROC` compiles, and before an instruction on the next line gives the IR it gave before; `.ENDPROC` inside an open `.CONTROL` is reported once, with both places, and the procedure closes; `.ENDCONTROL` with no open block and `.CASE` outside a block are reported where they stand; a block still open at the end of the input is reported at its `.CONTROL`; a `.PROC` inside a `.PROC` or inside a block is reported; a block with head, three cases and nesting parses into the node tree, the end with its own position; `EXPORT` flags land on block, case and end; a missing name is reported; the architecture test accepts the feature; the reference artifact is unchanged |
+| 2 | The block as a level | `ControlSymbolCollector`, `ControlCaseSymbolCollector`, `ControlEnd`, `ControlAnalysisHandler`, `ControlFeature` (registrations); the core comments of `SymbolTable` and `ScopeTracker`, the withdrawn shadowing sentence in a commit of its own; new `ControlLevelTest` in `compiler/features/control` | `gw test --tests '*ControlLevel*' --tests '*SemanticAnalyzer*' --tests '*QualifiedNames*'` | `JMPI END` and `JMPI TURN` inside `WALK` resolve to `WALK.END` and `WALK.TURN`; `JMPI WALK` from before and after the block resolves; `JMPI WALK.TURN` from after the block is reported as not marked EXPORT and resolves with `EXPORT .CASE`; `END` in a nested block is the inner end, `WALK.END` the outer; `JFI %DR0 DATA:1 TURN` passes the operand check; a label `END:` in the block is reported at the label with the `.ENDCONTROL` line named, a label `TURN:` in the head before `.CASE TURN` is reported at the `.CASE`, a second block `WALK` on one level is reported; a label and a constant defined in the block are visible inside it and reached from outside as `WALK.L` only with `EXPORT`; `.IMPORT` inside a block is reported |
+| 3 | IR and the equivalence to hand-written code | `ControlNodeConverter`, `ControlCaseConverter`, `ControlFeature` (registration); new `ControlBlockCompileTest` in `compiler/features/control` | `gw test --tests '*ControlBlockCompile*' --tests '*CompilerOutputEquivalence*'` | for each pattern of the solution, the block program and its hand-written twin with ordinary labels compile to the same cells at the same coordinates, label and label-reference cells compared by position and type, not value; the artifact's label maps carry the paths `WALK`, `WALK.TURN`, `WALK.END`; the reference artifact is unchanged |
 | 4 | EXPORT across modules | `ControlBlockCompileTest` (two modules, `@TempDir`, `@Tag("integration")`, modelled on `ReExportedImportResolutionTest`) | `gw test --tests '*ControlBlockCompile*'` | `LIB.WALK` and `LIB.WALK.TURN` are reachable from an importer with `EXPORT .CONTROL` and `EXPORT .CASE`; without one of them the missing segment is reported; a block inside a procedure is reached as `LIB.PROC.WALK` with the procedure exported |
-| 5 | The failed-test rule | test first for the defect: `SimulationTest` (a failed instruction with vector-like operands no longer makes another organism lose the conflict), then `Simulation.resolveConflicts`; `Instruction` (`declareDecidesOnFailure`, its query; `resolveOperands` with `Operand.MISSING`), `ConditionalSkipInstruction`, `ConditionalJumpInstruction` (declaration; label `MISSING` is "no label"), `VirtualMachine.execute` (the one query), `AbstractConditionInstruction.execute`, `Organism.skipNopCells` (returns whether it stopped on a cell), `skipNextInstruction`; `VMConditionalSkipInstructionTest`, `VMConditionalJumpInstructionTest` (empty stack, register naming no register, cell beyond the edge, each positive and negated: skip/no skip, stay/jump, penalty booked, two instructions advanced on a skip), `ConditionalNegationTest` (exactly one of a pair acts, on failure too), `OrganismFailureChannelTest` unchanged and green, `SimulationTest` and `VMConditionalJumpInstructionTest` (reason texts), `InstructionInterceptorTest` (`MISSING` visible per slot); `tools/trace/consumer/TraceConsumer` and its README | `gw test --tests '*VMConditional*' --tests '*ConditionalNegation*' --tests '*OrganismFailureChannel*' --tests '*SimulationTest*' --tests '*InstructionInterceptor*'` | every row of the table in the instruction-set section holds; no instruction throws for any operand an organism can supply; a failed instruction claims no cell |
+| 5 | The failed-test rule | test first for the defect: `SimulationTest` (a failed instruction with vector-like operands no longer makes another organism lose the conflict), then `Simulation.resolveConflicts`; `Instruction` (`declareDecidesOnFailure` and its query; `resolveOperands` with `Operand.MISSING` per slot, mutable list; the comment of `OperandSource.STACK`), `AbstractConditionInstruction` (`regPair` declares, `execute` decides), `ConditionalJumpInstruction` (a `MISSING` label slot: no jump), `VirtualMachine.execute` (the one query), `Organism.skipNopCells` (returns whether it stopped on a cell), `skipNextInstruction`, `EnvironmentInteractionInstruction.targetCoordinate` (the `isEmpty` branch goes), `InterceptionContext.getOperands` (comment); tests: `VMConditionalSkipInstructionTest`, `VMConditionalJumpInstructionTest` (empty stack and register naming no register, each positive and negated: skip/no skip, stay/jump, penalty booked, the first reason kept, two instructions advanced on a skip; a cell beyond the edge: recovery and penalty for all four forms), `ConditionalNegationTest` (exactly one of a pair acts, on failure too), `InstructionArgumentSlotTest` (one entry per operand, `MISSING` only with a booked failure, the list mutable), a `VirtualMachine` test that no instruction but a conditional executes with a booked failure, `InstructionInterceptorTest` (`MISSING` visible per slot; its two expectations of an empty list change), `OrganismFailureChannelTest` unchanged and green, `SimulationTest` (reason texts) | `gw test --tests '*VMConditional*' --tests '*ConditionalNegation*' --tests '*InstructionArgumentSlot*' --tests '*VirtualMachine*' --tests '*OrganismFailureChannel*' --tests '*SimulationTest*' --tests '*InstructionInterceptor*'` | every row of the table in the instruction-set section holds; the cause beyond the edge ends in the recovery for all four forms; the two properties of point 3 hold; no instruction throws for any operand an organism can supply; a failed instruction claims no cell |
 | 6 | The reference program | `src/test/resources/org/evochora/compiler/reference/main.evo` and `lib/util.evo` (a section in its own `.ORG` region after the existing code, with guard, chain, selection, loop, nesting, `EXPORT .CONTROL` and `EXPORT .CASE`, a macro with the block name as parameter, `.ORG` before a `.CASE`, padding in the primordial style); regenerated `expected/main.json` | `gw test --tests '*CompilerOutputEquivalence*'`; a diff of the artifact that shows only added cells and the entries of the new labels | the test passes with the new artifact and the pull request names the regeneration |
 | 7 | Documentation | the documents listed under Documentation; this document's status and the settled rule | review of the diff against the neighbouring sections: length, parts, vocabulary | every document uses the terms level, path, control block, case, and no more words than its neighbours |
 | 8 | Gate | — | `gw check` | PMD and the full suite green |
@@ -394,7 +460,8 @@ of it and its mechanics are still open.
    structures of other languages are patterns of code, documented in the guidelines.
 9. A conditional whose test cannot be evaluated does not hold and its negation holds (the IEEE
    model); the failure stays booked; the five mechanics of the instruction-set section are the
-   way, including the conflict-resolution defect and the return value of `skipNopCells`.
+   way, including the conflict-resolution defect and the return value of `skipNopCells`. For an
+   argument cell beyond the edge all four forms end in the stall recovery, as today.
 10. Stack conditionals stay destructive; non-destructive reading is deferred.
 11. Names stay unique per level; duplicates for labels, blocks and procedures come together
     with #153.
@@ -402,7 +469,21 @@ of it and its mechanics are still open.
 13. The primordials stay unchanged; the reference program is extended, its artifact regenerated
     once.
 14. The source view gets no new concept; the directives show as label lines do.
-15. `cond_met` reports the decision of a failed conditional; `failed` reports the failure.
+15. `cond_met` stays empty for a failed step, as today; under the rule a failed test does not
+    hold, so `failed` tells the decision, and the trace consumer is unchanged.
 16. The jump out of a procedure body is #201; the jump into a block's case is what `EXPORT`
     on the case declares.
 17. The marshalling's bridge labels stay as they are (QUALIFIED_NAMES, decision 9).
+18. The block is its own head: `ControlNode` holds the statements before the first case and the
+    cases; there is no node for the head, and `END` has the position of `.ENDCONTROL`.
+19. The block has no rule of its own on names; its name, its cases and `END` are labels, and
+    the uniqueness is the label's rule (#153 for duplicates).
+20. The parser gets the block discipline of the preprocessor: block kinds registered by
+    features, nesting without overlap, a wrong closer reported with both places, no marker
+    nodes; `.PROC`/`.ENDPROC` and `.CONTROL`/`.CASE`/`.ENDCONTROL` are block kinds.
+21. A label takes no statement; the rest of its line is the next statement.
+22. `.PROC` stands only at the module level; nested procedures and closures are not taken up:
+    `REF` parameters give the access, and there are no procedure values to close over.
+23. `Operand.MISSING` marks one unreadable slot, whatever its place; its readers are the
+    conditional and the interceptors, bounded by two tested properties; the declaration that a
+    conditional decides on failure is made in `AbstractConditionInstruction.regPair`.
