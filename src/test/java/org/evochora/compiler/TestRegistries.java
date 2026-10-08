@@ -50,7 +50,8 @@ public final class TestRegistries {
     public static void registerPreProcessorBlocks(PreProcessorHandlerRegistry registry) {
         FeatureRegistry featureRegistry = new FeatureRegistry(new RuntimeInstructionSetAdapter());
         StandardFeatures.all().forEach(f -> f.register(featureRegistry));
-        featureRegistry.preprocessorBlocks().forEach(registry::registerBlock);
+        featureRegistry.preprocessorBlocks().forEach(block ->
+                registry.registerBlock(block.kind(), block.handler(), block.stored()));
         featureRegistry.preprocessorTopLevelOnly().forEach(registry::registerTopLevelOnly);
     }
 }

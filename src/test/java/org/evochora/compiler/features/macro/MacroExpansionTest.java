@@ -11,9 +11,9 @@ import java.util.Map;
 
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.api.SourceRoot;
+import org.evochora.compiler.diagnostics.Diagnostic;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.features.ctx.PopCtxPreProcessorHandler;
-import org.evochora.compiler.features.repeat.RepeatDirectiveHandler;
 import org.evochora.compiler.features.source.SourceDirectiveHandler;
 import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
@@ -303,6 +303,18 @@ class MacroExpansionTest {
     }
 
     @Test
+    void aMacroWithoutANameIsReportedOnceAndLeftBehindAsAWhole() {
+        Expansion result = expand(
+                ".MACRO",
+                "  NOP",
+                ".ENDMACRO",
+                "JMPI END");
+
+        assertThat(result.errors()).containsExactly("<memory>:1: Expected macro name.");
+        assertThat(result.texts()).endsWith("JMPI", "END");
+    }
+
+    @Test
     void aStrayEndmacroIsReportedAndRemoved() {
         Expansion result = expand(
                 "NOP",
@@ -384,6 +396,14 @@ class MacroExpansionTest {
     }
 
     private record Expansion(List<Token> tokens, DiagnosticsEngine diagnostics) {
+        /** The errors as {@code file:line: message}, in the order they were reported. */
+        List<String> errors() {
+            return diagnostics.getDiagnostics().stream()
+                    .filter(d -> d.type() == Diagnostic.Type.ERROR)
+                    .map(d -> d.fileName() + ":" + d.lineNumber() + ": " + d.message())
+                    .toList();
+        }
+
         /** The texts of the expanded tokens, without newlines and the end marker. */
         List<String> texts() {
             return tokens.stream()
@@ -422,8 +442,6 @@ class MacroExpansionTest {
                 .scanTokens();
         PreProcessorContext context = new PreProcessorContext("", libraryTokens, MAIN, CompilerOptions.defaults());
         TestRegistries.registerPreProcessorBlocks(context.handlers());
-        context.handlers().register(".MACRO", new MacroDirectiveHandler());
-        context.handlers().register(".REPEAT", new RepeatDirectiveHandler());
         context.handlers().register(".SOURCE", new SourceDirectiveHandler());
         context.handlers().register(".POP_CTX", new PopCtxPreProcessorHandler());
         PreProcessor preProcessor = new PreProcessor(tokens, diagnostics,
@@ -437,7 +455,6 @@ class MacroExpansionTest {
         Lexer lexer = new Lexer(String.join("\n", lines) + "\n", diagnostics, TestLexers.symbols());
         List<Token> tokens = lexer.scanTokens();
         PreProcessorContext context = new PreProcessorContext("", Map.of(), "<memory>", CompilerOptions.defaults());
-        context.handlers().register(".MACRO", new MacroDirectiveHandler());
         TestRegistries.registerPreProcessorBlocks(context.handlers());
         PreProcessor preProcessor = new PreProcessor(tokens, diagnostics,
                 new SourceRootResolver(List.of(new SourceRoot(".", null)), Path.of("")),

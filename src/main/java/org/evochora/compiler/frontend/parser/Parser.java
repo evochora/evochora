@@ -2,6 +2,7 @@ package org.evochora.compiler.frontend.parser;
 
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.diagnostics.ErrorRecoveryException;
+import org.evochora.compiler.frontend.BlockReader;
 import org.evochora.compiler.frontend.DirectiveLine;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
@@ -22,13 +23,16 @@ import java.util.function.Predicate;
 /**
  * The main parser for the assembly language. It consumes a list of tokens
  * from the {@link org.evochora.compiler.frontend.lexer.Lexer} and produces an Abstract Syntax Tree (AST).
- * All statement dispatch goes through the {@link ParserStatementRegistry}.
+ * All statement dispatch goes through the {@link ParserStatementRegistry}. A statement that
+ * opens a registered kind of block is read as a block first, by the rules of
+ * {@link BlockReader}, and its handler is called with the block only when the block is whole.
  */
 public class Parser implements IParsingContext {
 
     private final List<Token> tokens;
     private final DiagnosticsEngine diagnostics;
     private final ParserStatementRegistry statementRegistry;
+    private final BlockReader blockReader;
     private int current = 0;
 
     private final ParserState parserState = new ParserState();
@@ -45,6 +49,7 @@ public class Parser implements IParsingContext {
         this.tokens = tokens;
         this.diagnostics = diagnostics;
         this.statementRegistry = statementRegistry;
+        this.blockReader = new BlockReader(statementRegistry::blockKindOf, false, Parser::isExport, diagnostics);
     }
 
     /**
@@ -52,49 +57,63 @@ public class Parser implements IParsingContext {
      * @return A list of parsed {@link AstNode}s.
      */
     public List<AstNode> parse() {
+        return statements(current, tokens.size());
+    }
+
+    @Override
+    public List<AstNode> statements(int from, int to) {
+        current = from;
         List<AstNode> statements = new ArrayList<>();
-        while (!isAtEnd()) {
+        while (current < to && !isAtEnd()) {
             if (match(TokenType.NEWLINE)) {
                 continue;
             }
-            AstNode statement = declaration();
+            AstNode statement = statement();
             if (statement != null) {
                 statements.add(statement);
             }
         }
+        current = Math.max(current, to);
         return statements;
     }
 
     /**
-     * Parses a single declaration. Handles EXPORT keyword, then dispatches
-     * through the statement registry by keyword. Label syntax and generic
-     * instructions are handled as fallbacks.
-     * @return The parsed {@link AstNode}, or null if an error occurs.
+     * Parses a single statement. Handles the EXPORT keyword, then dispatches by keyword: a
+     * block opener through the block reader and the block handler, a keyword through the
+     * statement registry, a closer or divider outside any block as a stray, an unknown directive
+     * as an error, anything else through the default handler.
+     * @return The parsed {@link AstNode}, or null if the statement produced none or an error
+     *         occurred.
      */
-    @Override
-    public AstNode declaration() {
+    private AstNode statement() {
         try {
-            while (check(TokenType.NEWLINE)) {
-                advance();
-            }
-            if (isAtEnd()) return null;
-
             currentExported = false;
-            if (check(TokenType.IDENTIFIER) && "EXPORT".equalsIgnoreCase(peek().text())) {
+            if (isExport(peek())) {
                 currentExported = true;
                 advance();
             }
 
-            // Keyword lookup in statement registry (directives, opcodes, etc.)
             Token keyword = peek();
+            Optional<IParserBlockHandler> blockHandler = statementRegistry.blockHandlerOf(keyword.text());
+            if (blockHandler.isPresent()) {
+                return block(blockHandler.get());
+            }
+
+            // Keyword lookup in statement registry (directives, opcodes, etc.)
             Optional<IParserStatementHandler> handler = statementRegistry.get(keyword.text());
             if (handler.isPresent()) {
                 if (currentExported && !handler.get().supportsExport()) {
-                    diagnostics.reportError(
-                            "EXPORT is not supported before '" + keyword.text() + "'.",
-                            keyword.source().fileName(), keyword.source().lineNumber());
+                    reportExport(keyword);
                 }
                 return handler.get().parse(this);
+            }
+
+            // A closer or divider the walk reaches stands outside any block; its line goes with it.
+            if (blockReader.reportStray(tokens, current)) {
+                while (!isAtEnd() && advance().type() != TokenType.NEWLINE) {
+                    // Skipping the rest of the line.
+                }
+                return null;
             }
 
             // After preprocessing, all remaining directives must have a registered handler
@@ -110,9 +129,7 @@ public class Parser implements IParsingContext {
             Optional<IParserStatementHandler> defaultHandler = statementRegistry.getDefault();
             if (defaultHandler.isPresent()) {
                 if (currentExported) {
-                    diagnostics.reportError(
-                            "EXPORT is not supported before '" + keyword.text() + "'.",
-                            keyword.source().fileName(), keyword.source().lineNumber());
+                    reportExport(keyword);
                 }
                 return defaultHandler.get().parse(this);
             }
@@ -127,6 +144,52 @@ public class Parser implements IParsingContext {
             synchronize();
             return null;
         }
+    }
+
+    /**
+     * Reads the block whose opener the parser stands on and hands it to its handler when it is
+     * whole; a broken block has been reported by the reader and is left behind. Before the
+     * handler runs, EXPORT before the opener, a divider or the closer is reported where the
+     * handler does not take it. The parser continues after the block in every case, so a handler
+     * that gives up leaves its whole block behind.
+     */
+    private AstNode block(IParserBlockHandler handler) {
+        BlockReader.Block block = blockReader.read(tokens, current);
+        if (!block.whole()) {
+            current = block.end();
+            return null;
+        }
+        Token opener = tokens.get(block.opener());
+        if (currentExported && !handler.supportsExport(opener.text())) {
+            reportExport(opener);
+        }
+        for (int divider : block.dividers()) {
+            reportExportUnlessTaken(handler, block, divider);
+        }
+        reportExportUnlessTaken(handler, block, block.closer());
+        try {
+            return handler.parse(this, block);
+        } catch (ErrorRecoveryException ex) {
+            return null;
+        } finally {
+            current = block.end();
+        }
+    }
+
+    private void reportExportUnlessTaken(IParserBlockHandler handler, BlockReader.Block block, int word) {
+        Token token = tokens.get(word);
+        if (block.prefixed().contains(word) && !handler.supportsExport(token.text())) {
+            reportExport(token);
+        }
+    }
+
+    private void reportExport(Token word) {
+        diagnostics.reportError("EXPORT is not supported before '" + word.text() + "'.",
+                word.source().fileName(), word.source().lineNumber());
+    }
+
+    private static boolean isExport(Token token) {
+        return token.type() == TokenType.IDENTIFIER && "EXPORT".equalsIgnoreCase(token.text());
     }
 
     /**
@@ -261,5 +324,15 @@ public class Parser implements IParsingContext {
     @Override
     public DirectiveLine currentLine(Predicate<Token> passedOver) {
         return DirectiveLine.of(tokens, current, passedOver);
+    }
+
+    @Override
+    public DirectiveLine lineOf(int index) {
+        return DirectiveLine.of(tokens, index);
+    }
+
+    @Override
+    public Token tokenAt(int index) {
+        return tokens.get(index);
     }
 }

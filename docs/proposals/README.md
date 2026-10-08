@@ -26,8 +26,11 @@ legitimately cover, and delegates the formats this codebase owns to PERSISTED_FO
 ## Compiler enhancements
 
 One compiler proposal remains open. CONDITIONAL_COMPILATION (`.DEFINE` flags, `.IFDEF` blocks, the
-`.END*` naming of the block directives) and QUALIFIED_NAMES (modules and procedures as levels, a name
-reached by its path, one visibility rule, the path as the identity of a name) are accomplished and
+`.END*` naming of the block directives), QUALIFIED_NAMES (modules and procedures as levels, a name
+reached by its path, one visibility rule, the path as the identity of a name) and BLOCK_MECHANISM
+(the structure of a block read by the core before its handler, in one reader for the preprocessor
+and the parser; a broken block reported and skipped; a label without a statement; `.PROC` at the
+module level only) are accomplished and
 live under [`docs/outdated/proposals/accomplished/`](../outdated/proposals/accomplished/).
 
 | # | Document | Status | Summary |
@@ -36,6 +39,7 @@ live under [`docs/outdated/proposals/accomplished/`](../outdated/proposals/accom
 
 Dependencies:
 
+- **1 builds on [BLOCK_MECHANISM](../outdated/proposals/accomplished/BLOCK_MECHANISM.md)**, accomplished: `.CONTROL`/`.CASE`/`.ENDCONTROL` is a block kind of the parser's discipline.
 - **1 builds on the `.END*` naming convention** that CONDITIONAL_COMPILATION established (`.ENDIF`).
 - **[CONDITIONAL_JUMPS](../outdated/proposals/accomplished/CONDITIONAL_JUMPS.md) is optional for 1**, and accomplished: control flow directives work with conditional skips;
   with conditional jumps, `.IF` over a jump compiles to the negated jump.

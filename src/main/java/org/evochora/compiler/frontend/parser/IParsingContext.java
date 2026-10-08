@@ -7,6 +7,7 @@ import org.evochora.compiler.model.ast.OperandNode;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.DirectiveLine;
 
+import java.util.List;
 import java.util.function.Predicate;
 
 /**
@@ -93,10 +94,36 @@ public interface IParsingContext {
     OperandNode expression();
 
     /**
-     * Parses a single declaration (directive or statement).
-     * @return The parsed {@link AstNode}, or null if an error occurs.
+     * Parses the statements of a range of the token stream, as a block handler parses a part of
+     * its block: from the first index up to the second, exclusive, which is the end of the part
+     * by {@link org.evochora.compiler.frontend.BlockReader.Block#partEnd}. A nested block inside
+     * the range is parsed through its own handler. The parser stands at the end of the range
+     * afterwards.
+     *
+     * @param from The index of the first token of the range.
+     * @param to   The end of the range, exclusive.
+     * @return The nodes of the statements, without the statements that produced none.
      */
-    AstNode declaration();
+    List<AstNode> statements(int from, int to);
+
+    /**
+     * Finds the physical line of the directive at an index, by the rules of
+     * {@link DirectiveLine}, with no token before it passed over; a block handler reads the head
+     * of a divider through it.
+     *
+     * @param index The index of the directive token in the parser's token stream.
+     * @return The directive's operands, their end, and the index of the line after it.
+     */
+    DirectiveLine lineOf(int index);
+
+    /**
+     * Returns the token at an index of the parser's token stream, as a block handler takes the
+     * position of its closer.
+     *
+     * @param index The index.
+     * @return The token.
+     */
+    Token tokenAt(int index);
 
     /**
      * Returns the generic parser state container that features use

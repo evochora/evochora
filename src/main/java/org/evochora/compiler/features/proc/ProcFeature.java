@@ -2,6 +2,9 @@ package org.evochora.compiler.features.proc;
 
 import org.evochora.compiler.ICompilerFeature;
 import org.evochora.compiler.IFeatureRegistrationContext;
+import org.evochora.compiler.frontend.BlockKind;
+
+import java.util.Set;
 
 /**
  * Consolidates all procedure-related compiler components into a single feature.
@@ -15,7 +18,7 @@ public class ProcFeature implements ICompilerFeature {
 
     @Override
     public void register(IFeatureRegistrationContext ctx) {
-        ctx.parserStatement(".PROC", new ProcDirectiveHandler(ctx.isa()));
+        ctx.parserBlock(new BlockKind(Set.of(".PROC"), ".ENDPROC", Set.of()), new ProcDirectiveHandler(ctx.isa()));
         ctx.parserStatement("CALL", new CallStatementHandler());
         ctx.symbolCollector(ProcedureNode.class, new ProcedureSymbolCollector());
         ctx.analysisHandler(CallNode.class, new CallAnalysisHandler(ctx.isa()));
