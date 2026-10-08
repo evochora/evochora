@@ -8,8 +8,9 @@ import org.evochora.compiler.model.token.TokenType;
 
 /**
  * Parses the {@code .LABEL} directive produced by the preprocessor's label rewriting.
- * The syntax is {@code .LABEL NAME [statement]}, where the optional statement is
- * the code on the same line as the label (e.g., {@code .LABEL L1 NOP}).
+ * The syntax is {@code .LABEL NAME}. A label names the position of the statement that follows
+ * it, which the enclosing loop parses as the next statement (e.g., the {@code NOP} in
+ * {@code .LABEL L1 NOP}); a label may stand alone on its line.
  */
 public class LabelDirectiveHandler implements IParserStatementHandler {
 
@@ -21,7 +22,6 @@ public class LabelDirectiveHandler implements IParserStatementHandler {
         context.advance(); // consume .LABEL
         Token nameToken = context.consume(TokenType.IDENTIFIER, "Expected label name after .LABEL.");
         boolean exported = context.isExported();
-        AstNode statement = context.declaration();
-        return new LabelNode(nameToken.text(), nameToken.source(), statement, exported);
+        return new LabelNode(nameToken.text(), nameToken.source(), exported);
     }
 }
