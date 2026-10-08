@@ -98,8 +98,8 @@ The reader reports, and the block is broken, when:
 
 - the closer of an enclosing block arrives while the block is open: "`.ENDPROC` closes the
   `.PROC` opened at `main.evo:3`, but the `.CONTROL` opened at `main.evo:5` is still open". The
-  inner block ends there, and the closer stays for the outer block, which is whole if nothing else
-  is wrong with it;
+  inner block ends there, the closer closes the outer block, and the outer block is broken too:
+  its reading reported the error, so it is skipped as a whole;
 - a divider of another kind stands at the block's own level: reported the same way with
   "divides", and passed over;
 - a closer or divider of a kind that is not open stands at the block's own level: "`.ENDDEF`
