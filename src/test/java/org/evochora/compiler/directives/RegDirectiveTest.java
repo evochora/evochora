@@ -326,8 +326,9 @@ public class RegDirectiveTest {
     }
 
     /**
-     * Verifies that PDR remains available after an inner .PROC block closes,
-     * because the outer .PROC scope still holds a reference count.
+     * Verifies that the parser accepts a procedure nested in a procedure, which the semantic
+     * analysis reports, and keeps the proc-local bank PDR available for the outer procedure
+     * after the inner one closes.
      */
     @Test
     @Tag("unit")

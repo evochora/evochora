@@ -57,9 +57,10 @@ public class ParserState {
     }
 
     /**
-     * Makes register banks available in the current scope. Uses reference counting so that
-     * nested scopes adding the same bank do not interfere — a bank remains available until
-     * all scopes that added it have removed it.
+     * Makes register banks available in the current scope. Uses reference counting so that the
+     * parser stays balanced when a procedure is nested inside another, which the semantic
+     * analysis reports as an error: the parser accepts the nesting and keeps a bank available
+     * until every scope that added it has removed it.
      *
      * @param banks the bank prefixes to make available (e.g., "PDR")
      */
@@ -70,8 +71,10 @@ public class ParserState {
     }
 
     /**
-     * Removes register banks from the current scope. Decrements the reference count; the bank
-     * becomes unavailable only when the count reaches zero.
+     * Removes register banks from the current scope. Decrements the reference count, so that the
+     * parser stays balanced when a procedure is nested inside another, which the semantic
+     * analysis reports as an error: the bank becomes unavailable only when every scope that
+     * added it has removed it.
      *
      * @param banks the bank prefixes to remove (e.g., "PDR")
      */

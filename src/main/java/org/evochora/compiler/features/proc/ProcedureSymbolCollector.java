@@ -11,12 +11,18 @@ import org.evochora.compiler.model.symbols.SymbolTable;
 /**
  * Collects procedure symbols during pass 1: defines the procedure symbol,
  * registers export metadata, enters a scope, and defines formal parameters.
+ * A procedure is a name of the module level; inside any level the symbol table has opened,
+ * the directive is reported and still defined, so that the scopes stay balanced.
  */
 public class ProcedureSymbolCollector implements ISymbolCollector {
 
     @Override
     public void collect(AstNode node, SymbolTable symbolTable, DiagnosticsEngine diagnostics) {
         ProcedureNode proc = (ProcedureNode) node;
+        if (symbolTable.getCurrentScope() != symbolTable.getRootScope()) {
+            diagnostics.reportError(".PROC may stand only at the module level.",
+                    proc.sourceInfo().fileName(), proc.sourceInfo().lineNumber());
+        }
         symbolTable.define(new Symbol(proc.name(), proc.sourceInfo(), Symbol.Type.PROCEDURE, proc, proc.exported()))
                 .ifPresent(existing -> diagnostics.reportError(
                         "Cannot define procedure '" + proc.name() + "': the name is already used at " + SourceInfo.position(existing.sourceInfo()) + ".",
