@@ -7,7 +7,6 @@ import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.diagnostics.ErrorRecoveryException;
-import org.evochora.compiler.frontend.BlockKind;
 import org.evochora.compiler.frontend.BlockReader;
 import org.evochora.compiler.frontend.DirectiveLine;
 import org.evochora.compiler.util.SourceRootResolver;
@@ -241,23 +240,17 @@ public class PreProcessor {
     }
 
     /**
-     * Rejects a closer or divider that the walk reaches. The handler of a block consumes the
-     * block's closer and dividers with it, so one the walk reaches stands outside any block. Such
-     * a word is reported at its place and removed from the stream; the walk continues at the
-     * token that followed it.
+     * Rejects a closer or divider that the walk reaches, reported by the {@link BlockReader} as
+     * standing outside any block: the word is removed from the stream, and the walk continues
+     * at the token that followed it.
      *
      * @param index The stream index of a token no handler claimed.
      * @return {@code true} if the token was a stray closer or divider and has been removed.
      */
     private boolean rejectStray(int index) {
-        Token token = tokens.get(index);
-        BlockKind kind = ppContext.handlers().blockKindOf(token.text()).orElse(null);
-        if (kind == null || kind.isOpener(token.text())) {
+        if (!blockReader.reportStray(tokens, index)) {
             return false;
         }
-        String verb = kind.isCloser(token.text()) ? "closes" : "divides";
-        diagnostics.reportError(token.text() + " " + verb + " no open block",
-                token.source().fileName(), token.source().lineNumber());
         removeTokens(index, 1);
         return true;
     }

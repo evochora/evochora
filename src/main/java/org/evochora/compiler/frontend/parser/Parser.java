@@ -2,7 +2,6 @@ package org.evochora.compiler.frontend.parser;
 
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.diagnostics.ErrorRecoveryException;
-import org.evochora.compiler.frontend.BlockKind;
 import org.evochora.compiler.frontend.BlockReader;
 import org.evochora.compiler.frontend.DirectiveLine;
 import org.evochora.compiler.model.token.Token;
@@ -109,14 +108,10 @@ public class Parser implements IParsingContext {
                 return handler.get().parse(this);
             }
 
-            // A closer or divider the walk reaches stands outside any block: the handler of a
-            // block consumes the block's closer and dividers with it.
-            BlockKind kind = statementRegistry.blockKindOf(keyword.text()).orElse(null);
-            if (kind != null) {
-                diagnostics.reportError(keyword.text() + (kind.isCloser(keyword.text()) ? " closes" : " divides")
-                        + " no open block", keyword.source().fileName(), keyword.source().lineNumber());
+            // A closer or divider the walk reaches stands outside any block; its line goes with it.
+            if (blockReader.reportStray(tokens, current)) {
                 while (!isAtEnd() && advance().type() != TokenType.NEWLINE) {
-                    // The word's line goes with it.
+                    // Skipping the rest of the line.
                 }
                 return null;
             }

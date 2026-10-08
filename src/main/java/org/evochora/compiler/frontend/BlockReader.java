@@ -187,6 +187,26 @@ public final class BlockReader {
         }
     }
 
+    /**
+     * Reports a closer or divider that a walk reaches outside any block. The handler of a block
+     * consumes the block's closer and dividers with it, so such a word stands outside any block;
+     * it is reported where it stands, and the phase decides how to go on.
+     *
+     * @param tokens The token list.
+     * @param index  The index of a token no handler claimed.
+     * @return {@code true} if the token is a closer or divider and has been reported.
+     */
+    public boolean reportStray(List<Token> tokens, int index) {
+        Token token = tokens.get(index);
+        BlockKind kind = kindOf.apply(token.text()).orElse(null);
+        if (kind == null || kind.isOpener(token.text())) {
+            return false;
+        }
+        String verb = kind.isCloser(token.text()) ? "closes" : "divides";
+        report(token, token.text() + " " + verb + " no open block");
+        return true;
+    }
+
     private boolean hasPrefix(List<Token> tokens, int word) {
         Token before = tokens.get(word - 1);
         return prefix.test(before) && sameLine(before, tokens.get(word));
