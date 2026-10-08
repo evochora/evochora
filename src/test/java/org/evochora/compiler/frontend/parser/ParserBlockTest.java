@@ -195,6 +195,9 @@ class ParserBlockTest {
         assertThatThrownBy(() -> registry.registerBlock(new BlockKind(Set.of(".LOOP"), ".ENDGROUP", Set.of()), new GroupHandler()))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining(".ENDGROUP");
+        assertThatThrownBy(() -> registry.registerBlock(GROUP, new SelectHandler()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining(".GROUP");
         assertThat(registry.blockHandlerOf(".group")).isPresent();
         assertThat(registry.blockHandlerOf(".ENDGROUP")).isEmpty();
         assertThat(registry.blockKindOf(".endgroup")).contains(GROUP);

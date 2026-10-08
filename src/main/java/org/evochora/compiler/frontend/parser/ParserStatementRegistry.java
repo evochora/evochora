@@ -1,6 +1,7 @@
 package org.evochora.compiler.frontend.parser;
 
 import org.evochora.compiler.frontend.BlockKind;
+import org.evochora.compiler.frontend.BlockRegistry;
 
 import java.util.HashMap;
 import java.util.Locale;
@@ -18,8 +19,7 @@ import java.util.Optional;
 public class ParserStatementRegistry {
 
     private final Map<String, IParserStatementHandler> handlers = new HashMap<>();
-    private final Map<String, BlockKind> blockWords = new HashMap<>();
-    private final Map<String, IParserBlockHandler> blockHandlers = new HashMap<>();
+    private final BlockRegistry<IParserBlockHandler> blocks = new BlockRegistry<>();
     private IParserStatementHandler defaultHandler;
 
     /**
@@ -34,7 +34,7 @@ public class ParserStatementRegistry {
         if (handlers.containsKey(key)) {
             throw new IllegalStateException("Parser statement handler already registered for keyword: " + keyword);
         }
-        if (blockWords.containsKey(key)) {
+        if (blocks.holds(key)) {
             throw new IllegalStateException("'" + key + "' is a block word and takes no statement handler");
         }
         handlers.put(key, handler);
@@ -47,25 +47,15 @@ public class ParserStatementRegistry {
      * @param kind    The openers, closer and dividers of the block.
      * @param handler The handler called for a whole block of the kind.
      * @throws IllegalStateException if one of its words is already a keyword or belongs to
-     *         another kind.
+     *         another kind, or if the kind is registered with a different handler.
      */
     public void registerBlock(BlockKind kind, IParserBlockHandler handler) {
         for (String word : kind.words()) {
             if (handlers.containsKey(word)) {
                 throw new IllegalStateException("Block word '" + word + "' is already a statement keyword");
             }
-            BlockKind existing = blockWords.get(word);
-            if (existing != null && !existing.equals(kind)) {
-                throw new IllegalStateException(
-                        "Block word '" + word + "' already belongs to the block closed by " + existing.closer());
-            }
         }
-        for (String word : kind.words()) {
-            blockWords.put(word, kind);
-        }
-        for (String opener : kind.openers()) {
-            blockHandlers.put(opener, handler);
-        }
+        blocks.register(kind, handler);
     }
 
     /**
@@ -96,7 +86,7 @@ public class ParserStatementRegistry {
      * @return The kind, or empty if the text is no block word.
      */
     public Optional<BlockKind> blockKindOf(String text) {
-        return Optional.ofNullable(blockWords.get(text.toUpperCase(Locale.ROOT)));
+        return blocks.kindOf(text);
     }
 
     /**
@@ -106,7 +96,7 @@ public class ParserStatementRegistry {
      * @return The handler, or empty if the text opens no registered kind of block.
      */
     public Optional<IParserBlockHandler> blockHandlerOf(String text) {
-        return Optional.ofNullable(blockHandlers.get(text.toUpperCase(Locale.ROOT)));
+        return blocks.handlerOf(text);
     }
 
     /**

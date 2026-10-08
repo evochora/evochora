@@ -1,6 +1,7 @@
 package org.evochora.compiler.frontend.preprocessor;
 
 import org.evochora.compiler.frontend.BlockKind;
+import org.evochora.compiler.frontend.BlockRegistry;
 
 import java.util.ArrayDeque;
 import java.util.Deque;
@@ -33,8 +34,7 @@ public class PreProcessorHandlerRegistry {
 
     private final Map<String, IPreProcessorHandler> shared = new HashMap<>();
     private final Deque<Map<String, IPreProcessorHandler>> moduleScopes = new ArrayDeque<>();
-    private final Map<String, BlockKind> blockWords = new HashMap<>();
-    private final Map<String, IPreProcessorBlockHandler> blockHandlers = new HashMap<>();
+    private final BlockRegistry<IPreProcessorBlockHandler> blocks = new BlockRegistry<>();
     private final Set<BlockKind> storedKinds = new HashSet<>();
     private final Set<String> topLevelOnly = new HashSet<>();
 
@@ -78,7 +78,7 @@ public class PreProcessorHandlerRegistry {
 
     private void put(Map<String, IPreProcessorHandler> scope, String name, IPreProcessorHandler handler) {
         String key = name.toUpperCase(Locale.ROOT);
-        if (blockWords.containsKey(key)) {
+        if (blocks.holds(key)) {
             throw new IllegalStateException("'" + key + "' is a block word and takes no handler of its own");
         }
         IPreProcessorHandler existing = scope.get(key);
@@ -138,28 +138,11 @@ public class PreProcessorHandlerRegistry {
      */
     public void registerBlock(BlockKind kind, IPreProcessorBlockHandler handler, boolean stored) {
         for (String word : kind.words()) {
-            BlockKind existing = blockWords.get(word);
-            if (existing != null && !existing.equals(kind)) {
-                throw new IllegalStateException(
-                        "Block word '" + word + "' already belongs to the block closed by " + existing.closer());
-            }
             if (shared.containsKey(word)) {
                 throw new IllegalStateException("Block word '" + word + "' already has a handler of its own");
             }
         }
-        for (String opener : kind.openers()) {
-            IPreProcessorBlockHandler existing = blockHandlers.get(opener);
-            if (existing != null && !existing.equals(handler)) {
-                throw new IllegalStateException(
-                        "Block opened by '" + opener + "' is already registered with a different handler");
-            }
-        }
-        for (String word : kind.words()) {
-            blockWords.put(word, kind);
-        }
-        for (String opener : kind.openers()) {
-            blockHandlers.put(opener, handler);
-        }
+        blocks.register(kind, handler);
         if (stored) {
             storedKinds.add(kind);
         }
@@ -172,7 +155,7 @@ public class PreProcessorHandlerRegistry {
      * @return The handler, or empty if the text opens no registered kind of block.
      */
     public Optional<IPreProcessorBlockHandler> blockHandlerOf(String text) {
-        return Optional.ofNullable(blockHandlers.get(text.toUpperCase(Locale.ROOT)));
+        return blocks.handlerOf(text);
     }
 
     /**
@@ -182,8 +165,7 @@ public class PreProcessorHandlerRegistry {
      * @return {@code true} if the text belongs to a stored kind of block.
      */
     public boolean isStored(String text) {
-        BlockKind kind = blockWords.get(text.toUpperCase(Locale.ROOT));
-        return kind != null && storedKinds.contains(kind);
+        return blocks.kindOf(text).filter(storedKinds::contains).isPresent();
     }
 
     /**
@@ -203,7 +185,7 @@ public class PreProcessorHandlerRegistry {
      * @return The kind, or empty if the text is no block word.
      */
     public Optional<BlockKind> blockKindOf(String text) {
-        return Optional.ofNullable(blockWords.get(text.toUpperCase(Locale.ROOT)));
+        return blocks.kindOf(text);
     }
 
     /**
@@ -213,7 +195,7 @@ public class PreProcessorHandlerRegistry {
      * @return {@code true} for a block word.
      */
     public boolean isBlockWord(String text) {
-        return blockWords.containsKey(text.toUpperCase(Locale.ROOT));
+        return blocks.holds(text);
     }
 
     /**
