@@ -1136,8 +1136,10 @@ public class Organism {
      * is when the skip budget is exhausted, so that it never stands outside the world.
      *
      * @param environment The simulation environment.
+     * @return Whether the walk stopped on an instruction; false when it stalled, with the failure
+     *         booked and the pointer recovered.
      */
-    public void skipNopCells(Environment environment) {
+    public boolean skipNopCells(Environment environment) {
         EnvironmentProperties props = environment.properties;
         boolean isToroidal = props.isToroidal();
 
@@ -1163,13 +1165,13 @@ public class Organism {
         for (int skips = 0; skips < maxSkipsPerTick && !isDead; skips++) {
             if (index < 0) {
                 failAndRecover("Instruction pointer left the world");
-                return;
+                return false;
             }
             int mol = environment.getMoleculeInt(index);
             if ((mol & Config.TYPE_MASK) == Config.TYPE_CODE
                     && (mol & Config.VALUE_MASK) != nopOpcodeId) {
                 ip[dim] = dimPos;
-                return;
+                return true;
             }
             dimPos += sign;
             if (isToroidal) {
@@ -1183,6 +1185,7 @@ public class Organism {
         }
         ip[dim] = dimPos;
         failAndRecover("Max skips exceeded (" + maxSkipsPerTick + ")");
+        return false;
     }
 
     /**
@@ -1263,8 +1266,7 @@ public class Organism {
         advanceIpBy(currentLength, environment);
 
         // Skip NOPs at new position
-        skipNopCells(environment);
-        if (instructionFailed) {
+        if (!skipNopCells(environment)) {
             setSkipIpAdvance(true);
             return;
         }
