@@ -86,17 +86,17 @@ public class PreProcessor {
             Optional<IPreProcessorBlockHandler> blockHandler = ppContext.handlers().blockHandlerOf(text);
             if (blockHandler.isPresent()) {
                 BlockReader.Block block = blockReader.read(tokens, current);
-                if (block.whole() && ppContext.handlers().isStored(text) && holdsTopLevelOnlyWord(block)) {
-                    current = block.end();
-                } else if (block.whole()) {
+                boolean usable = block.whole()
+                        && !(ppContext.handlers().isStored(text) && reportTopLevelOnlyWords(block));
+                if (usable) {
                     try {
                         blockHandler.get().process(this, ppContext, block);
+                        continue;
                     } catch (ErrorRecoveryException ex) {
-                        current = block.end();
+                        // The block is left behind like a broken one.
                     }
-                } else {
-                    current = block.end();
                 }
+                current = block.end();
                 continue;
             }
             Optional<IPreProcessorHandler> handler = ppContext.handlers().get(text);
@@ -225,7 +225,7 @@ public class PreProcessor {
      * @param block A whole block of a stored kind.
      * @return {@code true} if a word was reported.
      */
-    private boolean holdsTopLevelOnlyWord(BlockReader.Block block) {
+    private boolean reportTopLevelOnlyWords(BlockReader.Block block) {
         Token opener = tokens.get(block.opener());
         boolean found = false;
         for (int i = block.bodyStart(); i < block.closer(); i++) {
