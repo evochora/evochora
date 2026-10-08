@@ -84,7 +84,6 @@ public class PreProcessor {
         while (current < tokens.size()) {
             String text = peek().text();
             Optional<IPreProcessorBlockHandler> blockHandler = ppContext.handlers().blockHandlerOf(text);
-            Optional<IPreProcessorHandler> handler = blockHandler.isPresent() ? Optional.empty() : ppContext.handlers().get(text);
             if (blockHandler.isPresent()) {
                 BlockReader.Block block = blockReader.read(tokens, current);
                 if (block.whole() && ppContext.handlers().isStored(text) && holdsTopLevelOnlyWord(block)) {
@@ -98,7 +97,10 @@ public class PreProcessor {
                 } else {
                     current = block.end();
                 }
-            } else if (handler.isPresent()) {
+                continue;
+            }
+            Optional<IPreProcessorHandler> handler = ppContext.handlers().get(text);
+            if (handler.isPresent()) {
                 try {
                     handler.get().process(this, ppContext);
                 } catch (ErrorRecoveryException ex) {
