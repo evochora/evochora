@@ -146,7 +146,7 @@ public class EmissionIntegrationTest {
         ParserStatementRegistry reg = new ParserStatementRegistry();
         reg.register(".CONST", new ConstDirectiveHandler());
         reg.register(".REG", new RegDirectiveHandler(new RuntimeInstructionSetAdapter()));
-        reg.register(".PROC", new ProcDirectiveHandler(new RuntimeInstructionSetAdapter()));
+        reg.registerBlock(new org.evochora.compiler.frontend.BlockKind(java.util.Set.of(".PROC"), ".ENDPROC", java.util.Set.of()), new ProcDirectiveHandler(new RuntimeInstructionSetAdapter()));
         reg.register(".ORG", new OrgDirectiveHandler());
         reg.register(".DIR", new DirDirectiveHandler());
         reg.register(".PLACE", new PlaceDirectiveHandler());

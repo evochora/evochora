@@ -7,7 +7,6 @@ import org.evochora.compiler.TestLexers;
 import org.evochora.compiler.api.SourceRoot;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.features.repeat.CaretDirectiveHandler;
-import org.evochora.compiler.features.repeat.RepeatDirectiveHandler;
 import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.util.SourceRootResolver;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
@@ -37,7 +36,6 @@ public class RepeatDirectiveTest {
     private PreProcessor createPreProcessor(List<Token> initialTokens, DiagnosticsEngine diagnostics) {
         PreProcessorContext context = new PreProcessorContext("", Map.of(), initialTokens.getFirst().source().fileName(),
                 CompilerOptions.defaults());
-        context.handlers().register(".REPEAT", new RepeatDirectiveHandler());
         TestRegistries.registerPreProcessorBlocks(context.handlers());
         context.handlers().register("^", new CaretDirectiveHandler());
         context.handlers().register(":", new org.evochora.compiler.features.label.ColonLabelHandler());
@@ -184,13 +182,13 @@ public class RepeatDirectiveTest {
 
     /**
      * A statement on the line of .REPEAT is rejected, and the message names the shorthand that
-     * repeats a single statement.
+     * repeats a single statement; the block is removed as a whole.
      */
     @Test
     @Tag("unit")
     void testStatementOnTheRepeatLineIsRejected() {
         // Arrange
-        String source = "JMPI START; .REPEAT 3 NOP; JMPI END";
+        String source = "JMPI START; .REPEAT 3 NOP; .ENDREPEAT; JMPI END";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
         PreProcessor preProcessor = createPreProcessor(lexer.scanTokens(), diagnostics);
@@ -202,7 +200,30 @@ public class RepeatDirectiveTest {
         assertThat(diagnostics.hasErrors()).isTrue();
         assertThat(diagnostics.summary()).contains("NOP^3");
         assertThat(expandedTokens.stream().map(Token::text).toList())
-                .doesNotContain(".REPEAT", "NOP");
+                .doesNotContain(".REPEAT", "NOP", ".ENDREPEAT")
+                .containsSubsequence("JMPI", "START", "JMPI", "END");
+    }
+
+    /**
+     * A .REPEAT line with a statement and no .ENDREPEAT is a block that is never closed: the
+     * block is read before the handler runs, so the message is the one for an open block.
+     */
+    @Test
+    @Tag("unit")
+    void testStatementOnTheRepeatLineWithoutEndRepeatIsReportedAsUnclosed() {
+        // Arrange
+        String source = "JMPI START; .REPEAT 3 NOP; JMPI END";
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
+        PreProcessor preProcessor = createPreProcessor(lexer.scanTokens(), diagnostics);
+
+        // Act
+        preProcessor.expand();
+
+        // Assert
+        assertThat(diagnostics.summary())
+                .contains("<memory>:1: .REPEAT opened at <memory>:1 is not closed before the end of the input")
+                .doesNotContain("NOP^3");
     }
 
     /**
@@ -415,9 +436,10 @@ public class RepeatDirectiveTest {
         // Assert
         assertThat(diagnostics.hasErrors()).isTrue();
         assertThat(diagnostics.summary()).contains(".REQUIRE may not stand inside a .REPEAT body");
+        // The block is left behind unexpanded, and the walk goes on after it.
         assertThat(expandedTokens.stream().map(Token::text).toList())
-                .doesNotContain(".REQUIRE", ".REPEAT", ".ENDREPEAT")
-                .contains("NOP");
+                .containsSubsequence(".REPEAT", ".REQUIRE", ".ENDREPEAT", "NOP")
+                .containsOnlyOnce(".REQUIRE");
     }
 
     /**

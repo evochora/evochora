@@ -346,6 +346,22 @@ class CompilerDiagnosticsTest {
     }
 
     @Test
+    void aProcedureInsideAProcedureIsReported() throws Exception {
+        write("main.evo",
+                ".PROC OUTER",
+                "  .PROC INNER",
+                "    RET",
+                "  .ENDPROC",
+                "  RET",
+                ".ENDPROC");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining(".PROC may stand only at the module level.")
+                .hasMessageContaining("main.evo:2");
+    }
+
+    @Test
     void importInsideASourcedFileNamesTheFileAndTheLineOfTheImport() throws Exception {
         write("x.evo",
                 "  NOP");
@@ -1156,7 +1172,8 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining(".PROC 'STEP' is not closed; expected .ENDPROC.")
+                .hasMessageContaining(".PROC opened at ")
+                .hasMessageContaining(" is not closed before the end of the input")
                 .hasMessageContaining("main.evo:3");
     }
 

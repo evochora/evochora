@@ -697,7 +697,7 @@ Both syntaxes produce identical results—the shorthand is transformed into `.RE
 
 ### Blocks
 
-`.MACRO` … `.ENDMACRO` and `.REPEAT` … `.ENDREPEAT` are blocks. A block may contain other blocks, but two blocks never overlap: an end directive always closes the block that was opened last.
+`.MACRO` … `.ENDMACRO`, `.REPEAT` … `.ENDREPEAT`, the conditional blocks and `.PROC` … `.ENDPROC` are blocks. A block may contain other blocks, but two blocks never overlap: an end directive always closes the block that was opened last. `.MACRO`, `.REPEAT` and the conditional blocks close in the file they were opened in; a `.PROC` may be opened by one macro and closed by another.
 
 ```
 .MACRO PAD
@@ -798,6 +798,7 @@ All paths in `.IMPORT`, `.REQUIRE`, and `.SOURCE` are resolved against configure
       ```
 
 * `.REG` also works inside `.PROC` blocks with procedure-local registers: `.REG %TMP %PDR0` aliases `%PDR0` as `%TMP`, `.REG %POS %PLR0` aliases `%PLR0` as `%POS`. Proc-local registers (`%PDRx`, `%PLRx`) are only available inside `.PROC` blocks.
+* A procedure stands only at the module level: a `.PROC` inside a procedure is reported.
 * A name defined inside a procedure (a label, a constant, a register alias, a parameter) may repeat a name of the module around it; inside the procedure the inner one is meant. A name is defined once per level.
 
 #### Example: Simple Module Import

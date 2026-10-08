@@ -123,7 +123,7 @@ public class RequireDirectiveTest {
     private static ParserStatementRegistry registry() {
         ParserStatementRegistry reg = new ParserStatementRegistry();
         reg.register(".REQUIRE", new RequireDirectiveHandler());
-        reg.register(".PROC", new org.evochora.compiler.features.proc.ProcDirectiveHandler(new org.evochora.compiler.isa.RuntimeInstructionSetAdapter()));
+        reg.registerBlock(new org.evochora.compiler.frontend.BlockKind(java.util.Set.of(".PROC"), ".ENDPROC", java.util.Set.of()), new org.evochora.compiler.features.proc.ProcDirectiveHandler(new org.evochora.compiler.isa.RuntimeInstructionSetAdapter()));
         reg.registerDefault(new org.evochora.compiler.features.instruction.InstructionParsingHandler());
         return reg;
     }

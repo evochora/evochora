@@ -19,8 +19,8 @@ feature package under `src/main/java/org/evochora/compiler/features/`.
 | Feature | Language concepts | Where it plugs in |
 |---|---|---|
 | `instruction` | Instruction statements, `OPCODE operand …`, the default statement form; operand type checking against the instruction set; instruction tokens in the token map | parser default, analysis, IR conversion, token map |
-| `label` | Labels `NAME:` (rewritten by the preprocessor to `.LABEL NAME`), `EXPORT` on a label, a label as jump target or operand, label references resolved to addresses at link time | preprocessor `:`, parser `.LABEL`, symbol collection, analysis, IR conversion, linking rule |
-| `proc` | `.PROC … .ENDPROC` with `REF`, `VAL`, `LREF`, `LVAL` parameters, `EXPORT` on a procedure, `CALL` with arguments, parameter marshalling around a call, call-site bindings and parameter names for the visualizer, procedure-scoped register banks | parser `.PROC` and `CALL`, symbol collection, analysis, token map, IR conversion, rewrite rules, linking rule, emission |
+| `label` | Labels `NAME:` (rewritten by the preprocessor to `.LABEL NAME`), a label as the position of the statement after it, `EXPORT` on a label, a label as jump target or operand, label references resolved to addresses at link time | preprocessor `:`, parser `.LABEL`, symbol collection, analysis, IR conversion, linking rule |
+| `proc` | `.PROC … .ENDPROC` with `REF`, `VAL`, `LREF`, `LVAL` parameters, a procedure at the module level only, `EXPORT` on a procedure, `CALL` with arguments, parameter marshalling around a call, call-site bindings and parameter names for the visualizer, procedure-scoped register banks | block `.PROC`/`.ENDPROC` and parser `CALL`, symbol collection, analysis, token map, IR conversion, rewrite rules, linking rule, emission |
 | `reg` | Register aliases `.REG %ALIAS %REGISTER`, alias names in the artifact | parser, analysis, IR conversion, emission |
 | `constdir` | Constants `[EXPORT] .CONST NAME VALUE` | parser, analysis, IR conversion |
 | `macro` | `.MACRO NAME [PARAMS] … .ENDMACRO`, macro invocation by name, file-local macro scope | preprocessor `.MACRO`, block `.MACRO`/`.ENDMACRO` (stored) |
@@ -59,7 +59,8 @@ concept in AGENTS.md; they are listed here because they are where the coupling l
    segment reached through a foreign level has to carry the `EXPORT` flag. The table also holds
    every kind of symbol to the one-segment rule when it is defined. `ModuleScope` holds four
    maps, all of which belong to `importdir` and `require`. The parser knows the `EXPORT` keyword and asks
-   each statement handler whether it accepts it. The directives are features; the system behind
+   each statement handler whether it accepts it, and each block handler per word of its block,
+   the opener, a divider or the closer. The directives are features; the system behind
    them is core.
 2. **Labels.** The layout engine records label addresses, claims a cell per label and assigns
    every label a machine value of its own. The emitter encodes label cells and builds the two

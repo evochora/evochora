@@ -137,7 +137,7 @@ class CallAnalysisHandlerTypeSafetyTest {
 
     @Test
     void labelAsRef_reportsError() {
-        symbolTable.define(new Symbol("MY_LABEL", SRC, Symbol.Type.LABEL, new LabelNode("MY_LABEL", SRC, null, false)));
+        symbolTable.define(new Symbol("MY_LABEL", SRC, Symbol.Type.LABEL, new LabelNode("MY_LABEL", SRC, false)));
 
         CallNode call = callWithRef("MY_LABEL");
         handler.analyze(call, symbolTable, diagnostics);

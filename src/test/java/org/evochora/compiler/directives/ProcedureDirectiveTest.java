@@ -13,6 +13,7 @@ import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.features.proc.ProcedureNode;
 import org.evochora.compiler.features.reg.RegDirectiveHandler;
 import org.evochora.compiler.features.reg.RegNode;
+import org.evochora.compiler.features.label.LabelNode;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Tag;
@@ -257,9 +258,41 @@ public class ProcedureDirectiveTest {
 
     }
 
+    /**
+     * Verifies that a label alone on its line directly before {@code .ENDPROC} stays in the
+     * procedure body and does not take {@code .ENDPROC} as its statement.
+     * This is a unit test for the parser.
+     */
+    @Test
+    @Tag("unit")
+    void testLabelAloneOnLineBeforeEndproc() {
+        // Arrange
+        String source = String.join("\n",
+                ".PROC P",
+                ".LABEL L",
+                ".ENDPROC"
+        );
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Parser parser = new Parser(new Lexer(source, diagnostics, TestLexers.symbols()).scanTokens(), diagnostics, registry());
+
+        // Act
+        List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
+
+        // Assert
+        assertThat(diagnostics.hasErrors()).as(diagnostics.summary()).isFalse();
+        assertThat(ast).hasSize(1);
+        assertThat(ast.get(0)).isInstanceOf(ProcedureNode.class);
+
+        ProcedureNode procNode = (ProcedureNode) ast.get(0);
+        List<AstNode> body = procNode.body().stream().filter(Objects::nonNull).toList();
+        assertThat(body).hasSize(1);
+        assertThat(body.get(0)).isInstanceOf(LabelNode.class);
+        assertThat(((LabelNode) body.get(0)).name()).isEqualTo("L");
+    }
+
     private static ParserStatementRegistry registry() {
         ParserStatementRegistry reg = new ParserStatementRegistry();
-        reg.register(".PROC", new ProcDirectiveHandler(new RuntimeInstructionSetAdapter()));
+        reg.registerBlock(new org.evochora.compiler.frontend.BlockKind(java.util.Set.of(".PROC"), ".ENDPROC", java.util.Set.of()), new ProcDirectiveHandler(new RuntimeInstructionSetAdapter()));
         reg.register(".REG", new RegDirectiveHandler(new RuntimeInstructionSetAdapter()));
         reg.register(".LABEL", new org.evochora.compiler.features.label.LabelDirectiveHandler());
         reg.register("CALL", new org.evochora.compiler.features.proc.CallStatementHandler());
