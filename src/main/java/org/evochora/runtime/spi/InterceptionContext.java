@@ -126,7 +126,10 @@ public class InterceptionContext {
      * The returned list is a direct reference to the instruction's cached operands, one entry
      * per operand of the instruction. An operand the instruction could not read is
      * {@link Instruction.Operand#MISSING}, and the instruction is then already marked failed;
-     * a missing operand is never put into the list, see {@link #setOperand}.
+     * a missing operand is never put into the list, see {@link #setOperand}. The list has a
+     * fixed size, because the count mirrors the instruction's argument cells: an operand can be
+     * replaced, and adding or removing one throws an {@link UnsupportedOperationException},
+     * which ends the tick as a fault of the interceptor.
      * Modifications are visible to:
      * <ul>
      *   <li>Subsequent interceptors in the chain (they see your changes)</li>
@@ -136,7 +139,7 @@ public class InterceptionContext {
      * <p>
      * The list is safe to call multiple times (idempotent, returns same cached list).
      *
-     * @return The list of resolved operands (mutable, shared reference)
+     * @return The list of resolved operands (shared reference, fixed size, elements replaceable)
      */
     public List<Instruction.Operand> getOperands() {
         Environment environment = organism.getSimulation().getEnvironment();

@@ -3,6 +3,7 @@
 package org.evochora.runtime.isa;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -91,10 +92,11 @@ public abstract class Instruction {
         /**
          * A value taken from the organism's data stack, topmost first. Occupies no argument slot,
          * so it does not lengthen the instruction, and carries no raw source ID. Operand resolution
-         * only peeks; the matching pops happen later, and only for an instruction that is really
-         * executed. If the stack holds fewer values than the instruction consumes, the
-         * instruction fails while it is planned, and every operand without a value is
-         * {@link Operand#MISSING}.
+         * only peeks; the matching pops happen later, for every instruction the tick processes
+         * except one that lost its write conflict. If the stack holds fewer values than the
+         * instruction consumes, the instruction fails while it is planned, every operand without
+         * a value is {@link Operand#MISSING}, and the values that are there are consumed all the
+         * same.
          */
         STACK,
         /**
@@ -381,8 +383,9 @@ public abstract class Instruction {
      * The list has one entry per operand of the instruction, at the operand's place. An operand
      * that cannot be read - the stack holds no value for it, or its argument cells lie beyond
      * the edge of a bounded world - marks the instruction failed and is {@link Operand#MISSING};
-     * the operands that can be read are resolved as always. The list is mutable, because an
-     * interceptor may replace an operand in it.
+     * the operands that can be read are resolved as always. The list has a fixed size: an
+     * interceptor may replace an operand in it, but adding or removing one is refused with an
+     * {@link UnsupportedOperationException}, because the count mirrors the argument cells.
      *
      * @param environment The environment in which the instruction is executed.
      * @return A list of resolved operands (cached after first call).
@@ -419,7 +422,8 @@ public abstract class Instruction {
             existingCells = organism.argumentCellsWithinWorld(length, environment);
         }
 
-        List<Operand> resolved = new ArrayList<>(sources.size());
+        Operand[] resolved = new Operand[sources.size()];
+        int next = 0;
         int dims = environment.properties.getDimensions();
 
         // For STACK operands: use iterator to peek without popping
@@ -432,10 +436,10 @@ public abstract class Instruction {
                 // The actual pop() happens in commitStackReads() during Execute phase
                 if (!stackIterator.hasNext()) {
                     organism.instructionFailed("Data stack underflow for " + getName());
-                    resolved.add(Operand.MISSING);
+                    resolved[next++] = Operand.MISSING;
                     continue;
                 }
-                resolved.add(new Operand(stackIterator.next(), -1));
+                resolved[next++] = new Operand(stackIterator.next(), -1);
                 this.stackPeekCount++;
                 continue;
             }
@@ -445,7 +449,7 @@ public abstract class Instruction {
             // empty cell as a register argument would name %DR0.
             int slotsAfter = slot + (source == OperandSource.VECTOR ? dims : 1);
             if (slotsAfter > existingCells) {
-                resolved.add(Operand.MISSING);
+                resolved[next++] = Operand.MISSING;
                 slot = slotsAfter;
                 continue;
             }
@@ -454,10 +458,10 @@ public abstract class Instruction {
             switch (source) {
                 case REGISTER -> {
                     int regId = Molecule.extractSignedValue(rawMol);
-                    resolved.add(new Operand(organism.readOperand(regId), regId));
+                    resolved[next++] = new Operand(organism.readOperand(regId), regId);
                 }
                 case IMMEDIATE -> {
-                    resolved.add(new Operand(rawMol, -1));
+                    resolved[next++] = new Operand(rawMol, -1);
                 }
                 case LOCATION_REGISTER -> {
                     int regId = Molecule.extractSignedValue(rawMol);
@@ -474,7 +478,7 @@ public abstract class Instruction {
                     if (!organism.isInstructionFailed() && !RegisterBank.IS_LOCATION_BY_ID[regId]) {
                         organism.instructionFailed("Location operand is not a location register: " + regId);
                     }
-                    resolved.add(new Operand(null, regId));
+                    resolved[next++] = new Operand(null, regId);
                 }
                 case VECTOR -> {
                     int[] vec = new int[dims];
@@ -482,25 +486,26 @@ public abstract class Instruction {
                     for (int d = 1; d < dims; d++) {
                         vec[d] = Molecule.extractSignedValue(this.rawArguments[slot++]);
                     }
-                    resolved.add(new Operand(vec, -1));
+                    resolved[next++] = new Operand(vec, -1);
                 }
                 case LABEL -> {
                     int labelHash = rawMol & Config.VALUE_MASK;
-                    resolved.add(new Operand(labelHash, -1));
+                    resolved[next++] = new Operand(labelHash, -1);
                 }
                 default -> {}
             }
         }
-        this.cachedOperands = resolved;
-        return resolved;
+        this.cachedOperands = Arrays.asList(resolved);
+        return this.cachedOperands;
     }
 
     /**
      * Commits the stack reads that were peeked during {@link #resolveOperands(Environment)}.
      * <p>
      * This method performs the actual {@code pop()} operations on the data stack.
-     * It must be called <b>only once</b>, and <b>only in the Execute phase</b> for
-     * instructions that are actually executed (i.e., won conflict resolution).
+     * It must be called <b>only once</b>, and <b>only in the Execute phase</b>, for every
+     * instruction the tick processes: one that failed while it was planned included, so a
+     * failed instruction consumes the stack values it found, whether or not it is executed.
      * <p>
      * For instructions that lost conflict resolution, this method should NOT be called,
      * leaving the stack unchanged so the instruction can be retried in the next tick.

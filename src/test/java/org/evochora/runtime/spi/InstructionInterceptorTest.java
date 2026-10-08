@@ -437,6 +437,30 @@ class InstructionInterceptorTest {
     }
 
     @Test
+    void interceptor_cannotChangeTheNumberOfOperands() {
+        int poksOpcode = Instruction.getInstructionIdByName("POKS");
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, poksOpcode), organism.getId(), new int[]{5, 5});
+        int value = new Molecule(Config.TYPE_DATA, 7).toInt();
+        organism.pushData(value);
+        organism.pushData(value);
+
+        simulation.addInstructionInterceptor(new TestInterceptor() {
+            @Override
+            public void intercept(InterceptionContext context) {
+                context.getOperands().clear();
+            }
+        });
+
+        // The count of operands mirrors the argument cells; an interceptor that changes it has
+        // broken its contract, and the tick ends as a fault of the interceptor.
+        assertThatThrownBy(simulation::tick)
+                .isInstanceOf(SimulationFault.class)
+                .hasMessageContaining("for organism " + organism.getId())
+                .cause()
+                .isInstanceOf(UnsupportedOperationException.class);
+    }
+
+    @Test
     void setOperand_rejectsAMissingOperand() {
         int poksOpcode = Instruction.getInstructionIdByName("POKS");
         environment.setMolecule(new Molecule(Config.TYPE_CODE, poksOpcode), organism.getId(), new int[]{5, 5});
