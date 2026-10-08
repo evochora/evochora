@@ -219,6 +219,13 @@ public abstract class Instruction {
      */
     private static final IntOpenHashSet LABEL_IS_JUMP_TARGET = new IntOpenHashSet();
     /**
+     * The opcodes that are executed although they failed while they were planned, because they
+     * still decide something: the conditionals, whose test that cannot be evaluated does not hold.
+     * Declared like {@link #NEVER_FALLS_THROUGH}; the virtual machine reads the array registry
+     * built from it.
+     */
+    private static final IntOpenHashSet DECIDES_ON_FAILURE = new IntOpenHashSet();
+    /**
      * The class that holds each family, keyed by family ID. A family is the class that registers its
      * instructions, so each family belongs to exactly one class and each class to exactly one
      * family; {@link #registerOp} keeps both directions of that pairing.
@@ -271,6 +278,7 @@ public abstract class Instruction {
     private static int[] INSTRUCTION_LENGTHS_BASE = new int[0];
     private static int[] INSTRUCTION_LENGTHS_DIMS_MULTIPLIER = new int[0];
     private static boolean[] PARALLEL_EXECUTE_SAFE = new boolean[0];
+    private static boolean[] DECIDES_ON_FAILURE_ARRAY = new boolean[0];
     private static String[] NAMES_ARRAY = new String[0];
     private static InstructionSignature[] SIGNATURES_ARRAY = new InstructionSignature[0];
 
@@ -763,6 +771,7 @@ public abstract class Instruction {
         NEVER_FALLS_THROUGH.clear();
         SKIPS_NEXT.clear();
         LABEL_IS_JUMP_TARGET.clear();
+        DECIDES_ON_FAILURE.clear();
         CLASS_BY_FAMILY.clear();
         FAMILY_BY_CLASS.clear();
     }
@@ -811,6 +820,13 @@ public abstract class Instruction {
             int id = entry.getKey();
             if (id >= 0 && id < REGISTRY_SIZE) {
                 PARALLEL_EXECUTE_SAFE[id] = entry.getValue();
+            }
+        }
+
+        DECIDES_ON_FAILURE_ARRAY = new boolean[REGISTRY_SIZE];
+        for (int id : DECIDES_ON_FAILURE) {
+            if (id >= 0 && id < REGISTRY_SIZE) {
+                DECIDES_ON_FAILURE_ARRAY[id] = true;
             }
         }
 
@@ -1148,6 +1164,20 @@ public abstract class Instruction {
     }
 
     /**
+     * Declares that a registered instruction is executed even when it failed while it was
+     * planned, because it still has something to decide: a conditional whose test cannot be
+     * evaluated decides that the test does not hold.
+     * <p>
+     * <b>Thread safety:</b> Must only be called during single-threaded initialization ({@link #init()}).
+     *
+     * @param name the mnemonic of an instruction that is already registered
+     * @throws IllegalStateException if no instruction is registered under that name
+     */
+    protected static void declareDecidesOnFailure(String name) {
+        DECIDES_ON_FAILURE.add(registeredId(name));
+    }
+
+    /**
      * Looks up the opcode ID of an instruction a declaration names.
      *
      * @param name the mnemonic of an instruction that is already registered, in any letter case
@@ -1257,6 +1287,22 @@ public abstract class Instruction {
     public static boolean isParallelExecuteSafe(int fullOpcodeId) {
         return fullOpcodeId >= 0 && fullOpcodeId < PARALLEL_EXECUTE_SAFE.length
                 && PARALLEL_EXECUTE_SAFE[fullOpcodeId];
+    }
+
+    /**
+     * Tells whether an instruction is executed although it failed while it was planned: a
+     * conditional is, because its test that cannot be evaluated does not hold, and it acts on
+     * that. Every other instruction stays unexecuted when it failed, with its failure booked.
+     * <p>
+     * <b>Thread safety:</b> Safe for concurrent use. The backing array is read-only after {@link #init()}.
+     *
+     * @param fullOpcodeId The full opcode ID (including TYPE_CODE bits).
+     * @return {@code true} if the instruction declared it; {@code false} for every other opcode,
+     *         an unregistered one included.
+     */
+    public static boolean decidesOnFailure(int fullOpcodeId) {
+        return fullOpcodeId >= 0 && fullOpcodeId < DECIDES_ON_FAILURE_ARRAY.length
+                && DECIDES_ON_FAILURE_ARRAY[fullOpcodeId];
     }
 
     // --- Conflict Resolution Logic ---

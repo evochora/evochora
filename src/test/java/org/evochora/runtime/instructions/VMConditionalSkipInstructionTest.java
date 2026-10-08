@@ -18,7 +18,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -2290,5 +2292,215 @@ public class VMConditionalSkipInstructionTest {
 
         assertThat(org.isInstructionFailed()).as("the body test needs a vector").isTrue();
         assertThat(org.getFailureReason()).contains("requires a vector argument");
+
+        // The test could not be evaluated, so it does not hold: the skip skips.
+        sim.tick();
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
+    }
+
+    @Test
+    @Tag("unit")
+    void testInbr_AScalarOperandFailsTheInstruction_ExecutesNext() {
+        org.writeOperand(1, new Molecule(Config.TYPE_DATA, 3).toInt());
+        placeInstruction("INBR", 1);
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INBR"), environment));
+
+        sim.tick();
+        assertThat(org.getFailureReason()).contains("requires a vector argument");
+
+        // The negation of a test that could not be evaluated holds: the next instruction runs.
+        sim.tick();
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
+    }
+
+    // ==================== A test that cannot be evaluated does not hold ====================
+
+    /**
+     * Returns the position the instruction pointer will stand on after a conditional of the given
+     * length has skipped the ADDI behind it: the WAIT that {@link #placeFollowingAddi(int)} places.
+     * Asked before the tick, while the pointer still stands on the conditional.
+     */
+    private int[] waitBehindAddi(int conditionalLength) {
+        int[] pos = org.getIp();
+        for (int i = 0; i < conditionalLength + 3; i++) {
+            pos = org.getNextInstructionPosition(pos, org.getDv(), environment);
+        }
+        return pos;
+    }
+
+    /**
+     * An operand that names no register cannot be read, so the test does not hold: the skip
+     * passes over the next instruction, with both instructions behind it, and the failure is
+     * booked with its penalty, once.
+     */
+    @Test
+    @Tag("unit")
+    void testIfi_RegisterThatNamesNoRegister_SkipsNext() {
+        // A second organism runs the same skip with a sound register and the same decision, so
+        // that the two differ in energy by the penalty alone.
+        Organism reference = Organism.create(sim, new int[]{5, 20}, 1000);
+        sim.addOrganism(reference);
+        reference.writeOperand(0, new Molecule(Config.TYPE_DATA, 0).toInt());
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, Instruction.getInstructionIdByName("IFI")), new int[]{5, 20});
+        environment.setMolecule(new Molecule(Config.TYPE_DATA, 0), new int[]{6, 20});
+        environment.setMolecule(new Molecule(Config.TYPE_DATA, 5), new int[]{7, 20});
+
+        placeInstruction("IFI", -1, 5);
+        int length = Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFI"), environment);
+        placeFollowingAddi(length);
+        int[] waitBehindAddi = waitBehindAddi(length);
+        int penalty = sim.getOrganismConfig().getInt("error-penalty-cost");
+
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).isTrue();
+        assertThat(org.getFailureReason()).isEqualTo("Invalid register ID: -1");
+        assertThat(reference.isInstructionFailed()).as("reference failed: " + reference.getFailureReason()).isFalse();
+        assertThat(org.getEr()).isEqualTo(reference.getEr() - penalty);
+        assertThat(org.getIp()).isEqualTo(waitBehindAddi);
+
+        sim.tick();
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
+    }
+
+    /**
+     * The negation of a test that cannot be evaluated holds: the next instruction runs, and the
+     * failure is booked all the same.
+     */
+    @Test
+    @Tag("unit")
+    void testIni_RegisterThatNamesNoRegister_ExecutesNext() {
+        placeInstruction("INI", -1, 5);
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INI"), environment));
+
+        sim.tick();
+        assertThat(org.isInstructionFailed()).isTrue();
+        assertThat(org.getFailureReason()).isEqualTo("Invalid register ID: -1");
+
+        sim.tick();
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
+    }
+
+    @Test
+    @Tag("unit")
+    void testIfs_EmptyStack_SkipsNext() {
+        placeInstruction("IFS");
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFS"), environment));
+
+        sim.tick();
+        assertThat(org.getFailureReason()).isEqualTo("Data stack underflow for IFS");
+
+        sim.tick();
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
+    }
+
+    /**
+     * A stack with one value where two are needed: the one that is there is consumed, as every
+     * processed instruction consumes its stack operands, and the negation runs the next instruction.
+     */
+    @Test
+    @Tag("unit")
+    void testIns_StackWithOneValue_ConsumesItAndExecutesNext() {
+        org.getDataStack().push(new Molecule(Config.TYPE_DATA, 5).toInt());
+        placeInstruction("INS");
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INS"), environment));
+
+        sim.tick();
+        assertThat(org.getFailureReason()).isEqualTo("Data stack underflow for INS");
+        assertThat(org.getDataStack()).isEmpty();
+
+        sim.tick();
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
+    }
+
+    /**
+     * Of a conditional skip and its negation exactly one skips, on a test that cannot be
+     * evaluated too. Every pair whose operands can fail to be read is run with every register
+     * operand naming no register and an empty stack; the vector operands are sound. Which of the
+     * two is the positive form, and that the positive one skips, the tests above show for one
+     * pair of each kind.
+     */
+    @Test
+    @Tag("unit")
+    void testEveryPair_TestThatCannotBeEvaluated_ExactlyOneSkips() {
+        List<String> examined = new ArrayList<>();
+        for (Map.Entry<Integer, String> entry : Instruction.getAllInstructions().entrySet()) {
+            if (Instruction.getInstructionClassById(entry.getKey()) != ConditionalSkipInstruction.class) {
+                continue;
+            }
+            String name = entry.getValue();
+            String negation = ConditionalSkipInstruction.negationOf(name).orElseThrow();
+            if (name.compareTo(negation) > 0) {
+                continue;
+            }
+            List<Integer> args = new ArrayList<>();
+            boolean canFail = false;
+            for (Instruction.OperandSource source : Instruction.getOperandSourcesById(entry.getKey())) {
+                switch (source) {
+                    case REGISTER, LOCATION_REGISTER -> { args.add(-1); canFail = true; }
+                    case STACK -> canFail = true;
+                    case IMMEDIATE, LABEL -> args.add(5);
+                    case VECTOR -> { args.add(0); args.add(1); }
+                }
+            }
+            if (!canFail) {
+                continue;
+            }
+            boolean oneSkips = skipsOnFailure(name, args.toArray(Integer[]::new));
+            boolean otherSkips = skipsOnFailure(negation, args.toArray(Integer[]::new));
+            assertThat(oneSkips).as("exactly one of %s and %s skips on a test that cannot be evaluated", name, negation)
+                    .isNotEqualTo(otherSkips);
+            examined.add(name);
+        }
+        assertThat(examined).contains("IFR", "IFI", "IFS", "IFMR", "IFMS", "IFSL", "GETR", "IFBR", "IFXR");
+    }
+
+    /** Runs one skip with the given arguments in a fresh simulation and tells whether it skipped. */
+    private boolean skipsOnFailure(String name, Integer... args) {
+        setUp();
+        placeInstruction(name, args);
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName(name), environment));
+
+        sim.tick();
+        assertThat(org.isInstructionFailed()).as("%s failed", name).isTrue();
+        sim.tick();
+        return org.readOperand(0).equals(new Molecule(Config.TYPE_DATA, 0).toInt());
+    }
+
+    /**
+     * In a bounded world the argument cells of a skip on the last cells can lie beyond the edge.
+     * The test cannot be evaluated, and the skip, as the next instruction, would lie beyond the
+     * edge too: the pointer is recovered in the same tick, to the birth position when no frame
+     * holds a return address, with the one penalty of the failure.
+     */
+    @Test
+    @Tag("unit")
+    void testIfi_ArgumentCellsBeyondTheEdge_RecoversThePointer() {
+        assertRecoveredAtTheEdge("IFI");
+    }
+
+    @Test
+    @Tag("unit")
+    void testIni_ArgumentCellsBeyondTheEdge_RecoversThePointer() {
+        assertRecoveredAtTheEdge("INI");
+    }
+
+    private void assertRecoveredAtTheEdge(String name) {
+        environment = new Environment(new int[]{96, 96}, false);
+        sim = SimulationTestUtils.createSimulation(environment);
+        Organism.create(sim, new int[]{-1, -1}, 1);
+        int[] lastCell = new int[]{95, 5};
+        org = Organism.create(sim, lastCell.clone(), 1000);
+        sim.addOrganism(org);
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, Instruction.getInstructionIdByName(name)), lastCell);
+        int penalty = sim.getOrganismConfig().getInt("error-penalty-cost");
+
+        sim.tick();
+
+        assertThat(org.getFailureReason()).isEqualTo(Instruction.ARGUMENT_CELL_BEYOND_THE_EDGE);
+        assertThat(org.getIp()).isEqualTo(lastCell);
+        assertThat(org.getCallStack()).isEmpty();
+        // The base cost of a conditional is below the penalty, so exactly one penalty was paid.
+        assertThat(org.getEr()).isStrictlyBetween(1000 - 2 * penalty, 1000 - penalty + 1);
     }
 }
