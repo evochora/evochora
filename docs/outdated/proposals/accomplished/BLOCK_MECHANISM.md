@@ -305,3 +305,9 @@ Implemented in the five steps above. What the built code does beyond the solutio
 - **The five hand-made preprocessor registrations in tests** that paired a handler with a block
   kind by hand went away: the test helper registers kind, handler and stored together, as the
   features do.
+- **A branch that is not kept is dead text**, as a skipped `#if` group is for the C preprocessor:
+  the reader still matches the blocks inside it, and nothing else is checked, the top-level-only
+  rule included. A `.DEFINE` in a macro inside such a branch is reported once the flag keeps the
+  branch, as every other error in it is; the configurations a program is built in are what finds
+  it, not a check of every flag. The reader of the preprocessor used to count the stored depth
+  through nested blocks and so reported this one case in dead text, which no decision asked for.
