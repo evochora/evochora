@@ -33,6 +33,32 @@ jobs:
         with:
           fetch-depth: 0  # Full history for proper diff
 
+      - name: Choose billing
+        id: billing
+        # The review runs on the API credit while it lasts and on the subscription otherwise.
+        # A one-token request finds out whether the key is accepted and the credit not spent;
+        # any refusal, whatever its cause, falls back to the subscription, and the comment
+        # names the source with the refusal's reason. Credit running out during the review
+        # fails that run; a rerun of the job then lands on the subscription here.
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          response="$RUNNER_TEMP/billing-probe.json"
+          status=$(curl -sS --max-time 30 -o "$response" -w '%{http_code}' https://api.anthropic.com/v1/messages \
+            -H "x-api-key: $ANTHROPIC_API_KEY" \
+            -H 'anthropic-version: 2023-06-01' \
+            -H 'content-type: application/json' \
+            -d '{"model":"claude-haiku-5-5","max_tokens":1,"messages":[{"role":"user","content":"ok"}]}') \
+            || status=000
+          if [ "$status" = 200 ]; then
+            echo 'source=api' >> "$GITHUB_OUTPUT"
+            echo 'line=Billing: API credit' >> "$GITHUB_OUTPUT"
+          else
+            reason=$(jq -r '.error.message // empty' "$response" 2>/dev/null | tr -d '\n' | cut -c1-200)
+            echo 'source=subscription' >> "$GITHUB_OUTPUT"
+            echo "line=Billing: subscription (API unavailable: ${reason:-HTTP $status})" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Run Claude Architecture Review
         id: claude-review
         # Left on the moving tag on purpose. v1 is a rolling pointer rather than a fixed
@@ -43,7 +69,8 @@ jobs:
         # far broader access, and the job may only read contents and write comments.
         uses: anthropics/claude-code-action@v1
         with:
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          anthropic_api_key: ${{ steps.billing.outputs.source == 'api' && secrets.ANTHROPIC_API_KEY || '' }}
+          claude_code_oauth_token: ${{ steps.billing.outputs.source == 'subscription' && secrets.CLAUDE_CODE_OAUTH_TOKEN || '' }}
           show_full_output: true
           claude_args: |
             --allowedTools "Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh api:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Read,Glob,Grep"
@@ -90,6 +117,9 @@ jobs:
             The comment is read by an agent that works through every finding with the
             maintainer, one at a time. It contains findings and, at the end, the scope of the
             review: no summary of what the PR does, no praise.
+
+            The comment's first line, before its title, is this line, verbatim:
+            ${{ steps.billing.outputs.line }}
 
             Title the comment "Architecture Review" and group the findings as in Step 4 of
             the architecture guidelines (Violations, Concerns, Recommendations), most severe
