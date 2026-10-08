@@ -142,6 +142,19 @@ class BlockReaderTest {
     }
 
     @Test
+    void anOpenerAsTheLastTokenOfTheInputIsReportedAndItsBodyIsEmpty() {
+        List<Token> tokens = new ArrayList<>();
+        tokens.add(new Token(TokenType.DIRECTIVE, ".STORE", null, new SourceInfo("a.evo", 1, 1, "", 0)));
+        tokens.add(new Token(TokenType.END_OF_FILE, "", null, new SourceInfo("a.evo", 1, 7, "", 0)));
+
+        Read read = read(tokens, 0, true, NO_PREFIX);
+
+        assertThat(read.errors()).containsExactly("a.evo:1: .STORE opened at a.evo:1 is not closed before the end of the input");
+        assertThat(read.block().bodyStart()).isEqualTo(1);
+        assertThat(read.block().end()).isEqualTo(1);
+    }
+
+    @Test
     void dividersAreRecordedOnlyAtTheBlocksOwnLevel() {
         List<Token> tokens = lex(
                 ".WHEN",

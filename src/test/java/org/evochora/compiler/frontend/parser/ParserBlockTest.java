@@ -27,8 +27,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * Unit tests for how the parser treats blocks, with two block kinds of its own and handlers
- * that build test nodes: a group with a body, and a selection with a head, named cases divided
- * by {@code .CASE} and an end that takes {@code EXPORT}. The selection handler uses exactly
+ * that build test nodes: a group with a body, which takes {@code EXPORT} nowhere, and a
+ * selection with a head, named cases divided by {@code .CASE} and an end, which takes
+ * {@code EXPORT} everywhere. The selection handler uses exactly
  * what a block handler with dividers needs from the parsing context: the statements of a part,
  * the line of a divider and the token of the closer.
  */
@@ -114,13 +115,15 @@ class ParserBlockTest {
     }
 
     @Test
-    void exportBeforeACloserThatDoesNotTakeItIsReportedAndTheBlockIsParsed() {
+    void exportBeforeAWordThatDoesNotTakeItIsReportedAndTheBlockIsParsed() {
         Parsed parsed = parse(
-                ".GROUP G",
+                "EXPORT .GROUP G",
                 "EXPORT .ENDGROUP",
                 "NOP");
 
-        assertThat(parsed.errors()).containsExactly("<memory>:2: EXPORT is not supported before '.ENDGROUP'.");
+        assertThat(parsed.errors()).containsExactly(
+                "<memory>:1: EXPORT is not supported before '.GROUP'.",
+                "<memory>:2: EXPORT is not supported before '.ENDGROUP'.");
         assertThat(parsed.ast()).hasSize(2);
         assertThat(parsed.ast().get(0)).isInstanceOf(Group.class);
         assertThat(parsed.ast().get(1)).isInstanceOf(InstructionNode.class);
@@ -222,11 +225,6 @@ class ParserBlockTest {
             context.consume(TokenType.NEWLINE, "Expected a newline after the group name.");
             List<AstNode> body = context.statements(block.bodyStart(), block.partEnd(block.closer()));
             return new Group(name.text(), body, exported);
-        }
-
-        @Override
-        public boolean supportsExport(String word) {
-            return ".GROUP".equalsIgnoreCase(word);
         }
     }
 

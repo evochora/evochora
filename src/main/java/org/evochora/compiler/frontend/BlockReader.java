@@ -188,9 +188,6 @@ public final class BlockReader {
     }
 
     private boolean hasPrefix(List<Token> tokens, int word) {
-        if (word == 0) {
-            return false;
-        }
         Token before = tokens.get(word - 1);
         return prefix.test(before) && sameLine(before, tokens.get(word));
     }

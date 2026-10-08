@@ -224,6 +224,27 @@ public class ParserTest {
     }
 
     /**
+     * Verifies that EXPORT before an instruction is reported, because an instruction defines no
+     * name that could be exported, and the instruction is parsed all the same.
+     * This is a unit test for the parser.
+     */
+    @Test
+    @Tag("unit")
+    void testParserExportBeforeAnInstructionIsReported() {
+        // Arrange
+        String source = "EXPORT NOP";
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Parser parser = new Parser(new Lexer(source, diagnostics, TestLexers.symbols()).scanTokens(), diagnostics, registry());
+
+        // Act
+        List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
+
+        // Assert
+        assertThat(diagnostics.summary()).contains("EXPORT is not supported before 'NOP'.");
+        assertThat(ast).singleElement().isInstanceOf(InstructionNode.class);
+    }
+
+    /**
      * Verifies that the parser correctly handles an exported constant (e.g., "EXPORT .CONST X 42").
      * The exported flag should be true.
      */
