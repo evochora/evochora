@@ -1156,7 +1156,8 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining(".PROC 'STEP' is not closed; expected .ENDPROC.")
+                .hasMessageContaining(".PROC opened at ")
+                .hasMessageContaining(" is not closed before the end of the input")
                 .hasMessageContaining("main.evo:3");
     }
 

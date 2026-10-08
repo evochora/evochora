@@ -12,6 +12,7 @@ import org.evochora.compiler.frontend.parser.IParserStatementHandler;
 import org.evochora.compiler.frontend.postprocess.IPostProcessHandler;
 import org.evochora.compiler.frontend.BlockKind;
 import org.evochora.compiler.frontend.preprocessor.IPreProcessorBlockHandler;
+import org.evochora.compiler.frontend.parser.IParserBlockHandler;
 import org.evochora.compiler.frontend.preprocessor.IPreProcessorHandler;
 import org.evochora.compiler.frontend.semantics.IDependencySetupHandler;
 import org.evochora.compiler.frontend.semantics.IAnalysisHandler;
@@ -74,6 +75,7 @@ public class FeatureRegistry implements IFeatureRegistrationContext {
 	// A block kind is checked for conflicting words when the compiler fills the preprocessor's
 	// registry; a top-level-only directive registered twice is one directive.
 	private final List<PreprocessorBlock> preprocessorBlocks = new ArrayList<>();
+	private final List<ParserBlock> parserBlocks = new ArrayList<>();
 	private final Set<String> preprocessorTopLevelOnly = new LinkedHashSet<>();
 
 	// A symbol registered by two features is one symbol, so repeated registration is no conflict.
@@ -148,6 +150,11 @@ public class FeatureRegistry implements IFeatureRegistrationContext {
 		String key = keyword.toUpperCase();
 		guardDuplicate(parserStatementHandlers, key, "parser statement handler");
 		parserStatementHandlers.put(key, handler);
+	}
+
+	@Override
+	public void parserBlock(BlockKind kind, IParserBlockHandler handler) {
+		parserBlocks.add(new ParserBlock(kind, handler));
 	}
 
 	@Override
@@ -311,6 +318,26 @@ public class FeatureRegistry implements IFeatureRegistrationContext {
 	 */
 	public Map<String, IParserStatementHandler> parserStatementHandlers() {
 		return Collections.unmodifiableMap(parserStatementHandlers);
+	}
+
+	/**
+	 * A kind of block of Phase 3 as a feature registered it: the kind and the handler of its
+	 * openers.
+	 *
+	 * @param kind    The openers, closer and dividers.
+	 * @param handler The handler called for a whole block of the kind.
+	 */
+	public record ParserBlock(BlockKind kind, IParserBlockHandler handler) {
+	}
+
+	/**
+	 * Returns the Phase 3 block kinds with their handlers in registration order. Whether two kinds
+	 * claim the same word is checked when they are registered into the parser's registry.
+	 *
+	 * @return An unmodifiable view of the live list.
+	 */
+	public List<ParserBlock> parserBlocks() {
+		return Collections.unmodifiableList(parserBlocks);
 	}
 
 	/**

@@ -195,6 +195,7 @@ public class Compiler implements ICompiler {
         // Phase 3: Parsing (builds AST)
         ParserStatementRegistry parserRegistry = new ParserStatementRegistry();
         featureRegistry.parserStatementHandlers().forEach(parserRegistry::register);
+        featureRegistry.parserBlocks().forEach(block -> parserRegistry.registerBlock(block.kind(), block.handler()));
         if (featureRegistry.defaultParserStatementHandler() != null) {
             parserRegistry.registerDefault(featureRegistry.defaultParserStatementHandler());
         }

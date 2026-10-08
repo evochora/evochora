@@ -13,6 +13,7 @@ import org.evochora.compiler.frontend.parser.IParserStatementHandler;
 import org.evochora.compiler.frontend.postprocess.IPostProcessHandler;
 import org.evochora.compiler.frontend.BlockKind;
 import org.evochora.compiler.frontend.preprocessor.IPreProcessorBlockHandler;
+import org.evochora.compiler.frontend.parser.IParserBlockHandler;
 import org.evochora.compiler.frontend.preprocessor.IPreProcessorHandler;
 import org.evochora.compiler.frontend.semantics.IAnalysisHandler;
 import org.evochora.compiler.frontend.semantics.ISymbolCollector;
@@ -121,10 +122,22 @@ public interface IFeatureRegistrationContext {
 	/**
 	 * Registers a parser statement handler for Phase 3.
 	 *
-	 * @param keyword The keyword that triggers this handler (e.g., ".ORG", ".PROC", "CALL").
+	 * @param keyword The keyword that triggers this handler (e.g., ".ORG", "CALL").
 	 * @param handler The handler that parses this statement into an AST node.
 	 */
 	void parserStatement(String keyword, IParserStatementHandler handler);
+
+	/**
+	 * Registers a kind of block for Phase 3 with the handler of its openers: the directives that
+	 * open, close and divide it. The parser reads a block of the kind before it calls the handler,
+	 * matching the blocks of every registered kind against each other, so that blocks nest and
+	 * never overlap, whichever feature they belong to. A word may belong to one kind only, and
+	 * the closer and the dividers have no handler.
+	 *
+	 * @param kind    The block kind, e.g. {@code .PROC} closed by {@code .ENDPROC}.
+	 * @param handler The handler that parses a whole block of the kind into an AST node.
+	 */
+	void parserBlock(BlockKind kind, IParserBlockHandler handler);
 
 	/**
 	 * Registers the default parser statement handler for Phase 3.

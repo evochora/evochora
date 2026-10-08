@@ -292,7 +292,7 @@ public class ProcedureDirectiveTest {
 
     private static ParserStatementRegistry registry() {
         ParserStatementRegistry reg = new ParserStatementRegistry();
-        reg.register(".PROC", new ProcDirectiveHandler(new RuntimeInstructionSetAdapter()));
+        reg.registerBlock(new org.evochora.compiler.frontend.BlockKind(java.util.Set.of(".PROC"), ".ENDPROC", java.util.Set.of()), new ProcDirectiveHandler(new RuntimeInstructionSetAdapter()));
         reg.register(".REG", new RegDirectiveHandler(new RuntimeInstructionSetAdapter()));
         reg.register(".LABEL", new org.evochora.compiler.features.label.LabelDirectiveHandler());
         reg.register("CALL", new org.evochora.compiler.features.proc.CallStatementHandler());

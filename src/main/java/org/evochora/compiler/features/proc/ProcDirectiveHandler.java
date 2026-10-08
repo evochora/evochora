@@ -1,6 +1,7 @@
 package org.evochora.compiler.features.proc;
 
-import org.evochora.compiler.frontend.parser.IParserStatementHandler;
+import org.evochora.compiler.frontend.BlockReader;
+import org.evochora.compiler.frontend.parser.IParserBlockHandler;
 import org.evochora.compiler.frontend.parser.IParsingContext;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
@@ -13,11 +14,13 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Handler for the {@code .PROC} directive.
- * Parses procedure declarations with optional parameter keywords:
- * REF/VAL (scalar by reference/value), LREF/LVAL (location by reference/value).
+ * Handler for the block {@code .PROC} … {@code .ENDPROC}, whose extent the parser has read.
+ * Parses the procedure declaration with its optional parameter keywords,
+ * REF/VAL (scalar by reference/value) and LREF/LVAL (location by reference/value), opens the
+ * procedure's scope and register banks, and has the parser parse the body. {@code EXPORT}
+ * stands before {@code .PROC} only.
  */
-public class ProcDirectiveHandler implements IParserStatementHandler {
+public class ProcDirectiveHandler implements IParserBlockHandler {
 
     private static final Set<String> PARAM_KEYWORDS = Set.of("REF", "VAL", "LREF", "LVAL");
 
@@ -33,10 +36,12 @@ public class ProcDirectiveHandler implements IParserStatementHandler {
     }
 
     @Override
-    public boolean supportsExport() { return true; }
+    public boolean supportsExport(String word) {
+        return ".PROC".equalsIgnoreCase(word);
+    }
 
     @Override
-    public AstNode parse(IParsingContext context) {
+    public AstNode parse(IParsingContext context, BlockReader.Block block) {
         context.advance(); // consume .PROC
 
         Token procName = context.consume(TokenType.IDENTIFIER, "Expected procedure name after .PROC.");
@@ -75,23 +80,10 @@ public class ProcDirectiveHandler implements IParserStatementHandler {
                 .toArray(String[]::new);
         context.state().addAvailableRegisterBanks(procScopedBanks);
 
-        List<AstNode> body = new ArrayList<>();
-        while (!context.isAtEnd() && !(context.check(TokenType.DIRECTIVE) && context.peek().text().equalsIgnoreCase(".ENDPROC"))) {
-            if (context.match(TokenType.NEWLINE)) continue;
-            AstNode statement = context.declaration();
-            if (statement != null) {
-                body.add(statement);
-            }
-        }
+        List<AstNode> body = context.statements(block.bodyStart(), block.partEnd(block.closer()));
 
         context.state().removeAvailableRegisterBanks(procScopedBanks);
         context.state().popScope();
-
-        if (context.isAtEnd() || !(context.check(TokenType.DIRECTIVE) && context.peek().text().equalsIgnoreCase(".ENDPROC"))) {
-            context.getDiagnostics().reportError(".PROC '" + procName.text() + "' is not closed; expected .ENDPROC.", procName.source().fileName(), procName.source().lineNumber());
-        } else {
-            context.advance(); // consume .ENDPROC
-        }
 
         return new ProcedureNode(procName.text(), exported, refParameters, valParameters, lrefParameters, lvalParameters, body, procName.source());
     }
