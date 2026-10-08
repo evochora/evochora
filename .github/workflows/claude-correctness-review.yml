@@ -52,7 +52,7 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           response="$RUNNER_TEMP/billing-probe.json"
-          status=$(curl -sS -o "$response" -w '%{http_code}' https://api.anthropic.com/v1/messages \
+          status=$(curl -sS --max-time 30 -o "$response" -w '%{http_code}' https://api.anthropic.com/v1/messages \
             -H "x-api-key: $ANTHROPIC_API_KEY" \
             -H 'anthropic-version: 2023-06-01' \
             -H 'content-type: application/json' \
