@@ -987,6 +987,25 @@ public class Organism {
     }
 
     /**
+     * Counts the argument cells of the instruction the organism is executing that lie within the
+     * world: the cells follow the opcode at {@code ipBeforeFetch} along {@code dvBeforeFetch},
+     * and in a bounded world the last ones may lie beyond the edge. Asked only when
+     * {@link #argumentCellsExist(int, Environment)} has said that not all of them do.
+     *
+     * @param instructionLength The total length of the instruction (opcode + arguments).
+     * @param environment The simulation environment.
+     * @return how many of the argument cells, counted from the opcode, lie within the world
+     */
+    public int argumentCellsWithinWorld(int instructionLength, Environment environment) {
+        int within = 0;
+        while (within < instructionLength - 1
+                && environment.exists(this.ipBeforeFetch, this.dvBeforeFetch, within + 1)) {
+            within++;
+        }
+        return within;
+    }
+
+    /**
      * Retrieves the raw integer values of an instruction's arguments from the environment,
      * starting from an explicit position and advancing along an explicit direction vector.
      * <p>

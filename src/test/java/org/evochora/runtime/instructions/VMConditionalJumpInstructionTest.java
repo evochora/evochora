@@ -254,7 +254,7 @@ class VMConditionalJumpInstructionTest {
         sim.tick();
 
         assertThat(org.isInstructionFailed()).isTrue();
-        assertThat(org.getFailureReason()).isEqualTo("Invalid operand count for JFS");
+        assertThat(org.getFailureReason()).isEqualTo("Data stack underflow for JFS");
         assertThat(org.getIp()).isEqualTo(behindJump);
     }
 

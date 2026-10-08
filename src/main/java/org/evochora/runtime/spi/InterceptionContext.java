@@ -123,7 +123,10 @@ public class InterceptionContext {
     /**
      * Returns the resolved operands for the current instruction.
      * <p>
-     * The returned list is a direct reference to the instruction's cached operands.
+     * The returned list is a direct reference to the instruction's cached operands, one entry
+     * per operand of the instruction. An operand the instruction could not read is
+     * {@link Instruction.Operand#MISSING}, and the instruction is then already marked failed;
+     * a missing operand is never put into the list, see {@link #setOperand}.
      * Modifications are visible to:
      * <ul>
      *   <li>Subsequent interceptors in the chain (they see your changes)</li>
@@ -153,8 +156,16 @@ public class InterceptionContext {
      * @param index The index of the operand to replace (0-based)
      * @param newOperand The new operand value
      * @throws IndexOutOfBoundsException if index is out of range
+     * @throws IllegalArgumentException if the operand is {@code null} or
+     *         {@link Instruction.Operand#MISSING}: an operand without a value stands only for
+     *         one the instruction itself could not read, and then the instruction is marked
+     *         failed; an interceptor cannot put one into an instruction that is not
      */
     public void setOperand(int index, Instruction.Operand newOperand) {
+        if (newOperand == null || newOperand.isMissing()) {
+            throw new IllegalArgumentException("An interceptor cannot set an operand without a value: "
+                    + newOperand);
+        }
         getOperands().set(index, newOperand);
     }
 }

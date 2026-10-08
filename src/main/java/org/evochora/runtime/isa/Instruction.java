@@ -92,8 +92,9 @@ public abstract class Instruction {
          * A value taken from the organism's data stack, topmost first. Occupies no argument slot,
          * so it does not lengthen the instruction, and carries no raw source ID. Operand resolution
          * only peeks; the matching pops happen later, and only for an instruction that is really
-         * executed. If the stack holds fewer values than the instruction consumes, resolution
-         * yields no operands at all rather than a short list.
+         * executed. If the stack holds fewer values than the instruction consumes, the
+         * instruction fails while it is planned, and every operand without a value is
+         * {@link Operand#MISSING}.
          */
         STACK,
         /**
@@ -134,10 +135,41 @@ public abstract class Instruction {
 
     /**
      * Represents a resolved operand, containing its value and raw source ID.
+     * <p>
+     * An operand that could not be read is {@link #MISSING}: the stack held no value for it, or
+     * its argument cells lie beyond the edge of a bounded world. Such an operand only ever comes
+     * with the instruction marked failed, and it stands at the place of the operand it replaces,
+     * so the list has one entry per operand either way.
+     *
      * @param value The resolved value of the operand.
      * @param rawSourceId The raw source ID (e.g., register number).
      */
-    public record Operand(Object value, int rawSourceId) {}
+    public record Operand(Object value, int rawSourceId) {
+
+        /**
+         * The value of {@link #MISSING}: an object no resolution produces, so that no operand
+         * read from the organism or the world is equal to the missing one.
+         */
+        private static final Object NO_VALUE = new Object() {
+            @Override
+            public String toString() {
+                return "MISSING";
+            }
+        };
+
+        /** The operand that could not be read; see {@link #isMissing()}. */
+        public static final Operand MISSING = new Operand(NO_VALUE, -1);
+
+        /**
+         * Tells whether this is the operand that could not be read. It is the one instance
+         * {@link #MISSING}, and no other operand is equal to it.
+         *
+         * @return {@code true} for {@link #MISSING}
+         */
+        public boolean isMissing() {
+            return this == MISSING;
+        }
+    }
 
     // Runtime Registries (HashMaps for cold-path usage: registration, introspection, mutation plugins)
     private static final Map<Integer, Class<? extends Instruction>> REGISTERED_INSTRUCTIONS_BY_ID = new HashMap<>();
@@ -337,6 +369,12 @@ public abstract class Instruction {
      * <b>Important:</b> For STACK operands, this method only <i>peeks</i> (reads without removing).
      * The actual stack pops are deferred to {@link #commitStackReads()}, which must be called
      * in the Execute phase for instructions that are actually executed.
+     * <p>
+     * The list has one entry per operand of the instruction, at the operand's place. An operand
+     * that cannot be read - the stack holds no value for it, or its argument cells lie beyond
+     * the edge of a bounded world - marks the instruction failed and is {@link Operand#MISSING};
+     * the operands that can be read are resolved as always. The list is mutable, because an
+     * interceptor may replace an operand in it.
      *
      * @param environment The environment in which the instruction is executed.
      * @return A list of resolved operands (cached after first call).
@@ -361,14 +399,16 @@ public abstract class Instruction {
         // code stream on their behalf.
         int length = getLength(environment);
         this.rawArguments = organism.getRawArgumentsFromEnvironment(length, environment);
+        // The argument cells follow one another, so they all exist exactly when the last one
+        // does; only when it does not are they counted.
+        int existingCells = length - 1;
         if (!organism.argumentCellsExist(length, environment)) {
             // In a bounded world the argument cells can reach beyond the edge, where no cell
             // exists. Read as empty they would hand the instruction values it never had - an empty
             // cell as a register argument names %DR0 - so the instruction fails here, while it is
-            // planned, and is not executed. The last cell stands for all: they follow one another.
+            // planned, and every operand with a cell beyond the edge is MISSING.
             organism.instructionFailed(ARGUMENT_CELL_BEYOND_THE_EDGE);
-            this.cachedOperands = List.of();
-            return this.cachedOperands;
+            existingCells = organism.argumentCellsWithinWorld(length, environment);
         }
 
         List<Operand> resolved = new ArrayList<>(sources.size());
@@ -383,8 +423,9 @@ public abstract class Instruction {
                 // PEEK via iterator - no side effects!
                 // The actual pop() happens in commitStackReads() during Execute phase
                 if (!stackIterator.hasNext()) {
-                    this.cachedOperands = new ArrayList<>();
-                    return this.cachedOperands;
+                    organism.instructionFailed("Data stack underflow for " + getName());
+                    resolved.add(Operand.MISSING);
+                    continue;
                 }
                 resolved.add(new Operand(stackIterator.next(), -1));
                 this.stackPeekCount++;
@@ -392,6 +433,14 @@ public abstract class Instruction {
             }
 
             // Every remaining source occupies one argument slot; VECTOR takes one per dimension.
+            // An operand whose slots reach beyond the existing cells is not read at all: an
+            // empty cell as a register argument would name %DR0.
+            int slotsAfter = slot + (source == OperandSource.VECTOR ? dims : 1);
+            if (slotsAfter > existingCells) {
+                resolved.add(Operand.MISSING);
+                slot = slotsAfter;
+                continue;
+            }
             int rawMol = this.rawArguments[slot++];
 
             switch (source) {

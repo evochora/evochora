@@ -410,6 +410,50 @@ class InstructionInterceptorTest {
         assertThat(secondInterceptorCalled.get()).isEqualTo(0);
     }
 
+    @Test
+    void interceptor_seesAMissingOperandAtItsPlace() {
+        // POKS takes two stack operands; with one value on the stack the second cannot be read.
+        int poksOpcode = Instruction.getInstructionIdByName("POKS");
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, poksOpcode), organism.getId(), new int[]{5, 5});
+        int value = new Molecule(Config.TYPE_DATA, 7).toInt();
+        organism.pushData(value);
+        AtomicReference<List<Instruction.Operand>> capturedOperands = new AtomicReference<>();
+        AtomicReference<Boolean> failedWhenIntercepted = new AtomicReference<>();
+
+        simulation.addInstructionInterceptor(new TestInterceptor() {
+            @Override
+            public void intercept(InterceptionContext context) {
+                capturedOperands.set(new ArrayList<>(context.getOperands()));
+                failedWhenIntercepted.set(context.getOrganism().isInstructionFailed());
+            }
+        });
+
+        simulation.tick();
+
+        assertThat(capturedOperands.get()).hasSize(2);
+        assertThat(capturedOperands.get().get(0).value()).isEqualTo(value);
+        assertThat(capturedOperands.get().get(1).isMissing()).isTrue();
+        assertThat(failedWhenIntercepted.get()).isTrue();
+    }
+
+    @Test
+    void setOperand_rejectsAMissingOperand() {
+        int poksOpcode = Instruction.getInstructionIdByName("POKS");
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, poksOpcode), organism.getId(), new int[]{5, 5});
+        int value = new Molecule(Config.TYPE_DATA, 7).toInt();
+        organism.pushData(value);
+        organism.pushData(value);
+        Instruction planned = simulation.getVirtualMachine().plan(organism);
+        InterceptionContext context = new InterceptionContext();
+        context.reset(organism, planned);
+
+        assertThatThrownBy(() -> context.setOperand(0, Instruction.Operand.MISSING))
+            .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> context.setOperand(0, null))
+            .isInstanceOf(IllegalArgumentException.class);
+        assertThat(context.getOperands().get(0).value()).isEqualTo(value);
+    }
+
     // ==================== Operand Modification Tests ====================
 
     @Test

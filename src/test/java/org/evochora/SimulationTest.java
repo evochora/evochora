@@ -152,24 +152,27 @@ public class SimulationTest {
     }
 
     /**
-     * Tests that an instruction fails gracefully when its operands are invalid.
-     * In this case, the 'POKS' instruction is executed without valid operands,
-     * and the test verifies that the organism's state reflects the failure.
+     * An instruction whose stack holds fewer values than it takes fails while it is planned and
+     * is not executed: the tick books the failure, and the value that was on the stack is
+     * consumed as it is for every instruction that is processed.
      * This is a unit test and relies on the in-memory {@link Simulation} and {@link Environment}.
      */
     @Test
     @Tag("unit")
-    void testSingleOrganismNoTargetStillExecutes() {
+    void stackInstructionWithoutItsValuesFailsWhilePlanned() {
         Organism org = Organism.create(sim, new int[]{0, 0}, 2000);
         org.setDv(new int[]{1, 0});
-        org.setDp(0, new int[]{0, 0});        sim.addOrganism(org);
+        org.setDp(0, new int[]{0, 0});
+        org.pushData(new Molecule(Config.TYPE_DATA, 5).toInt());
+        sim.addOrganism(org);
 
         placeInstruction(org, "POKS");
 
         sim.tick();
 
         assertThat(org.isInstructionFailed()).isTrue();
-        assertThat(org.getFailureReason()).contains("Invalid operands for POKS");
+        assertThat(org.getFailureReason()).isEqualTo("Data stack underflow for POKS");
+        assertThat(org.getDataStack()).isEmpty();
     }
 
     /**
