@@ -41,12 +41,39 @@ jobs:
           distribution: 'temurin'
           cache: 'gradle'
 
+      - name: Choose billing
+        id: billing
+        # The review runs on the API credit while it lasts and on the subscription otherwise.
+        # A one-token request finds out whether the key is accepted and the credit not spent;
+        # any refusal, whatever its cause, falls back to the subscription, and the comment
+        # names the source with the refusal's reason. Credit running out during the review
+        # fails that run; a rerun of the job then lands on the subscription here.
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          response="$RUNNER_TEMP/billing-probe.json"
+          status=$(curl -sS -o "$response" -w '%{http_code}' https://api.anthropic.com/v1/messages \
+            -H "x-api-key: $ANTHROPIC_API_KEY" \
+            -H 'anthropic-version: 2023-06-01' \
+            -H 'content-type: application/json' \
+            -d '{"model":"claude-haiku-5-5","max_tokens":1,"messages":[{"role":"user","content":"ok"}]}') \
+            || status=000
+          if [ "$status" = 200 ]; then
+            echo 'source=api' >> "$GITHUB_OUTPUT"
+            echo 'line=Billing: API credit' >> "$GITHUB_OUTPUT"
+          else
+            reason=$(jq -r '.error.message // empty' "$response" 2>/dev/null | tr -d '\n' | cut -c1-200)
+            echo 'source=subscription' >> "$GITHUB_OUTPUT"
+            echo "line=Billing: subscription (API unavailable: ${reason:-HTTP $status})" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Run Claude Correctness Review
         id: claude-review
         # Left on the moving tag for the reason given in claude-code-review.yml.
         uses: anthropics/claude-code-action@v1
         with:
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          anthropic_api_key: ${{ steps.billing.outputs.source == 'api' && secrets.ANTHROPIC_API_KEY || '' }}
+          claude_code_oauth_token: ${{ steps.billing.outputs.source == 'subscription' && secrets.CLAUDE_CODE_OAUTH_TOKEN || '' }}
           show_full_output: true
           # Gradle only compiles and runs tests: no `run`, no `build`, no `check`, which would
           # repeat what build.yml already does. Write and Edit exist for the probe tests; nothing
@@ -105,6 +132,9 @@ jobs:
             The comment is read by an agent that works through every finding with the
             maintainer, one at a time. It contains findings and, at the end, the scope of the
             review: no summary of the PR, no praise.
+
+            The comment's first line, before its title, is this line, verbatim:
+            ${{ steps.billing.outputs.line }}
 
             Post one PR comment (`gh pr comment`) titled "Correctness Review". For each finding:
             - **Status**: Confirmed by probe / Unconfirmed
