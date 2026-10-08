@@ -23,10 +23,11 @@ import java.util.Set;
  * module; a lookup sees the innermost module's definitions and the shared handlers, never
  * the definitions of an enclosing or an enclosed module. Names are compared case-insensitively.
  * <p>
- * Besides the handlers it holds two properties of words that features register and the
- * {@link BlockReader} reads: the {@link BlockKind kinds of block} with their openers, closers and
- * dividers, and the directives that may stand only at the top level, never in a stored body.
- * Neither changes during the phase.
+ * Besides the handlers it holds what features register about blocks: the {@link BlockKind kinds
+ * of block} with their openers, closers and dividers, which the
+ * {@link org.evochora.compiler.frontend.BlockReader} of the phase reads, each with the handler of
+ * its openers and whether its body is stored, and the directives that may stand only at the top
+ * level, never in a stored body. None of it changes during the phase.
  */
 public class PreProcessorHandlerRegistry {
 
