@@ -697,7 +697,7 @@ Both syntaxes produce identical results—the shorthand is transformed into `.RE
 
 ### Blocks
 
-`.MACRO` … `.ENDMACRO` and `.REPEAT` … `.ENDREPEAT` are blocks. A block may contain other blocks, but two blocks never overlap: an end directive always closes the block that was opened last.
+`.MACRO` … `.ENDMACRO`, `.REPEAT` … `.ENDREPEAT`, the conditional blocks and `.PROC` … `.ENDPROC` are blocks. A block may contain other blocks, but two blocks never overlap: an end directive always closes the block that was opened last. `.MACRO`, `.REPEAT` and the conditional blocks close in the file they were opened in; a `.PROC` may be opened by one macro and closed by another.
 
 ```
 .MACRO PAD

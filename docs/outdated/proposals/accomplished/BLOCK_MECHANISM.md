@@ -1,6 +1,6 @@
 # Block Mechanism
 
-**Status: PROPOSED — decided with the maintainer on 2026-10-07 and 2026-10-08; not yet implemented.**
+**Status: ACCOMPLISHED — implemented on branch `feature/block-mechanism` (2026-10-08), in the five steps below; see *Outcome* at the end.**
 
 A block is a span of the token stream between an opener and its closer, `.MACRO` … `.ENDMACRO`,
 `.IFDEF` … `.ENDDEF`, `.PROC` … `.ENDPROC`. Its structure, where it begins, where its dividers
@@ -279,3 +279,29 @@ that fails before its fix (AGENTS.md, "Defect tests"). One branch, one pull requ
 11. Five steps in the order above, the preprocessor before the parser; one pull request.
 12. `.CONTROL`/`.CASE`/`.ENDCONTROL` are not part of this document; CONTROL_FLOW_DIRECTIVES
     builds on it.
+
+## Outcome
+
+Implemented in the five steps above. What the built code does beyond the solution text:
+
+- **Three methods for a block handler of the parser.** Besides the statements of a part,
+  `IParsingContext` gives a handler the line of a divider, `lineOf`, and the token of a divider
+  or the closer, `tokenAt`; the test handler with dividers in `ParserBlockTest` builds a block
+  with a named head, named cases and an end that takes `EXPORT` from these three and nothing
+  else, as a control block will.
+- **A stray closer or divider takes its line with it.** The parser reports the word and skips
+  to the end of its line, so that `.CASE X` outside a block gives one message and not a second
+  for the `X`.
+- **The hint for `.REPEAT n STATEMENT`** stays where the block is whole, `.ENDREPEAT` included;
+  without an `.ENDREPEAT` the block is reported as open at the `.REPEAT`, because the reader
+  runs before the handler that gives the hint.
+- **The tokens of a broken block stay in the stream** of the preprocessor and the parser skips
+  over them; four assertions on the stream after an error changed for that, and no reader of the
+  stream sees them, since the compilation ends after the phase.
+- **The rule on nested procedures lives in the analysis.** `ProcedureSymbolCollector` reports
+  the nesting; the parser accepts it and keeps its register banks balanced by the reference
+  count that exists for that case, which its comments and the nested-procedure test in
+  `RegDirectiveTest` say.
+- **The five hand-made preprocessor registrations in tests** that paired a handler with a block
+  kind by hand went away: the test helper registers kind, handler and stored together, as the
+  features do.
