@@ -212,6 +212,9 @@ field that names a directive.
   or with both places, and no "Unknown directive '.ENDPROC'" any more.
 - A procedure inside a procedure is reported; no program has one.
 - `EXPORT .ENDPROC` is reported instead of leaving the procedure open.
+- `.REPEAT n STATEMENT` without an `.ENDREPEAT` gets the message for an open block, at the
+  `.REPEAT`, instead of the hint at the shorthand `STATEMENT^n`: the block is read before the
+  handler that gives the hint runs. With an `.ENDREPEAT` the hint stays.
 - The messages for an unclosed procedure change from ".PROC 'STEP' is not closed; expected
   .ENDPROC." to the form of the preprocessor, ".PROC opened at main.evo:3 is not closed before the
   end of the input".
@@ -228,6 +231,12 @@ field that names a directive.
   preprocessor, and the compilation stops after the phase, as it does for every error.
 - **The order of messages changes**: the structural errors of a block come before the errors of
   its content, because the structure is read first.
+- **Two closers in the wrong order**, `.IFDEF` … `.REPEAT` … `.ENDDEF` … `.ENDREPEAT`, give two
+  messages: the two places at the `.ENDDEF`, which ends the `.REPEAT` and closes the `.IFDEF`,
+  and "closes no open block" at the `.ENDREPEAT` the walk then reaches. Both are true, and the
+  second stands where the fix is made; rustc reports the same two.
+- **The tokens of a broken block stay in the stream**, unprocessed, and the walk goes on after
+  them. Nothing reads them: the compilation ends after the phase on the errors reported.
 - **Diagnostics tests** that expect the old recovery or the old `.PROC` text change in the step
   that changes the behaviour, each named in the implementation table.
 

@@ -184,7 +184,8 @@ public class Compiler implements ICompiler {
         PreProcessorContext ppContext = new PreProcessorContext(rootAliasChain, fileTokens, graph.lines(),
                 programName, mainFilePath, effectiveOptions);
         featureRegistry.preprocessorHandlers().forEach(ppContext.handlers()::register);
-        featureRegistry.preprocessorBlocks().forEach(ppContext.handlers()::registerBlock);
+        featureRegistry.preprocessorBlocks().forEach(block ->
+                ppContext.handlers().registerBlock(block.kind(), block.handler(), block.stored()));
         featureRegistry.preprocessorTopLevelOnly().forEach(ppContext.handlers()::registerTopLevelOnly);
         PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, resolver, ppContext);
         PreProcessorResult ppResult = preProcessor.expand();

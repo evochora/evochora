@@ -2,7 +2,7 @@ package org.evochora.compiler.features.macro;
 
 import org.evochora.compiler.ICompilerFeature;
 import org.evochora.compiler.IFeatureRegistrationContext;
-import org.evochora.compiler.frontend.preprocessor.BlockKind;
+import org.evochora.compiler.frontend.BlockKind;
 
 import java.util.Set;
 
@@ -22,7 +22,6 @@ public class MacroFeature implements ICompilerFeature {
 
     @Override
     public void register(IFeatureRegistrationContext ctx) {
-        ctx.preprocessorBlock(new BlockKind(Set.of(".MACRO"), ".ENDMACRO", Set.of(), true));
-        ctx.preprocessor(".MACRO", new MacroDirectiveHandler());
+        ctx.preprocessorBlock(new BlockKind(Set.of(".MACRO"), ".ENDMACRO", Set.of()), new MacroDirectiveHandler(), true);
     }
 }

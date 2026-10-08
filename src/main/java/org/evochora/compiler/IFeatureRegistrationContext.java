@@ -11,7 +11,8 @@ import org.evochora.compiler.frontend.module.IDependencyScanHandler;
 import org.evochora.compiler.frontend.semantics.IDependencySetupHandler;
 import org.evochora.compiler.frontend.parser.IParserStatementHandler;
 import org.evochora.compiler.frontend.postprocess.IPostProcessHandler;
-import org.evochora.compiler.frontend.preprocessor.BlockKind;
+import org.evochora.compiler.frontend.BlockKind;
+import org.evochora.compiler.frontend.preprocessor.IPreProcessorBlockHandler;
 import org.evochora.compiler.frontend.preprocessor.IPreProcessorHandler;
 import org.evochora.compiler.frontend.semantics.IAnalysisHandler;
 import org.evochora.compiler.frontend.semantics.ISymbolCollector;
@@ -92,15 +93,19 @@ public interface IFeatureRegistrationContext {
 	void preprocessor(String name, IPreProcessorHandler handler);
 
 	/**
-	 * Registers a kind of block for Phase 2: the directives that open, close and divide it, and
-	 * whether its body is stored for later or processed in place. The preprocessor matches the
-	 * blocks of every registered kind against each other when a handler reads a block, so that
-	 * blocks nest and never overlap, whichever feature they belong to. A word may belong to one
-	 * kind only.
+	 * Registers a kind of block for Phase 2 with the handler of its openers: the directives that
+	 * open, close and divide it, and whether its body is stored for later or processed in place.
+	 * The preprocessor reads a block of the kind before it calls the handler, matching the blocks
+	 * of every registered kind against each other, so that blocks nest and never overlap,
+	 * whichever feature they belong to. A word may belong to one kind only, and the closer and
+	 * the dividers have no handler.
 	 *
-	 * @param kind The block kind.
+	 * @param kind    The block kind.
+	 * @param handler The handler called for a whole block of the kind.
+	 * @param stored  Whether the body is stored for later rather than processed in place; a stored
+	 *                body may hold no directive registered as top level only.
 	 */
-	void preprocessorBlock(BlockKind kind);
+	void preprocessorBlock(BlockKind kind, IPreProcessorBlockHandler handler, boolean stored);
 
 	/**
 	 * Registers a directive that may stand only at the top level of the source for Phase 2: never

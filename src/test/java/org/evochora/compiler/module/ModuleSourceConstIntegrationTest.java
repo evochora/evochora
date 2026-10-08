@@ -35,7 +35,6 @@ import org.evochora.compiler.frontend.preprocessor.PreProcessor;
 import org.evochora.compiler.frontend.preprocessor.PreProcessorContext;
 import org.evochora.compiler.frontend.preprocessor.PreProcessorResult;
 import org.evochora.compiler.features.importdir.ImportSourceHandler;
-import org.evochora.compiler.features.macro.MacroDirectiveHandler;
 import org.evochora.compiler.features.source.SourceDirectiveHandler;
 import org.evochora.compiler.frontend.module.ModuleContextTracker;
 
@@ -344,7 +343,6 @@ class ModuleSourceConstIntegrationTest {
         // Phase 2: Preprocessing (with root alias chain for alias chain tracking)
         PreProcessorContext ppContext = new PreProcessorContext(rootAliasChain, fileTokens, mainPath, CompilerOptions.defaults());
         ppContext.handlers().register(".SOURCE", new SourceDirectiveHandler());
-        ppContext.handlers().register(".MACRO", new MacroDirectiveHandler());
         TestRegistries.registerPreProcessorBlocks(ppContext.handlers());
         ppContext.handlers().register(".POP_CTX", new PopCtxPreProcessorHandler());
         ppContext.handlers().register(".IMPORT", new ImportSourceHandler());

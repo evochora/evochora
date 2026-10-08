@@ -2,7 +2,7 @@ package org.evochora.compiler.features.repeat;
 
 import org.evochora.compiler.ICompilerFeature;
 import org.evochora.compiler.IFeatureRegistrationContext;
-import org.evochora.compiler.frontend.preprocessor.BlockKind;
+import org.evochora.compiler.frontend.BlockKind;
 
 import java.util.Set;
 
@@ -26,8 +26,7 @@ public class RepeatFeature implements ICompilerFeature {
     @Override
     public void register(IFeatureRegistrationContext ctx) {
         ctx.lexerSymbol("^");
-        ctx.preprocessorBlock(new BlockKind(Set.of(".REPEAT"), ".ENDREPEAT", Set.of(), true));
-        ctx.preprocessor(".REPEAT", new RepeatDirectiveHandler());
+        ctx.preprocessorBlock(new BlockKind(Set.of(".REPEAT"), ".ENDREPEAT", Set.of()), new RepeatDirectiveHandler(), true);
         ctx.preprocessor("^", new CaretDirectiveHandler());
     }
 }

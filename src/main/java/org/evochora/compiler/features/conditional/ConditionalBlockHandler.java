@@ -1,9 +1,9 @@
 package org.evochora.compiler.features.conditional;
 
-import org.evochora.compiler.frontend.preprocessor.BlockReader;
+import org.evochora.compiler.frontend.BlockReader;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.frontend.DirectiveLine;
-import org.evochora.compiler.frontend.preprocessor.IPreProcessorHandler;
+import org.evochora.compiler.frontend.preprocessor.IPreProcessorBlockHandler;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
 import org.evochora.compiler.frontend.preprocessor.PreProcessorContext;
 import org.evochora.compiler.model.token.Token;
@@ -17,8 +17,8 @@ import java.util.OptionalInt;
  * Handles a conditional block, {@code .IFDEF} or {@code .IFNDEF} up to its {@code .ENDDEF},
  * divided by {@code .ELSEIFDEF}, {@code .ELSEIFNDEF} and {@code .ELSEDEF}.
  * <p>
- * The block is read whole through {@link PreProcessor#readBlock(int)} before anything else, so
- * that a block whose head or dividers are malformed is removed and reported once. The conditions
+ * The preprocessor has read the extent of the block before this handler runs, so that a block
+ * whose heads or closer line are malformed is removed and reported once. The conditions
  * of the chain are evaluated in order against the {@link Flags} as they are when the walk reaches
  * the opener; the block is replaced by the lines of the first branch whose condition holds, or by
  * nothing, and the walk continues at the first of those lines. A nested block or a
@@ -30,18 +30,17 @@ import java.util.OptionalInt;
  * is not kept, and the state of every flag its heads name. A block removed for an error records
  * nothing, and neither does a block inside a branch that is not kept, which is never processed.
  */
-public class ConditionalBlockHandler implements IPreProcessorHandler {
+public class ConditionalBlockHandler implements IPreProcessorBlockHandler {
 
     private static final String ELSE = ".ELSEDEF";
 
     @Override
-    public void process(PreProcessor preProcessor, PreProcessorContext preProcessorContext) {
-        int start = preProcessor.getCurrentIndex();
+    public void process(PreProcessor preProcessor, PreProcessorContext preProcessorContext, BlockReader.Block block) {
+        int start = block.opener();
         Token opener = preProcessor.peek();
-        BlockReader.Block block = preProcessor.readBlock(start);
         Flags flags = Flags.inPreprocessor(preProcessor, preProcessorContext);
 
-        int closer = block.end() - 1;
+        int closer = block.closer();
         DirectiveLine closerLine = preProcessor.lineOf(closer);
         int blockEnd = closerLine.next();
 

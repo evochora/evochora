@@ -1,5 +1,7 @@
 package org.evochora.compiler.frontend.preprocessor;
 
+import org.evochora.compiler.frontend.BlockKind;
+
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.HashMap;
@@ -31,6 +33,8 @@ public class PreProcessorHandlerRegistry {
     private final Map<String, IPreProcessorHandler> shared = new HashMap<>();
     private final Deque<Map<String, IPreProcessorHandler>> moduleScopes = new ArrayDeque<>();
     private final Map<String, BlockKind> blockWords = new HashMap<>();
+    private final Map<String, IPreProcessorBlockHandler> blockHandlers = new HashMap<>();
+    private final Set<BlockKind> storedKinds = new HashSet<>();
     private final Set<String> topLevelOnly = new HashSet<>();
 
     /**
@@ -71,8 +75,11 @@ public class PreProcessorHandlerRegistry {
         put(moduleScopes.peek(), name, handler);
     }
 
-    private static void put(Map<String, IPreProcessorHandler> scope, String name, IPreProcessorHandler handler) {
-        String key = name.toUpperCase();
+    private void put(Map<String, IPreProcessorHandler> scope, String name, IPreProcessorHandler handler) {
+        String key = name.toUpperCase(Locale.ROOT);
+        if (blockWords.containsKey(key)) {
+            throw new IllegalStateException("'" + key + "' is a block word and takes no handler of its own");
+        }
         IPreProcessorHandler existing = scope.get(key);
         if (existing != null) {
             if (existing.equals(handler)) {
@@ -109,28 +116,73 @@ public class PreProcessorHandlerRegistry {
      * @return The handler, or empty if neither holds one for this name.
      */
     public Optional<IPreProcessorHandler> get(String name) {
-        String key = name.toUpperCase();
+        String key = name.toUpperCase(Locale.ROOT);
         IPreProcessorHandler local = moduleScopes.peek().get(key);
         return Optional.ofNullable(local != null ? local : shared.get(key));
     }
 
     /**
-     * Registers a kind of block. Registering an equal kind again is ignored.
+     * Registers a kind of block together with the handler of its openers and whether its body is
+     * stored for later rather than processed in place. The preprocessor reads a block of the
+     * kind before it calls the handler; the closer and the dividers have no handler, and no
+     * handler can be registered for them. Registering an equal kind with the same handler again
+     * is ignored.
      *
-     * @param kind The openers, closer and dividers of the block, and whether its body is stored.
-     * @throws IllegalStateException if one of its words already belongs to a different kind.
+     * @param kind    The openers, closer and dividers of the block.
+     * @param handler The handler called for a whole block of the kind.
+     * @param stored  Whether the body is stored for later; such a body may hold no directive
+     *                registered as top level only.
+     * @throws IllegalStateException if one of its words already belongs to a different kind or
+     *         has a handler of its own, or if the kind is registered with a different handler.
      */
-    public void registerBlock(BlockKind kind) {
+    public void registerBlock(BlockKind kind, IPreProcessorBlockHandler handler, boolean stored) {
         for (String word : kind.words()) {
             BlockKind existing = blockWords.get(word);
             if (existing != null && !existing.equals(kind)) {
                 throw new IllegalStateException(
                         "Block word '" + word + "' already belongs to the block closed by " + existing.closer());
             }
+            if (shared.containsKey(word)) {
+                throw new IllegalStateException("Block word '" + word + "' already has a handler of its own");
+            }
+        }
+        for (String opener : kind.openers()) {
+            IPreProcessorBlockHandler existing = blockHandlers.get(opener);
+            if (existing != null && !existing.equals(handler)) {
+                throw new IllegalStateException(
+                        "Block opened by '" + opener + "' is already registered with a different handler");
+            }
         }
         for (String word : kind.words()) {
             blockWords.put(word, kind);
         }
+        for (String opener : kind.openers()) {
+            blockHandlers.put(opener, handler);
+        }
+        if (stored) {
+            storedKinds.add(kind);
+        }
+    }
+
+    /**
+     * Returns the handler of the block a word opens.
+     *
+     * @param text The token text.
+     * @return The handler, or empty if the text opens no registered kind of block.
+     */
+    public Optional<IPreProcessorBlockHandler> blockHandlerOf(String text) {
+        return Optional.ofNullable(blockHandlers.get(text.toUpperCase(Locale.ROOT)));
+    }
+
+    /**
+     * Reports whether the block a word opens, closes or divides is stored for later.
+     *
+     * @param text The token text.
+     * @return {@code true} if the text belongs to a stored kind of block.
+     */
+    public boolean isStored(String text) {
+        BlockKind kind = blockWords.get(text.toUpperCase(Locale.ROOT));
+        return kind != null && storedKinds.contains(kind);
     }
 
     /**

@@ -1,4 +1,4 @@
-package org.evochora.compiler.frontend.preprocessor;
+package org.evochora.compiler.frontend;
 
 import java.util.Locale;
 import java.util.Set;
@@ -6,22 +6,18 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
- * A kind of block the preprocessor knows: the directives that open it, the one that closes it,
- * and the directives that divide it into parts. A feature registers the kind; the
- * {@link BlockReader} uses every registered kind to match the blocks of the stream, whatever
- * feature they belong to. All words are compared case-insensitively.
- * <p>
- * A <em>stored</em> block keeps its body for later and injects it elsewhere, once, many times
- * or never, as {@code .MACRO} and {@code .REPEAT} do; such a body may not hold a directive
- * registered as top level only. A block that is not stored is processed where it stands and may
- * hold anything.
+ * A kind of block a phase knows: the directives that open it, the one that closes it, and the
+ * directives that divide it into parts. A feature registers the kind with the phase the block
+ * belongs to, the preprocessor or the parser; the {@link BlockReader} of that phase uses every
+ * registered kind to match the blocks of its token list, whatever feature they belong to. All
+ * words are compared case-insensitively. What a phase does with a block of the kind, such as
+ * storing its body for later, is recorded by the phase's registry, not here.
  *
  * @param openers  The directives that open a block of this kind, at least one, e.g. {@code .MACRO}.
  * @param closer   The directive that closes it, e.g. {@code .ENDMACRO}.
  * @param dividers The directives that divide it, possibly none.
- * @param stored   Whether the body is stored for later rather than processed in place.
  */
-public record BlockKind(Set<String> openers, String closer, Set<String> dividers, boolean stored) {
+public record BlockKind(Set<String> openers, String closer, Set<String> dividers) {
 
     /**
      * Validates the words and keeps them upper-cased.
@@ -57,7 +53,7 @@ public record BlockKind(Set<String> openers, String closer, Set<String> dividers
      * @param text The word.
      * @return {@code true} if it is one of the openers.
      */
-    boolean isOpener(String text) {
+    public boolean isOpener(String text) {
         return openers.contains(text.toUpperCase(Locale.ROOT));
     }
 
@@ -67,7 +63,7 @@ public record BlockKind(Set<String> openers, String closer, Set<String> dividers
      * @param text The word.
      * @return {@code true} if it is the closer.
      */
-    boolean isCloser(String text) {
+    public boolean isCloser(String text) {
         return closer.equalsIgnoreCase(text);
     }
 
