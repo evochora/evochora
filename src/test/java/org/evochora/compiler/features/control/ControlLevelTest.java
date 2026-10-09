@@ -296,6 +296,39 @@ class ControlLevelTest {
         assertThat(((RegisterNode) argument).name()).isEqualTo("%FDR0");
     }
 
+    /**
+     * A register alias is the one name defined in pass 2, by the analysis handler of the
+     * directive, in the scope pass 2 stands in: inside a block it belongs to the block, is bound
+     * there, is unknown after the block, and a sibling block may define the same alias.
+     */
+    @Test
+    void aRegisterAliasDefinedInABlockBelongsToTheBlock() {
+        Analyzed analyzed = analyze(
+                ".CONTROL WALK",
+                "  .REG %TMP %DR1",
+                "  INCR %TMP",
+                ".ENDCONTROL",
+                ".CONTROL RUN",
+                "  .REG %TMP %DR2",
+                "  INCR %TMP",
+                ".ENDCONTROL",
+                "INCR %TMP");
+
+        assertThat(analyzed.errors()).containsExactly("9: Cannot use '%TMP' as an argument: the name is not defined.");
+        Analyzed inside = analyze(
+                ".CONTROL WALK",
+                "  .REG %TMP %DR1",
+                "  INCR %TMP",
+                ".ENDCONTROL",
+                ".CONTROL RUN",
+                "  .REG %TMP %DR2",
+                "  INCR %TMP",
+                ".ENDCONTROL");
+        assertThat(inside.errors()).isEmpty();
+        assertThat(((RegisterNode) inside.instructionAt(3).arguments().getFirst()).name()).isEqualTo("%DR1");
+        assertThat(((RegisterNode) inside.instructionAt(7).arguments().getFirst()).name()).isEqualTo("%DR2");
+    }
+
     private record Analyzed(List<AstNode> ast, DiagnosticsEngine diagnostics, Map<SourceInfo, TokenInfo> tokenMap) {
 
         /** The token-map entry of the token with the given text on the given source line. */
