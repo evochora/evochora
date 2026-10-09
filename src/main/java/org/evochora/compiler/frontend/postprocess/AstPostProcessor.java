@@ -42,7 +42,7 @@ public class AstPostProcessor implements IPostProcessContext {
      *
      * @param symbolTable    the symbol table for scope-aware identifier resolution
      * @param contextTracker tracks module context boundaries during traversal
-     * @param scopeTracker   tracks procedure scopes during traversal
+     * @param scopeTracker   tracks the levels nodes open during traversal
      * @param registry       dispatches to feature-specific post-process handlers
      */
     public AstPostProcessor(SymbolTable symbolTable, ModuleContextTracker contextTracker,

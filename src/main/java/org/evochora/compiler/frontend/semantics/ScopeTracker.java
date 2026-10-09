@@ -7,8 +7,8 @@ import org.evochora.compiler.model.symbols.SymbolTable;
  * Tracks SymbolTable scope during AST traversal using the node-to-scope mappings that the
  * symbol collector of a node that opens a level registers during semantic analysis.
  *
- * <p>When visiting an AST node that has a registered scope, such as a procedure or a control
- * block, the scope is entered before processing children and restored afterwards.
+ * <p>When visiting an AST node that has a registered scope, the scope is entered before
+ * processing children and restored afterwards.
  * This enables scope-sensitive symbol resolution during post-processing phases.</p>
  *
  * <p>The enter/leave pattern uses explicit saved-scope values rather than an internal

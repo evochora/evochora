@@ -23,7 +23,7 @@ import java.util.Optional;
  * A module-aware symbol table for managing scopes and symbols during semantic analysis.
  *
  * <p>Names are held by levels: the module level of every placement and, inside it, one scope
- * per node that opens a level, such as a procedure or a control block; levels nest. A lookup
+ * per node that opens a level; levels nest. A lookup
  * resolves a name in one of two ways:</p>
  * <ul>
  *   <li>A plain name is searched from the scope it is written in outward to the module level;

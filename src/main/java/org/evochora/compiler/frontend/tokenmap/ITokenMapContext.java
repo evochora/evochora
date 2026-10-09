@@ -38,7 +38,7 @@ public interface ITokenMapContext {
 
 	/**
 	 * Returns the name of the scope the visited node stands in: {@link org.evochora.compiler.api.TokenInfo#MODULE_LEVEL}
-	 * on the module level, otherwise the path of the procedure (e.g., "MAIN.INIT").
+	 * on the module level, otherwise the path of the level the node stands in (e.g., "MAIN.INIT").
 	 *
 	 * @return The current scope name for display and annotations.
 	 */
