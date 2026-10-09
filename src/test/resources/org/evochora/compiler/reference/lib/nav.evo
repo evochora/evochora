@@ -1,5 +1,5 @@
 # Module that hands a required dependency down to its own import and passes that import
-# back up with EXPORT, so the root reaches it as NAV.STEP.
+# back up with EXPORT, so the root reaches it as NAV.STEP, and that exports a control block.
 .REQUIRE "util.evo" AS ARITH
 EXPORT .IMPORT "lib/step.evo" AS STEP USING ARITH AS CALC
 
@@ -7,3 +7,15 @@ EXPORT .PROC PATROL REF X LREF L LVAL M
   CALL STEP.FORWARD REF X
   RET
 .ENDPROC
+
+# A loop on a row of its own, entered by an importer at its start or, through the exported
+# case, where the walk is blocked.
+.ORG 0|@+2
+EXPORT .CONTROL SCOUT                     # while the cell ahead is passable
+  INPI 1|0                                # not passable?
+    JMPI BLOCKED                          # then the walk is blocked
+  INCR %DR0; NOP^4                        # the body
+  JMPI SCOUT; NOP^4; JMPI SCOUT           # repeat
+EXPORT .CASE BLOCKED
+  SETI %DR0 DATA:0; NOP^4
+.ENDCONTROL

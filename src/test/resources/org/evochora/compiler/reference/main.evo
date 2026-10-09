@@ -9,7 +9,7 @@
 # constants, macros, both repeat forms and the caret shorthand, origin and direction
 # changes, every placement form, procedures with all four parameter kinds including a
 # procedure-local alias, calls across modules and through a passed-on import, a call and a
-# return guarded by a conditional, and a jump to a label of another module.
+# return guarded by a conditional, a jump to a label of another module, and control blocks.
 
 .IMPORT "lib/util.evo" AS UTIL
 .IMPORT "lib/nav.evo" AS NAV USING UTIL AS ARITH
@@ -77,3 +77,21 @@ RELATIVE_ROW:
   NOP^2
 .DIR @+1|0
   NOP^2
+
+# Control blocks on a row of their own below every other cell: a loop with a block nested in
+# its case, and the entry into a block another module exports, at its start and at a case.
+.DIR 1|0
+.ORG 0|80
+.CONTROL COUNTDOWN                        # while %COUNT is not zero
+  IFI %COUNT DATA:0                       # zero?
+    JMPI END                              # then the loop ends
+  JMPI BODY; NOP^4; JMPI BODY
+.CASE BODY
+  DECR %COUNT; NOP^4                      # the body
+  .CONTROL CHECK                          # nested: leaves the outer loop
+    IFI %VALUE LIMIT                      # at the limit?
+      JMPI COUNTDOWN.END                  # then the outer loop ends
+  .ENDCONTROL
+  JMPI COUNTDOWN; NOP^4; JMPI COUNTDOWN   # repeat
+.ENDCONTROL
+  JMPI NAV.SCOUT; NOP^4; JMPI NAV.SCOUT.BLOCKED
