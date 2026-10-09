@@ -46,10 +46,9 @@ import java.util.Optional;
  * <p>For single-file compilations, the table operates with a single default module, so a
  * caller that never imports anything need not name a module at all.</p>
  *
- * <p>The table enforces two rules on names itself, whatever they name: a name is one segment, so
- * a definition whose name contains a dot is reported when it is defined; and a name that a scope
- * enclosing the definition already holds is reported when the table freezes, once all
- * definitions of both passes are in.</p>
+ * <p>The table enforces one rule on names itself, whatever they name: a name is one segment, so
+ * a definition whose name contains a dot is reported when it is defined. A name may repeat a
+ * name of an enclosing level; inside the level that defines it, the inner one is meant.</p>
  */
 public class SymbolTable {
 
