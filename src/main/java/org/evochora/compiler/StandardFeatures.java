@@ -1,6 +1,7 @@
 package org.evochora.compiler;
 
 import org.evochora.compiler.features.conditional.ConditionalFeature;
+import org.evochora.compiler.features.control.ControlFeature;
 import org.evochora.compiler.features.ctx.CtxFeature;
 import org.evochora.compiler.features.constdir.ConstFeature;
 import org.evochora.compiler.features.dir.DirFeature;
@@ -52,6 +53,7 @@ public final class StandardFeatures {
             new RequireFeature(),
             new ImportFeature(),
             new ProcFeature(),
+            new ControlFeature(),
             new InstructionFeature()
         );
     }

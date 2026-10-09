@@ -213,3 +213,51 @@ per procedure that says what it does, what it assumes and what it leaves behind;
 aliases named for their role in each phase; sections introduced by a comment that names their
 purpose; and a comment at the end of every line that says what the instruction is for, aligned
 in a column. The name a module is imported under must not be the mnemonic of an instruction.
+
+### Control blocks
+
+A decision or a loop written with invented labels makes the reader reconstruct the structure
+from the names. A control block names the structure instead: `.CONTROL NAME` is its start,
+`.CASE NAME` a place inside it, `END` its end, and every jump says in those terms where it goes.
+The block adds no instruction, so the padding and the redundant jumps stay where the program
+puts them; a jump guarded by a conditional stays single, because a second copy behind it would
+run when the first was skipped. If / then / elseif / else: the head tests the first condition,
+every further condition stands in a case of its own before the case it guards, and every part
+that is not the last leaves the block:
+
+```
+.CONTROL ENERGY                           # if / elseif / else
+  NRG %ER; NOP^4                          # read the energy
+  LTI %ER DATA:1000                       # if starving
+    JMPI STARVING; NOP^4
+  JMPI TEST_RICH; NOP^4; JMPI TEST_RICH   # else go on testing
+.CASE STARVING                            # then
+  CALL HARVEST; NOP^4
+  JMPI END; NOP^4; JMPI END               # endif
+.CASE TEST_RICH                           # elseif rich
+  GTI %ER DATA:50000
+    JMPI RICH; NOP^4
+  JMPI NORMAL; NOP^4; JMPI NORMAL         # else
+.CASE RICH                                # then
+  CALL REPRODUCE; NOP^4
+  JMPI END; NOP^4; JMPI END               # endif
+.CASE NORMAL                              # else
+  CALL STEP; NOP^4
+.ENDCONTROL                               # endif
+```
+
+A loop is a block that jumps to its own name; `JMPI END` anywhere in it is the break, the jump
+to the name the continue, and from a block nested inside it `JMPI WALK.END` leaves the outer
+loop. A case that begins a row of its own has its `.ORG` before the `.CASE`:
+
+```
+.CONTROL WALK                             # while the cell ahead is passable
+  INPR %DIR                               # not passable?
+    JMPI BLOCKED; NOP^4                   # then decide what to do about it
+  SEEK %DIR; NOP^4                        # the body
+  JMPI WALK; NOP^4; JMPI WALK             # repeat
+  .ORG 0|@+2
+.CASE BLOCKED                             # the way is blocked
+  CALL ABANDON; NOP^4                     # a defensive program stops here
+.ENDCONTROL
+```

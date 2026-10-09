@@ -23,7 +23,8 @@ import java.util.Optional;
  * A module-aware symbol table for managing scopes and symbols during semantic analysis.
  *
  * <p>Names are held by levels: the module level of every placement and, inside it, one scope
- * per procedure. A lookup resolves a name in one of two ways:</p>
+ * per node that opens a level; levels nest. A lookup
+ * resolves a name in one of two ways:</p>
  * <ul>
  *   <li>A plain name is searched from the scope it is written in outward to the module level;
  *       the innermost scope that holds it wins. A level sees its own names and those of every
@@ -46,15 +47,14 @@ import java.util.Optional;
  * <p>For single-file compilations, the table operates with a single default module, so a
  * caller that never imports anything need not name a module at all.</p>
  *
- * <p>The table enforces two rules on names itself, whatever they name: a name is one segment, so
- * a definition whose name contains a dot is reported when it is defined; and a name that a scope
- * enclosing the definition already holds is reported when the table freezes, once all
- * definitions of both passes are in.</p>
+ * <p>The table enforces one rule on names itself, whatever they name: a name is one segment, so
+ * a definition whose name contains a dot is reported when it is defined. A name may repeat a
+ * name of an enclosing level; inside the level that defines it, the inner one is meant.</p>
  */
 public class SymbolTable {
 
     /**
-     * Represents a single scope in the symbol table (procedure-local or module-global).
+     * Represents a single scope in the symbol table: the module level, or a level a node opened.
      * The root scope, the module level of every placement, has the empty name {@link TokenInfo#MODULE_LEVEL};
      * every other scope is named by its path: the alias chain of the module it was opened in and
      * the segments of the scopes from the module level inward, joined by dots (e.g., "MAIN.INIT").
@@ -77,7 +77,7 @@ public class SymbolTable {
          * Names carry no identity — scopes are compared by reference.
          *
          * @return the scope name, {@link TokenInfo#MODULE_LEVEL} for the root scope or the path of
-         *         a procedure, e.g. "MAIN.INIT"
+         *         the level, e.g. "MAIN.INIT" for a procedure INIT of module MAIN
          */
         public String name() {
             return name;
@@ -88,11 +88,11 @@ public class SymbolTable {
     private final Map<String, ModuleScope> modules = new HashMap<>();
     private String currentAliasChain;
 
-    // --- Procedure-local scope hierarchy (within the current module) ---
+    // --- Scope hierarchy of the levels nodes open (within the current module) ---
     private final Scope rootScope;
     private Scope currentScope;
 
-    // --- Node-to-scope mapping (populated by ProcedureSymbolCollector, consumed by TokenMapGenerator) ---
+    // --- Node-to-scope mapping (populated by the symbol collector of a node that opens a level, consumed by TokenMapGenerator) ---
     // Keyed by node identity: AST nodes are records, so two structurally equal nodes would
     // otherwise share one entry and therefore one scope.
     private final Map<AstNode, Scope> nodeScopeMap = new IdentityHashMap<>();
@@ -251,8 +251,8 @@ public class SymbolTable {
     }
 
     /**
-     * Associates an AST node with its scope. Called by ProcedureSymbolCollector as it walks
-     * the AST and discovers the procedures that open a scope.
+     * Associates an AST node with its scope. Called by the symbol collector of a node that opens a
+     * level, as pass 1 walks the AST and reaches the node.
      *
      * @param node the AST node that opens the scope, used as the lookup key by identity
      * @param scope the scope traversal should enter when it reaches that node
@@ -310,7 +310,7 @@ public class SymbolTable {
             file = modScope.aliasChain();
         }
 
-        // Register in the scope hierarchy (for procedure-local visibility)
+        // Register in the scope hierarchy (for visibility on the level it is defined on)
         Map<String, Symbol> perFile = currentScope.symbols.computeIfAbsent(name, k -> new LinkedHashMap<>());
         Symbol existing = perFile.putIfAbsent(file, symbol);
         if (existing != null) {

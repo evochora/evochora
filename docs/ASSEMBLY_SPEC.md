@@ -699,7 +699,7 @@ Both syntaxes produce identical results—the shorthand is transformed into `.RE
 
 ### Blocks
 
-`.MACRO` … `.ENDMACRO`, `.REPEAT` … `.ENDREPEAT`, the conditional blocks and `.PROC` … `.ENDPROC` are blocks. A block may contain other blocks, but two blocks never overlap: an end directive always closes the block that was opened last. `.MACRO`, `.REPEAT` and the conditional blocks close in the file they were opened in; a `.PROC` may be opened by one macro and closed by another.
+`.MACRO` … `.ENDMACRO`, `.REPEAT` … `.ENDREPEAT`, the conditional blocks, `.PROC` … `.ENDPROC` and `.CONTROL` … `.ENDCONTROL` are blocks. A block may contain other blocks, but two blocks never overlap: an end directive always closes the block that was opened last. `.MACRO`, `.REPEAT` and the conditional blocks close in the file they were opened in; a `.PROC` or a `.CONTROL` may be opened by one macro and closed by another.
 
 ```
 .MACRO PAD
@@ -887,6 +887,32 @@ START:
 ```
 
 ---
+
+### Control Blocks
+
+What other languages write as `if … else`, `switch`, `while` or `for` is written in a control block: a named stretch of code whose branches and whose end carry names the block provides, so that the conditionals and jumps inside it say in those names where the program goes. The block adds no instruction: what runs is exactly what stands between its directives.
+
+#### `.CONTROL`
+
+* **Syntax**: `[EXPORT] .CONTROL <Block> / [EXPORT] .CASE <Case> ... / [EXPORT] .ENDCONTROL`
+* **Effect**: Opens a block. The code up to the first `.CASE` is the head, where the conditions are tested; every `.CASE <Case>` begins a branch; `END` is the place behind the `.ENDCONTROL`. A conditional followed by `JMPI <Case>` is the `if` that enters a branch, `JMPI END` ends a branch or breaks out of a loop, `JMPI <Block>` is the `continue`: a block that jumps to its own name is a loop, a block whose head tests one value against several cases is a `switch`, a block whose cases hold the alternatives is an `if … elseif … else`.
+    - What does not jump runs on: from the head into the first case, from one case into the next, from the last case out of the block. The compiler adds no instruction and checks no jump.
+    - `<Block>`, `<Case>` and `END` are labels: `<Block>` on the level around the block, the others on the block's own level, meant inside by their plain names and from a block nested inside as `<Block>.<Case>` and `<Block>.END`. From outside the block a case or the end is reached only with `EXPORT` on it, from another module as `LIB.<Block>.<Case>` (see *Exported Labels*). Names defined inside the block belong to it, as inside a procedure; `END` is taken, and `.PROC`, `.IMPORT` and `.REQUIRE` do not stand inside a block.
+    - A case that begins a row of its own has its `.ORG` before the `.CASE`.
+    - **Example**:
+      ```
+      .CONTROL ENERGY                    # if starving … else …
+        NRG %DR0                         # read the energy
+        LTI %DR0 DATA:1000               # starving?
+          JMPI STARVING                  # then
+        JMPI NORMAL                      # else
+      .CASE STARVING
+        CALL HARVEST                     # a starving organism gathers energy
+        JMPI END                         # endif
+      .CASE NORMAL
+        CALL EXPLORE                     # otherwise it moves on
+      .ENDCONTROL                        # endif: END stands here
+      ```
 
 ## 8. Examples
 

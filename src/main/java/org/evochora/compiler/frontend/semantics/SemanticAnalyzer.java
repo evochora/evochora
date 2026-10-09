@@ -30,6 +30,7 @@ public class SemanticAnalyzer {
     private final AnalysisHandlerRegistry registry;
     private final ModuleSetupRegistry setupRegistry;
     private final ModuleContextTracker contextTracker;
+    private final ScopeTracker scopeTracker;
 
     /**
      * Constructs a semantic analyzer with an externally built analysis registry. Nothing is
@@ -51,6 +52,7 @@ public class SemanticAnalyzer {
         this.graph = graph;
         this.rootAliasChain = rootAliasChain;
         this.contextTracker = new ModuleContextTracker(symbolTable);
+        this.scopeTracker = new ScopeTracker(symbolTable);
         this.registry = registry;
         this.setupRegistry = setupRegistry;
     }
@@ -108,14 +110,22 @@ public class SemanticAnalyzer {
         }
     }
 
+    /**
+     * Walks the nodes in text order and runs the registered handler of each. A node that opened a
+     * level in pass 1 has that level registered as its scope; the {@link ScopeTracker} enters it
+     * before the node's handler and children and restores the enclosing scope afterwards, so that
+     * the names inside the level resolve from the level, whatever feature opened it.
+     */
     private void traverseAndAnalyze(List<AstNode> nodes) {
         for (AstNode node : nodes) {
             if (node == null) continue;
             switchModuleContext(node);
+            SymbolTable.Scope saved = scopeTracker.enterNode(node);
             Optional<IAnalysisHandler> handler = registry.resolveHandler(node.getClass());
             handler.ifPresent(h -> h.analyze(node, symbolTable, diagnostics));
             traverseAndAnalyze(node.getChildren());
             handler.ifPresent(h -> h.afterChildren(node, symbolTable, diagnostics));
+            scopeTracker.leaveNode(saved);
         }
     }
 
