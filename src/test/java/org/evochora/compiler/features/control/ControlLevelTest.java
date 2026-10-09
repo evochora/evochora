@@ -1,6 +1,9 @@
 package org.evochora.compiler.features.control;
 
 import org.evochora.compiler.FeatureRegistry;
+import org.evochora.compiler.api.SourceInfo;
+import org.evochora.compiler.api.TokenInfo;
+import org.evochora.compiler.api.TokenKind;
 import org.evochora.compiler.StandardFeatures;
 import org.evochora.compiler.TestLexers;
 import org.evochora.compiler.TestRegistries;
@@ -14,10 +17,13 @@ import org.evochora.compiler.frontend.postprocess.AstPostProcessor;
 import org.evochora.compiler.frontend.semantics.ModuleSetupRegistry;
 import org.evochora.compiler.frontend.semantics.ScopeTracker;
 import org.evochora.compiler.frontend.semantics.SemanticAnalyzer;
+import org.evochora.compiler.frontend.tokenmap.TokenMapContributorRegistry;
+import org.evochora.compiler.frontend.tokenmap.TokenMapGenerator;
 import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.IdentifierNode;
 import org.evochora.compiler.model.ast.InstructionNode;
+import org.evochora.compiler.model.ast.RegisterNode;
 import org.evochora.compiler.model.ast.TypedLiteralNode;
 import org.evochora.compiler.model.symbols.SymbolTable;
 import org.evochora.compiler.model.token.Token;
@@ -28,6 +34,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -264,7 +271,43 @@ class ControlLevelTest {
      *                    reported an error and post-processing did not run.
      * @param diagnostics What the phases reported.
      */
-    private record Analyzed(List<AstNode> ast, DiagnosticsEngine diagnostics) {
+    /**
+     * A parameter written inside a control block of its procedure: the token map files it under
+     * the procedure, the level that defines it, not under the block, which is what the visualizer
+     * keys its parameter names by; and the post-processing binds it to the formal register as it
+     * does outside the block.
+     */
+    @Test
+    void aParameterUsedInsideABlockOfItsProcedureIsFiledUnderTheProcedureAndBoundToItsRegister() {
+        Analyzed analyzed = analyze(
+                ".PROC P REF X",
+                "  .CONTROL WALK",
+                "    ADDI X DATA:1",
+                "  .ENDCONTROL",
+                "  RET",
+                ".ENDPROC");
+
+        assertThat(analyzed.errors()).isEmpty();
+        TokenInfo x = analyzed.tokenAt(3, "X");
+        assertThat(x.tokenType()).isEqualTo(TokenKind.PARAMETER);
+        assertThat(x.scope()).isEqualTo("P");
+        AstNode argument = analyzed.instructionAt(3).arguments().get(0);
+        assertThat(argument).isInstanceOf(RegisterNode.class);
+        assertThat(((RegisterNode) argument).name()).isEqualTo("%FDR0");
+    }
+
+    private record Analyzed(List<AstNode> ast, DiagnosticsEngine diagnostics, Map<SourceInfo, TokenInfo> tokenMap) {
+
+        /** The token-map entry of the token with the given text on the given source line. */
+        TokenInfo tokenAt(int line, String text) {
+            return tokenMap.entrySet().stream()
+                    .filter(e -> e.getKey().lineNumber() == line && e.getValue().tokenText().equals(text))
+                    .map(Map.Entry::getValue)
+                    .reduce((first, second) -> {
+                        throw new AssertionError("More than one token '" + text + "' on line " + line);
+                    })
+                    .orElseThrow(() -> new AssertionError("No token '" + text + "' on line " + line));
+        }
 
         /** The errors, each as {@code line: message}. */
         List<String> errors() {
@@ -305,8 +348,8 @@ class ControlLevelTest {
 
     /**
      * Runs the lines, as the file {@code main.evo}, through the lexer, the parser, the semantic
-     * analysis and, if the analysis reported no error, the AST post-processing, with the handlers
-     * of the standard features registered as the compiler registers them.
+     * analysis and, if the analysis reported no error, the token map and the AST post-processing,
+     * with the handlers of the standard features registered as the compiler registers them.
      */
     private static Analyzed analyze(String... lines) {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
@@ -325,10 +368,14 @@ class ControlLevelTest {
                 TestRegistries.analysisRegistry(symbolTable, diagnostics), new ModuleSetupRegistry())
                 .analyze(ast);
         if (diagnostics.hasErrors()) {
-            return new Analyzed(ast, diagnostics);
+            return new Analyzed(ast, diagnostics, Map.of());
         }
+        TokenMapContributorRegistry tokenMapRegistry = new TokenMapContributorRegistry();
+        tokenMapRegistry.registerAll(features.tokenMapContributors());
+        Map<SourceInfo, TokenInfo> tokenMap = new TokenMapGenerator(symbolTable, diagnostics, tokenMapRegistry,
+                new ModuleContextTracker(symbolTable)).generateAll(ast);
         AstPostProcessor postProcessor = new AstPostProcessor(symbolTable, new ModuleContextTracker(symbolTable),
                 new ScopeTracker(symbolTable), TestRegistries.postProcessRegistry());
-        return new Analyzed(postProcessor.process(ast), diagnostics);
+        return new Analyzed(postProcessor.process(ast), diagnostics, tokenMap);
     }
 }
