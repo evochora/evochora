@@ -1173,6 +1173,11 @@ public abstract class Instruction {
      * planned, because it still has something to decide: a conditional whose test cannot be
      * evaluated decides that the test does not hold.
      * <p>
+     * The declaration binds the instruction's {@code execute}: it runs with the failure already
+     * booked and the first reason kept, every operand in its list can be {@link Operand#MISSING}
+     * and has to be checked before it is read, and the failure stays booked afterwards, with its
+     * penalty. What the instruction decides on a failure is its own rule to state and to keep.
+     * <p>
      * <b>Thread safety:</b> Must only be called during single-threaded initialization ({@link #init()}).
      *
      * @param name the mnemonic of an instruction that is already registered
