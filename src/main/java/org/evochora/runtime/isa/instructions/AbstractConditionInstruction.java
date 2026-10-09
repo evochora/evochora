@@ -100,6 +100,26 @@ public abstract class AbstractConditionInstruction extends Instruction {
     }
 
     /**
+     * Checks, while a pair registers, that its operands are those of its condition and whatever
+     * the kind of conditional takes after them: a mismatch is a defect of the registration and
+     * ends it here, so that no instruction ever runs with operands its condition cannot read.
+     *
+     * @param condition      the condition the pair tests
+     * @param afterCondition how many operands the kind of conditional takes after the condition's
+     * @param name           the name of the positive opcode, for the message
+     * @param sources        the operand sources the pair registers with
+     * @throws IllegalStateException if the number of sources is not the number the pair needs
+     */
+    protected static void requireOperandCount(Condition condition, int afterCondition, String name,
+                                              OperandSource... sources) {
+        int needed = condition.operandCount() + afterCondition;
+        if (sources.length != needed) {
+            throw new IllegalStateException(name + " registers " + sources.length + " operands, "
+                    + condition + " needs " + needed);
+        }
+    }
+
+    /**
      * Returns the opcode that holds exactly when the given one does not, of the same kind and with
      * the same operands.
      *
@@ -129,13 +149,6 @@ public abstract class AbstractConditionInstruction extends Instruction {
      */
     protected abstract void act(boolean holds, List<Operand> operands, Environment environment);
 
-    /**
-     * Returns how many operands the instruction takes beyond those of its condition.
-     *
-     * @return the number of operands that follow the condition's
-     */
-    protected abstract int operandsAfterCondition();
-
     @Override
     public final void execute(ExecutionContext context) {
         Organism organism = context.getOrganism();
@@ -144,9 +157,6 @@ public abstract class AbstractConditionInstruction extends Instruction {
         Condition condition = test.condition();
 
         List<Operand> operands = resolveOperands(environment);
-        if (operands.size() != condition.operandCount() + operandsAfterCondition()) {
-            organism.instructionFailed("Invalid operand count for " + getName());
-        }
         // A test that cannot be evaluated does not hold: a failure booked while the instruction
         // was planned leaves the test unevaluated, and one booked by the test itself overrides
         // what it returned.
@@ -160,7 +170,8 @@ public abstract class AbstractConditionInstruction extends Instruction {
      * Evaluates a condition in its positive form.
      *
      * @param condition   the condition
-     * @param operands    the operands, those of the condition first, their count already checked
+     * @param operands    the operands, those of the condition first; their count is that of the
+     *                    registered sources, which the registration checked against the condition
      * @param organism    the organism the instruction runs for
      * @param environment the environment the instruction runs in
      * @return whether the condition holds; meaningless if the test has marked the instruction

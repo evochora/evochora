@@ -91,6 +91,8 @@ public class ConditionalJumpInstruction extends AbstractConditionInstruction {
      */
     private static void regPair(Condition condition, int op, int negatedOp, int index, int negatedIndex,
                                 String name, String negatedName, OperandSource... sources) {
+        // The label after the condition's operands
+        requireOperandCount(condition, 1, name, sources);
         regPair(ConditionalJumpInstruction.class, ConditionalJumpInstruction::new, family, condition,
                 op, negatedOp, index, negatedIndex, name, negatedName, sources);
         declareLabelIsJumpTarget(name);
@@ -104,11 +106,6 @@ public class ConditionalJumpInstruction extends AbstractConditionInstruction {
      */
     public ConditionalJumpInstruction(Organism organism, int fullOpcodeId) {
         super(organism, fullOpcodeId);
-    }
-
-    @Override
-    protected int operandsAfterCondition() {
-        return 1;
     }
 
     @Override
