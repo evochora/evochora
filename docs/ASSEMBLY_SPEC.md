@@ -428,6 +428,8 @@ A conditional instruction tests a condition and acts on the result. Every condit
 * A **conditional skip** runs on with the next instruction if the condition holds, and skips the next instruction if it does not. The skipped instruction costs no tick.
 * A **conditional jump** jumps to its label if the condition holds, and runs on with the next instruction if it does not. It takes the operands of its skip followed by a label, found by fuzzy label matching only when the condition holds; without a matching label it fails as `JMPI` does. `JFI %DR0 DATA:10 L` does what `IFI %DR0 DATA:10` followed by `JMPI L` does.
 
+A condition that cannot be tested does not hold, and its negation holds: an operand that names no register, a stack without a value for it, an argument cell beyond the edge of a bounded world, a cell test without a vector. The instruction fails as any instruction fails, with the error penalty and a reason, and decides in addition: `IFI` skips, `INI` runs on, `JFI` stays, `JNI` jumps. Of a conditional and its negation exactly one acts, whatever the operands hold. 
+
 The lists below name each condition by its skips; the jumps are given beside them.
 
 #### Value comparisons

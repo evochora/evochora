@@ -3,6 +3,8 @@ package org.evochora.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.isa.instructions.ConditionalJumpInstruction;
+import org.evochora.runtime.isa.instructions.ConditionalSkipInstruction;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
@@ -13,7 +15,8 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 /**
- * Tests for {@link VirtualMachine}, focusing on the {@code peekNextInstruction} method.
+ * Tests for {@link VirtualMachine}: the {@code peekNextInstruction} method, and which failed
+ * instructions it executes.
  */
 @Tag("unit")
 class VirtualMachineTest {
@@ -119,5 +122,49 @@ class VirtualMachineTest {
         assertThat(data).isNotNull();
         assertThat(data.registerValuesBefore()).containsKey(0);
         assertThat(data.registerValuesBefore().get(0)).isEqualTo(777);
+    }
+
+    // ==================== Execution of an instruction that failed while planned ====================
+
+    /**
+     * The instructions that are executed although they failed while they were planned are the
+     * conditionals, exactly: a conditional and its negation decide "does not hold" and "holds"
+     * on a test that cannot be evaluated, and no other instruction has anything to decide.
+     */
+    @Test
+    void exactlyTheConditionalsDecideOnFailure() {
+        for (var entry : Instruction.getAllInstructions().entrySet()) {
+            Class<? extends Instruction> kind = Instruction.getInstructionClassById(entry.getKey());
+            boolean conditional = kind == ConditionalSkipInstruction.class || kind == ConditionalJumpInstruction.class;
+            assertThat(Instruction.decidesOnFailure(entry.getKey()))
+                    .as("%s decides on failure", entry.getValue())
+                    .isEqualTo(conditional);
+        }
+        assertThat(Instruction.decidesOnFailure(-1)).isFalse();
+        assertThat(Instruction.decidesOnFailure(0x3FFFF)).isFalse();
+    }
+
+    /**
+     * An instruction that is no conditional and failed while it was planned is not executed: a
+     * SETI whose register operand names no register writes nothing, and pays for the failure.
+     */
+    @Test
+    void aFailedInstructionThatDecidesNothingIsNotExecuted() {
+        Organism org = Organism.create(sim, new int[]{10, 10}, 1000);
+        sim.addOrganism(org);
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 7).toInt());
+        int setiOpcode = Instruction.getInstructionIdByName("SETI");
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, setiOpcode), org.getIp());
+        int[] argPos1 = org.getNextInstructionPosition(org.getIp(), org.getDv(), environment);
+        environment.setMolecule(new Molecule(Config.TYPE_DATA, -1), argPos1);
+        int[] argPos2 = org.getNextInstructionPosition(argPos1, org.getDv(), environment);
+        environment.setMolecule(new Molecule(Config.TYPE_DATA, 42), argPos2);
+        int penalty = sim.getOrganismConfig().getInt("error-penalty-cost");
+
+        sim.tick();
+
+        assertThat(org.getFailureReason()).isEqualTo("Invalid register ID: -1");
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 7).toInt());
+        assertThat(org.getEr()).isStrictlyBetween(1000 - 2 * penalty, 1000 - penalty + 1);
     }
 }

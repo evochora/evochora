@@ -41,6 +41,10 @@ session an iteration.
   `JN*`, `JLT*`, ..., `Q*` for the probabilistic ones) jumps to its label when its condition is
   met and runs on otherwise; it fails like `JMPI` when it finds no label. Where more than one
   instruction depends on a condition, use a conditional jump, or a `JMPI` behind a skip.
+- A condition that cannot be tested (an empty stack, an operand that names no register, an
+  argument cell beyond the edge, a cell test without a vector) is not met, and its negation is:
+  `IFI` skips, `INI` runs on, `JFI` stays, `JNI` jumps, with the failure and its penalty booked
+  all the same. Of a conditional and its negation exactly one acts.
 - Equality (`IF*`, `IN*`) compares the molecule, type and value: `CODE:0` is unequal to
   `STRUCTURE:0`. Order (`GT*`, `LT*`, `GET*`, `LET*`, `PGT*`, ...) compares the numbers alone,
   whatever the types: `ENERGY:5` is greater than `DATA:3`. A test that must be sure of the type
@@ -163,8 +167,8 @@ or the documentation would have helped in this session, concrete and from this s
   `STRUCTURE:5` passes as greater than zero. `INTI %TMP ENERGY:0` asks the type.
 - Four calls that copy a frame beside each edge resolved the same corner label to a copy's
   corner once copies existed; the driver resolves the corners into location registers first.
-- `cond_met` is empty for a conditional that failed, where `fail_reason` tells why, and for a
-  conditional jump with a label between it and the next instruction, whose decision the next step
-  cannot show.
+- `cond_met` is empty for a conditional that failed, where `fail_reason` tells why and the
+  decision is "not met", and for a conditional jump with a label between it and the next
+  instruction, whose decision the next step cannot show.
 - Trace outputs belong in the session's scratchpad; the recorder's own README says what it
   writes and what it removes.

@@ -157,10 +157,12 @@ public class VirtualMachine {
             // instruction pointer is held so the write is retried next tick.
             organism.instructionFailed(LOST_WRITE_CONFLICT);
             organism.setSkipIpAdvance(true);
-        } else if (!organism.isInstructionFailed()) {
+        } else if (!organism.isInstructionFailed() || Instruction.decidesOnFailure(instruction.getFullOpcodeId())) {
             // An instruction that failed while it was planned - an argument that names no
-            // register, an argument cell beyond the edge of a bounded world - is not executed:
-            // its operands are not what its code says, and it pays for the failure below.
+            // register, a stack without a value for it, an argument cell beyond the edge of a
+            // bounded world - is not executed: its operands are not what its code says, and it
+            // pays for the failure below. A conditional is the exception it declared: its test
+            // that cannot be evaluated does not hold, and it acts on that.
             //
             // Whatever the execution throws is a defect in the runtime, never the organism's
             // doing: an organism's failure is always booked through instructionFailed and never

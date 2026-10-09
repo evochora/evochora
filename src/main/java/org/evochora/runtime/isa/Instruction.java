@@ -3,6 +3,7 @@
 package org.evochora.runtime.isa;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -91,9 +92,11 @@ public abstract class Instruction {
         /**
          * A value taken from the organism's data stack, topmost first. Occupies no argument slot,
          * so it does not lengthen the instruction, and carries no raw source ID. Operand resolution
-         * only peeks; the matching pops happen later, and only for an instruction that is really
-         * executed. If the stack holds fewer values than the instruction consumes, resolution
-         * yields no operands at all rather than a short list.
+         * only peeks; the matching pops happen later, for every instruction the tick processes
+         * except one that lost its write conflict. If the stack holds fewer values than the
+         * instruction consumes, the instruction fails while it is planned, every operand without
+         * a value is {@link Operand#MISSING}, and the values that are there are consumed all the
+         * same.
          */
         STACK,
         /**
@@ -134,10 +137,41 @@ public abstract class Instruction {
 
     /**
      * Represents a resolved operand, containing its value and raw source ID.
+     * <p>
+     * An operand that could not be read is {@link #MISSING}: the stack held no value for it, or
+     * its argument cells lie beyond the edge of a bounded world. Such an operand only ever comes
+     * with the instruction marked failed, and it stands at the place of the operand it replaces,
+     * so the list has one entry per operand either way.
+     *
      * @param value The resolved value of the operand.
      * @param rawSourceId The raw source ID (e.g., register number).
      */
-    public record Operand(Object value, int rawSourceId) {}
+    public record Operand(Object value, int rawSourceId) {
+
+        /**
+         * The value of {@link #MISSING}: an object no resolution produces, so that no operand
+         * read from the organism or the world is equal to the missing one.
+         */
+        private static final Object NO_VALUE = new Object() {
+            @Override
+            public String toString() {
+                return "MISSING";
+            }
+        };
+
+        /** The operand that could not be read; see {@link #isMissing()}. */
+        public static final Operand MISSING = new Operand(NO_VALUE, -1);
+
+        /**
+         * Tells whether this is the operand that could not be read. It is the one instance
+         * {@link #MISSING}, and no other operand is equal to it.
+         *
+         * @return {@code true} for {@link #MISSING}
+         */
+        public boolean isMissing() {
+            return this == MISSING;
+        }
+    }
 
     // Runtime Registries (HashMaps for cold-path usage: registration, introspection, mutation plugins)
     private static final Map<Integer, Class<? extends Instruction>> REGISTERED_INSTRUCTIONS_BY_ID = new HashMap<>();
@@ -186,6 +220,13 @@ public abstract class Instruction {
      * data pointer. Declared and read like {@link #NEVER_FALLS_THROUGH}.
      */
     private static final IntOpenHashSet LABEL_IS_JUMP_TARGET = new IntOpenHashSet();
+    /**
+     * The opcodes that are executed although they failed while they were planned, because they
+     * still decide something: the conditionals, whose test that cannot be evaluated does not hold.
+     * Declared like {@link #NEVER_FALLS_THROUGH}; the virtual machine reads the array registry
+     * built from it.
+     */
+    private static final IntOpenHashSet DECIDES_ON_FAILURE = new IntOpenHashSet();
     /**
      * The class that holds each family, keyed by family ID. A family is the class that registers its
      * instructions, so each family belongs to exactly one class and each class to exactly one
@@ -239,6 +280,7 @@ public abstract class Instruction {
     private static int[] INSTRUCTION_LENGTHS_BASE = new int[0];
     private static int[] INSTRUCTION_LENGTHS_DIMS_MULTIPLIER = new int[0];
     private static boolean[] PARALLEL_EXECUTE_SAFE = new boolean[0];
+    private static boolean[] DECIDES_ON_FAILURE_ARRAY = new boolean[0];
     private static String[] NAMES_ARRAY = new String[0];
     private static InstructionSignature[] SIGNATURES_ARRAY = new InstructionSignature[0];
 
@@ -337,6 +379,13 @@ public abstract class Instruction {
      * <b>Important:</b> For STACK operands, this method only <i>peeks</i> (reads without removing).
      * The actual stack pops are deferred to {@link #commitStackReads()}, which must be called
      * in the Execute phase for instructions that are actually executed.
+     * <p>
+     * The list has one entry per operand of the instruction, at the operand's place. An operand
+     * that cannot be read - the stack holds no value for it, or its argument cells lie beyond
+     * the edge of a bounded world - marks the instruction failed and is {@link Operand#MISSING};
+     * the operands that can be read are resolved as always. The list has a fixed size: an
+     * interceptor may replace an operand in it, but adding or removing one is refused with an
+     * {@link UnsupportedOperationException}, because the count mirrors the argument cells.
      *
      * @param environment The environment in which the instruction is executed.
      * @return A list of resolved operands (cached after first call).
@@ -361,17 +410,20 @@ public abstract class Instruction {
         // code stream on their behalf.
         int length = getLength(environment);
         this.rawArguments = organism.getRawArgumentsFromEnvironment(length, environment);
+        // The argument cells follow one another, so they all exist exactly when the last one
+        // does; only when it does not are they counted.
+        int existingCells = length - 1;
         if (!organism.argumentCellsExist(length, environment)) {
             // In a bounded world the argument cells can reach beyond the edge, where no cell
             // exists. Read as empty they would hand the instruction values it never had - an empty
             // cell as a register argument names %DR0 - so the instruction fails here, while it is
-            // planned, and is not executed. The last cell stands for all: they follow one another.
+            // planned, and every operand with a cell beyond the edge is MISSING.
             organism.instructionFailed(ARGUMENT_CELL_BEYOND_THE_EDGE);
-            this.cachedOperands = List.of();
-            return this.cachedOperands;
+            existingCells = organism.argumentCellsWithinWorld(length, environment);
         }
 
-        List<Operand> resolved = new ArrayList<>(sources.size());
+        Operand[] resolved = new Operand[sources.size()];
+        int next = 0;
         int dims = environment.properties.getDimensions();
 
         // For STACK operands: use iterator to peek without popping
@@ -383,24 +435,33 @@ public abstract class Instruction {
                 // PEEK via iterator - no side effects!
                 // The actual pop() happens in commitStackReads() during Execute phase
                 if (!stackIterator.hasNext()) {
-                    this.cachedOperands = new ArrayList<>();
-                    return this.cachedOperands;
+                    organism.instructionFailed("Data stack underflow for " + getName());
+                    resolved[next++] = Operand.MISSING;
+                    continue;
                 }
-                resolved.add(new Operand(stackIterator.next(), -1));
+                resolved[next++] = new Operand(stackIterator.next(), -1);
                 this.stackPeekCount++;
                 continue;
             }
 
             // Every remaining source occupies one argument slot; VECTOR takes one per dimension.
+            // An operand whose slots reach beyond the existing cells is not read at all: an
+            // empty cell as a register argument would name %DR0.
+            int slotsAfter = slot + (source == OperandSource.VECTOR ? dims : 1);
+            if (slotsAfter > existingCells) {
+                resolved[next++] = Operand.MISSING;
+                slot = slotsAfter;
+                continue;
+            }
             int rawMol = this.rawArguments[slot++];
 
             switch (source) {
                 case REGISTER -> {
                     int regId = Molecule.extractSignedValue(rawMol);
-                    resolved.add(new Operand(organism.readOperand(regId), regId));
+                    resolved[next++] = new Operand(organism.readOperand(regId), regId);
                 }
                 case IMMEDIATE -> {
-                    resolved.add(new Operand(rawMol, -1));
+                    resolved[next++] = new Operand(rawMol, -1);
                 }
                 case LOCATION_REGISTER -> {
                     int regId = Molecule.extractSignedValue(rawMol);
@@ -417,7 +478,7 @@ public abstract class Instruction {
                     if (!organism.isInstructionFailed() && !RegisterBank.IS_LOCATION_BY_ID[regId]) {
                         organism.instructionFailed("Location operand is not a location register: " + regId);
                     }
-                    resolved.add(new Operand(null, regId));
+                    resolved[next++] = new Operand(null, regId);
                 }
                 case VECTOR -> {
                     int[] vec = new int[dims];
@@ -425,25 +486,26 @@ public abstract class Instruction {
                     for (int d = 1; d < dims; d++) {
                         vec[d] = Molecule.extractSignedValue(this.rawArguments[slot++]);
                     }
-                    resolved.add(new Operand(vec, -1));
+                    resolved[next++] = new Operand(vec, -1);
                 }
                 case LABEL -> {
                     int labelHash = rawMol & Config.VALUE_MASK;
-                    resolved.add(new Operand(labelHash, -1));
+                    resolved[next++] = new Operand(labelHash, -1);
                 }
                 default -> {}
             }
         }
-        this.cachedOperands = resolved;
-        return resolved;
+        this.cachedOperands = Arrays.asList(resolved);
+        return this.cachedOperands;
     }
 
     /**
      * Commits the stack reads that were peeked during {@link #resolveOperands(Environment)}.
      * <p>
      * This method performs the actual {@code pop()} operations on the data stack.
-     * It must be called <b>only once</b>, and <b>only in the Execute phase</b> for
-     * instructions that are actually executed (i.e., won conflict resolution).
+     * It must be called <b>only once</b>, and <b>only in the Execute phase</b>, for every
+     * instruction the tick processes: one that failed while it was planned included, so a
+     * failed instruction consumes the stack values it found, whether or not it is executed.
      * <p>
      * For instructions that lost conflict resolution, this method should NOT be called,
      * leaving the stack unchanged so the instruction can be retried in the next tick.
@@ -714,6 +776,7 @@ public abstract class Instruction {
         NEVER_FALLS_THROUGH.clear();
         SKIPS_NEXT.clear();
         LABEL_IS_JUMP_TARGET.clear();
+        DECIDES_ON_FAILURE.clear();
         CLASS_BY_FAMILY.clear();
         FAMILY_BY_CLASS.clear();
     }
@@ -762,6 +825,13 @@ public abstract class Instruction {
             int id = entry.getKey();
             if (id >= 0 && id < REGISTRY_SIZE) {
                 PARALLEL_EXECUTE_SAFE[id] = entry.getValue();
+            }
+        }
+
+        DECIDES_ON_FAILURE_ARRAY = new boolean[REGISTRY_SIZE];
+        for (int id : DECIDES_ON_FAILURE) {
+            if (id >= 0 && id < REGISTRY_SIZE) {
+                DECIDES_ON_FAILURE_ARRAY[id] = true;
             }
         }
 
@@ -1099,6 +1169,20 @@ public abstract class Instruction {
     }
 
     /**
+     * Declares that a registered instruction is executed even when it failed while it was
+     * planned, because it still has something to decide: a conditional whose test cannot be
+     * evaluated decides that the test does not hold.
+     * <p>
+     * <b>Thread safety:</b> Must only be called during single-threaded initialization ({@link #init()}).
+     *
+     * @param name the mnemonic of an instruction that is already registered
+     * @throws IllegalStateException if no instruction is registered under that name
+     */
+    protected static void declareDecidesOnFailure(String name) {
+        DECIDES_ON_FAILURE.add(registeredId(name));
+    }
+
+    /**
      * Looks up the opcode ID of an instruction a declaration names.
      *
      * @param name the mnemonic of an instruction that is already registered, in any letter case
@@ -1208,6 +1292,22 @@ public abstract class Instruction {
     public static boolean isParallelExecuteSafe(int fullOpcodeId) {
         return fullOpcodeId >= 0 && fullOpcodeId < PARALLEL_EXECUTE_SAFE.length
                 && PARALLEL_EXECUTE_SAFE[fullOpcodeId];
+    }
+
+    /**
+     * Tells whether an instruction is executed although it failed while it was planned: a
+     * conditional is, because its test that cannot be evaluated does not hold, and it acts on
+     * that. Every other instruction stays unexecuted when it failed, with its failure booked.
+     * <p>
+     * <b>Thread safety:</b> Safe for concurrent use. The backing array is read-only after {@link #init()}.
+     *
+     * @param fullOpcodeId The full opcode ID (including TYPE_CODE bits).
+     * @return {@code true} if the instruction declared it; {@code false} for every other opcode,
+     *         an unregistered one included.
+     */
+    public static boolean decidesOnFailure(int fullOpcodeId) {
+        return fullOpcodeId >= 0 && fullOpcodeId < DECIDES_ON_FAILURE_ARRAY.length
+                && DECIDES_ON_FAILURE_ARRAY[fullOpcodeId];
     }
 
     // --- Conflict Resolution Logic ---
