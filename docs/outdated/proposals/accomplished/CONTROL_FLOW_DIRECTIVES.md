@@ -44,7 +44,7 @@ constructs at once, where the programmer makes them per cell.
 | Block labels under a compiler-owned prefix (`$WALK.END`), with short names resolved through a lookup-only scope or rewritten by the parser | Needed a rule of its own in name resolution, a second kind of scope in the core or a parser that rewrites identifiers; and a scope that captured the definitions inside the block hid labels, procedures and constants written there. QUALIFIED_NAMES made all of it unnecessary: a block is a level, its labels are names on that level, and the one visibility rule applies. |
 | A generic block with `.WHEN` for condition parts and `.CASE` for bodies | Both words would set a label and nothing else; two words for one thing. |
 | A reserved label for the block's start (`$TOP`, `$BEGIN`) | The block's own name is that label; a loop is a block that jumps to its name. |
-| A short form `.IF cond` with `&&`, `||` and parentheses, next to the block | A second syntax, with operators and precedence, that generates jumps and therefore leaves no room for mutation. |
+| A short form `.IF cond` with `&&`, `\|\|` and parentheses, next to the block | A second syntax, with operators and precedence, that generates jumps and therefore leaves no room for mutation. |
 | `.AND`/`.OR` as dividers of the condition part, with the per-term jump generated | Cannot be mixed without parentheses, the generated jumps carry no padding, and the programmer would write jumps in `.IF` but not in `.AND`. The chain of guards is the same code without the rule. |
 | A `switch` with a jump table in the instruction set | A new instruction and a table of label references between instructions, which the duplication plugin does not copy. Out of scope; the dispatch table of guards covers value selection. |
 | A check that every condition part and every part before a divider ends with an unconditional jump | Falling through has a meaning (the next place runs), it is what the abort chain relies on, and assemblers report only what cannot be assembled. Not checked. |
@@ -396,5 +396,9 @@ What the built code does beyond the solution text:
   twin. The library's block stands in the last module laid out before `main`, so that no existing
   cell moves; the program-relative addresses of `main`'s cells are renumbered by the cells laid
   out before them.
-- **The core changed in its comments only**: the symbol table and the scope tracker speak of
-  the levels a node opens, a procedure or a control block, where they named procedures alone.
+- **The core changed in its comments, and in one place in its code**: the symbol table and the
+  scope tracker speak of the levels a node opens, a procedure or a control block, where they
+  named procedures alone; and pass 2 of the semantic analysis enters the scope registered for a
+  node itself, as the token map and the post-processor already did, so that no feature needs an
+  analysis handler for its level. `ControlAnalysisHandler` and `ProcedureAnalysisHandler` went
+  away with it (found by the architecture review of the pull request).

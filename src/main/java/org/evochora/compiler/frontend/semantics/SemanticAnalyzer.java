@@ -108,14 +108,26 @@ public class SemanticAnalyzer {
         }
     }
 
+    /**
+     * Walks the nodes in text order and runs the registered handler of each. A node that opened a
+     * level in pass 1 has that level registered as its scope; the walk enters it before the
+     * node's handler and children and restores the enclosing scope afterwards, so that the names
+     * inside the level resolve from the level, whatever feature opened it.
+     */
     private void traverseAndAnalyze(List<AstNode> nodes) {
         for (AstNode node : nodes) {
             if (node == null) continue;
             switchModuleContext(node);
+            SymbolTable.Scope enclosing = symbolTable.getCurrentScope();
+            SymbolTable.Scope nodeScope = symbolTable.getNodeScope(node);
+            if (nodeScope != null) {
+                symbolTable.setCurrentScope(nodeScope);
+            }
             Optional<IAnalysisHandler> handler = registry.resolveHandler(node.getClass());
             handler.ifPresent(h -> h.analyze(node, symbolTable, diagnostics));
             traverseAndAnalyze(node.getChildren());
             handler.ifPresent(h -> h.afterChildren(node, symbolTable, diagnostics));
+            symbolTable.setCurrentScope(enclosing);
         }
     }
 
