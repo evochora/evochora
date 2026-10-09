@@ -6,6 +6,7 @@ import ch.qos.logback.classic.turbo.TurboFilter;
 import ch.qos.logback.core.spi.FilterReply;
 import org.junit.jupiter.api.extension.AfterAllCallback;
 import org.junit.jupiter.api.extension.AfterEachCallback;
+import org.junit.jupiter.api.extension.AfterTestExecutionCallback;
 import org.junit.jupiter.api.extension.BeforeAllCallback;
 import org.junit.jupiter.api.extension.BeforeEachCallback;
 import org.junit.jupiter.api.extension.ExtensionContext;
@@ -19,7 +20,8 @@ import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.regex.Pattern;
 
-public class LogWatchExtension implements BeforeAllCallback, BeforeEachCallback, AfterAllCallback, AfterEachCallback, TestExecutionExceptionHandler {
+public class LogWatchExtension implements BeforeAllCallback, BeforeEachCallback, AfterAllCallback,
+        AfterTestExecutionCallback, AfterEachCallback, TestExecutionExceptionHandler {
 
     private static final String STORE_NAMESPACE = "org.evochora.junit.extensions.logging.LogWatchExtension";
 
@@ -46,6 +48,7 @@ public class LogWatchExtension implements BeforeAllCallback, BeforeEachCallback,
         if (filter != null) {
             // CRITICAL: Clear events BEFORE updating rules to ensure proper isolation
             filter.clearEvents();
+            filter.testStarted();
             
             // Now update rules for the new test method
             ValidationRules methodRules = resolveRules(context);
@@ -56,6 +59,20 @@ public class LogWatchExtension implements BeforeAllCallback, BeforeEachCallback,
     @Override
     public void handleTestExecutionException(ExtensionContext context, Throwable throwable) throws Throwable {
         throw throwable;
+    }
+
+    /**
+     * Runs right after the test method, before its {@code @AfterEach} methods: from here on an
+     * event belongs to the teardown, which the report says, so that a log written while a server
+     * or a service is stopped is told apart from one written while the test ran.
+     */
+    @Override
+    public void afterTestExecution(ExtensionContext context) {
+        ExtensionContext.Store store = context.getStore(ExtensionContext.Namespace.create(STORE_NAMESPACE));
+        TestScopedTurboFilter filter = store.get("filter", TestScopedTurboFilter.class);
+        if (filter != null) {
+            filter.testMethodEnded();
+        }
     }
 
     @Override
@@ -184,9 +201,19 @@ public class LogWatchExtension implements BeforeAllCallback, BeforeEachCallback,
         return level.isGreaterOrEqual(toLogback(minLevel));
     }
 
+    /**
+     * One unexpected event for the report: the line as logged, where and when it was logged, and
+     * what was thrown with it, by class and causes first and as a stack trace below, so that a
+     * failure that only the log shows can be traced to the code that produced it.
+     */
     private String format(CapturedEvent e) {
         String line = String.format("[%s] %s - %s", e.level, e.loggerName, e.message);
-        return e.throwable.isEmpty() ? line : line + "\n    " + e.throwable;
+        String where = String.format("    (thread %s, %d ms after the test began, %s)",
+                e.thread, e.millisSinceTestStart, e.duringTeardown ? "during the teardown" : "while the test ran");
+        if (e.throwable.isEmpty()) {
+            return line + "\n" + where;
+        }
+        return line + "\n    " + e.throwable + "\n" + where + "\n" + e.stackTrace;
     }
 
     private static Level toLogback(LogLevel lvl) {
@@ -199,6 +226,8 @@ public class LogWatchExtension implements BeforeAllCallback, BeforeEachCallback,
 
     private static class TestScopedTurboFilter extends TurboFilter {
         private final List<CapturedEvent> events = new CopyOnWriteArrayList<>();
+        private volatile long testStartNanos = System.nanoTime();
+        private volatile boolean testMethodEnded;
         private volatile ValidationRules rules;
 
         TestScopedTurboFilter(ValidationRules rules) {
@@ -215,7 +244,8 @@ public class LogWatchExtension implements BeforeAllCallback, BeforeEachCallback,
                 Throwable thrown = t != null ? t
                         : (format == null ? null : MessageFormatter.arrayFormat(format, params).getThrowable());
                 CapturedEvent ev = new CapturedEvent(logger.getName(), level, formatMessage(format, params),
-                        describe(thrown));
+                        describe(thrown), stackTraceOf(thrown), Thread.currentThread().getName(),
+                        (System.nanoTime() - testStartNanos) / 1_000_000L, testMethodEnded);
                 events.add(ev);
                 if (isAllowedLocal(ev, rules.allows) || isExpectedLocal(ev, rules.expects)) {
                     return FilterReply.DENY;
@@ -226,6 +256,15 @@ public class LogWatchExtension implements BeforeAllCallback, BeforeEachCallback,
 
         List<CapturedEvent> getCapturedEvents() {
             return new ArrayList<>(events);
+        }
+
+        void testStarted() {
+            testStartNanos = System.nanoTime();
+            testMethodEnded = false;
+        }
+
+        void testMethodEnded() {
+            testMethodEnded = true;
         }
 
         void clearEvents() {
@@ -251,6 +290,23 @@ public class LogWatchExtension implements BeforeAllCallback, BeforeEachCallback,
                 }
             }
             return sb.toString();
+        }
+
+        /**
+         * The stack trace of what was thrown, with its causes, as the JDK prints it, every line
+         * indented for the report, cut after a bound so that a deep trace cannot flood it.
+         */
+        private static String stackTraceOf(Throwable thrown) {
+            if (thrown == null) {
+                return "";
+            }
+            java.io.StringWriter out = new java.io.StringWriter();
+            thrown.printStackTrace(new java.io.PrintWriter(out));
+            String trace = out.toString().stripTrailing();
+            if (trace.length() > 12000) {
+                trace = trace.substring(0, 12000) + "\n... (cut)";
+            }
+            return trace.indent(8).stripTrailing();
         }
 
         private String formatMessage(String format, Object[] params) {
@@ -286,12 +342,25 @@ public class LogWatchExtension implements BeforeAllCallback, BeforeEachCallback,
         final String message;
         /** What was thrown with the event, by class and message along its causes; empty if nothing. */
         final String throwable;
+        /** The stack trace of what was thrown, with its causes, indented for the report; empty if nothing. */
+        final String stackTrace;
+        /** The thread the event was logged on. */
+        final String thread;
+        /** How long after the start of the test the event was logged. */
+        final long millisSinceTestStart;
+        /** Whether the event was logged after the test method had ended, in its teardown. */
+        final boolean duringTeardown;
 
-        CapturedEvent(String loggerName, Level level, String message, String throwable) {
+        CapturedEvent(String loggerName, Level level, String message, String throwable, String stackTrace,
+                      String thread, long millisSinceTestStart, boolean duringTeardown) {
             this.loggerName = loggerName;
             this.level = level;
             this.message = message != null ? message : "";
             this.throwable = throwable;
+            this.stackTrace = stackTrace;
+            this.thread = thread;
+            this.millisSinceTestStart = millisSinceTestStart;
+            this.duringTeardown = duringTeardown;
         }
     }
 
