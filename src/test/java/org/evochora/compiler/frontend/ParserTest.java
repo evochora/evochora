@@ -76,7 +76,7 @@ public class ParserTest {
 
     /**
      * Verifies that the parser correctly handles a labeled statement, creating a {@link LabelNode}
-     * that contains both the label's identifier and the associated instruction node.
+     * with the label's identifier followed by the instruction node of the same line.
      * This is a unit test for the parser.
      */
     @Test
@@ -94,14 +94,14 @@ public class ParserTest {
 
         // Assert
         assertThat(diagnostics.hasErrors()).isFalse();
-        assertThat(ast).hasSize(1);
+        assertThat(ast).hasSize(2);
         assertThat(ast.get(0)).isInstanceOf(LabelNode.class);
 
         LabelNode labelNode = (LabelNode) ast.get(0);
         assertThat(labelNode.name()).isEqualTo("L1");
-        assertThat(labelNode.statement()).isInstanceOf(InstructionNode.class);
+        assertThat(ast.get(1)).isInstanceOf(InstructionNode.class);
 
-        InstructionNode nopNode = (InstructionNode) labelNode.statement();
+        InstructionNode nopNode = (InstructionNode) ast.get(1);
         assertThat(nopNode.opcode()).isEqualTo("NOP");
         assertThat(nopNode.arguments()).isEmpty();
     }
@@ -139,7 +139,7 @@ public class ParserTest {
 
     /**
      * Verifies that the parser correctly handles an exported label (e.g., "EXPORT L1: NOP").
-     * The exported flag should be true and the statement should be parsed correctly.
+     * The exported flag should be true and the statement should be parsed correctly after the label.
      * This is a unit test for the parser.
      */
     @Test
@@ -157,15 +157,15 @@ public class ParserTest {
 
         // Assert
         assertThat(diagnostics.hasErrors()).isFalse();
-        assertThat(ast).hasSize(1);
+        assertThat(ast).hasSize(2);
         assertThat(ast.get(0)).isInstanceOf(LabelNode.class);
 
         LabelNode labelNode = (LabelNode) ast.get(0);
         assertThat(labelNode.name()).isEqualTo("L1");
         assertThat(labelNode.exported()).isTrue();
-        assertThat(labelNode.statement()).isInstanceOf(InstructionNode.class);
+        assertThat(ast.get(1)).isInstanceOf(InstructionNode.class);
 
-        InstructionNode nopNode = (InstructionNode) labelNode.statement();
+        InstructionNode nopNode = (InstructionNode) ast.get(1);
         assertThat(nopNode.opcode()).isEqualTo("NOP");
     }
 
@@ -194,7 +194,7 @@ public class ParserTest {
 
     /**
      * Verifies that an exported label followed by a statement on the next line
-     * correctly includes that statement as the label's statement.
+     * is parsed as the label followed by that statement.
      * This is a unit test for the parser.
      */
     @Test
@@ -210,17 +210,38 @@ public class ParserTest {
         // Act
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
 
-        // Assert - the NOP becomes the statement of the label
+        // Assert - the NOP follows the label as a node of its own
         assertThat(diagnostics.hasErrors()).isFalse();
-        assertThat(ast).hasSize(1);
+        assertThat(ast).hasSize(2);
 
         LabelNode labelNode = (LabelNode) ast.get(0);
         assertThat(labelNode.name()).isEqualTo("L1");
         assertThat(labelNode.exported()).isTrue();
-        assertThat(labelNode.statement()).isInstanceOf(InstructionNode.class);
+        assertThat(ast.get(1)).isInstanceOf(InstructionNode.class);
 
-        InstructionNode nopNode = (InstructionNode) labelNode.statement();
+        InstructionNode nopNode = (InstructionNode) ast.get(1);
         assertThat(nopNode.opcode()).isEqualTo("NOP");
+    }
+
+    /**
+     * Verifies that EXPORT before an instruction is reported, because an instruction defines no
+     * name that could be exported, and the instruction is parsed all the same.
+     * This is a unit test for the parser.
+     */
+    @Test
+    @Tag("unit")
+    void testParserExportBeforeAnInstructionIsReported() {
+        // Arrange
+        String source = "EXPORT NOP";
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Parser parser = new Parser(new Lexer(source, diagnostics, TestLexers.symbols()).scanTokens(), diagnostics, registry());
+
+        // Act
+        List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
+
+        // Assert
+        assertThat(diagnostics.summary()).contains("EXPORT is not supported before 'NOP'.");
+        assertThat(ast).singleElement().isInstanceOf(InstructionNode.class);
     }
 
     /**

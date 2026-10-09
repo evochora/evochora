@@ -5,31 +5,18 @@ import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.IJumpTarget;
 import org.evochora.compiler.model.ast.ISourceLocatable;
 
-import java.util.List;
-
 /**
  * An AST node that represents a label definition (e.g., "L1:" or "EXPORT L1:").
+ * The label names the position of the statement that follows it; that statement is a node
+ * of its own, so a label has no children.
  *
  * @param name The name of the label.
  * @param sourceInfo The source location of the label definition.
- * @param statement The statement (typically an instruction) that follows this label.
  * @param exported Whether this label is exported for cross-file visibility.
  */
 public record LabelNode(
         String name,
         SourceInfo sourceInfo,
-        AstNode statement,
         boolean exported
 ) implements AstNode, ISourceLocatable, IJumpTarget {
-
-    @Override
-    public List<AstNode> getChildren() {
-        return statement != null ? List.of(statement) : List.of();
-    }
-
-    @Override
-    public AstNode reconstructWithChildren(List<AstNode> newChildren) {
-        AstNode newStatement = newChildren.isEmpty() ? null : newChildren.get(0);
-        return new LabelNode(name, sourceInfo, newStatement, exported);
-    }
 }

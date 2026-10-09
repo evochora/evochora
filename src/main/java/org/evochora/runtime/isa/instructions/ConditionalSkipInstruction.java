@@ -90,6 +90,7 @@ public class ConditionalSkipInstruction extends AbstractConditionInstruction {
      */
     private static void regPair(Condition condition, int op, int negatedOp, int index, int negatedIndex,
                                 String name, String negatedName, OperandSource... sources) {
+        requireOperandCount(condition, 0, name, sources);
         regPair(ConditionalSkipInstruction.class, ConditionalSkipInstruction::new, family, condition,
                 op, negatedOp, index, negatedIndex, name, negatedName, sources);
         declareSkipsNext(name);
@@ -119,11 +120,6 @@ public class ConditionalSkipInstruction extends AbstractConditionInstruction {
      */
     public ConditionalSkipInstruction(Organism organism, int fullOpcodeId) {
         super(organism, fullOpcodeId);
-    }
-
-    @Override
-    protected int operandsAfterCondition() {
-        return 0;
     }
 
     @Override

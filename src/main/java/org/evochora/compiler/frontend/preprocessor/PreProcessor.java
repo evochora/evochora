@@ -7,6 +7,7 @@ import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.diagnostics.ErrorRecoveryException;
+import org.evochora.compiler.frontend.BlockReader;
 import org.evochora.compiler.frontend.DirectiveLine;
 import org.evochora.compiler.util.SourceRootResolver;
 import java.util.*;
@@ -16,7 +17,9 @@ import java.util.function.ToIntFunction;
 /**
  * The preprocessor for the assembly language. It runs after the lexer and before the parser.
  * It walks the token stream and hands every token that a handler is registered for to that
- * handler, which rewrites the stream in place.
+ * handler, which rewrites the stream in place. A token that opens a registered kind of block is
+ * read as a block first, by the rules of {@link BlockReader}, and its handler is called with
+ * the block only when the block is whole.
  */
 public class PreProcessor {
 
@@ -55,17 +58,20 @@ public class PreProcessor {
         this.diagnostics = diagnostics;
         this.resolver = resolver;
         this.ppContext = ppContext;
-        this.blockReader = new BlockReader(this, ppContext.handlers());
+        this.blockReader = new BlockReader(ppContext.handlers()::blockKindOf, true, token -> false, diagnostics);
         entries.add(ppContext.mainFile());
     }
 
     /**
      * Runs the preprocessor on the token stream. Every token is looked up in the context's
-     * handler registry; a token with a handler is handed to it, which rewrites the stream at
-     * the current position, and the walk continues from there. A token without one is left as
-     * it is, unless it closes or divides a registered block: the handler of a block consumes its
-     * closer and dividers, so one the walk reaches stands outside any block and is reported and
-     * removed by the {@link BlockReader}.
+     * handler registry. A token that opens a registered kind of block is read as a block: a
+     * whole block, with a stored body that holds no directive registered as top level only, is
+     * handed to its block handler, which rewrites the stream at the current position; a broken
+     * block has been reported and is left behind, the walk continuing after it, and so is a
+     * block whose handler gives up. A token with a handler of its own is handed to it. A token
+     * without one is left as it is, unless it closes or divides a registered block: the handler
+     * of a block consumes its closer and dividers, so one the walk reaches stands outside any
+     * block and is reported and removed.
      * @return The preprocessing result: the expanded tokens, the entries of the inclusions and
      *         the instances that are no inclusion, each with the regions and notes the handlers
      *         recorded in it. A record at a position goes to the entry of the position's placement,
@@ -75,14 +81,31 @@ public class PreProcessor {
      */
     public PreProcessorResult expand() {
         while (current < tokens.size()) {
-            Optional<IPreProcessorHandler> handler = ppContext.handlers().get(peek().text());
+            String text = peek().text();
+            Optional<IPreProcessorBlockHandler> blockHandler = ppContext.handlers().blockHandlerOf(text);
+            if (blockHandler.isPresent()) {
+                BlockReader.Block block = blockReader.read(tokens, current);
+                boolean usable = block.whole()
+                        && !(ppContext.handlers().isStored(text) && reportTopLevelOnlyWords(block));
+                if (usable) {
+                    try {
+                        blockHandler.get().process(this, ppContext, block);
+                        continue;
+                    } catch (ErrorRecoveryException ex) {
+                        // The block is left behind like a broken one.
+                    }
+                }
+                current = block.end();
+                continue;
+            }
+            Optional<IPreProcessorHandler> handler = ppContext.handlers().get(text);
             if (handler.isPresent()) {
                 try {
                     handler.get().process(this, ppContext);
                 } catch (ErrorRecoveryException ex) {
                     synchronize();
                 }
-            } else if (!blockReader.rejectStray(current)) {
+            } else if (!rejectStray(current)) {
                 current++;
             }
         }
@@ -192,6 +215,44 @@ public class PreProcessor {
         while (!isAtEnd()) {
             if (advance().type() == TokenType.NEWLINE) return;
         }
+    }
+
+    /**
+     * Reports every directive registered as top level only in the body of a stored block, at
+     * any depth: the body is stored as a whole, so everything in it is stored.
+     *
+     * @param block A whole block of a stored kind.
+     * @return {@code true} if a word was reported.
+     */
+    private boolean reportTopLevelOnlyWords(BlockReader.Block block) {
+        Token opener = tokens.get(block.opener());
+        boolean found = false;
+        for (int i = block.bodyStart(); i < block.closer(); i++) {
+            Token token = tokens.get(i);
+            if (ppContext.handlers().isTopLevelOnly(token.text())) {
+                diagnostics.reportError(token.text() + " may not stand inside a " + opener.text()
+                        + " body; the body opened at " + opener.source().fileName() + ":" + opener.source().lineNumber(),
+                        token.source().fileName(), token.source().lineNumber());
+                found = true;
+            }
+        }
+        return found;
+    }
+
+    /**
+     * Rejects a closer or divider that the walk reaches, reported by the {@link BlockReader} as
+     * standing outside any block: the word is removed from the stream, and the walk continues
+     * at the token that followed it.
+     *
+     * @param index The stream index of a token no handler claimed.
+     * @return {@code true} if the token was a stray closer or divider and has been removed.
+     */
+    private boolean rejectStray(int index) {
+        if (!blockReader.reportStray(tokens, index)) {
+            return false;
+        }
+        removeTokens(index, 1);
+        return true;
     }
 
     // --- Records for the source view ---
@@ -358,16 +419,15 @@ public class PreProcessor {
     }
 
     /**
-     * Reads the block whose opener stands at the given index, by the rules of
-     * {@link BlockReader#read(int)}: the body begins after the opener's line, blocks of every
-     * registered kind nest inside it, and nothing is removed from the stream on success.
+     * Copies a range of the stream, as a block handler takes the body of its block before it
+     * rewrites the stream.
      *
-     * @param openerIndex The stream index of the token that opens the block.
-     * @return The body, the dividers at the block's own level and the index after its closer.
-     * @throws ErrorRecoveryException if the block breaks a block rule; the error has been reported.
+     * @param from The first stream index, inclusive.
+     * @param to   The end of the range, exclusive.
+     * @return The tokens of the range, in a list of their own.
      */
-    public BlockReader.Block readBlock(int openerIndex) {
-        return blockReader.read(openerIndex);
+    public List<Token> tokensOf(int from, int to) {
+        return new ArrayList<>(tokens.subList(from, to));
     }
 
     /**
@@ -392,16 +452,6 @@ public class PreProcessor {
      */
     public DirectiveLine lineOf(int index, Predicate<Token> passedOver) {
         return DirectiveLine.of(tokens, index, passedOver);
-    }
-
-    /**
-     * Sets the position of the walk, for the {@link BlockReader} to put it back on the opener
-     * of a block it cannot read.
-     *
-     * @param index The stream index to continue at.
-     */
-    void seek(int index) {
-        this.current = index;
     }
 
     /**

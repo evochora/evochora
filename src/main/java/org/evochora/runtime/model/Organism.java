@@ -987,6 +987,25 @@ public class Organism {
     }
 
     /**
+     * Counts the argument cells of the instruction the organism is executing that lie within the
+     * world: the cells follow the opcode at {@code ipBeforeFetch} along {@code dvBeforeFetch},
+     * and in a bounded world the last ones may lie beyond the edge. Asked only when
+     * {@link #argumentCellsExist(int, Environment)} has said that not all of them do.
+     *
+     * @param instructionLength The total length of the instruction (opcode + arguments).
+     * @param environment The simulation environment.
+     * @return how many of the argument cells, counted from the opcode, lie within the world
+     */
+    public int argumentCellsWithinWorld(int instructionLength, Environment environment) {
+        int within = 0;
+        while (within < instructionLength - 1
+                && environment.exists(this.ipBeforeFetch, this.dvBeforeFetch, within + 1)) {
+            within++;
+        }
+        return within;
+    }
+
+    /**
      * Retrieves the raw integer values of an instruction's arguments from the environment,
      * starting from an explicit position and advancing along an explicit direction vector.
      * <p>
@@ -1117,8 +1136,10 @@ public class Organism {
      * is when the skip budget is exhausted, so that it never stands outside the world.
      *
      * @param environment The simulation environment.
+     * @return Whether the walk stopped on an instruction; false when it stalled, with the failure
+     *         booked and the pointer recovered.
      */
-    public void skipNopCells(Environment environment) {
+    public boolean skipNopCells(Environment environment) {
         EnvironmentProperties props = environment.properties;
         boolean isToroidal = props.isToroidal();
 
@@ -1144,13 +1165,13 @@ public class Organism {
         for (int skips = 0; skips < maxSkipsPerTick && !isDead; skips++) {
             if (index < 0) {
                 failAndRecover("Instruction pointer left the world");
-                return;
+                return false;
             }
             int mol = environment.getMoleculeInt(index);
             if ((mol & Config.TYPE_MASK) == Config.TYPE_CODE
                     && (mol & Config.VALUE_MASK) != nopOpcodeId) {
                 ip[dim] = dimPos;
-                return;
+                return true;
             }
             dimPos += sign;
             if (isToroidal) {
@@ -1164,6 +1185,7 @@ public class Organism {
         }
         ip[dim] = dimPos;
         failAndRecover("Max skips exceeded (" + maxSkipsPerTick + ")");
+        return false;
     }
 
     /**
@@ -1244,8 +1266,7 @@ public class Organism {
         advanceIpBy(currentLength, environment);
 
         // Skip NOPs at new position
-        skipNopCells(environment);
-        if (instructionFailed) {
+        if (!skipNopCells(environment)) {
             setSkipIpAdvance(true);
             return;
         }

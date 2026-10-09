@@ -2,7 +2,7 @@ package org.evochora.compiler.features.conditional;
 
 import org.evochora.compiler.ICompilerFeature;
 import org.evochora.compiler.IFeatureRegistrationContext;
-import org.evochora.compiler.frontend.preprocessor.BlockKind;
+import org.evochora.compiler.frontend.BlockKind;
 
 import java.util.Set;
 
@@ -36,13 +36,10 @@ public class ConditionalFeature implements ICompilerFeature {
         ctx.dependencyScanHandler(new UndefScanHandler());
         ctx.dependencyScanHandler(new ConditionalScanHandler());
         ctx.preprocessorBlock(new BlockKind(Set.of(".IFDEF", ".IFNDEF"), ".ENDDEF",
-                Set.of(".ELSEIFDEF", ".ELSEIFNDEF", ".ELSEDEF"), false));
+                Set.of(".ELSEIFDEF", ".ELSEIFNDEF", ".ELSEDEF")), new ConditionalBlockHandler(), false);
         ctx.preprocessorTopLevelOnly(".DEFINE");
         ctx.preprocessorTopLevelOnly(".UNDEF");
         ctx.preprocessor(".DEFINE", new DefineHandler());
         ctx.preprocessor(".UNDEF", new UndefHandler());
-        ConditionalBlockHandler block = new ConditionalBlockHandler();
-        ctx.preprocessor(".IFDEF", block);
-        ctx.preprocessor(".IFNDEF", block);
     }
 }

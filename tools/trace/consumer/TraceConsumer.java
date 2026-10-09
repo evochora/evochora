@@ -539,7 +539,8 @@ public final class TraceConsumer extends AbstractService {
             execOp = Instruction.getInstructionNameById(opcodeId);
             argsRaw = rawArguments(o);
             args = resolvedArguments(o, opcodeId, program, dims, previous);
-            // A failed step says nothing about its condition; its failure stands in its own columns.
+            // A failed step says nothing about its condition beyond what its failure in its own
+            // columns says: a failed conditional has decided that its condition does not hold.
             if (!o.getInstructionFailed()) {
                 Class<? extends Instruction> kindOfInstruction = Instruction.getInstructionClassById(opcodeId);
                 if (kindOfInstruction == ConditionalSkipInstruction.class) {

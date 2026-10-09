@@ -809,6 +809,11 @@ public class Simulation {
      * virtual machine, which books it as a failed instruction and keeps its instruction pointer
      * for a retry.
      * <p>
+     * An instruction that failed while it was planned contends for no cell: the virtual machine
+     * will not execute it, so it can neither write the cell it named nor be retried for it. It is
+     * booked for its own failure, with its pointer moved on and its execution record kept, as any
+     * failed instruction is.
+     * <p>
      * Every environment-modifying instruction targets at most one cell. An instruction reporting
      * several target cells would need a defined all-or-nothing semantics across cells and is
      * rejected until such an instruction exists.
@@ -821,6 +826,9 @@ public class Simulation {
         for (Instruction instruction : instructions) {
             // Every instruction is processed by the VM; losers are booked as failures there.
             instruction.setProcessedInTick(true);
+            if (instruction.getOrganism().isInstructionFailed()) {
+                continue;
+            }
             if (instruction instanceof IEnvironmentModifyingInstruction modInstruction) {
                 int flatIndex;
                 try {

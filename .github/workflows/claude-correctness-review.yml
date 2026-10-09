@@ -52,6 +52,7 @@ jobs:
           # repeat what build.yml already does. Write and Edit exist for the probe tests; nothing
           # the job writes is committed, since it has no git command that could commit or push.
           claude_args: |
+            --model opus
             --allowedTools "Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh api:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(./gradlew compileJava:*),Bash(./gradlew compileTestJava:*),Bash(./gradlew test --tests:*),Read,Write,Edit,Glob,Grep"
           prompt: |
             You review pull request ${{ github.repository }}/pull/${{ github.event.pull_request.number }}

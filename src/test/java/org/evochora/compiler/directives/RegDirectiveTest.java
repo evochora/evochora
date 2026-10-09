@@ -326,8 +326,9 @@ public class RegDirectiveTest {
     }
 
     /**
-     * Verifies that PDR remains available after an inner .PROC block closes,
-     * because the outer .PROC scope still holds a reference count.
+     * Verifies that the parser accepts a procedure nested in a procedure, which the semantic
+     * analysis reports, and keeps the proc-local bank PDR available for the outer procedure
+     * after the inner one closes.
      */
     @Test
     @Tag("unit")
@@ -430,7 +431,7 @@ public class RegDirectiveTest {
     private static ParserStatementRegistry registry() {
         ParserStatementRegistry reg = new ParserStatementRegistry();
         reg.register(".REG", new RegDirectiveHandler(new RuntimeInstructionSetAdapter()));
-        reg.register(".PROC", new org.evochora.compiler.features.proc.ProcDirectiveHandler(new org.evochora.compiler.isa.RuntimeInstructionSetAdapter()));
+        reg.registerBlock(new org.evochora.compiler.frontend.BlockKind(java.util.Set.of(".PROC"), ".ENDPROC", java.util.Set.of()), new org.evochora.compiler.features.proc.ProcDirectiveHandler(new org.evochora.compiler.isa.RuntimeInstructionSetAdapter()));
         reg.registerDefault(new org.evochora.compiler.features.instruction.InstructionParsingHandler());
         return reg;
     }

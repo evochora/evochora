@@ -12,6 +12,8 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -150,23 +152,111 @@ public class SimulationTest {
     }
 
     /**
-     * Tests that an instruction fails gracefully when its operands are invalid.
-     * In this case, the 'POKS' instruction is executed without valid operands,
-     * and the test verifies that the organism's state reflects the failure.
+     * An instruction whose stack holds fewer values than it takes fails while it is planned and
+     * is not executed: the tick books the failure, and the value that was on the stack is
+     * consumed as it is for every instruction that is processed.
      * This is a unit test and relies on the in-memory {@link Simulation} and {@link Environment}.
      */
     @Test
     @Tag("unit")
-    void testSingleOrganismNoTargetStillExecutes() {
+    void stackInstructionWithoutItsValuesFailsWhilePlanned() {
         Organism org = Organism.create(sim, new int[]{0, 0}, 2000);
         org.setDv(new int[]{1, 0});
-        org.setDp(0, new int[]{0, 0});        sim.addOrganism(org);
+        org.setDp(0, new int[]{0, 0});
+        org.pushData(new Molecule(Config.TYPE_DATA, 5).toInt());
+        sim.addOrganism(org);
 
         placeInstruction(org, "POKS");
 
         sim.tick();
 
         assertThat(org.isInstructionFailed()).isTrue();
-        assertThat(org.getFailureReason()).contains("Invalid operands for POKS");
+        assertThat(org.getFailureReason()).isEqualTo("Data stack underflow for POKS");
+        assertThat(org.getDataStack()).isEmpty();
+    }
+
+    /**
+     * An instruction that failed while it was planned takes no part in conflict resolution: the
+     * organism whose instruction is sound writes its cell whatever the tick priorities say, and
+     * the failed one is booked for its own failure, never for a lost conflict.
+     * <p>
+     * Which organism holds the higher priority is a function of the seed and the organism IDs,
+     * so the failed organism is created first in one run and second in the other: one of the two
+     * runs gives it the priority.
+     */
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    @Tag("unit")
+    void failedInstructionDoesNotContendForItsTargetCell(boolean failedOrganismFirst) {
+        Organism sound = null;
+        Organism failed = null;
+        for (int i = 0; i < 2; i++) {
+            Organism organism = Organism.create(sim, new int[]{i * 10, 0}, 2000);
+            organism.setDv(new int[]{1, 0});
+            organism.setMr(1);
+            organism.setDp(0, new int[]{0, 0});
+            sim.addOrganism(organism);
+            if ((i == 0) == failedOrganismFirst) {
+                failed = organism;
+            } else {
+                sound = organism;
+            }
+        }
+        int payload = new Molecule(Config.TYPE_DATA, 11, 1).toInt();
+        sound.writeOperand(0, payload);
+        placeInstruction(sound, "POKI", 0, 0, 1);
+        // -1 names no register, so the instruction fails while it is planned; its vector still
+        // names the same cell the sound instruction writes.
+        placeInstruction(failed, "POKI", -1, 0, 1);
+        int[] target = targetFromDp(sound, new int[]{0, 1});
+        int penalty = sim.getOrganismConfig().getInt("error-penalty-cost");
+
+        sim.tick();
+
+        assertThat(environment.getMolecule(target).toInt()).isEqualTo(payload);
+        assertThat(sound.isInstructionFailed()).as("sound failed: " + sound.getFailureReason()).isFalse();
+        assertThat(failed.isInstructionFailed()).isTrue();
+        assertThat(failed.getFailureReason()).startsWith("Invalid register ID");
+        assertThat(failed.getEr()).isEqualTo(2000 - penalty);
+    }
+
+    /**
+     * An instruction that failed while it was planned ends its tick as every failed instruction
+     * does, whether or not another organism writes the cell it named: the instruction pointer
+     * moves on and the execution record is kept. Before, such an instruction could lose the
+     * conflict and then be held for a retry like a sound loser, without a record.
+     */
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    @Tag("unit")
+    void failedInstructionMovesOnAndLeavesARecordBesideAContender(boolean failedOrganismFirst) {
+        Organism sound = null;
+        Organism failed = null;
+        for (int i = 0; i < 2; i++) {
+            Organism organism = Organism.create(sim, new int[]{i * 10, 0}, 2000);
+            organism.setDv(new int[]{1, 0});
+            organism.setMr(1);
+            organism.setDp(0, new int[]{0, 0});
+            sim.addOrganism(organism);
+            if ((i == 0) == failedOrganismFirst) {
+                failed = organism;
+            } else {
+                sound = organism;
+            }
+        }
+        sound.writeOperand(0, new Molecule(Config.TYPE_DATA, 11, 1).toInt());
+        placeInstruction(sound, "POKI", 0, 0, 1);
+        placeInstruction(failed, "POKI", -1, 0, 1);
+        // A code cell behind the failed instruction, so that the pointer stops there instead
+        // of running over empty cells until the skip budget ends the tick with a recovery.
+        int[] behind = failed.getIp().clone();
+        behind[0] += Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("POKI"), environment);
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, Instruction.getInstructionIdByName("POKI")), behind);
+
+        sim.tick();
+
+        assertThat(failed.getFailureReason()).startsWith("Invalid register ID");
+        assertThat(failed.getIp()).isEqualTo(behind);
+        assertThat(failed.getLastInstructionExecution()).isNotNull();
     }
 }

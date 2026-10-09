@@ -1,31 +1,61 @@
 package org.evochora.compiler.frontend.parser;
 
+import org.evochora.compiler.frontend.BlockKind;
+import org.evochora.compiler.frontend.BlockRegistry;
+
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 
 /**
- * Registry for parser statement handlers.
+ * Registry for parser statement handlers and block kinds.
  * Maps keywords (directives like ".ORG", opcodes like "CALL", or other identifiers)
- * to their handlers. Supports exactly one default handler for unrecognized keywords.
+ * to their handlers, and the words of every block kind to the kind, with the handler of the
+ * kind's openers. Supports exactly one default handler for unrecognized keywords. A word is
+ * either a keyword or a block word, never both; the closer and the dividers of a block have no
+ * handler. Words are compared case-insensitively.
  */
 public class ParserStatementRegistry {
 
     private final Map<String, IParserStatementHandler> handlers = new HashMap<>();
+    private final BlockRegistry<IParserBlockHandler> blocks = new BlockRegistry<>();
     private IParserStatementHandler defaultHandler;
 
     /**
      * Registers a handler for a keyword.
      * @param keyword The keyword (e.g., ".ORG", "CALL").
      * @param handler The handler for this keyword.
-     * @throws IllegalStateException if a handler is already registered for this keyword.
+     * @throws IllegalStateException if a handler is already registered for this keyword, or if
+     *         the keyword is a word of a registered block kind.
      */
     public void register(String keyword, IParserStatementHandler handler) {
-        String key = keyword.toUpperCase();
+        String key = keyword.toUpperCase(Locale.ROOT);
         if (handlers.containsKey(key)) {
             throw new IllegalStateException("Parser statement handler already registered for keyword: " + keyword);
         }
+        if (blocks.holds(key)) {
+            throw new IllegalStateException("'" + key + "' is a block word and takes no statement handler");
+        }
         handlers.put(key, handler);
+    }
+
+    /**
+     * Registers a kind of block together with the handler of its openers. The parser reads a
+     * block of the kind before it calls the handler.
+     *
+     * @param kind    The openers, closer and dividers of the block.
+     * @param handler The handler called for a whole block of the kind.
+     * @throws IllegalStateException if one of its words is already a keyword or belongs to
+     *         another kind, or if the kind is registered with a different handler.
+     */
+    public void registerBlock(BlockKind kind, IParserBlockHandler handler) {
+        for (String word : kind.words()) {
+            if (handlers.containsKey(word)) {
+                throw new IllegalStateException("Block word '" + word + "' is already a statement keyword");
+            }
+        }
+        blocks.register(kind, handler);
     }
 
     /**
@@ -46,7 +76,27 @@ public class ParserStatementRegistry {
      * @return The handler, or empty if no handler is registered for this keyword.
      */
     public Optional<IParserStatementHandler> get(String keyword) {
-        return Optional.ofNullable(handlers.get(keyword.toUpperCase()));
+        return Optional.ofNullable(handlers.get(keyword.toUpperCase(Locale.ROOT)));
+    }
+
+    /**
+     * Returns the kind of block a word opens, closes or divides.
+     *
+     * @param text The token text.
+     * @return The kind, or empty if the text is no block word.
+     */
+    public Optional<BlockKind> blockKindOf(String text) {
+        return blocks.kindOf(text);
+    }
+
+    /**
+     * Returns the handler of the block a word opens.
+     *
+     * @param text The token text.
+     * @return The handler, or empty if the text opens no registered kind of block.
+     */
+    public Optional<IParserBlockHandler> blockHandlerOf(String text) {
+        return blocks.handlerOf(text);
     }
 
     /**

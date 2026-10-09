@@ -7,6 +7,8 @@ import org.evochora.runtime.Simulation;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.isa.RegisterBank;
 import org.evochora.runtime.isa.instructions.Condition;
+import org.evochora.runtime.isa.instructions.ConditionalJumpInstruction;
+import org.evochora.runtime.isa.instructions.ConditionalSkipInstruction;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
@@ -18,7 +20,11 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.EnumSet;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.function.BiConsumer;
 import java.util.stream.Collectors;
@@ -242,8 +248,8 @@ class VMConditionalJumpInstructionTest {
     }
 
     /**
-     * A stack comparison with too few values on the stack fails as the conditional skip does, and
-     * the jump is not taken.
+     * A stack comparison with too few values on the stack fails as the conditional skip does: the
+     * test cannot be evaluated and does not hold, so the jump is not taken.
      */
     @Test
     void aStackComparisonWithTooFewValuesFails() {
@@ -254,7 +260,7 @@ class VMConditionalJumpInstructionTest {
         sim.tick();
 
         assertThat(org.isInstructionFailed()).isTrue();
-        assertThat(org.getFailureReason()).isEqualTo("Invalid operand count for JFS");
+        assertThat(org.getFailureReason()).isEqualTo("Data stack underflow for JFS");
         assertThat(org.getIp()).isEqualTo(behindJump);
     }
 
@@ -272,6 +278,159 @@ class VMConditionalJumpInstructionTest {
 
         assertThat(org.getIp()).isEqualTo(BEHIND_LABEL);
         assertThat(org.getDataStack()).isEmpty();
+    }
+
+    /**
+     * The negation of a stack comparison with too few values holds: it jumps, and the value that
+     * was on the stack is consumed as it is for every processed instruction.
+     */
+    @Test
+    void theNegatedStackComparisonWithTooFewValuesJumps() {
+        placeLabel();
+        org.getDataStack().push(data(5));
+        placeJump("JNS");
+
+        sim.tick();
+
+        assertThat(org.getFailureReason()).isEqualTo("Data stack underflow for JNS");
+        assertThat(org.getIp()).isEqualTo(BEHIND_LABEL);
+        assertThat(org.getDataStack()).isEmpty();
+    }
+
+    /**
+     * An operand that names no register cannot be read, and the test does not hold: the jump
+     * stays, its negation jumps, and both book the failure with its penalty, once.
+     */
+    @Test
+    void aTestThatCannotBeEvaluatedDoesNotHold() {
+        placeLabel();
+        int[] behindJump = placeJump("JFI", -1, 5);
+        int penalty = sim.getOrganismConfig().getInt("error-penalty-cost");
+
+        sim.tick();
+
+        assertThat(org.getFailureReason()).isEqualTo("Invalid register ID: -1");
+        assertThat(org.getIp()).as("JFI stays").isEqualTo(behindJump);
+        assertThat(org.getEr()).isStrictlyBetween(1000 - 2 * penalty, 1000 - penalty + 1);
+
+        setUp();
+        placeLabel();
+        placeJump("JNI", -1, 5);
+
+        sim.tick();
+
+        assertThat(org.getFailureReason()).isEqualTo("Invalid register ID: -1");
+        assertThat(org.getIp()).as("JNI jumps").isEqualTo(BEHIND_LABEL);
+        assertThat(org.getEr()).isStrictlyBetween(1000 - 2 * penalty, 1000 - penalty + 1);
+    }
+
+    /**
+     * Returns the negation of a conditional jump: the jump with the operation of the negation of
+     * its twin skip, which is the skip with the same operation and the same operands before the
+     * label.
+     */
+    private static String negationOfJump(int jumpId) {
+        List<Instruction.OperandSource> sources = Instruction.getOperandSourcesById(jumpId);
+        List<Instruction.OperandSource> skipSources = sources.subList(0, sources.size() - 1);
+        int twinSkip = opcodeWith(ConditionalSkipInstruction.class, Instruction.getOperationById(jumpId), skipSources);
+        String negatedSkip = ConditionalSkipInstruction.negationOf(Instruction.getInstructionNameById(twinSkip)).orElseThrow();
+        int negatedOperation = Instruction.getOperationById(Instruction.getInstructionIdByName(negatedSkip));
+        return Instruction.getInstructionNameById(opcodeWith(ConditionalJumpInstruction.class, negatedOperation, sources));
+    }
+
+    private static int opcodeWith(Class<? extends Instruction> kind, int operation, List<Instruction.OperandSource> sources) {
+        return Instruction.getAllInstructions().keySet().stream()
+                .filter(id -> Instruction.getInstructionClassById(id) == kind
+                        && Instruction.getOperationById(id) == operation
+                        && Instruction.getOperandSourcesById(id).equals(sources))
+                .findFirst().orElseThrow();
+    }
+
+    /**
+     * Of a conditional jump and its negation exactly one jumps, on a test that cannot be
+     * evaluated too. Every pair whose operands can fail to be read is run with every register
+     * operand naming no register and an empty stack; the vector operands are sound. Which of the
+     * two is the positive form, and that it stays, the tests above show.
+     */
+    @Test
+    void ofEveryPairExactlyOneJumpsOnATestThatCannotBeEvaluated() {
+        List<String> examined = new ArrayList<>();
+        for (Map.Entry<Integer, String> entry : Instruction.getAllInstructions().entrySet()) {
+            if (Instruction.getInstructionClassById(entry.getKey()) != ConditionalJumpInstruction.class) {
+                continue;
+            }
+            String name = entry.getValue();
+            String negation = negationOfJump(entry.getKey());
+            assertThat(negation).as("negation of %s", name).isNotEqualTo(name);
+            if (name.compareTo(negation) > 0) {
+                continue;
+            }
+            List<Integer> conditionArgs = new ArrayList<>();
+            boolean canFail = false;
+            for (Instruction.OperandSource source : Instruction.getOperandSourcesById(entry.getKey())) {
+                switch (source) {
+                    case REGISTER, LOCATION_REGISTER -> { conditionArgs.add(-1); canFail = true; }
+                    case STACK -> canFail = true;
+                    case IMMEDIATE -> conditionArgs.add(5);
+                    case VECTOR -> { conditionArgs.add(0); conditionArgs.add(1); }
+                    case LABEL -> { }
+                }
+            }
+            if (!canFail) {
+                continue;
+            }
+            boolean oneJumps = jumpsOnFailure(name, conditionArgs.toArray(Integer[]::new));
+            boolean otherJumps = jumpsOnFailure(negation, conditionArgs.toArray(Integer[]::new));
+            assertThat(oneJumps).as("exactly one of %s and %s jumps on a test that cannot be evaluated", name, negation)
+                    .isNotEqualTo(otherJumps);
+            examined.add(name);
+        }
+        assertThat(examined).contains("JFR", "JFI", "JFS", "JFMR", "JFMS", "JFSL", "JGER", "JFBR", "JFXR");
+    }
+
+    /** Runs one jump with the given condition arguments in a fresh simulation and tells whether it jumped. */
+    private boolean jumpsOnFailure(String name, Integer... conditionArgs) {
+        setUp();
+        placeLabel();
+        int[] behindJump = placeJump(name, conditionArgs);
+
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).as("%s failed", name).isTrue();
+        int[] ip = org.getIp();
+        assertThat(ip).as("%s went to the label or on", name).isIn(BEHIND_LABEL, behindJump);
+        return Arrays.equals(ip, BEHIND_LABEL);
+    }
+
+    /**
+     * In a bounded world the argument cells of a jump on the last cells can lie beyond the edge:
+     * the test cannot be evaluated, and the label cannot be read either, so neither the jump nor
+     * its negation goes anywhere; the next instruction would lie beyond the edge, and the pointer
+     * is recovered in the same tick with the one penalty of the failure.
+     */
+    @Test
+    void aJumpWithArgumentCellsBeyondTheEdgeRecoversThePointer() {
+        assertRecoveredAtTheEdge("JFI");
+        assertRecoveredAtTheEdge("JNI");
+    }
+
+    private void assertRecoveredAtTheEdge(String name) {
+        environment = new Environment(new int[]{96, 96}, false);
+        sim = SimulationTestUtils.createSimulation(environment);
+        Organism.create(sim, new int[]{-1, -1}, 1);
+        int[] lastCell = new int[]{95, 5};
+        org = Organism.create(sim, lastCell.clone(), 1000);
+        sim.addOrganism(org);
+        placeLabel();
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, Instruction.getInstructionIdByName(name)), lastCell);
+        int penalty = sim.getOrganismConfig().getInt("error-penalty-cost");
+
+        sim.tick();
+
+        assertThat(org.getFailureReason()).as(name).isEqualTo(Instruction.ARGUMENT_CELL_BEYOND_THE_EDGE);
+        assertThat(org.getIp()).as(name).isEqualTo(lastCell);
+        assertThat(org.getCallStack()).as(name).isEmpty();
+        assertThat(org.getEr()).as(name).isStrictlyBetween(1000 - 2 * penalty, 1000 - penalty + 1);
     }
 
     /**

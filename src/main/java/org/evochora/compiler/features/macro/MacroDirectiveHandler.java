@@ -3,7 +3,8 @@ package org.evochora.compiler.features.macro;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
-import org.evochora.compiler.frontend.preprocessor.BlockReader;
+import org.evochora.compiler.frontend.BlockReader;
+import org.evochora.compiler.frontend.preprocessor.IPreProcessorBlockHandler;
 import org.evochora.compiler.frontend.preprocessor.IPreProcessorHandler;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
 import org.evochora.compiler.frontend.preprocessor.PreProcessorContext;
@@ -13,23 +14,24 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * Handles the <code>.MACRO</code> and <code>.ENDMACRO</code> directives.
- * Parses a macro definition, reads its body as a block through
- * {@link PreProcessor#readBlock(int)}, creates a {@link MacroExpansionHandler} for it, and
- * dynamically registers that handler in the {@link PreProcessorContext} under the
- * macro's name. The entire definition block is then removed from the token stream.
+ * Handles the block <code>.MACRO</code> … <code>.ENDMACRO</code>, whose extent the preprocessor
+ * has read. Parses the macro's name and parameters from the opener's line, takes the body from
+ * the block, creates a {@link MacroExpansionHandler} for it, and dynamically registers that
+ * handler in the {@link PreProcessorContext} under the macro's name. The entire definition
+ * block is then removed from the token stream.
  */
-public class MacroDirectiveHandler implements IPreProcessorHandler {
+public class MacroDirectiveHandler implements IPreProcessorBlockHandler {
 
     /**
      * Parses a macro definition.
      * The syntax is <code>.MACRO &lt;name&gt; [&lt;param1&gt; &lt;param2&gt; ...] ... .ENDMACRO</code>.
      * @param preProcessor The preprocessor providing direct access to the token stream.
      * @param preProcessorContext The preprocessor context for registering the macro.
+     * @param block The extent of the definition.
      */
     @Override
-    public void process(PreProcessor preProcessor, PreProcessorContext preProcessorContext) {
-        int startIndex = preProcessor.getCurrentIndex();
+    public void process(PreProcessor preProcessor, PreProcessorContext preProcessorContext, BlockReader.Block block) {
+        int startIndex = block.opener();
         preProcessor.advance(); // consume .MACRO
 
         Token name = preProcessor.consume(TokenType.IDENTIFIER, "Expected macro name.");
@@ -40,8 +42,8 @@ public class MacroDirectiveHandler implements IPreProcessorHandler {
         }
         preProcessor.consume(TokenType.NEWLINE, "Expected newline after macro definition.");
 
-        BlockReader.Block block = preProcessor.readBlock(startIndex);
-        MacroExpansionHandler expansion = new MacroExpansionHandler(new MacroDefinition(name, params, block.body()));
+        List<Token> body = preProcessor.tokensOf(block.bodyStart(), block.closer());
+        MacroExpansionHandler expansion = new MacroExpansionHandler(new MacroDefinition(name, params, body));
 
         // A macro name may be defined again in its module, as happens when the file that defines
         // it is sourced more than once, only with the same parameters and the same body word for

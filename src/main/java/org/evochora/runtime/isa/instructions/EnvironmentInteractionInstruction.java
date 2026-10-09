@@ -263,10 +263,6 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
         }
         // resolveOperands is idempotent; in the plan phase it has already run.
         List<Operand> operands = resolveOperands(environment);
-        if (operands.isEmpty()) {
-            // Too few operands to hold a vector at all. The handler names what its variant expected.
-            return null;
-        }
         if (!(operands.get(operands.size() - 1).value() instanceof int[] vector)) {
             // A register or a stack slot may hold a scalar, and then the operand names no cell.
             // Nobody has booked that yet, so it is booked here rather than passing silently.

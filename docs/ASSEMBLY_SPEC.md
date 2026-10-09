@@ -428,6 +428,8 @@ A conditional instruction tests a condition and acts on the result. Every condit
 * A **conditional skip** runs on with the next instruction if the condition holds, and skips the next instruction if it does not. The skipped instruction costs no tick.
 * A **conditional jump** jumps to its label if the condition holds, and runs on with the next instruction if it does not. It takes the operands of its skip followed by a label, found by fuzzy label matching only when the condition holds; without a matching label it fails as `JMPI` does. `JFI %DR0 DATA:10 L` does what `IFI %DR0 DATA:10` followed by `JMPI L` does.
 
+A condition that cannot be tested does not hold, and its negation holds: an operand that names no register, a stack without a value for it, an argument cell beyond the edge of a bounded world, a cell test without a vector. The instruction fails as any instruction fails, with the error penalty and a reason, and decides in addition: `IFI` skips, `INI` runs on, `JFI` stays, `JNI` jumps. Of a conditional and its negation exactly one acts, whatever the operands hold. 
+
 The lists below name each condition by its skips; the jumps are given beside them.
 
 #### Value comparisons
@@ -697,7 +699,7 @@ Both syntaxes produce identical results—the shorthand is transformed into `.RE
 
 ### Blocks
 
-`.MACRO` … `.ENDMACRO` and `.REPEAT` … `.ENDREPEAT` are blocks. A block may contain other blocks, but two blocks never overlap: an end directive always closes the block that was opened last.
+`.MACRO` … `.ENDMACRO`, `.REPEAT` … `.ENDREPEAT`, the conditional blocks and `.PROC` … `.ENDPROC` are blocks. A block may contain other blocks, but two blocks never overlap: an end directive always closes the block that was opened last. `.MACRO`, `.REPEAT` and the conditional blocks close in the file they were opened in; a `.PROC` may be opened by one macro and closed by another.
 
 ```
 .MACRO PAD
@@ -798,6 +800,7 @@ All paths in `.IMPORT`, `.REQUIRE`, and `.SOURCE` are resolved against configure
       ```
 
 * `.REG` also works inside `.PROC` blocks with procedure-local registers: `.REG %TMP %PDR0` aliases `%PDR0` as `%TMP`, `.REG %POS %PLR0` aliases `%PLR0` as `%POS`. Proc-local registers (`%PDRx`, `%PLRx`) are only available inside `.PROC` blocks.
+* A procedure stands only at the module level: a `.PROC` inside a procedure is reported.
 * A name defined inside a procedure (a label, a constant, a register alias, a parameter) may repeat a name of the module around it; inside the procedure the inner one is meant. A name is defined once per level.
 
 #### Example: Simple Module Import

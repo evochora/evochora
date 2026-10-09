@@ -873,7 +873,8 @@ class ConditionalExpansionTest {
         FeatureRegistry features = new FeatureRegistry(new RuntimeInstructionSetAdapter());
         StandardFeatures.all().forEach(f -> f.register(features));
         features.preprocessorHandlers().forEach(context.handlers()::register);
-        features.preprocessorBlocks().forEach(context.handlers()::registerBlock);
+        features.preprocessorBlocks().forEach(block ->
+                context.handlers().registerBlock(block.kind(), block.handler(), block.stored()));
         features.preprocessorTopLevelOnly().forEach(context.handlers()::registerTopLevelOnly);
         PreProcessor preProcessor = new PreProcessor(tokens, diagnostics,
                 new SourceRootResolver(List.of(new SourceRoot(".", null)), Path.of("/proj")), context);

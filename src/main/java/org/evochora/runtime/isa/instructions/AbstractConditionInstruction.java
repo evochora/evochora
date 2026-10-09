@@ -26,6 +26,14 @@ import java.util.Optional;
  * any pair of operands exactly one of them holds. The compiler relies on that when it inverts a
  * condition.
  * <p>
+ * A test that cannot be evaluated does not hold, and its negation holds: an operand that names no
+ * register, a stack without a value for it, an argument cell beyond the edge of a bounded world, a
+ * cell test without a vector. The failure is booked as any failure is, with its penalty and its
+ * reason, and the conditional decides in addition, so that of a conditional and its negation
+ * exactly one acts on failure too. The test itself is not evaluated then. For this the conditionals
+ * are executed although they failed while they were planned, which they declare when they
+ * register; every other instruction stays unexecuted when it failed.
+ * <p>
  * The value comparisons work on a type and a number per operand: a scalar contributes its own type
  * and value, a vector the type DATA and its Manhattan magnitude, the sum of the absolute values of
  * its components. An equality test (IF, IN) asks whether the two are the same value: it holds if
@@ -83,10 +91,32 @@ public abstract class AbstractConditionInstruction extends Instruction {
                                   int negatedIndex, String name, String negatedName, OperandSource... sources) {
         Instruction.registerOp(instructionClass, factory, family, op, index, name, true, sources);
         Instruction.registerOp(instructionClass, factory, family, negatedOp, negatedIndex, negatedName, true, sources);
+        declareDecidesOnFailure(name);
+        declareDecidesOnFailure(negatedName);
         TEST_BY_ID.put(Instruction.getInstructionIdByName(name).intValue(), new Test(condition, false));
         TEST_BY_ID.put(Instruction.getInstructionIdByName(negatedName).intValue(), new Test(condition, true));
         NEGATION_BY_NAME.put(name.toUpperCase(), negatedName.toUpperCase());
         NEGATION_BY_NAME.put(negatedName.toUpperCase(), name.toUpperCase());
+    }
+
+    /**
+     * Checks, while a pair registers, that its operands are those of its condition and whatever
+     * the kind of conditional takes after them: a mismatch is a defect of the registration and
+     * ends it here, so that no instruction ever runs with operands its condition cannot read.
+     *
+     * @param condition      the condition the pair tests
+     * @param afterCondition how many operands the kind of conditional takes after the condition's
+     * @param name           the name of the positive opcode, for the message
+     * @param sources        the operand sources the pair registers with
+     * @throws IllegalStateException if the number of sources is not the number the pair needs
+     */
+    protected static void requireOperandCount(Condition condition, int afterCondition, String name,
+                                              OperandSource... sources) {
+        int needed = condition.operandCount() + afterCondition;
+        if (sources.length != needed) {
+            throw new IllegalStateException(name + " registers " + sources.length + " operands, "
+                    + condition + " needs " + needed);
+        }
     }
 
     /**
@@ -119,13 +149,6 @@ public abstract class AbstractConditionInstruction extends Instruction {
      */
     protected abstract void act(boolean holds, List<Operand> operands, Environment environment);
 
-    /**
-     * Returns how many operands the instruction takes beyond those of its condition.
-     *
-     * @return the number of operands that follow the condition's
-     */
-    protected abstract int operandsAfterCondition();
-
     @Override
     public final void execute(ExecutionContext context) {
         Organism organism = context.getOrganism();
@@ -134,17 +157,12 @@ public abstract class AbstractConditionInstruction extends Instruction {
         Condition condition = test.condition();
 
         List<Operand> operands = resolveOperands(environment);
-        if (organism.isInstructionFailed()) {
-            return;
-        }
-        if (operands.size() != condition.operandCount() + operandsAfterCondition()) {
-            organism.instructionFailed("Invalid operand count for " + getName());
-            return;
-        }
-        boolean holds = holds(condition, operands, organism, environment);
-        if (organism.isInstructionFailed()) {
-            return;
-        }
+        // A test that cannot be evaluated does not hold: a failure booked while the instruction
+        // was planned leaves the test unevaluated, and one booked by the test itself overrides
+        // what it returned.
+        boolean holds = !organism.isInstructionFailed()
+                && holds(condition, operands, organism, environment)
+                && !organism.isInstructionFailed();
         act(test.negated() != holds, operands, environment);
     }
 
@@ -152,10 +170,12 @@ public abstract class AbstractConditionInstruction extends Instruction {
      * Evaluates a condition in its positive form.
      *
      * @param condition   the condition
-     * @param operands    the operands, those of the condition first, their count already checked
+     * @param operands    the operands, those of the condition first; their count is that of the
+     *                    registered sources, which the registration checked against the condition
      * @param organism    the organism the instruction runs for
      * @param environment the environment the instruction runs in
-     * @return whether the condition holds; meaningless if the instruction has been marked failed
+     * @return whether the condition holds; meaningless if the test has marked the instruction
+     *         failed, which the caller takes as "does not hold"
      */
     private boolean holds(Condition condition, List<Operand> operands, Organism organism, Environment environment) {
         return switch (condition) {

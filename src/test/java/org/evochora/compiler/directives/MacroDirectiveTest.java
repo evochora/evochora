@@ -9,7 +9,6 @@ import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.util.SourceRootResolver;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
 import org.evochora.compiler.frontend.preprocessor.PreProcessorContext;
-import org.evochora.compiler.features.macro.MacroDirectiveHandler;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
@@ -54,7 +53,6 @@ public class MacroDirectiveTest {
         Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
         List<Token> initialTokens = lexer.scanTokens();
         PreProcessorContext context = new PreProcessorContext("", Map.of(), "<memory>", CompilerOptions.defaults());
-        context.handlers().register(".MACRO", new MacroDirectiveHandler());
         TestRegistries.registerPreProcessorBlocks(context.handlers());
         context.handlers().register(":", new org.evochora.compiler.features.label.ColonLabelHandler());
         PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics,

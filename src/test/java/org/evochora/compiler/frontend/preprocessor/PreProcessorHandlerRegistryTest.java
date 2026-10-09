@@ -5,6 +5,7 @@ import org.evochora.compiler.api.CompilerOptions;
 import org.evochora.compiler.features.macro.MacroDefinition;
 import org.evochora.compiler.features.macro.MacroExpansionHandler;
 import org.evochora.compiler.api.SourceInfo;
+import org.evochora.compiler.frontend.BlockKind;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 import org.junit.jupiter.api.Tag;
@@ -116,35 +117,75 @@ class PreProcessorHandlerRegistryTest {
         assertThat(registry.get(".SOURCE")).contains(source);
     }
 
+    private static final IPreProcessorBlockHandler BLOCK = (preProcessor, context, block) -> { };
+
     @Test
     void aBlockKindAnswersForEveryOneOfItsWordsInAnyCase() {
-        registry.registerBlock(new BlockKind(Set.of(".IFX"), ".ENDX", Set.of(".ELSEX"), false));
+        registry.registerBlock(new BlockKind(Set.of(".IFX"), ".ENDX", Set.of(".ELSEX")), BLOCK, false);
 
         assertThat(registry.isBlockWord(".ifx")).isTrue();
         assertThat(registry.isBlockWord(".ELSEX")).isTrue();
         assertThat(registry.isBlockWord(".EndX")).isTrue();
         assertThat(registry.isBlockWord(".OTHER")).isFalse();
         assertThat(registry.blockKindOf(".elsex")).map(BlockKind::closer).contains(".ENDX");
+        assertThat(registry.blockHandlerOf(".ifx")).containsSame(BLOCK);
+        assertThat(registry.blockHandlerOf(".ENDX")).isEmpty();
+        assertThat(registry.blockHandlerOf(".ELSEX")).isEmpty();
+        assertThat(registry.isStored(".ELSEX")).isFalse();
+    }
+
+    @Test
+    void aStoredKindIsStoredUnderEveryOneOfItsWords() {
+        registry.registerBlock(new BlockKind(Set.of(".LOOP"), ".ENDLOOP", Set.of()), BLOCK, true);
+
+        assertThat(registry.isStored(".loop")).isTrue();
+        assertThat(registry.isStored(".ENDLOOP")).isTrue();
+        assertThat(registry.isStored(".OTHER")).isFalse();
     }
 
     @Test
     void registeringAnEqualBlockKindAgainIsIgnored() {
-        registry.registerBlock(new BlockKind(Set.of(".IFX"), ".ENDX", Set.of(), false));
+        registry.registerBlock(new BlockKind(Set.of(".IFX"), ".ENDX", Set.of()), BLOCK, false);
 
-        registry.registerBlock(new BlockKind(Set.of(".ifx"), ".endx", Set.of(), false));
+        registry.registerBlock(new BlockKind(Set.of(".ifx"), ".endx", Set.of()), BLOCK, false);
 
-        assertThat(registry.blockKindOf(".IFX")).contains(new BlockKind(Set.of(".IFX"), ".ENDX", Set.of(), false));
+        assertThat(registry.blockKindOf(".IFX")).contains(new BlockKind(Set.of(".IFX"), ".ENDX", Set.of()));
+    }
+
+    @Test
+    void aBlockKindRegisteredAgainWithAnotherHandlerIsRejected() {
+        registry.registerBlock(new BlockKind(Set.of(".IFX"), ".ENDX", Set.of()), BLOCK, false);
+
+        IPreProcessorBlockHandler other = (preProcessor, context, block) -> { };
+        assertThatThrownBy(() -> registry.registerBlock(new BlockKind(Set.of(".IFX"), ".ENDX", Set.of()), other, false))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining(".IFX");
     }
 
     @Test
     void aBlockKindThatClaimsAWordOfAnotherKindIsRejected() {
-        registry.registerBlock(new BlockKind(Set.of(".IFX"), ".ENDX", Set.of(".ELSEX"), false));
+        registry.registerBlock(new BlockKind(Set.of(".IFX"), ".ENDX", Set.of(".ELSEX")), BLOCK, false);
 
-        assertThatThrownBy(() -> registry.registerBlock(new BlockKind(Set.of(".LOOP"), ".ENDLOOP", Set.of(".ELSEX"), true)))
+        assertThatThrownBy(() -> registry.registerBlock(new BlockKind(Set.of(".LOOP"), ".ENDLOOP", Set.of(".ELSEX")), BLOCK, true))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining(".ELSEX")
                 .hasMessageContaining(".ENDX");
         assertThat(registry.isBlockWord(".LOOP")).isFalse();
+    }
+
+    @Test
+    void aBlockWordTakesNoHandlerOfItsOwnAndAHeldNameBecomesNoBlockWord() {
+        IPreProcessorHandler handler = (preProcessor, context) -> { };
+        registry.registerBlock(new BlockKind(Set.of(".IFX"), ".ENDX", Set.of(".ELSEX")), BLOCK, false);
+        registry.register(".OTHER", handler);
+
+        assertThatThrownBy(() -> registry.register(".ENDX", handler))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining(".ENDX");
+        assertThatThrownBy(() -> registry.registerBlock(new BlockKind(Set.of(".OTHER"), ".ENDOTHER", Set.of()), BLOCK, false))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining(".OTHER");
+        assertThat(registry.isBlockWord(".OTHER")).isFalse();
     }
 
     @Test
