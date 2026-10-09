@@ -16,8 +16,8 @@ public final class QualifiedNames {
     /**
      * Joins a level's path and a name defined on that level to the name's path.
      *
-     * @param levelPath The path of the level: an alias chain, a procedure's path, or empty or
-     *                  {@code null} for the compilation root.
+     * @param levelPath The path of the level: an alias chain, the path of a level a node opened,
+     *                  or empty or {@code null} for the compilation root.
      * @param name      The name as defined, in any case.
      * @return The path of the name, upper-cased.
      */

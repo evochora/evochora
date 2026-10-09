@@ -8,8 +8,8 @@ import org.evochora.compiler.model.symbols.SymbolTable;
  * symbol collector of a node that opens a level registers during semantic analysis.
  *
  * <p>When visiting an AST node that has a registered scope, the scope is entered before
- * processing children and restored afterwards.
- * This enables scope-sensitive symbol resolution during post-processing phases.</p>
+ * processing children and restored afterwards. Pass 2 of the semantic analysis and the
+ * post-processing resolve names from the level they stand in through it.</p>
  *
  * <p>The enter/leave pattern uses explicit saved-scope values rather than an internal
  * stack to ensure the traversal cannot get out of sync with the caller's recursion.</p>
