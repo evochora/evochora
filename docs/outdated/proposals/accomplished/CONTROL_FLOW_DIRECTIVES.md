@@ -90,9 +90,9 @@ is the code from one `.CASE` to the next.
 - Everything between the directives is code. What does not jump runs on into the next place:
   from the head into the first case, from one case into the next, from the last case out of the
   block. The compiler adds no instruction and checks no jump.
-- A label, a constant, a register alias or a procedure defined inside the block belongs to the
-  block's level, as it belongs to a procedure when defined there; `.IMPORT` and `.REQUIRE` stand
-  only at the module level and are reported inside a block as inside a procedure.
+- A label, a constant or a register alias defined inside the block belongs to the block's level,
+  as it belongs to a procedure when defined there; `.PROC`, `.IMPORT` and `.REQUIRE` stand only
+  at the module level and are reported inside a block as inside a procedure.
 - `.ORG` and `.DIR` are statements like any other. A part that is to begin on a new row has its
   `.ORG` before the `.CASE` that begins it, so that the label stands on the new row; the same
   holds for `.CONTROL` and `.ENDCONTROL`.

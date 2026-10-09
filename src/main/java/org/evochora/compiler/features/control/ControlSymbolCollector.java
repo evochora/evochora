@@ -11,8 +11,8 @@ import org.evochora.compiler.model.symbols.SymbolTable;
  * Collects the names of a control block during pass 1. The block's name is a label on the level
  * around the block; the block then opens a level of its own under that name, registered for its
  * node, and defines the label {@code END} on it before any name written inside the block. The
- * level is left after the block's children. A name defined twice on one level is reported at the
- * second definition, naming the first. The collector keeps no state.
+ * level is left after the block's children. A block name defined twice on one level is reported
+ * at the second definition, naming the first. The collector keeps no state.
  */
 public class ControlSymbolCollector implements ISymbolCollector {
 
@@ -29,8 +29,10 @@ public class ControlSymbolCollector implements ISymbolCollector {
 
         symbolTable.define(new Symbol("END", block.endSourceInfo(), Symbol.Type.LABEL,
                         new ControlEnd(block.endSourceInfo()), block.endExported()))
+                // The level was opened two statements above and holds nothing yet, so END cannot
+                // clash with a name a program wrote; a clash would be a defect of the compiler.
                 .ifPresent(existing -> diagnostics.reportError(
-                        "Cannot define end 'END': the name is already used at " + SourceInfo.position(existing.sourceInfo()) + ".",
+                        "Internal error: END is already defined in the level of block '" + block.name() + "' that was just opened.",
                         block.endSourceInfo().fileName(), block.endSourceInfo().lineNumber()));
     }
 
