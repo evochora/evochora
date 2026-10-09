@@ -56,6 +56,11 @@ session an iteration.
   module around it; inside the procedure the inner one is meant, by its plain name and by its
   path. A label inside a procedure is reached from outside only with `EXPORT` on it, as
   `PROC.LABEL` or `LIB.PROC.LABEL`.
+- A control block `.CONTROL NAME … .CASE X … .ENDCONTROL` is a level like a procedure: `NAME` is
+  a label at its start on the level around it, every case and `END` are labels on the block's
+  own level, reached inside by their plain names and from a block nested inside as `NAME.X` and
+  `NAME.END`; from outside a case or the end needs `EXPORT` on it, as a label in a procedure
+  does. The block adds no instruction, and no case or label in it may be called `END`.
 - Inside an imported file `.ORG` is relative to the import position. Code runs along the
   direction vector until a jump, so long procedures are laid out in rows, each `.ORG` on its own
   line and each row ending in a jump, as the primordial does. The world's width is the hard bound.
@@ -101,6 +106,10 @@ misleads.
 - Comments end the line and say what the instruction is for, aligned as in the primordial. A
   header comment on a procedure names its parameters, what it assumes about the world, and what
   it leaves behind on abandonment.
+- Write a decision or a loop as a control block, in the patterns of `docs/EVOASM_GUIDELINES.md`
+  ("Control blocks"): the head decides, the cases are the branches, `JMPI END` leaves, `JMPI NAME`
+  repeats. A jump guarded by a conditional stays single; only the unconditional jump at a row end
+  is doubled.
 
 ## 3 · Compile
 

@@ -1,8 +1,7 @@
 # Control Flow Directives
 
-**Status: TO BE REVIEWED** — specification complete, implementation on branch `feature/control-flow`.
-Builds on [QUALIFIED_NAMES](../../outdated/proposals/accomplished/QUALIFIED_NAMES.md) and
-[BLOCK_MECHANISM](../../outdated/proposals/accomplished/BLOCK_MECHANISM.md).
+**Status: ACCOMPLISHED — implemented on branch `feature/control-flow` (2026-10-09), in the seven steps below; see *Outcome* at the end.**
+Builds on [QUALIFIED_NAMES](QUALIFIED_NAMES.md) and [BLOCK_MECHANISM](BLOCK_MECHANISM.md).
 
 A control block is a third kind of level next to the module and the procedure. It gives a stretch
 of code a name and named places inside it, so that the jumps a programmer writes today with
@@ -313,8 +312,8 @@ introduced at that place (AGENTS.md, "User documentation").
 - **`IFER` in a chain** refers to the term before it, because terms execute in order and a
   skipped jump costs no tick; `IFER` as the first term refers to the instruction before the block.
 - **The source view** lists under a directive line only machine instructions, so the three
-  directives show their line and the annotation of their name, nothing more; the label cell
-  itself is in the grid.
+  directives show their line and nothing more, as a label line does; the label cell itself is in
+  the grid, and a definition gets no annotation, a reference does.
 
 ## Implementation
 
@@ -370,3 +369,32 @@ there changes the design.
     BLOCK_MECHANISM's, and the handler is written as its `SelectHandler` test case is.
 19. The cases are defined in text order, by a collector of their own, so that a clash is
     reported at the later name, as for two labels.
+
+## Outcome
+
+Implemented in the seven steps above, by one agent per step with the plan row as its contract.
+What the built code does beyond the solution text:
+
+- **Messages of the parser.** A `.CONTROL` without a name, a word after the name, a `.CASE`
+  without a name or with a word after it is reported once ("Expected block name after
+  .CONTROL.", "Expected newline after .CONTROL declaration.", "Expected case name after .CASE.",
+  "Expected newline after .CASE <name>.") and the block is left behind, as the block mechanism
+  does for every handler that gives up at its header.
+- **Messages of the level.** A second block of one name on one level is reported as "Cannot
+  define block '<name>': the name is already used at <position>.", a second case as "Cannot
+  define case …", in the form of the label's message; a label `END:` in a block is reported by
+  the label itself, with the `.ENDCONTROL` line as the place already taken.
+- **The example case is `BLOCKED`**, not `TURN`: `TURN` is an instruction, and the lexer never
+  yields it as a name.
+- **EXPORT across modules needed no code**: step 4 is a test class of its own,
+  `ControlBlockModuleTest`, tagged integration, because the one visibility rule carries the
+  block's names across an import unchanged.
+- **The reference program shows each path once**, not every pattern: a block with a case and a
+  jump to `END`, a block nested in that case that leaves the outer one, and the entry into a
+  block another module exports, at its start and at its exported case. The patterns live in
+  `ControlBlockCompileTest`, where every one of them compiles to the cells of its hand-written
+  twin. The library's block stands in the last module laid out before `main`, so that no existing
+  cell moves; the program-relative addresses of `main`'s cells are renumbered by the cells laid
+  out before them.
+- **The core changed in its comments only**: the symbol table and the scope tracker speak of
+  the levels a node opens, a procedure or a control block, where they named procedures alone.

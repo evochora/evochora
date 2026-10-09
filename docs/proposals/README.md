@@ -25,24 +25,16 @@ legitimately cover, and delegates the formats this codebase owns to PERSISTED_FO
 
 ## Compiler enhancements
 
-One compiler proposal remains open. CONDITIONAL_COMPILATION (`.DEFINE` flags, `.IFDEF` blocks, the
+No compiler proposal is open. CONDITIONAL_COMPILATION (`.DEFINE` flags, `.IFDEF` blocks, the
 `.END*` naming of the block directives), CONDITIONAL_JUMPS, QUALIFIED_NAMES (modules and procedures
-as levels, a name reached by its path, one visibility rule, the path as the identity of a name) and
+as levels, a name reached by its path, one visibility rule, the path as the identity of a name),
 BLOCK_MECHANISM (the structure of a block read by the core before its handler, in one reader for the
 preprocessor and the parser; a broken block reported and skipped; a label without a statement;
-`.PROC` at the module level only) are accomplished and live under
+`.PROC` at the module level only) and CONTROL_FLOW_DIRECTIVES (control blocks
+`.CONTROL`/`.CASE`/`.ENDCONTROL`: a third kind of level next to module and procedure, whose labels
+are reached by path like every name; the compiler generates no instruction, so padding and
+redundancy stay the programmer's) are accomplished and live under
 [`docs/outdated/proposals/accomplished/`](../outdated/proposals/accomplished/).
-
-| # | Document | Status | Summary |
-|---|---|---|---|
-| 1 | [CONTROL_FLOW_DIRECTIVES](compiler-enhancements/CONTROL_FLOW_DIRECTIVES.md) | TO BE REVIEWED | Control blocks `.CONTROL`/`.CASE`/`.ENDCONTROL`: a third kind of level next to module and procedure, whose labels `NAME`, `NAME.CASE` and `NAME.END` are reached by path like every name; the compiler generates no instruction, so padding and redundancy stay the programmer's |
-
-Dependencies:
-
-- **1 builds on [BLOCK_MECHANISM](../outdated/proposals/accomplished/BLOCK_MECHANISM.md)**, accomplished: `.CONTROL`/`.CASE`/`.ENDCONTROL` is a block kind of the parser's discipline.
-- **1 builds on [QUALIFIED_NAMES](../outdated/proposals/accomplished/QUALIFIED_NAMES.md)**, accomplished: the block is a level, its names are reached by path.
-- **1 relies on the rule that a condition which cannot be tested does not hold** (`docs/ASSEMBLY_SPEC.md`, "Conditional Instructions"), accomplished: the abort pattern of a block leaves the block when its test cannot be evaluated.
-- **[CONDITIONAL_JUMPS](../outdated/proposals/accomplished/CONDITIONAL_JUMPS.md) is optional for 1**, and accomplished: the patterns of 1 are written with conditional skips or with conditional jumps.
 
 ## Ideas
 
