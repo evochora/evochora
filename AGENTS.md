@@ -135,6 +135,7 @@ There is a central document for AI agent guidelines that defines architectural p
 - **Avoid without explicit request**: Core configuration changes, architectural modifications, breaking changes
 - **Code quality**: Prefer minimal diffs, write comprehensive tests, maintain existing code style. There is no "cosmetic" or "low" finding: a flaw found is a flaw fixed. After a change, every consequence is checked against the code by an explicit checklist — each mirrored definition (Java enum, JS constants, proto schema, DTO) by name
 - **Communication**: Explain reasoning for changes, ask when uncertain about architectural decisions
+- **No Fallbacks**: Never hide problematic states or errors with fallback behavior — always fail early! A second behavior the system falls back to is a heuristic that hides what went wrong
 - **Verify before claiming**: read the code before answering about its behaviour; re-check remembered facts and subagent results against the code; a claim about dependency direction, dead code or consumers is backed by a grep, never by the diff alone; a claim about the code names where it stands — file and line, or the method that shows it — unasked
 - **Verify the goal**: a change is done when the stated goal is demonstrably achieved in the code paths, not when the build is green
 - **Complete the check first**: a finding, analysis or recommendation is presented with its check complete — never with "still to verify" attached
@@ -257,7 +258,6 @@ runtime      →  (nothing)
 - **Retry Logic**: Use `log.debug()` during retries, then follow transient/fatal rules after exhaustion
 - **Stack Traces**: pass the exception ONLY when the cause is a bug or unknown (see below) - never when the message can say what went wrong
 - **Health Status**: Services/Resources are unhealthy if `errors.isEmpty() == false` or state == ERROR
-- **No Fallbacks**: Never hide problematic states or errors with fallback behavior — always fail early!
 
 **Monitoring & Metrics**:
 - **O(1) Recording**: All metric recording MUST be O(1) - no lists, no sorting, no iteration
