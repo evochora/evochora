@@ -4,6 +4,7 @@ import org.evochora.compiler.Compiler;
 import org.evochora.compiler.api.CompilationException;
 import org.evochora.compiler.api.CompilerOptions;
 import org.evochora.compiler.api.ProgramArtifact;
+import org.evochora.compiler.api.SourceFile;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.api.SourceRoot;
 import org.evochora.compiler.api.TokenInfo;
@@ -28,7 +29,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * A module declares a value it needs with {@code .REQUIRE VALUE}, and the importer supplies it
  * with {@code USING VALUE}, or the default holds. The value is a constant of the module's
  * placement: each placement has its own, the token map marks its uses as a constant, and the
- * artifact lists it under the placement's path.
+ * artifact lists it under the placement's path. The main program, which nothing imports, takes
+ * its values from the configuration through {@link CompilerOptions#values()}.
  */
 @Tag("integration")
 class ModuleValuesTest {
@@ -299,6 +301,131 @@ class ModuleValuesTest {
                                 + ":1: .REQUIRE must stand alone on its line; found 'EXTRA' after the value and its default."));
     }
 
+    @Test
+    void aConfiguredValueTakesThePlaceOfTheMainProgramsDefault() throws Exception {
+        write("main.evo",
+                ".REQUIRE VALUE STEPS DATA:10",
+                "START:",
+                "  SETI %DR0 STEPS");
+
+        assertThat(compile(Map.of("STEPS", "DATA:20")).constantValues()).containsEntry("STEPS", "DATA:20");
+    }
+
+    @Test
+    void withoutAConfiguredValueTheMainProgramsDefaultHolds() throws Exception {
+        write("main.evo",
+                ".REQUIRE VALUE STEPS DATA:10",
+                "START:",
+                "  SETI %DR0 STEPS");
+
+        assertThat(compile(Map.of()).constantValues()).containsEntry("STEPS", "DATA:10");
+    }
+
+    /**
+     * A value requirement without default is bound by the configuration; the name of the
+     * configured value is case-insensitive.
+     */
+    @Test
+    void aConfiguredValueBindsAValueWithoutDefault() throws Exception {
+        write("main.evo",
+                "START:",
+                ".REQUIRE VALUE STEPS",
+                "  SETI %DR0 STEPS");
+
+        assertThat(compile(Map.of("steps", "DATA:20")).constantValues()).containsEntry("STEPS", "DATA:20");
+    }
+
+    @Test
+    void aConfiguredValueThatIsANameIsLookedUpInTheMainProgram() throws Exception {
+        write("main.evo",
+                ".CONST LIMIT DATA:7",
+                ".REQUIRE VALUE STEPS DATA:10",
+                "START:",
+                "  SETI %DR0 STEPS");
+
+        ProgramArtifact artifact = compile(Map.of("STEPS", "LIMIT"));
+
+        assertThat(artifact.constantValues()).containsEntry("STEPS", "DATA:7");
+        assertThat(artifact.sources()).extracting(SourceFile::path)
+                .noneMatch(path -> path.startsWith("<value"));
+        assertThat(artifact.sources()).extracting(SourceFile::resolvedPath)
+                .noneMatch(path -> path.startsWith("<value"));
+    }
+
+    /**
+     * A configured value that is a name is a use of that name in the main program, and reported
+     * there when the main program has not defined it.
+     */
+    @Test
+    void aConfiguredNameTheMainProgramHasNotDefinedIsReportedAtTheRequirement() throws Exception {
+        write("main.evo",
+                ".REQUIRE VALUE STEPS DATA:10",
+                "START:",
+                "  SETI %DR0 STEPS");
+
+        assertThatThrownBy(() -> compile(Map.of("STEPS", "NOPE")))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("Cannot require value 'STEPS' from 'NOPE': the name is not defined.")
+                .hasMessageContaining("main.evo:1");
+    }
+
+    /**
+     * One configuration serves several programs, so a value no requirement names is ignored.
+     */
+    @Test
+    void aConfiguredValueNothingRequiresIsNotReported() throws Exception {
+        write("main.evo",
+                "START:",
+                "  NOP");
+
+        assertThatCode(() -> compile(Map.of("STEPS", "DATA:20"))).doesNotThrowAnyException();
+    }
+
+    @Test
+    void aConfiguredValueOfTwoOperandsIsReported() throws Exception {
+        assertConfiguredValueIsNoOperand("DATA:1 DATA:2");
+    }
+
+    @Test
+    void aConfiguredValueWithASemicolonIsReported() throws Exception {
+        assertConfiguredValueIsNoOperand("DATA:1; NOP");
+    }
+
+    @Test
+    void aConfiguredValueTheLexerRejectsIsReported() throws Exception {
+        assertConfiguredValueIsNoOperand("DATA:2\"0");
+    }
+
+    /**
+     * Only the main program's placement reads the configuration; a module's requirement of the
+     * same name keeps what its importer binds, or its default.
+     */
+    @Test
+    void aConfiguredValueIsNotTakenByAModule() throws Exception {
+        write("walk.evo",
+                ".REQUIRE VALUE STEPS DATA:10",
+                "  NOP");
+        write("main.evo",
+                ".IMPORT \"walk.evo\" AS WALK",
+                "START:",
+                "  NOP");
+
+        assertThat(compile(Map.of("STEPS", "DATA:20")).constantValues()).containsEntry("WALK.STEPS", "DATA:10");
+    }
+
+    private void assertConfiguredValueIsNoOperand(String text) throws Exception {
+        write("main.evo",
+                "START:",
+                ".REQUIRE VALUE STEPS DATA:10",
+                "  SETI %DR0 STEPS");
+
+        assertThatThrownBy(() -> compile(Map.of("STEPS", text)))
+                .isInstanceOf(CompilationException.class)
+                .satisfies(e -> assertThat(e.getMessage().lines().toList()).containsExactly(
+                        "[ERROR] " + resolved("main.evo")
+                                + ":2: Configured value 'STEPS' is not an operand; a value is written as a .CONST takes it: a literal, a vector or a name."));
+    }
+
     /**
      * The example of the proposal: walk.evo needs a module and two values, main.evo places it
      * twice.
@@ -343,6 +470,11 @@ class ModuleValuesTest {
 
     private ProgramArtifact compile() throws Exception {
         CompilerOptions options = new CompilerOptions(List.of(new SourceRoot(sourceRoot.toString(), null)));
+        return new Compiler().compile("main.evo", ENV, options);
+    }
+
+    private ProgramArtifact compile(Map<String, String> values) throws Exception {
+        CompilerOptions options = new CompilerOptions(List.of(new SourceRoot(sourceRoot.toString(), null)), Map.of(), values);
         return new Compiler().compile("main.evo", ENV, options);
     }
 }

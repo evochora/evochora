@@ -16,49 +16,79 @@ import java.util.OptionalInt;
  *                    names and keeps an unmodifiable copy, so that two options whose flags differ
  *                    only in the case of a name are equal. The syntax of a name is not checked
  *                    here; that is left to whoever reads the flags.
+ * @param values      Values of the compilation: each key is a value name, each value the text of
+ *                    an operand that the main program's {@code .REQUIRE VALUE} of that name takes
+ *                    in place of its default. A value no {@code .REQUIRE VALUE} of the main
+ *                    program names is not used. The compact constructor upper-cases the names and
+ *                    keeps an unmodifiable copy, as it does for the flags. The text is not checked
+ *                    here; the compiler reports a text that is not one operand.
  */
-public record CompilerOptions(List<SourceRoot> sourceRoots, Map<String, OptionalInt> defines) {
+public record CompilerOptions(List<SourceRoot> sourceRoots, Map<String, OptionalInt> defines,
+                              Map<String, String> values) {
 
     /**
-     * Normalises the flags: upper-cases every name and copies the map.
+     * Normalises the flags and the values: upper-cases every name and copies the maps.
      *
-     * @throws IllegalArgumentException if two names are the same name after upper-casing; the
-     *                                  message names both.
-     * @throws NullPointerException     if {@code defines}, one of its names or one of its values
-     *                                  is null.
+     * @throws IllegalArgumentException if two names of the flags, or two names of the values, are
+     *                                  the same name after upper-casing; the message names both.
+     * @throws NullPointerException     if {@code defines} or {@code values}, one of their names or
+     *                                  one of their values is null.
      */
     public CompilerOptions {
-        Map<String, OptionalInt> normalised = new HashMap<>();
-        Map<String, String> originalNames = new HashMap<>();
-        for (Map.Entry<String, OptionalInt> entry : defines.entrySet()) {
-            String name = entry.getKey().toUpperCase(Locale.ROOT);
-            String previous = originalNames.putIfAbsent(name, entry.getKey());
-            if (previous != null) {
-                throw new IllegalArgumentException("Defines '" + previous + "' and '" + entry.getKey()
-                        + "' are the same flag " + name + "; flag names are case-insensitive");
-            }
-            normalised.put(name, entry.getValue());
-        }
-        defines = Map.copyOf(normalised);
+        defines = upperCased(defines, "Defines", "flag");
+        values = upperCased(values, "Values", "value");
     }
 
     /**
-     * Creates options with the given source roots and no preprocessor flags.
+     * Creates options with the given source roots and preprocessor flags, and no values.
+     *
+     * @param sourceRoots Ordered list of source root directories for path resolution.
+     * @param defines     Preprocessor flags of the compilation, as for the canonical constructor.
+     */
+    public CompilerOptions(List<SourceRoot> sourceRoots, Map<String, OptionalInt> defines) {
+        this(sourceRoots, defines, Map.of());
+    }
+
+    /**
+     * Creates options with the given source roots, no preprocessor flags and no values.
      *
      * @param sourceRoots Ordered list of source root directories for path resolution.
      */
     public CompilerOptions(List<SourceRoot> sourceRoots) {
-        this(sourceRoots, Map.of());
+        this(sourceRoots, Map.of(), Map.of());
     }
 
     /**
-     * Creates default compiler options with a single unprefixed root at "." and no preprocessor flags.
+     * Copies a map of names with every name upper-cased.
+     *
+     * @param plural   What the map holds, capitalised, for the message: {@code Defines}, {@code Values}.
+     * @param singular What one name names, for the message: {@code flag}, {@code value}.
+     * @throws IllegalArgumentException if two names are the same name after upper-casing.
+     */
+    private static <V> Map<String, V> upperCased(Map<String, V> byName, String plural, String singular) {
+        Map<String, V> normalised = new HashMap<>();
+        Map<String, String> originalNames = new HashMap<>();
+        for (Map.Entry<String, V> entry : byName.entrySet()) {
+            String name = entry.getKey().toUpperCase(Locale.ROOT);
+            String previous = originalNames.putIfAbsent(name, entry.getKey());
+            if (previous != null) {
+                throw new IllegalArgumentException(plural + " '" + previous + "' and '" + entry.getKey()
+                        + "' are the same " + singular + " " + name + "; " + singular + " names are case-insensitive");
+            }
+            normalised.put(name, entry.getValue());
+        }
+        return Map.copyOf(normalised);
+    }
+
+    /**
+     * Creates default compiler options with a single unprefixed root at "." and no preprocessor
+     * flags or values.
      *
      * @return Options whose only source root is the unprefixed path {@code "."}, so every module path
      *         is resolved relative to the working directory and no {@code PREFIX:path} form is available.
      */
     public static CompilerOptions defaults() {
-        return new CompilerOptions(List.of(new SourceRoot(".", null)), Map.of());
+        return new CompilerOptions(List.of(new SourceRoot(".", null)), Map.of(), Map.of());
     }
 
     private static final java.util.regex.Pattern PREFIX_PATTERN =

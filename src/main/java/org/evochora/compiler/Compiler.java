@@ -57,8 +57,10 @@ import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * The main compiler implementation. This class orchestrates the entire compilation
@@ -175,10 +177,13 @@ public class Compiler implements ICompiler {
         DependencyGraph graph = depScanner.scan(fullSource, mainFilePath, rootAliasChain);
         failOnErrors(diagnostics);
 
-        // Phase 1: Lexical Analysis — every included file under its path, the main file as the stream
+        // Phase 1: Lexical Analysis — every included file under its path, the main file as the stream,
+        // and the text of every value of the options on its own
         Map<String, List<Token>> fileTokens = Lexer.lexFiles(graph.includedContents(), diagnostics, isa, featureRegistry.lexerSymbols());
         List<Token> initialTokens = new ArrayList<>(new Lexer(fullSource, diagnostics, mainFilePath, isa,
                 featureRegistry.lexerSymbols()).scanTokens());
+        Map<String, List<Token>> valueTokens = lexValues(effectiveOptions.values(), rootAliasChain, isa,
+                featureRegistry.lexerSymbols());
 
         // Phase 2: Preprocessing (includes, macros)
         PreProcessorContext ppContext = new PreProcessorContext(rootAliasChain, fileTokens, graph.lines(),
@@ -199,7 +204,7 @@ public class Compiler implements ICompiler {
         if (featureRegistry.defaultParserStatementHandler() != null) {
             parserRegistry.registerDefault(featureRegistry.defaultParserStatementHandler());
         }
-        Parser parser = new Parser(ppResult.tokens(), diagnostics, parserRegistry);
+        Parser parser = new Parser(ppResult.tokens(), diagnostics, parserRegistry, rootAliasChain, valueTokens);
         List<AstNode> ast = parser.parse();
 
         failOnErrors(diagnostics);
@@ -238,7 +243,7 @@ public class Compiler implements ICompiler {
         irRegistry.registerAll(featureRegistry.irConverters());
         IrGenerator irGenerator = new IrGenerator(diagnostics, irRegistry);
         DebugInfo debugInfo = new DebugInfo(ppResult.sources(), ppResult.expansions(), tokenMap,
-                effectiveOptions.defines());
+                effectiveOptions.defines(), effectiveOptions.values());
         IrProgram irProgram = irGenerator.generate(resolvedAst, programName, rootAliasChain, debugInfo);
         failOnErrors(diagnostics);
 
@@ -286,6 +291,31 @@ public class Compiler implements ICompiler {
     @Override
     public void setVerbosity(int level) {
         this.verbosity = level;
+    }
+
+    /**
+     * Lexes the text of every value of the options, each on its own, so that the parser can read
+     * it where the main program requires the value. A text is lexed with a diagnostics engine of
+     * its own: what the lexer rejects is no operand, which the parser's reader of the requirement
+     * reports in its own words, and a text whose lexing reported an error yields no tokens. The
+     * tokens are kept as the lexer gives them, its end of file among them, and stand under the
+     * file name {@code <value NAME>}, line 0, in the root placement: a name among them is looked
+     * up in the main program. They never enter the token stream.
+     *
+     * @return The tokens of every value by its name.
+     */
+    private static Map<String, List<Token>> lexValues(Map<String, String> values, String rootAliasChain,
+                                                      RuntimeInstructionSetAdapter isa, Set<String> symbols) {
+        Map<String, List<Token>> valueTokens = new HashMap<>();
+        for (Map.Entry<String, String> value : values.entrySet()) {
+            String fileName = "<value " + value.getKey() + ">";
+            DiagnosticsEngine own = new DiagnosticsEngine();
+            List<Token> tokens = new Lexer(value.getValue(), own, fileName, isa, symbols).scanTokens();
+            valueTokens.put(value.getKey(), own.hasErrors() ? List.of() : tokens.stream()
+                    .map(token -> token.with(new SourceInfo(fileName, 0, token.source().columnNumber(), rootAliasChain, 0)))
+                    .toList());
+        }
+        return valueTokens;
     }
 
     /**

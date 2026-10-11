@@ -65,6 +65,24 @@ public class CompilerOptionsTest {
 
     @Test
     @Tag("unit")
+    void values_namesAreUpperCased() {
+        CompilerOptions opts = new CompilerOptions(List.of(), Map.of(), Map.of("steps", "DATA:20"));
+        assertThat(opts.values()).containsOnly(Map.entry("STEPS", "DATA:20"));
+    }
+
+    @Test
+    @Tag("unit")
+    void values_twoKeysOfOneName_failNamingBoth() {
+        Map<String, String> source = new LinkedHashMap<>();
+        source.put("a", "DATA:1");
+        source.put("A", "DATA:2");
+        assertThatThrownBy(() -> new CompilerOptions(List.of(), Map.of(), source))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Values 'a' and 'A' are the same value A; value names are case-insensitive");
+    }
+
+    @Test
+    @Tag("unit")
     void defines_differingOnlyInCase_areEqual() {
         CompilerOptions lower = new CompilerOptions(List.of(), Map.of("x", OptionalInt.of(1)));
         CompilerOptions upper = new CompilerOptions(List.of(), Map.of("X", OptionalInt.of(1)));

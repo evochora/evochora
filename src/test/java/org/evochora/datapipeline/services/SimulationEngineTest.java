@@ -610,6 +610,56 @@ class SimulationEngineTest {
         assertDoesNotThrow(() -> new SimulationEngine("test-engine", config, resources));
     }
 
+    // ============ Configured Values Tests ============
+
+    private static final String VALUED_PROGRAM = """
+            .REQUIRE VALUE STEPS DATA:10
+            SETI %DR0 STEPS
+            """;
+
+    @Test
+    void readValues_readsTheTextOfEveryValue() {
+        Config entry = ConfigFactory.parseString("values { STEPS = \"DATA:20\", LIMIT = \"1|0\" }");
+
+        assertEquals(Map.of("STEPS", "DATA:20", "LIMIT", "1|0"), SimulationEngine.readValues(entry, 0));
+    }
+
+    @Test
+    void readValues_rejectsAValueThatIsNoString() {
+        Config entry = ConfigFactory.parseString("values { STEPS = 20 }");
+
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
+                () -> SimulationEngine.readValues(entry, 0));
+        assertTrue(exception.getMessage().contains("organisms[0].values.STEPS"), exception.getMessage());
+    }
+
+    @Test
+    void compileOrganismPrograms_compilesOneProgramWithDifferentValuesIntoTwoArtifacts() throws IOException {
+        Path program = writeProgram("valued.evo", VALUED_PROGRAM);
+
+        List<ProgramArtifact> artifacts = compileOrganismPrograms(
+                organismEntryWithValues(program, Map.of("STEPS", "DATA:20")),
+                organismEntryWithValues(program, Map.of("STEPS", "DATA:30")));
+
+        assertNotSame(artifacts.get(0), artifacts.get(1));
+        assertNotEquals(artifacts.get(0).programId(), artifacts.get(1).programId());
+    }
+
+    @Test
+    void compileOrganismPrograms_compilesOneProgramWithEqualValuesOnce() throws IOException {
+        Path program = writeProgram("valued.evo", VALUED_PROGRAM);
+
+        List<ProgramArtifact> artifacts = compileOrganismPrograms(
+                organismEntryWithValues(program, Map.of("STEPS", "DATA:20")),
+                organismEntryWithValues(program, Map.of("STEPS", "DATA:20")));
+
+        assertSame(artifacts.get(0), artifacts.get(1));
+    }
+
+    private static Config organismEntryWithValues(Path program, Map<String, Object> values) {
+        return ConfigFactory.parseMap(Map.of("program", program.toString(), "values", values));
+    }
+
     private static List<ProgramArtifact> compileOrganismPrograms(Config... entries) {
         return SimulationEngine.compileOrganismPrograms(List.of(entries),
                 CompilerOptions.defaults().sourceRoots(),

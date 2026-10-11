@@ -131,9 +131,12 @@ part of the import feature, which owns both ends of the mechanism.
   the configuration: `values { STEPS = "DATA:20" }` in the organism's entry, and
   `evochora compile --value STEPS=DATA:20` for one compilation, next to `defines` and `--define`.
   A configured value takes the place of the default: the compiler lexes every configured value
-  text in phase 1, as it lexes every file that may enter the token stream, and the preprocessor
-  handler of `.REQUIRE` puts those tokens where the default stands, in the root placement alone.
-  From there on nothing is special. The configuration is decisive, as it is for flags.
+  text in phase 1, as it lexes every file that may enter the token stream, and hands the tokens
+  to the parser; the `.REQUIRE VALUE` handler, in the root placement, asks the parser to read them
+  as one operand and puts that operand where the default stands in the node. Nothing enters the
+  token stream, and from there on nothing is special. The configuration is decisive, as it is for
+  flags. A configured value no `.REQUIRE VALUE` names is not reported, as a configured flag no
+  `.IFDEF` tests is not: one configuration serves several programs.
 - **Values and flags stay apart.** A value is a constant: it is used in code and never in
   `.IFDEF`. A flag is used in `.IFDEF` and never in code.
 - **A name is used after it is defined, everywhere.** An instruction may name a constant only
@@ -270,24 +273,12 @@ other.
   `.REQUIRE VALUE` line, in pass 2, by `RequireAnalysisHandler`:
   `The value 'SPEED' has no default and the configuration sets none; set it with values { SPEED = "<value>" } in the organism's entry or --value SPEED=<value>.`
   Pass 2 defines the symbol all the same, bound to nothing, so that the uses report nothing of their own.
-- A configured value the main program does not require: against the configuration, file empty and
-  line 0, as `Configured flag 'X' is not a valid name` is reported today. Pass 2 cannot see the
-  configuration and runs no handler when the main program has no `.REQUIRE VALUE` at all, so the
-  `.REQUIRE` preprocessor handler reports it: it records in its context record which values it put
-  in place, and at the end of the preprocessor run, in a new `finish(PreProcessorContext)` of
-  `IPreProcessorHandler` that the preprocessor calls once per registered handler after
-  `expand()`, it reports the rest:
-  `Configured value 'STEP' is not required by main.evo: it has no .REQUIRE VALUE STEP.`
-- A configured value text that is not one operand, because it lexes to more than one token before
-  the end, such as `DATA:1; NOP` (a `;` lexes to NEWLINE): by the `.REQUIRE` preprocessor handler
-  when it would inject it, `Configured value 'X' is not one operand.`
-- A `USING VALUE` whose value is a name the importer has not defined at the `.IMPORT` line, by
-  `ImportAnalysisHandler`: `Cannot bind VALUE SPEED from 'SLOW_SPEDD': the name is not defined.`; a default
-  that is a name the module has not defined, at the `.REQUIRE VALUE` line, by
-  `RequireAnalysisHandler`, worded the same. The value is resolved there as a use, so that the uses
-  inside the module, analysed before any later line of the importer, find it bound.
-- A configured value text the lexer rejects: by the lexer under the synthetic file name of that
-  value, worded as `value STEPS of the configuration`, never as a line.
+- A configured value that is not one operand (`DATA:1 DATA:2`, `DATA:1; NOP`, a text the lexer
+  rejects): at the `.REQUIRE VALUE` line of the main program, by the parser handler of `.REQUIRE`,
+  the one place that knows what an operand is:
+  `Configured value 'STEPS' is not an operand; a value is written as a .CONST takes it: a literal, a vector or a name.`
+  No position of a configured value ever appears in a report, because its tokens never enter the
+  token stream.
 
 ### Into the artifact
 
@@ -334,7 +325,7 @@ is annotated as today. Step 5 tests the token map entry and the two `constantVal
 One feature, `features/importdir`, owns both ends: `.IMPORT` with `USING`, `.REQUIRE` in both
 kinds, the dependency scan and module setup of both, the bindings and their checks. The
 `require` package goes, its classes move. The core changes in `ModuleScope`, `SymbolTable`
-(`bindingOf`), `CompilerOptions`, `Compiler` and `PreProcessorContext` (lexed value texts),
+(`bindingOf`), `CompilerOptions`, `Compiler` and `Parser` (lexed value texts, read as one operand),
 `ProgramIdentity` and `DebugInfo`, all generically.
 
 | Component | Phase | Does |
@@ -342,14 +333,13 @@ kinds, the dependency scan and module setup of both, the bindings and their chec
 | `RequireDependencyScanHandler` (moved) | 0, dependency scan | Matches `.REQUIRE MODULE "<path>" AS <Alias>`; a `.REQUIRE VALUE` is no dependency and is not matched. It and `RequireDependencyInfo` stay although the module setup no longer reads them: through `allowedInSourceFile` the scan still reports a `.REQUIRE` inside a `.SOURCE` file. |
 | `ImportDependencyScanHandler` | 0 | Matches `[EXPORT] .IMPORT "<path>" AS <Alias>` and leaves the rest of the line unread; `ImportDependencyInfo` without `usings`. |
 | `ImportSourceHandler` | 2, preprocessor | Reads path and alias, injects the module's tokens, skips to the end of the line; the `;` report stays, the `USING` check goes. A token after the clauses (`AS LIB^2`) is then the parser's to report, with the line rule's text that `.REQUIRE` already uses in the parser. |
-| `RequireDirectiveHandler` (moved) | 3, parser | `supportsExport()` true. After `.REQUIRE` a kind word: `MODULE` then `"<path>" AS <Alias>` into `RequireNode`, an `EXPORT` before it reported by the handler with its own message; `VALUE` then `<Name>` and an optional default through `context.expression()` into `ValueRequirementNode(name, value, default, exported, sourceInfo)`, where `value` is an `IdentifierNode` carrying the requirement's own name, the slot phase 6 fills; the node returns value and default as children and implements `reconstructWithChildren` (see "Into the artifact"); a missing or unknown kind word is reported. |
+| `RequireDirectiveHandler` (moved) | 3, parser | `supportsExport()` true. After `.REQUIRE` a kind word: `MODULE` then `"<path>" AS <Alias>` into `RequireNode`, an `EXPORT` before it reported by the handler with its own message; `VALUE` then `<Name>` and an optional default through `context.expression()`; in the root placement, when `context.values()` holds tokens for `<Name>`, `context.operandOf(tokens)` replaces the default, or the handler reports the configured value as no operand; into `ValueRequirementNode(name, value, default, exported, sourceInfo)`, where `value` is an `IdentifierNode` carrying the requirement's own name, the slot phase 6 fills; the node returns value and default as children and implements `reconstructWithChildren` (see "Into the artifact"); a missing or unknown kind word is reported. |
 | `ImportDirectiveHandler` | 3, parser | After `USING`, the kind words `MODULE` and `VALUE` in any order, each opening a list of groups up to the next kind word, as `ProcDirectiveHandler` reads `REF`, `VAL`, `LREF`, `LVAL`; a value is read with `context.expression()`. `ImportNode` gets `List<ValueBinding(name, value, nameSourceInfo)>` beside `usings`. A name bound twice is reported here. |
 | `ImportModuleSetupHandler` | 4, module setup | `registerRelationships` as today: the import alias leads to the imported placement, `ModuleScope.addAlias`. `resolveBindings` goes; `RequireModuleSetupHandler` goes. |
 | `ImportSymbolCollector` | 4, pass 1 | Defines the alias symbol as today; then, for the imported placement, binds each `USING MODULE` source with `ModuleScope.bindAlias(target, aliasChain)` and records each `USING VALUE` binding in the feature's record, with the importer's alias chain. |
 | `ImportAnalysisHandler` | 4, pass 2 | Reports at the `.IMPORT` line, against the imported placement's record: a module requirement without binding, a `USING MODULE` target that is no requirement (as today, from the record instead of `requires()`), a `VALUE` name that is no value requirement, a value requirement without default and without binding, a bound value that names an undefined name (resolved in the importer at this line, as a use). |
 | `RequireSymbolCollector` (moved) | 4, pass 1 | For a module requirement: the alias symbol as today, and the requirement into its placement's record. A value requirement defines nothing in pass 1, as a `.CONST` defines nothing there. |
 | `RequireAnalysisHandler` (moved) | 4, pass 2 | For a module requirement, as today against the record; in the root placement, the report that the main program cannot require a module. For a value requirement, as `ConstAnalysisHandler` does for a `.CONST`: takes the binding of the current placement from the record, or the default; defines the constant with `Symbol.Type.CONSTANT`, exported as the directive says, and the node `ValueBindingNode(value)` implementing `IIdentifierBinding`; a taken name is reported as for a constant; a default that is a name is resolved here as a use and reported when undefined; without binding and default, defines the symbol without a value and gives the report above. |
-| `RequirePreprocessorHandler` | 2, preprocessor | In the root placement, for `.REQUIRE VALUE <Name> [<Default>]`: when `context.values()` holds tokens for `<Name>`, injects them in place of the default, each with the root placement in its `SourceInfo`, after rejecting tokens that are not one operand; notes the name in its context record; elsewhere leaves the line. In `finish`, reports every configured value it did not put in place. Registered as the `.REQUIRE` handler next to the top-level-only rule. |
 | `ConstNode` | `features/constdir` | Implements `reconstructWithChildren`, so that the literal phase 6 resolved reaches the artifact. |
 | `ConstAnalysisHandler` | 4, pass 2 | A value that is a name is resolved at the `.CONST` line as a use and reported when undefined: "Cannot define constant 'A' from 'B': the name is not defined." Today the name is followed only at a use of `A`. |
 | `ValueRequirementNodeConverter` | 7, IR | Emits `IrDirective("importdir", "value", {name, value})` with the name qualified under the current alias chain (`WALK.STEPS`, `SLOW.STEPS`) and the text of the literal phase 6 put into the value slot. |
@@ -360,9 +350,8 @@ kinds, the dependency scan and module setup of both, the bindings and their chec
 | `IPlacementAlias` | `model/ast` | Capability: the definition of a name that is an alias of the module level, leading into another placement when the alias map has an entry. Implemented by `ImportNode` and `RequireNode`. |
 | `SymbolTable` | core | `registerRoot(aliasChain)` and `rootAliasChain()`, set by the semantic analyzer, so that a handler can tell the compilation root from a module (null in the single-file mode of the unit tests); `descendModule` and the first-segment lookup read `aliases()` alone; the requirement branches go and the explanations speak of names and aliases; `bindingOf` looks the identifier a definition binds up in the placement that identifier's `SourceInfo` names. |
 | `CompilerOptions` | `api` | `values`, a map from name to the value text, next to `defines`, names normalised as the defines are: upper-cased, two spellings of one name rejected. |
-| `Compiler` | compiler | In phase 1 lexes every value text of the options under the synthetic file name `<value NAME>`, as `Lexer.lexFiles` lexes the included files, and gives the tokens to `PreProcessorContext` as `values()`, a map from name to tokens next to `fileTokens()`. The core knows texts of the options, not requirements. |
-| `PreProcessorContext` | core | `values()`, the lexed value texts by name. |
-| `IPreProcessorHandler`, `PreProcessor` | core | `default void finish(PreProcessorContext)`, called once per registered handler at the end of `expand()`; a generic end-of-phase hook, used here to report what no directive took. |
+| `Compiler` | compiler | In phase 1 lexes every value text of the options, as `Lexer.lexFiles` lexes the included files, each with its own `DiagnosticsEngine` (a text the lexer rejects yields no tokens), and gives the tokens to the `Parser`. The core knows texts of the options, not requirements. |
+| `Parser`, `IParsingContext` | core | `values()`, the lexed value texts by name; `rootAliasChain()`, the placement of the compilation root; `Optional<OperandNode> operandOf(List<Token>)`, the tokens read as exactly one operand, empty otherwise, reporting nothing (the caller reports with its own words). |
 | `CompileCommand`, `SimulationEngine` | cli, datapipeline | `--value NAME=TEXT`; `values { … }` in the organism entry, read as `readDefines` reads `defines`; `ProgramVariant` keys the compiled artifacts by path, defines and values, so two entries with the same program and different values get two artifacts. |
 | `ProgramIdentity`, `DebugInfo` | backend, `model/ir` | The values enter the identity's digest after the defines, each name and value text as length-prefixed UTF-8 bytes in alphabetical order of the names, with a count of 0 when there are none; `DebugInfo` carries them into the artifact beside the flags. Two variants that compile to the same code under different values keep separate artifacts, for the reason the defines already enter. |
 
@@ -414,14 +403,14 @@ options, as it knows the defines, and nothing of what a feature makes of them.
 - **A default that names a module name** is resolved in the module, a bound value that names a
   name in the importer; the two look alike in the source and differ in where they are looked up.
   The specification states both.
-- **Order inside the main program:** a value of the configuration takes the default's place in the
-  preprocessor, before the parser reads the line; a default is taken only when the configuration
-  has none. A constant the importer binds with `USING VALUE` stands before the `.IMPORT`; the
+- **Order inside the main program:** a value of the configuration takes the default's place when
+  the parser reads the `.REQUIRE VALUE` line; a default is taken only when the configuration has
+  none. A constant the importer binds with `USING VALUE` stands before the `.IMPORT`; the
   uses inside the module are analysed right after the import line, before anything the importer
   writes below it.
-- **Synthetic tokens.** The tokens of a configured value name a file that does not exist; they
-  describe no source line, the token map keeps them without effect, and `sources` must not list
-  the name. A test pins that.
+- **Tokens of a configured value** name no file; they never enter the token stream, and a
+  configured value that is a name gets a token map entry under a position no file has, which the
+  visualizer never shows. `sources` must not list such a name. A test pins that.
 - **The dependency scan** must keep matching `.REQUIRE MODULE "…" AS …` and
   `.IMPORT "…" AS …` in raw text before the preprocessor runs; the address of a file is read three
   times, by the scan, the preprocessor and the parser, and that stays as long as one token stream
@@ -450,7 +439,7 @@ the compiler package, so every verification runs both packages.
 | 3 | The core forgets the requirement | test first: a `SymbolTable` test that an unsatisfied requirement alias resolves to "not marked EXPORT" from outside and to "'CALC' leads to no module." inside, and a `CompilerDiagnosticsTest` for the main program's `.REQUIRE MODULE` with and without a use of the alias; then `ModuleScope` (`aliases`, `state`), `SymbolTable` (the branches reading the three maps go, `aliases()`, the four explanations and the two Javadocs reworded; `bindingOf` chooses the key as `lookUp` does, in one shared place), the feature's record (an immutable record, complete after pass 1), `ImportModuleSetupHandler` (`resolveBindings` goes), `RequireModuleSetupHandler` (goes), `ImportSymbolCollector` (binds), `RequireSymbolCollector` (records), `ImportAnalysisHandler`, `RequireAnalysisHandler` (the record instead of `requires()`), `IDependencySetupHandler` (`resolveBindings` goes), `SemanticAnalyzer` (step 2 of the setup goes), `ImportDependencyScanHandler` and `ImportDependencyInfo` (no `usings`), `ImportSourceHandler` (no `USING` check); `CompilerDiagnosticsTest` for the two messages; the tests that read or write the three maps: `ModuleScopeTest`, `SymbolTableFreezeTest`, `SymbolTableTest`, `ModuleVisibilityTest`, `ImportAnalysisHandlerTest`, `AstPostProcessorTest`, `UsingClauseIntegrationTest`; the tests of the scan and the setup | `gw test --tests 'org.evochora.compiler.*' --tests 'org.evochora.architecture.*'` | no reader of `requires()`, `imports()` or `usingBindings()` remains; the `USING` clause is read by the parser alone; the reference artifact is unchanged |
 | 4 | The kind word | test first: `RequireDirectiveTest`, `ImportDirectiveTest` for `MODULE` and for a missing kind word; then `RequireDependencyScanHandler`, `RequireDirectiveHandler`, `ImportDirectiveHandler`, the module example, the reference program (syntax only), `expected/main.json` regenerated, `ASSEMBLY_SPEC.md` syntax lines | `gw test --tests 'org.evochora.compiler.*' --tests 'org.evochora.architecture.*'`; a diff of the artifact showing no changed cell | `.REQUIRE MODULE` and `USING MODULE` are the only forms |
 | 5 | Value requirements and bindings | test first: a new `ModuleValuesTest` in `features/importdir` with the example above through `Compiler.compile`: both placements carry their values in `constantValues` under `WALK.STEPS` and `SLOW.STEPS`, the token map marks a use of `STEPS` inside the module as `CONSTANT` with that qualified name, the default holds where nothing is bound, a self-referencing value slot raises no circle report, a value bound from an importer's constant, an exported value requirement read as `WALK.STEPS` from the importer and an unexported one reported as not marked EXPORT, `.IFDEF` on a value leaving the block out and reporting nothing, the six reports (unknown name, missing value, bound twice, a bound name not defined, a default not defined, `EXPORT .REQUIRE MODULE`; the parser's message in `CompilerDiagnosticsTest.anExportedRequireGetsTheParsersMessageAlone` becomes the handler's); then `ValueRequirementNode`, `ValueBindingNode`, `SymbolTable.bindingOf`, `RequireDirectiveHandler`, `ImportDirectiveHandler`, `ImportNode`, `ImportSymbolCollector`, `RequireAnalysisHandler` (defines, resolves the default), `ImportAnalysisHandler` (resolves bound names), `ValueRequirementNodeConverter`, `ValueEmissionContributor`, the operand text helper in `model/ast` (`ConstNodeConverter` uses it), `ImportFeature` | `gw test --tests 'org.evochora.compiler.*' --tests 'org.evochora.architecture.*'` | every case of the test passes; the reference artifact is unchanged |
-| 6 | Values from the configuration | test first: `CompileCommand` test for `--value`, `SimulationEngine` test for `values { }`, a `ModuleValuesTest` case where the main program's requirement is bound by `CompilerOptions.values` and one where the default holds, the reports above (missing value, not required, not one operand), a malformed value text reported under `value X of the configuration`, two spellings of one value name rejected, `sources` of the artifact without a synthetic file, a `SimulationEngine` test with two entries of one program and different values yielding two artifacts of different identity, a `ProgramIdentity` test that the values change the digest; then `CompilerOptions` (`values`, normalised), `Compiler` (lexing the values), `PreProcessorContext.values()`, `IPreProcessorHandler.finish` and its call in `PreProcessor.expand`, `RequirePreprocessorHandler`, `RequireAnalysisHandler`, `ImportAnalysisHandler`, `CompileCommand`, `SimulationEngine.readValues` and `ProgramVariant`, `ProgramIdentity`, `DebugInfo`, `reference.conf` | `gw test --tests 'org.evochora.compiler.*' --tests '*CompileCommand*' --tests '*SimulationEngine*'` | a value of the configuration binds the main program's requirement |
+| 6 | Values from the configuration | test first: `CompileCommand` test for `--value`, `SimulationEngine` test for `values { }`, a `ModuleValuesTest` case where the main program's requirement is bound by `CompilerOptions.values` and one where the default holds, the report for a text that is not one operand (two operands, a `;`, a text the lexer rejects), two spellings of one value name rejected, `sources` of the artifact without a synthetic file, a `SimulationEngine` test with two entries of one program and different values yielding two artifacts of different identity, a `ProgramIdentity` test that the values change the digest; then `CompilerOptions` (`values`, normalised), `Compiler` (lexing the values), `Parser` and `IParsingContext` (`values()`, `rootAliasChain()`, `operandOf`), `RequireDirectiveHandler`, `CompileCommand`, `SimulationEngine.readValues` and `ProgramVariant`, `ProgramIdentity`, `DebugInfo`, `reference.conf` | `gw test --tests 'org.evochora.compiler.*' --tests '*CompileCommand*' --tests '*SimulationEngine*'` | a value of the configuration binds the main program's requirement |
 | 7 | The reference program and the example | the reference program gets a value requirement with default and one without, bound from `main.evo`; `expected/main.json` regenerated; `assembly/examples/modules` without the sourced `constants.evo` | `gw test --tests '*CompilerOutputEquivalence*'`; a diff of the artifact showing only added entries | the pull request names the regeneration |
 | 8 | Documentation | the documents listed under Documentation; this document's status | review of the diff against the neighbouring sections | every document uses the terms requirement, binding, value, default |
 | 9 | Gate | — | `gw check` | PMD and the full suite green |
@@ -489,9 +478,10 @@ the compiler package, so every verification runs both packages.
 15. A value requirement reaches `constantValues` through its own IR directive and contributor of
     `importdir`, calling the core's `constantValue`; its node's value slot refers to its own name
     and is filled by phase 6. The visualizer's annotation of constants needs no change.
-16. A configured value is lexed by the compiler in phase 1 and put in the default's place by the
-    `.REQUIRE` preprocessor handler in the root placement; the section "What is reported, and
-    where" lists every report of the mechanism.
+16. A configured value is lexed by the compiler in phase 1 and read by the parser handler of
+    `.REQUIRE VALUE`, in the root placement, as one operand that takes the default's place in the
+    node; nothing enters the token stream, and one report, at the `.REQUIRE VALUE` line, covers
+    every text that is not one operand.
 17. An alias symbol without an entry in the alias map is explained by the core as "leads to no
     module"; the table knows an alias symbol through the capability `IPlacementAlias`, never through
     the symbol's kind. The cause is reported by the import feature, for the main program at the
@@ -504,9 +494,9 @@ the compiler package, so every verification runs both packages.
     today's behaviour, first step), as a value bound with `USING VALUE` (resolved at the `.IMPORT`
     line), as a default (resolved at the `.REQUIRE VALUE` line). A second definition is rejected as
     today.
-21. The preprocessor gets a generic end-of-phase hook, `IPreProcessorHandler.finish`; the `.REQUIRE`
-    handler uses it to report configured values the main program does not require. A configured
-    value is one operand; `CompilerOptions.values` normalises names as `defines` does.
+21. A configured value no `.REQUIRE VALUE` names is not reported, as a configured flag no `.IFDEF`
+    tests is not: one configuration serves several programs. `CompilerOptions.values` normalises
+    names as `defines` does.
 22. The artifact holds, for every constant and value, the literal at the end of its chain:
     `ConstNode` and `ValueRequirementNode` rebuild themselves in phase 6. A correction of today's
     `.CONST`, first step.
