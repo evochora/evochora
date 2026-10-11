@@ -173,7 +173,7 @@ class ImportAnalysisHandlerTest {
 
     private ImportNode importNode(String path, String alias, List<ImportNode.UsingClause> usings) {
         SourceInfo sourceInfo = new SourceInfo(MAIN_FILE, 1, 20, "", 0);
-        return new ImportNode(path, alias, usings, false, sourceInfo);
+        return new ImportNode(path, alias, usings, List.of(), false, sourceInfo);
     }
 
     private ImportNode.UsingClause usingClause(String sourceAlias, String targetAlias) {

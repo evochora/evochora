@@ -5,6 +5,7 @@ import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.frontend.parser.IParsingContext;
 import org.evochora.compiler.model.ast.AstNode;
+import org.evochora.compiler.model.ast.OperandNode;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -13,21 +14,22 @@ import java.util.Set;
 /**
  * Parses the {@code .IMPORT} directive.
  *
- * <p>Syntax: {@code .IMPORT "path" AS ALIAS [USING MODULE source AS target ...]}
+ * <p>Syntax: {@code [EXPORT] .IMPORT "path" AS ALIAS [USING {MODULE source AS target ... | VALUE name value ...} ...]}
  *
  * <p>This handler produces an {@link ImportNode} AST node. The actual module loading
  * is handled by Phase 0 (DependencyScanner) and preprocessing (ImportSourceHandler).
  *
  * <p>{@code USING} stands once on an import and opens the clause. Each kind word in it opens a
  * list, and the groups that follow it, up to the next kind word, belong to that list; a kind
- * word may repeat. After {@code MODULE}, a group is {@code source AS target}.
+ * word may repeat. After {@code MODULE}, a group is {@code source AS target}; after
+ * {@code VALUE}, a group is {@code name value}, the value read as an operand.
  *
  * <p>The directive stands alone on its line: a token after the alias and its clauses that is no
  * kind word is an error, and the rest of the line is passed over.
  */
 public class ImportDirectiveHandler implements IParserStatementHandler {
 
-    private static final Set<String> KIND_WORDS = Set.of("MODULE");
+    private static final Set<String> KIND_WORDS = Set.of("MODULE", "VALUE");
 
     @Override
     public boolean supportsExport() { return true; }
@@ -53,12 +55,13 @@ public class ImportDirectiveHandler implements IParserStatementHandler {
         Token aliasToken = context.consume(TokenType.IDENTIFIER, "Expected an alias name after AS.");
 
         List<ImportNode.UsingClause> usings = new ArrayList<>();
+        List<ImportNode.ValueBinding> values = new ArrayList<>();
         if (isWord(context, "USING")) {
             context.advance(); // consume USING
             if (!isKindWord(context)) {
                 Token found = context.peek();
                 context.getDiagnostics().reportError(
-                        "Expected MODULE after USING; found '" + found.text() + "'.",
+                        "Expected MODULE or VALUE after USING; found '" + found.text() + "'.",
                         found.source().fileName(), found.source().lineNumber());
                 skipLine(context);
                 return null;
@@ -66,11 +69,17 @@ public class ImportDirectiveHandler implements IParserStatementHandler {
             // Each kind word opens a list; the groups that follow it, up to the next kind word,
             // belong to that list.
             while (isKindWord(context)) {
-                context.advance(); // consume the kind word; MODULE is the only one
+                boolean valueList = isWord(context, "VALUE");
+                context.advance(); // consume the kind word
                 while (context.check(TokenType.IDENTIFIER) && !isKindWord(context) && !isWord(context, "USING")) {
-                    if (!readModuleGroup(context, usings)) {
+                    if (valueList) {
+                        if (!readValueGroup(context, values)) {
+                            skipLine(context);
+                            return null;
+                        }
+                    } else if (!readModuleGroup(context, usings)) {
                         return new ImportNode(
-                                (String) pathToken.value(), aliasToken.text(), usings, exported,
+                                (String) pathToken.value(), aliasToken.text(), usings, values, exported,
                                 aliasToken.source());
                     }
                 }
@@ -96,8 +105,39 @@ public class ImportDirectiveHandler implements IParserStatementHandler {
         }
 
         return new ImportNode(
-                (String) pathToken.value(), aliasToken.text(), usings, exported,
+                (String) pathToken.value(), aliasToken.text(), usings, values, exported,
                 aliasToken.source());
+    }
+
+    /**
+     * Reads one group {@code name value} of the {@code VALUE} list and adds it to the bindings,
+     * unless its name is bound already.
+     *
+     * @return {@code false} when the group lacks its value or the value cannot be read, so that
+     *         the clause cannot be read further.
+     */
+    private static boolean readValueGroup(IParsingContext context, List<ImportNode.ValueBinding> values) {
+        Token name = context.advance(); // the loop stands on an identifier
+        if (context.isAtEnd() || context.check(TokenType.NEWLINE) || isKindWord(context)) {
+            context.getDiagnostics().reportError(
+                    "Expected a value after VALUE " + name.text() + ".",
+                    name.source().fileName(), name.source().lineNumber());
+            return false;
+        }
+        OperandNode value = context.expression();
+        if (value == null) {
+            return false;
+        }
+
+        boolean bound = values.stream().anyMatch(v -> v.name().equalsIgnoreCase(name.text()));
+        if (bound) {
+            context.getDiagnostics().reportError(
+                    "Cannot bind '" + name.text() + "' twice in the USING clauses of one import.",
+                    name.source().fileName(), name.source().lineNumber());
+            return true;
+        }
+        values.add(new ImportNode.ValueBinding(name.text(), value, name.source()));
+        return true;
     }
 
     /**

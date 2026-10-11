@@ -143,7 +143,7 @@ public class ImportDirectiveTest {
 
         assertThat(ast).isEmpty();
         assertThat(diagnostics.getDiagnostics()).singleElement()
-                .satisfies(d -> assertThat(d.message()).isEqualTo("Expected MODULE after USING; found 'MATH'."));
+                .satisfies(d -> assertThat(d.message()).isEqualTo("Expected MODULE or VALUE after USING; found 'MATH'."));
     }
 
     @Test

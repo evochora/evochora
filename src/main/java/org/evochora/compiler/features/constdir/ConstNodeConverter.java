@@ -2,17 +2,12 @@ package org.evochora.compiler.features.constdir;
 
 import org.evochora.compiler.frontend.irgen.IAstNodeToIrConverter;
 import org.evochora.compiler.frontend.irgen.IrGenContext;
-import org.evochora.compiler.model.ast.IdentifierNode;
-import org.evochora.compiler.model.ast.NumberLiteralNode;
 import org.evochora.compiler.model.ast.OperandNode;
-import org.evochora.compiler.model.ast.RegisterNode;
-import org.evochora.compiler.model.ast.TypedLiteralNode;
-import org.evochora.compiler.model.ast.VectorLiteralNode;
+import org.evochora.compiler.model.ast.OperandText;
 import org.evochora.compiler.model.ir.IrDirective;
 import org.evochora.compiler.model.ir.IrValue;
 
 import java.util.Map;
-import java.util.stream.Collectors;
 
 /**
  * Emits a {@code const_value} IR directive from a {@code .CONST} AST node. A constant places no
@@ -23,9 +18,8 @@ import java.util.stream.Collectors;
  *
  * <p>The name is qualified as a use of the constant is in the token map: the path of the scope
  * the constant is defined in, or the placement's alias chain on the module level, and the
- * upper-cased name. The value is the literal phase 6 resolved, written as the parser read it: a
- * typed literal as {@code TYPE:value}, a vector as its components joined by {@code |}, numbers in
- * decimal; a constant that names a label carries the label's qualified name.</p>
+ * upper-cased name. The value is the literal phase 6 resolved, written as {@link OperandText}
+ * writes it; a constant that names a label carries the label's qualified name.</p>
  */
 public final class ConstNodeConverter implements IAstNodeToIrConverter<ConstNode> {
 
@@ -36,17 +30,7 @@ public final class ConstNodeConverter implements IAstNodeToIrConverter<ConstNode
         }
         ctx.emit(new IrDirective("constdir", "const_value", Map.of(
                 "name", new IrValue.Str(ctx.qualifyName(node.name())),
-                "value", new IrValue.Str(text(value))
+                "value", new IrValue.Str(OperandText.of(value))
         ), ctx.sourceOf(node)));
-    }
-
-    private static String text(OperandNode value) {
-        return switch (value) {
-            case NumberLiteralNode number -> String.valueOf(number.value());
-            case TypedLiteralNode typed -> typed.typeName() + ":" + typed.value();
-            case VectorLiteralNode vector -> vector.values().stream().map(String::valueOf).collect(Collectors.joining("|"));
-            case IdentifierNode identifier -> identifier.text();
-            case RegisterNode register -> register.name();
-        };
     }
 }

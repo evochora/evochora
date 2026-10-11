@@ -269,7 +269,7 @@ other.
 - A value requirement of the main program without default and without a configured value: at the
   `.REQUIRE VALUE` line, in pass 2, by `RequireAnalysisHandler`:
   `The value 'SPEED' has no default and the configuration sets none; set it with values { SPEED = "<value>" } in the organism's entry or --value SPEED=<value>.`
-  Pass 2 defines the symbol all the same, so that the uses report nothing of their own.
+  Pass 2 defines the symbol all the same, bound to nothing, so that the uses report nothing of their own.
 - A configured value the main program does not require: against the configuration, file empty and
   line 0, as `Configured flag 'X' is not a valid name` is reported today. Pass 2 cannot see the
   configuration and runs no handler when the main program has no `.REQUIRE VALUE` at all, so the
@@ -282,7 +282,7 @@ other.
   the end, such as `DATA:1; NOP` (a `;` lexes to NEWLINE): by the `.REQUIRE` preprocessor handler
   when it would inject it, `Configured value 'X' is not one operand.`
 - A `USING VALUE` whose value is a name the importer has not defined at the `.IMPORT` line, by
-  `ImportAnalysisHandler`: `Cannot bind VALUE SPEED SLOW_SPEDD: the name is not defined.`; a default
+  `ImportAnalysisHandler`: `Cannot bind VALUE SPEED from 'SLOW_SPEDD': the name is not defined.`; a default
   that is a name the module has not defined, at the `.REQUIRE VALUE` line, by
   `RequireAnalysisHandler`, worded the same. The value is resolved there as a use, so that the uses
   inside the module, analysed before any later line of the importer, find it bound.
@@ -354,7 +354,8 @@ kinds, the dependency scan and module setup of both, the bindings and their chec
 | `ConstAnalysisHandler` | 4, pass 2 | A value that is a name is resolved at the `.CONST` line as a use and reported when undefined: "Cannot define constant 'A' from 'B': the name is not defined." Today the name is followed only at a use of `A`. |
 | `ValueRequirementNodeConverter` | 7, IR | Emits `IrDirective("importdir", "value", {name, value})` with the name qualified under the current alias chain (`WALK.STEPS`, `SLOW.STEPS`) and the text of the literal phase 6 put into the value slot. |
 | `ValueEmissionContributor` | 11, emission | Reads the feature's own `value` directive and calls `EmissionContext.constantValue(qualifiedName, text)`, the core's API that `ConstantValueEmissionContributor` calls for `.CONST`. |
-| `OperandNode` text | `model/ast` | The rendering of an operand as text (`DATA:10`, `1\|0`), today private to `ConstNodeConverter`, moves next to the operand nodes, where both converters use it. |
+| `OperandText` | `model/ast` | `static String of(OperandNode)`: the rendering of an operand as text (`DATA:10`, `1\|0`), today private to `ConstNodeConverter`, next to the operand nodes, where both converters use it. |
+| `IIdentifierBinding` | `model/ast` | `bind` may return null when the definition has no value, which the phase that defined it has reported; `bindingOf` then finds nothing, and a use adds no report of its own. This is how a value requirement without default and binding keeps its symbol without a cascade of "is not a value" reports. |
 | `ModuleScope` | core | `symbols`, `aliases` (one map, one method `bindAlias(alias, aliasChain)` that binds once, whether an import binds its own alias or an importer binds a requirement's alias of the imported placement; read through `aliases()`), `state(Class, Supplier)` frozen by `freeze()`; `imports`, `requires`, `usingBindings` go. |
 | `IPlacementAlias` | `model/ast` | Capability: the definition of a name that is an alias of the module level, leading into another placement when the alias map has an entry. Implemented by `ImportNode` and `RequireNode`. |
 | `SymbolTable` | core | `registerRoot(aliasChain)` and `rootAliasChain()`, set by the semantic analyzer, so that a handler can tell the compilation root from a module (null in the single-file mode of the unit tests); `descendModule` and the first-segment lookup read `aliases()` alone; the requirement branches go and the explanations speak of names and aliases; `bindingOf` looks the identifier a definition binds up in the placement that identifier's `SourceInfo` names. |

@@ -151,7 +151,7 @@ public class RequireDirectiveTest {
         assertThat(ast).isEmpty();
         assertThat(diagnostics.getDiagnostics()).singleElement()
                 .satisfies(d -> {
-                    assertThat(d.message()).isEqualTo("Expected MODULE after .REQUIRE; found '\"d.evo\"'.");
+                    assertThat(d.message()).isEqualTo("Expected MODULE or VALUE after .REQUIRE; found '\"d.evo\"'.");
                     assertThat(d.lineNumber()).isEqualTo(1);
                 });
     }

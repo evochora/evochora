@@ -355,9 +355,9 @@ public class SymbolTable {
      * @param reference The identifier as written.
      * @return The node the identifier finally stands for: what the last binding binds to, or
      *         the identifier under the qualified name of a symbol that offers no binding (a
-     *         label, a procedure). Empty if the identifier names no symbol, or if its
-     *         definitions go in a circle, which is reported once at the definition the circle
-     *         was entered through.
+     *         label, a procedure). Empty if the identifier names no symbol, if the last
+     *         definition has no value, or if its definitions go in a circle, which is reported
+     *         once at the definition the circle was entered through.
      */
     public Optional<AstNode> bindingOf(IdentifierNode reference) {
         IdentifierNode current = reference;
@@ -368,13 +368,10 @@ public class SymbolTable {
         // The scope the identifier is looked up from: the current scope for the reference, the
         // scope of the definition for every identifier a definition binds to.
         Scope from = currentScope;
-        // The placement the identifier stands in when a definition has led out of the current one;
-        // null while it stands in the current placement.
-        ModuleScope foreign = null;
         for (int depth = 0; depth < MAX_BINDING_DEPTH; depth++) {
-            Lookup lookup = foreign == null
-                    ? lookUp(current.text(), current.sourceInfo(), from)
-                    : lookUp(current.text(), foreign.aliasChain(), from, foreign);
+            // An identifier is looked up where it is written: in the placement its position
+            // names, in the scope of the definition that binds to it.
+            Lookup lookup = lookUp(current.text(), current.sourceInfo(), from);
             Optional<ResolvedSymbol> resolved = lookup.resolution().found();
             if (resolved.isEmpty()) {
                 return Optional.empty();
@@ -396,13 +393,10 @@ public class SymbolTable {
             if (firstDefinition == null) {
                 firstDefinition = resolved.get().symbol().sourceInfo();
             }
-            // The definition is written in the scope and the placement that hold it, so the
-            // identifier it binds to is looked up there.
-            foreign = lookup.placement() == modules.get(currentAliasChain) ? null : lookup.placement();
             from = lookup.scope();
             AstNode bound = binding.bind(current);
             if (!(bound instanceof IdentifierNode next)) {
-                return Optional.of(bound);
+                return Optional.ofNullable(bound);
             }
             current = next;
         }
@@ -415,10 +409,10 @@ public class SymbolTable {
      * and the scopes of symbols, every segment that leads into a level the writer does not stand
      * in being exported (e.g., {@code UTIL.CLAMP.TO_MIN}).
      * @param name The name of the symbol to resolve.
-     * @param at   The position the name is written at. A position in the placement of the
-     *             current module looks the name up among that module's symbols, whichever file
-     *             of the placement it stands in; any other position looks it up among the
-     *             symbols of its file.
+     * @param at   The position the name is written at. A position in a registered placement
+     *             looks the name up among that placement's symbols, whichever file of the
+     *             placement it stands in; a position in no registered placement looks it up among
+     *             the symbols of its file.
      * @return The symbol with its qualified name, or the reason there is none.
      */
     public Resolution resolve(String name, SourceInfo at) {
@@ -426,16 +420,14 @@ public class SymbolTable {
     }
 
     /**
-     * What a lookup found, together with the module placement and the scope the symbol belongs to.
+     * What a lookup found, together with the scope the symbol belongs to.
      *
      * @param resolution The symbol with its qualified name, or the reason there is none.
-     * @param placement  The placement whose namespace holds the symbol; {@code null} if nothing
-     *                   was found or no module is current.
      * @param scope      The scope the symbol is defined in; {@code null} if nothing was found.
      */
-    private record Lookup(Resolution resolution, ModuleScope placement, Scope scope) {
+    private record Lookup(Resolution resolution, Scope scope) {
         static Lookup missing(String explanation) {
-            return new Lookup(new Resolution.Missing(explanation), null, null);
+            return new Lookup(new Resolution.Missing(explanation), null);
         }
     }
 
@@ -447,16 +439,15 @@ public class SymbolTable {
     }
 
     /**
-     * Looks a name up as {@link #resolve} does, in the current module, from the given scope.
+     * Looks a name up as {@link #resolve} does, from the given scope, in the placement the
+     * position names.
      */
     private Lookup lookUp(String name, SourceInfo at, Scope from) {
-        // A token of the current placement, in the module's own file or in a file it sources,
-        // looks up the symbols of the current placement.
-        ModuleScope currentModScope = modules.get(currentAliasChain);
-        String filedUnder = currentModScope != null && currentModScope.aliasChain().equals(at.placement())
-                ? currentModScope.aliasChain()
-                : at.fileName();
-        return lookUp(name, filedUnder, from, currentModScope);
+        // A token of a placement, in the module's own file or in a file it sources, looks up the
+        // symbols of that placement; a token of no registered placement those of its file.
+        ModuleScope module = modules.get(at.placement());
+        String filedUnder = module != null ? module.aliasChain() : at.fileName();
+        return lookUp(name, filedUnder, from, module);
     }
 
     /**
@@ -543,7 +534,7 @@ public class SymbolTable {
     private Lookup found(Scope scope, String key, String filedUnder, ModuleScope module) {
         String qualified = QualifiedNames.join(
                 scope == rootScope ? (module != null ? module.aliasChain() : null) : scope.name(), key);
-        return new Lookup(new ResolvedSymbol(scope.symbols.get(key).get(filedUnder), qualified, scope.name()), module, scope);
+        return new Lookup(new ResolvedSymbol(scope.symbols.get(key).get(filedUnder), qualified, scope.name()), scope);
     }
 
     /**
@@ -628,7 +619,7 @@ public class SymbolTable {
             return Lookup.missing(kind + segment + "' of " + moduleName + " is not marked EXPORT.");
         }
         if (last) {
-            return new Lookup(new ResolvedSymbol(symbol, QualifiedNames.join(currentChain, key), rootScope.name()), modScope, rootScope);
+            return new Lookup(new ResolvedSymbol(symbol, QualifiedNames.join(currentChain, key), rootScope.name()), rootScope);
         }
         String nextRemainder = remainder.substring(segment.length() + 1);
         String level = moduleName + "." + segment;

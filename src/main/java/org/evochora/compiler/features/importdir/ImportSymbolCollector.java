@@ -25,7 +25,9 @@ import java.util.Optional;
  * {@link ImportModuleSetupHandler} from the dependency scan's data. This collector binds the
  * {@code USING MODULE source AS target} clauses: in the imported placement, the target alias leads to
  * the placement the source alias leads to in the importing one. A source that leads nowhere binds
- * nothing; {@link ImportAnalysisHandler} reports it in pass 2.
+ * nothing; {@link ImportAnalysisHandler} reports it in pass 2. The {@code USING VALUE name value}
+ * groups are recorded in the imported placement's {@link Requirements}, where
+ * {@link RequireAnalysisHandler} finds them at the module's {@code .REQUIRE VALUE}.
  *
  * <p>Text order suffices for the bindings: the module's tokens follow the {@code .IMPORT} line, so
  * the importer's node is collected before anything of the module, and an alias the importer
@@ -58,6 +60,10 @@ public class ImportSymbolCollector implements ISymbolCollector {
             if (sourceChain != null) {
                 importedScope.get().bindAlias(using.targetAlias().toUpperCase(), sourceChain);
             }
+        }
+        Requirements requirements = importedScope.get().state(Requirements.class, Requirements::new);
+        for (ImportNode.ValueBinding binding : importNode.values()) {
+            requirements.bindValue(binding.name().toUpperCase(), binding.value());
         }
     }
 }

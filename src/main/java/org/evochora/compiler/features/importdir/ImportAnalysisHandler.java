@@ -3,6 +3,8 @@ package org.evochora.compiler.features.importdir;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.semantics.IAnalysisHandler;
 import org.evochora.compiler.model.ast.AstNode;
+import org.evochora.compiler.model.ast.IdentifierNode;
+import org.evochora.compiler.model.symbols.Resolution;
 import org.evochora.compiler.model.symbols.ModuleScope;
 import org.evochora.compiler.model.symbols.SymbolTable;
 
@@ -19,6 +21,11 @@ import java.util.Map;
  *   <li>Each USING target must be a module requirement of the imported placement.</li>
  *   <li>Every module requirement of the imported placement must be named as target by a USING
  *       clause of this import.</li>
+ *   <li>Each USING VALUE name must be a value requirement of the imported placement.</li>
+ *   <li>Every value requirement of the imported placement without a default must be bound by
+ *       this import.</li>
+ *   <li>A bound value that is a name must be defined in the current placement at this line; it
+ *       is resolved here as a use.</li>
  * </ul>
  */
 public class ImportAnalysisHandler implements IAnalysisHandler {
@@ -48,9 +55,11 @@ public class ImportAnalysisHandler implements IAnalysisHandler {
         }
 
         ModuleScope importedModScope = symbolTable.getModuleScope(importedAliasChain).orElse(null);
-        Map<String, String> requirements = importedModScope != null
-                ? importedModScope.state(Requirements.class, Requirements::new).moduleRequirements()
-                : Map.of();
+        Requirements record = importedModScope != null
+                ? importedModScope.state(Requirements.class, Requirements::new)
+                : null;
+        Map<String, String> requirements = record != null ? record.moduleRequirements() : Map.of();
+        Map<String, Boolean> valueRequirements = record != null ? record.valueRequirements() : Map.of();
 
         for (ImportNode.UsingClause using : importNode.usings()) {
             String sourceAlias = using.sourceAlias().toUpperCase();
@@ -89,6 +98,37 @@ public class ImportAnalysisHandler implements IAnalysisHandler {
                             importNode.sourceInfo().fileName(),
                             importNode.sourceInfo().lineNumber());
                 }
+            }
+        }
+
+        for (ImportNode.ValueBinding binding : importNode.values()) {
+            if (importedModScope != null && !valueRequirements.containsKey(binding.name().toUpperCase())) {
+                diagnostics.reportError(
+                        "USING VALUE '" + binding.name()
+                                + "' does not match any .REQUIRE VALUE in the imported module.",
+                        binding.nameSourceInfo().fileName(),
+                        binding.nameSourceInfo().lineNumber());
+            }
+            // A bound name is a constant of the importer, used at this line
+            if (binding.value() instanceof IdentifierNode id
+                    && symbolTable.resolve(id.text(), id.sourceInfo()) instanceof Resolution.Missing missing) {
+                diagnostics.reportError(
+                        "Cannot bind VALUE " + binding.name() + " from '" + id.text() + "': " + missing.explanation(),
+                        importNode.sourceInfo().fileName(),
+                        importNode.sourceInfo().lineNumber());
+            }
+        }
+
+        // Every value requirement without a default must be bound
+        for (Map.Entry<String, Boolean> required : valueRequirements.entrySet()) {
+            boolean bound = importNode.values().stream()
+                    .anyMatch(v -> v.name().equalsIgnoreCase(required.getKey()));
+            if (!required.getValue() && !bound) {
+                diagnostics.reportError(
+                        "Cannot import " + importNode.alias() + ": it requires the value '" + required.getKey()
+                                + "'; add USING VALUE " + required.getKey() + " <value> to the import.",
+                        importNode.sourceInfo().fileName(),
+                        importNode.sourceInfo().lineNumber());
             }
         }
     }
