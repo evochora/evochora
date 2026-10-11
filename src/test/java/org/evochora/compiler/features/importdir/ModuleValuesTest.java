@@ -107,6 +107,29 @@ class ModuleValuesTest {
     }
 
     /**
+     * A value bound to a label is listed under the label's qualified name, as a constant that
+     * names a label is.
+     */
+    @Test
+    void aValueBoundToALabelIsListedLikeAConstantNamingALabel() throws Exception {
+        write("walk.evo",
+                ".REQUIRE VALUE TARGET",
+                ".CONST LOCAL TARGET",
+                "  JMPI TARGET",
+                "  JMPI LOCAL");
+        write("main.evo",
+                ".IMPORT \"walk.evo\" AS WALK USING VALUE TARGET HOME",
+                "HOME:",
+                "  NOP");
+
+        ProgramArtifact artifact = compile();
+
+        assertThat(artifact.constantValues())
+                .containsEntry("WALK.TARGET", "HOME")
+                .containsEntry("WALK.LOCAL", "HOME");
+    }
+
+    /**
      * A value is no flag: {@code .IFDEF} on it leaves the block out, silently.
      */
     @Test
