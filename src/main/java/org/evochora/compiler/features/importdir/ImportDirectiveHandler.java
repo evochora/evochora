@@ -16,6 +16,9 @@ import java.util.List;
  *
  * <p>This handler produces an {@link ImportNode} AST node. The actual module loading
  * is handled by Phase 0 (DependencyScanner) and preprocessing (ImportSourceHandler).
+ *
+ * <p>The directive stands alone on its line: a token after the alias that begins no
+ * {@code USING} clause is an error, and the rest of the line is passed over.
  */
 public class ImportDirectiveHandler implements IParserStatementHandler {
 
@@ -24,9 +27,8 @@ public class ImportDirectiveHandler implements IParserStatementHandler {
 
     @Override
     public AstNode parse(IParsingContext context) {
-        // The dependency scanner describes this directive's syntax a second time, as a regular
-        // expression, and decides from it which modules are loaded at all. A form accepted here
-        // but not there reaches the parser with its module missing.
+        // The dependency scan reads path and alias only, and loads the module from them; the
+        // clauses after the alias are read here alone.
         boolean exported = context.isExported();
         context.advance(); // consume .IMPORT
 
@@ -72,10 +74,15 @@ public class ImportDirectiveHandler implements IParserStatementHandler {
                         sourceAlias.text(), targetAlias.text(),
                         sourceAlias.source(), targetAlias.source()));
             } else {
+                Token extra = context.peek();
                 context.getDiagnostics().reportError(
-                        "Unexpected token '" + context.peek().text() + "' in .IMPORT directive.",
-                        context.peek().source().fileName(), context.peek().source().lineNumber());
-                break;
+                        ".IMPORT must stand alone on its line; found '" + extra.text()
+                                + "' after the alias and its USING clauses.",
+                        extra.source().fileName(), extra.source().lineNumber());
+                while (!context.isAtEnd() && !context.check(TokenType.NEWLINE)) {
+                    context.advance();
+                }
+                return null;
             }
         }
 

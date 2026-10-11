@@ -2,14 +2,12 @@ package org.evochora.compiler.features.importdir;
 
 import org.evochora.compiler.frontend.module.IDependencyInfo;
 
-import java.util.List;
-
 /**
- * Dependency data for an .IMPORT directive discovered during Phase 0 scanning.
+ * Dependency data for an .IMPORT directive discovered during Phase 0 scanning: the address of the
+ * imported file, path and alias. What follows the alias on the line is the parser's.
  *
  * @param path The import path as written in source.
  * @param alias The local alias for the imported module.
- * @param usings The USING clauses on this import.
  * @param resolvedPath The resolved absolute path of the imported module.
  * @param aliasChain The alias chain of the placement this import creates: the importing
  *                   placement's chain followed by the alias.
@@ -17,19 +15,10 @@ import java.util.List;
 public record ImportDependencyInfo(
         String path,
         String alias,
-        List<UsingDecl> usings,
         String resolvedPath,
         String aliasChain
 ) implements IDependencyInfo {
 
     @Override public String directiveName() { return ".IMPORT"; }
     @Override public boolean allowedInSourceFile() { return false; }
-
-    /**
-     * A USING clause on an import declaration.
-     *
-     * @param sourceAlias The alias being provided.
-     * @param targetAlias The alias being satisfied.
-     */
-    public record UsingDecl(String sourceAlias, String targetAlias) {}
 }

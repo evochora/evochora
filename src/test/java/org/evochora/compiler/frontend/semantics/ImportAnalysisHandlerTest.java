@@ -5,6 +5,7 @@ import org.evochora.compiler.diagnostics.Diagnostic;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.features.importdir.ImportAnalysisHandler;
 import org.evochora.compiler.features.importdir.ImportNode;
+import org.evochora.compiler.features.importdir.Requirements;
 import org.evochora.compiler.model.symbols.ModuleScope;
 import org.evochora.compiler.model.symbols.SymbolTable;
 import org.junit.jupiter.api.BeforeEach;
@@ -17,7 +18,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Tests for {@link ImportAnalysisHandler}, which validates USING clauses on {@code .IMPORT}
- * directives during pass-2 semantic analysis.
+ * directives during pass-2 semantic analysis. The scopes are built as pass 1 leaves them: the
+ * aliases bound, the requirements declared.
  */
 class ImportAnalysisHandlerTest {
 
@@ -45,12 +47,11 @@ class ImportAnalysisHandlerTest {
 
         // main imports dep as "D" and lib as "LIB"
         ModuleScope mainScope = symbolTable.getModuleScope(MAIN_CHAIN).orElseThrow();
-        mainScope.addImport("D", DEP_CHAIN);
-        mainScope.addImport("LIB", LIB_CHAIN);
+        mainScope.bindAlias("D", DEP_CHAIN);
+        mainScope.bindAlias("LIB", LIB_CHAIN);
 
         // lib requires "DEP"
-        ModuleScope libScope = symbolTable.getModuleScope(LIB_CHAIN).orElseThrow();
-        libScope.addRequirement("DEP", "dep.evo");
+        requirementsOfLib().declareModule("DEP", "dep.evo");
 
         symbolTable.setCurrentModule(MAIN_CHAIN);
     }
@@ -73,6 +74,7 @@ class ImportAnalysisHandlerTest {
         ImportNode node = importNode("lib.evo", "LIB", List.of(
                 usingClause("D", "DEP")
         ));
+        bindInLib("DEP", DEP_CHAIN);
 
         handler.analyze(node, symbolTable, diagnostics);
 
@@ -122,19 +124,20 @@ class ImportAnalysisHandlerTest {
     @Tag("unit")
     void multipleRequiresAllSatisfied() {
         // lib requires both DEP and EXTRA
-        ModuleScope libScope = symbolTable.getModuleScope(LIB_CHAIN).orElseThrow();
-        libScope.addRequirement("EXTRA", "extra.evo");
+        requirementsOfLib().declareModule("EXTRA", "extra.evo");
 
         String extraChain = "E";
         symbolTable.registerModule(extraChain, "/test/extra.evo");
         ModuleScope mainScope = symbolTable.getModuleScope(MAIN_CHAIN).orElseThrow();
-        mainScope.addImport("E", extraChain);
+        mainScope.bindAlias("E", extraChain);
 
         // .IMPORT "lib.evo" AS LIB USING D AS DEP USING E AS EXTRA
         ImportNode node = importNode("lib.evo", "LIB", List.of(
                 usingClause("D", "DEP"),
                 usingClause("E", "EXTRA")
         ));
+        bindInLib("DEP", DEP_CHAIN);
+        bindInLib("EXTRA", extraChain);
 
         handler.analyze(node, symbolTable, diagnostics);
 
@@ -145,12 +148,12 @@ class ImportAnalysisHandlerTest {
     @Tag("unit")
     void multipleRequiresPartiallySatisfiedReportsError() {
         // lib requires both DEP and EXTRA, but only DEP is provided
-        ModuleScope libScope = symbolTable.getModuleScope(LIB_CHAIN).orElseThrow();
-        libScope.addRequirement("EXTRA", "extra.evo");
+        requirementsOfLib().declareModule("EXTRA", "extra.evo");
 
         ImportNode node = importNode("lib.evo", "LIB", List.of(
                 usingClause("D", "DEP")
         ));
+        bindInLib("DEP", DEP_CHAIN);
 
         handler.analyze(node, symbolTable, diagnostics);
 
@@ -158,6 +161,15 @@ class ImportAnalysisHandlerTest {
     }
 
     // --- Helper methods ---
+
+    private Requirements requirementsOfLib() {
+        return symbolTable.getModuleScope(LIB_CHAIN).orElseThrow().state(Requirements.class, Requirements::new);
+    }
+
+    /** Binds a requirement alias of lib as pass 1 binds it for a USING clause whose source is known. */
+    private void bindInLib(String alias, String aliasChain) {
+        symbolTable.getModuleScope(LIB_CHAIN).orElseThrow().bindAlias(alias, aliasChain);
+    }
 
     private ImportNode importNode(String path, String alias, List<ImportNode.UsingClause> usings) {
         SourceInfo sourceInfo = new SourceInfo(MAIN_FILE, 1, 20, "", 0);

@@ -29,7 +29,6 @@ public class ImportFeature implements ICompilerFeature {
         ctx.analysisHandler(ImportNode.class, new ImportAnalysisHandler());
         ctx.irConverter(ImportNode.class, new ImportNodeConverter());
         ctx.dependencyScanHandler(new RequireDependencyScanHandler());
-        ctx.dependencySetupHandler(RequireDependencyInfo.class, new RequireModuleSetupHandler());
         ctx.preprocessorTopLevelOnly(".REQUIRE");
         ctx.parserStatement(".REQUIRE", new RequireDirectiveHandler());
         ctx.symbolCollector(RequireNode.class, new RequireSymbolCollector());

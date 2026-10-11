@@ -11,7 +11,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * A module's namespace keeps its own rules: the first symbol of a name stays, an alias binds
- * once, and nothing changes after the freeze.
+ * once, a record is created once, and nothing changes after the freeze.
  */
 @Tag("unit")
 class ModuleScopeTest {
@@ -34,17 +34,22 @@ class ModuleScopeTest {
     void anAliasBindsOnceAndTheSameBindingAgainIsNoConflict() {
         ModuleScope scope = new ModuleScope("M", "m.evo");
 
-        assertThat(scope.addImport("LIB", "M.LIB")).isTrue();
-        assertThat(scope.addImport("LIB", "M.LIB")).isTrue();
-        assertThat(scope.addRequirement("DEP", "dep.evo")).isTrue();
-        assertThat(scope.bindUsing("DEP", "M.A")).isTrue();
+        assertThat(scope.bindAlias("LIB", "M.LIB")).isTrue();
+        assertThat(scope.bindAlias("LIB", "M.LIB")).isTrue();
+        assertThat(scope.bindAlias("DEP", "M.A")).isTrue();
 
-        assertThat(scope.addImport("LIB", "M.OTHER")).isFalse();
-        assertThat(scope.addRequirement("DEP", "other.evo")).isFalse();
-        assertThat(scope.bindUsing("DEP", "M.B")).isFalse();
-        assertThat(scope.imports()).containsEntry("LIB", "M.LIB");
-        assertThat(scope.requires()).containsEntry("DEP", "dep.evo");
-        assertThat(scope.usingBindings()).containsEntry("DEP", "M.A");
+        assertThat(scope.bindAlias("LIB", "M.OTHER")).isFalse();
+        assertThat(scope.bindAlias("DEP", "M.B")).isFalse();
+        assertThat(scope.aliases()).containsEntry("LIB", "M.LIB").containsEntry("DEP", "M.A");
+    }
+
+    @Test
+    void aRecordIsCreatedOncePerKey() {
+        ModuleScope scope = new ModuleScope("M", "m.evo");
+
+        StringBuilder first = scope.state(StringBuilder.class, StringBuilder::new);
+
+        assertThat(scope.state(StringBuilder.class, () -> new StringBuilder("other"))).isSameAs(first);
     }
 
     @Test
@@ -53,9 +58,8 @@ class ModuleScopeTest {
         scope.freeze();
 
         assertThatThrownBy(() -> scope.defineSymbol("X", symbol("X", 1))).isInstanceOf(IllegalStateException.class);
-        assertThatThrownBy(() -> scope.addImport("LIB", "M.LIB")).isInstanceOf(IllegalStateException.class);
-        assertThatThrownBy(() -> scope.addRequirement("DEP", "dep.evo")).isInstanceOf(IllegalStateException.class);
-        assertThatThrownBy(() -> scope.bindUsing("DEP", "M.A")).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> scope.bindAlias("LIB", "M.LIB")).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> scope.state(StringBuilder.class, StringBuilder::new)).isInstanceOf(IllegalStateException.class);
     }
 
     @Test
@@ -63,9 +67,7 @@ class ModuleScopeTest {
         ModuleScope scope = new ModuleScope("M", "m.evo");
 
         assertThatThrownBy(() -> scope.symbols().put("X", symbol("X", 1))).isInstanceOf(UnsupportedOperationException.class);
-        assertThatThrownBy(() -> scope.imports().put("X", "Y")).isInstanceOf(UnsupportedOperationException.class);
-        assertThatThrownBy(() -> scope.requires().put("X", "Y")).isInstanceOf(UnsupportedOperationException.class);
-        assertThatThrownBy(() -> scope.usingBindings().put("X", "Y")).isInstanceOf(UnsupportedOperationException.class);
+        assertThatThrownBy(() -> scope.aliases().put("X", "Y")).isInstanceOf(UnsupportedOperationException.class);
         assertThat(Optional.ofNullable(scope.symbols().get("X"))).isEmpty();
     }
 }

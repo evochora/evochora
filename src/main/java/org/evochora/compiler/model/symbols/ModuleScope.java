@@ -4,12 +4,15 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Supplier;
 
 /**
- * The namespace of one module placement: the symbols it defines, the modules it imports and under
- * which alias, the bindings it received through USING, and the paths it requires. Each is written
- * through a method that keeps the namespace's rule (the first symbol of a name stays; an alias
- * binds once) and read through an unmodifiable view.
+ * The namespace of one module placement: its symbols, its aliases and the records of features.
+ * An alias of the module level leads to another placement, whoever bound it there. A feature keeps
+ * what it needs to know about the placement in a record of its own type; the core does not know
+ * what a feature keeps and never reads it. Each is written through a method that keeps the
+ * namespace's rule (the first symbol of a name stays; an alias binds once; a record is created
+ * once) and read through an unmodifiable view or the record itself.
  * <p>
  * Semantic analysis fills a scope and then freezes it; after that every write is a defect.
  */
@@ -17,9 +20,8 @@ public final class ModuleScope {
     private final String aliasChain;
     private final String sourcePath;
     private final Map<String, Symbol> symbols = new HashMap<>();
-    private final Map<String, String> imports = new HashMap<>();       // alias → alias chain of imported module
-    private final Map<String, String> requires = new HashMap<>();      // alias → required path/URL
-    private final Map<String, String> usingBindings = new HashMap<>(); // alias → alias chain of resolved module
+    private final Map<String, String> aliases = new HashMap<>();   // alias → alias chain of the placement it leads to
+    private final Map<Class<?>, Object> records = new HashMap<>(); // feature record by its type
     private boolean frozen;
 
     /**
@@ -79,51 +81,41 @@ public final class ModuleScope {
     }
 
     /**
-     * Records that this module imports another under an alias. An alias binds once: the first
-     * module stays, and a later call for the same alias is only taken if it names the same module.
+     * Binds an alias of the module level to the placement it leads to. An alias binds once: the
+     * first placement stays, and a later call for the same alias is only taken if it names the
+     * same placement.
      *
-     * @param alias      The alias the imported module is known by here.
-     * @param aliasChain The alias chain of the imported module's placement.
-     * @return {@code true} if the alias now names that module; {@code false} if it names
+     * @param alias      The alias, as the namespace keys it.
+     * @param aliasChain The alias chain of the placement the alias leads to.
+     * @return {@code true} if the alias now leads to that placement; {@code false} if it leads to
      *         another one already, which the phase that knows the source line reports.
      * @throws IllegalStateException if the scope is frozen.
      */
-    public boolean addImport(String alias, String aliasChain) {
+    public boolean bindAlias(String alias, String aliasChain) {
         guardFrozen();
-        return bindOnce(imports, alias, aliasChain);
+        String bound = aliases.putIfAbsent(alias, aliasChain);
+        return bound == null || bound.equals(aliasChain);
     }
 
     /**
-     * Records that this module requires a module its importer has to supply. An alias binds
-     * once, as for {@link #addImport}.
+     * Returns the record a feature keeps for this placement under the given key type, creating it
+     * with the factory on the first request. One instance exists per key for the lifetime of the
+     * scope; the core knows nothing of the type and never reads the object.
      *
-     * @param alias The alias the required module is known by here.
-     * @param path  The path the requirement names.
-     * @return {@code true} if the alias now names that path; {@code false} if it names another.
-     * @throws IllegalStateException if the scope is frozen.
+     * @param key     The class used as the key.
+     * @param factory Creates the record; called only while no record exists for the key.
+     * @param <T>     The type of the record.
+     * @return The existing or newly created record.
+     * @throws IllegalStateException if no record exists for the key and the scope is frozen.
      */
-    public boolean addRequirement(String alias, String path) {
-        guardFrozen();
-        return bindOnce(requires, alias, path);
-    }
-
-    /**
-     * Records which module an importer supplied for one of this module's requirements. An
-     * alias binds once, as for {@link #addImport}.
-     *
-     * @param alias      The alias of the requirement, as this module names it.
-     * @param aliasChain The alias chain of the placement the importer supplied.
-     * @return {@code true} if the alias now names that placement; {@code false} if it names another.
-     * @throws IllegalStateException if the scope is frozen.
-     */
-    public boolean bindUsing(String alias, String aliasChain) {
-        guardFrozen();
-        return bindOnce(usingBindings, alias, aliasChain);
-    }
-
-    private static boolean bindOnce(Map<String, String> map, String alias, String target) {
-        String bound = map.putIfAbsent(alias, target);
-        return bound == null || bound.equals(target);
+    public <T> T state(Class<T> key, Supplier<T> factory) {
+        Object existing = records.get(key);
+        if (existing == null) {
+            guardFrozen();
+            existing = factory.get();
+            records.put(key, existing);
+        }
+        return key.cast(existing);
     }
 
     /**
@@ -136,29 +128,11 @@ public final class ModuleScope {
     }
 
     /**
-     * Returns the modules this module imports.
+     * Returns the aliases of the module level.
      *
-     * @return Their placements' alias chains by alias; unmodifiable.
+     * @return The alias chains of the placements they lead to, by alias; unmodifiable.
      */
-    public Map<String, String> imports() {
-        return Collections.unmodifiableMap(imports);
-    }
-
-    /**
-     * Returns the modules this module requires.
-     *
-     * @return Their paths by alias; unmodifiable.
-     */
-    public Map<String, String> requires() {
-        return Collections.unmodifiableMap(requires);
-    }
-
-    /**
-     * Returns what importers supplied for this module's requirements.
-     *
-     * @return The supplied placements' alias chains by requirement alias; unmodifiable.
-     */
-    public Map<String, String> usingBindings() {
-        return Collections.unmodifiableMap(usingBindings);
+    public Map<String, String> aliases() {
+        return Collections.unmodifiableMap(aliases);
     }
 }

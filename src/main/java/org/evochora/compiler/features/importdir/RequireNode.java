@@ -2,6 +2,7 @@ package org.evochora.compiler.features.importdir;
 
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.model.ast.AstNode;
+import org.evochora.compiler.model.ast.IPlacementAlias;
 import org.evochora.compiler.model.ast.ISourceLocatable;
 
 /**
@@ -20,5 +21,5 @@ public record RequireNode(
         String path,
         String alias,
         SourceInfo sourceInfo
-) implements AstNode, ISourceLocatable {
+) implements AstNode, ISourceLocatable, IPlacementAlias {
 }

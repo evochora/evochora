@@ -16,8 +16,9 @@ import org.evochora.compiler.model.symbols.SymbolTable;
  * through it. A requirement is a name of the module level: inside any level the symbol table has
  * opened, such as a procedure, the directive is reported and defines nothing.
  *
- * <p>The actual require relationship (alias → path) is registered by
- * {@code Compiler.setupModuleRelationships()} from the DependencyScanner's data.
+ * <p>The requirement itself (alias → path) is declared in the placement's {@link Requirements},
+ * against which {@link ImportAnalysisHandler} checks the import of the placement. The module the
+ * alias leads to is bound by the importer's {@link ImportSymbolCollector}.
  */
 public class RequireSymbolCollector implements ISymbolCollector {
 
@@ -33,5 +34,8 @@ public class RequireSymbolCollector implements ISymbolCollector {
                 .ifPresent(existing -> diagnostics.reportError(
                         "Cannot require as '" + requireNode.alias() + "': the name is already used at " + SourceInfo.position(existing.sourceInfo()) + ".",
                         requireNode.sourceInfo().fileName(), requireNode.sourceInfo().lineNumber()));
+        symbolTable.getModuleScope(symbolTable.getCurrentAliasChain()).ifPresent(scope ->
+                scope.state(Requirements.class, Requirements::new)
+                        .declareModule(requireNode.alias().toUpperCase(), requireNode.path()));
     }
 }

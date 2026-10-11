@@ -178,7 +178,10 @@ and the branches of `SymbolTable` that read them go. The import feature reports 
 unsatisfied requirement, at the `.IMPORT` line or, for the main program, at the `.REQUIRE` line. A
 use of the alias says only what the core knows: the alias symbol has no entry in the alias map, so
 `CALC.CLAMP` is explained with "'CALC' leads to no module." The wording names no requirement and
-holds for any alias that leads nowhere. The other explanations of the symbol table lose the two
+holds for any alias that leads nowhere. The table tells an alias symbol from any other through a
+capability of the model, `IPlacementAlias` in `model/ast`, which `ImportNode` and `RequireNode`
+implement; it never reads the kind of a symbol (`CompilerArchitectureRulesTest.nobodyReadsTheKindOfASymbol`),
+as `IIdentifierBinding` and `IJumpTarget` already answer what a definition is. The other explanations of the symbol table lose the two
 words the same way: a first segment that is nothing of the module's is "neither a name nor an alias
 of this module" (today "neither an import nor a requirement"); an unexported segment reached from
 outside is "alias 'CALC' of WALK is not marked EXPORT." when the segment is an alias (today
@@ -350,6 +353,7 @@ kinds, the dependency scan and module setup of both, the bindings and their chec
 | `ValueEmissionContributor` | 11, emission | Reads the feature's own `value` directive and calls `EmissionContext.constantValue(qualifiedName, text)`, the core's API that `ConstantValueEmissionContributor` calls for `.CONST`. |
 | `OperandNode` text | `model/ast` | The rendering of an operand as text (`DATA:10`, `1\|0`), today private to `ConstNodeConverter`, moves next to the operand nodes, where both converters use it. |
 | `ModuleScope` | core | `symbols`, `aliases` (one map, one method `bindAlias(alias, aliasChain)` that binds once, whether an import binds its own alias or an importer binds a requirement's alias of the imported placement; read through `aliases()`), `state(Class, Supplier)` frozen by `freeze()`; `imports`, `requires`, `usingBindings` go. |
+| `IPlacementAlias` | `model/ast` | Capability: the definition of a name that is an alias of the module level, leading into another placement when the alias map has an entry. Implemented by `ImportNode` and `RequireNode`. |
 | `SymbolTable` | core | `registerRoot(aliasChain)` and `rootAliasChain()`, set by the semantic analyzer, so that a handler can tell the compilation root from a module (null in the single-file mode of the unit tests); `descendModule` and the first-segment lookup read `aliases()` alone; the requirement branches go and the explanations speak of names and aliases; `bindingOf` looks the identifier a definition binds up in the placement that identifier's `SourceInfo` names. |
 | `CompilerOptions` | `api` | `values`, a map from name to the value text, next to `defines`, names normalised as the defines are: upper-cased, two spellings of one name rejected. |
 | `Compiler` | compiler | In phase 1 lexes every value text of the options under the synthetic file name `<value NAME>`, as `Lexer.lexFiles` lexes the included files, and gives the tokens to `PreProcessorContext` as `values()`, a map from name to tokens next to `fileTokens()`. The core knows texts of the options, not requirements. |
@@ -485,8 +489,9 @@ the compiler package, so every verification runs both packages.
     `.REQUIRE` preprocessor handler in the root placement; the section "What is reported, and
     where" lists every report of the mechanism.
 17. An alias symbol without an entry in the alias map is explained by the core as "leads to no
-    module"; the cause is reported by the import feature, for the main program at the `.REQUIRE`
-    line.
+    module"; the table knows an alias symbol through the capability `IPlacementAlias`, never through
+    the symbol's kind. The cause is reported by the import feature, for the main program at the
+    `.REQUIRE` line.
 18. The symbol table's explanations and Javadoc speak of names and aliases of a module, never of
     imports or requirements.
 19. A value requirement is defined in pass 2, as a `.CONST` is: it stands before its first use,

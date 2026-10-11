@@ -108,9 +108,10 @@ class PassedOnRequirementTest {
     @Test
     @Tag("integration")
     void modulesThatImportEachOtherAreRejected() throws Exception {
-        // Handing a dependency on walks from the outermost module inwards, which terminates
-        // because the module graph is acyclic. That is not an assumption but a checked property:
-        // a cycle is caught while scanning, before any binding is resolved.
+        // A handed-on requirement is bound in pass 1 in text order: the importer's binding
+        // arrives before the module's tokens. That order exists because the module graph is
+        // acyclic, which is not an assumption but a checked property: a cycle is caught while
+        // scanning, before any binding is made.
         Files.writeString(tempDir.resolve("a.evo"), String.join("\n",
                 ".IMPORT \"b.evo\" AS B",
                 "  NOP",

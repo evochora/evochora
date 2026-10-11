@@ -18,9 +18,10 @@ import java.util.List;
  * Handles the {@code .IMPORT} directive in the preprocessor phase.
  * Inlines the imported module's pre-lexed tokens at the directive location, wrapped with
  * PUSH_CTX/POP_CTX for relative .ORG support. The directive tokens remain in the
- * stream for the parser to create an {@code ImportNode}. The directive stands alone on its line:
- * nothing but an {@code EXPORT} before it, and a token after the alias that begins no
- * {@code USING} clause is an error.
+ * stream for the parser to create an {@code ImportNode}. The handler reads the path and the alias
+ * and passes over the rest of the line, which the parser reads. The directive stands alone on its
+ * line: anything but an {@code EXPORT} before it, or a {@code ;} that puts another statement after
+ * it, is an error.
  *
  * <p>Every import is a placement and an entry of the preprocessor's sources, under the
  * placement's alias chain, instance 0 and the position of the directive.</p>
@@ -47,14 +48,16 @@ public class ImportSourceHandler implements IPreProcessorHandler {
         Token pathToken = preProcessor.consume(TokenType.STRING, "Expected a file path in quotes after .IMPORT.");
 
         // The alias is read here because the module's tokens are placed under it; the parser
-        // reads the directive again and reports every other malformation.
+        // reads the directive again, with its clauses, and reports every other malformation.
         String alias = extractAlias(preProcessor);
         if (alias == null) {
             preProcessor.getDiagnostics().reportError(
                     "Expected AS after .IMPORT path.", pathToken.source().fileName(), pathToken.source().lineNumber());
             return;
         }
-        checkRestOfLine(preProcessor);
+        while (!preProcessor.isAtEnd() && !preProcessor.check(TokenType.NEWLINE)) {
+            preProcessor.advance();
+        }
         if (line.separator() != null) {
             String message = ".IMPORT must stand alone on its line; found ';' after the alias and its USING clauses.";
             preProcessor.getDiagnostics().reportError(message, line.separator().source().fileName(),
@@ -129,49 +132,6 @@ public class ImportSourceHandler implements IPreProcessorHandler {
 
         // Inject after the .IMPORT directive (tokens remain for the parser)
         preProcessor.injectTokens(newTokens, 0);
-    }
-
-    /**
-     * Checks that nothing but {@code USING source AS target} clauses follows the alias on the
-     * line, and moves to the line's end. A clause that begins with {@code USING} but is malformed
-     * is left to the parser, which reads the clauses and names what is wrong with them; any
-     * other token is reported here, because the directive stands alone on its line.
-     *
-     * @throws ErrorRecoveryException if a token that begins no clause follows the alias; it has
-     *         been reported.
-     */
-    private void checkRestOfLine(PreProcessor preProcessor) {
-        boolean clausesWellFormed = true;
-        while (!preProcessor.isAtEnd() && !preProcessor.check(TokenType.NEWLINE)) {
-            Token token = preProcessor.peek();
-            if (clausesWellFormed && !isWord(token, "USING")) {
-                String message = ".IMPORT must stand alone on its line; found '" + token.text()
-                        + "' after the alias and its USING clauses.";
-                preProcessor.getDiagnostics().reportError(message, token.source().fileName(), token.source().lineNumber());
-                throw new ErrorRecoveryException(message);
-            }
-            if (clausesWellFormed) {
-                clausesWellFormed = matchUsingClause(preProcessor);
-            } else {
-                preProcessor.advance();
-            }
-        }
-    }
-
-    /**
-     * Consumes one {@code USING source AS target} clause as far as it is well formed.
-     *
-     * @return {@code true} if all four tokens were there.
-     */
-    private boolean matchUsingClause(PreProcessor preProcessor) {
-        preProcessor.advance(); // USING
-        if (!preProcessor.check(TokenType.IDENTIFIER)) return false;
-        preProcessor.advance();
-        if (preProcessor.isAtEnd() || !isWord(preProcessor.peek(), "AS")) return false;
-        preProcessor.advance();
-        if (!preProcessor.check(TokenType.IDENTIFIER)) return false;
-        preProcessor.advance();
-        return true;
     }
 
     private static boolean isWord(Token token, String word) {

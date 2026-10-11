@@ -260,10 +260,36 @@ class UsingClauseIntegrationTest {
         assertThat(result.diagnostics.hasErrors())
                 .as("Expected no errors but got: %s", result.diagnostics.getDiagnostics())
                 .isFalse();
-        assertThat(result.symbolTable.getModuleScope("FIRST").orElseThrow().usingBindings())
+        assertThat(result.symbolTable.getModuleScope("FIRST").orElseThrow().aliases())
                 .containsExactly(Map.entry("DEP", "FAST"));
-        assertThat(result.symbolTable.getModuleScope("SECOND").orElseThrow().usingBindings())
+        assertThat(result.symbolTable.getModuleScope("SECOND").orElseThrow().aliases())
                 .containsExactly(Map.entry("DEP", "SLOW"));
+    }
+
+    @Test
+    @Tag("integration")
+    void aRequirementHandedOnUnderAnotherAliasResolvesInTheModuleThatReceivesIt() throws Exception {
+        Files.writeString(tempDir.resolve("dep.evo"), "EXPORT NAME:\n  NOP\n");
+        // b.evo requires Y and reaches NAME through it
+        Files.writeString(tempDir.resolve("b.evo"),
+                ".REQUIRE \"dep.evo\" AS Y\nEXPORT WORK:\n  JMPI Y.NAME\n");
+        // a.evo requires X and hands it on to b.evo as Y
+        Files.writeString(tempDir.resolve("a.evo"),
+                ".REQUIRE \"dep.evo\" AS X\n.IMPORT \"b.evo\" AS B USING X AS Y\nEXPORT RUN:\n  JMPI B.WORK\n");
+
+        String mainSource = ".IMPORT \"dep.evo\" AS D\n.IMPORT \"a.evo\" AS A USING D AS X\nJMPI A.RUN\n";
+        String mainPath = tempDir.resolve("main.evo").toString();
+
+        SemanticsResult result = compileThroughSemanticsWithSymbols(mainSource, mainPath);
+
+        assertThat(result.diagnostics.hasErrors())
+                .as("Expected no errors but got: %s", result.diagnostics.getDiagnostics())
+                .isFalse();
+        SymbolTable st = result.symbolTable;
+        st.setCurrentModule("A.B");
+        String bPath = tempDir.resolve("b.evo").normalize().toString().replace('\\', '/');
+        var resolved = st.resolve("Y.NAME", new SourceInfo(bPath, 3, 7, "A.B", 0)).found();
+        assertThat(resolved).hasValueSatisfying(found -> assertThat(found.qualifiedName()).isEqualTo("D.NAME"));
     }
 
     private record SemanticsResult(DiagnosticsEngine diagnostics, SymbolTable symbolTable) {}

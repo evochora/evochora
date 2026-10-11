@@ -215,9 +215,8 @@ public class DependencyScannerTest {
         org.evochora.compiler.features.importdir.ImportDependencyInfo libImport = imports.stream()
                 .filter(imp -> imp.alias().equalsIgnoreCase("LIB"))
                 .findFirst().orElseThrow();
-        assertThat(libImport.usings()).hasSize(1);
-        assertThat(libImport.usings().get(0).sourceAlias()).isEqualToIgnoringCase("D");
-        assertThat(libImport.usings().get(0).targetAlias()).isEqualToIgnoringCase("DEP");
+        assertThat(libImport.path()).isEqualTo("lib.evo");
+        assertThat(libImport.alias()).isEqualToIgnoringCase("LIB");
     }
 
     @Test

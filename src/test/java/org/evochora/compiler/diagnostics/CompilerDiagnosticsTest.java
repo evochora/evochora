@@ -951,7 +951,7 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Cannot call 'NAV.ARITH.ADD_CLAMPED': import 'ARITH' of NAV is not marked EXPORT.")
+                .hasMessageContaining("Cannot call 'NAV.ARITH.ADD_CLAMPED': alias 'ARITH' of NAV is not marked EXPORT.")
                 .hasMessageContaining("main.evo:3");
     }
 
@@ -973,7 +973,7 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Cannot call 'NAV.ARITH.ADD': 'ARITH' is a requirement of NAV; use the module you supplied for it.")
+                .hasMessageContaining("Cannot call 'NAV.ARITH.ADD': alias 'ARITH' of NAV is not marked EXPORT.")
                 .hasMessageContaining("main.evo:4");
     }
 
@@ -1014,7 +1014,34 @@ class CompilerDiagnosticsTest {
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
                 .hasMessageContaining("main.evo:1: Cannot import NAV: it requires 'ARITH'; add USING <module> AS ARITH to the import.")
-                .hasMessageContaining("nav.evo:3: Cannot call 'ARITH.ADD': 'ARITH' is a requirement that no import supplied; add USING <module> AS ARITH to the import of this module.");
+                .hasMessageContaining("nav.evo:3: Cannot call 'ARITH.ADD': 'ARITH' leads to no module.");
+    }
+
+    @Test
+    void aRequirementOfTheMainProgramIsReportedAtItsLineAndItsUseLeadsToNoModule() throws Exception {
+        write("main.evo",
+                ".REQUIRE \"d.evo\" AS D",
+                "START:",
+                "  JMPI D.X");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("main.evo:1: The main program cannot require a module: nothing imports it, so nothing can supply 'D'; import \"d.evo\" instead.")
+                .hasMessageContaining("main.evo:3: Cannot use 'D.X' as an argument: 'D' leads to no module.");
+    }
+
+    @Test
+    void anUnusedRequirementOfTheMainProgramIsReportedAtItsLine() throws Exception {
+        write("main.evo",
+                ".REQUIRE \"d.evo\" AS D",
+                "START:",
+                "  NOP");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .satisfies(e -> assertThat(e.getMessage().lines().toList()).containsExactly(
+                        "[ERROR] " + resolved("main.evo")
+                                + ":1: The main program cannot require a module: nothing imports it, so nothing can supply 'D'; import \"d.evo\" instead."));
     }
 
     @Test
@@ -1075,7 +1102,7 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Cannot call 'FOO.STEP': 'FOO' is neither an import nor a requirement of this module.")
+                .hasMessageContaining("Cannot call 'FOO.STEP': 'FOO' is neither a name nor an alias of this module.")
                 .hasMessageContaining("main.evo:2");
     }
 

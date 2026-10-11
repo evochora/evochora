@@ -2,6 +2,7 @@ package org.evochora.compiler.features.importdir;
 
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.model.ast.AstNode;
+import org.evochora.compiler.model.ast.IPlacementAlias;
 import org.evochora.compiler.model.ast.ISourceLocatable;
 
 import java.util.List;
@@ -24,7 +25,7 @@ public record ImportNode(
         List<UsingClause> usings,
         boolean exported,
         SourceInfo sourceInfo
-) implements AstNode, ISourceLocatable {
+) implements AstNode, ISourceLocatable, IPlacementAlias {
 
     /**
      * A USING clause on an import, providing a module to satisfy a dependency.
