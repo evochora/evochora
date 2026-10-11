@@ -376,6 +376,23 @@ class CompilerDiagnosticsTest {
     }
 
     @Test
+    void valueRequirementInsideASourcedFileNamesTheFileAndTheLine() throws Exception {
+        write("lib.evo",
+                "# text that is sourced, not a module",
+                "  NOP",
+                ".REQUIRE VALUE STEPS DATA:1");
+        write("main.evo",
+                ".SOURCE \"lib.evo\"",
+                "START:",
+                "  NOP");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining(".REQUIRE not allowed in a .SOURCE file")
+                .hasMessageContaining("lib.evo:3");
+    }
+
+    @Test
     void importInsideASourcedFileNamesTheFileAndTheLineOfTheImport() throws Exception {
         write("x.evo",
                 "  NOP");

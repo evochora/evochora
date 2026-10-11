@@ -239,8 +239,6 @@ public class DependencyScannerTest {
                 .map(d -> (org.evochora.compiler.features.importdir.RequireDependencyInfo) d)
                 .toList();
         assertThat(requires).hasSize(1);
-        assertThat(requires.get(0).alias()).isEqualToIgnoringCase("DEP");
-        assertThat(requires.get(0).path()).isEqualTo("dependency.evo");
     }
 
     @Test

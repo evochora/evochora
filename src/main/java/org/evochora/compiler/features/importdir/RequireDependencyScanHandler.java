@@ -7,15 +7,13 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Phase 0 scan handler for {@code .REQUIRE} directives. Detects require declarations
- * and records them as dependencies of the module placement being scanned.
+ * Phase 0 scan handler for {@code .REQUIRE} directives. A requirement loads no file and the
+ * parser alone reads the line, so the scan records only that the line is a {@code .REQUIRE}:
+ * the scanner rejects it inside a {@code .SOURCE} file, which may hold no module directive.
  */
 public class RequireDependencyScanHandler implements IDependencyScanHandler {
 
-    // The scan reads the kind word, the path and the alias; a .REQUIRE of another kind is no
-    // dependency.
-    private static final Pattern REQUIRE_PATTERN = Pattern.compile(
-            "(?i)^\\.REQUIRE\\s+MODULE\\s+\"([^\"]+)\"\\s+AS\\s+(\\w+)\\s*$");
+    private static final Pattern REQUIRE_PATTERN = Pattern.compile("(?i)^\\.REQUIRE\\b.*$");
 
     @Override
     public Pattern pattern() {
@@ -24,8 +22,6 @@ public class RequireDependencyScanHandler implements IDependencyScanHandler {
 
     @Override
     public void handleMatch(Matcher matcher, IDependencyScanContext ctx) {
-        String path = matcher.group(1);
-        String alias = matcher.group(2);
-        ctx.addDependency(new RequireDependencyInfo(path, alias));
+        ctx.addDependency(new RequireDependencyInfo());
     }
 }
