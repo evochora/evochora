@@ -148,6 +148,28 @@ public class ImportDirectiveTest {
 
     @Test
     @Tag("unit")
+    void aValueGroupWithoutAValueIsReported() {
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        List<AstNode> ast = parse(".IMPORT \"lib.evo\" AS LIB USING VALUE STEPS", diagnostics);
+
+        assertThat(ast).isEmpty();
+        assertThat(diagnostics.getDiagnostics()).singleElement()
+                .satisfies(d -> assertThat(d.message()).isEqualTo("Expected a value after VALUE STEPS."));
+    }
+
+    @Test
+    @Tag("unit")
+    void aValueGroupEndedByAKindWordIsReported() {
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        List<AstNode> ast = parse(".IMPORT \"lib.evo\" AS LIB USING VALUE STEPS MODULE A AS B", diagnostics);
+
+        assertThat(ast).isEmpty();
+        assertThat(diagnostics.getDiagnostics()).singleElement()
+                .satisfies(d -> assertThat(d.message()).isEqualTo("Expected a value after VALUE STEPS."));
+    }
+
+    @Test
+    @Tag("unit")
     void aSecondUsingOnOneImportIsReported() {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         List<AstNode> ast = parse(".IMPORT \"lib.evo\" AS LIB USING MODULE A AS X USING MODULE B AS Y", diagnostics);

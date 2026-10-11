@@ -260,6 +260,20 @@ public class CompileCommandTest {
     }
 
     @Test
+    void testValueReachesTheCompilationWithASourceRoot() throws Exception {
+        Path sourceFile = tempDir.resolve("valued.evo");
+        Files.writeString(sourceFile, """
+            .REQUIRE VALUE STEPS
+            SETI %DR0 STEPS
+            """);
+
+        String valued = compileToJson("valued.evo", "--source-root", tempDir.toString(), "--value", "STEPS=DATA:20");
+
+        assertThat(JsonParser.parseString(valued).getAsJsonObject().getAsJsonObject("constantValues")
+                .get("STEPS").getAsString()).isEqualTo("DATA:20");
+    }
+
+    @Test
     void testValueRejectsAMissingEqualsSignAMissingNameAndAMissingText() {
         for (String form : List.of("STEPS", "=X", "STEPS=")) {
             assertThatThrownBy(() -> CompileCommand.parseValues(List.of(form)))

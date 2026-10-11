@@ -139,6 +139,21 @@ public class RequireDirectiveTest {
 
     @Test
     @Tag("unit")
+    void aValueRequirementWithADefaultThatIsNoOperandIsReported() {
+        String source = ".REQUIRE VALUE STEPS :";
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
+        List<Token> tokens = lexer.scanTokens();
+        Parser parser = new Parser(tokens, diagnostics, registry());
+
+        List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
+
+        assertThat(diagnostics.hasErrors()).isTrue();
+        assertThat(ast).isEmpty();
+    }
+
+    @Test
+    @Tag("unit")
     void aRequireWithoutAKindWordReportsTheMissingModule() {
         String source = ".REQUIRE \"d.evo\" AS D";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
