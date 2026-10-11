@@ -744,26 +744,27 @@ Code can be kept or left out depending on *flags*. A flag is a name that is set 
 
 The module system allows splitting programs across multiple files. Three directives work together to manage module dependencies:
 
-* **`.IMPORT`** — imports a module: establishes a dependency and inlines the module's code; with the `EXPORT` prefix it also passes that import on to its own importers.
-* **`.REQUIRE`** — declares, with the kind word `MODULE`, an unsatisfied dependency that must be provided by the importer via a `USING MODULE` clause.
+* **`.REQUIRE`** — declares what a module needs from its importer, a module or a value, without inlining anything.
+* **`.IMPORT`** — imports a module: inlines its code, supplies what it requires, and with the `EXPORT` prefix passes the import on to its own importers.
 * **`.SOURCE`** — includes raw source text (macros, constants) without creating a module relationship.
 
 None of the three may stand inside a macro or a repeat block, and `.IMPORT` and `.REQUIRE` stand only at the module level, outside every `.PROC`. Inside a conditional block they may: the file is read only when the branch is kept.
 
-#### `.IMPORT`
-
-* **Syntax**: `[EXPORT] .IMPORT "<path>" AS <Alias> [USING MODULE <source> AS <target> ...]`
-* **Effect**: Declares a dependency on the module at `<path>`, assigns it the local alias `<Alias>`, and inlines the module's code at this location. Exported labels and procedures in the imported module become accessible as `<Alias>.<Name>`. The same file may be imported more than once, under different aliases: each import places the module again, and the two placements are as independent as two different modules.
-* **`EXPORT` prefix**: Passes the import on to modules that import this one, which then reach it as `<ThisAlias>.<Alias>.<Name>` without inlining the code a second time. Each level decides for its own import: a level without the prefix ends the chain there.
-* **USING clauses**: Provide compile-time dependency injection. Each `USING` clause wires a module from the current scope (identified by `<source>` alias) into the imported module to satisfy one of its `.REQUIRE` declarations (identified by `<target>` alias).
-    - `<source>` names a module the current one has: either one it imported itself, or one it received through a `USING` clause on its own `.REQUIRE`. The second case lets a module hand a dependency further down without choosing it, so the decision stays with the outermost caller.
-    - `<target>` must match a `.REQUIRE` alias in the imported module.
-    - Every `.REQUIRE` in the imported module must be satisfied by a `USING` clause.
-
 #### `.REQUIRE`
 
-* **Syntax**: `.REQUIRE MODULE "<path>" AS <Alias>`
-* **Effect**: Declares that this module depends on the module at `<path>` under the alias `<Alias>`, but does **not** inline any code. The dependency must be satisfied by the importer through a `USING` clause on its `.IMPORT` directive. Within this module, symbols from the required module can be accessed as `<Alias>.<Name>`.
+* **Syntax**: `.REQUIRE MODULE "<path>" AS <Alias>` and `[EXPORT] .REQUIRE VALUE <Name> [<Default>]`
+* **`MODULE`**: This module uses a module as `<Alias>`, reaching its exported names as `<Alias>.<Name>`, but does not inline it; the importer names the module that takes the place of `<Alias>`, and `<path>` says which file the module expects there. The alias is never exported.
+* **`VALUE`**: Defines the constant `<Name>`, whose value the importer decides; `<Default>` is its value when the importer decides nothing, and without a default the importer has to decide. It is a constant as `.CONST` makes one, with the same values (a literal or a name) and the same rules, and `EXPORT` makes it reachable from outside. Two placements of one module may receive different values.
+* **The main program** has no importer; its values come from the configuration, `values { STEPS = "DATA:20" }` in the organism's entry or `evochora compile --value STEPS=DATA:20`. A value that no `.REQUIRE VALUE` of the main program names is ignored.
+* `.REQUIRE` stands alone on its line.
+
+#### `.IMPORT`
+
+* **Syntax**: `[EXPORT] .IMPORT "<path>" AS <Alias> [USING [MODULE <source> AS <target> ...] [VALUE <name> <value> ...]]`
+* **Effect**: Declares a dependency on the module at `<path>`, assigns it the local alias `<Alias>`, and inlines the module's code at this location. Exported labels and procedures in the imported module become accessible as `<Alias>.<Name>`. The same file may be imported more than once, under different aliases: each import places the module again, and the two placements are as independent as two different modules.
+* **`EXPORT` prefix**: Passes the import on to modules that import this one, which then reach it as `<ThisAlias>.<Alias>.<Name>` without inlining the code a second time. Each level decides for its own import: a level without the prefix ends the chain there.
+* **`USING`**: Supplies what the imported module declared with `.REQUIRE`. For every `.REQUIRE MODULE … AS <target>` of the imported module, `MODULE <source> AS <target>` names the module that takes its place: one this file imported, or one this file requires itself and so hands on. For every `.REQUIRE VALUE <name>` of the imported module, `VALUE <name> <value>` gives its value, written as the value of a `.CONST` is; a name is one this file defined before the import. A value with a default may be left out, every other requirement must be supplied.
+* **Example**: `.IMPORT "walk.evo" AS SLOW USING MODULE MATH AS CALC VALUE STEPS DATA:4 VALUE SPEED SLOW_SPEED`
 
 #### `.SOURCE`
 
@@ -807,7 +808,7 @@ All paths in `.IMPORT`, `.REQUIRE`, and `.SOURCE` are resolved against configure
 
 ```
 # lib.evo — a reusable library
-EXPORT .PROC LIB.DOUBLE REF X
+EXPORT .PROC DOUBLE REF X
   PUSH X
   PUSH X
   ADDS
@@ -825,14 +826,14 @@ START:
   CALL LIB.DOUBLE REF %DR0    # %DR0 is now 42
 ```
 
-#### Example: Dependency Injection with USING
+#### Example: A Module That Requires a Module
 
-When a library module depends on another library, it declares the dependency with `.REQUIRE`. The main program then wires the modules together with `USING` clauses.
+A library that depends on another library does not import it; it declares the dependency with `.REQUIRE MODULE`, and the main program says with `USING MODULE` which module that is.
 
 **File 1: `math.evo`**
 ```
 # A standalone math library using stack-based conventions.
-EXPORT .PROC MATH.ADD
+EXPORT .PROC ADD
   ADDS            # Pops two values from the stack, pushes their sum
   RET
 .ENDPROC
@@ -840,11 +841,10 @@ EXPORT .PROC MATH.ADD
 
 **File 2: `utils.evo`**
 ```
-# This module depends on a math library, but does not import it directly.
-# Instead, it declares the dependency with .REQUIRE.
+# Depends on a math library, which the importer names.
 .REQUIRE MODULE "math.evo" AS MATH
 
-EXPORT .PROC UTILS.ADD_ONE REF X
+EXPORT .PROC ADD_ONE REF X
   PUSH X          # Push the register value onto the stack
   PUSI DATA:1     # Push 1
   CALL MATH.ADD   # Stack now has X+1
@@ -855,9 +855,8 @@ EXPORT .PROC UTILS.ADD_ONE REF X
 
 **File 3: `main.evo`**
 ```
-# The main program imports both modules and wires them together.
 .IMPORT "math.evo" AS M
-.IMPORT "utils.evo" AS UTILS USING MODULE M AS MATH  # Provides M to satisfy utils' .REQUIRE
+.IMPORT "utils.evo" AS UTILS USING MODULE M AS MATH   # the MATH utils requires is M
 
 START:
   SETI %DR0 DATA:10
@@ -865,7 +864,36 @@ START:
   # %DR0 is now 11
 ```
 
-The `USING MODULE M AS MATH` clause tells the compiler: "the module that `utils.evo` knows as `MATH` (from its `.REQUIRE`) is the same module that `main.evo` imported as `M`." This allows `utils.evo` to call `MATH.ADD` without knowing where the math library comes from — the main program controls the wiring.
+`USING MODULE M AS MATH` tells the compiler: "the module that `utils.evo` knows as `MATH` is the one `main.evo` imported as `M`." `utils.evo` calls `MATH.ADD` without knowing where the math library comes from; the main program controls the wiring.
+
+#### Example: A Module That Requires a Value
+
+A library that depends on a value does not fix it in its text; it declares the value with `.REQUIRE VALUE`, with or without a default, and the main program sets it with `USING VALUE`. The same module placed twice can get two values.
+
+**File 1: `walk.evo`**
+```
+# Walks a number of steps; how many, the importer decides.
+.REQUIRE VALUE STEPS DATA:10              # 10 unless the importer says
+
+EXPORT .PROC GO REF X
+  ADDI X STEPS
+  RET
+.ENDPROC
+```
+
+**File 2: `main.evo`**
+```
+.CONST SHORT DATA:3                       # defined before the import that uses it
+.IMPORT "walk.evo" AS FAR                 # STEPS is DATA:10, the default
+.IMPORT "walk.evo" AS NEAR USING VALUE STEPS SHORT
+
+START:
+  SETI %DR0 DATA:0
+  CALL FAR.GO REF %DR0                    # %DR0 is now 10
+  CALL NEAR.GO REF %DR0                   # %DR0 is now 13
+```
+
+Inside `walk.evo`, `STEPS` is a constant like any other; each placement has its own value, and the visualizer shows it at every use. A `.REQUIRE VALUE` without a default must be supplied by every import. The main program itself, which nothing imports, takes its values from the configuration (`values { … }` or `--value NAME=TEXT`).
 
 #### Example: Using .SOURCE for Shared Constants
 
@@ -922,17 +950,17 @@ Complete, compilable example programs are provided in [`assembly/examples/`](../
 |---|---|
 | [`simple.evo`](../assembly/examples/simple.evo) | Basic syntax: register aliases, `.CONST`, `.PROC`, labels, loops |
 | [`complex.evo`](../assembly/examples/complex.evo) | Advanced features: `.PLACE`, `.MACRO`, `.REPEAT`, `.SOURCE`, multiple `.ORG` regions |
-| [`modules/main.evo`](../assembly/examples/modules/main.evo) | Module system: `.IMPORT`, `EXPORT .IMPORT`, `.REQUIRE`, `USING`, `.SOURCE` for shared constants, `EXPORT` |
+| [`modules/main.evo`](../assembly/examples/modules/main.evo) | Module system: `.IMPORT`, `EXPORT .IMPORT`, `.REQUIRE MODULE` and `.REQUIRE VALUE`, `USING MODULE` and `USING VALUE`, `.SOURCE` for the file's constants, `EXPORT` |
 | [`duplicate-shell/main.evo`](../assembly/examples/duplicate-shell/main.evo) | A procedure that copies a labelled frame beside one of its edges: location parameters, marker handling, defensive writing, and a driver that calls it |
 
 The module example consists of multiple files:
 
 | File | Role |
 |---|---|
-| [`modules/lib/constants.evo`](../assembly/examples/modules/lib/constants.evo) | Shared constants loaded via `.SOURCE` |
+| [`modules/lib/constants.evo`](../assembly/examples/modules/lib/constants.evo) | Constants of the main program, loaded via `.SOURCE` |
 | [`modules/lib/math.evo`](../assembly/examples/modules/lib/math.evo) | Standalone math utilities (no dependencies) |
-| [`modules/lib/movement.evo`](../assembly/examples/modules/lib/movement.evo) | Movement procedures, depends on math via `.REQUIRE` |
-| [`modules/lib/navigation.evo`](../assembly/examples/modules/lib/navigation.evo) | Passes a required math module down to movement and its own import of movement back up via `EXPORT .IMPORT` |
+| [`modules/lib/movement.evo`](../assembly/examples/modules/lib/movement.evo) | Movement procedures; requires a math module and the world's bounds, one with a default, one its importer must supply |
+| [`modules/lib/navigation.evo`](../assembly/examples/modules/lib/navigation.evo) | Hands a required math module and a required value down to movement, and passes its own import of movement back up via `EXPORT .IMPORT` |
 
 To compile the examples using the CLI:
 

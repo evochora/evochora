@@ -1,8 +1,7 @@
 # Module Values
 
-**Status: TO BE REVIEWED** — specification complete, not yet implemented.
-Builds on [QUALIFIED_NAMES](../outdated/proposals/accomplished/QUALIFIED_NAMES.md) and
-[CONDITIONAL_COMPILATION](../outdated/proposals/accomplished/CONDITIONAL_COMPILATION.md).
+**Status: ACCOMPLISHED — implemented on branch `feature/module-values` (2026-10-11), in the nine steps below; see *Outcome* at the end.**
+Builds on [QUALIFIED_NAMES](QUALIFIED_NAMES.md) and [CONDITIONAL_COMPILATION](CONDITIONAL_COMPILATION.md).
 
 A module declares what it needs from its importer with `.REQUIRE`: today a module, from now on
 also a value. The importer supplies both on its `.IMPORT` line with `USING`, a module under the
@@ -502,3 +501,46 @@ the compiler package, so every verification runs both packages.
     `.CONST`, first step.
 23. `USING` stands once on an import; a further list begins with its kind word, a second `USING` is
     reported.
+
+## Outcome
+
+Implemented in the nine steps above, by one agent per step with a brief written from the plan row,
+every step verified by the session before its commit. Two architecture reviews of this document
+preceded the work (sixteen findings, then three on the decisions the first review had not seen);
+decisions 12 to 23 record what they changed. What the built code does beyond the solution text:
+
+- **Constants first.** Step 1 corrected `.CONST` before anything else: a name as its value is
+  resolved at the `.CONST` line ("Cannot define constant 'A' from 'B': the name is not defined.",
+  "… from 'LIB.NOPE': 'LIB' has no member 'NOPE'."), where today a missing path ended in an
+  internal error of the token map; and `ConstNode` rebuilds itself in phase 6, so the artifact
+  holds the literal at the end of a chain of constants (`ALSO` shows `DATA:9`, not `LIMIT`).
+- **The core.** `ModuleScope` keeps `symbols`, one alias map (`bindAlias`, `aliases()`) and the
+  record store `state(Class, Supplier)`, all frozen with the scope; the lookup result lost its
+  `placement`, which nothing read once `bindingOf` looked an identifier up in the placement its
+  own position names. `SymbolTable` knows the root (`registerRoot`, `rootAliasChain`) and tells an
+  alias symbol by `IPlacementAlias`. `IIdentifierBinding.bind` may return null for a definition
+  without value, so that its uses add no report. `OperandText` renders an operand for the
+  artifact. The `Parser` carries the lexed configured values and the root, and reads a token list
+  as one operand through `operandOf`; the preprocessor is untouched by the configuration.
+- **Messages.** The symbol table: "'CALC' leads to no module.", "'X' is neither a name nor an
+  alias of this module.", "alias 'CALC' of WALK is not marked EXPORT.". The parser: "Expected
+  MODULE or VALUE after .REQUIRE; found '…'.", "Expected MODULE or VALUE after USING; found '…'.",
+  "USING stands once on an import; a further list begins with its kind word.", "EXPORT is not
+  supported before '.REQUIRE MODULE': the importer supplies the module and already knows it under
+  its own name.", "Configured value 'STEPS' is not an operand; a value is written as a .CONST takes
+  it: a literal, a vector or a name.", and the line rule ".REQUIRE must stand alone on its line;
+  found '…' after the value and its default." Pass 2: "The main program cannot require a module:
+  nothing imports it, so nothing can supply 'CALC'; import \"math.evo\" instead.", "Cannot require
+  value 'STEPS' from 'X': …", "Cannot require value 'STEPS': the name is already used at …", "The
+  value 'SPEED' has no default and the configuration sets none; set it with values { SPEED =
+  \"<value>\" } in the organism's entry or --value SPEED=<value>.", "USING VALUE 'NOPE' does not
+  match any .REQUIRE VALUE in the imported module.", "Cannot import WALK: it requires the value
+  'SPEED'; add USING VALUE SPEED <value> to the import.", "Cannot bind VALUE SPEED from
+  'SLOW_SPEDD': the name is not defined.". The message for an unsupplied module requirement now
+  advises `USING MODULE <module> AS X`.
+- **Configuration.** `--value NAME=TEXT` and `values { NAME = "TEXT" }`; names normalised as the
+  defines are; the values enter `ProgramVariant`, `ProgramIdentity` (so every program's id changed
+  once by the count field) and `DebugInfo`. A configured value nothing requires is ignored.
+- **Programs.** The reference program's `step.evo` requires `STRIDE` with a default and `CEILING`
+  without, `nav.evo` hands `CEILING` on, `main.evo` binds it to a sourced constant; its code is
+  unchanged cell for cell. The module example lets movement require the world's bounds.
