@@ -210,7 +210,7 @@ the bindings are made from the AST:
 - Pass 1 makes the bindings, in text order, which is the order of the placements: the module's
   tokens follow the `.IMPORT` line, so the importer's node is collected before anything of the
   module. `ImportSymbolCollector` binds each `USING MODULE` source to the requirement's alias in
-  the imported placement with `ModuleScope.bindAlias`, resolving the source through the importer's
+  the imported placement with `ModuleScope.bindAlias`, the one method of the alias map, resolving the source through the importer's
   aliases or through the bindings the importer itself received earlier in the pass, and records
   the `USING VALUE` bindings in the imported placement's record. `RequireAnalysisHandler`, in
   pass 2, finds the binding for its placement there, or takes the default. Whether every
@@ -333,9 +333,9 @@ kinds, the dependency scan and module setup of both, the bindings and their chec
 
 | Component | Phase | Does |
 |---|---|---|
-| `RequireDependencyScanHandler` (moved) | 0, dependency scan | Matches `.REQUIRE MODULE "<path>" AS <Alias>`; a `.REQUIRE VALUE` is no dependency and is not matched. |
+| `RequireDependencyScanHandler` (moved) | 0, dependency scan | Matches `.REQUIRE MODULE "<path>" AS <Alias>`; a `.REQUIRE VALUE` is no dependency and is not matched. It and `RequireDependencyInfo` stay although the module setup no longer reads them: through `allowedInSourceFile` the scan still reports a `.REQUIRE` inside a `.SOURCE` file. |
 | `ImportDependencyScanHandler` | 0 | Matches `[EXPORT] .IMPORT "<path>" AS <Alias>` and leaves the rest of the line unread; `ImportDependencyInfo` without `usings`. |
-| `ImportSourceHandler` | 2, preprocessor | Reads path and alias, injects the module's tokens, skips to the end of the line; the `;` report stays, the `USING` check goes. |
+| `ImportSourceHandler` | 2, preprocessor | Reads path and alias, injects the module's tokens, skips to the end of the line; the `;` report stays, the `USING` check goes. A token after the clauses (`AS LIB^2`) is then the parser's to report, with the line rule's text that `.REQUIRE` already uses in the parser. |
 | `RequireDirectiveHandler` (moved) | 3, parser | `supportsExport()` true. After `.REQUIRE` a kind word: `MODULE` then `"<path>" AS <Alias>` into `RequireNode`, an `EXPORT` before it reported by the handler with its own message; `VALUE` then `<Name>` and an optional default through `context.expression()` into `ValueRequirementNode(name, value, default, exported, sourceInfo)`, where `value` is an `IdentifierNode` carrying the requirement's own name, the slot phase 6 fills; the node returns value and default as children and implements `reconstructWithChildren` (see "Into the artifact"); a missing or unknown kind word is reported. |
 | `ImportDirectiveHandler` | 3, parser | After `USING`, the kind words `MODULE` and `VALUE` in any order, each opening a list of groups up to the next kind word, as `ProcDirectiveHandler` reads `REF`, `VAL`, `LREF`, `LVAL`; a value is read with `context.expression()`. `ImportNode` gets `List<ValueBinding(name, value, nameSourceInfo)>` beside `usings`. A name bound twice is reported here. |
 | `ImportModuleSetupHandler` | 4, module setup | `registerRelationships` as today: the import alias leads to the imported placement, `ModuleScope.addAlias`. `resolveBindings` goes; `RequireModuleSetupHandler` goes. |
@@ -349,8 +349,8 @@ kinds, the dependency scan and module setup of both, the bindings and their chec
 | `ValueRequirementNodeConverter` | 7, IR | Emits `IrDirective("importdir", "value", {name, value})` with the name qualified under the current alias chain (`WALK.STEPS`, `SLOW.STEPS`) and the text of the literal phase 6 put into the value slot. |
 | `ValueEmissionContributor` | 11, emission | Reads the feature's own `value` directive and calls `EmissionContext.constantValue(qualifiedName, text)`, the core's API that `ConstantValueEmissionContributor` calls for `.CONST`. |
 | `OperandNode` text | `model/ast` | The rendering of an operand as text (`DATA:10`, `1\|0`), today private to `ConstNodeConverter`, moves next to the operand nodes, where both converters use it. |
-| `ModuleScope` | core | `symbols`, `aliases` (`addAlias` for an import's alias, `bindAlias` for an alias another placement supplies, both into the one map, `aliases()`), `state(Class, Supplier)` frozen by `freeze()`; `imports`, `requires`, `usingBindings` go. |
-| `SymbolTable` | core | `descendModule` and the first-segment lookup read `aliases()` alone; the requirement branches go and the explanations speak of names and aliases; `bindingOf` looks the identifier a definition binds up in the placement that identifier's `SourceInfo` names. |
+| `ModuleScope` | core | `symbols`, `aliases` (one map, one method `bindAlias(alias, aliasChain)` that binds once, whether an import binds its own alias or an importer binds a requirement's alias of the imported placement; read through `aliases()`), `state(Class, Supplier)` frozen by `freeze()`; `imports`, `requires`, `usingBindings` go. |
+| `SymbolTable` | core | `registerRoot(aliasChain)` and `rootAliasChain()`, set by the semantic analyzer, so that a handler can tell the compilation root from a module (null in the single-file mode of the unit tests); `descendModule` and the first-segment lookup read `aliases()` alone; the requirement branches go and the explanations speak of names and aliases; `bindingOf` looks the identifier a definition binds up in the placement that identifier's `SourceInfo` names. |
 | `CompilerOptions` | `api` | `values`, a map from name to the value text, next to `defines`, names normalised as the defines are: upper-cased, two spellings of one name rejected. |
 | `Compiler` | compiler | In phase 1 lexes every value text of the options under the synthetic file name `<value NAME>`, as `Lexer.lexFiles` lexes the included files, and gives the tokens to `PreProcessorContext` as `values()`, a map from name to tokens next to `fileTokens()`. The core knows texts of the options, not requirements. |
 | `PreProcessorContext` | core | `values()`, the lexed value texts by name. |
