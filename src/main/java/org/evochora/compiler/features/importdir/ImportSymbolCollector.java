@@ -61,9 +61,9 @@ public class ImportSymbolCollector implements ISymbolCollector {
                 importedScope.get().bindAlias(using.targetAlias().toUpperCase(), sourceChain);
             }
         }
-        Requirements requirements = importedScope.get().state(Requirements.class, Requirements::new);
         for (ImportNode.ValueBinding binding : importNode.values()) {
-            requirements.bindValue(binding.name().toUpperCase(), binding.value());
+            importedScope.get().update(Requirements.class, Requirements::none,
+                    r -> r.withBoundValue(binding.name().toUpperCase(), binding.value()));
         }
     }
 }

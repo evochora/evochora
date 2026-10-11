@@ -36,8 +36,8 @@ public class RequireSymbolCollector implements ISymbolCollector {
         }
         if (node instanceof ValueRequirementNode valueNode) {
             symbolTable.getModuleScope(symbolTable.getCurrentAliasChain()).ifPresent(scope ->
-                    scope.state(Requirements.class, Requirements::new)
-                            .declareValue(valueNode.name().toUpperCase(), valueNode.defaultValue() != null));
+                    scope.update(Requirements.class, Requirements::none,
+                            r -> r.withValue(valueNode.name().toUpperCase(), valueNode.defaultValue() != null)));
             return;
         }
         RequireNode requireNode = (RequireNode) node;
@@ -46,7 +46,7 @@ public class RequireSymbolCollector implements ISymbolCollector {
                         "Cannot require as '" + requireNode.alias() + "': the name is already used at " + SourceInfo.position(existing.sourceInfo()) + ".",
                         requireNode.sourceInfo().fileName(), requireNode.sourceInfo().lineNumber()));
         symbolTable.getModuleScope(symbolTable.getCurrentAliasChain()).ifPresent(scope ->
-                scope.state(Requirements.class, Requirements::new)
-                        .declareModule(requireNode.alias().toUpperCase(), requireNode.path()));
+                scope.update(Requirements.class, Requirements::none,
+                        r -> r.withModule(requireNode.alias().toUpperCase(), requireNode.path())));
     }
 }

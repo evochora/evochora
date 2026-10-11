@@ -94,7 +94,7 @@ class SymbolTableFreezeTest {
         assertThatThrownBy(() -> scope.defineSymbol("X", new Symbol("X", new SourceInfo("t", 1, 0, "", 0), Symbol.Type.LABEL)))
                 .isInstanceOf(IllegalStateException.class).hasMessageContaining("MAIN");
         assertThatThrownBy(() -> scope.bindAlias("X", "Y")).isInstanceOf(IllegalStateException.class);
-        assertThatThrownBy(() -> scope.state(StringBuilder.class, StringBuilder::new)).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> scope.update(String.class, () -> "", s -> s)).isInstanceOf(IllegalStateException.class);
 
         // Read operations still work
         assertThat(scope.symbols().get("TEST")).isNotNull();

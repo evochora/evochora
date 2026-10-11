@@ -1,11 +1,8 @@
-package org.evochora.compiler.frontend.semantics;
+package org.evochora.compiler.features.importdir;
 
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.diagnostics.Diagnostic;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
-import org.evochora.compiler.features.importdir.ImportAnalysisHandler;
-import org.evochora.compiler.features.importdir.ImportNode;
-import org.evochora.compiler.features.importdir.Requirements;
 import org.evochora.compiler.model.symbols.ModuleScope;
 import org.evochora.compiler.model.symbols.SymbolTable;
 import org.junit.jupiter.api.BeforeEach;
@@ -51,7 +48,7 @@ class ImportAnalysisHandlerTest {
         mainScope.bindAlias("LIB", LIB_CHAIN);
 
         // lib requires "DEP"
-        requirementsOfLib().declareModule("DEP", "dep.evo");
+        declareInLib("DEP", "dep.evo");
 
         symbolTable.setCurrentModule(MAIN_CHAIN);
     }
@@ -124,7 +121,7 @@ class ImportAnalysisHandlerTest {
     @Tag("unit")
     void multipleRequiresAllSatisfied() {
         // lib requires both DEP and EXTRA
-        requirementsOfLib().declareModule("EXTRA", "extra.evo");
+        declareInLib("EXTRA", "extra.evo");
 
         String extraChain = "E";
         symbolTable.registerModule(extraChain, "/test/extra.evo");
@@ -148,7 +145,7 @@ class ImportAnalysisHandlerTest {
     @Tag("unit")
     void multipleRequiresPartiallySatisfiedReportsError() {
         // lib requires both DEP and EXTRA, but only DEP is provided
-        requirementsOfLib().declareModule("EXTRA", "extra.evo");
+        declareInLib("EXTRA", "extra.evo");
 
         ImportNode node = importNode("lib.evo", "LIB", List.of(
                 usingClause("D", "DEP")
@@ -162,8 +159,10 @@ class ImportAnalysisHandlerTest {
 
     // --- Helper methods ---
 
-    private Requirements requirementsOfLib() {
-        return symbolTable.getModuleScope(LIB_CHAIN).orElseThrow().state(Requirements.class, Requirements::new);
+    /** Declares a module requirement of lib as pass 1 declares it for a .REQUIRE MODULE. */
+    private void declareInLib(String alias, String path) {
+        symbolTable.getModuleScope(LIB_CHAIN).orElseThrow()
+                .update(Requirements.class, Requirements::none, r -> r.withModule(alias, path));
     }
 
     /** Binds a requirement alias of lib as pass 1 binds it for a USING clause whose source is known. */

@@ -50,7 +50,7 @@ public class RequireAnalysisHandler implements IAnalysisHandler {
         }
         SourceInfo at = valueNode.sourceInfo();
         OperandNode bound = symbolTable.getModuleScope(symbolTable.getCurrentAliasChain())
-                .flatMap(scope -> scope.state(Requirements.class, Requirements::new).boundValue(valueNode.name().toUpperCase()))
+                .flatMap(scope -> scope.record(Requirements.class, Requirements::none).boundValue(valueNode.name().toUpperCase()))
                 .orElse(null);
         OperandNode value = bound;
         if (value == null && valueNode.defaultValue() instanceof OperandNode defaultValue) {

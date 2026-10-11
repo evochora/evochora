@@ -56,10 +56,10 @@ public class ImportAnalysisHandler implements IAnalysisHandler {
 
         ModuleScope importedModScope = symbolTable.getModuleScope(importedAliasChain).orElse(null);
         Requirements record = importedModScope != null
-                ? importedModScope.state(Requirements.class, Requirements::new)
-                : null;
-        Map<String, String> requirements = record != null ? record.moduleRequirements() : Map.of();
-        Map<String, Boolean> valueRequirements = record != null ? record.valueRequirements() : Map.of();
+                ? importedModScope.record(Requirements.class, Requirements::none)
+                : Requirements.none();
+        Map<String, String> requirements = record.moduleRequirements();
+        Map<String, Boolean> valueRequirements = record.valueRequirements();
 
         for (ImportNode.UsingClause using : importNode.usings()) {
             String sourceAlias = using.sourceAlias().toUpperCase();

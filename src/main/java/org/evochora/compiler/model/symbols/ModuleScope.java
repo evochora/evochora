@@ -5,14 +5,15 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Supplier;
+import java.util.function.UnaryOperator;
 
 /**
  * The namespace of one module placement: its symbols, its aliases and the records of features.
  * An alias of the module level leads to another placement, whoever bound it there. A feature keeps
  * what it needs to know about the placement in a record of its own type; the core does not know
  * what a feature keeps and never reads it. Each is written through a method that keeps the
- * namespace's rule (the first symbol of a name stays; an alias binds once; a record is created
- * once) and read through an unmodifiable view or the record itself.
+ * namespace's rule (the first symbol of a name stays; an alias binds once; a record is replaced
+ * by its changed copy) and read through an unmodifiable view or the immutable record itself.
  * <p>
  * Semantic analysis fills a scope and then freezes it; after that every write is a defect.
  */
@@ -98,24 +99,34 @@ public final class ModuleScope {
     }
 
     /**
-     * Returns the record a feature keeps for this placement under the given key type, creating it
-     * with the factory on the first request. One instance exists per key for the lifetime of the
-     * scope; the core knows nothing of the type and never reads the object.
+     * Returns the record a feature keeps for this placement under the given key type, or the
+     * empty record the supplier gives when none was put there. A record is an immutable value;
+     * the core knows nothing of its type and never reads it.
      *
-     * @param key     The class used as the key.
-     * @param factory Creates the record; called only while no record exists for the key.
-     * @param <T>     The type of the record.
-     * @return The existing or newly created record.
-     * @throws IllegalStateException if no record exists for the key and the scope is frozen.
+     * @param key   The class used as the key.
+     * @param empty Gives the record of a placement nothing was recorded for; nothing is stored.
+     * @param <T>   The type of the record.
+     * @return The stored record, or the empty one.
      */
-    public <T> T state(Class<T> key, Supplier<T> factory) {
+    public <T> T record(Class<T> key, Supplier<T> empty) {
         Object existing = records.get(key);
-        if (existing == null) {
-            guardFrozen();
-            existing = factory.get();
-            records.put(key, existing);
-        }
-        return key.cast(existing);
+        return existing != null ? key.cast(existing) : empty.get();
+    }
+
+    /**
+     * Replaces the record a feature keeps for this placement by the result of a change applied to
+     * it, starting from the empty record when none was put there yet. Records are immutable, so
+     * a change yields a new record; a record handed out before stays as it was.
+     *
+     * @param key    The class used as the key.
+     * @param empty  Gives the record to start from when none is stored.
+     * @param change Yields the record to store from the current one.
+     * @param <T>    The type of the record.
+     * @throws IllegalStateException if the scope is frozen.
+     */
+    public <T> void update(Class<T> key, Supplier<T> empty, UnaryOperator<T> change) {
+        guardFrozen();
+        records.put(key, change.apply(record(key, empty)));
     }
 
     /**

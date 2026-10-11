@@ -61,7 +61,8 @@ concept in AGENTS.md; they are listed here because they are where the coupling l
    `IPlacementAlias` of its node, never through the kind of the symbol. The table also holds
    every kind of symbol to the one-segment rule when it is defined, and knows which placement is
    the compilation root. `ModuleScope` holds the symbols, one alias map and a store for the records
-   of features (`state(Class, Supplier)`), which the core creates on request and never reads;
+   of features (`record`, `update`): immutable records a feature replaces by their changed copy
+   until the scope is frozen, which the core never reads;
    what a requirement is, and what binds it, lives in `importdir`. The compiler lexes the texts of
    the configured values and the parser reads one of them as an operand when a handler asks
    (`operandOf`); what the values mean is the feature's. The parser knows the `EXPORT` keyword and asks

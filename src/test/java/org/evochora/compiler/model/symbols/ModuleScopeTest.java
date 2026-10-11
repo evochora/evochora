@@ -44,12 +44,14 @@ class ModuleScopeTest {
     }
 
     @Test
-    void aRecordIsCreatedOncePerKey() {
+    void aRecordIsReplacedByItsChangedCopyAndReadBackAsStored() {
         ModuleScope scope = new ModuleScope("M", "m.evo");
 
-        StringBuilder first = scope.state(StringBuilder.class, StringBuilder::new);
+        assertThat(scope.record(String.class, () -> "")).isEmpty();
+        scope.update(String.class, () -> "", s -> s + "a");
+        scope.update(String.class, () -> "", s -> s + "b");
 
-        assertThat(scope.state(StringBuilder.class, () -> new StringBuilder("other"))).isSameAs(first);
+        assertThat(scope.record(String.class, () -> "other")).isEqualTo("ab");
     }
 
     @Test
@@ -59,7 +61,8 @@ class ModuleScopeTest {
 
         assertThatThrownBy(() -> scope.defineSymbol("X", symbol("X", 1))).isInstanceOf(IllegalStateException.class);
         assertThatThrownBy(() -> scope.bindAlias("LIB", "M.LIB")).isInstanceOf(IllegalStateException.class);
-        assertThatThrownBy(() -> scope.state(StringBuilder.class, StringBuilder::new)).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> scope.update(String.class, () -> "", s -> s)).isInstanceOf(IllegalStateException.class);
+        assertThat(scope.record(String.class, () -> "empty")).isEqualTo("empty");
     }
 
     @Test

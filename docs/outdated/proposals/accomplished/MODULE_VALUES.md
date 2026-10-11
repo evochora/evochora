@@ -227,8 +227,8 @@ the bindings are made from the AST:
 
 What a feature keeps inside phase 4, for every placement — the module requirements declared, the
 values bound at the import until the module's `.REQUIRE VALUE` is reached — lives in a store the
-core offers and does not read: `ModuleScope` gets `state(Class<T> key, Supplier<T> factory)`,
-keyed by a type the feature owns, as `PreProcessorContext.getOrCreate` already lets a feature
+core offers and does not read: `ModuleScope` gets `record(Class<T> key, Supplier<T> empty)` and
+`update(Class<T> key, Supplier<T> empty, UnaryOperator<T> change)`, keyed by a type the feature owns, as `PreProcessorContext.getOrCreate` already lets a feature
 keep a record per compilation. Features and handlers hold no compilation state (AGENTS.md,
 "Stateless Features"); their records go here. The store is written and read in phase 4 alone:
 `freeze()` makes it immutable with the scope's maps at the end of the analysis, a later write is
@@ -345,7 +345,7 @@ kinds, the dependency scan and module setup of both, the bindings and their chec
 | `ValueEmissionContributor` | 11, emission | Reads the feature's own `value` directive and calls `EmissionContext.constantValue(qualifiedName, text)`, the core's API that `ConstantValueEmissionContributor` calls for `.CONST`. |
 | `OperandText` | `model/ast` | `static String of(OperandNode)`: the rendering of an operand as text (`DATA:10`, `1\|0`), today private to `ConstNodeConverter`, next to the operand nodes, where both converters use it. |
 | `IIdentifierBinding` | `model/ast` | `bind` may return null when the definition has no value, which the phase that defined it has reported; `bindingOf` then finds nothing, and a use adds no report of its own. This is how a value requirement without default and binding keeps its symbol without a cascade of "is not a value" reports. |
-| `ModuleScope` | core | `symbols`, `aliases` (one map, one method `bindAlias(alias, aliasChain)` that binds once, whether an import binds its own alias or an importer binds a requirement's alias of the imported placement; read through `aliases()`), `state(Class, Supplier)` frozen by `freeze()`; `imports`, `requires`, `usingBindings` go. |
+| `ModuleScope` | core | `symbols`, `aliases` (one map, one method `bindAlias(alias, aliasChain)` that binds once, whether an import binds its own alias or an importer binds a requirement's alias of the imported placement; read through `aliases()`), `record`/`update` frozen by `freeze()`; `imports`, `requires`, `usingBindings` go. |
 | `IPlacementAlias` | `model/ast` | Capability: the definition of a name that is an alias of the module level, leading into another placement when the alias map has an entry. Implemented by `ImportNode` and `RequireNode`. |
 | `SymbolTable` | core | `registerRoot(aliasChain)` and `rootAliasChain()`, set by the semantic analyzer, so that a handler can tell the compilation root from a module (null in the single-file mode of the unit tests); `descendModule` and the first-segment lookup read `aliases()` alone; the requirement branches go and the explanations speak of names and aliases; `bindingOf` looks the identifier a definition binds up in the placement that identifier's `SourceInfo` names. |
 | `CompilerOptions` | `api` | `values`, a map from name to the value text, next to `defines`, names normalised as the defines are: upper-cased, two spellings of one name rejected. |
@@ -371,7 +371,7 @@ options, as it knows the defines, and nothing of what a feature makes of them.
 - `docs/COMPILER_CORE_BOUNDARY.md`: the `importdir` row absorbs `require`; the coupling paragraph
   on the four maps of `ModuleScope` goes.
 - `AGENTS.md`, "Stateless Features" gains the sentence: a feature keeps what it needs within phase
-  4, per placement, in the symbol table's store `ModuleScope.state(Class, Supplier)`; the store is
+  4, per placement, in the symbol table's store `ModuleScope.record`/`update`, as an immutable record; the store is
   frozen with the scope and read by no later phase. "Registry-Based Dispatch" and
   "Feature-Agnostic Core" do not change.
 - `assembly/examples/modules`: `.REQUIRE MODULE` and `USING MODULE`; the sourced `constants.evo`
@@ -515,7 +515,10 @@ decisions 12 to 23 record what they changed. What the built code does beyond the
   internal error of the token map; and `ConstNode` rebuilds itself in phase 6, so the artifact
   holds the literal at the end of a chain of constants (`ALSO` shows `DATA:9`, not `LIMIT`).
 - **The core.** `ModuleScope` keeps `symbols`, one alias map (`bindAlias`, `aliases()`) and the
-  record store `state(Class, Supplier)`, all frozen with the scope; the lookup result lost its
+  record store (`record`, `update`), all frozen with the scope. A feature's record is an immutable
+  Java record (`Requirements`, with `with…` methods); pass 1 replaces it in the store, pass 2 reads
+  it. The first review of the pull request made that immutability real: a mutable class with
+  public mutators had stood there, written from a test outside the package; the lookup result lost its
   `placement`, which nothing read once `bindingOf` looked an identifier up in the placement its
   own position names. `SymbolTable` knows the root (`registerRoot`, `rootAliasChain`) and tells an
   alias symbol by `IPlacementAlias`. `IIdentifierBinding.bind` may return null for a definition
