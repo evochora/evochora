@@ -2,6 +2,7 @@ package org.evochora.compiler.features.importdir;
 
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.model.ast.AstNode;
+import org.evochora.compiler.model.ast.OperandNode;
 import org.evochora.compiler.model.ast.ISourceLocatable;
 
 import java.util.List;
@@ -19,6 +20,9 @@ import java.util.List;
  * @param value        The value slot: the identifier of the name as the parser read it, the
  *                     literal after phase 6.
  * @param defaultValue The default, or {@code null} when the requirement has none.
+ * @param configured   The value the configuration gives a requirement of the main program, or
+ *                     {@code null}; it takes the default's place and is no child of the node,
+ *                     because it stands in no source file.
  * @param exported     Whether the value is reachable from outside the module (the EXPORT prefix).
  * @param sourceInfo   The source location of the name.
  */
@@ -26,6 +30,7 @@ public record ValueRequirementNode(
         String name,
         AstNode value,
         AstNode defaultValue,
+        OperandNode configured,
         boolean exported,
         SourceInfo sourceInfo
 ) implements AstNode, ISourceLocatable {
@@ -41,6 +46,6 @@ public record ValueRequirementNode(
     @Override
     public AstNode reconstructWithChildren(List<AstNode> newChildren) {
         return new ValueRequirementNode(name, newChildren.get(0),
-                defaultValue != null ? newChildren.get(1) : null, exported, sourceInfo);
+                defaultValue != null ? newChildren.get(1) : null, configured, exported, sourceInfo);
     }
 }

@@ -394,6 +394,10 @@ class ModuleValuesTest {
                 .noneMatch(path -> path.startsWith("<value"));
         assertThat(artifact.sources()).extracting(SourceFile::resolvedPath)
                 .noneMatch(path -> path.startsWith("<value"));
+        assertThat(artifact.tokenMap().keySet()).extracting(SourceInfo::fileName)
+                .noneMatch(name -> name.startsWith("<value"));
+        assertThat(artifact.tokenLookup().values().stream().flatMap(byFile -> byFile.keySet().stream()))
+                .noneMatch(name -> name.startsWith("<value"));
     }
 
     /**

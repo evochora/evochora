@@ -407,9 +407,9 @@ options, as it knows the defines, and nothing of what a feature makes of them.
   none. A constant the importer binds with `USING VALUE` stands before the `.IMPORT`; the
   uses inside the module are analysed right after the import line, before anything the importer
   writes below it.
-- **Tokens of a configured value** name no file; they never enter the token stream, and a
-  configured value that is a name gets a token map entry under a position no file has, which the
-  visualizer never shows. `sources` must not list such a name. A test pins that.
+- **Tokens of a configured value** name no file; they never enter the token stream, and the
+  operand read from them is no child of the requirement's node, so neither `sources` nor the
+  token map of the artifact names a file that does not exist. A test pins both.
 - **The dependency scan** must keep matching `.REQUIRE MODULE "…" AS …` and
   `.IMPORT "…" AS …` in raw text before the preprocessor runs; the address of a file is read three
   times, by the scan, the preprocessor and the parser, and that stays as long as one token stream

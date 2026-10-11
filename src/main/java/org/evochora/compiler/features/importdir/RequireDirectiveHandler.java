@@ -106,7 +106,8 @@ public class RequireDirectiveHandler implements IParserStatementHandler {
     /**
      * Reads {@code NAME [DEFAULT]} after {@code VALUE}. The value slot of the node is an
      * identifier with the requirement's own name. In the root placement a configured value of
-     * that name takes the default's place.
+     * that name is read as one operand and kept apart from the default, which it takes the place
+     * of in the analysis; its tokens stand in no source file and are no child of the node.
      */
     private static AstNode parseValue(IParsingContext context, DirectiveLine line, Token directive) {
         boolean exported = context.isExported();
@@ -121,19 +122,20 @@ public class RequireDirectiveHandler implements IParserStatementHandler {
         if (!standsAlone(context, line, AFTER_VALUE)) {
             return null;
         }
-        List<Token> configured = configuredValue(context, name);
-        if (configured != null) {
-            Optional<OperandNode> operand = context.operandOf(configured);
+        OperandNode configured = null;
+        List<Token> configuredTokens = configuredValue(context, name);
+        if (configuredTokens != null) {
+            Optional<OperandNode> operand = context.operandOf(configuredTokens);
             if (operand.isEmpty()) {
                 context.getDiagnostics().reportError(
                         "Configured value '" + name.text() + "' is not an operand; a value is written as a .CONST takes it: a literal, a vector or a name.",
                         directive.source().fileName(), directive.source().lineNumber());
                 return null;
             }
-            defaultValue = operand.get();
+            configured = operand.get();
         }
         return new ValueRequirementNode(name.text(), new IdentifierNode(name.text(), name.source()),
-                defaultValue, exported, name.source());
+                defaultValue, configured, exported, name.source());
     }
 
     /**
