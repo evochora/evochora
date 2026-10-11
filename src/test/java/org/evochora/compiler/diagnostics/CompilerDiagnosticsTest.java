@@ -678,8 +678,39 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("Cannot define constant 'A' from 'B': the name is not defined.")
                 .hasMessageContaining("Definition of A is circular: A -> B -> A.")
                 .hasMessageContaining("main.evo:1");
+    }
+
+    @Test
+    void aConstantNamingALaterConstantIsReportedAtItsLine() throws Exception {
+        write("main.evo",
+                ".CONST A B",
+                ".CONST B DATA:1",
+                "START:",
+                "  SETI %DR0 A");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("Cannot define constant 'A' from 'B': the name is not defined.")
+                .hasMessageContaining("main.evo:1");
+    }
+
+    @Test
+    void aConstantNamingAMissingPathSaysWhereThePathStopped() throws Exception {
+        write("lib.evo",
+                "HELPER:",
+                "  NOP");
+        write("main.evo",
+                ".IMPORT \"lib.evo\" AS LIB",
+                ".CONST A LIB.NOPE",
+                "START:",
+                "  NOP");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("Cannot define constant 'A' from 'LIB.NOPE': 'LIB' has no member 'NOPE'.");
     }
 
     @Test

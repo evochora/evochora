@@ -40,6 +40,14 @@ public record ConstNode(
     }
 
     /**
+     * Phase 6 puts the resolved value into the node through this.
+     */
+    @Override
+    public AstNode reconstructWithChildren(List<AstNode> newChildren) {
+        return new ConstNode(name, sourceInfo, newChildren.get(0), exported);
+    }
+
+    /**
      * Replaces a reference to the constant by its value. A value that is itself an identifier
      * names another constant and is resolved again by the caller.
      */

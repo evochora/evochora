@@ -23,9 +23,9 @@ import java.util.stream.Collectors;
  *
  * <p>The name is qualified as a use of the constant is in the token map: the path of the scope
  * the constant is defined in, or the placement's alias chain on the module level, and the
- * upper-cased name. The value is the value of the definition as its parser read
- * it: a typed literal as {@code TYPE:value}, a vector as its components joined by {@code |},
- * another constant or a label by its name, numbers in decimal.</p>
+ * upper-cased name. The value is the literal phase 6 resolved, written as the parser read it: a
+ * typed literal as {@code TYPE:value}, a vector as its components joined by {@code |}, numbers in
+ * decimal; a constant that names a label carries the label's qualified name.</p>
  */
 public final class ConstNodeConverter implements IAstNodeToIrConverter<ConstNode> {
 
