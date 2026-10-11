@@ -13,7 +13,6 @@ import org.evochora.compiler.features.reg.RegFeature;
 import org.evochora.compiler.features.importdir.ImportFeature;
 import org.evochora.compiler.features.instruction.InstructionFeature;
 import org.evochora.compiler.features.proc.ProcFeature;
-import org.evochora.compiler.features.require.RequireFeature;
 import org.evochora.compiler.features.repeat.RepeatFeature;
 import org.evochora.compiler.features.source.SourceFeature;
 
@@ -50,7 +49,6 @@ public final class StandardFeatures {
             new RegFeature(),
             new LabelFeature(),
             new PlaceFeature(),
-            new RequireFeature(),
             new ImportFeature(),
             new ProcFeature(),
             new ControlFeature(),

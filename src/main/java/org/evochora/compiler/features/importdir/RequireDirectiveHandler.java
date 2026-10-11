@@ -1,4 +1,4 @@
-package org.evochora.compiler.features.require;
+package org.evochora.compiler.features.importdir;
 
 import org.evochora.compiler.frontend.parser.IParserStatementHandler;
 import org.evochora.compiler.model.token.Token;

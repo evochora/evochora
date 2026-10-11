@@ -235,9 +235,9 @@ public class DependencyScannerTest {
         assertThat(graph.placements()).hasSize(1);
 
         ModulePlacement module = graph.placements().get(0);
-        List<org.evochora.compiler.features.require.RequireDependencyInfo> requires = module.dependencies().stream()
-                .filter(d -> d instanceof org.evochora.compiler.features.require.RequireDependencyInfo)
-                .map(d -> (org.evochora.compiler.features.require.RequireDependencyInfo) d)
+        List<org.evochora.compiler.features.importdir.RequireDependencyInfo> requires = module.dependencies().stream()
+                .filter(d -> d instanceof org.evochora.compiler.features.importdir.RequireDependencyInfo)
+                .map(d -> (org.evochora.compiler.features.importdir.RequireDependencyInfo) d)
                 .toList();
         assertThat(requires).hasSize(1);
         assertThat(requires.get(0).alias()).isEqualToIgnoringCase("DEP");

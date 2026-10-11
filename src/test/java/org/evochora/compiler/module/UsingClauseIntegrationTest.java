@@ -24,7 +24,7 @@ import org.evochora.compiler.features.org.OrgDirectiveHandler;
 import org.evochora.compiler.features.place.PlaceDirectiveHandler;
 import org.evochora.compiler.features.proc.ProcDirectiveHandler;
 import org.evochora.compiler.features.reg.RegDirectiveHandler;
-import org.evochora.compiler.features.require.RequireDirectiveHandler;
+import org.evochora.compiler.features.importdir.RequireDirectiveHandler;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.features.ctx.PopCtxPreProcessorHandler;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;

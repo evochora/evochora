@@ -1,4 +1,4 @@
-package org.evochora.compiler.features.require;
+package org.evochora.compiler.features.importdir;
 
 import org.evochora.compiler.frontend.semantics.IDependencySetupHandler;
 import org.evochora.compiler.frontend.semantics.ModuleSetupContext;

@@ -1,4 +1,4 @@
-package org.evochora.compiler.features.require;
+package org.evochora.compiler.features.importdir;
 
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.model.ast.AstNode;

@@ -30,8 +30,7 @@ feature package under `src/main/java/org/evochora/compiler/features/`.
 | `org` | `.ORG vector`, absolute in the main file, relative inside an imported module; a component marked `@+` or `@-` counts from the write cursor instead | parser, IR conversion, layout |
 | `dir` | `.DIR vector`, the direction in which code is laid out; `.DIR @+i\|j`, a 90-degree rotation of that direction in the plane of two axes | parser, IR conversion, layout |
 | `place` | `.PLACE literal placement…` with vectors, ranges, stepped ranges and wildcards; the initial world objects of the artifact | parser, IR conversion, layout |
-| `importdir` | `[EXPORT] .IMPORT "path" AS ALIAS [USING x AS y]…`, qualified names `ALIAS.NAME`, dependency injection with `USING`, re-export of an import | dependency scan, preprocessor (top level only), parser, module setup, symbol collection, analysis, IR conversion |
-| `require` | `.REQUIRE "path" AS ALIAS`, a dependency the importer satisfies | dependency scan, preprocessor (top level only), parser, module setup, symbol collection, analysis, IR conversion |
+| `importdir` | `[EXPORT] .IMPORT "path" AS ALIAS [USING x AS y]…`, qualified names `ALIAS.NAME`, dependency injection with `USING`, re-export of an import; `.REQUIRE "path" AS ALIAS`, a dependency the importer satisfies | dependency scan, preprocessor (top level only), parser, module setup, symbol collection, analysis, IR conversion |
 | `source` | `.SOURCE "path"`, textual inclusion that shares the including file's scope | dependency scan, preprocessor (top level only) |
 | `ctx` | `.PUSH_CTX` and `.POP_CTX`, the module context around an inclusion; relative placement of an imported module. A programmer never writes them: `importdir` and `source` emit them around the tokens they include | preprocessor `.POP_CTX`, parser, IR conversion, layout |
 
@@ -59,7 +58,7 @@ concept in AGENTS.md; they are listed here because they are where the coupling l
    opened, which it treats generically, as any symbol whose node registered a scope; every
    segment reached through a foreign level has to carry the `EXPORT` flag. The table also holds
    every kind of symbol to the one-segment rule when it is defined. `ModuleScope` holds four
-   maps, all of which belong to `importdir` and `require`. The parser knows the `EXPORT` keyword and asks
+   maps, all of which belong to `importdir`. The parser knows the `EXPORT` keyword and asks
    each statement handler whether it accepts it, and each block handler per word of its block,
    the opener, a divider or the closer. The directives are features; the system behind
    them is core.
