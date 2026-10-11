@@ -2,7 +2,7 @@
 # Declares a dependency on a math module via .REQUIRE.
 # The importer must satisfy this dependency with a USING clause.
 
-.REQUIRE "math.evo" AS CALC
+.REQUIRE MODULE "math.evo" AS CALC
 .SOURCE "lib/constants.evo"
 
 # Move north (Y - 1), clamped to world bounds.

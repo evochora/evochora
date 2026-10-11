@@ -189,12 +189,12 @@ public class DependencyScannerTest {
     @Tag("integration")
     void usingClausesAreParsed() throws Exception {
         Path libFile = tempDir.resolve("lib.evo");
-        Files.writeString(libFile, ".REQUIRE \"dep.evo\" AS DEP\n");
+        Files.writeString(libFile, ".REQUIRE MODULE \"dep.evo\" AS DEP\n");
 
         Path depFile = tempDir.resolve("dep.evo");
         Files.writeString(depFile, "NOP\n");
 
-        String mainSource = ".IMPORT \"dep.evo\" AS D\n.IMPORT \"lib.evo\" AS LIB USING D AS DEP\n";
+        String mainSource = ".IMPORT \"dep.evo\" AS D\n.IMPORT \"lib.evo\" AS LIB USING MODULE D AS DEP\n";
         String mainPath = tempDir.resolve("main.evo").toString();
 
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
@@ -222,7 +222,7 @@ public class DependencyScannerTest {
     @Test
     @Tag("integration")
     void requireDeclarationsAreCaptured() throws Exception {
-        String source = ".REQUIRE \"dependency.evo\" AS DEP\nNOP\n";
+        String source = ".REQUIRE MODULE \"dependency.evo\" AS DEP\nNOP\n";
         String mainPath = tempDir.resolve("main.evo").toString();
 
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();

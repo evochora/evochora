@@ -85,7 +85,7 @@ public class ImportAnalysisHandler implements IAnalysisHandler {
                 if (!satisfied) {
                     diagnostics.reportError(
                             "Cannot import " + importNode.alias() + ": it requires '" + requiredAlias
-                                    + "'; add USING <module> AS " + requiredAlias + " to the import.",
+                                    + "'; add USING MODULE <module> AS " + requiredAlias + " to the import.",
                             importNode.sourceInfo().fileName(),
                             importNode.sourceInfo().lineNumber());
                 }

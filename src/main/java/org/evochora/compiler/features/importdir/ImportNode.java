@@ -10,7 +10,7 @@ import java.util.List;
 /**
  * AST node for the {@code .IMPORT} directive.
  *
- * <p>Syntax: {@code [EXPORT] .IMPORT "path" AS ALIAS [USING source AS target]*}
+ * <p>Syntax: {@code [EXPORT] .IMPORT "path" AS ALIAS [USING MODULE source AS target ...]}
  *
  * @param path       The imported file path (unquoted string value from the token).
  * @param alias      The local alias name for the imported module.

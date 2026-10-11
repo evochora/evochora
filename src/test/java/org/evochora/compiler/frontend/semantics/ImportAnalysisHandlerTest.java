@@ -70,7 +70,7 @@ class ImportAnalysisHandlerTest {
     @Test
     @Tag("unit")
     void validUsingClausePassesValidation() {
-        // .IMPORT "lib.evo" AS LIB USING D AS DEP
+        // .IMPORT "lib.evo" AS LIB USING MODULE D AS DEP
         ImportNode node = importNode("lib.evo", "LIB", List.of(
                 usingClause("D", "DEP")
         ));
@@ -84,7 +84,7 @@ class ImportAnalysisHandlerTest {
     @Test
     @Tag("unit")
     void unknownSourceAliasReportsError() {
-        // .IMPORT "lib.evo" AS LIB USING UNKNOWN AS DEP
+        // .IMPORT "lib.evo" AS LIB USING MODULE UNKNOWN AS DEP
         // "UNKNOWN" is neither imported nor required by main
         ImportNode node = importNode("lib.evo", "LIB", List.of(
                 usingClause("UNKNOWN", "DEP")
@@ -98,8 +98,8 @@ class ImportAnalysisHandlerTest {
     @Test
     @Tag("unit")
     void targetNotMatchingRequireReportsError() {
-        // .IMPORT "lib.evo" AS LIB USING D AS WRONG_NAME
-        // lib has .REQUIRE "dep.evo" AS DEP, not WRONG_NAME
+        // .IMPORT "lib.evo" AS LIB USING MODULE D AS WRONG_NAME
+        // lib has .REQUIRE MODULE "dep.evo" AS DEP, not WRONG_NAME
         ImportNode node = importNode("lib.evo", "LIB", List.of(
                 usingClause("D", "WRONG_NAME")
         ));
@@ -117,7 +117,7 @@ class ImportAnalysisHandlerTest {
 
         handler.analyze(node, symbolTable, diagnostics);
 
-        assertErrorContaining("DEP", "add USING <module> AS");
+        assertErrorContaining("DEP", "add USING MODULE <module> AS");
     }
 
     @Test
@@ -131,7 +131,7 @@ class ImportAnalysisHandlerTest {
         ModuleScope mainScope = symbolTable.getModuleScope(MAIN_CHAIN).orElseThrow();
         mainScope.bindAlias("E", extraChain);
 
-        // .IMPORT "lib.evo" AS LIB USING D AS DEP USING E AS EXTRA
+        // .IMPORT "lib.evo" AS LIB USING MODULE D AS DEP MODULE E AS EXTRA
         ImportNode node = importNode("lib.evo", "LIB", List.of(
                 usingClause("D", "DEP"),
                 usingClause("E", "EXTRA")
@@ -157,7 +157,7 @@ class ImportAnalysisHandlerTest {
 
         handler.analyze(node, symbolTable, diagnostics);
 
-        assertErrorContaining("EXTRA", "add USING <module> AS");
+        assertErrorContaining("EXTRA", "add USING MODULE <module> AS");
     }
 
     // --- Helper methods ---

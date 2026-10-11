@@ -74,10 +74,10 @@ class UsingClauseIntegrationTest {
 
         // lib.evo: requires DEP and uses DEP.HARVEST
         Files.writeString(tempDir.resolve("lib.evo"),
-                ".REQUIRE \"dep.evo\" AS DEP\nEXPORT WORK:\n  JMPI DEP.HARVEST\n");
+                ".REQUIRE MODULE \"dep.evo\" AS DEP\nEXPORT WORK:\n  JMPI DEP.HARVEST\n");
 
         // main.evo: imports dep and lib, provides dep to lib via USING
-        String mainSource = ".IMPORT \"dep.evo\" AS D\n.IMPORT \"lib.evo\" AS LIB USING D AS DEP\nNOP\n";
+        String mainSource = ".IMPORT \"dep.evo\" AS D\n.IMPORT \"lib.evo\" AS LIB USING MODULE D AS DEP\nNOP\n";
         String mainPath = tempDir.resolve("main.evo").toString();
 
         DiagnosticsEngine diagnostics = compileThroughSemantics(mainSource, mainPath);
@@ -92,7 +92,7 @@ class UsingClauseIntegrationTest {
     void missingUsingForRequireReportsError() throws Exception {
         // lib.evo: requires DEP
         Files.writeString(tempDir.resolve("lib.evo"),
-                ".REQUIRE \"dep.evo\" AS DEP\nNOP\n");
+                ".REQUIRE MODULE \"dep.evo\" AS DEP\nNOP\n");
 
         // main.evo: imports lib but does NOT provide a USING clause
         String mainSource = ".IMPORT \"lib.evo\" AS LIB\nNOP\n";
@@ -101,17 +101,17 @@ class UsingClauseIntegrationTest {
         DiagnosticsEngine diagnostics = compileThroughSemantics(mainSource, mainPath);
 
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertErrorContaining(diagnostics, "DEP", "add USING <module> AS");
+        assertErrorContaining(diagnostics, "DEP", "add USING MODULE <module> AS");
     }
 
     @Test
     @Tag("integration")
     void usingWithUnknownSourceAliasReportsError() throws Exception {
         Files.writeString(tempDir.resolve("lib.evo"),
-                ".REQUIRE \"dep.evo\" AS DEP\nNOP\n");
+                ".REQUIRE MODULE \"dep.evo\" AS DEP\nNOP\n");
 
         // main.evo: uses UNKNOWN as source alias (not a known import in main)
-        String mainSource = ".IMPORT \"lib.evo\" AS LIB USING UNKNOWN AS DEP\nNOP\n";
+        String mainSource = ".IMPORT \"lib.evo\" AS LIB USING MODULE UNKNOWN AS DEP\nNOP\n";
         String mainPath = tempDir.resolve("main.evo").toString();
 
         DiagnosticsEngine diagnostics = compileThroughSemantics(mainSource, mainPath);
@@ -125,10 +125,10 @@ class UsingClauseIntegrationTest {
     void usingWithWrongTargetAliasReportsError() throws Exception {
         Files.writeString(tempDir.resolve("dep.evo"), "NOP\n");
         Files.writeString(tempDir.resolve("lib.evo"),
-                ".REQUIRE \"dep.evo\" AS DEP\nNOP\n");
+                ".REQUIRE MODULE \"dep.evo\" AS DEP\nNOP\n");
 
         // main.evo: provides D as WRONG_NAME, but lib requires DEP
-        String mainSource = ".IMPORT \"dep.evo\" AS D\n.IMPORT \"lib.evo\" AS LIB USING D AS WRONG_NAME\nNOP\n";
+        String mainSource = ".IMPORT \"dep.evo\" AS D\n.IMPORT \"lib.evo\" AS LIB USING MODULE D AS WRONG_NAME\nNOP\n";
         String mainPath = tempDir.resolve("main.evo").toString();
 
         DiagnosticsEngine diagnostics = compileThroughSemantics(mainSource, mainPath);
@@ -143,10 +143,10 @@ class UsingClauseIntegrationTest {
         Files.writeString(tempDir.resolve("dep1.evo"), "NOP\n");
         Files.writeString(tempDir.resolve("dep2.evo"), "NOP\n");
         Files.writeString(tempDir.resolve("lib.evo"),
-                ".REQUIRE \"dep1.evo\" AS A\n.REQUIRE \"dep2.evo\" AS B\nNOP\n");
+                ".REQUIRE MODULE \"dep1.evo\" AS A\n.REQUIRE MODULE \"dep2.evo\" AS B\nNOP\n");
 
         String mainSource = ".IMPORT \"dep1.evo\" AS D1\n.IMPORT \"dep2.evo\" AS D2\n"
-                + ".IMPORT \"lib.evo\" AS LIB USING D1 AS A USING D2 AS B\nNOP\n";
+                + ".IMPORT \"lib.evo\" AS LIB USING MODULE D1 AS A MODULE D2 AS B\nNOP\n";
         String mainPath = tempDir.resolve("main.evo").toString();
 
         DiagnosticsEngine diagnostics = compileThroughSemantics(mainSource, mainPath);
@@ -162,17 +162,17 @@ class UsingClauseIntegrationTest {
         Files.writeString(tempDir.resolve("dep1.evo"), "NOP\n");
         Files.writeString(tempDir.resolve("dep2.evo"), "NOP\n");
         Files.writeString(tempDir.resolve("lib.evo"),
-                ".REQUIRE \"dep1.evo\" AS A\n.REQUIRE \"dep2.evo\" AS B\nNOP\n");
+                ".REQUIRE MODULE \"dep1.evo\" AS A\n.REQUIRE MODULE \"dep2.evo\" AS B\nNOP\n");
 
         // Only provide A, not B
         String mainSource = ".IMPORT \"dep1.evo\" AS D1\n.IMPORT \"dep2.evo\" AS D2\n"
-                + ".IMPORT \"lib.evo\" AS LIB USING D1 AS A\nNOP\n";
+                + ".IMPORT \"lib.evo\" AS LIB USING MODULE D1 AS A\nNOP\n";
         String mainPath = tempDir.resolve("main.evo").toString();
 
         DiagnosticsEngine diagnostics = compileThroughSemantics(mainSource, mainPath);
 
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertErrorContaining(diagnostics, "B", "add USING <module> AS");
+        assertErrorContaining(diagnostics, "B", "add USING MODULE <module> AS");
     }
 
     @Test
@@ -183,9 +183,9 @@ class UsingClauseIntegrationTest {
 
         // lib.evo: requires DEP, references DEP.HARVEST
         Files.writeString(tempDir.resolve("lib.evo"),
-                ".REQUIRE \"dep.evo\" AS DEP\nEXPORT WORK:\n  JMPI DEP.HARVEST\n");
+                ".REQUIRE MODULE \"dep.evo\" AS DEP\nEXPORT WORK:\n  JMPI DEP.HARVEST\n");
 
-        String mainSource = ".IMPORT \"dep.evo\" AS D\n.IMPORT \"lib.evo\" AS LIB USING D AS DEP\nNOP\n";
+        String mainSource = ".IMPORT \"dep.evo\" AS D\n.IMPORT \"lib.evo\" AS LIB USING MODULE D AS DEP\nNOP\n";
         String mainPath = tempDir.resolve("main.evo").toString();
 
         SemanticsResult result = compileThroughSemanticsWithSymbols(mainSource, mainPath);
@@ -222,14 +222,14 @@ class UsingClauseIntegrationTest {
 
         // user.evo: requires MATH, calls MATH.ADD_CONST
         Files.writeString(tempDir.resolve("user.evo"),
-                ".REQUIRE \"math.evo\" AS MATH\n" +
+                ".REQUIRE MODULE \"math.evo\" AS MATH\n" +
                 "EXPORT .PROC DO_WORK REF V\n" +
                 "  CALL MATH.ADD_CONST REF V\n" +
                 "  RET\n" +
                 ".ENDPROC\n");
 
         String mainSource = ".IMPORT \"math.evo\" AS M\n" +
-                ".IMPORT \"user.evo\" AS U USING M AS MATH\n" +
+                ".IMPORT \"user.evo\" AS U USING MODULE M AS MATH\n" +
                 "SETI %DR0 DATA:10\nCALL U.DO_WORK REF %DR0\n";
         String mainPath = tempDir.resolve("main.evo").toString();
 
@@ -246,12 +246,12 @@ class UsingClauseIntegrationTest {
         Files.writeString(tempDir.resolve("fast.evo"), "EXPORT HARVEST:\n  NOP\n");
         Files.writeString(tempDir.resolve("slow.evo"), "EXPORT HARVEST:\n  NOP\n  NOP\n");
         Files.writeString(tempDir.resolve("lib.evo"),
-                ".REQUIRE \"harvest.evo\" AS DEP\nEXPORT WORK:\n  JMPI DEP.HARVEST\n");
+                ".REQUIRE MODULE \"harvest.evo\" AS DEP\nEXPORT WORK:\n  JMPI DEP.HARVEST\n");
 
         String mainSource = ".IMPORT \"fast.evo\" AS FAST\n" +
                 ".IMPORT \"slow.evo\" AS SLOW\n" +
-                ".IMPORT \"lib.evo\" AS FIRST USING FAST AS DEP\n" +
-                ".IMPORT \"lib.evo\" AS SECOND USING SLOW AS DEP\n" +
+                ".IMPORT \"lib.evo\" AS FIRST USING MODULE FAST AS DEP\n" +
+                ".IMPORT \"lib.evo\" AS SECOND USING MODULE SLOW AS DEP\n" +
                 "JMPI FIRST.WORK\nJMPI SECOND.WORK\n";
         String mainPath = tempDir.resolve("main.evo").toString();
 
@@ -272,12 +272,12 @@ class UsingClauseIntegrationTest {
         Files.writeString(tempDir.resolve("dep.evo"), "EXPORT NAME:\n  NOP\n");
         // b.evo requires Y and reaches NAME through it
         Files.writeString(tempDir.resolve("b.evo"),
-                ".REQUIRE \"dep.evo\" AS Y\nEXPORT WORK:\n  JMPI Y.NAME\n");
+                ".REQUIRE MODULE \"dep.evo\" AS Y\nEXPORT WORK:\n  JMPI Y.NAME\n");
         // a.evo requires X and hands it on to b.evo as Y
         Files.writeString(tempDir.resolve("a.evo"),
-                ".REQUIRE \"dep.evo\" AS X\n.IMPORT \"b.evo\" AS B USING X AS Y\nEXPORT RUN:\n  JMPI B.WORK\n");
+                ".REQUIRE MODULE \"dep.evo\" AS X\n.IMPORT \"b.evo\" AS B USING MODULE X AS Y\nEXPORT RUN:\n  JMPI B.WORK\n");
 
-        String mainSource = ".IMPORT \"dep.evo\" AS D\n.IMPORT \"a.evo\" AS A USING D AS X\nJMPI A.RUN\n";
+        String mainSource = ".IMPORT \"dep.evo\" AS D\n.IMPORT \"a.evo\" AS A USING MODULE D AS X\nJMPI A.RUN\n";
         String mainPath = tempDir.resolve("main.evo").toString();
 
         SemanticsResult result = compileThroughSemanticsWithSymbols(mainSource, mainPath);

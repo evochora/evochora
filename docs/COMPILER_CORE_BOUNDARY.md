@@ -30,7 +30,7 @@ feature package under `src/main/java/org/evochora/compiler/features/`.
 | `org` | `.ORG vector`, absolute in the main file, relative inside an imported module; a component marked `@+` or `@-` counts from the write cursor instead | parser, IR conversion, layout |
 | `dir` | `.DIR vector`, the direction in which code is laid out; `.DIR @+i\|j`, a 90-degree rotation of that direction in the plane of two axes | parser, IR conversion, layout |
 | `place` | `.PLACE literal placement…` with vectors, ranges, stepped ranges and wildcards; the initial world objects of the artifact | parser, IR conversion, layout |
-| `importdir` | `[EXPORT] .IMPORT "path" AS ALIAS [USING x AS y]…`, qualified names `ALIAS.NAME`, dependency injection with `USING`, re-export of an import; `.REQUIRE "path" AS ALIAS`, a dependency the importer satisfies | dependency scan, preprocessor (top level only), parser, module setup, symbol collection, analysis, IR conversion |
+| `importdir` | `[EXPORT] .IMPORT "path" AS ALIAS [USING MODULE x AS y ...]`, qualified names `ALIAS.NAME`, dependency injection with `USING`, re-export of an import; `.REQUIRE MODULE "path" AS ALIAS`, a dependency the importer satisfies | dependency scan, preprocessor (top level only), parser, module setup, symbol collection, analysis, IR conversion |
 | `source` | `.SOURCE "path"`, textual inclusion that shares the including file's scope | dependency scan, preprocessor (top level only) |
 | `ctx` | `.PUSH_CTX` and `.POP_CTX`, the module context around an inclusion; relative placement of an imported module. A programmer never writes them: `importdir` and `source` emit them around the tokens they include | preprocessor `.POP_CTX`, parser, IR conversion, layout |
 

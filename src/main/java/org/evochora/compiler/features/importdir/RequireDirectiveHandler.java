@@ -11,7 +11,7 @@ import org.evochora.compiler.frontend.DirectiveLine;
 /**
  * Parses the {@code .REQUIRE} directive.
  *
- * <p>Syntax: {@code .REQUIRE "path" AS ALIAS}
+ * <p>Syntax: {@code .REQUIRE MODULE "path" AS ALIAS}
  *
  * <p>Declares an unsatisfied module dependency. The module importing this one must
  * provide the required module through a {@code USING} clause. This enables compile-time
@@ -34,6 +34,17 @@ public class RequireDirectiveHandler implements IParserStatementHandler {
             throw new ErrorRecoveryException(message);
         }
         context.advance(); // consume .REQUIRE
+
+        if (!context.check(TokenType.IDENTIFIER) || !"MODULE".equalsIgnoreCase(context.peek().text())) {
+            context.getDiagnostics().reportError(
+                    "Expected MODULE after .REQUIRE; found '" + context.peek().text() + "'.",
+                    directive.source().fileName(), directive.source().lineNumber());
+            while (!context.isAtEnd() && !context.check(TokenType.NEWLINE)) {
+                context.advance();
+            }
+            return null;
+        }
+        context.advance(); // consume MODULE
 
         Token pathToken = context.consume(TokenType.STRING, "Expected a file path in quotes after .REQUIRE.");
 

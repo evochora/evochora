@@ -745,14 +745,14 @@ Code can be kept or left out depending on *flags*. A flag is a name that is set 
 The module system allows splitting programs across multiple files. Three directives work together to manage module dependencies:
 
 * **`.IMPORT`** — imports a module: establishes a dependency and inlines the module's code; with the `EXPORT` prefix it also passes that import on to its own importers.
-* **`.REQUIRE`** — declares an unsatisfied dependency that must be provided by the importer via a `USING` clause.
+* **`.REQUIRE`** — declares, with the kind word `MODULE`, an unsatisfied dependency that must be provided by the importer via a `USING MODULE` clause.
 * **`.SOURCE`** — includes raw source text (macros, constants) without creating a module relationship.
 
 None of the three may stand inside a macro or a repeat block, and `.IMPORT` and `.REQUIRE` stand only at the module level, outside every `.PROC`. Inside a conditional block they may: the file is read only when the branch is kept.
 
 #### `.IMPORT`
 
-* **Syntax**: `[EXPORT] .IMPORT "<path>" AS <Alias> [USING <source> AS <target>]*`
+* **Syntax**: `[EXPORT] .IMPORT "<path>" AS <Alias> [USING MODULE <source> AS <target> ...]`
 * **Effect**: Declares a dependency on the module at `<path>`, assigns it the local alias `<Alias>`, and inlines the module's code at this location. Exported labels and procedures in the imported module become accessible as `<Alias>.<Name>`. The same file may be imported more than once, under different aliases: each import places the module again, and the two placements are as independent as two different modules.
 * **`EXPORT` prefix**: Passes the import on to modules that import this one, which then reach it as `<ThisAlias>.<Alias>.<Name>` without inlining the code a second time. Each level decides for its own import: a level without the prefix ends the chain there.
 * **USING clauses**: Provide compile-time dependency injection. Each `USING` clause wires a module from the current scope (identified by `<source>` alias) into the imported module to satisfy one of its `.REQUIRE` declarations (identified by `<target>` alias).
@@ -762,7 +762,7 @@ None of the three may stand inside a macro or a repeat block, and `.IMPORT` and 
 
 #### `.REQUIRE`
 
-* **Syntax**: `.REQUIRE "<path>" AS <Alias>`
+* **Syntax**: `.REQUIRE MODULE "<path>" AS <Alias>`
 * **Effect**: Declares that this module depends on the module at `<path>` under the alias `<Alias>`, but does **not** inline any code. The dependency must be satisfied by the importer through a `USING` clause on its `.IMPORT` directive. Within this module, symbols from the required module can be accessed as `<Alias>.<Name>`.
 
 #### `.SOURCE`
@@ -842,7 +842,7 @@ EXPORT .PROC MATH.ADD
 ```
 # This module depends on a math library, but does not import it directly.
 # Instead, it declares the dependency with .REQUIRE.
-.REQUIRE "math.evo" AS MATH
+.REQUIRE MODULE "math.evo" AS MATH
 
 EXPORT .PROC UTILS.ADD_ONE REF X
   PUSH X          # Push the register value onto the stack
@@ -857,7 +857,7 @@ EXPORT .PROC UTILS.ADD_ONE REF X
 ```
 # The main program imports both modules and wires them together.
 .IMPORT "math.evo" AS M
-.IMPORT "utils.evo" AS UTILS USING M AS MATH  # Provides M to satisfy utils' .REQUIRE
+.IMPORT "utils.evo" AS UTILS USING MODULE M AS MATH  # Provides M to satisfy utils' .REQUIRE
 
 START:
   SETI %DR0 DATA:10
@@ -865,7 +865,7 @@ START:
   # %DR0 is now 11
 ```
 
-The `USING M AS MATH` clause tells the compiler: "the module that `utils.evo` knows as `MATH` (from its `.REQUIRE`) is the same module that `main.evo` imported as `M`." This allows `utils.evo` to call `MATH.ADD` without knowing where the math library comes from — the main program controls the wiring.
+The `USING MODULE M AS MATH` clause tells the compiler: "the module that `utils.evo` knows as `MATH` (from its `.REQUIRE`) is the same module that `main.evo` imported as `M`." This allows `utils.evo` to call `MATH.ADD` without knowing where the math library comes from — the main program controls the wiring.
 
 #### Example: Using .SOURCE for Shared Constants
 

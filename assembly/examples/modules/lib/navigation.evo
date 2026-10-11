@@ -17,8 +17,8 @@
 # Without the prefix the import would stay private: an importer could call NAV.PATROL,
 # but not NAV.MOVE.NORTH.
 
-.REQUIRE "math.evo" AS ARITH
-EXPORT .IMPORT "lib/movement.evo" AS MOVE USING ARITH AS CALC
+.REQUIRE MODULE "math.evo" AS ARITH
+EXPORT .IMPORT "lib/movement.evo" AS MOVE USING MODULE ARITH AS CALC
 
 # Move one step north and one step east.
 EXPORT .PROC PATROL REF X REF Y

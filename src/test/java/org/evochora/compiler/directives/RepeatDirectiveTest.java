@@ -425,7 +425,7 @@ public class RepeatDirectiveTest {
     @Tag("unit")
     void testCaretBodyRejectsATopLevelOnlyDirective() {
         // Arrange
-        String source = ".REQUIRE \"lib.evo\" AS LIB^2\nNOP\n";
+        String source = ".REQUIRE MODULE \"lib.evo\" AS LIB^2\nNOP\n";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
         PreProcessor preProcessor = createPreProcessor(lexer.scanTokens(), diagnostics);

@@ -218,7 +218,7 @@ class CompilerDiagnosticsTest {
     @Test
     void aRequireAfterALabelIsRejectedAsNotTheFirstWordOnItsLine() throws Exception {
         write("main.evo",
-                "L: .REQUIRE \"d.evo\" AS D",
+                "L: .REQUIRE MODULE \"d.evo\" AS D",
                 "START:",
                 "  NOP");
 
@@ -236,7 +236,7 @@ class CompilerDiagnosticsTest {
                 "  RET",
                 ".ENDPROC");
         write("main.evo",
-                "EXPORT .REQUIRE \"d.evo\" AS D",
+                "EXPORT .REQUIRE MODULE \"d.evo\" AS D",
                 "START:",
                 "  NOP");
 
@@ -267,12 +267,12 @@ class CompilerDiagnosticsTest {
                 "D:",
                 "  NOP");
         write("lib.evo",
-                ".REQUIRE \"dep.evo\" AS DEP EXTRA",
+                ".REQUIRE MODULE \"dep.evo\" AS DEP EXTRA",
                 "L:",
                 "  NOP");
         write("main.evo",
                 ".IMPORT \"dep.evo\" AS DEP",
-                ".IMPORT \"lib.evo\" AS LIB USING DEP AS DEP",
+                ".IMPORT \"lib.evo\" AS LIB USING MODULE DEP AS DEP",
                 "START:",
                 "  NOP");
 
@@ -316,7 +316,7 @@ class CompilerDiagnosticsTest {
     @Test
     void aRequireFollowedByAStatementOnItsLineIsRejectedByTheLineRule() throws Exception {
         write("main.evo",
-                ".REQUIRE \"d.evo\" AS D; NOP",
+                ".REQUIRE MODULE \"d.evo\" AS D; NOP",
                 "START:",
                 "  NOP");
 
@@ -325,6 +325,20 @@ class CompilerDiagnosticsTest {
                 .satisfies(e -> assertThat(e.getMessage().lines().toList()).containsExactly(
                         "[ERROR] " + resolved("main.evo")
                                 + ":1: .REQUIRE must stand alone on its line; found ';' after the alias."));
+    }
+
+    @Test
+    void aRequireWithoutItsKindWordNamesTheMissingModuleAndTheLine() throws Exception {
+        write("main.evo",
+                "START:",
+                ".REQUIRE \"d.evo\" AS D",
+                "  NOP");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .satisfies(e -> assertThat(e.getMessage().lines().toList()).containsExactly(
+                        "[ERROR] " + resolved("main.evo")
+                                + ":2: Expected MODULE after .REQUIRE; found '\"d.evo\"'."));
     }
 
     @Test
@@ -719,7 +733,7 @@ class CompilerDiagnosticsTest {
                 "HELPER:",
                 "  NOP");
         write("main.evo",
-                ".IMPORT \"lib.evo\" AS LIB USING X",
+                ".IMPORT \"lib.evo\" AS LIB USING MODULE X",
                 "START:",
                 "  NOP");
 
@@ -896,15 +910,15 @@ class CompilerDiagnosticsTest {
     @Test
     void aSecondRequirementUnderTheSameAliasNamesTheFirst() throws Exception {
         write("lib.evo",
-                ".REQUIRE \"a.evo\" AS DEP",
-                ".REQUIRE \"b.evo\" AS DEP",
+                ".REQUIRE MODULE \"a.evo\" AS DEP",
+                ".REQUIRE MODULE \"b.evo\" AS DEP",
                 "L:",
                 "  NOP");
         write("a.evo", "A:", "  NOP");
         write("b.evo", "B:", "  NOP");
         write("main.evo",
                 ".IMPORT \"a.evo\" AS A",
-                ".IMPORT \"lib.evo\" AS LIB USING A AS DEP",
+                ".IMPORT \"lib.evo\" AS LIB USING MODULE A AS DEP",
                 "START:",
                 "  NOP");
 
@@ -918,13 +932,13 @@ class CompilerDiagnosticsTest {
     @Test
     void aUsingAliasBoundTwiceInOneImportIsRejected() throws Exception {
         write("lib.evo",
-                ".REQUIRE \"a.evo\" AS DEP",
+                ".REQUIRE MODULE \"a.evo\" AS DEP",
                 "L:",
                 "  NOP");
         write("a.evo", "A:", "  NOP");
         write("main.evo",
                 ".IMPORT \"a.evo\" AS A",
-                ".IMPORT \"lib.evo\" AS LIB USING A AS DEP USING A AS DEP",
+                ".IMPORT \"lib.evo\" AS LIB USING MODULE A AS DEP MODULE A AS DEP",
                 "START:",
                 "  NOP");
 
@@ -962,12 +976,12 @@ class CompilerDiagnosticsTest {
                 "  RET",
                 ".ENDPROC");
         write("nav.evo",
-                ".REQUIRE \"arith.evo\" AS ARITH",
+                ".REQUIRE MODULE \"arith.evo\" AS ARITH",
                 "NAV_START:",
                 "  NOP");
         write("main.evo",
                 ".IMPORT \"arith.evo\" AS M",
-                ".IMPORT \"nav.evo\" AS NAV USING M AS ARITH",
+                ".IMPORT \"nav.evo\" AS NAV USING MODULE M AS ARITH",
                 "START:",
                 "  CALL NAV.ARITH.ADD");
 
@@ -1001,7 +1015,7 @@ class CompilerDiagnosticsTest {
                 "  RET",
                 ".ENDPROC");
         write("nav.evo",
-                ".REQUIRE \"arith.evo\" AS ARITH",
+                ".REQUIRE MODULE \"arith.evo\" AS ARITH",
                 "EXPORT .PROC STEP",
                 "  CALL ARITH.ADD",
                 "  RET",
@@ -1013,14 +1027,14 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("main.evo:1: Cannot import NAV: it requires 'ARITH'; add USING <module> AS ARITH to the import.")
+                .hasMessageContaining("main.evo:1: Cannot import NAV: it requires 'ARITH'; add USING MODULE <module> AS ARITH to the import.")
                 .hasMessageContaining("nav.evo:3: Cannot call 'ARITH.ADD': 'ARITH' leads to no module.");
     }
 
     @Test
     void aRequirementOfTheMainProgramIsReportedAtItsLineAndItsUseLeadsToNoModule() throws Exception {
         write("main.evo",
-                ".REQUIRE \"d.evo\" AS D",
+                ".REQUIRE MODULE \"d.evo\" AS D",
                 "START:",
                 "  JMPI D.X");
 
@@ -1033,7 +1047,7 @@ class CompilerDiagnosticsTest {
     @Test
     void anUnusedRequirementOfTheMainProgramIsReportedAtItsLine() throws Exception {
         write("main.evo",
-                ".REQUIRE \"d.evo\" AS D",
+                ".REQUIRE MODULE \"d.evo\" AS D",
                 "START:",
                 "  NOP");
 
@@ -1239,7 +1253,7 @@ class CompilerDiagnosticsTest {
     void anImportMissingAUsingClauseSaysWhichToAdd() throws Exception {
         write("dep.evo", "D:", "  NOP");
         write("lib.evo",
-                ".REQUIRE \"dep.evo\" AS DEP",
+                ".REQUIRE MODULE \"dep.evo\" AS DEP",
                 "L:",
                 "  NOP");
         write("main.evo",
@@ -1249,7 +1263,7 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Cannot import LIB: it requires 'DEP'; add USING <module> AS DEP to the import.")
+                .hasMessageContaining("Cannot import LIB: it requires 'DEP'; add USING MODULE <module> AS DEP to the import.")
                 .hasMessageContaining("main.evo:1");
     }
 

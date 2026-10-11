@@ -23,7 +23,7 @@ import java.util.Optional;
  *
  * <p>The import alias itself (alias → alias chain of the imported placement) is bound by
  * {@link ImportModuleSetupHandler} from the dependency scan's data. This collector binds the
- * {@code USING source AS target} clauses: in the imported placement, the target alias leads to
+ * {@code USING MODULE source AS target} clauses: in the imported placement, the target alias leads to
  * the placement the source alias leads to in the importing one. A source that leads nowhere binds
  * nothing; {@link ImportAnalysisHandler} reports it in pass 2.
  *

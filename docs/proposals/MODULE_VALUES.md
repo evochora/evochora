@@ -111,7 +111,10 @@ part of the import feature, which owns both ends of the mechanism.
   requirement `<Target>`, as today; after `VALUE`, groups `<Name> <Value>`, the value for the
   value requirement `<Name>`. The kind words stand in any order and may repeat, each repetition
   adding to its list; whoever wants it plain writes one kind word per group. No commas: every
-  group has a fixed length, so the next group begins where the previous one ends. A `<Value>` is
+  group has a fixed length, so the next group begins where the previous one ends. `USING` itself
+  stands once on an import; a second `USING` is reported ("USING stands once on an import; a
+  further list begins with its kind word."), so that the old form of several clauses is not half
+  kept. A `<Value>` is
   what a `.CONST` accepts, written in the importer: a typed literal, a vector, or a name the
   importer can see, whose constant is bound.
 - A module is named with `AS`, as everywhere: `.IMPORT … AS`, `.REQUIRE MODULE … AS`,
@@ -506,3 +509,5 @@ the compiler package, so every verification runs both packages.
 22. The artifact holds, for every constant and value, the literal at the end of its chain:
     `ConstNode` and `ValueRequirementNode` rebuild themselves in phase 6. A correction of today's
     `.CONST`, first step.
+23. `USING` stands once on an import; a further list begins with its kind word, a second `USING` is
+    reported.

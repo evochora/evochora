@@ -30,7 +30,7 @@ class RequireDirectiveHandlerTest {
     @Test
     void aRequireAsTheFirstTokenOfTheStreamIsAccepted() {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        List<Token> tokens = new Lexer(".REQUIRE \"d.evo\" AS D\n", diagnostics, "lib.evo", TestLexers.symbols())
+        List<Token> tokens = new Lexer(".REQUIRE MODULE \"d.evo\" AS D\n", diagnostics, "lib.evo", TestLexers.symbols())
                 .scanTokens();
         ParserStatementRegistry registry = new ParserStatementRegistry();
         registry.register(".REQUIRE", new RequireDirectiveHandler());

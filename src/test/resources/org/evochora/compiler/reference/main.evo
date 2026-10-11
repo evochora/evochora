@@ -12,7 +12,7 @@
 # return guarded by a conditional, a jump to a label of another module, and control blocks.
 
 .IMPORT "lib/util.evo" AS UTIL
-.IMPORT "lib/nav.evo" AS NAV USING UTIL AS ARITH
+.IMPORT "lib/nav.evo" AS NAV USING MODULE UTIL AS ARITH
 .SOURCE "lib/consts.evo"
 
 .REG %COUNT %DR0

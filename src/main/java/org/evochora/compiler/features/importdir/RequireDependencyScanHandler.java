@@ -12,8 +12,10 @@ import java.util.regex.Pattern;
  */
 public class RequireDependencyScanHandler implements IDependencyScanHandler {
 
+    // The scan reads the kind word, the path and the alias; a .REQUIRE of another kind is no
+    // dependency.
     private static final Pattern REQUIRE_PATTERN = Pattern.compile(
-            "(?i)^\\.REQUIRE\\s+\"([^\"]+)\"\\s+AS\\s+(\\w+)\\s*$");
+            "(?i)^\\.REQUIRE\\s+MODULE\\s+\"([^\"]+)\"\\s+AS\\s+(\\w+)\\s*$");
 
     @Override
     public Pattern pattern() {
