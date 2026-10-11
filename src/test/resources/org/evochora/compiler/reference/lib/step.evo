@@ -1,9 +1,11 @@
-# Module that declares its dependency with .REQUIRE and leaves the choice to its importer.
+# Module that declares its dependency with .REQUIRE and leaves the choice to its importer, and
+# two values: one with a default nobody binds, one its importer must supply.
 .REQUIRE MODULE "util.evo" AS CALC
-.SOURCE "lib/consts.evo"
+.REQUIRE VALUE STRIDE DATA:1          # how far one step goes; 1 unless the importer says
+.REQUIRE VALUE CEILING                # the importer has to say
 
 EXPORT .PROC FORWARD REF X
-  ADDI X DATA:1
-  CALL CALC.CLAMP REF X VAL DATA:0 MAX_VALUE
+  ADDI X STRIDE
+  CALL CALC.CLAMP REF X VAL DATA:0 CEILING
   RET
 .ENDPROC

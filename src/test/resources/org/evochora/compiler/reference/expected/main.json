@@ -14,15 +14,16 @@
         "# visible by regenerating the artifact, and an unintended one is caught.",
         "#",
         "# Every feature of the compiler appears here at least once: module wiring in both",
-        "# directions, sourced constants, register aliases for data and location registers,",
+        "# directions, a module configured through values, one left to its default and one bound here",
+        "# and handed on, sourced constants, register aliases for data and location registers,",
         "# constants, macros, both repeat forms and the caret shorthand, origin and direction",
         "# changes, every placement form, procedures with all four parameter kinds including a",
         "# procedure-local alias, calls across modules and through a passed-on import, a call and a",
         "# return guarded by a conditional, a jump to a label of another module, and control blocks.",
         "",
-        ".IMPORT \"lib/util.evo\" AS UTIL",
-        ".IMPORT \"lib/nav.evo\" AS NAV USING MODULE UTIL AS ARITH",
         ".SOURCE \"lib/consts.evo\"",
+        ".IMPORT \"lib/util.evo\" AS UTIL",
+        ".IMPORT \"lib/nav.evo\" AS NAV USING MODULE UTIL AS ARITH VALUE CEILING MAX_VALUE",
         "",
         ".REG %COUNT %DR0",
         ".REG %VALUE %DR1",
@@ -109,13 +110,32 @@
       "notes": []
     },
     {
+      "placement": "",
+      "path": "lib/consts.evo",
+      "resolvedPath": "REFERENCE_ROOT/lib/consts.evo",
+      "instance": 1,
+      "includedAt": {
+        "fileName": "REFERENCE_ROOT/main.evo",
+        "lineNumber": 15,
+        "columnNumber": 1,
+        "placement": "",
+        "expansion": 0
+      },
+      "lines": [
+        "# Shared constants, loaded with .SOURCE. A sourced file may not import or require.",
+        ".CONST MAX_VALUE DATA:99"
+      ],
+      "leftOut": [],
+      "notes": []
+    },
+    {
       "placement": "UTIL",
       "path": "lib/util.evo",
       "resolvedPath": "REFERENCE_ROOT/lib/util.evo",
       "instance": 0,
       "includedAt": {
         "fileName": "REFERENCE_ROOT/main.evo",
-        "lineNumber": 14,
+        "lineNumber": 16,
         "columnNumber": 1,
         "placement": "",
         "expansion": 0
@@ -147,7 +167,7 @@
       "placement": "UTIL",
       "path": "lib/consts.evo",
       "resolvedPath": "REFERENCE_ROOT/lib/consts.evo",
-      "instance": 1,
+      "instance": 2,
       "includedAt": {
         "fileName": "REFERENCE_ROOT/lib/util.evo",
         "lineNumber": 2,
@@ -169,16 +189,18 @@
       "instance": 0,
       "includedAt": {
         "fileName": "REFERENCE_ROOT/main.evo",
-        "lineNumber": 15,
+        "lineNumber": 17,
         "columnNumber": 1,
         "placement": "",
         "expansion": 0
       },
       "lines": [
-        "# Module that hands a required dependency down to its own import and passes that import",
-        "# back up with EXPORT, so the root reaches it as NAV.STEP, and that exports a control block.",
+        "# Module that hands a required module and a required value down to its own import and passes",
+        "# that import back up with EXPORT, so the root reaches it as NAV.STEP, and that exports a",
+        "# control block.",
         ".REQUIRE MODULE \"util.evo\" AS ARITH",
-        "EXPORT .IMPORT \"lib/step.evo\" AS STEP USING MODULE ARITH AS CALC",
+        ".REQUIRE VALUE CEILING                # handed on to step",
+        "EXPORT .IMPORT \"lib/step.evo\" AS STEP USING MODULE ARITH AS CALC VALUE CEILING CEILING",
         "",
         "EXPORT .PROC PATROL REF X LREF L LVAL M",
         "  CALL STEP.FORWARD REF X",
@@ -207,76 +229,40 @@
       "instance": 0,
       "includedAt": {
         "fileName": "REFERENCE_ROOT/lib/nav.evo",
-        "lineNumber": 4,
+        "lineNumber": 6,
         "columnNumber": 8,
         "placement": "NAV",
         "expansion": 0
       },
       "lines": [
-        "# Module that declares its dependency with .REQUIRE and leaves the choice to its importer.",
+        "# Module that declares its dependency with .REQUIRE and leaves the choice to its importer, and",
+        "# two values: one with a default nobody binds, one its importer must supply.",
         ".REQUIRE MODULE \"util.evo\" AS CALC",
-        ".SOURCE \"lib/consts.evo\"",
+        ".REQUIRE VALUE STRIDE DATA:1          # how far one step goes; 1 unless the importer says",
+        ".REQUIRE VALUE CEILING                # the importer has to say",
         "",
         "EXPORT .PROC FORWARD REF X",
-        "  ADDI X DATA:1",
-        "  CALL CALC.CLAMP REF X VAL DATA:0 MAX_VALUE",
+        "  ADDI X STRIDE",
+        "  CALL CALC.CLAMP REF X VAL DATA:0 CEILING",
         "  RET",
         ".ENDPROC"
-      ],
-      "leftOut": [],
-      "notes": []
-    },
-    {
-      "placement": "NAV.STEP",
-      "path": "lib/consts.evo",
-      "resolvedPath": "REFERENCE_ROOT/lib/consts.evo",
-      "instance": 2,
-      "includedAt": {
-        "fileName": "REFERENCE_ROOT/lib/step.evo",
-        "lineNumber": 3,
-        "columnNumber": 1,
-        "placement": "NAV.STEP",
-        "expansion": 0
-      },
-      "lines": [
-        "# Shared constants, loaded with .SOURCE. A sourced file may not import or require.",
-        ".CONST MAX_VALUE DATA:99"
-      ],
-      "leftOut": [],
-      "notes": []
-    },
-    {
-      "placement": "",
-      "path": "lib/consts.evo",
-      "resolvedPath": "REFERENCE_ROOT/lib/consts.evo",
-      "instance": 3,
-      "includedAt": {
-        "fileName": "REFERENCE_ROOT/main.evo",
-        "lineNumber": 16,
-        "columnNumber": 1,
-        "placement": "",
-        "expansion": 0
-      },
-      "lines": [
-        "# Shared constants, loaded with .SOURCE. A sourced file may not import or require.",
-        ".CONST MAX_VALUE DATA:99"
       ],
       "leftOut": [],
       "notes": []
     }
   ],
   "expansions": {
-    "4": {
+    "3": {
       "calledAt": {
         "fileName": "REFERENCE_ROOT/main.evo",
-        "lineNumber": 41,
+        "lineNumber": 42,
         "columnNumber": 3,
         "placement": "",
         "expansion": 0
       },
       "definedAt": {
         "fileName": "REFERENCE_ROOT/main.evo",
-        "lineNumber": 24,
+        "lineNumber": 25,
         "columnNumber": 8,
         "placement": "",
         "expansion": 0
@@ -1415,1491 +1401,1491 @@
     },
     "33": {
       "fileName": "REFERENCE_ROOT/lib/step.evo",
-      "lineNumber": 5,
+      "lineNumber": 7,
       "columnNumber": 14,
       "placement": "NAV.STEP",
       "expansion": 0
     },
     "34": {
       "fileName": "REFERENCE_ROOT/lib/step.evo",
-      "lineNumber": 5,
+      "lineNumber": 7,
       "columnNumber": 14,
       "placement": "NAV.STEP",
       "expansion": 0
     },
     "35": {
       "fileName": "REFERENCE_ROOT/lib/step.evo",
-      "lineNumber": 5,
+      "lineNumber": 7,
       "columnNumber": 14,
       "placement": "NAV.STEP",
       "expansion": 0
     },
     "36": {
       "fileName": "REFERENCE_ROOT/lib/step.evo",
-      "lineNumber": 6,
+      "lineNumber": 8,
       "columnNumber": 3,
       "placement": "NAV.STEP",
       "expansion": 0
     },
     "37": {
       "fileName": "REFERENCE_ROOT/lib/step.evo",
-      "lineNumber": 6,
+      "lineNumber": 8,
       "columnNumber": 3,
       "placement": "NAV.STEP",
       "expansion": 0
     },
     "38": {
       "fileName": "REFERENCE_ROOT/lib/step.evo",
-      "lineNumber": 6,
+      "lineNumber": 8,
       "columnNumber": 3,
       "placement": "NAV.STEP",
       "expansion": 0
     },
     "39": {
       "fileName": "REFERENCE_ROOT/lib/step.evo",
-      "lineNumber": 7,
+      "lineNumber": 9,
       "columnNumber": 3,
       "placement": "NAV.STEP",
       "expansion": 0
     },
     "40": {
       "fileName": "REFERENCE_ROOT/lib/step.evo",
-      "lineNumber": 7,
+      "lineNumber": 9,
       "columnNumber": 3,
       "placement": "NAV.STEP",
       "expansion": 0
     },
     "41": {
       "fileName": "REFERENCE_ROOT/lib/step.evo",
-      "lineNumber": 7,
+      "lineNumber": 9,
       "columnNumber": 3,
       "placement": "NAV.STEP",
       "expansion": 0
     },
     "42": {
       "fileName": "REFERENCE_ROOT/lib/step.evo",
-      "lineNumber": 7,
+      "lineNumber": 9,
       "columnNumber": 3,
       "placement": "NAV.STEP",
       "expansion": 0
     },
     "43": {
       "fileName": "REFERENCE_ROOT/lib/step.evo",
-      "lineNumber": 7,
+      "lineNumber": 9,
       "columnNumber": 3,
       "placement": "NAV.STEP",
       "expansion": 0
     },
     "44": {
       "fileName": "REFERENCE_ROOT/lib/step.evo",
-      "lineNumber": 7,
+      "lineNumber": 9,
       "columnNumber": 3,
       "placement": "NAV.STEP",
       "expansion": 0
     },
     "45": {
       "fileName": "REFERENCE_ROOT/lib/step.evo",
-      "lineNumber": 7,
+      "lineNumber": 9,
       "columnNumber": 3,
       "placement": "NAV.STEP",
       "expansion": 0
     },
     "46": {
       "fileName": "REFERENCE_ROOT/lib/step.evo",
-      "lineNumber": 7,
+      "lineNumber": 9,
       "columnNumber": 3,
       "placement": "NAV.STEP",
       "expansion": 0
     },
     "47": {
       "fileName": "REFERENCE_ROOT/lib/step.evo",
-      "lineNumber": 7,
+      "lineNumber": 9,
       "columnNumber": 3,
       "placement": "NAV.STEP",
       "expansion": 0
     },
     "48": {
       "fileName": "REFERENCE_ROOT/lib/step.evo",
-      "lineNumber": 7,
+      "lineNumber": 9,
       "columnNumber": 3,
       "placement": "NAV.STEP",
       "expansion": 0
     },
     "49": {
       "fileName": "REFERENCE_ROOT/lib/step.evo",
-      "lineNumber": 8,
+      "lineNumber": 10,
       "columnNumber": 3,
       "placement": "NAV.STEP",
       "expansion": 0
     },
     "50": {
       "fileName": "REFERENCE_ROOT/lib/step.evo",
-      "lineNumber": 8,
+      "lineNumber": 10,
       "columnNumber": 3,
       "placement": "NAV.STEP",
       "expansion": 0
     },
     "51": {
       "fileName": "REFERENCE_ROOT/lib/step.evo",
-      "lineNumber": 8,
+      "lineNumber": 10,
       "columnNumber": 3,
       "placement": "NAV.STEP",
       "expansion": 0
     },
     "52": {
       "fileName": "REFERENCE_ROOT/lib/nav.evo",
-      "lineNumber": 6,
+      "lineNumber": 8,
       "columnNumber": 14,
       "placement": "NAV",
       "expansion": 0
     },
     "53": {
       "fileName": "REFERENCE_ROOT/lib/nav.evo",
-      "lineNumber": 6,
+      "lineNumber": 8,
       "columnNumber": 14,
       "placement": "NAV",
       "expansion": 0
     },
     "54": {
       "fileName": "REFERENCE_ROOT/lib/nav.evo",
-      "lineNumber": 6,
+      "lineNumber": 8,
       "columnNumber": 14,
       "placement": "NAV",
       "expansion": 0
     },
     "55": {
       "fileName": "REFERENCE_ROOT/lib/nav.evo",
-      "lineNumber": 6,
+      "lineNumber": 8,
       "columnNumber": 14,
       "placement": "NAV",
       "expansion": 0
     },
     "56": {
       "fileName": "REFERENCE_ROOT/lib/nav.evo",
-      "lineNumber": 6,
+      "lineNumber": 8,
       "columnNumber": 14,
       "placement": "NAV",
       "expansion": 0
     },
     "57": {
       "fileName": "REFERENCE_ROOT/lib/nav.evo",
-      "lineNumber": 6,
+      "lineNumber": 8,
       "columnNumber": 14,
       "placement": "NAV",
       "expansion": 0
     },
     "58": {
       "fileName": "REFERENCE_ROOT/lib/nav.evo",
-      "lineNumber": 6,
+      "lineNumber": 8,
       "columnNumber": 14,
       "placement": "NAV",
       "expansion": 0
     },
     "59": {
       "fileName": "REFERENCE_ROOT/lib/nav.evo",
-      "lineNumber": 7,
+      "lineNumber": 9,
       "columnNumber": 3,
       "placement": "NAV",
       "expansion": 0
     },
     "60": {
       "fileName": "REFERENCE_ROOT/lib/nav.evo",
-      "lineNumber": 7,
+      "lineNumber": 9,
       "columnNumber": 3,
       "placement": "NAV",
       "expansion": 0
     },
     "61": {
       "fileName": "REFERENCE_ROOT/lib/nav.evo",
-      "lineNumber": 7,
+      "lineNumber": 9,
       "columnNumber": 3,
       "placement": "NAV",
       "expansion": 0
     },
     "62": {
       "fileName": "REFERENCE_ROOT/lib/nav.evo",
-      "lineNumber": 7,
+      "lineNumber": 9,
       "columnNumber": 3,
       "placement": "NAV",
       "expansion": 0
     },
     "63": {
       "fileName": "REFERENCE_ROOT/lib/nav.evo",
-      "lineNumber": 7,
+      "lineNumber": 9,
       "columnNumber": 3,
       "placement": "NAV",
       "expansion": 0
     },
     "64": {
       "fileName": "REFERENCE_ROOT/lib/nav.evo",
-      "lineNumber": 7,
+      "lineNumber": 9,
       "columnNumber": 3,
       "placement": "NAV",
       "expansion": 0
     },
     "65": {
       "fileName": "REFERENCE_ROOT/lib/nav.evo",
-      "lineNumber": 8,
+      "lineNumber": 10,
       "columnNumber": 3,
       "placement": "NAV",
       "expansion": 0
     },
     "66": {
       "fileName": "REFERENCE_ROOT/lib/nav.evo",
-      "lineNumber": 8,
+      "lineNumber": 10,
       "columnNumber": 3,
       "placement": "NAV",
       "expansion": 0
     },
     "67": {
       "fileName": "REFERENCE_ROOT/lib/nav.evo",
-      "lineNumber": 8,
+      "lineNumber": 10,
       "columnNumber": 3,
       "placement": "NAV",
       "expansion": 0
     },
     "68": {
       "fileName": "REFERENCE_ROOT/lib/nav.evo",
-      "lineNumber": 8,
+      "lineNumber": 10,
       "columnNumber": 3,
       "placement": "NAV",
       "expansion": 0
     },
     "69": {
       "fileName": "REFERENCE_ROOT/lib/nav.evo",
-      "lineNumber": 8,
+      "lineNumber": 10,
       "columnNumber": 3,
       "placement": "NAV",
       "expansion": 0
     },
     "70": {
       "fileName": "REFERENCE_ROOT/lib/nav.evo",
-      "lineNumber": 14,
+      "lineNumber": 16,
       "columnNumber": 17,
       "placement": "NAV",
       "expansion": 0
     },
     "71": {
       "fileName": "REFERENCE_ROOT/lib/nav.evo",
-      "lineNumber": 15,
+      "lineNumber": 17,
       "columnNumber": 3,
       "placement": "NAV",
       "expansion": 0
     },
     "72": {
       "fileName": "REFERENCE_ROOT/lib/nav.evo",
-      "lineNumber": 15,
+      "lineNumber": 17,
       "columnNumber": 3,
       "placement": "NAV",
       "expansion": 0
     },
     "73": {
       "fileName": "REFERENCE_ROOT/lib/nav.evo",
-      "lineNumber": 15,
+      "lineNumber": 17,
       "columnNumber": 3,
       "placement": "NAV",
       "expansion": 0
     },
     "74": {
       "fileName": "REFERENCE_ROOT/lib/nav.evo",
-      "lineNumber": 16,
+      "lineNumber": 18,
       "columnNumber": 5,
       "placement": "NAV",
       "expansion": 0
     },
     "75": {
       "fileName": "REFERENCE_ROOT/lib/nav.evo",
-      "lineNumber": 16,
+      "lineNumber": 18,
       "columnNumber": 5,
       "placement": "NAV",
       "expansion": 0
     },
     "76": {
       "fileName": "REFERENCE_ROOT/lib/nav.evo",
-      "lineNumber": 17,
+      "lineNumber": 19,
       "columnNumber": 3,
       "placement": "NAV",
       "expansion": 0
     },
     "77": {
       "fileName": "REFERENCE_ROOT/lib/nav.evo",
-      "lineNumber": 17,
+      "lineNumber": 19,
       "columnNumber": 3,
       "placement": "NAV",
       "expansion": 0
     },
     "78": {
       "fileName": "REFERENCE_ROOT/lib/nav.evo",
-      "lineNumber": 17,
+      "lineNumber": 19,
       "columnNumber": 14,
       "placement": "NAV",
       "expansion": 0
     },
     "79": {
       "fileName": "REFERENCE_ROOT/lib/nav.evo",
-      "lineNumber": 17,
+      "lineNumber": 19,
       "columnNumber": 14,
       "placement": "NAV",
       "expansion": 0
     },
     "80": {
       "fileName": "REFERENCE_ROOT/lib/nav.evo",
-      "lineNumber": 17,
+      "lineNumber": 19,
       "columnNumber": 14,
       "placement": "NAV",
       "expansion": 0
     },
     "81": {
       "fileName": "REFERENCE_ROOT/lib/nav.evo",
-      "lineNumber": 17,
+      "lineNumber": 19,
       "columnNumber": 14,
       "placement": "NAV",
       "expansion": 0
     },
     "82": {
       "fileName": "REFERENCE_ROOT/lib/nav.evo",
-      "lineNumber": 18,
+      "lineNumber": 20,
       "columnNumber": 3,
       "placement": "NAV",
       "expansion": 0
     },
     "83": {
       "fileName": "REFERENCE_ROOT/lib/nav.evo",
-      "lineNumber": 18,
+      "lineNumber": 20,
       "columnNumber": 3,
       "placement": "NAV",
       "expansion": 0
     },
     "84": {
       "fileName": "REFERENCE_ROOT/lib/nav.evo",
-      "lineNumber": 18,
+      "lineNumber": 20,
       "columnNumber": 15,
       "placement": "NAV",
       "expansion": 0
     },
     "85": {
       "fileName": "REFERENCE_ROOT/lib/nav.evo",
-      "lineNumber": 18,
+      "lineNumber": 20,
       "columnNumber": 15,
       "placement": "NAV",
       "expansion": 0
     },
     "86": {
       "fileName": "REFERENCE_ROOT/lib/nav.evo",
-      "lineNumber": 18,
+      "lineNumber": 20,
       "columnNumber": 15,
       "placement": "NAV",
       "expansion": 0
     },
     "87": {
       "fileName": "REFERENCE_ROOT/lib/nav.evo",
-      "lineNumber": 18,
+      "lineNumber": 20,
       "columnNumber": 15,
       "placement": "NAV",
       "expansion": 0
     },
     "88": {
       "fileName": "REFERENCE_ROOT/lib/nav.evo",
-      "lineNumber": 18,
+      "lineNumber": 20,
       "columnNumber": 22,
       "placement": "NAV",
       "expansion": 0
     },
     "89": {
       "fileName": "REFERENCE_ROOT/lib/nav.evo",
-      "lineNumber": 18,
+      "lineNumber": 20,
       "columnNumber": 22,
       "placement": "NAV",
       "expansion": 0
     },
     "90": {
       "fileName": "REFERENCE_ROOT/lib/nav.evo",
-      "lineNumber": 19,
+      "lineNumber": 21,
       "columnNumber": 14,
       "placement": "NAV",
       "expansion": 0
     },
     "91": {
       "fileName": "REFERENCE_ROOT/lib/nav.evo",
-      "lineNumber": 20,
+      "lineNumber": 22,
       "columnNumber": 3,
       "placement": "NAV",
       "expansion": 0
     },
     "92": {
       "fileName": "REFERENCE_ROOT/lib/nav.evo",
-      "lineNumber": 20,
+      "lineNumber": 22,
       "columnNumber": 3,
       "placement": "NAV",
       "expansion": 0
     },
     "93": {
       "fileName": "REFERENCE_ROOT/lib/nav.evo",
-      "lineNumber": 20,
+      "lineNumber": 22,
       "columnNumber": 3,
       "placement": "NAV",
       "expansion": 0
     },
     "94": {
       "fileName": "REFERENCE_ROOT/lib/nav.evo",
-      "lineNumber": 20,
+      "lineNumber": 22,
       "columnNumber": 21,
       "placement": "NAV",
       "expansion": 0
     },
     "95": {
       "fileName": "REFERENCE_ROOT/lib/nav.evo",
-      "lineNumber": 20,
+      "lineNumber": 22,
       "columnNumber": 21,
       "placement": "NAV",
       "expansion": 0
     },
     "96": {
       "fileName": "REFERENCE_ROOT/lib/nav.evo",
-      "lineNumber": 20,
+      "lineNumber": 22,
       "columnNumber": 21,
       "placement": "NAV",
       "expansion": 0
     },
     "97": {
       "fileName": "REFERENCE_ROOT/lib/nav.evo",
-      "lineNumber": 20,
+      "lineNumber": 22,
       "columnNumber": 21,
       "placement": "NAV",
       "expansion": 0
     },
     "98": {
       "fileName": "REFERENCE_ROOT/lib/nav.evo",
-      "lineNumber": 21,
+      "lineNumber": 23,
       "columnNumber": 1,
       "placement": "NAV",
       "expansion": 0
     },
     "99": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 39,
+      "lineNumber": 40,
       "columnNumber": 1,
       "placement": "",
       "expansion": 0
     },
     "100": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 40,
+      "lineNumber": 41,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "101": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 40,
+      "lineNumber": 41,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "102": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 40,
+      "lineNumber": 41,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "103": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 25,
+      "lineNumber": 26,
       "columnNumber": 3,
       "placement": "",
-      "expansion": 4
+      "expansion": 3
     },
     "104": {
-      "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 25,
-      "columnNumber": 3,
-      "placement": "",
-      "expansion": 4
-    },
-    "105": {
-      "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 25,
-      "columnNumber": 3,
-      "placement": "",
-      "expansion": 4
-    },
-    "106": {
       "fileName": "REFERENCE_ROOT/main.evo",
       "lineNumber": 26,
       "columnNumber": 3,
       "placement": "",
-      "expansion": 4
+      "expansion": 3
+    },
+    "105": {
+      "fileName": "REFERENCE_ROOT/main.evo",
+      "lineNumber": 26,
+      "columnNumber": 3,
+      "placement": "",
+      "expansion": 3
+    },
+    "106": {
+      "fileName": "REFERENCE_ROOT/main.evo",
+      "lineNumber": 27,
+      "columnNumber": 3,
+      "placement": "",
+      "expansion": 3
     },
     "107": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 42,
+      "lineNumber": 43,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "108": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 42,
+      "lineNumber": 43,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "109": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 42,
+      "lineNumber": 43,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "110": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 44,
+      "lineNumber": 45,
       "columnNumber": 5,
       "placement": "",
       "expansion": 0
     },
     "111": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 44,
+      "lineNumber": 45,
       "columnNumber": 5,
       "placement": "",
       "expansion": 0
     },
     "112": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 44,
+      "lineNumber": 45,
       "columnNumber": 5,
       "placement": "",
       "expansion": 0
     },
     "113": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 45,
+      "lineNumber": 46,
       "columnNumber": 5,
       "placement": "",
       "expansion": 0
     },
     "114": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 44,
+      "lineNumber": 45,
       "columnNumber": 5,
       "placement": "",
       "expansion": 0
     },
     "115": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 44,
+      "lineNumber": 45,
       "columnNumber": 5,
       "placement": "",
       "expansion": 0
     },
     "116": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 44,
+      "lineNumber": 45,
       "columnNumber": 5,
       "placement": "",
       "expansion": 0
     },
     "117": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 45,
+      "lineNumber": 46,
       "columnNumber": 5,
       "placement": "",
       "expansion": 0
     },
     "118": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 47,
+      "lineNumber": 48,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "119": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 47,
+      "lineNumber": 48,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "120": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 47,
+      "lineNumber": 48,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "121": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 47,
+      "lineNumber": 48,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "122": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 48,
+      "lineNumber": 49,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "123": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 48,
+      "lineNumber": 49,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "124": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 48,
+      "lineNumber": 49,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "125": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 48,
+      "lineNumber": 49,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "126": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 48,
+      "lineNumber": 49,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "127": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 48,
+      "lineNumber": 49,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "128": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 48,
+      "lineNumber": 49,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "129": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 48,
+      "lineNumber": 49,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "130": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 48,
+      "lineNumber": 49,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "131": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 48,
+      "lineNumber": 49,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "132": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 49,
+      "lineNumber": 50,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "133": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 49,
+      "lineNumber": 50,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "134": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 49,
+      "lineNumber": 50,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "135": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 49,
+      "lineNumber": 50,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "136": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 49,
+      "lineNumber": 50,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "137": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 49,
+      "lineNumber": 50,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "138": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 49,
+      "lineNumber": 50,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "139": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 49,
+      "lineNumber": 50,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "140": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 49,
+      "lineNumber": 50,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "141": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 49,
+      "lineNumber": 50,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "142": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 49,
+      "lineNumber": 50,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "143": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 49,
+      "lineNumber": 50,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "144": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 50,
+      "lineNumber": 51,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "145": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 50,
+      "lineNumber": 51,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "146": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 50,
+      "lineNumber": 51,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "147": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 50,
+      "lineNumber": 51,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "148": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 50,
+      "lineNumber": 51,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "149": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 50,
+      "lineNumber": 51,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "150": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 51,
+      "lineNumber": 52,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "151": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 51,
+      "lineNumber": 52,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "152": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 51,
+      "lineNumber": 52,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "153": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 51,
+      "lineNumber": 52,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "154": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 51,
+      "lineNumber": 52,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "155": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 52,
+      "lineNumber": 53,
       "columnNumber": 5,
       "placement": "",
       "expansion": 0
     },
     "156": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 52,
+      "lineNumber": 53,
       "columnNumber": 5,
       "placement": "",
       "expansion": 0
     },
     "157": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 52,
+      "lineNumber": 53,
       "columnNumber": 5,
       "placement": "",
       "expansion": 0
     },
     "158": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 52,
+      "lineNumber": 53,
       "columnNumber": 5,
       "placement": "",
       "expansion": 0
     },
     "159": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 52,
+      "lineNumber": 53,
       "columnNumber": 5,
       "placement": "",
       "expansion": 0
     },
     "160": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 52,
+      "lineNumber": 53,
       "columnNumber": 5,
       "placement": "",
       "expansion": 0
     },
     "161": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 52,
+      "lineNumber": 53,
       "columnNumber": 5,
       "placement": "",
       "expansion": 0
     },
     "162": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 52,
+      "lineNumber": 53,
       "columnNumber": 5,
       "placement": "",
       "expansion": 0
     },
     "163": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 52,
+      "lineNumber": 53,
       "columnNumber": 5,
       "placement": "",
       "expansion": 0
     },
     "164": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 53,
+      "lineNumber": 54,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "165": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 53,
+      "lineNumber": 54,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "166": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 54,
+      "lineNumber": 55,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "167": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 54,
+      "lineNumber": 55,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "168": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 60,
+      "lineNumber": 61,
       "columnNumber": 1,
       "placement": "",
       "expansion": 0
     },
     "169": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 61,
+      "lineNumber": 62,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "170": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 61,
+      "lineNumber": 62,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "171": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 62,
+      "lineNumber": 63,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "172": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 62,
+      "lineNumber": 63,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "173": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 64,
+      "lineNumber": 65,
       "columnNumber": 7,
       "placement": "",
       "expansion": 0
     },
     "174": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 64,
+      "lineNumber": 65,
       "columnNumber": 7,
       "placement": "",
       "expansion": 0
     },
     "175": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 64,
+      "lineNumber": 65,
       "columnNumber": 7,
       "placement": "",
       "expansion": 0
     },
     "176": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 64,
+      "lineNumber": 65,
       "columnNumber": 7,
       "placement": "",
       "expansion": 0
     },
     "177": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 64,
+      "lineNumber": 65,
       "columnNumber": 7,
       "placement": "",
       "expansion": 0
     },
     "178": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 66,
+      "lineNumber": 67,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "179": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 66,
+      "lineNumber": 67,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "180": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 66,
+      "lineNumber": 67,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "181": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 67,
+      "lineNumber": 68,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "182": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 67,
+      "lineNumber": 68,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "183": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 67,
+      "lineNumber": 68,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "184": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 67,
+      "lineNumber": 68,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "185": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 67,
+      "lineNumber": 68,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "186": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 68,
+      "lineNumber": 69,
       "columnNumber": 5,
       "placement": "",
       "expansion": 0
     },
     "187": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 68,
+      "lineNumber": 69,
       "columnNumber": 5,
       "placement": "",
       "expansion": 0
     },
     "188": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 68,
+      "lineNumber": 69,
       "columnNumber": 5,
       "placement": "",
       "expansion": 0
     },
     "189": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 68,
+      "lineNumber": 69,
       "columnNumber": 5,
       "placement": "",
       "expansion": 0
     },
     "190": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 69,
+      "lineNumber": 70,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "191": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 69,
+      "lineNumber": 70,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "192": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 69,
+      "lineNumber": 70,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "193": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 70,
+      "lineNumber": 71,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "194": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 70,
+      "lineNumber": 71,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "195": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 70,
+      "lineNumber": 71,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "196": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 76,
+      "lineNumber": 77,
       "columnNumber": 1,
       "placement": "",
       "expansion": 0
     },
     "197": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 77,
+      "lineNumber": 78,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "198": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 77,
+      "lineNumber": 78,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "199": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 79,
+      "lineNumber": 80,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "200": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 79,
+      "lineNumber": 80,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "201": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 85,
+      "lineNumber": 86,
       "columnNumber": 10,
       "placement": "",
       "expansion": 0
     },
     "202": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 86,
+      "lineNumber": 87,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "203": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 86,
+      "lineNumber": 87,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "204": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 86,
+      "lineNumber": 87,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "205": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 87,
+      "lineNumber": 88,
       "columnNumber": 5,
       "placement": "",
       "expansion": 0
     },
     "206": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 87,
+      "lineNumber": 88,
       "columnNumber": 5,
       "placement": "",
       "expansion": 0
     },
     "207": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 88,
+      "lineNumber": 89,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "208": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 88,
+      "lineNumber": 89,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "209": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 88,
+      "lineNumber": 89,
       "columnNumber": 14,
       "placement": "",
       "expansion": 0
     },
     "210": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 88,
+      "lineNumber": 89,
       "columnNumber": 14,
       "placement": "",
       "expansion": 0
     },
     "211": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 88,
+      "lineNumber": 89,
       "columnNumber": 14,
       "placement": "",
       "expansion": 0
     },
     "212": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 88,
+      "lineNumber": 89,
       "columnNumber": 14,
       "placement": "",
       "expansion": 0
     },
     "213": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 88,
+      "lineNumber": 89,
       "columnNumber": 21,
       "placement": "",
       "expansion": 0
     },
     "214": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 88,
+      "lineNumber": 89,
       "columnNumber": 21,
       "placement": "",
       "expansion": 0
     },
     "215": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 89,
+      "lineNumber": 90,
       "columnNumber": 7,
       "placement": "",
       "expansion": 0
     },
     "216": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 90,
+      "lineNumber": 91,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "217": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 90,
+      "lineNumber": 91,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "218": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 90,
+      "lineNumber": 91,
       "columnNumber": 16,
       "placement": "",
       "expansion": 0
     },
     "219": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 90,
+      "lineNumber": 91,
       "columnNumber": 16,
       "placement": "",
       "expansion": 0
     },
     "220": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 90,
+      "lineNumber": 91,
       "columnNumber": 16,
       "placement": "",
       "expansion": 0
     },
     "221": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 90,
+      "lineNumber": 91,
       "columnNumber": 16,
       "placement": "",
       "expansion": 0
     },
     "222": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 91,
+      "lineNumber": 92,
       "columnNumber": 12,
       "placement": "",
       "expansion": 0
     },
     "223": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 92,
+      "lineNumber": 93,
       "columnNumber": 5,
       "placement": "",
       "expansion": 0
     },
     "224": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 92,
+      "lineNumber": 93,
       "columnNumber": 5,
       "placement": "",
       "expansion": 0
     },
     "225": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 92,
+      "lineNumber": 93,
       "columnNumber": 5,
       "placement": "",
       "expansion": 0
     },
     "226": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 93,
+      "lineNumber": 94,
       "columnNumber": 7,
       "placement": "",
       "expansion": 0
     },
     "227": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 93,
+      "lineNumber": 94,
       "columnNumber": 7,
       "placement": "",
       "expansion": 0
     },
     "228": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 94,
+      "lineNumber": 95,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "229": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 95,
+      "lineNumber": 96,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "230": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 95,
+      "lineNumber": 96,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "231": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 95,
+      "lineNumber": 96,
       "columnNumber": 19,
       "placement": "",
       "expansion": 0
     },
     "232": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 95,
+      "lineNumber": 96,
       "columnNumber": 19,
       "placement": "",
       "expansion": 0
     },
     "233": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 95,
+      "lineNumber": 96,
       "columnNumber": 19,
       "placement": "",
       "expansion": 0
     },
     "234": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 95,
+      "lineNumber": 96,
       "columnNumber": 19,
       "placement": "",
       "expansion": 0
     },
     "235": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 95,
+      "lineNumber": 96,
       "columnNumber": 26,
       "placement": "",
       "expansion": 0
     },
     "236": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 95,
+      "lineNumber": 96,
       "columnNumber": 26,
       "placement": "",
       "expansion": 0
     },
     "237": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 96,
+      "lineNumber": 97,
       "columnNumber": 1,
       "placement": "",
       "expansion": 0
     },
     "238": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 97,
+      "lineNumber": 98,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "239": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 97,
+      "lineNumber": 98,
       "columnNumber": 3,
       "placement": "",
       "expansion": 0
     },
     "240": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 97,
+      "lineNumber": 98,
       "columnNumber": 19,
       "placement": "",
       "expansion": 0
     },
     "241": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 97,
+      "lineNumber": 98,
       "columnNumber": 19,
       "placement": "",
       "expansion": 0
     },
     "242": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 97,
+      "lineNumber": 98,
       "columnNumber": 19,
       "placement": "",
       "expansion": 0
     },
     "243": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 97,
+      "lineNumber": 98,
       "columnNumber": 19,
       "placement": "",
       "expansion": 0
     },
     "244": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 97,
+      "lineNumber": 98,
       "columnNumber": 26,
       "placement": "",
       "expansion": 0
     },
     "245": {
       "fileName": "REFERENCE_ROOT/main.evo",
-      "lineNumber": 97,
+      "lineNumber": 98,
       "columnNumber": 26,
       "placement": "",
       "expansion": 0
@@ -4167,10 +4153,12 @@
     "LOCAL_STEP.%TMP": 512
   },
   "constantValues": {
+    "NAV.STEP.STRIDE": "DATA:1",
+    "NAV.STEP.CEILING": "DATA:99",
     "UTIL.MAX_VALUE": "DATA:99",
     "LIMIT": "DATA:7",
     "MAX_VALUE": "DATA:99",
-    "NAV.STEP.MAX_VALUE": "DATA:99"
+    "NAV.CEILING": "DATA:99"
   },
   "procNameToParamNames": {
     "LOCAL_STEP": [
@@ -4220,9 +4208,15 @@
   },
   "tokenMap": {
     "REFERENCE_ROOT/main.evo:26:3": {
-      "tokenText": "NOP",
+      "tokenText": "ADDI",
       "tokenType": "INSTRUCTION",
       "scope": ""
+    },
+    "REFERENCE_ROOT/main.evo:51:8": {
+      "tokenText": "NAV.STEP.FORWARD",
+      "tokenType": "PROCEDURE",
+      "scope": "",
+      "qualifiedName": "NAV.STEP.FORWARD"
     },
     "UTIL@REFERENCE_ROOT/lib/util.evo:9:8": {
       "tokenText": "TO_MIN",
@@ -4235,60 +4229,71 @@
       "tokenType": "INSTRUCTION",
       "scope": "UTIL.CLAMP"
     },
-    "NAV@REFERENCE_ROOT/lib/nav.evo:16:5": {
-      "tokenText": "JMPI",
+    "REFERENCE_ROOT/main.evo:89:8": {
+      "tokenText": "BODY",
+      "tokenType": "LABEL",
+      "scope": "COUNTDOWN",
+      "qualifiedName": "COUNTDOWN.BODY"
+    },
+    "REFERENCE_ROOT/main.evo:50:35": {
+      "tokenText": "%POS",
+      "tokenType": "ALIAS",
+      "scope": "",
+      "qualifiedName": "%POS"
+    },
+    "NAV@REFERENCE_ROOT/lib/nav.evo:20:15": {
+      "tokenText": "NOP",
       "tokenType": "INSTRUCTION",
       "scope": "NAV.SCOUT"
     },
-    "NAV@REFERENCE_ROOT/lib/nav.evo:18:8": {
-      "tokenText": "SCOUT",
-      "tokenType": "LABEL",
-      "scope": "",
-      "qualifiedName": "NAV.SCOUT"
-    },
-    "REFERENCE_ROOT/main.evo:87:5": {
-      "tokenText": "JMPI",
+    "REFERENCE_ROOT/main.evo:91:3": {
+      "tokenText": "DECR",
       "tokenType": "INSTRUCTION",
       "scope": "COUNTDOWN"
     },
-    "REFERENCE_ROOT/main.evo:97:8": {
-      "tokenText": "NAV.SCOUT",
+    "REFERENCE_ROOT/main.evo:96:31": {
+      "tokenText": "COUNTDOWN",
       "tokenType": "LABEL",
       "scope": "",
-      "qualifiedName": "NAV.SCOUT"
+      "qualifiedName": "COUNTDOWN"
     },
-    "NAV@REFERENCE_ROOT/lib/nav.evo:6:39": {
-      "tokenText": "M",
-      "tokenType": "PARAMETER",
-      "scope": "NAV.PATROL"
+    "REFERENCE_ROOT/main.evo:80:3": {
+      "tokenText": "NOP",
+      "tokenType": "INSTRUCTION",
+      "scope": ""
     },
-    "NAV@REFERENCE_ROOT/lib/nav.evo:7:8": {
-      "tokenText": "STEP.FORWARD",
+    "NAV.STEP@REFERENCE_ROOT/lib/step.evo:7:14": {
+      "tokenText": "FORWARD",
       "tokenType": "PROCEDURE",
       "scope": "",
       "qualifiedName": "NAV.STEP.FORWARD"
     },
-    "REFERENCE_ROOT/main.evo:62:8": {
-      "tokenText": "START",
-      "tokenType": "LABEL",
-      "scope": "",
-      "qualifiedName": "START"
+    "REFERENCE_ROOT/main.evo:96:19": {
+      "tokenText": "NOP",
+      "tokenType": "INSTRUCTION",
+      "scope": "COUNTDOWN"
     },
-    "REFERENCE_ROOT/main.evo:64:7": {
-      "tokenText": "LOCAL_STEP",
-      "tokenType": "PROCEDURE",
+    "REFERENCE_ROOT/main.evo:98:26": {
+      "tokenText": "JMPI",
+      "tokenType": "INSTRUCTION",
+      "scope": ""
+    },
+    "REFERENCE_ROOT/main.evo:17:71": {
+      "tokenText": "MAX_VALUE",
+      "tokenType": "CONSTANT",
       "scope": "",
-      "qualifiedName": "LOCAL_STEP"
+      "qualifiedName": "MAX_VALUE"
     },
     "NAV@REFERENCE_ROOT/lib/nav.evo:20:3": {
-      "tokenText": "SETI",
+      "tokenText": "JMPI",
       "tokenType": "INSTRUCTION",
       "scope": "NAV.SCOUT"
     },
-    "REFERENCE_ROOT/main.evo:68:5": {
-      "tokenText": "RET",
-      "tokenType": "INSTRUCTION",
-      "scope": "LOCAL_STEP"
+    "REFERENCE_ROOT/main.evo:70:8": {
+      "tokenText": "X",
+      "tokenType": "PARAMETER",
+      "scope": "LOCAL_STEP",
+      "qualifiedName": "LOCAL_STEP.X"
     },
     "UTIL@REFERENCE_ROOT/lib/util.evo:7:34": {
       "tokenText": "MIN",
@@ -4300,15 +4305,26 @@
       "tokenType": "INSTRUCTION",
       "scope": "UTIL.CLAMP"
     },
+    "REFERENCE_ROOT/main.evo:49:41": {
+      "tokenText": "MAX_VALUE",
+      "tokenType": "CONSTANT",
+      "scope": "",
+      "qualifiedName": "MAX_VALUE"
+    },
     "REFERENCE_ROOT/main.evo:67:3": {
-      "tokenText": "IFI",
+      "tokenText": "SETR",
       "tokenType": "INSTRUCTION",
       "scope": "LOCAL_STEP"
     },
     "NAV@REFERENCE_ROOT/lib/nav.evo:17:3": {
-      "tokenText": "INCR",
+      "tokenText": "INPI",
       "tokenType": "INSTRUCTION",
       "scope": "NAV.SCOUT"
+    },
+    "REFERENCE_ROOT/main.evo:94:7": {
+      "tokenText": "JMPI",
+      "tokenType": "INSTRUCTION",
+      "scope": "COUNTDOWN.CHECK"
     },
     "UTIL@REFERENCE_ROOT/lib/util.evo:7:38": {
       "tokenText": "MAX",
@@ -4321,66 +4337,43 @@
       "scope": "UTIL.CLAMP",
       "qualifiedName": "UTIL.CLAMP.VALUE"
     },
-    "REFERENCE_ROOT/main.evo:40:3": {
-      "tokenText": "SETI",
+    "NAV@REFERENCE_ROOT/lib/nav.evo:6:80": {
+      "tokenText": "CEILING",
+      "tokenType": "CONSTANT",
+      "scope": "",
+      "qualifiedName": "NAV.CEILING"
+    },
+    "REFERENCE_ROOT/main.evo:48:3": {
+      "tokenText": "NOP",
       "tokenType": "INSTRUCTION",
       "scope": ""
+    },
+    "NAV@REFERENCE_ROOT/lib/nav.evo:19:14": {
+      "tokenText": "NOP",
+      "tokenType": "INSTRUCTION",
+      "scope": "NAV.SCOUT"
     },
     "REFERENCE_ROOT/main.evo:54:8": {
-      "tokenText": "START",
+      "tokenText": "UTIL.READY",
       "tokenType": "LABEL",
       "scope": "",
-      "qualifiedName": "START"
+      "qualifiedName": "UTIL.READY"
     },
-    "REFERENCE_ROOT/main.evo:86:3": {
-      "tokenText": "IFI",
-      "tokenType": "INSTRUCTION",
-      "scope": "COUNTDOWN"
-    },
-    "REFERENCE_ROOT/main.evo:44:5": {
-      "tokenText": "ADDI",
-      "tokenType": "INSTRUCTION",
-      "scope": ""
-    },
-    "REFERENCE_ROOT/main.evo:49:45": {
-      "tokenText": "MARK",
-      "tokenType": "LABEL",
+    "NAV@REFERENCE_ROOT/lib/nav.evo:8:14": {
+      "tokenText": "PATROL",
+      "tokenType": "PROCEDURE",
       "scope": "",
-      "qualifiedName": "MARK"
+      "qualifiedName": "NAV.PATROL"
     },
-    "REFERENCE_ROOT/main.evo:48:23": {
-      "tokenText": "%VALUE",
-      "tokenType": "ALIAS",
-      "scope": "",
-      "qualifiedName": "%VALUE"
-    },
-    "NAV.STEP@REFERENCE_ROOT/lib/step.evo:6:8": {
+    "NAV.STEP@REFERENCE_ROOT/lib/step.evo:7:26": {
       "tokenText": "X",
       "tokenType": "PARAMETER",
-      "scope": "NAV.STEP.FORWARD",
-      "qualifiedName": "NAV.STEP.FORWARD.X"
-    },
-    "REFERENCE_ROOT/main.evo:52:25": {
-      "tokenText": "%COUNT",
-      "tokenType": "ALIAS",
-      "scope": "",
-      "qualifiedName": "%COUNT"
-    },
-    "NAV.STEP@REFERENCE_ROOT/lib/step.evo:8:3": {
-      "tokenText": "RET",
-      "tokenType": "INSTRUCTION",
       "scope": "NAV.STEP.FORWARD"
     },
-    "REFERENCE_ROOT/main.evo:51:3": {
-      "tokenText": "LTI",
+    "NAV.STEP@REFERENCE_ROOT/lib/step.evo:8:3": {
+      "tokenText": "ADDI",
       "tokenType": "INSTRUCTION",
-      "scope": ""
-    },
-    "REFERENCE_ROOT/main.evo:69:10": {
-      "tokenText": "%TMP",
-      "tokenType": "ALIAS",
-      "scope": "LOCAL_STEP",
-      "qualifiedName": "LOCAL_STEP.%TMP"
+      "scope": "NAV.STEP.FORWARD"
     },
     "UTIL@REFERENCE_ROOT/lib/util.evo:7:14": {
       "tokenText": "CLAMP",
@@ -4388,16 +4381,11 @@
       "scope": "",
       "qualifiedName": "UTIL.CLAMP"
     },
-    "REFERENCE_ROOT/main.evo:67:7": {
-      "tokenText": "%TMP",
-      "tokenType": "ALIAS",
-      "scope": "LOCAL_STEP",
-      "qualifiedName": "LOCAL_STEP.%TMP"
-    },
-    "NAV@REFERENCE_ROOT/lib/nav.evo:18:3": {
-      "tokenText": "JMPI",
-      "tokenType": "INSTRUCTION",
-      "scope": "NAV.SCOUT"
+    "NAV@REFERENCE_ROOT/lib/nav.evo:5:16": {
+      "tokenText": "CEILING",
+      "tokenType": "CONSTANT",
+      "scope": "",
+      "qualifiedName": "NAV.CEILING"
     },
     "UTIL@REFERENCE_ROOT/lib/util.evo:11:8": {
       "tokenText": "DONE",
@@ -4411,42 +4399,47 @@
       "scope": "UTIL.CLAMP",
       "qualifiedName": "UTIL.CLAMP.MIN"
     },
-    "REFERENCE_ROOT/main.evo:93:7": {
-      "tokenText": "JMPI",
-      "tokenType": "INSTRUCTION",
-      "scope": "COUNTDOWN.CHECK"
-    },
-    "REFERENCE_ROOT/main.evo:47:3": {
-      "tokenText": "NOP",
-      "tokenType": "INSTRUCTION",
-      "scope": ""
+    "REFERENCE_ROOT/main.evo:91:8": {
+      "tokenText": "%COUNT",
+      "tokenType": "ALIAS",
+      "scope": "",
+      "qualifiedName": "%COUNT"
     },
     "UTIL@REFERENCE_ROOT/lib/util.evo:5:3": {
       "tokenText": "NOP",
       "tokenType": "INSTRUCTION",
       "scope": ""
     },
-    "REFERENCE_ROOT/main.evo:53:8": {
-      "tokenText": "UTIL.READY",
-      "tokenType": "LABEL",
-      "scope": "",
-      "qualifiedName": "UTIL.READY"
+    "REFERENCE_ROOT/main.evo:65:22": {
+      "tokenText": "X",
+      "tokenType": "PARAMETER",
+      "scope": "LOCAL_STEP"
     },
     "UTIL@REFERENCE_ROOT/lib/util.evo:13:3": {
       "tokenText": "RET",
       "tokenType": "INSTRUCTION",
       "scope": "UTIL.CLAMP"
     },
-    "NAV@REFERENCE_ROOT/lib/nav.evo:18:15": {
+    "NAV@REFERENCE_ROOT/lib/nav.evo:22:21": {
       "tokenText": "NOP",
       "tokenType": "INSTRUCTION",
       "scope": "NAV.SCOUT"
     },
-    "REFERENCE_ROOT/main.evo:48:41": {
-      "tokenText": "MAX_VALUE",
-      "tokenType": "CONSTANT",
-      "scope": "",
-      "qualifiedName": "MAX_VALUE"
+    "REFERENCE_ROOT/main.evo:98:31": {
+      "tokenText": "NAV.SCOUT.BLOCKED",
+      "tokenType": "LABEL",
+      "scope": "NAV.SCOUT",
+      "qualifiedName": "NAV.SCOUT.BLOCKED"
+    },
+    "NAV@REFERENCE_ROOT/lib/nav.evo:10:3": {
+      "tokenText": "RET",
+      "tokenType": "INSTRUCTION",
+      "scope": "NAV.PATROL"
+    },
+    "REFERENCE_ROOT/main.evo:98:19": {
+      "tokenText": "NOP",
+      "tokenType": "INSTRUCTION",
+      "scope": ""
     },
     "UTIL@REFERENCE_ROOT/lib/util.evo:10:11": {
       "tokenText": "VALUE",
@@ -4454,10 +4447,11 @@
       "scope": "UTIL.CLAMP",
       "qualifiedName": "UTIL.CLAMP.VALUE"
     },
-    "REFERENCE_ROOT/main.evo:66:3": {
-      "tokenText": "SETR",
-      "tokenType": "INSTRUCTION",
-      "scope": "LOCAL_STEP"
+    "REFERENCE_ROOT/main.evo:51:29": {
+      "tokenText": "%COUNT",
+      "tokenType": "ALIAS",
+      "scope": "",
+      "qualifiedName": "%COUNT"
     },
     "UTIL@REFERENCE_ROOT/lib/util.evo:12:14": {
       "tokenText": "MAX",
@@ -4471,179 +4465,183 @@
       "scope": "UTIL.CLAMP",
       "qualifiedName": "UTIL.CLAMP.MAX"
     },
-    "NAV.STEP@REFERENCE_ROOT/lib/step.evo:7:23": {
-      "tokenText": "X",
-      "tokenType": "PARAMETER",
-      "scope": "NAV.STEP.FORWARD",
-      "qualifiedName": "NAV.STEP.FORWARD.X"
-    },
-    "REFERENCE_ROOT/main.evo:92:5": {
-      "tokenText": "IFI",
+    "REFERENCE_ROOT/main.evo:46:5": {
+      "tokenText": "NOP",
       "tokenType": "INSTRUCTION",
-      "scope": "COUNTDOWN.CHECK"
+      "scope": ""
     },
-    "REFERENCE_ROOT/main.evo:48:8": {
-      "tokenText": "UTIL.CLAMP",
-      "tokenType": "PROCEDURE",
+    "NAV.STEP@REFERENCE_ROOT/lib/step.evo:5:16": {
+      "tokenText": "CEILING",
+      "tokenType": "CONSTANT",
       "scope": "",
-      "qualifiedName": "UTIL.CLAMP"
-    },
-    "REFERENCE_ROOT/main.evo:52:10": {
-      "tokenText": "LOCAL_STEP",
-      "tokenType": "PROCEDURE",
-      "scope": "",
-      "qualifiedName": "LOCAL_STEP"
-    },
-    "REFERENCE_ROOT/main.evo:69:3": {
-      "tokenText": "ADDR",
-      "tokenType": "INSTRUCTION",
-      "scope": "LOCAL_STEP"
-    },
-    "REFERENCE_ROOT/main.evo:88:3": {
-      "tokenText": "JMPI",
-      "tokenType": "INSTRUCTION",
-      "scope": "COUNTDOWN"
-    },
-    "NAV@REFERENCE_ROOT/lib/nav.evo:6:14": {
-      "tokenText": "PATROL",
-      "tokenType": "PROCEDURE",
-      "scope": "",
-      "qualifiedName": "NAV.PATROL"
-    },
-    "NAV@REFERENCE_ROOT/lib/nav.evo:15:3": {
-      "tokenText": "INPI",
-      "tokenType": "INSTRUCTION",
-      "scope": "NAV.SCOUT"
+      "qualifiedName": "NAV.STEP.CEILING"
     },
     "UTIL@REFERENCE_ROOT/lib/util.evo:10:3": {
       "tokenText": "LTR",
       "tokenType": "INSTRUCTION",
       "scope": "UTIL.CLAMP"
     },
-    "REFERENCE_ROOT/main.evo:92:9": {
-      "tokenText": "%VALUE",
-      "tokenType": "ALIAS",
-      "scope": "",
-      "qualifiedName": "%VALUE"
-    },
-    "REFERENCE_ROOT/main.evo:64:28": {
-      "tokenText": "DELTA",
-      "tokenType": "PARAMETER",
-      "scope": "LOCAL_STEP"
-    },
-    "REFERENCE_ROOT/main.evo:44:10": {
-      "tokenText": "%VALUE",
-      "tokenType": "ALIAS",
-      "scope": "",
-      "qualifiedName": "%VALUE"
-    },
-    "REFERENCE_ROOT/main.evo:42:3": {
-      "tokenText": "NOP",
-      "tokenType": "INSTRUCTION",
-      "scope": ""
-    },
-    "NAV@REFERENCE_ROOT/lib/nav.evo:17:14": {
-      "tokenText": "NOP",
-      "tokenType": "INSTRUCTION",
-      "scope": "NAV.SCOUT"
-    },
-    "REFERENCE_ROOT/main.evo:40:8": {
-      "tokenText": "%COUNT",
-      "tokenType": "ALIAS",
-      "scope": "",
-      "qualifiedName": "%COUNT"
-    },
-    "REFERENCE_ROOT/main.evo:95:26": {
-      "tokenText": "JMPI",
-      "tokenType": "INSTRUCTION",
-      "scope": "COUNTDOWN"
-    },
-    "REFERENCE_ROOT/main.evo:53:3": {
-      "tokenText": "JMPI",
-      "tokenType": "INSTRUCTION",
-      "scope": ""
-    },
-    "REFERENCE_ROOT/main.evo:87:10": {
-      "tokenText": "END",
-      "tokenType": "LABEL",
-      "scope": "COUNTDOWN",
-      "qualifiedName": "COUNTDOWN.END"
-    },
-    "REFERENCE_ROOT/main.evo:77:3": {
-      "tokenText": "NOP",
-      "tokenType": "INSTRUCTION",
-      "scope": ""
-    },
-    "REFERENCE_ROOT/main.evo:61:3": {
-      "tokenText": "NOP",
-      "tokenType": "INSTRUCTION",
-      "scope": ""
-    },
-    "REFERENCE_ROOT/main.evo:45:5": {
-      "tokenText": "NOP",
-      "tokenType": "INSTRUCTION",
-      "scope": ""
-    },
-    "REFERENCE_ROOT/main.evo:93:12": {
+    "REFERENCE_ROOT/main.evo:94:12": {
       "tokenText": "COUNTDOWN.END",
       "tokenType": "LABEL",
       "scope": "COUNTDOWN",
       "qualifiedName": "COUNTDOWN.END"
     },
-    "REFERENCE_ROOT/main.evo:95:3": {
+    "REFERENCE_ROOT/main.evo:96:3": {
       "tokenText": "JMPI",
       "tokenType": "INSTRUCTION",
       "scope": "COUNTDOWN"
+    },
+    "NAV.STEP@REFERENCE_ROOT/lib/step.evo:10:3": {
+      "tokenText": "RET",
+      "tokenType": "INSTRUCTION",
+      "scope": "NAV.STEP.FORWARD"
+    },
+    "REFERENCE_ROOT/main.evo:52:14": {
+      "tokenText": "LIMIT",
+      "tokenType": "CONSTANT",
+      "scope": "",
+      "qualifiedName": "LIMIT"
+    },
+    "NAV.STEP@REFERENCE_ROOT/lib/step.evo:8:8": {
+      "tokenText": "X",
+      "tokenType": "PARAMETER",
+      "scope": "NAV.STEP.FORWARD",
+      "qualifiedName": "NAV.STEP.FORWARD.X"
+    },
+    "REFERENCE_ROOT/main.evo:50:23": {
+      "tokenText": "%COUNT",
+      "tokenType": "ALIAS",
+      "scope": "",
+      "qualifiedName": "%COUNT"
+    },
+    "REFERENCE_ROOT/main.evo:89:21": {
+      "tokenText": "JMPI",
+      "tokenType": "INSTRUCTION",
+      "scope": "COUNTDOWN"
+    },
+    "NAV@REFERENCE_ROOT/lib/nav.evo:20:27": {
+      "tokenText": "SCOUT",
+      "tokenType": "LABEL",
+      "scope": "",
+      "qualifiedName": "NAV.SCOUT"
+    },
+    "REFERENCE_ROOT/main.evo:42:15": {
+      "tokenText": "LIMIT",
+      "tokenType": "CONSTANT",
+      "scope": "",
+      "qualifiedName": "LIMIT"
+    },
+    "REFERENCE_ROOT/main.evo:67:8": {
+      "tokenText": "%TMP",
+      "tokenType": "ALIAS",
+      "scope": "LOCAL_STEP",
+      "qualifiedName": "LOCAL_STEP.%TMP"
+    },
+    "NAV@REFERENCE_ROOT/lib/nav.evo:8:25": {
+      "tokenText": "X",
+      "tokenType": "PARAMETER",
+      "scope": "NAV.PATROL"
+    },
+    "REFERENCE_ROOT/main.evo:91:16": {
+      "tokenText": "NOP",
+      "tokenType": "INSTRUCTION",
+      "scope": "COUNTDOWN"
+    },
+    "REFERENCE_ROOT/main.evo:68:3": {
+      "tokenText": "IFI",
+      "tokenType": "INSTRUCTION",
+      "scope": "LOCAL_STEP"
+    },
+    "NAV@REFERENCE_ROOT/lib/nav.evo:22:8": {
+      "tokenText": "%DR0",
+      "tokenType": "REGISTER",
+      "scope": "NAV.SCOUT"
+    },
+    "NAV.STEP@REFERENCE_ROOT/lib/step.evo:4:16": {
+      "tokenText": "STRIDE",
+      "tokenType": "CONSTANT",
+      "scope": "",
+      "qualifiedName": "NAV.STEP.STRIDE"
+    },
+    "REFERENCE_ROOT/main.evo:45:5": {
+      "tokenText": "ADDI",
+      "tokenType": "INSTRUCTION",
+      "scope": ""
+    },
+    "REFERENCE_ROOT/main.evo:87:7": {
+      "tokenText": "%COUNT",
+      "tokenType": "ALIAS",
+      "scope": "",
+      "qualifiedName": "%COUNT"
+    },
+    "NAV@REFERENCE_ROOT/lib/nav.evo:18:10": {
+      "tokenText": "BLOCKED",
+      "tokenType": "LABEL",
+      "scope": "NAV.SCOUT",
+      "qualifiedName": "NAV.SCOUT.BLOCKED"
+    },
+    "REFERENCE_ROOT/main.evo:55:8": {
+      "tokenText": "START",
+      "tokenType": "LABEL",
+      "scope": "",
+      "qualifiedName": "START"
     },
     "UTIL@REFERENCE_ROOT/lib/util.evo:15:3": {
       "tokenText": "SETR",
       "tokenType": "INSTRUCTION",
       "scope": "UTIL.CLAMP"
     },
-    "REFERENCE_ROOT/main.evo:51:14": {
-      "tokenText": "LIMIT",
-      "tokenType": "CONSTANT",
-      "scope": "",
-      "qualifiedName": "LIMIT"
+    "REFERENCE_ROOT/main.evo:41:3": {
+      "tokenText": "SETI",
+      "tokenType": "INSTRUCTION",
+      "scope": ""
     },
-    "NAV.STEP@REFERENCE_ROOT/lib/step.evo:7:8": {
-      "tokenText": "CALC.CLAMP",
-      "tokenType": "PROCEDURE",
+    "REFERENCE_ROOT/main.evo:87:3": {
+      "tokenText": "IFI",
+      "tokenType": "INSTRUCTION",
+      "scope": "COUNTDOWN"
+    },
+    "REFERENCE_ROOT/main.evo:50:45": {
+      "tokenText": "MARK",
+      "tokenType": "LABEL",
       "scope": "",
-      "qualifiedName": "UTIL.CLAMP"
+      "qualifiedName": "MARK"
     },
     "REFERENCE_ROOT/main.evo:49:23": {
+      "tokenText": "%VALUE",
+      "tokenType": "ALIAS",
+      "scope": "",
+      "qualifiedName": "%VALUE"
+    },
+    "REFERENCE_ROOT/main.evo:52:3": {
+      "tokenText": "LTI",
+      "tokenType": "INSTRUCTION",
+      "scope": ""
+    },
+    "REFERENCE_ROOT/main.evo:53:25": {
       "tokenText": "%COUNT",
       "tokenType": "ALIAS",
       "scope": "",
       "qualifiedName": "%COUNT"
     },
-    "REFERENCE_ROOT/main.evo:88:21": {
-      "tokenText": "JMPI",
-      "tokenType": "INSTRUCTION",
-      "scope": "COUNTDOWN"
-    },
-    "NAV@REFERENCE_ROOT/lib/nav.evo:8:3": {
-      "tokenText": "RET",
-      "tokenType": "INSTRUCTION",
-      "scope": "NAV.PATROL"
-    },
-    "REFERENCE_ROOT/main.evo:41:15": {
-      "tokenText": "LIMIT",
-      "tokenType": "CONSTANT",
-      "scope": "",
-      "qualifiedName": "LIMIT"
-    },
-    "REFERENCE_ROOT/main.evo:66:8": {
+    "REFERENCE_ROOT/main.evo:68:7": {
       "tokenText": "%TMP",
       "tokenType": "ALIAS",
       "scope": "LOCAL_STEP",
       "qualifiedName": "LOCAL_STEP.%TMP"
     },
-    "REFERENCE_ROOT/main.evo:90:16": {
-      "tokenText": "NOP",
-      "tokenType": "INSTRUCTION",
-      "scope": "COUNTDOWN"
+    "REFERENCE_ROOT/main.evo:70:10": {
+      "tokenText": "%TMP",
+      "tokenType": "ALIAS",
+      "scope": "LOCAL_STEP",
+      "qualifiedName": "LOCAL_STEP.%TMP"
+    },
+    "NAV@REFERENCE_ROOT/lib/nav.evo:9:25": {
+      "tokenText": "X",
+      "tokenType": "PARAMETER",
+      "scope": "NAV.PATROL",
+      "qualifiedName": "NAV.PATROL.X"
     },
     "UTIL@REFERENCE_ROOT/lib/util.evo:8:13": {
       "tokenText": "MIN",
@@ -4651,24 +4649,30 @@
       "scope": "UTIL.CLAMP",
       "qualifiedName": "UTIL.CLAMP.MIN"
     },
-    "REFERENCE_ROOT/main.evo:90:3": {
-      "tokenText": "DECR",
-      "tokenType": "INSTRUCTION",
-      "scope": "COUNTDOWN"
-    },
     "REFERENCE_ROOT/main.evo:50:8": {
-      "tokenText": "NAV.STEP.FORWARD",
+      "tokenText": "NAV.PATROL",
       "tokenType": "PROCEDURE",
       "scope": "",
-      "qualifiedName": "NAV.STEP.FORWARD"
+      "qualifiedName": "NAV.PATROL"
     },
-    "REFERENCE_ROOT/main.evo:49:35": {
-      "tokenText": "%POS",
+    "NAV@REFERENCE_ROOT/lib/nav.evo:19:8": {
+      "tokenText": "%DR0",
+      "tokenType": "REGISTER",
+      "scope": "NAV.SCOUT"
+    },
+    "REFERENCE_ROOT/main.evo:52:7": {
+      "tokenText": "%COUNT",
       "tokenType": "ALIAS",
       "scope": "",
-      "qualifiedName": "%POS"
+      "qualifiedName": "%COUNT"
     },
-    "REFERENCE_ROOT/main.evo:88:8": {
+    "NAV.STEP@REFERENCE_ROOT/lib/step.evo:9:23": {
+      "tokenText": "X",
+      "tokenType": "PARAMETER",
+      "scope": "NAV.STEP.FORWARD",
+      "qualifiedName": "NAV.STEP.FORWARD.X"
+    },
+    "REFERENCE_ROOT/main.evo:89:26": {
       "tokenText": "BODY",
       "tokenType": "LABEL",
       "scope": "COUNTDOWN",
@@ -4684,82 +4688,112 @@
       "tokenType": "INSTRUCTION",
       "scope": "UTIL.CLAMP"
     },
-    "REFERENCE_ROOT/main.evo:79:3": {
+    "REFERENCE_ROOT/main.evo:27:3": {
       "tokenText": "NOP",
       "tokenType": "INSTRUCTION",
       "scope": ""
     },
-    "REFERENCE_ROOT/main.evo:95:31": {
+    "REFERENCE_ROOT/main.evo:96:8": {
       "tokenText": "COUNTDOWN",
       "tokenType": "LABEL",
       "scope": "",
       "qualifiedName": "COUNTDOWN"
     },
-    "REFERENCE_ROOT/main.evo:97:26": {
+    "REFERENCE_ROOT/main.evo:98:3": {
       "tokenText": "JMPI",
       "tokenType": "INSTRUCTION",
       "scope": ""
     },
-    "NAV.STEP@REFERENCE_ROOT/lib/step.evo:7:36": {
-      "tokenText": "MAX_VALUE",
+    "REFERENCE_ROOT/main.evo:42:8": {
+      "tokenText": "%COUNT",
+      "tokenType": "ALIAS",
+      "scope": "",
+      "qualifiedName": "%COUNT"
+    },
+    "NAV@REFERENCE_ROOT/lib/nav.evo:20:22": {
+      "tokenText": "JMPI",
+      "tokenType": "INSTRUCTION",
+      "scope": "NAV.SCOUT"
+    },
+    "REFERENCE_ROOT/main.evo:55:3": {
+      "tokenText": "JMPI",
+      "tokenType": "INSTRUCTION",
+      "scope": ""
+    },
+    "NAV@REFERENCE_ROOT/lib/nav.evo:8:32": {
+      "tokenText": "L",
+      "tokenType": "PARAMETER",
+      "scope": "NAV.PATROL"
+    },
+    "REFERENCE_ROOT/main.evo:67:13": {
+      "tokenText": "DELTA",
+      "tokenType": "PARAMETER",
+      "scope": "LOCAL_STEP",
+      "qualifiedName": "LOCAL_STEP.DELTA"
+    },
+    "REFERENCE_ROOT/main.evo:93:16": {
+      "tokenText": "LIMIT",
       "tokenType": "CONSTANT",
       "scope": "",
-      "qualifiedName": "NAV.STEP.MAX_VALUE"
+      "qualifiedName": "LIMIT"
     },
-    "NAV@REFERENCE_ROOT/lib/nav.evo:18:27": {
-      "tokenText": "SCOUT",
-      "tokenType": "LABEL",
-      "scope": "",
-      "qualifiedName": "NAV.SCOUT"
+    "REFERENCE_ROOT/main.evo:71:3": {
+      "tokenText": "RET",
+      "tokenType": "INSTRUCTION",
+      "scope": "LOCAL_STEP"
     },
-    "REFERENCE_ROOT/main.evo:95:19": {
+    "REFERENCE_ROOT/main.evo:89:14": {
       "tokenText": "NOP",
       "tokenType": "INSTRUCTION",
       "scope": "COUNTDOWN"
     },
-    "REFERENCE_ROOT/main.evo:69:8": {
-      "tokenText": "X",
-      "tokenType": "PARAMETER",
-      "scope": "LOCAL_STEP",
-      "qualifiedName": "LOCAL_STEP.X"
-    },
-    "NAV@REFERENCE_ROOT/lib/nav.evo:6:25": {
-      "tokenText": "X",
-      "tokenType": "PARAMETER",
-      "scope": "NAV.PATROL"
+    "REFERENCE_ROOT/main.evo:63:3": {
+      "tokenText": "JMPI",
+      "tokenType": "INSTRUCTION",
+      "scope": ""
     },
     "REFERENCE_ROOT/main.evo:49:8": {
-      "tokenText": "NAV.PATROL",
+      "tokenText": "UTIL.CLAMP",
       "tokenType": "PROCEDURE",
       "scope": "",
-      "qualifiedName": "NAV.PATROL"
+      "qualifiedName": "UTIL.CLAMP"
     },
     "UTIL@REFERENCE_ROOT/lib/util.evo:9:3": {
       "tokenText": "JMPI",
       "tokenType": "INSTRUCTION",
       "scope": "UTIL.CLAMP"
     },
+    "REFERENCE_ROOT/main.evo:89:3": {
+      "tokenText": "JMPI",
+      "tokenType": "INSTRUCTION",
+      "scope": "COUNTDOWN"
+    },
+    "REFERENCE_ROOT/main.evo:93:9": {
+      "tokenText": "%VALUE",
+      "tokenType": "ALIAS",
+      "scope": "",
+      "qualifiedName": "%VALUE"
+    },
+    "NAV@REFERENCE_ROOT/lib/nav.evo:18:5": {
+      "tokenText": "JMPI",
+      "tokenType": "INSTRUCTION",
+      "scope": "NAV.SCOUT"
+    },
     "REFERENCE_ROOT/main.evo:70:3": {
-      "tokenText": "RET",
+      "tokenText": "ADDR",
       "tokenType": "INSTRUCTION",
       "scope": "LOCAL_STEP"
     },
-    "REFERENCE_ROOT/main.evo:95:8": {
-      "tokenText": "COUNTDOWN",
-      "tokenType": "LABEL",
-      "scope": "",
-      "qualifiedName": "COUNTDOWN"
-    },
-    "REFERENCE_ROOT/main.evo:51:7": {
-      "tokenText": "%COUNT",
-      "tokenType": "ALIAS",
-      "scope": "",
-      "qualifiedName": "%COUNT"
+    "REFERENCE_ROOT/main.evo:43:3": {
+      "tokenText": "NOP",
+      "tokenType": "INSTRUCTION",
+      "scope": ""
     },
     "NAV@REFERENCE_ROOT/lib/nav.evo:20:8": {
-      "tokenText": "%DR0",
-      "tokenType": "REGISTER",
-      "scope": "NAV.SCOUT"
+      "tokenText": "SCOUT",
+      "tokenType": "LABEL",
+      "scope": "",
+      "qualifiedName": "NAV.SCOUT"
     },
     "UTIL@REFERENCE_ROOT/lib/util.evo:15:8": {
       "tokenText": "VALUE",
@@ -4767,17 +4801,16 @@
       "scope": "UTIL.CLAMP",
       "qualifiedName": "UTIL.CLAMP.VALUE"
     },
-    "REFERENCE_ROOT/main.evo:88:26": {
-      "tokenText": "BODY",
-      "tokenType": "LABEL",
-      "scope": "COUNTDOWN",
-      "qualifiedName": "COUNTDOWN.BODY"
+    "REFERENCE_ROOT/main.evo:65:28": {
+      "tokenText": "DELTA",
+      "tokenType": "PARAMETER",
+      "scope": "LOCAL_STEP"
     },
-    "NAV@REFERENCE_ROOT/lib/nav.evo:16:10": {
-      "tokenText": "BLOCKED",
-      "tokenType": "LABEL",
-      "scope": "NAV.SCOUT",
-      "qualifiedName": "NAV.SCOUT.BLOCKED"
+    "REFERENCE_ROOT/main.evo:45:10": {
+      "tokenText": "%VALUE",
+      "tokenType": "ALIAS",
+      "scope": "",
+      "qualifiedName": "%VALUE"
     },
     "REFERENCE_ROOT/main.evo:41:8": {
       "tokenText": "%COUNT",
@@ -4785,60 +4818,63 @@
       "scope": "",
       "qualifiedName": "%COUNT"
     },
+    "REFERENCE_ROOT/main.evo:53:10": {
+      "tokenText": "LOCAL_STEP",
+      "tokenType": "PROCEDURE",
+      "scope": "",
+      "qualifiedName": "LOCAL_STEP"
+    },
     "UTIL@REFERENCE_ROOT/lib/util.evo:17:3": {
       "tokenText": "RET",
       "tokenType": "INSTRUCTION",
       "scope": "UTIL.CLAMP"
     },
-    "REFERENCE_ROOT/main.evo:97:3": {
+    "REFERENCE_ROOT/main.evo:93:5": {
+      "tokenText": "IFI",
+      "tokenType": "INSTRUCTION",
+      "scope": "COUNTDOWN.CHECK"
+    },
+    "NAV.STEP@REFERENCE_ROOT/lib/step.evo:9:8": {
+      "tokenText": "CALC.CLAMP",
+      "tokenType": "PROCEDURE",
+      "scope": "",
+      "qualifiedName": "UTIL.CLAMP"
+    },
+    "REFERENCE_ROOT/main.evo:96:26": {
       "tokenText": "JMPI",
       "tokenType": "INSTRUCTION",
-      "scope": ""
+      "scope": "COUNTDOWN"
     },
     "REFERENCE_ROOT/main.evo:54:3": {
       "tokenText": "JMPI",
       "tokenType": "INSTRUCTION",
       "scope": ""
     },
-    "REFERENCE_ROOT/main.evo:66:13": {
-      "tokenText": "DELTA",
-      "tokenType": "PARAMETER",
-      "scope": "LOCAL_STEP",
-      "qualifiedName": "LOCAL_STEP.DELTA"
-    },
-    "REFERENCE_ROOT/main.evo:86:7": {
-      "tokenText": "%COUNT",
-      "tokenType": "ALIAS",
-      "scope": "",
-      "qualifiedName": "%COUNT"
-    },
-    "REFERENCE_ROOT/main.evo:62:3": {
-      "tokenText": "JMPI",
+    "REFERENCE_ROOT/main.evo:78:3": {
+      "tokenText": "NOP",
       "tokenType": "INSTRUCTION",
       "scope": ""
     },
-    "REFERENCE_ROOT/main.evo:92:16": {
-      "tokenText": "LIMIT",
-      "tokenType": "CONSTANT",
-      "scope": "",
-      "qualifiedName": "LIMIT"
-    },
-    "NAV.STEP@REFERENCE_ROOT/lib/step.evo:5:14": {
-      "tokenText": "FORWARD",
-      "tokenType": "PROCEDURE",
-      "scope": "",
-      "qualifiedName": "NAV.STEP.FORWARD"
-    },
-    "REFERENCE_ROOT/main.evo:88:14": {
+    "REFERENCE_ROOT/main.evo:62:3": {
       "tokenText": "NOP",
       "tokenType": "INSTRUCTION",
-      "scope": "COUNTDOWN"
+      "scope": ""
     },
-    "NAV@REFERENCE_ROOT/lib/nav.evo:7:25": {
-      "tokenText": "X",
-      "tokenType": "PARAMETER",
-      "scope": "NAV.PATROL",
-      "qualifiedName": "NAV.PATROL.X"
+    "REFERENCE_ROOT/main.evo:88:10": {
+      "tokenText": "END",
+      "tokenType": "LABEL",
+      "scope": "COUNTDOWN",
+      "qualifiedName": "COUNTDOWN.END"
+    },
+    "NAV@REFERENCE_ROOT/lib/nav.evo:22:3": {
+      "tokenText": "SETI",
+      "tokenType": "INSTRUCTION",
+      "scope": "NAV.SCOUT"
+    },
+    "REFERENCE_ROOT/main.evo:69:5": {
+      "tokenText": "RET",
+      "tokenType": "INSTRUCTION",
+      "scope": "LOCAL_STEP"
     },
     "UTIL@REFERENCE_ROOT/lib/util.evo:12:8": {
       "tokenText": "VALUE",
@@ -4846,74 +4882,62 @@
       "scope": "UTIL.CLAMP",
       "qualifiedName": "UTIL.CLAMP.VALUE"
     },
-    "REFERENCE_ROOT/main.evo:25:3": {
-      "tokenText": "ADDI",
-      "tokenType": "INSTRUCTION",
-      "scope": ""
-    },
-    "REFERENCE_ROOT/main.evo:90:8": {
-      "tokenText": "%COUNT",
-      "tokenType": "ALIAS",
-      "scope": "",
-      "qualifiedName": "%COUNT"
-    },
-    "NAV@REFERENCE_ROOT/lib/nav.evo:17:8": {
-      "tokenText": "%DR0",
-      "tokenType": "REGISTER",
-      "scope": "NAV.SCOUT"
-    },
-    "REFERENCE_ROOT/main.evo:64:22": {
-      "tokenText": "X",
-      "tokenType": "PARAMETER",
-      "scope": "LOCAL_STEP"
-    },
-    "NAV.STEP@REFERENCE_ROOT/lib/step.evo:5:26": {
-      "tokenText": "X",
-      "tokenType": "PARAMETER",
-      "scope": "NAV.STEP.FORWARD"
-    },
-    "NAV.STEP@REFERENCE_ROOT/lib/step.evo:6:3": {
-      "tokenText": "ADDI",
-      "tokenType": "INSTRUCTION",
-      "scope": "NAV.STEP.FORWARD"
-    },
-    "REFERENCE_ROOT/main.evo:97:31": {
-      "tokenText": "NAV.SCOUT.BLOCKED",
-      "tokenType": "LABEL",
-      "scope": "NAV.SCOUT",
-      "qualifiedName": "NAV.SCOUT.BLOCKED"
-    },
-    "NAV@REFERENCE_ROOT/lib/nav.evo:20:21": {
-      "tokenText": "NOP",
+    "NAV@REFERENCE_ROOT/lib/nav.evo:19:3": {
+      "tokenText": "INCR",
       "tokenType": "INSTRUCTION",
       "scope": "NAV.SCOUT"
     },
-    "NAV@REFERENCE_ROOT/lib/nav.evo:18:22": {
+    "REFERENCE_ROOT/main.evo:88:5": {
       "tokenText": "JMPI",
       "tokenType": "INSTRUCTION",
-      "scope": "NAV.SCOUT"
+      "scope": "COUNTDOWN"
     },
-    "NAV@REFERENCE_ROOT/lib/nav.evo:6:32": {
-      "tokenText": "L",
+    "REFERENCE_ROOT/main.evo:98:8": {
+      "tokenText": "NAV.SCOUT",
+      "tokenType": "LABEL",
+      "scope": "",
+      "qualifiedName": "NAV.SCOUT"
+    },
+    "NAV@REFERENCE_ROOT/lib/nav.evo:8:39": {
+      "tokenText": "M",
       "tokenType": "PARAMETER",
       "scope": "NAV.PATROL"
     },
-    "REFERENCE_ROOT/main.evo:50:29": {
-      "tokenText": "%COUNT",
-      "tokenType": "ALIAS",
+    "NAV@REFERENCE_ROOT/lib/nav.evo:9:8": {
+      "tokenText": "STEP.FORWARD",
+      "tokenType": "PROCEDURE",
       "scope": "",
-      "qualifiedName": "%COUNT"
+      "qualifiedName": "NAV.STEP.FORWARD"
     },
-    "REFERENCE_ROOT/main.evo:97:19": {
-      "tokenText": "NOP",
-      "tokenType": "INSTRUCTION",
-      "scope": ""
+    "NAV.STEP@REFERENCE_ROOT/lib/step.evo:8:10": {
+      "tokenText": "STRIDE",
+      "tokenType": "CONSTANT",
+      "scope": "",
+      "qualifiedName": "NAV.STEP.STRIDE"
+    },
+    "REFERENCE_ROOT/main.evo:63:8": {
+      "tokenText": "START",
+      "tokenType": "LABEL",
+      "scope": "",
+      "qualifiedName": "START"
+    },
+    "NAV.STEP@REFERENCE_ROOT/lib/step.evo:9:36": {
+      "tokenText": "CEILING",
+      "tokenType": "CONSTANT",
+      "scope": "",
+      "qualifiedName": "NAV.STEP.CEILING"
+    },
+    "REFERENCE_ROOT/main.evo:65:7": {
+      "tokenText": "LOCAL_STEP",
+      "tokenType": "PROCEDURE",
+      "scope": "",
+      "qualifiedName": "LOCAL_STEP"
     }
   },
   "tokenLookup": {
     "": {
       "REFERENCE_ROOT/main.evo": {
-        "64": {
+        "65": {
           "22": [
             {
               "tokenText": "X",
@@ -4937,7 +4961,7 @@
             }
           ]
         },
-        "66": {
+        "67": {
           "3": [
             {
               "tokenText": "SETR",
@@ -4962,7 +4986,7 @@
             }
           ]
         },
-        "67": {
+        "68": {
           "3": [
             {
               "tokenText": "IFI",
@@ -4979,7 +5003,7 @@
             }
           ]
         },
-        "68": {
+        "69": {
           "5": [
             {
               "tokenText": "RET",
@@ -4988,7 +5012,7 @@
             }
           ]
         },
-        "69": {
+        "70": {
           "3": [
             {
               "tokenText": "ADDR",
@@ -5013,7 +5037,7 @@
             }
           ]
         },
-        "70": {
+        "71": {
           "3": [
             {
               "tokenText": "RET",
@@ -5022,7 +5046,7 @@
             }
           ]
         },
-        "77": {
+        "78": {
           "3": [
             {
               "tokenText": "NOP",
@@ -5031,7 +5055,7 @@
             }
           ]
         },
-        "79": {
+        "80": {
           "3": [
             {
               "tokenText": "NOP",
@@ -5040,7 +5064,17 @@
             }
           ]
         },
-        "86": {
+        "17": {
+          "71": [
+            {
+              "tokenText": "MAX_VALUE",
+              "tokenType": "CONSTANT",
+              "scope": "",
+              "qualifiedName": "MAX_VALUE"
+            }
+          ]
+        },
+        "87": {
           "3": [
             {
               "tokenText": "IFI",
@@ -5057,7 +5091,7 @@
             }
           ]
         },
-        "87": {
+        "88": {
           "5": [
             {
               "tokenText": "JMPI",
@@ -5074,7 +5108,7 @@
             }
           ]
         },
-        "88": {
+        "89": {
           "3": [
             {
               "tokenText": "JMPI",
@@ -5113,7 +5147,7 @@
             }
           ]
         },
-        "25": {
+        "26": {
           "3": [
             {
               "tokenText": "ADDI",
@@ -5122,7 +5156,16 @@
             }
           ]
         },
-        "90": {
+        "27": {
+          "3": [
+            {
+              "tokenText": "NOP",
+              "tokenType": "INSTRUCTION",
+              "scope": ""
+            }
+          ]
+        },
+        "91": {
           "16": [
             {
               "tokenText": "NOP",
@@ -5146,16 +5189,7 @@
             }
           ]
         },
-        "26": {
-          "3": [
-            {
-              "tokenText": "NOP",
-              "tokenType": "INSTRUCTION",
-              "scope": ""
-            }
-          ]
-        },
-        "92": {
+        "93": {
           "16": [
             {
               "tokenText": "LIMIT",
@@ -5180,7 +5214,7 @@
             }
           ]
         },
-        "93": {
+        "94": {
           "7": [
             {
               "tokenText": "JMPI",
@@ -5197,17 +5231,17 @@
             }
           ]
         },
-        "95": {
-          "19": [
+        "96": {
+          "3": [
             {
-              "tokenText": "NOP",
+              "tokenText": "JMPI",
               "tokenType": "INSTRUCTION",
               "scope": "COUNTDOWN"
             }
           ],
-          "3": [
+          "19": [
             {
-              "tokenText": "JMPI",
+              "tokenText": "NOP",
               "tokenType": "INSTRUCTION",
               "scope": "COUNTDOWN"
             }
@@ -5236,17 +5270,17 @@
             }
           ]
         },
-        "97": {
-          "19": [
+        "98": {
+          "3": [
             {
-              "tokenText": "NOP",
+              "tokenText": "JMPI",
               "tokenType": "INSTRUCTION",
               "scope": ""
             }
           ],
-          "3": [
+          "19": [
             {
-              "tokenText": "JMPI",
+              "tokenText": "NOP",
               "tokenType": "INSTRUCTION",
               "scope": ""
             }
@@ -5275,7 +5309,7 @@
             }
           ]
         },
-        "40": {
+        "41": {
           "3": [
             {
               "tokenText": "SETI",
@@ -5292,7 +5326,7 @@
             }
           ]
         },
-        "41": {
+        "42": {
           "8": [
             {
               "tokenText": "%COUNT",
@@ -5310,7 +5344,7 @@
             }
           ]
         },
-        "42": {
+        "43": {
           "3": [
             {
               "tokenText": "NOP",
@@ -5319,7 +5353,7 @@
             }
           ]
         },
-        "44": {
+        "45": {
           "5": [
             {
               "tokenText": "ADDI",
@@ -5336,7 +5370,7 @@
             }
           ]
         },
-        "45": {
+        "46": {
           "5": [
             {
               "tokenText": "NOP",
@@ -5345,7 +5379,7 @@
             }
           ]
         },
-        "47": {
+        "48": {
           "3": [
             {
               "tokenText": "NOP",
@@ -5354,7 +5388,7 @@
             }
           ]
         },
-        "48": {
+        "49": {
           "23": [
             {
               "tokenText": "%VALUE",
@@ -5380,7 +5414,7 @@
             }
           ]
         },
-        "49": {
+        "50": {
           "35": [
             {
               "tokenText": "%POS",
@@ -5414,7 +5448,7 @@
             }
           ]
         },
-        "50": {
+        "51": {
           "8": [
             {
               "tokenText": "NAV.STEP.FORWARD",
@@ -5432,7 +5466,7 @@
             }
           ]
         },
-        "51": {
+        "52": {
           "3": [
             {
               "tokenText": "LTI",
@@ -5457,7 +5491,7 @@
             }
           ]
         },
-        "52": {
+        "53": {
           "25": [
             {
               "tokenText": "%COUNT",
@@ -5475,7 +5509,7 @@
             }
           ]
         },
-        "53": {
+        "54": {
           "3": [
             {
               "tokenText": "JMPI",
@@ -5492,7 +5526,7 @@
             }
           ]
         },
-        "54": {
+        "55": {
           "3": [
             {
               "tokenText": "JMPI",
@@ -5509,7 +5543,7 @@
             }
           ]
         },
-        "61": {
+        "62": {
           "3": [
             {
               "tokenText": "NOP",
@@ -5518,7 +5552,7 @@
             }
           ]
         },
-        "62": {
+        "63": {
           "3": [
             {
               "tokenText": "JMPI",
@@ -5539,7 +5573,16 @@
     },
     "NAV": {
       "REFERENCE_ROOT/lib/nav.evo": {
-        "16": {
+        "17": {
+          "3": [
+            {
+              "tokenText": "INPI",
+              "tokenType": "INSTRUCTION",
+              "scope": "NAV.SCOUT"
+            }
+          ]
+        },
+        "18": {
           "5": [
             {
               "tokenText": "JMPI",
@@ -5556,7 +5599,7 @@
             }
           ]
         },
-        "17": {
+        "19": {
           "3": [
             {
               "tokenText": "INCR",
@@ -5579,7 +5622,7 @@
             }
           ]
         },
-        "18": {
+        "20": {
           "3": [
             {
               "tokenText": "JMPI",
@@ -5618,7 +5661,17 @@
             }
           ]
         },
-        "20": {
+        "5": {
+          "16": [
+            {
+              "tokenText": "CEILING",
+              "tokenType": "CONSTANT",
+              "scope": "",
+              "qualifiedName": "NAV.CEILING"
+            }
+          ]
+        },
+        "22": {
           "3": [
             {
               "tokenText": "SETI",
@@ -5642,6 +5695,16 @@
           ]
         },
         "6": {
+          "80": [
+            {
+              "tokenText": "CEILING",
+              "tokenType": "CONSTANT",
+              "scope": "",
+              "qualifiedName": "NAV.CEILING"
+            }
+          ]
+        },
+        "8": {
           "32": [
             {
               "tokenText": "L",
@@ -5672,7 +5735,7 @@
             }
           ]
         },
-        "7": {
+        "9": {
           "8": [
             {
               "tokenText": "STEP.FORWARD",
@@ -5690,21 +5753,12 @@
             }
           ]
         },
-        "8": {
+        "10": {
           "3": [
             {
               "tokenText": "RET",
               "tokenType": "INSTRUCTION",
               "scope": "NAV.PATROL"
-            }
-          ]
-        },
-        "15": {
-          "3": [
-            {
-              "tokenText": "INPI",
-              "tokenType": "INSTRUCTION",
-              "scope": "NAV.SCOUT"
             }
           ]
         }
@@ -5908,7 +5962,27 @@
     },
     "NAV.STEP": {
       "REFERENCE_ROOT/lib/step.evo": {
+        "4": {
+          "16": [
+            {
+              "tokenText": "STRIDE",
+              "tokenType": "CONSTANT",
+              "scope": "",
+              "qualifiedName": "NAV.STEP.STRIDE"
+            }
+          ]
+        },
         "5": {
+          "16": [
+            {
+              "tokenText": "CEILING",
+              "tokenType": "CONSTANT",
+              "scope": "",
+              "qualifiedName": "NAV.STEP.CEILING"
+            }
+          ]
+        },
+        "7": {
           "26": [
             {
               "tokenText": "X",
@@ -5925,7 +5999,7 @@
             }
           ]
         },
-        "6": {
+        "8": {
           "3": [
             {
               "tokenText": "ADDI",
@@ -5940,15 +6014,23 @@
               "scope": "NAV.STEP.FORWARD",
               "qualifiedName": "NAV.STEP.FORWARD.X"
             }
-          ]
-        },
-        "7": {
-          "36": [
+          ],
+          "10": [
             {
-              "tokenText": "MAX_VALUE",
+              "tokenText": "STRIDE",
               "tokenType": "CONSTANT",
               "scope": "",
-              "qualifiedName": "NAV.STEP.MAX_VALUE"
+              "qualifiedName": "NAV.STEP.STRIDE"
+            }
+          ]
+        },
+        "9": {
+          "36": [
+            {
+              "tokenText": "CEILING",
+              "tokenType": "CONSTANT",
+              "scope": "",
+              "qualifiedName": "NAV.STEP.CEILING"
             }
           ],
           "23": [
@@ -5968,7 +6050,7 @@
             }
           ]
         },
-        "8": {
+        "10": {
           "3": [
             {
               "tokenText": "RET",
@@ -5984,7 +6066,7 @@
     "": {
       "REFERENCE_ROOT/main.evo": {
         "0": {
-          "64": [
+          "65": [
             {
               "linearAddress": 174,
               "opcode": "POP",
@@ -5998,7 +6080,7 @@
               "synthetic": true
             }
           ],
-          "66": [
+          "67": [
             {
               "linearAddress": 178,
               "opcode": "SETR",
@@ -6006,7 +6088,7 @@
               "synthetic": false
             }
           ],
-          "67": [
+          "68": [
             {
               "linearAddress": 181,
               "opcode": "INI",
@@ -6020,7 +6102,7 @@
               "synthetic": true
             }
           ],
-          "68": [
+          "69": [
             {
               "linearAddress": 186,
               "opcode": "PUSH",
@@ -6034,7 +6116,7 @@
               "synthetic": false
             }
           ],
-          "69": [
+          "70": [
             {
               "linearAddress": 190,
               "opcode": "ADDR",
@@ -6042,7 +6124,7 @@
               "synthetic": false
             }
           ],
-          "70": [
+          "71": [
             {
               "linearAddress": 193,
               "opcode": "PUSH",
@@ -6056,7 +6138,7 @@
               "synthetic": false
             }
           ],
-          "77": [
+          "78": [
             {
               "linearAddress": 197,
               "opcode": "NOP",
@@ -6070,7 +6152,7 @@
               "synthetic": false
             }
           ],
-          "79": [
+          "80": [
             {
               "linearAddress": 199,
               "opcode": "NOP",
@@ -6084,7 +6166,7 @@
               "synthetic": false
             }
           ],
-          "86": [
+          "87": [
             {
               "linearAddress": 202,
               "opcode": "IFI",
@@ -6092,7 +6174,7 @@
               "synthetic": false
             }
           ],
-          "87": [
+          "88": [
             {
               "linearAddress": 205,
               "opcode": "JMPI",
@@ -6100,7 +6182,7 @@
               "synthetic": false
             }
           ],
-          "88": [
+          "89": [
             {
               "linearAddress": 207,
               "opcode": "JMPI",
@@ -6138,7 +6220,7 @@
               "synthetic": false
             }
           ],
-          "90": [
+          "91": [
             {
               "linearAddress": 216,
               "opcode": "DECR",
@@ -6170,7 +6252,7 @@
               "synthetic": false
             }
           ],
-          "92": [
+          "93": [
             {
               "linearAddress": 223,
               "opcode": "IFI",
@@ -6178,7 +6260,7 @@
               "synthetic": false
             }
           ],
-          "93": [
+          "94": [
             {
               "linearAddress": 226,
               "opcode": "JMPI",
@@ -6186,7 +6268,7 @@
               "synthetic": false
             }
           ],
-          "95": [
+          "96": [
             {
               "linearAddress": 229,
               "opcode": "JMPI",
@@ -6224,7 +6306,7 @@
               "synthetic": false
             }
           ],
-          "97": [
+          "98": [
             {
               "linearAddress": 238,
               "opcode": "JMPI",
@@ -6262,7 +6344,7 @@
               "synthetic": false
             }
           ],
-          "40": [
+          "41": [
             {
               "linearAddress": 100,
               "opcode": "SETI",
@@ -6270,7 +6352,7 @@
               "synthetic": false
             }
           ],
-          "42": [
+          "43": [
             {
               "linearAddress": 107,
               "opcode": "NOP",
@@ -6290,7 +6372,7 @@
               "synthetic": false
             }
           ],
-          "44": [
+          "45": [
             {
               "linearAddress": 110,
               "opcode": "ADDI",
@@ -6304,7 +6386,7 @@
               "synthetic": false
             }
           ],
-          "45": [
+          "46": [
             {
               "linearAddress": 113,
               "opcode": "NOP",
@@ -6318,7 +6400,7 @@
               "synthetic": false
             }
           ],
-          "47": [
+          "48": [
             {
               "linearAddress": 118,
               "opcode": "NOP",
@@ -6344,7 +6426,7 @@
               "synthetic": false
             }
           ],
-          "48": [
+          "49": [
             {
               "linearAddress": 122,
               "opcode": "PUSI",
@@ -6376,7 +6458,7 @@
               "synthetic": true
             }
           ],
-          "49": [
+          "50": [
             {
               "linearAddress": 132,
               "opcode": "PUSH",
@@ -6414,7 +6496,7 @@
               "synthetic": true
             }
           ],
-          "50": [
+          "51": [
             {
               "linearAddress": 144,
               "opcode": "PUSH",
@@ -6434,7 +6516,7 @@
               "synthetic": true
             }
           ],
-          "51": [
+          "52": [
             {
               "linearAddress": 150,
               "opcode": "GETI",
@@ -6448,7 +6530,7 @@
               "synthetic": true
             }
           ],
-          "52": [
+          "53": [
             {
               "linearAddress": 155,
               "opcode": "PUSI",
@@ -6474,7 +6556,7 @@
               "synthetic": true
             }
           ],
-          "53": [
+          "54": [
             {
               "linearAddress": 164,
               "opcode": "JMPI",
@@ -6482,7 +6564,7 @@
               "synthetic": false
             }
           ],
-          "54": [
+          "55": [
             {
               "linearAddress": 166,
               "opcode": "JMPI",
@@ -6490,7 +6572,7 @@
               "synthetic": false
             }
           ],
-          "61": [
+          "62": [
             {
               "linearAddress": 169,
               "opcode": "NOP",
@@ -6504,7 +6586,7 @@
               "synthetic": false
             }
           ],
-          "62": [
+          "63": [
             {
               "linearAddress": 171,
               "opcode": "JMPI",
@@ -6513,8 +6595,8 @@
             }
           ]
         },
-        "4": {
-          "25": [
+        "3": {
+          "26": [
             {
               "linearAddress": 103,
               "opcode": "ADDI",
@@ -6522,7 +6604,7 @@
               "synthetic": false
             }
           ],
-          "26": [
+          "27": [
             {
               "linearAddress": 106,
               "opcode": "NOP",
@@ -6536,7 +6618,15 @@
     "NAV": {
       "REFERENCE_ROOT/lib/nav.evo": {
         "0": {
-          "16": [
+          "17": [
+            {
+              "linearAddress": 71,
+              "opcode": "INPI",
+              "operandsAsString": "1|0",
+              "synthetic": false
+            }
+          ],
+          "18": [
             {
               "linearAddress": 74,
               "opcode": "JMPI",
@@ -6544,7 +6634,7 @@
               "synthetic": false
             }
           ],
-          "17": [
+          "19": [
             {
               "linearAddress": 76,
               "opcode": "INCR",
@@ -6576,7 +6666,7 @@
               "synthetic": false
             }
           ],
-          "18": [
+          "20": [
             {
               "linearAddress": 82,
               "opcode": "JMPI",
@@ -6614,7 +6704,7 @@
               "synthetic": false
             }
           ],
-          "20": [
+          "22": [
             {
               "linearAddress": 91,
               "opcode": "SETI",
@@ -6646,7 +6736,7 @@
               "synthetic": false
             }
           ],
-          "6": [
+          "8": [
             {
               "linearAddress": 53,
               "opcode": "POP",
@@ -6666,7 +6756,7 @@
               "synthetic": true
             }
           ],
-          "7": [
+          "9": [
             {
               "linearAddress": 59,
               "opcode": "PUSH",
@@ -6686,7 +6776,7 @@
               "synthetic": true
             }
           ],
-          "8": [
+          "10": [
             {
               "linearAddress": 65,
               "opcode": "PUSL",
@@ -6703,14 +6793,6 @@
               "linearAddress": 69,
               "opcode": "RET",
               "operandsAsString": "",
-              "synthetic": false
-            }
-          ],
-          "15": [
-            {
-              "linearAddress": 71,
-              "opcode": "INPI",
-              "operandsAsString": "1|0",
               "synthetic": false
             }
           ]
@@ -6830,7 +6912,7 @@
     "NAV.STEP": {
       "REFERENCE_ROOT/lib/step.evo": {
         "0": {
-          "5": [
+          "7": [
             {
               "linearAddress": 34,
               "opcode": "POP",
@@ -6838,7 +6920,7 @@
               "synthetic": true
             }
           ],
-          "6": [
+          "8": [
             {
               "linearAddress": 36,
               "opcode": "ADDI",
@@ -6846,7 +6928,7 @@
               "synthetic": false
             }
           ],
-          "7": [
+          "9": [
             {
               "linearAddress": 39,
               "opcode": "PUSI",
@@ -6878,7 +6960,7 @@
               "synthetic": true
             }
           ],
-          "8": [
+          "10": [
             {
               "linearAddress": 49,
               "opcode": "PUSH",

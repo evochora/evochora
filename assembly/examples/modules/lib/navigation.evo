@@ -8,7 +8,9 @@
 #   importer's business: it requires a math module as ARITH rather than importing one,
 #   and hands that on to movement. Every level names the dependency as it likes; USING
 #   reads "the module I know as ARITH is the one you asked for as CALC". Only the
-#   outermost file decides which module finally arrives.
+#   outermost file decides which module finally arrives. A value travels the same way:
+#   movement asks for the world's upper bound, this module names it as WORLD_MAX in turn,
+#   and its importer binds it.
 #
 #   Upwards, with EXPORT — our import of movement carries the prefix, so whoever
 #   imports us reaches it as NAV.MOVE.NAME. Its code is placed here, once, and named
@@ -18,7 +20,8 @@
 # but not NAV.MOVE.NORTH.
 
 .REQUIRE MODULE "math.evo" AS ARITH
-EXPORT .IMPORT "lib/movement.evo" AS MOVE USING MODULE ARITH AS CALC
+.REQUIRE VALUE WORLD_MAX
+EXPORT .IMPORT "lib/movement.evo" AS MOVE USING MODULE ARITH AS CALC VALUE WORLD_MAX WORLD_MAX
 
 # Move one step north and one step east.
 EXPORT .PROC PATROL REF X REF Y

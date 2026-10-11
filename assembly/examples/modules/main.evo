@@ -1,18 +1,19 @@
 # Evochora Module System Example
-# Demonstrates .IMPORT, EXPORT .IMPORT, .REQUIRE, USING, .SOURCE, and EXPORT.
+# Demonstrates .IMPORT, EXPORT .IMPORT, .REQUIRE, USING, .REQUIRE VALUE, USING VALUE,
+# .SOURCE, and EXPORT.
 #
 # File structure:
 #   main.evo                 (this file — entry point)
-#   lib/constants.evo        (shared constants, loaded via .SOURCE)
+#   lib/constants.evo        (constants of this file, loaded via .SOURCE)
 #   lib/math.evo             (standalone math utilities)
 #   lib/movement.evo         (movement, depends on math via .REQUIRE)
 #   lib/navigation.evo       (imports movement and passes it on via EXPORT .IMPORT)
 #
 # A module is wired to another one in one of two directions:
 #
-#   Downwards — the importer decides. A module names what it needs with .REQUIRE and
-#   whoever imports it satisfies that with USING. Both movement and navigation leave
-#   the choice open that way, so the decision made here reaches all the way down. Each
+#   Downwards — the importer decides. A module names a module or a value it needs with
+#   .REQUIRE and whoever imports it supplies that with USING. Both movement and navigation
+#   leave the choice open that way, so the decision made here reaches all the way down. Each
 #   level uses its own name for the same module: MATHLIB here, ARITH inside navigation,
 #   CALC inside movement — and each USING clause says which name means which.
 #
@@ -20,17 +21,17 @@
 #   importer may then use it without placing that code a second time. That is how
 #   movement reaches this file, as NAV.MOVE.
 
+# Load the constants of this file
+.SOURCE "lib/constants.evo"
+
 # Import the standalone math module — its code is placed here
 .IMPORT "lib/math.evo" AS MATHLIB
 
 # Import navigation and give it our math module: what we call MATHLIB is what navigation
 # asked for as ARITH. Navigation hands it on to movement under yet another name, and
 # passes its own import of movement back up, so we reach it as NAV.MOVE without placing
-# that code again.
-.IMPORT "lib/navigation.evo" AS NAV USING MODULE MATHLIB AS ARITH
-
-# Load shared constants for direct use in this file
-.SOURCE "lib/constants.evo"
+# that code again. The world's upper bound travels down to movement the same way.
+.IMPORT "lib/navigation.evo" AS NAV USING MODULE MATHLIB AS ARITH VALUE WORLD_MAX WORLD_MAX
 
 # Register aliases
 .REG %POS_X %DR0

@@ -1,7 +1,9 @@
-# Module that hands a required dependency down to its own import and passes that import
-# back up with EXPORT, so the root reaches it as NAV.STEP, and that exports a control block.
+# Module that hands a required module and a required value down to its own import and passes
+# that import back up with EXPORT, so the root reaches it as NAV.STEP, and that exports a
+# control block.
 .REQUIRE MODULE "util.evo" AS ARITH
-EXPORT .IMPORT "lib/step.evo" AS STEP USING MODULE ARITH AS CALC
+.REQUIRE VALUE CEILING                # handed on to step
+EXPORT .IMPORT "lib/step.evo" AS STEP USING MODULE ARITH AS CALC VALUE CEILING CEILING
 
 EXPORT .PROC PATROL REF X LREF L LVAL M
   CALL STEP.FORWARD REF X
