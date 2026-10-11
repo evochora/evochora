@@ -18,7 +18,9 @@ public interface IIdentifierBinding {
      * constant; the caller resolves it again.
      *
      * @param reference the identifier to replace, with the text and source location as written
-     * @return the node to put in the identifier's place; never null
+     * @return the node to put in the identifier's place; null when the definition has no value,
+     *         which the phase that defined it has reported: the symbol table then finds nothing
+     *         for the identifier, and its use adds no report of its own
      */
     AstNode bind(IdentifierNode reference);
 }

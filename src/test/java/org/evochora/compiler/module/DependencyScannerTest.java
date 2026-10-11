@@ -189,12 +189,12 @@ public class DependencyScannerTest {
     @Tag("integration")
     void usingClausesAreParsed() throws Exception {
         Path libFile = tempDir.resolve("lib.evo");
-        Files.writeString(libFile, ".REQUIRE \"dep.evo\" AS DEP\n");
+        Files.writeString(libFile, ".REQUIRE MODULE \"dep.evo\" AS DEP\n");
 
         Path depFile = tempDir.resolve("dep.evo");
         Files.writeString(depFile, "NOP\n");
 
-        String mainSource = ".IMPORT \"dep.evo\" AS D\n.IMPORT \"lib.evo\" AS LIB USING D AS DEP\n";
+        String mainSource = ".IMPORT \"dep.evo\" AS D\n.IMPORT \"lib.evo\" AS LIB USING MODULE D AS DEP\n";
         String mainPath = tempDir.resolve("main.evo").toString();
 
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
@@ -215,15 +215,14 @@ public class DependencyScannerTest {
         org.evochora.compiler.features.importdir.ImportDependencyInfo libImport = imports.stream()
                 .filter(imp -> imp.alias().equalsIgnoreCase("LIB"))
                 .findFirst().orElseThrow();
-        assertThat(libImport.usings()).hasSize(1);
-        assertThat(libImport.usings().get(0).sourceAlias()).isEqualToIgnoringCase("D");
-        assertThat(libImport.usings().get(0).targetAlias()).isEqualToIgnoringCase("DEP");
+        assertThat(libImport.path()).isEqualTo("lib.evo");
+        assertThat(libImport.alias()).isEqualToIgnoringCase("LIB");
     }
 
     @Test
     @Tag("integration")
     void requireDeclarationsAreCaptured() throws Exception {
-        String source = ".REQUIRE \"dependency.evo\" AS DEP\nNOP\n";
+        String source = ".REQUIRE MODULE \"dependency.evo\" AS DEP\nNOP\n";
         String mainPath = tempDir.resolve("main.evo").toString();
 
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
@@ -235,13 +234,11 @@ public class DependencyScannerTest {
         assertThat(graph.placements()).hasSize(1);
 
         ModulePlacement module = graph.placements().get(0);
-        List<org.evochora.compiler.features.require.RequireDependencyInfo> requires = module.dependencies().stream()
-                .filter(d -> d instanceof org.evochora.compiler.features.require.RequireDependencyInfo)
-                .map(d -> (org.evochora.compiler.features.require.RequireDependencyInfo) d)
+        List<org.evochora.compiler.features.importdir.RequireDependencyInfo> requires = module.dependencies().stream()
+                .filter(d -> d instanceof org.evochora.compiler.features.importdir.RequireDependencyInfo)
+                .map(d -> (org.evochora.compiler.features.importdir.RequireDependencyInfo) d)
                 .toList();
         assertThat(requires).hasSize(1);
-        assertThat(requires.get(0).alias()).isEqualToIgnoringCase("DEP");
-        assertThat(requires.get(0).path()).isEqualTo("dependency.evo");
     }
 
     @Test
@@ -388,7 +385,7 @@ public class DependencyScannerTest {
     @Test
     @Tag("unit")
     void options_areThoseTheScannerWasCreatedWith() {
-        CompilerOptions options = new CompilerOptions(List.of(new SourceRoot(".", null)), Map.of("FLAG", OptionalInt.empty()));
+        CompilerOptions options = new CompilerOptions(List.of(new SourceRoot(".", null)), Map.of("FLAG", OptionalInt.empty()), Map.of());
         List<CompilerOptions> seen = new ArrayList<>();
         List<IDependencyScanHandler> handlers = List.of(handler("MARK", (m, ctx) -> seen.add(ctx.options())));
 

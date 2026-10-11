@@ -284,7 +284,7 @@ class ConditionalDependencyScanTest {
         FeatureRegistry features = new FeatureRegistry(new RuntimeInstructionSetAdapter());
         StandardFeatures.all().forEach(f -> f.register(features));
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        CompilerOptions options = new CompilerOptions(List.of(new SourceRoot(".", null)), defines);
+        CompilerOptions options = new CompilerOptions(List.of(new SourceRoot(".", null)), defines, Map.of());
         DependencyScanner scanner = new DependencyScanner(diagnostics,
                 new SourceRootResolver(List.of(new SourceRoot(".", null)), root),
                 features.dependencyScanHandlers(), options);

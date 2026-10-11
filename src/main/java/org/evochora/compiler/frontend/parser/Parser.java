@@ -17,6 +17,7 @@ import org.evochora.compiler.model.ast.VectorLiteralNode;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.function.Predicate;
 
@@ -33,23 +34,42 @@ public class Parser implements IParsingContext {
     private final DiagnosticsEngine diagnostics;
     private final ParserStatementRegistry statementRegistry;
     private final BlockReader blockReader;
+    private final String rootAliasChain;
+    private final Map<String, List<Token>> values;
     private int current = 0;
 
     private final ParserState parserState = new ParserState();
     private boolean currentExported = false;
 
     /**
-     * Constructs a new Parser.
+     * Constructs a new Parser that knows no placement of the compilation root and no values.
      * @param tokens The list of tokens to parse.
      * @param diagnostics The engine for reporting errors and warnings.
      * @param statementRegistry The pre-built registry of statement handlers.
      */
     public Parser(List<Token> tokens, DiagnosticsEngine diagnostics,
                   ParserStatementRegistry statementRegistry) {
+        this(tokens, diagnostics, statementRegistry, null, Map.of());
+    }
+
+    /**
+     * Constructs a new Parser for a compilation.
+     * @param tokens The list of tokens to parse.
+     * @param diagnostics The engine for reporting errors and warnings.
+     * @param statementRegistry The pre-built registry of statement handlers.
+     * @param rootAliasChain The placement of the compilation root, or {@code null} for none.
+     * @param values The lexed text of every value of the compilation's options, by its name as
+     *               the options normalise it.
+     */
+    public Parser(List<Token> tokens, DiagnosticsEngine diagnostics,
+                  ParserStatementRegistry statementRegistry, String rootAliasChain,
+                  Map<String, List<Token>> values) {
         this.tokens = tokens;
         this.diagnostics = diagnostics;
         this.statementRegistry = statementRegistry;
         this.blockReader = new BlockReader(statementRegistry::blockKindOf, false, Parser::isExport, diagnostics);
+        this.rootAliasChain = rootAliasChain;
+        this.values = Map.copyOf(values);
     }
 
     /**
@@ -315,6 +335,29 @@ public class Parser implements IParsingContext {
         Token unexpected = peek();
         diagnostics.reportError(errorMessage, unexpected.source().fileName(), unexpected.source().lineNumber());
         throw new ErrorRecoveryException(errorMessage);
+    }
+
+    @Override public String rootAliasChain() { return rootAliasChain; }
+    @Override public Map<String, List<Token>> values() { return values; }
+
+    /**
+     * {@inheritDoc}
+     * <p>
+     * A parser of its own reads the tokens, with the same registry and a diagnostics engine of
+     * its own, so that nothing it finds reaches this parser's reports.
+     */
+    @Override
+    public Optional<OperandNode> operandOf(List<Token> operandTokens) {
+        if (operandTokens.isEmpty() || operandTokens.getFirst().type() == TokenType.END_OF_FILE) {
+            return Optional.empty();
+        }
+        Parser reader = new Parser(operandTokens, new DiagnosticsEngine(), statementRegistry);
+        try {
+            OperandNode operand = reader.expression();
+            return operand != null && reader.isAtEnd() ? Optional.of(operand) : Optional.empty();
+        } catch (ErrorRecoveryException incomplete) {
+            return Optional.empty();
+        }
     }
 
     @Override public DiagnosticsEngine getDiagnostics() { return diagnostics; }

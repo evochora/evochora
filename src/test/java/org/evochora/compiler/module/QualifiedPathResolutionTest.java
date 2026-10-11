@@ -86,7 +86,7 @@ class QualifiedPathResolutionTest {
 
         assertThatCode(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Cannot call 'NAV.STEP.FORWARD': import 'STEP' of NAV is not marked EXPORT.");
+                .hasMessageContaining("Cannot call 'NAV.STEP.FORWARD': alias 'STEP' of NAV is not marked EXPORT.");
     }
 
     /**

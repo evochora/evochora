@@ -54,7 +54,7 @@ class PassedOnRequirementTest {
                 ""));
 
         Files.writeString(tempDir.resolve("bottom.evo"), String.join("\n",
-                ".REQUIRE \"math.evo\" AS MATH",
+                ".REQUIRE MODULE \"math.evo\" AS MATH",
                 "EXPORT .PROC WORK REF X",
                 "  CALL MATH.DOUBLE REF X",
                 "  RET",
@@ -64,8 +64,8 @@ class PassedOnRequirementTest {
         // The middle module leaves the choice open as well: it requires math and hands on what it
         // was given, without importing a math module of its own.
         Files.writeString(tempDir.resolve("middle.evo"), String.join("\n",
-                ".REQUIRE \"math.evo\" AS MATH",
-                ".IMPORT \"bottom.evo\" AS BOTTOM USING MATH AS MATH",
+                ".REQUIRE MODULE \"math.evo\" AS MATH",
+                ".IMPORT \"bottom.evo\" AS BOTTOM USING MODULE MATH AS MATH",
                 "EXPORT .PROC RUN REF X",
                 "  CALL BOTTOM.WORK REF X",
                 "  RET",
@@ -75,7 +75,7 @@ class PassedOnRequirementTest {
         // Only the outermost module decides which math module reaches the bottom.
         Files.writeString(tempDir.resolve("main.evo"), String.join("\n",
                 ".IMPORT \"math.evo\" AS M",
-                ".IMPORT \"middle.evo\" AS MIDDLE USING M AS MATH",
+                ".IMPORT \"middle.evo\" AS MIDDLE USING MODULE M AS MATH",
                 "START:",
                 "  SETI %DR0 DATA:1",
                 "  CALL MIDDLE.RUN REF %DR0",
@@ -90,12 +90,12 @@ class PassedOnRequirementTest {
     @Tag("integration")
     void aUsingSourceThatIsNeitherImportedNorRequiredIsRejected() throws Exception {
         Files.writeString(tempDir.resolve("bottom.evo"), String.join("\n",
-                ".REQUIRE \"math.evo\" AS MATH",
+                ".REQUIRE MODULE \"math.evo\" AS MATH",
                 "  NOP",
                 ""));
 
         Files.writeString(tempDir.resolve("main.evo"), String.join("\n",
-                ".IMPORT \"bottom.evo\" AS BOTTOM USING NOWHERE AS MATH",
+                ".IMPORT \"bottom.evo\" AS BOTTOM USING MODULE NOWHERE AS MATH",
                 "  NOP",
                 ""));
 
@@ -108,9 +108,10 @@ class PassedOnRequirementTest {
     @Test
     @Tag("integration")
     void modulesThatImportEachOtherAreRejected() throws Exception {
-        // Handing a dependency on walks from the outermost module inwards, which terminates
-        // because the module graph is acyclic. That is not an assumption but a checked property:
-        // a cycle is caught while scanning, before any binding is resolved.
+        // A handed-on requirement is bound in pass 1 in text order: the importer's binding
+        // arrives before the module's tokens. That order exists because the module graph is
+        // acyclic, which is not an assumption but a checked property: a cycle is caught while
+        // scanning, before any binding is made.
         Files.writeString(tempDir.resolve("a.evo"), String.join("\n",
                 ".IMPORT \"b.evo\" AS B",
                 "  NOP",

@@ -18,7 +18,7 @@ class StandardFeaturesTest {
 
     @Test
     void allReturnsExpectedCount() {
-        assertThat(StandardFeatures.all()).hasSize(16);
+        assertThat(StandardFeatures.all()).hasSize(15);
     }
 
     @Test

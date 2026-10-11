@@ -19,7 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Verifies the program ID the emitter assigns: a digest of the machine code, the initial objects
- * and the flags of the compilation that depends on which value stands at which coordinate.
+ * and the flags and values of the compilation that depends on which value stands at which coordinate.
  */
 @Tag("unit")
 class ProgramIdentityTest {
@@ -28,7 +28,7 @@ class ProgramIdentityTest {
      * The ID of {@link #PINNED_PROGRAM}. It changes only when the digest procedure of
      * {@link ProgramIdentity} changes; such a change gives every program a new ID.
      */
-    private static final String PINNED_ID = "c15626bec2500bde";
+    private static final String PINNED_ID = "7abe524297b01745";
 
     private static final List<String> PINNED_PROGRAM = List.of(
             "NOP",
@@ -98,6 +98,21 @@ class ProgramIdentityTest {
         assertThat(List.of(plain.programId(), flagged.programId(), valued.programId())).doesNotHaveDuplicates();
     }
 
+    /**
+     * A configured value that no requirement names leaves the code alone; the variant still has
+     * an identity of its own, as a flag that changes no code has.
+     */
+    @Test
+    void compilationsWithOtherValuesAndTheSameCodeHaveDifferentIds() throws CompilationException {
+        ProgramArtifact plain = compileWithValues(PINNED_PROGRAM, Map.of());
+        ProgramArtifact valued = compileWithValues(PINNED_PROGRAM, Map.of("UNUSED", "DATA:1"));
+        ProgramArtifact otherValue = compileWithValues(PINNED_PROGRAM, Map.of("UNUSED", "DATA:2"));
+
+        assertThat(valued.machineCodeLayout().values()).containsExactlyElementsOf(plain.machineCodeLayout().values());
+        assertThat(otherValue.machineCodeLayout().values()).containsExactlyElementsOf(plain.machineCodeLayout().values());
+        assertThat(List.of(plain.programId(), valued.programId(), otherValue.programId())).doesNotHaveDuplicates();
+    }
+
     @Test
     void theSameProgramCompiledTwiceHasTheSameId() throws CompilationException {
         assertThat(compile(PINNED_PROGRAM).programId()).isEqualTo(compile(PINNED_PROGRAM).programId());
@@ -110,6 +125,12 @@ class ProgramIdentityTest {
     private static ProgramArtifact compile(List<String> lines, Map<String, OptionalInt> defines)
             throws CompilationException {
         return new Compiler().compile(lines, "identity.evo", ENV,
-                new CompilerOptions(List.of(new SourceRoot(".", null)), defines));
+                new CompilerOptions(List.of(new SourceRoot(".", null)), defines, Map.of()));
+    }
+
+    private static ProgramArtifact compileWithValues(List<String> lines, Map<String, String> values)
+            throws CompilationException {
+        return new Compiler().compile(lines, "identity.evo", ENV,
+                new CompilerOptions(List.of(new SourceRoot(".", null)), Map.of(), values));
     }
 }

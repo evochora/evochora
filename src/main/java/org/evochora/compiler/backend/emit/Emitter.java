@@ -105,7 +105,7 @@ public class Emitter {
         Map<int[], PlacedMolecule> sortedInitialObjects = sortMapByCoordinate(layout.initialWorldObjects());
 
         String programId = ProgramIdentity.of(sortedMachineCodeLayout, sortedInitialObjects,
-                program.debugInfo().flags());
+                program.debugInfo().flags(), program.debugInfo().values());
 
         // Label values for the visualizer's view of fuzzy jumps
         Map<Integer, String> labelValueToName = new HashMap<>();

@@ -175,10 +175,13 @@ public class Compiler implements ICompiler {
         DependencyGraph graph = depScanner.scan(fullSource, mainFilePath, rootAliasChain);
         failOnErrors(diagnostics);
 
-        // Phase 1: Lexical Analysis — every included file under its path, the main file as the stream
+        // Phase 1: Lexical Analysis — every included file under its path, the main file as the stream,
+        // and the text of every value of the options on its own
         Map<String, List<Token>> fileTokens = Lexer.lexFiles(graph.includedContents(), diagnostics, isa, featureRegistry.lexerSymbols());
         List<Token> initialTokens = new ArrayList<>(new Lexer(fullSource, diagnostics, mainFilePath, isa,
                 featureRegistry.lexerSymbols()).scanTokens());
+        Map<String, List<Token>> valueTokens = Lexer.lexValues(effectiveOptions.values(), rootAliasChain, isa,
+                featureRegistry.lexerSymbols());
 
         // Phase 2: Preprocessing (includes, macros)
         PreProcessorContext ppContext = new PreProcessorContext(rootAliasChain, fileTokens, graph.lines(),
@@ -199,7 +202,7 @@ public class Compiler implements ICompiler {
         if (featureRegistry.defaultParserStatementHandler() != null) {
             parserRegistry.registerDefault(featureRegistry.defaultParserStatementHandler());
         }
-        Parser parser = new Parser(ppResult.tokens(), diagnostics, parserRegistry);
+        Parser parser = new Parser(ppResult.tokens(), diagnostics, parserRegistry, rootAliasChain, valueTokens);
         List<AstNode> ast = parser.parse();
 
         failOnErrors(diagnostics);
@@ -238,7 +241,7 @@ public class Compiler implements ICompiler {
         irRegistry.registerAll(featureRegistry.irConverters());
         IrGenerator irGenerator = new IrGenerator(diagnostics, irRegistry);
         DebugInfo debugInfo = new DebugInfo(ppResult.sources(), ppResult.expansions(), tokenMap,
-                effectiveOptions.defines());
+                effectiveOptions.defines(), effectiveOptions.values());
         IrProgram irProgram = irGenerator.generate(resolvedAst, programName, rootAliasChain, debugInfo);
         failOnErrors(diagnostics);
 

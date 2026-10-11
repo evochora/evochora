@@ -38,7 +38,7 @@ public class ModuleVisibilityTest {
 
         // Set up import relationship: main imports lib as "LIB"
         ModuleScope mainScope = symbolTable.getModuleScope(MAIN_CHAIN).orElseThrow();
-        mainScope.addImport("LIB", LIB_CHAIN);
+        mainScope.bindAlias("LIB", LIB_CHAIN);
 
         // Define an exported label in the lib module
         symbolTable.setCurrentModule(LIB_CHAIN);
@@ -95,7 +95,7 @@ public class ModuleVisibilityTest {
     void usingBindingsResolveQualifiedNames() {
         // Set up USING: main has a using binding DEP -> LIB_CHAIN
         ModuleScope mainScope = symbolTable.getModuleScope(MAIN_CHAIN).orElseThrow();
-        mainScope.bindUsing("DEP", LIB_CHAIN);
+        mainScope.bindAlias("DEP", LIB_CHAIN);
 
         symbolTable.setCurrentModule(MAIN_CHAIN);
 

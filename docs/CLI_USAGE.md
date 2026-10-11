@@ -126,8 +126,8 @@ bin/evochora compile --source-root ./predator:PRED --source-root ./prey:PREY --f
 # HTTP source root
 bin/evochora compile --source-root https://example.com/organisms:PRED --file=PRED:main.evo
 
-# With flags for conditional compilation
-bin/evochora compile --source-root assembly/examples --file=simple.evo --define AGGRESSIVE --define REDUNDANCY=2
+# With flags for conditional compilation and a value of the main program
+bin/evochora compile --source-root assembly/examples --file=simple.evo --define AGGRESSIVE --define REDUNDANCY=2 --value STEPS=DATA:20
 ```
 
 ### Source Roots (`--source-root`)
@@ -149,6 +149,14 @@ Sets a flag for the conditional compilation directives (`.IFDEF` and its relativ
 - `--define NAME=INTEGER` — sets it with that value; decimal, `0x…` and `0b…`, with an optional minus
 
 The option may be repeated. Flag names are case-insensitive. In a simulation the same flags are set per organism in the configuration (`defines { … }` in the organism entry).
+
+### Values (`--value`)
+
+Sets a value of the main program, which nothing imports, so no `USING VALUE` can bind it: the main program's `.REQUIRE VALUE` of that name takes it in place of its default (see `ASSEMBLY_SPEC.md`):
+
+- `--value NAME=TEXT` — the text is an operand as a `.CONST` takes it: a literal, a vector or a name of the main program, e.g. `--value STEPS=DATA:20`
+
+The option may be repeated. Value names are case-insensitive. A value no `.REQUIRE VALUE` of the main program names is ignored, as a flag no `.IFDEF` tests is. In a simulation the same values are set per organism in the configuration (`values { … }` in the organism entry).
 
 ### Environment Parameters (`--env`)
 

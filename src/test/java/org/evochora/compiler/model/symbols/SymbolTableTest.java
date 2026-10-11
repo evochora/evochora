@@ -4,6 +4,7 @@ import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.IIdentifierBinding;
+import org.evochora.compiler.model.ast.IPlacementAlias;
 import org.evochora.compiler.model.ast.IdentifierNode;
 import org.evochora.compiler.model.ast.NumberLiteralNode;
 import org.junit.jupiter.api.BeforeEach;
@@ -36,12 +37,16 @@ class SymbolTableTest {
         }
     }
 
+    /** The definition of an alias of the module level. */
+    private record Alias() implements AstNode, IPlacementAlias {
+    }
+
     @BeforeEach
     void setUp() {
         table = new SymbolTable(new DiagnosticsEngine());
         table.registerModule("", MAIN);
         table.registerModule("LIB", LIB);
-        table.getModuleScope("").orElseThrow().addImport("LIB", "LIB");
+        table.getModuleScope("").orElseThrow().bindAlias("LIB", "LIB");
     }
 
     @Test
@@ -120,6 +125,21 @@ class SymbolTableTest {
         table.setCurrentModule("");
         assertThat(table.resolve("LIB.P.SHOWN", new SourceInfo(MAIN, 1, 6, "", 0)).found())
                 .map(ResolvedSymbol::qualifiedName).contains("LIB.P.SHOWN");
+    }
+
+    /**
+     * An alias of the module level that no entry of the alias map leads from names no module;
+     * the table says only that, whatever the alias was declared for.
+     */
+    @Test
+    void anAliasWithoutAPlacementLeadsToNoModule() {
+        table.setCurrentModule("LIB");
+        SourceInfo declared = new SourceInfo(LIB, 1, 20, "LIB", 0);
+        table.define(new Symbol("D", declared, Symbol.Type.MODULE_ALIAS, new Alias(), false));
+
+        assertThat(table.resolve("D.X", new SourceInfo(LIB, 3, 8, "LIB", 0)))
+                .isInstanceOfSatisfying(Resolution.Missing.class,
+                        missing -> assertThat(missing.explanation()).isEqualTo("'D' leads to no module."));
     }
 
     @Test

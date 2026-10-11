@@ -30,8 +30,7 @@ feature package under `src/main/java/org/evochora/compiler/features/`.
 | `org` | `.ORG vector`, absolute in the main file, relative inside an imported module; a component marked `@+` or `@-` counts from the write cursor instead | parser, IR conversion, layout |
 | `dir` | `.DIR vector`, the direction in which code is laid out; `.DIR @+i\|j`, a 90-degree rotation of that direction in the plane of two axes | parser, IR conversion, layout |
 | `place` | `.PLACE literal placement…` with vectors, ranges, stepped ranges and wildcards; the initial world objects of the artifact | parser, IR conversion, layout |
-| `importdir` | `[EXPORT] .IMPORT "path" AS ALIAS [USING x AS y]…`, qualified names `ALIAS.NAME`, dependency injection with `USING`, re-export of an import | dependency scan, preprocessor (top level only), parser, module setup, symbol collection, analysis, IR conversion |
-| `require` | `.REQUIRE "path" AS ALIAS`, a dependency the importer satisfies | dependency scan, preprocessor (top level only), parser, module setup, symbol collection, analysis, IR conversion |
+| `importdir` | `[EXPORT] .IMPORT "path" AS ALIAS [USING {MODULE x AS y ... \| VALUE n v ...} ...]`, qualified names `ALIAS.NAME`, dependency injection with `USING`, re-export of an import; `.REQUIRE MODULE "path" AS ALIAS`, a module the importer supplies; `[EXPORT] .REQUIRE VALUE N [default]`, a constant the importer supplies or that takes its default, the main program's from the configuration (`CompilerOptions.values`) | dependency scan, preprocessor (top level only), parser, module setup, symbol collection, analysis, IR conversion, emission |
 | `source` | `.SOURCE "path"`, textual inclusion that shares the including file's scope | dependency scan, preprocessor (top level only) |
 | `ctx` | `.PUSH_CTX` and `.POP_CTX`, the module context around an inclusion; relative placement of an imported module. A programmer never writes them: `importdir` and `source` emit them around the tokens they include | preprocessor `.POP_CTX`, parser, IR conversion, layout |
 
@@ -55,11 +54,18 @@ concept in AGENTS.md; they are listed here because they are where the coupling l
    `importdir` and `source` set the placement of the tokens they inline. The semantic analyzer
    wires the placements together before any handler runs; the symbol table keeps the names of
    two placements of one file apart. The symbol table resolves a path segment by segment: into a
-   module through its imports, requirements and `USING` bindings, and into the scope a symbol
-   opened, which it treats generically, as any symbol whose node registered a scope; every
-   segment reached through a foreign level has to carry the `EXPORT` flag. The table also holds
-   every kind of symbol to the one-segment rule when it is defined. `ModuleScope` holds four
-   maps, all of which belong to `importdir` and `require`. The parser knows the `EXPORT` keyword and asks
+   placement through an alias of the module level, whoever bound it there, and into the scope a
+   symbol opened, which it treats generically, as any symbol whose node registered a scope; every
+   segment reached through a foreign level has to carry the `EXPORT` flag. An alias symbol that
+   leads to no placement is told apart from any other name through the capability
+   `IPlacementAlias` of its node, never through the kind of the symbol. The table also holds
+   every kind of symbol to the one-segment rule when it is defined, and knows which placement is
+   the compilation root. `ModuleScope` holds the symbols, one alias map and a store for the records
+   of features (`record`, `update`): immutable records a feature replaces by their changed copy
+   until the scope is frozen, which the core never reads;
+   what a requirement is, and what binds it, lives in `importdir`. The compiler lexes the texts of
+   the configured values and the parser reads one of them as an operand when a handler asks
+   (`operandOf`); what the values mean is the feature's. The parser knows the `EXPORT` keyword and asks
    each statement handler whether it accepts it, and each block handler per word of its block,
    the opener, a divider or the closer. The directives are features; the system behind
    them is core.

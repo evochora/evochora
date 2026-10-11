@@ -1,7 +1,7 @@
 package org.evochora.compiler.frontend.semantics;
 
 import org.evochora.compiler.features.importdir.ImportDependencyInfo;
-import org.evochora.compiler.features.require.RequireDependencyInfo;
+import org.evochora.compiler.features.importdir.RequireDependencyInfo;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;

@@ -1,10 +1,8 @@
-package org.evochora.compiler.frontend.semantics;
+package org.evochora.compiler.features.importdir;
 
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.diagnostics.Diagnostic;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
-import org.evochora.compiler.features.importdir.ImportAnalysisHandler;
-import org.evochora.compiler.features.importdir.ImportNode;
 import org.evochora.compiler.model.symbols.ModuleScope;
 import org.evochora.compiler.model.symbols.SymbolTable;
 import org.junit.jupiter.api.BeforeEach;
@@ -17,7 +15,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Tests for {@link ImportAnalysisHandler}, which validates USING clauses on {@code .IMPORT}
- * directives during pass-2 semantic analysis.
+ * directives during pass-2 semantic analysis. The scopes are built as pass 1 leaves them: the
+ * aliases bound, the requirements declared.
  */
 class ImportAnalysisHandlerTest {
 
@@ -45,12 +44,11 @@ class ImportAnalysisHandlerTest {
 
         // main imports dep as "D" and lib as "LIB"
         ModuleScope mainScope = symbolTable.getModuleScope(MAIN_CHAIN).orElseThrow();
-        mainScope.addImport("D", DEP_CHAIN);
-        mainScope.addImport("LIB", LIB_CHAIN);
+        mainScope.bindAlias("D", DEP_CHAIN);
+        mainScope.bindAlias("LIB", LIB_CHAIN);
 
         // lib requires "DEP"
-        ModuleScope libScope = symbolTable.getModuleScope(LIB_CHAIN).orElseThrow();
-        libScope.addRequirement("DEP", "dep.evo");
+        declareInLib("DEP", "dep.evo");
 
         symbolTable.setCurrentModule(MAIN_CHAIN);
     }
@@ -69,10 +67,11 @@ class ImportAnalysisHandlerTest {
     @Test
     @Tag("unit")
     void validUsingClausePassesValidation() {
-        // .IMPORT "lib.evo" AS LIB USING D AS DEP
+        // .IMPORT "lib.evo" AS LIB USING MODULE D AS DEP
         ImportNode node = importNode("lib.evo", "LIB", List.of(
                 usingClause("D", "DEP")
         ));
+        bindInLib("DEP", DEP_CHAIN);
 
         handler.analyze(node, symbolTable, diagnostics);
 
@@ -82,7 +81,7 @@ class ImportAnalysisHandlerTest {
     @Test
     @Tag("unit")
     void unknownSourceAliasReportsError() {
-        // .IMPORT "lib.evo" AS LIB USING UNKNOWN AS DEP
+        // .IMPORT "lib.evo" AS LIB USING MODULE UNKNOWN AS DEP
         // "UNKNOWN" is neither imported nor required by main
         ImportNode node = importNode("lib.evo", "LIB", List.of(
                 usingClause("UNKNOWN", "DEP")
@@ -96,8 +95,8 @@ class ImportAnalysisHandlerTest {
     @Test
     @Tag("unit")
     void targetNotMatchingRequireReportsError() {
-        // .IMPORT "lib.evo" AS LIB USING D AS WRONG_NAME
-        // lib has .REQUIRE "dep.evo" AS DEP, not WRONG_NAME
+        // .IMPORT "lib.evo" AS LIB USING MODULE D AS WRONG_NAME
+        // lib has .REQUIRE MODULE "dep.evo" AS DEP, not WRONG_NAME
         ImportNode node = importNode("lib.evo", "LIB", List.of(
                 usingClause("D", "WRONG_NAME")
         ));
@@ -115,26 +114,27 @@ class ImportAnalysisHandlerTest {
 
         handler.analyze(node, symbolTable, diagnostics);
 
-        assertErrorContaining("DEP", "add USING <module> AS");
+        assertErrorContaining("DEP", "add USING MODULE <module> AS");
     }
 
     @Test
     @Tag("unit")
     void multipleRequiresAllSatisfied() {
         // lib requires both DEP and EXTRA
-        ModuleScope libScope = symbolTable.getModuleScope(LIB_CHAIN).orElseThrow();
-        libScope.addRequirement("EXTRA", "extra.evo");
+        declareInLib("EXTRA", "extra.evo");
 
         String extraChain = "E";
         symbolTable.registerModule(extraChain, "/test/extra.evo");
         ModuleScope mainScope = symbolTable.getModuleScope(MAIN_CHAIN).orElseThrow();
-        mainScope.addImport("E", extraChain);
+        mainScope.bindAlias("E", extraChain);
 
-        // .IMPORT "lib.evo" AS LIB USING D AS DEP USING E AS EXTRA
+        // .IMPORT "lib.evo" AS LIB USING MODULE D AS DEP MODULE E AS EXTRA
         ImportNode node = importNode("lib.evo", "LIB", List.of(
                 usingClause("D", "DEP"),
                 usingClause("E", "EXTRA")
         ));
+        bindInLib("DEP", DEP_CHAIN);
+        bindInLib("EXTRA", extraChain);
 
         handler.analyze(node, symbolTable, diagnostics);
 
@@ -145,23 +145,34 @@ class ImportAnalysisHandlerTest {
     @Tag("unit")
     void multipleRequiresPartiallySatisfiedReportsError() {
         // lib requires both DEP and EXTRA, but only DEP is provided
-        ModuleScope libScope = symbolTable.getModuleScope(LIB_CHAIN).orElseThrow();
-        libScope.addRequirement("EXTRA", "extra.evo");
+        declareInLib("EXTRA", "extra.evo");
 
         ImportNode node = importNode("lib.evo", "LIB", List.of(
                 usingClause("D", "DEP")
         ));
+        bindInLib("DEP", DEP_CHAIN);
 
         handler.analyze(node, symbolTable, diagnostics);
 
-        assertErrorContaining("EXTRA", "add USING <module> AS");
+        assertErrorContaining("EXTRA", "add USING MODULE <module> AS");
     }
 
     // --- Helper methods ---
 
+    /** Declares a module requirement of lib as pass 1 declares it for a .REQUIRE MODULE. */
+    private void declareInLib(String alias, String path) {
+        symbolTable.getModuleScope(LIB_CHAIN).orElseThrow()
+                .update(Requirements.class, Requirements::none, r -> r.withModule(alias, path));
+    }
+
+    /** Binds a requirement alias of lib as pass 1 binds it for a USING clause whose source is known. */
+    private void bindInLib(String alias, String aliasChain) {
+        symbolTable.getModuleScope(LIB_CHAIN).orElseThrow().bindAlias(alias, aliasChain);
+    }
+
     private ImportNode importNode(String path, String alias, List<ImportNode.UsingClause> usings) {
         SourceInfo sourceInfo = new SourceInfo(MAIN_FILE, 1, 20, "", 0);
-        return new ImportNode(path, alias, usings, false, sourceInfo);
+        return new ImportNode(path, alias, usings, List.of(), false, sourceInfo);
     }
 
     private ImportNode.UsingClause usingClause(String sourceAlias, String targetAlias) {

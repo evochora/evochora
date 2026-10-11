@@ -1,7 +1,6 @@
-# Shared constants for the module example.
+# Constants of the main program of the module example.
 # This file is included via .SOURCE and must not contain .IMPORT or .REQUIRE.
 
-.CONST WORLD_MIN DATA:0
 .CONST WORLD_MAX DATA:99
 .CONST MOVE_COST DATA:1
 .CONST MAX_ENERGY DATA:100

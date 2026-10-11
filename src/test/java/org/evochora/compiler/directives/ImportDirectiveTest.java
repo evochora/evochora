@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.Objects;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 
 /**
  * Tests parsing of the {@code .IMPORT} directive.
@@ -52,7 +53,7 @@ public class ImportDirectiveTest {
     @Test
     @Tag("unit")
     void parsesImportWithUsingClause() {
-        String source = ".IMPORT \"lib.evo\" AS LIB USING DEP AS REQUIRED_DEP";
+        String source = ".IMPORT \"lib.evo\" AS LIB USING MODULE DEP AS REQUIRED_DEP";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
         List<Token> tokens = lexer.scanTokens();
@@ -75,7 +76,7 @@ public class ImportDirectiveTest {
     @Test
     @Tag("unit")
     void parsesImportWithMultipleUsingClauses() {
-        String source = ".IMPORT \"lib.evo\" AS LIB USING A AS X USING B AS Y";
+        String source = ".IMPORT \"lib.evo\" AS LIB USING MODULE A AS X MODULE B AS Y";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
         List<Token> tokens = lexer.scanTokens();
@@ -114,6 +115,102 @@ public class ImportDirectiveTest {
         parser.parse();
 
         assertThat(diagnostics.hasErrors()).isTrue();
+    }
+
+    @Test
+    @Tag("unit")
+    void aKindWordOpensAListOfGroups() {
+        ImportNode node = parseOne(".IMPORT \"lib.evo\" AS LIB USING MODULE A AS X B AS Y");
+
+        assertThat(node.usings()).extracting(ImportNode.UsingClause::sourceAlias, ImportNode.UsingClause::targetAlias)
+                .containsExactly(tuple("A", "X"), tuple("B", "Y"));
+    }
+
+    @Test
+    @Tag("unit")
+    void aRepeatedKindWordAddsToItsList() {
+        ImportNode node = parseOne(".IMPORT \"lib.evo\" AS LIB USING MODULE A AS X MODULE B AS Y");
+
+        assertThat(node.usings()).extracting(ImportNode.UsingClause::sourceAlias, ImportNode.UsingClause::targetAlias)
+                .containsExactly(tuple("A", "X"), tuple("B", "Y"));
+    }
+
+    @Test
+    @Tag("unit")
+    void aUsingWithoutAKindWordReportsTheMissingModule() {
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        List<AstNode> ast = parse(".IMPORT \"lib.evo\" AS LIB USING MATH AS CALC", diagnostics);
+
+        assertThat(ast).isEmpty();
+        assertThat(diagnostics.getDiagnostics()).singleElement()
+                .satisfies(d -> assertThat(d.message()).isEqualTo("Expected MODULE or VALUE after USING; found 'MATH'."));
+    }
+
+    @Test
+    @Tag("unit")
+    void aValueGroupWithoutAValueIsReported() {
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        List<AstNode> ast = parse(".IMPORT \"lib.evo\" AS LIB USING VALUE STEPS", diagnostics);
+
+        assertThat(ast).isEmpty();
+        assertThat(diagnostics.getDiagnostics()).singleElement()
+                .satisfies(d -> assertThat(d.message()).isEqualTo("Expected a value after VALUE STEPS."));
+    }
+
+    @Test
+    @Tag("unit")
+    void aValueGroupEndedByAKindWordIsReported() {
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        List<AstNode> ast = parse(".IMPORT \"lib.evo\" AS LIB USING VALUE STEPS MODULE A AS B", diagnostics);
+
+        assertThat(ast).isEmpty();
+        assertThat(diagnostics.getDiagnostics()).singleElement()
+                .satisfies(d -> assertThat(d.message()).isEqualTo("Expected a value after VALUE STEPS."));
+    }
+
+    @Test
+    @Tag("unit")
+    void aKindWordWithoutAGroupIsReported() {
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        List<AstNode> ast = parse(".IMPORT \"lib.evo\" AS LIB USING MODULE", diagnostics);
+
+        assertThat(ast).isEmpty();
+        assertThat(diagnostics.getDiagnostics()).singleElement()
+                .satisfies(d -> assertThat(d.message()).isEqualTo("Expected <source> AS <target> after MODULE."));
+
+        DiagnosticsEngine valueDiagnostics = new DiagnosticsEngine();
+        List<AstNode> valueAst = parse(".IMPORT \"lib.evo\" AS LIB USING MODULE A AS B VALUE", valueDiagnostics);
+
+        assertThat(valueAst).isEmpty();
+        assertThat(valueDiagnostics.getDiagnostics()).singleElement()
+                .satisfies(d -> assertThat(d.message()).isEqualTo("Expected <name> <value> after VALUE."));
+    }
+
+    @Test
+    @Tag("unit")
+    void aSecondUsingOnOneImportIsReported() {
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        List<AstNode> ast = parse(".IMPORT \"lib.evo\" AS LIB USING MODULE A AS X USING MODULE B AS Y", diagnostics);
+
+        assertThat(ast).isEmpty();
+        assertThat(diagnostics.getDiagnostics()).singleElement()
+                .satisfies(d -> assertThat(d.message())
+                        .isEqualTo("USING stands once on an import; a further list begins with its kind word."));
+    }
+
+    private static ImportNode parseOne(String source) {
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        List<AstNode> ast = parse(source, diagnostics);
+        assertThat(diagnostics.hasErrors()).as(diagnostics.summary()).isFalse();
+        assertThat(ast).hasSize(1);
+        return (ImportNode) ast.get(0);
+    }
+
+    private static List<AstNode> parse(String source, DiagnosticsEngine diagnostics) {
+        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
+        List<Token> tokens = lexer.scanTokens();
+        Parser parser = new Parser(tokens, diagnostics, registry());
+        return parser.parse().stream().filter(Objects::nonNull).toList();
     }
 
 

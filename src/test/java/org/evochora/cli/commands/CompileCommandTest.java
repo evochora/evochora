@@ -245,6 +245,71 @@ public class CompileCommandTest {
         assertThat(err.toString()).contains("not an integer");
     }
 
+    @Test
+    void testValueReachesTheCompilation() throws Exception {
+        Path sourceFile = tempDir.resolve("valued.evo");
+        Files.writeString(sourceFile, """
+            .REQUIRE VALUE STEPS
+            SETI %DR0 STEPS
+            """);
+
+        String valued = compileToJson(sourceFile.toString(), "--value", "STEPS=DATA:20");
+
+        assertThat(JsonParser.parseString(valued).getAsJsonObject().getAsJsonObject("constantValues")
+                .get("STEPS").getAsString()).isEqualTo("DATA:20");
+    }
+
+    @Test
+    void testValueReachesTheCompilationWithASourceRoot() throws Exception {
+        Path sourceFile = tempDir.resolve("valued.evo");
+        Files.writeString(sourceFile, """
+            .REQUIRE VALUE STEPS
+            SETI %DR0 STEPS
+            """);
+
+        String valued = compileToJson("valued.evo", "--source-root", tempDir.toString(), "--value", "STEPS=DATA:20");
+
+        assertThat(JsonParser.parseString(valued).getAsJsonObject().getAsJsonObject("constantValues")
+                .get("STEPS").getAsString()).isEqualTo("DATA:20");
+    }
+
+    @Test
+    void testValueRejectsAMissingEqualsSignAMissingNameAndAMissingText() {
+        for (String form : List.of("STEPS", "=X", "STEPS=")) {
+            assertThatThrownBy(() -> CompileCommand.parseValues(List.of(form)))
+                .describedAs(form)
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("--value '" + form + "' must be NAME=TEXT");
+        }
+        assertThatThrownBy(() -> CompileCommand.parseValues(List.of("A=1", "A=2")))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessage("--value A: the value is given twice");
+    }
+
+    @Test
+    void testInvalidValuesAreUsageErrors() throws Exception {
+        Path sourceFile = tempDir.resolve("test.evo");
+        Files.writeString(sourceFile, "NOP\n");
+        List<List<String>> forms = List.of(
+            List.of("--value", "STEPS"),
+            List.of("--value", "=X"),
+            List.of("--value", "STEPS="),
+            List.of("--value", "A=1", "--value", "A=2"),
+            List.of("--value", "a=1", "--value", "A=2"));
+
+        for (List<String> form : forms) {
+            CommandLine cmdLine = CommandLineInterface.createCommandLine();
+            StringWriter err = new StringWriter();
+            cmdLine.setErr(new PrintWriter(err));
+            List<String> args = new ArrayList<>(List.of("compile", "-f", sourceFile.toString()));
+            args.addAll(form);
+
+            int exitCode = cmdLine.execute(args.toArray(String[]::new));
+
+            assertThat(exitCode).describedAs("%s", form).isEqualTo(2);
+        }
+    }
+
     private static String compileToJson(String file, String... extraArgs) {
         CommandLine cmdLine = CommandLineInterface.createCommandLine();
         StringWriter out = new StringWriter();

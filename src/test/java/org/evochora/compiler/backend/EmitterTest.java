@@ -103,7 +103,7 @@ class EmitterTest {
     private static ProgramArtifact emit(SourceInfo position, Map<Integer, Expansion> expansions) throws Exception {
         RuntimeInstructionSetAdapter isa = new RuntimeInstructionSetAdapter();
         IrProgram program = new IrProgram("Test", List.of(new IrInstruction("NOP", List.of(), position)),
-                new DebugInfo(List.of(MAIN_ENTRY), expansions, Map.of(), Map.of()));
+                new DebugInfo(List.of(MAIN_ENTRY), expansions, Map.of(), Map.of(), Map.of()));
         LayoutResult layout = new LayoutEngine().layout(program, isa,
                 new EnvironmentProperties(new int[]{10, 10}, true), new LayoutDirectiveRegistry((directive, context) -> { }));
         return new Emitter().emit(program, layout, new LinkingContext(isa), isa, new EmissionContributorRegistry());

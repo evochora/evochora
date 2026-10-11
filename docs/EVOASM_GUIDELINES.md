@@ -214,6 +214,18 @@ aliases named for their role in each phase; sections introduced by a comment tha
 purpose; and a comment at the end of every line that says what the instruction is for, aligned
 in a column. The name a module is imported under must not be the mnemonic of an instruction.
 
+### Let the importer decide
+
+A module that `.SOURCE`s a file of constants hard-wires that file's name into its body and gets
+the same values wherever it is placed. Declare instead what the module needs and leave the
+decision to the importer: a module it depends on with `.REQUIRE MODULE`, a value it depends on
+with `.REQUIRE VALUE`. Give a value a default when the module has a sensible one, so that an
+importer may leave it alone, and none when the module cannot know it, so that every importer has
+to say. The three ways of sharing then stay apart: `.REQUIRE VALUE` for a value the importer
+decides, `EXPORT .CONST` for a value the module decides and offers, `.SOURCE` for text that is
+the same wherever it is included, macros above all. A module that follows this explains itself:
+every name it uses is defined in it, declared as a requirement, or reached by a path.
+
 ### Control blocks
 
 A decision or a loop written with invented labels makes the reader reconstruct the structure
