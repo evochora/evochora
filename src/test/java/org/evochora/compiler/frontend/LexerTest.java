@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.tuple;
@@ -28,6 +29,36 @@ public class LexerTest {
     @BeforeAll
     static void init() {
         Instruction.init();
+    }
+
+    /**
+     * A configured value is lexed on its own: its tokens stand under the name of the value, on
+     * line 0, in the root placement, with the end of file kept.
+     */
+    @Test
+    @Tag("unit")
+    void lexValuesPutsTheTokensOfAValueUnderItsNameInTheRootPlacement() {
+        Map<String, List<Token>> tokens = Lexer.lexValues(Map.of("STEPS", "DATA:20"), "ROOT",
+                new RuntimeInstructionSetAdapter(), TestLexers.symbols());
+
+        assertThat(tokens.get("STEPS")).extracting(Token::type)
+                .containsExactly(TokenType.IDENTIFIER, TokenType.COLON, TokenType.NUMBER, TokenType.END_OF_FILE);
+        assertThat(tokens.get("STEPS")).extracting(t -> t.source().fileName()).containsOnly("<value STEPS>");
+        assertThat(tokens.get("STEPS")).extracting(t -> t.source().lineNumber()).containsOnly(0);
+        assertThat(tokens.get("STEPS")).extracting(t -> t.source().placement()).containsOnly("ROOT");
+    }
+
+    /**
+     * A text the lexer rejects yields no tokens and reports nothing here; the parser's reader of
+     * the requirement reports it in its own words.
+     */
+    @Test
+    @Tag("unit")
+    void lexValuesGivesNoTokensForATextTheLexerRejects() {
+        Map<String, List<Token>> tokens = Lexer.lexValues(Map.of("STEPS", "DATA:2\"0"), "ROOT",
+                new RuntimeInstructionSetAdapter(), TestLexers.symbols());
+
+        assertThat(tokens.get("STEPS")).isEmpty();
     }
 
     /**

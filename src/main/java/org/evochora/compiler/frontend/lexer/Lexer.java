@@ -11,6 +11,7 @@ import org.evochora.compiler.model.token.TokenType;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -127,6 +128,35 @@ public class Lexer {
             tokensByFile.put(file.getKey(), tokens);
         }
         return tokensByFile;
+    }
+
+    /**
+     * Lexes the text of every value of the compilation's options, each on its own, so that the
+     * parser can read it where the main program requires the value. A text is lexed with a
+     * diagnostics engine of its own: what the lexer rejects is no operand, which the parser's
+     * reader of the requirement reports in its own words, and a text whose lexing reported an
+     * error yields no tokens. The tokens are kept as the lexer gives them, the end of file among
+     * them, and stand under the file name {@code <value NAME>}, line 0, in the root placement, so
+     * that a name among them is looked up in the main program. They never enter the token stream.
+     *
+     * @param values         The text of every value, keyed by its name as the options normalise it.
+     * @param rootAliasChain The placement of the compilation root.
+     * @param isa            The instruction set the texts are written for.
+     * @param symbols        The registered symbols, emitted as {@link TokenType#SYMBOL} tokens.
+     * @return The tokens of every value by its name; an empty list for a text the lexer rejected.
+     */
+    public static Map<String, List<Token>> lexValues(Map<String, String> values, String rootAliasChain,
+                                                     IInstructionSet isa, Set<String> symbols) {
+        Map<String, List<Token>> valueTokens = new HashMap<>();
+        for (Map.Entry<String, String> value : values.entrySet()) {
+            String fileName = "<value " + value.getKey() + ">";
+            DiagnosticsEngine own = new DiagnosticsEngine();
+            List<Token> tokens = new Lexer(value.getValue(), own, fileName, isa, symbols).scanTokens();
+            valueTokens.put(value.getKey(), own.hasErrors() ? List.of() : tokens.stream()
+                    .map(token -> token.with(new SourceInfo(fileName, 0, token.source().columnNumber(), rootAliasChain, 0)))
+                    .toList());
+        }
+        return valueTokens;
     }
 
     /**
