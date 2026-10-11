@@ -13,9 +13,9 @@ import java.util.OptionalInt;
 
 /**
  * What a program carries for a debugger and a source view besides its items: the text of its
- * files, the classification of its tokens and the defines of the compilation's options. No phase
- * of the backend reads or changes it; the emitter copies it into the artifact and puts the
- * defines into the program's identity.
+ * files, the classification of its tokens and the defines and values of the compilation's
+ * options. No phase of the backend reads or changes it; the emitter copies it into the artifact
+ * and puts the defines and values into the program's identity.
  *
  * @param sources  One entry per inclusion of a file, with the regions and notes the
  *                 preprocessor recorded for it.
@@ -25,10 +25,12 @@ import java.util.OptionalInt;
  * @param flags    The defines of the compilation's options as the options normalise them: each
  *                 name upper-cased, each value an integer or empty for a name defined without
  *                 one. The regions and notes of the sources were recorded under them.
+ * @param values   The values of the compilation's options as the options normalise them: each
+ *                 name upper-cased, each value the text of an operand.
  */
 public record DebugInfo(List<SourceFile> sources, Map<Integer, Expansion> expansions,
                         Map<SourceInfo, TokenInfo> tokenMap,
-                        Map<String, OptionalInt> flags) {
+                        Map<String, OptionalInt> flags, Map<String, String> values) {
 
     /**
      * Makes the record immutable by copying the list and the maps; the copy of the token map
@@ -39,14 +41,16 @@ public record DebugInfo(List<SourceFile> sources, Map<Integer, Expansion> expans
         expansions = Map.copyOf(expansions);
         tokenMap = Collections.unmodifiableMap(new LinkedHashMap<>(tokenMap));
         flags = Map.copyOf(flags);
+        values = Map.copyOf(values);
     }
 
     /**
-     * Returns the debug information of a program without files, instances, tokens or defines.
+     * Returns the debug information of a program without files, instances, tokens, defines or
+     * values.
      *
      * @return An empty instance.
      */
     public static DebugInfo none() {
-        return new DebugInfo(List.of(), Map.of(), Map.of(), Map.of());
+        return new DebugInfo(List.of(), Map.of(), Map.of(), Map.of(), Map.of());
     }
 }

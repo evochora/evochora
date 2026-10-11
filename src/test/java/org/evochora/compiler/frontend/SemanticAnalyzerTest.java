@@ -18,7 +18,7 @@ import org.evochora.compiler.features.org.OrgDirectiveHandler;
 import org.evochora.compiler.features.place.PlaceDirectiveHandler;
 import org.evochora.compiler.features.proc.ProcDirectiveHandler;
 import org.evochora.compiler.features.reg.RegDirectiveHandler;
-import org.evochora.compiler.features.require.RequireDirectiveHandler;
+import org.evochora.compiler.features.importdir.RequireDirectiveHandler;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.frontend.semantics.SemanticAnalyzer;
 import org.evochora.compiler.model.symbols.SymbolTable;
@@ -708,7 +708,7 @@ public class SemanticAnalyzerTest {
     @Test
     @Tag("unit")
     void aRequireAliasWithADotIsReported() {
-        List<Diagnostic> errors = analyze(".REQUIRE \"lib.evo\" AS X.Y");
+        List<Diagnostic> errors = analyze(".REQUIRE MODULE \"lib.evo\" AS X.Y");
 
         assertThat(errors).filteredOn(d -> d.message().contains("one segment"))
                 .singleElement()
@@ -818,7 +818,7 @@ public class SemanticAnalyzerTest {
     void aRequireInsideAProcedureIsReported() {
         List<Diagnostic> errors = analyze(
                 ".PROC P",
-                "  .REQUIRE \"lib.evo\" AS LIB",
+                "  .REQUIRE MODULE \"lib.evo\" AS LIB",
                 "  RET",
                 ".ENDPROC");
 

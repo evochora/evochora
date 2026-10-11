@@ -75,7 +75,7 @@ class ConstantValuesTest {
 
         assertThat(artifact.constantValues()).containsOnly(
                 Map.entry("LIMIT", "DATA:9"), Map.entry("STEP", "1|0"), Map.entry("COUNT", "16"),
-                Map.entry("ALSO", "LIMIT"));
+                Map.entry("ALSO", "DATA:9"));
         TokenInfo use = artifact.tokenMap().get(new SourceInfo(resolved("main.evo"), 6, 13, "", 0));
         assertThat(artifact.constantValues()).containsKey(use.qualifiedName());
     }

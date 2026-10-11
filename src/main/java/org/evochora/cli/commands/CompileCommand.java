@@ -55,6 +55,11 @@ import java.util.concurrent.Callable;
  *       is written as a program writes a number: decimal, or {@code 0x} or {@code 0b} for
  *       hexadecimal or binary, each with an optional leading minus. Names are case-insensitive; a
  *       name given twice, in any case, is an error. Without the option, no flag is set.</li>
+ *   <li>{@code --value} — any number of values, each written as {@code NAME=TEXT}, where the text
+ *       is an operand as a {@code .CONST} takes it: a literal, a vector or a name. The main
+ *       program's {@code .REQUIRE VALUE} of that name takes it in place of its default; a value no
+ *       requirement names is ignored. Names are case-insensitive; a name given twice, in any
+ *       case, is an error. Without the option, the defaults hold.</li>
  * </ul>
  */
 @Command(
@@ -90,6 +95,13 @@ public class CompileCommand implements Callable<Integer> {
     )
     private List<String> defineArgs;
 
+    @Option(
+        names = {"--value"},
+        paramLabel = "NAME=TEXT",
+        description = "Value of the main program's .REQUIRE VALUE in format 'NAME=TEXT' (e.g., 'STEPS=DATA:20'); repeatable"
+    )
+    private List<String> valueArgs;
+
     @CommandLine.Spec
     CommandLine.Model.CommandSpec spec;
 
@@ -98,8 +110,10 @@ public class CompileCommand implements Callable<Integer> {
         Instruction.init();
 
         Map<String, OptionalInt> defines;
+        Map<String, String> values;
         try {
             defines = parseDefines(defineArgs != null ? defineArgs : List.of());
+            values = parseValues(valueArgs != null ? valueArgs : List.of());
         } catch (IllegalArgumentException e) {
             throw new CommandLine.ParameterException(spec.commandLine(), e.getMessage(), e);
         }
@@ -109,7 +123,7 @@ public class CompileCommand implements Callable<Integer> {
         String programPath = hasSourceRoots ? file : Path.of(file).toAbsolutePath().normalize().toString();
         CompilerOptions compilerOptions;
         try {
-            compilerOptions = buildCompilerOptions(programPath, defines);
+            compilerOptions = buildCompilerOptions(programPath, defines, values);
         } catch (IllegalArgumentException e) {
             throw new CommandLine.ParameterException(spec.commandLine(), e.getMessage(), e);
         }
@@ -133,18 +147,21 @@ public class CompileCommand implements Callable<Integer> {
 
     /**
      * Builds the options of the compilation: the roots of {@code --source-root}, or without the
-     * option a single unprefixed root at the directory of the main file, and the flags.
+     * option a single unprefixed root at the directory of the main file, the flags and the values.
      *
      * @param programPath The main file; without {@code --source-root} its absolute path.
      * @param defines     The flags of {@code --define}.
-     * @throws IllegalArgumentException if the options reject the roots or the flags, among them
-     *                                  two flag names that differ only in case.
+     * @param values      The values of {@code --value}.
+     * @throws IllegalArgumentException if the options reject the roots, the flags or the values,
+     *                                  among them two flag names or two value names that differ
+     *                                  only in case.
      */
-    private CompilerOptions buildCompilerOptions(String programPath, Map<String, OptionalInt> defines) {
+    private CompilerOptions buildCompilerOptions(String programPath, Map<String, OptionalInt> defines,
+                                                 Map<String, String> values) {
         if (sourceRootArgs == null || sourceRootArgs.isEmpty()) {
             Path directory = Path.of(programPath).getParent();
             String root = directory != null ? directory.toString() : Path.of("").toAbsolutePath().toString();
-            return new CompilerOptions(List.of(new SourceRoot(root, null)), defines);
+            return new CompilerOptions(List.of(new SourceRoot(root, null)), defines, values);
         }
         List<SourceRoot> roots = new ArrayList<>();
         for (String arg : sourceRootArgs) {
@@ -159,7 +176,7 @@ public class CompileCommand implements Callable<Integer> {
             }
             roots.add(new SourceRoot(arg, null));
         }
-        return new CompilerOptions(roots, defines);
+        return new CompilerOptions(roots, defines, values);
     }
 
     /**
@@ -192,6 +209,32 @@ public class CompileCommand implements Callable<Integer> {
             }
         }
         return defines;
+    }
+
+    /**
+     * Parses the arguments of {@code --value} into the values of the compilation.
+     *
+     * @param valueArgs The arguments, each {@code NAME=TEXT}.
+     * @return The texts by name as written.
+     * @throws IllegalArgumentException if an argument has no {@code =}, an empty name or an empty
+     *                                  text, or a name is given twice as written. Two names that
+     *                                  differ only in case are left to {@link CompilerOptions},
+     *                                  which rejects them.
+     */
+    static Map<String, String> parseValues(List<String> valueArgs) {
+        Map<String, String> values = new LinkedHashMap<>();
+        for (String arg : valueArgs) {
+            int equalsIdx = arg.indexOf('=');
+            String name = equalsIdx < 0 ? "" : arg.substring(0, equalsIdx).trim();
+            String text = equalsIdx < 0 ? "" : arg.substring(equalsIdx + 1).trim();
+            if (name.isEmpty() || text.isEmpty()) {
+                throw new IllegalArgumentException("--value '" + arg + "' must be NAME=TEXT");
+            }
+            if (values.putIfAbsent(name, text) != null) {
+                throw new IllegalArgumentException("--value " + name + ": the value is given twice");
+            }
+        }
+        return values;
     }
 
     private EnvironmentProperties parseEnvironmentProperties(String env) {

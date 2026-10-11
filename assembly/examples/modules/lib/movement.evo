@@ -1,9 +1,11 @@
 # Movement module.
-# Declares a dependency on a math module via .REQUIRE.
-# The importer must satisfy this dependency with a USING clause.
+# Names what it needs via .REQUIRE: a math module and the world's bounds. The lower bound
+# has a default, the upper one the importer must supply; the importer satisfies both with
+# a USING clause.
 
-.REQUIRE "math.evo" AS CALC
-.SOURCE "lib/constants.evo"
+.REQUIRE MODULE "math.evo" AS CALC
+.REQUIRE VALUE WORLD_MIN DATA:0
+.REQUIRE VALUE WORLD_MAX
 
 # Move north (Y - 1), clamped to world bounds.
 EXPORT .PROC NORTH REF Y

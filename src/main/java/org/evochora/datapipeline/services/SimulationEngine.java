@@ -643,24 +643,27 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
     }
 
     /**
-     * A program as the configuration asks for it: its path and the preprocessor flags of the
-     * organism entry, normalised by {@link CompilerOptions}. Two entries with the same variant
-     * are compiled once.
+     * A program as the configuration asks for it: its path and the preprocessor flags and values
+     * of the organism entry, normalised by {@link CompilerOptions}. Two entries with the same
+     * variant are compiled once.
      */
-    private record ProgramVariant(String programPath, Map<String, OptionalInt> defines) {}
+    private record ProgramVariant(String programPath, Map<String, OptionalInt> defines, Map<String, String> values) {}
 
     /**
-     * Compiles the programs of the configured organisms, once per distinct pair of program path
-     * and flags, and returns the artifact of every organism entry.
+     * Compiles the programs of the configured organisms, once per distinct program path, flags
+     * and values, and returns the artifact of every organism entry. The values bind the main
+     * program's {@code .REQUIRE VALUE} of their names.
      *
      * @param organismConfigs The organism entries of the configuration, each with a
-     *                        {@code program} and optionally {@code defines}.
+     *                        {@code program} and optionally {@code defines} and {@code values}.
      * @param sourceRoots     The source roots every program is compiled with.
      * @param envProps        The world the programs are laid out for.
      * @return One artifact per organism entry, in the order of the entries; entries of one
      *         variant share the same artifact instance.
      * @throws IllegalArgumentException if an entry's flags are invalid (see
      *                                  {@link #readDefines(Config, int)}) or name one flag twice
+     *                                  in different case, if its values are invalid (see
+     *                                  {@link #readValues(Config, int)}) or name one value twice
      *                                  in different case, or a program cannot be read or compiled.
      */
     static List<ProgramArtifact> compileOrganismPrograms(List<? extends Config> organismConfigs,
@@ -673,13 +676,15 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
             Config orgConfig = organismConfigs.get(index);
             String programPath = orgConfig.getString("program");
             Map<String, OptionalInt> defines = readDefines(orgConfig, index);
+            Map<String, String> values = readValues(orgConfig, index);
             CompilerOptions compilerOptions;
             try {
-                compilerOptions = new CompilerOptions(sourceRoots, defines);
+                compilerOptions = new CompilerOptions(sourceRoots, defines, values);
             } catch (IllegalArgumentException e) {
-                throw new IllegalArgumentException("organisms[" + index + "].defines: " + e.getMessage(), e);
+                // The options say themselves whether the defines or the values are wrong
+                throw new IllegalArgumentException("organisms[" + index + "]: " + e.getMessage(), e);
             }
-            ProgramVariant variant = new ProgramVariant(programPath, compilerOptions.defines());
+            ProgramVariant variant = new ProgramVariant(programPath, compilerOptions.defines(), compilerOptions.values());
             ProgramArtifact artifact = artifactsByVariant.get(variant);
             if (artifact == null) {
                 try {
@@ -734,6 +739,38 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
             }
         }
         return defines;
+    }
+
+    /**
+     * Reads the values of one organism entry from its optional {@code values} object: each key
+     * is a value name, each value a string, the text of an operand that the main program's
+     * {@code .REQUIRE VALUE} of that name takes in place of its default. The names are returned
+     * as written; {@link CompilerOptions} normalises them.
+     *
+     * @param orgConfig The organism entry.
+     * @param index     The position of the entry in {@code organisms}, for the error message.
+     * @return The values by name as written.
+     * @throws IllegalArgumentException if {@code values} is not an object, or a value is not a
+     *                                  string; the message names the entry and the value.
+     */
+    static Map<String, String> readValues(Config orgConfig, int index) {
+        if (!orgConfig.hasPath("values")) {
+            return Map.of();
+        }
+        ConfigValue valuesValue = orgConfig.getValue("values");
+        if (valuesValue.valueType() != ConfigValueType.OBJECT) {
+            throw new IllegalArgumentException("organisms[" + index + "].values must be an object of values, got "
+                    + valuesValue.valueType().name().toLowerCase(Locale.ROOT));
+        }
+        Map<String, String> values = new HashMap<>();
+        for (Map.Entry<String, ConfigValue> entry : ((ConfigObject) valuesValue).entrySet()) {
+            if (entry.getValue().valueType() != ConfigValueType.STRING) {
+                throw new IllegalArgumentException("organisms[" + index + "].values." + entry.getKey()
+                        + " must be a string, got " + entry.getValue().render(ConfigRenderOptions.concise()));
+            }
+            values.put(entry.getKey(), (String) entry.getValue().unwrapped());
+        }
+        return values;
     }
 
     private static String newRunId() {

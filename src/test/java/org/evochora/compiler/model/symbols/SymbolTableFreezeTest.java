@@ -93,13 +93,12 @@ class SymbolTableFreezeTest {
 
         assertThatThrownBy(() -> scope.defineSymbol("X", new Symbol("X", new SourceInfo("t", 1, 0, "", 0), Symbol.Type.LABEL)))
                 .isInstanceOf(IllegalStateException.class).hasMessageContaining("MAIN");
-        assertThatThrownBy(() -> scope.addImport("X", "Y")).isInstanceOf(IllegalStateException.class);
-        assertThatThrownBy(() -> scope.addRequirement("X", "Y")).isInstanceOf(IllegalStateException.class);
-        assertThatThrownBy(() -> scope.bindUsing("X", "Y")).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> scope.bindAlias("X", "Y")).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> scope.update(String.class, () -> "", s -> s)).isInstanceOf(IllegalStateException.class);
 
         // Read operations still work
         assertThat(scope.symbols().get("TEST")).isNotNull();
-        assertThat(scope.imports().containsKey("NONEXISTENT")).isFalse();
+        assertThat(scope.aliases().containsKey("NONEXISTENT")).isFalse();
     }
 
     @Test
@@ -108,10 +107,7 @@ class SymbolTableFreezeTest {
         unfrozen.registerModule("MOD", "mod.evo");
         ModuleScope scope = unfrozen.getModuleScope("MOD").orElseThrow();
 
-        scope.addImport("LIB", "LIB_CHAIN");
-        assertThat(scope.imports().get("LIB")).isEqualTo("LIB_CHAIN");
-
-        scope.addRequirement("DEP", "dep.evo");
-        assertThat(scope.requires().get("DEP")).isEqualTo("dep.evo");
+        scope.bindAlias("LIB", "LIB_CHAIN");
+        assertThat(scope.aliases().get("LIB")).isEqualTo("LIB_CHAIN");
     }
 }

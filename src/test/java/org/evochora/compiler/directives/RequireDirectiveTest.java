@@ -6,9 +6,9 @@ import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ParserStatementRegistry;
-import org.evochora.compiler.features.require.RequireDirectiveHandler;
+import org.evochora.compiler.features.importdir.RequireDirectiveHandler;
 import org.evochora.compiler.model.ast.AstNode;
-import org.evochora.compiler.features.require.RequireNode;
+import org.evochora.compiler.features.importdir.RequireNode;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -31,7 +31,7 @@ public class RequireDirectiveTest {
     @Test
     @Tag("unit")
     void parsesSimpleRequire() {
-        String source = ".REQUIRE \"dependency.evo\" AS DEP";
+        String source = ".REQUIRE MODULE \"dependency.evo\" AS DEP";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
         List<Token> tokens = lexer.scanTokens();
@@ -51,7 +51,7 @@ public class RequireDirectiveTest {
     @Test
     @Tag("unit")
     void missingAsKeywordReportsError() {
-        String source = ".REQUIRE \"dependency.evo\" DEP";
+        String source = ".REQUIRE MODULE \"dependency.evo\" DEP";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
         List<Token> tokens = lexer.scanTokens();
@@ -64,7 +64,7 @@ public class RequireDirectiveTest {
     @Test
     @Tag("unit")
     void missingPathReportsError() {
-        String source = ".REQUIRE AS DEP";
+        String source = ".REQUIRE MODULE AS DEP";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
         List<Token> tokens = lexer.scanTokens();
@@ -77,7 +77,7 @@ public class RequireDirectiveTest {
     @Test
     @Tag("unit")
     void missingAliasReportsError() {
-        String source = ".REQUIRE \"dependency.evo\" AS";
+        String source = ".REQUIRE MODULE \"dependency.evo\" AS";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
         List<Token> tokens = lexer.scanTokens();
@@ -90,7 +90,7 @@ public class RequireDirectiveTest {
     @Test
     @Tag("unit")
     void requireNodeRetainsSourceFileName() {
-        String source = ".REQUIRE \"math.evo\" AS MATH";
+        String source = ".REQUIRE MODULE \"math.evo\" AS MATH";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics, "main.evo", TestLexers.symbols());
         List<Token> tokens = lexer.scanTokens();
@@ -106,7 +106,7 @@ public class RequireDirectiveTest {
     @Test
     @Tag("unit")
     void requireNodeChildrenAreEmpty() {
-        String source = ".REQUIRE \"utils.evo\" AS UTILS";
+        String source = ".REQUIRE MODULE \"utils.evo\" AS UTILS";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
         List<Token> tokens = lexer.scanTokens();
@@ -117,6 +117,58 @@ public class RequireDirectiveTest {
         assertThat(diagnostics.hasErrors()).isFalse();
         RequireNode node = (RequireNode) ast.get(0);
         assertThat(node.getChildren()).isEmpty();
+    }
+
+    @Test
+    @Tag("unit")
+    void parsesTheKindWordModule() {
+        String source = ".REQUIRE MODULE \"d.evo\" AS D";
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
+        List<Token> tokens = lexer.scanTokens();
+        Parser parser = new Parser(tokens, diagnostics, registry());
+
+        List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
+
+        assertThat(diagnostics.hasErrors()).as(diagnostics.summary()).isFalse();
+        assertThat(ast).hasSize(1);
+        RequireNode node = (RequireNode) ast.get(0);
+        assertThat(node.path()).isEqualTo("d.evo");
+        assertThat(node.alias()).isEqualToIgnoringCase("D");
+    }
+
+    @Test
+    @Tag("unit")
+    void aValueRequirementWithADefaultThatIsNoOperandIsReported() {
+        String source = ".REQUIRE VALUE STEPS :";
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
+        List<Token> tokens = lexer.scanTokens();
+        Parser parser = new Parser(tokens, diagnostics, registry());
+
+        List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
+
+        assertThat(diagnostics.hasErrors()).isTrue();
+        assertThat(ast).isEmpty();
+    }
+
+    @Test
+    @Tag("unit")
+    void aRequireWithoutAKindWordReportsTheMissingModule() {
+        String source = ".REQUIRE \"d.evo\" AS D";
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
+        List<Token> tokens = lexer.scanTokens();
+        Parser parser = new Parser(tokens, diagnostics, registry());
+
+        List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
+
+        assertThat(ast).isEmpty();
+        assertThat(diagnostics.getDiagnostics()).singleElement()
+                .satisfies(d -> {
+                    assertThat(d.message()).isEqualTo("Expected MODULE or VALUE after .REQUIRE; found '\"d.evo\"'.");
+                    assertThat(d.lineNumber()).isEqualTo(1);
+                });
     }
 
 

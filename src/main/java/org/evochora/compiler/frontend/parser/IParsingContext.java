@@ -8,6 +8,8 @@ import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.DirectiveLine;
 
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.function.Predicate;
 
 /**
@@ -92,6 +94,35 @@ public interface IParsingContext {
      *         reported error.
      */
     OperandNode expression();
+
+    /**
+     * Reads a list of tokens apart from the token stream as exactly one operand, as
+     * {@link #expression()} reads one. Nothing is reported: the caller knows what the tokens were
+     * meant to be and says so in its own words.
+     *
+     * @param tokens The tokens, ending with an end of file.
+     * @return The operand, or empty when the tokens are none, hold more than one operand, or end
+     *         before one is complete.
+     */
+    Optional<OperandNode> operandOf(List<Token> tokens);
+
+    /**
+     * Returns the placement of the compilation root, so that a handler can tell the main program
+     * from a module.
+     *
+     * @return The alias chain of the root placement, or {@code null} when the parser was given none.
+     */
+    String rootAliasChain();
+
+    /**
+     * Returns the lexed text of every value of the compilation's options, by its name as the
+     * options normalise it: upper-cased. The tokens stand apart from the token stream; a handler
+     * reads them with {@link #operandOf(List)}.
+     *
+     * @return The tokens of every value by its name; empty when the compilation has no values. The
+     *         tokens of a text the lexer rejected are an empty list.
+     */
+    Map<String, List<Token>> values();
 
     /**
      * Parses the statements of a range of the token stream, as a block handler parses a part of

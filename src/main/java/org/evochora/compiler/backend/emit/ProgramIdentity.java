@@ -14,15 +14,15 @@ import java.util.OptionalInt;
 
 /**
  * The identity of a compiled program: a digest of what the compiler puts into the world, its
- * machine code and its initial objects, and of the defines of the compilation's options. Two
- * programs share an identity exactly when they place the same values at the same coordinates
- * under the same defines; names, comments and the source text itself do not enter. The defines
- * enter because two variants that compile to the same code would otherwise share one artifact,
- * whose debug information describes only one of them; the identity attaches no meaning to their
- * names or values.
+ * machine code and its initial objects, and of the defines and values of the compilation's
+ * options. Two programs share an identity exactly when they place the same values at the same
+ * coordinates under the same defines and values; names, comments and the source text itself do
+ * not enter. The defines and values enter because two variants that compile to the same code
+ * would otherwise share one artifact, whose debug information describes only one of them; the
+ * identity attaches no meaning to their names or contents.
  *
  * <p>The digest is SHA-256 over a stream of 32-bit big-endian integers and the bytes of the
- * defined names, rendered as lower-case hex and truncated to its first 16 characters (64 bits). The
+ * defined names and of the values' names and texts, rendered as lower-case hex and truncated to its first 16 characters (64 bits). The
  * stream is length-prefixed, so no two different programs produce the same stream:</p>
  * <ol>
  *   <li>the number of dimensions, the length of the coordinates (0 for a program that places
@@ -33,7 +33,10 @@ import java.util.OptionalInt;
  *       components followed by the {@link PlacedMolecule}'s type, value and marker;</li>
  *   <li>the number of defines, then for each define in alphabetical order of its name: the
  *       number of bytes of that name in UTF-8 followed by those bytes, then 1 if it has a value
- *       and 0 if not, then the value (0 without one).</li>
+ *       and 0 if not, then the value (0 without one);</li>
+ *   <li>the number of values, then for each value in alphabetical order of its name: the number
+ *       of bytes of that name in UTF-8 followed by those bytes, then the number of bytes of the
+ *       value's text in UTF-8 followed by those bytes.</li>
  * </ol>
  * <p>Coordinate order is the lexicographic order of {@link Arrays#compare(int[], int[])}; the
  * digest sorts the entries itself, so the iteration order of the maps it is given does not
@@ -48,8 +51,8 @@ public final class ProgramIdentity {
     }
 
     /**
-     * Computes the identity of a program from what it puts into the world and the defines of the
-     * compilation's options.
+     * Computes the identity of a program from what it puts into the world and the defines and
+     * values of the compilation's options.
      *
      * @param machineCode    The cell value at each coordinate the program's code occupies.
      * @param initialObjects The molecule at each coordinate the program places as an object.
@@ -57,10 +60,13 @@ public final class ProgramIdentity {
      *                       name defined without one, as {@link org.evochora.compiler.api.CompilerOptions}
      *                       normalises them: every name upper-cased. The digest takes the names as
      *                       given.
+     * @param values         The values of the compilation's options, name to the text of an operand,
+     *                       as {@link org.evochora.compiler.api.CompilerOptions} normalises them. The
+     *                       digest takes the names and texts as given.
      * @return The identity: 16 lower-case hex characters.
      */
     public static String of(Map<int[], Integer> machineCode, Map<int[], PlacedMolecule> initialObjects,
-                            Map<String, OptionalInt> flags) {
+                            Map<String, OptionalInt> flags, Map<String, String> values) {
         MessageDigest digest = sha256();
         int dimensions = !machineCode.isEmpty() ? machineCode.keySet().iterator().next().length
                 : !initialObjects.isEmpty() ? initialObjects.keySet().iterator().next().length
@@ -95,6 +101,14 @@ public final class ProgramIdentity {
             update(digest, value.orElse(0));
         }
 
+        List<Map.Entry<String, String>> sortedValues = new ArrayList<>(values.entrySet());
+        sortedValues.sort(Map.Entry.comparingByKey());
+        update(digest, sortedValues.size());
+        for (Map.Entry<String, String> value : sortedValues) {
+            updateText(digest, value.getKey());
+            updateText(digest, value.getValue());
+        }
+
         return HexFormat.of().formatHex(digest.digest()).substring(0, ID_LENGTH);
     }
 
@@ -108,6 +122,12 @@ public final class ProgramIdentity {
         for (int component : coordinate) {
             update(digest, component);
         }
+    }
+
+    private static void updateText(MessageDigest digest, String text) {
+        byte[] bytes = text.getBytes(StandardCharsets.UTF_8);
+        update(digest, bytes.length);
+        digest.update(bytes);
     }
 
     private static void update(MessageDigest digest, int value) {

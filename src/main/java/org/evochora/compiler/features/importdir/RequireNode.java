@@ -1,13 +1,14 @@
-package org.evochora.compiler.features.require;
+package org.evochora.compiler.features.importdir;
 
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.model.ast.AstNode;
+import org.evochora.compiler.model.ast.IPlacementAlias;
 import org.evochora.compiler.model.ast.ISourceLocatable;
 
 /**
  * AST node for the {@code .REQUIRE} directive.
  *
- * <p>Syntax: {@code .REQUIRE "path" AS ALIAS}
+ * <p>Syntax: {@code .REQUIRE MODULE "path" AS ALIAS}
  *
  * <p>Declares an unsatisfied dependency on a module. The importer of this module
  * must provide the required module via a {@code USING} clause on the {@code .IMPORT} directive.
@@ -20,5 +21,5 @@ public record RequireNode(
         String path,
         String alias,
         SourceInfo sourceInfo
-) implements AstNode, ISourceLocatable {
+) implements AstNode, ISourceLocatable, IPlacementAlias {
 }

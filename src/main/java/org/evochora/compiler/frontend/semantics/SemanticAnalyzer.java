@@ -17,8 +17,8 @@ import java.util.Optional;
  * It operates by traversing the AST and dispatching nodes to specific handlers.
  *
  * <p>In multi-module compilation, the analyzer receives a {@link DependencyGraph} at construction
- * time and sets up module relationships (imports, requires, USING bindings) in the symbol table
- * before analysis begins. During traversal, it switches module context using PushCtxNode/PopCtxNode
+ * time and registers the module placements and their relationships in the symbol table before
+ * analysis begins. During traversal, it switches module context using PushCtxNode/PopCtxNode
  * markers carrying alias chains from the preprocessor.</p>
  */
 public class SemanticAnalyzer {
@@ -134,41 +134,26 @@ public class SemanticAnalyzer {
     }
 
     /**
-     * Sets up module relationships in the symbol table from the dependency graph. Every module
-     * placement is registered under the alias chain the dependency scan gave it, the same chain
-     * the preprocessor gave its tokens; a file imported more than once is a module once per
-     * import.
+     * Sets up module relationships in the symbol table from the dependency graph. The root
+     * placement is named first; then every module placement is registered under the alias chain
+     * the dependency scan gave it, the same chain the preprocessor gave its tokens; a file
+     * imported more than once is a module once per import.
      */
     private void setupModuleRelationships(DependencyGraph graph, String rootAliasChain) {
         List<ModulePlacement> placements = graph.placements();
 
+        symbolTable.registerRoot(rootAliasChain);
         for (ModulePlacement placement : placements) {
             symbolTable.registerModule(placement.aliasChain(), placement.sourcePath());
         }
 
-        // Step 1: Register relationships, imported placements first.
+        // Relationships are registered with the imported placements first.
         for (ModulePlacement placement : placements) {
             ModuleSetupContext ctx = new ModuleSetupContext(symbolTable, diagnostics, placement.aliasChain());
             for (IDependencyInfo dep : placement.dependencies()) {
                 IDependencySetupHandler<IDependencyInfo> handler = setupRegistry.resolve(dep.getClass());
                 if (handler != null) {
                     handler.registerRelationships(dep, ctx);
-                }
-            }
-        }
-
-        // Step 2: Resolve cross-module bindings (USING etc.).
-        //
-        // Walked from the outermost placement inwards: a module may hand on a dependency it was
-        // given itself, and it can only do that once it has been given it. The placements form a
-        // tree under the main module, listed with every placement after the placements it imports,
-        // so the reversed list puts every placement before them.
-        for (ModulePlacement placement : placements.reversed()) {
-            ModuleSetupContext ctx = new ModuleSetupContext(symbolTable, diagnostics, placement.aliasChain());
-            for (IDependencyInfo dep : placement.dependencies()) {
-                IDependencySetupHandler<IDependencyInfo> handler = setupRegistry.resolve(dep.getClass());
-                if (handler != null) {
-                    handler.resolveBindings(dep, ctx);
                 }
             }
         }

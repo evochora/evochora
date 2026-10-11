@@ -368,7 +368,7 @@ class PlacementArtifactIntegrationTest {
                 ? List.of(new SourceRoot(sourceRoot.toString(), null))
                 : List.of(new SourceRoot(sourceRoot.toString(), null),
                         new SourceRoot(sourceRoot.toString(), rootPrefix));
-        CompilerOptions options = new CompilerOptions(roots, Map.of());
+        CompilerOptions options = new CompilerOptions(roots, Map.of(), Map.of());
         return new Compiler().compile(programName, ENV, options);
     }
 }

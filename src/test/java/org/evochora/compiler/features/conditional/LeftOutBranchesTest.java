@@ -391,7 +391,7 @@ class LeftOutBranchesTest {
     }
 
     private ProgramArtifact compile(Map<String, OptionalInt> defines) throws Exception {
-        CompilerOptions options = new CompilerOptions(List.of(new SourceRoot(sourceRoot.toString(), null)), defines);
+        CompilerOptions options = new CompilerOptions(List.of(new SourceRoot(sourceRoot.toString(), null)), defines, Map.of());
         return new Compiler().compile("main.evo", ENV, options);
     }
 }

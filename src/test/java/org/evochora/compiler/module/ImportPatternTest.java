@@ -48,10 +48,10 @@ class ImportPatternTest {
     @Test
     @Tag("unit")
     void usingClausesDoNotHideThePath() {
-        Matcher plain = match(".IMPORT \"m.evo\" AS NAV USING MATHLIB AS ARITH");
+        Matcher plain = match(".IMPORT \"m.evo\" AS NAV USING MODULE MATHLIB AS ARITH");
         assertThat(plain.group(1)).isEqualTo("m.evo");
 
-        Matcher exported = match("EXPORT .IMPORT \"m.evo\" AS NAV USING MATHLIB AS ARITH USING B AS C");
+        Matcher exported = match("EXPORT .IMPORT \"m.evo\" AS NAV USING MODULE MATHLIB AS ARITH MODULE B AS C");
         assertThat(exported.group(1)).isEqualTo("m.evo");
     }
 

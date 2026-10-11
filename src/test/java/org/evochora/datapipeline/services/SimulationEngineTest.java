@@ -582,7 +582,7 @@ class SimulationEngineTest {
 
         IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
                 () -> new SimulationEngine("test-engine", config, resources));
-        assertTrue(exception.getMessage().contains("organisms[0].defines"), exception.getMessage());
+        assertTrue(exception.getMessage().contains("organisms[0]: Defines"), exception.getMessage());
         assertTrue(exception.getMessage().contains("case-insensitive"), exception.getMessage());
     }
 
@@ -610,6 +610,76 @@ class SimulationEngineTest {
         assertDoesNotThrow(() -> new SimulationEngine("test-engine", config, resources));
     }
 
+    // ============ Configured Values Tests ============
+
+    private static final String VALUED_PROGRAM = """
+            .REQUIRE VALUE STEPS DATA:10
+            SETI %DR0 STEPS
+            """;
+
+    @Test
+    void readValues_readsTheTextOfEveryValue() {
+        Config entry = ConfigFactory.parseString("values { STEPS = \"DATA:20\", LIMIT = \"1|0\" }");
+
+        assertEquals(Map.of("STEPS", "DATA:20", "LIMIT", "1|0"), SimulationEngine.readValues(entry, 0));
+    }
+
+    @Test
+    void readValues_rejectsAValuesEntryThatIsNoObject() {
+        Config entry = ConfigFactory.parseString("values = \"DATA:20\"");
+
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
+                () -> SimulationEngine.readValues(entry, 0));
+        assertTrue(exception.getMessage().contains("organisms[0].values must be an object"), exception.getMessage());
+    }
+
+    @Test
+    void constructor_shouldRejectTwoValuesThatAreOneNameIgnoringCase() throws IOException {
+        Path program = writeProgram("valued.evo", VALUED_PROGRAM);
+        Config config = placementConfig("TORUS", organismWithValues(program, Map.of("steps", "DATA:1", "STEPS", "DATA:2")));
+
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
+                () -> new SimulationEngine("test-engine", config, resources));
+        assertTrue(exception.getMessage().contains("organisms[0]: Values"), exception.getMessage());
+        assertTrue(exception.getMessage().contains("case-insensitive"), exception.getMessage());
+    }
+
+    @Test
+    void readValues_rejectsAValueThatIsNoString() {
+        Config entry = ConfigFactory.parseString("values { STEPS = 20 }");
+
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
+                () -> SimulationEngine.readValues(entry, 0));
+        assertTrue(exception.getMessage().contains("organisms[0].values.STEPS"), exception.getMessage());
+    }
+
+    @Test
+    void compileOrganismPrograms_compilesOneProgramWithDifferentValuesIntoTwoArtifacts() throws IOException {
+        Path program = writeProgram("valued.evo", VALUED_PROGRAM);
+
+        List<ProgramArtifact> artifacts = compileOrganismPrograms(
+                organismEntryWithValues(program, Map.of("STEPS", "DATA:20")),
+                organismEntryWithValues(program, Map.of("STEPS", "DATA:30")));
+
+        assertNotSame(artifacts.get(0), artifacts.get(1));
+        assertNotEquals(artifacts.get(0).programId(), artifacts.get(1).programId());
+    }
+
+    @Test
+    void compileOrganismPrograms_compilesOneProgramWithEqualValuesOnce() throws IOException {
+        Path program = writeProgram("valued.evo", VALUED_PROGRAM);
+
+        List<ProgramArtifact> artifacts = compileOrganismPrograms(
+                organismEntryWithValues(program, Map.of("STEPS", "DATA:20")),
+                organismEntryWithValues(program, Map.of("STEPS", "DATA:20")));
+
+        assertSame(artifacts.get(0), artifacts.get(1));
+    }
+
+    private static Config organismEntryWithValues(Path program, Map<String, Object> values) {
+        return ConfigFactory.parseMap(Map.of("program", program.toString(), "values", values));
+    }
+
     private static List<ProgramArtifact> compileOrganismPrograms(Config... entries) {
         return SimulationEngine.compileOrganismPrograms(List.of(entries),
                 CompilerOptions.defaults().sourceRoots(),
@@ -618,6 +688,11 @@ class SimulationEngineTest {
 
     private static Config organismEntry(Path program, Map<String, Object> defines) {
         return ConfigFactory.parseMap(Map.of("program", program.toString(), "defines", defines));
+    }
+
+    private static Map<String, Object> organismWithValues(Path program, Map<String, Object> values) {
+        return Map.of("program", program.toString(), "initialEnergy", 1000,
+                "placement", Map.of("positions", List.of(0, 0)), "values", values);
     }
 
     private static Map<String, Object> organismWithDefines(Path program, Map<String, Object> defines) {

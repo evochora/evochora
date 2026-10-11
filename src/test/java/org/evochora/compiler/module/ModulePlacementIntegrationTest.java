@@ -211,7 +211,7 @@ class ModulePlacementIntegrationTest {
     }
 
     private ProgramArtifact compile(String fileName, Map<String, OptionalInt> defines) throws Exception {
-        CompilerOptions options = new CompilerOptions(List.of(new SourceRoot(sourceRoot.toString(), null)), defines);
+        CompilerOptions options = new CompilerOptions(List.of(new SourceRoot(sourceRoot.toString(), null)), defines, Map.of());
         return new Compiler().compile(fileName, ENV, options);
     }
 
