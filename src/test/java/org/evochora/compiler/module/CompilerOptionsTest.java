@@ -32,7 +32,7 @@ public class CompilerOptionsTest {
     @Test
     @Tag("unit")
     void defines_namesAreUpperCased() {
-        CompilerOptions opts = new CompilerOptions(List.of(), Map.of("aggressive", OptionalInt.empty(), "Redundancy", OptionalInt.of(2)));
+        CompilerOptions opts = new CompilerOptions(List.of(), Map.of("aggressive", OptionalInt.empty(), "Redundancy", OptionalInt.of(2)), Map.of());
         assertThat(opts.defines()).containsOnly(
                 Map.entry("AGGRESSIVE", OptionalInt.empty()),
                 Map.entry("REDUNDANCY", OptionalInt.of(2)));
@@ -43,7 +43,7 @@ public class CompilerOptionsTest {
     void defines_areCopiedAndUnmodifiable() {
         Map<String, OptionalInt> source = new HashMap<>();
         source.put("X", OptionalInt.of(1));
-        CompilerOptions opts = new CompilerOptions(List.of(), source);
+        CompilerOptions opts = new CompilerOptions(List.of(), source, Map.of());
         source.put("Y", OptionalInt.of(2));
 
         assertThat(opts.defines()).containsOnlyKeys("X");
@@ -57,7 +57,7 @@ public class CompilerOptionsTest {
         Map<String, OptionalInt> source = new LinkedHashMap<>();
         source.put("a", OptionalInt.of(1));
         source.put("A", OptionalInt.of(2));
-        assertThatThrownBy(() -> new CompilerOptions(List.of(), source))
+        assertThatThrownBy(() -> new CompilerOptions(List.of(), source, Map.of()))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("'a'")
                 .hasMessageContaining("'A'");
@@ -84,8 +84,8 @@ public class CompilerOptionsTest {
     @Test
     @Tag("unit")
     void defines_differingOnlyInCase_areEqual() {
-        CompilerOptions lower = new CompilerOptions(List.of(), Map.of("x", OptionalInt.of(1)));
-        CompilerOptions upper = new CompilerOptions(List.of(), Map.of("X", OptionalInt.of(1)));
+        CompilerOptions lower = new CompilerOptions(List.of(), Map.of("x", OptionalInt.of(1)), Map.of());
+        CompilerOptions upper = new CompilerOptions(List.of(), Map.of("X", OptionalInt.of(1)), Map.of());
         assertThat(lower).isEqualTo(upper);
         assertThat(lower.hashCode()).isEqualTo(upper.hashCode());
     }

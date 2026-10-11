@@ -40,16 +40,6 @@ public record CompilerOptions(List<SourceRoot> sourceRoots, Map<String, Optional
     }
 
     /**
-     * Creates options with the given source roots and preprocessor flags, and no values.
-     *
-     * @param sourceRoots Ordered list of source root directories for path resolution.
-     * @param defines     Preprocessor flags of the compilation, as for the canonical constructor.
-     */
-    public CompilerOptions(List<SourceRoot> sourceRoots, Map<String, OptionalInt> defines) {
-        this(sourceRoots, defines, Map.of());
-    }
-
-    /**
      * Creates options with the given source roots, no preprocessor flags and no values.
      *
      * @param sourceRoots Ordered list of source root directories for path resolution.

@@ -677,17 +677,12 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
             String programPath = orgConfig.getString("program");
             Map<String, OptionalInt> defines = readDefines(orgConfig, index);
             Map<String, String> values = readValues(orgConfig, index);
-            CompilerOptions withDefines;
-            try {
-                withDefines = new CompilerOptions(sourceRoots, defines);
-            } catch (IllegalArgumentException e) {
-                throw new IllegalArgumentException("organisms[" + index + "].defines: " + e.getMessage(), e);
-            }
             CompilerOptions compilerOptions;
             try {
-                compilerOptions = new CompilerOptions(sourceRoots, withDefines.defines(), values);
+                compilerOptions = new CompilerOptions(sourceRoots, defines, values);
             } catch (IllegalArgumentException e) {
-                throw new IllegalArgumentException("organisms[" + index + "].values: " + e.getMessage(), e);
+                // The options say themselves whether the defines or the values are wrong
+                throw new IllegalArgumentException("organisms[" + index + "]: " + e.getMessage(), e);
             }
             ProgramVariant variant = new ProgramVariant(programPath, compilerOptions.defines(), compilerOptions.values());
             ProgramArtifact artifact = artifactsByVariant.get(variant);

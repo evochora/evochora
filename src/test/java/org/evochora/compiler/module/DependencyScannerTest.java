@@ -387,7 +387,7 @@ public class DependencyScannerTest {
     @Test
     @Tag("unit")
     void options_areThoseTheScannerWasCreatedWith() {
-        CompilerOptions options = new CompilerOptions(List.of(new SourceRoot(".", null)), Map.of("FLAG", OptionalInt.empty()));
+        CompilerOptions options = new CompilerOptions(List.of(new SourceRoot(".", null)), Map.of("FLAG", OptionalInt.empty()), Map.of());
         List<CompilerOptions> seen = new ArrayList<>();
         List<IDependencyScanHandler> handlers = List.of(handler("MARK", (m, ctx) -> seen.add(ctx.options())));
 

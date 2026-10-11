@@ -582,7 +582,7 @@ class SimulationEngineTest {
 
         IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
                 () -> new SimulationEngine("test-engine", config, resources));
-        assertTrue(exception.getMessage().contains("organisms[0].defines"), exception.getMessage());
+        assertTrue(exception.getMessage().contains("organisms[0]: Defines"), exception.getMessage());
         assertTrue(exception.getMessage().contains("case-insensitive"), exception.getMessage());
     }
 

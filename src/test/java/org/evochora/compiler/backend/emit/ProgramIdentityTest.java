@@ -125,7 +125,7 @@ class ProgramIdentityTest {
     private static ProgramArtifact compile(List<String> lines, Map<String, OptionalInt> defines)
             throws CompilationException {
         return new Compiler().compile(lines, "identity.evo", ENV,
-                new CompilerOptions(List.of(new SourceRoot(".", null)), defines));
+                new CompilerOptions(List.of(new SourceRoot(".", null)), defines, Map.of()));
     }
 
     private static ProgramArtifact compileWithValues(List<String> lines, Map<String, String> values)

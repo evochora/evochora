@@ -66,7 +66,7 @@ class PreProcessorContextTest {
     @Test
     void options_areThoseGiven() {
         CompilerOptions options = new CompilerOptions(
-                List.of(new SourceRoot(".", null)), Map.of("FLAG", OptionalInt.of(2)));
+                List.of(new SourceRoot(".", null)), Map.of("FLAG", OptionalInt.of(2)), Map.of());
         assertThat(context(options).options()).isSameAs(options);
     }
 
