@@ -130,6 +130,27 @@ class ModuleValuesTest {
     }
 
     /**
+     * A default that names an undefined name is reported at its line whether or not the import
+     * binds the value: a module compiles or not regardless of its importer.
+     */
+    @Test
+    void anUndefinedDefaultIsReportedEvenWhenTheImportBindsTheValue() throws Exception {
+        write("walk.evo",
+                ".REQUIRE VALUE STEPS NOPE",
+                "  SETI %DR0 STEPS");
+        write("main.evo",
+                ".IMPORT \"walk.evo\" AS WALK USING VALUE STEPS DATA:4",
+                "START:",
+                "  NOP");
+
+        assertThatThrownBy(() -> compile())
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("Cannot require value 'STEPS' from 'NOPE': the name is not defined.")
+                .hasMessageContaining("walk.evo:1")
+                .satisfies(e -> assertThat(e.getMessage()).doesNotContain("Internal error"));
+    }
+
+    /**
      * A value is no flag: {@code .IFDEF} on it leaves the block out, silently.
      */
     @Test

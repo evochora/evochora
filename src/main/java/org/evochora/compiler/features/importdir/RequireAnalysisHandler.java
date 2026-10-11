@@ -52,15 +52,17 @@ public class RequireAnalysisHandler implements IAnalysisHandler {
         OperandNode bound = symbolTable.getModuleScope(symbolTable.getCurrentAliasChain())
                 .flatMap(scope -> scope.record(Requirements.class, Requirements::none).boundValue(valueNode.name().toUpperCase()))
                 .orElse(null);
+        // A default that is a name is a use of that name here, bound or not: it is defined before
+        // this line, whatever the importer binds
+        if (valueNode.defaultValue() instanceof IdentifierNode id
+                && symbolTable.resolve(id.text(), id.sourceInfo()) instanceof Resolution.Missing missing) {
+            diagnostics.reportError(
+                    "Cannot require value '" + valueNode.name() + "' from '" + id.text() + "': " + missing.explanation(),
+                    at.fileName(), at.lineNumber());
+        }
         OperandNode value = bound;
         if (value == null && valueNode.defaultValue() instanceof OperandNode defaultValue) {
             value = defaultValue;
-            if (defaultValue instanceof IdentifierNode id
-                    && symbolTable.resolve(id.text(), id.sourceInfo()) instanceof Resolution.Missing missing) {
-                diagnostics.reportError(
-                        "Cannot require value '" + valueNode.name() + "' from '" + id.text() + "': " + missing.explanation(),
-                        at.fileName(), at.lineNumber());
-            }
         }
         // Defined even without a value, so that a use of it reports nothing of its own
         symbolTable.define(new Symbol(valueNode.name(), at, Symbol.Type.CONSTANT, new ValueBindingNode(value), valueNode.exported()))
