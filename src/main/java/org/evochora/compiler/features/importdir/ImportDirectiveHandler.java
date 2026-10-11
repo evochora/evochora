@@ -78,9 +78,8 @@ public class ImportDirectiveHandler implements IParserStatementHandler {
                             return null;
                         }
                     } else if (!readModuleGroup(context, usings)) {
-                        return new ImportNode(
-                                (String) pathToken.value(), aliasToken.text(), usings, values, exported,
-                                aliasToken.source());
+                        skipLine(context);
+                        return null;
                     }
                 }
                 if (isWord(context, "USING")) {

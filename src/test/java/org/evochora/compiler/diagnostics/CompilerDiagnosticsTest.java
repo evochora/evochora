@@ -733,14 +733,16 @@ class CompilerDiagnosticsTest {
                 "HELPER:",
                 "  NOP");
         write("main.evo",
-                ".IMPORT \"lib.evo\" AS LIB USING MODULE X",
+                ".IMPORT \"lib.evo\" AS LIB USING MODULE X Y AS Z",
                 "START:",
                 "  NOP");
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
                 .hasMessageContaining("Expected AS after USING source alias.")
-                .hasMessageContaining("main.evo:1");
+                .hasMessageContaining("main.evo:1")
+                .extracting(Throwable::getMessage, as(STRING))
+                .containsOnlyOnce("[ERROR]");
     }
 
     @Test
