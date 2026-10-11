@@ -170,6 +170,24 @@ public class ImportDirectiveTest {
 
     @Test
     @Tag("unit")
+    void aKindWordWithoutAGroupIsReported() {
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        List<AstNode> ast = parse(".IMPORT \"lib.evo\" AS LIB USING MODULE", diagnostics);
+
+        assertThat(ast).isEmpty();
+        assertThat(diagnostics.getDiagnostics()).singleElement()
+                .satisfies(d -> assertThat(d.message()).isEqualTo("Expected <source> AS <target> after MODULE."));
+
+        DiagnosticsEngine valueDiagnostics = new DiagnosticsEngine();
+        List<AstNode> valueAst = parse(".IMPORT \"lib.evo\" AS LIB USING MODULE A AS B VALUE", valueDiagnostics);
+
+        assertThat(valueAst).isEmpty();
+        assertThat(valueDiagnostics.getDiagnostics()).singleElement()
+                .satisfies(d -> assertThat(d.message()).isEqualTo("Expected <name> <value> after VALUE."));
+    }
+
+    @Test
+    @Tag("unit")
     void aSecondUsingOnOneImportIsReported() {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         List<AstNode> ast = parse(".IMPORT \"lib.evo\" AS LIB USING MODULE A AS X USING MODULE B AS Y", diagnostics);

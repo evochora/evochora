@@ -70,7 +70,14 @@ public class ImportDirectiveHandler implements IParserStatementHandler {
             // belong to that list.
             while (isKindWord(context)) {
                 boolean valueList = isWord(context, "VALUE");
-                context.advance(); // consume the kind word
+                Token kindWord = context.advance(); // consume the kind word
+                if (!context.check(TokenType.IDENTIFIER) || isKindWord(context) || isWord(context, "USING")) {
+                    context.getDiagnostics().reportError(
+                            valueList ? "Expected <name> <value> after VALUE." : "Expected <source> AS <target> after MODULE.",
+                            kindWord.source().fileName(), kindWord.source().lineNumber());
+                    skipLine(context);
+                    return null;
+                }
                 while (context.check(TokenType.IDENTIFIER) && !isKindWord(context) && !isWord(context, "USING")) {
                     if (valueList) {
                         if (!readValueGroup(context, values)) {
