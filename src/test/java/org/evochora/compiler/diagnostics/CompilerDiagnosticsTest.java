@@ -393,6 +393,22 @@ class CompilerDiagnosticsTest {
     }
 
     @Test
+    void exportedValueRequirementInsideASourcedFileIsRejectedToo() throws Exception {
+        write("lib.evo",
+                "  NOP",
+                "EXPORT .REQUIRE VALUE STEPS DATA:1");
+        write("main.evo",
+                ".SOURCE \"lib.evo\"",
+                "START:",
+                "  SETI %DR0 STEPS");
+
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining(".REQUIRE not allowed in a .SOURCE file")
+                .hasMessageContaining("lib.evo:2");
+    }
+
+    @Test
     void importInsideASourcedFileNamesTheFileAndTheLineOfTheImport() throws Exception {
         write("x.evo",
                 "  NOP");

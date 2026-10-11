@@ -760,7 +760,7 @@ None of the three may stand inside a macro or a repeat block, and `.IMPORT` and 
 
 #### `.IMPORT`
 
-* **Syntax**: `[EXPORT] .IMPORT "<path>" AS <Alias> [USING [MODULE <source> AS <target> ...] [VALUE <name> <value> ...]]`
+* **Syntax**: `[EXPORT] .IMPORT "<path>" AS <Alias> [USING [MODULE <source> AS <target> ...] [VALUE <name> <value> ...]]`. `MODULE` and `VALUE` each open a list, in any order and as often as needed.
 * **Effect**: Declares a dependency on the module at `<path>`, assigns it the local alias `<Alias>`, and inlines the module's code at this location. Exported labels and procedures in the imported module become accessible as `<Alias>.<Name>`. The same file may be imported more than once, under different aliases: each import places the module again, and the two placements are as independent as two different modules.
 * **`EXPORT` prefix**: Passes the import on to modules that import this one, which then reach it as `<ThisAlias>.<Alias>.<Name>` without inlining the code a second time. Each level decides for its own import: a level without the prefix ends the chain there.
 * **`USING`**: Supplies what the imported module declared with `.REQUIRE`. For every `.REQUIRE MODULE … AS <target>` of the imported module, `MODULE <source> AS <target>` names the module that takes its place: one this file imported, or one this file requires itself and so hands on. For every `.REQUIRE VALUE <name>` of the imported module, `VALUE <name> <value>` gives its value, written as the value of a `.CONST` is; a name is one this file defined before the import. A value with a default may be left out, every other requirement must be supplied.

@@ -8,12 +8,13 @@ import java.util.regex.Pattern;
 
 /**
  * Phase 0 scan handler for {@code .REQUIRE} directives. A requirement loads no file and the
- * parser alone reads the line, so the scan records only that the line is a {@code .REQUIRE}:
- * the scanner rejects it inside a {@code .SOURCE} file, which may hold no module directive.
+ * parser alone reads the line, so the scan records only that the line is a {@code .REQUIRE}, with
+ * or without {@code EXPORT} before it: the scanner rejects it inside a {@code .SOURCE} file, which
+ * may hold no module directive.
  */
 public class RequireDependencyScanHandler implements IDependencyScanHandler {
 
-    private static final Pattern REQUIRE_PATTERN = Pattern.compile("(?i)^\\.REQUIRE\\b.*$");
+    private static final Pattern REQUIRE_PATTERN = Pattern.compile("(?i)^(?:EXPORT\\s+)?\\.REQUIRE\\b.*$");
 
     @Override
     public Pattern pattern() {
