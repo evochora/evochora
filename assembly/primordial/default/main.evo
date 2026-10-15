@@ -1,0 +1,63 @@
+# default/main.evo
+# Primordial organism built from the library
+#
+# This file is all a primordial built from the library consists of: the shell around the body,
+# the behaviors it takes from the library, and the main loop that chooses among them. How a
+# behavior is taken into the loop stands in LIB:behavior/README.md.
+#
+# Extent: the shell measures 112 x 95 cells, walls included.
+
+# ----------------------------
+# Register aliases (main loop only)
+# ----------------------------
+.REG %ER     %DR0   # Energy, read once per round
+.REG %SR     %DR1   # Entropy, read once per round
+.REG %RESULT %DR2   # What the behavior called last reported
+
+# ----------------------------
+# STRUCTURE shell, with a label on the body cell diagonally inside each corner
+#
+# The wall is one molecule throughout, corners included: nothing in it is unique, so a lost
+# cell can be written back. The labels sit inside, on body cells, and are copied with the
+# body like any other cell.
+# ----------------------------
+.PLACE STRUCTURE:100 -1..110|-1      # North edge, corners included
+.PLACE STRUCTURE:100 -1..110|93      # South edge, corners included
+.PLACE STRUCTURE:100 -1|0..92        # West edge
+.PLACE STRUCTURE:100 110|0..92       # East edge
+
+.ORG 109|0
+NE_CORNER:
+.ORG 109|92
+SE_CORNER:
+.ORG 0|92
+SW_CORNER:
+
+.ORG 0|0
+NW_CORNER: JMPI MAIN_LOOP; NOP^4; JMPI MAIN_LOOP; NOP^4   # The IP starts on this label, one cell before the jump
+
+# ===========================================================================
+# MAIN LOOP - one case per behavior, in the order of their priority
+#
+# Every round reads energy and entropy once, into %ER and %SR, for every case to test. A case
+# opens its gates one after the other, each for itself, and calls its behavior when one is open;
+# DATA:0 back means the behavior acted, and the round starts again. Anything else goes on to the
+# next case, whose name stands at the end of the case: a behavior inserted between two cases
+# changes that name in the case before it. The last case has no gate.
+# ===========================================================================
+.CONTROL MAIN_LOOP
+  NRG %ER; NOP^4                          # Energy for the gates of this round
+  NTR %SR; NOP^4                          # Entropy for the gates of this round
+  JMPI HARVESTING; NOP^4; JMPI HARVESTING; NOP^4
+
+.CASE HARVESTING
+  SETI %RESULT CODE:0; NOP^4              # Silence counts as "not acted"
+  CALL HARVEST.STEP REF %RESULT; NOP^4    # One run
+  JMPI MAIN_LOOP; NOP^4; JMPI MAIN_LOOP   # The last behavior: the round starts again whatever it reported
+.ENDCONTROL
+
+# ===========================================================================
+# BEHAVIORS
+# ===========================================================================
+.ORG 0|@+2
+.IMPORT "LIB:behavior/harvest/random-run.evo" AS HARVEST

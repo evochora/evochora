@@ -23,7 +23,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  * organism is what the simulation actually runs. Both reach further than the unit tests around the
  * module system, which build their modules in a temporary directory — these resolve paths through a
  * source root and nest modules several levels deep, which is where module resolution is easiest to
- * break without noticing.
+ * break without noticing. Every program is compiled with the library as a second root, under the
+ * prefix {@code LIB}, as the configuration gives it to the simulation.
  */
 class AssemblyProgramsCompileTest {
 
@@ -42,11 +43,14 @@ class AssemblyProgramsCompileTest {
             "assembly/examples/duplicate-shell, main.evo",
             "assembly/primordial,               classic/main.evo",
             "assembly/primordial,               shell-first/main.evo",
+            "assembly/primordial,               default/main.evo",
     })
     @Tag("integration")
     void aProgramInThisRepositoryCompiles(String sourceRootPath, String fileName) throws Exception {
         String sourceRoot = Path.of("").toAbsolutePath().resolve(sourceRootPath).toString();
-        CompilerOptions options = new CompilerOptions(List.of(new SourceRoot(sourceRoot, null)));
+        String library = Path.of("").toAbsolutePath().resolve("assembly/lib").toString();
+        CompilerOptions options = new CompilerOptions(List.of(
+                new SourceRoot(sourceRoot, null), new SourceRoot(library, "LIB")));
 
         ProgramArtifact artifact = new Compiler().compile(fileName, ENV, options);
 
