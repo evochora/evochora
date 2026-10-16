@@ -12,8 +12,9 @@
 # ----------------------------
 .REQUIRE VALUE REPRODUCE_ENERGY_GATE  DATA:50000   # Reproduce for certain from here on, below with probability ER / gate
 .REQUIRE VALUE REPRODUCE_ENTROPY_GATE DATA:25000   # Reproduce for certain from here on, below with probability SR / gate
-.REQUIRE VALUE REPRODUCE_CHILD_ENERGY DATA:25000   # What a child is given; a birth needs it and 20000 more,
-                                                   # so the energy gate has to lie well above both
+.REQUIRE VALUE REPRODUCE_CHILD_ENERGY DATA:25000   # What a child is given; a birth needs it and the
+                                                   # reproduction's UNIT_ENERGY, so the energy gate has to
+                                                   # lie well above their sum
 
 # ----------------------------
 # Register aliases (main loop only)
@@ -66,7 +67,7 @@ MAIN_LOOP: NOP^2
   JMPI END; NOP^4; JMPI END; NOP^4
 .CASE OPEN
   SETI %RESULT CODE:0; NOP^2              # Silence counts as "not acted"
-  CALL REPRODUCE.STEP REF %RESULT LVAL NW_CORNER LVAL NE_CORNER LVAL SE_CORNER LVAL SW_CORNER; NOP^2
+  CALL REPRODUCE.STEP REF %RESULT LVAL NW_CORNER LVAL NE_CORNER LVAL SE_CORNER LVAL SW_CORNER; NOP^2 # One unit: an edge, a row or the birth
   JFI %RESULT DATA:0 MAIN_LOOP; NOP^2     # Acted: the round starts again
 .ENDCONTROL
   JMPI HARVESTING; NOP^4; JMPI HARVESTING

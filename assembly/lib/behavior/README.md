@@ -24,7 +24,8 @@ A call does one bounded step of work and returns, so that the main loop decides 
 step. What a behavior has to remember from one step to the next it keeps in its static registers.
 
 Before a step a behavior checks what the step needs to be carried out — the energy it costs, a
-position it depends on. When that is missing it returns before acting, and nothing has changed.
+position it depends on. When that is missing it returns before acting on it, and leaves what it has
+done so far for the next call to go on from.
 When the step is worth taking is not the behavior's decision: the thresholds that choose between
 behaviors stand in the main file.
 
@@ -47,7 +48,9 @@ On every return:
 - the marker register is 0,
 - the active data pointer is DP0,
 - the data and location stacks are as high as at the call,
-- no global register has changed but the result.
+- no global register has changed but the result,
+
+and every behavior finds the marker 0 and DP0 active when it is called.
 
 The positions of the data pointers are free: a behavior may leave them anywhere, and none may
 rely on finding a data pointer where it left it. A behavior that needs a position again keeps it

@@ -96,7 +96,7 @@ molecule, gets through. The cell tests tell own, foreign, unowned and passable a
 
 One program can decide differently at different steps: the default primordial organism,
 `assembly/primordial/default`, clears its own body of anything that is not its own, but abandons
-a copy at the first foreign cell in the way.
+a copy at the first foreign cell in the way of the child's shell.
 
 ### The marker register and what a child inherits
 
@@ -212,7 +212,8 @@ The default primordial organism, `assembly/primordial/default` with the behavior
 `assembly/lib`, is the reference: a header per file and per procedure that says what it does,
 what it assumes and what it leaves behind; register aliases named for their role in each phase;
 sections introduced by a comment that names their purpose; and a comment at the end of every
-line that says what the instruction is for, aligned in a column. The name a module is imported under must not be the mnemonic of an instruction.
+line that says what the instruction is for, aligned in a column. The name a module is imported
+under must not be the mnemonic of an instruction.
 
 ### Let the importer decide
 

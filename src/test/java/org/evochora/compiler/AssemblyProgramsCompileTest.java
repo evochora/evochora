@@ -22,7 +22,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <p>
  * The examples are documentation that has to work: the reference names them by file and gives the
  * command line that translates them, so a reader is entitled to expect that it does. The primordial
- * organism is what the simulation actually runs. Both reach further than the unit tests around the
+ * organisms are what the simulation actually runs. Both reach further than the unit tests around the
  * module system, which build their modules in a temporary directory — these resolve paths through a
  * source root and nest modules several levels deep, which is where module resolution is easiest to
  * break without noticing. Every program is compiled with the library as a second root, under the

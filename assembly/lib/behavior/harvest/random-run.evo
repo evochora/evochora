@@ -18,7 +18,7 @@
 # Constants
 # ----------------------------
 .CONST RUN_MIN  DATA:50                  # A run is at least this many moves long...
-.CONST RUN_SPAN DATA:100                 # ...and at most this many moves longer
+.CONST RUN_SPAN DATA:100                 # ...and less than this many moves longer
 
 EXPORT .CONST ENDED   DATA:1             # Run over, nothing found
 EXPORT .CONST BLOCKED DATA:2             # Way ahead blocked, nothing found
@@ -65,7 +65,7 @@ EXPORT .PROC STEP REF RESULT
     SNTI %MASK ENERGY:0; NOP^2              # Energy among the neighbours?
     JFI %MASK DATA:0 STEP_GO; NOP^2         # ...no, on with the run
     RBIR %VEC %MASK; NOP^2                  # Pick one of them
-    B2VR %VEC %VEC; NOP^2
+    B2VR %VEC %VEC; NOP^2                   # ...as a direction
     SCAN %MASK %VEC; NOP^2                  # Read the cell again
     JLEI %MASK DATA:0 STEP_GO; NOP^2        # Our own ENERGY:0 operands hold nothing; eating them blinds this scan
     JNTI %MASK ENERGY:0 STEP_GO; NOP^2      # Still energy? The last look before we take it
@@ -84,21 +84,21 @@ EXPORT .PROC STEP REF RESULT
   STEP_DRAW: NOP^2
     SPNR %MASK; NOP^4                       # Passable directions
     JFI %MASK DATA:0 STEP_STUCK; NOP^4      # ...none
-    SETR %FWD %MASK; NOP^4
+    SETR %FWD %MASK; NOP^4                  # A copy to strike the way back from
     ADNR %FWD %BACK; NOP^4                  # Without the way back...
     INI %FWD DATA:0                         # ...unless nothing else is left
-    SETR %MASK %FWD; NOP^4
+    SETR %MASK %FWD; NOP^4                  # ...and the rest is what to draw from
     RBIR %FWD %MASK; NOP^4                  # Pick one
-    B2VR %DIR %FWD; NOP^4
+    B2VR %DIR %FWD; NOP^4                   # The drawn direction as a vector
     JMPI STEP_DRAW_RUN; NOP^4; JMPI STEP_DRAW_RUN
 
   .ORG 0|@+2
   STEP_DRAW_RUN: NOP^2
     SETV %VEC 0|0; NOP^4                    # The way back along this run...
-    SUBR %VEC %DIR; NOP^4
+    SUBR %VEC %DIR; NOP^4                   # 0|0 minus the direction: its reverse
     V2BR %BACK %VEC; NOP^4                  # ...kept for the next draw
     SETI %LEFT RUN_SPAN; NOP^4              # A random length...
-    RAND %LEFT; NOP^4
+    RAND %LEFT; NOP^4                       # 0 up to the span
     ADDI %LEFT RUN_MIN; NOP^4               # ...no shorter than the minimum
     JMPI STEP_MOVE; NOP^4; JMPI STEP_MOVE
 
@@ -107,12 +107,12 @@ EXPORT .PROC STEP REF RESULT
   # ===========================================================================
   .ORG 0|@+2
   STEP_MOVE: NOP^2
-    SPNR %MASK; NOP^4
+    SPNR %MASK; NOP^4                       # Passable directions from here
     ANDR %MASK %FWD; NOP^4                  # The way ahead passable?
     JFI %MASK DATA:0 STEP_BLOCKED; NOP^4    # ...no, the run ends here
     SEEK %DIR                               # One step
     JFER STEP_BLOCKED; NOP^4                # Taken between the look and the step
-    DECR %LEFT; NOP^4
+    DECR %LEFT; NOP^4                       # One move fewer left
     JLEI %LEFT DATA:0 STEP_ENDED; NOP^4     # Run over
     JMPI STEP_SCAN; NOP^4; JMPI STEP_SCAN
 
@@ -121,16 +121,16 @@ EXPORT .PROC STEP REF RESULT
   # ===========================================================================
   .ORG 0|@+2
   STEP_ENDED: NOP^2
-    SETI RESULT ENDED; NOP^4
+    SETI RESULT ENDED; NOP^4                # Nothing found on the whole run
     JMPI STEP_RETURN; NOP^4; JMPI STEP_RETURN
   NOP^4
   STEP_BLOCKED: NOP^2
-    SETI RESULT BLOCKED; NOP^4
+    SETI RESULT BLOCKED; NOP^4              # Nothing found before the way was blocked
     JMPI STEP_RETURN; NOP^4; JMPI STEP_RETURN
   NOP^4
   STEP_STUCK: NOP^2
     SYNC; NOP^4                             # Nowhere to go: the next call starts from the IP
-    SETI RESULT STUCK; NOP^4
+    SETI RESULT STUCK; NOP^4                # Reported as stuck
     JMPI STEP_RETURN; NOP^4; JMPI STEP_RETURN
 
   .ORG 0|@+2
