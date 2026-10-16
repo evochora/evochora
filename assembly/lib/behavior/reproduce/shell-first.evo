@@ -13,7 +13,7 @@
 #   PAUSED_STEP_FAILED   a step inside our own area failed; the next call goes on from there
 #   PAUSED_FORK_FAILED   the birth failed; the next call tries it again
 #   ABORTED_OCCUPIED     the child's place is occupied by someone else; the attempt is given up
-#   ABORTED_NO_CORNER    a corner label could not be found; the attempt is given up
+#   ABORTED_NO_CORNER    a corner could not be found or reached; the attempt is given up
 #
 # Flag AGGRESSIVE: a foreign cell in the way of the child's shell is taken instead of giving the
 # attempt up, unless the energy is below the minimum of a unit or the entropy too high for it.
@@ -24,13 +24,12 @@
 # and UNIT_ENERGY, so a gate that sends the main loop here has to lie above their sum.
 #
 # Requires of the main file: a shell of one STRUCTURE molecule around the whole body, with a label
-# on the body cell diagonally inside each corner, passed as the four parameters. The minimum of a
-# unit is set for edges as long as those of default/main.evo, under 100 cells, and taking a foreign
-# cell assumes a max-entropy of 50000.
+# on the body cell diagonally inside each corner, passed as the four parameters. UNIT_ENERGY has to
+# cover an edge of that shell, and ENTROPY_ROOM has to lie below the configured max-entropy.
 #
 # The data pointers carry no meaning after a return.
 #
-# Extent: 84 x 71 cells, with and without AGGRESSIVE.
+# Extent: 100 x 51 cells, with and without AGGRESSIVE.
 
 # ----------------------------
 # Values and constants
@@ -38,7 +37,7 @@
 .REQUIRE VALUE CHILD_ENERGY              # What the child is given at birth
 
 .CONST UNIT_ENERGY  DATA:20000           # At least this much before an edge or a row, and besides CHILD_ENERGY before the birth
-.CONST ENTROPY_ROOM DATA:45000           # Above this a foreign cell is not taken: a foreign wall costs 1000 entropy
+.CONST ENTROPY_ROOM DATA:45000           # Above this a foreign cell is not taken: taking it costs entropy
 
 .CONST PHASE_SHELL DATA:1                # The child's shell is being built
 .CONST PHASE_BODY  DATA:2                # The body is being copied into it
@@ -88,7 +87,6 @@ EXPORT .PROC STEP REF RESULT LVAL CNW LVAL CNE LVAL CSE LVAL CSW
   .REG %DIRMASK   %SDR1   # Reproduction direction as a bitmask
   .REG %DIRVEC    %SDR2   # ...and as a unit vector
   .REG %CHILDNW   %SLR0   # North-west corner of the child's shell, once it stands
-  .REG %OWNNW     %SLR1   # ...and our own, two steps out from the label that names it
 
   # Working registers, gone with the return
   .REG %E         %PDR0   # Energy
@@ -100,12 +98,11 @@ EXPORT .PROC STEP REF RESULT LVAL CNW LVAL CNE LVAL CSE LVAL CSW
     NRG %E; NOP^2                           # Energy before the unit
     JLTI %E UNIT_ENERGY STEP_LOW; NOP^2     # Too little for a unit: return before anything is changed
     SMRI DATA:1; NOP^2                      # Everything written from here belongs to the child
-    JMPI PHASES; NOP^4; JMPI PHASES
+    JMPI PHASES; NOP^4; JMPI PHASES; NOP^4
 
   # ===========================================================================
   # PHASES - one unit of the phase that is due
   # ===========================================================================
-  .ORG 0|@+2
   .CONTROL PHASES
     JLEI %PHASE DATA:0 BEGIN; NOP^2         # Zero, or never written since birth: a fresh attempt
     JFI %PHASE PHASE_SHELL SHELL; NOP^2     # The child's shell is being built
@@ -115,7 +112,7 @@ EXPORT .PROC STEP REF RESULT LVAL CNW LVAL CNE LVAL CSE LVAL CSW
   .CASE BEGIN
     JMPI STEP_BEGIN; NOP^4; JMPI STEP_BEGIN; NOP^4
   .CASE SHELL
-    CALL BUILD_SHELL REF RESULT REF %PHASE VAL %DIRVEC LVAL %OWNNW LREF %CHILDNW; NOP^4 # One edge
+    CALL BUILD_SHELL REF RESULT REF %PHASE VAL %DIRVEC LREF %CHILDNW; NOP^4 # One edge
     JMPI STEP_AFTER; NOP^4; JMPI STEP_AFTER
   .ORG 0|@+2
   .CASE BODY
@@ -136,17 +133,12 @@ EXPORT .PROC STEP REF RESULT LVAL CNW LVAL CNE LVAL CSE LVAL CSW
     SETI %DIRMASK DATA:15; NOP^2            # All four directions to choose from
     RBIR %DIRMASK %DIRMASK; NOP^2           # Draw one of them
     B2VR %DIRVEC %DIRMASK; NOP^2            # ...and keep it as a vector too
-    JNSL CNW STEP_NO_CORNER; NOP^2          # The label sits on the body cell inside the corner;
-    ADPI DATA:0; SKLR CNW; NOP^2            # two steps over our own cells reach the corner
-    SEKI -1|0; JFER STEP_NO_CORNER; NOP^2   # One step west onto the wall
-    SEKI 0|-1; JFER STEP_NO_CORNER; NOP^2   # ...and one north onto the corner
-    DPLR %OWNNW; NOP^2                      # BUILD_SHELL needs it to note the child's north-west corner
-    JMPI CORNERS; NOP^4; JMPI CORNERS
+    JNSL CNW STEP_NO_CORNER; NOP^2          # The body is copied from the north-west label in every direction
+    JMPI CORNERS; NOP^4; JMPI CORNERS; NOP^4
 
   # The walk runs clockwise and starts at the corner whose first edge points the way the copy
   # goes. The read pointer stands on that corner, the write pointer on the corner that edge ends
   # at; the distance between the two is the offset of the child, and nothing ever counts it.
-  .ORG 0|@+2
   .CONTROL CORNERS
     JFI %DIRMASK DIR_EAST EAST; NOP^2       # The copy goes east
     JFI %DIRMASK DIR_SOUTH SOUTH; NOP^2     # ...south
@@ -155,24 +147,24 @@ EXPORT .PROC STEP REF RESULT LVAL CNW LVAL CNE LVAL CSE LVAL CSW
   .ORG 0|@+2
   .CASE EAST
     JNSL CNE STEP_NO_CORNER; NOP^2          # East needs the north-west and north-east corners
-    ADPI DATA:0; SKLR CNW; SEKI -1|0; SEKI 0|-1; NOP^2    # Read pointer on the north-west corner
-    ADPI DATA:1; SKLR CNE; SEKI 1|0; SEKI 0|-1; NOP^2     # Write pointer on the north-east corner
+    ADPI DATA:0; SKLR CNW; SEKI -1|0; JFER STEP_NO_CORNER; SEKI 0|-1; JFER STEP_NO_CORNER; NOP^2 # Read pointer on the north-west corner
+    ADPI DATA:1; SKLR CNE; SEKI 1|0; JFER STEP_NO_CORNER; SEKI 0|-1; JFER STEP_NO_CORNER; NOP^2 # Write pointer on the north-east corner
     JMPI STEP_CORNER; NOP^4; JMPI STEP_CORNER; NOP^4
   .CASE SOUTH
     JNSL CNE STEP_NO_CORNER; JNSL CSE STEP_NO_CORNER; NOP^2 # South needs north-east and south-east
-    ADPI DATA:0; SKLR CNE; SEKI 1|0; SEKI 0|-1; NOP^2     # Read pointer on the north-east corner
-    ADPI DATA:1; SKLR CSE; SEKI 1|0; SEKI 0|1; NOP^2      # Write pointer on the south-east corner
+    ADPI DATA:0; SKLR CNE; SEKI 1|0; JFER STEP_NO_CORNER; SEKI 0|-1; JFER STEP_NO_CORNER; NOP^2 # Read pointer on the north-east corner
+    ADPI DATA:1; SKLR CSE; SEKI 1|0; JFER STEP_NO_CORNER; SEKI 0|1; JFER STEP_NO_CORNER; NOP^2 # Write pointer on the south-east corner
     JMPI STEP_CORNER; NOP^4; JMPI STEP_CORNER
   .ORG 0|@+2
   .CASE WEST
     JNSL CSE STEP_NO_CORNER; JNSL CSW STEP_NO_CORNER; NOP^2 # West needs south-east and south-west
-    ADPI DATA:0; SKLR CSE; SEKI 1|0; SEKI 0|1; NOP^2      # Read pointer on the south-east corner
-    ADPI DATA:1; SKLR CSW; SEKI -1|0; SEKI 0|1; NOP^2     # Write pointer on the south-west corner
+    ADPI DATA:0; SKLR CSE; SEKI 1|0; JFER STEP_NO_CORNER; SEKI 0|1; JFER STEP_NO_CORNER; NOP^2 # Read pointer on the south-east corner
+    ADPI DATA:1; SKLR CSW; SEKI -1|0; JFER STEP_NO_CORNER; SEKI 0|1; JFER STEP_NO_CORNER; NOP^2 # Write pointer on the south-west corner
     JMPI STEP_CORNER; NOP^4; JMPI STEP_CORNER; NOP^4
   .CASE NORTH
     JNSL CSW STEP_NO_CORNER; NOP^2          # North needs south-west and north-west
-    ADPI DATA:0; SKLR CSW; SEKI -1|0; SEKI 0|1; NOP^2     # Read pointer on the south-west corner
-    ADPI DATA:1; SKLR CNW; SEKI -1|0; SEKI 0|-1; NOP^2    # Write pointer on the north-west corner
+    ADPI DATA:0; SKLR CSW; SEKI -1|0; JFER STEP_NO_CORNER; SEKI 0|1; JFER STEP_NO_CORNER; NOP^2 # Read pointer on the south-west corner
+    ADPI DATA:1; SKLR CNW; SEKI -1|0; JFER STEP_NO_CORNER; SEKI 0|-1; JFER STEP_NO_CORNER; NOP^2 # Write pointer on the north-west corner
     JMPI STEP_CORNER; NOP^4; JMPI STEP_CORNER
   .ENDCONTROL
 
@@ -211,9 +203,7 @@ EXPORT .PROC STEP REF RESULT LVAL CNW LVAL CNE LVAL CSE LVAL CSW
     JMPI STEP_RESTORE; NOP^4; JMPI STEP_RESTORE; NOP^4
   STEP_LOW: NOP^2
     SETI RESULT PAUSED_LOW_ENERGY; NOP^2    # Too little energy for the next unit
-    JMPI STEP_RESTORE; NOP^4; JMPI STEP_RESTORE
-
-  .ORG 0|@+2
+    JMPI STEP_RESTORE; NOP^4; JMPI STEP_RESTORE; NOP^4
   STEP_RESTORE: NOP^2
     SMRI DATA:0; NOP^2                      # Nothing written from here belongs to a child
     ADPI DATA:0; NOP^2                      # DP0 active again, as the contract asks
@@ -236,7 +226,7 @@ EXPORT .PROC STEP REF RESULT LVAL CNW LVAL CNE LVAL CSE LVAL CSW
 # and we mend it; if it does not, the corner belongs here, however much of it is missing.
 # ===========================================================================
 .ORG 0|@+2
-.PROC BUILD_SHELL REF RESULT REF PHASE VAL DIRVEC LVAL OWNNW LREF CHILDNW
+.PROC BUILD_SHELL REF RESULT REF PHASE VAL DIRVEC LREF CHILDNW
 
   # State that outlives a call
   .REG %RUN      %SDR0    # Direction the walk runs in
@@ -248,7 +238,7 @@ EXPORT .PROC STEP REF RESULT LVAL CNW LVAL CNE LVAL CSE LVAL CSW
 
   # Working registers, gone with the return
   .REG %M        %PDR0    # A molecule that was looked at or is written
-  .REG %E        %PDR1    # Energy or entropy, for TAKE_CELL
+  .REG %E        %PDR1    # Energy or entropy, read before something costly
   .REG %A        %PDR2    # A position, for comparing
   .REG %B        %PDR3    # ...and the one it is compared against
   .REG %HERE     %PLR0    # Where the read pointer stood before a look aside
@@ -272,19 +262,18 @@ EXPORT .PROC STEP REF RESULT LVAL CNW LVAL CNE LVAL CSE LVAL CSW
   # which it is whenever the copy goes east - the child's north-west corner is noted right here
   .ORG 0|@+2
   SHELL_FROM_NW: NOP^2
-    LRDR %A %START; LRDR %B OWNNW; NOP^2    # Where we set out, against our north-west corner
-    JNR %A %B SHELL_STEP; NOP^2             # Not our north-west corner: just set out
+    V2BR %A %RUN; NOP^2                     # The first edge runs east only from our north-west corner
+    JNI %A DIR_EAST SHELL_STEP; NOP^2       # Not our north-west corner: just set out
     ADPI DATA:1; DPLR CHILDNW; NOP^2        # The write pointer stands on the child's north-west corner
     JMPI SHELL_STEP; NOP^4; JMPI SHELL_STEP; NOP^4
   SHELL_RESUME: NOP^2
     ADPI DATA:0; SKLR %READPOS; NOP^2       # Both pointers back where they stopped; the cell under
     ADPI DATA:1; SKLR %WRITEPOS; NOP^2      # the write pointer is written already, so on with a step
-    JMPI SHELL_STEP; NOP^4; JMPI SHELL_STEP
+    JMPI SHELL_STEP; NOP^4; JMPI SHELL_STEP; NOP^4
 
   # ===========================================================================
   # LOOP - decide what lies ahead of the read pointer
   # ===========================================================================
-  .ORG 0|@+2
   SHELL_LOOP: NOP^2
     ADPI DATA:0; NOP^2                      # Through the read pointer
     SCAN %M %Q; NOP^2                       # Across first: at a corner our next edge lies there
@@ -304,13 +293,12 @@ EXPORT .PROC STEP REF RESULT LVAL CNW LVAL CNE LVAL CSE LVAL CSW
     JMPI SHELL_CORNER; NOP^4; JMPI SHELL_CORNER; NOP^4
   SHELL_DOUBT_GAP: NOP^2
     SKLR %HERE; NOP^2                       # Back onto the wall line
-    JMPI SHELL_GAP; NOP^4; JMPI SHELL_GAP
+    JMPI SHELL_GAP; NOP^4; JMPI SHELL_GAP; NOP^4
 
   # ===========================================================================
   # STEP - the child's cell is looked at first, then the read pointer steps, then the write
   # pointer; a gap is a step whose cell on our wall is mended in any case
   # ===========================================================================
-  .ORG 0|@+2
   SHELL_STEP: NOP^2
     ADPI DATA:1; NOP^2                      # The cell ahead of the write pointer
     TAKE_CELL TAKE_STEP %RUN %E SHELL_OCCUPIED SHELL_LOW # May the next cell of the child's wall be taken?
@@ -325,6 +313,8 @@ EXPORT .PROC STEP REF RESULT LVAL CNW LVAL CNE LVAL CSE LVAL CSW
     ADPI DATA:0; NOP^2                      # Our wall has a gap ahead of the read pointer
     JMPI SHELL_MEND; NOP^4; JMPI SHELL_MEND; NOP^4
   SHELL_MEND: NOP^2
+    NRG %E; NOP^2                           # Mending costs more than a step...
+    JLTI %E UNIT_ENERGY SHELL_LOW; NOP^2    # ...so too little energy pauses the edge here
     SMRI DATA:0; NOP^2                      # Our own wall stays ours, it is not the child's
     SETR %M %SHELL; PPKR %M %RUN; NOP^2     # Whatever stands there, the wall goes in
     SMRI DATA:1; NOP^2                      # Back to writing for the child
@@ -338,18 +328,17 @@ EXPORT .PROC STEP REF RESULT LVAL CNW LVAL CNE LVAL CSE LVAL CSW
     SETR %M %SHELL; PPKR %M %RUN; NOP^2     # The child's wall, written before the write pointer steps on it
     SEEK %RUN                               # Onto the cell just written...
     JFER SHELL_OCCUPIED; NOP^2                 # ...unless it was taken at once: the pointers would drift apart
-    JMPI SHELL_LOOP; NOP^4; JMPI SHELL_LOOP
+    JMPI SHELL_LOOP; NOP^4; JMPI SHELL_LOOP; NOP^4
 
   # ===========================================================================
   # CORNER - the ring closes here, or the walk turns and the edge is done
   # ===========================================================================
-  .ORG 0|@+2
   SHELL_CORNER: NOP^2
     DPLR %HERE; LRDR %A %HERE; NOP^2        # Where the read pointer stands, as a position
     LRDR %B %START; NOP^2                   # The corner we set out from
     JFR %A %B SHELL_DONE; NOP^2             # Back there: the ring is closed
-    LRDR %B OWNNW; NOP^2                    # Our north-west corner?
-    JNR %A %B SHELL_TURN; NOP^2             # Not our north-west corner: just turn
+    V2BR %B %RUN; NOP^2                     # The walk runs clockwise, so it comes up the west wall,
+    JNI %B DIR_NORTH SHELL_TURN; NOP^2      # heading north, only into our north-west corner
     ADPI DATA:1; DPLR CHILDNW; NOP^2        # The write pointer stands on the child's north-west corner
     JMPI SHELL_TURN; NOP^4; JMPI SHELL_TURN
 
@@ -388,9 +377,7 @@ EXPORT .PROC STEP REF RESULT LVAL CNW LVAL CNE LVAL CSE LVAL CSW
   SHELL_NO_CORNER: NOP^2
     CRLR %READPOS; CRLR %WRITEPOS; NOP^2    # Nothing to go on from
     SETI RESULT ABORTED_NO_CORNER; NOP^2    # A corner is missing
-    JMPI SHELL_RET; NOP^4; JMPI SHELL_RET
-
-  .ORG 0|@+2
+    JMPI SHELL_RET; NOP^4; JMPI SHELL_RET; NOP^4
   SHELL_RET:
     NOP^4; RET; NOP^12; RET; NOP^4; RET
 .ENDPROC
@@ -415,7 +402,7 @@ EXPORT .PROC STEP REF RESULT LVAL CNW LVAL CNE LVAL CSE LVAL CSW
 
   # Working registers, gone with the return
   .REG %M        %PDR0    # The molecule being carried over
-  .REG %E        %PDR1    # Energy or entropy, for TAKE_CELL
+  .REG %E        %PDR1    # Energy or entropy, read before something costly
   .REG %ALONG    %PDR2    # Along a row
   .REG %DOWN     %PDR3    # To the next row
   .REG %SHELL    %PDR4    # What our wall is made of, read from it
@@ -467,6 +454,8 @@ EXPORT .PROC STEP REF RESULT LVAL CNW LVAL CNE LVAL CSE LVAL CSW
 
   .ORG 0|@+2
   BODY_CLEAR: NOP^2
+    NRG %E; NOP^2                           # Taking it out can cost more than a step...
+    JLTI %E UNIT_ENERGY BODY_LOW; NOP^2     # ...so too little energy pauses the row here
     PEEK %M %ALONG; NOP^2                   # Take out what blocks our own row...
     SEEK %ALONG                             # ...and step onto it
     JFER BODY_STEP_FAILED; NOP^2            # Taken again: the next call copies the row again
@@ -492,9 +481,7 @@ EXPORT .PROC STEP REF RESULT LVAL CNW LVAL CNE LVAL CSE LVAL CSW
     SCNI %M 1|0; NOP^2                      # The row is the south wall's when the cell inside
     JFR %M %SHELL BODY_DONE; NOP^2          # beside us is wall: the body is done
     DPLR %READPOS; NOP^2                    # Here the next row begins
-    JMPI BODY_ROW_DOWN; NOP^4; JMPI BODY_ROW_DOWN
-
-  .ORG 0|@+2
+    JMPI BODY_ROW_DOWN; NOP^4; JMPI BODY_ROW_DOWN; NOP^4
   BODY_ROW_DOWN: NOP^2
     ADPI DATA:1; SKLR %WRITEPOS; NOP^2      # Back to where the child's row began
     INPR %DOWN                              # Anything in the way that is not ours...
@@ -529,9 +516,7 @@ EXPORT .PROC STEP REF RESULT LVAL CNW LVAL CNE LVAL CSE LVAL CSW
   BODY_NO_CORNER: NOP^2
     CRLR %READPOS; CRLR %WRITEPOS; NOP^2    # Nothing to go on from
     SETI RESULT ABORTED_NO_CORNER; NOP^2    # A corner is missing
-    JMPI BODY_RET; NOP^4; JMPI BODY_RET
-
-  .ORG 0|@+2
+    JMPI BODY_RET; NOP^4; JMPI BODY_RET; NOP^4
   BODY_RET:
     NOP^4; RET; NOP^12; RET; NOP^4; RET
 .ENDPROC
@@ -564,9 +549,7 @@ EXPORT .PROC STEP REF RESULT LVAL CNW LVAL CNE LVAL CSE LVAL CSW
     JMPI BIRTH_RET; NOP^4; JMPI BIRTH_RET; NOP^4
   BIRTH_NO_CORNER: NOP^2
     SETI RESULT ABORTED_NO_CORNER; NOP^2    # No corner of the child's known
-    JMPI BIRTH_RET; NOP^4; JMPI BIRTH_RET
-
-  .ORG 0|@+2
+    JMPI BIRTH_RET; NOP^4; JMPI BIRTH_RET; NOP^4
   BIRTH_RET:
     NOP^4; RET; NOP^12; RET; NOP^4; RET
 .ENDPROC

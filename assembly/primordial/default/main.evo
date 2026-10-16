@@ -5,7 +5,7 @@
 # the behaviors it takes from the library, and the main loop that chooses among them. How a
 # behavior is taken into the loop stands in LIB:behavior/README.md.
 #
-# Extent: the shell measures 89 x 94 cells, walls included.
+# Extent: the shell measures 102 x 72 cells, walls included.
 
 # ----------------------------
 # Values, set from the configuration with values { ... } in the organism's entry
@@ -30,16 +30,16 @@
 # cell can be written back. The labels sit inside, on body cells, and are copied with the
 # body like any other cell.
 # ----------------------------
-.PLACE STRUCTURE:100 -1..87|-1       # North edge, corners included
-.PLACE STRUCTURE:100 -1..87|92       # South edge, corners included
-.PLACE STRUCTURE:100 -1|0..91        # West edge
-.PLACE STRUCTURE:100 87|0..91        # East edge
+.PLACE STRUCTURE:100 -1..100|-1      # North edge, corners included
+.PLACE STRUCTURE:100 -1..100|70      # South edge, corners included
+.PLACE STRUCTURE:100 -1|0..69        # West edge
+.PLACE STRUCTURE:100 100|0..69       # East edge
 
-.ORG 86|0
+.ORG 99|0
 NE_CORNER:
-.ORG 86|91
+.ORG 99|69
 SE_CORNER:
-.ORG 0|91
+.ORG 0|69
 SW_CORNER:
 
 .ORG 0|0
@@ -70,9 +70,7 @@ MAIN_LOOP: NOP^2
   CALL REPRODUCE.STEP REF %RESULT LVAL NW_CORNER LVAL NE_CORNER LVAL SE_CORNER LVAL SW_CORNER; NOP^2 # One unit: an edge, a row or the birth
   JFI %RESULT DATA:0 MAIN_LOOP; NOP^2     # Acted: the round starts again
 .ENDCONTROL
-  JMPI HARVESTING; NOP^4; JMPI HARVESTING
-
-.ORG 0|@+2
+  JMPI HARVESTING; NOP^4; JMPI HARVESTING; NOP^4
 .CONTROL HARVESTING                       # No gate: always open
 .CASE OPEN
   SETI %RESULT CODE:0; NOP^4              # Silence counts as "not acted"
