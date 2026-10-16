@@ -2,6 +2,8 @@ package org.evochora.compiler;
 
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
+import java.util.OptionalInt;
 
 import org.evochora.compiler.api.CompilerOptions;
 import org.evochora.compiler.api.ProgramArtifact;
@@ -24,7 +26,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  * module system, which build their modules in a temporary directory — these resolve paths through a
  * source root and nest modules several levels deep, which is where module resolution is easiest to
  * break without noticing. Every program is compiled with the library as a second root, under the
- * prefix {@code LIB}, as the configuration gives it to the simulation.
+ * prefix {@code LIB}, as the configuration gives it to the simulation, and with the flag a
+ * variant of it is selected by, where it has one.
  */
 class AssemblyProgramsCompileTest {
 
@@ -35,22 +38,24 @@ class AssemblyProgramsCompileTest {
         Instruction.init();
     }
 
-    @ParameterizedTest(name = "{1} from {0}")
+    @ParameterizedTest(name = "{1} from {0} with flags [{2}]")
     @CsvSource({
-            "assembly/examples,                 simple.evo",
-            "assembly/examples,                 complex.evo",
-            "assembly/examples/modules,         main.evo",
-            "assembly/examples/duplicate-shell, main.evo",
-            "assembly/primordial,               classic/main.evo",
-            "assembly/primordial,               shell-first/main.evo",
-            "assembly/primordial,               default/main.evo",
+            "assembly/examples,                  simple.evo,            ''",
+            "assembly/examples,                  complex.evo,           ''",
+            "assembly/examples/modules,          main.evo,              ''",
+            "assembly/examples/duplicate-shell,  main.evo,              ''",
+            "assembly/primordial,                classic/main.evo,      ''",
+            "assembly/primordial,                shell-first/main.evo,  ''",
+            "assembly/primordial,                default/main.evo,      ''",
+            "assembly/primordial,                default/main.evo,      AGGRESSIVE",
     })
     @Tag("integration")
-    void aProgramInThisRepositoryCompiles(String sourceRootPath, String fileName) throws Exception {
+    void aProgramInThisRepositoryCompiles(String sourceRootPath, String fileName, String flag) throws Exception {
         String sourceRoot = Path.of("").toAbsolutePath().resolve(sourceRootPath).toString();
         String library = Path.of("").toAbsolutePath().resolve("assembly/lib").toString();
+        Map<String, OptionalInt> defines = flag.isEmpty() ? Map.of() : Map.of(flag, OptionalInt.empty());
         CompilerOptions options = new CompilerOptions(List.of(
-                new SourceRoot(sourceRoot, null), new SourceRoot(library, "LIB")));
+                new SourceRoot(sourceRoot, null), new SourceRoot(library, "LIB")), defines, Map.of());
 
         ProgramArtifact artifact = new Compiler().compile(fileName, ENV, options);
 

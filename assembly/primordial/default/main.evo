@@ -5,7 +5,15 @@
 # the behaviors it takes from the library, and the main loop that chooses among them. How a
 # behavior is taken into the loop stands in LIB:behavior/README.md.
 #
-# Extent: the shell measures 112 x 95 cells, walls included.
+# Extent: the shell measures 89 x 94 cells, walls included.
+
+# ----------------------------
+# Values, set from the configuration with values { ... } in the organism's entry
+# ----------------------------
+.REQUIRE VALUE REPRODUCE_ENERGY_GATE  DATA:50000   # Reproduce for certain from here on, below with probability ER / gate
+.REQUIRE VALUE REPRODUCE_ENTROPY_GATE DATA:25000   # Reproduce for certain from here on, below with probability SR / gate
+.REQUIRE VALUE REPRODUCE_CHILD_ENERGY DATA:25000   # What a child is given; a birth needs it and 20000 more,
+                                                   # so the energy gate has to lie well above both
 
 # ----------------------------
 # Register aliases (main loop only)
@@ -21,36 +29,51 @@
 # cell can be written back. The labels sit inside, on body cells, and are copied with the
 # body like any other cell.
 # ----------------------------
-.PLACE STRUCTURE:100 -1..110|-1      # North edge, corners included
-.PLACE STRUCTURE:100 -1..110|93      # South edge, corners included
-.PLACE STRUCTURE:100 -1|0..92        # West edge
-.PLACE STRUCTURE:100 110|0..92       # East edge
+.PLACE STRUCTURE:100 -1..87|-1       # North edge, corners included
+.PLACE STRUCTURE:100 -1..87|92       # South edge, corners included
+.PLACE STRUCTURE:100 -1|0..91        # West edge
+.PLACE STRUCTURE:100 87|0..91        # East edge
 
-.ORG 109|0
+.ORG 86|0
 NE_CORNER:
-.ORG 109|92
+.ORG 86|91
 SE_CORNER:
-.ORG 0|92
+.ORG 0|91
 SW_CORNER:
 
 .ORG 0|0
 NW_CORNER: JMPI MAIN_LOOP; NOP^4; JMPI MAIN_LOOP; NOP^4   # The IP starts on this label, one cell before the jump
 
 # ===========================================================================
-# MAIN LOOP - one case per behavior, in the order of their priority
+# MAIN LOOP - one block per behavior, in the order of their priority
 #
-# Every round reads energy and entropy once, into %ER and %SR, for every case to test. A case
-# opens its gates one after the other, each for itself, and calls its behavior when one is open;
-# DATA:0 back means the behavior acted, and the round starts again. Anything else goes on to the
-# next case, whose name stands at the end of the case: a behavior inserted between two cases
-# changes that name in the case before it. The last case has no gate.
+# Every round reads energy and entropy once, into %ER and %SR, for every block to test. The head
+# of a block holds the behavior's gates, each a conditional jump to OPEN on its own, so that any
+# open gate calls the behavior; OPEN calls it, and DATA:0 back means it acted and the round starts
+# again. A closed gate, or anything else back, goes on to the next block, whose name stands at
+# the end of the block: a behavior inserted between two blocks changes that name in the block
+# before it. The last block has no gate.
 # ===========================================================================
-.CONTROL MAIN_LOOP
+MAIN_LOOP: NOP^2
   NRG %ER; NOP^4                          # Energy for the gates of this round
   NTR %SR; NOP^4                          # Entropy for the gates of this round
-  JMPI HARVESTING; NOP^4; JMPI HARVESTING; NOP^4
+  JMPI REPRODUCING; NOP^4; JMPI REPRODUCING
 
-.CASE HARVESTING
+.ORG 0|@+2
+.CONTROL REPRODUCING
+  QGTI %ER REPRODUCE_ENERGY_GATE OPEN; NOP^2   # Energy gate open...
+  QGTI %SR REPRODUCE_ENTROPY_GATE OPEN; NOP^2  # ...or entropy gate open
+  JMPI END; NOP^4; JMPI END; NOP^4
+.CASE OPEN
+  SETI %RESULT CODE:0; NOP^2              # Silence counts as "not acted"
+  CALL REPRODUCE.STEP REF %RESULT LVAL NW_CORNER LVAL NE_CORNER LVAL SE_CORNER LVAL SW_CORNER; NOP^2
+  JFI %RESULT DATA:0 MAIN_LOOP; NOP^2     # Acted: the round starts again
+.ENDCONTROL
+  JMPI HARVESTING; NOP^4; JMPI HARVESTING
+
+.ORG 0|@+2
+.CONTROL HARVESTING                       # No gate: always open
+.CASE OPEN
   SETI %RESULT CODE:0; NOP^4              # Silence counts as "not acted"
   CALL HARVEST.STEP REF %RESULT; NOP^4    # One run
   JMPI MAIN_LOOP; NOP^4; JMPI MAIN_LOOP   # The last behavior: the round starts again whatever it reported
@@ -61,3 +84,6 @@ NW_CORNER: JMPI MAIN_LOOP; NOP^4; JMPI MAIN_LOOP; NOP^4   # The IP starts on thi
 # ===========================================================================
 .ORG 0|@+2
 .IMPORT "LIB:behavior/harvest/random-run.evo" AS HARVEST
+
+.ORG 0|@+2
+.IMPORT "LIB:behavior/reproduce/shell-first.evo" AS REPRODUCE USING VALUE CHILD_ENERGY REPRODUCE_CHILD_ENERGY
