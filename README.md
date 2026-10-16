@@ -154,10 +154,10 @@ bin/evochora -c config/my-experiment.conf node run
 
 ### Writing Your Own Organisms
 
-Organisms are programmed in **EvoASM**, Evochora's custom spatial assembly language. The default primordial organism ([`assembly/primordial/classic/main.evo`](./assembly/primordial/classic/main.evo)) is a conservative replicator: a main loop checks the energy level and decides whether to call the reproduction or energy harvesting subroutine. It is enclosed in a STRUCTURE shell but does not overwrite other organisms.
+Organisms are programmed in **EvoASM**, Evochora's custom spatial assembly language. The default primordial organism ([`assembly/primordial/default/main.evo`](./assembly/primordial/default/main.evo)) is a replicator put together from the behaviors of the [library](./assembly/lib/): a main loop checks energy and entropy and gives each behavior, reproducing and harvesting energy, its turn by priority. It is enclosed in a STRUCTURE shell and does not overwrite other organisms unless it is compiled with the flag `AGGRESSIVE`.
 
 This design leaves room for experimentation. For example:
-- **Aggressive variant** — overwrite neighboring organisms' code to claim territory
+- **New behavior** — write a behavior for the library and give it a block in the main loop
 - **Defensive variant** — add a subroutine that periodically repairs the STRUCTURE shell against aggressive neighbors
 - **Cooperative variant** — write data molecules into the environment as signals; other organisms can read them to coordinate behavior or share energy
 - **Efficient variant** — optimize the energy harvesting routine to cover more ground with fewer instructions
