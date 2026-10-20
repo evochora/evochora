@@ -4,7 +4,6 @@ import org.evochora.compiler.TestLexers;
 import org.evochora.compiler.api.CompilerOptions;
 import org.evochora.compiler.api.SourceRoot;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
-import org.evochora.compiler.frontend.lexer.Tokenizer;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.util.SourceRootResolver;
 import org.junit.jupiter.api.Tag;
@@ -26,7 +25,7 @@ class PreProcessorRootPlacementTest {
     @Test
     void theTokensOfTheMainFileStandInTheRootPlacement() {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        List<Token> tokens = new Tokenizer("NOP\nNOP\n", diagnostics, "/p/main.evo", TestLexers.symbols()).scanTokens();
+        List<Token> tokens = TestLexers.tokenizer("NOP\nNOP\n", diagnostics, "/p/main.evo").scanTokens();
         assertThat(tokens).allSatisfy(token -> assertThat(token.source().placement()).isEmpty());
 
         PreProcessorContext context = new PreProcessorContext("PRED", Map.of(), "/p/main.evo", CompilerOptions.defaults());

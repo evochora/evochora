@@ -433,12 +433,11 @@ class MacroExpansionTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Map<String, List<Token>> libraryTokens = new HashMap<>();
         libraries.forEach((path, library) -> {
-            List<Token> fileTokens = new ArrayList<>(new Tokenizer(String.join("\n", library) + "\n",
-                    diagnostics, path, TestLexers.symbols()).scanTokens());
+            List<Token> fileTokens = new ArrayList<>(TestLexers.tokenizer(String.join("\n", library) + "\n", diagnostics, path).scanTokens());
             Tokenizer.stripEofToken(fileTokens);
             libraryTokens.put(path, fileTokens);
         });
-        List<Token> tokens = new Tokenizer(String.join("\n", lines) + "\n", diagnostics, MAIN, TestLexers.symbols())
+        List<Token> tokens = TestLexers.tokenizer(String.join("\n", lines) + "\n", diagnostics, MAIN)
                 .scanTokens();
         PreProcessorContext context = new PreProcessorContext("", libraryTokens, MAIN, CompilerOptions.defaults());
         TestRegistries.registerPreProcessorBlocks(context.handlers());
@@ -452,7 +451,7 @@ class MacroExpansionTest {
 
     private static Expansion expand(String... lines) {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Tokenizer lexer = new Tokenizer(String.join("\n", lines) + "\n", diagnostics, TestLexers.symbols());
+        Tokenizer lexer = TestLexers.tokenizer(String.join("\n", lines) + "\n", diagnostics);
         List<Token> tokens = lexer.scanTokens();
         PreProcessorContext context = new PreProcessorContext("", Map.of(), "<memory>", CompilerOptions.defaults());
         TestRegistries.registerPreProcessorBlocks(context.handlers());

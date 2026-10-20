@@ -31,7 +31,7 @@ class CallStatementHandlerTest {
 
     private CallNode parseCall(String source) {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Tokenizer lexer = new Tokenizer(source, diagnostics, "test.s", TestLexers.symbols());
+        Tokenizer lexer = TestLexers.tokenizer(source, diagnostics, "test.s");
         List<Token> tokens = lexer.scanTokens();
         ParserStatementRegistry reg = new ParserStatementRegistry();
         reg.register("CALL", new CallStatementHandler());

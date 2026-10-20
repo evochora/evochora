@@ -80,7 +80,7 @@ public class IrGeneratorTest {
     private IrProgram compileToIr(String source) {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
 
-        Tokenizer lexer = new Tokenizer(source, diagnostics, TestLexers.symbols());
+        Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
         if (diagnostics.hasErrors()) {
             fail("Lexer errors: " + diagnostics.summary());

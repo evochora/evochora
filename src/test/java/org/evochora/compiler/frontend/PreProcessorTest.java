@@ -62,7 +62,7 @@ public class PreProcessorTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
 
         Path mainFile = tempDir.resolve("main.s");
-        Tokenizer lexer = new Tokenizer(mainSource, diagnostics, mainFile.toString(), TestLexers.symbols());
+        Tokenizer lexer = TestLexers.tokenizer(mainSource, diagnostics, mainFile.toString());
         List<Token> initialTokens = lexer.scanTokens();
 
         SourceRootResolver resolver = new SourceRootResolver(
@@ -71,7 +71,7 @@ public class PreProcessorTest {
         String sourceContent = Files.readString(libFile);
         if (!sourceContent.endsWith("\n")) sourceContent += "\n";
         String resolvedSourcePath = resolver.resolve("test.s", mainFile.toString());
-        Tokenizer sourceLexer = new Tokenizer(sourceContent, diagnostics, resolvedSourcePath, TestLexers.symbols());
+        Tokenizer sourceLexer = TestLexers.tokenizer(sourceContent, diagnostics, resolvedSourcePath);
         List<Token> sourceTokenList = sourceLexer.scanTokens();
         Tokenizer.stripEofToken(sourceTokenList);
         Map<String, List<Token>> sourceTokens = Map.of(resolvedSourcePath, sourceTokenList);

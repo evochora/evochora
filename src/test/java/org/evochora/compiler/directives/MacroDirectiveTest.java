@@ -50,7 +50,7 @@ public class MacroDirectiveTest {
                 "INCREMENT %DR0"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Tokenizer lexer = new Tokenizer(source, diagnostics, TestLexers.symbols());
+        Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> initialTokens = lexer.scanTokens();
         PreProcessorContext context = new PreProcessorContext("", Map.of(), "<memory>", CompilerOptions.defaults());
         TestRegistries.registerPreProcessorBlocks(context.handlers());

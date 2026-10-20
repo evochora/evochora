@@ -7,7 +7,6 @@ import org.evochora.compiler.features.importdir.ImportDependencyScanHandler;
 import org.evochora.compiler.frontend.DirectiveLine;
 import org.evochora.compiler.frontend.lexer.IDependencyInfo;
 import org.evochora.compiler.frontend.lexer.IDependencyScanContext;
-import org.evochora.compiler.frontend.lexer.Tokenizer;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 import org.evochora.runtime.isa.Instruction;
@@ -45,7 +44,7 @@ class ImportPatternTest {
      * @return The paths of the module files the handler read for the line, as written.
      */
     private static List<String> loaded(String text) {
-        List<Token> tokens = new Tokenizer(text, new DiagnosticsEngine(), "main.evo", TestLexers.symbols()).scanTokens();
+        List<Token> tokens = TestLexers.tokenizer(text, new DiagnosticsEngine(), "main.evo").scanTokens();
         int directive = 0;
         while (!(tokens.get(directive).type() == TokenType.DIRECTIVE
                 && ".IMPORT".equalsIgnoreCase(tokens.get(directive).text()))) {

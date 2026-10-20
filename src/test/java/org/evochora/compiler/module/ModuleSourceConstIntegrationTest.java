@@ -259,7 +259,7 @@ class ModuleSourceConstIntegrationTest {
         String mainPath = tempDir.resolve("main.evo").toString();
 
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Tokenizer lexer = new Tokenizer(mainSource, diagnostics, mainPath, TestLexers.symbols());
+        Tokenizer lexer = TestLexers.tokenizer(mainSource, diagnostics, mainPath);
         List<Token> tokens = new ArrayList<>(lexer.scanTokens());
         SourceRootResolver circularResolver = new SourceRootResolver(
                 List.of(new SourceRoot(".", null)), tempDir);
@@ -269,7 +269,7 @@ class ModuleSourceConstIntegrationTest {
             String resolvedPath = circularResolver.resolve(fileName, mainPath);
             String content = Files.readString(Path.of(resolvedPath));
             if (!content.endsWith("\n")) content += "\n";
-            Tokenizer srcLexer = new Tokenizer(content, diagnostics, resolvedPath, TestLexers.symbols());
+            Tokenizer srcLexer = TestLexers.tokenizer(content, diagnostics, resolvedPath);
             List<Token> srcTokens = srcLexer.scanTokens();
             Tokenizer.stripEofToken(srcTokens);
             circularSourceTokens.put(resolvedPath, srcTokens);

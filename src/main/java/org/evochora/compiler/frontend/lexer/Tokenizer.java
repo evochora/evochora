@@ -2,7 +2,6 @@ package org.evochora.compiler.frontend.lexer;
 
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.isa.IInstructionSet;
-import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 import org.evochora.compiler.api.IntegerLiteral;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.model.token.Token;
@@ -41,27 +40,6 @@ public class Tokenizer {
     private int current = 0;
     private int line = 1;
     private int column = 1;
-
-    /**
-     * Creates a new Tokenizer for the runtime's instruction set.
-     * @param source The source code as a single string.
-     * @param diagnostics The engine for reporting errors.
-     * @param symbols The registered symbols, emitted as {@link TokenType#SYMBOL} tokens.
-     */
-    public Tokenizer(String source, DiagnosticsEngine diagnostics, Set<String> symbols) {
-        this(source, diagnostics, "<memory>", symbols);
-    }
-
-    /**
-     * Creates a new Tokenizer with an explicit logical file name, for the runtime's instruction set.
-     * @param source The source code as a single string.
-     * @param diagnostics The engine for reporting errors.
-     * @param logicalFileName The name of the file being parsed, for error reporting.
-     * @param symbols The registered symbols, emitted as {@link TokenType#SYMBOL} tokens.
-     */
-    public Tokenizer(String source, DiagnosticsEngine diagnostics, String logicalFileName, Set<String> symbols) {
-        this(source, diagnostics, logicalFileName, new RuntimeInstructionSetAdapter(), symbols);
-    }
 
     /**
      * Creates a new Tokenizer for the given instruction set, which decides what is an opcode and

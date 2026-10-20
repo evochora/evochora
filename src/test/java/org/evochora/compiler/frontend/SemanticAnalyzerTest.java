@@ -42,7 +42,7 @@ public class SemanticAnalyzerTest {
         // Initialize instruction set for the parser
         org.evochora.runtime.isa.Instruction.init();
         
-        Tokenizer lexer = new Tokenizer(source, diagnostics, TestLexers.symbols());
+        Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
         Parser parser = new Parser(tokens, diagnostics, allHandlers());
         return parser.parse();

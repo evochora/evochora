@@ -863,10 +863,9 @@ class ConditionalExpansionTest {
      */
     private static Expansion expandWith(Map<String, OptionalLong> defines, List<String> library, String... lines) {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        List<Token> libraryTokens = new ArrayList<>(new Tokenizer(String.join("\n", library) + "\n",
-                diagnostics, LIBRARY, TestLexers.symbols()).scanTokens());
+        List<Token> libraryTokens = new ArrayList<>(TestLexers.tokenizer(String.join("\n", library) + "\n", diagnostics, LIBRARY).scanTokens());
         Tokenizer.stripEofToken(libraryTokens);
-        List<Token> tokens = new Tokenizer(String.join("\n", lines) + "\n", diagnostics, MAIN, TestLexers.symbols())
+        List<Token> tokens = TestLexers.tokenizer(String.join("\n", lines) + "\n", diagnostics, MAIN)
                 .scanTokens();
         CompilerOptions options = new CompilerOptions(List.of(new SourceRoot(".", null)), defines, Map.of());
         PreProcessorContext context = new PreProcessorContext("", Map.of(LIBRARY, libraryTokens), MAIN, options);

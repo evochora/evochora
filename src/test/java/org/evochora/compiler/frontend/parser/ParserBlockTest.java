@@ -9,7 +9,6 @@ import org.evochora.compiler.features.instruction.InstructionParsingHandler;
 import org.evochora.compiler.frontend.BlockKind;
 import org.evochora.compiler.frontend.BlockReader;
 import org.evochora.compiler.frontend.DirectiveLine;
-import org.evochora.compiler.frontend.lexer.Tokenizer;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
@@ -270,7 +269,7 @@ class ParserBlockTest {
 
     private static Parsed parse(String... lines) {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        List<Token> tokens = new Tokenizer(String.join("\n", lines) + "\n", diagnostics, TestLexers.symbols()).scanTokens();
+        List<Token> tokens = TestLexers.tokenizer(String.join("\n", lines) + "\n", diagnostics).scanTokens();
         ParserStatementRegistry registry = new ParserStatementRegistry();
         registry.registerBlock(GROUP, new GroupHandler());
         registry.registerBlock(SELECT, new SelectHandler());

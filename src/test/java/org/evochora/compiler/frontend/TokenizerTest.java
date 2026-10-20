@@ -71,7 +71,7 @@ public class TokenizerTest {
     void testRelativeMarkerIsOneTokenWithItsSign() {
         // Arrange
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Tokenizer lexer = new Tokenizer(".ORG @+2|@-3", diagnostics, TestLexers.symbols());
+        Tokenizer lexer = TestLexers.tokenizer(".ORG @+2|@-3", diagnostics);
 
         // Act
         List<Token> tokens = lexer.scanTokens();
@@ -95,7 +95,7 @@ public class TokenizerTest {
     void testMarkerWithoutSignNamesTheSymbolsBeginningWithIt() {
         // Arrange
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Tokenizer lexer = new Tokenizer(".ORG 0|@2", diagnostics, TestLexers.symbols());
+        Tokenizer lexer = TestLexers.tokenizer(".ORG 0|@2", diagnostics);
 
         // Act
         lexer.scanTokens();
@@ -115,7 +115,7 @@ public class TokenizerTest {
     void testCharacterWithoutSymbolKeepsThePlainMessage() {
         // Arrange
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Tokenizer lexer = new Tokenizer("NOP ?", diagnostics, TestLexers.symbols());
+        Tokenizer lexer = TestLexers.tokenizer("NOP ?", diagnostics);
 
         // Act
         lexer.scanTokens();
@@ -134,7 +134,7 @@ public class TokenizerTest {
     void testStandardSymbolsAreSymbolTokens() {
         // Arrange
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Tokenizer lexer = new Tokenizer("* , @+ @- ^ ..", diagnostics, TestLexers.symbols());
+        Tokenizer lexer = TestLexers.tokenizer("*, @+ @- ^ ..", diagnostics);
 
         // Act
         List<Token> tokens = lexer.scanTokens();
@@ -168,8 +168,8 @@ public class TokenizerTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
 
         // Act
-        List<Token> joined = new Tokenizer("<=", diagnostics, registry.lexerSymbols()).scanTokens();
-        List<Token> apart = new Tokenizer("< =", diagnostics, registry.lexerSymbols()).scanTokens();
+        List<Token> joined = new Tokenizer("<=", diagnostics, "<memory>", new RuntimeInstructionSetAdapter(), registry.lexerSymbols()).scanTokens();
+        List<Token> apart = new Tokenizer("< =", diagnostics, "<memory>", new RuntimeInstructionSetAdapter(), registry.lexerSymbols()).scanTokens();
 
         // Assert
         assertThat(diagnostics.hasErrors()).isFalse();
@@ -196,7 +196,7 @@ public class TokenizerTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
 
         // Act
-        new Tokenizer("< 1", diagnostics, registry.lexerSymbols()).scanTokens();
+        new Tokenizer("< 1", diagnostics, "<memory>", new RuntimeInstructionSetAdapter(), registry.lexerSymbols()).scanTokens();
 
         // Assert
         assertThat(diagnostics.summary())
@@ -213,7 +213,7 @@ public class TokenizerTest {
     void testRangeSymbolAgainstDirective() {
         // Arrange
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Tokenizer lexer = new Tokenizer("1..10 .X", diagnostics, TestLexers.symbols());
+        Tokenizer lexer = TestLexers.tokenizer("1..10 .X", diagnostics);
 
         // Act
         List<Token> tokens = lexer.scanTokens();
@@ -239,7 +239,7 @@ public class TokenizerTest {
     void testHexAndBinaryLiteralsWithAndWithoutSign() {
         // Arrange
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Tokenizer lexer = new Tokenizer("-0x10 -0b11 0x10 0b11 0o17 -0O17", diagnostics, TestLexers.symbols());
+        Tokenizer lexer = TestLexers.tokenizer("-0x10 -0b11 0x10 0b11 0o17 -0O17", diagnostics);
 
         // Act
         List<Token> tokens = lexer.scanTokens();
@@ -272,7 +272,7 @@ public class TokenizerTest {
                 "L1: SETI %DR0 HELLO # Lade 42"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Tokenizer lexer = new Tokenizer(source, diagnostics, TestLexers.symbols());
+        Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
 
         // Act
         List<Token> tokens = lexer.scanTokens();
@@ -303,7 +303,7 @@ public class TokenizerTest {
         // Arrange
         String source = "SETI %DR0 DATA:42";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Tokenizer lexer = new Tokenizer(source, diagnostics, TestLexers.symbols());
+        Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
 
         // Act
         List<Token> tokens = lexer.scanTokens();
@@ -332,7 +332,7 @@ public class TokenizerTest {
         // Arrange
         String source = "NOP; SETI %DR0 1; NOP";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Tokenizer lexer = new Tokenizer(source, diagnostics, TestLexers.symbols());
+        Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
 
         // Act
         List<Token> tokens = lexer.scanTokens();
@@ -360,7 +360,7 @@ public class TokenizerTest {
         // Arrange
         String source = "NOP; NOP\nNOP";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Tokenizer lexer = new Tokenizer(source, diagnostics, TestLexers.symbols());
+        Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
 
         // Act
         List<Token> tokens = lexer.scanTokens();

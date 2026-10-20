@@ -34,7 +34,7 @@ public class ImportDirectiveTest {
     void parsesSimpleImport() {
         String source = ".IMPORT \"lib.evo\" AS LIB";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Tokenizer lexer = new Tokenizer(source, diagnostics, TestLexers.symbols());
+        Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
         Parser parser = new Parser(tokens, diagnostics, registry());
 
@@ -55,7 +55,7 @@ public class ImportDirectiveTest {
     void parsesImportWithUsingClause() {
         String source = ".IMPORT \"lib.evo\" AS LIB USING MODULE DEP AS REQUIRED_DEP";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Tokenizer lexer = new Tokenizer(source, diagnostics, TestLexers.symbols());
+        Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
         Parser parser = new Parser(tokens, diagnostics, registry());
 
@@ -78,7 +78,7 @@ public class ImportDirectiveTest {
     void parsesImportWithMultipleUsingClauses() {
         String source = ".IMPORT \"lib.evo\" AS LIB USING MODULE A AS X MODULE B AS Y";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Tokenizer lexer = new Tokenizer(source, diagnostics, TestLexers.symbols());
+        Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
         Parser parser = new Parser(tokens, diagnostics, registry());
 
@@ -96,7 +96,7 @@ public class ImportDirectiveTest {
     void missingAsKeywordReportsError() {
         String source = ".IMPORT \"lib.evo\" LIB";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Tokenizer lexer = new Tokenizer(source, diagnostics, TestLexers.symbols());
+        Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
         Parser parser = new Parser(tokens, diagnostics, registry());
         parser.parse();
@@ -109,7 +109,7 @@ public class ImportDirectiveTest {
     void missingPathReportsError() {
         String source = ".IMPORT AS LIB";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Tokenizer lexer = new Tokenizer(source, diagnostics, TestLexers.symbols());
+        Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
         Parser parser = new Parser(tokens, diagnostics, registry());
         parser.parse();
@@ -207,7 +207,7 @@ public class ImportDirectiveTest {
     }
 
     private static List<AstNode> parse(String source, DiagnosticsEngine diagnostics) {
-        Tokenizer lexer = new Tokenizer(source, diagnostics, TestLexers.symbols());
+        Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
         Parser parser = new Parser(tokens, diagnostics, registry());
         return parser.parse().stream().filter(Objects::nonNull).toList();

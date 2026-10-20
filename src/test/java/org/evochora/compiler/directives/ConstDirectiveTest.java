@@ -50,7 +50,7 @@ public class ConstDirectiveTest {
         // Arrange
         String source = ".CONST MY_CONST DATA:123";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Tokenizer lexer = new Tokenizer(source, diagnostics, TestLexers.symbols());
+        Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
         Parser parser = new Parser(tokens, diagnostics, registry()); // KORREKTUR
 
@@ -82,7 +82,7 @@ public class ConstDirectiveTest {
                 "SETI %DR0 MAX_VALUE"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Tokenizer lexer = new Tokenizer(source, diagnostics, TestLexers.symbols());
+        Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
         Parser parser = new Parser(tokens, diagnostics, registry());
 
@@ -125,7 +125,7 @@ public class ConstDirectiveTest {
     void testConstWithADotInItsNameIsReported() {
         String source = ".CONST X.Y DATA:1";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        List<AstNode> ast = new Parser(new Tokenizer(source, diagnostics, TestLexers.symbols()).scanTokens(), diagnostics, registry())
+        List<AstNode> ast = new Parser(TestLexers.tokenizer(source, diagnostics).scanTokens(), diagnostics, registry())
                 .parse().stream().filter(Objects::nonNull).toList();
 
         SymbolTable symbolTable = new SymbolTable(diagnostics);

@@ -54,7 +54,7 @@ public class RegDirectiveTest {
                 "SETI STACK_POINTER DATA:42"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Tokenizer lexer = new Tokenizer(source, diagnostics, TestLexers.symbols());
+        Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
         Parser parser = new Parser(tokens, diagnostics, registry());
 
@@ -100,7 +100,7 @@ public class RegDirectiveTest {
     void testRegDirectiveWithInvalidRegister() {
         String source = ".REG COUNTER %DR" + Config.NUM_DATA_REGISTERS;
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Tokenizer lexer = new Tokenizer(source, diagnostics, TestLexers.symbols());
+        Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
         Parser parser = new Parser(tokens, diagnostics, registry());
 
@@ -118,7 +118,7 @@ public class RegDirectiveTest {
     void testRegDirectivePdrOutsideProcIsRejected() {
         String source = ".REG COUNTER %PDR0";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Tokenizer lexer = new Tokenizer(source, diagnostics, TestLexers.symbols());
+        Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
         Parser parser = new Parser(tokens, diagnostics, registry());
 
@@ -136,7 +136,7 @@ public class RegDirectiveTest {
     void testRegDirectivePlrOutsideProcIsRejected() {
         String source = ".REG %POS %PLR0";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Tokenizer lexer = new Tokenizer(source, diagnostics, TestLexers.symbols());
+        Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
         Parser parser = new Parser(tokens, diagnostics, registry());
 
@@ -154,7 +154,7 @@ public class RegDirectiveTest {
     void testRegDirectiveFlrIsForbidden() {
         String source = ".REG %LOC_PARAM %FLR0";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Tokenizer lexer = new Tokenizer(source, diagnostics, TestLexers.symbols());
+        Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
         Parser parser = new Parser(tokens, diagnostics, registry());
 
@@ -172,7 +172,7 @@ public class RegDirectiveTest {
     void testRegDirectiveFdrIsForbidden() {
         String source = ".REG PARAM %FDR0";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Tokenizer lexer = new Tokenizer(source, diagnostics, TestLexers.symbols());
+        Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
         Parser parser = new Parser(tokens, diagnostics, registry());
 
@@ -194,7 +194,7 @@ public class RegDirectiveTest {
                 ".ENDPROC"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Tokenizer lexer = new Tokenizer(source, diagnostics, TestLexers.symbols());
+        Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
         Parser parser = new Parser(tokens, diagnostics, registry());
 
@@ -218,7 +218,7 @@ public class RegDirectiveTest {
                 ".ENDPROC"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Tokenizer lexer = new Tokenizer(source, diagnostics, TestLexers.symbols());
+        Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
         Parser parser = new Parser(tokens, diagnostics, registry());
 
@@ -265,7 +265,7 @@ public class RegDirectiveTest {
                 ".ENDPROC"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Tokenizer lexer = new Tokenizer(source, diagnostics, TestLexers.symbols());
+        Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
         Parser parser = new Parser(tokens, diagnostics, registry());
 
@@ -287,7 +287,7 @@ public class RegDirectiveTest {
                 "DPLR POSITION"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Tokenizer lexer = new Tokenizer(source, diagnostics, TestLexers.symbols());
+        Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
         Parser parser = new Parser(tokens, diagnostics, registry());
 
@@ -341,7 +341,7 @@ public class RegDirectiveTest {
                 ".ENDPROC"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Tokenizer lexer = new Tokenizer(source, diagnostics, TestLexers.symbols());
+        Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
         Parser parser = new Parser(tokens, diagnostics, registry());
 
@@ -358,7 +358,7 @@ public class RegDirectiveTest {
     void testRegDirectiveLrOutOfBounds() {
         String source = ".REG POSITION %LR" + Config.NUM_LOCATION_REGISTERS;
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Tokenizer lexer = new Tokenizer(source, diagnostics, TestLexers.symbols());
+        Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
         Parser parser = new Parser(tokens, diagnostics, registry());
 
@@ -377,7 +377,7 @@ public class RegDirectiveTest {
     void testRegDirectiveUnknownBank() {
         String source = ".REG X %XYZ0";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Tokenizer lexer = new Tokenizer(source, diagnostics, TestLexers.symbols());
+        Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
         Parser parser = new Parser(tokens, diagnostics, registry());
 
@@ -396,7 +396,7 @@ public class RegDirectiveTest {
     void testRegDirectiveInvalidRegisterIndex() {
         String source = ".REG X %DRabc";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Tokenizer lexer = new Tokenizer(source, diagnostics, TestLexers.symbols());
+        Tokenizer lexer = TestLexers.tokenizer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
         Parser parser = new Parser(tokens, diagnostics, registry());
 
@@ -415,7 +415,7 @@ public class RegDirectiveTest {
     void testRegAliasWithADotInItsNameIsReported() {
         String source = ".REG %X.Y %DR0";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        List<AstNode> ast = new Parser(new Tokenizer(source, diagnostics, TestLexers.symbols()).scanTokens(), diagnostics, registry())
+        List<AstNode> ast = new Parser(TestLexers.tokenizer(source, diagnostics).scanTokens(), diagnostics, registry())
                 .parse().stream().filter(Objects::nonNull).toList();
 
         SymbolTable symbolTable = new SymbolTable(diagnostics);

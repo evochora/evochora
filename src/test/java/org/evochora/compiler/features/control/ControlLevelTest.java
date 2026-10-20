@@ -9,7 +9,6 @@ import org.evochora.compiler.TestLexers;
 import org.evochora.compiler.TestRegistries;
 import org.evochora.compiler.diagnostics.Diagnostic;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
-import org.evochora.compiler.frontend.lexer.Tokenizer;
 import org.evochora.compiler.frontend.ModuleContextTracker;
 import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ParserStatementRegistry;
@@ -387,7 +386,7 @@ class ControlLevelTest {
      */
     private static Analyzed analyze(String... lines) {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        List<Token> tokens = new Tokenizer(String.join("\n", lines) + "\n", diagnostics, "main.evo", TestLexers.symbols())
+        List<Token> tokens = TestLexers.tokenizer(String.join("\n", lines) + "\n", diagnostics, "main.evo")
                 .scanTokens();
         FeatureRegistry features = new FeatureRegistry(new RuntimeInstructionSetAdapter());
         StandardFeatures.all().forEach(f -> f.register(features));

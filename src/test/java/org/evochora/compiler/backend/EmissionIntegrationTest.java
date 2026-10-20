@@ -97,7 +97,7 @@ public class EmissionIntegrationTest {
         );
 
         DiagnosticsEngine diags = new DiagnosticsEngine();
-        Tokenizer lexer = new Tokenizer(src, diags, TestLexers.symbols());
+        Tokenizer lexer = TestLexers.tokenizer(src, diags);
         List<Token> tokens = lexer.scanTokens();
         // KORREKTUR: basePath hinzufügen
         Parser parser = new Parser(tokens, diags, allHandlers());
