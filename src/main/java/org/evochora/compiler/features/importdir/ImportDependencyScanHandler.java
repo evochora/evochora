@@ -53,7 +53,6 @@ public class ImportDependencyScanHandler implements IDependencyScanHandler {
             ctx.addDependency(new ImportDependencyInfo(path, alias, resolvedPath, aliasChain));
         }
         try {
-            ctx.loadTokens(resolvedPath);
             ctx.scanNestedModule(resolvedPath, aliasChain);
         } catch (IOException e) {
             ctx.reportError("Module file not found: " + path);

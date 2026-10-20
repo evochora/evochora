@@ -197,14 +197,13 @@ public final class Lexer {
             return resolver.resolve(path, sourcePath);
         }
 
-        @Override
-        public List<Token> loadTokens(String resolvedPath) throws IOException {
-            List<Token> loaded = state.tokens.get(resolvedPath);
-            if (loaded == null) {
-                loaded = withoutEof(tokenize(resolvedPath, loadContent(resolvedPath), state));
-                state.tokens.put(resolvedPath, loaded);
+        /**
+         * Makes sure a file is tokenized: once per compilation, on the first request.
+         */
+        private void load(String resolvedPath) throws IOException {
+            if (!state.tokens.containsKey(resolvedPath)) {
+                state.tokens.put(resolvedPath, withoutEof(tokenize(resolvedPath, loadContent(resolvedPath), state)));
             }
-            return loaded;
         }
 
         @Override
@@ -213,12 +212,14 @@ public final class Lexer {
         }
 
         @Override
-        public void scanNestedModule(String resolvedPath, String placementChain) {
+        public void scanNestedModule(String resolvedPath, String placementChain) throws IOException {
+            load(resolvedPath);
             readModule(state, placementChain, resolvedPath);
         }
 
         @Override
-        public void scanNestedSourceFile(String resolvedPath) {
+        public void scanNestedSourceFile(String resolvedPath) throws IOException {
+            load(resolvedPath);
             readSourceFile(state, aliasChain, resolvedPath);
         }
 

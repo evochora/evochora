@@ -46,17 +46,14 @@ public class SourceDependencyScanHandler implements IDependencyScanHandler {
             ctx.reportError("Circular .SOURCE detected: " + path);
             return;
         }
+        chain.add(ctx.sourcePath());
         try {
-            ctx.loadTokens(resolvedPath);
+            ctx.scanNestedSourceFile(resolvedPath);
             ctx.addDependency(new SourceDependencyInfo(path, resolvedPath));
-            chain.add(ctx.sourcePath());
-            try {
-                ctx.scanNestedSourceFile(resolvedPath);
-            } finally {
-                chain.remove(ctx.sourcePath());
-            }
         } catch (IOException e) {
             ctx.reportError("Source file not found: " + path);
+        } finally {
+            chain.remove(ctx.sourcePath());
         }
     }
 }

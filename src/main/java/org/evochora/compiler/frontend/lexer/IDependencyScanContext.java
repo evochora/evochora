@@ -26,16 +26,6 @@ public interface IDependencyScanContext {
     String resolve(String path) throws SourceRootResolver.UnknownPrefixException;
 
     /**
-     * Reads a file as tokens. A file is read and tokenized once per compilation; a later request
-     * for the same path returns the tokens of the first, and an error in the file is reported
-     * once, when it is read.
-     * @param resolvedPath The resolved absolute path.
-     * @return The tokens of the file, without an end-of-file token.
-     * @throws IOException if the file cannot be loaded.
-     */
-    List<Token> loadTokens(String resolvedPath) throws IOException;
-
-    /**
      * Reports an error at the current line in the current file.
      * @param message The error message.
      */
@@ -45,13 +35,15 @@ public interface IDependencyScanContext {
      * Reads a module file as a placement of its own, nested in the placement being read, under
      * the given alias chain; a file imported more than once is read at every import. The reading
      * continues with the state of every feature as the nested one leaves it. A file that is
-     * already being read on the way to this one is reported as a circular dependency. The file
-     * has to have been loaded with {@link #loadTokens}.
+     * already being read on the way to this one is reported as a circular dependency. A file is
+     * read and tokenized once per compilation, however often it is placed, and an error in it is
+     * reported once, when it is read.
      *
      * @param resolvedPath The resolved absolute path.
      * @param aliasChain   The alias chain of the new placement.
+     * @throws IOException if the file cannot be loaded.
      */
-    void scanNestedModule(String resolvedPath, String aliasChain);
+    void scanNestedModule(String resolvedPath, String aliasChain) throws IOException;
 
     /**
      * Returns the alias chain of the module placement being read. A source file read through
@@ -63,10 +55,11 @@ public interface IDependencyScanContext {
 
     /**
      * Reads a {@code .SOURCE} file in the placement being read, so that its directives are
-     * followed and checked. The file has to have been loaded with {@link #loadTokens}.
+     * followed and checked. The file is read and tokenized once per compilation.
      * @param resolvedPath The resolved absolute path.
+     * @throws IOException if the file cannot be loaded.
      */
-    void scanNestedSourceFile(String resolvedPath);
+    void scanNestedSourceFile(String resolvedPath) throws IOException;
 
     /**
      * Reports a discovered dependency.

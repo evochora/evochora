@@ -65,9 +65,8 @@ class ImportPatternTest {
         final List<String> loaded = new ArrayList<>();
 
         @Override public String resolve(String path) { return path; }
-        @Override public List<Token> loadTokens(String resolvedPath) { loaded.add(resolvedPath); return List.of(); }
         @Override public void reportError(String message) { throw new AssertionError(message); }
-        @Override public void scanNestedModule(String resolvedPath, String aliasChain) {}
+        @Override public void scanNestedModule(String resolvedPath, String aliasChain) { loaded.add(resolvedPath); }
         @Override public String placementChain() { return ""; }
         @Override public void scanNestedSourceFile(String resolvedPath) {}
         @Override public void addDependency(IDependencyInfo info) {}
