@@ -21,9 +21,9 @@ public interface IDependencyScanContext {
      * Resolves a path written in a directive against the file being read.
      * @param path The path as written.
      * @return The resolved absolute path.
-     * @throws SourceRootResolver.UnknownPrefixException if the path prefix is unknown.
+     * @throws SourceRootResolver.UnresolvablePathException if the path prefix is unknown.
      */
-    String resolve(String path) throws SourceRootResolver.UnknownPrefixException;
+    String resolve(String path) throws SourceRootResolver.UnresolvablePathException;
 
     /**
      * Reports an error at the current line in the current file.

@@ -193,7 +193,7 @@ public final class Lexer {
         }
 
         @Override
-        public String resolve(String path) throws SourceRootResolver.UnknownPrefixException {
+        public String resolve(String path) throws SourceRootResolver.UnresolvablePathException {
             return resolver.resolve(path, sourcePath);
         }
 

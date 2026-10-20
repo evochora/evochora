@@ -307,7 +307,7 @@ public class Compiler implements ICompiler {
             SourceRootResolver resolver = new SourceRootResolver(options.sourceRoots(), workingDirectory);
             try {
                 return new MainFile(resolver.resolve(programName, ""), workingDirectory, rootAliasChain);
-            } catch (SourceRootResolver.UnknownPrefixException e) {
+            } catch (SourceRootResolver.UnresolvablePathException e) {
                 throw new CompilationException(e.getMessage());
             }
         }

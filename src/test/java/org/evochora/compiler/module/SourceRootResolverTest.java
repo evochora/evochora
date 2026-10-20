@@ -94,7 +94,7 @@ public class SourceRootResolverTest {
         SourceRootResolver resolver = new SourceRootResolver(
                 List.of(new SourceRoot(".", null)), tempDir);
         assertThatThrownBy(() -> resolver.resolve("UNKNOWN:main.evo", ""))
-                .isInstanceOf(SourceRootResolver.UnknownPrefixException.class)
+                .isInstanceOf(SourceRootResolver.UnresolvablePathException.class)
                 .hasMessageContaining("UNKNOWN");
     }
 
@@ -104,7 +104,7 @@ public class SourceRootResolverTest {
         SourceRootResolver resolver = new SourceRootResolver(
                 List.of(new SourceRoot("./pred", "PRED")), tempDir);
         assertThatThrownBy(() -> resolver.resolve("lib/energy.evo", "main.evo"))
-                .isInstanceOf(SourceRootResolver.UnknownPrefixException.class)
+                .isInstanceOf(SourceRootResolver.UnresolvablePathException.class)
                 .hasMessageContaining("unprefixed");
     }
 

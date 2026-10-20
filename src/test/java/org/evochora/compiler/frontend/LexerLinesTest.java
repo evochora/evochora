@@ -108,15 +108,16 @@ class LexerLinesTest {
 
     /**
      * A string over two lines is one token, so the path is the whole string; no file of that
-     * name is made, because not every file system allows a line break in a name, and the
-     * message for the missing file shows the path that was read.
+     * name is made, because not every file system allows a line break in a name. The one message
+     * names the whole path: the file is not found, or, where the name is not allowed, the path
+     * cannot be resolved.
      */
     @Test
     void aPathOverTwoLinesIsReadWhole() {
         Reading reading = read(".SOURCE \"lib\n.evo\"\n", CompilerOptions.defaults());
 
         assertThat(reading.diagnostics.getDiagnostics()).hasSize(1);
-        assertThat(reading.diagnostics.getDiagnostics().get(0).message()).isEqualTo("Source file not found: lib\n.evo");
+        assertThat(reading.diagnostics.getDiagnostics().get(0).message()).contains("lib\n.evo");
     }
 
     @Test

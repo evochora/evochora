@@ -52,7 +52,7 @@ public class SourceDirectiveHandler implements IPreProcessorHandler {
         String resolvedPath;
         try {
             resolvedPath = preProcessor.getResolver().resolve(pathValue, pathToken.source().fileName());
-        } catch (org.evochora.compiler.util.SourceRootResolver.UnknownPrefixException e) {
+        } catch (org.evochora.compiler.util.SourceRootResolver.UnresolvablePathException e) {
             preProcessor.getDiagnostics().reportError(e.getMessage(), pathToken.source().fileName(), pathToken.source().lineNumber());
             preProcessor.removeTokens(startIndex, endIndex - startIndex);
             return;

@@ -32,7 +32,7 @@ public class ImportDependencyScanHandler implements IDependencyScanHandler {
         String resolvedPath;
         try {
             resolvedPath = ctx.resolve(path);
-        } catch (SourceRootResolver.UnknownPrefixException e) {
+        } catch (SourceRootResolver.UnresolvablePathException e) {
             ctx.reportError(e.getMessage());
             return;
         }
