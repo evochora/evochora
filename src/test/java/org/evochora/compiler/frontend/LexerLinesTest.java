@@ -141,7 +141,7 @@ class LexerLinesTest {
 
         assertThat(reading.diagnostics.getDiagnostics()).hasSize(1);
         assertThat(reading.diagnostics.getDiagnostics().get(0).message())
-                .isEqualTo("Circular .SOURCE detected: " + resolved("a.evo"));
+                .isEqualTo("Circular .SOURCE detected: a.evo");
         assertThat(reading.diagnostics.getDiagnostics().get(0).lineNumber()).isEqualTo(2);
     }
 
