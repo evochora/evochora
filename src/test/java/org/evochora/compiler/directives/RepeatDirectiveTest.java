@@ -198,6 +198,28 @@ public class RepeatDirectiveTest {
     }
 
     /**
+     * A negative count is reported as written, however far below zero it lies: a count beyond
+     * the {@code int} range is never cut to one that fits.
+     */
+    @Test
+    @Tag("unit")
+    void testNegativeCountBeyondAnIntIsReportedAsWritten() {
+        for (String source : new String[]{
+                String.join("\n", ".REPEAT -4294967295", "  NOP", ".ENDREPEAT"),
+                "NOP^-4294967295"}) {
+            DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+            Tokenizer lexer = new Tokenizer(source, diagnostics, TestLexers.symbols());
+            PreProcessor preProcessor = createPreProcessor(lexer.scanTokens(), diagnostics);
+
+            preProcessor.expand();
+
+            assertThat(diagnostics.hasErrors()).as(source).isTrue();
+            assertThat(diagnostics.getDiagnostics().get(0).message()).as(source)
+                    .isEqualTo("Repeat count must be non-negative, got: -4294967295");
+        }
+    }
+
+    /**
      * A statement on the line of .REPEAT is rejected, and the message names the shorthand that
      * repeats a single statement; the block is removed as a whole.
      */

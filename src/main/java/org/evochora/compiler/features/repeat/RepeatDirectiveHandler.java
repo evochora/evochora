@@ -55,9 +55,9 @@ public class RepeatDirectiveHandler implements IPreProcessorBlockHandler {
             return;
         }
 
-        if (count < 0) {
+        if (written < 0) {
             preProcessor.getDiagnostics().reportError(
-                    "Repeat count must be non-negative, got: " + count,
+                    "Repeat count must be non-negative, got: " + written,
                     countToken.source().fileName(), countToken.source().lineNumber());
             preProcessor.removeTokens(startIndex, tokensToRemove);
             return;
