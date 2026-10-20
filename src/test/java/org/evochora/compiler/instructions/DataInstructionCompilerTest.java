@@ -77,6 +77,25 @@ class DataInstructionCompilerTest extends CompilerTestBase {
                 .hasMessageContaining("Argument 1 for instruction 'PUSV' has the wrong type. Expected VECTOR, but got LABEL.");
     }
 
+    /**
+     * A number that does not fit a cell is reported, not cut to the width of the value field.
+     */
+    @Test
+    void aLiteralBeyondACellIsReported() {
+        List<String> lines = List.of("SETI %DR0 DATA:1048576");
+        assertThatThrownBy(() -> compiler.compile(lines, "big_literal.s", testEnvProps))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("Value 1048576 out of range for a cell (-524288 to 524287).");
+    }
+
+    @Test
+    void aPlacedValueBeyondACellIsReported() {
+        List<String> lines = List.of(".PLACE STRUCTURE:1048576 1|1");
+        assertThatThrownBy(() -> compiler.compile(lines, "big_place.s", testEnvProps))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("Value 1048576 out of range for a cell (-524288 to 524287).");
+    }
+
     @Test
     void testXCHG() {
         String source = String.join("\n",

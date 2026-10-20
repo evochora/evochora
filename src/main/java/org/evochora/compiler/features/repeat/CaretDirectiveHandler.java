@@ -32,7 +32,13 @@ public class CaretDirectiveHandler implements IPreProcessorHandler {
         preProcessor.advance(); // consume ^
 
         Token countToken = preProcessor.consume(TokenType.NUMBER, "Expected repeat count after ^");
-        int count = (Integer) countToken.value();
+        long written = (Long) countToken.value();
+        if (written > Integer.MAX_VALUE) {
+            preProcessor.getDiagnostics().reportError("Value " + written + " out of range for a count.",
+                    countToken.source().fileName(), countToken.source().lineNumber());
+            return;
+        }
+        int count = (int) written;
 
         if (count < 0) {
             preProcessor.getDiagnostics().reportError(

@@ -9,7 +9,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.OptionalInt;
+import java.util.OptionalLong;
 
 /**
  * What a program carries for a debugger and a source view besides its items: the text of its
@@ -30,7 +30,7 @@ import java.util.OptionalInt;
  */
 public record DebugInfo(List<SourceFile> sources, Map<Integer, Expansion> expansions,
                         Map<SourceInfo, TokenInfo> tokenMap,
-                        Map<String, OptionalInt> flags, Map<String, String> values) {
+                        Map<String, OptionalLong> flags, Map<String, String> values) {
 
     /**
      * Makes the record immutable by copying the list and the maps; the copy of the token map

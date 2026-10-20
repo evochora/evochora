@@ -1,17 +1,16 @@
 package org.evochora.compiler.features.place;
 
+import org.evochora.compiler.model.expression.Value;
+import org.evochora.compiler.model.ast.LiteralNode;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.frontend.parser.IParserStatementHandler;
 import org.evochora.compiler.frontend.parser.IParsingContext;
 import org.evochora.compiler.model.ast.AstNode;
-import org.evochora.compiler.model.ast.TypedLiteralNode;
-import org.evochora.compiler.model.ast.VectorLiteralNode;
 import org.evochora.compiler.features.place.placement.*;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 
 /**
@@ -33,7 +32,7 @@ public class PlaceDirectiveHandler implements IParserStatementHandler {
 
         // 1. Parse the literal
         AstNode literal = context.expression();
-        if (!(literal instanceof TypedLiteralNode)) {
+        if (!(literal instanceof LiteralNode typed && typed.value() instanceof Value.Typed)) {
             context.getDiagnostics().reportError("Expected a typed literal (e.g. DATA:5) for .PLACE.", context.peek().source().fileName(), context.peek().source().lineNumber());
         }
 
@@ -77,13 +76,12 @@ public class PlaceDirectiveHandler implements IParserStatementHandler {
             }
             return new RangeExpressionNode(dimensions);
         } else {
-            List<Integer> values = new ArrayList<>();
+            List<Long> values = new ArrayList<>();
             for (IPlacementComponent comp : components) {
                 SingleValueComponent single = (SingleValueComponent) comp;
-                values.add(single.value());
+                values.add((long) single.value());
             }
-            VectorLiteralNode vectorNode = new VectorLiteralNode(Collections.unmodifiableList(values), sourceInfo);
-            return new VectorPlacementNode(vectorNode);
+            return new VectorPlacementNode(new LiteralNode(new Value.Vector(values), sourceInfo));
         }
     }
 
@@ -97,19 +95,33 @@ public class PlaceDirectiveHandler implements IParserStatementHandler {
 
             if (context.matchSymbol("..")) {
                 Token end = context.consume(TokenType.NUMBER, "Expected a number for the end of the range.");
-                return new RangeValueComponent((int) start.value(), (int) end.value());
+                return new RangeValueComponent(coordinate(start, context), coordinate(end, context));
             } else if (context.peek().type() == TokenType.COLON) {
                 context.advance(); // consume ':'
                 Token step = context.consume(TokenType.NUMBER, "Expected a number for the step of the range.");
                 context.consume(TokenType.COLON, "Expected ':' after the step value.");
                 Token end = context.consume(TokenType.NUMBER, "Expected a number for the end of the stepped range.");
-                return new SteppedRangeValueComponent((int) start.value(), (int) step.value(), (int) end.value());
+                return new SteppedRangeValueComponent(coordinate(start, context), coordinate(step, context), coordinate(end, context));
             } else {
-                return new SingleValueComponent((int) start.value());
+                return new SingleValueComponent(coordinate(start, context));
             }
         }
 
         context.getDiagnostics().reportError("Expected a placement component (number, '*', range, etc.)", context.peek().source().fileName(), context.peek().source().lineNumber());
         return new SingleValueComponent(0);
+    }
+
+    /**
+     * Reads a number of a placement as a coordinate. The layout checks it against the world;
+     * here it only has to fit an {@code int}, so that the layout can.
+     */
+    private static int coordinate(Token number, IParsingContext context) {
+        long written = (Long) number.value();
+        if (written < Integer.MIN_VALUE || written > Integer.MAX_VALUE) {
+            context.getDiagnostics().reportError("Value " + written + " out of range for a coordinate.",
+                    number.source().fileName(), number.source().lineNumber());
+            return 0;
+        }
+        return (int) written;
     }
 }

@@ -16,7 +16,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.OptionalInt;
+import java.util.OptionalLong;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -129,24 +129,26 @@ public class CompileCommandTest {
 
     @Test
     void testDefineArgumentsBecomeFlagsWithAndWithoutValue() {
-        Map<String, OptionalInt> defines = CompileCommand.parseDefines(List.of("A", "B=2"));
+        Map<String, OptionalLong> defines = CompileCommand.parseDefines(List.of("A", "B=2"));
 
         assertThat(defines).containsExactly(
-            Map.entry("A", OptionalInt.empty()),
-            Map.entry("B", OptionalInt.of(2)));
+            Map.entry("A", OptionalLong.empty()),
+            Map.entry("B", OptionalLong.of(2)));
     }
 
     @Test
     void testDefineValuesAreReadAsTheAssemblerReadsNumbers() {
-        Map<String, OptionalInt> defines = CompileCommand.parseDefines(
+        Map<String, OptionalLong> defines = CompileCommand.parseDefines(
             List.of("DEC=12", "HEX=0x1F", "BIN=0b101", "NEG=-3", "NEGHEX=-0x10", "NEGBIN=-0b11"));
 
-        assertThat(defines).containsEntry("DEC", OptionalInt.of(12))
-            .containsEntry("HEX", OptionalInt.of(31))
-            .containsEntry("BIN", OptionalInt.of(5))
-            .containsEntry("NEG", OptionalInt.of(-3))
-            .containsEntry("NEGHEX", OptionalInt.of(-16))
-            .containsEntry("NEGBIN", OptionalInt.of(-3));
+        assertThat(CompileCommand.parseDefines(List.of("BIG=5000000000")))
+            .containsEntry("BIG", OptionalLong.of(5000000000L));
+        assertThat(defines).containsEntry("DEC", OptionalLong.of(12))
+            .containsEntry("HEX", OptionalLong.of(31))
+            .containsEntry("BIN", OptionalLong.of(5))
+            .containsEntry("NEG", OptionalLong.of(-3))
+            .containsEntry("NEGHEX", OptionalLong.of(-16))
+            .containsEntry("NEGBIN", OptionalLong.of(-3));
         for (String form : List.of("A=+3", "A=0o17", "A=--3", "A=0x", "A=-")) {
             assertThatThrownBy(() -> CompileCommand.parseDefines(List.of(form)))
                 .describedAs(form)

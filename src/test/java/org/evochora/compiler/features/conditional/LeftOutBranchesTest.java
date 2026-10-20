@@ -20,7 +20,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
-import java.util.OptionalInt;
+import java.util.OptionalLong;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -101,7 +101,7 @@ class LeftOutBranchesTest {
                 "  NOP",
                 ".ENDDEF");
 
-        SourceFile main = source(compile(Map.of("PAD", OptionalInt.empty())), "", "main.evo");
+        SourceFile main = source(compile(Map.of("PAD", OptionalLong.empty())), "", "main.evo");
 
         assertThat(main.leftOut()).isEmpty();
         assertThat(main.notes()).containsExactly(new Note(0, 2, 8, "[set]"));
@@ -117,7 +117,7 @@ class LeftOutBranchesTest {
                 "  NOP",
                 ".ENDDEF");
 
-        SourceFile main = source(compile(Map.of("PAD", OptionalInt.of(3), "LIMIT", OptionalInt.of(2))),
+        SourceFile main = source(compile(Map.of("PAD", OptionalLong.of(3), "LIMIT", OptionalLong.of(2))),
                 "", "main.evo");
 
         assertThat(main.leftOut()).containsExactly(new LeftOut(0, 4, 5, 5));
@@ -153,7 +153,7 @@ class LeftOutBranchesTest {
                 ".ENDDEF",
                 "  NOP");
 
-        SourceFile main = source(compile(Map.of("INNER", OptionalInt.empty())), "", "main.evo");
+        SourceFile main = source(compile(Map.of("INNER", OptionalLong.empty())), "", "main.evo");
 
         assertThat(main.leftOut()).containsExactly(new LeftOut(0, 2, 3, 5));
         assertThat(main.notes()).containsExactly(new Note(0, 2, 8, "[not set]"));
@@ -179,7 +179,7 @@ class LeftOutBranchesTest {
                 "  CHECK ON",
                 "  CHECK OFF");
 
-        ProgramArtifact artifact = compile(Map.of("ON", OptionalInt.empty()));
+        ProgramArtifact artifact = compile(Map.of("ON", OptionalLong.empty()));
 
         String main = resolved("main.evo");
         int kept = expansionOfLine(artifact, main, 3);
@@ -218,7 +218,7 @@ class LeftOutBranchesTest {
                 "START:",
                 "  OUTER ON");
 
-        ProgramArtifact artifact = compile(Map.of("ON", OptionalInt.of(2)));
+        ProgramArtifact artifact = compile(Map.of("ON", OptionalLong.of(2)));
 
         SourceFile source = source(artifact, "", "main.evo");
         assertThat(expansionOfLine(artifact, resolved("main.evo"), 3)).isEqualTo(2);
@@ -351,7 +351,7 @@ class LeftOutBranchesTest {
                 "START:",
                 "  OUTER ON");
 
-        ProgramArtifact artifact = compile(Map.of("ON", OptionalInt.empty()));
+        ProgramArtifact artifact = compile(Map.of("ON", OptionalLong.empty()));
 
         String main = resolved("main.evo");
         assertThat(source(artifact, "", "main.evo").notes()).containsExactly(new Note(0, 10, 9, "[set]"));
@@ -390,7 +390,7 @@ class LeftOutBranchesTest {
         Files.writeString(sourceRoot.resolve(fileName), String.join("\n", lines) + "\n");
     }
 
-    private ProgramArtifact compile(Map<String, OptionalInt> defines) throws Exception {
+    private ProgramArtifact compile(Map<String, OptionalLong> defines) throws Exception {
         CompilerOptions options = new CompilerOptions(List.of(new SourceRoot(sourceRoot.toString(), null)), defines, Map.of());
         return new Compiler().compile("main.evo", ENV, options);
     }

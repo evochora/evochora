@@ -3,7 +3,7 @@ package org.evochora.compiler.api;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
-import java.util.OptionalInt;
+import java.util.OptionalLong;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -25,13 +25,16 @@ class IntegerLiteralTest {
         assertThat(IntegerLiteral.parse("0b101")).hasValue(5);
         assertThat(IntegerLiteral.parse("-0B11")).hasValue(-3);
         assertThat(IntegerLiteral.parse("2147483647")).hasValue(Integer.MAX_VALUE);
+        assertThat(IntegerLiteral.parse("9223372036854775807")).hasValue(Long.MAX_VALUE);
+        assertThat(IntegerLiteral.parse("-9223372036854775807")).hasValue(-Long.MAX_VALUE);
+        assertThat(IntegerLiteral.parse("2147483648")).hasValue(2147483648L);
     }
 
     @Test
     void rejectsEveryOtherForm() {
         for (String text : new String[]{"", "-", "+3", "--3", "0x", "0b", "0o17", "0b2", "0xG", "1.5", "12a", " 1",
-                "2147483648", "0x80000000"}) {
-            assertThat(IntegerLiteral.parse(text)).describedAs(text).isEqualTo(OptionalInt.empty());
+                "9223372036854775808", "0x8000000000000000"}) {
+            assertThat(IntegerLiteral.parse(text)).describedAs(text).isEqualTo(OptionalLong.empty());
         }
     }
 }

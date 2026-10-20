@@ -4,7 +4,7 @@ import org.evochora.compiler.api.IntegerLiteral;
 import org.evochora.compiler.frontend.module.IDependencyScanContext;
 import org.evochora.compiler.frontend.module.IDependencyScanHandler;
 
-import java.util.OptionalInt;
+import java.util.OptionalLong;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -31,7 +31,7 @@ public class DefineScanHandler implements IDependencyScanHandler {
         if (!operands.matches()) {
             return;
         }
-        OptionalInt value = OptionalInt.empty();
+        OptionalLong value = OptionalLong.empty();
         if (operands.group(2) != null) {
             value = IntegerLiteral.parse(operands.group(2));
             if (value.isEmpty()) {

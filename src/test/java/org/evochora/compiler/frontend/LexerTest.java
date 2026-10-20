@@ -79,10 +79,10 @@ public class LexerTest {
         // Assert
         assertThat(diagnostics.hasErrors()).isFalse();
         assertThat(tokens.get(1)).extracting(Token::type, Token::text).containsExactly(TokenType.SYMBOL, "@+");
-        assertThat(tokens.get(2)).extracting(Token::type, Token::value).containsExactly(TokenType.NUMBER, 2);
+        assertThat(tokens.get(2)).extracting(Token::type, Token::value).containsExactly(TokenType.NUMBER, 2L);
         assertThat(tokens.get(3)).extracting(Token::type).isEqualTo(TokenType.PIPE);
         assertThat(tokens.get(4)).extracting(Token::type, Token::text).containsExactly(TokenType.SYMBOL, "@-");
-        assertThat(tokens.get(5)).extracting(Token::type, Token::value).containsExactly(TokenType.NUMBER, 3);
+        assertThat(tokens.get(5)).extracting(Token::type, Token::value).containsExactly(TokenType.NUMBER, 3L);
     }
 
     /**
@@ -247,10 +247,10 @@ public class LexerTest {
         // Assert
         assertThat(diagnostics.hasErrors()).isFalse();
         assertThat(tokens).extracting(Token::type, Token::value).containsExactly(
-                tuple(TokenType.NUMBER, -16),
-                tuple(TokenType.NUMBER, -3),
-                tuple(TokenType.NUMBER, 16),
-                tuple(TokenType.NUMBER, 3),
+                tuple(TokenType.NUMBER, -16L),
+                tuple(TokenType.NUMBER, -3L),
+                tuple(TokenType.NUMBER, 16L),
+                tuple(TokenType.NUMBER, 3L),
                 tuple(TokenType.END_OF_FILE, null)
         );
     }
@@ -280,7 +280,7 @@ public class LexerTest {
         assertThat(tokens).hasSize(10);
         assertThat(tokens.get(0)).extracting(Token::type, Token::text).containsExactly(TokenType.DIRECTIVE, ".CONST");
         assertThat(tokens.get(1)).extracting(Token::type, Token::text).containsExactly(TokenType.IDENTIFIER, "HELLO");
-        assertThat(tokens.get(2)).extracting(Token::type, Token::text, Token::value).containsExactly(TokenType.NUMBER, "42", 42);
+        assertThat(tokens.get(2)).extracting(Token::type, Token::text, Token::value).containsExactly(TokenType.NUMBER, "42", 42L);
         assertThat(tokens.get(3)).extracting(Token::type).isEqualTo(TokenType.NEWLINE);
         assertThat(tokens.get(4)).extracting(Token::type, Token::text).containsExactly(TokenType.IDENTIFIER, "L1");
         assertThat(tokens.get(5)).extracting(Token::type, Token::text).containsExactly(TokenType.COLON, ":");

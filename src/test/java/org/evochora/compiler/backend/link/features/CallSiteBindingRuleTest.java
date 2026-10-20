@@ -1,5 +1,7 @@
 package org.evochora.compiler.backend.link.features;
 
+import org.evochora.compiler.model.expression.Value;
+import org.evochora.compiler.model.ir.IrLiteral;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.runtime.isa.RegisterBank;
 import org.evochora.compiler.backend.layout.LayoutResult;
@@ -7,7 +9,6 @@ import org.evochora.compiler.features.proc.CallSiteBindingRule;
 import org.evochora.compiler.backend.link.LinkingContext;
 import org.evochora.compiler.isa.IInstructionSet;
 import org.evochora.compiler.features.proc.IrCallInstruction;
-import org.evochora.compiler.model.ir.IrImm;
 import org.evochora.compiler.model.ir.IrInstruction;
 import org.evochora.compiler.model.ir.IrReg;
 import org.junit.jupiter.api.BeforeEach;
@@ -52,7 +53,7 @@ class CallSiteBindingRuleTest {
     void collectsRefOperandBindings() {
         IrInstruction call = new IrCallInstruction(
                 "CALL",
-                List.of(new IrImm(0)),
+                List.of(new IrLiteral(new Value.Number(0))),
                 List.of(new IrReg("%DR0"), new IrReg("%DR1")),
                 List.of(),
                 List.of(),
@@ -74,7 +75,7 @@ class CallSiteBindingRuleTest {
     void collectsValOperandBindings() {
         IrInstruction call = new IrCallInstruction(
                 "CALL",
-                List.of(new IrImm(0)),
+                List.of(new IrLiteral(new Value.Number(0))),
                 List.of(),
                 List.of(new IrReg("%PDR1")),
                 List.of(),
@@ -93,7 +94,7 @@ class CallSiteBindingRuleTest {
     void collectsMixedRefAndValBindings() {
         IrInstruction call = new IrCallInstruction(
                 "CALL",
-                List.of(new IrImm(0)),
+                List.of(new IrLiteral(new Value.Number(0))),
                 List.of(new IrReg("%DR2")),
                 List.of(new IrReg("%PDR0")),
                 List.of(),
@@ -113,7 +114,7 @@ class CallSiteBindingRuleTest {
     void doesNotCreateBindingForCallWithoutRegisterOperands() {
         IrInstruction call = new IrCallInstruction(
                 "CALL",
-                List.of(new IrImm(0)),
+                List.of(new IrLiteral(new Value.Number(0))),
                 List.of(),
                 List.of(),
                 List.of(),
@@ -130,7 +131,7 @@ class CallSiteBindingRuleTest {
     void passesNonCallInstructionThrough() {
         IrInstruction addi = new IrInstruction(
                 "ADDI",
-                List.of(new IrImm(42)),
+                List.of(new IrLiteral(new Value.Number(42))),
                 dummySource
         );
 
@@ -146,7 +147,7 @@ class CallSiteBindingRuleTest {
 
         IrInstruction call = new IrCallInstruction(
                 "CALL",
-                List.of(new IrImm(0)),
+                List.of(new IrLiteral(new Value.Number(0))),
                 List.of(new IrReg("%DR0")),
                 List.of(),
                 List.of(),
@@ -166,7 +167,7 @@ class CallSiteBindingRuleTest {
     void throwsOnUnresolvableRegister() {
         IrInstruction call = new IrCallInstruction(
                 "CALL",
-                List.of(new IrImm(0)),
+                List.of(new IrLiteral(new Value.Number(0))),
                 List.of(new IrReg("%UNKNOWN")),
                 List.of(),
                 List.of(),
@@ -183,7 +184,7 @@ class CallSiteBindingRuleTest {
     void collectsMixedRefAndLrefBindings() {
         IrInstruction call = new IrCallInstruction(
                 "CALL",
-                List.of(new IrImm(0)),
+                List.of(new IrLiteral(new Value.Number(0))),
                 List.of(new IrReg("%DR1")),
                 List.of(),
                 List.of(new IrReg("%LR0")),
@@ -204,6 +205,11 @@ class CallSiteBindingRuleTest {
      * following the standard register bank layout.
      */
     private static class StubInstructionSet implements IInstructionSet {
+        @Override
+        public ValueRange valueRange(int type) {
+            return new ValueRange(Integer.MIN_VALUE, Integer.MAX_VALUE);
+        }
+
         @Override
         public List<IInstructionSet.RegisterBankInfo> registerBanks() {
             return java.util.Arrays.stream(RegisterBank.values())

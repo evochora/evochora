@@ -26,13 +26,12 @@ public final class OrgNodeConverter implements IAstNodeToIrConverter<OrgNode> {
 	 */
 	@Override
 	public void convert(OrgNode node, IrGenContext ctx) {
-		int[] comps = node.originVector().values().stream().mapToInt(Integer::intValue).toArray();
 		List<IrValue> relative = new ArrayList<>(node.relative().size());
 		for (boolean marked : node.relative()) {
 			relative.add(new IrValue.Bool(marked));
 		}
 		Map<String, IrValue> args = new HashMap<>();
-		args.put("position", new IrValue.Vector(comps));
+		args.put("position", new IrValue.Literal(node.originVector().value()));
 		args.put("relative", new IrValue.ListVal(List.copyOf(relative)));
 		ctx.emit(new IrDirective("core", "org", args, ctx.sourceOf(node)));
 	}

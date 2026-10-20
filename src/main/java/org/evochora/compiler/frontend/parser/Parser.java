@@ -1,5 +1,7 @@
 package org.evochora.compiler.frontend.parser;
 
+import org.evochora.compiler.model.expression.Value;
+import org.evochora.compiler.model.ast.LiteralNode;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.diagnostics.ErrorRecoveryException;
 import org.evochora.compiler.frontend.BlockReader;
@@ -9,11 +11,8 @@ import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.IdentifierNode;
 
-import org.evochora.compiler.model.ast.NumberLiteralNode;
 import org.evochora.compiler.model.ast.OperandNode;
 import org.evochora.compiler.model.ast.RegisterNode;
-import org.evochora.compiler.model.ast.TypedLiteralNode;
-import org.evochora.compiler.model.ast.VectorLiteralNode;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -221,27 +220,25 @@ public class Parser implements IParsingContext {
     public OperandNode expression() {
         if (check(TokenType.NUMBER) && checkNext(TokenType.PIPE)) {
             Token first = consume(TokenType.NUMBER, "Expected number component for vector.");
-            List<Integer> values = new ArrayList<>();
-            values.add((int) first.value());
+            List<Long> values = new ArrayList<>();
+            values.add((Long) first.value());
             while(match(TokenType.PIPE)) {
                 Token comp = consume(TokenType.NUMBER, "Expected number component after '|'.");
-                values.add((int) comp.value());
+                values.add((Long) comp.value());
             }
-            return new VectorLiteralNode(java.util.Collections.unmodifiableList(values),
-                    first.source());
+            return new LiteralNode(new Value.Vector(values), first.source());
         }
 
         if (check(TokenType.IDENTIFIER) && checkNext(TokenType.COLON)) {
             Token type = advance();
             advance();
             Token valueTok = consume(TokenType.NUMBER, "Expected a number after the literal type.");
-            return new TypedLiteralNode(type.text(), (int) valueTok.value(),
-                    type.source());
+            return new LiteralNode(new Value.Typed(type.text(), (Long) valueTok.value()), type.source());
         }
 
         if (match(TokenType.NUMBER)) {
             Token num = previous();
-            return new NumberLiteralNode((int) num.value(), num.source());
+            return new LiteralNode(new Value.Number((Long) num.value()), num.source());
         }
 
         if (match(TokenType.REGISTER)) {

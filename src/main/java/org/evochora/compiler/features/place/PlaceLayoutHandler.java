@@ -1,5 +1,6 @@
 package org.evochora.compiler.features.place;
 
+import org.evochora.compiler.model.expression.Value;
 import org.evochora.compiler.api.CompilationException;
 import org.evochora.compiler.api.PlacedMolecule;
 import org.evochora.compiler.api.SourceInfo;
@@ -64,7 +65,16 @@ public final class PlaceLayoutHandler implements ILayoutDirectiveHandler {
         String ts = t.value();
         int type = isa.moleculeType(ts).orElseThrow(() ->
                 new CompilationException(SourceInfo.locate(directive.source(), "Unknown molecule type '" + ts + "' in .PLACE.")));
-        long value = val instanceof IrValue.Int64 iv ? iv.value() : 0L;
+        long value = val instanceof IrValue.Literal literal ? switch (literal.value()) {
+            case Value.Typed typed -> typed.number();
+            case Value.Number number -> number.value();
+            default -> 0L;
+        } : 0L;
+        IInstructionSet.ValueRange range = isa.valueRange(type);
+        if (!range.contains(value)) {
+            throw new CompilationException(SourceInfo.locate(directive.source(),
+                    "Value " + value + " out of range for a cell (" + range + ")."));
+        }
         return new PlacedMolecule(type, (int) value, 0);
     }
 

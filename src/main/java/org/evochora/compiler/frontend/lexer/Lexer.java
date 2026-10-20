@@ -16,7 +16,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.OptionalInt;
+import java.util.OptionalLong;
 import java.util.Set;
 
 /**
@@ -310,9 +310,9 @@ public class Lexer {
         }
 
         String numberString = source.substring(start, current);
-        OptionalInt value = IntegerLiteral.parse(numberString);
+        OptionalLong value = IntegerLiteral.parse(numberString);
         if (value.isPresent()) {
-            addToken(TokenType.NUMBER, value.getAsInt());
+            addToken(TokenType.NUMBER, value.getAsLong());
         } else {
             diagnostics.reportError("Invalid number format: " + numberString, logicalFileName, line);
         }

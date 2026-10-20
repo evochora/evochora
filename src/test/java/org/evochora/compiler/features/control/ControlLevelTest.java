@@ -24,7 +24,8 @@ import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.IdentifierNode;
 import org.evochora.compiler.model.ast.InstructionNode;
 import org.evochora.compiler.model.ast.RegisterNode;
-import org.evochora.compiler.model.ast.TypedLiteralNode;
+import org.evochora.compiler.model.ast.LiteralNode;
+import org.evochora.compiler.model.expression.Value;
 import org.evochora.compiler.model.symbols.SymbolTable;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.runtime.isa.Instruction;
@@ -233,9 +234,9 @@ class ControlLevelTest {
 
         assertThat(analyzed.errors()).isEmpty();
         assertThat(analyzed.instructionAt(3).arguments().get(1))
-                .isInstanceOfSatisfying(TypedLiteralNode.class, value -> assertThat(value.value()).isEqualTo(5));
+                .isInstanceOfSatisfying(LiteralNode.class, value -> assertThat(value.value()).isEqualTo(new Value.Typed("DATA", 5)));
         assertThat(analyzed.instructionAt(5).arguments().get(1))
-                .isInstanceOfSatisfying(TypedLiteralNode.class, value -> assertThat(value.value()).isEqualTo(5));
+                .isInstanceOfSatisfying(LiteralNode.class, value -> assertThat(value.value()).isEqualTo(new Value.Typed("DATA", 5)));
     }
 
     @Test

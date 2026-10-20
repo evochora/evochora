@@ -18,7 +18,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
-import java.util.OptionalInt;
+import java.util.OptionalLong;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -44,7 +44,7 @@ class ConditionalDependencyScanTest {
                 ".ENDDEF",
                 "NOP");
 
-        Scan withBig = scan(main, Map.of("BIG", OptionalInt.empty()));
+        Scan withBig = scan(main, Map.of("BIG", OptionalLong.empty()));
         Scan withoutBig = scan(String.join("\n",
                 ".IFDEF BIG",
                 "  .IMPORT \"missing.evo\" AS LIB",
@@ -186,7 +186,7 @@ class ConditionalDependencyScanTest {
                 ".ENDDEF",
                 "NOP");
 
-        Scan result = scan(main, Map.of("A", OptionalInt.empty()));
+        Scan result = scan(main, Map.of("A", OptionalLong.empty()));
 
         assertThat(result.diagnostics.hasErrors()).as(result.diagnostics.summary()).isFalse();
         assertThat(result.modules()).containsExactly("main.evo");
@@ -215,7 +215,7 @@ class ConditionalDependencyScanTest {
      */
     @Test
     void aHeadWithAWordBeforeItIsInvalidAndNoBranchOfItsBlockIsScanned() throws Exception {
-        for (Map<String, OptionalInt> defines : List.of(Map.<String, OptionalInt>of(), Map.of("X", OptionalInt.empty()))) {
+        for (Map<String, OptionalLong> defines : List.of(Map.<String, OptionalLong>of(), Map.of("X", OptionalLong.empty()))) {
             Scan result = scan(String.join("\n",
                     "L: .IFDEF X",
                     "  .IMPORT \"missing.evo\" AS M",
@@ -280,7 +280,7 @@ class ConditionalDependencyScanTest {
         }
     }
 
-    private Scan scan(String mainSource, Map<String, OptionalInt> defines) {
+    private Scan scan(String mainSource, Map<String, OptionalLong> defines) {
         FeatureRegistry features = new FeatureRegistry(new RuntimeInstructionSetAdapter());
         StandardFeatures.all().forEach(f -> f.register(features));
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();

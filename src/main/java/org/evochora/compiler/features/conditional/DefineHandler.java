@@ -8,7 +8,7 @@ import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 
 import java.util.List;
-import java.util.OptionalInt;
+import java.util.OptionalLong;
 
 /**
  * Handles {@code .DEFINE NAME [integer]}, which sets a flag in the {@link Flags} of the
@@ -41,9 +41,9 @@ public class DefineHandler implements IPreProcessorHandler {
         } else if (operands.size() > 2 || (operands.size() == 2 && !isInteger(operands.get(1)))) {
             error = ".DEFINE takes a flag name and an optional integer" + CONSTANT;
         } else {
-            OptionalInt value = operands.size() == 2
-                    ? OptionalInt.of((Integer) operands.get(1).value())
-                    : OptionalInt.empty();
+            OptionalLong value = operands.size() == 2
+                    ? OptionalLong.of((Long) operands.get(1).value())
+                    : OptionalLong.empty();
             error = flags.define(operands.get(0).text(), value,
                     "at " + directive.source().fileName() + ":" + directive.source().lineNumber()).orElse(null);
         }
@@ -54,6 +54,6 @@ public class DefineHandler implements IPreProcessorHandler {
     }
 
     private static boolean isInteger(Token token) {
-        return token.type() == TokenType.NUMBER && token.value() instanceof Integer;
+        return token.type() == TokenType.NUMBER && token.value() instanceof Long;
     }
 }

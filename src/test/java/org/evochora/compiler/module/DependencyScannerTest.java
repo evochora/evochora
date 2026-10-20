@@ -21,7 +21,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.OptionalInt;
+import java.util.OptionalLong;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
 import java.util.regex.Matcher;
@@ -385,7 +385,7 @@ public class DependencyScannerTest {
     @Test
     @Tag("unit")
     void options_areThoseTheScannerWasCreatedWith() {
-        CompilerOptions options = new CompilerOptions(List.of(new SourceRoot(".", null)), Map.of("FLAG", OptionalInt.empty()), Map.of());
+        CompilerOptions options = new CompilerOptions(List.of(new SourceRoot(".", null)), Map.of("FLAG", OptionalLong.empty()), Map.of());
         List<CompilerOptions> seen = new ArrayList<>();
         List<IDependencyScanHandler> handlers = List.of(handler("MARK", (m, ctx) -> seen.add(ctx.options())));
 

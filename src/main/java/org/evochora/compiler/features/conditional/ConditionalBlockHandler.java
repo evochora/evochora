@@ -11,7 +11,7 @@ import org.evochora.compiler.model.token.Token;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-import java.util.OptionalInt;
+import java.util.OptionalLong;
 
 /**
  * Handles a conditional block, {@code .IFDEF} or {@code .IFNDEF} up to its {@code .ENDDEF},
@@ -160,8 +160,8 @@ public class ConditionalBlockHandler implements IPreProcessorBlockHandler {
         if (!flags.isSet(name.text())) {
             state = "[not set]";
         } else {
-            OptionalInt value = flags.valueOf(name.text());
-            state = value.isPresent() ? "[=" + value.getAsInt() + "]" : "[set]";
+            OptionalLong value = flags.valueOf(name.text());
+            state = value.isPresent() ? "[=" + value.getAsLong() + "]" : "[set]";
         }
         preProcessor.note(name.source(), state);
         for (SourceInfo replaced : name.replaces()) {

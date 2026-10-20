@@ -1,5 +1,7 @@
 package org.evochora.compiler.directives;
 
+import org.evochora.compiler.model.expression.Value;
+import org.evochora.compiler.model.ast.LiteralNode;
 import org.evochora.compiler.TestLexers;
 import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.frontend.parser.Parser;
@@ -9,8 +11,6 @@ import org.evochora.compiler.features.org.OrgDirectiveHandler;
 import org.evochora.compiler.features.place.PlaceDirectiveHandler;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
-import org.evochora.compiler.model.ast.TypedLiteralNode;
-import org.evochora.compiler.model.ast.VectorLiteralNode;
 import org.evochora.compiler.features.place.placement.VectorPlacementNode;
 import org.evochora.compiler.features.dir.DirNode;
 import org.evochora.compiler.features.org.OrgNode;
@@ -48,6 +48,23 @@ public class LayoutDirectiveTest {
     }
 
     /**
+     * A coordinate is bounded by the world, which is addressed with an {@code int}; a component
+     * beyond that is reported at the directive.
+     */
+    @Test
+    @Tag("unit")
+    void testPlaceComponentBeyondACoordinateIsReported() {
+        String source = ".PLACE DATA:1 4294967296|0";
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Parser parser = new Parser(new Lexer(source, diagnostics, TestLexers.symbols()).scanTokens(), diagnostics, registry());
+
+        parser.parse();
+
+        assertThat(diagnostics.hasErrors()).isTrue();
+        assertThat(diagnostics.getDiagnostics().get(0).message()).isEqualTo("Value 4294967296 out of range for a coordinate.");
+    }
+
+    /**
      * Verifies that each component of an `.ORG` vector carries its own mark, and that a marked
      * component keeps the sign of its marker.
      * This is a unit test for the parser.
@@ -67,7 +84,7 @@ public class LayoutDirectiveTest {
         assertThat(parser.getDiagnostics().hasErrors()).isFalse();
         OrgNode org = (OrgNode) ast.get(0);
         assertThat(org.relative()).containsExactly(false, true);
-        assertThat(((VectorLiteralNode) org.originVector()).values()).containsExactly(0, 2);
+        assertThat(((Value.Vector) org.originVector().value()).components()).containsExactly(0L, 2L);
     }
 
     /**
@@ -89,7 +106,7 @@ public class LayoutDirectiveTest {
         assertThat(parser.getDiagnostics().hasErrors()).isFalse();
         OrgNode org = (OrgNode) ast.get(0);
         assertThat(org.relative()).containsExactly(true, true);
-        assertThat(((VectorLiteralNode) org.originVector()).values()).containsExactly(-3, 2);
+        assertThat(((Value.Vector) org.originVector().value()).components()).containsExactly(-3L, 2L);
     }
 
     /**
@@ -196,7 +213,7 @@ public class LayoutDirectiveTest {
         assertThat(ast).hasSize(1).first().isInstanceOf(PlaceNode.class);
 
         PlaceNode placeNode = (PlaceNode) ast.get(0);
-        assertThat(placeNode.literal()).isInstanceOf(TypedLiteralNode.class);
+        assertThat(placeNode.literal()).isInstanceOf(LiteralNode.class);
         assertThat(placeNode.placements()).hasSize(1);
         assertThat(placeNode.placements().get(0)).isInstanceOf(VectorPlacementNode.class);
     }

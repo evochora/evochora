@@ -1,5 +1,7 @@
 package org.evochora.compiler.directives;
 
+import org.evochora.compiler.model.expression.Value;
+import org.evochora.compiler.model.ast.LiteralNode;
 import org.evochora.compiler.TestLexers;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.semantics.ScopeTracker;
@@ -9,7 +11,6 @@ import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ParserStatementRegistry;
 import org.evochora.compiler.features.constdir.ConstDirectiveHandler;
 import org.evochora.compiler.model.ast.AstNode;
-import org.evochora.compiler.model.ast.TypedLiteralNode;
 import org.evochora.compiler.model.ast.InstructionNode;
 import org.evochora.compiler.features.constdir.ConstNode;
 import org.evochora.compiler.TestRegistries;
@@ -65,7 +66,7 @@ public class ConstDirectiveTest {
 
         ConstNode constNode = (ConstNode) ast.get(0);
         assertThat(constNode.name()).isEqualTo("MY_CONST");
-        assertThat(constNode.value()).isInstanceOf(TypedLiteralNode.class);
+        assertThat(constNode.value()).isInstanceOf(LiteralNode.class);
     }
     
     /**
@@ -110,9 +111,9 @@ public class ConstDirectiveTest {
         InstructionNode seti = (InstructionNode) processedAst.get(1);
         assertThat(seti.arguments()).hasSize(2);
 
-        assertThat(seti.arguments().get(1)).isInstanceOf(TypedLiteralNode.class);
-        TypedLiteralNode constant = (TypedLiteralNode) seti.arguments().get(1);
-        assertThat(constant.value()).isEqualTo(42);
+        assertThat(seti.arguments().get(1)).isInstanceOf(LiteralNode.class);
+        LiteralNode constant = (LiteralNode) seti.arguments().get(1);
+        assertThat(constant.value()).isEqualTo(new Value.Typed("DATA", 42));
     }
 
     /**

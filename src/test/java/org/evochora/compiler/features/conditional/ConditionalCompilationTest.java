@@ -17,7 +17,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
-import java.util.OptionalInt;
+import java.util.OptionalLong;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -99,7 +99,7 @@ class ConditionalCompilationTest {
                 "START:",
                 "  CALL LIB.WORK");
 
-        ProgramArtifact big = compile("main.evo", Map.of("BIG", OptionalInt.empty()));
+        ProgramArtifact big = compile("main.evo", Map.of("BIG", OptionalLong.empty()));
         ProgramArtifact small = compile("main.evo", Map.of());
 
         assertThat(resolvedPaths(big))
@@ -154,8 +154,8 @@ class ConditionalCompilationTest {
                 ".ENDDEF",
                 "  NOP");
 
-        assertThat(compile("main.evo", Map.of("level", OptionalInt.of(2))).machineCodeLayout()).hasSize(LABEL + 3);
-        assertThat(compile("main.evo", Map.of("LEVEL", OptionalInt.of(1))).machineCodeLayout()).hasSize(LABEL + 1);
+        assertThat(compile("main.evo", Map.of("level", OptionalLong.of(2))).machineCodeLayout()).hasSize(LABEL + 3);
+        assertThat(compile("main.evo", Map.of("LEVEL", OptionalLong.of(1))).machineCodeLayout()).hasSize(LABEL + 1);
     }
 
     @Test
@@ -168,7 +168,7 @@ class ConditionalCompilationTest {
                 "START:",
                 "  NOP");
 
-        assertThatThrownBy(() -> compile("main.evo", Map.of("NOT A NAME", OptionalInt.empty())))
+        assertThatThrownBy(() -> compile("main.evo", Map.of("NOT A NAME", OptionalLong.empty())))
                 .isInstanceOf(CompilationException.class)
                 .satisfies(e -> assertThat(e.getMessage().split("Configured flag 'NOT A NAME' is not a valid name",
                         -1)).hasSize(2));
@@ -219,7 +219,7 @@ class ConditionalCompilationTest {
                 "START:",
                 "  NOP");
 
-        assertThatThrownBy(() -> compile("main.evo", Map.of("X", OptionalInt.empty())))
+        assertThatThrownBy(() -> compile("main.evo", Map.of("X", OptionalLong.empty())))
                 .isInstanceOf(CompilationException.class)
                 .satisfies(e -> assertThat(e.getMessage().lines().toList()).containsExactly(
                         "[ERROR] " + resolved("main.evo")
@@ -234,7 +234,7 @@ class ConditionalCompilationTest {
         Files.writeString(sourceRoot.resolve(fileName), String.join("\n", lines) + "\n");
     }
 
-    private ProgramArtifact compile(String fileName, Map<String, OptionalInt> defines) throws Exception {
+    private ProgramArtifact compile(String fileName, Map<String, OptionalLong> defines) throws Exception {
         CompilerOptions options = new CompilerOptions(List.of(new SourceRoot(sourceRoot.toString(), null)), defines, Map.of());
         return new Compiler().compile(fileName, ENV, options);
     }

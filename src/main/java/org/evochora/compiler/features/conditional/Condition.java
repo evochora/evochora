@@ -7,7 +7,7 @@ import org.evochora.compiler.model.token.TokenType;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
-import java.util.OptionalInt;
+import java.util.OptionalLong;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -95,7 +95,7 @@ public record Condition(boolean negated, String name, Optional<Comparison> compa
          * @param right The value it is compared with.
          * @return {@code true} if the comparison holds.
          */
-        boolean holds(int left, int right) {
+        boolean holds(long left, long right) {
             return switch (this) {
                 case EQ -> left == right;
                 case NE -> left != right;
@@ -118,7 +118,7 @@ public record Condition(boolean negated, String name, Optional<Comparison> compa
      *
      * @param value The integer.
      */
-    public record Literal(int value) implements Operand {
+    public record Literal(long value) implements Operand {
     }
 
     /**
@@ -197,11 +197,11 @@ public record Condition(boolean negated, String name, Optional<Comparison> compa
         if (Flags.isName(operandText)) {
             operand = new FlagName(operandText);
         } else {
-            OptionalInt value = IntegerLiteral.parse(operandText);
+            OptionalLong value = IntegerLiteral.parse(operandText);
             if (value.isEmpty()) {
                 return Optional.empty();
             }
-            operand = new Literal(value.getAsInt());
+            operand = new Literal(value.getAsLong());
         }
         return Optional.of(new Condition(false, head.group(1), Optional.of(new Comparison(operator, operand))));
     }
@@ -243,7 +243,7 @@ public record Condition(boolean negated, String name, Optional<Comparison> compa
         }
         Token operandToken = tokens.get(2);
         Operand operand;
-        if (operandToken.type() == TokenType.NUMBER && operandToken.value() instanceof Integer value) {
+        if (operandToken.type() == TokenType.NUMBER && operandToken.value() instanceof Long value) {
             operand = new Literal(value);
         } else if (isNameToken(operandToken)) {
             operand = new FlagName(operandToken.text());
@@ -275,25 +275,25 @@ public record Condition(boolean negated, String name, Optional<Comparison> compa
         if (comparison.isEmpty()) {
             return true;
         }
-        OptionalInt left = flags.valueOf(name);
+        OptionalLong left = flags.valueOf(name);
         if (left.isEmpty()) {
             throw new Invalid("Flag " + name + " is set without a value and cannot be compared");
         }
-        int right = switch (comparison.get().operand()) {
+        long right = switch (comparison.get().operand()) {
             case Literal literal -> literal.value();
             case FlagName other -> {
                 if (!flags.isSet(other.name())) {
                     throw new Invalid("Flag " + other.name() + ", which " + name + " is compared with, is not set");
                 }
-                OptionalInt value = flags.valueOf(other.name());
+                OptionalLong value = flags.valueOf(other.name());
                 if (value.isEmpty()) {
                     throw new Invalid("Flag " + other.name() + ", which " + name
                             + " is compared with, is set without a value");
                 }
-                yield value.getAsInt();
+                yield value.getAsLong();
             }
         };
-        return comparison.get().operator().holds(left.getAsInt(), right);
+        return comparison.get().operator().holds(left.getAsLong(), right);
     }
 
     /**

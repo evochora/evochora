@@ -1,5 +1,7 @@
 package org.evochora.compiler.features.org;
 
+import org.evochora.compiler.backend.layout.Nd;
+import org.evochora.compiler.model.expression.Value;
 import org.evochora.compiler.api.CompilationException;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.backend.layout.ILayoutDirectiveHandler;
@@ -24,9 +26,9 @@ public final class OrgLayoutHandler implements ILayoutDirectiveHandler {
 	 */
 	@Override
 	public void handle(IrDirective directive, LayoutContext context) throws CompilationException {
-		IrValue.Vector vec = (IrValue.Vector) directive.args().get("position");
+		Value.Vector vec = (Value.Vector) ((IrValue.Literal) directive.args().get("position")).value();
 		List<IrValue> relative = ((IrValue.ListVal) directive.args().get("relative")).elements();
-		int[] comps = vec.components();
+		int[] comps = Nd.coordinate(vec.components(), directive.source());
 
 		int[] basePos = context.basePos();
 		// Reported here rather than at the first cell placed afterwards, because that cell can

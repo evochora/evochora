@@ -1,5 +1,7 @@
 package org.evochora.compiler.frontend.semantics;
 
+import org.evochora.compiler.model.ast.LiteralNode;
+import org.evochora.compiler.model.expression.Value;
 import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
@@ -7,7 +9,6 @@ import org.evochora.compiler.features.instruction.InstructionAnalysisHandler;
 import org.evochora.compiler.features.reg.RegNode;
 import org.evochora.compiler.model.ast.IdentifierNode;
 import org.evochora.compiler.model.ast.InstructionNode;
-import org.evochora.compiler.model.ast.TypedLiteralNode;
 import org.evochora.compiler.model.symbols.Symbol;
 import org.evochora.compiler.model.symbols.SymbolTable;
 import org.evochora.runtime.isa.Instruction;
@@ -55,7 +56,7 @@ class InstructionAnalysisHandlerAliasTest {
 
         // SETI expects (REGISTER, IMMEDIATE)
         InstructionNode instr = new InstructionNode("SETI",
-                List.of(new IdentifierNode("COUNTER", SRC), new TypedLiteralNode("DATA", 42, SRC)), SRC);
+                List.of(new IdentifierNode("COUNTER", SRC), new LiteralNode(new Value.Typed("DATA", 42), SRC)), SRC);
 
         handler.analyze(instr, symbolTable, diagnostics);
 
@@ -83,7 +84,7 @@ class InstructionAnalysisHandlerAliasTest {
 
         // SETI expects (REGISTER, IMMEDIATE) — location alias in REGISTER position is wrong
         InstructionNode instr = new InstructionNode("SETI",
-                List.of(new IdentifierNode("POS", SRC), new TypedLiteralNode("DATA", 42, SRC)), SRC);
+                List.of(new IdentifierNode("POS", SRC), new LiteralNode(new Value.Typed("DATA", 42), SRC)), SRC);
 
         handler.analyze(instr, symbolTable, diagnostics);
 
@@ -114,7 +115,7 @@ class InstructionAnalysisHandlerAliasTest {
 
         // SETI expects (REGISTER, IMMEDIATE) — module alias is never valid
         InstructionNode instr = new InstructionNode("SETI",
-                List.of(new IdentifierNode("MATH", SRC), new TypedLiteralNode("DATA", 42, SRC)), SRC);
+                List.of(new IdentifierNode("MATH", SRC), new LiteralNode(new Value.Typed("DATA", 42), SRC)), SRC);
 
         handler.analyze(instr, symbolTable, diagnostics);
 

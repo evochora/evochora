@@ -28,7 +28,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.OptionalInt;
+import java.util.OptionalLong;
 import java.util.concurrent.TimeUnit;
 
 import static org.awaitility.Awaitility.await;
@@ -212,7 +212,7 @@ class SimulationEngineIntegrationTest {
         Config defines = recorded.getConfigList("organisms").get(0).getConfig("defines");
         assertTrue(defines.getBoolean("AGGRESSIVE"));
         assertEquals(2, defines.getInt("REDUNDANCY"));
-        assertEquals(Map.of("AGGRESSIVE", OptionalInt.empty(), "REDUNDANCY", OptionalInt.of(2)),
+        assertEquals(Map.of("AGGRESSIVE", OptionalLong.empty(), "REDUNDANCY", OptionalLong.of(2)),
                 SimulationEngine.readDefines(recorded.getConfigList("organisms").get(0), 0));
     }
 

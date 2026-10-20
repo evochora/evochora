@@ -25,7 +25,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.OptionalInt;
+import java.util.OptionalLong;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -386,7 +386,7 @@ class ConditionalExpansionTest {
 
     @Test
     void theSameDefinitionAsTheConfigurationIsAccepted() {
-        Expansion result = expandWith(Map.of("LEVEL", OptionalInt.of(2)), List.of(),
+        Expansion result = expandWith(Map.of("LEVEL", OptionalLong.of(2)), List.of(),
                 ".DEFINE LEVEL 2",
                 ".IFDEF LEVEL = 2",
                 "  NOP",
@@ -398,7 +398,7 @@ class ConditionalExpansionTest {
 
     @Test
     void anotherValueThanTheConfigurationIsRejected() {
-        Expansion result = expandWith(Map.of("LEVEL", OptionalInt.of(2)), List.of(),
+        Expansion result = expandWith(Map.of("LEVEL", OptionalLong.of(2)), List.of(),
                 ".DEFINE LEVEL 3");
 
         assertThat(result.errors()).containsExactly(MAIN + ":1: Cannot define flag LEVEL as 3: it is already"
@@ -417,7 +417,7 @@ class ConditionalExpansionTest {
                 "  JMPI END",
                 ".ENDDEF"};
 
-        Expansion configured = expandWith(Map.of("redundancy", OptionalInt.of(2)), List.of(), program);
+        Expansion configured = expandWith(Map.of("redundancy", OptionalLong.of(2)), List.of(), program);
         Expansion unconfigured = expand(program);
 
         assertThat(configured.errors()).isEmpty();
@@ -428,7 +428,7 @@ class ConditionalExpansionTest {
 
     @Test
     void aConfiguredFlagThatIsNoNameIsReportedOnce() {
-        Expansion result = expandWith(Map.of("NO-NAME", OptionalInt.empty(), "GOOD", OptionalInt.empty()), List.of(),
+        Expansion result = expandWith(Map.of("NO-NAME", OptionalLong.empty(), "GOOD", OptionalLong.empty()), List.of(),
                 ".IFDEF GOOD",
                 "  NOP",
                 ".ENDDEF",
@@ -443,7 +443,7 @@ class ConditionalExpansionTest {
 
     @Test
     void aConfiguredFlagThatIsNoNameIsNotCheckedWithoutAConditionalDirective() {
-        Expansion result = expandWith(Map.of("NO-NAME", OptionalInt.empty()), List.of(), "NOP");
+        Expansion result = expandWith(Map.of("NO-NAME", OptionalLong.empty()), List.of(), "NOP");
 
         assertThat(result.errors()).isEmpty();
     }
@@ -861,7 +861,7 @@ class ConditionalExpansionTest {
      * configured flags, and a file {@code lib.evo} the main file may include with
      * {@code .SOURCE}.
      */
-    private static Expansion expandWith(Map<String, OptionalInt> defines, List<String> library, String... lines) {
+    private static Expansion expandWith(Map<String, OptionalLong> defines, List<String> library, String... lines) {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         List<Token> libraryTokens = new ArrayList<>(new Lexer(String.join("\n", library) + "\n",
                 diagnostics, LIBRARY, TestLexers.symbols()).scanTokens());

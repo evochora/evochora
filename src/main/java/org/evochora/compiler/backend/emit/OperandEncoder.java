@@ -3,13 +3,12 @@ package org.evochora.compiler.backend.emit;
 import org.evochora.compiler.api.CompilationException;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.isa.IInstructionSet;
-import org.evochora.compiler.model.ir.IrImm;
 import org.evochora.compiler.model.ir.IrInstruction;
 import org.evochora.compiler.model.ir.IrLabelRef;
+import org.evochora.compiler.model.ir.IrLiteral;
+import org.evochora.compiler.model.expression.Value;
 import org.evochora.compiler.model.ir.IrOperand;
 import org.evochora.compiler.model.ir.IrReg;
-import org.evochora.compiler.model.ir.IrTypedImm;
-import org.evochora.compiler.model.ir.IrVec;
 
 /**
  * Turns IR items into the packed molecules of the machine code: an opcode into its CODE
@@ -76,6 +75,19 @@ public final class OperandEncoder {
      * @throws CompilationException if the operand cannot be encoded: an unknown register, an
      *         unknown molecule type, or a label reference that linking left unresolved.
      */
+    /**
+     * Packs a value into a cell of the given type, after checking that the value fits the
+     * value field of a cell.
+     */
+    private int cell(int type, long value, SourceInfo src) throws CompilationException {
+        IInstructionSet.ValueRange range = isa.valueRange(type);
+        if (!range.contains(value)) {
+            throw new CompilationException(SourceInfo.locate(src,
+                    "Value " + value + " out of range for a cell (" + range + ")."));
+        }
+        return isa.encodeCell(type, (int) value);
+    }
+
     public int[] encodeOperand(IrOperand op, SourceInfo src) throws CompilationException {
         return switch (op) {
             case IrReg r -> {
@@ -83,19 +95,27 @@ public final class OperandEncoder {
                         new CompilationException(SourceInfo.locate(src, "Unknown register: " + r.name())));
                 yield new int[]{isa.encodeCell(registerType, regId)};
             }
-            case IrImm imm -> new int[]{isa.encodeCell(dataType, (int) imm.value())};
-            case IrTypedImm ti -> {
-                int type = isa.moleculeType(ti.typeName()).orElseThrow(() ->
-                        new CompilationException(SourceInfo.locate(src, "Unknown molecule type: " + ti.typeName())));
-                yield new int[]{isa.encodeCell(type, (int) ti.value())};
-            }
-            case IrVec vec -> {
-                int[] cells = new int[vec.components().length];
-                for (int i = 0; i < cells.length; i++) {
-                    cells[i] = isa.encodeCell(dataType, vec.components()[i]);
+            case IrLiteral literal -> switch (literal.value()) {
+                case Value.Number number -> new int[]{cell(dataType, number.value(), src)};
+                case Value.Typed typed -> {
+                    int type = isa.moleculeType(typed.type()).orElseThrow(() ->
+                            new CompilationException(SourceInfo.locate(src, "Unknown molecule type: " + typed.type())));
+                    yield new int[]{cell(type, typed.number(), src)};
                 }
-                yield cells;
-            }
+                case Value.Vector vector -> {
+                    int[] cells = new int[vector.components().size()];
+                    for (int i = 0; i < cells.length; i++) {
+                        cells[i] = cell(dataType, vector.components().get(i), src);
+                    }
+                    yield cells;
+                }
+                // A type and a position never become cells; an operand holding one is a defect
+                // of the phase that let it through
+                case Value.Type type -> throw new CompilationException(SourceInfo.locate(src,
+                        "Internal error: a molecule type cannot be encoded as an operand."));
+                case Value.Position position -> throw new CompilationException(SourceInfo.locate(src,
+                        "Internal error: a position cannot be encoded as an operand."));
+            };
             // A label reference is turned into a LABELREF literal by the linking rule of the
             // label feature; one that reaches the emitter names a label the layout does not have.
             case IrLabelRef ref -> throw new CompilationException(SourceInfo.locate(src,

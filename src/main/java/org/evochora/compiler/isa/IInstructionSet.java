@@ -59,10 +59,22 @@ public interface IInstructionSet {
 	Optional<Integer> moleculeType(String name);
 
 	/**
+	 * The range of values a cell of the given type holds. The value field of a molecule has a
+	 * fixed width, and the type declares how its bits are read: as a signed number for most
+	 * types, as a bit pattern without a sign for a label. A number outside the range cannot
+	 * become a cell of that type; the compiler checks it where it encodes it, instead of letting
+	 * the packing cut it.
+	 *
+	 * @param type The molecule type, as returned by {@link #moleculeType}.
+	 * @return The smallest and the largest value a cell of that type holds.
+	 */
+	ValueRange valueRange(int type);
+
+	/**
 	 * Packs a molecule into the value a cell holds.
 	 *
 	 * @param type  The molecule type, as returned by {@link #moleculeType}.
-	 * @param value The molecule value.
+	 * @param value The molecule value, within {@link #valueRange(int)}.
 	 * @return The packed cell.
 	 */
 	int encodeCell(int type, int value);
@@ -119,6 +131,29 @@ public interface IInstructionSet {
 	 * @param bank  The bank the prefix named.
 	 * @param index The index as written, which may lie beyond the bank.
 	 */
+	/**
+	 * A closed range of numbers.
+	 *
+	 * @param min The smallest number in the range.
+	 * @param max The largest number in the range.
+	 */
+	record ValueRange(long min, long max) {
+		/**
+		 * Tells whether a number lies in the range.
+		 *
+		 * @param value The number.
+		 * @return {@code true} if {@code min <= value <= max}.
+		 */
+		public boolean contains(long value) {
+			return value >= min && value <= max;
+		}
+
+		@Override
+		public String toString() {
+			return min + " to " + max;
+		}
+	}
+
 	record RegisterRef(RegisterBankInfo bank, int index) {
 		/**
 		 * Tells whether the index names a register the bank has.

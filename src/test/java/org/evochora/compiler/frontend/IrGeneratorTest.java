@@ -6,6 +6,7 @@
 
 package org.evochora.compiler.frontend;
 
+import org.evochora.compiler.model.expression.Value;
 import org.evochora.compiler.TestLexers;
 import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
@@ -145,8 +146,8 @@ public class IrGeneratorTest {
         assertEquals("%DR1", ((IrReg) callInstruction.refOperands().get(0)).name());
 
         assertEquals(1, callInstruction.valOperands().size());
-        assertInstanceOf(IrImm.class, callInstruction.valOperands().get(0));
-        assertEquals(42, ((IrImm) callInstruction.valOperands().get(0)).value());
+        assertInstanceOf(IrLiteral.class, callInstruction.valOperands().get(0));
+        assertEquals(new Value.Number(42), ((IrLiteral) callInstruction.valOperands().get(0)).value());
     }
 
     @Test
@@ -205,7 +206,7 @@ public class IrGeneratorTest {
         assertEquals("SETI", seti.opcode());
         assertEquals(2, seti.operands().size());
         assertTrue(seti.operands().get(0) instanceof IrReg);
-        assertTrue(seti.operands().get(1) instanceof IrTypedImm);
+        assertTrue(seti.operands().get(1) instanceof IrLiteral literal && literal.value() instanceof Value.Typed);
     }
 
     @Test
@@ -217,7 +218,7 @@ public class IrGeneratorTest {
                 .filter(IrInstruction.class::isInstance)
                 .findFirst()
                 .orElseThrow();
-        assertThat(seti.operands().get(1)).isEqualTo(new IrTypedImm("DATA", -16));
+        assertThat(seti.operands().get(1)).isEqualTo(new IrLiteral(new Value.Typed("DATA", -16)));
     }
 
     @Test

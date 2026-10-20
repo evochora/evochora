@@ -1,5 +1,7 @@
 package org.evochora.compiler.features.proc;
 
+import org.evochora.compiler.model.expression.Value;
+import org.evochora.compiler.model.ast.LiteralNode;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.semantics.IAnalysisHandler;
 import org.evochora.compiler.model.symbols.SymbolTable;
@@ -9,10 +11,7 @@ import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.IIdentifierBinding;
 import org.evochora.compiler.model.ast.IJumpTarget;
 import org.evochora.compiler.model.ast.IdentifierNode;
-import org.evochora.compiler.model.ast.NumberLiteralNode;
 import org.evochora.compiler.model.ast.RegisterNode;
-import org.evochora.compiler.model.ast.TypedLiteralNode;
-import org.evochora.compiler.model.ast.VectorLiteralNode;
 
 import org.evochora.compiler.isa.IInstructionSet;
 
@@ -96,9 +95,7 @@ public class CallAnalysisHandler implements IAnalysisHandler {
         // Validate VAL argument types: a register, a literal or a vector, written or through a constant
         for (AstNode valArg : callNode.valArguments()) {
             if (valArg instanceof RegisterNode) continue;
-            if (valArg instanceof NumberLiteralNode) continue;
-            if (valArg instanceof TypedLiteralNode) continue;
-            if (valArg instanceof VectorLiteralNode) continue;
+            if (valArg instanceof LiteralNode) continue;
             if (valArg instanceof IdentifierNode idNode) {
                 validateDataIdentifierOrLiteral(idNode, "VAL", symbolTable, diagnostics);
                 continue;
@@ -178,8 +175,9 @@ public class CallAnalysisHandler implements IAnalysisHandler {
      * Names an argument that is no register and no identifier, for a message.
      */
     private static String describe(AstNode argument) {
-        if (argument instanceof VectorLiteralNode) return "a vector";
-        if (argument instanceof NumberLiteralNode || argument instanceof TypedLiteralNode) return "a literal";
+        if (argument instanceof LiteralNode literal) {
+            return literal.value() instanceof Value.Vector ? "a vector" : "a literal";
+        }
         return "this argument";
     }
 

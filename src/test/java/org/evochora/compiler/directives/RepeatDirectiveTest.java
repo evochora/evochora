@@ -181,6 +181,23 @@ public class RepeatDirectiveTest {
     }
 
     /**
+     * A count is bounded by what a repetition can hold; a number beyond an {@code int} is reported.
+     */
+    @Test
+    @Tag("unit")
+    void testRepeatCountBeyondAnIntIsReported() {
+        String source = String.join("\n", ".REPEAT 4294967296", "  NOP", ".ENDREPEAT");
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Lexer lexer = new Lexer(source, diagnostics, TestLexers.symbols());
+        PreProcessor preProcessor = createPreProcessor(lexer.scanTokens(), diagnostics);
+
+        preProcessor.expand();
+
+        assertThat(diagnostics.hasErrors()).isTrue();
+        assertThat(diagnostics.getDiagnostics().get(0).message()).isEqualTo("Value 4294967296 out of range for a count.");
+    }
+
+    /**
      * A statement on the line of .REPEAT is rejected, and the message names the shorthand that
      * repeats a single statement; the block is removed as a whole.
      */

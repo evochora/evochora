@@ -1,5 +1,6 @@
 package org.evochora.compiler.backend;
 
+import org.evochora.compiler.model.expression.Value;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.backend.rewrite.RewriteRegistry;
 import org.evochora.compiler.backend.rewrite.IRewriteRule;
@@ -60,7 +61,7 @@ public class EmissionCallerMarshallingTest {
         void marshallsCallWithRefAndVal() {
             // IR for: CALL myProc REF %rB VAL 123
             IrReg rB = new IrReg("%rB");
-            IrImm imm123 = new IrImm(123);
+            IrLiteral imm123 = new IrLiteral(new Value.Number(123));
             IrLabelRef target = new IrLabelRef("myProc");
             IrInstruction call = new IrCallInstruction("CALL", List.of(target), List.of(rB), List.of(imm123), List.of(), List.of(), src("main.s", 1));
 
@@ -113,7 +114,7 @@ public class EmissionCallerMarshallingTest {
         void marshallsCallWithVectorAsValParameter() {
             // IR for: CALL myProc VAL 1|0
             IrLabelRef target = new IrLabelRef("myProc");
-            IrVec vectorParam = new IrVec(new int[]{1, 0});
+            IrLiteral vectorParam = new IrLiteral(new Value.Vector(List.of(1L, 0L)));
             IrInstruction call = new IrCallInstruction("CALL", List.of(target), Collections.emptyList(), List.of(vectorParam), List.of(), List.of(), src("main.s", 1));
 
             List<IrItem> out = runEmission(List.of(call));
@@ -130,9 +131,9 @@ public class EmissionCallerMarshallingTest {
         void marshallsCallWithMixedParameters() {
             // IR for: CALL myProc REF %rA VAL 123 VAL 1|0
             IrReg rA = new IrReg("%rA");
-            IrImm imm123 = new IrImm(123);
+            IrLiteral imm123 = new IrLiteral(new Value.Number(123));
             IrLabelRef target = new IrLabelRef("myProc");
-            IrVec vectorParam = new IrVec(new int[]{1, 0});
+            IrLiteral vectorParam = new IrLiteral(new Value.Vector(List.of(1L, 0L)));
             IrInstruction call = new IrCallInstruction("CALL", List.of(target), List.of(rA), List.of(imm123, vectorParam), List.of(), List.of(), src("main.s", 1));
 
             List<IrItem> out = runEmission(List.of(call));
@@ -348,7 +349,7 @@ public class EmissionCallerMarshallingTest {
     @DisplayName("SourceInfo is preserved for marshalling")
     void sourceInfoIsPreservedForMarshalling() {
         // Test the CallerMarshallingRule with a REF parameter CALL
-        IrInstruction call = new IrCallInstruction("CALL", List.of(new IrVec(new int[]{1, 0})),
+        IrInstruction call = new IrCallInstruction("CALL", List.of(new IrLiteral(new Value.Vector(List.of(1L, 0L)))),
                 List.of(new IrReg("%DR1")), List.of(), List.of(), List.of(), src("test.s", 5));
         IrInstruction nop = new IrInstruction("NOP", Collections.emptyList(), src("test.s", 6));
 

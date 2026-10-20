@@ -1,5 +1,7 @@
 package org.evochora.compiler.features.instruction;
 
+import org.evochora.compiler.model.expression.Value;
+import org.evochora.compiler.model.ast.LiteralNode;
 import org.evochora.compiler.frontend.semantics.IAnalysisHandler;
 
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
@@ -8,10 +10,7 @@ import org.evochora.compiler.model.ast.IIdentifierBinding;
 import org.evochora.compiler.model.ast.IJumpTarget;
 import org.evochora.compiler.model.ast.IdentifierNode;
 import org.evochora.compiler.model.ast.InstructionNode;
-import org.evochora.compiler.model.ast.NumberLiteralNode;
 import org.evochora.compiler.model.ast.RegisterNode;
-import org.evochora.compiler.model.ast.TypedLiteralNode;
-import org.evochora.compiler.model.ast.VectorLiteralNode;
 import org.evochora.compiler.model.symbols.Resolution;
 import org.evochora.compiler.model.symbols.ResolvedSymbol;
 import org.evochora.compiler.model.symbols.SymbolTable;
@@ -138,7 +137,8 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
      */
     private static void reportUntypedLiteral(ArgKind expectedType, AstNode argument, int index, String instructionName,
                                              InstructionNode instructionNode, DiagnosticsEngine diagnostics) {
-        if (expectedType == ArgKind.LITERAL && argument instanceof NumberLiteralNode) {
+        if (expectedType == ArgKind.LITERAL && argument instanceof LiteralNode literal
+                && literal.value() instanceof Value.Number) {
             diagnostics.reportError(
                     String.format("Argument %d for instruction '%s' requires a typed literal (e.g., DATA:42).",
                             index + 1, instructionName),
@@ -153,8 +153,9 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
             return isa.parseRegister(regNode.name()).map(ref -> ref.bank().location()).orElse(false)
                     ? ArgKind.LOCATION_REGISTER : ArgKind.REGISTER;
         }
-        if (node instanceof NumberLiteralNode || node instanceof TypedLiteralNode) return ArgKind.LITERAL;
-        if (node instanceof VectorLiteralNode) return ArgKind.VECTOR;
+        if (node instanceof LiteralNode literal) {
+            return literal.value() instanceof Value.Vector ? ArgKind.VECTOR : ArgKind.LITERAL;
+        }
         if (node instanceof IdentifierNode) return ArgKind.LABEL;
         throw new IllegalArgumentException("Unsupported argument node type: " + node.getClass().getSimpleName());
     }

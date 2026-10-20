@@ -8,7 +8,7 @@ import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
-import java.util.OptionalInt;
+import java.util.OptionalLong;
 
 /**
  * The preprocessor flags of one compilation: the names that are set, each with an integer value
@@ -24,7 +24,7 @@ public final class Flags {
 
     private static final String CONFIGURATION = "by the configuration";
 
-    private record Entry(OptionalInt value, String origin) {
+    private record Entry(OptionalLong value, String origin) {
     }
 
     private final Map<String, Entry> entries = new HashMap<>();
@@ -39,7 +39,7 @@ public final class Flags {
      * @param defines The flags of the compilation's options, name to optional value.
      * @return Flags holding exactly the given names and values.
      */
-    public static Flags of(Map<String, OptionalInt> defines) {
+    public static Flags of(Map<String, OptionalLong> defines) {
         Flags flags = new Flags();
         defines.forEach((name, value) -> flags.entries.put(key(name), new Entry(value, CONFIGURATION)));
         return flags;
@@ -56,7 +56,7 @@ public final class Flags {
      */
     public static Flags inPreprocessor(PreProcessor preProcessor, PreProcessorContext context) {
         return context.getOrCreate(Flags.class, () -> {
-            Map<String, OptionalInt> defines = context.options().defines();
+            Map<String, OptionalLong> defines = context.options().defines();
             defines.keySet().stream().filter(name -> !isName(name)).sorted().forEach(name ->
                     preProcessor.getDiagnostics().reportError("Configured flag '" + name
                             + "' is not a valid name: a flag name consists of letters, digits and _"
@@ -87,7 +87,7 @@ public final class Flags {
      *               {@code "at main.evo:3"}; named when a later definition conflicts with it.
      * @return Empty when the definition is accepted, or the message telling why it is not.
      */
-    public Optional<String> define(String name, OptionalInt value, String origin) {
+    public Optional<String> define(String name, OptionalLong value, String origin) {
         String key = key(name);
         Entry existing = entries.get(key);
         if (existing == null) {
@@ -126,9 +126,9 @@ public final class Flags {
      * @param name The flag name.
      * @return The value, or empty if the flag is not set or set without a value.
      */
-    public OptionalInt valueOf(String name) {
+    public OptionalLong valueOf(String name) {
         Entry entry = entries.get(key(name));
-        return entry == null ? OptionalInt.empty() : entry.value();
+        return entry == null ? OptionalLong.empty() : entry.value();
     }
 
     /**
@@ -157,8 +157,8 @@ public final class Flags {
         return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_';
     }
 
-    private static String describe(OptionalInt value) {
-        return value.isPresent() ? "as " + value.getAsInt() : "without a value";
+    private static String describe(OptionalLong value) {
+        return value.isPresent() ? "as " + value.getAsLong() : "without a value";
     }
 
     private static String key(String name) {

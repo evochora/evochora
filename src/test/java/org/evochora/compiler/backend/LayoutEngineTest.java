@@ -1,5 +1,6 @@
 package org.evochora.compiler.backend;
 
+import org.evochora.compiler.model.expression.Value;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.backend.layout.LayoutDirectiveRegistry;
 import org.evochora.compiler.backend.layout.LayoutEngine;
@@ -40,16 +41,16 @@ public class LayoutEngineTest {
         IrDirective org = org(new int[]{2, 3}, new boolean[]{false, false}, src("main.s", 1));
 
         Map<String, IrValue> dirArgs = new HashMap<>();
-        dirArgs.put("direction", new IrValue.Vector(new int[]{1, 0}));
+        dirArgs.put("direction", new IrValue.Literal(new Value.Vector(List.of(1L, 0L))));
         IrDirective dir = new IrDirective("core", "dir", dirArgs, src("main.s", 2));
 
         IrLabelDef label = new IrLabelDef("L", src("main.s", 3));
-        IrInstruction seti = new IrInstruction("SETI", List.of(new IrReg("%DR0"), new IrTypedImm("DATA", 1)), src("main.s", 4));
+        IrInstruction seti = new IrInstruction("SETI", List.of(new IrReg("%DR0"), new IrLiteral(new Value.Typed("DATA", 1))), src("main.s", 4));
         IrDirective push = new IrDirective("core", "push_ctx", new HashMap<>(), src("lib.inc", 9));
 
         Map<String, IrValue> placeArgs = new HashMap<>();
         placeArgs.put("type", new IrValue.Str("ENERGY"));
-        placeArgs.put("value", new IrValue.Int64(50));
+        placeArgs.put("value", new IrValue.Literal(new Value.Number(50)));
         IrVectorPlacement placement = new IrVectorPlacement(List.of(5, 0));
         placeArgs.put("placements", new IrValue.PlacementListVal(List.of(placement)));
         IrDirective place = new IrDirective("core", "place", placeArgs, src("lib.inc", 10));
@@ -78,7 +79,7 @@ public class LayoutEngineTest {
      */
     private static IrDirective org(int[] components, boolean[] relative, SourceInfo source) {
         Map<String, IrValue> args = new HashMap<>();
-        args.put("position", new IrValue.Vector(components));
+        args.put("position", new IrValue.Literal(new Value.Vector(java.util.Arrays.stream(components).mapToObj(c -> (long) c).toList())));
         List<IrValue> marks = new ArrayList<>(relative.length);
         for (boolean marked : relative) {
             marks.add(new IrValue.Bool(marked));
@@ -91,7 +92,7 @@ public class LayoutEngineTest {
      * Builds an instruction of three cells: the opcode, a register and a typed literal.
      */
     private static IrInstruction seti(int line) {
-        return new IrInstruction("SETI", List.of(new IrReg("%DR0"), new IrTypedImm("DATA", 1)), src("main.s", line));
+        return new IrInstruction("SETI", List.of(new IrReg("%DR0"), new IrLiteral(new Value.Typed("DATA", 1))), src("main.s", line));
     }
 
     /**
@@ -116,8 +117,8 @@ public class LayoutEngineTest {
     private static IrDirective rotation(boolean forward, int axisA, int axisB, SourceInfo source) {
         Map<String, IrValue> args = new HashMap<>();
         args.put("forward", new IrValue.Bool(forward));
-        args.put("axisA", new IrValue.Int64(axisA));
-        args.put("axisB", new IrValue.Int64(axisB));
+        args.put("axisA", new IrValue.Literal(new Value.Number(axisA)));
+        args.put("axisB", new IrValue.Literal(new Value.Number(axisB)));
         return new IrDirective("core", "dir", args, source);
     }
 
@@ -198,7 +199,7 @@ public class LayoutEngineTest {
     @Test
     void aDirectionWithTheWrongNumberOfComponentsIsReported() {
         Map<String, IrValue> args = new HashMap<>();
-        args.put("direction", new IrValue.Vector(new int[]{1, 0, 0}));
+        args.put("direction", new IrValue.Literal(new Value.Vector(List.of(1L, 0L, 0L))));
 
         assertThatThrownBy(() -> layout(List.of(
                 org(new int[]{0, 0}, new boolean[]{false, false}, src("main.s", 1)),

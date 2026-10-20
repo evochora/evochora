@@ -1,5 +1,7 @@
 package org.evochora.compiler.frontend.postprocess;
 
+import org.evochora.compiler.model.ast.LiteralNode;
+import org.evochora.compiler.model.expression.Value;
 import org.evochora.compiler.frontend.semantics.ScopeTracker;
 import org.evochora.compiler.features.ctx.PushCtxNode;
 import org.evochora.compiler.features.ctx.PopCtxNode;
@@ -7,9 +9,7 @@ import org.evochora.compiler.features.reg.RegNode;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.IdentifierNode;
 import org.evochora.compiler.model.ast.InstructionNode;
-import org.evochora.compiler.model.ast.NumberLiteralNode;
 import org.evochora.compiler.model.ast.RegisterNode;
-import org.evochora.compiler.model.ast.TypedLiteralNode;
 import org.evochora.compiler.features.constdir.ConstNode;
 import org.evochora.compiler.frontend.module.ModuleContextTracker;
 import org.evochora.compiler.model.symbols.Symbol;
@@ -211,7 +211,7 @@ class AstPostProcessorTest {
         // Create a complex AST with mixed content
         IdentifierNode counterNode = new IdentifierNode("COUNTER", createSourceInfo());
         IdentifierNode labelNode = new IdentifierNode("SOME_LABEL", createSourceInfo());
-        NumberLiteralNode numberNode = new NumberLiteralNode(42, createSourceInfo());
+        LiteralNode numberNode = new LiteralNode(new Value.Number(42), createSourceInfo());
 
         // COUNTER already defined as ALIAS in setUp; add SOME_LABEL as LABEL
         symbolTable.define(new Symbol("SOME_LABEL", createSourceInfo(), Symbol.Type.LABEL));
@@ -256,9 +256,9 @@ class AstPostProcessorTest {
     }
 
     @Test
-    void testProcess_NumberLiteralNode_NotReplaced() {
-        // Create a NumberLiteralNode (should not be processed)
-        NumberLiteralNode numberNode = new NumberLiteralNode(42, createSourceInfo());
+    void testProcess_LiteralNode_NotReplaced() {
+        // Create a LiteralNode (should not be processed)
+        LiteralNode numberNode = new LiteralNode(new Value.Number(42), createSourceInfo());
 
         // Process the AST
         AstNode result = processor.process(numberNode);
@@ -341,8 +341,8 @@ class AstPostProcessorTest {
 
         SourceInfo siA = new SourceInfo("/mod_a.evo", 1, 1, "MOD_A", 0);
         SourceInfo siB = new SourceInfo("/mod_b.evo", 1, 1, "MOD_B", 0);
-        TypedLiteralNode valueA = new TypedLiteralNode("DATA", 10, siA);
-        TypedLiteralNode valueB = new TypedLiteralNode("DATA", 1, siB);
+        LiteralNode valueA = new LiteralNode(new Value.Typed("DATA", 10), siA);
+        LiteralNode valueB = new LiteralNode(new Value.Typed("DATA", 1), siB);
         ConstNode constA = new ConstNode("STEP", siA, valueA);
         ConstNode constB = new ConstNode("STEP", siB, valueB);
 
@@ -384,18 +384,18 @@ class AstPostProcessorTest {
         InstructionNode resultB = (InstructionNode) results.get(6);
 
         // Module A should have STEP=10
-        assertThat(resultA.arguments().get(1)).isInstanceOf(TypedLiteralNode.class);
-        assertThat(((TypedLiteralNode) resultA.arguments().get(1)).value()).isEqualTo(10);
+        assertThat(resultA.arguments().get(1)).isInstanceOf(LiteralNode.class);
+        assertThat(((LiteralNode) resultA.arguments().get(1)).value()).isEqualTo(new Value.Typed("DATA", 10));
 
         // Module B should have STEP=1
-        assertThat(resultB.arguments().get(1)).isInstanceOf(TypedLiteralNode.class);
-        assertThat(((TypedLiteralNode) resultB.arguments().get(1)).value()).isEqualTo(1);
+        assertThat(resultB.arguments().get(1)).isInstanceOf(LiteralNode.class);
+        assertThat(((LiteralNode) resultB.arguments().get(1)).value()).isEqualTo(new Value.Typed("DATA", 1));
     }
 
     @Test
     void testProcess_SingleFileConstantResolutionStillWorks() {
         // Verify single-file mode (no module context) still resolves constants
-        TypedLiteralNode constValue = new TypedLiteralNode("DATA", 99, new SourceInfo("test.s", 1, 1, "TEST", 0));
+        LiteralNode constValue = new LiteralNode(new Value.Typed("DATA", 99), new SourceInfo("test.s", 1, 1, "TEST", 0));
         ConstNode constNode = new ConstNode("MY_CONST", createSourceInfo(), constValue);
         symbolTable.define(new Symbol("MY_CONST", createSourceInfo(), Symbol.Type.CONSTANT, constNode));
 
@@ -409,8 +409,8 @@ class AstPostProcessorTest {
         AstNode resultInstr = processor.process(instr);
 
         assertThat(resultInstr).isInstanceOf(InstructionNode.class);
-        assertThat(((InstructionNode) resultInstr).arguments().get(1)).isInstanceOf(TypedLiteralNode.class);
-        assertThat(((TypedLiteralNode) ((InstructionNode) resultInstr).arguments().get(1)).value()).isEqualTo(99);
+        assertThat(((InstructionNode) resultInstr).arguments().get(1)).isInstanceOf(LiteralNode.class);
+        assertThat(((LiteralNode) ((InstructionNode) resultInstr).arguments().get(1)).value()).isEqualTo(new Value.Typed("DATA", 99));
     }
 
     private SourceInfo createSourceInfo() {

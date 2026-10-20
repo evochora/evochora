@@ -37,7 +37,7 @@ public class CallSiteBindingRule implements ILinkingRule {
             dataIndex++;
         }
         for (IrOperand op : call.valOperands()) {
-            // VAL can be IrImm/IrTypedImm (literals) — no source register binding for those
+            // VAL can be a literal — no source register binding for those
             if (op instanceof IrReg reg) {
                 bindings.put(formalDataBase + dataIndex, resolveReg(isa, reg.name()));
             }

@@ -1,5 +1,7 @@
 package org.evochora.compiler.module;
 
+import org.evochora.compiler.model.expression.Value;
+import org.evochora.compiler.model.ast.LiteralNode;
 import org.evochora.compiler.api.CompilerOptions;
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.model.EnvironmentProperties;
@@ -28,7 +30,6 @@ import org.evochora.compiler.features.reg.RegDirectiveHandler;
 import org.evochora.compiler.features.importdir.RequireDirectiveHandler;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.InstructionNode;
-import org.evochora.compiler.model.ast.TypedLiteralNode;
 import org.evochora.compiler.frontend.postprocess.AstPostProcessor;
 import org.evochora.compiler.features.ctx.PopCtxPreProcessorHandler;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
@@ -155,8 +156,8 @@ class ModuleSourceConstIntegrationTest {
         assertThat(setiNodes).hasSize(2);
         assertThat(setiNodes).allSatisfy(seti -> {
             assertThat(seti.arguments()).hasSizeGreaterThanOrEqualTo(2);
-            assertThat(seti.arguments().get(1)).isInstanceOf(TypedLiteralNode.class);
-            assertThat(((TypedLiteralNode) seti.arguments().get(1)).value()).isEqualTo(99);
+            assertThat(seti.arguments().get(1)).isInstanceOf(LiteralNode.class);
+            assertThat(((LiteralNode) seti.arguments().get(1)).value()).isEqualTo(new Value.Typed("DATA", 99));
         });
     }
 
@@ -201,11 +202,11 @@ class ModuleSourceConstIntegrationTest {
         assertThat(addiNodes).hasSize(2);
 
         // Extract resolved constant values
-        TypedLiteralNode fastStep = (TypedLiteralNode) addiNodes.get(0).arguments().get(1);
-        TypedLiteralNode slowStep = (TypedLiteralNode) addiNodes.get(1).arguments().get(1);
+        LiteralNode fastStep = (LiteralNode) addiNodes.get(0).arguments().get(1);
+        LiteralNode slowStep = (LiteralNode) addiNodes.get(1).arguments().get(1);
 
-        assertThat(fastStep.value()).isEqualTo(10);
-        assertThat(slowStep.value()).isEqualTo(1);
+        assertThat(fastStep.value()).isEqualTo(new Value.Typed("DATA", 10));
+        assertThat(slowStep.value()).isEqualTo(new Value.Typed("DATA", 1));
     }
 
     @Test
@@ -236,11 +237,11 @@ class ModuleSourceConstIntegrationTest {
             collectInstructions(node, "SETI", setiNodes);
         }
 
-        // At least one SETI should have a TypedLiteralNode with value 255
+        // At least one SETI should have a literal with value DATA:255
         boolean found = setiNodes.stream().anyMatch(seti ->
                 seti.arguments().size() >= 2
-                && seti.arguments().get(1) instanceof TypedLiteralNode tln
-                && tln.value() == 255);
+                && seti.arguments().get(1) instanceof LiteralNode tln
+                && tln.value().equals(new Value.Typed("DATA", 255)));
         assertThat(found).as("SETI with resolved constant MAX=255 not found").isTrue();
     }
 
@@ -310,8 +311,8 @@ class ModuleSourceConstIntegrationTest {
         assertThat(setiNodes).isNotEmpty();
         boolean found = setiNodes.stream().anyMatch(seti ->
                 seti.arguments().size() >= 2
-                && seti.arguments().get(1) instanceof TypedLiteralNode tln
-                && tln.value() == 7);
+                && seti.arguments().get(1) instanceof LiteralNode tln
+                && tln.value().equals(new Value.Typed("DATA", 7)));
         assertThat(found).as("SETI with resolved constant INIT_VAL=7 not found").isTrue();
     }
 

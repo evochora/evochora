@@ -1,5 +1,6 @@
 package org.evochora.compiler.features.proc;
 
+import org.evochora.compiler.model.expression.Value;
 import org.evochora.compiler.backend.rewrite.IRewriteRule;
 import org.evochora.compiler.isa.IInstructionSet;
 import org.evochora.compiler.model.ir.*;
@@ -73,14 +74,11 @@ public final class CallerMarshallingRule implements IRewriteRule {
         // Pre-call: Push arguments (VALs then REFs, in reverse order).
         for (int j = call.valOperands().size() - 1; j >= 0; j--) {
             IrOperand operand = call.valOperands().get(j);
-            if (operand instanceof IrImm imm) {
-                out.add(IrInstruction.synthetic("PUSI", List.of(imm), call.source()));
-            } else if (operand instanceof IrVec) {
-                // A vector goes onto the data stack as a vector, with the cells of one
-                out.add(IrInstruction.synthetic("PUSV", List.of(operand), call.source()));
-            } else if (operand instanceof IrTypedImm typedImm) {
-                // Keep IrTypedImm to preserve type information for display
-                out.add(IrInstruction.synthetic("PUSI", List.of(typedImm), call.source()));
+            if (operand instanceof IrLiteral literal) {
+                // A vector goes onto the data stack as a vector, with the cells of one; a number
+                // or a typed value as an immediate
+                String push = literal.value() instanceof Value.Vector ? "PUSV" : "PUSI";
+                out.add(IrInstruction.synthetic(push, List.of(literal), call.source()));
             } else {
                 out.add(IrInstruction.synthetic("PUSH", List.of(operand), call.source()));
             }

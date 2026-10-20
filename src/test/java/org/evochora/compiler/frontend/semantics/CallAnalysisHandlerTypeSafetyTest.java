@@ -1,5 +1,7 @@
 package org.evochora.compiler.frontend.semantics;
 
+import org.evochora.compiler.model.ast.LiteralNode;
+import org.evochora.compiler.model.expression.Value;
 import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
@@ -8,12 +10,10 @@ import org.evochora.compiler.features.proc.CallNode;
 import org.evochora.compiler.features.proc.ParameterBinding;
 import org.evochora.compiler.features.label.LabelNode;
 import org.evochora.compiler.features.constdir.ConstNode;
-import org.evochora.compiler.model.ast.NumberLiteralNode;
 import org.evochora.compiler.features.proc.ProcedureNode;
 import org.evochora.compiler.features.reg.RegNode;
 import org.evochora.compiler.model.ast.IdentifierNode;
 import org.evochora.compiler.model.ast.RegisterNode;
-import org.evochora.compiler.model.ast.VectorLiteralNode;
 import org.evochora.compiler.model.symbols.Symbol;
 import org.evochora.compiler.model.symbols.SymbolTable;
 import org.evochora.runtime.isa.Instruction;
@@ -159,7 +159,7 @@ class CallAnalysisHandlerTypeSafetyTest {
 
     @Test
     void constantAsLref_reportsError() {
-        symbolTable.define(new Symbol("MY_CONST", SRC, Symbol.Type.CONSTANT, new ConstNode("MY_CONST", SRC, new NumberLiteralNode(1, SRC), false)));
+        symbolTable.define(new Symbol("MY_CONST", SRC, Symbol.Type.CONSTANT, new ConstNode("MY_CONST", SRC, new LiteralNode(new Value.Number(1), SRC), false)));
 
         CallNode call = callWithLref("MY_CONST");
         handler.analyze(call, symbolTable, diagnostics);
@@ -228,7 +228,7 @@ class CallAnalysisHandlerTypeSafetyTest {
     @Test
     void vectorConstantAsVal_noError() {
         symbolTable.define(new Symbol("EAST", SRC, Symbol.Type.CONSTANT,
-                new ConstNode("EAST", SRC, new VectorLiteralNode(List.of(1, 0), SRC), false)));
+                new ConstNode("EAST", SRC, new LiteralNode(new Value.Vector(List.of(1L, 0L)), SRC), false)));
 
         CallNode call = callWithVal("EAST");
         handler.analyze(call, symbolTable, diagnostics);
@@ -241,7 +241,7 @@ class CallAnalysisHandlerTypeSafetyTest {
         CallNode call = new CallNode(
                 new IdentifierNode("VAL_PROC", SRC),
                 List.of(),
-                List.of(new VectorLiteralNode(List.of(1, 0), SRC)),
+                List.of(new LiteralNode(new Value.Vector(List.of(1L, 0L)), SRC)),
                 List.of(),
                 List.of(new RegisterNode("%LR0", SRC)),
                 SRC);
@@ -252,7 +252,7 @@ class CallAnalysisHandlerTypeSafetyTest {
 
     @Test
     void constantAsLval_reportsError() {
-        symbolTable.define(new Symbol("MY_CONST", SRC, Symbol.Type.CONSTANT, new ConstNode("MY_CONST", SRC, new NumberLiteralNode(1, SRC), false)));
+        symbolTable.define(new Symbol("MY_CONST", SRC, Symbol.Type.CONSTANT, new ConstNode("MY_CONST", SRC, new LiteralNode(new Value.Number(1), SRC), false)));
 
         CallNode call = callWithLval("MY_CONST");
         handler.analyze(call, symbolTable, diagnostics);
@@ -298,7 +298,7 @@ class CallAnalysisHandlerTypeSafetyTest {
         return new CallNode(
                 new IdentifierNode("VAL_PROC", SRC),
                 List.of(),
-                List.of(new NumberLiteralNode(1, SRC)),
+                List.of(new LiteralNode(new Value.Number(1), SRC)),
                 List.of(),
                 List.of(new IdentifierNode(argName, SRC)),
                 SRC);

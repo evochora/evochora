@@ -87,6 +87,20 @@ public final class RuntimeInstructionSetAdapter implements IInstructionSet {
     /**
      * {@inheritDoc}
      */
+    /**
+     * {@inheritDoc}
+     * <p>The value field is {@code Config.VALUE_BITS} wide: a type whose format reads the bits
+     * as a signed number holds the signed range, a type whose format reads them as a bit pattern
+     * holds the unsigned one.</p>
+     */
+    @Override
+    public ValueRange valueRange(int type) {
+        return switch (MoleculeTypeRegistry.valueFormatOf(type)) {
+            case DECIMAL -> new ValueRange(-(1L << (Config.VALUE_BITS - 1)), (1L << (Config.VALUE_BITS - 1)) - 1);
+            case HEX -> new ValueRange(0, Config.VALUE_MASK);
+        };
+    }
+
     @Override
     public int encodeCell(int type, int value) {
         return new Molecule(type, value).toInt();

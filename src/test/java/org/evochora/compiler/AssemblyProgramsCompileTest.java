@@ -3,7 +3,7 @@ package org.evochora.compiler;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
-import java.util.OptionalInt;
+import java.util.OptionalLong;
 
 import org.evochora.compiler.api.CompilerOptions;
 import org.evochora.compiler.api.ProgramArtifact;
@@ -53,7 +53,7 @@ class AssemblyProgramsCompileTest {
     void aProgramInThisRepositoryCompiles(String sourceRootPath, String fileName, String flag) throws Exception {
         String sourceRoot = Path.of("").toAbsolutePath().resolve(sourceRootPath).toString();
         String library = Path.of("").toAbsolutePath().resolve("assembly/lib").toString();
-        Map<String, OptionalInt> defines = flag.isEmpty() ? Map.of() : Map.of(flag, OptionalInt.empty());
+        Map<String, OptionalLong> defines = flag.isEmpty() ? Map.of() : Map.of(flag, OptionalLong.empty());
         CompilerOptions options = new CompilerOptions(List.of(
                 new SourceRoot(sourceRoot, null), new SourceRoot(library, "LIB")), defines, Map.of());
 

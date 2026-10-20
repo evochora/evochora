@@ -1,11 +1,12 @@
 package org.evochora.compiler.frontend.module;
 
+import org.evochora.compiler.model.ast.LiteralNode;
+import org.evochora.compiler.model.expression.Value;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.features.ctx.PopCtxNode;
 import org.evochora.compiler.features.ctx.PushCtxNode;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.model.ast.AstNode;
-import org.evochora.compiler.model.ast.NumberLiteralNode;
 import org.evochora.compiler.model.symbols.SymbolTable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -105,18 +106,18 @@ class ModuleContextTrackerTest {
         symbolTable.registerModule(MATH + "." + MOVE, "/modules/movement.evo");
         SourceInfo src = new SourceInfo("/main.evo", 1, 1, "", 0);
         List<AstNode> program = List.of(
-                new NumberLiteralNode(1, src),
+                new LiteralNode(new Value.Number(1), src),
                 new PushCtxNode("/modules/math.evo", MATH),           // .IMPORT math
-                new NumberLiteralNode(2, src),
+                new LiteralNode(new Value.Number(2), src),
                 new PushCtxNode("/modules/movement.evo", MATH + "." + MOVE), // nested .IMPORT
                 new PushCtxNode("/constants.evo", null),              // .SOURCE inside it
-                new NumberLiteralNode(3, src),
+                new LiteralNode(new Value.Number(3), src),
                 new PopCtxNode(),
                 new PopCtxNode(),
                 new PopCtxNode(),
                 new PushCtxNode("/modules/movement.evo", MOVE),       // sibling .IMPORT
                 new PopCtxNode(),
-                new NumberLiteralNode(4, src));
+                new LiteralNode(new Value.Number(4), src));
 
         for (AstNode node : program) {
             tracker.handleNode(node);

@@ -42,7 +42,7 @@ This represents a compiler directive, which provides instructions to the compile
 #### Core Directives
 
 -   `core:org`: Sets the layout origin. Its `args` map holds `position`, the vector, and `relative`, a `ListVal` of `Bool` with one entry per component: `true` where the component counts from the write cursor rather than from the base position of the enclosing module.
--   `core:dir`: Sets the layout direction. Either `direction`, the vector, or a rotation of the direction in effect: `forward` (`Bool`) and the two axes `axisA` and `axisB` (`Int64`) spanning the plane it turns in.
+-   `core:dir`: Sets the layout direction. Either `direction`, the vector, or a rotation of the direction in effect: `forward` (`Bool`) and the two axes `axisA` and `axisB` (`Literal` numbers) spanning the plane it turns in.
 -   `core:place`: Places a molecule at one or more locations. Its `args` map contains the literal's `type` and `value`, and a special `placements` argument holding a `PlacementListVal`.
 -   `core:push_ctx` / `core:pop_ctx`: Internal directives injected by the preprocessor around an included file's content. These instruct the layout engine to push and pop the current layout context (base position and direction vector), enabling relative addressing and context restoration.
 -   `core:scope_enter` / `core:scope_exit`: Mark the boundaries of a named scope.
@@ -74,24 +74,15 @@ This is a sealed interface for typed values used in directive arguments. It allo
 -   **`IrReg`**: Represents a machine register.
     -   **`name`**: The `String` name of the register (e.g., "%DR0", "%PR1").
 
--   **`IrImm`**: Represents an immediate (literal) numeric value without an explicit type.
-    -   **`value`**: A `long` holding the numeric value.
-
--   **`IrTypedImm`**: Represents a typed immediate value, where a type is associated with a number.
-    -   **`typeName`**: A `String` for the type's name (e.g., "DATA").
-    -   **`value`**: A `long` for the numeric value.
-
--   **`IrVec`**: Represents a vector of numeric values.
-    -   **`components`**: An array of `int` values for the components of the vector.
+-   **`IrLiteral`**: Represents a literal operand, carried as one `Value` of `model/expression`: a `Number` (a `long`), a `Typed` value (a type name such as "DATA" and a `long`), or a `Vector` (a list of `long` components). The emitter checks a number against the range of a cell where it encodes it.
 
 -   **`IrLabelRef`**: Represents a reference to a previously defined label. This is used as an operand for control flow instructions.
     -   **`labelName`**: The `String` name of the label being referenced.
 
 -   **`IrValue` Subtypes**:
-    -   `Int64(long)`
+    -   `Literal(Value)`: a number, a typed value or a vector, as `IrLiteral` carries one
     -   `Str(String)`
     -   `Bool(boolean)`
-    -   `Vector(int[])`
     -   `ListVal(List<IrValue>)`
     -   `MapVal(Map<String, IrValue>)`
     -   `PlacementListVal(List<IPlacementArgument>)`

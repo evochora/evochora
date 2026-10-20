@@ -1,5 +1,7 @@
 package org.evochora.compiler.frontend;
 
+import org.evochora.compiler.model.ast.LiteralNode;
+import org.evochora.compiler.model.expression.Value;
 import org.evochora.compiler.TestLexers;
 import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.frontend.parser.Parser;
@@ -8,9 +10,7 @@ import org.evochora.compiler.features.constdir.ConstDirectiveHandler;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.InstructionNode;
-import org.evochora.compiler.model.ast.NumberLiteralNode;
 import org.evochora.compiler.model.ast.RegisterNode;
-import org.evochora.compiler.model.ast.VectorLiteralNode;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.features.constdir.ConstNode;
 import org.evochora.compiler.features.label.LabelNode;
@@ -65,13 +65,13 @@ public class ParserTest {
         assertThat(setiNode.opcode()).isEqualTo("SETI");
         assertThat(setiNode.arguments()).hasSize(2);
         assertThat(setiNode.arguments().get(0)).isInstanceOf(RegisterNode.class);
-        assertThat(setiNode.arguments().get(1)).isInstanceOf(NumberLiteralNode.class);
+        assertThat(setiNode.arguments().get(1)).isInstanceOf(LiteralNode.class);
 
         RegisterNode regArg = (RegisterNode) setiNode.arguments().get(0);
         assertThat(regArg.name()).isEqualTo("%DR0");
 
-        NumberLiteralNode numArg = (NumberLiteralNode) setiNode.arguments().get(1);
-        assertThat(numArg.value()).isEqualTo(42);
+        LiteralNode numArg = (LiteralNode) setiNode.arguments().get(1);
+        assertThat(numArg.value()).isEqualTo(new Value.Number(42));
     }
 
     /**
@@ -108,7 +108,7 @@ public class ParserTest {
 
     /**
      * Verifies that the parser correctly parses a vector literal (e.g., `10|-20`) into a
-     * {@link VectorLiteralNode} with the correct integer components.
+     * a {@link LiteralNode} holding a vector with the correct integer components.
      * This is a unit test for the parser.
      */
     @Test
@@ -129,12 +129,10 @@ public class ParserTest {
         assertThat(ast).hasSize(1);
         InstructionNode setv = (InstructionNode) ast.get(0);
         assertThat(setv.arguments()).hasSize(2);
-        assertThat(setv.arguments().get(1)).isInstanceOf(VectorLiteralNode.class);
+        assertThat(setv.arguments().get(1)).isInstanceOf(LiteralNode.class);
 
-        VectorLiteralNode vector = (VectorLiteralNode) setv.arguments().get(1);
-        assertThat(vector.values()).hasSize(2);
-        assertThat(vector.values().get(0)).isEqualTo(10);
-        assertThat(vector.values().get(1)).isEqualTo(-20);
+        Value.Vector vector = (Value.Vector) ((LiteralNode) setv.arguments().get(1)).value();
+        assertThat(vector.components()).containsExactly(10L, -20L);
     }
 
     /**
@@ -269,8 +267,8 @@ public class ParserTest {
         ConstNode constNode = (ConstNode) ast.get(0);
         assertThat(constNode.name()).isEqualTo("MAX_ENERGY");
         assertThat(constNode.exported()).isTrue();
-        assertThat(constNode.value()).isInstanceOf(NumberLiteralNode.class);
-        assertThat(((NumberLiteralNode) constNode.value()).value()).isEqualTo(42);
+        assertThat(constNode.value()).isInstanceOf(LiteralNode.class);
+        assertThat(((LiteralNode) constNode.value()).value()).isEqualTo(new Value.Number(42));
     }
 
     /**

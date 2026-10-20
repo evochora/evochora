@@ -4,7 +4,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.OptionalInt;
+import java.util.OptionalLong;
 
 /**
  * Configuration options for the compiler, controlling path resolution and other settings.
@@ -23,7 +23,7 @@ import java.util.OptionalInt;
  *                    keeps an unmodifiable copy, as it does for the flags. The text is not checked
  *                    here; the compiler reports a text that is not one operand.
  */
-public record CompilerOptions(List<SourceRoot> sourceRoots, Map<String, OptionalInt> defines,
+public record CompilerOptions(List<SourceRoot> sourceRoots, Map<String, OptionalLong> defines,
                               Map<String, String> values) {
 
     /**

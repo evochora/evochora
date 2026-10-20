@@ -10,7 +10,7 @@ import java.util.Arrays;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
-import java.util.OptionalInt;
+import java.util.OptionalLong;
 
 /**
  * The identity of a compiled program: a digest of what the compiler puts into the world, its
@@ -66,7 +66,7 @@ public final class ProgramIdentity {
      * @return The identity: 16 lower-case hex characters.
      */
     public static String of(Map<int[], Integer> machineCode, Map<int[], PlacedMolecule> initialObjects,
-                            Map<String, OptionalInt> flags, Map<String, String> values) {
+                            Map<String, OptionalLong> flags, Map<String, String> values) {
         MessageDigest digest = sha256();
         int dimensions = !machineCode.isEmpty() ? machineCode.keySet().iterator().next().length
                 : !initialObjects.isEmpty() ? initialObjects.keySet().iterator().next().length
@@ -88,17 +88,17 @@ public final class ProgramIdentity {
             update(digest, molecule.marker());
         }
 
-        List<Map.Entry<String, OptionalInt>> sortedFlags = new ArrayList<>(flags.size());
+        List<Map.Entry<String, OptionalLong>> sortedFlags = new ArrayList<>(flags.size());
         sortedFlags.addAll(flags.entrySet());
         sortedFlags.sort(Map.Entry.comparingByKey());
         update(digest, sortedFlags.size());
-        for (Map.Entry<String, OptionalInt> flag : sortedFlags) {
+        for (Map.Entry<String, OptionalLong> flag : sortedFlags) {
             byte[] name = flag.getKey().getBytes(StandardCharsets.UTF_8);
             update(digest, name.length);
             digest.update(name);
-            OptionalInt value = flag.getValue();
+            OptionalLong value = flag.getValue();
             update(digest, value.isPresent() ? 1 : 0);
-            update(digest, value.orElse(0));
+            update(digest, value.orElse(0L));
         }
 
         List<Map.Entry<String, String>> sortedValues = new ArrayList<>(values.entrySet());
@@ -128,6 +128,11 @@ public final class ProgramIdentity {
         byte[] bytes = text.getBytes(StandardCharsets.UTF_8);
         update(digest, bytes.length);
         digest.update(bytes);
+    }
+
+    private static void update(MessageDigest digest, long value) {
+        update(digest, (int) (value >>> 32));
+        update(digest, (int) value);
     }
 
     private static void update(MessageDigest digest, int value) {

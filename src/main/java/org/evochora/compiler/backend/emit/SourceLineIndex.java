@@ -7,13 +7,12 @@ import org.evochora.compiler.api.SourceFile;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.backend.layout.LayoutResult;
 import org.evochora.compiler.isa.IInstructionSet;
-import org.evochora.compiler.model.ir.IrImm;
+import org.evochora.compiler.model.expression.Value;
 import org.evochora.compiler.model.ir.IrInstruction;
 import org.evochora.compiler.model.ir.IrLabelRef;
 import org.evochora.compiler.model.ir.IrOperand;
 import org.evochora.compiler.model.ir.IrReg;
-import org.evochora.compiler.model.ir.IrTypedImm;
-import org.evochora.compiler.model.ir.IrVec;
+import org.evochora.compiler.model.ir.IrLiteral;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -145,9 +144,8 @@ final class SourceLineIndex {
     private String format(IrOperand op, int[] opcodeCoord) {
         return switch (op) {
             case IrReg r -> r.name();
-            case IrImm imm -> String.valueOf(imm.value());
-            case IrTypedImm ti -> ti.typeName() + ":" + formatTypedValue(ti);
-            case IrVec vec -> join(vec.components());
+            case IrLiteral literal -> literal.value() instanceof Value.Typed typed
+                    ? typed.type() + ":" + formatTypedValue(typed) : literal.value().text();
             case IrLabelRef ref -> formatLabelDelta(ref, opcodeCoord);
         };
     }
@@ -157,10 +155,10 @@ final class SourceLineIndex {
      * type name the target does not know is rejected where the operand is encoded; here its value
      * is shown as written.
      */
-    private String formatTypedValue(IrTypedImm operand) {
-        return isa.moleculeType(operand.typeName())
-                .map(type -> isa.formatValue(type, (int) operand.value()))
-                .orElseGet(() -> String.valueOf(operand.value()));
+    private String formatTypedValue(Value.Typed operand) {
+        return isa.moleculeType(operand.type())
+                .map(type -> isa.formatValue(type, (int) operand.number()))
+                .orElseGet(() -> String.valueOf(operand.number()));
     }
 
     /**
