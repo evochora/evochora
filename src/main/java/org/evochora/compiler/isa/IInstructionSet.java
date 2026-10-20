@@ -126,12 +126,6 @@ public interface IInstructionSet {
 	}
 
 	/**
-	 * A register as source names it: a bank and an index into it.
-	 *
-	 * @param bank  The bank the prefix named.
-	 * @param index The index as written, which may lie beyond the bank.
-	 */
-	/**
 	 * A closed range of numbers.
 	 *
 	 * @param min The smallest number in the range.
@@ -154,6 +148,12 @@ public interface IInstructionSet {
 		}
 	}
 
+	/**
+	 * A register as source names it: a bank and an index into it.
+	 *
+	 * @param bank  The bank the prefix named.
+	 * @param index The index as written, which may lie beyond the bank.
+	 */
 	record RegisterRef(RegisterBankInfo bank, int index) {
 		/**
 		 * Tells whether the index names a register the bank has.

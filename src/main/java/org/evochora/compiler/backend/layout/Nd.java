@@ -53,13 +53,6 @@ public final class Nd {
 	}
 
 	/**
-	 * Reports how many axes a layout vector spans, which for a well-formed coordinate is
-	 * the number of world dimensions.
-	 *
-	 * @param v The vector.
-	 * @return The number of dimensions of the vector.
-	 */
-	/**
 	 * Turns the components of a vector value into a coordinate. A component that does not fit
 	 * the coordinate space of the world is reported at the directive that wrote it.
 	 *
@@ -80,6 +73,13 @@ public final class Nd {
 		return r;
 	}
 
+	/**
+	 * Reports how many axes a layout vector spans, which for a well-formed coordinate is
+	 * the number of world dimensions.
+	 *
+	 * @param v The vector.
+	 * @return The number of dimensions of the vector.
+	 */
 	public static int dims(int[] v) {
 		return v.length;
 	}

@@ -66,16 +66,6 @@ public final class OperandEncoder {
     }
 
     /**
-     * Encodes an operand into the cells it occupies in the machine code: one for a register
-     * or a literal, one per component for a vector.
-     *
-     * @param op  The operand to encode.
-     * @param src The source location of the instruction, for error reporting.
-     * @return The packed molecules of the operand's cells, in placement order.
-     * @throws CompilationException if the operand cannot be encoded: an unknown register, an
-     *         unknown molecule type, or a label reference that linking left unresolved.
-     */
-    /**
      * Packs a value into a cell of the given type, after checking that the value fits the
      * value field of a cell.
      */
@@ -88,6 +78,16 @@ public final class OperandEncoder {
         return isa.encodeCell(type, (int) value);
     }
 
+    /**
+     * Encodes an operand into the cells it occupies in the machine code: one for a register
+     * or a literal, one per component for a vector.
+     *
+     * @param op  The operand to encode.
+     * @param src The source location of the instruction, for error reporting.
+     * @return The packed molecules of the operand's cells, in placement order.
+     * @throws CompilationException if the operand cannot be encoded: an unknown register, an
+     *         unknown molecule type, or a label reference that linking left unresolved.
+     */
     public int[] encodeOperand(IrOperand op, SourceInfo src) throws CompilationException {
         return switch (op) {
             case IrReg r -> {

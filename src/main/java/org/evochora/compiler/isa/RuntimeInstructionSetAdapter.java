@@ -86,9 +86,6 @@ public final class RuntimeInstructionSetAdapter implements IInstructionSet {
 
     /**
      * {@inheritDoc}
-     */
-    /**
-     * {@inheritDoc}
      * <p>The value field is {@code Config.VALUE_BITS} wide: a type whose format reads the bits
      * as a signed number holds the signed range, a type whose format reads them as a bit pattern
      * holds the unsigned one.</p>
@@ -101,6 +98,9 @@ public final class RuntimeInstructionSetAdapter implements IInstructionSet {
         };
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public int encodeCell(int type, int value) {
         return new Molecule(type, value).toInt();
