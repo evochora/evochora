@@ -269,9 +269,10 @@ public class Tokenizer {
         // After a leading minus the first digit is not yet consumed; consuming it here makes
         // previous() the first digit for signed and unsigned numbers alike.
         if (previous() == '-') advance();
-        // Recognize hex/binary prefixes right at the first digit
-        if (previous() == '0' && (peek() == 'x' || peek() == 'X' || peek() == 'b' || peek() == 'B')) {
-            advance(); // consume 'x' or 'b'
+        // Recognize hex/octal/binary prefixes right at the first digit
+        if (previous() == '0' && (peek() == 'x' || peek() == 'X' || peek() == 'o' || peek() == 'O'
+                || peek() == 'b' || peek() == 'B')) {
+            advance(); // consume 'x', 'o' or 'b'
             while (isAlphaNumeric(peek())) advance(); // Hex digits (A-F) are also alphanumeric
         } else {
             // Normal decimal or floating-point numbers

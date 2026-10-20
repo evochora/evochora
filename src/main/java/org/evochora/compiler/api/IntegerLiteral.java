@@ -5,13 +5,13 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Reads an integer in the forms a program can write one: decimal digits, or {@code 0x} or
- * {@code 0b} in either case followed by hexadecimal or binary digits, each with an optional
- * leading minus. The digits after the sign must fit a {@code long}; the minus negates them.
+ * Reads an integer in the forms a program can write one: decimal digits, or {@code 0x},
+ * {@code 0o} or {@code 0b} in either case followed by hexadecimal, octal or binary digits, each
+ * with an optional leading minus. The digits after the sign must fit a {@code long}; the minus negates them.
  */
 public final class IntegerLiteral {
 
-    private static final Pattern FORM = Pattern.compile("(-?)(0[xX]|0[bB])?([0-9A-Za-z]+)");
+    private static final Pattern FORM = Pattern.compile("(-?)(0[xX]|0[oO]|0[bB])?([0-9A-Za-z]+)");
 
     private IntegerLiteral() {
     }
@@ -29,7 +29,11 @@ public final class IntegerLiteral {
             return OptionalLong.empty();
         }
         String prefix = form.group(2);
-        int radix = prefix == null ? 10 : Character.toLowerCase(prefix.charAt(1)) == 'x' ? 16 : 2;
+        int radix = prefix == null ? 10 : switch (Character.toLowerCase(prefix.charAt(1))) {
+            case 'x' -> 16;
+            case 'o' -> 8;
+            default -> 2;
+        };
         try {
             long value = Long.parseLong(form.group(3), radix);
             return OptionalLong.of(form.group(1).isEmpty() ? value : -value);

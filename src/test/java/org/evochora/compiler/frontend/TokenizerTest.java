@@ -239,7 +239,7 @@ public class TokenizerTest {
     void testHexAndBinaryLiteralsWithAndWithoutSign() {
         // Arrange
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Tokenizer lexer = new Tokenizer("-0x10 -0b11 0x10 0b11", diagnostics, TestLexers.symbols());
+        Tokenizer lexer = new Tokenizer("-0x10 -0b11 0x10 0b11 0o17 -0O17", diagnostics, TestLexers.symbols());
 
         // Act
         List<Token> tokens = lexer.scanTokens();
@@ -251,6 +251,8 @@ public class TokenizerTest {
                 tuple(TokenType.NUMBER, -3L),
                 tuple(TokenType.NUMBER, 16L),
                 tuple(TokenType.NUMBER, 3L),
+                tuple(TokenType.NUMBER, 15L),
+                tuple(TokenType.NUMBER, -15L),
                 tuple(TokenType.END_OF_FILE, null)
         );
     }
