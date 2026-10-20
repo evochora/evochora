@@ -198,6 +198,22 @@ public class RepeatDirectiveTest {
     }
 
     /**
+     * The shorthand is bounded like the block: a count beyond an {@code int} is reported.
+     */
+    @Test
+    @Tag("unit")
+    void testCaretCountBeyondAnIntIsReported() {
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Tokenizer lexer = new Tokenizer("NOP^4294967296", diagnostics, TestLexers.symbols());
+        PreProcessor preProcessor = createPreProcessor(lexer.scanTokens(), diagnostics);
+
+        preProcessor.expand();
+
+        assertThat(diagnostics.hasErrors()).isTrue();
+        assertThat(diagnostics.getDiagnostics().get(0).message()).isEqualTo("Value 4294967296 out of range for a count.");
+    }
+
+    /**
      * A negative count is reported as written, however far below zero it lies: a count beyond
      * the {@code int} range is never cut to one that fits.
      */

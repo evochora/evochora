@@ -65,6 +65,23 @@ public class LayoutDirectiveTest {
     }
 
     /**
+     * An axis of a rotation names a dimension, which the layout checks against the world; here
+     * it has to fit an {@code int}, so that the layout can.
+     */
+    @Test
+    @Tag("unit")
+    void testRotationAxisBeyondAnIntIsReported() {
+        String source = ".DIR @+4294967296|1";
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Parser parser = new Parser(new Tokenizer(source, diagnostics, TestLexers.symbols()).scanTokens(), diagnostics, registry());
+
+        parser.parse();
+
+        assertThat(diagnostics.hasErrors()).isTrue();
+        assertThat(diagnostics.getDiagnostics().get(0).message()).isEqualTo("Value 4294967296 out of range for an axis.");
+    }
+
+    /**
      * Verifies that each component of an `.ORG` vector carries its own mark, and that a marked
      * component keeps the sign of its marker.
      * This is a unit test for the parser.

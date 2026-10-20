@@ -14,6 +14,7 @@ import org.evochora.compiler.model.ir.*;
 import org.evochora.compiler.model.ir.placement.IrVectorPlacement;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.runtime.isa.Instruction;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 import org.junit.jupiter.api.Tag;
@@ -30,6 +31,11 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @Tag("unit")
 public class LayoutEngineTest {
+
+    @BeforeAll
+    static void initInstructionSet() {
+        Instruction.init();
+    }
 
     private static SourceInfo src(String file, int line) {
         return new SourceInfo(file, line, 0, "", 0);
@@ -196,6 +202,28 @@ public class LayoutEngineTest {
      * A direction with more or fewer components than the world has dimensions names no direction,
      * and is reported at the directive.
      */
+    /**
+     * A coordinate is addressed with an {@code int}; a component of an origin or a direction
+     * beyond that is reported at the directive, not cut to the width of an {@code int}.
+     */
+    @Test
+    void aComponentBeyondACoordinateIsReportedAtTheDirective() {
+        Map<String, IrValue> orgArgs = new HashMap<>();
+        orgArgs.put("position", new IrValue.Literal(new Value.Vector(List.of(4294967296L, 0L))));
+        orgArgs.put("relative", new IrValue.ListVal(List.of(new IrValue.Bool(false), new IrValue.Bool(false))));
+        assertThatThrownBy(() -> layout(List.of(new IrDirective("core", "org", orgArgs, src("main.s", 1)), seti(2))))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("Value 4294967296 out of range for a coordinate.")
+                .hasMessageContaining("main.s:1");
+
+        Map<String, IrValue> dirArgs = new HashMap<>();
+        dirArgs.put("direction", new IrValue.Literal(new Value.Vector(List.of(0L, -4294967296L))));
+        assertThatThrownBy(() -> layout(List.of(new IrDirective("core", "dir", dirArgs, src("main.s", 2)), seti(3))))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("Value -4294967296 out of range for a coordinate.")
+                .hasMessageContaining("main.s:2");
+    }
+
     @Test
     void aDirectionWithTheWrongNumberOfComponentsIsReported() {
         Map<String, IrValue> args = new HashMap<>();
