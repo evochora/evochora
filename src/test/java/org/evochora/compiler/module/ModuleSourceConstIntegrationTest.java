@@ -249,7 +249,7 @@ class ModuleSourceConstIntegrationTest {
     @Tag("integration")
     void circularSourceDetected() throws Exception {
         // a.evo sources b.evo, b.evo sources a.evo
-        // Test at preprocessor level directly (the Lexer phase does not detect .SOURCE cycles)
+        // Tested at the preprocessor level, which has a check of its own for an inclusion a macro makes
         Files.writeString(tempDir.resolve("a.evo"),
                 ".SOURCE \"b.evo\"\n.CONST A_VAL DATA:1\n");
         Files.writeString(tempDir.resolve("b.evo"),

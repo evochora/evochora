@@ -105,6 +105,29 @@ class LexerLinesTest {
         assertThat(reading.graph.tokens()).containsKey(resolved("big.evo"));
     }
 
+    @Test
+    void aSourceCycleIsReportedAtTheLineThatClosesIt() throws Exception {
+        Files.writeString(tempDir.resolve("a.evo"), ".SOURCE \"b.evo\"\nNOP\n");
+        Files.writeString(tempDir.resolve("b.evo"), "NOP\n.SOURCE \"a.evo\"\n");
+
+        Reading reading = read(".SOURCE \"a.evo\"\n", CompilerOptions.defaults());
+
+        assertThat(reading.diagnostics.getDiagnostics()).hasSize(1);
+        assertThat(reading.diagnostics.getDiagnostics().get(0).message())
+                .isEqualTo("Circular .SOURCE detected: " + resolved("a.evo"));
+        assertThat(reading.diagnostics.getDiagnostics().get(0).lineNumber()).isEqualTo(2);
+    }
+
+    @Test
+    void aFileThatSourcesItselfIsReported() throws Exception {
+        Files.writeString(tempDir.resolve("self.evo"), ".SOURCE \"self.evo\"\n");
+
+        Reading reading = read(".SOURCE \"self.evo\"\n", CompilerOptions.defaults());
+
+        assertThat(reading.diagnostics.getDiagnostics()).hasSize(1);
+        assertThat(reading.diagnostics.getDiagnostics().get(0).message()).startsWith("Circular .SOURCE detected");
+    }
+
     private record Reading(DependencyGraph graph, DiagnosticsEngine diagnostics) {
     }
 

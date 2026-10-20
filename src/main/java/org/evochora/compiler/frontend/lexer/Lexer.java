@@ -98,6 +98,7 @@ public final class Lexer {
         final List<ModulePlacement> placements = new ArrayList<>();
         final Map<String, List<Token>> tokens = new LinkedHashMap<>();
         final Map<String, List<String>> lines = new LinkedHashMap<>();
+        /** The files on the way to the one being read, modules and source files alike. */
         final Set<String> importPath = new HashSet<>();
         final Map<Class<?>, Object> featureState = new HashMap<>();
     }
@@ -120,8 +121,18 @@ public final class Lexer {
         state.importPath.remove(path);
     }
 
-    private void readSourceFile(State state, String aliasChain, String path) {
+    /**
+     * Reads a {@code .SOURCE} file in the placement that includes it. A file that is already on
+     * the way to this one, as a module or as a source file, is a circular inclusion and is reported
+     * instead of being read again.
+     */
+    private void readSourceFile(State state, String aliasChain, String path, int lineNumber, String includer) {
+        if (!state.importPath.add(path)) {
+            diagnostics.reportError("Circular .SOURCE detected: " + path, includer, lineNumber);
+            return;
+        }
         readLines(state, aliasChain, path, true);
+        state.importPath.remove(path);
     }
 
     /**
@@ -206,7 +217,7 @@ public final class Lexer {
 
         @Override
         public void scanNestedSourceFile(String resolvedPath) {
-            readSourceFile(state, aliasChain, resolvedPath);
+            readSourceFile(state, aliasChain, resolvedPath, lineNumber, sourcePath);
         }
 
         @Override
