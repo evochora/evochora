@@ -190,6 +190,18 @@ class CompilerDiagnosticsTest {
     }
 
     @Test
+    void anUntypedPlaceLiteralIsReportedOnce() throws Exception {
+        write("main.evo",
+                ".PLACE 5 1|2",
+                "START:",
+                "  NOP");
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .satisfies(e -> assertThat(e.getMessage().lines().toList()).containsExactly(
+                        "[ERROR] " + resolved("main.evo") + ":1: Expected a typed literal (e.g. DATA:5) for .PLACE."));
+    }
+
+    @Test
     void aSourceWithATokenAfterItsPathIsRejected() throws Exception {
         write("x.evo",
                 "  NOP");
