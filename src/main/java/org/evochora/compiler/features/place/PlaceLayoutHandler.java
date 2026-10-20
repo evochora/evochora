@@ -58,14 +58,10 @@ public final class PlaceLayoutHandler implements ILayoutDirectiveHandler {
     /**
      * The molecule the directive places: its typed literal, whose type the instruction set has to
      * know and whose number has to fit a cell of that type. The parser accepts only a typed
-     * literal for a {@code .PLACE}, so any other value here is a defect of the converter.
+     * literal for a {@code .PLACE}, and the node carries nothing else.
      */
     private PlacedMolecule createMolecule(IrDirective directive) throws CompilationException {
-        if (!(directive.args().get("value") instanceof IrValue.Literal literal
-                && literal.value() instanceof Value.Typed typed)) {
-            throw new IllegalStateException(
-                    "The 'value' argument of a place directive is not a typed literal: " + directive.args().get("value"));
-        }
+        Value.Typed typed = (Value.Typed) ((IrValue.Literal) directive.args().get("value")).value();
         int type = isa.moleculeType(typed.type()).orElseThrow(() ->
                 new CompilationException(SourceInfo.locate(directive.source(), "Unknown molecule type '" + typed.type() + "' in .PLACE.")));
         isa.valueRange(type).require(typed.number(), directive.source());

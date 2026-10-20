@@ -1,7 +1,6 @@
 package org.evochora.compiler.features.place;
 
 import org.evochora.compiler.model.expression.Value;
-import org.evochora.compiler.model.ast.LiteralNode;
 import org.evochora.compiler.frontend.irgen.IAstNodeToIrConverter;
 import org.evochora.compiler.frontend.irgen.IrGenContext;
 import org.evochora.compiler.features.place.placement.*;
@@ -25,9 +24,7 @@ public final class PlaceNodeConverter implements IAstNodeToIrConverter<PlaceNode
         Map<String, IrValue> args = new HashMap<>();
 
         // Convert the literal part
-        if (node.literal() instanceof LiteralNode literal) {
-            args.put("value", new IrValue.Literal(literal.value()));
-        }
+        args.put("value", new IrValue.Literal(node.literal().value()));
 
         // Convert the placements part
         List<IPlacementArgument> irPlacements = new ArrayList<>();

@@ -34,6 +34,7 @@ public class PlaceDirectiveHandler implements IParserStatementHandler {
         AstNode literal = context.expression();
         if (!(literal instanceof LiteralNode typed && typed.value() instanceof Value.Typed)) {
             context.getDiagnostics().reportError("Expected a typed literal (e.g. DATA:5) for .PLACE.", context.peek().source().fileName(), context.peek().source().lineNumber());
+            return null;
         }
 
         // 2. Parse one or more placement arguments
@@ -45,7 +46,7 @@ public class PlaceDirectiveHandler implements IParserStatementHandler {
             }
         } while (context.peek().type() != TokenType.NEWLINE && context.peek().type() != TokenType.END_OF_FILE);
 
-        return new PlaceNode(literal, placements, placeSourceInfo);
+        return new PlaceNode(typed, placements, placeSourceInfo);
     }
 
     private IPlacementArgumentNode parsePlacementArgument(IParsingContext context) {
