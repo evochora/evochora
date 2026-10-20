@@ -5,7 +5,7 @@ import org.evochora.compiler.api.SourceFile;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
-import org.evochora.compiler.frontend.lexer.PlacementContext;
+import org.evochora.compiler.frontend.preprocessor.PlacementContext;
 import org.evochora.compiler.frontend.DirectiveLine;
 import org.evochora.compiler.frontend.preprocessor.IPreProcessorHandler;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
