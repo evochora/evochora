@@ -2,6 +2,8 @@ package org.evochora.compiler.features.importdir;
 
 import org.evochora.compiler.api.SourceFile;
 import org.evochora.compiler.api.SourceInfo;
+import org.evochora.compiler.diagnostics.ErrorRecoveryException;
+import org.evochora.compiler.frontend.DirectiveLine;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.frontend.preprocessor.PlacementContext;
@@ -32,6 +34,14 @@ public class ImportSourceHandler implements IPreProcessorHandler {
 
     @Override
     public void process(PreProcessor preProcessor, PreProcessorContext preProcessorContext) {
+        // An EXPORT before the directive belongs to it; the parser reads it with the directive.
+        DirectiveLine line = preProcessor.lineOf(preProcessor.getCurrentIndex(), token -> isWord(token, "EXPORT"));
+        if (!line.startsStatement()) {
+            Token directive = preProcessor.peek();
+            String message = "Unexpected '" + directive.text() + "' after '" + line.before().text() + "'.";
+            preProcessor.getDiagnostics().reportError(message, directive.source().fileName(), directive.source().lineNumber());
+            throw new ErrorRecoveryException(message);
+        }
         Token importToken = preProcessor.peek();
         preProcessor.advance(); // consume .IMPORT
 
@@ -116,6 +126,10 @@ public class ImportSourceHandler implements IPreProcessorHandler {
 
         // Inject after the .IMPORT directive (tokens remain for the parser)
         preProcessor.injectTokens(newTokens, 0);
+    }
+
+    private static boolean isWord(Token token, String word) {
+        return token.type() == TokenType.IDENTIFIER && word.equalsIgnoreCase(token.text());
     }
 
     /**

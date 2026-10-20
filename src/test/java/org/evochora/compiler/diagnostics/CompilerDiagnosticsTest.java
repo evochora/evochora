@@ -152,9 +152,10 @@ class CompilerDiagnosticsTest {
     }
 
     /**
-     * A dependency directive shares a line with other statements like any statement: the lexer
-     * phase reads the same statement lines as the preprocessor, so nothing requires it to stand
-     * first or alone.
+     * A dependency directive shares a line with other statements like any statement, each behind
+     * a statement end: the lexer phase reads the same statement lines as the preprocessor, so
+     * nothing requires it to stand first or alone. A label before it is a word before it, not a
+     * statement end.
      */
     @Test
     void aDependencyDirectiveMayShareItsLineWithOtherStatements() throws Exception {
@@ -163,12 +164,29 @@ class CompilerDiagnosticsTest {
         write("x.evo",
                 "  NOP");
         write("main.evo",
-                "L: .IMPORT \"lib.evo\" AS LIB; NOP",
+                ".IMPORT \"lib.evo\" AS LIB; NOP",
                 "NOP; .SOURCE \"x.evo\"; NOP",
                 "NOP; .REQUIRE VALUE STEPS DATA:1; SETI %DR0 STEPS",
                 "START:",
                 "  NOP");
         assertThatCode(() -> compile("main.evo")).doesNotThrowAnyException();
+    }
+
+    @Test
+    void aWordBeforeADependencyDirectiveWithoutAStatementEndIsReported() throws Exception {
+        write("lib.evo",
+                "  NOP");
+        write("x.evo",
+                "  NOP");
+        write("main.evo",
+                "NOP .IMPORT \"lib.evo\" AS LIB",
+                "NOP .SOURCE \"x.evo\"",
+                "START:",
+                "  NOP");
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("main.evo:1: Unexpected '.IMPORT' after 'NOP'.")
+                .hasMessageContaining("main.evo:2: Unexpected '.SOURCE' after 'NOP'.");
     }
 
     @Test

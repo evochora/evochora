@@ -52,6 +52,22 @@ class DirectiveLineTest {
         assertThat(DirectiveLine.of(tokens, 2).before().text()).isEqualTo("NOP");
     }
 
+    /**
+     * A directive begins a statement when the token directly before it ends one, or there is
+     * none on its line; a word before it without a statement end does not, and a token the
+     * caller passes over does not count.
+     */
+    @Test
+    void aDirectiveBeginsAStatementAfterAStatementEndOrAtTheStart() {
+        assertThat(DirectiveLine.of(List.of(word(".D", 1), newline(1)), 0).startsStatement()).isTrue();
+        assertThat(DirectiveLine.of(List.of(word("NOP", 1), semicolon(1), word(".D", 1), newline(1)), 2).startsStatement()).isTrue();
+        assertThat(DirectiveLine.of(List.of(word("NOP", 1), newline(1), word(".D", 2), newline(2)), 2).startsStatement()).isTrue();
+        assertThat(DirectiveLine.of(List.of(word("NOP", 1), word(".D", 1), newline(1)), 1).startsStatement()).isFalse();
+        List<Token> exported = List.of(word("EXPORT", 1), word(".D", 1), newline(1));
+        assertThat(DirectiveLine.of(exported, 1).startsStatement()).isFalse();
+        assertThat(DirectiveLine.of(exported, 1, token -> token.text().equals("EXPORT")).startsStatement()).isTrue();
+    }
+
     @Test
     void aTokenTheCallerPassesOverDoesNotBreakTheRule() {
         List<Token> tokens = List.of(word("EXPORT", 1), word(".D", 1), newline(1));

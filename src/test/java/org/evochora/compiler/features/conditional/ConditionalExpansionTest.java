@@ -489,6 +489,24 @@ class ConditionalExpansionTest {
     }
 
     /**
+     * A flag directive begins a statement: a word before it without a statement end is reported
+     * at the directive, and the statements around keep their own ends, so nothing merges with
+     * the next line.
+     */
+    @Test
+    void aWordBeforeAFlagDirectiveWithoutAStatementEndIsReported() {
+        Expansion result = expand(
+                "EXPORT .DEFINE X 5",
+                "NOP .UNDEF X",
+                "JMPI L");
+
+        assertThat(result.errors()).containsExactly(
+                MAIN + ":1: Unexpected '.DEFINE' after 'EXPORT'.",
+                MAIN + ":2: Unexpected '.UNDEF' after 'NOP'.");
+        assertThat(result.texts()).containsExactly("EXPORT", "NOP", "JMPI", "L");
+    }
+
+    /**
      * A flag directive shares a line with other statements like any statement; the statements
      * around it stay in the stream.
      */

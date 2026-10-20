@@ -3,6 +3,7 @@ package org.evochora.compiler.features.source;
 import org.evochora.compiler.diagnostics.ErrorRecoveryException;
 import org.evochora.compiler.api.SourceFile;
 import org.evochora.compiler.api.SourceInfo;
+import org.evochora.compiler.frontend.DirectiveLine;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.frontend.preprocessor.PlacementContext;
@@ -35,6 +36,13 @@ public class SourceDirectiveHandler implements IPreProcessorHandler {
     @Override
     public void process(PreProcessor preProcessor, PreProcessorContext preProcessorContext) {
         int startIndex = preProcessor.getCurrentIndex();
+        DirectiveLine line = preProcessor.lineOf(startIndex);
+        if (!line.startsStatement()) {
+            Token directive = preProcessor.peek();
+            String message = "Unexpected '" + directive.text() + "' after '" + line.before().text() + "'.";
+            preProcessor.getDiagnostics().reportError(message, directive.source().fileName(), directive.source().lineNumber());
+            throw new ErrorRecoveryException(message);
+        }
 
         Token directiveToken = preProcessor.advance();
         Token pathToken = preProcessor.consume(TokenType.STRING, "Expected a file path in quotes after .SOURCE.");

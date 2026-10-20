@@ -30,6 +30,16 @@ public class DefineHandler implements IPreProcessorHandler {
         DirectiveLine line = preProcessor.lineOf(start);
         Flags flags = PreprocessorFlags.in(preProcessor, preProcessorContext);
 
+        if (!line.startsStatement()) {
+            // The directive owns its statement; a word before it without a statement end would lose
+            // its own end with the directive's, so the line is reported and left to the parser
+            preProcessor.getDiagnostics().reportError(
+                    "Unexpected '" + directive.text() + "' after '" + line.before().text() + "'.",
+                    directive.source().fileName(), directive.source().lineNumber());
+            preProcessor.removeTokens(start, line.end() - start);
+            return;
+        }
+
         String error = null;
         List<Token> operands = line.operands();
         if (operands.isEmpty()) {
