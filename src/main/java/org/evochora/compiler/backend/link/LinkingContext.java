@@ -14,8 +14,7 @@ public final class LinkingContext {
 
     private final IInstructionSet isa;
     private int linearAddressCursor = 0;
-    private Map<Integer, Map<Integer, Integer>> callSiteBindings = new HashMap<>();
-    private boolean frozen = false;
+    private final Map<Integer, Map<Integer, Integer>> callSiteBindings = new HashMap<>();
 
     /**
      * Constructs a new linking context.
@@ -34,28 +33,11 @@ public final class LinkingContext {
     public IInstructionSet isa() { return isa; }
 
     /**
-     * Freezes the context, preventing further modifications.
-     * After freeze: setCurrentAddress throws, callSiteBindings returns unmodifiable view.
-     */
-    public void freeze() {
-        this.frozen = true;
-        Map<Integer, Map<Integer, Integer>> deep = new HashMap<>();
-        for (var entry : callSiteBindings.entrySet()) {
-            deep.put(entry.getKey(), java.util.Collections.unmodifiableMap(entry.getValue()));
-        }
-        this.callSiteBindings = java.util.Collections.unmodifiableMap(deep);
-    }
-
-    private void guardFrozen() {
-        if (frozen) throw new IllegalStateException("LinkingContext is frozen — no modifications allowed after Phase 10");
-    }
-
-    /**
      * Sets the address of the item being linked, as assigned by the layout phase.
      *
      * @param linearAddress The address of the item's first cell.
      */
-    public void setCurrentAddress(final int linearAddress) { guardFrozen(); this.linearAddressCursor = linearAddress; }
+    public void setCurrentAddress(final int linearAddress) { this.linearAddressCursor = linearAddress; }
 
     /**
      * Returns the address the linker is currently working at, as the layout assigned it.
@@ -66,8 +48,8 @@ public final class LinkingContext {
 
     /**
      * Returns call site bindings. Outer key: linear address of the CALL instruction.
-     * Inner map: formal register ID (FDR_BASE+i or FLR_BASE+i) to source register ID.
-     * Mutable before {@link #freeze()}, deeply unmodifiable after.
+     * Inner map: formal register ID (FDR_BASE+i or FLR_BASE+i) to source register ID. The
+     * rules fill it while the linker runs; the linker copies it into its result.
      *
      * @return the call site bindings map
      */

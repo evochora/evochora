@@ -71,7 +71,6 @@ public final class Linker {
                 }
             }
         }
-        context.freeze();
         return new LinkingResult(new IrProgram(programName, out, debugInfo), context.callSiteBindings());
     }
 }

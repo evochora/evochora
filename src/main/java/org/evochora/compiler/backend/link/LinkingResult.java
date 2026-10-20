@@ -3,6 +3,7 @@ package org.evochora.compiler.backend.link;
 import org.evochora.compiler.model.ir.IrProgram;
 
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * What the linker returns: the linked program, and the call-site bindings the linking rules
@@ -10,13 +11,14 @@ import java.util.Map;
  * register. The emitter puts them into the artifact unchanged.
  *
  * @param program          The linked program.
- * @param callSiteBindings The bindings per call address; unmodifiable.
+ * @param callSiteBindings The bindings per call address; unmodifiable, the inner maps included.
  */
 public record LinkingResult(IrProgram program, Map<Integer, Map<Integer, Integer>> callSiteBindings) {
     /**
-     * Keeps an unmodifiable copy of the bindings.
+     * Keeps an unmodifiable copy of the bindings, each call's map copied too.
      */
     public LinkingResult {
-        callSiteBindings = Map.copyOf(callSiteBindings);
+        callSiteBindings = callSiteBindings.entrySet().stream()
+                .collect(Collectors.toUnmodifiableMap(Map.Entry::getKey, entry -> Map.copyOf(entry.getValue())));
     }
 }
