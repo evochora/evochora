@@ -18,13 +18,12 @@ import java.util.OptionalLong;
 import java.util.Set;
 
 /**
- * The Tokenizer turns the characters of one file into tokens; the Lexer phase runs it once per file it finds. It is responsible for converting
- * a sequence of characters (source code) into a sequence of tokens.
- *
- * <p>Besides its fixed cases the lexer knows the symbols the features registered through
- * {@link org.evochora.compiler.IFeatureRegistrationContext#lexerSymbol(String)}. At the start of
- * every token it tries them first, longest first, and emits a match as one
- * {@link TokenType#SYMBOL} token whose text is the symbol.</p>
+ * Turns the characters of one source text into tokens: identifiers, registers, numbers,
+ * strings, directives and opcodes by its fixed cases, and the symbols the features registered
+ * through {@link org.evochora.compiler.IFeatureRegistrationContext#lexerSymbol(String)}, which it
+ * tries first at the start of every token, longest first, and emits as one
+ * {@link TokenType#SYMBOL} token whose text is the symbol. The {@link Lexer} phase runs one
+ * tokenizer per file it finds.
  */
 public class Tokenizer {
 
