@@ -312,7 +312,9 @@ class CompilerArchitectureRulesTest {
      * <p>
      * An AST node carries a token's {@code SourceInfo}, never the token, and an IR item carries
      * nothing of the AST it was made from. The rule is checked on the types themselves, wherever
-     * they live, because features define AST nodes and IR items of their own.
+     * they live, because features define AST nodes and IR items of their own. The values the
+     * formats share ({@code model.expression}) reference none of them either, so that no format
+     * reaches another through a value.
      */
     @Test
     void dataFormatsDoNotReferenceEachOther() {
@@ -327,6 +329,11 @@ class CompilerArchitectureRulesTest {
         noClasses().that().implement(IrItem.class).or().resideInAPackage(COMPILER + ".model.ir..")
                 .should().dependOnClassesThat().resideInAnyPackage(
                         COMPILER + ".model.token..", COMPILER + ".model.ast..")
+                .check(compilerClasses);
+        noClasses().that().resideInAPackage(COMPILER + ".model.expression..")
+                .should().dependOnClassesThat().resideInAnyPackage(
+                        COMPILER + ".model.token..", COMPILER + ".model.ast..",
+                        COMPILER + ".model.ir..", COMPILER + ".model.symbols..")
                 .check(compilerClasses);
     }
 
