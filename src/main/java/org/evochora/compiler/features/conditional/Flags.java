@@ -1,8 +1,6 @@
 package org.evochora.compiler.features.conditional;
 
 import org.evochora.compiler.frontend.lexer.IDependencyScanContext;
-import org.evochora.compiler.frontend.preprocessor.PreProcessor;
-import org.evochora.compiler.frontend.preprocessor.PreProcessorContext;
 
 import java.util.HashMap;
 import java.util.Locale;
@@ -13,9 +11,9 @@ import java.util.OptionalLong;
 /**
  * The preprocessor flags of one compilation: the names that are set, each with an integer value
  * or without one. Names are compared case-insensitively. The flags are global: one instance
- * serves the whole token stream of the preprocessor, another the whole text of the dependency
- * scan, each kept in the state slot of its phase's context and seeded from the flags of the
- * compilation's options on first use.
+ * serves the whole token stream of the preprocessor (see {@link PreprocessorFlags}), another the
+ * whole reading of the Lexer phase, each kept in the state slot of its phase's context and seeded
+ * from the flags of the compilation's options on first use.
  * <p>
  * A flag that is set may be defined again only with the same definition, both without a value
  * or both with the same value; {@link #undefine} first is how a flag changes.
@@ -43,26 +41,6 @@ public final class Flags {
         Flags flags = new Flags();
         defines.forEach((name, value) -> flags.entries.put(key(name), new Entry(value, CONFIGURATION)));
         return flags;
-    }
-
-    /**
-     * Returns the flags of the preprocessor run, seeding them from the options on the first
-     * request. The seeding reports every configured name that is not an identifier, once per
-     * run, against the configuration rather than a source line.
-     *
-     * @param preProcessor The preprocessor, for its diagnostics.
-     * @param context      The context holding the slot and the options.
-     * @return The one instance of the run.
-     */
-    public static Flags inPreprocessor(PreProcessor preProcessor, PreProcessorContext context) {
-        return context.getOrCreate(Flags.class, () -> {
-            Map<String, OptionalLong> defines = context.options().defines();
-            defines.keySet().stream().filter(name -> !isName(name)).sorted().forEach(name ->
-                    preProcessor.getDiagnostics().reportError("Configured flag '" + name
-                            + "' is not a valid name: a flag name consists of letters, digits and _"
-                            + " and begins with a letter or _", "", 0));
-            return of(defines);
-        });
     }
 
     /**

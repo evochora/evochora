@@ -386,8 +386,10 @@ class CompilerArchitectureRulesTest {
      * package that another phase references is a record or an interface; a class of a feature
      * that implements a handler interface of a phase uses classes with behaviour of that phase
      * only, takes from earlier phases records and interfaces only, and references nothing of a
-     * later phase; a class of a feature that implements no handler interface, such as a state
-     * record or a condition, uses the logic of at most one phase; and the {@code frontend} root
+     * later phase, and so does every helper class of the features it references directly, such
+     * as a state holder or a condition, which serves the handler's phase through it; a class of a
+     * feature that implements no handler interface and that no handler reaches this way uses the
+     * logic of at most one phase; and the {@code frontend} root
      * and the phase-free packages reference no phase package at all, so that no class can reach
      * a phase through them. Which phase comes earlier is the order of {@link #PHASE_PACKAGES}.
      * <p>
@@ -453,17 +455,22 @@ class CompilerArchitectureRulesTest {
                 java.util.Set<String> logicOf = new java.util.TreeSet<>();
                 for (Dependency dependency : clazz.getDirectDependenciesFromSelf()) {
                     JavaClass target = dependency.getTargetClass();
-                    int phase = phaseOf(target);
-                    if (phase < 0) continue;
-                    boolean data = target.isInterface() || target.isRecord();
                     if (served.isEmpty()) {
-                        if (!data) logicOf.add(PHASE_PACKAGES[phase]);
-                    } else if (phase > served.iterator().next()) {
-                        events.add(SimpleConditionEvent.violated(clazz,
-                                clazz.getName() + " references " + target.getName() + " of a later phase"));
-                    } else if (phase < served.iterator().next() && !data) {
-                        events.add(SimpleConditionEvent.violated(clazz,
-                                clazz.getName() + " uses the logic of an earlier phase, " + target.getName()));
+                        int phase = phaseOf(target);
+                        if (phase >= 0 && !(target.isInterface() || target.isRecord())) {
+                            logicOf.add(PHASE_PACKAGES[phase]);
+                        }
+                        continue;
+                    }
+                    int own = served.iterator().next();
+                    checkTarget(clazz, target, own, clazz.getName(), events);
+                    // A helper of the features that the handler reaches directly serves the handler's
+                    // phase through it, so its own dependencies are held to the same limits
+                    if (isFeatureHelper(target)) {
+                        for (Dependency inner : target.getDirectDependenciesFromSelf()) {
+                            checkTarget(clazz, inner.getTargetClass(), own,
+                                    clazz.getName() + " through " + target.getName(), events);
+                        }
                     }
                 }
                 if (logicOf.size() > 1) {
@@ -472,6 +479,37 @@ class CompilerArchitectureRulesTest {
                 }
             }
         };
+    }
+
+    /**
+     * Whether a class is a helper of the features: a class in a feature package, with behaviour,
+     * that implements no interface of a phase and so has no phase of its own.
+     */
+    private static boolean isFeatureHelper(JavaClass target) {
+        if (!target.getPackageName().startsWith(FEATURES) || target.isInterface() || target.isRecord()) {
+            return false;
+        }
+        for (JavaClass implemented : target.getAllRawInterfaces()) {
+            if (phaseOf(implemented) >= 0) return false;
+        }
+        return true;
+    }
+
+    /**
+     * Checks one referenced class against the limits of the phase a handler serves: logic of that
+     * phase only, data of earlier phases, nothing of a later one.
+     */
+    private static void checkTarget(JavaClass clazz, JavaClass target, int own, String via, ConditionEvents events) {
+        int phase = phaseOf(target);
+        if (phase < 0) return;
+        boolean data = target.isInterface() || target.isRecord();
+        if (phase > own) {
+            events.add(SimpleConditionEvent.violated(clazz,
+                    via + " references " + target.getName() + " of a later phase"));
+        } else if (phase < own && !data) {
+            events.add(SimpleConditionEvent.violated(clazz,
+                    via + " uses the logic of an earlier phase, " + target.getName()));
+        }
     }
 
     private static String otherPhasesThan(String phase) {

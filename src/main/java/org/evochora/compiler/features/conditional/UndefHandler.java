@@ -20,7 +20,7 @@ public class UndefHandler implements IPreProcessorHandler {
         int start = preProcessor.getCurrentIndex();
         Token directive = preProcessor.peek();
         DirectiveLine line = preProcessor.lineOf(start);
-        Flags flags = Flags.inPreprocessor(preProcessor, preProcessorContext);
+        Flags flags = PreprocessorFlags.in(preProcessor, preProcessorContext);
 
         String error = null;
         List<Token> operands = line.operands();

@@ -38,7 +38,7 @@ public class ConditionalBlockHandler implements IPreProcessorBlockHandler {
     public void process(PreProcessor preProcessor, PreProcessorContext preProcessorContext, BlockReader.Block block) {
         int start = block.opener();
         Token opener = preProcessor.peek();
-        Flags flags = Flags.inPreprocessor(preProcessor, preProcessorContext);
+        Flags flags = PreprocessorFlags.in(preProcessor, preProcessorContext);
 
         int closer = block.closer();
         DirectiveLine closerLine = preProcessor.lineOf(closer);
