@@ -488,25 +488,21 @@ class ConditionalExpansionTest {
         assertThat(result.texts()).containsExactly("NOP");
     }
 
+    /**
+     * A flag directive shares a line with other statements like any statement; the statements
+     * around it stay in the stream.
+     */
     @Test
-    void anExportedDefineIsToldThatAConstantIsWrittenConst() {
-        Expansion result = expand(
-                "EXPORT .DEFINE X 5",
-                "NOP");
-
-        assertThat(result.errors()).containsExactly(
-                MAIN + ":1: .DEFINE must stand alone on its line; a constant is written .CONST");
-    }
-
-    @Test
-    void undefAndDefineWithAStatementAfterThemBreakTheLineRule() {
+    void undefAndDefineShareTheirLineWithOtherStatements() {
         Expansion result = expand(
                 ".DEFINE X; NOP",
-                ".UNDEF X; NOP");
+                "NOP; .UNDEF X",
+                ".IFDEF X",
+                "  JMPI L",
+                ".ENDDEF");
 
-        assertThat(result.errors()).containsExactly(
-                MAIN + ":1: .DEFINE must stand alone on its line; a constant is written .CONST",
-                MAIN + ":2: .UNDEF must stand alone on its line");
+        assertThat(result.errors()).isEmpty();
+        assertThat(result.texts()).containsExactly("NOP", "NOP");
     }
 
     // --- Nesting ---

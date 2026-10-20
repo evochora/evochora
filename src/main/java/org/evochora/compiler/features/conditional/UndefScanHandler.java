@@ -12,7 +12,7 @@ public class UndefScanHandler implements IDependencyScanHandler {
 
     @Override
     public void handle(DirectiveLine line, IDependencyScanContext ctx) {
-        if (!line.standsAlone() || line.operands().size() != 1 || !Condition.isNameToken(line.operands().get(0))) {
+        if (line.operands().size() != 1 || !Condition.isNameToken(line.operands().get(0))) {
             return;
         }
         Flags.inScan(ctx).undefine(line.operands().get(0).text());

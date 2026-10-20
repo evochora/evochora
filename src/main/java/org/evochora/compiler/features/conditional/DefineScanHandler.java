@@ -19,8 +19,7 @@ public class DefineScanHandler implements IDependencyScanHandler {
     @Override
     public void handle(DirectiveLine line, IDependencyScanContext ctx) {
         List<Token> operands = line.operands();
-        if (!line.standsAlone() || operands.isEmpty() || operands.size() > 2
-                || !Condition.isNameToken(operands.get(0))) {
+        if (operands.isEmpty() || operands.size() > 2 || !Condition.isNameToken(operands.get(0))) {
             return;
         }
         OptionalLong value = OptionalLong.empty();

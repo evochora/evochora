@@ -151,8 +151,28 @@ class CompilerDiagnosticsTest {
                 .hasMessageContaining("main.evo:1");
     }
 
+    /**
+     * A dependency directive shares a line with other statements like any statement: the lexer
+     * phase reads the same statement lines as the preprocessor, so nothing requires it to stand
+     * first or alone.
+     */
     @Test
-    void aSourceWithATokenAfterItsPathIsRejectedByTheLineRule() throws Exception {
+    void aDependencyDirectiveMayShareItsLineWithOtherStatements() throws Exception {
+        write("lib.evo",
+                "  NOP");
+        write("x.evo",
+                "  NOP");
+        write("main.evo",
+                "L: .IMPORT \"lib.evo\" AS LIB; NOP",
+                "NOP; .SOURCE \"x.evo\"; NOP",
+                "NOP; .REQUIRE VALUE STEPS DATA:1; SETI %DR0 STEPS",
+                "START:",
+                "  NOP");
+        assertThatCode(() -> compile("main.evo")).doesNotThrowAnyException();
+    }
+
+    @Test
+    void aSourceWithATokenAfterItsPathIsRejected() throws Exception {
         write("x.evo",
                 "  NOP");
         write("main.evo",
@@ -162,13 +182,13 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining(".SOURCE must stand alone on its line; found '^' after the path.")
+                .hasMessageContaining("Unexpected '^' after the path of .SOURCE.")
                 .hasMessageContaining("main.evo:2")
                 .hasMessageNotContaining("must be a literal");
     }
 
     @Test
-    void anImportWithATokenAfterItsClausesIsRejectedByTheLineRule() throws Exception {
+    void anImportWithATokenAfterItsClausesIsRejected() throws Exception {
         write("lib.evo",
                 "  NOP");
         write("main.evo",
@@ -178,55 +198,10 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining(".IMPORT must stand alone on its line; found '^' after the alias and its USING clauses.")
+                .hasMessageContaining("Unexpected '^' after the alias and its USING clauses of .IMPORT.")
                 .hasMessageContaining("main.evo:2")
                 .hasMessageNotContaining("must be a literal")
                 .hasMessageNotContaining("Unexpected token");
-    }
-
-    @Test
-    void anImportAfterALabelIsRejectedAsNotTheFirstWordOnItsLine() throws Exception {
-        write("lib.evo",
-                "  NOP");
-        write("main.evo",
-                "L: .IMPORT \"lib.evo\" AS LIB",
-                "START:",
-                "  NOP");
-
-        assertThatThrownBy(() -> compile("main.evo"))
-                .isInstanceOf(CompilationException.class)
-                .satisfies(e -> assertThat(e.getMessage().lines().toList()).containsExactly(
-                        "[ERROR] " + resolved("main.evo")
-                                + ":1: .IMPORT must be the first word on its line; found 'L' before it."));
-    }
-
-    @Test
-    void aSourceAfterAStatementIsRejectedAsNotTheFirstWordOnItsLine() throws Exception {
-        write("x.evo",
-                "  NOP");
-        write("main.evo",
-                "START:",
-                "NOP; .SOURCE \"x.evo\"");
-
-        assertThatThrownBy(() -> compile("main.evo"))
-                .isInstanceOf(CompilationException.class)
-                .satisfies(e -> assertThat(e.getMessage().lines().toList()).containsExactly(
-                        "[ERROR] " + resolved("main.evo")
-                                + ":2: .SOURCE must be the first word on its line; found 'NOP' before it."));
-    }
-
-    @Test
-    void aRequireAfterALabelIsRejectedAsNotTheFirstWordOnItsLine() throws Exception {
-        write("main.evo",
-                "L: .REQUIRE MODULE \"d.evo\" AS D",
-                "START:",
-                "  NOP");
-
-        assertThatThrownBy(() -> compile("main.evo"))
-                .isInstanceOf(CompilationException.class)
-                .satisfies(e -> assertThat(e.getMessage().lines().toList()).containsExactly(
-                        "[ERROR] " + resolved("main.evo")
-                                + ":1: .REQUIRE must be the first word on its line; found 'L' before it."));
     }
 
     @Test
@@ -278,53 +253,8 @@ class CompilerDiagnosticsTest {
 
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining(".REQUIRE must stand alone on its line; found 'EXTRA' after the alias.")
+                .hasMessageContaining("Unexpected 'EXTRA' after the alias of .REQUIRE.")
                 .hasMessageContaining("lib.evo:1");
-    }
-
-    @Test
-    void aSourceFollowedByAStatementOnItsLineIsRejectedByTheLineRule() throws Exception {
-        write("x.evo",
-                "  NOP");
-        write("main.evo",
-                "START:",
-                ".SOURCE \"x.evo\"; NOP");
-
-        assertThatThrownBy(() -> compile("main.evo"))
-                .isInstanceOf(CompilationException.class)
-                .satisfies(e -> assertThat(e.getMessage().lines().toList()).containsExactly(
-                        "[ERROR] " + resolved("main.evo")
-                                + ":2: .SOURCE must stand alone on its line; found ';' after the path."));
-    }
-
-    @Test
-    void anImportFollowedByAStatementOnItsLineIsRejectedByTheLineRule() throws Exception {
-        write("lib.evo",
-                "  NOP");
-        write("main.evo",
-                ".IMPORT \"lib.evo\" AS LIB; NOP",
-                "START:",
-                "  NOP");
-
-        assertThatThrownBy(() -> compile("main.evo"))
-                .isInstanceOf(CompilationException.class)
-                .satisfies(e -> assertThat(e.getMessage().lines().toList()).containsExactly(
-                        "[ERROR] " + resolved("main.evo")
-                                + ":1: .IMPORT must stand alone on its line; found ';' after the alias and its USING clauses."));
-    }
-
-    @Test
-    void aRequireFollowedByAStatementOnItsLineIsRejectedByTheLineRule() throws Exception {
-        write("main.evo",
-                ".REQUIRE MODULE \"d.evo\" AS D; NOP",
-                "START:",
-                "  NOP");
-
-        assertThatThrownBy(() -> compile("main.evo"))
-                .isInstanceOf(CompilationException.class)
-                .satisfies(e -> assertThat(e.getMessage().lines().toList()).containsExactly(
-                        "[ERROR] " + resolved("main.evo")
-                                + ":1: .REQUIRE must stand alone on its line; found ';' after the alias."));
     }
 
     @Test

@@ -114,10 +114,15 @@ class ImportPatternTest {
         assertRecognised(".IMPORT \"m.evo\" AS NAV USING X", "m.evo");
     }
 
+    /**
+     * What stands before the directive on its line does not decide whether the file is read:
+     * the preprocessor accepts a statement there, so the file has to be loaded for it.
+     */
     @Test
     @Tag("unit")
-    void aWordMerelyStartingWithExportIsNotTheMarker() {
-        assertThat(loaded("EXPORTED .IMPORT \"m.evo\" AS NAV")).isEmpty();
+    void aWordBeforeTheDirectiveDoesNotHideThePath() {
+        assertRecognised("EXPORTED .IMPORT \"m.evo\" AS NAV", "m.evo");
+        assertRecognised("NOP .IMPORT \"m.evo\" AS NAV", "m.evo");
     }
 
     @Test

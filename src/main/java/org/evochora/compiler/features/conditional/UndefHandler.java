@@ -24,9 +24,7 @@ public class UndefHandler implements IPreProcessorHandler {
 
         String error = null;
         List<Token> operands = line.operands();
-        if (!line.standsAlone()) {
-            error = ".UNDEF must stand alone on its line";
-        } else if (operands.isEmpty()) {
+        if (operands.isEmpty()) {
             error = ".UNDEF needs a flag name";
         } else if (!Condition.isNameToken(operands.get(0))) {
             error = ".UNDEF needs a flag name, found '" + operands.get(0).text() + "'";

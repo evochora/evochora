@@ -53,26 +53,25 @@ class LexerLinesTest {
     }
 
     /**
-     * The line rule is judged on the physical line, as the preprocessor judges it: a statement
-     * before the directive on its line, behind a {@code ;}, breaks it. The import handler passes
-     * such a line over, and the preprocessor reports it; nothing is defined, removed or decided
-     * by a line the preprocessor rejects.
+     * An import, a flag directive and a flag removal share their line with other statements as
+     * the preprocessor lets them; only a head of a conditional block has to stand alone, which
+     * the scan judges on the physical line as the preprocessor does.
      */
     @Test
-    void aStatementBeforeADirectiveOnItsLineBreaksTheLineRule() throws Exception {
+    void aStatementNextToADirectiveOnItsLineIsJudgedAsThePreprocessorJudgesIt() throws Exception {
         Files.writeString(tempDir.resolve("lib.evo"), "NOP\n");
         Files.writeString(tempDir.resolve("big.evo"), "NOP\n");
 
         Reading importBehind = read("NOP; .IMPORT \"lib.evo\" AS LIB\n", CompilerOptions.defaults());
-        assertThat(importBehind.graph.tokens()).doesNotContainKey(resolved("lib.evo"));
+        assertThat(importBehind.graph.tokens()).containsKey(resolved("lib.evo"));
 
         Reading defineWithNeighbour = read(".DEFINE BIG ; NOP\n.IFDEF BIG\n.SOURCE \"big.evo\"\n.ENDDEF\n",
                 CompilerOptions.defaults());
-        assertThat(defineWithNeighbour.graph.tokens()).doesNotContainKey(resolved("big.evo"));
+        assertThat(defineWithNeighbour.graph.tokens()).containsKey(resolved("big.evo"));
 
         Reading undefBehind = read(".DEFINE BIG\nNOP ; .UNDEF BIG\n.IFDEF BIG\n.SOURCE \"big.evo\"\n.ENDDEF\n",
                 CompilerOptions.defaults());
-        assertThat(undefBehind.graph.tokens()).containsKey(resolved("big.evo"));
+        assertThat(undefBehind.graph.tokens()).doesNotContainKey(resolved("big.evo"));
 
         Reading headBehind = read(".DEFINE BIG\nNOP ; .IFDEF BIG\n.SOURCE \"big.evo\"\n.ENDDEF\n",
                 CompilerOptions.defaults());

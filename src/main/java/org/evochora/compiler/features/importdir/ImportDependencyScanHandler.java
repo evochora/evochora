@@ -15,21 +15,15 @@ import java.util.List;
  * placement of its own, under the importing placement's chain followed by the alias, and
  * records the dependency.
  * <p>
- * Every line that names a module file is followed, whatever comes after the path, so the file is
- * loaded even when the directive is malformed and the parser can report the malformation. An
- * {@code EXPORT} before the word is accepted so that the line is read as an import; whether the
- * import is passed on is taken from the parser's node, not from here. A directive without an
- * alias names no dependency; its tokens are still needed so the phase that reads the directive
- * can report what is wrong with it.
+ * Every line that names a module file is followed, whatever stands before the word or after the
+ * path, so the file is loaded even when the directive is malformed and the parser can report the
+ * malformation. A directive without an alias names no dependency; its tokens are still needed so
+ * the phase that reads the directive can report what is wrong with it.
  */
 public class ImportDependencyScanHandler implements IDependencyScanHandler {
 
     @Override
     public void handle(DirectiveLine line, IDependencyScanContext ctx) {
-        Token before = line.before();
-        if (before != null && !(before.type() == TokenType.IDENTIFIER && "EXPORT".equalsIgnoreCase(before.text()))) {
-            return;
-        }
         List<Token> operands = line.operands();
         if (operands.isEmpty() || operands.get(0).type() != TokenType.STRING) {
             return;

@@ -103,8 +103,7 @@ public class ImportDirectiveHandler implements IParserStatementHandler {
         if (!context.isAtEnd() && !context.check(TokenType.NEWLINE)) {
             Token extra = context.peek();
             context.getDiagnostics().reportError(
-                    ".IMPORT must stand alone on its line; found '" + extra.text()
-                            + "' after the alias and its USING clauses.",
+                    "Unexpected '" + extra.text() + "' after the alias and its USING clauses of .IMPORT.",
                     extra.source().fileName(), extra.source().lineNumber());
             skipLine(context);
             return null;

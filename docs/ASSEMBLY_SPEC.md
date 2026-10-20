@@ -722,7 +722,7 @@ Code can be kept or left out depending on *flags*. A flag is a name that is set 
     .ENDDEF
     ```
 * **A branch that is left out** is not assembled: no constant, label or macro in it exists, and no file named in it is read.
-* **Lines of their own**: `.DEFINE`, `.UNDEF` and the directives of a conditional block each stand alone on their line, with no label before them and no statement after them.
+* **Lines of their own**: the directives of a conditional block each stand alone on their line, with no label before them and no statement after them.
 * **Macros**: A macro body may hold conditional blocks; they are decided each time the macro is expanded, and a parameter may stand where a flag name stands. `.DEFINE` and `.UNDEF` may not stand in a macro or repeat block.
 * **Flags from outside**: The configuration of a simulation sets flags for each organism (`defines { … }` in its entry), and `evochora compile --define NAME[=VALUE]` sets them for one compilation. Such a flag is set before the first line of the program is read; a program that wants a default for it uses the `.IFNDEF` form above.
 * **Flags and constants** are two different things: a `.CONST` is a value used in code and is not seen by `.IFDEF`; a flag is seen only by `.IFDEF` and cannot be used as an operand.
@@ -743,7 +743,6 @@ None of the three may stand inside a macro or a repeat block, and `.IMPORT` and 
 * **`MODULE`**: This module uses a module as `<Alias>`, reaching its exported names as `<Alias>.<Name>`, but does not inline it; the importer names the module that takes the place of `<Alias>`, and `<path>` says which file the module expects there. The alias is never exported.
 * **`VALUE`**: Defines the constant `<Name>`, whose value the importer decides; `<Default>` is its value when the importer decides nothing, and without a default the importer has to decide. It is a constant as `.CONST` makes one, with the same values (a literal or a name) and the same rules, and `EXPORT` makes it reachable from outside. Two placements of one module may receive different values.
 * **The main program** has no importer; its values come from the configuration, `values { STEPS = "DATA:20" }` in the organism's entry or `evochora compile --value STEPS=DATA:20`. A value that no `.REQUIRE VALUE` of the main program names is ignored.
-* `.REQUIRE` stands alone on its line.
 
 #### `.IMPORT`
 

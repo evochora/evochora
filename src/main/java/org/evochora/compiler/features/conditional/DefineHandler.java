@@ -32,9 +32,7 @@ public class DefineHandler implements IPreProcessorHandler {
 
         String error = null;
         List<Token> operands = line.operands();
-        if (!line.standsAlone()) {
-            error = ".DEFINE must stand alone on its line" + CONSTANT;
-        } else if (operands.isEmpty()) {
+        if (operands.isEmpty()) {
             error = ".DEFINE needs a flag name";
         } else if (!Condition.isNameToken(operands.get(0))) {
             error = ".DEFINE needs a flag name, found '" + operands.get(0).text() + "'" + CONSTANT;

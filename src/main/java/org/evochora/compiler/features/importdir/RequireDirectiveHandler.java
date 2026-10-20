@@ -7,8 +7,6 @@ import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.frontend.parser.IParsingContext;
 import org.evochora.compiler.model.ast.AstNode;
-import org.evochora.compiler.diagnostics.ErrorRecoveryException;
-import org.evochora.compiler.frontend.DirectiveLine;
 
 import java.util.List;
 import java.util.Locale;
@@ -49,14 +47,6 @@ public class RequireDirectiveHandler implements IParserStatementHandler {
     @Override
     public AstNode parse(IParsingContext context) {
         Token directive = context.peek();
-        // An EXPORT before the directive belongs to it; the line rule passes over it.
-        DirectiveLine line = context.currentLine(
-                token -> token.type() == TokenType.IDENTIFIER && "EXPORT".equalsIgnoreCase(token.text()));
-        if (line.before() != null) {
-            String message = ".REQUIRE must be the first word on its line; found '" + line.before().text() + "' before it.";
-            context.getDiagnostics().reportError(message, directive.source().fileName(), directive.source().lineNumber());
-            throw new ErrorRecoveryException(message);
-        }
         context.advance(); // consume .REQUIRE
 
         if (isWord(context, "MODULE")) {
@@ -68,11 +58,11 @@ public class RequireDirectiveHandler implements IParserStatementHandler {
                 skipLine(context);
                 return null;
             }
-            return parseModule(context, line);
+            return parseModule(context);
         }
         if (isWord(context, "VALUE")) {
             context.advance(); // consume VALUE
-            return parseValue(context, line, directive);
+            return parseValue(context, directive);
         }
         context.getDiagnostics().reportError(
                 "Expected MODULE or VALUE after .REQUIRE; found '" + context.peek().text() + "'.",
@@ -84,7 +74,7 @@ public class RequireDirectiveHandler implements IParserStatementHandler {
     /**
      * Reads {@code "path" AS ALIAS} after {@code MODULE}.
      */
-    private static AstNode parseModule(IParsingContext context, DirectiveLine line) {
+    private static AstNode parseModule(IParsingContext context) {
         Token pathToken = context.consume(TokenType.STRING, "Expected a file path in quotes after .REQUIRE.");
 
         if (!isWord(context, "AS")) {
@@ -97,7 +87,7 @@ public class RequireDirectiveHandler implements IParserStatementHandler {
 
         Token aliasToken = context.consume(TokenType.IDENTIFIER, "Expected an alias name after AS.");
 
-        if (!standsAlone(context, line, AFTER_ALIAS)) {
+        if (!nothingFollows(context, AFTER_ALIAS)) {
             return null;
         }
         return new RequireNode((String) pathToken.value(), aliasToken.text(), aliasToken.source());
@@ -109,7 +99,7 @@ public class RequireDirectiveHandler implements IParserStatementHandler {
      * that name is read as one operand and kept apart from the default, which it takes the place
      * of in the analysis; its tokens stand in no source file and are no child of the node.
      */
-    private static AstNode parseValue(IParsingContext context, DirectiveLine line, Token directive) {
+    private static AstNode parseValue(IParsingContext context, Token directive) {
         boolean exported = context.isExported();
         Token name = context.consume(TokenType.IDENTIFIER, "Expected a value name after VALUE.");
         OperandNode defaultValue = null;
@@ -119,7 +109,7 @@ public class RequireDirectiveHandler implements IParserStatementHandler {
                 return null;
             }
         }
-        if (!standsAlone(context, line, AFTER_VALUE)) {
+        if (!nothingFollows(context, AFTER_VALUE)) {
             return null;
         }
         OperandNode configured = null;
@@ -153,25 +143,18 @@ public class RequireDirectiveHandler implements IParserStatementHandler {
     }
 
     /**
-     * Reports a token or a {@code ;} after the directive's operands, and passes over the rest of
-     * the line.
+     * Reports a token after the directive's operands, and passes over the rest of the statement.
      *
      * @param after What the operands end with, for the message.
-     * @return {@code true} when the directive stands alone on its line.
+     * @return {@code true} when nothing follows the operands.
      */
-    private static boolean standsAlone(IParsingContext context, DirectiveLine line, String after) {
+    private static boolean nothingFollows(IParsingContext context, String after) {
         if (!context.isAtEnd() && !context.check(TokenType.NEWLINE)) {
             Token extra = context.peek();
             context.getDiagnostics().reportError(
-                    ".REQUIRE must stand alone on its line; found '" + extra.text() + "' after " + after + ".",
+                    "Unexpected '" + extra.text() + "' after " + after + " of .REQUIRE.",
                     extra.source().fileName(), extra.source().lineNumber());
             skipLine(context);
-            return false;
-        }
-        if (line.separator() != null) {
-            context.getDiagnostics().reportError(
-                    ".REQUIRE must stand alone on its line; found ';' after " + after + ".",
-                    line.separator().source().fileName(), line.separator().source().lineNumber());
             return false;
         }
         return true;
