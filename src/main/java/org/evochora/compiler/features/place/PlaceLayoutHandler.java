@@ -55,27 +55,25 @@ public final class PlaceLayoutHandler implements ILayoutDirectiveHandler {
         }
     }
 
+    /**
+     * The molecule the directive places: its typed literal, whose type the instruction set has to
+     * know and whose number has to fit a cell of that type. The parser accepts only a typed
+     * literal for a {@code .PLACE}, so any other value here is a defect of the converter.
+     */
     private PlacedMolecule createMolecule(IrDirective directive) throws CompilationException {
-        IrValue val = directive.args().get("value");
-        IrValue.Str t = (IrValue.Str) directive.args().get("type");
-        if (t == null) {
+        if (!(directive.args().get("value") instanceof IrValue.Literal literal
+                && literal.value() instanceof Value.Typed typed)) {
             throw new IllegalStateException(
-                    "Missing 'type' argument in place directive — PlaceNodeConverter must provide it");
+                    "The 'value' argument of a place directive is not a typed literal: " + directive.args().get("value"));
         }
-        String ts = t.value();
-        int type = isa.moleculeType(ts).orElseThrow(() ->
-                new CompilationException(SourceInfo.locate(directive.source(), "Unknown molecule type '" + ts + "' in .PLACE.")));
-        long value = val instanceof IrValue.Literal literal ? switch (literal.value()) {
-            case Value.Typed typed -> typed.number();
-            case Value.Number number -> number.value();
-            default -> 0L;
-        } : 0L;
+        int type = isa.moleculeType(typed.type()).orElseThrow(() ->
+                new CompilationException(SourceInfo.locate(directive.source(), "Unknown molecule type '" + typed.type() + "' in .PLACE.")));
         IInstructionSet.ValueRange range = isa.valueRange(type);
-        if (!range.contains(value)) {
+        if (!range.contains(typed.number())) {
             throw new CompilationException(SourceInfo.locate(directive.source(),
-                    "Value " + value + " out of range for a cell (" + range + ")."));
+                    "Value " + typed.number() + " out of range for a cell (" + range + ")."));
         }
-        return new PlacedMolecule(type, (int) value, 0);
+        return new PlacedMolecule(type, (int) typed.number(), 0);
     }
 
     private List<int[]> generateCoordinates(IPlacementArgument placement, LayoutContext context, SourceInfo src) throws CompilationException {

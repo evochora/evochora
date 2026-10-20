@@ -55,8 +55,7 @@ public class LayoutEngineTest {
         IrDirective push = new IrDirective("core", "push_ctx", new HashMap<>(), src("lib.inc", 9));
 
         Map<String, IrValue> placeArgs = new HashMap<>();
-        placeArgs.put("type", new IrValue.Str("ENERGY"));
-        placeArgs.put("value", new IrValue.Literal(new Value.Number(50)));
+        placeArgs.put("value", new IrValue.Literal(new Value.Typed("ENERGY", 50)));
         IrVectorPlacement placement = new IrVectorPlacement(List.of(5, 0));
         placeArgs.put("placements", new IrValue.PlacementListVal(List.of(placement)));
         IrDirective place = new IrDirective("core", "place", placeArgs, src("lib.inc", 10));

@@ -26,9 +26,6 @@ public final class PlaceNodeConverter implements IAstNodeToIrConverter<PlaceNode
 
         // Convert the literal part
         if (node.literal() instanceof LiteralNode literal) {
-            if (literal.value() instanceof Value.Typed typed) {
-                args.put("type", new IrValue.Str(typed.type()));
-            }
             args.put("value", new IrValue.Literal(literal.value()));
         }
 
