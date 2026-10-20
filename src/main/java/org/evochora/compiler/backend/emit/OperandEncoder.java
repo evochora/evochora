@@ -70,11 +70,7 @@ public final class OperandEncoder {
      * value field of a cell.
      */
     private int cell(int type, long value, SourceInfo src) throws CompilationException {
-        IInstructionSet.ValueRange range = isa.valueRange(type);
-        if (!range.contains(value)) {
-            throw new CompilationException(SourceInfo.locate(src,
-                    "Value " + value + " out of range for a cell (" + range + ")."));
-        }
+        isa.valueRange(type).require(value, src);
         return isa.encodeCell(type, (int) value);
     }
 

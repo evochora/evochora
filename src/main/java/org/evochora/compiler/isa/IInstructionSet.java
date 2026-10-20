@@ -1,5 +1,8 @@
 package org.evochora.compiler.isa;
 
+import org.evochora.compiler.api.CompilationException;
+import org.evochora.compiler.api.SourceInfo;
+
 import java.util.List;
 import java.util.Optional;
 
@@ -140,6 +143,20 @@ public interface IInstructionSet {
 		 */
 		public boolean contains(long value) {
 			return value >= min && value <= max;
+		}
+
+		/**
+		 * Rejects a number outside the range, at the position of what wrote it.
+		 *
+		 * @param value The number.
+		 * @param src   The position for the message.
+		 * @throws CompilationException if the number lies outside the range.
+		 */
+		public void require(long value, SourceInfo src) throws CompilationException {
+			if (!contains(value)) {
+				throw new CompilationException(SourceInfo.locate(src,
+						"Value " + value + " out of range for a cell (" + this + ")."));
+			}
 		}
 
 		@Override

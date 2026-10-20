@@ -68,11 +68,7 @@ public final class PlaceLayoutHandler implements ILayoutDirectiveHandler {
         }
         int type = isa.moleculeType(typed.type()).orElseThrow(() ->
                 new CompilationException(SourceInfo.locate(directive.source(), "Unknown molecule type '" + typed.type() + "' in .PLACE.")));
-        IInstructionSet.ValueRange range = isa.valueRange(type);
-        if (!range.contains(typed.number())) {
-            throw new CompilationException(SourceInfo.locate(directive.source(),
-                    "Value " + typed.number() + " out of range for a cell (" + range + ")."));
-        }
+        isa.valueRange(type).require(typed.number(), directive.source());
         return new PlacedMolecule(type, (int) typed.number(), 0);
     }
 
