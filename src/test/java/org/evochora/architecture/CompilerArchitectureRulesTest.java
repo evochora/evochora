@@ -386,8 +386,9 @@ class CompilerArchitectureRulesTest {
      * package that another phase references is a record or an interface; a class of a feature
      * that implements a handler interface of a phase uses classes with behaviour of that phase
      * only, takes from earlier phases records and interfaces only, and references nothing of a
-     * later phase, and so does every helper class of the features it references directly, such
-     * as a state holder or a condition, which serves the handler's phase through it; a class of a
+     * later phase, and so does every helper class of the features it reaches, directly or through
+     * other helpers, such as a state holder or a condition, which serves the handler's phase
+     * through it; a class of a
      * feature that implements no handler interface and that no handler reaches this way uses the
      * logic of at most one phase; and the {@code frontend} root
      * and the phase-free packages reference no phase package at all, so that no class can reach
@@ -464,14 +465,10 @@ class CompilerArchitectureRulesTest {
                     }
                     int own = served.iterator().next();
                     checkTarget(clazz, target, own, clazz.getName(), events);
-                    // A helper of the features that the handler reaches directly serves the handler's
-                    // phase through it, so its own dependencies are held to the same limits
-                    if (isFeatureHelper(target)) {
-                        for (Dependency inner : target.getDirectDependenciesFromSelf()) {
-                            checkTarget(clazz, inner.getTargetClass(), own,
-                                    clazz.getName() + " through " + target.getName(), events);
-                        }
-                    }
+                    // A helper of the features that the handler reaches serves the handler's phase
+                    // through it, so its dependencies, and those of the helpers it reaches in turn,
+                    // are held to the same limits
+                    checkHelper(clazz, target, own, clazz.getName(), new java.util.HashSet<>(), events);
                 }
                 if (logicOf.size() > 1) {
                     events.add(SimpleConditionEvent.violated(clazz,
@@ -479,6 +476,21 @@ class CompilerArchitectureRulesTest {
                 }
             }
         };
+    }
+
+    /**
+     * Follows a feature helper the handler reaches, and every helper that one reaches, each once,
+     * holding what they reference to the limits of the handler's phase.
+     */
+    private static void checkHelper(JavaClass clazz, JavaClass helper, int own, String via,
+                                    java.util.Set<JavaClass> visited, ConditionEvents events) {
+        if (!isFeatureHelper(helper) || !visited.add(helper)) return;
+        String path = via + " through " + helper.getName();
+        for (Dependency inner : helper.getDirectDependenciesFromSelf()) {
+            JavaClass target = inner.getTargetClass();
+            checkTarget(clazz, target, own, path, events);
+            checkHelper(clazz, target, own, path, visited, events);
+        }
     }
 
     /**
