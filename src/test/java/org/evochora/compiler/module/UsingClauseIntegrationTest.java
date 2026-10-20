@@ -9,7 +9,6 @@ import org.evochora.compiler.StandardFeatures;
 import org.evochora.compiler.api.SourceRoot;
 import org.evochora.compiler.diagnostics.Diagnostic;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
-import org.evochora.compiler.frontend.lexer.Tokenizer;
 import org.evochora.compiler.frontend.lexer.DependencyGraph;
 import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.util.SourceRootResolver;
@@ -319,7 +318,7 @@ class UsingClauseIntegrationTest {
 
         // The main file as the stream
         Map<String, List<Token>> fileTokens = graph.tokens();
-        List<Token> mainTokens = new ArrayList<>(new Tokenizer(mainSource, diagnostics, mainPath, TestLexers.symbols()).scanTokens());
+        List<Token> mainTokens = new ArrayList<>(graph.mainStream());
 
         // Phase 2: Preprocessing (with root alias chain)
         PreProcessorContext ppContext = new PreProcessorContext(rootAliasChain, fileTokens, mainPath, CompilerOptions.defaults());

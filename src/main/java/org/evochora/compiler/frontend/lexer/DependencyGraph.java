@@ -15,7 +15,9 @@ import java.util.Map;
  * @param tokens     The tokens of every file read, without an end-of-file token, by path.
  * @param lines      The lines of text of every file read, by path, for the source view.
  * @param mainPath   The resolved path of the main file.
+ * @param mainStream The tokens of the main file with the tokenizer's end-of-file token: the
+ *                   stream the preprocessor starts from, into which the other files are inlined.
  */
 public record DependencyGraph(List<ModulePlacement> placements, Map<String, List<Token>> tokens,
-                              Map<String, List<String>> lines, String mainPath) {
+                              Map<String, List<String>> lines, String mainPath, List<Token> mainStream) {
 }

@@ -340,7 +340,7 @@ class ModuleSourceConstIntegrationTest {
 
         // The main file as the stream
         Map<String, List<Token>> fileTokens = graph.tokens();
-        List<Token> mainTokens = new ArrayList<>(new Tokenizer(mainSource, diagnostics, mainPath, TestLexers.symbols()).scanTokens());
+        List<Token> mainTokens = new ArrayList<>(graph.mainStream());
 
         // Phase 2: Preprocessing (with root alias chain for alias chain tracking)
         PreProcessorContext ppContext = new PreProcessorContext(rootAliasChain, fileTokens, mainPath, CompilerOptions.defaults());

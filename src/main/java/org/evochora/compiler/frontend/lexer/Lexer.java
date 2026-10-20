@@ -81,13 +81,14 @@ public final class Lexer {
      */
     public DependencyGraph read(String mainContent, String mainPath, String rootAliasChain) {
         State state = new State();
-        state.tokens.put(mainPath, tokenize(mainPath, mainContent, state));
+        List<Token> mainStream = tokenize(mainPath, mainContent, state);
+        state.tokens.put(mainPath, withoutEof(mainStream));
         readModule(state, rootAliasChain, mainPath);
         if (diagnostics.hasErrors()) {
-            return new DependencyGraph(List.of(), Map.of(), Map.of(), mainPath);
+            return new DependencyGraph(List.of(), Map.of(), Map.of(), mainPath, List.of());
         }
         return new DependencyGraph(List.copyOf(state.placements), Collections.unmodifiableMap(state.tokens),
-                Collections.unmodifiableMap(state.lines), mainPath);
+                Collections.unmodifiableMap(state.lines), mainPath, List.copyOf(mainStream));
     }
 
     /**
@@ -103,12 +104,22 @@ public final class Lexer {
         final Map<Class<?>, Object> featureState = new HashMap<>();
     }
 
+    /**
+     * Tokenizes a file and records its lines; the tokens keep the tokenizer's end-of-file token.
+     */
     private List<Token> tokenize(String path, String content, State state) {
         state.lines.putIfAbsent(path, List.of(content.split("\\r?\\n")));
         String text = content.endsWith("\n") ? content : content + "\n";
-        List<Token> tokens = new Tokenizer(text, diagnostics, path, isa, symbols).scanTokens();
-        Tokenizer.stripEofToken(tokens);
-        return tokens;
+        return new Tokenizer(text, diagnostics, path, isa, symbols).scanTokens();
+    }
+
+    /**
+     * The tokens of a file as they are kept for inlining: without the end-of-file token.
+     */
+    private static List<Token> withoutEof(List<Token> tokens) {
+        List<Token> kept = new ArrayList<>(tokens);
+        Tokenizer.stripEofToken(kept);
+        return kept;
     }
 
     private void readModule(State state, String aliasChain, String path) {
@@ -190,7 +201,7 @@ public final class Lexer {
         public List<Token> loadTokens(String resolvedPath) throws IOException {
             List<Token> loaded = state.tokens.get(resolvedPath);
             if (loaded == null) {
-                loaded = tokenize(resolvedPath, loadContent(resolvedPath), state);
+                loaded = withoutEof(tokenize(resolvedPath, loadContent(resolvedPath), state));
                 state.tokens.put(resolvedPath, loaded);
             }
             return loaded;

@@ -10,7 +10,6 @@ import org.evochora.compiler.api.TokenInfo;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.compiler.frontend.lexer.Tokenizer;
 import org.evochora.compiler.model.token.Token;
-import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.frontend.lexer.DependencyGraph;
 import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.util.SourceRootResolver;
@@ -177,9 +176,7 @@ public class Compiler implements ICompiler {
                 isa, featureRegistry.lexerSymbols());
         DependencyGraph graph = lexer.read(fullSource, mainFilePath, rootAliasChain);
         failOnErrors(diagnostics);
-        List<Token> initialTokens = new ArrayList<>(graph.tokens().get(mainFilePath));
-        initialTokens.add(new Token(TokenType.END_OF_FILE, "", null,
-                new SourceInfo(mainFilePath, graph.lines().get(mainFilePath).size() + 1, 1, "", 0)));
+        List<Token> initialTokens = new ArrayList<>(graph.mainStream());
         Map<String, List<Token>> valueTokens = Tokenizer.lexValues(effectiveOptions.values(), rootAliasChain, isa,
                 featureRegistry.lexerSymbols());
 
