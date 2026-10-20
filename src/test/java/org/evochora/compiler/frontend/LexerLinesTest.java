@@ -107,14 +107,17 @@ class LexerLinesTest {
         assertThat(reading.graph.tokens()).containsKey(resolved("lib#1.evo"));
     }
 
+    /**
+     * A string over two lines is one token, so the path is the whole string; no file of that
+     * name is made, because not every file system allows a line break in a name, and the
+     * message for the missing file shows the path that was read.
+     */
     @Test
-    void aPathOverTwoLinesIsReadWhole() throws Exception {
-        Files.writeString(tempDir.resolve("lib\n.evo"), "NOP\n");
+    void aPathOverTwoLinesIsReadWhole() {
+        Reading reading = read(".SOURCE \"lib\n.evo\"\n", CompilerOptions.defaults());
 
-        Reading reading = read(".IMPORT \"lib\n.evo\" AS LIB\n", CompilerOptions.defaults());
-
-        assertThat(reading.diagnostics.hasErrors()).isFalse();
-        assertThat(reading.graph.tokens()).containsKey(resolved("lib\n.evo"));
+        assertThat(reading.diagnostics.getDiagnostics()).hasSize(1);
+        assertThat(reading.diagnostics.getDiagnostics().get(0).message()).isEqualTo("Source file not found: lib\n.evo");
     }
 
     @Test
