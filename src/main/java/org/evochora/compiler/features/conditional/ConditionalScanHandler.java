@@ -68,7 +68,7 @@ public class ConditionalScanHandler implements IDependencyScanHandler {
         int depth = 0;
         List<Token> tokens;
         while ((tokens = ctx.nextLine()) != null) {
-            DirectiveLine line = blockWord(tokens);
+            DirectiveLine line = blockWord(tokens, ctx);
             if (line == null) {
                 continue;
             }
@@ -102,7 +102,7 @@ public class ConditionalScanHandler implements IDependencyScanHandler {
         int depth = 0;
         List<Token> tokens;
         while ((tokens = ctx.nextLine()) != null) {
-            DirectiveLine line = blockWord(tokens);
+            DirectiveLine line = blockWord(tokens, ctx);
             if (line == null) {
                 continue;
             }
@@ -139,13 +139,14 @@ public class ConditionalScanHandler implements IDependencyScanHandler {
     /**
      * Finds the first word of a conditional block on a line, wherever it stands.
      *
-     * @return The directive on its line, or {@code null} if the line holds no such word.
+     * @return The directive on its line, seen on the file's whole token stream, or {@code null}
+     *         if the line holds no such word.
      */
-    private static DirectiveLine blockWord(List<Token> tokens) {
+    private static DirectiveLine blockWord(List<Token> tokens, IDependencyScanContext ctx) {
         for (int i = 0; i < tokens.size(); i++) {
             Token token = tokens.get(i);
             if (token.type() == TokenType.DIRECTIVE && WORDS.contains(token.text().toUpperCase(Locale.ROOT))) {
-                return DirectiveLine.of(tokens, i);
+                return ctx.lineOf(i);
             }
         }
         return null;

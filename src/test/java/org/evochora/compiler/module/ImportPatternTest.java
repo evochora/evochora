@@ -74,6 +74,7 @@ class ImportPatternTest {
         @Override public String sourcePath() { return "main.evo"; }
         @Override public int lineNumber() { return 1; }
         @Override public List<Token> nextLine() { return null; }
+        @Override public DirectiveLine lineOf(int indexInLine) { throw new UnsupportedOperationException(); }
         @Override public CompilerOptions options() { return CompilerOptions.defaults(); }
         @Override public <T> T getOrCreate(Class<T> key, Supplier<T> factory) { return factory.get(); }
     }

@@ -43,13 +43,40 @@ class LexerLinesTest {
     }
 
     @Test
-    void aDirectiveAfterAStatementEndIsFound() throws Exception {
+    void aStatementAfterAnImportOnItsLineLeavesTheImportFound() throws Exception {
         Files.writeString(tempDir.resolve("lib.evo"), "NOP\n");
 
-        Reading reading = read("NOP; .IMPORT \"lib.evo\" AS LIB\n", CompilerOptions.defaults());
+        Reading reading = read(".IMPORT \"lib.evo\" AS LIB; NOP\n", CompilerOptions.defaults());
 
         assertThat(reading.graph.tokens()).containsKey(resolved("lib.evo"));
         assertThat(reading.graph.placements()).extracting(p -> p.aliasChain()).containsExactly("LIB", "");
+    }
+
+    /**
+     * The line rule is judged on the physical line, as the preprocessor judges it: a statement
+     * before the directive on its line, behind a {@code ;}, breaks it. The import handler passes
+     * such a line over, and the preprocessor reports it; nothing is defined, removed or decided
+     * by a line the preprocessor rejects.
+     */
+    @Test
+    void aStatementBeforeADirectiveOnItsLineBreaksTheLineRule() throws Exception {
+        Files.writeString(tempDir.resolve("lib.evo"), "NOP\n");
+        Files.writeString(tempDir.resolve("big.evo"), "NOP\n");
+
+        Reading importBehind = read("NOP; .IMPORT \"lib.evo\" AS LIB\n", CompilerOptions.defaults());
+        assertThat(importBehind.graph.tokens()).doesNotContainKey(resolved("lib.evo"));
+
+        Reading defineWithNeighbour = read(".DEFINE BIG ; NOP\n.IFDEF BIG\n.SOURCE \"big.evo\"\n.ENDDEF\n",
+                CompilerOptions.defaults());
+        assertThat(defineWithNeighbour.graph.tokens()).doesNotContainKey(resolved("big.evo"));
+
+        Reading undefBehind = read(".DEFINE BIG\nNOP ; .UNDEF BIG\n.IFDEF BIG\n.SOURCE \"big.evo\"\n.ENDDEF\n",
+                CompilerOptions.defaults());
+        assertThat(undefBehind.graph.tokens()).containsKey(resolved("big.evo"));
+
+        Reading headBehind = read(".DEFINE BIG\nNOP ; .IFDEF BIG\n.SOURCE \"big.evo\"\n.ENDDEF\n",
+                CompilerOptions.defaults());
+        assertThat(headBehind.graph.tokens()).doesNotContainKey(resolved("big.evo"));
     }
 
     @Test

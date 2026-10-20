@@ -149,7 +149,7 @@ public final class Lexer {
                 if (token.type() != TokenType.DIRECTIVE) continue;
                 IDependencyScanHandler handler = handlers.get(token.text().toUpperCase(Locale.ROOT));
                 if (handler != null) {
-                    handler.handle(DirectiveLine.of(line, i), ctx);
+                    handler.handle(ctx.lineOf(i), ctx);
                     break;
                 }
             }
@@ -179,6 +179,7 @@ public final class Lexer {
         private final boolean sourceFileMode;
         private final List<Token> tokens;
         private int next;
+        private int lineStart;
         private int lineNumber;
         private final List<IDependencyInfo> collected = new ArrayList<>();
 
@@ -254,11 +255,17 @@ public final class Lexer {
                 }
                 next = Math.min(end + 1, tokens.size());
                 if (end > start) {
+                    lineStart = start;
                     lineNumber = tokens.get(start).source().lineNumber();
                     return tokens.subList(start, end);
                 }
             }
             return null;
+        }
+
+        @Override
+        public DirectiveLine lineOf(int indexInLine) {
+            return DirectiveLine.of(tokens, lineStart + indexInLine);
         }
 
         @Override

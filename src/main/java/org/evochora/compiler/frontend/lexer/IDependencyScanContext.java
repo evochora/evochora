@@ -1,6 +1,7 @@
 package org.evochora.compiler.frontend.lexer;
 
 import org.evochora.compiler.api.CompilerOptions;
+import org.evochora.compiler.frontend.DirectiveLine;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.util.SourceRootResolver;
 
@@ -96,6 +97,17 @@ public interface IDependencyScanContext {
      * @return The tokens of the next non-empty line, or {@code null} at the end of the file.
      */
     List<Token> nextLine();
+
+    /**
+     * The directive at the given index of the line last taken through {@link #nextLine()}, or of
+     * the line the handler was invoked for, seen on the file's whole token stream: {@code before}
+     * and {@code separator} find a statement next to the directive on the same physical line, as
+     * the preprocessor's line rule finds it.
+     *
+     * @param indexInLine The index of the directive token within the line's tokens.
+     * @return The directive on its line.
+     */
+    DirectiveLine lineOf(int indexInLine);
 
     /**
      * Returns the options of the compilation.
