@@ -375,10 +375,18 @@ class CompilerArchitectureRulesTest {
      * A phase receives the results of earlier phases as its input. A class with behaviour that
      * two phases used would tie the later phase to the decisions of the earlier one, and a change
      * there would break at a place nobody connects with it. Logic that phases share lives outside
-     * the phases, in the {@code frontend} root or in a phase-free package. So a class of a phase
-     * package that another phase references is a record or an interface, and a class of a
-     * feature, which serves one phase, references classes with behaviour of at most one phase
-     * package: the one whose handler it is.
+     * the phases, in the {@code frontend} root or in a phase-free package. So: a class of a phase
+     * package that another phase references is a record or an interface; a class of a feature
+     * that implements a handler interface of a phase uses classes with behaviour of that phase
+     * only, takes from earlier phases records and interfaces only, and references nothing of a
+     * later phase; a class of a feature that implements no handler interface, such as a state
+     * record or a condition, uses the logic of at most one phase; and the {@code frontend} root
+     * and the phase-free packages reference no phase package at all, so that no class can reach
+     * a phase through them. Which phase comes earlier is the order of {@link #PHASE_PACKAGES}.
+     * <p>
+     * What the rule cannot see: behaviour written into a record or a default method of an
+     * interface of a phase package counts as data here, because the form of a class is all a
+     * rule can judge. A reviewer reads such methods.
      */
     @Test
     void phasesShareOnlyData() {
@@ -390,7 +398,11 @@ class CompilerArchitectureRulesTest {
                     .check(compilerClasses);
         }
         classes().that().resideInAPackage(FEATURES + "..")
-                .should(useTheLogicOfAtMostOnePhase())
+                .should(useTheLogicOfTheirPhaseAndTheDataOfEarlierOnes())
+                .check(compilerClasses);
+        noClasses().that().resideInAnyPackage(COMPILER + ".frontend", COMPILER + ".isa..", COMPILER + ".diagnostics..",
+                        COMPILER + ".util..", COMPILER + ".api..", COMPILER + ".model..")
+                .should().dependOnClassesThat().resideInAnyPackage(PHASE_PACKAGES)
                 .check(compilerClasses);
     }
 
@@ -403,23 +415,53 @@ class CompilerArchitectureRulesTest {
         };
     }
 
-    private static ArchCondition<JavaClass> useTheLogicOfAtMostOnePhase() {
-        return new ArchCondition<>("use the logic of at most one phase") {
+    /**
+     * The index of the phase whose package holds the class, or -1 for a class outside the phases.
+     */
+    private static int phaseOf(JavaClass clazz) {
+        for (int i = 0; i < PHASE_PACKAGES.length; i++) {
+            String phasePackage = PHASE_PACKAGES[i].substring(0, PHASE_PACKAGES[i].length() - 2);
+            if (clazz.getPackageName().equals(phasePackage)) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private static ArchCondition<JavaClass> useTheLogicOfTheirPhaseAndTheDataOfEarlierOnes() {
+        return new ArchCondition<>("use the logic of their phase only, the data of earlier phases, and nothing of a later one") {
             @Override
             public void check(JavaClass clazz, ConditionEvents events) {
-                java.util.Set<String> phases = new java.util.TreeSet<>();
+                // The phase a feature class serves: the one whose interfaces it implements
+                java.util.Set<Integer> served = new java.util.TreeSet<>();
+                for (JavaClass implemented : clazz.getAllRawInterfaces()) {
+                    int phase = phaseOf(implemented);
+                    if (phase >= 0) served.add(phase);
+                }
+                if (served.size() > 1) {
+                    events.add(SimpleConditionEvent.violated(clazz,
+                            clazz.getName() + " implements interfaces of more than one phase"));
+                    return;
+                }
+                java.util.Set<String> logicOf = new java.util.TreeSet<>();
                 for (Dependency dependency : clazz.getDirectDependenciesFromSelf()) {
                     JavaClass target = dependency.getTargetClass();
-                    if (target.isInterface() || target.isRecord()) continue;
-                    for (String phasePackage : PHASE_PACKAGES) {
-                        if (target.getPackageName().startsWith(phasePackage.substring(0, phasePackage.length() - 2))) {
-                            phases.add(phasePackage);
-                        }
+                    int phase = phaseOf(target);
+                    if (phase < 0) continue;
+                    boolean data = target.isInterface() || target.isRecord();
+                    if (served.isEmpty()) {
+                        if (!data) logicOf.add(PHASE_PACKAGES[phase]);
+                    } else if (phase > served.iterator().next()) {
+                        events.add(SimpleConditionEvent.violated(clazz,
+                                clazz.getName() + " references " + target.getName() + " of a later phase"));
+                    } else if (phase < served.iterator().next() && !data) {
+                        events.add(SimpleConditionEvent.violated(clazz,
+                                clazz.getName() + " uses the logic of an earlier phase, " + target.getName()));
                     }
                 }
-                if (phases.size() > 1) {
+                if (logicOf.size() > 1) {
                     events.add(SimpleConditionEvent.violated(clazz,
-                            clazz.getName() + " uses the logic of " + phases));
+                            clazz.getName() + " uses the logic of " + logicOf));
                 }
             }
         };
