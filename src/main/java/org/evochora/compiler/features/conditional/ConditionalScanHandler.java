@@ -25,9 +25,9 @@ import java.util.Locale;
  *   <li>{@code .ENDDEF} closes the open block.</li>
  * </ul>
  * A divider or {@code .ENDDEF} with no block open in its file is passed over. A condition the
- * handler cannot read, one that cannot be evaluated, and a head with a token before it on its
- * line make the handler take the lines up to the block's {@code .ENDDEF}, so that no branch of
- * the block is read, as the preprocessor removes the whole block. A token before a divider or
+ * handler cannot read, one that cannot be evaluated, and a head or divider that does not stand
+ * alone on its line make the handler take the lines up to the block's {@code .ENDDEF}, so that
+ * no branch of the block is read, as the preprocessor removes the whole block. A token before a divider or
  * the {@code .ENDDEF} does not stop the word from counting as one, as the preprocessor matches
  * the block by its words before it checks their lines. The handler reports nothing: the
  * preprocessor owns those messages, and an error reported here would stop the compilation
@@ -81,7 +81,7 @@ public class ConditionalScanHandler implements IDependencyScanHandler {
                 }
                 depth--;
             } else if (depth == 0) {
-                Decision decision = ELSE.equals(word) && line.before() == null
+                Decision decision = ELSE.equals(word) && line.standsAlone()
                         ? Decision.HOLDS : decide(line, ctx);
                 if (decision == Decision.HOLDS) {
                     blocks.open(ctx.sourcePath());
@@ -121,11 +121,11 @@ public class ConditionalScanHandler implements IDependencyScanHandler {
     private enum Decision { HOLDS, FAILS, INVALID }
 
     /**
-     * Decides a head. A head with a token before it on its line is invalid, as the preprocessor
-     * finds it so; so is a condition the preprocessor would reject or cannot evaluate.
+     * Decides a head. A head that does not stand alone on its line is invalid, as the
+     * preprocessor finds it so; so is a condition the preprocessor would reject or cannot evaluate.
      */
     private static Decision decide(DirectiveLine line, IDependencyScanContext ctx) {
-        if (line.before() != null) {
+        if (!line.standsAlone()) {
             return Decision.INVALID;
         }
         try {

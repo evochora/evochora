@@ -79,6 +79,24 @@ class LexerLinesTest {
         assertThat(headBehind.graph.tokens()).doesNotContainKey(resolved("big.evo"));
     }
 
+    /**
+     * A statement after a head or a divider on its line breaks the line rule too; the
+     * preprocessor removes the whole block, so the scan reads none of its branches.
+     */
+    @Test
+    void aStatementAfterAHeadOrADividerOnItsLineSkipsTheBlock() throws Exception {
+        Files.writeString(tempDir.resolve("big.evo"), "NOP\n");
+
+        for (String source : new String[]{
+                ".DEFINE BIG\n.IFDEF BIG; NOP\n.SOURCE \"big.evo\"\n.ENDDEF\n",
+                ".DEFINE BIG\n.IFDEF NO\n.ELSEIFDEF BIG; NOP\n.SOURCE \"big.evo\"\n.ENDDEF\n",
+                ".IFDEF NO\n.ELSEDEF; NOP\n.SOURCE \"big.evo\"\n.ENDDEF\n"}) {
+            Reading reading = read(source, CompilerOptions.defaults());
+            assertThat(reading.diagnostics.hasErrors()).as(source).isFalse();
+            assertThat(reading.graph.tokens()).as(source).doesNotContainKey(resolved("big.evo"));
+        }
+    }
+
     @Test
     void aHashInsideAPathIsPartOfThePath() throws Exception {
         Files.writeString(tempDir.resolve("lib#1.evo"), "NOP\n");
