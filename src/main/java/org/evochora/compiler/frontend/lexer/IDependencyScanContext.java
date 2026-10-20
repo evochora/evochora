@@ -21,7 +21,8 @@ public interface IDependencyScanContext {
      * Resolves a path written in a directive against the file being read.
      * @param path The path as written.
      * @return The resolved absolute path.
-     * @throws SourceRootResolver.UnresolvablePathException if the path prefix is unknown.
+     * @throws SourceRootResolver.UnresolvablePathException if the path prefix is unknown or the
+     *                                                      file system does not allow the path.
      */
     String resolve(String path) throws SourceRootResolver.UnresolvablePathException;
 
@@ -94,8 +95,8 @@ public interface IDependencyScanContext {
     /**
      * The directive at the given index of the line last taken through {@link #nextLine()}, or of
      * the line the handler was invoked for, seen on the file's whole token stream: {@code before}
-     * and {@code separator} find a statement next to the directive on the same physical line, as
-     * the preprocessor's line rule finds it.
+     * and {@code separator} find a statement next to the directive on the same physical line, and
+     * {@code startsStatement} says whether the directive begins a statement.
      *
      * @param indexInLine The index of the directive token within the line's tokens.
      * @return The directive on its line.

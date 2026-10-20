@@ -12,9 +12,9 @@ import java.util.OptionalLong;
 
 /**
  * Handles {@code .DEFINE NAME [integer]}, which sets a flag in the {@link Flags} of the
- * preprocessor run, from this point of the token stream on. The directive stands alone on its
- * line and is removed with it. A flag that is already set may be defined again only with the
- * same definition.
+ * preprocessor run, from this point of the token stream on. The directive begins a statement,
+ * which the integer ends, and is removed with it. A flag that is already set may be defined
+ * again only with the same definition.
  * <p>
  * A constant, a value used in code, is a different concept and is written {@code .CONST}; the
  * messages for a {@code .DEFINE} that looks like one say so.

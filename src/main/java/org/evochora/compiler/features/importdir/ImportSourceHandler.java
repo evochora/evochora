@@ -19,9 +19,8 @@ import java.util.List;
  * Inlines the imported module's pre-lexed tokens at the directive location, wrapped with
  * PUSH_CTX/POP_CTX for relative .ORG support. The directive tokens remain in the
  * stream for the parser to create an {@code ImportNode}. The handler reads the path and the alias
- * and passes over the rest of the line, which the parser reads. The directive stands alone on its
- * line: anything but an {@code EXPORT} before it, or a {@code ;} that puts another statement after
- * it, is an error.
+ * and passes over the rest of the statement, which the parser reads. The directive begins a
+ * statement: anything but an {@code EXPORT} before it without a statement end is an error.
  *
  * <p>Every import is a placement and an entry of the preprocessor's sources, under the
  * placement's alias chain, instance 0 and the position of the directive.</p>

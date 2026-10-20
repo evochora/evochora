@@ -29,7 +29,8 @@ import java.util.List;
  * preprocessor's sources, under the including placement, that number and the position of the
  * directive.</p>
  *
- * <p>The directive stands alone on its line: a token before it or after the path is an error.</p>
+ * <p>The directive begins a statement, and the path ends it: a word before the directive without
+ * a statement end, or a token after the path, is an error.</p>
  */
 public class SourceDirectiveHandler implements IPreProcessorHandler {
 

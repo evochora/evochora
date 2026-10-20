@@ -24,8 +24,8 @@ import java.util.Set;
  * word may repeat. After {@code MODULE}, a group is {@code source AS target}; after
  * {@code VALUE}, a group is {@code name value}, the value read as an operand.
  *
- * <p>The directive stands alone on its line: a token after the alias and its clauses that is no
- * kind word is an error, and the rest of the line is passed over.
+ * <p>The alias and its clauses end the statement: a token after them that is no kind word is an
+ * error, and the rest of the statement is passed over.
  */
 public class ImportDirectiveHandler implements IParserStatementHandler {
 

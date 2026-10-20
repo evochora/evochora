@@ -11,7 +11,7 @@ import java.util.List;
 /**
  * Handles {@code .UNDEF NAME}, which removes a flag from the {@link Flags} of the preprocessor
  * run, from this point of the token stream on. A flag that is not set stays unset without an
- * error. The directive stands alone on its line and is removed with it.
+ * error. The directive begins a statement, which the name ends, and is removed with it.
  */
 public class UndefHandler implements IPreProcessorHandler {
 

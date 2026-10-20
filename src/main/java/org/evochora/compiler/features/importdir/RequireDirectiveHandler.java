@@ -32,9 +32,8 @@ import java.util.Optional;
  * from the token stream; nothing of the configuration enters the stream. A configured text that
  * is not exactly one operand is reported at the {@code .REQUIRE} line.
  *
- * <p>The directive stands alone on its line: a token of its file and line before it, or a token
- * after the alias or after the value and its default, is an error, and the rest of the line is
- * passed over.
+ * <p>The alias, or the value and its default, end the statement: a token after them is an error,
+ * and the rest of the statement is passed over.
  */
 public class RequireDirectiveHandler implements IParserStatementHandler {
 
