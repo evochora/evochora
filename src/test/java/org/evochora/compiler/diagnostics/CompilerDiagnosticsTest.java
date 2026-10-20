@@ -172,6 +172,22 @@ class CompilerDiagnosticsTest {
         assertThatCode(() -> compile("main.evo")).doesNotThrowAnyException();
     }
 
+    /**
+     * A path the file system rejects, here one with a NUL character, is reported at the directive
+     * like an unknown prefix; the reason behind the colon is the file system's and differs
+     * between operating systems.
+     */
+    @Test
+    void aPathTheFileSystemRejectsIsReportedAtTheDirective() throws Exception {
+        write("main.evo",
+                ".SOURCE \"lib\0.evo\"",
+                "START:",
+                "  NOP");
+        assertThatThrownBy(() -> compile("main.evo"))
+                .isInstanceOf(CompilationException.class)
+                .hasMessageContaining("main.evo:1: Path 'lib\0.evo' cannot be resolved: ");
+    }
+
     @Test
     void aWordBeforeADependencyDirectiveWithoutAStatementEndIsReported() throws Exception {
         write("lib.evo",

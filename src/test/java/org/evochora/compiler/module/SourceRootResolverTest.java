@@ -100,6 +100,16 @@ public class SourceRootResolverTest {
 
     @Test
     @Tag("unit")
+    void resolve_pathTheFileSystemRejects_throwsError() {
+        SourceRootResolver resolver = new SourceRootResolver(
+                List.of(new SourceRoot(".", null)), tempDir);
+        assertThatThrownBy(() -> resolver.resolve("lib\0.evo", "main.evo"))
+                .isInstanceOf(SourceRootResolver.UnresolvablePathException.class)
+                .hasMessageContaining("Path 'lib\0.evo' cannot be resolved: ");
+    }
+
+    @Test
+    @Tag("unit")
     void resolve_noDefaultRoot_throwsError() {
         SourceRootResolver resolver = new SourceRootResolver(
                 List.of(new SourceRoot("./pred", "PRED")), tempDir);
