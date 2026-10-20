@@ -34,7 +34,7 @@ public class DefineHandler implements IPreProcessorHandler {
             // The directive owns its statement; a word before it without a statement end would lose
             // its own end with the directive's, so the line is reported and left to the parser
             preProcessor.getDiagnostics().reportError(
-                    "Unexpected '" + directive.text() + "' after '" + line.before().text() + "'.",
+                    wordBefore(line, directive),
                     directive.source().fileName(), directive.source().lineNumber());
             preProcessor.removeTokens(start, line.end() - start);
             return;
@@ -63,5 +63,14 @@ public class DefineHandler implements IPreProcessorHandler {
 
     private static boolean isInteger(Token token) {
         return token.type() == TokenType.NUMBER && token.value() instanceof Long;
+    }
+    /**
+     * The message for a word before the directive without a statement end: the parser's own
+     * wording when the word is EXPORT, which no flag or inclusion directive takes.
+     */
+    private static String wordBefore(DirectiveLine line, Token directive) {
+        return "EXPORT".equalsIgnoreCase(line.before().text())
+                ? "EXPORT is not supported before '" + directive.text() + "'."
+                : "Unexpected '" + directive.text() + "' after '" + line.before().text() + "'.";
     }
 }

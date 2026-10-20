@@ -501,7 +501,7 @@ class ConditionalExpansionTest {
                 "JMPI L");
 
         assertThat(result.errors()).containsExactly(
-                MAIN + ":1: Unexpected '.DEFINE' after 'EXPORT'.",
+                MAIN + ":1: EXPORT is not supported before '.DEFINE'.",
                 MAIN + ":2: Unexpected '.UNDEF' after 'NOP'.");
         assertThat(result.texts()).containsExactly("EXPORT", "NOP", "JMPI", "L");
     }
