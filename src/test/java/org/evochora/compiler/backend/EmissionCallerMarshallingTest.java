@@ -109,37 +109,37 @@ public class EmissionCallerMarshallingTest {
 
         @Test
         @Tag("unit")
-        @DisplayName("Should marshall CALL with label as VAL parameter using PUSV")
-        void marshallsCallWithLabelAsValParameter() {
-            // IR for: CALL myProc VAL myLabel
+        @DisplayName("Should marshall CALL with a vector as VAL parameter using PUSV")
+        void marshallsCallWithVectorAsValParameter() {
+            // IR for: CALL myProc VAL 1|0
             IrLabelRef target = new IrLabelRef("myProc");
-            IrLabelRef labelParam = new IrLabelRef("myLabel");
-            IrInstruction call = new IrCallInstruction("CALL", List.of(target), Collections.emptyList(), List.of(labelParam), List.of(), List.of(), src("main.s", 1));
+            IrVec vectorParam = new IrVec(new int[]{1, 0});
+            IrInstruction call = new IrCallInstruction("CALL", List.of(target), Collections.emptyList(), List.of(vectorParam), List.of(), List.of(), src("main.s", 1));
 
             List<IrItem> out = runEmission(List.of(call));
 
-            // Expect: PUSV myLabel, CALL myProc
+            // Expect: PUSV 1|0, CALL myProc
             assertThat(out).hasSize(2);
-            assertThat(out.get(0)).isEqualTo(IrInstruction.synthetic("PUSV", List.of(labelParam), call.source()));
+            assertThat(out.get(0)).isEqualTo(IrInstruction.synthetic("PUSV", List.of(vectorParam), call.source()));
             assertThat(out.get(1)).isEqualTo(call);
         }
 
         @Test
         @Tag("unit")
-        @DisplayName("Should marshall CALL with mixed REF, VAL immediate, and VAL label parameters")
+        @DisplayName("Should marshall CALL with mixed REF, VAL immediate, and VAL vector parameters")
         void marshallsCallWithMixedParameters() {
-            // IR for: CALL myProc REF %rA VAL 123 VAL myLabel
+            // IR for: CALL myProc REF %rA VAL 123 VAL 1|0
             IrReg rA = new IrReg("%rA");
             IrImm imm123 = new IrImm(123);
             IrLabelRef target = new IrLabelRef("myProc");
-            IrLabelRef labelParam = new IrLabelRef("myLabel");
-            IrInstruction call = new IrCallInstruction("CALL", List.of(target), List.of(rA), List.of(imm123, labelParam), List.of(), List.of(), src("main.s", 1));
+            IrVec vectorParam = new IrVec(new int[]{1, 0});
+            IrInstruction call = new IrCallInstruction("CALL", List.of(target), List.of(rA), List.of(imm123, vectorParam), List.of(), List.of(), src("main.s", 1));
 
             List<IrItem> out = runEmission(List.of(call));
 
-            // Expect: PUSV myLabel, PUSI 123, PUSH %rA, CALL myProc, POP %rA
+            // Expect: PUSV 1|0, PUSI 123, PUSH %rA, CALL myProc, POP %rA
             assertThat(out).hasSize(5);
-            assertThat(out.get(0)).isEqualTo(IrInstruction.synthetic("PUSV", List.of(labelParam), call.source()));
+            assertThat(out.get(0)).isEqualTo(IrInstruction.synthetic("PUSV", List.of(vectorParam), call.source()));
             assertThat(out.get(1)).isEqualTo(IrInstruction.synthetic("PUSI", List.of(imm123), call.source()));
             assertThat(out.get(2)).isEqualTo(IrInstruction.synthetic("PUSH", List.of(rA), call.source()));
             assertThat(out.get(3)).isEqualTo(call);

@@ -75,8 +75,8 @@ public final class CallerMarshallingRule implements IRewriteRule {
             IrOperand operand = call.valOperands().get(j);
             if (operand instanceof IrImm imm) {
                 out.add(IrInstruction.synthetic("PUSI", List.of(imm), call.source()));
-            } else if (operand instanceof IrLabelRef) {
-                // Labels as VAL parameters should be pushed as vectors (addresses)
+            } else if (operand instanceof IrVec) {
+                // A vector goes onto the data stack as a vector, with the cells of one
                 out.add(IrInstruction.synthetic("PUSV", List.of(operand), call.source()));
             } else if (operand instanceof IrTypedImm typedImm) {
                 // Keep IrTypedImm to preserve type information for display

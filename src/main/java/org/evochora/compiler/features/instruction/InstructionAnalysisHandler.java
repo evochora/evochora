@@ -80,18 +80,15 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                     switch (symbolTable.resolve(idNode.text(), idNode.sourceInfo())) {
                         case ResolvedSymbol resolved -> {
                             // What the identifier stands for is asked of the node that defined it:
-                            // a binding is checked as the argument it binds to, a jump target may
-                            // stand where a label or a jump vector is expected, anything else is
-                            // no argument at all.
+                            // a binding is checked as the argument it binds to, a jump target is a
+                            // label, anything else is no argument at all.
                             AstNode definition = resolved.symbol().node();
                             if (definition instanceof IIdentifierBinding || definition instanceof IJumpTarget) {
                                 // The symbol table follows the definitions; a circle it reports itself
                                 Optional<AstNode> bound = symbolTable.bindingOf(idNode);
                                 if (bound.isPresent()) {
                                     ArgKind actualType = getArgumentTypeFromNode(bound.get());
-                                    boolean fits = expectedType == actualType
-                                            || (actualType == ArgKind.LABEL && expectedType == ArgKind.VECTOR);
-                                    if (!fits) {
+                                    if (expectedType != actualType) {
                                         diagnostics.reportError(
                                                 String.format("Argument %d for instruction '%s' has the wrong type. Expected %s, but got %s.",
                                                         i + 1, instructionName, expectedType, actualType),
@@ -99,6 +96,8 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                                                 instructionNode.sourceInfo().lineNumber()
                                         );
                                     }
+                                    // A constant is held to the same rule as a written literal
+                                    reportUntypedLiteral(expectedType, bound.get(), i, instructionName, instructionNode, diagnostics);
                                 }
                             } else {
                                 diagnostics.reportError(
@@ -109,16 +108,11 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                                 );
                             }
                         }
-                        case Resolution.Missing missing -> {
-                            // Where a VECTOR is expected, an unresolved name may be a label the linker binds
-                            if (expectedType != ArgKind.VECTOR) {
-                                diagnostics.reportError(
-                                        "Cannot use '" + idNode.text() + "' as an argument: " + missing.explanation(),
-                                        idNode.sourceInfo().fileName(),
-                                        idNode.sourceInfo().lineNumber()
-                                );
-                            }
-                        }
+                        case Resolution.Missing missing -> diagnostics.reportError(
+                                "Cannot use '" + idNode.text() + "' as an argument: " + missing.explanation(),
+                                idNode.sourceInfo().fileName(),
+                                idNode.sourceInfo().lineNumber()
+                        );
                     }
                 } else {
                     // Normal type checking for non-identifiers
@@ -132,17 +126,25 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                         );
                     }
 
-                    // 2) A literal operand has to carry a molecule type
-                    if (expectedType == ArgKind.LITERAL && argumentNode instanceof NumberLiteralNode) {
-                        diagnostics.reportError(
-                                String.format("Argument %d for instruction '%s' requires a typed literal (e.g., DATA:42).",
-                                        i + 1, instructionName),
-                                instructionNode.sourceInfo().fileName(),
-                                instructionNode.sourceInfo().lineNumber()
-                        );
-                    }
+                    reportUntypedLiteral(expectedType, argumentNode, i, instructionName, instructionNode, diagnostics);
                 }
             }
+        }
+    }
+
+    /**
+     * A literal operand has to carry a molecule type: a bare number is rejected, written in the
+     * instruction or reached through a constant alike.
+     */
+    private static void reportUntypedLiteral(ArgKind expectedType, AstNode argument, int index, String instructionName,
+                                             InstructionNode instructionNode, DiagnosticsEngine diagnostics) {
+        if (expectedType == ArgKind.LITERAL && argument instanceof NumberLiteralNode) {
+            diagnostics.reportError(
+                    String.format("Argument %d for instruction '%s' requires a typed literal (e.g., DATA:42).",
+                            index + 1, instructionName),
+                    instructionNode.sourceInfo().fileName(),
+                    instructionNode.sourceInfo().lineNumber()
+            );
         }
     }
 

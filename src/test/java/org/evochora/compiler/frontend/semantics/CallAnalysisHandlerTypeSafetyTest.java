@@ -13,6 +13,7 @@ import org.evochora.compiler.features.proc.ProcedureNode;
 import org.evochora.compiler.features.reg.RegNode;
 import org.evochora.compiler.model.ast.IdentifierNode;
 import org.evochora.compiler.model.ast.RegisterNode;
+import org.evochora.compiler.model.ast.VectorLiteralNode;
 import org.evochora.compiler.model.symbols.Symbol;
 import org.evochora.compiler.model.symbols.SymbolTable;
 import org.evochora.runtime.isa.Instruction;
@@ -61,6 +62,15 @@ class CallAnalysisHandlerTypeSafetyTest {
                 List.of(),
                 List.of(), SRC);
         symbolTable.define(new Symbol("MY_PROC", SRC, Symbol.Type.PROCEDURE, proc, true));
+
+        // A procedure with 1 VAL param and 1 LVAL param
+        ProcedureNode valProc = new ProcedureNode("VAL_PROC", true,
+                List.of(),
+                List.of(new ProcedureNode.ParamDecl("V", SRC)),
+                List.of(),
+                List.of(new ProcedureNode.ParamDecl("LV", SRC)),
+                List.of(), SRC);
+        symbolTable.define(new Symbol("VAL_PROC", SRC, Symbol.Type.PROCEDURE, valProc, true));
     }
 
     @Test
@@ -194,26 +204,72 @@ class CallAnalysisHandlerTypeSafetyTest {
     }
 
     @Test
-    void unresolvedIdentifierAsVal_noError() {
-        // Redefine proc with 1 VAL param instead of REF
-        ProcedureNode proc = new ProcedureNode("VAL_PROC", true,
-                List.of(),
-                List.of(new ProcedureNode.ParamDecl("V", SRC)),
-                List.of(),
-                List.of(),
-                List.of(), SRC);
-        symbolTable.define(new Symbol("VAL_PROC", SRC, Symbol.Type.PROCEDURE, proc, true));
+    void unresolvedIdentifierAsVal_reportsError() {
+        CallNode call = callWithVal("SOME_NAME");
+        handler.analyze(call, symbolTable, diagnostics);
 
+        assertThat(diagnostics.hasErrors()).isTrue();
+        assertThat(diagnostics.getDiagnostics().stream()
+                .anyMatch(d -> d.message().contains("Cannot pass 'SOME_NAME' as VAL argument"))).isTrue();
+    }
+
+    @Test
+    void labelAsVal_reportsError() {
+        symbolTable.define(new Symbol("MY_LABEL", SRC, Symbol.Type.LABEL, new LabelNode("MY_LABEL", SRC, false)));
+
+        CallNode call = callWithVal("MY_LABEL");
+        handler.analyze(call, symbolTable, diagnostics);
+
+        assertThat(diagnostics.hasErrors()).isTrue();
+        assertThat(diagnostics.getDiagnostics().stream()
+                .anyMatch(d -> d.message().contains("is a label, expected a register, a literal or a vector"))).isTrue();
+    }
+
+    @Test
+    void vectorConstantAsVal_noError() {
+        symbolTable.define(new Symbol("EAST", SRC, Symbol.Type.CONSTANT,
+                new ConstNode("EAST", SRC, new VectorLiteralNode(List.of(1, 0), SRC), false)));
+
+        CallNode call = callWithVal("EAST");
+        handler.analyze(call, symbolTable, diagnostics);
+
+        assertThat(diagnostics.hasErrors()).isFalse();
+    }
+
+    @Test
+    void writtenVectorAsVal_noError() {
         CallNode call = new CallNode(
                 new IdentifierNode("VAL_PROC", SRC),
                 List.of(),
-                List.of(new IdentifierNode("SOME_LABEL", SRC)),
+                List.of(new VectorLiteralNode(List.of(1, 0), SRC)),
                 List.of(),
-                List.of(),
+                List.of(new RegisterNode("%LR0", SRC)),
                 SRC);
         handler.analyze(call, symbolTable, diagnostics);
 
         assertThat(diagnostics.hasErrors()).isFalse();
+    }
+
+    @Test
+    void constantAsLval_reportsError() {
+        symbolTable.define(new Symbol("MY_CONST", SRC, Symbol.Type.CONSTANT, new ConstNode("MY_CONST", SRC, new NumberLiteralNode(1, SRC), false)));
+
+        CallNode call = callWithLval("MY_CONST");
+        handler.analyze(call, symbolTable, diagnostics);
+
+        assertThat(diagnostics.hasErrors()).isTrue();
+        assertThat(diagnostics.getDiagnostics().stream()
+                .anyMatch(d -> d.message().contains("is a literal, expected a location register or a label"))).isTrue();
+    }
+
+    @Test
+    void unresolvedIdentifierAsLval_reportsError() {
+        CallNode call = callWithLval("SOME_NAME");
+        handler.analyze(call, symbolTable, diagnostics);
+
+        assertThat(diagnostics.hasErrors()).isTrue();
+        assertThat(diagnostics.getDiagnostics().stream()
+                .anyMatch(d -> d.message().contains("Cannot pass 'SOME_NAME' as LVAL argument"))).isTrue();
     }
 
     private CallNode callWithRef(String argName) {
@@ -224,6 +280,27 @@ class CallAnalysisHandlerTypeSafetyTest {
                 List.of(),
                 List.of(new RegisterNode("%LR0", SRC)),
                 List.of(),
+                SRC);
+    }
+
+    private CallNode callWithVal(String argName) {
+        // VAL_PROC has 1 VAL + 1 LVAL; a location register satisfies the LVAL count
+        return new CallNode(
+                new IdentifierNode("VAL_PROC", SRC),
+                List.of(),
+                List.of(new IdentifierNode(argName, SRC)),
+                List.of(),
+                List.of(new RegisterNode("%LR0", SRC)),
+                SRC);
+    }
+
+    private CallNode callWithLval(String argName) {
+        return new CallNode(
+                new IdentifierNode("VAL_PROC", SRC),
+                List.of(),
+                List.of(new NumberLiteralNode(1, SRC)),
+                List.of(),
+                List.of(new IdentifierNode(argName, SRC)),
                 SRC);
     }
 

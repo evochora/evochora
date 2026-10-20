@@ -289,19 +289,6 @@ A vector literal is used to define coordinates or direction vectors. The compone
     * `10|-5` (A vector pointing to the relative coordinate (10, -5))
     * `0xFF|0b1010` (A valid vector using mixed number formats)
 
-### Labels as Literals
-
-When a label is used as an argument for an instruction that expects a vector (like `SETV`), the compiler automatically calculates the relative vector from the instruction's location to the label's location. This allows for position-independent code.
-
-* **Example**:
-    ```
-    SETV %DR0 MY_TARGET  # DR0 will hold the vector pointing to MY_TARGET
-    ...
-    MY_TARGET: NOP
-    ```
-
----
-
 ## 6. Instruction Set
 
 The instruction set defines the fundamental operations an organism can perform. Many instructions come in three variants, identified by the last letter of their opcode:
@@ -314,7 +301,7 @@ The instruction set defines the fundamental operations an organism can perform. 
 
 * `SETI %REG <Literal>`: Sets `<%REG>` to the immediate `<Literal>`.
 * `SETR %DEST_REG %SRC_REG`: Copies the value from `<%SRC_REG>` to `<%DEST_REG>`.
-* `SETV %REG <Vector|Label>`: Sets `<%REG>` to the specified vector or the vector to the label.
+* `SETV %REG <Vector>`: Sets `<%REG>` to the specified vector.
 * `XCHG %REG1 %REG2`: Exchanges (swaps) the contents of two registers atomically.
 * `PUSH %REG`: Pushes the value of `<%REG>` onto the Data Stack.
 * `POP %REG`: Pops a value from the Data Stack into `<%REG>`.
@@ -410,9 +397,9 @@ Scans axis-aligned neighbors around the active DP and returns a bitmask indicati
 * `JMPI <Label>`: Jumps to `<Label>`, found by fuzzy label matching; fails when no label matches.
 * `JMPR %REG`: Jumps to the label whose value is in `<%REG>`.
 * `JMPS`: Jumps to the label whose value is popped from the stack.
-  `CALL <Label> [REF %reg ...] [VAL %reg|Literal ...] [LREF %lreg ...] [LVAL %lreg|Label ...]`: Calls the procedure at `<Label>`, optionally passing parameters.
+  `CALL <Label> [REF %reg ...] [VAL %reg|Literal|Vector ...] [LREF %lreg ...] [LVAL %lreg|Label ...]`: Calls the procedure at `<Label>`, optionally passing parameters.
     - `REF`: Passes registers by reference. Modifications inside the procedure affect the caller's register.
-    - `VAL`: Passes registers or literal values by value. Modifications are local.
+    - `VAL`: Passes registers, literal values or vectors by value. Modifications are local.
     - `LREF`: Passes location registers by reference. Modifications to the FLR inside the procedure are written back to the caller's location register on `RET`.
     - `LVAL`: Passes location registers or label positions by value. When a label is passed, its position is resolved via fuzzy matching at call time, as `PSLI` does: a label that matches nothing, or whose cell belongs to another organism, is passed as no position.
     - **Example**:

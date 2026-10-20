@@ -1210,7 +1210,7 @@ class CompilerDiagnosticsTest {
     }
 
     @Test
-    void aVectorPassedByValSaysWhatValTakes() throws Exception {
+    void aVectorPassedByValIsAccepted() throws Exception {
         write("main.evo",
                 ".PROC P VAL X",
                 "  RET",
@@ -1218,9 +1218,21 @@ class CompilerDiagnosticsTest {
                 "START:",
                 "  CALL P VAL 1|0");
 
+        assertThatCode(() -> compile("main.evo")).doesNotThrowAnyException();
+    }
+
+    @Test
+    void aLabelPassedByValSaysWhatValTakes() throws Exception {
+        write("main.evo",
+                ".PROC P VAL X",
+                "  RET",
+                ".ENDPROC",
+                "START:",
+                "  CALL P VAL START");
+
         assertThatThrownBy(() -> compile("main.evo"))
                 .isInstanceOf(CompilationException.class)
-                .hasMessageContaining("Cannot pass a vector as VAL argument: VAL takes a register, a literal or a label.")
+                .hasMessageContaining("VAL argument 'START' is a label, expected a register, a literal or a vector.")
                 .hasMessageContaining("main.evo:5");
     }
 
