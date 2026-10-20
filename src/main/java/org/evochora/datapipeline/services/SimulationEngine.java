@@ -711,7 +711,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
      * @param index     The position of the entry in {@code organisms}, for the error message.
      * @return The flags that are set, by name as written.
      * @throws IllegalArgumentException if {@code defines} is not an object, or a value is neither
-     *                                  a boolean nor an integer in the range of an {@code int};
+     *                                  a boolean nor an integer;
      *                                  the message names the entry and the flag.
      */
     static Map<String, OptionalLong> readDefines(Config orgConfig, int index) {

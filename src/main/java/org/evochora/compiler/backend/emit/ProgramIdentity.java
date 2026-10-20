@@ -21,7 +21,8 @@ import java.util.OptionalLong;
  * would otherwise share one artifact, whose debug information describes only one of them; the
  * identity attaches no meaning to their names or contents.
  *
- * <p>The digest is SHA-256 over a stream of 32-bit big-endian integers and the bytes of the
+ * <p>The digest is SHA-256 over a stream of 32-bit big-endian integers (a define's value, a
+ * 64-bit integer, as two such words, high word first) and the bytes of the
  * defined names and of the values' names and texts, rendered as lower-case hex and truncated to its first 16 characters (64 bits). The
  * stream is length-prefixed, so no two different programs produce the same stream:</p>
  * <ol>
@@ -33,7 +34,7 @@ import java.util.OptionalLong;
  *       components followed by the {@link PlacedMolecule}'s type, value and marker;</li>
  *   <li>the number of defines, then for each define in alphabetical order of its name: the
  *       number of bytes of that name in UTF-8 followed by those bytes, then 1 if it has a value
- *       and 0 if not, then the value (0 without one);</li>
+ *       and 0 if not, then the value as two words (0 without one);</li>
  *   <li>the number of values, then for each value in alphabetical order of its name: the number
  *       of bytes of that name in UTF-8 followed by those bytes, then the number of bytes of the
  *       value's text in UTF-8 followed by those bytes.</li>
