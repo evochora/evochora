@@ -98,9 +98,9 @@ positions as a value kind, `@` as the cursor, the lexer as the phase that finds 
 | How a handler reaches the evaluator | a read accessor `operations()` on `IFeatureRegistrationContext`, the pattern of `isa()`, handing a handler the registry at registration; the registry is complete when the phases run, as the instruction set is; the layout and the read-time contexts get it from the compiler | "a context parameter on `IAnalysisHandler`": an interface change across every analysis handler for one new need |
 | Packages of the behaviour | `compiler/expression` for what frontend and backend share, with the sub-packages `parser` (tokens) and `symbols` (symbol table) that the backend is forbidden to use; the root references neither, nor `model/ast` | "one flat package": the backend would depend, one step removed, on tokens and the symbol table; "a third package `frontend/expression`": the behaviour of one concept in two places |
 | Phase 4 and phase 6 | phase 4 computes every expression once and records the result in the symbol table, its output, as data of `model/expression`; phase 6 substitutes from the table | "phase 6 evaluates again through a class next to phase 4": a later phase using an earlier phase's logic; "phase 4 checks kinds only": division by zero and type mismatches would surface in a phase without a diagnostics engine; "the symbol table stores the evaluator's result record": a data format would depend on a behaviour package |
-| Who does the work in each phase | handlers of the `expression` feature (post-process, token map) and of the directive features (analysis, post-process, layout, emission), library classes in `compiler/expression`, a method on the context where a phase has to offer a service (read time, token map, layout, emission) | "the phase evaluates before dispatch", "a class next to the phase": phases are thin orchestrators |
+| Who does the work in each phase | handlers of the directive features (analysis, post-process, layout, emission), library classes in `compiler/expression`, a method on the context where a phase has to offer a service (read time, layout, emission); phases 5 and 6 read the recorded result of an `ExpressionNode` themselves, as phase 6 replaces an identifier today | "the phase evaluates before dispatch", "a class next to the phase": phases are thin orchestrators; "a post-process handler and a token-map contributor of the `expression` feature read the recorded results": without the feature `(A)` would reach phase 7 as an internal error, against the probe rule of the core boundary, and three context methods would serve one caller |
 | Who knows the labels in the layout | the `LayoutContext` keeps the named layout values — the cell of every label, which the engine records as it does today, and the value of every layout-valued definition, which the feature's layout handler records — and `evaluate` resolves names from them; no handler reads them; the emitter hands the same values, undeciphered, to the emission context | "the engine's local map, handed to the linker": `.ORG NW` cannot be computed; the knowledge is the same, the place is one every phase-free service can reach; "the emitter writes definition values into `constantValues`": core code that knows which named values are constants, a coupling the core boundary lists as a candidate for decoupling |
-| How a name inside a computation reaches the token map | a service on the token-map context that classifies a name at a position, with the logic the generator has today; the `expression` feature's contributor calls it for every name of a tree | "the contributor classifies": `nobodyReadsTheKindOfASymbol` forbids it the kind of a symbol; "no entries": the value behind `WIDTH` in `(WIDTH-1)`, which the visualizer shows today, would vanish |
+| How a name inside a computation reaches the token map | the generator classifies every name of an `ExpressionNode` as it classifies an `IdentifierNode`, in the one place that reads the kind of a symbol | "a classification service on the context, called by a contributor of the `expression` feature": two context methods for one caller; "the contributor classifies": `nobodyReadsTheKindOfASymbol` forbids it the kind of a symbol; "no entries": the value behind `WIDTH` in `(WIDTH-1)`, which the visualizer shows today, would vanish |
 | How a directive reads its components | the directive cuts its arguments at its own separators, outside brackets, and reads each piece with a reporting `operandOf`; the parser knows no separator | "a `component()` entry in the parser that stops before `\|`": the parser would learn the separators of three directives |
 | Where a `USING VALUE` is computed | at the import line, by a directive the import converter emits for every binding that is a computation; the requirement's own line records that its value lies under its name | "at the `.REQUIRE VALUE` line for every source": `@` and `P[i]` in a `USING VALUE` would take the module's cursor and frame |
 | Read time | the lexer is the phase that finds the files: it tokenizes each file once and runs the scan handlers over the tokens of each placement; one flag store per read-time phase, spanning the whole scan, filled by `conditional`; it moves to the core, created and seeded by the core, when computing at read time needs it there | "lex every file before the scan": the files are only known once the scan has followed the imports; "a shared character scanner for the scan": keeps the regexes and two condition parsers; "no computing at read time": the maintainer's decision for computing; "one store for both phases": the preprocessor would see the end state of the scan; "a store per scanned file": a `.DEFINE` before an `.IMPORT` would be lost in the imported file; "the store in the core in the first pull request": core code that runs only for one feature, before anything in the core needs it |
@@ -174,7 +174,8 @@ of an operation. Every constant and value is defined above its use; a use above 
 reports "the name is not defined", so that a definition can never depend on itself; a label is
 known everywhere in phase 4 and is a forward reference in the layout when it stands below the
 directive that uses it. A definition whose value is only a name that leads to a label is an alias of
-that label, as today: `JMPI LOCAL` with `.CONST LOCAL TARGET` jumps to the label. A definition whose
+that label, as today: `JMPI LOCAL` with `.CONST LOCAL TARGET` jumps to the label; a name in
+parentheses, `.CONST LOCAL (TARGET)`, is a computation and its value a layout value. A definition whose
 value is a computation that only the layout knows, such as `(NW - (1|1))` or `(@ + (0|2))`, takes its
 value at its own line, as gas gives a symbol set from `.`, and is used in layout directives only;
 `JMPI X` with such an `X` is an error. The component of a position, `P[i]`, is the component
@@ -297,8 +298,10 @@ and the backend's architecture test forbids them by name:
   too, so that `.MACRO` rejects them as a macro name or a parameter name, case-insensitively.
 - The precedence scale: the named levels of the table above, each with its order and whether it
   mixes. `UNORDERED` is unordered against the infix and chain levels only; a different operator of
-  the same `UNORDERED` level does not mix either. The right operand of `:` and every part of a chain
-  is read at the prefix level, so that a sign stands there without parentheses. A new level is a
+  the same `UNORDERED` level does not mix either. The right operand of `:` is read at the prefix level, so that
+  `DATA:-5` needs no parentheses; a part of a chain is read at the level below the chain, so that it
+  may hold a computation, `(WIDTH-1|HEIGHT-1)`, and a sign stands there because the prefix level is
+  tighter than the chain. A new level is a
   change of the core and the spec, by design.
 - The evaluator: tree in, one of four results out. `Value`; `Partial` (a smaller tree in which
   stand only names a later phase knows and operations that answered "not yet", with the kind of the
@@ -328,8 +331,8 @@ lexer symbols `+`, `*`, `/`; the five operation groups — `Arithmetic` (`+ - * 
 with the full rule as three signatures each), `Bitwise` (`AND OR XOR SHL SHR` on `UNORDERED`, `NOT`
 as prefix), `Vector` (`|` as a chain with the repeated signature "number…", `[]`, vector with vector,
 vector with number), `Typing` (`:`, `TYPE`, `NUMBER`), `Position` (position with vector, position
-with position, `[]` on a position, `POSITION`) — a post-process handler for `ExpressionNode` and a
-token-map contributor for it. Without the feature no computation inside parentheses is accepted; it
+with position, `[]` on a position, `POSITION`). It registers no phase handler: the core phases read
+the recorded result of an `ExpressionNode` themselves. Without the feature no computation inside parentheses is accepted; it
 is indispensable, as the instruction feature is, and the probe of the core boundary names it so.
 
 **The tokenizer** gets fixed token types `OPEN_PARENTHESIS`, `CLOSE_PARENTHESIS`, `OPEN_BRACKET`,
@@ -361,7 +364,7 @@ rewritten.
   `frontend/lexer`; the scan handlers of `conditional`, `importdir` and `source` lose their regexes
   and `Condition` keeps one parser; the branch logic (`ScanBlocks`) works on lines of tokens. The
   flag store stays, at first, where it is today: one per read-time phase in the state the feature
-  keeps on the context, spanning the whole scan. When computing at read time comes (step 8), it
+  keeps on the context, spanning the whole scan. When computing at read time comes (step 9), it
   becomes a class of the phase-free `frontend` root package, created by the core for each read-time
   phase and seeded from the configured flags, so that both phases start alike and pass the same
   `.DEFINE` and `.UNDEF` in the same order; `conditional` fills them and reports invalid configured
@@ -396,14 +399,15 @@ rewritten.
   computes and records it; a binding that is a plain name or a value, a default and a configured
   value record what they are. `failOnErrors` after the phase keeps every later phase from seeing a
   rejected expression.
-- *Phase 5:* the token-map context gets a service that classifies a name at a position, with the
-  logic the generator applies to an `IdentifierNode` today, so that the rule that nobody but the
-  token map reads the kind of a symbol holds; the `expression` feature's contributor calls it for
-  every name of an `ExpressionNode`, and the visualizer shows the value behind `WIDTH` inside
+- *Phase 5:* `TokenMapGenerator.visit` gets a branch for `ExpressionNode` next to its branch for
+  `IdentifierNode`: every `NameExpression` of the tree is classified as an `IdentifierNode` is, at the
+  `SourceInfo` the node carries, and the note `[=value]` is written behind the expression's last
+  token from the result phase 4 recorded. The rule that nobody but the token map reads the kind of a
+  symbol holds without a service, and the visualizer shows the value behind `WIDTH` inside
   `(WIDTH-1)` as it does behind a bare `WIDTH`.
-- *Phase 6:* the `expression` feature's post-process handler replaces each `ExpressionNode` by its
-  recorded result, through `resultOf` and a replacement method on the post-process context: a
-  `LiteralNode`, or the `Partial` tree with qualified names. A name bound to a definition is replaced
+- *Phase 6:* `AstPostProcessor.collectPass` replaces each `ExpressionNode` by its recorded result,
+  through `resultOf`, as it replaces an `IdentifierNode` through `bindingOf`: a `LiteralNode`, or the
+  `Partial` tree with qualified names. A name bound to a definition is replaced
   by what the chain of names ends at: a label's qualified name, a definition's value, or, when that
   value is `Partial`, the definition's qualified name, as a label is; `bindingOf` returns that name
   for such a definition. The post-process handler of `importdir` replaces the whole
@@ -441,9 +445,8 @@ rewritten.
 - *Emission and notes:* the emitter hands the named layout values of the `LayoutResult`,
   undeciphered, to the `EmissionContext`; the contributors of `constdir` and `importdir`, meeting a
   directive whose value is an `IrValue.Expression`, read the value under the definition's name there
-  and write `constantValues` as they do today. The token-map context's `note`, the `expression`
-  feature's contributor writing `[=value]` behind the last token of each expression from the
-  recorded results, `DebugInfo` carrying the notes; `LayoutContext.evaluate` writing a note for every
+  and write `constantValues` as they do today. The token-map generator writing `[=value]` behind the
+  last token of each expression from the recorded results, `DebugInfo` carrying the notes; `LayoutContext.evaluate` writing a note for every
   value it computes, `LayoutResult` carrying them; the emitter merging the notes into the
   `SourceFile`s and, for a note inside a macro instance, into the `Expansion` its number names,
   keeping the first note per position. Copies a `.REPEAT` makes carry no instance, so a note inside a
@@ -457,11 +460,13 @@ forms (register, literal, name, expression) and three IR operand forms (register
 reference); "One registry per phase" becomes "one registry per phase, and the operation registry,
 which every phase that computes reads"; a handler uses the package of its phase, earlier phases
 only as input, `model` and the phase-free packages; "Results, Not Side Channels" is the rule phase 6
-follows by reading the symbol table. `CompilerArchitectureRulesTest`: `compiler/expression..`
+follows by reading the symbol table; a phase uses only its own logic, from earlier phases only their
+results, which are data, and logic that phases share lives outside the phases. `CompilerArchitectureRulesTest`: `compiler/expression..`
 references no phase, and its root neither its sub-packages nor `model.token..`, `model.ast..` nor
 `model.symbols..`; `model.expression..` references no other data format and nothing of
 `compiler/expression`; `model.symbols..` references nothing of `compiler/expression`; a class
-implementing a handler interface of phase *n* imports no package of a later phase; the backend test
+implementing a handler interface of phase *n* imports no package of a later phase; a class of a phase
+package that another phase, or a handler of another phase, references is a record or an interface; the backend test
 also covers every class implementing `IOperation` or `IOperationGroup`; `Expression`, `Value`,
 `Kind`, the operation's result, the evaluator's result, the answer and the context join the
 exceptions of the naming test and `IOperation` and `IOperationGroup` carry the prefix; the phase
@@ -471,9 +476,9 @@ lists lose `frontend.module`; the backend test forbids `compiler.expression.pars
 name an operand, `.ORG` names the space before the marker's sign; `COMPILER_IR_SPEC.md` lists
 `Literal` and `Expression` and drops the placement types; `COMPILER_CORE_BOUNDARY.md` updates the
 introduction of what the core holds (expressions join the symbol table and the instruction set, the
-flag stores when step 8 moves them), the alphabet (`@` leaves it; `( ) [ ]` are fixed), the row of
+flag stores when step 9 moves them), the alphabet (`@` leaves it; `( ) [ ]` are fixed), the row of
 `conditional` and the two places that say the core reads the defines only in `ProgramIdentity` (in
-step 8 the core also seeds the flag stores, without giving the flags a meaning), the row of the labels
+step 9 the core also seeds the flag stores, without giving the flags a meaning), the row of the labels
 (the layout keeps the named layout values in its context, the emitter hands them on), the phases,
 the probe (`expression` indispensable) and "what cannot be added" (a feature can now add an
 operation; not a value kind, a level or a node kind); `CLI_USAGE.md` describes a computed `--value`.
@@ -515,7 +520,7 @@ time; the compiler is exact where the runtime is tolerant, and the two never com
   `USING VALUE ROW (@[1])` is the cursor's row relative to the importer's origin, and in the module
   `ROW` is that number in the module's frame. The spec says what `P[i]` is relative to.
 - **`OUT_NW[0]` is computed in the layout,** not in phase 4, because the component depends on the
-  origin of the line; a `.PLACE` with it in a module imported below `0|0` is the test of step 7, as
+  origin of the line; a `.PLACE` with it in a module imported below `0|0` is the test of step 8, as
   is `.CONST X (@ + (0|2))` used by `.ORG X` in such a module.
 - **A `.ORG` to a position leaves the cursor there.** `.PLACE` moves no cursor, but each corner
   label needs a cell, so the `.ORG` before it does; after the last corner the cursor stands on the
@@ -569,10 +574,19 @@ the maintainer decides when the code exists.
    users in the features and the backend, about forty production and fifteen test files. Verify: `gw
    test`, `CompilerOutputEquivalenceTest` unchanged (the reference program sets no flag). Done when
    the three shapes exist once and flags are `long`.
-3. **The lexer finds the files.** `Tokenizer` (today's `Lexer`; about thirty test files name the
+3. **Phases share only data.** `CompilerArchitectureRulesTest` gets the rule that a class of a phase
+   package which another phase, or a handler of another phase, references is a record or an interface
+   (a phase context, seen only by its phase and its handlers, stays a class); AGENTS.md gets the
+   sentence. The two places that break it today move: `ModuleContextTracker` (in the package of
+   phase 0, used by phases 4, 5 and 6) and `ScopeTracker` (in the package of phase 4, used by phase 6)
+   go to the `frontend` root next to `TreeWalker`; the linker returns a `LinkingResult` record (the
+   linked program and the call-site bindings) in place of the frozen `LinkingContext` the emitter reads
+   today, with the rules of `proc` seeing the context as before. Verify: `gw test`,
+   `CompilerOutputEquivalenceTest` unchanged. Done when the rule holds without an exception.
+4. **The lexer finds the files.** `Tokenizer` (today's `Lexer`; about thirty test files name the
    class), the new `Lexer` phase class on the bones of `DependencyScanner`, tokens cached by path,
-   `frontend/module` merged into `frontend/lexer`, `Compiler.java` with one phase in place of two,
-   `IDependencyScanHandler` with a token line in place of a regex match and its seven handlers, the
+   `frontend/module` merged into `frontend/lexer` (the trackers left it in step 3), `Compiler.java` with one phase in place of two,
+   `IDependencyScanHandler` with a token line in place of a regex match and its six handlers, the
    scan handlers of `conditional`, `importdir` and `source` dispatched by directive word, `Condition`
    with one parser, `ScanBlocks` on token lines, `Flags` kept by the feature as today,
    `PHASE_CLASSES` and `PHASE_PACKAGES`, AGENTS.md and `COMPILER_CORE_BOUNDARY.md` with eleven
@@ -585,13 +599,13 @@ the maintainer decides when the code exists.
 
 ### Pull request 2: expressions
 
-4. **The tokenizer and the label handler.** The fixed token types including `CALL_PARENTHESIS`; `-`
+5. **The tokenizer and the label handler.** The fixed token types including `CALL_PARENTHESIS`; `-`
    always an operator token; `@` alone a name token; the name scan stops before `..`;
    `FeatureRegistry` rejects a symbol equal to a fixed character, read from the tokenizer's
    constant, and `@` leaves the alphabet; `org` and `dir` register `+` and read the marker as `@` and
    an operator; a sign before a number is read as two tokens by `Parser.expression()`,
    `PlaceDirectiveHandler`, `OrgDirectiveHandler`, `MacroExpansionHandler`, `ColonLabelHandler`, and,
-   through a small helper of `frontend` that step 8 removes again, by `DefineHandler`, `Condition`,
+   through a small helper of `frontend` that step 9 removes again, by `DefineHandler`, `Condition`,
    `RepeatDirectiveHandler`, `CaretDirectiveHandler` and the scan handler of `.DEFINE`;
    `ColonLabelHandler` recognises a label by its position as written above; `DirectiveLine` gets
    "next separator outside brackets"; `MacroExpansionHandler` groups arguments with the extended
@@ -601,22 +615,20 @@ the maintainer decides when the code exists.
    `ConditionalExpansionTest` (`.DEFINE OFFSET -16`), a test for `(T:5)` and `STATE:-1`, one for a
    label as a module's first statement after `.PUSH_CTX`, one for `L1: NOP; L2: NOP`. Done when
    every program compiles unchanged and `gw test` is green.
-5. **The expression machinery.** `model/expression` (the records), `compiler/expression` (evaluator,
+6. **The expression machinery.** `model/expression` (the records), `compiler/expression` (evaluator,
    result, context, `IOperation`, `IOperationGroup`, registry, scale; `parser`; `symbols`),
    `features/expression` with the five groups, `operation(IOperation)` and `operations()` on the
    registration context and the checks the registry runs after all features registered, the reserved
    names handed to the symbol table and the flag stores, the new architecture tests, unit tests for
    each class, a test feature registering a function of its own, `StandardFeaturesTest` counting
    sixteen. Called by no phase yet. Done when the machinery is tested in isolation.
-6. **Computing in operands and constants.** `Parser.expression()` with `ExpressionNode`, the typed
+7. **Computing in operands and constants.** `Parser.expression()` with `ExpressionNode`, the typed
    form with a computed value and the bare `@`; the reporting `operandOf`; the analysis handlers
    taking the registry at registration, the label slot rejecting a layout value;
    `SymbolTable.recordResult`/`resultOf`, definition values with their kinds, and the qualified name
-   `bindingOf` returns for a `Partial` definition after following the chain of names; the
-   post-process context's `resultOf`, replacement method and definition-value method, the
-   post-process handlers of `expression` and `importdir` (the latter replacing the whole
-   `ValueRequirementNode`); the token-map context's classification service and the `expression`
-   feature's contributor; `reconstructWithChildren` on `ImportNode`, `OrgNode`, `DirNode`,
+   `bindingOf` returns for a `Partial` definition after following the chain of names; `AstPostProcessor` replacing an `ExpressionNode` by its recorded result; the post-process
+   context's definition-value method and the post-process handler of `importdir` (replacing the whole
+   `ValueRequirementNode`); the token-map generator's branch for `ExpressionNode`; `reconstructWithChildren` on `ImportNode`, `OrgNode`, `DirNode`,
    `PlaceNode`; `convertValue`, `IrValue.Expression`, `OperandText` for a tree; the macro check
    against reserved names, for macro names and parameters; the messages. Tests: `ParserTest`,
    `SemanticAnalyzerTest`, `AstPostProcessorTest`, `IrGeneratorTest`, `ConstDirectiveTest`,
@@ -625,7 +637,7 @@ the maintainer decides when the code exists.
    entry), `MacroDirectiveTest`, a test with `JMPI X` for a layout-valued `X`, a new test per
    message. Done when `SETI %DR0 DATA:(WIDTH+1)` and `.CONST AREA (W*H)` compile and every message
    of the list is produced by a test.
-7. **Computing in the layout.** `.ORG`, `.DIR`, `.PLACE` cut and read operands and get analysis
+8. **Computing in the layout.** `.ORG`, `.DIR`, `.PLACE` cut and read operands and get analysis
    handlers; the placement nodes of `place` (`features/place/placement`) carry operands in place of
    numbers; the `Position` group and the evaluation context; `LayoutContext` taking the registry,
    with the named layout values and `evaluate`; the three layout handlers evaluate and add their base
@@ -640,23 +652,22 @@ the maintainer decides when the code exists.
    with `USING VALUE X (@ + (0|2))`, one with a `.REQUIRE VALUE` default and one with a configured
    value that need the layout. Done when the import line above places the shell at the main file's
    origin.
-8. **Computing at read time.** The flag store moves to the core: a class of `frontend`, one per
+9. **Computing at read time.** The flag store moves to the core: a class of `frontend`, one per
    read-time phase, seeded by the core, the reserved names handed to it; `evaluate(tokens)` on both
    read-time contexts with the registry from the compiler; `.DEFINE`, `.IFDEF`, `.REPEAT`, `^` and
-   the scan handlers, the helper of step 4 removed; configured values through the operand reader;
+   the scan handlers, the helper of step 5 removed; configured values through the operand reader;
    reporting against the configuration; `COMPILER_CORE_BOUNDARY.md` on the flag stores. Tests: the
    conditional tests, `RepeatDirectiveTest`, `ConditionalExpansionTest`, a test for `.IFDEF (A+1)`
    alone, computable and not. Done when `.REPEAT (ROWS*2)` expands.
-9. **The visualizer.** `note` on the token-map context, the `expression` feature's contributor
-   writing notes, `LayoutContext.evaluate` writing notes, `LayoutResult` with notes and named values,
+10. **The visualizer.** The token-map generator writing notes, `LayoutContext.evaluate` writing notes, `LayoutResult` with notes and named values,
    the emission context carrying the named values, the contributors of `constdir` and `importdir`
    reading them, the emitter merging notes into source files and expansions. Tests: a token-map test
    for the notes, `EmissionIntegrationTest`, `ConstantValuesTest` for a layout-valued constant; a
    look in the browser. Done when `[=99|69]` stands behind the computation.
-10. **Documents.** `ASSEMBLY_SPEC.md`, `COMPILER_IR_SPEC.md`, `COMPILER_CORE_BOUNDARY.md`,
+11. **Documents.** `ASSEMBLY_SPEC.md`, `COMPILER_IR_SPEC.md`, `COMPILER_CORE_BOUNDARY.md`,
     `CLI_USAGE.md`, AGENTS.md, under the documentation rules of AGENTS.md, the diff read by the
     maintainer before the commit.
-11. **The brief for the primordial.** Carried out in the primordial session, after the second pull
+12. **The brief for the primordial.** Carried out in the primordial session, after the second pull
     request: the reproduction behavior owns the shell and the four corner labels, placed before its
     own code and followed by a vector `.ORG` back to its origin, `STEP REF RESULT` loads the corners
     itself (`LRLI %PLR0..3`), the main file starts its code at `1|0`, imports with
@@ -671,7 +682,7 @@ the maintainer decides when the code exists.
 The language and architecture rows above, and: `Value` as the one literal; the sign as an operator;
 `long` throughout with the range checked where a value becomes a cell, a coordinate or a count;
 `@` alone a name token and a predefined name; the reserved names; two flag stores, seeded by the
-core from step 8 on; `IOperation` and `IOperationGroup` with the `I` prefix, `Expression`, `Value`,
+core from step 9 on; `IOperation` and `IOperationGroup` with the `I` prefix, `Expression`, `Value`,
 `Kind` and the result types without it as sealed data families; the error-message convention; the
 two annotation channels kept, by name where a value is the same everywhere, by position where it
 depends on the place; token types written as whole words. Rejected with reason: every "not taken"
